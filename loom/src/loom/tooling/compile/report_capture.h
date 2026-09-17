@@ -14,14 +14,12 @@
 #include "loom/error/renderer.h"
 #include "loom/target/reporting/format.h"
 #include "loom/tooling/compile/options.h"
+#include "loom/tooling/config/config.h"
 #include "loom/util/json.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct loom_tooling_config_set_t loom_tooling_config_set_t;
-typedef struct loom_module_t loom_module_t;
 
 typedef enum loom_compile_report_sink_format_e {
   // Report capture and output are disabled.
@@ -87,17 +85,11 @@ void loom_compile_report_capture_configure_compile_options(
     loom_compile_report_capture_t* capture,
     loom_compile_options_t* compile_options);
 
-// Records caller-provided config bindings that materialized as config.def
-// symbols in |module| into |report|. Ignored bindings are omitted because they
-// did not produce this compiled candidate.
-iree_status_t loom_compile_report_record_materialized_config(
-    loom_target_compile_report_t* report, const loom_module_t* module,
-    const loom_tooling_config_set_t* config_set);
-
-// Records materialized config bindings into |capture|'s report.
-iree_status_t loom_compile_report_capture_record_materialized_config(
-    loom_compile_report_capture_t* capture, const loom_module_t* module,
-    const loom_tooling_config_set_t* config_set);
+// Receives applied bindings directly from config materialization. Disabled
+// reports return an empty sink so ordinary compilation does no value
+// formatting.
+loom_tooling_config_binding_sink_t loom_compile_report_config_binding_sink(
+    loom_target_compile_report_t* report);
 
 // Records one compiler diagnostic for report output using the canonical
 // loom_diagnostic_json_write_object() shape.

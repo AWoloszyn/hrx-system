@@ -81,6 +81,7 @@ nav:
       - Workflow map: workflows/index.md
       - Agent-driven kernel development: workflows/agent-driven-kernel-development.md
       - Tune loop unrolling and pipelining: workflows/tune-loop-schedules.md
+      - Search per-instance loop schedules: workflows/search-loop-schedules.md
       - Format and verify source: workflows/format-and-verify.md
       - Link and package modules: workflows/link-and-package.md
       - Split command and kernel compilation: workflows/product-frontiers.md

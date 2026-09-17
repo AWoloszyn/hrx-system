@@ -574,7 +574,7 @@ static loomc_status_t loomc_compile_module_into_result(
   const loomc_target_environment_t* context_target_environment =
       loomc_context_target_environment(compiler->context);
   iree_arena_allocator_t* function_version_arena =
-      loomc_module_prepare_function_versions(module);
+      loomc_module_prepare_compilation(module);
   loom_function_version_owner_t function_versions = {0};
   loom_kernel_launch_config_program_t launch_config_program = {0};
   bool launch_config_program_initialized = false;
@@ -593,6 +593,7 @@ static loomc_status_t loomc_compile_module_into_result(
     loomc_config_apply_module_options_t config_apply_options = {
         .config_module = loomc_module_const_loom_module(config_module),
         .target_module = internal_module,
+        .binding_sink = loomc_module_config_binding_sink(module),
         .policy_flags = options ? options->config_flags : 0,
         .result = result,
         .diagnostic_code = loomc_make_cstring_view("CONFIG/INVALID"),
@@ -640,7 +641,7 @@ static loomc_status_t loomc_compile_module_into_result(
         launch_config_module);
   }
   if (!loomc_status_is_ok(status) || !loomc_result_succeeded(result)) {
-    loomc_module_prepare_function_versions(module);
+    loomc_module_prepare_compilation(module);
   }
   if (launch_config_program_initialized) {
     loom_kernel_launch_config_program_deinitialize(&launch_config_program);

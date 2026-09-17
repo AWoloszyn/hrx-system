@@ -425,9 +425,11 @@ loomc_emit_compile_report_requested_detail_flags(
     return LOOM_TARGET_COMPILE_REPORT_DETAIL_NONE;
   }
   if (mode == LOOMC_COMPILE_REPORT_MODE_SUMMARY) {
-    return LOOM_TARGET_COMPILE_REPORT_DETAIL_RESIDENCY_CONSTRAINTS;
+    return LOOM_TARGET_COMPILE_REPORT_DETAIL_RESIDENCY_CONSTRAINTS |
+           LOOM_TARGET_COMPILE_REPORT_DETAIL_CONFIG_BINDING_ROWS;
   }
   return LOOM_TARGET_COMPILE_REPORT_DETAIL_RESIDENCY_CONSTRAINTS |
+         LOOM_TARGET_COMPILE_REPORT_DETAIL_CONFIG_BINDING_ROWS |
          LOOM_TARGET_COMPILE_REPORT_DETAIL_PRESSURE_ROWS |
          LOOM_TARGET_COMPILE_REPORT_DETAIL_SPILL_ROWS |
          LOOM_TARGET_COMPILE_REPORT_DETAIL_SOURCE_LOW_ROWS |
@@ -799,6 +801,20 @@ loomc_status_t loomc_emit_module(loomc_target_environment_t* target_environment,
             loom_target_compile_report_record_loop_pipelines(
                 &compile_report, internal_module,
                 loomc_module_function_versions(module)));
+      }
+      if (compile_report_initialized) {
+        for (const loomc_config_binding_record_t* binding =
+                 loomc_module_config_bindings(module)->head;
+             binding != NULL && loomc_status_is_ok(status);
+             binding = binding->next) {
+          const loom_target_compile_report_config_binding_row_t row = {
+              .key = binding->binding.key,
+              .value = binding->binding.value,
+          };
+          status = loomc_status_from_iree(
+              loom_target_compile_report_record_config_binding_row(
+                  &compile_report, &row));
+        }
       }
       const loom_target_emit_request_t request = {
           .target_environment = internal_target_environment,

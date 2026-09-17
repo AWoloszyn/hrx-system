@@ -7,7 +7,6 @@
 #include "loom/tooling/compile/report_capture.h"
 
 #include "loom/error/json_sink.h"
-#include "loom/ops/config/ops.h"
 #include "loom/tooling/config/config.h"
 
 void loom_compile_report_capture_options_initialize(
@@ -128,49 +127,28 @@ void loom_compile_report_capture_configure_compile_options(
   }
 }
 
-iree_status_t loom_compile_report_record_materialized_config(
-    loom_target_compile_report_t* report, const loom_module_t* module,
-    const loom_tooling_config_set_t* config_set) {
-  if (report == NULL || module == NULL || config_set == NULL ||
-      config_set->binding_count == 0 ||
-      !loom_target_compile_report_wants_details(
-          report, LOOM_TARGET_COMPILE_REPORT_DETAIL_CONFIG_BINDING_ROWS)) {
-    return iree_ok_status();
-  }
-
-  for (iree_host_size_t i = 0; i < config_set->binding_count; ++i) {
-    const loom_tooling_config_binding_t* binding = &config_set->bindings[i];
-    const loom_string_id_t name_id =
-        loom_module_lookup_string(module, binding->key);
-    if (name_id == LOOM_STRING_ID_INVALID) {
-      continue;
-    }
-    const uint16_t symbol_id = loom_module_find_symbol(module, name_id);
-    if (symbol_id == LOOM_SYMBOL_ID_INVALID) {
-      continue;
-    }
-    const loom_symbol_t* symbol = &module->symbols.entries[symbol_id];
-    if (!symbol->defining_op || !loom_config_def_isa(symbol->defining_op)) {
-      continue;
-    }
-    const loom_target_compile_report_config_binding_row_t row = {
-        .key = binding->key,
-        .value = binding->value,
-    };
-    IREE_RETURN_IF_ERROR(
-        loom_target_compile_report_record_config_binding_row(report, &row));
-  }
-  return iree_ok_status();
+static iree_status_t loom_compile_report_record_config_binding(
+    void* user_data, const loom_tooling_config_binding_t* binding) {
+  loom_target_compile_report_t* report =
+      (loom_target_compile_report_t*)user_data;
+  const loom_target_compile_report_config_binding_row_t row = {
+      .key = binding->key,
+      .value = binding->value,
+  };
+  return loom_target_compile_report_record_config_binding_row(report, &row);
 }
 
-iree_status_t loom_compile_report_capture_record_materialized_config(
-    loom_compile_report_capture_t* capture, const loom_module_t* module,
-    const loom_tooling_config_set_t* config_set) {
-  if (!loom_compile_report_capture_is_enabled(capture)) {
-    return iree_ok_status();
+loom_tooling_config_binding_sink_t loom_compile_report_config_binding_sink(
+    loom_target_compile_report_t* report) {
+  if (report == NULL ||
+      !loom_target_compile_report_wants_details(
+          report, LOOM_TARGET_COMPILE_REPORT_DETAIL_CONFIG_BINDING_ROWS)) {
+    return (loom_tooling_config_binding_sink_t){0};
   }
-  return loom_compile_report_record_materialized_config(&capture->report,
-                                                        module, config_set);
+  return (loom_tooling_config_binding_sink_t){
+      .fn = loom_compile_report_record_config_binding,
+      .user_data = report,
+  };
 }
 
 iree_status_t loom_compile_report_capture_record_diagnostic(

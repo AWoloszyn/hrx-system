@@ -53,6 +53,8 @@ loom_cc_library(
     "residency.h"
     "target_insertion.h"
   SRCS
+    "config_bindings.c"
+    "config_bindings.h"
     "loop_pipeline.c"
     "memory_summary.c"
     "memory_summary.h"
@@ -213,6 +215,7 @@ loom_cc_test(
   NAME
     format_test
   SRCS
+    "config_bindings_test.cc"
     "format_json_test.cc"
     "format_lowering_test.cc"
     "format_planning_test.cc"

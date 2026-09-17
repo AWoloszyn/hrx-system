@@ -43,9 +43,10 @@ loom-compile-report suggest kernel.report.json
 ```
 
 `show` separates emitted artifact facts from compiler analysis and marks omitted
-metrics as unavailable. `diff` uses an exact compilation identity by default, so
-a changed source, workload, target, backend, or configuration fails instead of
-producing a false causal comparison. `--comparison=target` admits target
+metrics as unavailable. `diff` requires matching recorded compilation fields
+by default, including roots, workload, target, backend, and applied configuration.
+It does not fingerprint source contents or the compiler binary; retain those
+identities with the experiment. `--comparison=target` admits target
 specialization changes within one target and backend family. `--force` retains
 identity mismatches for historical inspection; its result is observational.
 
@@ -65,7 +66,9 @@ The [loop-tuning walkthrough](https://rocm.github.io/hrx-system/loom/workflows/t
 provides checked row-sum and packed-dot examples using
 `scf.for ... pipeline(%depth) unroll(%factor)`, configuration sweeps, and
 actual schedule/advice output. Depth one is the serial control; pipelining
-precedes unrolling and both policies work independently.
+precedes unrolling and both policies work independently. The
+[per-instance search](https://rocm.github.io/hrx-system/loom/workflows/search-loop-schedules/)
+adds a two-instance compile-first grid, independent checks, and resource cliffs.
 
 Residency explanations distinguish usage, rounded allocation, independent
 resource ceilings, and fixed launch limits. A tied next-tier transition requires

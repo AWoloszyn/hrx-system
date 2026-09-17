@@ -43,6 +43,19 @@ typedef struct loom_tooling_config_binding_t {
   iree_string_view_t value;
 } loom_tooling_config_binding_t;
 
+// Observes a successfully applied binding while its borrowed strings are live.
+// The value uses canonical attribute syntax for both textual and typed inputs.
+// A consumer retaining the binding copies both strings before returning. A
+// callback failure propagates as an allocation or output failure; it does not
+// roll back the applied configuration. A NULL callback disables observation.
+typedef struct loom_tooling_config_binding_sink_t {
+  // Consumer receiving only bindings matched and applied to the target module.
+  iree_status_t (*fn)(void* user_data,
+                      const loom_tooling_config_binding_t* binding);
+  // Borrowed consumer state valid throughout materialization.
+  void* user_data;
+} loom_tooling_config_binding_sink_t;
+
 // Owned config bindings for one compiler operation.
 //
 // Config sets are explicit invocation state. They are intentionally separate
@@ -65,6 +78,8 @@ typedef struct loom_tooling_config_materialize_options_t {
   // Borrowed config set for the current compiler operation. NULL is accepted
   // and treated as an empty set.
   const loom_tooling_config_set_t* config_set;
+  // Optional observer for applied values, excluding ignored caller bindings.
+  loom_tooling_config_binding_sink_t binding_sink;
 } loom_tooling_config_materialize_options_t;
 
 // Summary of a materialization run.
@@ -161,6 +176,7 @@ iree_status_t loom_tooling_config_materialize_module(
 // related programs.
 iree_status_t loom_tooling_config_overlay_module(
     loom_module_t* module, const loom_module_t* config_module,
+    loom_tooling_config_binding_sink_t binding_sink,
     iree_arena_block_pool_t* block_pool,
     loom_tooling_config_materialize_result_t* out_result);
 

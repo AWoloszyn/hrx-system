@@ -7,6 +7,8 @@
 #include "loom/tooling/config/config.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
@@ -77,12 +79,14 @@ class ConfigMaterializeTest : public ::testing::Test {
   iree_status_t Materialize(
       loom_module_t* module, const loom_tooling_config_binding_t* bindings,
       iree_host_size_t binding_count,
-      loom_tooling_config_materialize_result_t* out_result) {
+      loom_tooling_config_materialize_result_t* out_result,
+      loom_tooling_config_binding_sink_t binding_sink = {}) {
     loom_tooling_config_set_t config_set;
     loom_tooling_config_set_initialize(iree_allocator_system(), &config_set);
     loom_tooling_config_materialize_options_t options;
     loom_tooling_config_materialize_options_initialize(&options);
     options.config_set = &config_set;
+    options.binding_sink = binding_sink;
     iree_status_t status = iree_ok_status();
     for (iree_host_size_t i = 0; i < binding_count && iree_status_is_ok(status);
          ++i) {
@@ -100,13 +104,73 @@ class ConfigMaterializeTest : public ::testing::Test {
   iree_status_t Overlay(loom_module_t* module,
                         const loom_module_t* config_module,
                         loom_tooling_config_materialize_result_t* out_result) {
-    return loom_tooling_config_overlay_module(module, config_module,
+    return loom_tooling_config_overlay_module(module, config_module, {},
                                               &block_pool_, out_result);
   }
 
   iree_arena_block_pool_t block_pool_;
   loom_context_t context_;
 };
+
+using AppliedBindings = std::vector<std::pair<std::string, std::string>>;
+
+iree_status_t CaptureBinding(void* user_data,
+                             const loom_tooling_config_binding_t* binding) {
+  auto* bindings = static_cast<AppliedBindings*>(user_data);
+  bindings->emplace_back(std::string(binding->key.data, binding->key.size),
+                         std::string(binding->value.data, binding->value.size));
+  return iree_ok_status();
+}
+
+TEST_F(ConfigMaterializeTest, TextAndTypedInputsReportAppliedCanonicalValues) {
+  const char* program = R"(
+config.def @depth = 1 : index
+config.def @enabled = false : i1
+config.def @scale = 1.0 : f32
+)";
+  ModulePtr textual = Parse(program);
+  const loom_tooling_config_binding_t bindings[] = {
+      {IREE_SVL("depth"), IREE_SVL("004")},
+      {IREE_SVL("enabled"), IREE_SVL("true")},
+      {IREE_SVL("scale"), IREE_SVL("0.5")},
+      {IREE_SVL("unused"), IREE_SVL("8")},
+  };
+  AppliedBindings text_bindings;
+  IREE_ASSERT_OK(Materialize(textual.get(), bindings, IREE_ARRAYSIZE(bindings),
+                             nullptr, {CaptureBinding, &text_bindings}));
+  ModulePtr typed = Parse(program);
+  ModulePtr config = Parse(R"(
+config.def @depth = 4 : index
+config.def @enabled = true : i1
+config.def @scale = 0.5 : f32
+config.def @unused = 8 : index
+)");
+  AppliedBindings typed_bindings;
+  IREE_ASSERT_OK(loom_tooling_config_overlay_module(
+      typed.get(), config.get(), {CaptureBinding, &typed_bindings},
+      &block_pool_, nullptr));
+  EXPECT_EQ(text_bindings, typed_bindings);
+  const AppliedBindings expected = {
+      {"depth", "4"}, {"enabled", "true"}, {"scale", "0.5"}};
+  EXPECT_EQ(typed_bindings, expected);
+}
+
+TEST_F(ConfigMaterializeTest, BindingSinkFailureStopsMaterialization) {
+  ModulePtr module = Parse("config.def @depth = 1 : index\n");
+  const loom_tooling_config_binding_t binding = {IREE_SVL("depth"),
+                                                 IREE_SVL("4")};
+  const loom_tooling_config_binding_sink_t sink = {
+      +[](void*, const loom_tooling_config_binding_t*) {
+        return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "config observation storage exhausted");
+      },
+      nullptr,
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        Materialize(module.get(), &binding, 1, nullptr, sink));
+  EXPECT_NE(Print(module.get()).find("config.def @depth = 4 : index"),
+            std::string::npos);
+}
 
 TEST_F(ConfigMaterializeTest, ConfigSetOwnsAssignmentsAndRejectsDuplicates) {
   loom_tooling_config_set_t config_set;

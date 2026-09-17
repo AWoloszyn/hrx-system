@@ -136,7 +136,6 @@ loom_cc_library(
     loom::error::diagnostic
     loom::error::json_sink
     loom::error::renderer
-    loom::ops::config
     loom::target::reporting::format
     loom::target::reporting::report
     loom::tooling::config

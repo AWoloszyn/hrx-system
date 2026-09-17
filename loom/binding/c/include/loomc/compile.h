@@ -221,9 +221,11 @@ LOOMC_API_EXPORT loomc_status_t loomc_compiler_create(
 /// the original IR provide independent module storage before compilation.
 /// A successful target-specialized invocation also retains its concrete
 /// function-version facts in the module handle for a later
-/// `loomc_emit_module` call. A subsequent compile replaces that state.
-/// Serialization and cloning preserve IR only and do not persist compiler
-/// facts.
+/// `loomc_emit_module` call. Applied configuration bindings are copied into the
+/// module for later emission reports, even when compilation requests no report.
+/// Once an invocation passes API preconditions, it replaces these products
+/// on success or clears them on failure. Cloning preserves the applied
+/// bindings; IR serialization does not persist them.
 ///
 /// @lifetime
 /// Returned results and artifacts do not borrow from `workspace` and remain

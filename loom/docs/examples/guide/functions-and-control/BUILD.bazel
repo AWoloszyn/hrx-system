@@ -119,3 +119,77 @@ loom_test(
     execution_profile = AMDGPU_HARDWARE_PROFILE,
     deps = [":guarded_read_ahead"],
 )
+
+loom_kernel_library(
+    name = "paired_read_ahead",
+    srcs = [
+        "paired-read-ahead.loom",
+        "paired-read-ahead-tests.loom",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        SPIRV_VULKAN_HARDWARE_PROFILE,
+    ],
+    targets = [
+        "@hrx//loom/target/amdgpu:gfx11-generic",
+        "@hrx//loom/target/amdgpu:gfx1250-a0",
+        "@hrx//loom/target/spirv:vulkan1.3+bda",
+    ],
+    deps = [":vector_read_ahead"],
+)
+
+loom_test(
+    name = "paired_read_ahead_serial_access_test",
+    srcs = ["paired-read-ahead-tests.loom"],
+    args = [
+        "--sanitizer=access",
+        "--config=paired_rows.left_lookahead=0",
+        "--config=paired_rows.left_unroll=1",
+        "--config=paired_rows.right_lookahead=0",
+        "--config=paired_rows.right_unroll=1",
+    ],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    deps = [":paired_read_ahead"],
+)
+
+loom_test(
+    name = "paired_read_ahead_swapped_access_test",
+    srcs = ["paired-read-ahead-tests.loom"],
+    args = [
+        "--sanitizer=access",
+        "--config=paired_rows.left_lookahead=0",
+        "--config=paired_rows.left_unroll=1",
+        "--config=paired_rows.right_lookahead=3",
+        "--config=paired_rows.right_unroll=4",
+    ],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    deps = [":paired_read_ahead"],
+)
+
+loom_test(
+    name = "paired_read_ahead_both_access_test",
+    srcs = ["paired-read-ahead-tests.loom"],
+    args = [
+        "--sanitizer=access",
+        "--config=paired_rows.left_lookahead=3",
+        "--config=paired_rows.left_unroll=4",
+        "--config=paired_rows.right_lookahead=3",
+        "--config=paired_rows.right_unroll=4",
+    ],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    deps = [":paired_read_ahead"],
+)
+
+loom_test(
+    name = "paired_read_ahead_deep_access_test",
+    srcs = ["paired-read-ahead-tests.loom"],
+    args = [
+        "--sanitizer=access",
+        "--config=paired_rows.left_lookahead=31",
+        "--config=paired_rows.left_unroll=4",
+        "--config=paired_rows.right_lookahead=31",
+        "--config=paired_rows.right_unroll=4",
+    ],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    deps = [":paired_read_ahead"],
+)

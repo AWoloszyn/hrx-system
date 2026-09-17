@@ -10,6 +10,8 @@
 #include <string>
 
 #include "iree/testing/gtest.h"
+#include "loomc/compile.h"
+#include "loomc/compile_report.h"
 #include "loomc/context.h"
 #include "loomc/module.h"
 #include "loomc/pass.h"
@@ -197,6 +199,111 @@ TEST(TargetSpirvTest, CreatesTargetPipelinePassProgram) {
   ResultPtr result_ptr(result);
   EXPECT_NE(pass_program_ptr.get(), nullptr);
   ExpectSucceededResult(result_ptr.get());
+}
+
+TEST(TargetSpirvTest, ConfigIdentitySurvivesCloneAndResetsOnCompilation) {
+  TargetEnvironmentPtr target_environment = CreateSpirvTargetEnvironment();
+  ContextPtr context = CreateSpirvContext(target_environment.get());
+  loomc_workspace_t* raw_workspace = nullptr;
+  LOOMC_ASSERT_OK(loomc_workspace_create(nullptr, loomc_allocator_system(),
+                                         &raw_workspace));
+  WorkspacePtr workspace(raw_workspace);
+  SourcePtr source = CreateTextSource("configured.loom", R"(
+spirv.target<vulkan1_3> @target
+config.def @tile_size = 1 : index
+kernel.def target(@target) @configured() {
+  %one = index.constant 1 : index
+  %size = config.get @tile_size : index
+  kernel.launch.config workgroups(%one, %one, %one) workgroup_size(%size, %one, %one) : index
+} launch() {
+  kernel.return
+}
+)");
+  ModulePtr module =
+      DeserializeModule(context.get(), workspace.get(), source.get());
+  SourcePtr config_source =
+      CreateTextSource("config.loom", "config.def @tile_size = 32 : index\n");
+  ModulePtr config =
+      DeserializeModule(context.get(), workspace.get(), config_source.get());
+  loomc_compiler_t* raw_compiler = nullptr;
+  LOOMC_ASSERT_OK(loomc_compiler_create(
+      context.get(), nullptr, loomc_allocator_system(), &raw_compiler));
+  HandlePtr<loomc_compiler_t, loomc_compiler_release> compiler(raw_compiler);
+  loomc_target_pipeline_options_t pipeline_options = {};
+  pipeline_options.kind = LOOMC_TARGET_PIPELINE_KIND_PREPARED_LOW;
+  pipeline_options.control_flow_lowering =
+      LOOMC_TARGET_CONTROL_FLOW_LOWERING_CFG;
+  loomc_pass_program_t* raw_pass_program = nullptr;
+  loomc_result_t* raw_result = nullptr;
+  LOOMC_ASSERT_OK(loomc_pass_program_create_from_target_pipeline(
+      context.get(), &pipeline_options, loomc_allocator_system(),
+      &raw_pass_program, &raw_result));
+  PassProgramPtr pass_program(raw_pass_program);
+  ResultPtr result(raw_result);
+  ExpectSucceededResult(result.get());
+  result.reset();
+  loomc_compile_options_t compile_options = {};
+  compile_options.config_module = config.get();
+  LOOMC_ASSERT_OK(loomc_compile_module(
+      compiler.get(), workspace.get(), pass_program.get(), module.get(),
+      &compile_options, loomc_allocator_system(), &raw_result));
+  result.reset(raw_result);
+  ExpectSucceededResult(result.get());
+  ASSERT_TRUE(loomc_result_succeeded(result.get()));
+  result.reset();
+  config.reset();
+  config_source.reset();
+  loomc_module_t* raw_clone = nullptr;
+  LOOMC_ASSERT_OK(loomc_module_clone(module.get(), workspace.get(),
+                                     loomc_allocator_system(), &raw_clone));
+  ModulePtr clone(raw_clone);
+  module.reset();
+  source.reset();
+  loomc_workspace_trim(workspace.get());
+
+  for (int invocation = 0; invocation < 2; ++invocation) {
+    for (auto mode : {LOOMC_COMPILE_REPORT_MODE_SUMMARY,
+                      LOOMC_COMPILE_REPORT_MODE_DETAILS}) {
+      loomc_compile_report_options_t report_options = {};
+      report_options.type = LOOMC_STRUCTURE_TYPE_COMPILE_REPORT_OPTIONS;
+      report_options.structure_size = sizeof(report_options);
+      report_options.mode = mode;
+      loomc_emit_options_t emit_options = {};
+      emit_options.next = &report_options;
+      emit_options.artifact_format =
+          loomc_make_cstring_view(LOOMC_ARTIFACT_FORMAT_SPIRV);
+      emit_options.artifact_flags = LOOMC_EMIT_ARTIFACT_FLAG_PRIMARY;
+      LOOMC_ASSERT_OK(loomc_emit_module(
+          target_environment.get(), workspace.get(), clone.get(), &emit_options,
+          loomc_allocator_system(), &raw_result));
+      result.reset(raw_result);
+      ExpectSucceededResult(result.get());
+      ASSERT_EQ(loomc_result_artifact_count(result.get()), 2u);
+      const loomc_artifact_t* report =
+          loomc_result_artifact_at(result.get(), 1);
+      ASSERT_EQ(ToString(report->format),
+                LOOMC_ARTIFACT_FORMAT_COMPILE_REPORT_JSON);
+      const std::string json = ToString(report->contents);
+      if (invocation == 0) {
+        EXPECT_NE(json.find("\"key\":\"tile_size\",\"value\":\"32\""),
+                  std::string::npos)
+            << json;
+      } else {
+        EXPECT_EQ(json.find("\"key\":\"tile_size\""), std::string::npos)
+            << json;
+      }
+      result.reset();
+      loomc_workspace_trim(workspace.get());
+    }
+    if (invocation == 0) {
+      LOOMC_ASSERT_OK(loomc_compile_module(
+          compiler.get(), workspace.get(), pass_program.get(), clone.get(),
+          nullptr, loomc_allocator_system(), &raw_result));
+      result.reset(raw_result);
+      ExpectSucceededResult(result.get());
+      result.reset();
+    }
+  }
 }
 
 TEST(TargetSpirvTest, EmitsSpirvBinaryArtifact) {

@@ -12,6 +12,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/ir/module.h"
+#include "loom/tooling/config/config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +45,11 @@ iree_status_t loom_tooling_config_apply_exact_value(loom_module_t* module,
                                                     loom_op_t* old_op,
                                                     loom_type_t type,
                                                     loom_attribute_t value);
+
+// Formats an applied value only when an observer needs its durable spelling.
+iree_status_t loom_tooling_config_notify_binding(
+    loom_tooling_config_binding_sink_t sink, const loom_module_t* module,
+    iree_string_view_t key, loom_attribute_t value);
 
 #ifdef __cplusplus
 }  // extern "C"

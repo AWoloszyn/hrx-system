@@ -55,7 +55,9 @@ and [`vector-read-ahead-tests.loom`](../generated/examples/guide/functions-and-c
 --8<-- "examples/guide/functions-and-control/vector-read-ahead.loom"
 ```
 
-The policies must specialize to positive exact values before transformation.
+Depth must specialize to a positive exact value before transformation; the
+unroll factor must be an exact nonnegative value. Factors zero and one leave
+the loop unexpanded.
 A caller can calculate them with `index` arithmetic from compile-time arguments
 or target facts such as `target.subgroup.size`. A configuration value describing
 a universal target property can also feed that calculation. A global
@@ -85,6 +87,10 @@ This finding is generated from the example during the documentation build:
 ```text
 --8<-- "generated/examples/guide/functions-and-control/vector-pipeline-suggest.txt"
 ```
+
+The [per-instance search walkthrough](search-loop-schedules.md) extends this
+motif to two independent inputs and row counts, a sixteen-candidate compile-first
+grid, and report-guided resource comparisons.
 
 ## Keep guards and inner loops in the source
 

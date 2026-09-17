@@ -54,6 +54,7 @@ iree_py_test(
         "//loom/py/loom/tools:pytest_style_runner.py",
     ],
     args = ["loom.gen.docs.reference_test"],
+    data = ["//loom/docs:source_pages"],
     main = "pytest_style_runner.py",
     tags = ["skip-bazel_to_cmake"],
     deps = [

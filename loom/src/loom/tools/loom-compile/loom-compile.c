@@ -299,10 +299,12 @@ static iree_status_t loom_compile_append_config_files(
 
 static iree_status_t loom_compile_materialize_config_set(
     loom_run_session_t* session, loom_run_module_t* run_module,
-    const loom_tooling_config_set_t* config_set) {
+    const loom_tooling_config_set_t* config_set,
+    loom_target_compile_report_t* report) {
   loom_tooling_config_materialize_options_t options;
   loom_tooling_config_materialize_options_initialize(&options);
   options.config_set = config_set;
+  options.binding_sink = loom_compile_report_config_binding_sink(report);
   return loom_tooling_config_materialize_module(
       run_module->module, &options, loom_run_session_block_pool(session), NULL);
 }
@@ -1036,6 +1038,10 @@ static void loom_compile_print_agents_markdown(FILE* stream) {
       "tradeoffs. Complete row-sum and packed-dot examples: "
       "[Tune loop schedules](https://rocm.github.io/hrx-system/loom/"
       "workflows/tune-loop-schedules/).\n"
+      "For independent motif policies, [Search per-instance loop schedules]"
+      "(https://rocm.github.io/hrx-system/loom/workflows/"
+      "search-loop-schedules/) supplies a checked compile-first grid, actual\n"
+      "`suggest` output, resource cliffs, and controlled measurements.\n"
       "\n"
       "### Compose native instruction phases\n"
       "\n"
@@ -1192,10 +1198,6 @@ int main(int argc, char** argv) {
         loom_run_session_low_descriptor_registry(&session), &run_module);
   }
   if (iree_status_is_ok(status)) {
-    status =
-        loom_compile_materialize_config_set(&session, &run_module, &config_set);
-  }
-  if (iree_status_is_ok(status)) {
     status = loom_compile_report_options_initialize(&compile_report_options);
   }
   if (iree_status_is_ok(status)) {
@@ -1203,8 +1205,8 @@ int main(int argc, char** argv) {
         &compile_report_options, allocator, &compile_report_capture);
   }
   if (iree_status_is_ok(status)) {
-    status = loom_compile_report_capture_record_materialized_config(
-        &compile_report_capture, run_module.module, &config_set);
+    status = loom_compile_materialize_config_set(
+        &session, &run_module, &config_set, &compile_report_capture.report);
   }
   if (iree_status_is_ok(status)) {
     const loom_compile_request_options_t request_options = {

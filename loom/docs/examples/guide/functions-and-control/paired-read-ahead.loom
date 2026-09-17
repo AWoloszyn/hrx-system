@@ -1,0 +1,43 @@
+// Experiment controls select each caller's template arguments.
+config.def @paired_rows.left_lookahead = 3 : index
+
+config.def @paired_rows.left_unroll = 4 : index
+
+config.def @paired_rows.right_lookahead = 0 : index
+
+config.def @paired_rows.right_unroll = 1 : index
+
+template.decl @guide.sum_vector_rows(%values: view<64x32x4xf32>, %count: index, %lane: index, %depth: index, %factor: index) -> (f32)
+
+kernel.def export("sum_paired_rows") @sum_paired_rows() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%left_count: index, %right_count: index, %left_input: buffer, %right_input: buffer, %left_output: buffer, %right_output: buffer) {
+  %left_rows = index.assume %left_count [range(%left_count, 0, 64)] : index
+  %right_rows = index.assume %right_count [range(%right_count, 0, 64)] : index
+  %lane = kernel.workitem.id<x> : index
+  %base = index.constant 0 : offset
+  %aligned_left_input = buffer.assume.alignment %left_input {minimum_alignment = 4} : buffer
+  %aligned_right_input = buffer.assume.alignment %right_input {minimum_alignment = 4} : buffer
+  %aligned_left_output = buffer.assume.alignment %left_output {minimum_alignment = 4} : buffer
+  %aligned_right_output = buffer.assume.alignment %right_output {minimum_alignment = 4} : buffer
+  %left_values = buffer.view %aligned_left_input[%base] : buffer -> view<64x32x4xf32>
+  %right_values = buffer.view %aligned_right_input[%base] : buffer -> view<64x32x4xf32>
+  %left_sums = buffer.view %aligned_left_output[%base] : buffer -> view<32xf32>
+  %right_sums = buffer.view %aligned_right_output[%base] : buffer -> view<32xf32>
+  // --8<-- [start:caller-policies]
+  %current_record_count = index.constant 1 : index
+  %left_lookahead = config.get @paired_rows.left_lookahead : index
+  %left_depth = index.add %left_lookahead, %current_record_count : index
+  %left_factor = config.get @paired_rows.left_unroll : index
+  %right_lookahead = config.get @paired_rows.right_lookahead : index
+  %right_depth = index.add %right_lookahead, %current_record_count : index
+  %right_factor = config.get @paired_rows.right_unroll : index
+  %left = template.apply<@guide.sum_vector_rows>(%left_values, %left_rows, %lane, %left_depth, %left_factor) : (view<64x32x4xf32>, index, index, index, index) -> (f32)
+  %right = template.apply<@guide.sum_vector_rows>(%right_values, %right_rows, %lane, %right_depth, %right_factor) : (view<64x32x4xf32>, index, index, index, index) -> (f32)
+  // --8<-- [end:caller-policies]
+  view.store %left, %left_sums[%lane] : f32, view<32xf32>
+  view.store %right, %right_sums[%lane] : f32, view<32xf32>
+  kernel.return
+}

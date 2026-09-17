@@ -367,11 +367,11 @@ static iree_status_t loom_run_hal_testbench_materialize_config_set(
   loom_tooling_config_materialize_options_t options = {0};
   loom_tooling_config_materialize_options_initialize(&options);
   options.config_set = provider->config_set;
-  IREE_RETURN_IF_ERROR(loom_tooling_config_materialize_module(
+  options.binding_sink =
+      loom_compile_report_config_binding_sink(provider->report);
+  return loom_tooling_config_materialize_module(
       provider->compile_module.module, &options,
-      loom_run_session_block_pool(provider->session), NULL));
-  return loom_compile_report_record_materialized_config(
-      provider->report, provider->compile_module.module, provider->config_set);
+      loom_run_session_block_pool(provider->session), NULL);
 }
 
 static iree_status_t loom_run_hal_testbench_clone_compile_module(

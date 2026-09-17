@@ -4,11 +4,20 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# bazel-to-cmake: skip
+
 load("//build_tools/bazel:python.bzl", "iree_py_test")
 
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+filegroup(
+    name = "source_pages",
+    srcs = glob(["src/**/*.md"]),
+    tags = ["skip-bazel_to_cmake"],
+    visibility = ["//loom/py/loom/gen/docs:__pkg__"],
 )
 
 iree_py_test(

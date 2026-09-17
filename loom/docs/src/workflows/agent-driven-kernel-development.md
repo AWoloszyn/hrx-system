@@ -301,7 +301,9 @@ source schedule.
 The [loop-tuning walkthrough](tune-loop-schedules.md) supplies a vector-row motif
 with per-instance policies, checked row-sum and packed-dot experiment harnesses,
 configuration sweeps, and actual `show`/`suggest` output. The
-[control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
+[per-instance search](search-loop-schedules.md) composes two independent motifs,
+checks candidate identity, and inspects resource cliffs before device execution.
+The [control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
 owns the exact policy and schedule semantics.
 
 For authored native motifs, give a Low helper
