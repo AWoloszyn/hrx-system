@@ -31,18 +31,6 @@ typedef struct amdf_gpu_kfd_user_queue_buffer_t {
   void* host_pointer;
 } amdf_gpu_kfd_user_queue_buffer_t;
 
-// Native proof required before queue-reachable mappings may be released.
-typedef enum amdf_gpu_kfd_user_queue_retirement_state_e {
-  // No native queue can reach owned storage.
-  AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RELEASABLE = 0,
-  // The native queue identifier remains live and must be destroyed.
-  AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_ACTIVE = 1,
-  // Native removal succeeded and requires a heavyweight-flush trigger.
-  AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_FLUSH_REQUIRED = 2,
-  // Native removal consumed the identifier without proving quiescence.
-  AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RESET_REQUIRED = 3,
-} amdf_gpu_kfd_user_queue_retirement_state_t;
-
 // One directly published KFD queue and all native-reachable storage.
 struct amdf_gpu_umd_user_queue_t {
   // Owning device borrowed through final queue release.
@@ -65,10 +53,10 @@ struct amdf_gpu_umd_user_queue_t {
   void* doorbell_mapping;
   // Exact 64-bit doorbell selected within `doorbell_mapping`.
   volatile uint64_t* doorbell;
-  // KFD queue identifier, valid while retirement state is ACTIVE.
+  // KFD queue identifier, valid after native creation succeeds.
   uint32_t queue_identifier;
-  // Proof still required before releasing queue-reachable storage.
-  amdf_gpu_kfd_user_queue_retirement_state_t retirement_state;
+  // Whether construction acquired a native queue, including identifier zero.
+  bool queue_created;
   // Sticky native VM, provider, or firmware failure.
   amdf_atomic_uint64_t terminal_status;
 };
@@ -225,69 +213,9 @@ static amdf_status_t amdf_gpu_kfd_user_queue_release_storage(
   return status;
 }
 
-amdf_status_t amdf_gpu_umd_user_queue_destroy(
-    amdf_gpu_umd_user_queue_t* queue) {
-  if (queue == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  }
-  if (queue->retirement_state == AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_ACTIVE) {
-    uint64_t producer_index;
-    uint64_t consumed_index;
-    amdf_gpu_kfd_user_queue_sample_progress(queue, &producer_index,
-                                            &consumed_index);
-    if (consumed_index < producer_index) {
-      return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
-    }
-    if (consumed_index > producer_index) {
-      const amdf_status_t failure =
-          amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
-      amdf_gpu_kfd_user_queue_record_failure(queue, failure);
-      return failure;
-    }
-
-    const amdf_gpu_kfd_user_queue_destroy_result_t result =
-        queue->native_api->queue_destroy(queue->native_api->user_data,
-                                         queue->device,
-                                         queue->queue_identifier);
-    if (amdf_status_is_ok(result.status) || result.identifier_consumed) {
-      queue->queue_identifier = 0;
-      queue->retirement_state =
-          amdf_status_is_ok(result.status)
-              ? AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_FLUSH_REQUIRED
-              : AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RESET_REQUIRED;
-    }
-    if (!amdf_status_is_ok(result.status)) {
-      return result.status;
-    }
-  }
-
-  if (queue->retirement_state ==
-      AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_FLUSH_REQUIRED) {
-    const amdf_status_t status = amdf_gpu_kfd_user_queue_buffer_destroy(
-        queue, &queue->retirement_flush_trigger);
-    if (!amdf_status_is_ok(status)) {
-      return status;
-    }
-    queue->retirement_state = AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RELEASABLE;
-  } else if (queue->retirement_state ==
-             AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RESET_REQUIRED) {
-    amdf_gpu_kfd_reset_state_t reset_state = {0};
-    const amdf_status_t status = queue->native_api->reset_query(
-        queue->native_api->user_data, queue->device, &reset_state);
-    if (!amdf_status_is_ok(status)) {
-      return status;
-    }
-    if (!reset_state.reset_observed || reset_state.reset_in_progress) {
-      return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
-    }
-    queue->retirement_state = AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RELEASABLE;
-  }
-  return amdf_gpu_kfd_user_queue_release_storage(queue);
-}
-
 static void amdf_gpu_kfd_user_queue_abandon(amdf_gpu_umd_user_queue_t* queue) {
   // Native queue addresses refer only to separate backing, never this metadata.
-  // Preserve all remaining mappings when rollback cannot prove retirement.
+  // Preserve all remaining mappings when final release cannot prove retirement.
   amdf_gpu_kfd_buffer_t* buffers[] = {
       queue->ring.native,
       queue->control.native,
@@ -304,13 +232,45 @@ static void amdf_gpu_kfd_user_queue_abandon(amdf_gpu_umd_user_queue_t* queue) {
   amdf_free(queue->device->host_allocator, queue);
 }
 
+amdf_status_t amdf_gpu_umd_user_queue_destroy(
+    amdf_gpu_umd_user_queue_t* queue) {
+  if (queue == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  amdf_status_t status = AMDF_STATUS_OK;
+  if (queue->queue_created) {
+    uint64_t producer_index;
+    uint64_t consumed_index;
+    amdf_gpu_kfd_user_queue_sample_progress(queue, &producer_index,
+                                            &consumed_index);
+    if (consumed_index < producer_index) {
+      return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
+    }
+    if (consumed_index > producer_index) {
+      status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+    } else {
+      // Identifier consumption on failure does not establish quiescence. No
+      // failure is retried and no physical-reset observation substitutes for
+      // successful removal of this queue.
+      status = queue->native_api->queue_destroy(
+          queue->native_api->user_data, queue->device, queue->queue_identifier);
+    }
+  }
+  if (amdf_status_is_ok(status)) {
+    // Releasing the queue-inaccessible trigger performs the mandatory
+    // heavyweight invalidation before any queue-reachable storage is freed.
+    status = amdf_gpu_kfd_user_queue_release_storage(queue);
+  }
+  if (!amdf_status_is_ok(status)) {
+    amdf_gpu_kfd_user_queue_abandon(queue);
+  }
+  return status;
+}
+
 static bool amdf_gpu_kfd_user_queue_select_plan(
     const amdf_gpu_umd_device_t* device,
     const amdf_gpu_umd_user_queue_create_info_t* create_info,
     amdf_gpu_kfd_user_queue_plan_t* out_plan) {
-  if (!device->reset_monitor.context_owned) {
-    return false;
-  }
   amdf_gpu_kfd_user_queue_plans_t plans;
   amdf_gpu_kfd_target_user_queue_plans_initialize(
       &device->topology, device->page_size, device->cache_line_size, &plans);
@@ -416,7 +376,7 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
                                              device, &arguments);
     if (amdf_status_is_ok(status)) {
       queue->queue_identifier = arguments.queue_id;
-      queue->retirement_state = AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_ACTIVE;
+      queue->queue_created = true;
     }
   }
 
@@ -458,7 +418,6 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
   } else {
     const amdf_status_t release_status = amdf_gpu_umd_user_queue_destroy(queue);
     if (!amdf_status_is_ok(release_status)) {
-      amdf_gpu_kfd_user_queue_abandon(queue);
       status = release_status;
     }
   }

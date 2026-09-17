@@ -218,4 +218,17 @@ TEST(UserQueueTest, PreservesOutputsAndEnforcesMappingLifetime) {
   EXPECT_EQ(amdf_child_tracker_count(&device.children), 0u);
 }
 
+TEST(UserQueueTest, NativeErrorCodeDoesNotAliasPreconditionRejection) {
+  amdf_device_t device = {};
+  device.host_allocator = amdf_allocator_system();
+  amdf_child_tracker_initialize(&device.children);
+  amdf_user_queue_t* queue = nullptr;
+  ASSERT_EQ(CreateFakeQueue(&device, &queue), AMDF_STATUS_OK);
+  // Win32 ERROR_INVALID_HANDLE is 6, as is API-domain BUSY.
+  const auto failure = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, 6);
+  reinterpret_cast<FakeQueue*>(queue)->destroy_status = failure;
+  EXPECT_EQ(amdf_user_queue_destroy(queue), failure);
+  EXPECT_EQ(amdf_child_tracker_count(&device.children), 0u);
+}
+
 }  // namespace

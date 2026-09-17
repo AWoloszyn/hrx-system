@@ -26,6 +26,10 @@ struct amdf_gpu_umd_kernel_queue_t {
   amdf_status_t terminal_status = AMDF_STATUS_OK;
   // Outcome of the next native wait after it publishes completion.
   amdf_status_t wait_status = AMDF_STATUS_OK;
+  // Native cleanup result after the shared layer establishes retirement.
+  amdf_status_t destroy_status = AMDF_STATUS_OK;
+  // Number of final native release attempts.
+  uint32_t destroy_count = 0;
 };
 
 struct amdf_gpu_umd_device_t {
@@ -165,6 +169,25 @@ TEST_P(GpuKernelQueueTest, NativeWaitErrorDoesNotEraseConfirmedRetirement) {
   EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
 }
 
+TEST_P(GpuKernelQueueTest, RejectedDestroyRetainsButNativeFailureConsumes) {
+  uint64_t submission = 0;
+  ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_kernel_queue_destroy(queue),
+            amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
+  EXPECT_EQ(device.native.queue.destroy_count, 0u);
+  EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 1u);
+
+  // ERROR_INVALID_HANDLE numerically overlaps API-domain BUSY. Ownership is
+  // determined by the complete status, never by its domain-specific code alone.
+  const auto failure = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, 6);
+  device.native.queue.destroy_status = failure;
+  device.native.queue.progress = device.native.queue.submitted;
+  EXPECT_EQ(amdf_kernel_queue_destroy(queue), failure);
+  queue = nullptr;
+  EXPECT_EQ(device.native.queue.destroy_count, 1u);
+  EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 0u);
+}
+
 INSTANTIATE_TEST_SUITE_P(CommandFormats, GpuKernelQueueTest,
                          ::testing::Values(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
                                            AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA));
@@ -227,8 +250,10 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(amdf_gpu_umd_kernel_queue_t* queue,
   queue->progress = submission;
   return queue->wait_status;
 }
-amdf_status_t amdf_gpu_umd_kernel_queue_destroy(amdf_gpu_umd_kernel_queue_t*) {
-  return AMDF_STATUS_OK;
+amdf_status_t amdf_gpu_umd_kernel_queue_destroy(
+    amdf_gpu_umd_kernel_queue_t* queue) {
+  ++queue->destroy_count;
+  return queue->destroy_status;
 }
 
 }  // extern "C"

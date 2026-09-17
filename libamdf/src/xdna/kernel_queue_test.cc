@@ -7,6 +7,7 @@
 #include "libamdf/src/xdna/kernel_queue.h"
 
 #include <atomic>
+#include <cerrno>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -41,6 +42,10 @@ struct amdf_xdna_umd_kernel_queue_t {
   std::atomic<size_t> wait_count{0};
   // Native rejection selected before publication.
   amdf_status_t submission_status = AMDF_STATUS_OK;
+  // Native cleanup result after the shared layer establishes retirement.
+  amdf_status_t destroy_status = AMDF_STATUS_OK;
+  // Number of final native release attempts.
+  uint32_t destroy_count = 0;
   // Monotonic native submission count.
   uint64_t submitted = 0;
   // Exact instruction range passed directly to the native transport.
@@ -184,6 +189,24 @@ TEST_F(XdnaKernelQueueTest, ZeroTimeoutRefreshesNativeProgress) {
   EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0), AMDF_STATUS_OK);
   EXPECT_EQ(context.native.queue.wait_count.load(), 1u);
   EXPECT_EQ(Query().retired_submission, submission);
+}
+
+TEST_F(XdnaKernelQueueTest, NativeReleaseFailureConsumesBothLifetimeBorrows) {
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  EXPECT_EQ(amdf_kernel_queue_destroy(queue),
+            amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
+  EXPECT_EQ(context.native.queue.destroy_count, 0u);
+  EXPECT_EQ(amdf_child_tracker_count(&context.children), 1u);
+  EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 1u);
+
+  const auto failure = amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EBUSY);
+  context.native.queue.destroy_status = failure;
+  context.native.queue.progress = context.native.queue.submitted;
+  EXPECT_EQ(amdf_kernel_queue_destroy(queue), failure);
+  queue = nullptr;
+  EXPECT_EQ(context.native.queue.destroy_count, 1u);
+  EXPECT_EQ(amdf_child_tracker_count(&context.children), 0u);
+  EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 0u);
 }
 
 TEST_F(XdnaKernelQueueTest, QueryDoesNotRetireNativeCompletion) {
@@ -481,8 +504,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_wait(
              : AMDF_STATUS_OK;
 }
 amdf_status_t amdf_xdna_umd_kernel_queue_destroy(
-    amdf_xdna_umd_kernel_queue_t*) {
-  return AMDF_STATUS_OK;
+    amdf_xdna_umd_kernel_queue_t* queue) {
+  ++queue->destroy_count;
+  return queue->destroy_status;
 }
 
 }  // extern "C"

@@ -827,9 +827,13 @@ static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
 
 static iree_status_t iree_xdna_run_deinitialize(iree_xdna_run_t* run) {
   if (run->queue != NULL) {
-    IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
-        run->api->kernel_queue_destroy(run->queue), "kernel_queue_destroy"));
-    run->queue = NULL;
+    const amdf_status_t release_status =
+        run->api->kernel_queue_destroy(run->queue);
+    if (release_status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+      run->queue = NULL;
+    }
+    IREE_RETURN_IF_ERROR(
+        IREE_HAL_AMD_STATUS_FROM_AMDF(release_status, "kernel_queue_destroy"));
   }
   iree_status_t storage_status = iree_ok_status();
   for (uint32_t i = 0;

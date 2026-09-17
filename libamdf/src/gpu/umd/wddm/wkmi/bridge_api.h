@@ -30,8 +30,11 @@ extern "C" {
 // First version providing typed shared-buffer preparation.
 #define AMDF_WKMI_BRIDGE_ABI_VERSION_3 3u
 
+// First version consuming GPU queues even when native destruction fails.
+#define AMDF_WKMI_BRIDGE_ABI_VERSION_4 4u
+
 // Most recent private bridge ABI version described by this header.
-#define AMDF_WKMI_BRIDGE_ABI_VERSION_LATEST AMDF_WKMI_BRIDGE_ABI_VERSION_3
+#define AMDF_WKMI_BRIDGE_ABI_VERSION_LATEST AMDF_WKMI_BRIDGE_ABI_VERSION_4
 
 // Result of one bridge operation.
 typedef uint32_t amdf_wkmi_bridge_result_t;
@@ -215,7 +218,7 @@ typedef struct amdf_wkmi_bridge_gpu_buffer_import_info_t {
   void* shared_handle;
 } amdf_wkmi_bridge_gpu_buffer_import_info_t;
 
-// Immutable entry-point table for private bridge ABI version 3.
+// Immutable entry-point table for private bridge ABI version 4.
 typedef struct amdf_wkmi_bridge_api_t {
   // Size in bytes of this table version.
   uint32_t structure_size;
@@ -286,7 +289,11 @@ typedef struct amdf_wkmi_bridge_api_t {
       uint64_t command_buffer_address, uint64_t command_buffer_byte_length,
       uint64_t progress_value, uint32_t* out_native_status);
 
-  // Releases an idle native GPU queue and its execution context.
+  // Consumes an idle queue even when native queue/context cleanup fails.
+  // Returns the first native error and leaks unreleased native handles, without
+  // retaining host metadata or an adapter child. The caller proves retirement
+  // and retains application backing independently; release does not cancel
+  // work.
   amdf_wkmi_bridge_result_t(AMDF_WKMI_BRIDGE_CALL* gpu_kernel_queue_destroy)(
       amdf_wkmi_bridge_gpu_kernel_queue_t* queue, uint32_t* out_native_status);
 

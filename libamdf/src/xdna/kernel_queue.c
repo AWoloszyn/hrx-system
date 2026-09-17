@@ -229,11 +229,9 @@ static amdf_status_t amdf_xdna_kernel_queue_destroy_native(
     return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
   }
   const amdf_status_t status = amdf_xdna_umd_kernel_queue_destroy(queue->umd);
-  if (amdf_status_is_ok(status)) {
-    queue->umd = NULL;
-    amdf_xdna_context_unregister_child(queue->context);
-    queue->context = NULL;
-  }
+  queue->umd = NULL;
+  amdf_xdna_context_unregister_child(queue->context);
+  queue->context = NULL;
   return status;
 }
 

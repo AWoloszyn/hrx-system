@@ -106,9 +106,6 @@ amdf_status_t amdf_gpu_umd_kernel_queue_submit(
   if (!amdf_status_is_ok(terminal_status)) {
     return terminal_status;
   }
-  if (queue->native == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
-  }
   // UINT64_MAX is reserved for the monitored fence's reset indication.
   if (queue->last_native_submission >= UINT64_MAX - 1) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
@@ -145,9 +142,6 @@ amdf_status_t amdf_gpu_umd_kernel_queue_query_terminal_status(
 
 uint64_t amdf_gpu_umd_kernel_queue_query_progress(
     const amdf_gpu_umd_kernel_queue_t* queue) {
-  if (queue->native == NULL) {
-    return queue->last_native_submission;
-  }
   return amdf_kmt_device_status_query_fence_progress(
       &queue->device->status, queue->progress_fence_pointer);
 }
@@ -267,21 +261,13 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
 
 amdf_status_t amdf_gpu_umd_kernel_queue_destroy(
     amdf_gpu_umd_kernel_queue_t* queue) {
-  if (queue->native != NULL) {
-    const amdf_status_t status =
-        amdf_gpu_wddm_wkmi_adapter_destroy_kernel_queue(
-            &queue->device->wkmi_adapter, queue->native);
-    if (!amdf_status_is_ok(status)) {
-      return status;
-    }
-    queue->native = NULL;
-  }
-  if (queue->wait_event != NULL) {
-    if (!CloseHandle(queue->wait_event)) {
-      return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
-    }
-    queue->wait_event = NULL;
+  amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_destroy_kernel_queue(
+      &queue->device->wkmi_adapter, queue->native);
+  // Accepted work is retired and no waiter borrows the event. Its release is
+  // independent of native queue removal; preserve the first cleanup error.
+  if (!CloseHandle(queue->wait_event) && amdf_status_is_ok(status)) {
+    status = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
   }
   amdf_free(queue->device->host_allocator, queue);
-  return AMDF_STATUS_OK;
+  return status;
 }

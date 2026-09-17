@@ -53,7 +53,9 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
     amdf_gpu_umd_kernel_queue_t* queue, uint64_t native_submission,
     const amdf_wait_deadline_t* deadline);
 
-// Releases an idle native GPU queue.
+// Consumes an idle native GPU queue even when native cleanup fails. The shared
+// layer has already established retirement. Native errors retain their domains;
+// API-domain BUSY is reserved for the shared layer's precondition rejection.
 amdf_status_t amdf_gpu_umd_kernel_queue_destroy(
     amdf_gpu_umd_kernel_queue_t* queue);
 

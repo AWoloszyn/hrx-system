@@ -66,7 +66,10 @@ amdf_status_t amdf_xdna_umd_kernel_queue_wait(
     amdf_xdna_umd_kernel_queue_t* queue, uint64_t native_submission,
     const amdf_wait_deadline_t* deadline);
 
-// Releases an idle native queue lease.
+// Consumes an idle native queue lease even when native cleanup fails. The
+// shared layer has already established retirement. Native errors retain their
+// domains; API-domain BUSY is reserved for the shared layer's precondition
+// rejection.
 amdf_status_t amdf_xdna_umd_kernel_queue_destroy(
     amdf_xdna_umd_kernel_queue_t* queue);
 

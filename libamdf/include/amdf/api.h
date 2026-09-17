@@ -427,9 +427,15 @@ typedef struct amdf_api_t {
   /// Destroys one queue after every accepted submission has retired.
   ///
   /// The caller must have exclusive access. The operation samples progress once
-  /// and returns `AMDF_STATUS_CODE_BUSY` without waiting while work remains. A
-  /// native teardown failure leaves the queue live so destruction can be
-  /// retried.
+  /// and returns API-domain BUSY without waiting or native mutation while work
+  /// remains; the queue stays live. Every other result for a valid queue
+  /// consumes the handle, including a native cleanup error. Native errors
+  /// retain their domains: a native busy error is not the API-domain
+  /// precondition rejection. Failed cleanup preserves unreleased native
+  /// resources and required backing as leaks, without a retained library owner
+  /// or later cleanup attempt. It does not authorize reuse of caller-owned
+  /// command or data storage without independent completion evidence. The
+  /// device must outlive this call.
   amdf_status_t(AMDF_CALL* kernel_queue_destroy)(amdf_kernel_queue_t* queue);
 
   /// Copies immutable properties cached when `queue` was created.
@@ -501,9 +507,15 @@ typedef struct amdf_api_t {
   /// published work has been consumed.
   ///
   /// The caller must have exclusive access. The operation returns BUSY without
-  /// native mutation while a mapping or unconsumed publication remains. A
-  /// native teardown failure leaves the queue live so destruction can be
-  /// retried.
+  /// native mutation while a mapping or unconsumed publication remains. This
+  /// API-domain rejection leaves the queue live. Every other result for a valid
+  /// queue consumes the handle, including a native cleanup error. Native errors
+  /// retain their domains: a native busy error is not a precondition rejection.
+  /// Failed cleanup preserves unreleased native resources and required backing
+  /// as leaks, without a retained library owner or later cleanup attempt.
+  /// Packet consumption alone is not execution completion. Failed queue removal
+  /// does not permit reuse of caller-owned scratch, commands or data without
+  /// independent completion evidence. The device must outlive this call.
   amdf_status_t(AMDF_CALL* user_queue_destroy)(amdf_user_queue_t* queue);
 
   /// Returns the stable base address consumed by `kind` for `memory`.

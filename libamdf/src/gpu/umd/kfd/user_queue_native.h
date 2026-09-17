@@ -15,24 +15,10 @@
 
 #include "amdf/amdf.h"
 #include "libamdf/src/gpu/umd/kfd/buffer.h"
-#include "libamdf/src/gpu/umd/kfd/reset_monitor.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-
-// Complete semantic result of one KFD queue-destroy attempt.
-typedef struct amdf_gpu_kfd_user_queue_destroy_result_t {
-  // Native status returned by queue destruction.
-  amdf_status_t status;
-  // Whether KFD consumed the supplied queue identifier despite `status`.
-  bool identifier_consumed;
-} amdf_gpu_kfd_user_queue_destroy_result_t;
-
-// Translates one native destroy status into the KFD identifier-ownership
-// result established by the queue-manager UAPI.
-amdf_gpu_kfd_user_queue_destroy_result_t
-amdf_gpu_kfd_user_queue_classify_destroy_status(amdf_status_t status);
 
 // Native operations beneath the transactional KFD queue owner.
 typedef struct amdf_gpu_kfd_user_queue_native_api_t {
@@ -48,16 +34,16 @@ typedef struct amdf_gpu_kfd_user_queue_native_api_t {
   amdf_status_t (*buffer_destroy)(void* user_data,
                                   amdf_gpu_kfd_buffer_t* buffer);
   // Frees only host bookkeeping, leaving native backing and mappings intact
-  // after terminal construction rollback failure.
+  // after terminal queue release or construction rollback failure.
   void (*buffer_abandon)(void* user_data, amdf_gpu_kfd_buffer_t* buffer);
   // Creates one KFD queue and publishes native output fields only on success.
   amdf_status_t (*queue_create)(
       void* user_data, amdf_gpu_umd_device_t* device,
       struct kfd_ioctl_create_queue_args* inout_arguments);
-  // Attempts to destroy one KFD queue and classifies identifier ownership.
-  amdf_gpu_kfd_user_queue_destroy_result_t (*queue_destroy)(
-      void* user_data, amdf_gpu_umd_device_t* device,
-      uint32_t queue_identifier);
+  // Attempts to destroy one KFD queue. Failure retains the native error domain
+  // and establishes no quiescence, regardless of identifier consumption.
+  amdf_status_t (*queue_destroy)(void* user_data, amdf_gpu_umd_device_t* device,
+                                 uint32_t queue_identifier);
   // Maps one page-aligned KFD doorbell aperture. Failure leaves the output
   // unchanged.
   amdf_status_t (*doorbell_map)(void* user_data, amdf_gpu_umd_device_t* device,
@@ -71,10 +57,6 @@ typedef struct amdf_gpu_kfd_user_queue_native_api_t {
   amdf_status_t (*vm_fault_query)(
       void* user_data, amdf_gpu_umd_device_t* device,
       struct drm_amdgpu_info_gpuvm_fault* out_fault);
-  // Samples the device-epoch reset observer. Failure leaves the output
-  // unchanged.
-  amdf_status_t (*reset_query)(void* user_data, amdf_gpu_umd_device_t* device,
-                               amdf_gpu_kfd_reset_state_t* out_state);
 } amdf_gpu_kfd_user_queue_native_api_t;
 
 // Returns the production KFD queue operation table.

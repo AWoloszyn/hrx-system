@@ -37,8 +37,6 @@ struct amdf_wkmi_bridge_gpu_kernel_queue_t {
   D3DKMT_HANDLE handle = 0;
   // Fixed WKMI record reused by externally serialized submissions.
   amdf::wkmi_bridge::HostBuffer submission_private_data;
-  // True after this queue enters its adapter's live-child count.
-  bool counted_live = false;
 };
 
 namespace amdf::wkmi_bridge {
@@ -209,7 +207,6 @@ amdf_wkmi_bridge_result_t CreateNativeQueue(
 
   AcquireSRWLockExclusive(&adapter->state_lock);
   ++adapter->live_queue_count;
-  queue->counted_live = true;
   ReleaseSRWLockExclusive(&adapter->state_lock);
   *out_info = info;
   *out_queue = queue.release();
@@ -288,23 +285,18 @@ GpuKernelQueueDestroy(amdf_wkmi_bridge_gpu_kernel_queue_t* queue,
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
   *out_native_status = 0;
-  AcquireSRWLockExclusive(&queue->adapter->state_lock);
-  if (!queue->counted_live || queue->adapter->live_queue_count == 0) {
-    ReleaseSRWLockExclusive(&queue->adapter->state_lock);
-    return AMDF_WKMI_BRIDGE_RESULT_INTERNAL;
-  }
   const NTSTATUS native_status = DestroyNativeQueue(queue);
-  if (native_status == STATUS_SUCCESS) {
-    --queue->adapter->live_queue_count;
-    queue->counted_live = false;
-  }
+  AcquireSRWLockExclusive(&queue->adapter->state_lock);
+  --queue->adapter->live_queue_count;
   ReleaseSRWLockExclusive(&queue->adapter->state_lock);
-  if (native_status != STATUS_SUCCESS) {
-    return MakeNativeFailure(native_status, out_native_status);
-  }
+  // Native handles do not borrow this object. KMT consumes submission-private
+  // host bytes during publication; caller-owned command/data backing has its
+  // own lifetime. Failed removal leaks native residue, not a retry owner.
   const amdf_allocator_t host_allocator = queue->adapter->host_allocator;
   DestroyHostObject(host_allocator, queue);
-  return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
+  return native_status == STATUS_SUCCESS
+             ? AMDF_WKMI_BRIDGE_RESULT_SUCCESS
+             : MakeNativeFailure(native_status, out_native_status);
 }
 
 }  // namespace amdf::wkmi_bridge

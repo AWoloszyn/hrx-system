@@ -141,8 +141,11 @@ class XdnaExecutionTest
 
   void DestroyExecution(Execution* execution) {
     if (execution->queue) {
-      ASSERT_EQ(api_->kernel_queue_destroy(execution->queue), AMDF_STATUS_OK);
-      execution->queue = nullptr;
+      const auto status = api_->kernel_queue_destroy(execution->queue);
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+        execution->queue = nullptr;
+      }
+      ASSERT_EQ(status, AMDF_STATUS_OK);
     }
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&execution->instructions));
     if (execution->context) {
@@ -467,8 +470,7 @@ class XdnaExecutionTest
     }
   }
 
-  void PrepareExecution(const ResolvedBindings& bindings,
-                        Execution* execution,
+  void PrepareExecution(const ResolvedBindings& bindings, Execution* execution,
                         uint32_t logical_column_count = 1) {
     amdf_xdna_context_create_info_t context_create = {};
     context_create.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
@@ -809,7 +811,9 @@ TEST_P(XdnaExecutionTest, SharesDataAcrossIndependentContextLifetimes) {
 
 TEST_P(XdnaExecutionTest, ReestablishesStateAcrossFullWidthContextSwitches) {
   ASSERT_NO_FATAL_FAILURE(CreateBindings());
-  if (IsSkipped()) return;
+  if (IsSkipped()) {
+    return;
+  }
   amdf_xdna_device_info_t device_info = {};
   device_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
   device_info.structure_size = sizeof(device_info);
@@ -955,12 +959,18 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
       gpu_mapping_ = nullptr;
     }
     if (gpu_queue_) {
-      ASSERT_EQ(api_->user_queue_destroy(gpu_queue_), AMDF_STATUS_OK);
-      gpu_queue_ = nullptr;
+      const auto status = api_->user_queue_destroy(gpu_queue_);
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+        gpu_queue_ = nullptr;
+      }
+      ASSERT_EQ(status, AMDF_STATUS_OK);
     }
     if (gpu_kernel_queue_) {
-      ASSERT_EQ(api_->kernel_queue_destroy(gpu_kernel_queue_), AMDF_STATUS_OK);
-      gpu_kernel_queue_ = nullptr;
+      const auto status = api_->kernel_queue_destroy(gpu_kernel_queue_);
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+        gpu_kernel_queue_ = nullptr;
+      }
+      ASSERT_EQ(status, AMDF_STATUS_OK);
     }
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&gpu_commands_));
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&staging_));

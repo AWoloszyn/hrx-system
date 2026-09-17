@@ -93,7 +93,7 @@ amdf_status_t AMDF_CALL amdf_kernel_queue_destroy(amdf_kernel_queue_t* queue) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
   const amdf_status_t status = queue->vtable->destroy_native(queue);
-  if (amdf_status_is_ok(status)) {
+  if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
     const amdf_allocator_t host_allocator = queue->host_allocator;
     amdf_kernel_queue_deinitialize(queue);
     amdf_free(host_allocator, queue);

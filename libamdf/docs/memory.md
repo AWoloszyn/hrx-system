@@ -573,6 +573,15 @@ memory handle to retry and no library object that will perform later cleanup.
 An independent imported or exported transport reference has its own native
 lifetime; a failed import release does not invalidate other owners' references.
 
+Queue destruction follows the same final-release rule. API-domain `BUSY` rejects
+a live producer mapping or unfinished queue work without consuming the queue.
+Once those preconditions are satisfied, destruction consumes the handle even
+when native cleanup fails. Native errors retain their own domains, so a native
+busy error is not that precondition rejection. Unsafe native backing remains
+allocated without a retry owner. In particular, consuming a user queue does not
+turn packet consumption into execution completion or authorize reclaiming
+application memory after failed queue removal.
+
 Normal execution teardown differs from physical loss. Destroying a GPU queue
 need not invalidate shared system memory. Losing the GPU holding an HBM
 allocation can lose that backing; there is no invisible surviving copy. A failed

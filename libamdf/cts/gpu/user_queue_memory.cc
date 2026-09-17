@@ -69,14 +69,14 @@ class UserQueueMemoryScenario {
     if (queue_ != nullptr) {
       const amdf_status_t status = api_->user_queue_destroy(queue_);
       EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) {
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
         queue_ = nullptr;
       }
-    }
-    // Workload memory remains attached while native execution may still reach
-    // it. A queue that cannot prove destruction retains the complete fixture.
-    if (queue_ != nullptr) {
-      return false;
+      // Consuming the handle is not proof of final device access. Preserve the
+      // workload's backing after any rejection or native cleanup failure.
+      if (!amdf_status_is_ok(status)) {
+        return false;
+      }
     }
 
     DestroyHostMapping(source_mapping_);

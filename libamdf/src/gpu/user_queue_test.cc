@@ -6,6 +6,7 @@
 
 #include "libamdf/src/gpu/user_queue.h"
 
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
 
@@ -155,7 +156,7 @@ class GpuUserQueueTest : public ::testing::Test {
   amdf_user_queue_mapping_t* mapping_ = nullptr;
 };
 
-TEST_F(GpuUserQueueTest, PreservesNativeQueueAndMappingAcrossDestroyErrors) {
+TEST_F(GpuUserQueueTest, RetainsQueueAcrossRejectedDestruction) {
   const amdf_gpu_user_queue_create_info_t create_info = MakeCreateInfo();
   ASSERT_EQ(amdf_gpu_user_queue_create(&consumer_.base, &create_info, &queue_),
             AMDF_STATUS_OK);
@@ -210,6 +211,17 @@ TEST_F(GpuUserQueueTest, PreservesNativeQueueAndMappingAcrossDestroyErrors) {
   EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 1u);
   consumer_state_.destroy_status = AMDF_STATUS_OK;
   ASSERT_EQ(amdf_user_queue_destroy(queue_), AMDF_STATUS_OK);
+  queue_ = nullptr;
+  EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 0u);
+}
+
+TEST_F(GpuUserQueueTest, NativeReleaseFailureConsumesQueue) {
+  const amdf_gpu_user_queue_create_info_t create_info = MakeCreateInfo();
+  ASSERT_EQ(amdf_gpu_user_queue_create(&consumer_.base, &create_info, &queue_),
+            AMDF_STATUS_OK);
+  consumer_state_.destroy_status =
+      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EBUSY);
+  EXPECT_EQ(amdf_user_queue_destroy(queue_), consumer_state_.destroy_status);
   queue_ = nullptr;
   EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 0u);
 }

@@ -11,21 +11,15 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/kfd/instance.h"
-#include "libamdf/src/gpu/umd/kfd/reset_monitor.h"
-#include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 #include "libamdf/src/gpu/umd/kfd/user_queue_native.h"
 #include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 
 amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
-  const amdf_status_t status =
-      amdf_gpu_kfd_reset_monitor_deinitialize(&device->reset_monitor);
-  if (amdf_status_is_ok(status)) {
-    const amdf_allocator_t host_allocator = device->host_allocator;
-    amdf_gpu_kfd_topology_deinitialize(&device->topology, host_allocator);
-    amdf_free(host_allocator, device);
-  }
-  return status;
+  const amdf_allocator_t host_allocator = device->host_allocator;
+  amdf_gpu_kfd_topology_deinitialize(&device->topology, host_allocator);
+  amdf_free(host_allocator, device);
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_gpu_umd_device_create(
@@ -64,18 +58,6 @@ amdf_status_t amdf_gpu_umd_device_create(
         &device->render_descriptor);
   }
   if (amdf_status_is_ok(status)) {
-    amdf_gpu_kfd_user_queue_plans_t queue_plans;
-    amdf_gpu_kfd_target_user_queue_plans_initialize(
-        &device->topology, device->page_size, device->cache_line_size,
-        &queue_plans);
-    if (queue_plans.count != 0) {
-      status = amdf_gpu_kfd_reset_monitor_initialize(
-          device->render_descriptor,
-          amdf_gpu_kfd_reset_monitor_default_native_api(),
-          &device->reset_monitor);
-    }
-  }
-  if (amdf_status_is_ok(status)) {
     *out_result = (amdf_gpu_umd_device_result_t){
         .id = {.words = {endpoint->info.id.words[0], (uintptr_t)device}},
         .reset_epoch = 1,
@@ -87,8 +69,7 @@ amdf_status_t amdf_gpu_umd_device_create(
     };
     *out_device = device;
   } else {
-    // Connections belong to the instance. Reset-monitor acquisition is the
-    // final fallible step and leaves no owned context on failure.
+    // Connections belong to the instance; this device owns only metadata.
     amdf_gpu_kfd_topology_deinitialize(&device->topology, host_allocator);
     amdf_free(host_allocator, device);
   }

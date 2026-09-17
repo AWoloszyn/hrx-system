@@ -225,9 +225,7 @@ static amdf_status_t amdf_gpu_kernel_queue_destroy_native(
     return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
   }
   const amdf_status_t status = amdf_gpu_umd_kernel_queue_destroy(queue->umd);
-  if (amdf_status_is_ok(status)) {
-    queue->umd = NULL;
-  }
+  queue->umd = NULL;
   return status;
 }
 

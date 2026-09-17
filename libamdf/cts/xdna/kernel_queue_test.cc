@@ -74,7 +74,11 @@ class XdnaKernelQueueTest : public XdnaContextFixture {
  protected:
   void TearDown() override {
     if (queue_) {
-      EXPECT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
+      const auto status = DestroyQueue();
+      EXPECT_EQ(status, AMDF_STATUS_OK);
+      if (!amdf_status_is_ok(status)) {
+        return;
+      }
     }
     if (mapping_) {
       EXPECT_EQ(api_->host_mapping_destroy(mapping_), AMDF_STATUS_OK);
@@ -89,6 +93,14 @@ class XdnaKernelQueueTest : public XdnaContextFixture {
       EXPECT_EQ(xdna_api_->context_destroy(sibling_.context), AMDF_STATUS_OK);
     }
     XdnaContextFixture::TearDown();
+  }
+
+  amdf_status_t DestroyQueue() {
+    const auto status = api_->kernel_queue_destroy(queue_);
+    if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+      queue_ = nullptr;
+    }
+    return status;
   }
 
   void AllocateInstructions(amdf_xdna_context_t* context,
@@ -294,8 +306,7 @@ TEST_F(XdnaKernelQueueTest, SubmitsImmutableRangesAndReacquiresQueue) {
                         expected.size()),
             0);
 
-  ASSERT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
-  queue_ = nullptr;
+  ASSERT_EQ(DestroyQueue(), AMDF_STATUS_OK);
   ASSERT_NO_FATAL_FAILURE(CreateQueue());
   uint64_t submission = 0;
   ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &submission),
@@ -421,8 +432,7 @@ TEST_F(XdnaKernelQueueTest,
   for (uint32_t generation = 0; generation < 8; ++generation) {
     SCOPED_TRACE(generation);
     if (generation == 4) {
-      ASSERT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
-      queue_ = nullptr;
+      ASSERT_EQ(DestroyQueue(), AMDF_STATUS_OK);
       ASSERT_NO_FATAL_FAILURE(CreateQueue());
     }
     command.byte_offset = (generation % 2) * instruction_stride_;

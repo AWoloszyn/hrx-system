@@ -116,9 +116,9 @@ GpuBufferPrepareImport(amdf_wkmi_bridge_gpu_adapter_t*,
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }
 
-const amdf_wkmi_bridge_api_t kApi = {
+amdf_wkmi_bridge_api_t api = {
     sizeof(amdf_wkmi_bridge_api_t),
-    AMDF_WKMI_BRIDGE_ABI_VERSION_3,
+    AMDF_WKMI_BRIDGE_ABI_VERSION_4,
     GpuAdapterOpen,
     GpuAdapterClose,
     GpuAllocationQueryLayout,
@@ -140,11 +140,10 @@ amdf_wkmi_bridge_query_api(uint32_t minimum_version, uint32_t maximum_version,
   if (state.query_result != AMDF_WKMI_BRIDGE_RESULT_SUCCESS) {
     return state.query_result;
   }
-  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_3 ||
-      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_3) {
+  if (minimum_version > api.abi_version || maximum_version < api.abi_version) {
     return AMDF_WKMI_BRIDGE_RESULT_VERSION_MISMATCH;
   }
-  *out_api = &kApi;
+  *out_api = &api;
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
 }
 
@@ -153,6 +152,12 @@ amdf_test_wkmi_bridge_reset(void) {
   state = {};
   state.query_result = AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
   state.adapter_close_failures_remaining = 1;
+  api.abi_version = AMDF_WKMI_BRIDGE_ABI_VERSION_LATEST;
+}
+
+extern "C" __declspec(dllexport) void AMDF_WKMI_BRIDGE_CALL
+amdf_test_wkmi_bridge_set_abi_version(uint32_t version) {
+  api.abi_version = version;
 }
 
 extern "C" __declspec(dllexport) void AMDF_WKMI_BRIDGE_CALL

@@ -62,29 +62,6 @@ amdf_cc_test(
 )
 
 amdf_cc_library(
-    name = "reset_monitor",
-    srcs = ["reset_monitor.c"],
-    hdrs = ["reset_monitor.h"],
-    target_compatible_with = KFD_COMPATIBILITY,
-    deps = [
-        "//libamdf/src:atomics",
-        "//libamdf/src/platform/linux:file",
-        "//third_party:linux_amdgpu_uapi",
-    ],
-)
-
-amdf_cc_test(
-    name = "reset_monitor_test",
-    srcs = ["reset_monitor_test.cc"],
-    target_compatible_with = KFD_COMPATIBILITY,
-    deps = [
-        ":reset_monitor",
-        "//third_party:google_test",
-        "//third_party:google_test_main",
-    ],
-)
-
-amdf_cc_library(
     name = "vm",
     srcs = ["vm.c"],
     hdrs = ["vm.h"],
@@ -132,7 +109,6 @@ amdf_cc_library(
     hdrs = ["device.h"],
     target_compatible_with = KFD_COMPATIBILITY,
     deps = [
-        ":reset_monitor",
         ":topology",
         "//libamdf/src/gpu/umd:device",
     ],
@@ -171,7 +147,6 @@ amdf_cc_library(
     deps = [
         ":buffer",
         ":device_state",
-        ":reset_monitor",
         "//libamdf/src/platform/linux:file",
         "//third_party:linux_amdgpu_uapi",
         "//third_party:linux_kfd_uapi",
@@ -196,11 +171,9 @@ amdf_cc_library(
     deps = [
         ":device_state",
         ":instance",
-        ":reset_monitor",
         ":topology",
         ":user_queue_native",
         "//libamdf/src:allocator",
-        "//libamdf/src/gpu/umd/kfd/target:user_queue",
         "//libamdf/src/platform/linux:endpoint",
         "//libamdf/src/platform/linux:file",
         "//libamdf/src/platform/linux:host_cache",
