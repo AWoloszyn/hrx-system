@@ -48,7 +48,7 @@ extern "C" {
 
 // Minimum alignment of writable storage returned by begin_send.
 // This permits protocols to serialize naturally aligned 64-bit fields.
-#define IREE_NET_SEND_RESERVATION_ALIGNMENT ((iree_host_size_t)8)
+#define IREE_NET_SEND_RESERVATION_ALIGNMENT 8
 
 // Carrier lifecycle state for deactivate-before-destroy enforcement.
 typedef enum iree_net_carrier_state_e {
