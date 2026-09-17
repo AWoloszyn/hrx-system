@@ -21,9 +21,14 @@
 #include "loom/analysis/template_provider_catalog.h"
 #include "loom/format/text/parser.h"
 #include "loom/ir/context.h"
+#include "loom/pass/builder.h"
+#include "loom/pass/builtin_registry.h"
+#include "loom/pass/interpreter.h"
+#include "loom/rewrite/module_projection.h"
 #include "loom/testing/module_ptr.h"
 #include "loom/tooling/context/context.h"
 #include "loom/transforms/symbol/template_decision_model.h"
+#include "loom/transforms/symbol/template_expansion_pipeline.h"
 #include "loom/transforms/symbol/template_selection.h"
 #include "loom/verify/verify.h"
 
@@ -53,6 +58,10 @@ struct TemplateSelectionSourceOptions {
 
   // True to add a projectable target condition to every provider.
   bool target_condition = false;
+
+  // True to place an exact call inside each provider whose requirement only
+  // becomes provable after substituting the entry's more precise argument.
+  bool deferred_exact_call = false;
 };
 
 std::string BuildSource(const TemplateSelectionSourceOptions& options) {
@@ -66,6 +75,13 @@ std::string BuildSource(const TemplateSelectionSourceOptions& options) {
     source.append(" where [ge(%value, -1)]");
   }
   source.append("\n\n");
+  if (options.deferred_exact_call) {
+    source.append(
+        "template.decl @leaf(%value: index) -> (index)\n"
+        "template.def<@leaf> @exact(%value: index) -> (index) "
+        "where [eq(%value, 128)] {\n"
+        "  template.return %value : index\n}\n\n");
+  }
   for (uint32_t i = 0; i < options.provider_count; ++i) {
     source.append("template.def<@benchmark.choose> ");
     if (options.target_condition) {
@@ -80,10 +96,15 @@ std::string BuildSource(const TemplateSelectionSourceOptions& options) {
     if (options.constrained) {
       source.append(" where [ge(%value, 0), mul(%value, 16)]");
     }
-    source.append(
-        " {\n"
-        "  template.return %value : index\n"
-        "}\n\n");
+    source.append(" {\n");
+    if (options.deferred_exact_call) {
+      source.append(
+          "  %result = template.call @exact(%value) : (index) -> (index)\n"
+          "  template.return %result : index\n");
+    } else {
+      source.append("  template.return %value : index\n");
+    }
+    source.append("}\n\n");
   }
   constexpr uint32_t kValuesPerFunction = 512;
   for (uint32_t begin = 0; begin < options.unrelated_value_count;
@@ -174,6 +195,8 @@ class TemplateSelectionFixture {
   }
 
   ~TemplateSelectionFixture() {
+    loom_pass_program_deinitialize(&expansion_program_);
+    expansion_pipeline_.reset();
     iree_arena_deinitialize(&query_arena_);
     iree_arena_deinitialize(&catalog_arena_);
     module_.reset();
@@ -224,6 +247,62 @@ class TemplateSelectionFixture {
                                                                       demand);
   }
 
+  void PrepareExpansion() {
+    loom_module_t* pipeline_module = nullptr;
+    IREE_CHECK_OK(loom_module_allocate(
+        &context_, IREE_SV("expansion"), &block_pool_, nullptr,
+        iree_allocator_system(), &pipeline_module));
+    expansion_pipeline_.reset(pipeline_module);
+    loom_op_t* pipeline_op = nullptr;
+    IREE_CHECK_OK(loom_pass_ir_build_pipeline(
+        pipeline_module, IREE_SV("expansion"), LOOM_PASS_ANCHOR_MODULE,
+        [](loom_builder_t* builder, void*) {
+          return loom_template_expansion_pipeline_build(
+              builder,
+              [](loom_builder_t* builder, void*) {
+                loom_op_t* for_op = nullptr;
+                return loom_pass_ir_build_for(
+                    builder, LOOM_PASS_ANCHOR_FUNC,
+                    [](loom_builder_t* builder, void*) {
+                      loom_op_t* run_op = nullptr;
+                      return loom_pass_ir_build_run(
+                          builder, 0, IREE_SV("canonicalize"),
+                          loom_named_attr_slice_empty(), &run_op);
+                    },
+                    nullptr, &for_op);
+              },
+              nullptr);
+        },
+        nullptr, &pipeline_op));
+    loom_pass_program_compile_options_t options = {};
+    options.registry = loom_pass_builtin_registry();
+    IREE_CHECK_OK(loom_pass_program_compile_pipeline(
+        pipeline_module, pipeline_op, &options, &block_pool_,
+        &expansion_program_));
+  }
+
+  loom_module_t* CloneModule() {
+    loom_ir_module_projection_t projection = {};
+    loom_module_t* clone = nullptr;
+    IREE_CHECK_OK(loom_ir_module_clone(module_.get(), nullptr, &block_pool_,
+                                       &query_arena_, iree_allocator_system(),
+                                       &projection, &clone));
+    iree_arena_reset(&query_arena_);
+    return clone;
+  }
+
+  void Expand(loom_module_t* module) {
+    loom_pass_interpreter_options_t options = {};
+    options.block_pool = &block_pool_;
+    loom_pass_run_result_t result = {};
+    IREE_CHECK_OK(loom_pass_interpreter_run_module(&expansion_program_, module,
+                                                   &options, &result));
+    if (result.error_count != 0) {
+      IREE_CHECK_OK(iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                     "template expansion failed"));
+    }
+  }
+
  private:
   iree_arena_block_pool_t block_pool_ = {};
   loom_context_t context_ = {};
@@ -234,7 +313,55 @@ class TemplateSelectionFixture {
   loom_template_provider_catalog_t catalog_ = {};
   loom_symbol_reference_table_t references_ = {};
   loom_template_decision_model_catalog_t models_ = {};
+  // Source ownership required by the compiled pipeline's diagnostic locations.
+  ModulePtr expansion_pipeline_;
+  // Immutable production expansion loop reused across fresh input modules.
+  loom_pass_program_t expansion_program_ = {};
 };
+
+// Measures the complete production expansion loop with a warm block pool.
+// Parsing, pipeline compilation, input cloning and output inspection are
+// excluded; per-invocation pass state and all expansion iterations are
+// included.
+void BM_TemplateExpansion(benchmark::State& state) {
+  TemplateSelectionSourceOptions options;
+  options.provider_count = static_cast<uint32_t>(state.range(0));
+  options.site_count = static_cast<uint32_t>(state.range(1));
+  options.constrained = state.range(2) != 0;
+  options.deferred_exact_call = state.range(3) != 0;
+  TemplateSelectionFixture fixture(options);
+  fixture.PrepareExpansion();
+  iree_host_size_t module_bytes = 0;
+  for (auto _ : state) {
+    state.PauseTiming();
+    loom_module_t* module = fixture.CloneModule();
+    state.ResumeTiming();
+    fixture.Expand(module);
+    benchmark::DoNotOptimize(module);
+    state.PauseTiming();
+    module_bytes = module->arena.used_allocation_size;
+    loom_verify_options_t verify_options = {};
+    loom_verify_result_t verify_result = {};
+    IREE_CHECK_OK(loom_verify_module(module, &verify_options, &verify_result));
+    if (verify_result.error_count != 0) {
+      IREE_CHECK_OK(iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                     "expanded module failed verification"));
+    }
+    loom_module_free(module);
+    state.ResumeTiming();
+  }
+  state.counters["module_arena_bytes"] = static_cast<double>(module_bytes);
+  state.SetItemsProcessed(state.iterations() * options.site_count);
+}
+BENCHMARK(BM_TemplateExpansion)
+    ->Args({1, 1, 0, 0})
+    ->Args({1, 1, 1, 0})
+    ->Args({1, 1, 1, 1})
+    ->Args({8, 64, 1, 0})
+    ->Args({8, 1024, 0, 0})
+    ->Args({8, 1024, 1, 0})
+    ->Args({8, 1024, 1, 1})
+    ->UseRealTime();
 
 void BM_TemplateSelection(benchmark::State& state) {
   const uint32_t provider_count = static_cast<uint32_t>(state.range(0));

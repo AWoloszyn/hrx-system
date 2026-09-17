@@ -177,6 +177,7 @@ loom_cc_benchmark(
     "template_selection_benchmark.cc"
   DEPS
     ::template_decision_model
+    ::template_expansion_pipeline
     ::template_selection
     iree::base::internal::arena
     iree::testing::benchmark_main
@@ -185,6 +186,10 @@ loom_cc_benchmark(
     loom::analysis::template_provider_catalog
     loom::format::text::parser
     loom::ir
+    loom::pass::builder
+    loom::pass::builtin_registry
+    loom::pass::interpreter
+    loom::rewrite::module_projection
     loom::testing::module_ptr
     loom::tooling::context
     loom::verify
