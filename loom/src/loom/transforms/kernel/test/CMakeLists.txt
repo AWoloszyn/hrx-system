@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "kernel_async_control.loom-test"
     "kernel_async_legality.loom-test"
     "kernel_resources.loom-test"
     "promote_private_fragments.loom-test"

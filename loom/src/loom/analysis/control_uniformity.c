@@ -16,6 +16,7 @@
 
 typedef enum loom_control_uniformity_cfg_node_flag_bits_e {
   LOOM_CONTROL_UNIFORMITY_CFG_NODE_CAN_REACH_EXIT = 1u << 0,
+  LOOM_CONTROL_UNIFORMITY_CFG_NODE_QUEUED = 1u << 1,
 } loom_control_uniformity_cfg_node_flag_bits_t;
 typedef uint8_t loom_control_uniformity_cfg_node_flags_t;
 
@@ -430,6 +431,8 @@ static void loom_control_uniformity_cfg_initialize_path_parents(
        ++node_index) {
     if (summary->nodes[node_index].dfs_number != 0) {
       summary->nodes[node_index].scratch = node_index;
+      summary->nodes[node_index].flags &=
+          ~LOOM_CONTROL_UNIFORMITY_CFG_NODE_QUEUED;
     }
   }
 }
@@ -437,8 +440,15 @@ static void loom_control_uniformity_cfg_initialize_path_parents(
 static void loom_control_uniformity_cfg_assign_control_path(
     loom_control_uniformity_cfg_region_t* summary,
     const loom_cfg_edge_info_t* edge,
-    loom_value_fact_uniform_scope_t execution_scope) {
+    loom_value_fact_uniform_scope_t execution_scope, uint32_t* worklist,
+    iree_host_size_t* worklist_count) {
   loom_control_uniformity_cfg_node_t* nodes = summary->nodes;
+  const loom_control_uniformity_cfg_node_t* controller =
+      &nodes[edge->source_block_index];
+  const loom_cfg_edge_index_t controller_edge_index =
+      controller->execution_scope <= execution_scope
+          ? controller->controller_edge_index
+          : (loom_cfg_edge_index_t)(edge - summary->graph->edges);
   const uint32_t stop_index =
       nodes[edge->source_block_index].immediate_postdominator;
   uint32_t node_index = loom_control_uniformity_cfg_find_path_parent(
@@ -448,8 +458,12 @@ static void loom_control_uniformity_cfg_assign_control_path(
     loom_control_uniformity_cfg_node_t* node = &nodes[node_index];
     if (node->execution_scope > execution_scope) {
       node->execution_scope = execution_scope;
-      node->controller_edge_index =
-          (loom_cfg_edge_index_t)(edge - summary->graph->edges);
+      node->controller_edge_index = controller_edge_index;
+      if (!iree_any_bit_set(node->flags,
+                            LOOM_CONTROL_UNIFORMITY_CFG_NODE_QUEUED)) {
+        node->flags |= LOOM_CONTROL_UNIFORMITY_CFG_NODE_QUEUED;
+        worklist[(*worklist_count)++] = node_index;
+      }
     }
     const uint32_t parent_index = loom_control_uniformity_cfg_find_path_parent(
         nodes, node->immediate_postdominator);
@@ -461,8 +475,9 @@ static void loom_control_uniformity_cfg_assign_control_path(
 static void loom_control_uniformity_cfg_assign_control_scope(
     const loom_control_uniformity_info_t* info,
     loom_control_uniformity_cfg_region_t* summary,
-    loom_value_fact_uniform_scope_t selector_scope) {
+    loom_value_fact_uniform_scope_t selector_scope, uint32_t* worklist) {
   loom_control_uniformity_cfg_initialize_path_parents(summary);
+  iree_host_size_t worklist_count = 0;
   for (uint32_t block_index = 0; block_index < summary->exit_node;
        ++block_index) {
     if (summary->nodes[block_index].dfs_number == 0 ||
@@ -481,12 +496,29 @@ static void loom_control_uniformity_cfg_assign_control_scope(
         selector_scope) {
       continue;
     }
+    summary->nodes[block_index].flags |=
+        LOOM_CONTROL_UNIFORMITY_CFG_NODE_QUEUED;
+    worklist[worklist_count++] = block_index;
+  }
+
+  // A uniform selector reached by only part of the execution scope cannot
+  // restore participation in its alternatives. Propagate weakened execution
+  // through those controllers too. Each block is queued once at this scope,
+  // and path compression visits each postdominator path node at most once.
+  for (iree_host_size_t cursor = 0; cursor < worklist_count; ++cursor) {
+    const uint32_t block_index = worklist[cursor];
+    if (!loom_control_uniformity_cfg_block_has_distinct_successors(
+            summary->graph, block_index)) {
+      continue;
+    }
+    const loom_cfg_edge_index_span_t edges =
+        loom_cfg_graph_successor_edges(summary->graph, (uint16_t)block_index);
     for (iree_host_size_t i = 0; i < edges.count; ++i) {
       const loom_cfg_edge_info_t* edge =
           loom_cfg_graph_edge(summary->graph, edges.values[i]);
       if (edge && summary->nodes[edge->target_block_index].dfs_number != 0) {
-        loom_control_uniformity_cfg_assign_control_path(summary, edge,
-                                                        selector_scope);
+        loom_control_uniformity_cfg_assign_control_path(
+            summary, edge, selector_scope, worklist, &worklist_count);
       }
     }
   }
@@ -677,29 +709,28 @@ static iree_status_t loom_control_uniformity_cfg_region_initialize(
         summary, vertex_by_dfs, stack);
     loom_control_uniformity_cfg_compute_postdominators(summary, dfs_count,
                                                        vertex_by_dfs, stack);
+
+    // Reachable CFG blocks begin cluster-uniform and are weakened by each
+    // selector scope below. This ceiling lets the same summary answer subgroup,
+    // workgroup, and cluster collective queries without special-case walks.
+    for (uint32_t block_index = 0; block_index < summary->exit_node;
+         ++block_index) {
+      if (loom_cfg_graph_block_is_reachable(summary->graph,
+                                            (uint16_t)block_index) &&
+          summary->nodes[block_index].dfs_number != 0) {
+        summary->nodes[block_index].execution_scope =
+            LOOM_VALUE_FACT_UNIFORM_SCOPE_CLUSTER;
+      }
+    }
+    loom_control_uniformity_cfg_assign_control_scope(
+        info, summary, LOOM_VALUE_FACT_UNIFORM_SCOPE_NONE, stack);
+    loom_control_uniformity_cfg_assign_control_scope(
+        info, summary, LOOM_VALUE_FACT_UNIFORM_SCOPE_SUBGROUP, stack);
+    loom_control_uniformity_cfg_assign_control_scope(
+        info, summary, LOOM_VALUE_FACT_UNIFORM_SCOPE_WORKGROUP, stack);
   }
   iree_arena_checkpoint_restore(&scratch_checkpoint);
-  IREE_RETURN_IF_ERROR(status);
-
-  // Reachable CFG blocks begin cluster-uniform and are weakened by each
-  // selector scope below. This ceiling lets the same summary answer subgroup,
-  // workgroup, and cluster collective queries without special-case walks.
-  for (uint32_t block_index = 0; block_index < summary->exit_node;
-       ++block_index) {
-    if (loom_cfg_graph_block_is_reachable(summary->graph,
-                                          (uint16_t)block_index) &&
-        summary->nodes[block_index].dfs_number != 0) {
-      summary->nodes[block_index].execution_scope =
-          LOOM_VALUE_FACT_UNIFORM_SCOPE_CLUSTER;
-    }
-  }
-  loom_control_uniformity_cfg_assign_control_scope(
-      info, summary, LOOM_VALUE_FACT_UNIFORM_SCOPE_NONE);
-  loom_control_uniformity_cfg_assign_control_scope(
-      info, summary, LOOM_VALUE_FACT_UNIFORM_SCOPE_SUBGROUP);
-  loom_control_uniformity_cfg_assign_control_scope(
-      info, summary, LOOM_VALUE_FACT_UNIFORM_SCOPE_WORKGROUP);
-  return iree_ok_status();
+  return status;
 }
 
 static iree_status_t loom_control_uniformity_cfg_region(
