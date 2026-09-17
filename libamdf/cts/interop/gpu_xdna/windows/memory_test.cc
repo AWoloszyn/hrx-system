@@ -29,7 +29,9 @@ class WindowsGpuXdnaMemoryTest
 
   void SetUp() override {
     ASSERT_NO_FATAL_FAILURE(GpuDeviceFixture::SetUp());
-    if (IsSkipped()) return;
+    if (IsSkipped()) {
+      return;
+    }
     uint32_t count = 0;
     ASSERT_EQ(api_->endpoint_enumerate(instance_, 0, nullptr, &count),
               AMDF_STATUS_OK);
@@ -40,7 +42,9 @@ class WindowsGpuXdnaMemoryTest
     amdf_endpoint_t* xdna_endpoint = nullptr;
     amdf_device_t* xdna_device = nullptr;
     for (const auto& endpoint : endpoints) {
-      if (endpoint.engine_kind != AMDF_ENGINE_KIND_XDNA) continue;
+      if (endpoint.engine_kind != AMDF_ENGINE_KIND_XDNA) {
+        continue;
+      }
       ASSERT_EQ(GetCtsDeviceCache().OpenEndpoint(endpoint.id, &xdna_endpoint),
                 AMDF_STATUS_OK);
       ASSERT_EQ(GetCtsDeviceCache().GetXdnaDevice(xdna_endpoint, &xdna_device),
@@ -82,8 +86,9 @@ class WindowsGpuXdnaMemoryTest
       const auto status = api_->memory_scope_query_device_profile(
           system_scope_, ordinal, accesses_.size(), accesses_.data(), &profile,
           capabilities_.data());
-      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
         continue;
+      }
       ASSERT_EQ(status, AMDF_STATUS_OK);
       if ((profile.roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER) != 0) {
         profile_ = profile;
@@ -102,7 +107,9 @@ class WindowsGpuXdnaMemoryTest
       ASSERT_EQ(api_->memory_destroy(std::exchange(memory_, nullptr)),
                 AMDF_STATUS_OK);
     }
-    if (pages_) EXPECT_TRUE(VirtualFree(pages_, 0, MEM_RELEASE));
+    if (pages_) {
+      EXPECT_TRUE(VirtualFree(pages_, 0, MEM_RELEASE));
+    }
     GpuDeviceFixture::TearDown();
   }
 
