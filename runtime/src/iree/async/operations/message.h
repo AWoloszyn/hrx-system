@@ -102,6 +102,11 @@ typedef struct iree_async_message_operation_t {
       // Storage for eventfd WRITE value (must remain valid until CQE fires).
       uint64_t write_value;
     } fallback;
+    struct {
+      // Backend-owned reserved software message-pool entry during submission.
+      // Callers must not access this field.
+      void* reserved_entry;
+    } software;
   } platform;
 } iree_async_message_operation_t;
 
