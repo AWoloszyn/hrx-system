@@ -167,7 +167,6 @@ amdf_cc_library(
     visibility = ["//libamdf/src:__subpackages__"],
     deps = [
         ":allocator",
-        ":child_tracker",
         ":memory_pair",
     ],
 )

@@ -164,8 +164,8 @@ class UserQueueMemoryScenario {
   void DestroyMemory(amdf_memory_t*& memory) {
     if (memory == nullptr) return;
     const amdf_status_t status = api_->memory_destroy(memory);
+    memory = nullptr;
     EXPECT_EQ(status, AMDF_STATUS_OK);
-    if (amdf_status_is_ok(status)) memory = nullptr;
   }
 
   // Core API table borrowed from the enclosing device fixture.

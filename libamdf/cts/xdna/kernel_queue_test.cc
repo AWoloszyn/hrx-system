@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 #include "amdf/amdf.h"
@@ -304,8 +305,8 @@ TEST_F(XdnaKernelQueueTest, PrivateBackingIsQualifiedByExactContext) {
 
   // Destroying the sibling's backing and context cannot release or invalidate
   // this context's instruction allocation or queue.
-  ASSERT_EQ(api_->memory_destroy(sibling_.memory), AMDF_STATUS_OK);
-  sibling_.memory = nullptr;
+  ASSERT_EQ(api_->memory_destroy(std::exchange(sibling_.memory, nullptr)),
+            AMDF_STATUS_OK);
   ASSERT_EQ(xdna_api_->context_destroy(sibling_.context), AMDF_STATUS_OK);
   sibling_.context = nullptr;
   command.memory = memory_;

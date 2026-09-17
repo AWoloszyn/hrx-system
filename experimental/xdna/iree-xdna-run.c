@@ -790,10 +790,11 @@ static iree_status_t iree_xdna_run_deinitialize(iree_xdna_run_t* run) {
     run->instructions.mapping = NULL;
   }
   if (run->instructions.memory != NULL) {
-    IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
-        run->api->memory_destroy(run->instructions.memory),
-        "memory_destroy(instructions)"));
+    const amdf_status_t release_status =
+        run->api->memory_destroy(run->instructions.memory);
     run->instructions.memory = NULL;
+    IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
+        release_status, "memory_destroy(instructions)"));
   }
   iree_hal_amd_xdna_executable_release(run->executable);
   run->executable = NULL;
@@ -812,8 +813,8 @@ static iree_status_t iree_xdna_run_deinitialize(iree_xdna_run_t* run) {
     if (iree_status_is_ok(status) && binding->memory != NULL) {
       status = IREE_HAL_AMD_STATUS_FROM_AMDF(
           run->api->memory_destroy(binding->memory), "memory_destroy");
+      binding->memory = NULL;
       if (iree_status_is_ok(status)) {
-        binding->memory = NULL;
         if (binding->registered_host_pointer != NULL) {
           volatile uint8_t* caller_bytes =
               (volatile uint8_t*)binding->registered_host_pointer;

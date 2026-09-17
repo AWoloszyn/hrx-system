@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include "amdf/amdf.h"
 #include "amdf/xdna.h"
@@ -307,13 +308,10 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   }
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(read_only_mapping)));
 
-  EXPECT_EQ(amdf_status_code(api_->memory_destroy(memory_)),
-            AMDF_STATUS_CODE_BUSY);
-
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
 }
 
 TEST_F(XdnaMemoryTest, RejectsInvalidMappingRequestsBeforeNativeMapping) {

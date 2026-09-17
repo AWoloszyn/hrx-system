@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include "amdf/amdf.h"
 #include "amdf/gpu.h"
@@ -44,10 +45,10 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     }
     for (amdf_memory_t*& memory : memories_) {
       if (memory == nullptr) continue;
-      ASSERT_EQ(api_->memory_destroy(memory), AMDF_STATUS_OK);
-      memory = nullptr;
+      ASSERT_EQ(api_->memory_destroy(std::exchange(memory, nullptr)),
+                AMDF_STATUS_OK);
     }
-    if (caller_pages_ != nullptr) {
+    if (!HasFailure() && caller_pages_ != nullptr) {
       ASSERT_EQ(munmap(caller_pages_, caller_byte_length_), 0);
       caller_pages_ = nullptr;
     }
@@ -252,8 +253,8 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
         EXPECT_EQ(output, sentinel);
       }
 
-      ASSERT_EQ(api_->memory_destroy(memories_[0]), AMDF_STATUS_OK);
-      memories_[0] = nullptr;
+      ASSERT_EQ(api_->memory_destroy(std::exchange(memories_[0], nullptr)),
+                AMDF_STATUS_OK);
     }
   }
 
@@ -360,9 +361,6 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     EXPECT_EQ(amdf_status_code(api_->host_mapping_cache_control(
                   mappings_[1], AMDF_HOST_CACHE_OPERATION_FLUSH, 255, 2)),
               AMDF_STATUS_CODE_INVALID_ARGUMENT);
-    EXPECT_EQ(amdf_status_code(api_->memory_destroy(memories_[0])),
-              AMDF_STATUS_CODE_BUSY);
-
     ASSERT_EQ(api_->host_mapping_destroy(mappings_[0]), AMDF_STATUS_OK);
     mappings_[0] = nullptr;
     amdf_memory_info_t after = info;
@@ -388,8 +386,8 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
       ASSERT_EQ(api_->host_mapping_destroy(mapping), AMDF_STATUS_OK);
       mapping = nullptr;
     }
-    ASSERT_EQ(api_->memory_destroy(memories_[0]), AMDF_STATUS_OK);
-    memories_[0] = nullptr;
+    ASSERT_EQ(api_->memory_destroy(std::exchange(memories_[0], nullptr)),
+              AMDF_STATUS_OK);
   }
 
   // Owned backing handles released after every host view.
@@ -605,8 +603,8 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
     mapping = nullptr;
   }
   for (amdf_memory_t*& memory : memories_) {
-    ASSERT_EQ(api_->memory_destroy(memory), AMDF_STATUS_OK);
-    memory = nullptr;
+    ASSERT_EQ(api_->memory_destroy(std::exchange(memory, nullptr)),
+              AMDF_STATUS_OK);
   }
   std::memset(caller_pages_, 0x3C, caller_byte_length_);
   EXPECT_EQ(caller_pages_[caller_byte_length_ - 1], 0x3C);

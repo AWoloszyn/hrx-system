@@ -132,7 +132,6 @@ class XdnaKernelQueueTest : public ::testing::Test {
     if (queue) {
       EXPECT_EQ(amdf_kernel_queue_destroy(queue), AMDF_STATUS_OK);
     }
-    EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
     amdf_free(amdf_allocator_system(), memory);
     EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 0u);
     EXPECT_EQ(amdf_child_tracker_count(&context.children), 0u);
@@ -150,7 +149,6 @@ class XdnaKernelQueueTest : public ::testing::Test {
   void Submit() {
     ASSERT_EQ(SubmitCommand(&submission), AMDF_STATUS_OK);
     ASSERT_EQ(submission, context.native.queue.submitted);
-    EXPECT_EQ(amdf_child_tracker_count(&memory->children), 1u);
     EXPECT_EQ(context.native.queue.pending_address,
               memory->accesses[0].addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE] +
                   command.byte_offset);
@@ -169,7 +167,7 @@ class XdnaKernelQueueTest : public ::testing::Test {
   Device device;
   // Context dependency retained until production queue teardown.
   Context context;
-  // Actual memory owner borrowed by production submission and retirement.
+  // Caller-owned memory kept live until command retirement.
   amdf_memory_t* memory = nullptr;
   // Public instruction range; the native dependency receives only its address.
   amdf_xdna_kernel_command_t command = {};
@@ -185,24 +183,21 @@ TEST_F(XdnaKernelQueueTest, ZeroTimeoutRefreshesNativeProgress) {
   EXPECT_EQ(context.native.queue.wait_count.load(), 0u);
   EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0), AMDF_STATUS_OK);
   EXPECT_EQ(context.native.queue.wait_count.load(), 1u);
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
   EXPECT_EQ(Query().retired_submission, submission);
 }
 
-TEST_F(XdnaKernelQueueTest, TimeoutRetainsAcceptedCommand) {
+TEST_F(XdnaKernelQueueTest, TimeoutPreservesAcceptedProgress) {
   context.native.queue.action =
       amdf_xdna_umd_kernel_queue_t::WaitAction::kTimeout;
   ASSERT_NO_FATAL_FAILURE(Submit());
   EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0),
             amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED));
   EXPECT_EQ(context.native.queue.wait_count.load(), 1u);
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 1u);
   EXPECT_EQ(Query().retired_submission, 0u);
   EXPECT_EQ(amdf_kernel_queue_destroy(queue),
             amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
   context.native.queue.progress = 1;
   EXPECT_EQ(Query().retired_submission, submission);
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
 }
 
 TEST_F(XdnaKernelQueueTest, FiniteWaitDoesNotBlockBehindRetirementObserver) {
@@ -220,7 +215,6 @@ TEST_F(XdnaKernelQueueTest, FiniteWaitDoesNotBlockBehindRetirementObserver) {
   }
   EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0),
             amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED));
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 1u);
   EXPECT_EQ(context.native.queue.wait_count.load(), 0u);
   {
     std::lock_guard<std::mutex> lock(context.native.queue.mutex);
@@ -229,7 +223,6 @@ TEST_F(XdnaKernelQueueTest, FiniteWaitDoesNotBlockBehindRetirementObserver) {
   }
   observer.join();
   EXPECT_EQ(Query().retired_submission, submission);
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
 }
 
 TEST_F(XdnaKernelQueueTest, CompletedFailureRetiresBeforeReportingError) {
@@ -238,7 +231,6 @@ TEST_F(XdnaKernelQueueTest, CompletedFailureRetiresBeforeReportingError) {
   ASSERT_NO_FATAL_FAILURE(Submit());
   EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0),
             failure);
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
   const auto status = Query();
   EXPECT_EQ(status.retired_submission, submission);
   EXPECT_EQ(status.terminal_status, failure);
@@ -251,7 +243,6 @@ TEST_F(XdnaKernelQueueTest, NativeWaitErrorDoesNotEraseConfirmedRetirement) {
   ASSERT_NO_FATAL_FAILURE(Submit());
   EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0),
             amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL));
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
   EXPECT_EQ(Query().retired_submission, submission);
   EXPECT_EQ(Query().terminal_status, AMDF_STATUS_OK);
 }
@@ -264,7 +255,6 @@ TEST_F(XdnaKernelQueueTest, ReusesBackingWithDifferentInstructionRanges) {
         amdf_kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0),
         AMDF_STATUS_OK);
     EXPECT_EQ(Query().retired_submission, submission);
-    EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
   }
 }
 
@@ -276,7 +266,6 @@ TEST_F(XdnaKernelQueueTest, RejectsForeignScopeBeforeNativeSubmission) {
             amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT));
   EXPECT_EQ(rejected, UINT64_MAX);
   EXPECT_EQ(context.native.queue.submitted, 0u);
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
 }
 
 TEST_F(XdnaKernelQueueTest, ValidatesInstructionRangeAtPublicBoundary) {
@@ -286,7 +275,6 @@ TEST_F(XdnaKernelQueueTest, ValidatesInstructionRangeAtPublicBoundary) {
     EXPECT_EQ(amdf_status_code(SubmitCommand(&rejected)), expected);
     EXPECT_EQ(rejected, UINT64_MAX);
     EXPECT_EQ(context.native.queue.submitted, 0u);
-    EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
   };
   command.access_ordinal = 1;
   expect_rejected(AMDF_STATUS_CODE_OUT_OF_RANGE);
@@ -330,19 +318,17 @@ TEST_F(XdnaKernelQueueTest, UsesProfileLimitsAndAbsoluteInstructionAddress) {
             AMDF_STATUS_CODE_OUT_OF_RANGE);
   EXPECT_EQ(rejected, UINT64_MAX);
   EXPECT_EQ(context.native.queue.submitted, 0u);
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
   command.byte_length = 64;
   ASSERT_NO_FATAL_FAILURE(Submit());
 }
 
-TEST_F(XdnaKernelQueueTest, NativeRejectionReleasesBorrowAndPreservesOutput) {
+TEST_F(XdnaKernelQueueTest, NativeRejectionPreservesSlotAndOutput) {
   context.native.queue.submission_status =
       amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   uint64_t rejected = UINT64_MAX;
   EXPECT_EQ(SubmitCommand(&rejected), context.native.queue.submission_status);
   EXPECT_EQ(rejected, UINT64_MAX);
   EXPECT_EQ(Query().retired_submission, 0u);
-  EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
   context.native.queue.submission_status = AMDF_STATUS_OK;
   ASSERT_NO_FATAL_FAILURE(Submit());
 }

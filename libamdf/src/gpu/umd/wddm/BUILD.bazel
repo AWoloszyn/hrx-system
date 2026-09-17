@@ -89,6 +89,7 @@ amdf_cc_library(
         ":memory_profile",
         "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:endpoint",
+        "//libamdf/src/platform/windows:endpoint_properties",
     ],
 )
 

@@ -545,6 +545,48 @@ TEST_F(MemoryConstructionTest,
 }
 
 TEST_F(MemoryConstructionTest,
+       FinalReleaseAttemptsEveryConsumerAndPreservesFailedBacking) {
+  AllocationState allocations;
+  instance_.host_allocator = allocations.allocator();
+  std::array<FakeDevice, 4> devices;
+  std::array<amdf_memory_device_access_t, 4> accesses;
+  std::vector<uint64_t> release_order;
+  for (size_t i = 0; i < devices.size(); ++i) {
+    InitializeFakeDevice(i + 1, &instance_, &devices[i]);
+    devices[i].release_order = &release_order;
+    accesses[i] = devices[i].request;
+  }
+  devices[0].profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_CREATE;
+  devices[0].destroy_status =
+      amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+  devices[3].destroy_status =
+      amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  amdf_memory_create_info_t create_info = MakeMemoryCreateInfo(devices[1]);
+  create_info.access_count = accesses.size();
+  create_info.accesses = accesses.data();
+  amdf_memory_t* memory = nullptr;
+  ASSERT_EQ(
+      amdf_memory_create(&instance_.system_memory_scope, &create_info, &memory),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(memory->backing_access_ordinal, 1u);
+
+  EXPECT_EQ(amdf_memory_destroy(memory), devices[3].destroy_status);
+
+  // A failure does not suppress independent releases or permit backing reuse.
+  // The first native error survives subsequent errors, and all metadata goes.
+  EXPECT_EQ(release_order, (std::vector<uint64_t>{4, 3, 1}));
+  EXPECT_EQ(devices[0].destroy_call_count, 1u);
+  EXPECT_EQ(devices[1].destroy_call_count, 0u);
+  EXPECT_EQ(devices[2].destroy_call_count, 1u);
+  EXPECT_EQ(devices[3].destroy_call_count, 1u);
+  EXPECT_EQ(devices[0].abandon_call_count, 1u);
+  EXPECT_EQ(devices[1].abandon_call_count, 1u);
+  EXPECT_EQ(devices[2].abandon_call_count, 0u);
+  EXPECT_EQ(devices[3].abandon_call_count, 1u);
+  EXPECT_EQ(allocations.live_count, 0u);
+}
+
+TEST_F(MemoryConstructionTest,
        RegistersTheSameCallerPagesAndRollsBackPartialConsumers) {
   alignas(4096) std::array<uint8_t, 8192> pages = {};
   for (bool grouped : {false, true}) {

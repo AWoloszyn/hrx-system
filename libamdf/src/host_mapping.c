@@ -10,22 +10,12 @@
 #include "libamdf/src/memory_resource.h"
 #include "libamdf/src/structure.h"
 
-amdf_status_t amdf_host_mapping_initialize(
-    amdf_host_mapping_t* mapping, const amdf_host_mapping_vtable_t* vtable,
-    amdf_memory_t* memory) {
-  const amdf_status_t status = amdf_memory_register_child(memory);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
+void amdf_host_mapping_initialize(amdf_host_mapping_t* mapping,
+                                  const amdf_host_mapping_vtable_t* vtable,
+                                  amdf_memory_t* memory) {
   mapping->host_allocator = amdf_memory_host_allocator(memory);
   mapping->vtable = vtable;
   mapping->memory = memory;
-  return AMDF_STATUS_OK;
-}
-
-void amdf_host_mapping_deinitialize(amdf_host_mapping_t* mapping) {
-  amdf_memory_unregister_child(mapping->memory);
-  mapping->memory = NULL;
 }
 
 amdf_status_t AMDF_CALL amdf_host_mapping_query_info(
@@ -88,11 +78,8 @@ amdf_host_mapping_destroy(amdf_host_mapping_t* mapping) {
   if (mapping == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  const amdf_status_t status = mapping->vtable->destroy_native(mapping);
-  if (amdf_status_is_ok(status)) {
-    const amdf_allocator_t host_allocator = mapping->host_allocator;
-    amdf_host_mapping_deinitialize(mapping);
-    amdf_free(host_allocator, mapping);
-  }
-  return status;
+  const amdf_allocator_t host_allocator = mapping->host_allocator;
+  mapping->vtable->destroy_native(mapping);
+  amdf_free(host_allocator, mapping);
+  return AMDF_STATUS_OK;
 }

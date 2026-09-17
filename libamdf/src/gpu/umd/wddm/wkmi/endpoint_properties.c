@@ -61,6 +61,9 @@ bool amdf_gpu_wddm_wkmi_endpoint_properties_translate(
         (amdf_gpu_queue_family_properties_t){
             .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
             .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
+            .format_features = provider_properties->gfx_ip_major >= 10
+                                   ? AMDF_GPU_PM4_FORMAT_FEATURE_ACQUIRE_MEM_GCR
+                                   : 0,
             .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
             .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_TRANSFER |
                      AMDF_QUEUE_ROLE_CACHE_CONTROL,

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "amdf/gpu.h"
@@ -135,8 +136,8 @@ class XdnaExecutionTest
       memory->pointer = nullptr;
     }
     if (memory->memory) {
-      ASSERT_EQ(api_->memory_destroy(memory->memory), AMDF_STATUS_OK);
-      memory->memory = nullptr;
+      ASSERT_EQ(api_->memory_destroy(std::exchange(memory->memory, nullptr)),
+                AMDF_STATUS_OK);
     }
   }
 

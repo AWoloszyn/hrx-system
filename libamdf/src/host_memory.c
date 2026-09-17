@@ -20,11 +20,10 @@ static amdf_status_t amdf_host_memory_mapping_cache_control(
       mapping->info.cache_line_size);
 }
 
-static amdf_status_t amdf_host_memory_mapping_destroy_native(
+static void amdf_host_memory_mapping_destroy_native(
     amdf_host_mapping_t* mapping) {
   // CPU views borrow the persistent backing range without another native map.
   (void)mapping;
-  return AMDF_STATUS_OK;
 }
 
 static const amdf_host_mapping_vtable_t amdf_host_memory_mapping_vtable = {
@@ -44,40 +43,36 @@ static amdf_status_t amdf_host_memory_map(
   status = amdf_calloc(memory->host_allocator, sizeof(*mapping),
                        amdf_alignof(amdf_host_mapping_t), (void**)&mapping);
   if (!amdf_status_is_ok(status)) return status;
-  status = amdf_host_mapping_initialize(
-      mapping, &amdf_host_memory_mapping_vtable, memory);
-  if (amdf_status_is_ok(status)) {
-    const amdf_cache_transition_t flush = {
-        .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-        .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-        .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
-        .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
-        .host_fence_before = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-        .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-        .range_granularity = line_size,
-    };
-    mapping->info = (amdf_host_mapping_info_t){
-        .type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO,
-        .structure_size = sizeof(mapping->info),
-        .flags = capabilities->supported_access,
-        .cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
-        .pointer = (uint8_t*)memory->accesses[access_ordinal].native +
-                   map_info->byte_offset,
-        .memory_byte_offset = map_info->byte_offset,
-        .byte_length = map_info->byte_length,
-        .byte_offset_granularity = capabilities->byte_offset_granularity,
-        .byte_length_granularity = capabilities->byte_length_granularity,
-        .cache_line_size = line_size,
-        .flush = flush,
-        .invalidate = flush,
-    };
-    mapping->info.invalidate.host_operation =
-        AMDF_HOST_CACHE_OPERATION_INVALIDATE;
-    *out_mapping = mapping;
-  } else {
-    amdf_free(memory->host_allocator, mapping);
-  }
-  return status;
+  amdf_host_mapping_initialize(mapping, &amdf_host_memory_mapping_vtable,
+                               memory);
+  const amdf_cache_transition_t flush = {
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_before = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = line_size,
+  };
+  mapping->info = (amdf_host_mapping_info_t){
+      .type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO,
+      .structure_size = sizeof(mapping->info),
+      .flags = capabilities->supported_access,
+      .cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
+      .pointer = (uint8_t*)memory->accesses[access_ordinal].native +
+                 map_info->byte_offset,
+      .memory_byte_offset = map_info->byte_offset,
+      .byte_length = map_info->byte_length,
+      .byte_offset_granularity = capabilities->byte_offset_granularity,
+      .byte_length_granularity = capabilities->byte_length_granularity,
+      .cache_line_size = line_size,
+      .flush = flush,
+      .invalidate = flush,
+  };
+  mapping->info.invalidate.host_operation =
+      AMDF_HOST_CACHE_OPERATION_INVALIDATE;
+  *out_mapping = mapping;
+  return AMDF_STATUS_OK;
 }
 
 static amdf_status_t amdf_host_memory_destroy_native(amdf_memory_t* memory,

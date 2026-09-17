@@ -243,7 +243,6 @@ iree_cc_library(
     "memory_resource.c"
   DEPS
     ::allocator
-    ::child_tracker
     ::memory_pair
     amdf::headers
   PUBLIC

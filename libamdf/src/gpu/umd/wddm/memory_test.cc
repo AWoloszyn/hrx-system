@@ -6,6 +6,7 @@
 
 #include "libamdf/src/gpu/umd/memory.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -20,6 +21,7 @@ constexpr NTSTATUS kStatusPending = static_cast<NTSTATUS>(0x00000103u);
 constexpr NTSTATUS kStatusNoMemory = static_cast<NTSTATUS>(0xC0000017u);
 
 enum class Operation {
+  kImport,
   kQueryLayout,
   kReserveAddress,
   kCreateAllocation,
@@ -65,6 +67,10 @@ struct FakeMemoryState {
   uint32_t unmap_count = 0;
   // Monitored paging progress exposed to production code.
   volatile uint64_t paging_fence = 0;
+  // Native result injected after shared-resource acquisition.
+  amdf_status_t import_status = AMDF_STATUS_OK;
+  // Independent NT reference captured by the native import dependency.
+  HANDLE imported_handle = nullptr;
   // Native and bridge operations in call order.
   std::vector<Operation> operations;
   // Paging fence targets observed by CPU waits.
@@ -114,6 +120,25 @@ amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL FakeCreateAllocation(
   *out_allocation_count = state->allocation_count;
   *out_native_status = 0;
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
+}
+
+amdf_status_t AMDF_WKMI_BRIDGE_CALL FakePrepareBufferImport(
+    amdf_wkmi_bridge_gpu_adapter_t* adapter,
+    const amdf_wkmi_bridge_gpu_buffer_import_info_t* info,
+    uint32_t* resource_handle, uint32_t* allocation_handle,
+    uint64_t* out_native_byte_length, uint64_t* out_buffer_byte_length) {
+  auto* state = reinterpret_cast<FakeMemoryState*>(adapter);
+  state->operations.push_back(Operation::kImport);
+  EXPECT_EQ(info->device_handle, 0x10u);
+  EXPECT_EQ(*resource_handle, 0u);
+  EXPECT_EQ(*allocation_handle, 0u);
+  state->imported_handle = info->shared_handle;
+  *resource_handle = state->resource_handle;
+  *allocation_handle = 0x20;
+  if (!amdf_status_is_ok(state->import_status)) return state->import_status;
+  *out_native_byte_length = 65536;
+  *out_buffer_byte_length = 16384;
+  return AMDF_STATUS_OK;
 }
 
 NTSTATUS APIENTRY FakeUnexpectedCreateAllocation(D3DKMT_CREATEALLOCATION*) {
@@ -221,6 +246,7 @@ class WindowsGpuMemoryTest : public ::testing::Test {
     current_state = &state_;
     bridge_.gpu_allocation_query_layout = FakeQueryAllocationLayout;
     bridge_.gpu_allocation_create = FakeCreateAllocation;
+    bridge_.gpu_buffer_prepare_import = FakePrepareBufferImport;
     kmt_.create_allocation = FakeUnexpectedCreateAllocation;
     kmt_.destroy_allocation = FakeDestroyAllocation;
     kmt_.reserve_gpu_virtual_address = FakeReserveGpuVirtualAddress;
@@ -474,6 +500,121 @@ TEST_F(WindowsGpuMemoryTest, MissingMemoryApiDoesNotPublishProfile) {
   EXPECT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 0, &output),
             amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE));
   EXPECT_EQ(output.ordinal, 73u);
+}
+
+TEST_F(WindowsGpuMemoryTest, ImportedRangeAndIndependentExportOwnership) {
+  state_.resource_handle = 0x21;
+  ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 3, &profile_),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(profile_.roles,
+            AMDF_MEMORY_PROFILE_ROLE_IMPORT | AMDF_MEMORY_PROFILE_ROLE_EXPORT);
+  EXPECT_EQ(profile_.external_memory_support_count, 1u);
+  EXPECT_EQ(profile_.external_memory_support[0].type,
+            AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE);
+  EXPECT_EQ(profile_.external_memory_support[0].source_offset_alignment, 1u);
+  const amdf_memory_native_import_info_t info = {
+      .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+      .required_flags = AMDF_MEMORY_FLAG_SHAREABLE,
+  };
+  HANDLE source_handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  ASSERT_NE(source_handle, nullptr);
+  amdf_external_memory_t source = {};
+  source.type = AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE;
+  source.payload.native_handle = source_handle;
+  source.source_byte_offset = 13;
+  source.byte_length = 117;
+  const amdf_external_memory_t original = source;
+  amdf_gpu_umd_memory_t* memory = nullptr;
+  amdf_gpu_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_gpu_umd_memory_prepare_import(&device_, &profile_, &info,
+                                               &source, &memory, &result),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(std::memcmp(&source, &original, sizeof(source)), 0);
+  EXPECT_NE(state_.imported_handle, source_handle);
+  EXPECT_EQ(result.device_address, UINT64_C(0x10000d));
+  EXPECT_EQ(result.source_byte_offset, 13u);
+  EXPECT_EQ(result.byte_length, 117u);
+  EXPECT_EQ(result.native_allocation_byte_length, 65536u);
+  EXPECT_EQ(result.alignment, 1u);
+  EXPECT_FALSE(amdf_physical_memory_id_is_valid(&result.physical_backing_id));
+  EXPECT_TRUE(CloseHandle(source_handle));
+  amdf_memory_export_info_t export_info = {};
+  export_info.external_memory_type = AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE;
+  amdf_external_memory_t exported = {};
+  ASSERT_EQ(amdf_gpu_umd_memory_export(memory, &export_info, &exported),
+            AMDF_STATUS_OK);
+  EXPECT_NE(exported.payload.native_handle, state_.imported_handle);
+  ASSERT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
+  DWORD flags = 0;
+  EXPECT_FALSE(GetHandleInformation(state_.imported_handle, &flags));
+  EXPECT_EQ(GetLastError(), ERROR_INVALID_HANDLE);
+  EXPECT_TRUE(GetHandleInformation(exported.payload.native_handle, &flags));
+  exported.release(exported.release_user_data,
+                   AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE, exported.payload);
+}
+
+class WindowsGpuImportFailureTest
+    : public WindowsGpuMemoryTest,
+      public ::testing::WithParamInterface<uint32_t> {};
+
+INSTANTIATE_TEST_SUITE_P(NativeProgress, WindowsGpuImportFailureTest,
+                         ::testing::Values(0u, 1u, 2u, 3u));
+
+TEST_P(WindowsGpuImportFailureTest, RetainsProgressForOrderedRollback) {
+  state_.resource_handle = 0x21;
+  ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 3, &profile_),
+            AMDF_STATUS_OK);
+  const amdf_memory_native_import_info_t info = {
+      .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+      .required_flags = AMDF_MEMORY_FLAG_SHAREABLE,
+  };
+  HANDLE source_handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  ASSERT_NE(source_handle, nullptr);
+  amdf_external_memory_t source = {};
+  source.type = AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE;
+  source.payload.native_handle = source_handle;
+  source.byte_length = GetParam() == 1 ? 16385 : 4096;
+  if (GetParam() == 0) {
+    state_.import_status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  } else if (GetParam() >= 2) {
+    state_.failing_wait_target = GetParam() - 1;
+    state_.wait_failures_remaining = 1;
+  }
+  const amdf_external_memory_t original = source;
+  amdf_gpu_umd_memory_result_t result;
+  std::memset(&result, 0xa5, sizeof(result));
+  const auto original_result = result;
+  amdf_gpu_umd_memory_t* memory = nullptr;
+  const amdf_status_t status = amdf_gpu_umd_memory_prepare_import(
+      &device_, &profile_, &info, &source, &memory, &result);
+  EXPECT_FALSE(amdf_status_is_ok(status));
+  EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(std::memcmp(&source, &original, sizeof(source)), 0);
+  ASSERT_NE(memory, nullptr);
+  DWORD flags = 0;
+  EXPECT_TRUE(GetHandleInformation(source_handle, &flags));
+  EXPECT_TRUE(GetHandleInformation(state_.imported_handle, &flags));
+  ASSERT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
+  EXPECT_FALSE(GetHandleInformation(state_.imported_handle, &flags));
+  EXPECT_EQ(GetLastError(), ERROR_INVALID_HANDLE);
+  EXPECT_TRUE(GetHandleInformation(source_handle, &flags));
+  EXPECT_TRUE(CloseHandle(source_handle));
+  const auto destroy =
+      std::find(state_.operations.begin(), state_.operations.end(),
+                Operation::kDestroyAllocation);
+  ASSERT_NE(destroy, state_.operations.end());
+  if (GetParam() <= 1) {
+    EXPECT_EQ(state_.operations,
+              (std::vector<Operation>{Operation::kImport,
+                                      Operation::kDestroyAllocation}));
+  } else {
+    const auto unmap = std::find(state_.operations.begin(),
+                                 state_.operations.end(), Operation::kUnmap);
+    ASSERT_NE(unmap, state_.operations.end());
+    EXPECT_LT(unmap, destroy);
+    EXPECT_EQ(state_.operations.back(), Operation::kFreeAddress);
+  }
 }
 
 }  // namespace

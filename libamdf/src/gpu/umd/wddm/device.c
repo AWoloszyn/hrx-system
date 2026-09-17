@@ -12,6 +12,7 @@
 #include "libamdf/src/gpu/umd/wddm/device.h"
 #include "libamdf/src/gpu/umd/wddm/memory_profile.h"
 #include "libamdf/src/platform/windows/endpoint.h"
+#include "libamdf/src/platform/windows/endpoint_properties.h"
 
 static amdf_status_t amdf_gpu_wddm_device_release_native(
     amdf_gpu_umd_device_t* device) {
@@ -81,6 +82,12 @@ amdf_status_t amdf_gpu_umd_device_create(
   amdf_kmt_device_status_initialize(&device->status);
   device->kmt = &endpoint->instance->kmt;
   device->adapter = endpoint->adapter;
+  LUID adapter_luid;
+  uint32_t physical_adapter_index;
+  amdf_windows_endpoint_id_decode(&endpoint->id, &adapter_luid,
+                                  &physical_adapter_index);
+  device->adapter_luid =
+      ((uint64_t)(uint32_t)adapter_luid.HighPart << 32) | adapter_luid.LowPart;
   device->physical_adapter_index = endpoint->physical_adapter_index;
   device->memory_capabilities = memory_capabilities;
 

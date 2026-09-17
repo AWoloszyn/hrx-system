@@ -23,8 +23,6 @@ typedef struct amdf_gpu_user_queue_t {
   amdf_user_queue_t base;
   // Exact native directly published GPU queue.
   amdf_gpu_umd_user_queue_t* umd;
-  // Optional scratch attachment borrowed until native teardown succeeds.
-  amdf_memory_t* scratch_memory;
 } amdf_gpu_user_queue_t;
 
 _Static_assert(offsetof(amdf_gpu_user_queue_t, base) == 0,
@@ -152,10 +150,6 @@ static amdf_status_t amdf_gpu_user_queue_destroy_native(
   const amdf_status_t status = amdf_gpu_umd_user_queue_destroy(queue->umd);
   if (amdf_status_is_ok(status)) {
     queue->umd = NULL;
-    if (queue->scratch_memory != NULL) {
-      amdf_memory_unregister_child(queue->scratch_memory);
-      queue->scratch_memory = NULL;
-    }
   }
   return status;
 }
@@ -315,12 +309,6 @@ amdf_status_t AMDF_CALL amdf_gpu_user_queue_create(
   if (!amdf_status_is_ok(status)) return status;
   status = amdf_user_queue_initialize(&queue->base, &amdf_gpu_user_queue_vtable,
                                       device, &info);
-  if (amdf_status_is_ok(status) && create_info->scratch.memory != NULL) {
-    status = amdf_memory_register_child(create_info->scratch.memory);
-    if (amdf_status_is_ok(status)) {
-      queue->scratch_memory = create_info->scratch.memory;
-    }
-  }
   amdf_gpu_umd_user_queue_result_t result = {0};
   if (amdf_status_is_ok(status)) {
     status =
@@ -335,9 +323,6 @@ amdf_status_t AMDF_CALL amdf_gpu_user_queue_create(
         result.metadata_ring_byte_length;
     *out_queue = &queue->base;
   } else {
-    if (queue->scratch_memory != NULL) {
-      amdf_memory_unregister_child(queue->scratch_memory);
-    }
     if (queue->base.device != NULL) {
       amdf_user_queue_deinitialize(&queue->base);
     }

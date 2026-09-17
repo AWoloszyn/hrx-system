@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include "amdf/amdf.h"
 #include "amdf/gpu.h"
@@ -330,8 +331,6 @@ TEST_F(Pm4KernelQueueTest, ExecutesMaterializedCopyData) {
 
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
-  EXPECT_EQ(amdf_status_code(api_->memory_destroy(memory_)),
-            AMDF_STATUS_CODE_BUSY);
 
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
       queue_, submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
@@ -357,8 +356,8 @@ TEST_F(Pm4KernelQueueTest, ExecutesMaterializedCopyData) {
 
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_destroy(queue_)));
   queue_ = nullptr;
 }
@@ -427,8 +426,8 @@ TEST_F(SdmaKernelQueueTest, ExecutesMaterializedSdmaCopy) {
   mapping_ = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_destroy(queue_)));
   queue_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
 }
 
 TEST_F(Pm4KernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
@@ -496,10 +495,10 @@ TEST_F(Pm4KernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
   mapping_ = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_destroy(queue_)));
   queue_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(local_memory_)));
-  local_memory_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(amdf_status_is_ok(
+      api_->memory_destroy(std::exchange(local_memory_, nullptr))));
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
 }
 
 TEST_F(Pm4KernelQueueTest, ExecutesDeviceLocalCommandStream) {
@@ -584,8 +583,6 @@ TEST_F(Pm4KernelQueueTest, ExecutesDeviceLocalCommandStream) {
   ASSERT_TRUE(amdf_status_is_ok(gpu_api_->kernel_queue_submit(
       queue_, &submission_info, &local_submission)));
   indirect_memory_may_be_in_use_ = true;
-  EXPECT_EQ(amdf_status_code(api_->memory_destroy(local_memory_)),
-            AMDF_STATUS_CODE_BUSY);
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
       queue_, local_submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
   indirect_memory_may_be_in_use_ = false;
@@ -601,10 +598,10 @@ TEST_F(Pm4KernelQueueTest, ExecutesDeviceLocalCommandStream) {
   mapping_ = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_destroy(queue_)));
   queue_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(local_memory_)));
-  local_memory_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(amdf_status_is_ok(
+      api_->memory_destroy(std::exchange(local_memory_, nullptr))));
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
 }
 
 }  // namespace

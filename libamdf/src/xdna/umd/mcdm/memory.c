@@ -490,8 +490,6 @@ amdf_status_t amdf_xdna_umd_host_mapping_cache_control(
       operation, (uint8_t*)mapping->pointer + byte_offset, byte_length);
 }
 
-amdf_status_t amdf_xdna_umd_host_mapping_destroy(
-    amdf_xdna_umd_host_mapping_t* mapping) {
+void amdf_xdna_umd_host_mapping_destroy(amdf_xdna_umd_host_mapping_t* mapping) {
   amdf_free(mapping->host_allocator, mapping);
-  return AMDF_STATUS_OK;
 }

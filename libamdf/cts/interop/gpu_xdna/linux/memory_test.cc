@@ -12,6 +12,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "amdf/amdf.h"
@@ -276,29 +277,27 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
       api_->external_memory_release(&external_memory_);
     }
     if (xdna_mapping_ != nullptr) {
-      const amdf_status_t status = api_->host_mapping_destroy(xdna_mapping_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) xdna_mapping_ = nullptr;
+      EXPECT_EQ(
+          api_->host_mapping_destroy(std::exchange(xdna_mapping_, nullptr)),
+          AMDF_STATUS_OK);
     }
     if (gpu_mapping_ != nullptr) {
-      const amdf_status_t status = api_->host_mapping_destroy(gpu_mapping_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) gpu_mapping_ = nullptr;
+      EXPECT_EQ(
+          api_->host_mapping_destroy(std::exchange(gpu_mapping_, nullptr)),
+          AMDF_STATUS_OK);
     }
-    if (xdna_mapping_ == nullptr && xdna_memory_ != nullptr) {
-      const amdf_status_t status = api_->memory_destroy(xdna_memory_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) xdna_memory_ = nullptr;
+    if (xdna_memory_ != nullptr) {
+      EXPECT_EQ(api_->memory_destroy(std::exchange(xdna_memory_, nullptr)),
+                AMDF_STATUS_OK);
     }
-    if (gpu_mapping_ == nullptr && gpu_memory_ != nullptr) {
-      const amdf_status_t status = api_->memory_destroy(gpu_memory_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) gpu_memory_ = nullptr;
+    if (gpu_memory_ != nullptr) {
+      EXPECT_EQ(api_->memory_destroy(std::exchange(gpu_memory_, nullptr)),
+                AMDF_STATUS_OK);
     }
     if (additional_gpu_device_ != nullptr) {
       EXPECT_EQ(api_->device_destroy(additional_gpu_device_), AMDF_STATUS_OK);
     }
-    if (gpu_memory_ == nullptr && caller_pages_.pointer != nullptr) {
+    if (!HasFailure() && caller_pages_.pointer != nullptr) {
       EXPECT_EQ(munmap(caller_pages_.pointer, caller_pages_.byte_length), 0);
     }
   }
@@ -698,8 +697,8 @@ void GpuXdnaMemoryInteropTest::ImportGpuSubrangeAndReleaseAllocation() {
 
   ASSERT_EQ(api_->host_mapping_destroy(gpu_mapping_), AMDF_STATUS_OK);
   gpu_mapping_ = nullptr;
-  ASSERT_EQ(api_->memory_destroy(gpu_memory_), AMDF_STATUS_OK);
-  gpu_memory_ = nullptr;
+  ASSERT_EQ(api_->memory_destroy(std::exchange(gpu_memory_, nullptr)),
+            AMDF_STATUS_OK);
 }
 
 void GpuXdnaMemoryInteropTest::CheckSurvivingImport() {
@@ -982,8 +981,8 @@ TEST_F(GpuXdnaMemoryInteropTest,
       }
       ASSERT_EQ(api_->host_mapping_destroy(gpu_mapping_), AMDF_STATUS_OK);
       gpu_mapping_ = nullptr;
-      ASSERT_EQ(api_->memory_destroy(gpu_memory_), AMDF_STATUS_OK);
-      gpu_memory_ = nullptr;
+      ASSERT_EQ(api_->memory_destroy(std::exchange(gpu_memory_, nullptr)),
+                AMDF_STATUS_OK);
     }
   }
 }
@@ -1088,8 +1087,8 @@ TEST_F(GpuXdnaMemoryInteropTest,
                                        &stable_address),
             AMDF_STATUS_OK);
   EXPECT_EQ(stable_address, gpu_address);
-  ASSERT_EQ(api_->memory_destroy(gpu_memory_), AMDF_STATUS_OK);
-  gpu_memory_ = nullptr;
+  ASSERT_EQ(api_->memory_destroy(std::exchange(gpu_memory_, nullptr)),
+            AMDF_STATUS_OK);
   EXPECT_EQ(caller_pages_.pointer[2], 0x7B);
   EXPECT_EQ(caller_pages_.pointer[3], 0x39);
   EXPECT_EQ(caller_pages_.pointer[2 + create_info.byte_length], 0x39);

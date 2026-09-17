@@ -21,6 +21,8 @@ struct amdf_gpu_umd_device_t {
   const amdf_kmt_api_t* kmt;
   // Adapter handle borrowed from the endpoint owning this device.
   D3DKMT_HANDLE adapter;
+  // DXGI adapter identity used for typed external-buffer admission.
+  uint64_t adapter_luid;
   // Physical adapter represented by native private records.
   uint32_t physical_adapter_index;
   // Exact GPU MMU facts available to immutable memory-profile queries.

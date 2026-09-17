@@ -68,6 +68,7 @@ amdf_cc_library(
     srcs = ["endpoint_properties.c"],
     hdrs = ["endpoint_properties.h"],
     target_compatible_with = WINDOWS_COMPATIBILITY,
+    visibility = ["//libamdf/src/gpu/umd/wddm:__pkg__"],
     deps = [
         ":kmt_api",
         "//libamdf/src:pci",

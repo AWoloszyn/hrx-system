@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -35,12 +36,10 @@ class GpuMemoryTest : public GpuDeviceFixture {
     }
     if (memory_ != nullptr) {
       const amdf_status_t status = api_->memory_destroy(memory_);
+      memory_ = nullptr;
       EXPECT_TRUE(amdf_status_is_ok(status));
-      if (amdf_status_is_ok(status)) {
-        memory_ = nullptr;
-      }
     }
-    if (memory_ == nullptr && registered_host_pointer_ != nullptr) {
+    if (!HasFailure() && registered_host_pointer_ != nullptr) {
       EXPECT_TRUE(VirtualFree(registered_host_pointer_, 0, MEM_RELEASE));
       registered_host_pointer_ = nullptr;
     }
@@ -108,7 +107,9 @@ TEST_F(GpuMemoryTest, ValidatesPlacementRequirementsBeforeNativeAllocation) {
       AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
       AMDF_MEMORY_FLAG_HOST_VISIBLE, memory_access_.requirements);
   create_info.byte_length = 4096;
-  create_info.registered_host_pointer = &create_info;
+  create_info.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  create_info.registered_host_pointer =
+      reinterpret_cast<uint8_t*>(&create_info) + 1;
   EXPECT_EQ(amdf_status_code(
                 api_->memory_create(system_scope_, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -201,12 +202,10 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
       mapping_, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
       mapping_info.byte_length)));
 
-  EXPECT_EQ(amdf_status_code(api_->memory_destroy(memory_)),
-            AMDF_STATUS_CODE_BUSY);
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
 }
 
 TEST_F(GpuMemoryTest, CreatesDeviceLocalExecutableMemory) {
@@ -328,8 +327,8 @@ TEST_F(GpuMemoryTest, RegistersCallerOwnedCoherentHostPages) {
 
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
   std::memset(registered_host_pointer_, 0x3C, kByteLength);
 }
 

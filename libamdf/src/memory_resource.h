@@ -8,7 +8,6 @@
 #define AMDF_SRC_MEMORY_RESOURCE_H_
 
 #include "amdf/amdf.h"
-#include "libamdf/src/child_tracker.h"
 #include "libamdf/src/memory_pair.h"
 
 #ifdef __cplusplus
@@ -38,7 +37,7 @@ typedef struct amdf_memory_vtable_t {
   // Releases the exact native state owned by a memory implementation.
   amdf_status_t (*destroy_native)(amdf_memory_t* memory,
                                   uint32_t access_ordinal);
-  // Discards unpublished native metadata without native calls. Any surviving
+  // Discards native metadata without native calls. Any surviving
   // native resources retain their dependent backing after terminal failure.
   void (*abandon_native)(amdf_memory_t* memory, uint32_t access_ordinal);
 } amdf_memory_vtable_t;
@@ -46,7 +45,7 @@ typedef struct amdf_memory_vtable_t {
 // Immutable consumer facts, indexed directly by the caller's access ordinal.
 typedef struct amdf_memory_access_state_t {
   // Device borrowed without retention or lifetime tracking. The caller keeps
-  // it live through successful native memory teardown.
+  // it live through final memory release.
   amdf_device_t* device;
   // Complete consumer properties established before publication.
   amdf_memory_access_info_t info;
@@ -78,18 +77,7 @@ struct amdf_memory_t {
   uint32_t backing_access_ordinal;
   // Host-view limits selected during construction, independent of consumers.
   amdf_host_mapping_capabilities_t host_mapping;
-  // Number of live mappings and commands borrowing this memory.
-  amdf_child_tracker_t children;
 };
-
-// Registers one child that borrows `memory`. Used by command publication:
-// atomic bookkeeping only, without locks, allocation or lazy initialization.
-// The shared borrow counter may contend; this is not a wait-free operation.
-amdf_status_t amdf_memory_register_child(amdf_memory_t* memory);
-
-// Releases one child borrow. Also runs on no-syscall command retirement paths;
-// performs only atomic bookkeeping, with the same contention contract above.
-void amdf_memory_unregister_child(amdf_memory_t* memory);
 
 // Returns the host allocator copied by the memory attachment.
 amdf_allocator_t amdf_memory_host_allocator(const amdf_memory_t* memory);
@@ -100,12 +88,10 @@ amdf_status_t amdf_memory_resource_allocate(amdf_allocator_t host_allocator,
                                             uint32_t access_count,
                                             amdf_memory_t** out_memory);
 
-// Releases consumers before backing, preserving failed native state.
-amdf_status_t amdf_memory_release_native(amdf_memory_t* memory);
-
-// Attempts unpublished rollback once, then consumes the host metadata even on
-// terminal native failure. Dependent native backing remains unrecycled.
-amdf_status_t amdf_memory_discard(amdf_memory_t* memory);
+// Releases consumers before backing and consumes all library metadata once.
+// Native failure leaves required backing unreclaimed and returns the error;
+// neither published final release nor construction rollback has a retry owner.
+amdf_status_t amdf_memory_resource_destroy(amdf_memory_t* memory);
 
 #ifdef __cplusplus
 }  // extern "C"

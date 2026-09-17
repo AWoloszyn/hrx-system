@@ -49,9 +49,8 @@ class HostMappingTest : public ::testing::Test {
     memory_.accesses = &access_;
     memory_.info.access_count = 1;
     access_.info.flags = AMDF_MEMORY_FLAG_HOST_COHERENT;
-    ASSERT_EQ(amdf_host_mapping_initialize(&mapping_.base,
-                                           &kNativeMappingVtable, &memory_),
-              AMDF_STATUS_OK);
+    amdf_host_mapping_initialize(&mapping_.base, &kNativeMappingVtable,
+                                 &memory_);
     mapping_.base.info.byte_length = 256;
     mapping_.base.info.memory_byte_offset = 4096;
     mapping_.base.info.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
@@ -60,8 +59,6 @@ class HostMappingTest : public ::testing::Test {
     mapping_.base.info.flush.kind = AMDF_CACHE_TRANSITION_KIND_RANGE;
     mapping_.base.info.invalidate.kind = AMDF_CACHE_TRANSITION_KIND_RANGE;
   }
-
-  void TearDown() override { amdf_host_mapping_deinitialize(&mapping_.base); }
 
   // Backing dependency with no native allocation required by this boundary.
   amdf_memory_t memory_ = {};

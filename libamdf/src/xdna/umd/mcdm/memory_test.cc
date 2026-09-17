@@ -284,7 +284,7 @@ TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(
       mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
       map_result.byte_length)));
-  EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_destroy(mapping)));
+  amdf_xdna_umd_host_mapping_destroy(mapping);
 
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_destroy(memory)));
   EXPECT_EQ(state_.operations.back(), Operation::kDestroy);

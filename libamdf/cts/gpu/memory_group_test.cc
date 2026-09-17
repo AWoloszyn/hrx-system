@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "gpu_device_fixture.h"
@@ -30,10 +31,10 @@ class GpuMemoryGroupTest
       mapping_ = nullptr;
     }
     if (memory_ != nullptr) {
-      ASSERT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
-      memory_ = nullptr;
+      ASSERT_EQ(api_->memory_destroy(std::exchange(memory_, nullptr)),
+                AMDF_STATUS_OK);
     }
-    std::free(caller_storage_);
+    if (!HasFailure()) std::free(caller_storage_);
     caller_storage_ = nullptr;
     GpuDeviceFixture::TearDown();
   }
@@ -215,8 +216,8 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
   if (registered) {
     ASSERT_EQ(api_->host_mapping_destroy(mapping_), AMDF_STATUS_OK);
     mapping_ = nullptr;
-    ASSERT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
-    memory_ = nullptr;
+    ASSERT_EQ(api_->memory_destroy(std::exchange(memory_, nullptr)),
+              AMDF_STATUS_OK);
     for (size_t i = 0; i < caller_length; ++i) {
       const uint8_t expected =
           i >= caller_offset && i < caller_offset + create_info.byte_length

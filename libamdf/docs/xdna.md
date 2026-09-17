@@ -9,8 +9,9 @@ appears in the driver API.
 
 The caller passively discovers an endpoint and its target identity, then
 explicitly creates a device. `device_query_info` supplies native array geometry,
-instruction limits and context admission before the caller creates a context. Ordinary data comes
-from the instance's system-memory scope with that live device in its access set.
+instruction limits and context admission before the caller creates a context.
+Ordinary data comes from the instance's system-memory scope with that live
+device in its access set.
 Instruction storage comes from the context's private scope with EXECUTE access.
 Both use `memory_create`, explicit host mappings, and cached address queries.
 
@@ -75,12 +76,14 @@ Native query and context failures propagate without guessing
 another layout. An escape query on the created device supplies native tile
 layout. Native context ID zero is valid.
 
-Windows initialization generates a native admission PDI containing one CDO NOP,
-independently of application code. It has no register, DMA, lock, route, or
-tile-memory effects. The target bootstrap UUID identifies native admission,
-not the caller's executable. This mandatory provider setup is distinct from
-any application PDI a HAL may construct. No public PDI, program, lane, or
-argument-patching object is required.
+Windows initialization constructs a minimal PDI/CDO container directly in
+reserved private backing. Its single NOP admits the transaction interpreter
+without installing a tile program or assigning application DMA, locks, routes,
+or tile data. Admission runs once for that backing, independently of application
+dispatch and program replacement. The native bootstrap UUID identifies the
+admission bytes; target-specific native context accounting remains separate.
+Linux direct ELF submission needs no bootstrap container. No public PDI,
+program, lane, or argument-patching object is required.
 
 ## Submitting a prepared range
 
@@ -124,9 +127,9 @@ The returned submission number identifies accepted work. A caller can observe
 progress with `kernel_queue_query_status` or wait with
 `kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0)`. A successful
 wait establishes native retirement, including command-result inspection. A
-timeout or wait error is not cancellation and does not by itself release the
-instruction borrow; the status query reports retirement separately from sticky
-terminal failure.
+timeout or wait error is not cancellation and does not by itself permit
+instruction storage reuse; the status query reports retirement separately from
+sticky terminal failure.
 
 The [canonical ELF consumer](../../experimental/xdna/cts/execution_test.cc)
 shows the complete flow, including target selection, image loading, relocation,
@@ -143,6 +146,22 @@ memory after final use and before their owners. There is no hidden retention,
 allocation registry, or library suballocator. Several live contexts can own
 independent private backing even when their firmware addresses are numerically
 equal.
+
+The HAL and compiler own the tile execution model: workgroup placement, core
+enable/disable/reset sequences, DMA descriptors, channel and lock protocols,
+program replacement, and idle policy. These operations are expressed through
+caller-owned target-native instructions and tile programs. Changing between
+finite dispatches and resident work queues does not require a different libamdf
+submission API. Native retirement establishes when the caller may reuse the
+submitted instruction storage. The caller keeps all indirectly referenced
+memory live until its tile and DMA users have finished; neither libamdf nor the
+HAL discovers or tracks those uses.
+
+Native context scheduling and placement constrain those execution models.
+Fixed physical backing does not grant exclusive ownership or uninterrupted
+residency. The caller queries the admitted scheduling mode and placement
+contract; native command completion alone does not establish preservation of
+application tile state across scheduling or reset events.
 
 Passive endpoint information contains architecture and compiler target identity.
 The activated device owns immutable native row/column metadata and effective

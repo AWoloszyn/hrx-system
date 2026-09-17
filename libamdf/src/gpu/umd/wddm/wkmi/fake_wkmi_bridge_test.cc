@@ -109,9 +109,16 @@ GpuKernelQueueDestroy(amdf_wkmi_bridge_gpu_kernel_queue_t*, uint32_t*) {
   return AMDF_WKMI_BRIDGE_RESULT_UNSUPPORTED;
 }
 
+amdf_status_t AMDF_WKMI_BRIDGE_CALL
+GpuBufferPrepareImport(amdf_wkmi_bridge_gpu_adapter_t*,
+                       const amdf_wkmi_bridge_gpu_buffer_import_info_t*,
+                       uint32_t*, uint32_t*, uint64_t*, uint64_t*) {
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
 const amdf_wkmi_bridge_api_t kApi = {
     sizeof(amdf_wkmi_bridge_api_t),
-    AMDF_WKMI_BRIDGE_ABI_VERSION_2,
+    AMDF_WKMI_BRIDGE_ABI_VERSION_3,
     GpuAdapterOpen,
     GpuAdapterClose,
     GpuAllocationQueryLayout,
@@ -119,6 +126,7 @@ const amdf_wkmi_bridge_api_t kApi = {
     GpuKernelQueueCreate,
     GpuKernelQueueSubmit,
     GpuKernelQueueDestroy,
+    GpuBufferPrepareImport,
 };
 
 }  // namespace
@@ -132,8 +140,8 @@ amdf_wkmi_bridge_query_api(uint32_t minimum_version, uint32_t maximum_version,
   if (state.query_result != AMDF_WKMI_BRIDGE_RESULT_SUCCESS) {
     return state.query_result;
   }
-  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_2 ||
-      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_2) {
+  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_3 ||
+      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_3) {
     return AMDF_WKMI_BRIDGE_RESULT_VERSION_MISMATCH;
   }
   *out_api = &kApi;

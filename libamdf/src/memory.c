@@ -47,7 +47,7 @@ static amdf_status_t amdf_external_memory_validate(
         return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
       }
       break;
-    case AMDF_EXTERNAL_MEMORY_TYPE_NT_HANDLE:
+    case AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE:
       if (value->payload.native_handle == NULL ||
           amdf_external_memory_provenance_is_valid(&value->provenance)) {
         return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -403,7 +403,7 @@ amdf_status_t AMDF_CALL amdf_memory_create(
     memory->info.memory_profile_ordinal = plan.profile.ordinal;
     *out_memory = memory;
   } else if (memory != NULL) {
-    const amdf_status_t release_status = amdf_memory_discard(memory);
+    const amdf_status_t release_status = amdf_memory_resource_destroy(memory);
     if (!amdf_status_is_ok(release_status)) status = release_status;
   }
   amdf_memory_scope_plan_deinitialize(&plan);
@@ -468,7 +468,7 @@ amdf_status_t AMDF_CALL amdf_memory_import(
     amdf_external_memory_release(inout_external_memory);
     *out_memory = memory;
   } else if (memory != NULL) {
-    const amdf_status_t release_status = amdf_memory_discard(memory);
+    const amdf_status_t release_status = amdf_memory_resource_destroy(memory);
     if (!amdf_status_is_ok(release_status)) status = release_status;
   }
   amdf_memory_scope_plan_deinitialize(&plan);
@@ -724,13 +724,5 @@ amdf_status_t AMDF_CALL amdf_memory_destroy(amdf_memory_t* memory) {
   if (memory == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  if (amdf_child_tracker_count(&memory->children) != 0) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
-  }
-  const amdf_status_t status = amdf_memory_release_native(memory);
-  if (amdf_status_is_ok(status)) {
-    const amdf_allocator_t host_allocator = memory->host_allocator;
-    amdf_free(host_allocator, memory);
-  }
-  return status;
+  return amdf_memory_resource_destroy(memory);
 }
