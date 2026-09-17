@@ -818,3 +818,39 @@ low.func.def target<x86.avx512.core>(@x86_target) @x86_rematerialize_constant_gp
   mov rcx, 7
   add rax, rcx
   ret
+
+// ====
+// RUN: emit x86-asm @x86_free_load_consumer strategy=resource-stall
+
+x86.target<avx512> @target
+
+low.func.def schedule(free) target<x86.avx512.core>(@target) @x86_free_load_consumer(%base: reg<x86.gpr64>, %lhs: reg<x86.zmm>, %rhs: reg<x86.zmm>) -> (reg<x86.zmm>, reg<x86.zmm>) asm {
+  %loaded = vmovdqu32.load %base {disp32 = 0}
+  %used = vpaddd %loaded, %loaded
+  %independent = vpaddd %lhs, %rhs
+  return %used, %independent
+}
+
+// ----
+  vmovdqu32 zmm2, [rax]
+  vpaddd zmm0, zmm0, zmm1
+  vpaddd zmm1, zmm2, zmm2
+  ret
+
+// ====
+// RUN: emit x86-asm @x86_locked_load_consumer strategy=resource-stall
+
+x86.target<avx512> @target
+
+low.func.def schedule(locked) target<x86.avx512.core>(@target) @x86_locked_load_consumer(%base: reg<x86.gpr64>, %lhs: reg<x86.zmm>, %rhs: reg<x86.zmm>) -> (reg<x86.zmm>, reg<x86.zmm>) asm {
+  %loaded = vmovdqu32.load %base {disp32 = 0}
+  %used = vpaddd %loaded, %loaded
+  %independent = vpaddd %lhs, %rhs
+  return %used, %independent
+}
+
+// ----
+  vmovdqu32 zmm2, [rax]
+  vpaddd zmm2, zmm2, zmm2
+  vpaddd zmm0, zmm0, zmm1
+  ret

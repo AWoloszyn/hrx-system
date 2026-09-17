@@ -94,13 +94,13 @@ remain source-level. The helper is inlined into the caller and participates in
 the caller's scheduling and allocation. This makes the first compiler
 divergence visible without freezing the entire kernel.
 
-`schedule(locked)` has a narrower role: it preserves authored order when exact
-order is itself the question under investigation. It is useful for isolating a
-scheduler or hazard discrepancy, but it is independent of writing a Low helper
-and independent of fixed physical allocation. A locked helper that matches the
-oracle shows that order matters somewhere in that fragment; it does not show
-that the maintained implementation or default scheduler has recovered the
-contract.
+[`schedule(locked)`](../../guide/functions-and-control.md#control-instruction-order)
+preserves authored order independently of fixed physical allocation. In this
+reconstruction workflow it also helps isolate a scheduler or hazard discrepancy.
+A locked helper that matches the oracle establishes a working ordering control;
+an unconstrained version needs its own behavior and performance comparison.
+Range fences offer intermediate control when only some ordering boundaries
+matter.
 
 After each raised boundary, compare both behavior and compiler evidence. A
 changed result identifies a semantic divergence. A passing result with a

@@ -14,5 +14,8 @@ package(
 
 loom_check_test_suite(
     name = "test",
-    srcs = ["schedule.loom-test"],
+    srcs = [
+        "schedule.loom-test",
+        "schedule_locked.loom-test",
+    ],
 )

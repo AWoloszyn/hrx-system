@@ -10,6 +10,7 @@ In this chapter, you will learn:
 
 - how definitions, declarations, exact calls, and returns compose;
 - how function modifiers state visibility, purity, placement, and inline policy;
+- how authored Low helpers control target instructions and their order;
 - how `scf.if` and `scf.for` produce SSA values;
 - why loop-carried state is explicit; and
 - when to request an implementation from a template family instead of naming
@@ -90,13 +91,14 @@ policy, the consuming pass decides from target, call graph, and cost evidence.
 
 ## Invoke an authored Low fragment
 
-`low.invoke` is the explicit boundary for a source function that delegates a
-value transformation to an authored `low.func.def`. It is a narrow migration
-boundary for lifting a reverse-engineered instruction fragment while loads,
-stores, launch geometry, and the surrounding algorithm move into source IR.
-The source-to-Low pipeline always inlines the helper; it does not introduce a
-runtime call or leave the boundary for a backend to interpret. The resulting
-packets normally participate in scheduling and allocation with the caller.
+[`low.invoke`](../reference/dialects/low/ops/invoke.md) lets a source function
+delegate part of its device implementation to an authored `low.func.def`.
+A helper can express a target instruction sequence while indexing, launch
+geometry, and the surrounding algorithm remain in source IR. On AMDGPU and
+x86, the compiler inlines these helpers before emission, and their instructions
+normally participate in scheduling and register allocation with the caller.
+The call's inline policy follows the same rules as other callable boundaries;
+`noinline` is rejected on targets that require Low calls to inline.
 
 The call site retains source types while the helper signature uses target-Low
 register types. Physical register classes are carrier-only: source semantic
@@ -106,24 +108,22 @@ second type inside the physical register carrier.
 ```loom
 amdgpu.target<gfx11-generic> @schedule_target
 
-low.func.def target<amdgpu.gfx11.generic.core>(@schedule_target)
-    @pack_pair(%even: reg<amdgpu.vgpr>, %odd: reg<amdgpu.vgpr>)
-    -> (reg<amdgpu.vgpr>) asm {
+low.func.def target<amdgpu.gfx11.generic.core>(@schedule_target) @pack_pair(%even: reg<amdgpu.vgpr>, %odd: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
   %selector = s_mov_b32 0x05040100
   %packed = v_perm_b32 %odd, %even, %selector
   return %packed
 }
 
 // %even and %odd are produced by ordinary source-level vector loads.
-%packed = low.invoke @pack_pair(%even, %odd)
-    : (vector<2xf16>, vector<2xf16>) -> (vector<2xf16>)
+%packed = low.invoke @pack_pair(%even, %odd) : (vector<2xf16>, vector<2xf16>) -> (vector<2xf16>)
 ```
 
 Lowering proves that each source operand and result maps exactly to the
-helper's register signature. The helper has virtual register allocation, one
-outer body block ending in `low.return`, and no function-entry resources or
-live-ins. A nested call has its own target and representation boundary and is
-therefore rejected instead of escaping into the caller accidentally.
+helper's register signature. Inlined helpers use virtual register allocation
+and receive inputs through arguments rather than `low.resource` or
+`low.live_in`. They may contain multiple control-flow blocks and nested Low
+calls. Each nested call must satisfy its own signature, target, and inline
+contracts; every returning path supplies the helper's declared results.
 
 Target compatibility is directional. A concrete `gfx1151` caller can invoke a
 helper authored for `gfx11-generic` because the concrete target satisfies the
@@ -141,31 +141,87 @@ The helper's authored argument predicates are preconditions: lowering resolves
 each predicate against the call-site operands and proves it from caller-visible
 facts. An unknown or contradicted precondition rejects the invocation. Only
 after every precondition is proven does lowering remap the predicates to the
-call-site values as `low.assume` identities and clone the body. The assumption
-therefore reifies an established fact for downstream local analysis; it never
+call-site values as `low.assume` identities. The assumption therefore reifies
+an established fact for downstream local analysis; it never
 creates a fact needed to justify the call. This is the explicit source-to-Low
 fact bridge for scalar dimensions, indices, and similar register arguments. A
 helper states every fact its implementation requires in its `where` clause;
 `low.invoke` does not serialize the caller's analysis table or turn
 opportunistically inferred facts into hidden callee assumptions.
 
-The schedule-free form is the ordinary `low.invoke` contract. It keeps SSA and
-target instruction constraints while allowing the scheduler to place the
-inlined packets among surrounding operations. This is also the useful boundary
-for incrementally replacing an oracle fragment with higher-level source.
+### Control instruction order
 
-`schedule(locked)` remains an experimental escape hatch when exact source order
-is itself part of an oracle. Inlining conservatively surrounds every authored
-operation with source-order scheduling boundaries, preventing surrounding
-source operations from interleaving with the fragment. Locked helpers are
-straight-line; nested regions are rejected because preserving only their outer
-position would not preserve their internal schedule. This heavy constraint is
-not evidence that a recovered fragment is ready to become maintained source.
+Authored Low uses a free schedule by default: SSA dependencies, memory effects,
+and target hazards constrain instruction placement, while independent work can
+move. This lets the compiler interleave a helper's instructions with its caller.
+Explicit scheduling controls let an author further constrain that placement.
 
-Acceptance uses the same default compiler pipeline as maintained Loom source
-and executes through `iree-test-loom`. Direct execution of prepared Low can be
-useful while reconstructing a schedule, but it establishes an oracle rather
-than proving that the maintained source survives compilation.
+[`low.schedule.fence`](../reference/dialects/low/ops/schedule-fence.md) separates
+reorderable ranges. Instructions before the fence stay before instructions
+after it; instructions within either range remain free to move. For example,
+this helper places two loads ahead of the arithmetic that consumes one:
+
+```loom
+amdgpu.target<gfx11-generic> @schedule_target
+
+low.func.def target<amdgpu.gfx11.generic.core>(@schedule_target) @load_ahead_of_scale(%byte_offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %weight: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %current = global_load_b32_saddr %byte_offset, %base
+  %future = global_load_b32_saddr %byte_offset, %base {offset = 4}
+  low.schedule.fence
+  %scaled = v_mul_f32 %current, %weight
+  return %scaled, %future
+}
+```
+
+The fence emits no instruction and performs no memory wait. The multiply still
+needs `%current`, so the compiler inserts any required operand-readiness wait;
+the fence itself does not require `%future` to complete.
+[`scf.schedule.fence`](../reference/dialects/scf/ops/schedule-fence.md) supplies
+the corresponding boundary in source IR.
+
+`schedule(locked)` on a Low function or kernel preserves authored order within
+each block under every scheduling strategy. Here the second load stays after
+the multiply even though its address is already available:
+
+```loom
+amdgpu.target<gfx11-generic> @schedule_target
+
+low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@schedule_target) @scale_then_load(%byte_offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %weight: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %current = global_load_b32_saddr %byte_offset, %base
+  %scaled = v_mul_f32 %current, %weight
+  %future = global_load_b32_saddr %byte_offset, %base {offset = 4}
+  return %scaled, %future
+}
+```
+
+This contract also survives inlining through `low.invoke`. Inlining preserves
+each block's order and keeps surrounding instructions outside the locked
+sequence. Locked helpers can have control-flow blocks; operations with nested
+regions inside a locked helper are rejected. Register allocation remains
+virtual unless separately constrained, and required copies and hazard waits
+still apply. Separately locked AMDGPU instructions keep separate issue slots
+instead of being combined into a dual-issue instruction.
+
+These controls govern compiler instruction order. They do not synchronize
+lanes, publish shared-memory writes, or establish completion before storage
+reuse. Native AMDGPU and x86 emission preserve the requested order; hardware
+may still execute independent work concurrently or out of order. Intermediate
+artifacts such as SPIR-V pass through another compiler, so their textual order
+does not establish final native instruction order.
+
+The [checked WMMA example](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/low_schedule.loom)
+compares free, fenced, locked, and explicitly overlapped two-tile schedules.
+After downloading `low_schedule.loom`, run its four correctness cases on an
+AMDGPU device supporting the example's GFX11 WMMA instructions:
+
+```shell
+iree-test-loom low_schedule.loom --device=amdgpu
+```
+
+Numerical checks establish that every schedule consumes the intended tiles.
+[Native-code and compile-report inspection](../workflows/tune-loop-schedules.md#check-that-read-ahead-survives-native-code-generation)
+then establishes which loads remain pending, where waits occur, and how the
+chosen order changes register pressure.
 
 ## Conditionals can return values
 

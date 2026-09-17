@@ -21,6 +21,10 @@ extern "C" {
 // this function returns. Diagnosed schedule failures are reported through
 // |options->emitter| and recorded in |out_table->error_count|; status failures
 // are reserved for infrastructure failures.
+//
+// A schedule(locked) function or kernel preserves authored order within each
+// block under every strategy. Its nodes retain source-order boundaries for
+// downstream packet formation; dependencies and target hazards still apply.
 iree_status_t loom_low_schedule_function(
     const loom_low_function_model_t* model,
     const loom_low_schedule_options_t* options, iree_arena_allocator_t* arena,

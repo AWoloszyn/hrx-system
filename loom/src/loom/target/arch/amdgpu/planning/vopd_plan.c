@@ -1295,6 +1295,13 @@ static bool loom_amdgpu_vopd_read_component(
     loom_amdgpu_vopd_candidate_component_t* out_component) {
   *out_component = (loom_amdgpu_vopd_candidate_component_t){0};
 
+  // A source-order boundary owns its position even when adjacent packets
+  // could otherwise share one issue slot.
+  if (iree_any_bit_set(packet->node->flags,
+                       LOOM_LOW_SCHEDULE_NODE_FLAG_SOURCE_ORDER_BOUNDARY)) {
+    return false;
+  }
+
   const loom_low_descriptor_set_t* descriptor_set =
       builder->schedule->target.descriptor_set;
   const uint32_t descriptor_ordinal =

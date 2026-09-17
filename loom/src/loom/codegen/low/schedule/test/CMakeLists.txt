@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "schedule.loom-test"
+    "schedule_locked.loom-test"
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
