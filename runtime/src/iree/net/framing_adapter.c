@@ -27,6 +27,15 @@ struct iree_net_framing_adapter_t {
   iree_net_frame_accumulator_t accumulator;
 };
 
+// Retains a transient copied prefix through carrier send completion.
+typedef struct iree_net_framing_adapter_send_t {
+  // Allocator owning this send context and its trailing storage.
+  iree_allocator_t host_allocator;
+
+  // User callback invoked after this context has been released.
+  iree_net_send_completion_callback_t completion_callback;
+} iree_net_framing_adapter_send_t;
+
 // Called by frame_accumulator when a complete frame is ready.
 // Bridges a copy-path frame to independently owned host storage.
 static iree_status_t iree_net_framing_adapter_on_frame_complete(
@@ -140,15 +149,77 @@ static iree_status_t iree_net_framing_adapter_deactivate(
   return iree_ok_status();
 }
 
+static void iree_net_framing_adapter_send_complete(
+    void* user_data, iree_status_t status, iree_host_size_t bytes_transferred) {
+  iree_net_framing_adapter_send_t* send =
+      (iree_net_framing_adapter_send_t*)user_data;
+  iree_allocator_t host_allocator = send->host_allocator;
+  iree_net_send_completion_callback_t completion_callback =
+      send->completion_callback;
+  iree_allocator_free(host_allocator, send);
+  completion_callback.fn(completion_callback.user_data, status,
+                         bytes_transferred);
+}
+
 static iree_status_t iree_net_framing_adapter_send(
     void* self, const iree_net_message_endpoint_send_params_t* params) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)self;
+  if (iree_const_byte_span_is_empty(params->copied_prefix)) {
+    iree_net_send_params_t carrier_params = {
+        .data = params->data,
+        .flags = IREE_NET_SEND_FLAG_NONE,
+        .completion_callback = params->completion_callback,
+    };
+    return iree_net_carrier_send(adapter->carrier, &carrier_params);
+  }
+
+  iree_host_size_t span_count = 0;
+  if (!iree_host_size_checked_add(params->data.count, 1, &span_count)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "copied-prefix span count overflow");
+  }
+  iree_host_size_t spans_offset = 0;
+  iree_host_size_t prefix_offset = 0;
+  iree_host_size_t allocation_size = 0;
+  IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
+      sizeof(iree_net_framing_adapter_send_t), &allocation_size,
+      IREE_STRUCT_FIELD_ALIGNED(span_count, iree_async_span_t,
+                                iree_alignof(iree_async_span_t), &spans_offset),
+      IREE_STRUCT_FIELD_ALIGNED(params->copied_prefix.data_length, uint8_t,
+                                iree_alignof(uint8_t), &prefix_offset)));
+
+  iree_net_framing_adapter_send_t* send = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc_uninitialized(
+      adapter->host_allocator, allocation_size, (void**)&send));
+  send->host_allocator = adapter->host_allocator;
+  send->completion_callback = params->completion_callback;
+  iree_async_span_t* spans =
+      (iree_async_span_t*)((uint8_t*)send + spans_offset);
+  uint8_t* prefix_data = (uint8_t*)send + prefix_offset;
+  memcpy(prefix_data, params->copied_prefix.data,
+         params->copied_prefix.data_length);
+  spans[0] =
+      iree_async_span_from_ptr(prefix_data, params->copied_prefix.data_length);
+  if (params->data.count > 0) {
+    memcpy(&spans[1], params->data.values,
+           params->data.count * sizeof(params->data.values[0]));
+  }
+
   iree_net_send_params_t carrier_params = {
-      .data = params->data,
+      .data = iree_async_span_list_make(spans, span_count),
       .flags = IREE_NET_SEND_FLAG_NONE,
-      .completion_callback = params->completion_callback,
+      .completion_callback =
+          {
+              .fn = iree_net_framing_adapter_send_complete,
+              .user_data = send,
+          },
   };
-  return iree_net_carrier_send(adapter->carrier, &carrier_params);
+  iree_status_t status =
+      iree_net_carrier_send(adapter->carrier, &carrier_params);
+  if (!iree_status_is_ok(status)) {
+    iree_allocator_free(adapter->host_allocator, send);
+  }
+  return status;
 }
 
 static iree_net_carrier_send_budget_t

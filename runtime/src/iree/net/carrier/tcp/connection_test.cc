@@ -460,10 +460,12 @@ class TcpConnectionTest : public ::testing::Test {
     return result_ptr;
   }
 
-  iree_status_t SendMessage(iree_net_message_endpoint_t endpoint,
-                            iree_async_span_list_t data,
-                            SendResult* send_result) {
+  iree_status_t SendMessage(
+      iree_net_message_endpoint_t endpoint, iree_async_span_list_t data,
+      SendResult* send_result,
+      iree_const_byte_span_t copied_prefix = iree_const_byte_span_empty()) {
     iree_net_message_endpoint_send_params_t params = {
+        copied_prefix,
         data,
         {SendCompleted, send_result},
     };
@@ -556,7 +558,8 @@ TEST_F(TcpConnectionTest, RoutesOrdinalsAndHandlesScatterOverflow) {
 
   std::array<uint8_t, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS> bytes = {};
   std::array<iree_async_span_t, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS> spans;
-  std::string expected;
+  char prefix[] = "prefix-";
+  std::string expected(prefix, sizeof(prefix) - 1);
   for (iree_host_size_t i = 0; i < spans.size(); ++i) {
     bytes[i] = static_cast<uint8_t>('a' + i);
     spans[i] = iree_async_span_from_ptr(&bytes[i], 1);
@@ -566,7 +569,8 @@ TEST_F(TcpConnectionTest, RoutesOrdinalsAndHandlesScatterOverflow) {
   scatter_result.is_polling = &is_polling_;
   IREE_ASSERT_OK(SendMessage(
       client_endpoint_1, iree_async_span_list_make(spans.data(), spans.size()),
-      &scatter_result));
+      &scatter_result, iree_make_const_byte_span(prefix, sizeof(prefix) - 1)));
+  prefix[0] = 'X';
 
   constexpr char kDirectPayload[] = "direct endpoint zero";
   void* direct_data = nullptr;

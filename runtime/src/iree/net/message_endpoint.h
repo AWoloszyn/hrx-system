@@ -95,8 +95,12 @@ typedef struct iree_net_message_endpoint_callbacks_t {
 
 // Parameters for send operations.
 typedef struct iree_net_message_endpoint_send_params_t {
-  // Scatter-gather list of message data to send.
+  // Transient leading bytes copied before the send call returns.
+  iree_const_byte_span_t copied_prefix;
+
+  // Scatter-gather message data borrowed through terminal completion.
   iree_async_span_list_t data;
+
   // Required callback invoked when the send completes.
   iree_net_send_completion_callback_t completion_callback;
 } iree_net_message_endpoint_send_params_t;
@@ -192,19 +196,24 @@ static inline iree_status_t iree_net_message_endpoint_deactivate(
 
 // Sends a message via the endpoint.
 //
-// The data in |params->data| comprises one endpoint-defined message.
+// |params->copied_prefix| followed by |params->data| comprises one
+// endpoint-defined message. The prefix may reference transient storage and is
+// captured before this call returns. Data buffers remain caller-owned until the
+// completion callback fires. Either part may be empty, but the complete message
+// must contain at least one byte.
+//
 // Connection-facing endpoints preserve the message boundary while hiding any
 // transport framing they add. Lower-level transport endpoints may define a
 // message as a complete wire frame and send the bytes unchanged.
-// Messages must contain at least one byte across a non-empty span list.
 //
 // An OK return guarantees exactly one terminal completion through
 // |params->completion_callback|. The callback may race with the return on
-// another proactor thread. A non-OK return means the callback will not fire.
+// another proactor thread. Its byte count covers the complete logical message,
+// including the copied prefix. A non-OK return means the callback will not
+// fire.
 //
-// The data buffers must remain valid until the completion callback fires.
-// The span descriptor array itself is needed only for the duration of this
-// call.
+// The prefix and span descriptor array are needed only for the duration of this
+// call. The data buffers must remain valid until the completion callback fires.
 static inline iree_status_t iree_net_message_endpoint_send(
     iree_net_message_endpoint_t endpoint,
     const iree_net_message_endpoint_send_params_t* params) {
@@ -216,11 +225,15 @@ static inline iree_status_t iree_net_message_endpoint_send(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "send completion callback is required");
   }
-  if (params->data.count == 0 || !params->data.values) {
+  if (params->copied_prefix.data_length > 0 && !params->copied_prefix.data) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "send requires a non-empty span list");
+                            "copied send prefix has null storage");
   }
-  iree_host_size_t total_length = 0;
+  if (params->data.count > 0 && !params->data.values) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "send span list has null storage");
+  }
+  iree_host_size_t total_length = params->copied_prefix.data_length;
   for (iree_host_size_t i = 0; i < params->data.count; ++i) {
     if (!iree_host_size_checked_add(total_length, params->data.values[i].length,
                                     &total_length)) {

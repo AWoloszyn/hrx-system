@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <memory>
@@ -500,20 +501,20 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
 
   char client_prefix[] = "client-";
   char client_suffix[] = "message";
-  iree_async_span_t client_spans[] = {
-      iree_async_span_from_ptr(client_prefix, sizeof(client_prefix) - 1),
-      iree_async_span_from_ptr(client_suffix, sizeof(client_suffix) - 1),
-  };
+  iree_async_span_t client_span =
+      iree_async_span_from_ptr(client_suffix, sizeof(client_suffix) - 1);
   client_send_.current_poll_side = &current_poll_side_;
   client_send_.expected_poll_side = kClientPolling;
   client_send_.expected_bytes =
       (sizeof(client_prefix) - 1) + (sizeof(client_suffix) - 1);
   iree_net_message_endpoint_send_params_t send_params = {
-      /*.data=*/iree_async_span_list_make(client_spans,
-                                          IREE_ARRAYSIZE(client_spans)),
+      /*.copied_prefix=*/
+      iree_make_const_byte_span(client_prefix, sizeof(client_prefix) - 1),
+      /*.data=*/iree_async_span_list_make(&client_span, 1),
       /*.completion_callback=*/client_send_.callback(),
   };
   IREE_ASSERT_OK(iree_net_message_endpoint_send(client_endpoint, &send_params));
+  client_prefix[0] = 'X';
   PollImmediate(client_proactor_, kClientPolling);
   PollUntil(server_proactor_, kServerPolling,
             [&] { return server_messages_.messages.size() == 1; });
@@ -523,16 +524,17 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
   EXPECT_EQ(client_send_.status_code, IREE_STATUS_OK);
 
   char server_payload[] = "server-message";
-  iree_async_span_t server_span =
-      iree_async_span_from_ptr(server_payload, sizeof(server_payload) - 1);
   server_send_.current_poll_side = &current_poll_side_;
   server_send_.expected_poll_side = kServerPolling;
   server_send_.expected_bytes = sizeof(server_payload) - 1;
   send_params = {
-      /*.data=*/iree_async_span_list_make(&server_span, 1),
+      /*.copied_prefix=*/
+      iree_make_const_byte_span(server_payload, sizeof(server_payload) - 1),
+      /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/server_send_.callback(),
   };
   IREE_ASSERT_OK(iree_net_message_endpoint_send(server_endpoint, &send_params));
+  server_payload[0] = 'X';
   PollImmediate(server_proactor_, kServerPolling);
   PollUntil(client_proactor_, kClientPolling,
             [&] { return client_messages_.messages.size() == 1; });
@@ -542,6 +544,48 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
   EXPECT_EQ(server_send_.status_code, IREE_STATUS_OK);
   EXPECT_EQ(client_messages_.error_count, 0);
   EXPECT_EQ(server_messages_.error_count, 0);
+}
+
+TEST_F(TransportTest, CopiesLargeTransientPrefixWithoutSizeCliff) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+
+  server_messages_.current_poll_side = &current_poll_side_;
+  server_messages_.expected_poll_side = kServerPolling;
+  iree_net_message_endpoint_set_callbacks(server_endpoint,
+                                          server_messages_.callbacks());
+  client_messages_.current_poll_side = &current_poll_side_;
+  client_messages_.expected_poll_side = kClientPolling;
+  iree_net_message_endpoint_set_callbacks(client_endpoint,
+                                          client_messages_.callbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+
+  std::string prefix(8 * 1024 + 1, 'p');
+  const std::string expected = prefix;
+  SendState send_state;
+  send_state.current_poll_side = &current_poll_side_;
+  send_state.expected_poll_side = kClientPolling;
+  send_state.expected_bytes = prefix.size();
+  iree_net_message_endpoint_send_params_t send_params = {
+      /*.copied_prefix=*/
+      iree_make_const_byte_span(prefix.data(), prefix.size()),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/send_state.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(client_endpoint, &send_params));
+  std::fill(prefix.begin(), prefix.end(), 'x');
+
+  PollImmediate(client_proactor_, kClientPolling);
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return server_messages_.messages.size() == 1; });
+  EXPECT_EQ(server_messages_.messages[0], expected);
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return send_state.callback_count == 1; });
+  EXPECT_EQ(send_state.status_code, IREE_STATUS_OK);
 }
 
 TEST_F(TransportTest, DeactivationCancelsPendingEndpointReadyCallback) {

@@ -96,7 +96,7 @@ typedef struct iree_net_tcp_send_state_t {
   // Stable transport header retained through asynchronous completion.
   uint8_t header[IREE_NET_TCP_FRAME_HEADER_SIZE];
 
-  // Connection-owned frame for a direct write or scatter overflow copy.
+  // Connection-owned copied prefix or complete staged frame.
   uint8_t* staging_buffer;
 } iree_net_tcp_send_state_t;
 
@@ -305,13 +305,13 @@ static iree_status_t iree_net_tcp_resolve_frame_size(
   return iree_ok_status();
 }
 
-static iree_host_size_t iree_net_tcp_payload_length(
-    iree_async_span_list_t data) {
-  iree_host_size_t payload_length = 0;
-  for (iree_host_size_t i = 0; i < data.count; ++i) {
-    payload_length += data.values[i].length;
+static iree_host_size_t iree_net_tcp_message_length(
+    const iree_net_message_endpoint_send_params_t* params) {
+  iree_host_size_t message_length = params->copied_prefix.data_length;
+  for (iree_host_size_t i = 0; i < params->data.count; ++i) {
+    message_length += params->data.values[i].length;
   }
-  return payload_length;
+  return message_length;
 }
 
 //===----------------------------------------------------------------------===//
@@ -899,8 +899,7 @@ static iree_status_t iree_net_tcp_endpoint_send(
     void* self, const iree_net_message_endpoint_send_params_t* params) {
   iree_net_tcp_endpoint_t* endpoint = (iree_net_tcp_endpoint_t*)self;
   iree_net_tcp_connection_t* connection = endpoint->connection;
-  const iree_host_size_t payload_length =
-      iree_net_tcp_payload_length(params->data);
+  const iree_host_size_t payload_length = iree_net_tcp_message_length(params);
   uint32_t frame_size = 0;
   IREE_RETURN_IF_ERROR(iree_net_tcp_calculate_frame_size(
       connection, payload_length, &frame_size));
@@ -914,18 +913,43 @@ static iree_status_t iree_net_tcp_endpoint_send(
                                    endpoint->ordinal);
 
   iree_status_t status = iree_ok_status();
+  const bool has_copied_prefix =
+      !iree_const_byte_span_is_empty(params->copied_prefix);
+  const iree_host_size_t framing_span_count = has_copied_prefix ? 2 : 1;
   const bool fits_scatter_gather =
-      params->data.count < connection->max_wire_spans &&
-      params->data.count + 1 <= IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS;
+      connection->max_wire_spans >= framing_span_count &&
+      params->data.count <= connection->max_wire_spans - framing_span_count &&
+      IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS >= framing_span_count &&
+      params->data.count <=
+          IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS - framing_span_count;
   if (fits_scatter_gather) {
+    if (has_copied_prefix) {
+      status = iree_allocator_malloc_uninitialized(
+          connection->base.host_allocator, params->copied_prefix.data_length,
+          (void**)&send_state->staging_buffer);
+    }
+    if (iree_status_is_ok(status) && has_copied_prefix) {
+      memcpy(send_state->staging_buffer, params->copied_prefix.data,
+             params->copied_prefix.data_length);
+    }
+  }
+  if (iree_status_is_ok(status) && fits_scatter_gather) {
     iree_async_span_t wire_spans[IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS];
-    wire_spans[0] = iree_async_span_from_ptr(send_state->header,
-                                             IREE_NET_TCP_FRAME_HEADER_SIZE);
-    memcpy(&wire_spans[1], params->data.values,
-           params->data.count * sizeof(params->data.values[0]));
+    iree_host_size_t wire_span_count = 0;
+    wire_spans[wire_span_count++] = iree_async_span_from_ptr(
+        send_state->header, IREE_NET_TCP_FRAME_HEADER_SIZE);
+    if (has_copied_prefix) {
+      wire_spans[wire_span_count++] = iree_async_span_from_ptr(
+          send_state->staging_buffer, params->copied_prefix.data_length);
+    }
+    if (params->data.count > 0) {
+      memcpy(&wire_spans[wire_span_count], params->data.values,
+             params->data.count * sizeof(params->data.values[0]));
+      wire_span_count += params->data.count;
+    }
     send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_IN_FLIGHT;
     iree_net_message_endpoint_send_params_t wire_params = {
-        .data = iree_async_span_list_make(wire_spans, params->data.count + 1),
+        .data = iree_async_span_list_make(wire_spans, wire_span_count),
         .completion_callback =
             {
                 .fn = iree_net_tcp_endpoint_send_complete,
@@ -934,7 +958,7 @@ static iree_status_t iree_net_tcp_endpoint_send(
     };
     status =
         iree_net_message_endpoint_send(connection->wire_endpoint, &wire_params);
-  } else {
+  } else if (iree_status_is_ok(status)) {
     for (iree_host_size_t i = 0;
          i < params->data.count && iree_status_is_ok(status); ++i) {
       status = iree_net_tcp_validate_copy_span(params->data.values[i]);
@@ -949,6 +973,11 @@ static iree_status_t iree_net_tcp_endpoint_send(
              IREE_NET_TCP_FRAME_HEADER_SIZE);
       uint8_t* target =
           send_state->staging_buffer + IREE_NET_TCP_FRAME_HEADER_SIZE;
+      if (has_copied_prefix) {
+        memcpy(target, params->copied_prefix.data,
+               params->copied_prefix.data_length);
+        target += params->copied_prefix.data_length;
+      }
       for (iree_host_size_t i = 0; i < params->data.count; ++i) {
         const iree_async_span_t span = params->data.values[i];
         if (span.length > 0) {

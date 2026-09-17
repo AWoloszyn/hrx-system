@@ -352,11 +352,12 @@ static iree_status_t iree_net_loopback_deactivate(
 }
 
 static iree_status_t iree_net_loopback_calculate_payload_length(
-    iree_async_span_list_t data, iree_host_size_t* out_payload_length) {
-  iree_host_size_t payload_length = 0;
-  for (iree_host_size_t i = 0; i < data.count; ++i) {
-    if (!iree_host_size_checked_add(payload_length, data.values[i].length,
-                                    &payload_length)) {
+    const iree_net_message_endpoint_send_params_t* params,
+    iree_host_size_t* out_payload_length) {
+  iree_host_size_t payload_length = params->copied_prefix.data_length;
+  for (iree_host_size_t i = 0; i < params->data.count; ++i) {
+    if (!iree_host_size_checked_add(
+            payload_length, params->data.values[i].length, &payload_length)) {
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "loopback message length overflow");
     }
@@ -378,6 +379,11 @@ static iree_status_t iree_net_loopback_send_contiguous_locked(
   uint8_t* frame_data = (uint8_t*)wire_data;
   iree_net_loopback_encode_frame_header(frame_data, frame_length);
   uint8_t* payload_data = frame_data + IREE_NET_LOOPBACK_FRAME_HEADER_SIZE;
+  if (!iree_const_byte_span_is_empty(params->copied_prefix)) {
+    memcpy(payload_data, params->copied_prefix.data,
+           params->copied_prefix.data_length);
+    payload_data += params->copied_prefix.data_length;
+  }
   for (iree_host_size_t i = 0; i < params->data.count; ++i) {
     const iree_async_span_t span = params->data.values[i];
     if (!iree_async_span_is_cpu_accessible(span)) {
@@ -426,8 +432,8 @@ static iree_status_t iree_net_loopback_send(
   iree_net_loopback_framed_endpoint_t* endpoint =
       (iree_net_loopback_framed_endpoint_t*)self;
   iree_host_size_t payload_length = 0;
-  IREE_RETURN_IF_ERROR(iree_net_loopback_calculate_payload_length(
-      params->data, &payload_length));
+  IREE_RETURN_IF_ERROR(
+      iree_net_loopback_calculate_payload_length(params, &payload_length));
   uint32_t frame_length = 0;
   IREE_RETURN_IF_ERROR(
       iree_net_loopback_calculate_frame_length(payload_length, &frame_length));
@@ -450,6 +456,7 @@ static iree_status_t iree_net_loopback_send(
     send_state->payload_length = payload_length;
     send_state->completion_callback = params->completion_callback;
     const bool fits_scatter_gather =
+        iree_const_byte_span_is_empty(params->copied_prefix) &&
         params->data.count < endpoint->max_wire_spans &&
         params->data.count + 1 <= IREE_NET_LOOPBACK_INLINE_WIRE_SPAN_COUNT;
     if (fits_scatter_gather) {

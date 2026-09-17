@@ -243,6 +243,7 @@ TEST_F(LoopbackConnectionTest,
   send_zero.current_poll_side = &current_poll_side_;
   send_zero.expected_poll_side = kClientPolling;
   iree_net_message_endpoint_send_params_t send_params = {
+      /*.copied_prefix=*/iree_const_byte_span_empty(),
       /*.data=*/iree_async_span_list_make(spans, IREE_ARRAYSIZE(spans)),
       /*.completion_callback=*/send_zero.callback(),
   };
@@ -257,6 +258,7 @@ TEST_F(LoopbackConnectionTest,
   send_one.current_poll_side = &current_poll_side_;
   send_one.expected_poll_side = kClientPolling;
   send_params = {
+      /*.copied_prefix=*/iree_const_byte_span_empty(),
       /*.data=*/iree_async_span_list_make(&endpoint_one_span, 1),
       /*.completion_callback=*/send_one.callback(),
   };
@@ -303,6 +305,7 @@ TEST_F(LoopbackConnectionTest,
 
   char first[] = "copied-";
   char second[] = "overflow";
+  char prefix[] = "prefix-";
   iree_async_span_t spans[] = {
       iree_async_span_from_ptr(first, sizeof(first) - 1),
       iree_async_span_from_ptr(second, sizeof(second) - 1),
@@ -311,18 +314,21 @@ TEST_F(LoopbackConnectionTest,
   copied_send.current_poll_side = &current_poll_side_;
   copied_send.expected_poll_side = kClientPolling;
   iree_net_message_endpoint_send_params_t params = {
+      /*.copied_prefix=*/
+      iree_make_const_byte_span(prefix, sizeof(prefix) - 1),
       /*.data=*/iree_async_span_list_make(spans, IREE_ARRAYSIZE(spans)),
       /*.completion_callback=*/copied_send.callback(),
   };
   IREE_ASSERT_OK(iree_net_message_endpoint_send(client_endpoint, &params));
+  prefix[0] = 'X';
   first[0] = 'X';
   PollUntil(server_proactor_, kServerPolling,
             [&] { return server_messages.messages.size() == 1; });
-  EXPECT_EQ(server_messages.messages[0], "copied-overflow");
+  EXPECT_EQ(server_messages.messages[0], "prefix-copied-overflow");
   PollUntil(client_proactor_, kClientPolling,
             [&] { return copied_send.callback_count == 1; });
   EXPECT_EQ(copied_send.bytes_transferred,
-            (sizeof(first) - 1) + (sizeof(second) - 1));
+            (sizeof(prefix) - 1) + (sizeof(first) - 1) + (sizeof(second) - 1));
 
   void* direct_data = nullptr;
   iree_net_carrier_send_handle_t direct_handle = 0;
