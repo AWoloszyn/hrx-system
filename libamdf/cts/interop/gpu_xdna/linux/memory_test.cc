@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <array>
@@ -1109,6 +1111,154 @@ TEST_F(GpuXdnaMemoryInteropTest,
   EXPECT_EQ(caller_pages_.pointer[2 + create_info.byte_length], 0x39);
   EXPECT_EQ(caller_pages_.pointer[3 + create_info.byte_length], 0x7B);
   std::memset(caller_pages_.pointer, 0x45, reservation_length);
+}
+
+TEST_F(GpuXdnaMemoryInteropTest,
+       RollsBackRejectedRegistrationAndReusesCallerPages) {
+  amdf_memory_profile_t profile = {};
+  amdf_memory_access_capabilities_t capabilities[2] = {};
+  ASSERT_NO_FATAL_FAILURE(FindJointProfile(AMDF_MEMORY_PROFILE_ROLE_REGISTER,
+                                           &profile, capabilities));
+  amdf_gpu_device_info_t gpu_capabilities = {};
+  gpu_capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
+  gpu_capabilities.structure_size = sizeof(gpu_capabilities);
+  ASSERT_EQ(gpu_api_->device_query_info(gpu_device_, &gpu_capabilities),
+            AMDF_STATUS_OK);
+  if ((gpu_capabilities.features & AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION) ==
+      0) {
+    EXPECT_EQ(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+    GTEST_SKIP() << "GPU host registration is unavailable for this lifetime";
+  }
+  ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+  ASSERT_EQ(profile.registration.registered_host_cacheability,
+            AMDF_HOST_CACHEABILITY_WRITE_BACK);
+
+  const long native_page_size = sysconf(_SC_PAGESIZE);
+  ASSERT_GT(native_page_size, 0);
+  const size_t page_size = static_cast<size_t>(native_page_size);
+  const std::array<size_t, 2> byte_lengths = {page_size, 16 * page_size};
+  const size_t reservation_length = byte_lengths.back() + 2 * page_size;
+  void* pages = mmap(nullptr, reservation_length, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  ASSERT_NE(pages, MAP_FAILED);
+  caller_pages_.pointer = static_cast<uint8_t*>(pages);
+  caller_pages_.byte_length = reservation_length;
+  std::vector<uint8_t> expected(reservation_length, 0xA5);
+  std::memcpy(pages, expected.data(), expected.size());
+
+  struct rlimit saved_limit = {};
+  ASSERT_EQ(getrlimit(RLIMIT_MEMLOCK, &saved_limit), 0);
+  struct rlimit restricted_limit = saved_limit;
+  // Keep mlock permission while admitting zero complete pages. Only this
+  // process's soft limit changes; restore it before evaluating each result.
+  restricted_limit.rlim_cur = 1;
+  ASSERT_EQ(setrlimit(RLIMIT_MEMLOCK, &restricted_limit), 0);
+  // Sanitizer interceptors make libc mlock/munlock no-ops. Query the actual
+  // kernel quota so sanitized runs do not appear to have privileged bypass.
+  const long lock_result = syscall(SYS_mlock, pages, page_size);
+  const int lock_error = errno;
+  const int restore_result = setrlimit(RLIMIT_MEMLOCK, &saved_limit);
+  if (lock_result == 0) {
+    ASSERT_EQ(syscall(SYS_munlock, pages, page_size), 0);
+    ASSERT_EQ(restore_result, 0);
+    GTEST_SKIP() << "memlock quota is bypassed by this process's privileges";
+  }
+  ASSERT_EQ(restore_result, 0);
+  ASSERT_EQ(lock_result, -1);
+  ASSERT_EQ(lock_error, ENOMEM);
+
+  amdf_memory_create_info_t create_info = {
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO,
+      .structure_size = sizeof(create_info),
+      .memory_profile_ordinal = profile.ordinal,
+      .access_count = 1,
+      .required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE,
+      .byte_length = byte_lengths.back(),
+      .minimum_alignment = profile.registration.minimum_alignment,
+      .registered_host_pointer = caller_pages_.pointer + page_size,
+      .accesses = &gpu_access_,
+      .registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
+  };
+  // GPU USERPTR registration succeeds under this quota. With GPU first in
+  // the joint request, an XDNA quota rejection must unwind that preparation.
+  ASSERT_EQ(setrlimit(RLIMIT_MEMLOCK, &restricted_limit), 0);
+  const amdf_status_t control_status =
+      api_->memory_create(system_scope_, &create_info, &gpu_memory_);
+  ASSERT_EQ(setrlimit(RLIMIT_MEMLOCK, &saved_limit), 0);
+  ASSERT_EQ(control_status, AMDF_STATUS_OK);
+  ASSERT_EQ(api_->memory_destroy(std::exchange(gpu_memory_, nullptr)),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(std::memcmp(pages, expected.data(), expected.size()), 0);
+
+  for (uint32_t gpu_ordinal = 0; gpu_ordinal < 2; ++gpu_ordinal) {
+    SCOPED_TRACE(gpu_ordinal);
+    amdf_memory_device_access_t devices[2] = {};
+    devices[gpu_ordinal] = gpu_access_;
+    devices[1 - gpu_ordinal] = xdna_access_;
+    ASSERT_EQ(
+        api_->memory_scope_query_device_profile(
+            system_scope_, profile.ordinal, 2, devices, &profile, capabilities),
+        AMDF_STATUS_OK);
+    create_info.access_count = 2;
+    create_info.accesses = devices;
+    for (size_t byte_length : byte_lengths) {
+      SCOPED_TRACE(byte_length);
+      create_info.byte_length = byte_length;
+      for (uint32_t generation = 0; generation < 3; ++generation) {
+        SCOPED_TRACE(generation);
+        auto* const sentinel = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
+        amdf_memory_t* output = sentinel;
+        ASSERT_EQ(setrlimit(RLIMIT_MEMLOCK, &restricted_limit), 0);
+        const amdf_status_t status =
+            api_->memory_create(system_scope_, &create_info, &output);
+        const int restored = setrlimit(RLIMIT_MEMLOCK, &saved_limit);
+        if (amdf_status_is_ok(status)) {
+          gpu_memory_ = output;
+        }
+        ASSERT_EQ(restored, 0);
+        ASSERT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_ERRNO);
+        ASSERT_EQ(amdf_status_code(status), ENOMEM);
+        ASSERT_EQ(output, sentinel);
+        ASSERT_EQ(std::memcmp(pages, expected.data(), expected.size()), 0);
+
+        // Reuse the same caller bytes immediately after the failed transaction.
+        // Registration and its host view must expose only the new generation.
+        std::memset(expected.data() + page_size, 0x30 + generation,
+                    byte_length);
+        std::memcpy(pages, expected.data(), expected.size());
+        ASSERT_EQ(
+            api_->memory_create(system_scope_, &create_info, &gpu_memory_),
+            AMDF_STATUS_OK);
+        uint64_t gpu_address = 0;
+        uint64_t xdna_address = 0;
+        ASSERT_EQ(
+            api_->memory_query_address(gpu_memory_, gpu_ordinal,
+                                       AMDF_MEMORY_ADDRESS_GPU, &gpu_address),
+            AMDF_STATUS_OK);
+        ASSERT_EQ(api_->memory_query_address(gpu_memory_, 1 - gpu_ordinal,
+                                             AMDF_MEMORY_ADDRESS_XDNA_DMA,
+                                             &xdna_address),
+                  AMDF_STATUS_OK);
+        EXPECT_NE(gpu_address, 0u);
+        EXPECT_NE(xdna_address, 0u);
+        amdf_host_mapping_info_t mapping = {};
+        ASSERT_EQ(Map(gpu_memory_, byte_length, &gpu_mapping_, &mapping),
+                  AMDF_STATUS_OK);
+        ASSERT_EQ(mapping.pointer, create_info.registered_host_pointer);
+        ASSERT_EQ(mapping.byte_length, byte_length);
+        ASSERT_EQ(std::memcmp(pages, expected.data(), expected.size()), 0);
+        std::memset(mapping.pointer, 0x60 + generation, byte_length);
+        std::memset(expected.data() + page_size, 0x60 + generation,
+                    byte_length);
+        ASSERT_EQ(
+            api_->host_mapping_destroy(std::exchange(gpu_mapping_, nullptr)),
+            AMDF_STATUS_OK);
+        ASSERT_EQ(api_->memory_destroy(std::exchange(gpu_memory_, nullptr)),
+                  AMDF_STATUS_OK);
+        ASSERT_EQ(std::memcmp(pages, expected.data(), expected.size()), 0);
+      }
+    }
+  }
 }
 
 TEST_F(GpuXdnaMemoryInteropTest,
