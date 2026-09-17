@@ -17,7 +17,10 @@ amdf_cc_library(
     name = "gpu_device_fixture",
     testonly = True,
     hdrs = ["gpu_device_fixture.h"],
-    visibility = ["//libamdf/cts/gpu:__subpackages__"],
+    visibility = [
+        "//libamdf/cts/gpu:__subpackages__",
+        "//libamdf/cts/interop/gpu_xdna:__subpackages__",
+    ],
     deps = [
         "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
