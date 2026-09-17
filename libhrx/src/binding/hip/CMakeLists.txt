@@ -404,9 +404,9 @@ iree_cc_library(
     ::function_handle
     ::handle_registry
     ::launch_params
+    ::peer
     ::spirv_linker_compiler
     ::status_conversion
-    ::peer
     ::stream
     iree::base
     iree::base::core_headers

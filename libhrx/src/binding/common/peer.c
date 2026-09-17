@@ -98,7 +98,9 @@ iree_status_t iree_hal_streaming_device_can_access_peer(
                             "device ordinals out of range [0, %" PRIhsz ")",
                             device_registry->device_count);
   }
-  if (device_ordinal == peer_device_ordinal) return iree_ok_status();
+  if (device_ordinal == peer_device_ordinal) {
+    return iree_ok_status();
+  }
 
   iree_hal_streaming_peer_properties_t properties;
   IREE_RETURN_IF_ERROR(iree_hal_streaming_device_query_peer_properties(
