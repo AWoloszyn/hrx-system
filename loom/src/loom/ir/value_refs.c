@@ -744,7 +744,8 @@ static iree_status_t loom_module_replace_type_value_refs_impl(
       }
       *out_changed = true;
       return loom_module_make_parameterized_type(
-          module, descriptor, replaced_parameters, parameter_count, out_type);
+          module, descriptor, replaced_parameters, parameter_count, out_type,
+          /*out_type_id=*/NULL);
     }
 
     case LOOM_TYPE_REGISTER: {

@@ -409,7 +409,7 @@ static iree_status_t loom_bytecode_selected_table_project_type_dependencies(
 static iree_status_t loom_bytecode_selected_table_try_parameterized_type(
     loom_bytecode_selected_table_materializer_t* materializer,
     const loom_bytecode_parameterized_type_fact_t* fact, loom_type_t* out_type,
-    bool* out_ready) {
+    loom_type_id_t* out_type_id, bool* out_ready) {
   *out_ready = false;
   const loom_parameterized_type_descriptor_t* descriptor = fact->descriptor;
   loom_attribute_t* parameters = NULL;
@@ -452,7 +452,7 @@ static iree_status_t loom_bytecode_selected_table_try_parameterized_type(
   }
   IREE_RETURN_IF_ERROR(loom_module_make_parameterized_type(
       materializer->output_module, descriptor, parameters,
-      descriptor->parameter_count, out_type));
+      descriptor->parameter_count, out_type, out_type_id));
   *out_ready = true;
   return iree_ok_status();
 }
@@ -460,8 +460,8 @@ static iree_status_t loom_bytecode_selected_table_try_parameterized_type(
 static iree_status_t loom_bytecode_selected_table_construct_type_fact(
     loom_bytecode_selected_table_materializer_t* materializer,
     const loom_bytecode_type_fact_t* fact, loom_type_t* out_type,
-    loom_type_id_t** out_dependency_ids, iree_host_size_t* out_dependency_count,
-    bool* out_ready) {
+    loom_type_id_t* out_type_id, loom_type_id_t** out_dependency_ids,
+    iree_host_size_t* out_dependency_count, bool* out_ready) {
   *out_dependency_ids = NULL;
   *out_dependency_count = 0;
   *out_ready = false;
@@ -528,7 +528,7 @@ static iree_status_t loom_bytecode_selected_table_construct_type_fact(
     case LOOM_TYPE_PARAMETERIZED:
       return loom_bytecode_selected_table_try_parameterized_type(
           materializer, (const loom_bytecode_parameterized_type_fact_t*)fact,
-          out_type, out_ready);
+          out_type, out_type_id, out_ready);
     case LOOM_TYPE_REGISTER: {
       const loom_bytecode_typed_register_fact_t* register_fact =
           (const loom_bytecode_typed_register_fact_t*)fact;
@@ -593,13 +593,14 @@ static iree_status_t loom_bytecode_selected_table_try_type(
       metadata->entry_offset, &plan_entry, &fact));
 
   loom_type_t type = plan_entry.direct_type;
+  loom_type_id_t target_type_id = LOOM_TYPE_ID_INVALID;
   loom_type_id_t* dependency_ids = NULL;
   iree_host_size_t dependency_count = 0;
   if (fact != NULL) {
     bool fact_ready = false;
     IREE_RETURN_IF_ERROR(loom_bytecode_selected_table_construct_type_fact(
-        materializer, fact, &type, &dependency_ids, &dependency_count,
-        &fact_ready));
+        materializer, fact, &type, &target_type_id, &dependency_ids,
+        &dependency_count, &fact_ready));
     if (!fact_ready) {
       return iree_ok_status();
     }
@@ -624,10 +625,11 @@ static iree_status_t loom_bytecode_selected_table_try_type(
     }
   }
 
-  loom_type_id_t target_type_id = LOOM_TYPE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_module_intern_topological_type_id(
-      materializer->output_module, type, dependency_ids, dependency_count,
-      &target_type_id));
+  if (target_type_id == LOOM_TYPE_ID_INVALID) {
+    IREE_RETURN_IF_ERROR(loom_module_intern_topological_type_id(
+        materializer->output_module, type, dependency_ids, dependency_count,
+        &target_type_id));
+  }
   IREE_RETURN_IF_ERROR(loom_bytecode_selected_projection_insert(
       &materializer->projection, LOOM_BYTECODE_SELECTED_PROJECTION_DOMAIN_TYPE,
       source_ordinal, target_type_id));

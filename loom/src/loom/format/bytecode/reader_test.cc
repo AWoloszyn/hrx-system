@@ -4766,6 +4766,70 @@ TEST_F(ReaderTest, ReadsDescriptorBackedParameterizedTypes) {
   loom_module_free(source_module);
 }
 
+TEST_F(ReaderTest, SelectedReaderPreservesParameterizedTypeIdentities) {
+  loom_module_t* source_module = CreateParameterizedTypeDeclModule();
+  auto bytes = WriteModule(source_module);
+  iree_arena_allocator_t metadata_arena;
+  iree_arena_initialize(&block_pool_, &metadata_arena);
+  loom_bytecode_file_metadata_t metadata = {};
+  std::vector<std::string> error_ids;
+  const loom_bytecode_read_result_t index_result =
+      ReadIndex(bytes, &metadata_arena, &metadata, &error_ids);
+  ASSERT_EQ(index_result.error_count, 0u);
+  loom_module_t* selected_module = nullptr;
+  const loom_bytecode_read_result_t result = MaterializeModuleSymbols(
+      bytes, &metadata, {0}, &selected_module, &error_ids,
+      /*verify_module=*/true);
+  EXPECT_EQ(result.error_count, 0u);
+  EXPECT_TRUE(error_ids.empty());
+  ASSERT_NE(selected_module, nullptr);
+  EXPECT_EQ(WriteModule(selected_module), bytes);
+  loom_module_free(selected_module);
+  iree_arena_deinitialize(&metadata_arena);
+  loom_module_free(source_module);
+}
+
+TEST_F(ReaderTest, RejectsDuplicateParameterizedTypeRecords) {
+  loom_module_t* source_module = CreateModule("duplicate_parameterized_type");
+  loom_type_t types[2] = {};
+  IREE_ASSERT_OK(loom_test_scope_type_make(
+      source_module, LOOM_TEST_SCOPE_TYPE_SCOPE_WORKGROUP, &types[0]));
+  IREE_ASSERT_OK(loom_test_scope_type_make(
+      source_module, LOOM_TEST_SCOPE_TYPE_SCOPE_SUBGROUP, &types[1]));
+  loom_builder_t builder;
+  loom_builder_initialize(source_module, &source_module->arena,
+                          loom_module_block(source_module), &builder);
+  loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_builder_intern_string(&builder, IREE_SV("scopes"), &name_id));
+  loom_symbol_id_t symbol_id = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_add_symbol(source_module, name_id, &symbol_id));
+  const loom_symbol_ref_t symbol = {/*.module_id=*/0, /*.symbol_id=*/symbol_id};
+  loom_op_t* declaration = nullptr;
+  IREE_ASSERT_OK(loom_test_decl_build(
+      &builder, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0, symbol, types,
+      IREE_ARRAYSIZE(types), /*result_types=*/nullptr, /*result_count=*/0,
+      /*tied_results=*/nullptr, /*tied_result_count=*/0, LOOM_LOCATION_UNKNOWN,
+      &declaration));
+  auto bytes = WriteModule(source_module);
+  iree_arena_allocator_t metadata_arena;
+  iree_arena_initialize(&block_pool_, &metadata_arena);
+  loom_bytecode_file_metadata_t metadata = {};
+  std::vector<std::string> error_ids;
+  const loom_bytecode_read_result_t result =
+      ReadIndex(bytes, &metadata_arena, &metadata, &error_ids);
+  ASSERT_EQ(result.error_count, 0u);
+  ASSERT_EQ(metadata.modules[0].types.count, 2u);
+  const loom_bytecode_table_entry_metadata_t* entries =
+      metadata.modules[0].types.entries;
+  ASSERT_EQ(entries[0].entry_length, entries[1].entry_length);
+  std::copy_n(bytes.begin() + entries[0].entry_offset, entries[0].entry_length,
+              bytes.begin() + entries[1].entry_offset);
+  ExpectReadModuleError(bytes, "ERR_BYTECODE_006");
+  iree_arena_deinitialize(&metadata_arena);
+  loom_module_free(source_module);
+}
+
 TEST_F(ReaderTest, RejectsUnassignedTypeKind) {
   loom_module_t* module = CreateFunctionModule();
   auto bytes = WriteModule(module);

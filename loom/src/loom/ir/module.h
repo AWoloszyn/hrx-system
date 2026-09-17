@@ -426,12 +426,15 @@ iree_status_t loom_module_make_parameterized_attr_array(
 // |parameters| is indexed by |descriptor| and may point to temporary storage.
 // Required fields must be present and optional fields use LOOM_ATTR_ABSENT.
 // Generic parameter arrays are recursively copied and interned. A compact
-// inline enum is packed directly into the returned type without allocating.
+// inline enum is packed directly into the returned type without allocating
+// when |out_type_id| is NULL. When |out_type_id| is provided, both
+// representations are interned and their canonical module ID is returned
+// alongside |out_type|.
 iree_status_t loom_module_make_parameterized_type(
     loom_module_t* module,
     const loom_parameterized_type_descriptor_t* descriptor,
     const loom_attribute_t* parameters, iree_host_size_t parameter_count,
-    loom_type_t* out_type);
+    loom_type_t* out_type, loom_type_id_t* out_type_id);
 
 // Builds a fresh canonical DICT attribute from |base_entries| plus |updates|.
 //

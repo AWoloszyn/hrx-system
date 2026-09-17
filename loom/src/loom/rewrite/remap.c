@@ -778,7 +778,7 @@ iree_status_t loom_ir_remap_type(loom_ir_remap_t* remap,
     }
     return loom_module_make_parameterized_type(
         remap->target_module, descriptor, target_parameters, parameter_count,
-        out_target_type);
+        out_target_type, /*out_type_id=*/NULL);
   }
 
   if (kind == LOOM_TYPE_REGISTER) {

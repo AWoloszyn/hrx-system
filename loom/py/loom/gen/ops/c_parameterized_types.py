@@ -205,7 +205,7 @@ def generate_source_lines(types: Sequence[TypeDef]) -> list[str]:
             lines.append(f"{declaration}{suffix}")
         append_parameter_slot_initializers(lines, type_def.name, prefix, type_def.params)
         lines.append("  return loom_module_make_parameterized_type(")
-        lines.append(f"      module, &{type_descriptor_symbol(type_def)}, slots, {len(type_def.params)}, out_type);")
+        lines.append(f"      module, &{type_descriptor_symbol(type_def)}, slots, {len(type_def.params)}, out_type, /*out_type_id=*/NULL);")
         lines.append("}")
         lines.append("")
     return lines

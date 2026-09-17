@@ -2905,7 +2905,7 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderPacksWithoutAllocation) {
   loom_type_t encoding_type = {0};
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
       module, &loom_encoding_type_parameterized_descriptor, &role, 1,
-      &encoding_type));
+      &encoding_type, /*out_type_id=*/nullptr));
   EXPECT_TRUE(loom_type_equal(
       encoding_type,
       loom_type_encoding_with_role(LOOM_ENCODING_ROLE_ADDRESS_LAYOUT)));
@@ -2914,7 +2914,7 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderPacksWithoutAllocation) {
   role = loom_attr_absent();
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
       module, &loom_encoding_type_parameterized_descriptor, &role, 1,
-      &encoding_type));
+      &encoding_type, /*out_type_id=*/nullptr));
   EXPECT_TRUE(loom_type_equal(encoding_type, loom_type_encoding()));
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
 
@@ -2922,13 +2922,13 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderPacksWithoutAllocation) {
   loom_type_t storage_type = {0};
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
       module, &loom_low_storage_type_parameterized_descriptor, &space, 1,
-      &storage_type));
+      &storage_type, /*out_type_id=*/nullptr));
   EXPECT_TRUE(loom_type_equal(storage_type,
                               loom_type_storage(LOOM_STORAGE_SPACE_WORKGROUP)));
   space = loom_attr_enum(LOOM_STORAGE_SPACE_STACK);
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
       module, &loom_low_storage_type_parameterized_descriptor, &space, 1,
-      &storage_type));
+      &storage_type, /*out_type_id=*/nullptr));
   EXPECT_TRUE(loom_type_equal(storage_type,
                               loom_type_storage(LOOM_STORAGE_SPACE_STACK)));
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
@@ -2938,9 +2938,82 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderPacksWithoutAllocation) {
       IREE_STATUS_INVALID_ARGUMENT,
       loom_module_make_parameterized_type(
           module, &loom_encoding_type_parameterized_descriptor, &role, 1,
-          &encoding_type));
+          &encoding_type, /*out_type_id=*/nullptr));
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
 
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, ParameterizedTypeBuilderReturnsCanonicalId) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  loom_type_id_t element_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module, loom_type_scalar(LOOM_SCALAR_TYPE_BF16), &element_type_id));
+  loom_attribute_t parameters[] = {loom_attr_type(element_type_id),
+                                   loom_attr_i64(32), loom_attr_absent()};
+  loom_type_t array_type = {};
+  loom_type_id_t array_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_test_array_type_parameterized_descriptor, parameters,
+      IREE_ARRAYSIZE(parameters), &array_type, &array_id));
+  ASSERT_EQ(array_id, 1u);
+  EXPECT_EQ(module->types.count, 2u);
+  EXPECT_EQ(
+      loom_type_parameterized_parameters(array_type),
+      loom_type_parameterized_parameters(module->types.entries[array_id]));
+
+  parameters[1] = loom_attr_i64(64);
+  EXPECT_EQ(loom_test_array_type_alignment(array_type), 32);
+  loom_type_t distinct_type = {};
+  loom_type_id_t distinct_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_test_array_type_parameterized_descriptor, parameters,
+      IREE_ARRAYSIZE(parameters), &distinct_type, &distinct_id));
+  EXPECT_NE(distinct_id, array_id);
+  const iree_host_size_t allocation_size = module->arena.used_allocation_size;
+  parameters[1] = loom_attr_i64(32);
+  loom_type_t duplicate_type = {};
+  loom_type_id_t duplicate_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_test_array_type_parameterized_descriptor, parameters,
+      IREE_ARRAYSIZE(parameters), &duplicate_type, &duplicate_id));
+  EXPECT_EQ(duplicate_id, array_id);
+  EXPECT_EQ(loom_type_parameterized_parameters(duplicate_type),
+            loom_type_parameterized_parameters(array_type));
+  EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
+  EXPECT_EQ(module->types.count, 3u);
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, CompactParameterizedTypeBuilderInternsWhenIdRequested) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  loom_attribute_t role = loom_attr_enum(LOOM_ENCODING_ROLE_ADDRESS_LAYOUT);
+  loom_type_t type = {};
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_encoding_type_parameterized_descriptor, &role, 1, &type,
+      /*out_type_id=*/nullptr));
+  EXPECT_EQ(module->types.count, 0u);
+  loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_encoding_type_parameterized_descriptor, &role, 1, &type,
+      &type_id));
+  ASSERT_EQ(type_id, 0u);
+  EXPECT_EQ(module->types.count, 1u);
+  EXPECT_TRUE(loom_type_equal(module->types.entries[type_id], type));
+  const iree_host_size_t allocation_size = module->arena.used_allocation_size;
+  loom_type_id_t duplicate_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_encoding_type_parameterized_descriptor, &role, 1, &type,
+      &duplicate_id));
+  EXPECT_EQ(duplicate_id, type_id);
+  EXPECT_EQ(module->types.count, 1u);
+  EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
   loom_module_free(module);
 }
 

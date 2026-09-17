@@ -4685,7 +4685,7 @@ iree_status_t loom_module_make_parameterized_type(
     loom_module_t* module,
     const loom_parameterized_type_descriptor_t* descriptor,
     const loom_attribute_t* parameters, iree_host_size_t parameter_count,
-    loom_type_t* out_type) {
+    loom_type_t* out_type, loom_type_id_t* out_type_id) {
   if (!descriptor) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "parameterized type descriptor is NULL");
@@ -4720,6 +4720,10 @@ iree_status_t loom_module_make_parameterized_type(
     loom_type_t type = {0};
     type.header = loom_type_make_raw_header(descriptor->ir_kind, payload, 0,
                                             descriptor->type_flags);
+    if (out_type_id) {
+      return loom_module_intern_type_with_dependencies(module, type, out_type,
+                                                       out_type_id);
+    }
     *out_type = type;
     return iree_ok_status();
   }
@@ -4751,8 +4755,8 @@ iree_status_t loom_module_make_parameterized_type(
   bool interner_miss = false;
   status = loom_module_intern_type_impl(
       module, hash, loom_type_equal_fn, &equal_context,
-      loom_module_retain_type_from_context, &type, out_type,
-      /*out_type_id=*/NULL, &interner_miss);
+      loom_module_retain_type_from_context, &type, out_type, out_type_id,
+      &interner_miss);
   if (!iree_status_is_ok(status) || !interner_miss) {
     iree_arena_checkpoint_restore(&checkpoint);
   }

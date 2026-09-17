@@ -1082,7 +1082,7 @@ static iree_status_t loom_parse_parameterized_type_contents(
     }
     return loom_module_make_parameterized_type(
         parser->module, parameterized, parameter_slots,
-        parameterized->parameter_count, out_type);
+        parameterized->parameter_count, out_type, /*out_type_id=*/NULL);
   }
 
   uint32_t errors_before = parser->error_count;
@@ -1131,7 +1131,7 @@ static iree_status_t loom_parse_parameterized_type_contents(
   }
   return loom_module_make_parameterized_type(
       parser->module, parameterized, parameter_slots,
-      parameterized->parameter_count, out_type);
+      parameterized->parameter_count, out_type, /*out_type_id=*/NULL);
 }
 
 static iree_status_t loom_parse_parameterized_type(

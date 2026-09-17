@@ -26,8 +26,8 @@ loom_bytecode_type_attribute_materializer(
 
 static iree_status_t loom_bytecode_type_materialize_parameterized(
     loom_bytecode_type_materializer_t* materializer,
-    const loom_bytecode_parameterized_type_fact_t* fact,
-    loom_type_t* out_type) {
+    const loom_bytecode_parameterized_type_fact_t* fact, loom_type_t* out_type,
+    loom_type_id_t* out_type_id) {
   const loom_parameterized_type_descriptor_t* descriptor = fact->descriptor;
   loom_attribute_t* parameters = NULL;
   if (descriptor->parameter_count > 0) {
@@ -67,12 +67,13 @@ static iree_status_t loom_bytecode_type_materialize_parameterized(
 
   return loom_module_make_parameterized_type(
       materializer->output_module, descriptor, parameters,
-      descriptor->parameter_count, out_type);
+      descriptor->parameter_count, out_type, out_type_id);
 }
 
 static iree_status_t loom_bytecode_type_materialize_fact(
     loom_bytecode_type_materializer_t* materializer,
-    const loom_bytecode_type_fact_t* fact, loom_type_t* out_type) {
+    const loom_bytecode_type_fact_t* fact, loom_type_t* out_type,
+    loom_type_id_t* out_type_id) {
   switch (fact->kind) {
     case LOOM_TYPE_FUNCTION: {
       const loom_bytecode_function_type_fact_t* function_fact =
@@ -115,7 +116,7 @@ static iree_status_t loom_bytecode_type_materialize_fact(
     case LOOM_TYPE_PARAMETERIZED:
       return loom_bytecode_type_materialize_parameterized(
           materializer, (const loom_bytecode_parameterized_type_fact_t*)fact,
-          out_type);
+          out_type, out_type_id);
     case LOOM_TYPE_REGISTER: {
       const loom_bytecode_typed_register_fact_t* register_fact =
           (const loom_bytecode_typed_register_fact_t*)fact;
@@ -184,18 +185,18 @@ iree_status_t loom_bytecode_type_materialize(
     const iree_arena_checkpoint_t checkpoint =
         iree_arena_checkpoint_save(materializer->scratch_arena);
     loom_type_t type = {0};
+    loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
     iree_status_t status = iree_ok_status();
     const loom_bytecode_type_fact_t* current_fact =
         fact && fact->type_id == type_index ? fact : NULL;
     if (current_fact != NULL) {
       status = loom_bytecode_type_materialize_fact(materializer, current_fact,
-                                                   &type);
+                                                   &type, &type_id);
       fact = fact->next;
     } else {
       type = materializer->module_view->types.entries[type_index].direct_type;
     }
-    loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
-    if (iree_status_is_ok(status)) {
+    if (iree_status_is_ok(status) && type_id == LOOM_TYPE_ID_INVALID) {
       const loom_type_id_t* dependency_ids = NULL;
       iree_host_size_t dependency_count = 0;
       loom_bytecode_type_fact_structural_dependencies(
