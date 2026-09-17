@@ -150,6 +150,7 @@ __all__ = [
     "OBSERVABLE_EFFECT",
     "MEMORY_FENCE",
     "CONVERGENT",
+    "CONTEXTUAL",
     "HINT",
     "COMPILE_TIME_ONLY",
     "SAFE_TO_SPECULATE",
@@ -1233,6 +1234,10 @@ MEMORY_FENCE = Trait("MemoryFence")
 # memory, or have unknown effects, but generic optimizers must not erase,
 # duplicate, speculate, or move it across convergence-changing boundaries.
 CONVERGENT = Trait("Convergent")
+# Source expansion depends on facts at the operation's control-flow position.
+# Motion and CSE must preserve that context until expansion. Runtime purity
+# and erasure of unused pure results remain independent.
+CONTEXTUAL = Trait("Contextual")
 # Each execution produces a result with a distinct identity, even when
 # operands and attributes are identical. Prevents CSE but allows DCE
 # (unused identity with no write effects is dead) and LICM. Derived
@@ -5297,6 +5302,11 @@ def _validate_no_effect_conflicts(
         raise ValueError(
             f"Op '{op_name}': declares both SAFE_TO_SPECULATE and CONVERGENT. "
             f"Speculation must not change the dynamic participant set."
+        )
+    if "SafeToSpeculate" in trait_names and "Contextual" in trait_names:
+        raise ValueError(
+            f"Op '{op_name}': declares both SAFE_TO_SPECULATE and CONTEXTUAL. "
+            f"Source expansion must retain its control-flow context."
         )
 
 

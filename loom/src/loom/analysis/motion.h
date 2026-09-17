@@ -11,10 +11,12 @@
 //   1. Execution-safety policy. Some transforms only move work while preserving
 //      the original dynamic execution predicate. Others speculate work onto
 //      control paths where it may execute more often. These are distinct
-//      contracts: PURE is enough for conservative effect-free relocation, while
-//      true speculation additionally requires SAFE_TO_SPECULATE. Convergent ops
-//      reject both policies because their dynamic participant set is part of
-//      their semantics.
+//      contracts: effect-free relocation requires PURE, while true speculation
+//      additionally requires SAFE_TO_SPECULATE. Convergent ops reject both
+//      policies because their dynamic participant set is part of their
+//      semantics. Pending source expansion also retains its control-flow
+//      context independently of purity: branch facts may determine which
+//      implementation is applicable. Erasing unused pure work remains legal.
 //
 //   2. SSA availability. Moving an op also moves its result types, attributes,
 //      and nested regions. Every ordinary operand and every SSA value embedded
@@ -146,25 +148,25 @@ bool loom_motion_op_can_erase(const loom_module_t* module, const loom_op_t* op);
 
 // Returns true if |op| may be moved by a transform that preserves the original
 // dynamic execution predicate. This rejects tied results, terminator roots,
-// hints, convergence, unknown effects, reads, writes, and nondeterminism. It
-// intentionally does not reject UNIQUE_IDENTITY beyond the ordinary
-// purity/effect checks: relocating one execution site without duplicating it is
-// not CSE.
+// hints, convergence, pending source expansion, unknown effects, reads, writes,
+// and nondeterminism. It intentionally does not reject UNIQUE_IDENTITY beyond
+// the ordinary purity/effect checks: relocating one execution site without
+// duplicating it is not CSE.
 bool loom_motion_op_can_relocate_effect_free(const loom_module_t* module,
                                              const loom_op_t* op);
 
 // Returns true if |op| may be rebuilt independently while preserving or
 // narrowing its original dynamic execution predicate. This requires pure,
 // deterministic, identity-free semantics and rejects retained regions,
-// terminators, hints, poison boundaries, and convergence. It does not require
-// SAFE_TO_SPECULATE because rematerialization must not introduce execution on
-// an additional control path.
+// terminators, hints, poison boundaries, convergence, and pending source
+// expansion. It does not require SAFE_TO_SPECULATE because rematerialization
+// must not introduce execution on an additional control path.
 bool loom_motion_op_can_rematerialize_effect_free(const loom_module_t* module,
                                                   const loom_op_t* op);
 
 // Returns true if |op| may be executed on additional control paths. This
 // requires SAFE_TO_SPECULATE and rejects any region side effects, convergence,
-// or hints.
+// hints, or pending source expansion.
 bool loom_motion_op_can_speculate(const loom_module_t* module,
                                   const loom_op_t* op);
 

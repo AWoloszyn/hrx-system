@@ -437,6 +437,31 @@ bool loom_op_is_trivially_dead(const loom_module_t* module,
 // CallLike interface
 //===----------------------------------------------------------------------===//
 
+bool loom_op_requires_source_context(const loom_module_t* module,
+                                     const loom_op_t* op) {
+  if (iree_any_bit_set(op->traits, LOOM_TRAIT_CONTEXTUAL)) {
+    return true;
+  }
+  const loom_call_like_vtable_t* call = loom_op_vtable(module, op)->call_like;
+  if (!call || call->kind != LOOM_CALL_LIKE_KIND_SEMANTIC) {
+    return false;
+  }
+  const loom_attribute_t* attrs = loom_op_const_attrs(op);
+  if (call->inline_policy_attr_index != LOOM_ATTR_INDEX_NONE &&
+      loom_attr_as_enum(attrs[call->inline_policy_attr_index]) ==
+          LOOM_INLINE_POLICY_INLINE) {
+    return true;
+  }
+  const loom_symbol_ref_t callee =
+      loom_attr_as_symbol(attrs[call->callee_attr_index]);
+  if (callee.module_id != 0) {
+    return false;
+  }
+  const loom_func_like_t function = loom_func_like_const_cast(
+      module, module->symbols.entries[callee.symbol_id].defining_op);
+  return loom_func_like_inline_policy(function) == LOOM_INLINE_POLICY_INLINE;
+}
+
 loom_call_like_t loom_call_like_cast(const loom_module_t* module,
                                      loom_op_t* op) {
   if (!op) {

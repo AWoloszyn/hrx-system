@@ -1132,6 +1132,15 @@ bool loom_op_is_trivially_dead(const loom_module_t* module,
 // CallLike interface helpers
 //===----------------------------------------------------------------------===//
 
+// Returns true when source expansion must retain |op|'s control-flow context.
+// This includes CONTEXTUAL operations and semantic calls whose callsite or
+// callee requires inlining. It reads the direct symbol's declared policy, never
+// its body. Runtime calls and Low calls do not require source context merely
+// because their arguments may later become more precise. This classification
+// does not prevent erasing unused pure work or expanding a selected body.
+bool loom_op_requires_source_context(const loom_module_t* module,
+                                     const loom_op_t* op);
+
 // Returns true if |call| refers to a valid direct call-like op. A cast via
 // loom_call_like_cast() returns {NULL, NULL} on failure. All accessors below
 // tolerate a NULL vtable and return safe defaults.

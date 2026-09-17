@@ -493,13 +493,16 @@ static bool loom_scf_region_branch_tail_attrs_match(const loom_op_t* lhs,
   return true;
 }
 
-static bool loom_scf_region_branch_tail_op_can_factor(const loom_op_t* op) {
+static bool loom_scf_region_branch_tail_op_can_factor(
+    const loom_module_t* module, const loom_op_t* op) {
   // Common-tail factoring is not speculation: exactly one matching tail already
   // executed on every branch path, and branch-local work remains before the new
   // yield. Result-producing side-effecting tails are therefore legal here.
+  // Pending source expansion still needs each branch's applicability facts.
   return op && !iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD) &&
          op->result_count == 1 && op->region_count == 0 &&
-         op->tied_result_count == 0;
+         op->tied_result_count == 0 &&
+         !loom_op_requires_source_context(module, op);
 }
 
 static bool loom_scf_type_is_storage_root_or_projection(loom_type_t type) {
@@ -521,8 +524,10 @@ static iree_status_t loom_scf_region_branch_tail_ops_match(
   if (reference_tail->kind != candidate_tail->kind ||
       reference_tail->instance_flags != candidate_tail->instance_flags ||
       reference_tail->operand_count != candidate_tail->operand_count ||
-      !loom_scf_region_branch_tail_op_can_factor(reference_tail) ||
-      !loom_scf_region_branch_tail_op_can_factor(candidate_tail)) {
+      !loom_scf_region_branch_tail_op_can_factor(rewriter->module,
+                                                 reference_tail) ||
+      !loom_scf_region_branch_tail_op_can_factor(rewriter->module,
+                                                 candidate_tail)) {
     return iree_ok_status();
   }
   const loom_op_vtable_t* tail_vtable =

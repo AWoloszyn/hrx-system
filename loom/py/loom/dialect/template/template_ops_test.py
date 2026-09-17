@@ -12,6 +12,7 @@ from loom.builtin_types import ALL_BUILTIN_TYPES
 from loom.dialect.func import ALL_FUNC_OPS
 from loom.dialect.target import ALL_TARGET_OPS, ALL_TARGET_PARAMETERIZED_ATTRS
 from loom.dialect.template import ALL_TEMPLATE_OPS
+from loom.dsl import CONTEXTUAL
 from loom.format.bytecode.reader import read_module
 from loom.format.bytecode.writer import write_module
 from loom.format.text.parser import Parser
@@ -19,6 +20,11 @@ from loom.format.text.printer import Printer
 from loom.format.text.tokenizer import ParseError
 from loom.ir import Module, ParameterizedAttrArray
 from loom.verify import verify_module
+
+
+def test_applications_retain_source_context() -> None:
+    contextual_ops = {op.name for op in ALL_TEMPLATE_OPS if CONTEXTUAL in op.traits}
+    assert contextual_ops == {"template.apply", "template.call"}
 
 
 def _parse(source: str) -> Module:

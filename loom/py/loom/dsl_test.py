@@ -3221,6 +3221,13 @@ class TestOwnershipEffects:
         with _raises(ValueError, match="SAFE_TO_SPECULATE.*CONVERGENT"):
             Op("test.bad", traits=[SAFE_TO_SPECULATE, CONVERGENT])
 
+    def test_contextual_is_independent_of_purity(self) -> None:
+        op = Op("test.contextual", traits=[PURE, dsl.CONTEXTUAL])
+        assert dsl.CONTEXTUAL in op.traits
+        assert PURE in op.traits
+        with _raises(ValueError, match="SAFE_TO_SPECULATE.*CONTEXTUAL"):
+            Op("test.bad", traits=[SAFE_TO_SPECULATE, dsl.CONTEXTUAL])
+
     def test_safe_to_speculate_with_explicit_effects_raises(self) -> None:
         with _raises(ValueError, match="SAFE_TO_SPECULATE.*explicit effects"):
             Op(

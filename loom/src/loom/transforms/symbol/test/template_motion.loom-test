@@ -1,0 +1,153 @@
+// RUN: pass canonicalize
+
+// Identical application syntax in both branches still has distinct source
+// contexts. Purity does not authorize common-tail factoring before expansion.
+template.decl pure @choose(%value: i32) -> (i32)
+
+func.def @branch_applications(%condition: i1, %value: i32) -> (i32) {
+  %result = scf.if %condition -> (i32) {
+    %then = template.apply<@choose>(%value) pure : (i32) -> (i32)
+    scf.yield %then : i32
+  } else {
+    %else = template.apply<@choose>(%value) pure : (i32) -> (i32)
+    scf.yield %else : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// Switch branches need the same protection as if branches.
+// RUN: pass canonicalize
+template.decl pure @choose(%value: i32) -> (i32)
+
+func.def @switch_applications(%selector: index, %value: i32) -> (i32) {
+  %result = scf.switch %selector -> (i32) {
+    case 0 {
+      %selected = template.apply<@choose>(%value) pure : (i32) -> (i32)
+      scf.yield %selected : i32
+    }
+    default {
+      %fallback = template.apply<@choose>(%value) pure : (i32) -> (i32)
+      scf.yield %fallback : i32
+    }
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// Exact template calls also expand in the caller, even though they bypass
+// provider ranking. Their bodies may contain context-dependent applications.
+// RUN: pass canonicalize,cse
+template.decl pure @choose(%value: i32) -> (i32)
+
+template.def<@choose> pure @identity(%value: i32) -> (i32) {
+  template.return %value : i32
+}
+
+func.def @exact_contexts(%condition: i1, %value: i32) -> (i32, i32) {
+  %outer = template.call pure @identity(%value) : (i32) -> (i32)
+  %inner = scf.if %condition -> (i32) {
+    %selected = template.call pure @identity(%value) : (i32) -> (i32)
+    scf.yield %selected : i32
+  } else {
+    %fallback = template.call pure @identity(%value) : (i32) -> (i32)
+    scf.yield %fallback : i32
+  }
+  func.return %outer, %inner : i32, i32
+}
+
+// ====
+
+// Both callee and callsite inline policy require source-context preservation.
+// Runtime calls remain eligible for ordinary CSE (covered by effects/cse).
+// RUN: pass canonicalize,cse
+func.decl pure inline @declared_inline(%value: i32) -> (i32)
+
+func.decl pure @ordinary(%value: i32) -> (i32)
+
+func.def @inline_contexts(%condition: i1, %value: i32) -> (i32, i32, i32) {
+  %outer = func.call pure @declared_inline(%value) : (i32) -> (i32)
+  %first = scf.if %condition -> (i32) {
+    %then = func.call pure @declared_inline(%value) : (i32) -> (i32)
+    scf.yield %then : i32
+  } else {
+    %else = func.call pure @declared_inline(%value) : (i32) -> (i32)
+    scf.yield %else : i32
+  }
+  %second = scf.if %condition -> (i32) {
+    %then = func.call pure inline @ordinary(%value) : (i32) -> (i32)
+    scf.yield %then : i32
+  } else {
+    %else = func.call pure inline @ordinary(%value) : (i32) -> (i32)
+    scf.yield %else : i32
+  }
+  func.return %outer, %first, %second : i32, i32, i32
+}
+
+// ====
+
+// A dominating pure application cannot replace one in a refining branch.
+// RUN: pass cse
+template.decl pure @choose(%value: i32) -> (i32)
+
+func.def @application_contexts(%condition: i1, %value: i32) -> (i32, i32) {
+  %outer = template.apply<@choose>(%value) pure : (i32) -> (i32)
+  %inner = scf.if %condition -> (i32) {
+    %selected = template.apply<@choose>(%value) pure : (i32) -> (i32)
+    scf.yield %selected : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %outer, %inner : i32, i32
+}
+
+// ====
+
+// Source applications retain their context even when moving the entire
+// containing subtree would otherwise be legal effect-free relocation.
+// RUN: pass branch-sink
+template.decl pure @choose(%value: i32) -> (i32)
+
+func.def @nested_context(%inner: i1, %outer: i1, %value: i32) {
+  %result = scf.if %inner -> (i32) {
+    %selected = template.apply<@choose>(%value) pure : (i32) -> (i32)
+    scf.yield %selected : i32
+  } else {
+    scf.yield %value : i32
+  }
+  scf.if %outer {
+    test.use %result : i32
+  } else {
+  }
+  func.return
+}
+
+// ====
+
+// Pending inline expansion blocks sinking but not erasure of unused pure work.
+// RUN: pass branch-sink,canonicalize,dce
+func.decl pure inline @declared_inline(%value: i32) -> (i32)
+
+func.def @inline_motion(%condition: i1, %value: i32) {
+  %unused = func.call pure @declared_inline(%value) : (i32) -> (i32)
+  %used = func.call pure @declared_inline(%value) : (i32) -> (i32)
+  scf.if %condition {
+    test.use %used : i32
+  } else {
+  }
+  func.return
+}
+
+// ----
+func.decl pure inline @declared_inline(%value: i32) -> (i32)
+
+func.def @inline_motion(%condition: i1, %value: i32) {
+  %used = func.call pure @declared_inline(%value) : (i32) -> (i32)
+  scf.if %condition {
+    test.use %used : i32
+  } else {
+  }
+  func.return
+}

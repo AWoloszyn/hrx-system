@@ -156,6 +156,9 @@ bool loom_motion_op_can_relocate_effect_free(const loom_module_t* module,
                                                       /*is_root_op=*/true)) {
     return false;
   }
+  if (loom_op_requires_source_context(module, op)) {
+    return false;
+  }
   return !loom_motion_op_has_retained_regions(op);
 }
 
@@ -175,7 +178,7 @@ bool loom_motion_op_can_rematerialize_effect_free(const loom_module_t* module,
                                    LOOM_TRAIT_UNIQUE_IDENTITY)) {
     return false;
   }
-  return true;
+  return !loom_op_requires_source_context(module, op);
 }
 
 bool loom_motion_op_can_speculate(const loom_module_t* module,
@@ -188,6 +191,9 @@ bool loom_motion_op_can_speculate(const loom_module_t* module,
   }
   loom_trait_flags_t traits = loom_op_effective_traits(module, op);
   if (!loom_motion_traits_are_speculatable(traits, /*is_root_op=*/true)) {
+    return false;
+  }
+  if (loom_op_requires_source_context(module, op)) {
     return false;
   }
   return !loom_motion_op_has_retained_regions(op);
@@ -236,13 +242,18 @@ static bool loom_motion_op_satisfies_policy(const loom_module_t* module,
     return false;
   }
   loom_trait_flags_t traits = loom_op_effective_traits(module, op);
+  bool satisfies_policy = false;
   switch (policy) {
     case LOOM_MOTION_POLICY_EFFECT_FREE_RELOCATION:
-      return loom_motion_traits_are_effect_free_relocatable(traits, is_root_op);
+      satisfies_policy =
+          loom_motion_traits_are_effect_free_relocatable(traits, is_root_op);
+      break;
     case LOOM_MOTION_POLICY_SPECULATION:
-      return loom_motion_traits_are_speculatable(traits, is_root_op);
+      satisfies_policy =
+          loom_motion_traits_are_speculatable(traits, is_root_op);
+      break;
   }
-  return false;
+  return satisfies_policy && !loom_op_requires_source_context(module, op);
 }
 
 static iree_status_t loom_motion_subtree_can_move_before(
