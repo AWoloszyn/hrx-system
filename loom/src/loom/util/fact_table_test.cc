@@ -961,6 +961,80 @@ TEST_F(FactTableTest, CrossTableFactsDifferentExtensionsDoNotCompareEqual) {
   iree_arena_deinitialize(&rhs_arena);
 }
 
+TEST_F(FactTableTest, ConvergedFactsReuseOwnedPayloads) {
+  loom_value_fact_table_t table = {0};
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&table, &arena_, 0));
+  const loom_value_facts_t lanes[] = {
+      loom_value_facts_exact_i64(8),
+      loom_value_facts_make(16, 32, 16),
+  };
+  const loom_value_fact_small_static_lanes_t lane_slice = {
+      /*.lanes=*/lanes,
+      /*.count=*/IREE_ARRAYSIZE(lanes),
+  };
+  loom_value_facts_t facts = loom_value_facts_unknown();
+  IREE_ASSERT_OK(loom_value_facts_make_small_static_lanes(&table.context,
+                                                          lane_slice, &facts));
+  const iree_host_size_t used_bytes = arena_.used_allocation_size;
+
+  // A fixed point may visit the same aggregate repeatedly. Retaining its
+  // immutable extension must not allocate a discarded copy on each visit.
+  for (uint32_t iteration = 0; iteration < 16; ++iteration) {
+    loom_value_facts_t result;
+    IREE_ASSERT_OK(
+        loom_value_fact_table_clone_fact(&table, &table, facts, &result));
+    EXPECT_TRUE(loom_value_facts_equal(result, facts));
+    IREE_ASSERT_OK(loom_value_fact_table_clone_fact_for_type(
+        &table, &table, nullptr, loom_type_none(), facts, &result));
+    EXPECT_TRUE(loom_value_facts_equal(result, facts));
+    IREE_ASSERT_OK(loom_value_fact_table_meet_for_type(
+        &table, nullptr, loom_type_none(), &table, facts, &table, facts,
+        &result));
+    EXPECT_TRUE(loom_value_facts_equal(result, facts));
+    IREE_ASSERT_OK(loom_value_fact_table_widen_for_type(
+        &table, nullptr, loom_type_none(), &table, facts, &table, facts,
+        iteration, &result));
+    EXPECT_TRUE(loom_value_facts_equal(result, facts));
+  }
+  EXPECT_EQ(arena_.used_allocation_size, used_bytes);
+}
+
+TEST_F(FactTableTest, ClonedPayloadOutlivesSourceArena) {
+  loom_value_fact_table_t target = {0};
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&target, &arena_, 0));
+  loom_value_facts_t cloned;
+  {
+    iree_arena_allocator_t source_arena;
+    iree_arena_initialize(&block_pool_, &source_arena);
+    loom_value_fact_table_t source = {0};
+    IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &source_arena, 0));
+    const loom_value_facts_t lanes[] = {
+        loom_value_facts_exact_i64(8),
+        loom_value_facts_make(16, 32, 16),
+    };
+    const loom_value_fact_small_static_lanes_t lane_slice = {
+        /*.lanes=*/lanes,
+        /*.count=*/IREE_ARRAYSIZE(lanes),
+    };
+    loom_value_facts_t facts = loom_value_facts_unknown();
+    IREE_ASSERT_OK(loom_value_facts_make_small_static_lanes(
+        &source.context, lane_slice, &facts));
+    IREE_ASSERT_OK(
+        loom_value_fact_table_clone_fact(&target, &source, facts, &cloned));
+    iree_arena_deinitialize(&source_arena);
+    iree_arena_block_pool_trim(&block_pool_);
+  }
+  loom_value_fact_small_static_lanes_t result;
+  ASSERT_TRUE(loom_value_facts_query_small_static_lanes(&target.context, cloned,
+                                                        &result));
+  ASSERT_EQ(result.count, 2u);
+  EXPECT_TRUE(loom_value_facts_is_exact(result.lanes[0]));
+  EXPECT_EQ(result.lanes[0].range_lo, 8);
+  EXPECT_EQ(result.lanes[1].range_lo, 16);
+  EXPECT_EQ(result.lanes[1].range_hi, 32);
+  EXPECT_EQ(result.lanes[1].known_divisor, 16);
+}
+
 TEST_F(FactTableTest, TypeOwnedRawPayloadClonesAndMeetsThroughDomain) {
   loom_value_fact_table_t source = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &arena_, 0));

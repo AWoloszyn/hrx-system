@@ -235,16 +235,21 @@ bool loom_condition_integer_relations_equivalent(
     const loom_condition_integer_relation_t* left,
     const loom_condition_integer_relation_t* right);
 
-// Computes the strongest common relation preserved by both |left| and |right|.
+// Computes the strongest common relation preserved by |left| and the
+// conjunction of |right_count| relations in |right|. Combines all relations
+// over the same operands, including swapped operands. Returns false when no
+// common constraint remains; unrelated operand pairs impose no constraint.
 bool loom_condition_integer_relation_meet(
     const loom_condition_integer_relation_t* left,
     const loom_condition_integer_relation_t* right,
+    iree_host_size_t right_count,
     loom_condition_integer_relation_t* out_relation);
 
 // Attempts to prove that |condition_value| is exact after applying edge-local
-// |facts| to the values it depends on. Unsupported condition forms are valid
-// and set |out_proven| to false. |fact_table| may be NULL to prove only from
-// edge relations.
+// |facts| to it and the values it depends on. Retained exact truth is
+// sufficient even for an opaque producer. Unsupported condition forms without
+// an exact fact are valid and set |out_proven| to false. |fact_table| may be
+// NULL to prove only from edge relations.
 iree_status_t loom_condition_fact_set_proves_condition(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
     const loom_condition_fact_set_t* facts, loom_value_id_t condition_value,

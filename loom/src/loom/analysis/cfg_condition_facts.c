@@ -59,18 +59,11 @@ static iree_host_size_t loom_cfg_condition_intersect_relations(
   for (iree_host_size_t existing_index = 0;
        existing_index < inout_relation_count; ++existing_index) {
     loom_condition_integer_relation_t common_relation = {0};
-    bool found_common_relation = false;
-    for (iree_host_size_t edge_index = 0; edge_index < edge_relation_count;
-         ++edge_index) {
-      if (!loom_condition_integer_relation_meet(
-              &inout_relations[existing_index], &edge_relations[edge_index],
-              &common_relation)) {
-        continue;
-      }
-      found_common_relation = true;
-      break;
+    if (!loom_condition_integer_relation_meet(
+            &inout_relations[existing_index], edge_relations,
+            edge_relation_count, &common_relation)) {
+      continue;
     }
-    if (!found_common_relation) continue;
     inout_relations[new_relation_count++] = common_relation;
   }
   return new_relation_count;
@@ -115,11 +108,18 @@ static bool loom_cfg_condition_try_map_terminator_arg_to_block_arg(
       out_ambiguous);
 }
 
-static bool loom_cfg_condition_value_available_at_block_entry(
+static bool loom_cfg_condition_value_preserved_at_block_entry(
     const loom_module_t* module, const loom_dominance_info_t* dominance,
     loom_value_id_t value_id, const loom_block_t* block) {
   if (value_id == LOOM_VALUE_ID_INVALID || value_id >= module->values.count ||
       !block || !block->first_op) {
+    return false;
+  }
+  // Entering a block rebinds its arguments. A fact about a previous execution's
+  // argument survives only through the incoming payload, handled by the
+  // remapper before this check. Dominance alone does not preserve its value.
+  const loom_value_t* value = loom_module_value(module, value_id);
+  if (loom_value_is_block_arg(value) && loom_value_def_block(value) == block) {
     return false;
   }
   return loom_value_is_available_before_op(dominance, value_id,
@@ -147,7 +147,7 @@ static bool loom_cfg_condition_remap_operand_to_block_entry(
     return true;
   }
 
-  return loom_cfg_condition_value_available_at_block_entry(
+  return loom_cfg_condition_value_preserved_at_block_entry(
       module, dominance, operand.value_id, block);
 }
 
@@ -165,7 +165,7 @@ static bool loom_cfg_condition_remap_value_to_block_entry(
     *out_value_id = block_arg;
     return true;
   }
-  return loom_cfg_condition_value_available_at_block_entry(module, dominance,
+  return loom_cfg_condition_value_preserved_at_block_entry(module, dominance,
                                                            value_id, block);
 }
 

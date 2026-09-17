@@ -1889,3 +1889,79 @@ func.def @nuw_scalar_end_does_not_bound_origin(%buffer: buffer, %base: offset, %
   test.use %loaded : vector<16xf16>
   func.return
 }
+
+// ====
+// RUN: pass vector-memory-footprint
+
+// raw=0 reaches the load with carried=0, then with carried=1. The backedge
+// replaces the argument; the old carried==0 fact cannot prove the next load.
+func.def @replaced_loop_argument_loses_previous_bound(%storage: buffer, %raw: index) {
+  %base = index.constant 0 : offset
+  %c0 = index.constant 0 : index
+  %view = buffer.view %storage[%base] : buffer -> view<1xi32>
+  %first = index.cmp eq, %raw, %c0 : index
+  cfg.cond_br %first, ^start, ^exit
+^start:
+  cfg.br ^header(%raw: index)
+^header(%carried: index):
+  %origin = index.assume %carried [range(%carried, 0, 1)] : index
+  // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1", view_bound="1", required_origin_upper_bound="0"}
+  %loaded = vector.load %view[%origin] : view<1xi32> -> vector<1xi32>
+  test.use %loaded : vector<1xi32>
+  %again = index.cmp eq, %carried, %c0 : index
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  %next = index.constant 1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  func.return
+}
+
+// ====
+
+// Simultaneous argument exchange carries the old bound to the other slot,
+// not to the same SSA ID in the next iteration.
+func.def @swapped_loop_arguments_translate_previous_bound(%storage: buffer, %raw: index) {
+  %base = index.constant 0 : offset
+  %c0 = index.constant 0 : index
+  %view = buffer.view %storage[%base] : buffer -> view<1xi32>
+  %first = index.cmp eq, %raw, %c0 : index
+  cfg.cond_br %first, ^start, ^exit
+^start:
+  %c1 = index.constant 1 : index
+  cfg.br ^header(%raw: index, %c1: index)
+^header(%carried: index, %other: index):
+  %origin = index.assume %carried [range(%carried, 0, 1)] : index
+  // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1", view_bound="1", required_origin_upper_bound="0"}
+  %loaded = vector.load %view[%origin] : view<1xi32> -> vector<1xi32>
+  test.use %loaded : vector<1xi32>
+  %again = index.cmp eq, %carried, %c0 : index
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  cfg.br ^header(%other: index, %carried: index)
+^exit:
+  func.return
+}
+
+// ====
+
+// Explicit self-forwarding preserves the exact value across iterations.
+func.def @self_forwarded_loop_argument_keeps_bound(%storage: buffer, %raw: index) {
+  %base = index.constant 0 : offset
+  %c0 = index.constant 0 : index
+  %view = buffer.view %storage[%base] : buffer -> view<1xi32>
+  %first = index.cmp eq, %raw, %c0 : index
+  cfg.cond_br %first, ^start, ^exit
+^start:
+  cfg.br ^header(%raw: index)
+^header(%carried: index):
+  %origin = index.assume %carried [range(%carried, 0, 1)] : index
+  %loaded = vector.load %view[%origin] : view<1xi32> -> vector<1xi32>
+  test.use %loaded : vector<1xi32>
+  %again = index.cmp eq, %carried, %c0 : index
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  cfg.br ^header(%carried: index)
+^exit:
+  func.return
+}

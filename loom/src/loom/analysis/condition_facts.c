@@ -292,13 +292,12 @@ static bool loom_condition_facts_query_opaque_boolean(
   return loom_condition_fact_set_append_integer_relation(out_facts, assertion);
 }
 
-static bool loom_condition_value_exact_bool(
-    const loom_value_fact_table_t* fact_table, loom_value_id_t value_id,
-    bool* out_value) {
-  int64_t value = 0;
-  if (!loom_condition_value_exact_integer(fact_table, value_id, &value)) {
+static bool loom_condition_facts_exact_bool(loom_value_facts_t facts,
+                                            bool* out_value) {
+  if (!loom_value_facts_is_exact(facts) || loom_value_facts_is_float(facts)) {
     return false;
   }
+  const int64_t value = facts.range_lo;
   if (value != 0 && value != 1) return false;
   *out_value = value != 0;
   return true;
@@ -523,12 +522,14 @@ static iree_status_t loom_condition_facts_process_derivation(
         return loom_condition_query_push_derivation(query, lhs, true);
       }
       bool exact_truth = false;
-      if (loom_condition_value_exact_bool(fact_table, lhs, &exact_truth)) {
+      if (loom_condition_facts_exact_bool(
+              loom_condition_lookup_facts(fact_table, lhs), &exact_truth)) {
         return exact_truth
                    ? loom_condition_query_push_derivation(query, rhs, false)
                    : iree_ok_status();
       }
-      if (loom_condition_value_exact_bool(fact_table, rhs, &exact_truth)) {
+      if (loom_condition_facts_exact_bool(
+              loom_condition_lookup_facts(fact_table, rhs), &exact_truth)) {
         return exact_truth
                    ? loom_condition_query_push_derivation(query, lhs, false)
                    : iree_ok_status();
@@ -548,12 +549,14 @@ static iree_status_t loom_condition_facts_process_derivation(
         return loom_condition_query_push_derivation(query, lhs, false);
       }
       bool exact_truth = false;
-      if (loom_condition_value_exact_bool(fact_table, lhs, &exact_truth)) {
+      if (loom_condition_facts_exact_bool(
+              loom_condition_lookup_facts(fact_table, lhs), &exact_truth)) {
         return !exact_truth
                    ? loom_condition_query_push_derivation(query, rhs, true)
                    : iree_ok_status();
       }
-      if (loom_condition_value_exact_bool(fact_table, rhs, &exact_truth)) {
+      if (loom_condition_facts_exact_bool(
+              loom_condition_lookup_facts(fact_table, rhs), &exact_truth)) {
         return !exact_truth
                    ? loom_condition_query_push_derivation(query, lhs, true)
                    : iree_ok_status();
@@ -568,11 +571,13 @@ static iree_status_t loom_condition_facts_process_derivation(
         return iree_ok_status();
       }
       bool exact_truth = false;
-      if (loom_condition_value_exact_bool(fact_table, lhs, &exact_truth)) {
+      if (loom_condition_facts_exact_bool(
+              loom_condition_lookup_facts(fact_table, lhs), &exact_truth)) {
         return loom_condition_query_push_derivation(
             query, rhs, frame->assumed_truth != exact_truth);
       }
-      if (loom_condition_value_exact_bool(fact_table, rhs, &exact_truth)) {
+      if (loom_condition_facts_exact_bool(
+              loom_condition_lookup_facts(fact_table, rhs), &exact_truth)) {
         return loom_condition_query_push_derivation(
             query, lhs, frame->assumed_truth != exact_truth);
       }
@@ -793,7 +798,9 @@ static loom_condition_proof_state_t loom_condition_query_evaluate_direct_proof(
     bool* out_requires_composition) {
   *out_requires_composition = false;
   bool condition = false;
-  if (loom_condition_value_exact_bool(fact_table, value_id, &condition)) {
+  if (loom_condition_facts_exact_bool(
+          loom_condition_edge_value_facts(fact_table, edge_facts, value_id),
+          &condition)) {
     return condition ? LOOM_CONDITION_PROOF_TRUE : LOOM_CONDITION_PROOF_FALSE;
   }
 
@@ -1177,21 +1184,43 @@ bool loom_condition_integer_relations_equivalent(
 bool loom_condition_integer_relation_meet(
     const loom_condition_integer_relation_t* left,
     const loom_condition_integer_relation_t* right,
+    iree_host_size_t right_count,
     loom_condition_integer_relation_t* out_relation) {
-  bool implication_result = false;
-  if (loom_condition_integer_relation_implies(right, left,
-                                              &implication_result) &&
-      implication_result) {
-    *out_relation = *left;
-    return true;
+  // Bits represent the possible less/equal/greater comparison outcomes.
+  // Conjunction within one edge intersects outcomes; a CFG join unions them.
+  static const uint8_t relation_outcomes[] = {
+      [LOOM_SYMBOLIC_INTEGER_RELATION_EQ] = 2,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_NE] = 5,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_LT] = 1,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_LE] = 3,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_GT] = 4,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_GE] = 6,
+  };
+  static const loom_symbolic_integer_relation_t outcomes_relation[] = {
+      [1] = LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+      [2] = LOOM_SYMBOLIC_INTEGER_RELATION_EQ,
+      [3] = LOOM_SYMBOLIC_INTEGER_RELATION_LE,
+      [4] = LOOM_SYMBOLIC_INTEGER_RELATION_GT,
+      [5] = LOOM_SYMBOLIC_INTEGER_RELATION_NE,
+      [6] = LOOM_SYMBOLIC_INTEGER_RELATION_GE,
+  };
+  uint8_t right_outcomes = 7;
+  for (iree_host_size_t i = 0; i < right_count; ++i) {
+    loom_symbolic_integer_relation_t relation = right[i].relation;
+    if (loom_condition_integer_operands_equal(left->left, right[i].left) &&
+        loom_condition_integer_operands_equal(left->right, right[i].right)) {
+      right_outcomes &= relation_outcomes[relation];
+    } else if (loom_condition_integer_operands_equal(left->left,
+                                                     right[i].right) &&
+               loom_condition_integer_operands_equal(left->right,
+                                                     right[i].left)) {
+      relation = loom_symbolic_integer_relation_swap(relation);
+      right_outcomes &= relation_outcomes[relation];
+    }
   }
-
-  if (loom_condition_integer_relation_implies(left, right,
-                                              &implication_result) &&
-      implication_result) {
-    *out_relation = *right;
-    return true;
-  }
-
-  return false;
+  uint8_t common_outcomes = relation_outcomes[left->relation] | right_outcomes;
+  if (common_outcomes == 7) return false;
+  *out_relation = *left;
+  out_relation->relation = outcomes_relation[common_outcomes];
+  return true;
 }

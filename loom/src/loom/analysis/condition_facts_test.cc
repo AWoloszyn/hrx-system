@@ -114,6 +114,14 @@ class ConditionFactsTest : public ::testing::Test {
     return op;
   }
 
+  loom_op_t* BuildBoolXor(loom_value_id_t left, loom_value_id_t right) {
+    loom_op_t* op = nullptr;
+    IREE_CHECK_OK(loom_scalar_xori_build(&builder_, left, right,
+                                         loom_type_scalar(LOOM_SCALAR_TYPE_I1),
+                                         LOOM_LOCATION_UNKNOWN, &op));
+    return op;
+  }
+
   bool Query(loom_value_id_t condition_value, bool assumed_truth = true) {
     bool complete = false;
     IREE_CHECK_OK(loom_condition_facts_query(&condition_query_, &fact_table_,
@@ -550,6 +558,207 @@ TEST_F(ConditionFactsTest, OpaqueBooleanConditionProducesEdgeFact) {
 
   ASSERT_EQ(condition_facts_.integer_relation_count, 1u);
   EXPECT_EQ(condition_facts_.integer_relations[0].right.constant, 0);
+}
+
+TEST_F(ConditionFactsTest, RetainedBooleanTruthProvesOpaqueCondition) {
+  loom_value_id_t condition =
+      DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  loom_value_id_t other = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  const loom_value_fact_table_t* ambient_fact_tables[] = {&fact_table_,
+                                                          nullptr};
+  for (bool assumed_truth : {false, true}) {
+    ASSERT_TRUE(Query(condition, assumed_truth));
+    for (const loom_value_fact_table_t* ambient_facts : ambient_fact_tables) {
+      bool proven_condition = !assumed_truth;
+      bool proven = false;
+      const iree_host_size_t used_allocation_size =
+          analysis_arena_.used_allocation_size;
+      IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+          &condition_query_, ambient_facts, &condition_facts_, condition,
+          &proven_condition, &proven));
+      EXPECT_TRUE(proven);
+      EXPECT_EQ(proven_condition, assumed_truth);
+      EXPECT_EQ(analysis_arena_.used_allocation_size, used_allocation_size);
+
+      IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+          &condition_query_, ambient_facts, &condition_facts_, other,
+          &proven_condition, &proven));
+      EXPECT_FALSE(proven);
+    }
+  }
+
+  loom_condition_fact_set_reset(&condition_facts_);
+  bool proven_condition = false;
+  bool proven = true;
+  IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+      &condition_query_, &fact_table_, &condition_facts_, condition,
+      &proven_condition, &proven));
+  EXPECT_FALSE(proven);
+}
+
+TEST_F(ConditionFactsTest, BooleanCompositionConsumesRetainedOperandTruth) {
+  loom_value_id_t left = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  loom_value_id_t right = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  const loom_value_id_t conditions[] = {
+      loom_scalar_andi_result(BuildBoolAnd(left, right)),
+      loom_scalar_ori_result(BuildBoolOr(left, right)),
+      loom_scalar_xori_result(BuildBoolXor(left, right)),
+  };
+  for (bool left_truth : {false, true}) {
+    for (bool right_truth : {false, true}) {
+      SCOPED_TRACE(::testing::Message()
+                   << "left=" << left_truth << ", right=" << right_truth);
+      ASSERT_TRUE(Query(left, left_truth));
+      bool complete = false;
+      IREE_ASSERT_OK(loom_condition_facts_query_into(
+          &condition_query_, &fact_table_, right, right_truth,
+          &condition_facts_, &complete));
+      ASSERT_TRUE(complete);
+      const bool expected[] = {
+          left_truth && right_truth,
+          left_truth || right_truth,
+          left_truth != right_truth,
+      };
+      for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(conditions); ++i) {
+        bool proven_condition = !expected[i];
+        bool proven = false;
+        IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+            &condition_query_, &fact_table_, &condition_facts_, conditions[i],
+            &proven_condition, &proven));
+        EXPECT_TRUE(proven);
+        EXPECT_EQ(proven_condition, expected[i]);
+      }
+    }
+  }
+}
+
+TEST_F(ConditionFactsTest, PartialBooleanTruthPreservesUnknownOutcomes) {
+  loom_value_id_t left = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  loom_value_id_t right = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  const loom_value_id_t conditions[] = {
+      loom_scalar_andi_result(BuildBoolAnd(left, right)),
+      loom_scalar_ori_result(BuildBoolOr(left, right)),
+      loom_scalar_xori_result(BuildBoolXor(left, right)),
+  };
+  for (loom_value_id_t known : {left, right}) {
+    for (bool assumed_truth : {false, true}) {
+      ASSERT_TRUE(Query(known, assumed_truth));
+      const bool expected_proven[] = {!assumed_truth, assumed_truth, false};
+      for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(conditions); ++i) {
+        bool proven_condition = !assumed_truth;
+        bool proven = false;
+        IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+            &condition_query_, &fact_table_, &condition_facts_, conditions[i],
+            &proven_condition, &proven));
+        EXPECT_EQ(proven, expected_proven[i]);
+        if (proven) {
+          EXPECT_EQ(proven_condition, assumed_truth);
+        }
+      }
+    }
+  }
+}
+
+static bool EvaluateRelation(loom_symbolic_integer_relation_t relation,
+                             int64_t left, int64_t right) {
+  switch (relation) {
+    case LOOM_SYMBOLIC_INTEGER_RELATION_EQ:
+      return left == right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_NE:
+      return left != right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_LT:
+      return left < right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_LE:
+      return left <= right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_GT:
+      return left > right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_GE:
+      return left >= right;
+  }
+  ADD_FAILURE() << "Invalid relation";
+  return false;
+}
+
+TEST_F(ConditionFactsTest, RelationMeetMatchesConjunctionTruthTable) {
+  const loom_symbolic_integer_relation_t relations[] = {
+      LOOM_SYMBOLIC_INTEGER_RELATION_EQ, LOOM_SYMBOLIC_INTEGER_RELATION_NE,
+      LOOM_SYMBOLIC_INTEGER_RELATION_LT, LOOM_SYMBOLIC_INTEGER_RELATION_LE,
+      LOOM_SYMBOLIC_INTEGER_RELATION_GT, LOOM_SYMBOLIC_INTEGER_RELATION_GE,
+  };
+  const loom_condition_integer_operand_t left_operand = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  const loom_condition_integer_operand_t right_operand = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  for (auto left : relations) {
+    for (auto first : relations) {
+      for (auto second : relations) {
+        for (uint32_t swaps = 0; swaps < 4; ++swaps) {
+          SCOPED_TRACE(::testing::Message()
+                       << "left=" << left << ", first=" << first
+                       << ", second=" << second << ", swaps=" << swaps);
+          const loom_condition_integer_relation_t left_relation = {
+              left, left_operand, right_operand};
+          const loom_condition_integer_relation_t right_relations[] = {
+              {first, (swaps & 1) ? right_operand : left_operand,
+               (swaps & 1) ? left_operand : right_operand},
+              {second, (swaps & 2) ? right_operand : left_operand,
+               (swaps & 2) ? left_operand : right_operand},
+          };
+          loom_condition_integer_relation_t common = {};
+          bool found = loom_condition_integer_relation_meet(
+              &left_relation, right_relations, IREE_ARRAYSIZE(right_relations),
+              &common);
+          bool all_outcomes_allowed = true;
+          for (int64_t a : {-1, 0, 1}) {
+            for (int64_t b : {-1, 0, 1}) {
+              const bool expected =
+                  EvaluateRelation(left, a, b) ||
+                  (EvaluateRelation(first, (swaps & 1) ? b : a,
+                                    (swaps & 1) ? a : b) &&
+                   EvaluateRelation(second, (swaps & 2) ? b : a,
+                                    (swaps & 2) ? a : b));
+              all_outcomes_allowed &= expected;
+              if (found) {
+                EXPECT_EQ(EvaluateRelation(common.relation, a, b), expected);
+              }
+            }
+          }
+          EXPECT_EQ(found, !all_outcomes_allowed);
+          if (found) {
+            EXPECT_TRUE(loom_condition_integer_operands_equal(common.left,
+                                                              left_operand));
+            EXPECT_TRUE(loom_condition_integer_operands_equal(common.right,
+                                                              right_operand));
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(ConditionFactsTest, RelationMeetIgnoresUnmatchedOperandPairs) {
+  const loom_condition_integer_operand_t value = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  const loom_condition_integer_operand_t other_value = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  const loom_condition_integer_operand_t zero = {
+      LOOM_CONDITION_INTEGER_OPERAND_CONSTANT, LOOM_VALUE_ID_INVALID, 0};
+  const loom_condition_integer_operand_t one = {
+      LOOM_CONDITION_INTEGER_OPERAND_CONSTANT, LOOM_VALUE_ID_INVALID, 1};
+  const loom_condition_integer_relation_t left = {
+      LOOM_SYMBOLIC_INTEGER_RELATION_EQ, value, zero};
+  const loom_condition_integer_relation_t right[] = {
+      {LOOM_SYMBOLIC_INTEGER_RELATION_NE, other_value, zero},
+      {LOOM_SYMBOLIC_INTEGER_RELATION_NE, value, one},
+      {LOOM_SYMBOLIC_INTEGER_RELATION_EQ, zero, value},
+  };
+  loom_condition_integer_relation_t common = {};
+  EXPECT_FALSE(
+      loom_condition_integer_relation_meet(&left, nullptr, 0, &common));
+  EXPECT_FALSE(loom_condition_integer_relation_meet(&left, right, 2, &common));
+  ASSERT_TRUE(loom_condition_integer_relation_meet(
+      &left, right, IREE_ARRAYSIZE(right), &common));
+  EXPECT_TRUE(loom_condition_integer_relations_equivalent(&left, &common));
 }
 
 TEST_F(ConditionFactsTest, RelationCapacityOverflowIsIncomplete) {

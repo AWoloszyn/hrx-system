@@ -1074,3 +1074,25 @@ func.def @closed_nested_references(%element: f32) {
 func.def @closed_nested_references(%element: f32) {
   func.return
 }
+
+// ====
+// RUN: pass cfg-simplify
+
+// For raw=0 the loop visits carried=0 and then carried=1 before exiting.
+// The first iteration's equality must not eliminate the second exit test.
+func.def @preserves_exit_after_loop_argument_replacement(%raw: index) {
+  %c0 = index.constant 0 : index
+  %first = index.cmp eq, %raw, %c0 : index
+  cfg.cond_br %first, ^start, ^exit
+^start:
+  cfg.br ^header(%raw: index)
+^header(%carried: index):
+  test.use %carried : index
+  %again = index.cmp eq, %carried, %c0 : index
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  %next = index.constant 1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  func.return
+}
