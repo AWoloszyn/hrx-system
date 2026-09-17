@@ -1563,6 +1563,10 @@ iree_status_t loom_inline_callables_plan_create(
 
 iree_status_t loom_inline_callables_plan_execute(
     loom_inline_callables_plan_t* state) {
+  // An empty call plan has neither cycle obligations nor rewrite work.
+  if (state->entry_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_inline_compute_required_sccs(state));
   IREE_RETURN_IF_ERROR(loom_inline_index_required_entries_by_component(state));
   loom_inline_mark_cycle_blockers(state);

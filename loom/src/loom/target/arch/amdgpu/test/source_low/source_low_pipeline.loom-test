@@ -26,7 +26,14 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
-  select-templates(mode = "final", rewrite = "call")
+  select-templates(mode = "final", rewrite = "inline")
+  if changed {
+    for func {
+      where target {
+        canonicalize(view-loads = "coalesce")
+      }
+    }
+  }
   specialize-target-callgraph
   for func {
     where target {
@@ -135,7 +142,14 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
-  select-templates(mode = "final", rewrite = "call")
+  select-templates(mode = "final", rewrite = "inline")
+  if changed {
+    for func {
+      where target {
+        canonicalize(view-loads = "coalesce")
+      }
+    }
+  }
   specialize-target-callgraph
   for func {
     where target {
@@ -293,7 +307,14 @@ pass.pipeline<module> @__loom_check_prepared_low pipeline {
       }
     }
   }
-  select-templates(mode = "final", rewrite = "call")
+  select-templates(mode = "final", rewrite = "inline")
+  if changed {
+    for func {
+      where target {
+        canonicalize(view-loads = "coalesce")
+      }
+    }
+  }
   specialize-target-callgraph
   for func {
     where target {

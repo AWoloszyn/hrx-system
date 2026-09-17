@@ -63,6 +63,9 @@ iree_status_t loom_template_expansion_pipeline_build(
       LOOM_PASS_REPEAT_MODE_UNTIL_CONVERGED, 0, 64,
       loom_template_expansion_pipeline_build_iteration, (void*)&context,
       &repeat_op));
-  return loom_template_expansion_pipeline_build_selection(
-      builder, IREE_SV("final"), IREE_SV("call"));
+  IREE_RETURN_IF_ERROR(loom_template_expansion_pipeline_build_selection(
+      builder, IREE_SV("final"), IREE_SV("inline")));
+  loom_op_t* if_changed_op = NULL;
+  return loom_pass_ir_build_if_changed(builder, cleanup_body, cleanup_user_data,
+                                       &if_changed_op);
 }

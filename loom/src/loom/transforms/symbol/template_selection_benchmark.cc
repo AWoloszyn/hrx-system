@@ -70,11 +70,13 @@ std::string BuildSource(const TemplateSelectionSourceOptions& options) {
     source.append(
         "test.target<low_core> @benchmark_target {subgroup_size = 32}\n\n");
   }
-  source.append("template.decl @benchmark.choose(%value: index) -> (index)");
-  if (options.constrained) {
-    source.append(" where [ge(%value, -1)]");
+  if (options.provider_count != 0) {
+    source.append("template.decl @benchmark.choose(%value: index) -> (index)");
+    if (options.constrained) {
+      source.append(" where [ge(%value, -1)]");
+    }
+    source.append("\n\n");
   }
-  source.append("\n\n");
   if (options.deferred_exact_call) {
     source.append(
         "template.decl @leaf(%value: index) -> (index)\n"
@@ -151,9 +153,13 @@ std::string BuildSource(const TemplateSelectionSourceOptions& options) {
     source.append(" : index\n  } else {\n    scf.yield %value : index\n  }\n");
   }
   source.append("  func.return %");
-  source.append(options.nested ? "nested_result" : "result_");
-  if (!options.nested) {
-    source.append(std::to_string(options.site_count - 1));
+  if (options.site_count == 0) {
+    source.append("value");
+  } else {
+    source.append(options.nested ? "nested_result" : "result_");
+    if (!options.nested) {
+      source.append(std::to_string(options.site_count - 1));
+    }
   }
   source.append(" : index\n}\n");
   return source;
@@ -354,6 +360,7 @@ void BM_TemplateExpansion(benchmark::State& state) {
   state.SetItemsProcessed(state.iterations() * options.site_count);
 }
 BENCHMARK(BM_TemplateExpansion)
+    ->Args({0, 0, 0, 0})
     ->Args({1, 1, 0, 0})
     ->Args({1, 1, 1, 0})
     ->Args({1, 1, 1, 1})
