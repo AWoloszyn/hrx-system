@@ -8,6 +8,25 @@
 
 #include <stddef.h>
 
+amdf_atomic_capabilities_t amdf_gpu_pm4_atomic_capabilities(void) {
+  const amdf_atomic_operations_t operations =
+      AMDF_ATOMIC_OPERATION_WAIT | AMDF_ATOMIC_OPERATION_STORE |
+      AMDF_ATOMIC_OPERATION_ADD | AMDF_ATOMIC_OPERATION_SUBTRACT |
+      AMDF_ATOMIC_OPERATION_AND | AMDF_ATOMIC_OPERATION_OR |
+      AMDF_ATOMIC_OPERATION_XOR;
+  const amdf_atomic_wait_conditions_t wait_conditions =
+      AMDF_ATOMIC_WAIT_CONDITION_EQUAL | AMDF_ATOMIC_WAIT_CONDITION_NOT_EQUAL |
+      AMDF_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL;
+  return (amdf_atomic_capabilities_t){
+      .operations_32 = operations,
+      .operations_64 = operations,
+      .wait_conditions_32 = wait_conditions,
+      .wait_conditions_64 = wait_conditions,
+      .operations_without_dispatch_32 = operations,
+      .operations_without_dispatch_64 = operations,
+  };
+}
+
 static bool amdf_gpu_queue_family_properties_validate(
     const amdf_gpu_queue_family_properties_t* properties) {
   const amdf_queue_publication_modes_t known_publication_modes =
