@@ -39,7 +39,19 @@ loader configuration.
 
 The Bazel action runner uses the same configured C/C++ compile arguments that
 feed `dev.py bazel compile-commands`, builds one cacheable action per source
-file, and writes a per-source report:
+file, and writes a per-source report. Analysis actions carry the destination
+compiler's SDK input closure and preserve clang-cl/MSVC driver mode when
+analyzing Windows targets. Clang builtin headers come from the analysis tool's
+matching resource directory; SDK linker libraries are not analysis inputs.
+
+The action smoke target exercises C and C++ standard-library headers:
+
+```bash
+iree-bazel-build --repo_env=IREE_CLANG_TIDY_LLVM=auto \
+  //build_tools/clang_tidy:action_smoke
+```
+
+The plugin regression suite runs independently:
 
 ```bash
 iree-bazel-test --repo_env=IREE_CLANG_TIDY_LLVM=auto \

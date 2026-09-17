@@ -330,7 +330,10 @@ test_suite(
 cc_library(
     name = "action_smoke_subject",
     testonly = True,
-    srcs = ["test/action_smoke.c"],
+    srcs = [
+        "test/action_smoke.c",
+        "test/action_smoke.cc",
+    ],
     tags = ["manual"],
 )
 
