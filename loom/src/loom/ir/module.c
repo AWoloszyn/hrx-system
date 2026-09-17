@@ -4239,6 +4239,29 @@ static iree_status_t loom_module_clone_function_type_from_context(
       ctx->result_count, out_type);
 }
 
+// Builds a descriptor-backed payload from a matching parameter array. The
+// caller owns any arena rollback and subsequent type-table publication.
+static iree_status_t loom_module_clone_parameterized_type_payload(
+    loom_module_t* module,
+    const loom_parameterized_type_descriptor_t* descriptor,
+    const loom_attribute_t* parameters, loom_type_t* out_type) {
+  const uint8_t parameter_count = descriptor->parameter_count;
+  loom_attribute_t* canonical_parameters = NULL;
+  if (parameter_count > 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        &module->arena, parameter_count, sizeof(*canonical_parameters),
+        (void**)&canonical_parameters));
+    for (uint8_t i = 0; i < parameter_count; ++i) {
+      IREE_RETURN_IF_ERROR(loom_module_canonicalize_attr_value(
+          module, &descriptor->parameter_descriptors[i], parameters[i],
+          /*depth=*/1, &canonical_parameters[i]));
+    }
+  }
+  *out_type = loom_type_parameterized(descriptor, parameter_count,
+                                      canonical_parameters);
+  return iree_ok_status();
+}
+
 // Recursively clones any pointer-backed payload referenced by |type| into the
 // module arena and returns an equivalent by-value type that owns module-local
 // payload.
@@ -4311,20 +4334,8 @@ static iree_status_t loom_module_clone_type_payload(loom_module_t* module,
             IREE_STATUS_INVALID_ARGUMENT,
             "non-empty parameterized type has a NULL slot pointer");
       }
-      loom_attribute_t* cloned_parameters = NULL;
-      if (parameter_count > 0) {
-        IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-            &module->arena, parameter_count, sizeof(*cloned_parameters),
-            (void**)&cloned_parameters));
-        for (uint8_t i = 0; i < parameter_count; ++i) {
-          IREE_RETURN_IF_ERROR(loom_module_canonicalize_attr_value(
-              module, &descriptor->parameter_descriptors[i], parameters[i],
-              /*depth=*/1, &cloned_parameters[i]));
-        }
-      }
-      *out_type = loom_type_parameterized(descriptor, parameter_count,
-                                          cloned_parameters);
-      return iree_ok_status();
+      return loom_module_clone_parameterized_type_payload(module, descriptor,
+                                                          parameters, out_type);
     }
 
     case LOOM_TYPE_REGISTER: {
@@ -4740,33 +4751,18 @@ iree_status_t loom_module_make_parameterized_type(
 
   iree_arena_checkpoint_t checkpoint =
       iree_arena_checkpoint_save(&module->arena);
-  loom_attribute_t* canonical_parameters = NULL;
-  iree_status_t status = iree_ok_status();
-  if (parameter_count > 0) {
-    status = iree_arena_allocate_array(&module->arena, parameter_count,
-                                       sizeof(*canonical_parameters),
-                                       (void**)&canonical_parameters);
-    for (iree_host_size_t i = 0;
-         i < parameter_count && iree_status_is_ok(status); ++i) {
-      status = loom_module_canonicalize_attr_value(
-          module, &descriptor->parameter_descriptors[i], parameters[i],
-          /*depth=*/1, &canonical_parameters[i]);
-    }
-  }
-  if (!iree_status_is_ok(status)) {
-    iree_arena_checkpoint_restore(&checkpoint);
-    return status;
-  }
-
-  loom_type_t type = loom_type_parameterized(
-      descriptor, (uint8_t)parameter_count, canonical_parameters);
-  uint32_t hash = loom_type_hash(type);
-  loom_type_equal_context_t equal_context = {module, type};
+  loom_type_t type = {0};
+  iree_status_t status = loom_module_clone_parameterized_type_payload(
+      module, descriptor, parameters, &type);
   bool interner_miss = false;
-  status = loom_module_intern_type_impl(
-      module, hash, loom_type_equal_fn, &equal_context,
-      loom_module_retain_type_from_context, &type, out_type, out_type_id,
-      &interner_miss);
+  if (iree_status_is_ok(status)) {
+    uint32_t hash = loom_type_hash(type);
+    loom_type_equal_context_t equal_context = {module, type};
+    status = loom_module_intern_type_impl(
+        module, hash, loom_type_equal_fn, &equal_context,
+        loom_module_retain_type_from_context, &type, out_type, out_type_id,
+        &interner_miss);
+  }
   if (!iree_status_is_ok(status) || !interner_miss) {
     iree_arena_checkpoint_restore(&checkpoint);
   }
