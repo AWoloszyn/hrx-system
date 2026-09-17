@@ -401,6 +401,7 @@ class ExecutionBenchmark {
     CheckStatus(api_->memory_create(scope, &create, &instructions_.memory),
                 "instructions_create");
     MapMemory(instruction_byte_length_, instructions_);
+    std::memset(instructions_.pointer, kGuardValue, instruction_byte_length_);
     std::array<iree_hal_amd_xdna_executable_binding_t, 3> resolved_bindings =
         {};
     for (size_t i = 0; i < bindings_.size(); ++i) {
@@ -430,6 +431,9 @@ class ExecutionBenchmark {
         resolved_bindings.data()));
     CheckIreeStatus(iree_hal_amd_xdna_executable_query_invocation(
         executable_, entry_ordinal, 1, &storage, &command_));
+    original_instructions_.assign(
+        instructions_.pointer,
+        instructions_.pointer + instruction_byte_length_);
     CheckStatus(api_->host_mapping_cache_control(
                     instructions_.mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0,
                     instruction_byte_length_),
@@ -484,6 +488,7 @@ class ExecutionBenchmark {
   }
 
   void VerifyOutput(uint64_t submission) {
+    VerifyInstructions();
     amdf_kernel_queue_status_t status = {};
     status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
     status.structure_size = sizeof(status);
@@ -516,6 +521,16 @@ class ExecutionBenchmark {
     }
   }
 
+  void VerifyInstructions() {
+    CheckStatus(api_->host_mapping_cache_control(
+                    instructions_.mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+                    0, instruction_byte_length_),
+                "instruction_invalidation");
+    Check(std::memcmp(original_instructions_.data(), instructions_.pointer,
+                      instruction_byte_length_) == 0,
+          "loaded instructions changed");
+  }
+
   // Negotiated core and XDNA API tables borrowed from the linked provider.
   const amdf_api_t* api_ = nullptr;
   // XDNA extension paired with api_.
@@ -536,6 +551,8 @@ class ExecutionBenchmark {
   iree_host_size_t instruction_byte_length_ = 0;
   // Complete device setup and execution over immutable instruction backing.
   amdf_xdna_kernel_command_t command_ = {};
+  // Loaded bytes retained to check command immutability outside timing.
+  std::vector<uint8_t> original_instructions_;
   // Native publication lease borrowing context_.
   amdf_kernel_queue_t* queue_ = nullptr;
   struct Binding {

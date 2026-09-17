@@ -7,7 +7,10 @@ read-only rhs and write-only output, each 64 bytes.
 
 Both images use one column and six rows with a resident compute worker. The
 establishing invocation loads code and configures the array; its continuation
-reuses that state. Each finite invocation completes at the output DMA wait.
+reuses that state only when the caller separately guarantees its residency.
+Independent time-sliced native submissions use the establishing invocation
+because context lifetime does not guarantee retained tile state. Each finite
+invocation completes at the output DMA wait.
 Load ranges splice shared file bytes into final command backing, and declared
 binding relocations update both invocation ranges.
 

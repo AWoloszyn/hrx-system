@@ -114,6 +114,12 @@ array. Each output is poisoned before its submission so missing writes cannot
 pass. Both process- and instance-scoped native lifetimes use the shared CTS
 device owner.
 
+A full-width interleave prepares two contexts once and alternates three
+producer/consumer pairs. The consumer reads the producer's shared-DRAM result
+without a host payload operation between them. Changed inputs, poisoned output,
+exact products, guard checks, and immutable instruction bytes establish that
+independent commands work even when another context uses the entire array.
+
 ```sh
 iree-bazel-test --config=asan //experimental/xdna/cts/...
 iree-cmake-test -R '^iree/experimental/xdna/cts/'
@@ -141,7 +147,8 @@ only the resolved immutable command range.
 
 Each iteration publishes changed inputs and poisoned output before timing.
 After completion, outside timing, the caller checks native retirement, all
-input/output values, and guard regions. Completion waits use the infinite timeout contract;
+input/output values, guard regions, and instruction immutability. Completion
+waits use the infinite timeout contract;
 unexpected native errors or incorrect output terminate the benchmark instead
 of producing later samples. Successful execution checks complete teardown.
 
