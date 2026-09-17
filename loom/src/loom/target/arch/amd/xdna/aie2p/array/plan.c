@@ -784,13 +784,35 @@ static bool loom_aie2p_array_try_allocate_storage_in_bank(
     uint32_t alignment, uint32_t* out_owner_offset) {
   const uint32_t bank_capacity =
       state->facts->memory.local_capacity / state->facts->memory.bank_count;
-  uint64_t cursor = state->allocation.bank_cursors[bank];
-  if (!iree_checked_align_u64(cursor, alignment, &cursor) ||
-      cursor + byte_length > bank_capacity) {
+  const uint32_t bank_begin = bank * bank_capacity;
+  const uint32_t bank_end = bank_begin + bank_capacity;
+  uint64_t cursor = bank_begin + state->allocation.bank_cursors[bank];
+  if (!iree_checked_align_u64(cursor, alignment, &cursor)) {
     return false;
   }
-  state->allocation.bank_cursors[bank] = (uint32_t)(cursor + byte_length);
-  *out_owner_offset = bank * bank_capacity + (uint32_t)cursor;
+  const uint64_t owner_end = cursor + byte_length;
+  if (owner_end > bank_end) {
+    // Keep single-bank record placement stable. Larger records consume every
+    // intervening bank prefix and cannot cross an already occupied prefix.
+    if (byte_length <= bank_capacity || cursor >= bank_end ||
+        owner_end > state->facts->memory.local_capacity) {
+      return false;
+    }
+    const uint8_t last_bank = (uint8_t)((owner_end - 1u) / bank_capacity);
+    for (uint8_t i = bank + 1u; i <= last_bank; ++i) {
+      if (state->allocation.bank_cursors[i] != 0) {
+        return false;
+      }
+    }
+    for (uint8_t i = bank; i < last_bank; ++i) {
+      state->allocation.bank_cursors[i] = bank_capacity;
+    }
+    state->allocation.bank_cursors[last_bank] =
+        (uint32_t)owner_end - last_bank * bank_capacity;
+  } else {
+    state->allocation.bank_cursors[bank] = (uint32_t)owner_end - bank_begin;
+  }
+  *out_owner_offset = (uint32_t)cursor;
   return true;
 }
 
@@ -1055,9 +1077,22 @@ static iree_status_t loom_aie2p_array_select_compute_dma(
                                            /*flags=*/0, out_dma_index);
     }
   }
-  return iree_make_status(
-      IREE_STATUS_RESOURCE_EXHAUSTED,
-      "AIE2P worker-visible compute DMA resources are exhausted");
+  const loom_diagnostic_param_t params[] = {
+      loom_param_u32(channel_index),
+      loom_param_u32(worker_coordinate.column),
+      loom_param_u32(worker_coordinate.row),
+      loom_param_u32(descriptor_count),
+      loom_param_u32(record_byte_length),
+  };
+  const loom_diagnostic_emission_t emission = {
+      .op = builder->function_op,
+      .error = LOOM_ERR_TARGET_088,
+      .params = params,
+      .param_count = IREE_ARRAYSIZE(params),
+  };
+  IREE_RETURN_IF_ERROR(
+      iree_diagnostic_emit(builder->diagnostic_emitter, &emission));
+  return iree_status_from_code(IREE_STATUS_INVALID_ARGUMENT);
 }
 
 static iree_status_t loom_aie2p_array_select_shim_dma(

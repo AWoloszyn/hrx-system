@@ -452,6 +452,7 @@ loom_check_test_suite(
   NAME
     loom_check_file_test
   SRCS
+    "test/array_plan/bank_spans.loom-test"
     "test/array_plan/composed_folds.loom-test"
     "test/array_plan/dma_service.loom-test"
     "test/array_plan/endpoint_storage.loom-test"

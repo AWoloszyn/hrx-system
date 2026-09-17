@@ -1587,6 +1587,27 @@ ERR_TARGET_087 = ErrorDef(
     fix_hint="Place the stages in groups whose worker dependencies are acyclic.",
 )
 
+# ERR_TARGET_088: AIE2P channel has no available compute endpoint.
+ERR_TARGET_088 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=88,
+    severity=Severity.ERROR,
+    summary="AIE2P channel has no available compute endpoint.",
+    message=(
+        "AIE2P channel {channel} needs {capacity} records of {record_bytes} bytes, "
+        "DMA descriptors and locks on a compute tile visible to worker "
+        "({column}, {row}); no candidate has all requested resources"
+    ),
+    params=(
+        ErrorParam("channel", ParamKind.U32),
+        ErrorParam("column", ParamKind.U32),
+        ErrorParam("row", ParamKind.U32),
+        ErrorParam("capacity", ParamKind.U32),
+        ErrorParam("record_bytes", ParamKind.U32),
+    ),
+    fix_hint="Reduce the channel capacity or record size, or change worker placement.",
+)
+
 ALL_TARGET_ERRORS = (
     ERR_TARGET_001,
     ERR_TARGET_002,
@@ -1665,4 +1686,5 @@ ALL_TARGET_ERRORS = (
     ERR_TARGET_085,
     ERR_TARGET_086,
     ERR_TARGET_087,
+    ERR_TARGET_088,
 )

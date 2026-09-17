@@ -1,0 +1,331 @@
+// RUN: emit aie2p-array-plan @cross_bank_records
+
+// Each 16,448-byte record reserves all bank prefixes that it touches.
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+low.func.def public retain target<amd.xdna.aie2p.array>(@array_target) abi(array_program) @cross_bank_records() asm {
+  %one = constant.u32 1 : reg<aie2p.array.scalar : index>
+  %zero = constant.u32 0 : reg<aie2p.array.scalar : index>
+  %capacity = constant.u32 2 : reg<aie2p.array.scalar : index>
+  %row = constant.u32 2 : reg<aie2p.array.scalar : index>
+  %group = group %one
+  %worker = worker %group, %zero, @write_records
+  %binding = binding 0, "write"
+  %sender = sender %worker, 0 : reg<aie2p.array.sender : tile<4112xi32>>
+  %receiver = receiver %binding, 0 : reg<aie2p.array.receiver : tile<4112xi32>>
+  %channel = channel %sender, %receiver, %capacity, %one : reg<aie2p.array.channel : tile<4112xi32>>
+  constrain.location %worker, %zero, %row
+  return
+}
+
+low.func.def target<amd.xdna.aie2p.core>(@core_target) abi(object_function) @write_records() asm {
+  %output = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %value = mov.short 7
+  st %value, %output, 0
+  return
+}
+
+// ----
+array @cross_bank_records family=amd.xdna.npu2 groups=1 workers=1 bindings=1 channels=1 slots=2 locks=2 dma=2 routes=4
+binding index=0 ordinal=0 access=write
+worker index=0 group=0 lane=0 entry=@write_records tile=(0,2) resources=1 storage-domains=0
+channel index=0 transport=external-dma record-bytes=16448 capacity=2 records=1 sender=worker[0]:0 receiver=binding[0]:0
+worker-port worker=0 port=0 direction=send channel=0 first-slot=0
+slot channel=0 index=0 owner=(0,2) offset=0x00000 bytes=16448 sender=0x70000 receiver=external
+slot channel=0 index=1 owner=(0,2) offset=0x04040 bytes=16448 sender=0x74040 receiver=external
+lock channel=0 tile=(0,2) id=0 ring=send role=credit initial=2
+lock channel=0 tile=(0,2) id=1 ring=send role=ready initial=0
+dma channel=0 tile=(0,2) side=compute direction=memory-to-stream engine-channel=0 bd-start=0 bd-count=2
+dma channel=0 tile=(0,0) side=shim direction=stream-to-memory engine-channel=0 bd-start=0 bd-count=1
+route channel=0 tile=(0,2) kind=switch source=dma[0] destination=south[0]
+route channel=0 tile=(0,1) kind=switch source=north[0] destination=south[0]
+route channel=0 tile=(0,0) kind=switch source=north[0] destination=south[2]
+route channel=0 tile=(0,0) kind=shim-mux source=north[2] destination=dma[0]
+completion-route index=0 shim=(0,0) source=0 destination=2 packet=0 arbiter=0 master-select=0 rule-slot=0
+binding-patch ordinal=0 channel=0 shim=(0,0) direction=stream-to-memory dma-channel=0 partition=0/1 offset=0 span=16448 transfer=16448 repeat=1 completion-route=0
+
+array-program records=27 writes=12 masked-writes=12 block-writes=2 tile-loads=1 waits=0
+array-block record=17 address=0x0021d000 words=[0x00001010,0x00000000,0x00000000,0x00000000,0x00000000,0x0e041fe1]
+array-block record=18 address=0x0021d020 words=[0x04041010,0x00000000,0x00000000,0x00000000,0x00000000,0x06041fe1]
+array-tile-load record=19 tile-program=0
+control-program records=4 writes=1 masked-writes=1 block-writes=1 tile-loads=0 waits=1 relocations=1
+control-block record=0 address=0x0001d000 words=[0x00001010,0x00000000,0x00000000,0x00000000,0xc0000000,0x02000000,0x00000000,0x02000000]
+control-mask-write record=1 address=0x0001d200 mask=0x00001f00 value=0x00000000
+control-write record=2 address=0x0001d204 value=0x80000000
+control-wait record=3 tile=(0,0) direction=stream-to-memory dma-channel=0 columns=1 rows=1
+control-relocation index=0 record=0 word=1 binding=0 addend=0 alignment=4
+
+resident-program workers=1
+resident worker=0 entry=@cross_bank_records$worker$0 tile=(0,2) code-bytes=86 resources=0 fixups=1
+
+low.func.def retain target<amd.xdna.aie2p.core>(@core_target) @cross_bank_records$worker$0() asm {
+  %acquire_delta = mov.short -1
+  %release_delta = mov.short 1
+  %22 = mov.local-address 458752
+  low.br ^_bb1(%22: reg<aie2p.ep>)
+^_bb1(%16: reg<aie2p.ep>):
+  acq %acquire_delta, 48
+  low.br ^_bb2
+^_bb2:
+  %output = copy %16 : reg<aie2p.ep> -> reg<aie2p.ep>
+  %value = mov.short 7
+  st %value, %output, 0
+  low.br ^_bb3
+^_bb3:
+  rel %release_delta, 49
+  %18 = mov.address-to-scalar %16
+  %19 = mov.i32 16448
+  %20 = xor %18, %19
+  %21 = mov.scalar-to-address %20
+  low.br ^_bb1(%21: reg<aie2p.ep>)
+}
+
+// ====
+
+// RUN: emit aie2p-array-plan @full_local_ring
+
+// Two 32 KiB records fill the local SRAM without wrapping to bank zero.
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+low.func.def public retain target<amd.xdna.aie2p.array>(@array_target) abi(array_program) @full_local_ring() asm {
+  %one = constant.u32 1 : reg<aie2p.array.scalar : index>
+  %zero = constant.u32 0 : reg<aie2p.array.scalar : index>
+  %capacity = constant.u32 2 : reg<aie2p.array.scalar : index>
+  %row = constant.u32 2 : reg<aie2p.array.scalar : index>
+  %group = group %one
+  %worker = worker %group, %zero, @write_records
+  %binding = binding 0, "write"
+  %sender = sender %worker, 0 : reg<aie2p.array.sender : tile<8192xi32>>
+  %receiver = receiver %binding, 0 : reg<aie2p.array.receiver : tile<8192xi32>>
+  %channel = channel %sender, %receiver, %capacity, %one : reg<aie2p.array.channel : tile<8192xi32>>
+  constrain.location %worker, %zero, %row
+  return
+}
+
+low.func.def target<amd.xdna.aie2p.core>(@core_target) abi(object_function) @write_records() asm {
+  %output = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %value = mov.short 7
+  st %value, %output, 0
+  return
+}
+
+// ----
+array @full_local_ring family=amd.xdna.npu2 groups=1 workers=1 bindings=1 channels=1 slots=2 locks=2 dma=2 routes=4
+binding index=0 ordinal=0 access=write
+worker index=0 group=0 lane=0 entry=@write_records tile=(0,2) resources=1 storage-domains=0
+channel index=0 transport=external-dma record-bytes=32768 capacity=2 records=1 sender=worker[0]:0 receiver=binding[0]:0
+worker-port worker=0 port=0 direction=send channel=0 first-slot=0
+slot channel=0 index=0 owner=(0,2) offset=0x00000 bytes=32768 sender=0x70000 receiver=external
+slot channel=0 index=1 owner=(0,2) offset=0x08000 bytes=32768 sender=0x78000 receiver=external
+lock channel=0 tile=(0,2) id=0 ring=send role=credit initial=2
+lock channel=0 tile=(0,2) id=1 ring=send role=ready initial=0
+dma channel=0 tile=(0,2) side=compute direction=memory-to-stream engine-channel=0 bd-start=0 bd-count=2
+dma channel=0 tile=(0,0) side=shim direction=stream-to-memory engine-channel=0 bd-start=0 bd-count=1
+route channel=0 tile=(0,2) kind=switch source=dma[0] destination=south[0]
+route channel=0 tile=(0,1) kind=switch source=north[0] destination=south[0]
+route channel=0 tile=(0,0) kind=switch source=north[0] destination=south[2]
+route channel=0 tile=(0,0) kind=shim-mux source=north[2] destination=dma[0]
+completion-route index=0 shim=(0,0) source=0 destination=2 packet=0 arbiter=0 master-select=0 rule-slot=0
+binding-patch ordinal=0 channel=0 shim=(0,0) direction=stream-to-memory dma-channel=0 partition=0/1 offset=0 span=32768 transfer=32768 repeat=1 completion-route=0
+
+array-program records=27 writes=12 masked-writes=12 block-writes=2 tile-loads=1 waits=0
+array-block record=17 address=0x0021d000 words=[0x00002000,0x00000000,0x00000000,0x00000000,0x00000000,0x0e041fe1]
+array-block record=18 address=0x0021d020 words=[0x08002000,0x00000000,0x00000000,0x00000000,0x00000000,0x06041fe1]
+array-tile-load record=19 tile-program=0
+control-program records=4 writes=1 masked-writes=1 block-writes=1 tile-loads=0 waits=1 relocations=1
+control-block record=0 address=0x0001d000 words=[0x00002000,0x00000000,0x00000000,0x00000000,0xc0000000,0x02000000,0x00000000,0x02000000]
+control-mask-write record=1 address=0x0001d200 mask=0x00001f00 value=0x00000000
+control-write record=2 address=0x0001d204 value=0x80000000
+control-wait record=3 tile=(0,0) direction=stream-to-memory dma-channel=0 columns=1 rows=1
+control-relocation index=0 record=0 word=1 binding=0 addend=0 alignment=4
+
+resident-program workers=1
+resident worker=0 entry=@full_local_ring$worker$0 tile=(0,2) code-bytes=86 resources=0 fixups=1
+
+low.func.def retain target<amd.xdna.aie2p.core>(@core_target) @full_local_ring$worker$0() asm {
+  %acquire_delta = mov.short -1
+  %release_delta = mov.short 1
+  %22 = mov.local-address 458752
+  low.br ^_bb1(%22: reg<aie2p.ep>)
+^_bb1(%16: reg<aie2p.ep>):
+  acq %acquire_delta, 48
+  low.br ^_bb2
+^_bb2:
+  %output = copy %16 : reg<aie2p.ep> -> reg<aie2p.ep>
+  %value = mov.short 7
+  st %value, %output, 0
+  low.br ^_bb3
+^_bb3:
+  rel %release_delta, 49
+  %18 = mov.address-to-scalar %16
+  %19 = mov.i32 32768
+  %20 = xor %18, %19
+  %21 = mov.scalar-to-address %20
+  low.br ^_bb1(%21: reg<aie2p.ep>)
+}
+
+// ====
+
+// RUN: emit aie2p-array-plan @occupied_bank_prefixes
+
+// Persistent storage and small rings force the wide ring onto a visible neighbor.
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+low.func.def public retain target<amd.xdna.aie2p.array>(@array_target) abi(array_program) @occupied_bank_prefixes() asm {
+  %one = constant.u32 1 : reg<aie2p.array.scalar : index>
+  %zero = constant.u32 0 : reg<aie2p.array.scalar : index>
+  %capacity = constant.u32 2 : reg<aie2p.array.scalar : index>
+  %row = constant.u32 2 : reg<aie2p.array.scalar : index>
+  %group = group %one
+  %worker = worker %group, %zero, @write_records
+  %small_binding = binding 0, "write"
+  %small_sender = sender %worker, 0 : reg<aie2p.array.sender : tile<1xi32>>
+  %small_receiver = receiver %small_binding, 0 : reg<aie2p.array.receiver : tile<1xi32>>
+  %small_channel = channel %small_sender, %small_receiver, %capacity, %one : reg<aie2p.array.channel : tile<1xi32>>
+  %binding = binding 1, "write"
+  %sender = sender %worker, 1 : reg<aie2p.array.sender : tile<4112xi32>>
+  %receiver = receiver %binding, 0 : reg<aie2p.array.receiver : tile<4112xi32>>
+  %channel = channel %sender, %receiver, %capacity, %one : reg<aie2p.array.channel : tile<4112xi32>>
+  constrain.location %worker, %zero, %row
+  return
+}
+
+low.func.def target<amd.xdna.aie2p.core>(@core_target) abi(object_function) @write_records() asm {
+  %small = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %allocation = storage {byte_alignment = 32768, byte_length = 20000} : low.storage<workgroup>
+  %storage = storage_address %allocation : low.storage<workgroup> -> reg<aie2p.ep>
+  %value = mov.short 7
+  st %value, %output, 0
+  st %value, %small, 0
+  st %value, %storage, 0
+  return
+}
+
+// ----
+array @occupied_bank_prefixes family=amd.xdna.npu2 groups=1 workers=1 bindings=2 channels=2 slots=4 locks=4 dma=4 routes=9
+binding index=0 ordinal=0 access=write
+binding index=1 ordinal=1 access=write
+worker index=0 group=0 lane=0 entry=@write_records tile=(0,2) resources=2 storage-domains=1
+channel index=0 transport=external-dma record-bytes=4 capacity=2 records=1 sender=worker[0]:0 receiver=binding[0]:0
+channel index=1 transport=external-dma record-bytes=16448 capacity=2 records=1 sender=worker[0]:1 receiver=binding[1]:0
+worker-storage worker=0 space=3 offset=0x08000 load-address=0x78000 bytes=20000
+worker-port worker=0 port=0 direction=send channel=0 first-slot=0
+worker-port worker=0 port=1 direction=send channel=1 first-slot=2
+slot channel=0 index=0 owner=(0,2) offset=0x00000 bytes=4 sender=0x70000 receiver=external
+slot channel=0 index=1 owner=(0,2) offset=0x04000 bytes=4 sender=0x74000 receiver=external
+slot channel=1 index=0 owner=(0,3) offset=0x00000 bytes=16448 sender=0x60000 receiver=external
+slot channel=1 index=1 owner=(0,3) offset=0x04040 bytes=16448 sender=0x64040 receiver=external
+lock channel=0 tile=(0,2) id=0 ring=send role=credit initial=2
+lock channel=0 tile=(0,2) id=1 ring=send role=ready initial=0
+lock channel=1 tile=(0,3) id=0 ring=send role=credit initial=2
+lock channel=1 tile=(0,3) id=1 ring=send role=ready initial=0
+dma channel=0 tile=(0,2) side=compute direction=memory-to-stream engine-channel=0 bd-start=0 bd-count=2
+dma channel=0 tile=(0,0) side=shim direction=stream-to-memory engine-channel=0 bd-start=0 bd-count=1
+dma channel=1 tile=(0,3) side=compute direction=memory-to-stream engine-channel=0 bd-start=0 bd-count=2
+dma channel=1 tile=(0,0) side=shim direction=stream-to-memory engine-channel=1 bd-start=1 bd-count=1
+route channel=0 tile=(0,2) kind=switch source=dma[0] destination=south[0]
+route channel=0 tile=(0,1) kind=switch source=north[0] destination=south[0]
+route channel=0 tile=(0,0) kind=switch source=north[0] destination=south[2]
+route channel=0 tile=(0,0) kind=shim-mux source=north[2] destination=dma[0]
+route channel=1 tile=(0,3) kind=switch source=dma[0] destination=south[0]
+route channel=1 tile=(0,2) kind=switch source=north[0] destination=south[1]
+route channel=1 tile=(0,1) kind=switch source=north[1] destination=south[1]
+route channel=1 tile=(0,0) kind=switch source=north[1] destination=south[3]
+route channel=1 tile=(0,0) kind=shim-mux source=north[3] destination=dma[1]
+completion-route index=0 shim=(0,0) source=0 destination=2 packet=0 arbiter=0 master-select=0 rule-slot=0
+binding-patch ordinal=0 channel=0 shim=(0,0) direction=stream-to-memory dma-channel=0 partition=0/1 offset=0 span=4 transfer=4 repeat=1 completion-route=0
+binding-patch ordinal=1 channel=1 shim=(0,0) direction=stream-to-memory dma-channel=1 partition=0/1 offset=0 span=16448 transfer=16448 repeat=1 completion-route=0
+
+array-program records=49 writes=23 masked-writes=21 block-writes=4 tile-loads=1 waits=0
+array-block record=32 address=0x0021d000 words=[0x00000001,0x00000000,0x00000000,0x00000000,0x00000000,0x0e041fe1]
+array-block record=33 address=0x0021d020 words=[0x04000001,0x00000000,0x00000000,0x00000000,0x00000000,0x06041fe1]
+array-block record=34 address=0x0031d000 words=[0x00001010,0x00000000,0x00000000,0x00000000,0x00000000,0x0e041fe1]
+array-block record=35 address=0x0031d020 words=[0x04041010,0x00000000,0x00000000,0x00000000,0x00000000,0x06041fe1]
+array-tile-load record=36 tile-program=0
+control-program records=8 writes=2 masked-writes=2 block-writes=2 tile-loads=0 waits=2 relocations=2
+control-block record=0 address=0x0001d000 words=[0x00000001,0x00000000,0x00000000,0x00000000,0xc0000000,0x02000000,0x00000000,0x02000000]
+control-mask-write record=1 address=0x0001d200 mask=0x00001f00 value=0x00000000
+control-write record=2 address=0x0001d204 value=0x80000000
+control-block record=3 address=0x0001d020 words=[0x00001010,0x00000000,0x00000000,0x00000000,0xc0000000,0x02000000,0x00000000,0x02000000]
+control-mask-write record=4 address=0x0001d208 mask=0x00001f00 value=0x00000000
+control-write record=5 address=0x0001d20c value=0x80000001
+control-wait record=6 tile=(0,0) direction=stream-to-memory dma-channel=0 columns=1 rows=1
+control-wait record=7 tile=(0,0) direction=stream-to-memory dma-channel=1 columns=1 rows=1
+control-relocation index=0 record=0 word=1 binding=0 addend=0 alignment=4
+control-relocation index=1 record=3 word=1 binding=1 addend=0 alignment=4
+
+resident-program workers=1
+resident worker=0 entry=@occupied_bank_prefixes$worker$0 tile=(0,2) code-bytes=162 resources=0 fixups=2
+
+low.func.def retain target<amd.xdna.aie2p.core>(@core_target) @occupied_bank_prefixes$worker$0() asm {
+  %allocation = storage {byte_alignment = 32768, byte_length = 20000} : low.storage<workgroup>
+  %acquire_delta = mov.short -1
+  %release_delta = mov.short 1
+  %38 = mov.local-address 458752
+  %39 = mov.local-address 393216
+  low.br ^_bb1(%38: reg<aie2p.ep>, %39: reg<aie2p.ep>)
+^_bb1(%26: reg<aie2p.ep>, %28: reg<aie2p.ep>):
+  acq %acquire_delta, 48
+  acq %acquire_delta, 32
+  low.br ^_bb2
+^_bb2:
+  %small = copy %26 : reg<aie2p.ep> -> reg<aie2p.ep>
+  %output = copy %28 : reg<aie2p.ep> -> reg<aie2p.ep>
+  %storage = storage_address %allocation : low.storage<workgroup> -> reg<aie2p.ep>
+  %value = mov.short 7
+  st %value, %output, 0
+  st %value, %small, 0
+  st %value, %storage, 0
+  low.br ^_bb3
+^_bb3:
+  rel %release_delta, 49
+  rel %release_delta, 33
+  %30 = mov.address-to-scalar %26
+  %31 = mov.i32 16384
+  %32 = xor %30, %31
+  %33 = mov.scalar-to-address %32
+  %34 = mov.address-to-scalar %28
+  %35 = mov.i32 16448
+  %36 = xor %34, %35
+  %37 = mov.scalar-to-address %36
+  low.br ^_bb1(%33: reg<aie2p.ep>, %37: reg<aie2p.ep>)
+}
+
+// ====
+
+// RUN: emit aie2p-array-plan @oversized_ring
+
+// No visible compute endpoint can fit three 32 KiB records, despite free DMA.
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+// ERROR@+1: TARGET/088 {channel="0", column="0", row="2", capacity="3", record_bytes="32768"}
+low.func.def public retain target<amd.xdna.aie2p.array>(@array_target) abi(array_program) @oversized_ring() asm {
+  %one = constant.u32 1 : reg<aie2p.array.scalar : index>
+  %zero = constant.u32 0 : reg<aie2p.array.scalar : index>
+  %capacity = constant.u32 3 : reg<aie2p.array.scalar : index>
+  %row = constant.u32 2 : reg<aie2p.array.scalar : index>
+  %group = group %one
+  %worker = worker %group, %zero, @write_records
+  %binding = binding 0, "write"
+  %sender = sender %worker, 0 : reg<aie2p.array.sender : tile<8192xi32>>
+  %receiver = receiver %binding, 0 : reg<aie2p.array.receiver : tile<8192xi32>>
+  %channel = channel %sender, %receiver, %capacity, %one : reg<aie2p.array.channel : tile<8192xi32>>
+  constrain.location %worker, %zero, %row
+  return
+}
+
+low.func.def target<amd.xdna.aie2p.core>(@core_target) abi(object_function) @write_records() asm {
+  %output = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %value = mov.short 7
+  st %value, %output, 0
+  return
+}
