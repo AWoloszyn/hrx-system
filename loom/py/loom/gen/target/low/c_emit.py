@@ -709,8 +709,10 @@ def emit_source_for_views(
     )
     event_separation_ranges = {}
     for index, separation in enumerate(compiled.event_separations):
+        if separation.minimum_issue_separation_cycles <= 0:
+            continue
         start, count, maximum = event_separation_ranges.get(separation.producer_event, (index, 0, 0))
-        event_separation_ranges[separation.producer_event] = (start, count + 1, max(maximum, separation.minimum_issue_separation_cycles))
+        event_separation_ranges[separation.producer_event] = (start, index - start + 1, max(maximum, separation.minimum_issue_separation_cycles))
     timing_event_rows = []
     for timing_event in compiled.timing_events:
         start, count, maximum = event_separation_ranges.get(timing_event.name, (0, 0, 0))

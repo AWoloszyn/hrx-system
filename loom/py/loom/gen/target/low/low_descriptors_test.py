@@ -38,6 +38,7 @@ from loom.target.low_descriptors import (
     EncodingFieldValue,
     EnumDomain,
     EnumValue,
+    EventSeparation,
     Hazard,
     HazardKind,
     Immediate,
@@ -47,6 +48,7 @@ from loom.target.low_descriptors import (
     InstructionClass,
     IssueUse,
     IssueUseKind,
+    ModelQuality,
     NativeAsmValue,
     NativeAsmValueKind,
     OperandAddressMapKind,
@@ -2886,8 +2888,33 @@ def test_generator_emits_compact_timing_event_tables() -> None:
     assert "kTestLowCoreEventSeparations" in generated.source
     assert ".minimum_issue_separation_cycles = -2," in generated.source
     assert ".separation_start = 2," in generated.source
-    assert ".separation_count = 2," in generated.source
+    assert ".separation_count = 0," in generated.source
+    assert ".separation_count = 1," in generated.source
     assert ".maximum_issue_separation_cycles = 3," in generated.source
+
+
+@pytest.mark.parametrize(
+    ("delays", "expected_span"),
+    [
+        ((0, -1, 0, -2, 0, -3, 0, -4), (0, 0, 0)),
+        ((-2, 0, 3, 0, 1, -1, 0, -3), (2, 3, 3)),
+        ((2, -1, 0, 0, -2, 0, 0, -3), (0, 1, 2)),
+        ((0, 0, -1, 0, 0, -2, 0, 4), (7, 1, 4)),
+        ((1, 2, 3, 4, 5, 6, 7, 8), (0, 8, 8)),
+    ],
+)
+def test_generator_bounds_frontier_spans_without_discarding_pair_facts(delays: tuple[int, ...], expected_span: tuple[int, int, int]) -> None:
+    events = TEST_LOW_CORE_DESCRIPTOR_SET.timing_events
+    separations = tuple(EventSeparation(events[0].name, event.name, delay, ModelQuality.EXACT) for event, delay in zip(events, delays, strict=True))
+    descriptor_set = replace(TEST_LOW_CORE_DESCRIPTOR_SET, event_separations=separations)
+    compiled = compiler.compile_descriptor_set(descriptor_set)
+    assert tuple(compiled.event_separations) == separations
+    generated = generate_descriptor_set(descriptor_set)
+    spans = re.findall(
+        r"\.separation_start = (\d+),\s*\.separation_count = (\d+),\s*\.maximum_issue_separation_cycles = (\d+),",
+        generated.source,
+    )
+    assert [tuple(map(int, span)) for span in spans] == [expected_span, *((0, 0, 0),) * (len(events) - 1)]
 
 
 def test_generator_rejects_duplicate_schedule_resource() -> None:

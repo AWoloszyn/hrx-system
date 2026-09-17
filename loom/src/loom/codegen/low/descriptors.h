@@ -913,9 +913,11 @@ typedef struct loom_low_resource_t {
 typedef struct loom_low_timing_event_t {
   // String-table offset for the stable timing-event name.
   loom_bstring_table_offset_t name_string_offset;
-  // First outgoing row in the event-separation table.
+  // First positive outgoing row in the complete event-separation table, or
+  // zero when this event cannot advance the physical timing frontier.
   uint32_t separation_start;
-  // Number of outgoing event-separation rows.
+  // Span through the last positive outgoing row. Interior rows may have
+  // nonpositive delays; dependency queries retain the complete pair table.
   uint16_t separation_count;
   // Reserved; must be zero.
   uint16_t reserved;
