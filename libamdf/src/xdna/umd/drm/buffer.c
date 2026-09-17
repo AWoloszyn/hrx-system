@@ -171,13 +171,16 @@ amdf_status_t amdf_linux_xdna_buffer_attach(
     if (ioctl(descriptor, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &info) != 0) {
       return amdf_linux_error(errno);
     }
-    if (info.vaddr != (uintptr_t)mapping ||
-        info.xdna_addr == AMDXDNA_INVALID_ADDR) {
+    if (info.vaddr != (uintptr_t)mapping) {
       return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
     }
     buffer->host_pointer = mapping;
   }
-  buffer->device_address = info.xdna_addr;
+  // PASID-backed SHARE/CMD buffers use the mapped user VA when the driver
+  // reports no separate device address. Heap and IOVA addresses stay explicit.
+  buffer->device_address = info.xdna_addr == AMDXDNA_INVALID_ADDR
+                               ? (uintptr_t)buffer->host_pointer
+                               : info.xdna_addr;
   return AMDF_STATUS_OK;
 }
 
