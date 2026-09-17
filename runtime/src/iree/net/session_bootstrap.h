@@ -85,8 +85,9 @@ iree_net_session_bootstrap_outbound_message(
 
 // Consumes an outbound message after its send has been accepted.
 //
-// The endpoint copied-prefix contract guarantees that the encoded storage is
-// no longer needed. Advances the client to WAIT_ACK or the server to COMPLETE.
+// The endpoint generated-prefix contract guarantees that the encoded storage
+// is no longer needed when send returns OK. Advances the client to WAIT_ACK or
+// the server to COMPLETE.
 IREE_API_EXPORT void iree_net_session_bootstrap_consume_outbound_message(
     iree_net_session_bootstrap_t* bootstrap);
 

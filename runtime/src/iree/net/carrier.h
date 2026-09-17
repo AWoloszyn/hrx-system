@@ -33,6 +33,8 @@
 #ifndef IREE_NET_CARRIER_H_
 #define IREE_NET_CARRIER_H_
 
+#include <string.h>
+
 #include "iree/async/api.h"
 #include "iree/async/buffer_pool.h"
 #include "iree/base/api.h"
@@ -46,9 +48,9 @@ extern "C" {
 // Carrier properties and capabilities
 //===----------------------------------------------------------------------===//
 
-// Minimum alignment of writable storage returned by begin_send.
+// Minimum alignment of storage passed to a send prefix writer.
 // This permits protocols to serialize naturally aligned 64-bit fields.
-#define IREE_NET_SEND_RESERVATION_ALIGNMENT 8
+#define IREE_NET_SEND_PREFIX_ALIGNMENT 8
 
 // Carrier lifecycle state for deactivate-before-destroy enforcement.
 typedef enum iree_net_carrier_state_e {
@@ -107,34 +109,74 @@ typedef struct iree_net_send_completion_callback_t {
   void* user_data;
 } iree_net_send_completion_callback_t;
 
-// Flags for send operations.
-typedef enum iree_net_send_flag_bits_e {
-  IREE_NET_SEND_FLAG_NONE = 0u,
+// Writes one generated prefix into transport-owned admitted storage.
+//
+// The writer may be invoked synchronously at most once during the send call.
+// Implementations may reject the send before invocation when transport storage
+// cannot be admitted. Once invoked it runs without transport locks held and
+// receives |target| with the exact requested prefix length and at least
+// IREE_NET_SEND_PREFIX_ALIGNMENT alignment. Its storage may be consumed
+// directly by the transport, such as a shared-memory ring entry or registered
+// network buffer. The writer must initialize every byte and must not retain
+// |target| after returning. A non-OK return rejects the send and suppresses its
+// completion callback.
+typedef iree_status_t(IREE_API_PTR* iree_net_send_prefix_write_fn_t)(
+    void* user_data, iree_byte_span_t target);
 
-  // Requests direct transport access to caller storage when supported instead
-  // of staging a copy. All sends require storage valid until completion.
-  IREE_NET_SEND_FLAG_ZERO_COPY = 1u << 0,
-} iree_net_send_flag_bits_t;
-typedef uint32_t iree_net_send_flags_t;
+// Description of transient bytes generated synchronously during send.
+typedef struct iree_net_send_prefix_t {
+  // Exact number of bytes passed to |write|.
+  iree_host_size_t length;
+
+  // Function that writes exactly |length| bytes into transport storage.
+  iree_net_send_prefix_write_fn_t write;
+
+  // Opaque value passed to |write|.
+  void* user_data;
+} iree_net_send_prefix_t;
+
+// Returns an empty generated prefix.
+static inline iree_net_send_prefix_t iree_net_send_prefix_empty(void) {
+  return (iree_net_send_prefix_t){0};
+}
+
+// Copies bytes from |user_data| into |target|.
+static inline iree_status_t iree_net_send_prefix_copy(void* user_data,
+                                                      iree_byte_span_t target) {
+  if (!user_data) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "send prefix has null source storage");
+  }
+  memcpy(target.data, user_data, target.data_length);
+  return iree_ok_status();
+}
+
+// Returns a generated prefix that synchronously copies |source|.
+//
+// |source| only needs to remain valid for the duration of the send call.
+static inline iree_net_send_prefix_t iree_net_send_prefix_from_bytes(
+    iree_const_byte_span_t source) {
+  if (iree_const_byte_span_is_empty(source)) {
+    return iree_net_send_prefix_empty();
+  }
+  return (iree_net_send_prefix_t){
+      /*.length=*/source.data_length,
+      /*.write=*/iree_net_send_prefix_copy,
+      /*.user_data=*/(void*)source.data,
+  };
+}
 
 // Parameters for send operations.
 typedef struct iree_net_send_params_t {
-  // Data to send.
-  iree_async_span_list_t data;
+  // Transient leading bytes generated before the send call returns.
+  iree_net_send_prefix_t generated_prefix;
 
-  // Flags controlling send behavior.
-  iree_net_send_flags_t flags;
+  // Scatter-gather data borrowed through terminal completion.
+  iree_async_span_list_t data;
 
   // Required callback invoked when the send completes.
   iree_net_send_completion_callback_t completion_callback;
 } iree_net_send_params_t;
-
-// Opaque handle for a begin_send reservation.
-//
-// Returned by iree_net_carrier_begin_send() and passed to commit_send or
-// abort_send. The handle is only valid until one of those terminal operations
-// consumes it. Using it after commit or abort is undefined behavior.
-typedef uint64_t iree_net_carrier_send_handle_t;
 
 //===----------------------------------------------------------------------===//
 // Backpressure / flow control
@@ -237,18 +279,6 @@ struct iree_net_carrier_vtable_t {
   // Submits one callback-completed scatter/gather send.
   iree_status_t (*send)(iree_net_carrier_t* carrier,
                         const iree_net_send_params_t* params);
-
-  // Reserves contiguous carrier-owned send storage.
-  iree_status_t (*begin_send)(iree_net_carrier_t* carrier,
-                              iree_host_size_t size, void** out_ptr,
-                              iree_net_carrier_send_handle_t* out_handle);
-  // Publishes one callback-completed reserved send and consumes its handle.
-  iree_status_t (*commit_send)(iree_net_carrier_t* carrier,
-                               iree_net_carrier_send_handle_t handle,
-                               iree_net_send_completion_callback_t callback);
-  // Discards one reserved send and consumes its handle.
-  void (*abort_send)(iree_net_carrier_t* carrier,
-                     iree_net_carrier_send_handle_t handle);
 
   // Stops accepting sends and initiates an orderly transport shutdown.
   iree_status_t (*shutdown)(iree_net_carrier_t* carrier);
@@ -495,12 +525,6 @@ static inline iree_status_t iree_net_carrier_activate(
 // both directions and guarantees all pending operations have completed before
 // the callback fires.
 //
-// Deactivation invalidates all uncommitted begin_send reservations. Callers
-// must externally synchronize writes through reservation pointers against
-// deactivation and must not commit or abort a handle after deactivation begins.
-// A reservation committed before deactivation remains an accepted send and
-// receives its terminal completion callback.
-//
 // Once accepted by the caller's lifecycle state machine, deactivation is
 // infallible: transport cleanup failures are reported through the terminal
 // error handler and the completion callback still fires after all accepted
@@ -528,7 +552,8 @@ static inline iree_net_carrier_capabilities_t iree_net_carrier_capabilities(
   return carrier->capabilities;
 }
 
-// Returns the maximum scatter-gather spans accepted per send operation.
+// Returns the maximum caller-provided scatter-gather spans accepted per send.
+// A generated prefix does not consume one of these spans.
 // O(1) direct field access, no vtable dispatch.
 static inline iree_host_size_t iree_net_carrier_max_send_spans(
     const iree_net_carrier_t* carrier) {
@@ -555,10 +580,8 @@ static inline int32_t iree_net_carrier_pending_operation_count(
 // submits. The send operation remains the authoritative admission check.
 //
 // A live carrier must not report zero budget unless capacity is owned by an
-// accepted operation or caller-held reservation. Operation completion provides
-// the retry edge; a reservation owner must promptly commit or abort and
-// coordinate any blocked producer. Terminal carriers report a zero budget
-// after delivering their terminal-error callback.
+// accepted operation. Operation completion provides the retry edge. Terminal
+// carriers report a zero budget after delivering their terminal-error callback.
 static inline iree_net_carrier_send_budget_t iree_net_carrier_query_send_budget(
     iree_net_carrier_t* carrier) {
   if (iree_net_carrier_has_terminal_error(carrier)) {
@@ -569,7 +592,17 @@ static inline iree_net_carrier_send_budget_t iree_net_carrier_query_send_budget(
 
 // Submits a send operation.
 //
-// |params| specifies the data to send, flags, and required completion callback.
+// |params| specifies a generated prefix, borrowed data, and required
+// completion callback. The generated prefix followed by |params->data|
+// comprises the complete payload. Either part may be empty, but the payload
+// must contain at least one byte.
+//
+// The prefix writer may be invoked synchronously at most once before this call
+// returns. The carrier can reject the send before invocation if transport
+// storage is unavailable. Once invoked it receives transport-owned storage and
+// may therefore serialize directly into an SHM ring, registered RDMA staging
+// region, or TCP send buffer without caller-side staging. A writer failure
+// rejects the send and suppresses the completion callback.
 //
 // The data buffers referenced by |params->data| must remain valid until the
 // completion callback fires. This is the standard async I/O contract — the
@@ -579,25 +612,38 @@ static inline iree_net_carrier_send_budget_t iree_net_carrier_query_send_budget(
 // stable storage before calling send().
 //
 // The carrier copies any span descriptors it needs before returning; only the
-// referenced byte storage remains caller-owned through completion.
+// referenced byte storage remains caller-owned through completion. The prefix
+// writer and its user data are no longer referenced after this function
+// returns.
 //
 // Prerequisites:
 //   - Carrier must be activated (ACTIVE state).
 //
-// Returns INVALID_ARGUMENT for an empty or malformed span list, OUT_OF_RANGE
-// when the span count exceeds the carrier limit or the total byte count
-// overflows, and the stored terminal status after carrier failure. Concrete
-// implementations report lifecycle precondition and synchronous admission
-// failures. A non-OK return means the callback will not fire.
+// Returns INVALID_ARGUMENT for an empty total payload or malformed prefix/span
+// list, OUT_OF_RANGE when the caller span count exceeds the carrier limit or
+// the total byte count overflows, and the stored terminal status after carrier
+// failure. Concrete implementations report lifecycle precondition and
+// synchronous admission failures. A non-OK return means the callback will not
+// fire.
 static inline iree_status_t iree_net_carrier_send(
     iree_net_carrier_t* carrier, const iree_net_send_params_t* params) {
   if (!params || !params->completion_callback.fn) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "send completion callback is required");
   }
-  if (params->data.count == 0 || !params->data.values) {
+  if ((params->generated_prefix.length == 0) !=
+      (params->generated_prefix.write == NULL)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "send requires a non-empty span list");
+                            "send prefix length and writer disagree");
+  }
+  if (params->generated_prefix.length == 0 &&
+      params->generated_prefix.user_data) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "empty send prefix has user data");
+  }
+  if (params->data.count > 0 && !params->data.values) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "send span list has null storage");
   }
   if (params->data.count > carrier->max_send_spans) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -605,7 +651,7 @@ static inline iree_status_t iree_net_carrier_send(
                             " spans but carrier supports at most %" PRIhsz,
                             params->data.count, carrier->max_send_spans);
   }
-  iree_host_size_t total_length = 0;
+  iree_host_size_t total_length = params->generated_prefix.length;
   for (iree_host_size_t i = 0; i < params->data.count; ++i) {
     if (!iree_host_size_checked_add(total_length, params->data.values[i].length,
                                     &total_length)) {
@@ -619,79 +665,6 @@ static inline iree_status_t iree_net_carrier_send(
   }
   IREE_RETURN_IF_ERROR(iree_net_carrier_clone_terminal_error(carrier));
   return carrier->vtable->send(carrier, params);
-}
-
-// Reserves space for a contiguous send of |size| bytes.
-//
-// On success, |*out_ptr| points to a buffer of at least |size| bytes where the
-// caller writes directly. |*out_handle| receives an opaque handle that must be
-// passed to either commit_send (to publish the data) or abort_send (to discard
-// the reservation). |*out_ptr| is aligned to
-// IREE_NET_SEND_RESERVATION_ALIGNMENT.
-//
-// This is the direct-write send path for data being generated (protocol
-// headers, serialized frontiers, bootstrap messages). It avoids caller-side
-// staging but may allocate or reserve transport storage. For pre-existing data
-// use iree_net_carrier_send() with scatter-gather instead.
-//
-// Between begin_send and commit/abort, the caller holds carrier-specific
-// resources such as a pending loopback send or a TCP send slot and buffer. The
-// caller must call commit_send or abort_send promptly.
-//
-// |size| must be > 0.
-//
-// Returns RESOURCE_EXHAUSTED if the transport buffer is full, the stored
-// terminal status after carrier failure, or FAILED_PRECONDITION if the carrier
-// is not active.
-static inline iree_status_t iree_net_carrier_begin_send(
-    iree_net_carrier_t* carrier, iree_host_size_t size, void** out_ptr,
-    iree_net_carrier_send_handle_t* out_handle) {
-  if (!out_ptr || !out_handle) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "send reservation requires output storage");
-  }
-  *out_ptr = NULL;
-  *out_handle = 0;
-  if (size == 0) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "send reservation size must be nonzero");
-  }
-  IREE_RETURN_IF_ERROR(iree_net_carrier_clone_terminal_error(carrier));
-  return carrier->vtable->begin_send(carrier, size, out_ptr, out_handle);
-}
-
-// Publishes a previously reserved send, making the data visible to the peer.
-//
-// The data written into the buffer returned by begin_send is committed to the
-// transport. This call always consumes |handle| unless it rejects a missing
-// completion callback. After an OK return the callback fires exactly once when
-// the send reaches a terminal state and transport resources are reusable. The
-// callback may race with the return on another proactor thread. A non-OK return
-// means the callback will not fire.
-//
-// Must be called exactly once after a successful begin_send, passing the handle
-// returned by that begin_send. Using a handle from a different begin_send or
-// calling commit_send twice with the same handle is undefined behavior.
-static inline iree_status_t iree_net_carrier_commit_send(
-    iree_net_carrier_t* carrier, iree_net_carrier_send_handle_t handle,
-    iree_net_send_completion_callback_t completion_callback) {
-  if (!completion_callback.fn) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "send completion callback is required");
-  }
-  return carrier->vtable->commit_send(carrier, handle, completion_callback);
-}
-
-// Discards a previously reserved send without publishing any data.
-//
-// The reserved resources (ring space, buffer, slot) are released. No data is
-// sent to the peer. No completion callback fires.
-//
-// Must be called exactly once after a successful begin_send when the caller
-// decides not to commit the data (e.g., serialization error, state change).
-static inline void iree_net_carrier_abort_send(
-    iree_net_carrier_t* carrier, iree_net_carrier_send_handle_t handle) {
-  carrier->vtable->abort_send(carrier, handle);
 }
 
 // Initiates graceful shutdown of the carrier (send direction only).

@@ -626,8 +626,8 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
   client_send_.expected_bytes =
       (sizeof(client_prefix) - 1) + (sizeof(client_suffix) - 1);
   iree_net_message_endpoint_send_params_t send_params = {
-      /*.copied_prefix=*/
-      iree_make_const_byte_span(client_prefix, sizeof(client_prefix) - 1),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(client_prefix, sizeof(client_prefix) - 1)),
       /*.data=*/iree_async_span_list_make(&client_span, 1),
       /*.completion_callback=*/client_send_.callback(),
   };
@@ -646,8 +646,9 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
   server_send_.expected_poll_side = kServerPolling;
   server_send_.expected_bytes = sizeof(server_payload) - 1;
   send_params = {
-      /*.copied_prefix=*/
-      iree_make_const_byte_span(server_payload, sizeof(server_payload) - 1),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(server_payload,
+                                    sizeof(server_payload) - 1)),
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/server_send_.callback(),
   };
@@ -697,8 +698,8 @@ TEST_F(TransportTest, CallbackHandoffPreservesQueuedMessageOrder) {
     send_states[i].expected_poll_side = kClientPolling;
     send_states[i].expected_bytes = messages[i].size();
     iree_net_message_endpoint_send_params_t send_params = {
-        /*.copied_prefix=*/iree_make_const_byte_span(messages[i].data(),
-                                                     messages[i].size()),
+        /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+            iree_make_const_byte_span(messages[i].data(), messages[i].size())),
         /*.data=*/iree_async_span_list_empty(),
         /*.completion_callback=*/send_states[i].callback(),
     };
@@ -813,7 +814,7 @@ TEST_F(TransportTest, CarriesControlDataAndGoaway) {
   EXPECT_EQ(goaway_send.status_code, IREE_STATUS_OK);
 }
 
-TEST_F(TransportTest, CopiesLargeTransientPrefixWithoutSizeCliff) {
+TEST_F(TransportTest, GeneratesLargeTransientPrefixWithoutSizeCliff) {
   EstablishConnection();
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
@@ -831,15 +832,15 @@ TEST_F(TransportTest, CopiesLargeTransientPrefixWithoutSizeCliff) {
   IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
   IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
 
-  std::string prefix(8 * 1024 + 1, 'p');
+  std::string prefix(16 * 1024 + 1, 'p');
   const std::string expected = prefix;
   SendState send_state;
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   send_state.expected_bytes = prefix.size();
   iree_net_message_endpoint_send_params_t send_params = {
-      /*.copied_prefix=*/
-      iree_make_const_byte_span(prefix.data(), prefix.size()),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/send_state.callback(),
   };

@@ -20,7 +20,9 @@ namespace {
 
 static std::string FormatStatus(const iree_status_t status) {
   iree_host_size_t length = 0;
-  if (!iree_status_format(status, 0, nullptr, &length)) return {};
+  if (!iree_status_format(status, 0, nullptr, &length)) {
+    return {};
+  }
   std::vector<char> buffer(length + 1);
   if (!iree_status_format(status, buffer.size(), buffer.data(), &length)) {
     return {};
@@ -99,13 +101,8 @@ class TestEndpoint {
   }
 
   iree_status_code_t reject_send_code = IREE_STATUS_OK;
-  iree_status_code_t reject_begin_code = IREE_STATUS_OK;
-  iree_status_code_t reject_commit_code = IREE_STATUS_OK;
   int set_callbacks_count = 0;
   int send_count = 0;
-  int begin_count = 0;
-  int commit_count = 0;
-  int abort_count = 0;
   iree_host_size_t last_borrowed_span_count = 0;
   std::vector<const uint8_t*> last_borrowed_span_pointers;
   std::vector<std::vector<uint8_t>> sent_messages;
@@ -131,7 +128,9 @@ class TestEndpoint {
       void* self, iree_net_message_endpoint_deactivate_fn_t callback,
       void* user_data) {
     (void)self;
-    if (callback) callback(user_data);
+    if (callback) {
+      callback(user_data);
+    }
     return iree_ok_status();
   }
 
@@ -145,10 +144,12 @@ class TestEndpoint {
 
     endpoint->last_borrowed_span_count = params->data.count;
     endpoint->last_borrowed_span_pointers.clear();
-    std::vector<uint8_t> message;
-    message.insert(
-        message.end(), params->copied_prefix.data,
-        params->copied_prefix.data + params->copied_prefix.data_length);
+    std::vector<uint8_t> message(params->generated_prefix.length);
+    if (params->generated_prefix.length > 0) {
+      IREE_RETURN_IF_ERROR(params->generated_prefix.write(
+          params->generated_prefix.user_data,
+          iree_make_byte_span(message.data(), message.size())));
+    }
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
       const iree_async_span_t span = params->data.values[i];
       const uint8_t* data = iree_async_span_ptr(span);
@@ -170,53 +171,9 @@ class TestEndpoint {
     };
   }
 
-  static iree_status_t BeginSend(void* self, iree_host_size_t size,
-                                 void** out_ptr,
-                                 iree_net_carrier_send_handle_t* out_handle) {
-    TestEndpoint* endpoint = Cast(self);
-    ++endpoint->begin_count;
-    if (endpoint->reject_begin_code != IREE_STATUS_OK) {
-      return iree_status_from_code(endpoint->reject_begin_code);
-    }
-    endpoint->reservation_.assign(size, 0);
-    endpoint->reservation_active_ = true;
-    *out_ptr = endpoint->reservation_.data();
-    *out_handle = 1;
-    return iree_ok_status();
-  }
-
-  static iree_status_t CommitSend(
-      void* self, iree_net_carrier_send_handle_t handle,
-      iree_net_send_completion_callback_t completion_callback) {
-    TestEndpoint* endpoint = Cast(self);
-    ++endpoint->commit_count;
-    EXPECT_EQ(handle, 1u);
-    EXPECT_TRUE(endpoint->reservation_active_);
-    endpoint->reservation_active_ = false;
-    if (endpoint->reject_commit_code != IREE_STATUS_OK) {
-      endpoint->reservation_.clear();
-      return iree_status_from_code(endpoint->reject_commit_code);
-    }
-    endpoint->sent_messages.push_back(std::move(endpoint->reservation_));
-    completion_callback.fn(completion_callback.user_data, iree_ok_status(),
-                           endpoint->sent_messages.back().size());
-    return iree_ok_status();
-  }
-
-  static void AbortSend(void* self, iree_net_carrier_send_handle_t handle) {
-    TestEndpoint* endpoint = Cast(self);
-    ++endpoint->abort_count;
-    EXPECT_EQ(handle, 1u);
-    EXPECT_TRUE(endpoint->reservation_active_);
-    endpoint->reservation_active_ = false;
-    endpoint->reservation_.clear();
-  }
-
   static const iree_net_message_endpoint_vtable_t vtable_;
 
   iree_net_message_endpoint_callbacks_t callbacks_ = {};
-  bool reservation_active_ = false;
-  std::vector<uint8_t> reservation_;
 };
 
 const iree_net_message_endpoint_vtable_t TestEndpoint::vtable_ = {
@@ -225,9 +182,6 @@ const iree_net_message_endpoint_vtable_t TestEndpoint::vtable_ = {
     /*.deactivate=*/TestEndpoint::Deactivate,
     /*.send=*/TestEndpoint::Send,
     /*.query_send_budget=*/TestEndpoint::QuerySendBudget,
-    /*.begin_send=*/TestEndpoint::BeginSend,
-    /*.commit_send=*/TestEndpoint::CommitSend,
-    /*.abort_send=*/TestEndpoint::AbortSend,
 };
 
 struct CallbackState {
@@ -408,10 +362,9 @@ TEST_F(ControlChannelTest, BorrowedDataUsesPrefixAndNativeCompletion) {
   EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
   EXPECT_EQ(completion.bytes_transferred, IREE_NET_CONTROL_MESSAGE_HEADER_SIZE +
                                               first.size() + second.size());
-  EXPECT_EQ(endpoint_.begin_count, 0);
 }
 
-TEST_F(ControlChannelTest, CopiedDataUsesExactReservationWithoutSizeCliff) {
+TEST_F(ControlChannelTest, CopiedDataUsesGeneratedPrefixWithoutSizeCliff) {
   Attach();
   std::vector<uint8_t> first(4097, 0xA5);
   std::vector<uint8_t> second(8192, 0x5A);
@@ -436,13 +389,12 @@ TEST_F(ControlChannelTest, CopiedDataUsesExactReservationWithoutSizeCliff) {
   EXPECT_EQ(message[IREE_NET_CONTROL_MESSAGE_HEADER_SIZE + 4096], 0xA5);
   EXPECT_EQ(message[IREE_NET_CONTROL_MESSAGE_HEADER_SIZE + 4097], 0x5A);
   EXPECT_EQ(message.back(), 0x5A);
-  EXPECT_EQ(endpoint_.begin_count, 1);
-  EXPECT_EQ(endpoint_.commit_count, 1);
-  EXPECT_EQ(endpoint_.send_count, 0);
+  EXPECT_EQ(endpoint_.last_borrowed_span_count, 0u);
+  EXPECT_EQ(endpoint_.send_count, 1);
   EXPECT_EQ(completion.count, 1);
 }
 
-TEST_F(ControlChannelTest, CopiedDataValidatesBeforeReservation) {
+TEST_F(ControlChannelTest, CopiedDataValidatesBeforeAdmission) {
   Attach();
   iree_async_span_t null_span = iree_async_span_from_ptr(nullptr, /*length=*/1);
   SendCompletion completion;
@@ -451,7 +403,7 @@ TEST_F(ControlChannelTest, CopiedDataValidatesBeforeReservation) {
       iree_net_control_channel_send_data_copy(
           channel_, 0, iree_async_span_list_make(&null_span, 1),
           completion.callback()));
-  EXPECT_EQ(endpoint_.begin_count, 0);
+  EXPECT_EQ(endpoint_.send_count, 0);
   EXPECT_EQ(completion.count, 0);
 
   IREE_EXPECT_STATUS_IS(
@@ -459,7 +411,7 @@ TEST_F(ControlChannelTest, CopiedDataValidatesBeforeReservation) {
       iree_net_control_channel_send_data_copy(channel_, UINT32_C(0x100),
                                               iree_async_span_list_empty(),
                                               completion.callback()));
-  EXPECT_EQ(endpoint_.begin_count, 0);
+  EXPECT_EQ(endpoint_.send_count, 0);
   EXPECT_EQ(completion.count, 0);
 }
 
@@ -503,7 +455,7 @@ TEST_F(ControlChannelTest, StructuredErrorConvergesThroughEndpointError) {
 
 TEST_F(ControlChannelTest, SendErrorConsumesStatusWhenAdmissionFails) {
   Attach();
-  endpoint_.reject_begin_code = IREE_STATUS_RESOURCE_EXHAUSTED;
+  endpoint_.reject_send_code = IREE_STATUS_RESOURCE_EXHAUSTED;
   SendCompletion completion;
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -511,7 +463,7 @@ TEST_F(ControlChannelTest, SendErrorConsumesStatusWhenAdmissionFails) {
           channel_, iree_make_status(IREE_STATUS_INTERNAL, "lost"),
           completion.callback()));
   EXPECT_EQ(completion.count, 0);
-  EXPECT_EQ(endpoint_.commit_count, 0);
+  EXPECT_EQ(endpoint_.send_count, 1);
 }
 
 TEST_F(ControlChannelTest, TransportErrorForwardsWithoutTranslation) {

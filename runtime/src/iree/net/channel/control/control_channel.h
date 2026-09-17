@@ -137,10 +137,9 @@ IREE_API_EXPORT iree_status_t iree_net_control_channel_send_data(
 
 // Sends DATA after copying all payload bytes before this call returns.
 //
-// Payload spans must be CPU-accessible. The channel writes directly into an
-// exact endpoint reservation and introduces no payload-size limit. The caller
-// must serialize the reservation/commit window against endpoint deactivation,
-// as required by the message endpoint contract.
+// Payload spans must be CPU-accessible. The channel writes the complete message
+// directly into transport-admitted storage and introduces no payload-size
+// limit. Payload storage may be reused as soon as this call returns.
 IREE_API_EXPORT iree_status_t iree_net_control_channel_send_data_copy(
     iree_net_control_channel_t* channel, iree_net_control_data_flags_t flags,
     iree_async_span_list_t payload,
@@ -157,8 +156,8 @@ IREE_API_EXPORT iree_status_t iree_net_control_channel_send_goaway(
 // Sends a terminal ERROR message encoded with iree/net/status_wire.
 //
 // Takes ownership of |error_status| and consumes it on every return path. The
-// caller must serialize the reservation/commit window against endpoint
-// deactivation. An OK return guarantees one terminal send completion.
+// message is serialized directly into transport-admitted storage. An OK return
+// guarantees one terminal send completion.
 IREE_API_EXPORT iree_status_t iree_net_control_channel_send_error(
     iree_net_control_channel_t* channel, iree_status_t error_status,
     iree_net_send_completion_callback_t completion_callback);

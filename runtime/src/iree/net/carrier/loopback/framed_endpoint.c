@@ -8,7 +8,6 @@
 
 #include <string.h>
 
-#include "iree/base/alignment.h"
 #include "iree/base/threading/mutex.h"
 #include "iree/net/framing_adapter.h"
 
@@ -16,10 +15,6 @@
 #define IREE_NET_LOOPBACK_FRAME_MAGIC UINT32_C(0x314E5249)
 
 #define IREE_NET_LOOPBACK_FRAME_HEADER_SIZE 8u
-
-// Bounds stack-resident scatter/gather descriptors on the zero-copy path.
-// Larger lists use the direct contiguous path instead of failing.
-#define IREE_NET_LOOPBACK_INLINE_WIRE_SPAN_COUNT 64u
 
 #define IREE_NET_LOOPBACK_SEND_STATE_NONE UINT32_MAX
 
@@ -32,8 +27,7 @@ typedef enum iree_net_loopback_framed_endpoint_state_e {
 
 typedef enum iree_net_loopback_send_state_phase_e {
   IREE_NET_LOOPBACK_SEND_STATE_PHASE_FREE = 0,
-  IREE_NET_LOOPBACK_SEND_STATE_PHASE_RESERVED = 1,
-  IREE_NET_LOOPBACK_SEND_STATE_PHASE_IN_FLIGHT = 2,
+  IREE_NET_LOOPBACK_SEND_STATE_PHASE_IN_FLIGHT = 1,
 } iree_net_loopback_send_state_phase_t;
 
 typedef struct iree_net_loopback_send_state_t {
@@ -46,14 +40,8 @@ typedef struct iree_net_loopback_send_state_t {
   // Next free record index while this state is available.
   uint32_t next_free;
 
-  // Nonzero generation encoded into direct reservation handles.
-  uint32_t generation;
-
   // Current ownership phase for this state record.
   iree_net_loopback_send_state_phase_t phase;
-
-  // Underlying carrier reservation handle for direct sends.
-  iree_net_carrier_send_handle_t carrier_handle;
 
   // Payload bytes represented by this framed send.
   iree_host_size_t payload_length;
@@ -61,8 +49,6 @@ typedef struct iree_net_loopback_send_state_t {
   // User completion invoked after this state is returned to the pool.
   iree_net_send_completion_callback_t completion_callback;
 
-  // Stable wire header retained through asynchronous completion.
-  uint8_t header[IREE_NET_LOOPBACK_FRAME_HEADER_SIZE];
 } iree_net_loopback_send_state_t;
 
 struct iree_net_loopback_framed_endpoint_t {
@@ -75,13 +61,8 @@ struct iree_net_loopback_framed_endpoint_t {
   // Message callbacks installed by the endpoint consumer.
   iree_net_message_endpoint_callbacks_t callbacks;
 
-  // Callback awaiting endpoint-initiated deactivation completion.
-  struct {
-    // Function invoked when the wire endpoint has drained.
-    iree_net_message_endpoint_deactivate_fn_t fn;
-    // Opaque value passed to |fn|.
-    void* user_data;
-  } deactivate_callback;
+  // Coordinates accepted sends with endpoint and connection drain.
+  iree_net_endpoint_lifecycle_t lifecycle;
 
   // Owned wire-frame adapter and carrier stack.
   iree_net_framing_adapter_t* framing_adapter;
@@ -92,9 +73,6 @@ struct iree_net_loopback_framed_endpoint_t {
   // Host allocator owning this endpoint and its framing adapter.
   iree_allocator_t host_allocator;
 
-  // Maximum carrier spans accepted by one wire send.
-  iree_host_size_t max_wire_spans;
-
   // Number of records in the trailing send-state array.
   uint32_t send_state_count;
 
@@ -104,14 +82,36 @@ struct iree_net_loopback_framed_endpoint_t {
   // Head index of the intrusive send-state free list.
   uint32_t free_send_state_head;
 
-  // Fixed send framing and reservation records.
+  // Fixed send completion records.
   iree_net_loopback_send_state_t send_states[];
 };
+
+typedef struct iree_net_loopback_frame_prefix_t {
+  // Total frame extent encoded into the wire header.
+  uint32_t frame_length;
+
+  // Message prefix generated after the wire header.
+  iree_net_send_prefix_t message_prefix;
+} iree_net_loopback_frame_prefix_t;
 
 static void iree_net_loopback_encode_frame_header(uint8_t* header,
                                                   uint32_t frame_length) {
   iree_unaligned_store_le_u32(header + 0, IREE_NET_LOOPBACK_FRAME_MAGIC);
   iree_unaligned_store_le_u32(header + 4, frame_length);
+}
+
+static iree_status_t iree_net_loopback_write_frame_prefix(
+    void* user_data, iree_byte_span_t target) {
+  iree_net_loopback_frame_prefix_t* prefix =
+      (iree_net_loopback_frame_prefix_t*)user_data;
+  iree_net_loopback_encode_frame_header(target.data, prefix->frame_length);
+  if (prefix->message_prefix.length == 0) {
+    return iree_ok_status();
+  }
+  return prefix->message_prefix.write(
+      prefix->message_prefix.user_data,
+      iree_make_byte_span(target.data + IREE_NET_LOOPBACK_FRAME_HEADER_SIZE,
+                          prefix->message_prefix.length));
 }
 
 static iree_status_t iree_net_loopback_calculate_frame_length(
@@ -165,11 +165,7 @@ iree_net_loopback_acquire_send_state_locked(
   endpoint->free_send_state_head = send_state->next_free;
   --endpoint->free_send_state_count;
   send_state->next_free = IREE_NET_LOOPBACK_SEND_STATE_NONE;
-  ++send_state->generation;
-  if (send_state->generation == 0) {
-    ++send_state->generation;
-  }
-  send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_RESERVED;
+  send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_IN_FLIGHT;
   return send_state;
 }
 
@@ -177,29 +173,11 @@ static void iree_net_loopback_release_send_state_locked(
     iree_net_loopback_framed_endpoint_t* endpoint,
     iree_net_loopback_send_state_t* send_state) {
   send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_FREE;
-  send_state->carrier_handle = 0;
   send_state->payload_length = 0;
   send_state->completion_callback = (iree_net_send_completion_callback_t){0};
   send_state->next_free = endpoint->free_send_state_head;
   endpoint->free_send_state_head = send_state->index;
   ++endpoint->free_send_state_count;
-}
-
-static iree_net_loopback_send_state_t*
-iree_net_loopback_lookup_reservation_locked(
-    iree_net_loopback_framed_endpoint_t* endpoint,
-    iree_net_carrier_send_handle_t handle) {
-  const uint32_t index = (uint32_t)handle;
-  const uint32_t generation = (uint32_t)(handle >> 32);
-  if (index >= endpoint->send_state_count || generation == 0) {
-    return NULL;
-  }
-  iree_net_loopback_send_state_t* send_state = &endpoint->send_states[index];
-  if (send_state->phase != IREE_NET_LOOPBACK_SEND_STATE_PHASE_RESERVED ||
-      send_state->generation != generation) {
-    return NULL;
-  }
-  return send_state;
 }
 
 static void iree_net_loopback_send_complete(
@@ -233,6 +211,7 @@ static void iree_net_loopback_send_complete(
   }
   completion_callback.fn(completion_callback.user_data, status,
                          payload_bytes_transferred);
+  iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
 }
 
 static iree_status_t iree_net_loopback_on_wire_message(
@@ -276,7 +255,10 @@ static iree_status_t iree_net_loopback_activate(void* self) {
     status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "message and error callbacks are required");
   } else {
-    endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE;
+    status = iree_net_endpoint_lifecycle_activate(&endpoint->lifecycle);
+    if (iree_status_is_ok(status)) {
+      endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE;
+    }
   }
   iree_slim_mutex_unlock(&endpoint->mutex);
   if (!iree_status_is_ok(status)) {
@@ -287,19 +269,10 @@ static iree_status_t iree_net_loopback_activate(void* self) {
   if (!iree_status_is_ok(status)) {
     iree_slim_mutex_lock(&endpoint->mutex);
     endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_CREATED;
+    iree_net_endpoint_lifecycle_rollback_activation(&endpoint->lifecycle);
     iree_slim_mutex_unlock(&endpoint->mutex);
   }
   return status;
-}
-
-static void iree_net_loopback_clear_reservations_locked(
-    iree_net_loopback_framed_endpoint_t* endpoint) {
-  for (uint32_t i = 0; i < endpoint->send_state_count; ++i) {
-    iree_net_loopback_send_state_t* send_state = &endpoint->send_states[i];
-    if (send_state->phase == IREE_NET_LOOPBACK_SEND_STATE_PHASE_RESERVED) {
-      iree_net_loopback_release_send_state_locked(endpoint, send_state);
-    }
-  }
 }
 
 static void iree_net_loopback_on_wire_deactivated(void* user_data) {
@@ -310,16 +283,8 @@ static void iree_net_loopback_on_wire_deactivated(void* user_data) {
       endpoint->state == IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_DRAINING,
       "loopback endpoint deactivated from state %d", (int)endpoint->state);
   endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_DEACTIVATED;
-  iree_net_message_endpoint_deactivate_fn_t callback =
-      endpoint->deactivate_callback.fn;
-  void* callback_user_data = endpoint->deactivate_callback.user_data;
-  endpoint->deactivate_callback.fn = NULL;
-  endpoint->deactivate_callback.user_data = NULL;
   iree_slim_mutex_unlock(&endpoint->mutex);
-
-  if (callback) {
-    callback(callback_user_data);
-  }
+  iree_net_endpoint_lifecycle_complete_deactivation(&endpoint->lifecycle);
 }
 
 static iree_status_t iree_net_loopback_deactivate(
@@ -334,10 +299,18 @@ static iree_status_t iree_net_loopback_deactivate(
                               "loopback endpoint is not active (state=%d)",
                               (int)endpoint->state);
   } else {
-    endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_DRAINING;
-    endpoint->deactivate_callback.fn = callback;
-    endpoint->deactivate_callback.user_data = user_data;
-    iree_net_loopback_clear_reservations_locked(endpoint);
+    iree_net_endpoint_lifecycle_actions_t actions =
+        IREE_NET_ENDPOINT_LIFECYCLE_ACTION_NONE;
+    status = iree_net_endpoint_lifecycle_request_deactivation(
+        &endpoint->lifecycle, callback, user_data, &actions);
+    IREE_ASSERT(
+        !iree_status_is_ok(status) ||
+            iree_any_bit_set(
+                actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION),
+        "accepted loopback deactivation did not begin owner drain");
+    if (iree_status_is_ok(status)) {
+      endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_DRAINING;
+    }
   }
   iree_slim_mutex_unlock(&endpoint->mutex);
   if (!iree_status_is_ok(status)) {
@@ -354,7 +327,7 @@ static iree_status_t iree_net_loopback_deactivate(
 static iree_status_t iree_net_loopback_calculate_payload_length(
     const iree_net_message_endpoint_send_params_t* params,
     iree_host_size_t* out_payload_length) {
-  iree_host_size_t payload_length = params->copied_prefix.data_length;
+  iree_host_size_t payload_length = params->generated_prefix.length;
   for (iree_host_size_t i = 0; i < params->data.count; ++i) {
     if (!iree_host_size_checked_add(
             payload_length, params->data.values[i].length, &payload_length)) {
@@ -366,65 +339,41 @@ static iree_status_t iree_net_loopback_calculate_payload_length(
   return iree_ok_status();
 }
 
-static iree_status_t iree_net_loopback_send_contiguous_locked(
+static iree_status_t iree_net_loopback_acquire_send_state(
     iree_net_loopback_framed_endpoint_t* endpoint,
-    iree_net_loopback_send_state_t* send_state,
-    const iree_net_message_endpoint_send_params_t* params,
-    uint32_t frame_length) {
-  void* wire_data = NULL;
-  iree_net_carrier_send_handle_t carrier_handle = 0;
-  IREE_RETURN_IF_ERROR(iree_net_message_endpoint_begin_send(
-      endpoint->wire_endpoint, frame_length, &wire_data, &carrier_handle));
-
-  uint8_t* frame_data = (uint8_t*)wire_data;
-  iree_net_loopback_encode_frame_header(frame_data, frame_length);
-  uint8_t* payload_data = frame_data + IREE_NET_LOOPBACK_FRAME_HEADER_SIZE;
-  if (!iree_const_byte_span_is_empty(params->copied_prefix)) {
-    memcpy(payload_data, params->copied_prefix.data,
-           params->copied_prefix.data_length);
-    payload_data += params->copied_prefix.data_length;
-  }
-  for (iree_host_size_t i = 0; i < params->data.count; ++i) {
-    const iree_async_span_t span = params->data.values[i];
-    if (!iree_async_span_is_cpu_accessible(span)) {
-      iree_net_message_endpoint_abort_send(endpoint->wire_endpoint,
-                                           carrier_handle);
-      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "loopback message span is not CPU-accessible");
-    }
-    if (span.length > 0) {
-      if (span.region && (span.offset > span.region->length ||
-                          span.length > span.region->length - span.offset)) {
-        iree_net_message_endpoint_abort_send(endpoint->wire_endpoint,
-                                             carrier_handle);
-        return iree_make_status(
-            IREE_STATUS_OUT_OF_RANGE,
-            "loopback message span exceeds its registered region");
-      }
-      const uint8_t* source = iree_async_span_ptr(span);
-      if (!source) {
-        iree_net_message_endpoint_abort_send(endpoint->wire_endpoint,
-                                             carrier_handle);
-        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "loopback message span has null storage");
-      }
-      memcpy(payload_data, source, span.length);
-      payload_data += span.length;
-    }
+    iree_net_loopback_send_state_t** out_send_state) {
+  *out_send_state = NULL;
+  if (!iree_net_endpoint_lifecycle_try_begin_operation(&endpoint->lifecycle)) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "loopback endpoint is not active");
   }
 
-  send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_IN_FLIGHT;
-  send_state->carrier_handle = carrier_handle;
-  iree_status_t status = iree_net_message_endpoint_commit_send(
-      endpoint->wire_endpoint, carrier_handle,
-      (iree_net_send_completion_callback_t){
-          .fn = iree_net_loopback_send_complete,
-          .user_data = send_state,
-      });
+  iree_status_t status = iree_ok_status();
+  iree_slim_mutex_lock(&endpoint->mutex);
+  if (endpoint->state != IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE) {
+    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "loopback endpoint is not active");
+  } else {
+    *out_send_state = iree_net_loopback_acquire_send_state_locked(endpoint);
+    if (!*out_send_state) {
+      status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "loopback send operation slots are exhausted");
+    }
+  }
+  iree_slim_mutex_unlock(&endpoint->mutex);
   if (!iree_status_is_ok(status)) {
-    iree_net_loopback_release_send_state_locked(endpoint, send_state);
+    iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
   }
   return status;
+}
+
+static void iree_net_loopback_reject_send_state(
+    iree_net_loopback_send_state_t* send_state) {
+  iree_net_loopback_framed_endpoint_t* endpoint = send_state->endpoint;
+  iree_slim_mutex_lock(&endpoint->mutex);
+  iree_net_loopback_release_send_state_locked(endpoint, send_state);
+  iree_slim_mutex_unlock(&endpoint->mutex);
+  iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
 }
 
 static iree_status_t iree_net_loopback_send(
@@ -438,58 +387,36 @@ static iree_status_t iree_net_loopback_send(
   IREE_RETURN_IF_ERROR(
       iree_net_loopback_calculate_frame_length(payload_length, &frame_length));
 
-  iree_slim_mutex_lock(&endpoint->mutex);
-  iree_status_t status = iree_ok_status();
   iree_net_loopback_send_state_t* send_state = NULL;
-  if (endpoint->state != IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE) {
-    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "loopback endpoint is not active");
-  } else {
-    send_state = iree_net_loopback_acquire_send_state_locked(endpoint);
-    if (!send_state) {
-      status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                                "loopback send operation slots are exhausted");
-    }
-  }
+  IREE_RETURN_IF_ERROR(
+      iree_net_loopback_acquire_send_state(endpoint, &send_state));
+  send_state->payload_length = payload_length;
+  send_state->completion_callback = params->completion_callback;
 
-  if (iree_status_is_ok(status)) {
-    send_state->payload_length = payload_length;
-    send_state->completion_callback = params->completion_callback;
-    const bool fits_scatter_gather =
-        iree_const_byte_span_is_empty(params->copied_prefix) &&
-        params->data.count < endpoint->max_wire_spans &&
-        params->data.count + 1 <= IREE_NET_LOOPBACK_INLINE_WIRE_SPAN_COUNT;
-    if (fits_scatter_gather) {
-      iree_net_loopback_encode_frame_header(send_state->header, frame_length);
-      iree_async_span_t wire_spans[IREE_NET_LOOPBACK_INLINE_WIRE_SPAN_COUNT];
-      wire_spans[0] = iree_async_span_from_ptr(
-          send_state->header, IREE_NET_LOOPBACK_FRAME_HEADER_SIZE);
-      memcpy(&wire_spans[1], params->data.values,
-             params->data.count * sizeof(params->data.values[0]));
-      send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_IN_FLIGHT;
-      iree_net_message_endpoint_send_params_t wire_params = {
-          .data = iree_async_span_list_make(wire_spans, params->data.count + 1),
-          .completion_callback =
-              {
-                  .fn = iree_net_loopback_send_complete,
-                  .user_data = send_state,
-              },
-      };
-      status =
-          iree_net_message_endpoint_send(endpoint->wire_endpoint, &wire_params);
-      if (!iree_status_is_ok(status)) {
-        iree_net_loopback_release_send_state_locked(endpoint, send_state);
-      }
-    } else {
-      status = iree_net_loopback_send_contiguous_locked(endpoint, send_state,
-                                                        params, frame_length);
-      if (!iree_status_is_ok(status) &&
-          send_state->phase != IREE_NET_LOOPBACK_SEND_STATE_PHASE_FREE) {
-        iree_net_loopback_release_send_state_locked(endpoint, send_state);
-      }
-    }
+  iree_net_loopback_frame_prefix_t frame_prefix = {
+      .frame_length = frame_length,
+      .message_prefix = params->generated_prefix,
+  };
+  iree_net_message_endpoint_send_params_t wire_params = {
+      .generated_prefix =
+          {
+              .length = IREE_NET_LOOPBACK_FRAME_HEADER_SIZE +
+                        params->generated_prefix.length,
+              .write = iree_net_loopback_write_frame_prefix,
+              .user_data = &frame_prefix,
+          },
+      .data = params->data,
+      .completion_callback =
+          {
+              .fn = iree_net_loopback_send_complete,
+              .user_data = send_state,
+          },
+  };
+  iree_status_t status =
+      iree_net_message_endpoint_send(endpoint->wire_endpoint, &wire_params);
+  if (!iree_status_is_ok(status)) {
+    iree_net_loopback_reject_send_state(send_state);
   }
-  iree_slim_mutex_unlock(&endpoint->mutex);
   return status;
 }
 
@@ -514,97 +441,6 @@ static iree_net_carrier_send_budget_t iree_net_loopback_query_send_budget(
   return budget;
 }
 
-static iree_status_t iree_net_loopback_begin_send(
-    void* self, iree_host_size_t size, void** out_ptr,
-    iree_net_carrier_send_handle_t* out_handle) {
-  iree_net_loopback_framed_endpoint_t* endpoint =
-      (iree_net_loopback_framed_endpoint_t*)self;
-  uint32_t frame_length = 0;
-  IREE_RETURN_IF_ERROR(
-      iree_net_loopback_calculate_frame_length(size, &frame_length));
-
-  iree_slim_mutex_lock(&endpoint->mutex);
-  iree_status_t status = iree_ok_status();
-  iree_net_loopback_send_state_t* send_state = NULL;
-  if (endpoint->state != IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE) {
-    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "loopback endpoint is not active");
-  } else {
-    send_state = iree_net_loopback_acquire_send_state_locked(endpoint);
-    if (!send_state) {
-      status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                                "loopback send operation slots are exhausted");
-    }
-  }
-
-  void* frame_data = NULL;
-  iree_net_carrier_send_handle_t carrier_handle = 0;
-  if (iree_status_is_ok(status)) {
-    status = iree_net_message_endpoint_begin_send(
-        endpoint->wire_endpoint, frame_length, &frame_data, &carrier_handle);
-  }
-  if (iree_status_is_ok(status)) {
-    send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_RESERVED;
-    send_state->carrier_handle = carrier_handle;
-    send_state->payload_length = size;
-    iree_net_loopback_encode_frame_header((uint8_t*)frame_data, frame_length);
-    *out_ptr = (uint8_t*)frame_data + IREE_NET_LOOPBACK_FRAME_HEADER_SIZE;
-    *out_handle = ((uint64_t)send_state->generation << 32) | send_state->index;
-  } else if (send_state) {
-    iree_net_loopback_release_send_state_locked(endpoint, send_state);
-  }
-  iree_slim_mutex_unlock(&endpoint->mutex);
-  return status;
-}
-
-static iree_status_t iree_net_loopback_commit_send(
-    void* self, iree_net_carrier_send_handle_t handle,
-    iree_net_send_completion_callback_t completion_callback) {
-  iree_net_loopback_framed_endpoint_t* endpoint =
-      (iree_net_loopback_framed_endpoint_t*)self;
-  iree_slim_mutex_lock(&endpoint->mutex);
-  iree_net_loopback_send_state_t* send_state =
-      iree_net_loopback_lookup_reservation_locked(endpoint, handle);
-  iree_status_t status = iree_ok_status();
-  if (!send_state ||
-      endpoint->state != IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE) {
-    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "loopback send reservation is no longer valid");
-  } else {
-    send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_IN_FLIGHT;
-    send_state->completion_callback = completion_callback;
-    status = iree_net_message_endpoint_commit_send(
-        endpoint->wire_endpoint, send_state->carrier_handle,
-        (iree_net_send_completion_callback_t){
-            .fn = iree_net_loopback_send_complete,
-            .user_data = send_state,
-        });
-    if (!iree_status_is_ok(status)) {
-      iree_net_loopback_release_send_state_locked(endpoint, send_state);
-    }
-  }
-  iree_slim_mutex_unlock(&endpoint->mutex);
-  return status;
-}
-
-static void iree_net_loopback_abort_send(
-    void* self, iree_net_carrier_send_handle_t handle) {
-  iree_net_loopback_framed_endpoint_t* endpoint =
-      (iree_net_loopback_framed_endpoint_t*)self;
-  iree_slim_mutex_lock(&endpoint->mutex);
-  iree_net_loopback_send_state_t* send_state =
-      iree_net_loopback_lookup_reservation_locked(endpoint, handle);
-  IREE_ASSERT(send_state, "loopback send reservation is no longer valid");
-  if (send_state) {
-    const iree_net_carrier_send_handle_t carrier_handle =
-        send_state->carrier_handle;
-    iree_net_loopback_release_send_state_locked(endpoint, send_state);
-    iree_net_message_endpoint_abort_send(endpoint->wire_endpoint,
-                                         carrier_handle);
-  }
-  iree_slim_mutex_unlock(&endpoint->mutex);
-}
-
 static const iree_net_message_endpoint_vtable_t
     iree_net_loopback_framed_endpoint_vtable = {
         .set_callbacks = iree_net_loopback_set_callbacks,
@@ -612,9 +448,6 @@ static const iree_net_message_endpoint_vtable_t
         .deactivate = iree_net_loopback_deactivate,
         .send = iree_net_loopback_send,
         .query_send_budget = iree_net_loopback_query_send_budget,
-        .begin_send = iree_net_loopback_begin_send,
-        .commit_send = iree_net_loopback_commit_send,
-        .abort_send = iree_net_loopback_abort_send,
 };
 
 iree_status_t iree_net_loopback_framed_endpoint_allocate(
@@ -640,9 +473,10 @@ iree_status_t iree_net_loopback_framed_endpoint_allocate(
                                              (void**)&endpoint));
   memset(endpoint, 0, allocation_size);
   iree_slim_mutex_initialize(&endpoint->mutex);
+  iree_net_endpoint_lifecycle_initialize(connection_barrier,
+                                         &endpoint->lifecycle);
   endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_CREATED;
   endpoint->host_allocator = host_allocator;
-  endpoint->max_wire_spans = iree_net_carrier_max_send_spans(carrier);
   endpoint->send_state_count = max_send_operations;
   endpoint->free_send_state_count = max_send_operations;
   endpoint->free_send_state_head = 0;
@@ -674,6 +508,7 @@ iree_status_t iree_net_loopback_framed_endpoint_allocate(
         });
     *out_endpoint = endpoint;
   } else {
+    iree_net_endpoint_lifecycle_deinitialize(&endpoint->lifecycle);
     iree_slim_mutex_deinitialize(&endpoint->mutex);
     iree_allocator_free(host_allocator, endpoint);
   }
@@ -691,6 +526,7 @@ void iree_net_loopback_framed_endpoint_free(
               "loopback endpoint freed with owned send state");
   iree_allocator_t host_allocator = endpoint->host_allocator;
   iree_net_framing_adapter_free(endpoint->framing_adapter);
+  iree_net_endpoint_lifecycle_deinitialize(&endpoint->lifecycle);
   iree_slim_mutex_deinitialize(&endpoint->mutex);
   iree_allocator_free(host_allocator, endpoint);
 }
@@ -698,14 +534,20 @@ void iree_net_loopback_framed_endpoint_free(
 void iree_net_loopback_framed_endpoint_join_deactivation(
     iree_net_loopback_framed_endpoint_t* endpoint) {
   IREE_ASSERT_ARGUMENT(endpoint);
+  iree_net_endpoint_lifecycle_actions_t actions =
+      IREE_NET_ENDPOINT_LIFECYCLE_ACTION_NONE;
   iree_slim_mutex_lock(&endpoint->mutex);
-  if (endpoint->state == IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_CREATED ||
-      endpoint->state == IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE) {
+  if (endpoint->state == IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE) {
+    actions =
+        iree_net_endpoint_lifecycle_join_deactivation(&endpoint->lifecycle);
     endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_DRAINING;
-    iree_net_loopback_clear_reservations_locked(endpoint);
   }
   iree_slim_mutex_unlock(&endpoint->mutex);
   iree_net_framing_adapter_join_deactivation(endpoint->framing_adapter);
+  if (iree_any_bit_set(actions,
+                       IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION)) {
+    iree_net_endpoint_lifecycle_complete_deactivation(&endpoint->lifecycle);
+  }
 }
 
 iree_net_message_endpoint_t

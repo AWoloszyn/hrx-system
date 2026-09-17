@@ -19,6 +19,7 @@ iree_cc_library(
   DEPS
     iree::async
     iree::base
+    iree::base::core_headers
     iree::base::internal
     iree::base::threading
     iree::net::carrier

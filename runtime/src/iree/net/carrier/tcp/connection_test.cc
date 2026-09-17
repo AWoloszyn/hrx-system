@@ -253,6 +253,45 @@ struct BlockingAllocator {
   }
 };
 
+struct PrefixWriter {
+  // Byte copied into every generated-prefix position.
+  uint8_t value = 0;
+
+  // Number of writer invocations.
+  int call_count = 0;
+
+  static iree_status_t Write(void* user_data, iree_byte_span_t target) {
+    auto* self = static_cast<PrefixWriter*>(user_data);
+    ++self->call_count;
+    memset(target.data, self->value, target.data_length);
+    return iree_ok_status();
+  }
+};
+
+struct PrefixWriterGate {
+  // Serializes writer entry and release.
+  std::mutex mutex;
+
+  // Notifies the test when writer state changes.
+  std::condition_variable condition;
+
+  // True after the writer receives transport-owned storage.
+  bool entered = false;
+
+  // True when the writer may return.
+  bool release = false;
+
+  static iree_status_t Write(void* user_data, iree_byte_span_t target) {
+    auto* self = static_cast<PrefixWriterGate*>(user_data);
+    std::unique_lock<std::mutex> lock(self->mutex);
+    self->entered = true;
+    self->condition.notify_all();
+    self->condition.wait(lock, [&] { return self->release; });
+    memset(target.data, 0xA5, target.data_length);
+    return iree_ok_status();
+  }
+};
+
 static void OperationCompleted(void* user_data,
                                iree_async_operation_t* operation,
                                iree_status_t status,
@@ -483,16 +522,25 @@ class TcpConnectionTest : public ::testing::Test {
     return result_ptr;
   }
 
-  iree_status_t SendMessage(
-      iree_net_message_endpoint_t endpoint, iree_async_span_list_t data,
-      SendResult* send_result,
-      iree_const_byte_span_t copied_prefix = iree_const_byte_span_empty()) {
+  iree_status_t SendGeneratedMessage(iree_net_message_endpoint_t endpoint,
+                                     iree_async_span_list_t data,
+                                     iree_net_send_prefix_t generated_prefix,
+                                     SendResult* send_result) {
     iree_net_message_endpoint_send_params_t params = {
-        copied_prefix,
+        generated_prefix,
         data,
         {SendCompleted, send_result},
     };
     return iree_net_message_endpoint_send(endpoint, &params);
+  }
+
+  iree_status_t SendMessage(
+      iree_net_message_endpoint_t endpoint, iree_async_span_list_t data,
+      SendResult* send_result,
+      iree_const_byte_span_t transient_prefix = iree_const_byte_span_empty()) {
+    return SendGeneratedMessage(
+        endpoint, data, iree_net_send_prefix_from_bytes(transient_prefix),
+        send_result);
   }
 
   void DeactivateAndRelease(iree_net_connection_t** connection_ptr) {
@@ -551,16 +599,16 @@ TEST(TcpConnectionOptionsTest, Defaults) {
   EXPECT_EQ(options.max_frame_size, IREE_NET_TCP_DEFAULT_MAX_FRAME_SIZE);
   EXPECT_EQ(options.max_pending_frames_per_endpoint,
             IREE_NET_TCP_DEFAULT_MAX_PENDING_FRAMES_PER_ENDPOINT);
-  EXPECT_EQ(options.copied_prefix_capacity,
-            IREE_NET_TCP_DEFAULT_COPIED_PREFIX_CAPACITY);
   EXPECT_EQ(options.carrier_options.max_send_operations,
             IREE_NET_TCP_DEFAULT_MAX_SEND_OPERATIONS);
+  EXPECT_EQ(options.carrier_options.generated_prefix_capacity,
+            IREE_NET_TCP_DEFAULT_GENERATED_PREFIX_CAPACITY);
 }
 
-TEST_F(TcpConnectionTest, CopiedPrefixSlabAvoidsSendTimeAllocation) {
+TEST_F(TcpConnectionTest, GeneratedPrefixSlabAvoidsSendTimeAllocation) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
-  options.copied_prefix_capacity = 16;
+  options.carrier_options.generated_prefix_capacity = 32;
   options.carrier_options.max_send_operations = 1;
   CreateConnectionPair(options, options,
                        /*receive_buffer_size=*/4096,
@@ -602,10 +650,10 @@ TEST_F(TcpConnectionTest, CopiedPrefixSlabAvoidsSendTimeAllocation) {
             outstanding_count_before);
 }
 
-TEST_F(TcpConnectionTest, CopiedPrefixOverflowRestoresFailedAdmission) {
+TEST_F(TcpConnectionTest, GeneratedPrefixOverflowRestoresFailedAdmission) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
-  options.copied_prefix_capacity = 0;
+  options.carrier_options.generated_prefix_capacity = 32;
   options.carrier_options.max_send_operations = 1;
   CreateConnectionPair(options, options,
                        /*receive_buffer_size=*/4096,
@@ -658,12 +706,15 @@ TEST_F(TcpConnectionTest, CopiedPrefixOverflowRestoresFailedAdmission) {
             outstanding_count_before);
 }
 
-TEST_F(TcpConnectionTest, RoutesOrdinalsAndHandlesScatterOverflow) {
+TEST_F(TcpConnectionTest, RoutesOrdinalsAndSegmentsMaximumScatter) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
   options.max_endpoint_count = 2;
   options.carrier_options.max_send_operations = 4;
-  CreateConnectionPair(options, options);
+  CreateConnectionPair(options, options,
+                       /*receive_buffer_size=*/4096,
+                       /*receive_buffer_count=*/4,
+                       blocking_allocator_.allocator());
 
   iree_net_message_endpoint_t client_endpoint_0 =
       OpenEndpoint(client_connection_);
@@ -693,21 +744,20 @@ TEST_F(TcpConnectionTest, RoutesOrdinalsAndHandlesScatterOverflow) {
   }
   SendResult scatter_result;
   scatter_result.is_polling = &is_polling_;
+  const iree_host_size_t allocation_count_before =
+      blocking_allocator_.AllocationCount();
   IREE_ASSERT_OK(SendMessage(
       client_endpoint_1, iree_async_span_list_make(spans.data(), spans.size()),
       &scatter_result, iree_make_const_byte_span(prefix, sizeof(prefix) - 1)));
+  EXPECT_EQ(blocking_allocator_.AllocationCount(), allocation_count_before);
   prefix[0] = 'X';
 
   constexpr char kDirectPayload[] = "direct endpoint zero";
-  void* direct_data = nullptr;
-  iree_net_carrier_send_handle_t direct_handle = 0;
-  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(
-      server_endpoint_0, sizeof(kDirectPayload), &direct_data, &direct_handle));
-  memcpy(direct_data, kDirectPayload, sizeof(kDirectPayload));
   SendResult direct_result;
   direct_result.is_polling = &is_polling_;
-  IREE_ASSERT_OK(iree_net_message_endpoint_commit_send(
-      server_endpoint_0, direct_handle, {SendCompleted, &direct_result}));
+  IREE_ASSERT_OK(SendMessage(
+      server_endpoint_0, iree_async_span_list_empty(), &direct_result,
+      iree_make_const_byte_span(kDirectPayload, sizeof(kDirectPayload))));
 
   PollUntil([&] {
     return scatter_result.callback_count == 1 &&
@@ -810,6 +860,7 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
   options.carrier_options.max_send_operations = 2;
+  options.carrier_options.generated_prefix_capacity = 32;
   CreateConnectionPair(options, options,
                        /*receive_buffer_size=*/4096,
                        /*receive_buffer_count=*/4,
@@ -823,14 +874,11 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
   ActivateEndpoint(client_endpoint, client_messages);
   ActivateEndpoint(server_endpoint, server_messages);
 
-  std::array<uint8_t, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS> bytes = {};
-  std::array<iree_async_span_t, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS> spans;
-  std::string expected;
-  for (iree_host_size_t i = 0; i < spans.size(); ++i) {
-    bytes[i] = static_cast<uint8_t>('A' + i);
-    spans[i] = iree_async_span_from_ptr(&bytes[i], 1);
-    expected.push_back(static_cast<char>(bytes[i]));
-  }
+  std::string prefix(17, 'p');
+  std::array<uint8_t, 8> bytes = {'p', 'a', 'y', 'l', 'o', 'a', 'd', '!'};
+  iree_async_span_t span = iree_async_span_from_ptr(bytes.data(), bytes.size());
+  std::string expected = prefix;
+  expected.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
   std::vector<int> callback_order;
   SendResult send_result;
   send_result.is_polling = &is_polling_;
@@ -841,8 +889,8 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
   iree_status_code_t submit_status = IREE_STATUS_UNKNOWN;
   std::thread submit_thread([&] {
     iree_status_t status = SendMessage(
-        client_endpoint, iree_async_span_list_make(spans.data(), spans.size()),
-        &send_result);
+        client_endpoint, iree_async_span_list_make(&span, 1), &send_result,
+        iree_make_const_byte_span(prefix.data(), prefix.size()));
     submit_status = iree_status_code(status);
     iree_status_free(status);
     blocking_allocator_.CompleteAttempt();
@@ -851,7 +899,10 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
       blocking_allocator_.WaitUntilEnteredOrCompleted();
   if (!allocation_entered) {
     submit_thread.join();
-    ADD_FAILURE() << "overflow send did not reach its staging allocation";
+    if (submit_status == IREE_STATUS_OK) {
+      PollUntil([&] { return send_result.callback_count == 1; });
+    }
+    ADD_FAILURE() << "oversized prefix did not reach its overflow allocation";
     return;
   }
 
@@ -882,106 +933,100 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
   EXPECT_EQ(callback_order, (std::vector<int>{1, 2}));
 }
 
-TEST_F(TcpConnectionTest, ConcurrentDeactivationRejectsPreparingReservation) {
-  CreateConnectionPair(iree_net_tcp_connection_options_default(),
-                       iree_net_tcp_connection_options_default(),
-                       /*receive_buffer_size=*/4096,
-                       /*receive_buffer_count=*/4,
-                       blocking_allocator_.allocator());
-  iree_net_message_endpoint_t client_endpoint =
-      OpenEndpoint(client_connection_);
-  MessageResult* client_messages = CreateMessageResult();
-  ActivateEndpoint(client_endpoint, client_messages);
-
-  void* reservation_data = nullptr;
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-  iree_status_code_t begin_status = IREE_STATUS_UNKNOWN;
-  blocking_allocator_.Arm(BlockingAllocator::Gate::kAllocation);
-  std::thread begin_thread([&] {
-    iree_status_t status = iree_net_message_endpoint_begin_send(
-        client_endpoint, 64, &reservation_data, &reservation_handle);
-    begin_status = iree_status_code(status);
-    iree_status_free(status);
-    blocking_allocator_.CompleteAttempt();
-  });
-  const bool allocation_entered =
-      blocking_allocator_.WaitUntilEnteredOrCompleted();
-  if (!allocation_entered) {
-    begin_thread.join();
-    ADD_FAILURE() << "direct send did not reach its frame allocation";
-    return;
-  }
-
-  EndpointDeactivateResult deactivate_result;
-  iree_status_t deactivate_status = iree_net_message_endpoint_deactivate(
-      client_endpoint, EndpointDeactivated, &deactivate_result);
-  const iree_status_code_t deactivate_status_code =
-      iree_status_code(deactivate_status);
-  IREE_EXPECT_OK(deactivate_status);
-  if (deactivate_status_code == IREE_STATUS_OK) {
-    EXPECT_FALSE(deactivate_result.completed);
-  }
-  blocking_allocator_.Release();
-  begin_thread.join();
-  if (deactivate_status_code != IREE_STATUS_OK) {
-    return;
-  }
-
-  EXPECT_EQ(begin_status, IREE_STATUS_FAILED_PRECONDITION);
-  EXPECT_EQ(reservation_data, nullptr);
-  EXPECT_EQ(reservation_handle, 0u);
-  PollUntil([&] { return deactivate_result.completed; });
-}
-
-TEST_F(TcpConnectionTest, DirectReservationAbortRestoresAdmission) {
+TEST_F(TcpConnectionTest, GeneratedPrefixFailureRestoresAdmission) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
   options.carrier_options.max_send_operations = 1;
   CreateConnectionPair(options, options);
-  iree_net_message_endpoint_t endpoint = OpenEndpoint(client_connection_);
-  MessageResult* messages = CreateMessageResult();
-  ActivateEndpoint(endpoint, messages);
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(client_endpoint, CreateMessageResult());
+  MessageResult* server_messages = CreateMessageResult();
+  ActivateEndpoint(server_endpoint, server_messages);
 
-  void* first_data = nullptr;
-  iree_net_carrier_send_handle_t first_handle = 0;
-  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(endpoint, 32, &first_data,
-                                                      &first_handle));
-  EXPECT_EQ(iree_net_message_endpoint_query_send_budget(endpoint).slots, 0u);
-  iree_net_message_endpoint_abort_send(endpoint, first_handle);
-  EXPECT_EQ(iree_net_message_endpoint_query_send_budget(endpoint).slots, 1u);
+  SendResult rejected_result;
+  rejected_result.is_polling = &is_polling_;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      SendMessage(client_endpoint, iree_async_span_list_empty(),
+                  &rejected_result, iree_make_const_byte_span(nullptr, 32)));
+  EXPECT_EQ(rejected_result.callback_count, 0);
+  EXPECT_EQ(iree_net_message_endpoint_query_send_budget(client_endpoint).slots,
+            1u);
 
-  void* second_data = nullptr;
-  iree_net_carrier_send_handle_t second_handle = 0;
-  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(
-      endpoint, 64, &second_data, &second_handle));
-  EXPECT_NE(second_handle, first_handle);
-  iree_net_message_endpoint_abort_send(endpoint, second_handle);
+  constexpr char kPayload[] = "accepted";
+  SendResult accepted_result;
+  accepted_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(
+      client_endpoint, iree_async_span_list_empty(), &accepted_result,
+      iree_make_const_byte_span(kPayload, sizeof(kPayload) - 1)));
+  PollUntil([&] {
+    return accepted_result.callback_count == 1 &&
+           server_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(server_messages->messages[0], kPayload);
 }
 
-TEST_F(TcpConnectionTest, DeactivationInvalidatesDirectReservation) {
+TEST_F(TcpConnectionTest, DeactivationWaitsForGeneratedPrefixWriter) {
   CreateConnectionPair();
-  iree_net_message_endpoint_t endpoint = OpenEndpoint(client_connection_);
-  MessageResult* messages = CreateMessageResult();
-  ActivateEndpoint(endpoint, messages);
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(client_endpoint, CreateMessageResult());
+  MessageResult* server_messages = CreateMessageResult();
+  ActivateEndpoint(server_endpoint, server_messages);
 
-  void* data = nullptr;
-  iree_net_carrier_send_handle_t handle = 0;
-  IREE_ASSERT_OK(
-      iree_net_message_endpoint_begin_send(endpoint, 32, &data, &handle));
-  EndpointDeactivateResult deactivate_result;
-  IREE_ASSERT_OK(iree_net_message_endpoint_deactivate(
-      endpoint, EndpointDeactivated, &deactivate_result));
-  PollUntil([&] { return deactivate_result.completed; });
-
+  PrefixWriterGate writer_gate;
+  std::vector<int> callback_order;
   SendResult send_result;
   send_result.is_polling = &is_polling_;
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
-                        iree_net_message_endpoint_commit_send(
-                            endpoint, handle, {SendCompleted, &send_result}));
-  EXPECT_EQ(send_result.callback_count, 0);
+  send_result.callback_order = &callback_order;
+  send_result.identifier = 1;
+  iree_status_code_t send_status = IREE_STATUS_UNKNOWN;
+  std::thread send_thread([&] {
+    iree_status_t status =
+        SendGeneratedMessage(client_endpoint, iree_async_span_list_empty(),
+                             {
+                                 32,
+                                 PrefixWriterGate::Write,
+                                 &writer_gate,
+                             },
+                             &send_result);
+    send_status = iree_status_code(status);
+    iree_status_free(status);
+  });
+  {
+    std::unique_lock<std::mutex> lock(writer_gate.mutex);
+    writer_gate.condition.wait(lock, [&] { return writer_gate.entered; });
+  }
+
+  EndpointDeactivateResult deactivate_result;
+  deactivate_result.callback_order = &callback_order;
+  deactivate_result.identifier = 2;
+  IREE_ASSERT_OK(iree_net_message_endpoint_deactivate(
+      client_endpoint, EndpointDeactivated, &deactivate_result));
+  EXPECT_FALSE(deactivate_result.completed);
+  {
+    std::lock_guard<std::mutex> lock(writer_gate.mutex);
+    writer_gate.release = true;
+  }
+  writer_gate.condition.notify_all();
+  send_thread.join();
+
+  EXPECT_EQ(send_status, IREE_STATUS_OK);
+  PollUntil([&] {
+    return send_result.callback_count == 1 && deactivate_result.completed &&
+           server_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(send_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(server_messages->messages[0], std::string(32, '\xA5'));
+  EXPECT_EQ(callback_order, (std::vector<int>{1, 2}));
 }
 
-TEST_F(TcpConnectionTest, ReservedCommitReturnsDirectMessageFailure) {
+TEST_F(TcpConnectionTest, SendReturnsDirectMessageFailureBeforePrefixWrite) {
   CreateConnectionPair();
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_);
@@ -992,12 +1037,6 @@ TEST_F(TcpConnectionTest, ReservedCommitReturnsDirectMessageFailure) {
   server_messages->message_status = IREE_STATUS_DATA_LOSS;
   ActivateEndpoint(client_endpoint, client_messages);
   ActivateEndpoint(server_endpoint, server_messages);
-
-  void* reservation_data = nullptr;
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(
-      server_endpoint, 1, &reservation_data, &reservation_handle));
-  *static_cast<uint8_t*>(reservation_data) = 0x7A;
 
   uint8_t payload = 0x5A;
   iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
@@ -1011,19 +1050,24 @@ TEST_F(TcpConnectionTest, ReservedCommitReturnsDirectMessageFailure) {
   });
   ASSERT_EQ(server_messages->error_code, IREE_STATUS_DATA_LOSS);
 
-  SendResult commit_result;
-  commit_result.is_polling = &is_polling_;
+  PrefixWriter writer = {
+      /*.value=*/0x7A,
+  };
+  SendResult rejected_result;
+  rejected_result.is_polling = &is_polling_;
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_DATA_LOSS,
-      iree_net_message_endpoint_commit_send(server_endpoint, reservation_handle,
-                                            {SendCompleted, &commit_result}));
-  EXPECT_EQ(commit_result.callback_count, 0);
+      SendGeneratedMessage(server_endpoint, iree_async_span_list_empty(),
+                           {1, PrefixWriter::Write, &writer},
+                           &rejected_result));
+  EXPECT_EQ(writer.call_count, 0);
+  EXPECT_EQ(rejected_result.callback_count, 0);
 
   DeactivateAndRelease(&server_connection_);
-  EXPECT_EQ(commit_result.callback_count, 0);
+  EXPECT_EQ(rejected_result.callback_count, 0);
 }
 
-TEST_F(TcpConnectionTest, ReservedCommitReturnsDeferredMessageFailure) {
+TEST_F(TcpConnectionTest, SendReturnsDeferredMessageFailureBeforePrefixWrite) {
   CreateConnectionPair();
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_);
@@ -1062,24 +1106,24 @@ TEST_F(TcpConnectionTest, ReservedCommitReturnsDeferredMessageFailure) {
   MessageResult* server_messages = CreateMessageResult();
   server_messages->message_status = IREE_STATUS_DATA_LOSS;
   ActivateEndpoint(server_endpoint, server_messages);
-  void* reservation_data = nullptr;
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(
-      server_endpoint, 1, &reservation_data, &reservation_handle));
-  *static_cast<uint8_t*>(reservation_data) = 0x7A;
   PollUntil([&] { return server_messages->error_count == 1; });
   ASSERT_EQ(server_messages->error_code, IREE_STATUS_DATA_LOSS);
 
-  SendResult commit_result;
-  commit_result.is_polling = &is_polling_;
+  PrefixWriter writer = {
+      /*.value=*/0x7A,
+  };
+  SendResult rejected_result;
+  rejected_result.is_polling = &is_polling_;
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_DATA_LOSS,
-      iree_net_message_endpoint_commit_send(server_endpoint, reservation_handle,
-                                            {SendCompleted, &commit_result}));
-  EXPECT_EQ(commit_result.callback_count, 0);
+      SendGeneratedMessage(server_endpoint, iree_async_span_list_empty(),
+                           {1, PrefixWriter::Write, &writer},
+                           &rejected_result));
+  EXPECT_EQ(writer.call_count, 0);
+  EXPECT_EQ(rejected_result.callback_count, 0);
 
   DeactivateAndRelease(&server_connection_);
-  EXPECT_EQ(commit_result.callback_count, 0);
+  EXPECT_EQ(rejected_result.callback_count, 0);
 }
 
 TEST_F(TcpConnectionTest, InvalidScatterOverflowRestoresAdmission) {
@@ -1250,28 +1294,41 @@ TEST_F(TcpConnectionTest, ConnectionDrainClosesInactiveEndpointAdmission) {
       /*client_host_allocator=*/iree_allocator_system(),
       /*server_host_allocator=*/blocking_allocator_.allocator());
 
-  iree_net_message_endpoint_t client_endpoint =
+  iree_net_message_endpoint_t client_endpoint_0 =
       OpenEndpoint(client_connection_);
-  ActivateEndpoint(client_endpoint, CreateMessageResult());
+  iree_net_message_endpoint_t client_endpoint_1 =
+      OpenEndpoint(client_connection_);
+  ActivateEndpoint(client_endpoint_0, CreateMessageResult());
+  ActivateEndpoint(client_endpoint_1, CreateMessageResult());
 
   OpenEndpoint(server_connection_);
+  OpenEndpoint(server_connection_);
 
-  iree_net_message_endpoint_t server_active_endpoint =
-      OpenEndpoint(server_connection_);
-  ActivateEndpoint(server_active_endpoint, CreateMessageResult());
-  OperationResult activation_barrier;
-  iree_async_nop_operation_t barrier = {};
-  iree_async_operation_initialize(&barrier.base, IREE_ASYNC_OPERATION_TYPE_NOP,
-                                  IREE_ASYNC_OPERATION_FLAG_NONE,
-                                  OperationCompleted, &activation_barrier);
-  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &barrier.base));
-  PollUntil([&] { return activation_barrier.completed; });
-
-  void* reservation_data = nullptr;
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(
-      server_active_endpoint, 1, &reservation_data, &reservation_handle));
-  *static_cast<uint8_t*>(reservation_data) = 42;
+  const iree_host_size_t blocker_allocation_count =
+      blocking_allocator_.AllocationCount();
+  std::array<std::string, 2> blocker_payloads = {
+      std::string(128, 'y'),
+      std::string(128, 'z'),
+  };
+  std::array<iree_async_span_t, 2> blocker_spans;
+  std::array<SendResult, 2> blocker_results;
+  for (iree_host_size_t i = 0; i < blocker_payloads.size(); ++i) {
+    blocker_spans[i] = iree_async_span_from_ptr(blocker_payloads[i].data(),
+                                                blocker_payloads[i].size());
+    blocker_results[i].is_polling = &is_polling_;
+    IREE_ASSERT_OK(SendMessage(client_endpoint_1,
+                               iree_async_span_list_make(&blocker_spans[i], 1),
+                               &blocker_results[i]));
+  }
+  // The stream is ordered, so beginning reassembly of the second frame proves
+  // that the first frame has completed and entered the inactive endpoint's
+  // pending queue.
+  PollUntil([&] {
+    return blocker_results[0].callback_count == 1 &&
+           blocker_results[1].callback_count == 1 &&
+           blocking_allocator_.AllocationCount() >=
+               blocker_allocation_count + blocker_payloads.size();
+  });
 
   blocking_allocator_.Arm(BlockingAllocator::Gate::kFree);
   ConnectionDeactivateResult deactivate_result;
@@ -1280,13 +1337,6 @@ TEST_F(TcpConnectionTest, ConnectionDrainClosesInactiveEndpointAdmission) {
                                    {ConnectionDeactivated, &deactivate_result});
     blocking_allocator_.CompleteAttempt();
   });
-  const bool free_entered = blocking_allocator_.WaitUntilEnteredOrCompleted();
-  if (!free_entered) {
-    deactivate_thread.join();
-    ADD_FAILURE() << "connection drain did not release its reservation";
-    return;
-  }
-
   auto finish_deactivation = [&] {
     blocking_allocator_.Release();
     deactivate_thread.join();
@@ -1294,6 +1344,14 @@ TEST_F(TcpConnectionTest, ConnectionDrainClosesInactiveEndpointAdmission) {
       PollUntil([&] { return deactivate_result.completed; });
     }
   };
+  const bool free_entered = blocking_allocator_.WaitUntilEnteredOrCompleted();
+  if (!free_entered) {
+    finish_deactivation();
+    ADD_FAILURE() << "connection drain did not release its queued frame";
+    iree_net_connection_release(server_connection_);
+    server_connection_ = nullptr;
+    return;
+  }
 
   const iree_host_size_t allocation_count_before =
       blocking_allocator_.AllocationCount();
@@ -1308,7 +1366,7 @@ TEST_F(TcpConnectionTest, ConnectionDrainClosesInactiveEndpointAdmission) {
     spans[i] = iree_async_span_from_ptr(payloads[i].data(), payloads[i].size());
     send_results[i].is_polling = &is_polling_;
     iree_status_t send_status =
-        SendMessage(client_endpoint, iree_async_span_list_make(&spans[i], 1),
+        SendMessage(client_endpoint_0, iree_async_span_list_make(&spans[i], 1),
                     &send_results[i]);
     const iree_status_code_t send_status_code = iree_status_code(send_status);
     IREE_EXPECT_OK(send_status);

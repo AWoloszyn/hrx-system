@@ -59,12 +59,16 @@ static void iree_net_session_destroy(iree_net_session_t* session) {
 }
 
 void iree_net_session_retain(iree_net_session_t* session) {
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   iree_atomic_ref_count_inc(&session->ref_count);
 }
 
 void iree_net_session_release(iree_net_session_t* session) {
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   if (iree_atomic_ref_count_dec(&session->ref_count) == 1) {
     iree_net_session_destroy(session);
   }
@@ -117,7 +121,9 @@ static void iree_net_session_on_connection_deactivated(void* user_data) {
       IREE_NET_SESSION_LIFECYCLE_FLAG_CONNECTION_DEACTIVATED;
   const bool finalize = iree_net_session_try_finalize_locked(session);
   iree_slim_mutex_unlock(&session->mutex);
-  if (finalize) iree_net_session_finish_deactivated(session);
+  if (finalize) {
+    iree_net_session_finish_deactivated(session);
+  }
 }
 
 static void iree_net_session_drive_deactivation(iree_net_session_t* session) {
@@ -217,7 +223,7 @@ static iree_status_t iree_net_session_send_bootstrap_locked(
   const iree_const_byte_span_t message =
       iree_net_session_bootstrap_outbound_message(&session->bootstrap);
   const iree_net_message_endpoint_send_params_t send_params = {
-      .copied_prefix = message,
+      .generated_prefix = iree_net_send_prefix_from_bytes(message),
       .data = iree_async_span_list_empty(),
       .completion_callback =
           {
@@ -254,7 +260,8 @@ static iree_status_t iree_net_session_send_reject_locked(
       &message, iree_make_byte_span(message_data, message_size));
   if (iree_status_is_ok(status)) {
     const iree_net_message_endpoint_send_params_t send_params = {
-        .copied_prefix = iree_make_const_byte_span(message_data, message_size),
+        .generated_prefix = iree_net_send_prefix_from_bytes(
+            iree_make_const_byte_span(message_data, message_size)),
         .data = iree_async_span_list_empty(),
         .completion_callback =
             {
@@ -682,7 +689,9 @@ iree_status_t iree_net_session_send_goaway(
 }
 
 void iree_net_session_deactivate(iree_net_session_t* session) {
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   iree_slim_mutex_lock(&session->mutex);
   if (iree_net_session_state(session) != IREE_NET_SESSION_STATE_DEACTIVATED) {
     session->lifecycle_flags |=

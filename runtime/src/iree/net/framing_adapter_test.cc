@@ -71,7 +71,6 @@ static std::vector<uint8_t> MakeFrame(const std::string& payload) {
 
 struct CapturedSend {
   std::vector<std::vector<uint8_t>> span_data;
-  iree_net_send_flags_t flags;
 };
 
 struct PendingSendCompletion {
@@ -84,12 +83,10 @@ struct MockCarrier {
   iree_net_carrier_t base;
   std::vector<CapturedSend> sends;
   std::vector<PendingSendCompletion> pending_completions;
-  std::vector<uint8_t> reservation_storage;
   iree_status_code_t next_activate_error = IREE_STATUS_OK;
   iree_status_code_t next_send_error = IREE_STATUS_OK;
   iree_host_size_t send_budget_bytes = SIZE_MAX;
   uint32_t send_budget_slots = UINT32_MAX;
-  bool reservation_live = false;
   // Checksum observed from retained ordinary-send storage at completion.
   uint8_t retained_checksum = 0;
   // Callback held while deactivation waits for accepted sends.
@@ -144,8 +141,14 @@ struct MockCarrier {
       return iree_status_from_code(error);
     }
     CapturedSend captured;
-    captured.flags = params->flags;
-    iree_host_size_t total_length = 0;
+    iree_host_size_t total_length = params->generated_prefix.length;
+    if (params->generated_prefix.length > 0) {
+      captured.span_data.emplace_back(params->generated_prefix.length);
+      IREE_RETURN_IF_ERROR(params->generated_prefix.write(
+          params->generated_prefix.user_data,
+          iree_make_byte_span(captured.span_data.back().data(),
+                              captured.span_data.back().size())));
+    }
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
       iree_async_span_t span = params->data.values[i];
       uint8_t* ptr = iree_async_span_ptr(span);
@@ -162,47 +165,6 @@ struct MockCarrier {
     mock->pending_completions.push_back(
         {params->completion_callback, total_length, std::move(retained_spans)});
     return iree_ok_status();
-  }
-
-  static iree_status_t BeginSend(iree_net_carrier_t* carrier,
-                                 iree_host_size_t size, void** out_ptr,
-                                 iree_net_carrier_send_handle_t* out_handle) {
-    MockCarrier* mock = reinterpret_cast<MockCarrier*>(carrier);
-    if (mock->reservation_live) {
-      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                              "mock reservation already live");
-    }
-    mock->reservation_storage.resize(size);
-    mock->reservation_live = true;
-    *out_ptr = mock->reservation_storage.data();
-    *out_handle = 1;
-    return iree_ok_status();
-  }
-
-  static iree_status_t CommitSend(
-      iree_net_carrier_t* carrier, iree_net_carrier_send_handle_t handle,
-      iree_net_send_completion_callback_t callback) {
-    MockCarrier* mock = reinterpret_cast<MockCarrier*>(carrier);
-    if (!mock->reservation_live || handle != 1) {
-      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "invalid mock reservation");
-    }
-    CapturedSend captured;
-    captured.flags = IREE_NET_SEND_FLAG_NONE;
-    captured.span_data.push_back(mock->reservation_storage);
-    mock->sends.push_back(std::move(captured));
-    mock->pending_completions.push_back(
-        {callback, mock->reservation_storage.size(), {}});
-    mock->reservation_live = false;
-    return iree_ok_status();
-  }
-
-  static void AbortSend(iree_net_carrier_t* carrier,
-                        iree_net_carrier_send_handle_t handle) {
-    MockCarrier* mock = reinterpret_cast<MockCarrier*>(carrier);
-    IREE_ASSERT(mock->reservation_live && handle == 1);
-    mock->reservation_live = false;
-    mock->reservation_storage.clear();
   }
 
   static iree_status_t Shutdown(iree_net_carrier_t* carrier) {
@@ -274,9 +236,6 @@ const iree_net_carrier_vtable_t MockCarrier::kVtable = {
     /*.deactivate=*/MockCarrier::Deactivate,
     /*.query_send_budget=*/MockCarrier::QuerySendBudget,
     /*.send=*/MockCarrier::Send,
-    /*.begin_send=*/MockCarrier::BeginSend,
-    /*.commit_send=*/MockCarrier::CommitSend,
-    /*.abort_send=*/MockCarrier::AbortSend,
     /*.shutdown=*/MockCarrier::Shutdown,
 };
 
@@ -854,7 +813,6 @@ TEST_F(FramingAdapterTest, SendForwardsToCarrier) {
   ASSERT_EQ(mock_carrier_->sends.size(), 1u);
   ASSERT_EQ(mock_carrier_->sends[0].span_data.size(), 1u);
   EXPECT_EQ(mock_carrier_->sends[0].span_data[0], data);
-  EXPECT_EQ(mock_carrier_->sends[0].flags, IREE_NET_SEND_FLAG_NONE);
   mock_carrier_->CompleteNextSend(iree_ok_status());
   EXPECT_EQ(completion.count, 1);
   EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
@@ -894,8 +852,8 @@ TEST_F(FramingAdapterTest, SendCopiesTransientPrefix) {
   iree_async_span_t span = iree_async_span_from_ptr(data.data(), data.size());
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
-      /*.copied_prefix=*/
-      iree_make_const_byte_span(prefix.data(), prefix.size()),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
       /*.data=*/iree_async_span_list_make(&span, 1),
       /*.completion_callback=*/completion.callback(),
   };
@@ -911,7 +869,7 @@ TEST_F(FramingAdapterTest, SendCopiesTransientPrefix) {
   EXPECT_EQ(completion.count, 1);
   EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
   EXPECT_EQ(completion.bytes_transferred, expected_prefix.size() + data.size());
-  EXPECT_EQ(mock_carrier_->retained_checksum, 0x30u);
+  EXPECT_EQ(mock_carrier_->retained_checksum, 0x10u);
 }
 
 TEST_F(FramingAdapterTest, SendCopiesPrefixOnlyMessage) {
@@ -921,8 +879,8 @@ TEST_F(FramingAdapterTest, SendCopiesPrefixOnlyMessage) {
   const std::vector<uint8_t> expected_prefix = prefix;
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
-      /*.copied_prefix=*/
-      iree_make_const_byte_span(prefix.data(), prefix.size()),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/completion.callback(),
   };
@@ -936,22 +894,21 @@ TEST_F(FramingAdapterTest, SendCopiesPrefixOnlyMessage) {
   mock_carrier_->CompleteNextSend(iree_ok_status());
   EXPECT_EQ(completion.count, 1);
   EXPECT_EQ(completion.bytes_transferred, expected_prefix.size());
-  EXPECT_EQ(mock_carrier_->retained_checksum, 0x20u);
+  EXPECT_EQ(mock_carrier_->retained_checksum, 0u);
 }
 
-TEST_F(FramingAdapterTest, ReservedSendForwardsTerminalCompletion) {
+TEST_F(FramingAdapterTest, GeneratedPrefixForwardsTerminalCompletion) {
   ActivateWithCallbacks();
 
-  void* data = nullptr;
-  iree_net_carrier_send_handle_t handle = 0;
-  IREE_ASSERT_OK(
-      iree_net_message_endpoint_begin_send(endpoint_, 4, &data, &handle));
   const uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
-  memcpy(data, payload, sizeof(payload));
-
   SendCompletion completion;
-  IREE_ASSERT_OK(iree_net_message_endpoint_commit_send(endpoint_, handle,
-                                                       completion.callback()));
+  iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(payload, sizeof(payload))),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/completion.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
   EXPECT_EQ(completion.count, 0);
   ASSERT_EQ(mock_carrier_->sends.size(), 1u);
   ASSERT_EQ(mock_carrier_->sends[0].span_data.size(), 1u);
@@ -973,8 +930,8 @@ TEST_F(FramingAdapterTest, SendCarrierError) {
   iree_async_span_t span = iree_async_span_from_ptr(data.data(), data.size());
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {};
-  params.copied_prefix =
-      iree_make_const_byte_span(prefix.data(), prefix.size());
+  params.generated_prefix = iree_net_send_prefix_from_bytes(
+      iree_make_const_byte_span(prefix.data(), prefix.size()));
   params.data = iree_async_span_list_make(&span, 1);
   params.completion_callback = completion.callback();
 
@@ -989,8 +946,8 @@ TEST_F(FramingAdapterTest, SendCopiedPrefixForwardsAsynchronousError) {
   std::vector<uint8_t> prefix = {0x10, 0x20, 0x30};
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
-      /*.copied_prefix=*/
-      iree_make_const_byte_span(prefix.data(), prefix.size()),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/completion.callback(),
   };
@@ -1002,7 +959,7 @@ TEST_F(FramingAdapterTest, SendCopiedPrefixForwardsAsynchronousError) {
   EXPECT_EQ(completion.count, 1);
   EXPECT_EQ(completion.status_code, IREE_STATUS_UNAVAILABLE);
   EXPECT_EQ(completion.bytes_transferred, prefix.size());
-  EXPECT_EQ(mock_carrier_->retained_checksum, 0x20u);
+  EXPECT_EQ(mock_carrier_->retained_checksum, 0u);
 }
 
 TEST_F(FramingAdapterTest, SendRequiresCompletionCallback) {
@@ -1011,7 +968,7 @@ TEST_F(FramingAdapterTest, SendRequiresCompletionCallback) {
   std::vector<uint8_t> data = {0x01};
   iree_async_span_t span = iree_async_span_from_ptr(data.data(), data.size());
   iree_net_message_endpoint_send_params_t params = {
-      /*.copied_prefix=*/iree_const_byte_span_empty(),
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
       /*.completion_callback=*/{nullptr, nullptr},
   };
@@ -1026,7 +983,7 @@ TEST_F(FramingAdapterTest, SendRequiresNonEmptyMessage) {
 
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
-      /*.copied_prefix=*/iree_const_byte_span_empty(),
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/completion.callback(),
   };
@@ -1042,12 +999,13 @@ TEST_F(FramingAdapterTest, SendRequiresNonEmptyMessage) {
   EXPECT_EQ(completion.count, 0);
 }
 
-TEST_F(FramingAdapterTest, SendRejectsNullCopiedPrefixStorage) {
+TEST_F(FramingAdapterTest, SendRejectsNullGeneratedPrefixSource) {
   ActivateWithCallbacks();
 
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
-      /*.copied_prefix=*/iree_make_const_byte_span(nullptr, 1),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(nullptr, 1)),
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/completion.callback(),
   };
@@ -1064,8 +1022,8 @@ TEST_F(FramingAdapterTest, SendRejectsMessageLengthOverflow) {
   iree_async_span_t span = iree_async_span_from_ptr(&byte, 1);
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
-      /*.copied_prefix=*/
-      iree_make_const_byte_span(&byte, IREE_HOST_SIZE_MAX),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(&byte, IREE_HOST_SIZE_MAX)),
       /*.data=*/iree_async_span_list_make(&span, 1),
       /*.completion_callback=*/completion.callback(),
   };
@@ -1115,8 +1073,8 @@ TEST_F(FramingAdapterTest, DeactivationDrainsRetainedCopiedPrefix) {
   std::vector<uint8_t> prefix = {0x10, 0x20, 0x30};
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
-      /*.copied_prefix=*/
-      iree_make_const_byte_span(prefix.data(), prefix.size()),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/completion.callback(),
   };

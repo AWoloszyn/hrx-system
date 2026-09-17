@@ -102,8 +102,8 @@ typedef struct iree_net_message_endpoint_callbacks_t {
 
 // Parameters for send operations.
 typedef struct iree_net_message_endpoint_send_params_t {
-  // Transient leading bytes copied before the send call returns.
-  iree_const_byte_span_t copied_prefix;
+  // Transient leading bytes generated before the send call returns.
+  iree_net_send_prefix_t generated_prefix;
 
   // Scatter-gather message data borrowed through terminal completion.
   iree_async_span_list_t data;
@@ -147,14 +147,6 @@ struct iree_net_message_endpoint_vtable_t {
                         const iree_net_message_endpoint_send_params_t* params);
   // Queries current message send admission capacity.
   iree_net_carrier_send_budget_t (*query_send_budget)(void* self);
-
-  // Direct-write send mode: caller writes into transport buffer.
-  iree_status_t (*begin_send)(void* self, iree_host_size_t size, void** out_ptr,
-                              iree_net_carrier_send_handle_t* out_handle);
-  iree_status_t (*commit_send)(
-      void* self, iree_net_carrier_send_handle_t handle,
-      iree_net_send_completion_callback_t completion_callback);
-  void (*abort_send)(void* self, iree_net_carrier_send_handle_t handle);
 };
 
 // Sets message and error handlers atomically.
@@ -203,9 +195,10 @@ static inline iree_status_t iree_net_message_endpoint_deactivate(
 
 // Sends a message via the endpoint.
 //
-// |params->copied_prefix| followed by |params->data| comprises one
-// endpoint-defined message. The prefix may reference transient storage and is
-// captured before this call returns. Data buffers remain caller-owned until the
+// |params->generated_prefix| followed by |params->data| comprises one
+// endpoint-defined message. The prefix writer runs synchronously at most once
+// before this call returns; an endpoint may reject before invoking it when
+// transport storage is unavailable. Data buffers remain caller-owned until the
 // completion callback fires. Either part may be empty, but the complete message
 // must contain at least one byte.
 //
@@ -216,11 +209,12 @@ static inline iree_status_t iree_net_message_endpoint_deactivate(
 // An OK return guarantees exactly one terminal completion through
 // |params->completion_callback|. The callback may race with the return on
 // another proactor thread. Its byte count covers the complete logical message,
-// including the copied prefix. A non-OK return means the callback will not
+// including the generated prefix. A non-OK return means the callback will not
 // fire.
 //
-// The prefix and span descriptor array are needed only for the duration of this
-// call. The data buffers must remain valid until the completion callback fires.
+// The prefix writer, its user data, and the span descriptor array are needed
+// only for the duration of this call. The data buffers must remain valid until
+// the completion callback fires.
 static inline iree_status_t iree_net_message_endpoint_send(
     iree_net_message_endpoint_t endpoint,
     const iree_net_message_endpoint_send_params_t* params) {
@@ -232,15 +226,21 @@ static inline iree_status_t iree_net_message_endpoint_send(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "send completion callback is required");
   }
-  if (params->copied_prefix.data_length > 0 && !params->copied_prefix.data) {
+  if ((params->generated_prefix.length == 0) !=
+      (params->generated_prefix.write == NULL)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "copied send prefix has null storage");
+                            "send prefix length and writer disagree");
+  }
+  if (params->generated_prefix.length == 0 &&
+      params->generated_prefix.user_data) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "empty send prefix has user data");
   }
   if (params->data.count > 0 && !params->data.values) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "send span list has null storage");
   }
-  iree_host_size_t total_length = params->copied_prefix.data_length;
+  iree_host_size_t total_length = params->generated_prefix.length;
   for (iree_host_size_t i = 0; i < params->data.count; ++i) {
     if (!iree_host_size_checked_add(total_length, params->data.values[i].length,
                                     &total_length)) {
@@ -265,72 +265,6 @@ static inline iree_net_carrier_send_budget_t
 iree_net_message_endpoint_query_send_budget(
     iree_net_message_endpoint_t endpoint) {
   return endpoint.vtable->query_send_budget(endpoint.self);
-}
-
-// Reserves space for a contiguous send of |size| bytes.
-//
-// On success, |*out_ptr| points to a buffer of at least |size| bytes where the
-// caller writes directly. |*out_handle| receives an opaque handle that must be
-// passed to either commit_send (to publish the data) or abort_send (to discard
-// the reservation). |*out_ptr| is aligned to
-// IREE_NET_SEND_RESERVATION_ALIGNMENT.
-//
-// The caller always writes exactly |size| bytes of endpoint-defined message
-// data. Implementations may reserve additional hidden transport framing and
-// return a pointer offset past it.
-//
-// Between begin_send and commit/abort, the caller holds endpoint-specific
-// resources. The caller must call commit_send or abort_send promptly.
-// Deactivation invalidates uncommitted reservations. Callers must externally
-// synchronize writes through reservation pointers and terminal commit/abort
-// operations against endpoint or owning-connection deactivation.
-//
-// |size| must be > 0.
-//
-// Returns RESOURCE_EXHAUSTED if the transport buffer is full.
-// Returns FAILED_PRECONDITION if the endpoint is not activated.
-static inline iree_status_t iree_net_message_endpoint_begin_send(
-    iree_net_message_endpoint_t endpoint, iree_host_size_t size, void** out_ptr,
-    iree_net_carrier_send_handle_t* out_handle) {
-  if (!out_ptr || !out_handle) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "send reservation requires output storage");
-  }
-  *out_ptr = NULL;
-  *out_handle = 0;
-  if (size == 0) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "send reservation size must be nonzero");
-  }
-  return endpoint.vtable->begin_send(endpoint.self, size, out_ptr, out_handle);
-}
-
-// Publishes a previously reserved send, making the data visible to the peer.
-//
-// The data written into the buffer returned by begin_send is committed to the
-// transport. This call always consumes |handle| unless it rejects a missing
-// completion callback. After an OK return the callback fires exactly once when
-// the send reaches a terminal state and transport resources are reusable. The
-// callback may race with the return on another proactor thread. A non-OK return
-// means the callback will not fire.
-static inline iree_status_t iree_net_message_endpoint_commit_send(
-    iree_net_message_endpoint_t endpoint, iree_net_carrier_send_handle_t handle,
-    iree_net_send_completion_callback_t completion_callback) {
-  if (!completion_callback.fn) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "send completion callback is required");
-  }
-  return endpoint.vtable->commit_send(endpoint.self, handle,
-                                      completion_callback);
-}
-
-// Discards a previously reserved send without publishing any data.
-//
-// The reserved resources are released. No data is sent to the peer.
-static inline void iree_net_message_endpoint_abort_send(
-    iree_net_message_endpoint_t endpoint,
-    iree_net_carrier_send_handle_t handle) {
-  endpoint.vtable->abort_send(endpoint.self, handle);
 }
 
 #ifdef __cplusplus

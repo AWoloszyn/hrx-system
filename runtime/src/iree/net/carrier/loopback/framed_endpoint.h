@@ -44,9 +44,8 @@ IREE_API_EXPORT void iree_net_loopback_framed_endpoint_free(
 
 // Joins connection deactivation to this endpoint's carrier drain.
 //
-// Uncommitted direct-write reservations become invalid before the carrier
-// drain begins. Callers must externally synchronize reservation writes and
-// terminal commit/abort operations against connection deactivation.
+// Generated prefixes are written synchronously inside send calls. Connection
+// drain waits for each accepted send to reach its terminal completion.
 IREE_API_EXPORT void iree_net_loopback_framed_endpoint_join_deactivation(
     iree_net_loopback_framed_endpoint_t* endpoint);
 

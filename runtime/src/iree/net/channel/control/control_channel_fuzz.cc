@@ -28,7 +28,9 @@ struct FuzzEndpoint {
       void* self, iree_net_message_endpoint_deactivate_fn_t callback,
       void* user_data) {
     (void)self;
-    if (callback) callback(user_data);
+    if (callback) {
+      callback(user_data);
+    }
     return iree_ok_status();
   }
 
@@ -44,30 +46,6 @@ struct FuzzEndpoint {
     return {};
   }
 
-  static iree_status_t BeginSend(void* self, iree_host_size_t size,
-                                 void** out_ptr,
-                                 iree_net_carrier_send_handle_t* out_handle) {
-    (void)self;
-    (void)size;
-    (void)out_ptr;
-    (void)out_handle;
-    return iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
-  }
-
-  static iree_status_t CommitSend(
-      void* self, iree_net_carrier_send_handle_t handle,
-      iree_net_send_completion_callback_t completion_callback) {
-    (void)self;
-    (void)handle;
-    (void)completion_callback;
-    return iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
-  }
-
-  static void AbortSend(void* self, iree_net_carrier_send_handle_t handle) {
-    (void)self;
-    (void)handle;
-  }
-
   iree_net_message_endpoint_t endpoint() {
     static const iree_net_message_endpoint_vtable_t vtable = {
         /*.set_callbacks=*/SetCallbacks,
@@ -75,9 +53,6 @@ struct FuzzEndpoint {
         /*.deactivate=*/Deactivate,
         /*.send=*/Send,
         /*.query_send_budget=*/QuerySendBudget,
-        /*.begin_send=*/BeginSend,
-        /*.commit_send=*/CommitSend,
-        /*.abort_send=*/AbortSend,
     };
     return {
         /*.self=*/this,

@@ -162,7 +162,9 @@ iree_status_t iree_net_control_channel_allocate(
 }
 
 void iree_net_control_channel_free(iree_net_control_channel_t* channel) {
-  if (!channel) return;
+  if (!channel) {
+    return;
+  }
   iree_allocator_free(channel->host_allocator, channel);
 }
 
@@ -194,6 +196,52 @@ static iree_status_t iree_net_control_channel_validate_completion(
   return iree_ok_status();
 }
 
+typedef struct iree_net_control_data_copy_prefix_t {
+  // DATA flags encoded into the control header.
+  uint8_t flags;
+
+  // Payload spans copied after the control header.
+  iree_async_span_list_t payload;
+} iree_net_control_data_copy_prefix_t;
+
+static iree_status_t iree_net_control_channel_write_data_copy(
+    void* user_data, iree_byte_span_t target) {
+  iree_net_control_data_copy_prefix_t* prefix =
+      (iree_net_control_data_copy_prefix_t*)user_data;
+  iree_net_control_message_encode_header(IREE_NET_CONTROL_MESSAGE_TYPE_DATA,
+                                         prefix->flags, 0, target.data);
+  uint8_t* payload_target = target.data + IREE_NET_CONTROL_MESSAGE_HEADER_SIZE;
+  for (iree_host_size_t i = 0; i < prefix->payload.count; ++i) {
+    const iree_async_span_t span = prefix->payload.values[i];
+    if (span.length == 0) {
+      continue;
+    }
+    memcpy(payload_target, iree_async_span_ptr(span), span.length);
+    payload_target += span.length;
+  }
+  return iree_ok_status();
+}
+
+typedef struct iree_net_control_error_prefix_t {
+  // Status serialized after the control header.
+  iree_status_t status;
+
+  // Exact serialized status extent.
+  iree_host_size_t status_wire_size;
+} iree_net_control_error_prefix_t;
+
+static iree_status_t iree_net_control_channel_write_error(
+    void* user_data, iree_byte_span_t target) {
+  iree_net_control_error_prefix_t* prefix =
+      (iree_net_control_error_prefix_t*)user_data;
+  iree_net_control_message_encode_header(IREE_NET_CONTROL_MESSAGE_TYPE_ERROR, 0,
+                                         0, target.data);
+  return iree_net_status_wire_serialize(
+      prefix->status,
+      iree_make_byte_span(target.data + IREE_NET_CONTROL_MESSAGE_HEADER_SIZE,
+                          prefix->status_wire_size));
+}
+
 iree_status_t iree_net_control_channel_send_data(
     iree_net_control_channel_t* channel, iree_net_control_data_flags_t flags,
     iree_async_span_list_t payload,
@@ -205,7 +253,8 @@ iree_status_t iree_net_control_channel_send_data(
   iree_net_control_message_encode_header(IREE_NET_CONTROL_MESSAGE_TYPE_DATA,
                                          (uint8_t)flags, 0, header);
   const iree_net_message_endpoint_send_params_t params = {
-      .copied_prefix = iree_make_const_byte_span(header, sizeof(header)),
+      .generated_prefix = iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(header, sizeof(header))),
       .data = payload,
       .completion_callback = completion_callback,
   };
@@ -257,24 +306,21 @@ iree_status_t iree_net_control_channel_send_data_copy(
   IREE_RETURN_IF_ERROR(
       iree_net_control_channel_measure_copy_payload(payload, &message_size));
 
-  void* message_storage = NULL;
-  iree_net_carrier_send_handle_t send_handle = 0;
-  IREE_RETURN_IF_ERROR(iree_net_message_endpoint_begin_send(
-      channel->endpoint, message_size, &message_storage, &send_handle));
-
-  uint8_t* message = (uint8_t*)message_storage;
-  iree_net_control_message_encode_header(IREE_NET_CONTROL_MESSAGE_TYPE_DATA,
-                                         (uint8_t)flags, 0, message);
-  uint8_t* target = message + IREE_NET_CONTROL_MESSAGE_HEADER_SIZE;
-  for (iree_host_size_t i = 0; i < payload.count; ++i) {
-    const iree_async_span_t span = payload.values[i];
-    if (span.length > 0) {
-      memcpy(target, iree_async_span_ptr(span), span.length);
-      target += span.length;
-    }
-  }
-  return iree_net_message_endpoint_commit_send(channel->endpoint, send_handle,
-                                               completion_callback);
+  iree_net_control_data_copy_prefix_t prefix = {
+      .flags = (uint8_t)flags,
+      .payload = payload,
+  };
+  const iree_net_message_endpoint_send_params_t params = {
+      .generated_prefix =
+          {
+              .length = message_size,
+              .write = iree_net_control_channel_write_data_copy,
+              .user_data = &prefix,
+          },
+      .data = iree_async_span_list_empty(),
+      .completion_callback = completion_callback,
+  };
+  return iree_net_message_endpoint_send(channel->endpoint, &params);
 }
 
 iree_status_t iree_net_control_channel_send_goaway(
@@ -285,7 +331,8 @@ iree_status_t iree_net_control_channel_send_goaway(
   iree_net_control_message_encode_header(IREE_NET_CONTROL_MESSAGE_TYPE_GOAWAY,
                                          0, reason_code, header);
   const iree_net_message_endpoint_send_params_t params = {
-      .copied_prefix = iree_make_const_byte_span(header, sizeof(header)),
+      .generated_prefix = iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(header, sizeof(header))),
       .data = iree_async_span_list_empty(),
       .completion_callback = completion_callback,
   };
@@ -316,27 +363,24 @@ iree_status_t iree_net_control_channel_send_error(
                               "ERROR message length overflow");
   }
 
-  void* message_storage = NULL;
-  iree_net_carrier_send_handle_t send_handle = 0;
+  iree_net_control_error_prefix_t prefix = {
+      .status = error_status,
+      .status_wire_size = status_wire_size,
+  };
   if (iree_status_is_ok(status)) {
-    status = iree_net_message_endpoint_begin_send(
-        channel->endpoint, message_size, &message_storage, &send_handle);
-  }
-  if (iree_status_is_ok(status)) {
-    uint8_t* message = (uint8_t*)message_storage;
-    iree_net_control_message_encode_header(IREE_NET_CONTROL_MESSAGE_TYPE_ERROR,
-                                           0, 0, message);
-    status = iree_net_status_wire_serialize(
-        error_status,
-        iree_make_byte_span(message + IREE_NET_CONTROL_MESSAGE_HEADER_SIZE,
-                            status_wire_size));
-    if (!iree_status_is_ok(status)) {
-      iree_net_message_endpoint_abort_send(channel->endpoint, send_handle);
-    }
+    const iree_net_message_endpoint_send_params_t params = {
+        .generated_prefix =
+            {
+                .length = message_size,
+                .write = iree_net_control_channel_write_error,
+                .user_data = &prefix,
+            },
+        .data = iree_async_span_list_empty(),
+        .completion_callback = completion_callback,
+    };
+    status = iree_net_message_endpoint_send(channel->endpoint, &params);
   }
 
   iree_status_free(error_status);
-  if (!iree_status_is_ok(status)) return status;
-  return iree_net_message_endpoint_commit_send(channel->endpoint, send_handle,
-                                               completion_callback);
+  return status;
 }
