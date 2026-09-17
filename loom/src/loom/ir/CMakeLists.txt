@@ -166,6 +166,7 @@ loom_cc_test(
   SRCS
     "module_dictionary_test.cc"
     "module_test.cc"
+    "module_type_intern_test.cc"
     "module_type_uses_test.cc"
   DEPS
     ::ir

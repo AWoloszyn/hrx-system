@@ -326,6 +326,17 @@ static iree_status_t loom_type_table_ensure_capacity(
   return iree_ok_status();
 }
 
+// Publishes row and hash storage together so a caller can rewind arena
+// allocations after failure without leaving either table pointing into them.
+static iree_status_t loom_module_reserve_type_insert(loom_module_t* module) {
+  loom_type_table_t types = module->types;
+  IREE_RETURN_IF_ERROR(loom_type_table_ensure_capacity(&module->arena, &types));
+  IREE_RETURN_IF_ERROR(
+      loom_intern_table_reserve_insert(&module->arena, &module->type_intern));
+  module->types = types;
+  return iree_ok_status();
+}
+
 static iree_status_t loom_encoding_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_encoding_table_t* table) {
   if (table->count < table->capacity) {
@@ -4410,20 +4421,19 @@ static iree_status_t loom_module_intern_type_impl(
   loom_type_t type = {0};
   IREE_RETURN_IF_ERROR(clone_fn(module, clone_context, &type));
 
-  // Ensure the type table has capacity before inserting into the intern hash
-  // table.
-  IREE_RETURN_IF_ERROR(
-      loom_type_table_ensure_capacity(&module->arena, &module->types));
-  uint32_t new_index = (uint32_t)module->types.count;
   // Payload preparation does not intern types. Only hash-table growth can
   // invalidate the vacant slot found by the initial probe.
   iree_host_size_t slot = probe.slot;
-  if (!loom_intern_table_has_insert_capacity(&module->type_intern)) {
-    IREE_RETURN_IF_ERROR(
-        loom_intern_table_reserve_insert(&module->arena, &module->type_intern));
-    slot = loom_intern_table_find_empty_slot(&module->type_intern, hash);
+  const bool grow_intern_table =
+      !loom_intern_table_has_insert_capacity(&module->type_intern);
+  if (module->types.count == module->types.capacity || grow_intern_table) {
+    IREE_RETURN_IF_ERROR(loom_module_reserve_type_insert(module));
+    if (grow_intern_table) {
+      slot = loom_intern_table_find_empty_slot(&module->type_intern, hash);
+    }
   }
 
+  uint32_t new_index = (uint32_t)module->types.count;
   module->types.entries[new_index] = type;
   module->types.hashes[new_index] = hash;
   module->types.count++;
