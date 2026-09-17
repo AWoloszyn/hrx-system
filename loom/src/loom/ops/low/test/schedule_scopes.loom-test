@@ -5,12 +5,12 @@ test.target<low_core> @target
 // Canonical assembly preserves every control, including empty nested phases.
 low.func.def target<test.low.core>(@target) @roundtrip_scopes(%value: reg<test.i32>) -> (reg<test.i32>) asm {
   low.schedule.begin
-  low.schedule.step
+  low.schedule.phase
   low.schedule.begin
-  low.schedule.step
+  low.schedule.phase
   low.schedule.end
   low.schedule.fence
-  low.schedule.step
+  low.schedule.phase
   low.schedule.end
   return %value
 }
@@ -20,12 +20,12 @@ test.target<low_core> @target
 
 low.func.def target<test.low.core>(@target) @roundtrip_scopes(%value: reg<test.i32>) -> (reg<test.i32>) asm {
   low.schedule.begin
-  low.schedule.step
+  low.schedule.phase
   low.schedule.begin
-  low.schedule.step
+  low.schedule.phase
   low.schedule.end
   low.schedule.fence
-  low.schedule.step
+  low.schedule.phase
   low.schedule.end
   return %value
 }
@@ -37,7 +37,7 @@ test.target<low_core> @target
 
 low.func.def target<test.low.core>(@target) @bytecode_scopes() asm {
   low.schedule.begin
-  low.schedule.step
+  low.schedule.phase
   low.schedule.end
   return
 }
@@ -54,9 +54,9 @@ low.func.def target<test.low.core>(@target) @balanced_loop(%condition: reg<test.
   low.cond_br %condition, ^body, ^exit : reg<test.i32>
 ^body:
   low.schedule.begin
-  low.schedule.step
+  low.schedule.phase
   low.schedule.end
-  low.schedule.step
+  low.schedule.phase
   low.br ^header
 ^exit:
   low.schedule.end
@@ -133,7 +133,7 @@ test.target<low_core> @target
 low.func.def target<test.low.core>(@target) @unreachable_controls() asm {
   return
 ^dead:
-  low.schedule.step
+  low.schedule.phase
   low.schedule.end
   return
 }
@@ -147,11 +147,82 @@ low.func.def target<test.low.core>(@target) @nested_region_controls(%condition: 
   low.scf.if %condition {
     // ERROR@+1: STRUCTURE/031 {op_name="low.schedule.begin"}
     low.schedule.begin
-    // ERROR@+1: STRUCTURE/031 {op_name="low.schedule.step"}
-    low.schedule.step
+    // ERROR@+1: STRUCTURE/031 {op_name="low.schedule.phase"}
+    low.schedule.phase
     // ERROR@+1: STRUCTURE/031 {op_name="low.schedule.end"}
     low.schedule.end
     low.scf.yield
   }
   low.return
+}
+
+// ====
+// RUN: roundtrip
+
+test.target<low_core> @target
+
+low.func.def schedule(phased) target<test.low.core>(@target) @function_phases(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %first = test.add.i32 %value, %value
+  low.schedule.phase
+  low.schedule.begin
+  %second = test.add.i32 %first, %value
+  low.schedule.phase
+  low.schedule.end
+  low.schedule.phase
+  return %second
+}
+
+// ====
+// RUN: format bytecode
+
+test.target<low_core> @target
+
+low.func.def schedule(phased) target<test.low.core>(@target) @phased_bytecode(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.schedule.phase
+  return %value
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+// Function scope remains active across the backedge and both exits.
+low.func.def schedule(phased) target<test.low.core>(@target) @phased_loop(%condition: reg<test.i32>) asm {
+  low.cond_br %condition, ^header, ^early : reg<test.i32>
+^header:
+  low.cond_br %condition, ^body, ^exit : reg<test.i32>
+^body:
+  low.schedule.begin
+  low.schedule.phase
+  low.schedule.end
+  low.schedule.phase
+  low.br ^header
+^early:
+  return
+^exit:
+  low.schedule.phase
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+low.func.def schedule(phased) target<test.low.core>(@target) @close_function_scope() asm {
+  // ERROR@+1: STRUCTURE/054 {reason_key="function-scope-end"}
+  low.schedule.end
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+low.func.def schedule(phased) target<test.low.core>(@target) @unclosed_nested_scope() asm {
+  low.schedule.begin
+  // ERROR@+1: STRUCTURE/054 {reason_key="unclosed-scope"}
+  return
 }

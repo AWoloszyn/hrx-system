@@ -360,7 +360,7 @@ class LowBuilder(DialectBuilder):
         *,
         location_id: int | None = ...,
     ) -> None: ...
-    def step(
+    def phase(
         self,
         *,
         location_id: int | None = ...,

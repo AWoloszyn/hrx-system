@@ -945,6 +945,7 @@ loom_cc_library(
     srcs = ["verify.c"],
     hdrs = ["verify.h"],
     deps = [
+        ":function",
         ":packet",
         ":register_parts",
         ":storage_layout",

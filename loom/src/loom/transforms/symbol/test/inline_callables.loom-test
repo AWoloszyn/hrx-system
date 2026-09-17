@@ -884,21 +884,20 @@ func.def public @consume_loop_wrapper(%value: i32) -> (i32) {
 // The scope crosses those inserted blocks and remains balanced at both exits.
 test.target<low_core> @scope_target
 
-low.func.def inline target<test.low.core>(@scope_target) @choose(%condition: reg<test.i32>, %value: reg<test.i32>) -> (reg<test.i32>) asm {
+low.func.def inline schedule(phased) target<test.low.core>(@scope_target) @choose(%condition: reg<test.i32>, %value: reg<test.i32>) -> (reg<test.i32>) asm {
   low.cond_br %condition, ^left, ^right : reg<test.i32>
 ^left:
+  low.schedule.phase
   %sum = test.add.i32 %value, %value
   return %sum
 ^right:
   return %value
 }
 
-low.func.def inline target<test.low.core>(@scope_target) @scoped_wrapper(%condition: reg<test.i32>, %value: reg<test.i32>) -> (reg<test.i32>) asm {
-  low.schedule.begin
+low.func.def inline schedule(phased) target<test.low.core>(@scope_target) @scoped_wrapper(%condition: reg<test.i32>, %value: reg<test.i32>) -> (reg<test.i32>) asm {
   %chosen = low.func.call @choose(%condition, %value) : (reg<test.i32>, reg<test.i32>) -> (reg<test.i32>)
-  low.schedule.step
+  low.schedule.phase
   %sum = test.add.i32 %chosen, %value
-  low.schedule.end
   return %sum
 }
 
@@ -914,15 +913,76 @@ low.func.def public target<test.low.core>(@scope_target) @scoped_entry(%conditio
   low.schedule.begin
   low.br ^_bb1(%condition$9: reg<test.i32>, %value$10: reg<test.i32>)
 ^_bb1(%condition$0: reg<test.i32>, %value$1: reg<test.i32>):
+  low.schedule.begin
   low.cond_br %condition$0, ^_bb2, ^_bb3 : reg<test.i32>
 ^_bb2:
+  low.schedule.phase
   %sum$3 = test.add.i32 %value$1, %value$1
+  low.schedule.end
   low.br ^_bb4(%sum$3: reg<test.i32>)
 ^_bb3:
+  low.schedule.end
   low.br ^_bb4(%value$1: reg<test.i32>)
 ^_bb4(%chosen: reg<test.i32>):
-  low.schedule.step
+  low.schedule.phase
   %sum$8 = test.add.i32 %chosen, %value$10
   low.schedule.end
   return %sum$8
+}
+
+// ====
+// RUN: pass inline-callables
+
+// The retained body and each cloned call receive a complete independent scope.
+test.target<low_core> @target
+
+low.func.def schedule(phased) target<test.low.core>(@target) @shared_phased(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %first = test.add.i32 %value, %value
+  low.schedule.phase
+  %second = test.mul.i32 %first, %value
+  return %second
+}
+
+low.func.def public target<test.low.core>(@target) @inline_phased(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %first = low.func.call inline @shared_phased(%value) : (reg<test.i32>) -> (reg<test.i32>)
+  %second = low.func.call inline @shared_phased(%value) : (reg<test.i32>) -> (reg<test.i32>)
+  %result = test.add.i32 %first, %second
+  return %result
+}
+
+low.func.def public target<test.low.core>(@target) @retain_phased(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = low.func.call noinline @shared_phased(%value) : (reg<test.i32>) -> (reg<test.i32>)
+  return %result
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @shared_phased(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.schedule.begin
+  %first = test.add.i32 %value, %value
+  low.schedule.phase
+  %second = test.mul.i32 %first, %value
+  low.schedule.end
+  return %second
+}
+
+low.func.def public target<test.low.core>(@target) @inline_phased(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.schedule.begin
+  %first$14 = test.add.i32 %value, %value
+  low.schedule.phase
+  %second$15 = test.mul.i32 %first$14, %value
+  low.schedule.end
+  low.schedule.begin
+  %first$12 = test.add.i32 %value, %value
+  low.schedule.phase
+  %second$13 = test.mul.i32 %first$12, %value
+  low.schedule.end
+  %result = test.add.i32 %second$15, %second$13
+  return %result
+}
+
+low.func.def public target<test.low.core>(@target) @retain_phased(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = low.func.call noinline @shared_phased(%value) : (reg<test.i32>) -> (reg<test.i32>)
+  return %result
 }

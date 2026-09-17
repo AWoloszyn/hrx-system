@@ -183,6 +183,11 @@ LowScheduleMode = EnumDef(
             3,
             doc="Instruction order is part of the low-function contract.",
         ),
+        EnumCase(
+            "phased",
+            4,
+            doc="Each invocation owns an independent schedule. low.schedule.phase orders successive phases while allowing instructions within each phase and independent invocations to interleave.",
+        ),
     ],
     doc="Instruction scheduling exactness mode for a low function. Absent means free.",
 )
@@ -505,7 +510,10 @@ low_func_def = Op(
         "values. Without exactness modifiers, registers are virtual and the "
         "instruction schedule is free. allocation(...) and schedule(...) are "
         "independent contracts: fixed preserves physical register assignment, "
-        "while locked preserves authored instruction order."
+        "while locked preserves authored instruction order. schedule(phased) "
+        "gives each invocation an independent scope whose first phase starts "
+        "at entry. low.schedule.phase orders successive phases without "
+        "introducing a new SSA scope or runtime synchronization."
     ),
     traits=[SYMBOL_DEFINE, ISOLATED_FROM_ABOVE],
     attrs=list(_FUNC_COMMON_ATTRS),
@@ -1650,12 +1658,14 @@ low_schedule_begin = Op(
     phase=OpPhase.EXECUTABLE,
     doc=(
         "Begins an independently interleavable native scheduling scope. "
-        "low.schedule.step orders all surviving instructions in the current "
+        "low.schedule.phase orders all surviving instructions in the current "
         "phase before the next phase of this scope, without waiting for their "
         "completion. Nested scopes belong to their parent's current phase. "
         "Each cloned begin creates a distinct scope. Scope nesting must agree "
         "at control-flow joins and balance at function exits. Controls appear "
-        "directly in Low executable body blocks; scopes may span CFG edges."
+        "directly in Low executable body blocks; scopes may span CFG edges. "
+        "Inlining expands schedule(phased) helpers into explicit begin/end "
+        "controls so each invocation retains its own phases."
     ),
     verify="loom_low_schedule_control_verify",
     traits=[HINT],
@@ -1663,20 +1673,22 @@ low_schedule_begin = Op(
     examples=["low.schedule.begin"],
 )
 
-low_schedule_step = Op(
-    "low.schedule.step",
+low_schedule_phase = Op(
+    "low.schedule.phase",
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc=(
-        "Ends the current phase and begins the next phase of the innermost "
-        "native scheduling scope. Independent scopes may interleave. Empty "
-        "phases are valid. This orders emitted instructions and has no "
+        "Begins the next phase of the innermost native scheduling scope. "
+        "schedule(phased) functions and kernels provide an implicit scope "
+        "whose first phase starts at entry. Independent scopes may interleave. "
+        "Empty phases are valid. Values retain their ordinary SSA scope. "
+        "This orders emitted instructions and has no "
         "runtime completion, memory visibility, or synchronization effect."
     ),
     verify="loom_low_schedule_control_verify",
     traits=[HINT],
     format=[],
-    examples=["low.schedule.step"],
+    examples=["low.schedule.phase"],
 )
 
 low_schedule_end = Op(
@@ -1724,6 +1736,6 @@ ALL_LOW_OPS: tuple[Op, ...] = (
     low_schedule_fence,
     low_assume,
     low_schedule_begin,
-    low_schedule_step,
+    low_schedule_phase,
     low_schedule_end,
 )

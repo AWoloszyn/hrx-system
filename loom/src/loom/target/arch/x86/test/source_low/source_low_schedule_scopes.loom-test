@@ -2,14 +2,12 @@
 
 x86.target<scalar> @target
 
-low.func.def target<x86.scalar.core>(@target) @scoped_double(%value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
-  low.schedule.begin
+low.func.def schedule(phased) target<x86.scalar.core>(@target) @scoped_double(%value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
   %value_copy = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
   %first = add.gpr32 %value_copy, %value
-  low.schedule.step
+  low.schedule.phase
   %first_copy = copy %first : reg<x86.gpr32> -> reg<x86.gpr32>
   %second = add.gpr32 %first_copy, %first
-  low.schedule.end
   return %second
 }
 
@@ -34,14 +32,14 @@ low.func.def public target<x86.scalar.core>(@target) abi(object_function) @unrol
   low.schedule.begin
   %value_copy$49 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
   %first$50 = add.gpr32 %value_copy$49, %lhs
-  low.schedule.step
+  low.schedule.phase
   %first_copy$51 = copy %first$50 : reg<x86.gpr32> -> reg<x86.gpr32>
   %second$52 = add.gpr32 %first_copy$51, %first$50
   low.schedule.end
   low.schedule.begin
   %value_copy$45 = copy %rhs : reg<x86.gpr32> -> reg<x86.gpr32>
   %first$46 = add.gpr32 %value_copy$45, %rhs
-  low.schedule.step
+  low.schedule.phase
   %first_copy$47 = copy %first$46 : reg<x86.gpr32> -> reg<x86.gpr32>
   %second$48 = add.gpr32 %first_copy$47, %first$46
   low.schedule.end
@@ -50,14 +48,14 @@ low.func.def public target<x86.scalar.core>(@target) abi(object_function) @unrol
   low.schedule.begin
   %value_copy$41 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
   %first$42 = add.gpr32 %value_copy$41, %lhs
-  low.schedule.step
+  low.schedule.phase
   %first_copy$43 = copy %first$42 : reg<x86.gpr32> -> reg<x86.gpr32>
   %second$44 = add.gpr32 %first_copy$43, %first$42
   low.schedule.end
   low.schedule.begin
   %value_copy$2 = copy %rhs : reg<x86.gpr32> -> reg<x86.gpr32>
   %first$3 = add.gpr32 %value_copy$2, %rhs
-  low.schedule.step
+  low.schedule.phase
   %first_copy$4 = copy %first$3 : reg<x86.gpr32> -> reg<x86.gpr32>
   %second$5 = add.gpr32 %first_copy$4, %first$3
   low.schedule.end
@@ -74,14 +72,12 @@ low.func.def public target<x86.scalar.core>(@target) abi(object_function) @unrol
 
 x86.target<scalar> @target
 
-low.func.def target<x86.scalar.core>(@target) @scoped_double(%value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
-  low.schedule.begin
+low.func.def schedule(phased) target<x86.scalar.core>(@target) @scoped_double(%value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
   %value_copy = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
   %first = add.gpr32 %value_copy, %value
-  low.schedule.step
+  low.schedule.phase
   %first_copy = copy %first : reg<x86.gpr32> -> reg<x86.gpr32>
   %second = add.gpr32 %first_copy, %first
-  low.schedule.end
   return %second
 }
 
@@ -115,14 +111,14 @@ low.func.def public target<x86.scalar.core>(@target) abi(object_function) @parti
   low.schedule.begin
   %value_copy$77 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
   %first$78 = add.gpr32 %value_copy$77, %lhs
-  low.schedule.step
+  low.schedule.phase
   %first_copy$79 = copy %first$78 : reg<x86.gpr32> -> reg<x86.gpr32>
   %second$80 = add.gpr32 %first_copy$79, %first$78
   low.schedule.end
   low.schedule.begin
   %value_copy$73 = copy %rhs : reg<x86.gpr32> -> reg<x86.gpr32>
   %first$74 = add.gpr32 %value_copy$73, %rhs
-  low.schedule.step
+  low.schedule.phase
   %first_copy$75 = copy %first$74 : reg<x86.gpr32> -> reg<x86.gpr32>
   %second$76 = add.gpr32 %first_copy$75, %first$74
   low.schedule.end
@@ -137,14 +133,14 @@ low.func.def public target<x86.scalar.core>(@target) abi(object_function) @parti
   low.schedule.begin
   %value_copy$69 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
   %first$70 = add.gpr32 %value_copy$69, %lhs
-  low.schedule.step
+  low.schedule.phase
   %first_copy$71 = copy %first$70 : reg<x86.gpr32> -> reg<x86.gpr32>
   %second$72 = add.gpr32 %first_copy$71, %first$70
   low.schedule.end
   low.schedule.begin
   %value_copy$2 = copy %rhs : reg<x86.gpr32> -> reg<x86.gpr32>
   %first$3 = add.gpr32 %value_copy$2, %rhs
-  low.schedule.step
+  low.schedule.phase
   %first_copy$4 = copy %first$3 : reg<x86.gpr32> -> reg<x86.gpr32>
   %second$5 = add.gpr32 %first_copy$4, %first$3
   low.schedule.end

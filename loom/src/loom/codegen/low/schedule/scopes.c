@@ -6,6 +6,7 @@
 
 #include "loom/codegen/low/schedule/scopes.h"
 
+#include "loom/codegen/low/function.h"
 #include "loom/codegen/low/schedule/graph.h"
 
 typedef struct loom_low_schedule_phase_frontier_t {
@@ -78,7 +79,8 @@ static iree_status_t loom_low_schedule_phase_join(
 iree_status_t loom_low_schedule_build_scope_dependencies(
     loom_low_schedule_build_state_t* state) {
   IREE_RETURN_IF_ERROR(loom_low_schedule_scope_builder_finish(
-      &state->scope_builder, state->cfg_graph, state->options->emitter,
+      &state->scope_builder, state->cfg_graph,
+      loom_low_function_schedule(state->function_op), state->options->emitter,
       state->arena, &state->scopes));
   state->error_count += state->scopes.error_count;
   if (state->scopes.control_count == 0 || state->scopes.error_count != 0) {
@@ -86,7 +88,8 @@ iree_status_t loom_low_schedule_build_scope_dependencies(
   }
 
   loom_low_schedule_phase_frontier_t* frontiers = NULL;
-  const iree_host_size_t frontier_count = state->scopes.control_count + 1;
+  const iree_host_size_t frontier_count =
+      state->scopes.control_count + 1 + (state->scopes.function_scope != 0);
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       state->arena, frontier_count, sizeof(*frontiers), (void**)&frontiers));
   for (iree_host_size_t i = 0; i < frontier_count; ++i) {

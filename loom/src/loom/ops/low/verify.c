@@ -1336,8 +1336,12 @@ static iree_status_t loom_low_verify_function_preamble(
     status = loom_cfg_graph_build(module, body, &arena, &graph);
     if (iree_status_is_ok(status) && !graph.malformed) {
       loom_low_schedule_scopes_t scopes;
-      status = loom_low_schedule_scope_builder_finish(&scope_builder, &graph,
-                                                      emitter, &arena, &scopes);
+      const loom_low_schedule_t schedule =
+          loom_low_func_def_isa(function_op)
+              ? loom_low_func_def_schedule(function_op)
+              : loom_low_kernel_def_schedule(function_op);
+      status = loom_low_schedule_scope_builder_finish(
+          &scope_builder, &graph, schedule, emitter, &arena, &scopes);
     }
   }
   iree_arena_deinitialize(&arena);

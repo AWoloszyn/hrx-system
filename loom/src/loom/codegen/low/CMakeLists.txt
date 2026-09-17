@@ -1031,6 +1031,7 @@ loom_cc_library(
   SRCS
     "verify.c"
   DEPS
+    ::function
     ::packet
     ::register_parts
     ::storage_layout

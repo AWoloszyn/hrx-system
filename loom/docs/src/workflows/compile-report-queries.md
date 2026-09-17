@@ -284,9 +284,11 @@ wait rows below show how the resulting operations are emitted.
 
 ## Inspect authored scheduling scopes
 
-[Native scheduling scopes](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
-retain a helper's phase order while independent instances interleave. The
-report counts reachable materialized scopes after inlining and loop cloning:
+[Phased Low helpers](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
+retain their authored phase order while independent invocations interleave.
+The report counts reachable scopes, including an implicit `schedule(phased)`
+function scope in direct Low and the scopes materialized by inlining and loop
+cloning:
 
 ```shell
 jq '{scope_count: (.schedule.scope_count // 0),

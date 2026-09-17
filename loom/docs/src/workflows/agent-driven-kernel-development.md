@@ -304,10 +304,12 @@ configuration sweeps, and actual `show`/`suggest` output. The
 [control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
 owns the exact policy and schedule semantics.
 
-For authored native motifs, [Low scheduling scopes](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
-keep a helper's phases ordered while independent invocations interleave.
-`low.schedule.begin`, `low.schedule.step`, and `low.schedule.end` survive helper
-inlining and loop cloning without shared group IDs. They impose instruction
+For authored native motifs, give a Low helper
+[`schedule(phased)`](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
+and place `low.schedule.phase` separators between its instruction phases. The
+first phase is implicit, and SSA values remain visible across separators.
+Callers use ordinary `low.invoke`; inlining and loop cloning preserve each
+invocation's independent schedule. These authored phases impose instruction
 order without memory waits. Compare native waits and register use along with
 `scope_count`; a larger overlap window may cost more live registers. Native
 AMDGPU and x86 enforce the contract, while intermediate representations reject

@@ -281,6 +281,12 @@ without requiring them to complete. Completion still follows actual operand
 and storage hazards, so inspection of the final waits matters for both manual
 schedules and `scf.for` pipelines.
 
+For reusable motifs,
+[phased Low helpers](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
+preserve each invocation's phase order while allowing independent invocations
+to interleave. The helper author chooses `low.schedule.phase` separators;
+`scf.for pipeline(...)` does not assign these native phases automatically.
+
 The source schedule records how far values travel between iterations. Hardware
 overlap also depends on their final register assignments. A load can remain
 pending until its value is read, but a register-to-register queue copy reads

@@ -5,8 +5,7 @@
 
 amdgpu.target<gfx11-generic> @paired_scope_target {subgroup_size = 32}
 
-low.func.def target<amdgpu.gfx11.generic.core>(@paired_scope_target) @paired_scope_tile(%workitem_id: reg<amdgpu.vgpr>, %lhs_view: reg<amdgpu.sgpr x2>, %rhs_view: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x8>) asm {
-  low.schedule.begin
+low.func.def schedule(phased) target<amdgpu.gfx11.generic.core>(@paired_scope_target) @paired_scope_tile(%workitem_id: reg<amdgpu.vgpr>, %lhs_view: reg<amdgpu.sgpr x2>, %rhs_view: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x8>) asm {
   %lane = v_and_b32_src0_inline %workitem_id, 15
   %byte_offset = v_lshlrev_b32_src0_inline %lane, 6
   %lhs0_low = global_load_b128_saddr %byte_offset, %lhs_view
@@ -18,9 +17,9 @@ low.func.def target<amdgpu.gfx11.generic.core>(@paired_scope_target) @paired_sco
   %zero = v_mov_b32 0
   %zero_acc = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
   %zero_acc_copy = copy %zero_acc : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  low.schedule.step
+  low.schedule.phase
   %partial = v_wmma_f32_16x16x16_bf16 %lhs0, %rhs0, %zero_acc_copy
-  low.schedule.step
+  low.schedule.phase
   %lhs1_low = global_load_b128_saddr %byte_offset, %lhs_view {offset = 32}
   %lhs1_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 48}
   %lhs1 = concat(%lhs1_low, %lhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
@@ -29,7 +28,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@paired_scope_target) @paired_sco
   %rhs1 = concat(%rhs1_low, %rhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
   %partial_copy = copy %partial : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
   %result = v_wmma_f32_16x16x16_bf16 %lhs1, %rhs1, %partial_copy
-  low.schedule.end
   return %result
 }
 
@@ -76,9 +74,9 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@paired_scope_target) workgroup
   %zero = v_mov_b32 0
   %zero_acc$72 = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
   %zero_acc_copy$73 = copy %zero_acc$72 : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  low.schedule.step
+  low.schedule.phase
   %partial$74 = v_wmma_f32_16x16x16_bf16 %lhs0$67, %rhs0$70, %zero_acc_copy$73
-  low.schedule.step
+  low.schedule.phase
   %lhs1_low$75 = global_load_b128_saddr %byte_offset, %a_lhs {offset = 32}
   %lhs1_high$76 = global_load_b128_saddr %byte_offset, %a_lhs {offset = 48}
   %lhs1$77 = concat(%lhs1_low$75, %lhs1_high$76) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
@@ -97,9 +95,9 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@paired_scope_target) workgroup
   %rhs0$11 = concat(%rhs0_low$9, %rhs0_high$10) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
   %zero_acc$13 = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
   %zero_acc_copy$14 = copy %zero_acc$13 : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  low.schedule.step
+  low.schedule.phase
   %partial$15 = v_wmma_f32_16x16x16_bf16 %lhs0$8, %rhs0$11, %zero_acc_copy$14
-  low.schedule.step
+  low.schedule.phase
   %lhs1_low$16 = global_load_b128_saddr %byte_offset, %b_lhs {offset = 32}
   %lhs1_high$17 = global_load_b128_saddr %byte_offset, %b_lhs {offset = 48}
   %lhs1$18 = concat(%lhs1_low$16, %lhs1_high$17) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
