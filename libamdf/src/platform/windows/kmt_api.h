@@ -67,8 +67,6 @@ typedef struct amdf_kmt_api_t {
   PFND3DKMT_MAPGPUVIRTUALADDRESS map_gpu_virtual_address;
   // Establishes residency without forcing a device error on exhaustion.
   PFND3DKMT_MAKERESIDENT make_resident;
-  // Releases residency for one or more physical allocations.
-  PFND3DKMT_EVICT evict;
   // Locks one allocation for explicit host access.
   PFND3DKMT_LOCK2 lock;
   // Releases one explicit allocation lock.
