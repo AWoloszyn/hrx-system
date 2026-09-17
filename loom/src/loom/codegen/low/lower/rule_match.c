@@ -1393,7 +1393,7 @@ iree_status_t loom_low_lower_rule_set_select_rule_range_with_match_context(
       out_selection->rule_index = rule_index;
       out_selection->uses_source_memory_access = uses_source_memory_access;
       out_selection->source_node_count = source_node_count;
-      memcpy(out_selection->source_nodes, source_nodes,
+      memcpy((void*)out_selection->source_nodes, source_nodes,
              source_node_count * sizeof(*source_nodes));
       return iree_ok_status();
     }

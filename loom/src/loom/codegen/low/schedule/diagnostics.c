@@ -215,8 +215,9 @@ static iree_status_t loom_low_schedule_emit_state_clobber(
           table->module, failure->state_value_id)),
       loom_param_string(clobber_label),
   };
-  return loom_low_schedule_emit(table, emitter, clobber->op, LOOM_ERR_BACKEND_048,
-                                params, IREE_ARRAYSIZE(params));
+  return loom_low_schedule_emit(table, emitter, clobber->op,
+                                LOOM_ERR_BACKEND_048, params,
+                                IREE_ARRAYSIZE(params));
 }
 
 static bool loom_low_schedule_interval_contains_point(
@@ -575,7 +576,7 @@ iree_status_t loom_low_schedule_diagnostics_emit(
   if (table->error_count != 0) {
     if (table->failure.kind == LOOM_LOW_SCHEDULE_FAILURE_STATE_CLOBBER) {
       return loom_low_schedule_emit_state_clobber(table, emitter,
-                                                   &table->failure);
+                                                  &table->failure);
     }
     return loom_low_schedule_emit_dependency_cycle(table, emitter,
                                                    &table->failure);

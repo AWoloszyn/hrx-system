@@ -716,7 +716,7 @@ class LoomPresubmitTest(unittest.TestCase):
             cmake_target="loom::py::loom::tools::loom-lint",
             bazel_args=(
                 "--config=locked",
-                "--//loom/config/target:enable=amdgpu,llvmir,spirv,wasm,xdna,x86",
+                "--//loom/config/target:enable=amdgpu,llvmir,spirv,vm,wasm,xdna,x86",
             ),
         )
         self.assertEqual(

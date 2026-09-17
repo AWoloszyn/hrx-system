@@ -22,11 +22,11 @@
 
 enum { LOOM_AIE2P_PIPELINE_DEFAULT_CHANNEL_CAPACITY = 2 };
 
-static_assert((int)LOOM_PIPELINE_BINDING_ACCESS_FLAG_READ ==
-                  (int)LOOM_AIE2P_ARRAY_BINDING_ACCESS_READ,
+static_assert((uint32_t)LOOM_PIPELINE_BINDING_ACCESS_FLAG_READ ==
+                  (uint32_t)LOOM_AIE2P_ARRAY_BINDING_ACCESS_READ,
               "pipeline and AIE2P read access must have identical encodings");
-static_assert((int)LOOM_PIPELINE_BINDING_ACCESS_FLAG_WRITE ==
-                  (int)LOOM_AIE2P_ARRAY_BINDING_ACCESS_WRITE,
+static_assert((uint32_t)LOOM_PIPELINE_BINDING_ACCESS_FLAG_WRITE ==
+                  (uint32_t)LOOM_AIE2P_ARRAY_BINDING_ACCESS_WRITE,
               "pipeline and AIE2P write access must have identical encodings");
 
 typedef struct loom_aie2p_pipeline_placement_t {

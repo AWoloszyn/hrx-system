@@ -1209,7 +1209,7 @@ static iree_status_t loom_check_emit_build_low_allocation_table(
   }
   if (iree_status_is_ok(status)) {
     status = loom_low_allocation_diagnostics_emit(out_table, diagnostic_flags,
-                                                emitter);
+                                                  emitter);
   }
   if (iree_status_is_ok(status)) {
     *out_built = true;

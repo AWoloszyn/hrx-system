@@ -208,7 +208,7 @@ def _emit_encoding_tables() -> str:
         "kLoomAie2pBundleNames",
     )
     bundle_field_lines: list[str] = []
-    bundle_layout_lines = ["    {0},"]
+    bundle_layout_lines = ["    {.fixed_mask = {0}},"]
     for bundle_format in bundle_formats:
         field_offset = len(bundle_field_lines)
         if field_offset > 0xFFFF:
