@@ -396,6 +396,9 @@ static amdf_status_t amdf_windows_gpu_memory_destroy_allocations(
     destroy.AllocationCount = memory->allocation_count;
   }
   destroy.Flags.AssumeNotInUse = 1;
+  // Complete OS reclamation before successful release returns host backing for
+  // reuse. The caller has already retired execution.
+  destroy.Flags.SynchronousDestroy = memory->host_pointer != NULL;
   const amdf_status_t status =
       amdf_kmt_make_status(memory->device->kmt->destroy_allocation(&destroy));
   if (amdf_status_is_ok(status)) {

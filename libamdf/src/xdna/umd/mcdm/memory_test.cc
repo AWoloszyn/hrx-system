@@ -90,6 +90,7 @@ FakeDestroyAllocation(const D3DKMT_DESTROYALLOCATION2* destroy) {
   EXPECT_EQ(destroy->AllocationCount, 1u);
   EXPECT_EQ(destroy->phAllocationList[0], 0x20u);
   EXPECT_EQ(destroy->Flags.AssumeNotInUse, 1u);
+  EXPECT_EQ(destroy->Flags.SynchronousDestroy, 1u);
   if (g_fake_state->destroy_failures_remaining != 0) {
     --g_fake_state->destroy_failures_remaining;
     return kStatusNoMemory;

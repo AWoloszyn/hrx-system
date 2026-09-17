@@ -46,6 +46,8 @@ struct FakeMemoryState {
   uint32_t allocation_count = 1;
   // Status returned by allocation destruction.
   NTSTATUS destroy_status = 0;
+  // OS reclamation required before returning independently owned host backing.
+  uint32_t expected_synchronous_destroy = 0;
   // Host backing borrowed by native allocation creation, if any.
   void* host_pointer = nullptr;
   // Number of memory headers returned to the host allocator.
@@ -223,6 +225,8 @@ FakeDestroyAllocation(const D3DKMT_DESTROYALLOCATION2* destroy) {
     EXPECT_EQ(destroy->phAllocationList[0], 0x20u);
   }
   EXPECT_EQ(destroy->Flags.AssumeNotInUse, 1u);
+  EXPECT_EQ(destroy->Flags.SynchronousDestroy,
+            current_state->expected_synchronous_destroy);
   return current_state->destroy_status;
 }
 
@@ -356,6 +360,7 @@ TEST_F(WindowsGpuMemoryTest, MapsExactReadExecuteAccessWithoutWrite) {
 TEST_F(WindowsGpuMemoryTest,
        MalformedNativeAllocationKeepsBackingOnFailedFree) {
   state_.allocation_domain = AMDF_WKMI_BRIDGE_GPU_ALLOCATION_DOMAIN_SYSTEM;
+  state_.expected_synchronous_destroy = 1;
   state_.allocation_handle = 0;
   state_.resource_handle = 0x21;
   state_.destroy_status = kStatusNoMemory;
@@ -392,6 +397,52 @@ TEST_F(WindowsGpuMemoryTest,
   EXPECT_EQ(information.State, MEM_COMMIT);
   // Only fake native handles remain; reclaim the real test backing directly.
   EXPECT_TRUE(VirtualFree(information.AllocationBase, 0, MEM_RELEASE));
+}
+
+TEST_F(WindowsGpuMemoryTest,
+       RegisteredPagesRemainBorrowedAcrossReleaseAndRollback) {
+  auto* pages = static_cast<uint8_t*>(
+      VirtualAlloc(nullptr, 65536, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+  ASSERT_NE(pages, nullptr);
+  ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 2, &profile_),
+            AMDF_STATUS_OK);
+  create_info_.registered_host_pointer = pages;
+  create_info_.required_flags =
+      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  for (uint64_t failing_wait_target : {0u, 1u, 2u}) {
+    SCOPED_TRACE(failing_wait_target);
+    state_ = {};
+    state_.allocation_domain =
+        AMDF_WKMI_BRIDGE_GPU_ALLOCATION_DOMAIN_REGISTERED_HOST;
+    state_.expected_synchronous_destroy = 1;
+    state_.failing_wait_target = failing_wait_target;
+    state_.wait_failures_remaining = 1;
+    std::memset(pages, 0xA5, 65536);
+    amdf_gpu_umd_memory_t* memory = nullptr;
+    amdf_gpu_umd_memory_result_t result;
+    std::memset(&result, 0x5A, sizeof(result));
+    const auto original_result = result;
+    const auto status = amdf_gpu_umd_memory_prepare(
+        &device_, 0, nullptr, &profile_, &create_info_, &memory, &result);
+    ASSERT_NE(memory, nullptr);
+    EXPECT_EQ(state_.host_pointer, pages);
+    if (failing_wait_target == 0) {
+      EXPECT_EQ(status, AMDF_STATUS_OK);
+    } else {
+      EXPECT_EQ(status, amdf_kmt_make_status(kStatusNoMemory));
+      EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+    }
+    ASSERT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
+    EXPECT_EQ(state_.metadata_free_count, 1u);
+    EXPECT_EQ(state_.operations.back(), Operation::kFreeAddress);
+    MEMORY_BASIC_INFORMATION information = {};
+    ASSERT_NE(VirtualQuery(pages, &information, sizeof(information)), 0u);
+    ASSERT_EQ(information.State, MEM_COMMIT);
+    EXPECT_EQ(pages[0], 0xA5);
+    EXPECT_EQ(pages[65535], 0xA5);
+    std::memset(pages, 0x3C, 65536);
+  }
+  EXPECT_TRUE(VirtualFree(pages, 0, MEM_RELEASE));
 }
 
 TEST_F(WindowsGpuMemoryTest, MalformedUngroupedAllocationReleasesValidHandles) {

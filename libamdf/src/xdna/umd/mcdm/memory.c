@@ -80,6 +80,9 @@ static amdf_status_t amdf_windows_xdna_memory_release_native(
       destroy.AllocationCount = 1;
     }
     destroy.Flags.AssumeNotInUse = 1;
+    // Both owned and registered host pages outlive OS reclamation. Execution
+    // retirement remains the caller's precondition.
+    destroy.Flags.SynchronousDestroy = 1;
     const amdf_status_t status =
         amdf_kmt_make_status(memory->device->kmt->destroy_allocation(&destroy));
     if (!amdf_status_is_ok(status)) {
