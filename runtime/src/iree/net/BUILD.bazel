@@ -61,6 +61,17 @@ iree_runtime_cc_library(
 )
 
 iree_runtime_cc_library(
+    name = "bootstrap",
+    srcs = ["bootstrap.c"],
+    hdrs = ["bootstrap.h"],
+    deps = [
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+    ],
+)
+
+iree_runtime_cc_library(
     name = "message_endpoint",
     hdrs = ["message_endpoint.h"],
     deps = [
@@ -99,6 +110,16 @@ iree_runtime_cc_library(
     deps = [
         "//runtime/src/iree/async",
         "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "status_wire",
+    srcs = ["status_wire.c"],
+    hdrs = ["status_wire.h"],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
     ],
 )
 
@@ -148,11 +169,42 @@ iree_runtime_cc_library(
 #===------------------------------------------------------------------------===#
 
 iree_runtime_cc_fuzz(
+    name = "bootstrap_fuzz",
+    srcs = ["bootstrap_fuzz.cc"],
+    deps = [
+        ":bootstrap",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_fuzz(
     name = "frame_accumulator_fuzz",
     srcs = ["frame_accumulator_fuzz.cc"],
     deps = [
         ":frame_accumulator",
         "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_fuzz(
+    name = "status_wire_fuzz",
+    srcs = ["status_wire_fuzz.cc"],
+    deps = [
+        ":status_wire",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "bootstrap_test",
+    srcs = ["bootstrap_test.cc"],
+    deps = [
+        ":bootstrap",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 
@@ -206,6 +258,18 @@ iree_runtime_cc_test(
         ":message_endpoint",
         "//runtime/src/iree/async",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "status_wire_test",
+    srcs = ["status_wire_test.cc"],
+    deps = [
+        ":status_wire",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
