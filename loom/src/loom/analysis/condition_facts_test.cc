@@ -114,6 +114,14 @@ class ConditionFactsTest : public ::testing::Test {
     return op;
   }
 
+  loom_op_t* BuildBoolXor(loom_value_id_t left, loom_value_id_t right) {
+    loom_op_t* op = nullptr;
+    IREE_CHECK_OK(loom_scalar_xori_build(&builder_, left, right,
+                                         loom_type_scalar(LOOM_SCALAR_TYPE_I1),
+                                         LOOM_LOCATION_UNKNOWN, &op));
+    return op;
+  }
+
   bool Query(loom_value_id_t condition_value, bool assumed_truth = true) {
     bool complete = false;
     IREE_CHECK_OK(loom_condition_facts_query(&condition_query_, &fact_table_,
@@ -550,6 +558,103 @@ TEST_F(ConditionFactsTest, OpaqueBooleanConditionProducesEdgeFact) {
 
   ASSERT_EQ(condition_facts_.integer_relation_count, 1u);
   EXPECT_EQ(condition_facts_.integer_relations[0].right.constant, 0);
+}
+
+TEST_F(ConditionFactsTest, RetainedBooleanTruthProvesOpaqueCondition) {
+  loom_value_id_t condition =
+      DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  loom_value_id_t other = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  const loom_value_fact_table_t* ambient_fact_tables[] = {&fact_table_,
+                                                          nullptr};
+  for (bool assumed_truth : {false, true}) {
+    ASSERT_TRUE(Query(condition, assumed_truth));
+    for (const loom_value_fact_table_t* ambient_facts : ambient_fact_tables) {
+      bool proven_condition = !assumed_truth;
+      bool proven = false;
+      const iree_host_size_t used_allocation_size =
+          analysis_arena_.used_allocation_size;
+      IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+          &condition_query_, ambient_facts, &condition_facts_, condition,
+          &proven_condition, &proven));
+      EXPECT_TRUE(proven);
+      EXPECT_EQ(proven_condition, assumed_truth);
+      EXPECT_EQ(analysis_arena_.used_allocation_size, used_allocation_size);
+
+      IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+          &condition_query_, ambient_facts, &condition_facts_, other,
+          &proven_condition, &proven));
+      EXPECT_FALSE(proven);
+    }
+  }
+
+  loom_condition_fact_set_reset(&condition_facts_);
+  bool proven_condition = false;
+  bool proven = true;
+  IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+      &condition_query_, &fact_table_, &condition_facts_, condition,
+      &proven_condition, &proven));
+  EXPECT_FALSE(proven);
+}
+
+TEST_F(ConditionFactsTest, BooleanCompositionConsumesRetainedOperandTruth) {
+  loom_value_id_t left = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  loom_value_id_t right = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  const loom_value_id_t conditions[] = {
+      loom_scalar_andi_result(BuildBoolAnd(left, right)),
+      loom_scalar_ori_result(BuildBoolOr(left, right)),
+      loom_scalar_xori_result(BuildBoolXor(left, right)),
+  };
+  for (bool left_truth : {false, true}) {
+    for (bool right_truth : {false, true}) {
+      SCOPED_TRACE(::testing::Message()
+                   << "left=" << left_truth << ", right=" << right_truth);
+      ASSERT_TRUE(Query(left, left_truth));
+      bool complete = false;
+      IREE_ASSERT_OK(loom_condition_facts_query_into(
+          &condition_query_, &fact_table_, right, right_truth,
+          &condition_facts_, &complete));
+      ASSERT_TRUE(complete);
+      const bool expected[] = {
+          left_truth && right_truth,
+          left_truth || right_truth,
+          left_truth != right_truth,
+      };
+      for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(conditions); ++i) {
+        bool proven_condition = !expected[i];
+        bool proven = false;
+        IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+            &condition_query_, &fact_table_, &condition_facts_, conditions[i],
+            &proven_condition, &proven));
+        EXPECT_TRUE(proven);
+        EXPECT_EQ(proven_condition, expected[i]);
+      }
+    }
+  }
+}
+
+TEST_F(ConditionFactsTest, PartialBooleanTruthPreservesUnknownOutcomes) {
+  loom_value_id_t left = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  loom_value_id_t right = DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  const loom_value_id_t conditions[] = {
+      loom_scalar_andi_result(BuildBoolAnd(left, right)),
+      loom_scalar_ori_result(BuildBoolOr(left, right)),
+      loom_scalar_xori_result(BuildBoolXor(left, right)),
+  };
+  for (loom_value_id_t known : {left, right}) {
+    for (bool assumed_truth : {false, true}) {
+      ASSERT_TRUE(Query(known, assumed_truth));
+      const bool expected_proven[] = {!assumed_truth, assumed_truth, false};
+      for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(conditions); ++i) {
+        bool proven_condition = !assumed_truth;
+        bool proven = false;
+        IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+            &condition_query_, &fact_table_, &condition_facts_, conditions[i],
+            &proven_condition, &proven));
+        EXPECT_EQ(proven, expected_proven[i]);
+        if (proven) EXPECT_EQ(proven_condition, assumed_truth);
+      }
+    }
+  }
 }
 
 TEST_F(ConditionFactsTest, RelationCapacityOverflowIsIncomplete) {
