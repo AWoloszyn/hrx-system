@@ -26,8 +26,10 @@
 //
 // During connection bootstrap, ownership of an endpoint transfers from the
 // bootstrap handler to the operational protocol. Use set_callbacks() to
-// atomically swap both message and error handlers, ensuring no messages are
-// delivered to a stale handler.
+// atomically swap both message and error handlers. Message callbacks for one
+// endpoint are serialized in delivery order. A swap performed from inside a
+// message callback therefore takes effect before any later message callback,
+// ensuring no later message is delivered to the stale handler.
 
 #ifndef IREE_NET_MESSAGE_ENDPOINT_H_
 #define IREE_NET_MESSAGE_ENDPOINT_H_
@@ -46,10 +48,15 @@ extern "C" {
 
 // Message handler invoked when a complete message is received.
 //
-// Called on the proactor thread for each complete message. The handler receives
-// a view of the message data and a lease to the backing storage. The lease is
-// always valid (non-NULL) whether the message came from a recv buffer or was
-// reassembled from fragments.
+// Called on the proactor thread for each complete message. Calls for one
+// endpoint are serialized in delivery order and never overlap; one call returns
+// before the next begins. This serialization applies only to message callbacks;
+// terminal-error and send-completion callbacks remain independently
+// asynchronous.
+//
+// The handler receives a view of the message data and a lease to the backing
+// storage. The lease is always valid (non-NULL) whether the message came from a
+// recv buffer or was reassembled from fragments.
 //
 // To keep the message data valid beyond the callback, move the lease by copying
 // it and clearing the callback's lease value. Release the moved lease when
@@ -153,8 +160,8 @@ struct iree_net_message_endpoint_vtable_t {
 // Sets message and error handlers atomically.
 //
 // Used for protocol handoff (e.g., bootstrap completes, operational channel
-// takes over). Both handlers and user_data change in a single operation,
-// ensuring no messages are delivered to a stale handler.
+// takes over). Both handlers and user_data change in a single operation. When
+// called from an on_message handler, all later messages use the new bundle.
 //
 // Must be called on the proactor thread after activation, or from any thread
 // before activation.

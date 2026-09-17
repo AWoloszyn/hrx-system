@@ -1250,6 +1250,37 @@ struct SecondHandler {
   }
 };
 
+struct HandoffHandler {
+  iree_net_message_endpoint_t endpoint = {};
+  SecondHandler* next_handler = nullptr;
+  bool message_callback_active = false;
+  std::vector<ReceivedMessage> messages;
+
+  static iree_status_t OnMessage(void* user_data,
+                                 iree_const_byte_span_t message,
+                                 iree_async_buffer_lease_t* lease) {
+    auto* handler = static_cast<HandoffHandler*>(user_data);
+    EXPECT_FALSE(handler->message_callback_active);
+    handler->message_callback_active = true;
+    ReceivedMessage received;
+    received.data.assign(message.data, message.data + message.data_length);
+    received.had_lease = (lease != nullptr);
+    handler->messages.push_back(std::move(received));
+    iree_net_message_endpoint_set_callbacks(
+        handler->endpoint, handler->next_handler->MakeCallbacks());
+    handler->message_callback_active = false;
+    return iree_ok_status();
+  }
+
+  static void OnError(void* user_data, iree_status_t status) {
+    iree_status_free(status);
+  }
+
+  iree_net_message_endpoint_callbacks_t MakeCallbacks() {
+    return {OnMessage, OnError, this};
+  }
+};
+
 TEST_F(FramingAdapterTest, CallbackSwapRedirectsMessages) {
   ActivateWithCallbacks();
 
@@ -1270,6 +1301,30 @@ TEST_F(FramingAdapterTest, CallbackSwapRedirectsMessages) {
   EXPECT_EQ(ctx_.messages[0].data, frame1);
 
   // Second handler got frame2 only.
+  ASSERT_EQ(second_handler.messages.size(), 1u);
+  EXPECT_EQ(second_handler.messages[0].data, frame2);
+}
+
+TEST_F(FramingAdapterTest, CallbackSwapInsideMessageRedirectsFollowingFrame) {
+  SecondHandler second_handler;
+  HandoffHandler handoff_handler = {
+      /*.endpoint=*/endpoint_,
+      /*.next_handler=*/&second_handler,
+  };
+  iree_net_message_endpoint_set_callbacks(endpoint_,
+                                          handoff_handler.MakeCallbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(endpoint_));
+
+  auto frame1 = MakeFrame("Bootstrap");
+  auto frame2 = MakeFrame("Operational");
+  std::vector<uint8_t> buffer;
+  buffer.insert(buffer.end(), frame1.begin(), frame1.end());
+  buffer.insert(buffer.end(), frame2.begin(), frame2.end());
+  IREE_ASSERT_OK(InjectRecv(buffer));
+
+  EXPECT_FALSE(handoff_handler.message_callback_active);
+  ASSERT_EQ(handoff_handler.messages.size(), 1u);
+  EXPECT_EQ(handoff_handler.messages[0].data, frame1);
   ASSERT_EQ(second_handler.messages.size(), 1u);
   EXPECT_EQ(second_handler.messages[0].data, frame2);
 }

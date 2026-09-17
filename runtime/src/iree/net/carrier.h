@@ -159,19 +159,20 @@ typedef struct iree_net_carrier_send_budget_t {
 
 // Receive handler invoked when data is received on an activated carrier.
 //
-// Called from the proactor thread for each received message/chunk. The handler
-// receives a view into the receive buffer and optionally a lease that can be
-// retained if the data is needed beyond the callback. An empty span with no
-// lease indicates an orderly peer send shutdown (EOF); no later receive data
-// will be delivered. Returning OK from EOF preserves the local send direction,
-// while returning an error makes the carrier failure terminal in both
-// directions.
-// |lease| may be NULL for carriers that don't use buffer pools (e.g., loopback
-// where data comes from the sender's buffer). When non-NULL, the carrier
-// releases the lease after this callback returns. A handler may take ownership
-// by copying the lease and clearing the callback's lease value, or may copy the
-// data when holding a receive buffer would impede progress. Call
-// iree_async_buffer_lease_release() to return a buffer early.
+// Called from the proactor thread for each received message/chunk. Calls for
+// one carrier are serialized in delivery order and never overlap; one call
+// returns before the next begins. The handler receives a view into the receive
+// buffer and optionally a lease that can be retained if the data is needed
+// beyond the callback. An empty span with no lease indicates an orderly peer
+// send shutdown (EOF); no later receive data will be delivered. Returning OK
+// from EOF preserves the local send direction, while returning an error makes
+// the carrier failure terminal in both directions. |lease| may be NULL for
+// carriers that don't use buffer pools (e.g., loopback where data comes from
+// the sender's buffer). When non-NULL, the carrier releases the lease after
+// this callback returns. A handler may take ownership by copying the lease and
+// clearing the callback's lease value, or may copy the data when holding a
+// receive buffer would impede progress. Call iree_async_buffer_lease_release()
+// to return a buffer early.
 //
 // Return iree_ok_status() to indicate successful processing. Returning an
 // error causes the carrier to report the error and may trigger deactivation.

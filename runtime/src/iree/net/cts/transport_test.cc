@@ -148,6 +148,69 @@ struct MessageState {
   }
 };
 
+struct ProtocolHandoffState {
+  int* current_poll_side = nullptr;
+  PollSide expected_poll_side = kNotPolling;
+  iree_net_message_endpoint_t endpoint = {};
+  bool message_callback_active = false;
+  std::vector<std::string> bootstrap_messages;
+  std::vector<std::string> operational_messages;
+  int error_count = 0;
+
+  static iree_status_t OnBootstrapMessage(void* user_data,
+                                          iree_const_byte_span_t message,
+                                          iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<ProtocolHandoffState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    EXPECT_FALSE(self->message_callback_active);
+    self->message_callback_active = true;
+    self->bootstrap_messages.emplace_back(
+        reinterpret_cast<const char*>(message.data), message.data_length);
+    iree_net_message_endpoint_set_callbacks(self->endpoint,
+                                            self->operational_callbacks());
+    self->message_callback_active = false;
+    return iree_ok_status();
+  }
+
+  static iree_status_t OnOperationalMessage(void* user_data,
+                                            iree_const_byte_span_t message,
+                                            iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<ProtocolHandoffState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    EXPECT_FALSE(self->message_callback_active);
+    self->message_callback_active = true;
+    self->operational_messages.emplace_back(
+        reinterpret_cast<const char*>(message.data), message.data_length);
+    self->message_callback_active = false;
+    return iree_ok_status();
+  }
+
+  static void OnError(void* user_data, iree_status_t status) {
+    auto* self = static_cast<ProtocolHandoffState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->error_count;
+    iree_status_free(status);
+  }
+
+  iree_net_message_endpoint_callbacks_t bootstrap_callbacks() {
+    return {
+        /*.on_message=*/OnBootstrapMessage,
+        /*.on_error=*/OnError,
+        /*.user_data=*/this,
+    };
+  }
+
+  iree_net_message_endpoint_callbacks_t operational_callbacks() {
+    return {
+        /*.on_message=*/OnOperationalMessage,
+        /*.on_error=*/OnError,
+        /*.user_data=*/this,
+    };
+  }
+};
+
 struct SendState {
   int* current_poll_side = nullptr;
   PollSide expected_poll_side = kNotPolling;
@@ -544,6 +607,70 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
   EXPECT_EQ(server_send_.status_code, IREE_STATUS_OK);
   EXPECT_EQ(client_messages_.error_count, 0);
   EXPECT_EQ(server_messages_.error_count, 0);
+}
+
+TEST_F(TransportTest, CallbackHandoffPreservesQueuedMessageOrder) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  ASSERT_NE(client_endpoint.self, nullptr);
+  ASSERT_NE(server_endpoint.self, nullptr);
+
+  client_messages_.current_poll_side = &current_poll_side_;
+  client_messages_.expected_poll_side = kClientPolling;
+  iree_net_message_endpoint_set_callbacks(client_endpoint,
+                                          client_messages_.callbacks());
+  ProtocolHandoffState handoff_state;
+  handoff_state.current_poll_side = &current_poll_side_;
+  handoff_state.expected_poll_side = kServerPolling;
+  handoff_state.endpoint = server_endpoint;
+  iree_net_message_endpoint_set_callbacks(server_endpoint,
+                                          handoff_state.bootstrap_callbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+
+  std::array<std::string, 3> messages = {
+      "bootstrap",
+      "control-1",
+      "control-2",
+  };
+  std::array<SendState, 3> send_states;
+  for (iree_host_size_t i = 0; i < messages.size(); ++i) {
+    send_states[i].current_poll_side = &current_poll_side_;
+    send_states[i].expected_poll_side = kClientPolling;
+    send_states[i].expected_bytes = messages[i].size();
+    iree_net_message_endpoint_send_params_t send_params = {
+        /*.copied_prefix=*/iree_make_const_byte_span(messages[i].data(),
+                                                     messages[i].size()),
+        /*.data=*/iree_async_span_list_empty(),
+        /*.completion_callback=*/send_states[i].callback(),
+    };
+    IREE_ASSERT_OK(
+        iree_net_message_endpoint_send(client_endpoint, &send_params));
+  }
+
+  PollBothUntil([&] {
+    const bool all_messages_received =
+        handoff_state.bootstrap_messages.size() +
+            handoff_state.operational_messages.size() ==
+        messages.size();
+    const bool all_sends_completed = std::all_of(
+        send_states.begin(), send_states.end(),
+        [](const SendState& state) { return state.callback_count == 1; });
+    return all_messages_received && all_sends_completed;
+  });
+
+  EXPECT_FALSE(handoff_state.message_callback_active);
+  EXPECT_EQ(handoff_state.bootstrap_messages,
+            std::vector<std::string>({"bootstrap"}));
+  EXPECT_EQ(handoff_state.operational_messages,
+            std::vector<std::string>({"control-1", "control-2"}));
+  EXPECT_EQ(handoff_state.error_count, 0);
+  for (const SendState& send_state : send_states) {
+    EXPECT_EQ(send_state.status_code, IREE_STATUS_OK);
+  }
 }
 
 TEST_F(TransportTest, CopiesLargeTransientPrefixWithoutSizeCliff) {
