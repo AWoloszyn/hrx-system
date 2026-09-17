@@ -125,7 +125,9 @@ TEST(CaptureAdmissionTest, ConcurrentAdmissionsAndTransitionsDoNotOverlap) {
     start = true;
   }
   start_notification.notify_all();
-  for (std::thread& thread : threads) thread.join();
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
 
   EXPECT_FALSE(overlap_detected.load(std::memory_order_relaxed));
   iree_hal_streaming_capture_admission_deinitialize(&admission);

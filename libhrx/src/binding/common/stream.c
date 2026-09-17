@@ -529,13 +529,17 @@ static iree_hal_streaming_flush_timing_t iree_hal_streaming_flush_timing_begin(
   iree_hal_streaming_flush_timing_t timing = {
       .enabled = hrx_launch_timing_enabled(),
   };
-  if (timing.enabled) timing.start_ns = hrx_launch_timing_now_ns();
+  if (timing.enabled) {
+    timing.start_ns = hrx_launch_timing_now_ns();
+  }
   return timing;
 }
 
 static void iree_hal_streaming_flush_timing_end(
     const iree_hal_streaming_flush_timing_t* timing) {
-  if (!timing->enabled) return;
+  if (!timing->enabled) {
+    return;
+  }
   ++g_hrx_launch_timing.flush_count;
   g_hrx_launch_timing.flush_total_ns +=
       hrx_launch_timing_now_ns() - timing->start_ns;
@@ -548,7 +552,9 @@ static iree_status_t iree_hal_streaming_stream_flush_locked_impl(
     iree_hal_streaming_stream_t* stream,
     iree_hal_streaming_flush_timing_t* timing) {
   IREE_ASSERT_ARGUMENT(stream);
-  if (!stream->command_buffer) return iree_ok_status();
+  if (!stream->command_buffer) {
+    return iree_ok_status();
+  }
 
   iree_hal_command_buffer_t* command_buffer = stream->command_buffer;
   stream->command_buffer = NULL;

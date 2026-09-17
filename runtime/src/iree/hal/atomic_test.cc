@@ -326,20 +326,34 @@ class AtomicTargetValidationTest : public ::testing::Test {
     command_buffer_vtable_.atomic_wait = NoopCommandBufferAtomicWait;
     command_buffer_vtable_.atomic_store = NoopCommandBufferAtomicStore;
     command_buffer_vtable_.atomic_rmw = NoopCommandBufferAtomicRmw;
-    iree_hal_queue_family_initialize(/*ordinal=*/0, &kQueueFamilySpec,
-                                     &queue_family_);
+    iree_hal_device_queue_spec_t queues = {};
+    queues.family_count = 1;
+    queues.families = &kQueueFamilySpec;
+    iree_hal_device_spec_params_t spec_params = {};
+    spec_params.queues = &queues;
+    iree_hal_device_spec_t* device_spec = nullptr;
+    IREE_ASSERT_OK(iree_hal_device_spec_create(
+        &spec_params, iree_allocator_system(), &device_spec));
+    iree_hal_mock_device_options_t device_options;
+    iree_hal_mock_device_options_initialize(&device_options);
+    device_options.device_spec = device_spec;
+    iree_status_t status = iree_hal_mock_device_create(
+        &device_options, iree_allocator_system(), &device_);
+    iree_hal_device_spec_release(device_spec);
+    IREE_ASSERT_OK(status);
+    queue_family_ = iree_hal_device_queue_family(device_, 0);
     iree_hal_queue_params_t queue_params;
     iree_hal_queue_params_initialize(&queue_params);
     queue_vtable_.destroy = NoopQueueDestroy;
     queue_vtable_.atomic_wait = NoopQueueAtomicWait;
     queue_vtable_.atomic_store = NoopQueueAtomicStore;
     queue_vtable_.atomic_rmw = NoopQueueAtomicRmw;
-    iree_hal_queue_initialize(&queue_family_, &queue_params, &queue_vtable_,
+    iree_hal_queue_initialize(queue_family_, &queue_params, &queue_vtable_,
                               &queue_);
     iree_hal_command_buffer_initialize(
-        allocator_, &queue_family_, /*mode=*/0,
-        IREE_HAL_COMMAND_CATEGORY_ATOMIC, /*binding_capacity=*/1,
-        validation_state_, &command_buffer_vtable_, &command_buffer_);
+        allocator_, queue_family_, /*mode=*/0, IREE_HAL_COMMAND_CATEGORY_ATOMIC,
+        /*binding_capacity=*/1, validation_state_, &command_buffer_vtable_,
+        &command_buffer_);
     IREE_ASSERT_OK(iree_hal_command_buffer_begin(&command_buffer_));
   }
 
@@ -350,13 +364,17 @@ class AtomicTargetValidationTest : public ::testing::Test {
     iree_hal_buffer_release(unaligned_buffer_);
     iree_hal_buffer_release(root_buffer_);
     iree_hal_allocator_release(allocator_);
+    iree_hal_device_release(device_);
   }
 
   iree_hal_allocator_t* allocator_ = nullptr;
   iree_hal_buffer_t* root_buffer_ = nullptr;
   iree_hal_buffer_t* unaligned_buffer_ = nullptr;
   void* validation_state_ = nullptr;
-  iree_hal_queue_family_t queue_family_ = {};
+  // Canonical family borrowed from device_.
+  const iree_hal_queue_family_t* queue_family_ = nullptr;
+  // Device owning the canonical family used by this fixture.
+  iree_hal_device_t* device_ = nullptr;
   iree_hal_queue_vtable_t queue_vtable_ = {};
   iree_hal_queue_t queue_ = {};
   iree_hal_command_buffer_vtable_t command_buffer_vtable_ = {};

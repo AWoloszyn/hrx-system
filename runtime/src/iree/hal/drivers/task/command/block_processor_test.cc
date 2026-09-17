@@ -858,7 +858,9 @@ TEST_P(BlockProcessorTest,
               : IREE_STATUS_FAILED_PRECONDITION;
       IREE_EXPECT_STATUS_IS(expected_status,
                             execute(&recording, table, IREE_ARRAYSIZE(table)));
-      for (uint8_t byte : storage) EXPECT_EQ(0, byte);
+      for (uint8_t byte : storage) {
+        EXPECT_EQ(0, byte);
+      }
 
       iree_hal_cmd_block_recording_release(&recording);
       iree_hal_cmd_block_builder_deinitialize(&builder);

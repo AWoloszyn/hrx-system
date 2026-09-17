@@ -1575,7 +1575,9 @@ TEST(ReplayDumpTest, EmitsLegacyAtomicDefaultModes) {
   const std::vector<size_t> mode_offsets =
       FindAtomicTargetErrorModeOffsets(storage);
   ASSERT_EQ(6u, mode_offsets.size());
-  for (size_t mode_offset : mode_offsets) storage[mode_offset] = 0;
+  for (size_t mode_offset : mode_offsets) {
+    storage[mode_offset] = 0;
+  }
 
   iree_hal_replay_dump_options_t options =
       iree_hal_replay_dump_options_default();
@@ -1596,7 +1598,9 @@ TEST(ReplayDumpTest, RejectsVersionedAtomicTargetErrorModes) {
   const std::vector<size_t> mode_offsets =
       FindAtomicTargetErrorModeOffsets(base_storage);
   ASSERT_EQ(6u, mode_offsets.size());
-  for (size_t mode_offset : mode_offsets) base_storage[mode_offset] = 0;
+  for (size_t mode_offset : mode_offsets) {
+    base_storage[mode_offset] = 0;
+  }
 
   struct InvalidModeCase {
     uint16_t version_minor;

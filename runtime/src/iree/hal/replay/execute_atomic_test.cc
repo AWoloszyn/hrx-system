@@ -111,8 +111,12 @@ typedef struct CapturingDevice {
   iree_hal_resource_t resource;
   // Borrowed task device providing the allocator, spec, and semaphores.
   iree_hal_device_t* delegate;
+  // Canonical queue family owned by this capture device.
+  iree_hal_queue_family_t queue_family;
   // Borrowed command buffer returned from creation calls.
   CapturingCommandBuffer* command_buffer;
+  // Vtable used to reinitialize reusable command buffer storage.
+  const iree_hal_command_buffer_vtable_t* command_buffer_vtable;
   // Borrowed provisioned queue returned from queue lookups.
   CapturingQueue* queue;
 } CapturingDevice;
@@ -356,15 +360,16 @@ static const iree_hal_device_spec_t* CapturingDeviceSpec(
 static const iree_hal_queue_family_t* CapturingDeviceQueueFamily(
     iree_hal_device_t* base_device,
     iree_hal_queue_family_ordinal_t family_ordinal) {
-  return iree_hal_device_queue_family(CastDevice(base_device)->delegate,
-                                      family_ordinal);
+  return family_ordinal == 0 ? &CastDevice(base_device)->queue_family : nullptr;
 }
 
 static iree_hal_queue_t* CapturingDeviceQueue(
     iree_hal_device_t* base_device,
     iree_hal_queue_family_ordinal_t family_ordinal,
     iree_hal_queue_ordinal_t queue_ordinal) {
-  if (family_ordinal != 0 || queue_ordinal != 0) return nullptr;
+  if (family_ordinal != 0 || queue_ordinal != 0) {
+    return nullptr;
+  }
   return &CastDevice(base_device)->queue->base;
 }
 
@@ -381,11 +386,13 @@ static iree_status_t CapturingDeviceCreateCommandBuffer(
     iree_hal_command_category_t command_categories,
     iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer) {
-  (void)queue_family;
-  (void)mode;
-  (void)command_categories;
-  (void)binding_capacity;
-  *out_command_buffer = &CastDevice(base_device)->command_buffer->base;
+  CapturingDevice* device = CastDevice(base_device);
+  iree_hal_command_buffer_t* command_buffer = &device->command_buffer->base;
+  iree_hal_command_buffer_initialize(
+      iree_hal_device_allocator(device->delegate), queue_family, mode,
+      command_categories, binding_capacity, command_buffer->validation_state,
+      device->command_buffer_vtable, command_buffer);
+  *out_command_buffer = command_buffer;
   iree_hal_command_buffer_retain(*out_command_buffer);
   return iree_ok_status();
 }
@@ -637,6 +644,17 @@ static std::vector<uint8_t> MakeFullFileAtomicReplayStorage(
       {iree_make_const_byte_span(&command_buffer_payload,
                                  sizeof(command_buffer_payload))});
 
+  if (!SerializedAtomicRecordFormIsQueue(form)) {
+    AppendSerializedReplayRecord(
+        writer,
+        make_metadata(IREE_HAL_REPLAY_FILE_RECORD_TYPE_OPERATION,
+                      IREE_HAL_REPLAY_OBJECT_TYPE_COMMAND_BUFFER,
+                      IREE_HAL_REPLAY_PAYLOAD_TYPE_NONE,
+                      IREE_HAL_REPLAY_OPERATION_CODE_COMMAND_BUFFER_BEGIN,
+                      kCommandBufferId, IREE_HAL_REPLAY_OBJECT_ID_NONE),
+        {});
+  }
+
   const iree_hal_replay_semaphore_timepoint_payload_t signal_timepoint = {
       /*.semaphore_id=*/kSignalSemaphoreId,
       /*.value=*/1,
@@ -767,6 +785,17 @@ static std::vector<uint8_t> MakeFullFileAtomicReplayStorage(
     }
   }
 
+  if (!SerializedAtomicRecordFormIsQueue(form)) {
+    AppendSerializedReplayRecord(
+        writer,
+        make_metadata(IREE_HAL_REPLAY_FILE_RECORD_TYPE_OPERATION,
+                      IREE_HAL_REPLAY_OBJECT_TYPE_COMMAND_BUFFER,
+                      IREE_HAL_REPLAY_PAYLOAD_TYPE_NONE,
+                      IREE_HAL_REPLAY_OPERATION_CODE_COMMAND_BUFFER_END,
+                      kCommandBufferId, IREE_HAL_REPLAY_OBJECT_ID_NONE),
+        {});
+  }
+
   IREE_CHECK_OK(iree_hal_replay_file_writer_close(writer));
   iree_hal_replay_file_writer_free(writer);
   auto* header =
@@ -883,13 +912,6 @@ class ReplayAtomicExecutionTest : public ::testing::Test {
     command_buffer_vtable_.atomic_wait = CapturingCommandBufferAtomicWait;
     command_buffer_vtable_.atomic_store = CapturingCommandBufferAtomicStore;
     command_buffer_vtable_.atomic_rmw = CapturingCommandBufferAtomicRmw;
-    iree_hal_command_buffer_initialize(
-        iree_hal_device_allocator(task_device_),
-        iree_hal_queue_family(task_queue), /*mode=*/0,
-        IREE_HAL_COMMAND_CATEGORY_ATOMIC,
-        /*binding_capacity=*/1, validation_state_, &command_buffer_vtable_,
-        &command_buffer_.base);
-    IREE_ASSERT_OK(iree_hal_command_buffer_begin(&command_buffer_.base));
 
     queue_vtable_.destroy = CapturingQueueDestroy;
     queue_vtable_.atomic_wait = CapturingQueueAtomicWait;
@@ -903,8 +925,6 @@ class ReplayAtomicExecutionTest : public ::testing::Test {
     queue_params.features = iree_hal_queue_features(task_queue);
     queue_params.execution_resources =
         iree_hal_queue_execution_resources(task_queue);
-    iree_hal_queue_initialize(iree_hal_queue_family(task_queue), &queue_params,
-                              &queue_vtable_, &queue_.base);
 
     device_vtable_.destroy = CapturingDeviceDestroy;
     device_vtable_.id = CapturingDeviceId;
@@ -918,8 +938,23 @@ class ReplayAtomicExecutionTest : public ::testing::Test {
     device_vtable_.create_semaphore = CapturingDeviceCreateSemaphore;
     capturing_device_.delegate = task_device_;
     capturing_device_.command_buffer = &command_buffer_;
+    capturing_device_.command_buffer_vtable = &command_buffer_vtable_;
     capturing_device_.queue = &queue_;
     iree_hal_resource_initialize(&device_vtable_, &capturing_device_.resource);
+    iree_hal_queue_family_initialize(
+        reinterpret_cast<iree_hal_device_t*>(&capturing_device_),
+        /*ordinal=*/0,
+        iree_hal_queue_family_spec(iree_hal_queue_family(task_queue)),
+        &capturing_device_.queue_family);
+    iree_hal_command_buffer_initialize(
+        iree_hal_device_allocator(task_device_),
+        &capturing_device_.queue_family, /*mode=*/0,
+        IREE_HAL_COMMAND_CATEGORY_ATOMIC,
+        /*binding_capacity=*/1, validation_state_, &command_buffer_vtable_,
+        &command_buffer_.base);
+    IREE_ASSERT_OK(iree_hal_command_buffer_begin(&command_buffer_.base));
+    iree_hal_queue_initialize(&capturing_device_.queue_family, &queue_params,
+                              &queue_vtable_, &queue_.base);
 
     execute_options_ = iree_hal_replay_execute_options_default();
     IREE_ASSERT_OK(iree_hal_replay_executor_initialize(

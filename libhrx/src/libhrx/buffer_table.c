@@ -57,7 +57,9 @@ static size_t hrx_buffer_table_range_upper_bound(
 static size_t hrx_buffer_table_find_index_locked(
     const hrx_buffer_table_t* table, uint64_t any_ptr) {
   const size_t upper_bound = hrx_buffer_table_range_upper_bound(table, any_ptr);
-  if (upper_bound == 0) return table->count;
+  if (upper_bound == 0) {
+    return table->count;
+  }
   const hrx_buffer_table_range_index_t* range =
       &table->range_index[upper_bound - 1];
   const hrx_buffer_table_entry_t* entry = &table->entries[range->entry_index];
@@ -139,7 +141,9 @@ static bool hrx_buffer_table_range_overlaps_locked(
         &table->range_index[position - 1];
     const hrx_buffer_table_entry_t* previous_entry =
         &table->entries[previous->entry_index];
-    if (base - previous->base < (uint64_t)previous_entry->size) return true;
+    if (base - previous->base < (uint64_t)previous_entry->size) {
+      return true;
+    }
   }
   return position < table->range_count &&
          table->range_index[position].base - base < (uint64_t)size;
@@ -191,7 +195,9 @@ static void hrx_buffer_table_remove_entry_ranges_locked(
   size_t output_index = 0;
   for (size_t i = 0; i < table->range_count; ++i) {
     hrx_buffer_table_range_index_t range = table->range_index[i];
-    if (range.entry_index == entry_index) continue;
+    if (range.entry_index == entry_index) {
+      continue;
+    }
     if (range.entry_index == last_entry_index) {
       range.entry_index = entry_index;
     }
@@ -376,7 +382,9 @@ hrx_status_t hrx_buffer_table_find(hrx_buffer_table_t* table, uint64_t any_ptr,
 static hrx_buffer_table_entry_t* hrx_buffer_table_find_range_locked(
     hrx_buffer_table_t* table, uint64_t any_ptr, size_t size) {
   const size_t upper_bound = hrx_buffer_table_range_upper_bound(table, any_ptr);
-  if (upper_bound == 0) return NULL;
+  if (upper_bound == 0) {
+    return NULL;
+  }
   const hrx_buffer_table_range_index_t* range =
       &table->range_index[upper_bound - 1];
   hrx_buffer_table_entry_t* entry = &table->entries[range->entry_index];
@@ -510,7 +518,9 @@ hrx_status_t hrx_buffer_table_find_ranges_retain_if(
   for (size_t i = 0; i < request_count && hrx_status_is_ok(status); ++i) {
     hrx_buffer_table_entry_t* entry = hrx_buffer_table_find_range_locked(
         table, requests[i].address, requests[i].length);
-    if (!entry) continue;
+    if (!entry) {
+      continue;
+    }
 
     size_t offset = 0;
     hrx_buffer_table_fill_result(entry, requests[i].address, NULL, &offset,
@@ -518,7 +528,9 @@ hrx_status_t hrx_buffer_table_find_ranges_retain_if(
     if (entry->bulk_lookup_generation != generation) {
       status = callback ? callback(entry, offset, callback_user_data)
                         : hrx_ok_status();
-      if (!hrx_status_is_ok(status)) break;
+      if (!hrx_status_is_ok(status)) {
+        break;
+      }
       hrx_buffer_table_retain_entry(entry, offset, &out_refs[ref_count]);
       entry->bulk_lookup_generation = generation;
       entry->bulk_lookup_ref_index = ref_count++;
@@ -537,7 +549,9 @@ hrx_status_t hrx_buffer_table_remove_reserved_if(
     hrx_buffer_table_entry_t* out_entry, size_t* out_offset) {
   IREE_ASSERT_ARGUMENT(out_entry);
   memset(out_entry, 0, sizeof(*out_entry));
-  if (out_offset) *out_offset = 0;
+  if (out_offset) {
+    *out_offset = 0;
+  }
 
   iree_slim_mutex_lock(&table->mutex);
   const size_t index = hrx_buffer_table_find_index_locked(table, any_ptr);
@@ -554,7 +568,9 @@ hrx_status_t hrx_buffer_table_remove_reserved_if(
       callback ? callback(entry, offset, callback_user_data) : hrx_ok_status();
   if (hrx_status_is_ok(status)) {
     *out_entry = *entry;
-    if (out_offset) *out_offset = offset;
+    if (out_offset) {
+      *out_offset = offset;
+    }
     const size_t last_index = table->count - 1;
     hrx_buffer_table_remove_entry_ranges_locked(table, index, last_index);
     if (index != last_index) {

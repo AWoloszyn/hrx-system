@@ -897,7 +897,9 @@ iree_status_t iree_hal_streaming_graph_clone(
             source_node->attrs.batch_mem_op.param_array_size,
             source_node->attrs.batch_mem_op.operation_count,
             &batch_mem_op_layout);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
         extra_data_size = batch_mem_op_layout.total_size;
       }
 

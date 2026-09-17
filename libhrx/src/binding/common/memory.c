@@ -553,7 +553,9 @@ static hrx_status_t iree_hal_streaming_buffer_preparation_acquire_callback(
 
 static void iree_hal_streaming_memory_release_table_ref(
     hrx_buffer_table_retained_ref_t* table_ref) {
-  if (!table_ref || !table_ref->buffer) return;
+  if (!table_ref || !table_ref->buffer) {
+    return;
+  }
   iree_hal_streaming_buffer_t* owner_wrapper =
       (iree_hal_streaming_buffer_t*)table_ref->user_data;
   hrx_buffer_release(table_ref->buffer);
@@ -610,7 +612,9 @@ iree_status_t iree_hal_streaming_memory_lookup_range_retain(
       &context->buffer_table, device_ptr, (size_t)size,
       iree_hal_streaming_buffer_preparation_acquire_callback,
       /*callback_user_data=*/NULL, &table_ref));
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   return iree_hal_streaming_memory_adopt_table_ref(context, &table_ref,
                                                    out_ref);
 }
@@ -725,7 +729,9 @@ iree_status_t iree_hal_streaming_memory_buffer_for_context(
 static iree_status_t iree_hal_streaming_memory_prepare_ref_for_context(
     iree_hal_streaming_context_t* execution_context, bool peer_access_enabled,
     iree_hal_streaming_retained_buffer_ref_t* ref) {
-  if (ref->owner_context == execution_context) return iree_ok_status();
+  if (ref->owner_context == execution_context) {
+    return iree_ok_status();
+  }
 
   const bool is_host_import = iree_all_bits_set(
       ref->memory_type,
@@ -770,13 +776,17 @@ iree_status_t iree_hal_streaming_memory_lookup_range_retain_for_context(
   iree_status_t status =
       iree_hal_streaming_memory_lookup_ranges_retain_for_context(
           execution_context, 1, &request, 1, out_ref, &ref_count, &match);
-  if (iree_status_is_ok(status)) out_ref->offset = match.offset;
+  if (iree_status_is_ok(status)) {
+    out_ref->offset = match.offset;
+  }
   return status;
 }
 
 void iree_hal_streaming_retained_buffer_ref_deinitialize(
     iree_hal_streaming_retained_buffer_ref_t* ref) {
-  if (!ref) return;
+  if (!ref) {
+    return;
+  }
   iree_hal_streaming_buffer_t* owner_wrapper = ref->owner_wrapper;
   iree_hal_buffer_release(ref->buffer);
   hrx_buffer_release(ref->owner);
@@ -893,7 +903,9 @@ static iree_status_t iree_hal_streaming_memory_lookup_ranges_in_context(
     iree_hal_streaming_memory_range_match_t* out_matches) {
   iree_host_size_t unresolved_count = 0;
   for (iree_host_size_t i = 0; i < request_count; ++i) {
-    if (out_matches[i].ref_index != IREE_HOST_SIZE_MAX) continue;
+    if (out_matches[i].ref_index != IREE_HOST_SIZE_MAX) {
+      continue;
+    }
     workspace->table_requests[unresolved_count] =
         (hrx_buffer_table_range_request_t){
             .address = requests[i].address,
@@ -902,7 +914,9 @@ static iree_status_t iree_hal_streaming_memory_lookup_ranges_in_context(
     workspace->request_indices[unresolved_count] = i;
     ++unresolved_count;
   }
-  if (unresolved_count == 0) return iree_ok_status();
+  if (unresolved_count == 0) {
+    return iree_ok_status();
+  }
 
   size_t table_ref_count = 0;
   iree_status_t status = HRX_CALL(hrx_buffer_table_find_ranges_retain_if(
@@ -928,24 +942,32 @@ static iree_status_t iree_hal_streaming_memory_lookup_ranges_in_context(
     status = iree_hal_streaming_memory_adopt_table_ref(
         owner_context, &workspace->table_refs[table_ref_index],
         &out_refs[*inout_ref_count]);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     ++*inout_ref_count;
     status = iree_hal_streaming_memory_prepare_ref_for_context(
         execution_context, peer_access_enabled,
         &out_refs[*inout_ref_count - 1]);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
   if (!iree_status_is_ok(status)) {
     for (size_t i = table_ref_index + 1; i < table_ref_count; ++i) {
       iree_hal_streaming_memory_release_table_ref(&workspace->table_refs[i]);
     }
   }
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   for (iree_host_size_t i = 0; i < unresolved_count; ++i) {
     const hrx_buffer_table_range_match_t table_match =
         workspace->table_matches[i];
-    if (table_match.ref_index == SIZE_MAX) continue;
+    if (table_match.ref_index == SIZE_MAX) {
+      continue;
+    }
     out_matches[workspace->request_indices[i]] =
         (iree_hal_streaming_memory_range_match_t){
             .ref_index = ref_base + table_match.ref_index,
@@ -1016,7 +1038,9 @@ iree_status_t iree_hal_streaming_memory_lookup_ranges_retain_for_context(
         for (iree_hal_streaming_context_t* context =
                  device_registry->context_list.head;
              context; context = context->context_list_entry.next) {
-          if (context != execution_context) ++context_count;
+          if (context != execution_context) {
+            ++context_count;
+          }
         }
         if (context_count > IREE_ARRAYSIZE(inline_contexts)) {
           iree_host_size_t contexts_size = 0;
@@ -1029,14 +1053,18 @@ iree_status_t iree_hal_streaming_memory_lookup_ranges_retain_for_context(
                                            contexts_size,
                                            (void**)&allocated_contexts);
           }
-          if (iree_status_is_ok(status)) contexts = allocated_contexts;
+          if (iree_status_is_ok(status)) {
+            contexts = allocated_contexts;
+          }
         }
         if (iree_status_is_ok(status)) {
           iree_host_size_t index = 0;
           for (iree_hal_streaming_context_t* context =
                    device_registry->context_list.head;
                context; context = context->context_list_entry.next) {
-            if (context == execution_context) continue;
+            if (context == execution_context) {
+              continue;
+            }
             contexts[index++] = context;
             iree_hal_streaming_context_retain(context);
           }

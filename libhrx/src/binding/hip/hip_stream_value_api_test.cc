@@ -393,14 +393,18 @@ class HipStreamValueApiTest : public testing::Test {
   hipStream_t CreateStream() {
     hipStream_t stream = nullptr;
     EXPECT_EQ(hipSuccess, api_.stream_create(&stream));
-    if (stream) streams_.push_back(stream);
+    if (stream) {
+      streams_.push_back(stream);
+    }
     return stream;
   }
 
   void* Allocate(size_t size) {
     void* pointer = nullptr;
     EXPECT_EQ(hipSuccess, api_.malloc(&pointer, size));
-    if (pointer) allocations_.push_back(pointer);
+    if (pointer) {
+      allocations_.push_back(pointer);
+    }
     return pointer;
   }
 
@@ -408,12 +412,16 @@ class HipStreamValueApiTest : public testing::Test {
     void* pointer = nullptr;
     EXPECT_EQ(hipSuccess, api_.ext_malloc_with_flags(&pointer, sizeof(uint64_t),
                                                      hipMallocSignalMemory));
-    if (pointer) allocations_.push_back(pointer);
+    if (pointer) {
+      allocations_.push_back(pointer);
+    }
     return pointer;
   }
 
   bool CheckWaitSupport(hipStream_t stream, void* signal) {
-    if (supports_value_waits_) return true;
+    if (supports_value_waits_) {
+      return true;
+    }
     EXPECT_EQ(hipErrorNotSupported,
               api_.wait_value_32(stream, signal, 0, hipStreamWaitValueEq,
                                  UINT32_MAX));
@@ -423,7 +431,9 @@ class HipStreamValueApiTest : public testing::Test {
   void* AllocateHost(size_t size) {
     void* pointer = nullptr;
     EXPECT_EQ(hipSuccess, api_.malloc_host(&pointer, size));
-    if (pointer) host_allocations_.push_back(pointer);
+    if (pointer) {
+      host_allocations_.push_back(pointer);
+    }
     return pointer;
   }
 
@@ -1064,7 +1074,9 @@ TEST_F(HipStreamValueApiTest, SameStreamPendingWaitsShareAQueueLane) {
   for (; accepted_wait_count < kWaitCount; ++accepted_wait_count) {
     wait_result = api_.wait_value_32(wait_stream, signal, 1,
                                      hipStreamWaitValueEq, UINT32_MAX);
-    if (wait_result != hipSuccess) break;
+    if (wait_result != hipSuccess) {
+      break;
+    }
   }
 
   *static_cast<volatile uint32_t*>(signal) = 1;

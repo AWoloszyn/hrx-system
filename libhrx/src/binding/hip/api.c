@@ -12609,7 +12609,7 @@ static hipError_t iree_hip_enqueue_stream_value_write(
     return hipErrorInvalidValue;
   }
   const iree_hal_atomic_width_t width = byte_length == sizeof(uint32_t)
-                                             ? IREE_HAL_ATOMIC_WIDTH_32
+                                            ? IREE_HAL_ATOMIC_WIDTH_32
                                             : IREE_HAL_ATOMIC_WIDTH_64;
   iree_hip_stream_value_write_params_t write_params;
   iree_status_t status = iree_hip_stream_write_value_params_initialize(
@@ -12655,7 +12655,9 @@ static hipError_t iree_hip_enqueue_stream_value_write(
   status = iree_hal_streaming_capture_admission_enter(
       &resolved_stream.context->capture_admission);
   const bool admitted = iree_status_is_ok(status);
-  if (!admitted) result = iree_status_to_hip_result(status);
+  if (!admitted) {
+    result = iree_status_to_hip_result(status);
+  }
   if (result == hipSuccess) {
     result = iree_hip_order_legacy_stream_dependencies(resolved_stream.context,
                                                        resolved_stream.stream);
@@ -12687,7 +12689,7 @@ static hipError_t iree_hip_enqueue_stream_value_wait(
     return hipErrorInvalidValue;
   }
   const iree_hal_atomic_width_t width = byte_length == sizeof(uint32_t)
-                                             ? IREE_HAL_ATOMIC_WIDTH_32
+                                            ? IREE_HAL_ATOMIC_WIDTH_32
                                             : IREE_HAL_ATOMIC_WIDTH_64;
   iree_hal_atomic_wait_params_t wait_params;
   iree_status_t status = iree_hip_stream_wait_value_params_initialize(
@@ -12715,7 +12717,9 @@ static hipError_t iree_hip_enqueue_stream_value_wait(
   status = iree_hal_streaming_capture_admission_enter(
       &resolved_stream.context->capture_admission);
   const bool admitted = iree_status_is_ok(status);
-  if (!admitted) result = iree_status_to_hip_result(status);
+  if (!admitted) {
+    result = iree_status_to_hip_result(status);
+  }
   if (result == hipSuccess) {
     result = iree_hip_stream_value_reject_capture(resolved_stream.stream);
   }
@@ -12996,7 +13000,9 @@ static hipError_t iree_hip_stream_value_prepared_batch_initialize(
     }
     iree_status_t status = iree_allocator_malloc_uninitialized(
         iree_allocator_system(), total_size, &out_batch->allocated_storage);
-    if (!iree_status_is_ok(status)) return iree_status_to_hip_result(status);
+    if (!iree_status_is_ok(status)) {
+      return iree_status_to_hip_result(status);
+    }
     out_batch->operations =
         (iree_hal_streaming_value_operation_t*)out_batch->allocated_storage;
     out_batch->owners =
@@ -13024,7 +13030,9 @@ static hipError_t iree_hip_stream_value_prepared_batch_initialize(
     iree_hip_stream_value_decoded_operation_t* decoded =
         &out_batch->decoded_operations[i];
     result = iree_hip_stream_value_operation_decode(&param_array[i], decoded);
-    if (result != hipSuccess) break;
+    if (result != hipSuccess) {
+      break;
+    }
     out_batch->range_requests[i] = (iree_hal_streaming_memory_range_request_t){
         .address = (uint64_t)(uintptr_t)decoded->address,
         .length = decoded->byte_length,
@@ -21936,7 +21944,9 @@ HIPAPI hipError_t hipGraphAddBatchMemOpNode(hipGraphNode_t* pGraphNode,
   iree_host_size_t param_array_size = 0;
   hipError_t result = iree_hip_graph_validate_batch_mem_op_node_params(
       stream_graph->context, params, &param_array_size);
-  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  if (result != hipSuccess) {
+    HIP_RETURN_ERROR(result);
+  }
 
   iree_hip_stream_value_prepared_batch_t batch;
   result = iree_hip_stream_value_prepared_batch_initialize(

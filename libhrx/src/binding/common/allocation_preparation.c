@@ -26,7 +26,9 @@ bool iree_hal_streaming_allocation_preparation_try_acquire(
   iree_slim_mutex_lock(&preparation->mutex);
   const bool acquired =
       !preparation->is_closing && preparation->active_count != SIZE_MAX;
-  if (acquired) ++preparation->active_count;
+  if (acquired) {
+    ++preparation->active_count;
+  }
   iree_slim_mutex_unlock(&preparation->mutex);
   return acquired;
 }
