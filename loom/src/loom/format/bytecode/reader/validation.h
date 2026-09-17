@@ -61,10 +61,20 @@ iree_status_t loom_bytecode_file_reader_project_index(
     iree_arena_allocator_t* retained_arena,
     loom_bytecode_file_metadata_t* out_metadata);
 
-// Validates one module without producing retained index state.
+// Construction facts requested by a module validation consumer.
+enum loom_bytecode_module_validation_flag_bits_e {
+  LOOM_BYTECODE_MODULE_VALIDATION_NONE = 0,
+  // Retains the type plan needed by full module materialization.
+  LOOM_BYTECODE_MODULE_VALIDATION_RETAIN_TYPE_PLAN = 1u << 0,
+};
+typedef uint32_t loom_bytecode_module_validation_flags_t;
+
+// Validates one module without producing retained index state. The default
+// retains validation facts only; full materialization requests a type plan.
 iree_status_t loom_bytecode_module_validate(
     const loom_bytecode_file_reader_t* file_reader,
     const loom_bytecode_reader_module_t* module,
+    loom_bytecode_module_validation_flags_t flags,
     loom_bytecode_reader_module_view_t* out_view);
 
 // Validates one module and projects its retained index state.

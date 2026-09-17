@@ -105,28 +105,31 @@ static iree_status_t loom_bytecode_type_plan_validate_parameterized(
   }
 
   const iree_host_size_t parameters_position = cursor->cursor.position;
-  iree_host_size_t allocation_size = 0;
-  IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
-      sizeof(loom_bytecode_parameterized_type_fact_t), &allocation_size,
-      IREE_STRUCT_FIELD_FAM((iree_host_size_t)present_count, uint8_t)));
   loom_bytecode_parameterized_type_fact_t* fact = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate(scratch_arena, allocation_size, (void**)&fact));
-  *fact = (loom_bytecode_parameterized_type_fact_t){
-      .base =
-          {
-              .type_id = type_id,
-              .kind = LOOM_TYPE_PARAMETERIZED,
-          },
-      .descriptor = descriptor,
-      .parameters_offset = cursor->absolute_offset + parameters_position,
-      .present_count = (uint8_t)present_count,
-  };
+  if (out_fact) {
+    iree_host_size_t allocation_size = 0;
+    IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
+        sizeof(loom_bytecode_parameterized_type_fact_t), &allocation_size,
+        IREE_STRUCT_FIELD_FAM((iree_host_size_t)present_count, uint8_t)));
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate(scratch_arena, allocation_size, (void**)&fact));
+    *fact = (loom_bytecode_parameterized_type_fact_t){
+        .base =
+            {
+                .type_id = type_id,
+                .kind = LOOM_TYPE_PARAMETERIZED,
+            },
+        .descriptor = descriptor,
+        .parameters_offset = cursor->absolute_offset + parameters_position,
+        .present_count = (uint8_t)present_count,
+    };
+  }
 
   loom_bytecode_attribute_validator_t attribute_validator =
       loom_bytecode_type_plan_attribute_validator(decoder, context,
                                                   module_view);
   uint8_t next_parameter_index = 0;
+  bool missing_required_parameter = false;
   for (iree_host_size_t i = 0; i < (iree_host_size_t)present_count; ++i) {
     const uint64_t parameter_offset =
         loom_bytecode_reader_cursor_absolute_position(cursor);
@@ -138,17 +141,22 @@ static iree_status_t loom_bytecode_type_plan_validate_parameterized(
         decoder, module_view, parameter_name_id,
         IREE_SV("parameterized_type_parameter"), parameter_offset,
         &parameter_name));
-    uint8_t relative_parameter_index = LOOM_ATTR_INDEX_NONE;
-    const loom_attr_descriptor_t* parameter_descriptor =
-        loom_attr_descriptor_find_by_name(
-            descriptor->parameter_descriptors + next_parameter_index,
-            (uint8_t)(descriptor->parameter_count - next_parameter_index),
-            parameter_name, &relative_parameter_index);
-    const uint8_t parameter_index =
-        parameter_descriptor
-            ? (uint8_t)(next_parameter_index + relative_parameter_index)
-            : LOOM_ATTR_INDEX_NONE;
-    if (parameter_index == LOOM_ATTR_INDEX_NONE) {
+    // Names advance monotonically through the descriptor. Record required
+    // gaps during lookup rather than recovering presence in a later scan.
+    const loom_attr_descriptor_t* parameter_descriptor = NULL;
+    for (; next_parameter_index < descriptor->parameter_count;
+         ++next_parameter_index) {
+      const loom_attr_descriptor_t* candidate =
+          &descriptor->parameter_descriptors[next_parameter_index];
+      if (iree_string_view_equal(loom_attr_descriptor_name(candidate),
+                                 parameter_name)) {
+        parameter_descriptor = candidate;
+        break;
+      }
+      missing_required_parameter |=
+          !iree_any_bit_set(candidate->flags, LOOM_ATTR_OPTIONAL);
+    }
+    if (!parameter_descriptor) {
       uint8_t declared_parameter_index = LOOM_ATTR_INDEX_NONE;
       const bool declared_before_cursor =
           loom_attr_descriptor_find_by_name(
@@ -162,8 +170,10 @@ static iree_status_t loom_bytecode_type_plan_validate_parameterized(
                         "order")
               : IREE_SV("parameterized_type_parameter_is_not_declared"));
     }
-    fact->parameter_indices[i] = parameter_index;
-    next_parameter_index = parameter_index + 1;
+    if (fact) {
+      fact->parameter_indices[i] = next_parameter_index;
+    }
+    ++next_parameter_index;
 
     loom_bytecode_attr_kind_t value_kind = LOOM_BYTECODE_ATTR_I64;
     IREE_RETURN_IF_ERROR(
@@ -173,26 +183,25 @@ static iree_status_t loom_bytecode_type_plan_validate_parameterized(
         type_id));
   }
 
-  iree_host_size_t present_ordinal = 0;
-  for (uint8_t parameter_index = 0;
-       parameter_index < descriptor->parameter_count; ++parameter_index) {
-    const bool is_present =
-        present_ordinal < (iree_host_size_t)present_count &&
-        fact->parameter_indices[present_ordinal] == parameter_index;
-    if (is_present) {
-      ++present_ordinal;
-    } else if (!iree_any_bit_set(
-                   descriptor->parameter_descriptors[parameter_index].flags,
-                   LOOM_ATTR_OPTIONAL)) {
-      return loom_bytecode_reader_emit_invalid_field(
-          decoder, IREE_SV("TYPES"), IREE_SV("type"), type_id,
-          IREE_SV("parameter_name"), present_count_offset,
-          IREE_SV("parameterized_type_required_parameter_is_absent"));
-    }
+  for (; next_parameter_index < descriptor->parameter_count;
+       ++next_parameter_index) {
+    missing_required_parameter |= !iree_any_bit_set(
+        descriptor->parameter_descriptors[next_parameter_index].flags,
+        LOOM_ATTR_OPTIONAL);
+  }
+  // Report absence only after validating every present value, preserving the
+  // wire-error precedence independently of whether construction is retained.
+  if (missing_required_parameter) {
+    return loom_bytecode_reader_emit_invalid_field(
+        decoder, IREE_SV("TYPES"), IREE_SV("type"), type_id,
+        IREE_SV("parameter_name"), present_count_offset,
+        IREE_SV("parameterized_type_required_parameter_is_absent"));
   }
 
-  fact->parameters_length = cursor->cursor.position - parameters_position;
-  *out_fact = fact;
+  if (out_fact) {
+    fact->parameters_length = cursor->cursor.position - parameters_position;
+    *out_fact = fact;
+  }
   return iree_ok_status();
 }
 
@@ -320,6 +329,9 @@ static iree_status_t loom_bytecode_type_plan_build_shaped(
         IREE_SV("encoding_attachment"), offset,
         IREE_SV("vector_types_must_not_carry_encoding_or_layout_attachments"));
   }
+  if (!out_type) {
+    return iree_ok_status();
+  }
 
   loom_type_t type = {0};
   if (rank == 0) {
@@ -360,10 +372,12 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
     loom_bytecode_type_fact_t** out_fact) {
   const uint64_t type_offset =
       loom_bytecode_reader_cursor_absolute_position(cursor);
-  *out_plan_entry = (loom_bytecode_type_plan_entry_t){
-      .bytecode_offset = type_offset,
-  };
-  *out_fact = NULL;
+  if (out_plan_entry) {
+    *out_plan_entry = (loom_bytecode_type_plan_entry_t){
+        .bytecode_offset = type_offset,
+    };
+    *out_fact = NULL;
+  }
   uint8_t kind_byte = 0;
   IREE_RETURN_IF_ERROR(
       loom_bytecode_reader_read_u8(decoder, cursor, &kind_byte));
@@ -443,7 +457,7 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
       IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_build_shaped(
           decoder, module_view, scratch_arena, kind,
           (loom_scalar_type_t)element_type, rank, attachment, encoding_instance,
-          dims, &direct_type, attachment_offset));
+          dims, out_plan_entry ? &direct_type : NULL, attachment_offset));
       break;
     }
     case LOOM_TYPE_FUNCTION: {
@@ -462,33 +476,35 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
       }
       iree_host_size_t total_count =
           (iree_host_size_t)(arg_count + result_count);
-      iree_host_size_t allocation_size = 0;
-      IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
-          sizeof(loom_bytecode_structural_type_fact_t), &allocation_size,
-          IREE_STRUCT_FIELD_FAM(total_count, loom_type_id_t)));
       loom_bytecode_structural_type_fact_t* fact = NULL;
-      IREE_RETURN_IF_ERROR(
-          iree_arena_allocate(scratch_arena, allocation_size, (void**)&fact));
-      *fact = (loom_bytecode_structural_type_fact_t){
-          .base =
-              {
-                  .type_id = (loom_type_id_t)type_index,
-                  .kind = LOOM_TYPE_FUNCTION,
-              },
-      };
-      const loom_func_type_data_t payload_header = {
-          .arg_count = (uint16_t)arg_count,
-          .result_count = (uint16_t)result_count,
-      };
-      memcpy(fact->payload_prefix, &payload_header, sizeof(payload_header));
-      out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
-          .type_header = loom_type_function(NULL).header,
-          .children_offset = offsetof(loom_func_type_data_t, types),
-          .dependency_count = (uint32_t)total_count,
-          .payload_size = iree_max(
-              sizeof(fact->payload_prefix),
-              sizeof(payload_header) + total_count * sizeof(loom_type_t)),
-      };
+      if (out_plan_entry) {
+        iree_host_size_t allocation_size = 0;
+        IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
+            sizeof(loom_bytecode_structural_type_fact_t), &allocation_size,
+            IREE_STRUCT_FIELD_FAM(total_count, loom_type_id_t)));
+        IREE_RETURN_IF_ERROR(
+            iree_arena_allocate(scratch_arena, allocation_size, (void**)&fact));
+        *fact = (loom_bytecode_structural_type_fact_t){
+            .base =
+                {
+                    .type_id = (loom_type_id_t)type_index,
+                    .kind = LOOM_TYPE_FUNCTION,
+                },
+        };
+        const loom_func_type_data_t payload_header = {
+            .arg_count = (uint16_t)arg_count,
+            .result_count = (uint16_t)result_count,
+        };
+        memcpy(fact->payload_prefix, &payload_header, sizeof(payload_header));
+        out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
+            .type_header = loom_type_function(NULL).header,
+            .children_offset = offsetof(loom_func_type_data_t, types),
+            .dependency_count = (uint32_t)total_count,
+            .payload_size = iree_max(
+                sizeof(fact->payload_prefix),
+                sizeof(payload_header) + total_count * sizeof(loom_type_t)),
+        };
+      }
       for (iree_host_size_t i = 0; i < total_count; ++i) {
         uint64_t ref_offset =
             loom_bytecode_reader_cursor_absolute_position(cursor);
@@ -497,9 +513,13 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
             loom_bytecode_reader_read_uvarint(decoder, cursor, &type_id));
         IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_validate_type_ref(
             decoder, type_id, type_index, ref_offset));
-        fact->type_ids[i] = (loom_type_id_t)type_id;
+        if (fact) {
+          fact->type_ids[i] = (loom_type_id_t)type_id;
+        }
       }
-      type_fact = &fact->base;
+      if (fact) {
+        type_fact = &fact->base;
+      }
       break;
     }
     case LOOM_TYPE_DIALECT: {
@@ -524,28 +544,30 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
         direct_type = loom_type_dialect_opaque((loom_string_id_t)name_id);
         break;
       }
-      iree_host_size_t allocation_size = 0;
-      IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
-          sizeof(loom_bytecode_structural_type_fact_t), &allocation_size,
-          IREE_STRUCT_FIELD_FAM((iree_host_size_t)param_count,
-                                loom_type_id_t)));
       loom_bytecode_structural_type_fact_t* fact = NULL;
-      IREE_RETURN_IF_ERROR(
-          iree_arena_allocate(scratch_arena, allocation_size, (void**)&fact));
-      *fact = (loom_bytecode_structural_type_fact_t){
-          .base =
-              {
-                  .type_id = (loom_type_id_t)type_index,
-                  .kind = LOOM_TYPE_DIALECT,
-              },
-      };
-      out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
-          .type_header = loom_type_dialect_opaque(0).header,
-          .parameter_count = (uint16_t)param_count,
-          .name_id = (loom_string_id_t)name_id,
-          .dependency_count = (uint32_t)param_count,
-          .payload_size = (iree_host_size_t)param_count * sizeof(loom_type_t),
-      };
+      if (out_plan_entry) {
+        iree_host_size_t allocation_size = 0;
+        IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
+            sizeof(loom_bytecode_structural_type_fact_t), &allocation_size,
+            IREE_STRUCT_FIELD_FAM((iree_host_size_t)param_count,
+                                  loom_type_id_t)));
+        IREE_RETURN_IF_ERROR(
+            iree_arena_allocate(scratch_arena, allocation_size, (void**)&fact));
+        *fact = (loom_bytecode_structural_type_fact_t){
+            .base =
+                {
+                    .type_id = (loom_type_id_t)type_index,
+                    .kind = LOOM_TYPE_DIALECT,
+                },
+        };
+        out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
+            .type_header = loom_type_dialect_opaque(0).header,
+            .parameter_count = (uint16_t)param_count,
+            .name_id = (loom_string_id_t)name_id,
+            .dependency_count = (uint32_t)param_count,
+            .payload_size = (iree_host_size_t)param_count * sizeof(loom_type_t),
+        };
+      }
       for (uint64_t i = 0; i < param_count; ++i) {
         uint64_t ref_offset =
             loom_bytecode_reader_cursor_absolute_position(cursor);
@@ -554,17 +576,23 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
             loom_bytecode_reader_read_uvarint(decoder, cursor, &type_id));
         IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_validate_type_ref(
             decoder, type_id, type_index, ref_offset));
-        fact->type_ids[i] = (loom_type_id_t)type_id;
+        if (fact) {
+          fact->type_ids[i] = (loom_type_id_t)type_id;
+        }
       }
-      type_fact = &fact->base;
+      if (fact) {
+        type_fact = &fact->base;
+      }
       break;
     }
     case LOOM_TYPE_PARAMETERIZED: {
       loom_bytecode_parameterized_type_fact_t* fact = NULL;
       IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_validate_parameterized(
           decoder, context, module_view, scratch_arena, cursor, type_index,
-          &fact));
-      type_fact = &fact->base;
+          out_plan_entry ? &fact : NULL));
+      if (fact) {
+        type_fact = &fact->base;
+      }
       break;
     }
     case LOOM_TYPE_REGISTER: {
@@ -614,6 +642,9 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
             loom_bytecode_reader_read_uvarint(decoder, cursor, &value_type_id));
         IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_validate_type_ref(
             decoder, value_type_id, type_index, value_type_offset));
+        if (!out_plan_entry) {
+          break;
+        }
         loom_bytecode_structural_type_fact_t* fact = NULL;
         IREE_RETURN_IF_ERROR(iree_arena_allocate(
             scratch_arena, sizeof(*fact) + sizeof(loom_type_id_t),
@@ -703,7 +734,7 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
   if (type_fact) {
     type_fact->next = NULL;
     *out_fact = type_fact;
-  } else {
+  } else if (out_plan_entry) {
     out_plan_entry->direct_type = direct_type;
   }
   return iree_ok_status();
@@ -727,34 +758,98 @@ iree_status_t loom_bytecode_type_plan_decode_indexed_entry(
                                            IREE_SV("type_entry"));
 }
 
+static iree_status_t loom_bytecode_type_table_begin(
+    loom_bytecode_reader_decoder_t* decoder,
+    loom_bytecode_reader_module_view_t* module_view,
+    iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset,
+    loom_bytecode_reader_cursor_t* out_cursor) {
+  loom_bytecode_reader_cursor_initialize(
+      section_bytes.data, section_bytes.data_length, section_absolute_offset,
+      IREE_SV("TYPES"), out_cursor);
+
+  const uint64_t count_offset =
+      loom_bytecode_reader_cursor_absolute_position(out_cursor);
+  uint64_t count = 0;
+  IREE_RETURN_IF_ERROR(
+      loom_bytecode_reader_read_uvarint(decoder, out_cursor, &count));
+  if (count > LOOM_BYTECODE_MAX_TYPE_COUNT || count > IREE_HOST_SIZE_MAX) {
+    return loom_bytecode_reader_emit_count_exceeds(
+        decoder, IREE_SV("TYPES"), count, LOOM_BYTECODE_MAX_TYPE_COUNT,
+        count_offset);
+  }
+  module_view->types.count = (iree_host_size_t)count;
+  return iree_ok_status();
+}
+
+iree_status_t loom_bytecode_type_table_validate(
+    loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
+    loom_bytecode_reader_module_view_t* module_view,
+    iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset) {
+  loom_bytecode_reader_cursor_t cursor;
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_table_begin(
+      decoder, module_view, section_bytes, section_absolute_offset, &cursor));
+  for (loom_type_id_t type_index = 0; type_index < module_view->types.count;
+       ++type_index) {
+    IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_decode_entry(
+        decoder, context, module_view, /*scratch_arena=*/NULL, &cursor,
+        type_index, /*out_plan_entry=*/NULL, /*out_fact=*/NULL));
+  }
+  return loom_bytecode_reader_expect_empty(decoder, &cursor, IREE_SV("TYPES"));
+}
+
+iree_status_t loom_bytecode_type_table_index(
+    loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
+    loom_bytecode_reader_module_view_t* module_view,
+    iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset,
+    iree_arena_allocator_t* retained_arena,
+    loom_bytecode_table_entry_metadata_t** out_entries,
+    iree_host_size_t* out_count) {
+  *out_entries = NULL;
+  *out_count = 0;
+  loom_bytecode_reader_cursor_t cursor;
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_table_begin(
+      decoder, module_view, section_bytes, section_absolute_offset, &cursor));
+  loom_bytecode_table_entry_metadata_t* entries = NULL;
+  if (module_view->types.count > 0) {
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate_array(retained_arena, module_view->types.count,
+                                  sizeof(*entries), (void**)&entries));
+  }
+  for (loom_type_id_t type_index = 0; type_index < module_view->types.count;
+       ++type_index) {
+    const uint64_t entry_offset =
+        loom_bytecode_reader_cursor_absolute_position(&cursor);
+    IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_decode_entry(
+        decoder, context, module_view, /*scratch_arena=*/NULL, &cursor,
+        type_index, /*out_plan_entry=*/NULL, /*out_fact=*/NULL));
+    entries[type_index] = (loom_bytecode_table_entry_metadata_t){
+        .entry_offset = entry_offset,
+        .entry_length = loom_bytecode_reader_cursor_absolute_position(&cursor) -
+                        entry_offset,
+    };
+  }
+  IREE_RETURN_IF_ERROR(
+      loom_bytecode_reader_expect_empty(decoder, &cursor, IREE_SV("TYPES")));
+  *out_entries = entries;
+  *out_count = module_view->types.count;
+  return iree_ok_status();
+}
+
 iree_status_t loom_bytecode_type_plan_build(
     loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
     loom_bytecode_reader_module_view_t* module_view,
     iree_arena_allocator_t* scratch_arena, iree_const_byte_span_t section_bytes,
     uint64_t section_absolute_offset) {
   loom_bytecode_reader_cursor_t cursor;
-  loom_bytecode_reader_cursor_initialize(
-      section_bytes.data, section_bytes.data_length, section_absolute_offset,
-      IREE_SV("TYPES"), &cursor);
-
-  const uint64_t count_offset =
-      loom_bytecode_reader_cursor_absolute_position(&cursor);
-  uint64_t count = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_bytecode_reader_read_uvarint(decoder, &cursor, &count));
-  if (count > LOOM_BYTECODE_MAX_TYPE_COUNT || count > IREE_HOST_SIZE_MAX) {
-    return loom_bytecode_reader_emit_count_exceeds(
-        decoder, IREE_SV("TYPES"), count, LOOM_BYTECODE_MAX_TYPE_COUNT,
-        count_offset);
-  }
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_table_begin(
+      decoder, module_view, section_bytes, section_absolute_offset, &cursor));
+  const iree_host_size_t count = module_view->types.count;
   if (count > 0) {
     IREE_RETURN_IF_ERROR(
         iree_arena_allocate_array(scratch_arena, (iree_host_size_t)count,
                                   sizeof(loom_bytecode_type_plan_entry_t),
                                   (void**)&module_view->types.entries));
   }
-  module_view->types.count = (iree_host_size_t)count;
-
   loom_bytecode_type_fact_t* first_fact = NULL;
   loom_bytecode_type_fact_t* last_fact = NULL;
   for (loom_type_id_t type_index = 0; type_index < count; ++type_index) {

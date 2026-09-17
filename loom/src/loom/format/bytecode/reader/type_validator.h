@@ -11,6 +11,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
+#include "loom/format/bytecode/index.h"
 #include "loom/format/bytecode/reader/decoder.h"
 #include "loom/format/bytecode/reader/type_plan.h"
 #include "loom/ir/context.h"
@@ -21,6 +22,23 @@ extern "C" {
 
 typedef struct loom_bytecode_reader_module_view_t
     loom_bytecode_reader_module_view_t;
+
+// Validates one TYPES section, retaining only the count needed by later tables.
+// No construction payloads or scratch allocations are produced.
+iree_status_t loom_bytecode_type_table_validate(
+    loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
+    loom_bytecode_reader_module_view_t* module_view,
+    iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset);
+
+// Validates one TYPES section and retains its byte ranges directly in
+// |retained_arena|. Construction payloads are not retained.
+iree_status_t loom_bytecode_type_table_index(
+    loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
+    loom_bytecode_reader_module_view_t* module_view,
+    iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset,
+    iree_arena_allocator_t* retained_arena,
+    loom_bytecode_table_entry_metadata_t** out_entries,
+    iree_host_size_t* out_count);
 
 // Decodes one retained, already bounded TYPES entry into the same immutable
 // fact representation used by the full sequential validator. |type_index| is

@@ -280,6 +280,7 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     loom::error::error_defs
+    loom::format::bytecode::index
     loom::ir
     loom::ops::type_registry
   PUBLIC
@@ -318,6 +319,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::format::bytecode::format
     loom::ir
+    loom::ops::type_registry
 )
 
 loom_cc_library(

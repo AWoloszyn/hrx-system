@@ -45,7 +45,8 @@ static iree_status_t loom_bytecode_read_module_impl(
   loom_module_t* output_module = NULL;
   if (iree_status_is_ok(status)) {
     status = loom_bytecode_module_validate(
-        &reader, &reader.modules[module_ordinal], &module_view);
+        &reader, &reader.modules[module_ordinal],
+        LOOM_BYTECODE_MODULE_VALIDATION_RETAIN_TYPE_PLAN, &module_view);
     if (module_ordinal == 0) {
       reader.result.first_module = module_view.summary;
     }
