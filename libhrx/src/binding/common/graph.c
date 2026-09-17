@@ -81,6 +81,13 @@ iree_status_t iree_hal_streaming_graph_create(
       iree_allocator_malloc(host_allocator, sizeof(*graph), (void**)&graph));
 
   iree_atomic_ref_count_init(&graph->ref_count);
+  iree_slim_mutex_initialize(&graph->capture_mutex);
+  iree_atomic_store(&graph->capture_state,
+                    IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INACTIVE,
+                    iree_memory_order_relaxed);
+  graph->capture_id = 0;
+  graph->capture_mode = IREE_HAL_STREAMING_CAPTURE_MODE_GLOBAL;
+  graph->capture_owner_thread_id = 0;
 
   // Initialize the arena using the device's block pool.
   iree_hal_streaming_device_t* device = context->device_entry;
@@ -147,6 +154,7 @@ static void iree_hal_streaming_graph_destroy(
   // The arena returns all blocks to the device's block pool for reuse.
   iree_arena_deinitialize(&graph->arena);
 
+  iree_slim_mutex_deinitialize(&graph->capture_mutex);
   // Release context.
   iree_hal_streaming_context_release(graph->context);
 
@@ -165,29 +173,28 @@ iree_status_t iree_hal_streaming_graph_allocate_host_staging(
   *out_buffer = NULL;
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  // Reserve graph metadata first. If this fails no external allocation needs
+  // to be released while a capture transaction may hold graph/stream locks.
+  iree_hal_streaming_graph_owned_host_allocation_t* owned_allocation = NULL;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_arena_allocate(&graph->arena, sizeof(*owned_allocation),
+                              (void**)&owned_allocation));
+
   iree_hal_streaming_buffer_t* buffer = NULL;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_streaming_memory_allocate_host_staging(graph->context, size,
                                                           &buffer));
 
-  iree_hal_streaming_graph_owned_host_allocation_t* owned_allocation = NULL;
-  iree_status_t status = iree_arena_allocate(
-      &graph->arena, sizeof(*owned_allocation), (void**)&owned_allocation);
-  if (iree_status_is_ok(status)) {
-    owned_allocation->buffer = buffer;
-    owned_allocation->host_ptr = buffer->host_ptr;
-    owned_allocation->device_ptr = buffer->device_ptr;
-    owned_allocation->size = size;
-    owned_allocation->next = graph->owned_host_allocations;
-    graph->owned_host_allocations = owned_allocation;
-    *out_buffer = buffer;
-  } else {
-    iree_status_ignore(
-        iree_hal_streaming_memory_free_host(graph->context, buffer->host_ptr));
-  }
+  owned_allocation->buffer = buffer;
+  owned_allocation->host_ptr = buffer->host_ptr;
+  owned_allocation->device_ptr = buffer->device_ptr;
+  owned_allocation->size = size;
+  owned_allocation->next = graph->owned_host_allocations;
+  graph->owned_host_allocations = owned_allocation;
+  *out_buffer = buffer;
 
   IREE_TRACE_ZONE_END(z0);
-  return status;
+  return iree_ok_status();
 }
 
 void iree_hal_streaming_graph_retain(iree_hal_streaming_graph_t* graph) {
@@ -2092,6 +2099,149 @@ iree_status_t iree_hal_streaming_graph_instantiate(
 static iree_status_t iree_hal_streaming_grow_capture_dependencies(
     iree_hal_streaming_stream_t* stream, iree_host_size_t required_capacity);
 
+typedef struct iree_hal_streaming_capture_transaction_t {
+  iree_hal_streaming_stream_t* stream;
+  iree_hal_streaming_graph_t* graph;
+} iree_hal_streaming_capture_transaction_t;
+
+// Enters the graph-wide capture transaction while obeying the global capture
+// lock order: graph/session, then stream-list (when needed), then stream. A
+// short stream-only snapshot is used to retain the graph before taking the
+// graph mutex; the stream is then revalidated under both locks.
+static iree_status_t iree_hal_streaming_capture_transaction_begin(
+    iree_hal_streaming_stream_t* stream,
+    iree_hal_streaming_capture_transaction_t* out_transaction,
+    bool* out_was_capturing) {
+  *out_transaction = (iree_hal_streaming_capture_transaction_t){0};
+  *out_was_capturing = false;
+
+  for (;;) {
+    iree_slim_mutex_lock(&stream->mutex);
+    if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
+      iree_slim_mutex_unlock(&stream->mutex);
+      return iree_ok_status();
+    }
+    *out_was_capturing = true;
+    if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE ||
+        !stream->capture_graph) {
+      iree_slim_mutex_unlock(&stream->mutex);
+      return iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "stream capture has been invalidated");
+    }
+    iree_hal_streaming_graph_t* graph = stream->capture_graph;
+    const unsigned long long capture_id = stream->capture_id;
+    iree_hal_streaming_graph_retain(graph);
+    iree_slim_mutex_unlock(&stream->mutex);
+
+    iree_slim_mutex_lock(&graph->capture_mutex);
+    iree_slim_mutex_lock(&stream->mutex);
+    if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE ||
+        stream->capture_graph != graph || stream->capture_id != capture_id) {
+      iree_slim_mutex_unlock(&stream->mutex);
+      iree_slim_mutex_unlock(&graph->capture_mutex);
+      iree_hal_streaming_graph_release(graph);
+      *out_was_capturing = false;
+      continue;
+    }
+
+    const iree_hal_streaming_graph_capture_state_t capture_state =
+        (iree_hal_streaming_graph_capture_state_t)iree_atomic_load(
+            &graph->capture_state, iree_memory_order_acquire);
+    if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE ||
+        graph->capture_id != capture_id ||
+        capture_state != IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE) {
+      if (capture_state == IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED) {
+        iree_hal_streaming_stream_set_capture_status(
+            stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
+      }
+      iree_slim_mutex_unlock(&stream->mutex);
+      iree_slim_mutex_unlock(&graph->capture_mutex);
+      iree_hal_streaming_graph_release(graph);
+      return iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "stream capture has been invalidated");
+    }
+
+    out_transaction->stream = stream;
+    out_transaction->graph = graph;
+    return iree_ok_status();
+  }
+}
+
+static void iree_hal_streaming_capture_transaction_unlock(
+    iree_hal_streaming_capture_transaction_t* transaction) {
+  iree_slim_mutex_unlock(&transaction->stream->mutex);
+  iree_slim_mutex_unlock(&transaction->graph->capture_mutex);
+  iree_hal_streaming_graph_release(transaction->graph);
+  *transaction = (iree_hal_streaming_capture_transaction_t){0};
+}
+
+static void iree_hal_streaming_capture_transaction_invalidate(
+    iree_hal_streaming_capture_transaction_t* transaction) {
+  iree_atomic_store(&transaction->graph->capture_state,
+                    IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED,
+                    iree_memory_order_release);
+  iree_hal_streaming_stream_set_capture_status(
+      transaction->stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
+}
+
+bool iree_hal_streaming_capture_graph_invalidate(
+    iree_hal_streaming_graph_t* graph, unsigned long long capture_id) {
+  IREE_ASSERT_ARGUMENT(graph);
+  bool invalidated = false;
+  iree_slim_mutex_lock(&graph->capture_mutex);
+  const int32_t capture_state =
+      iree_atomic_load(&graph->capture_state, iree_memory_order_acquire);
+  if (capture_id != 0 && graph->capture_id == capture_id &&
+      (capture_state == IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE ||
+       capture_state == IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED)) {
+    iree_atomic_store(&graph->capture_state,
+                      IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED,
+                      iree_memory_order_release);
+    invalidated = true;
+  }
+  iree_slim_mutex_unlock(&graph->capture_mutex);
+  return invalidated;
+}
+
+bool iree_hal_streaming_capture_invalidate(
+    iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(stream);
+
+  // Retain from a short stream-only snapshot, then follow graph -> stream.
+  iree_slim_mutex_lock(&stream->mutex);
+  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE ||
+      !stream->capture_graph) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    return false;
+  }
+  iree_hal_streaming_graph_t* graph = stream->capture_graph;
+  const unsigned long long capture_id = stream->capture_id;
+  iree_hal_streaming_graph_retain(graph);
+  iree_slim_mutex_unlock(&stream->mutex);
+
+  bool invalidated = false;
+  iree_slim_mutex_lock(&graph->capture_mutex);
+  iree_slim_mutex_lock(&stream->mutex);
+  if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE &&
+      stream->capture_graph == graph && stream->capture_id == capture_id) {
+    const int32_t capture_state =
+        iree_atomic_load(&graph->capture_state, iree_memory_order_acquire);
+    if (capture_state == IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE ||
+        capture_state == IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED) {
+      iree_atomic_store(&graph->capture_state,
+                        IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED,
+                        iree_memory_order_release);
+      iree_hal_streaming_stream_set_capture_status(
+          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
+      invalidated = true;
+    }
+  }
+  iree_slim_mutex_unlock(&stream->mutex);
+  iree_slim_mutex_unlock(&graph->capture_mutex);
+  iree_hal_streaming_graph_release(graph);
+  return invalidated;
+}
+
 iree_status_t iree_hal_streaming_capture_try_record_node(
     iree_hal_streaming_stream_t* stream,
     iree_hal_streaming_capture_record_node_fn_t record_fn, void* user_data,
@@ -2099,54 +2249,46 @@ iree_status_t iree_hal_streaming_capture_try_record_node(
   IREE_ASSERT_ARGUMENT(stream);
   IREE_ASSERT_ARGUMENT(record_fn);
   IREE_ASSERT_ARGUMENT(out_was_capturing);
-  *out_was_capturing = false;
 
-  iree_slim_mutex_lock(&stream->mutex);
-  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    return iree_ok_status();
-  }
-
-  *out_was_capturing = true;
-  if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE ||
-      !stream->capture_graph) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    return iree_make_status(IREE_STATUS_DATA_LOSS,
-                            "stream capture has been invalidated");
-  }
+  iree_hal_streaming_capture_transaction_t transaction;
+  iree_status_t status = iree_hal_streaming_capture_transaction_begin(
+      stream, &transaction, out_was_capturing);
+  if (!iree_status_is_ok(status) || !*out_was_capturing) return status;
 
   // Reserve the one-entry terminal frontier before allowing the callback to
-  // mutate the graph. Once recording starts, any failure invalidates capture:
-  // graph arenas can own staging allocations in addition to visible nodes, so
-  // removing only the nodes cannot restore the complete pre-call state.
-  iree_status_t status = iree_ok_status();
+  // mutate the graph. Once recording starts, any failure invalidates the whole
+  // shared session: graph arenas can own staging allocations in addition to
+  // visible nodes, so removing only the nodes cannot restore prior state.
   if (stream->capture_dependency_capacity == 0) {
     status = iree_hal_streaming_grow_capture_dependencies(stream, 1);
   }
   iree_hal_streaming_graph_node_t* terminal_node = NULL;
   if (iree_status_is_ok(status)) {
     status =
-        record_fn(stream->capture_graph, stream->capture_dependencies,
+        record_fn(transaction.graph, stream->capture_dependencies,
                   stream->capture_dependency_count, user_data, &terminal_node);
-    if (!iree_status_is_ok(status)) {
-      iree_hal_streaming_stream_set_capture_status(
-          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
-    } else if (!iree_hal_streaming_graph_node_is_active_in_graph(
-                   stream->capture_graph, terminal_node)) {
-      status = iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "capture recorder returned a node outside the active graph");
-      iree_hal_streaming_stream_set_capture_status(
-          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
-    } else {
-      if (!stream->capture_origin) {
-        stream->capture_joined_to_origin = false;
-      }
-      stream->capture_dependencies[0] = terminal_node;
-      stream->capture_dependency_count = 1;
-    }
   }
-  iree_slim_mutex_unlock(&stream->mutex);
+  if (iree_status_is_ok(status) &&
+      iree_atomic_load(&transaction.graph->capture_state,
+                       iree_memory_order_acquire) !=
+          IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE) {
+    status = iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "stream capture has been invalidated");
+  }
+  if (iree_status_is_ok(status) &&
+      !iree_hal_streaming_graph_node_is_active_in_graph(transaction.graph,
+                                                        terminal_node)) {
+    status = iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "capture recorder returned a node outside the active graph");
+  }
+  if (!iree_status_is_ok(status)) {
+    iree_hal_streaming_capture_transaction_invalidate(&transaction);
+  } else {
+    stream->capture_dependencies[0] = terminal_node;
+    stream->capture_dependency_count = 1;
+  }
+  iree_hal_streaming_capture_transaction_unlock(&transaction);
   return status;
 }
 
@@ -2154,24 +2296,241 @@ iree_status_t iree_hal_streaming_capture_try_record_noop(
     iree_hal_streaming_stream_t* stream, bool* out_was_capturing) {
   IREE_ASSERT_ARGUMENT(stream);
   IREE_ASSERT_ARGUMENT(out_was_capturing);
-  *out_was_capturing = false;
 
-  iree_slim_mutex_lock(&stream->mutex);
-  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    return iree_ok_status();
+  iree_hal_streaming_capture_transaction_t transaction;
+  iree_status_t status = iree_hal_streaming_capture_transaction_begin(
+      stream, &transaction, out_was_capturing);
+  if (!iree_status_is_ok(status) || !*out_was_capturing) return status;
+  if (iree_atomic_load(&transaction.graph->capture_state,
+                       iree_memory_order_acquire) !=
+      IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE) {
+    status = iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "stream capture has been invalidated");
+  }
+  iree_hal_streaming_capture_transaction_unlock(&transaction);
+  return status;
+}
+
+iree_status_t iree_hal_streaming_capture_try_record_event(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_event_t* event,
+    bool* out_was_capturing) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_ASSERT_ARGUMENT(event);
+  IREE_ASSERT_ARGUMENT(out_was_capturing);
+
+  iree_hal_streaming_capture_transaction_t transaction;
+  iree_status_t status = iree_hal_streaming_capture_transaction_begin(
+      stream, &transaction, out_was_capturing);
+  if (!iree_status_is_ok(status) || !*out_was_capturing) return status;
+
+  iree_hal_streaming_graph_t* dropped_graph = NULL;
+  iree_slim_mutex_lock(&event->mutex);
+  if (event->capture_dependency_capacity < stream->capture_dependency_count) {
+    iree_host_size_t allocation_size = 0;
+    if (IREE_UNLIKELY(!iree_host_size_checked_mul(
+            stream->capture_dependency_count,
+            sizeof(*event->capture_dependencies), &allocation_size))) {
+      status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "event capture frontier size overflow");
+    } else {
+      status = iree_allocator_realloc(event->host_allocator, allocation_size,
+                                      (void**)&event->capture_dependencies);
+    }
+    if (iree_status_is_ok(status)) {
+      event->capture_dependency_capacity = stream->capture_dependency_count;
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    if (stream->capture_dependency_count > 0) {
+      memcpy(event->capture_dependencies, stream->capture_dependencies,
+             stream->capture_dependency_count *
+                 sizeof(*event->capture_dependencies));
+    }
+    event->capture_dependency_count = stream->capture_dependency_count;
+    event->capture_id = stream->capture_id;
+    if (event->capture_graph != transaction.graph) {
+      iree_hal_streaming_graph_retain(transaction.graph);
+      dropped_graph = event->capture_graph;
+      event->capture_graph = transaction.graph;
+    }
+  }
+  iree_slim_mutex_unlock(&event->mutex);
+
+  if (!iree_status_is_ok(status)) {
+    iree_hal_streaming_capture_transaction_invalidate(&transaction);
+  }
+  iree_hal_streaming_capture_transaction_unlock(&transaction);
+  iree_hal_streaming_graph_release(dropped_graph);
+  return status;
+}
+
+iree_status_t iree_hal_streaming_capture_join_graph(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_t* graph,
+    unsigned long long capture_id,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_ASSERT_ARGUMENT(graph);
+  if (dependency_count > 0 && !dependencies) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "dependency array must be provided");
   }
 
-  *out_was_capturing = true;
-  if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE ||
-      !stream->capture_graph) {
-    iree_slim_mutex_unlock(&stream->mutex);
+  iree_slim_mutex_lock(&stream->mutex);
+  const bool needs_flush =
+      stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+  iree_slim_mutex_unlock(&stream->mutex);
+  if (needs_flush) {
+    IREE_RETURN_IF_ERROR(iree_hal_streaming_stream_flush(stream));
+  }
+
+  iree_slim_mutex_lock(&graph->capture_mutex);
+  if (graph->capture_id != capture_id ||
+      iree_atomic_load(&graph->capture_state, iree_memory_order_acquire) !=
+          IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE) {
+    iree_slim_mutex_unlock(&graph->capture_mutex);
     return iree_make_status(IREE_STATUS_DATA_LOSS,
-                            "stream capture has been invalidated");
+                            "captured event session is no longer active");
+  }
+
+  iree_hal_streaming_context_t* context = graph->context;
+  iree_slim_mutex_lock(&context->stream_list_mutex);
+  iree_slim_mutex_lock(&stream->mutex);
+  const bool adopt_graph =
+      stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+  iree_status_t status = iree_ok_status();
+  if (stream->context != context ||
+      stream->registration_state !=
+          IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED) {
+    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "stream is no longer registered");
+  } else if (!adopt_graph && (stream->capture_status !=
+                                  IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE ||
+                              stream->capture_graph != graph ||
+                              stream->capture_id != capture_id)) {
+    status =
+        iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                         "event wait crosses different active capture graphs");
+  }
+  for (iree_host_size_t i = 0;
+       i < dependency_count && iree_status_is_ok(status); ++i) {
+    if (!iree_hal_streaming_graph_node_is_active_in_graph(graph,
+                                                          dependencies[i])) {
+      status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "captured event dependency at index %" PRIhsz
+                                " is not in the active graph",
+                                i);
+    }
+  }
+  iree_host_size_t total_count = dependency_count;
+  if (!adopt_graph && iree_status_is_ok(status) &&
+      IREE_UNLIKELY(!iree_host_size_checked_add(
+          stream->capture_dependency_count, dependency_count, &total_count))) {
+    status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "capture dependency count overflow");
+  }
+  if (iree_status_is_ok(status) &&
+      total_count > stream->capture_dependency_capacity) {
+    status = iree_hal_streaming_grow_capture_dependencies(stream, total_count);
+  }
+
+  if (iree_status_is_ok(status)) {
+    if (adopt_graph) {
+      stream->capture_mode = graph->capture_mode;
+      stream->capture_graph = graph;
+      stream->capture_graph_owned = true;
+      stream->capture_origin = false;
+      stream->capture_id = capture_id;
+      stream->capture_owner_thread_id = graph->capture_owner_thread_id;
+      stream->capture_dependency_count = 0;
+      iree_hal_streaming_graph_retain(graph);
+      iree_hal_streaming_stream_set_capture_status(
+          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE);
+    }
+    if (dependency_count > 0) {
+      memcpy(stream->capture_dependencies + stream->capture_dependency_count,
+             dependencies, dependency_count * sizeof(*dependencies));
+    }
+    stream->capture_dependency_count = total_count;
   }
 
   iree_slim_mutex_unlock(&stream->mutex);
-  return iree_ok_status();
+  iree_slim_mutex_unlock(&context->stream_list_mutex);
+  iree_slim_mutex_unlock(&graph->capture_mutex);
+  return status;
+}
+
+static iree_status_t iree_hal_streaming_capture_publish_begin(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, iree_hal_streaming_capture_mode_t mode,
+    bool graph_owned) {
+  iree_hal_streaming_context_t* context = graph->context;
+  unsigned long long capture_id = 0;
+  IREE_RETURN_IF_ERROR(
+      iree_hal_streaming_context_allocate_capture_id(context, &capture_id));
+
+  iree_status_t status = iree_ok_status();
+  iree_slim_mutex_lock(&graph->capture_mutex);
+  iree_slim_mutex_lock(&context->stream_list_mutex);
+  iree_slim_mutex_lock(&stream->mutex);
+  if (stream->context != context ||
+      stream->registration_state !=
+          IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED) {
+    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "stream is no longer registered");
+  } else if (iree_atomic_load(&graph->capture_state,
+                              iree_memory_order_acquire) !=
+             IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INACTIVE) {
+    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "graph is already participating in capture");
+  } else if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
+    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "stream is already capturing");
+  }
+  for (iree_host_size_t i = 0;
+       i < dependency_count && iree_status_is_ok(status); ++i) {
+    if (!iree_hal_streaming_graph_node_is_active_in_graph(graph,
+                                                          dependencies[i])) {
+      status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "capture dependency at index %" PRIhsz
+                                " does not belong to the capture graph",
+                                i);
+    }
+  }
+  if (iree_status_is_ok(status) &&
+      dependency_count > stream->capture_dependency_capacity) {
+    status =
+        iree_hal_streaming_grow_capture_dependencies(stream, dependency_count);
+  }
+  if (iree_status_is_ok(status) && dependency_count > 0) {
+    memcpy(stream->capture_dependencies, dependencies,
+           dependency_count * sizeof(*dependencies));
+  }
+
+  if (iree_status_is_ok(status)) {
+    const uintptr_t owner_thread_id = iree_hal_streaming_current_thread_token();
+    graph->capture_id = capture_id;
+    graph->capture_mode = mode;
+    graph->capture_owner_thread_id = owner_thread_id;
+    iree_atomic_store(&graph->capture_state,
+                      IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE,
+                      iree_memory_order_release);
+    stream->capture_mode = mode;
+    stream->capture_graph = graph;
+    stream->capture_graph_owned = graph_owned;
+    stream->capture_origin = true;
+    stream->capture_id = capture_id;
+    stream->capture_owner_thread_id = owner_thread_id;
+    stream->capture_dependency_count = dependency_count;
+    iree_hal_streaming_stream_set_capture_status(
+        stream, IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE);
+  }
+
+  iree_slim_mutex_unlock(&stream->mutex);
+  iree_slim_mutex_unlock(&context->stream_list_mutex);
+  iree_slim_mutex_unlock(&graph->capture_mutex);
+  return status;
 }
 
 iree_status_t iree_hal_streaming_begin_capture(
@@ -2180,49 +2539,29 @@ iree_status_t iree_hal_streaming_begin_capture(
   IREE_ASSERT_ARGUMENT(stream);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  // Flush any pending operations before starting capture.
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
-                                    iree_hal_streaming_stream_flush(stream));
-
-  unsigned long long capture_id = 0;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_streaming_context_allocate_capture_id(stream->context,
-                                                         &capture_id));
-
-  iree_slim_mutex_lock(&stream->mutex);
-
-  // Check if already capturing.
-  if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-    iree_slim_mutex_unlock(&stream->mutex);
+  iree_hal_streaming_context_t* context = NULL;
+  if (!iree_hal_streaming_stream_retain_context(stream, &context)) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "stream is already capturing");
+                            "stream execution context has been destroyed");
   }
 
-  // Create a new graph for capture.
-  iree_status_t status = iree_hal_streaming_graph_create(
-      stream->context, /*flags=*/0, stream->host_allocator,
-      &stream->capture_graph);
-  if (!iree_status_is_ok(status)) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    IREE_TRACE_ZONE_END(z0);
-    return status;
+  iree_status_t status = iree_hal_streaming_stream_flush(stream);
+  iree_hal_streaming_graph_t* graph = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_graph_create(context, /*flags=*/0,
+                                             context->host_allocator, &graph);
+  }
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_capture_publish_begin(
+        stream, graph, /*dependencies=*/NULL, /*dependency_count=*/0, mode,
+        /*graph_owned=*/true);
   }
 
-  // Set capture state.
-  stream->capture_mode = mode;
-  stream->capture_graph_owned = true;
-  stream->capture_origin = true;
-  stream->capture_joined_to_origin = true;
-  stream->capture_id = capture_id;
-  stream->capture_owner_thread_id = iree_hal_streaming_current_thread_token();
-  stream->capture_dependency_count = 0;
-  iree_hal_streaming_stream_set_capture_status(
-      stream, IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE);
-
-  iree_slim_mutex_unlock(&stream->mutex);
+  if (!iree_status_is_ok(status)) iree_hal_streaming_graph_release(graph);
+  iree_hal_streaming_context_release(context);
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 iree_status_t iree_hal_streaming_begin_capture_to_graph(
@@ -2240,89 +2579,175 @@ iree_status_t iree_hal_streaming_begin_capture_to_graph(
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
                                     iree_hal_streaming_stream_flush(stream));
-
-  unsigned long long capture_id = 0;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_streaming_context_allocate_capture_id(stream->context,
-                                                         &capture_id));
-
-  iree_slim_mutex_lock(&stream->mutex);
-
-  if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "stream is already capturing");
-  }
-
-  if (dependency_count > stream->capture_dependency_capacity) {
-    iree_status_t status =
-        iree_hal_streaming_grow_capture_dependencies(stream, dependency_count);
-    if (!iree_status_is_ok(status)) {
-      iree_slim_mutex_unlock(&stream->mutex);
-      IREE_TRACE_ZONE_END(z0);
-      return status;
-    }
-  }
-  if (dependency_count > 0) {
-    memcpy(stream->capture_dependencies, dependencies,
-           dependency_count * sizeof(*dependencies));
-  }
-
-  stream->capture_mode = mode;
-  stream->capture_graph = graph;
-  stream->capture_graph_owned = false;
-  stream->capture_origin = true;
-  stream->capture_joined_to_origin = true;
-  stream->capture_id = capture_id;
-  stream->capture_owner_thread_id = iree_hal_streaming_current_thread_token();
-  stream->capture_dependency_count = dependency_count;
-  iree_hal_streaming_stream_set_capture_status(
-      stream, IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE);
-
-  iree_slim_mutex_unlock(&stream->mutex);
+  iree_status_t status = iree_hal_streaming_capture_publish_begin(
+      stream, graph, dependencies, dependency_count, mode,
+      /*graph_owned=*/false);
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
+}
+// Clears one stream's membership in |graph|. The graph capture mutex and the
+// stream mutex must both be held. Returns whether the stream owned a graph
+// reference that must be released after all capture locks are dropped.
+static bool iree_hal_streaming_clear_capture_stream_locked(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_t* graph,
+    unsigned long long capture_id) {
+  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE ||
+      stream->capture_graph != graph || stream->capture_id != capture_id) {
+    return false;
+  }
+  const bool capture_graph_owned = stream->capture_graph_owned;
+  iree_hal_streaming_stream_set_capture_status(
+      stream, IREE_HAL_STREAMING_CAPTURE_STATUS_NONE);
+  stream->capture_graph = NULL;
+  stream->capture_graph_owned = false;
+  stream->capture_origin = false;
+  stream->capture_id = 0;
+  stream->capture_owner_thread_id = 0;
+  stream->capture_dependency_count = 0;
+  return capture_graph_owned;
 }
 
-static void iree_hal_streaming_clear_capture_participants(
-    iree_hal_streaming_stream_t* origin_stream,
-    iree_hal_streaming_graph_t* graph) {
-  iree_hal_streaming_context_t* context = origin_stream->context;
-  iree_host_size_t owned_graph_release_count = 0;
-  iree_slim_mutex_lock(&context->stream_list_mutex);
+// Clears every stream belonging to the exact capture session and resets its
+// graph metadata. The caller holds the graph capture mutex and the context
+// stream-list mutex; this helper takes at most one stream mutex at a time,
+// preserving the graph -> stream-list -> stream lifecycle order.
+//
+// Returns the number of owned graph references to release after all locks are
+// dropped. |preserve_owned_stream|, when non-NULL, transfers that stream's
+// owned reference to the caller instead of releasing it.
+static iree_host_size_t iree_hal_streaming_clear_capture_session_locked(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_graph_t* graph,
+    unsigned long long capture_id,
+    iree_hal_streaming_stream_t* preserve_owned_stream) {
+  iree_host_size_t release_count = 0;
   for (iree_host_size_t i = 0; i < context->stream_count; ++i) {
-    iree_hal_streaming_stream_t* stream = context->streams[i];
-    if (stream == origin_stream) {
+    iree_hal_streaming_stream_t* participant = context->streams[i];
+    iree_slim_mutex_lock(&participant->mutex);
+    if (iree_hal_streaming_clear_capture_stream_locked(participant, graph,
+                                                       capture_id) &&
+        participant != preserve_owned_stream) {
+      ++release_count;
+    }
+    iree_slim_mutex_unlock(&participant->mutex);
+  }
+
+  if (graph->capture_id == capture_id) {
+    graph->capture_id = 0;
+    graph->capture_owner_thread_id = 0;
+    iree_atomic_store(&graph->capture_state,
+                      IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INACTIVE,
+                      iree_memory_order_release);
+  }
+  return release_count;
+}
+
+bool iree_hal_streaming_capture_unregister_stream(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(stream);
+
+  for (;;) {
+    // Take a retained session snapshot without nesting locks, then revalidate
+    // it after acquiring the global lifecycle order.
+    iree_hal_streaming_graph_t* graph = NULL;
+    unsigned long long capture_id = 0;
+    iree_slim_mutex_lock(&stream->mutex);
+    if (stream->context != context ||
+        stream->registration_state !=
+            IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED) {
+      iree_slim_mutex_unlock(&stream->mutex);
+      return false;
+    }
+    graph = stream->capture_graph;
+    capture_id = stream->capture_id;
+    iree_hal_streaming_graph_retain(graph);
+    iree_slim_mutex_unlock(&stream->mutex);
+
+    if (graph) iree_slim_mutex_lock(&graph->capture_mutex);
+    iree_slim_mutex_lock(&context->stream_list_mutex);
+    iree_slim_mutex_lock(&stream->mutex);
+    const bool snapshot_matches =
+        stream->context == context &&
+        stream->registration_state ==
+            IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED &&
+        stream->capture_graph == graph && stream->capture_id == capture_id;
+    if (!snapshot_matches) {
+      iree_slim_mutex_unlock(&stream->mutex);
+      iree_slim_mutex_unlock(&context->stream_list_mutex);
+      if (graph) iree_slim_mutex_unlock(&graph->capture_mutex);
+      iree_hal_streaming_graph_release(graph);
       continue;
+    }
+
+    iree_host_size_t stream_index = context->stream_count;
+    for (iree_host_size_t i = 0; i < context->stream_count; ++i) {
+      if (context->streams[i] == stream) {
+        stream_index = i;
+        break;
+      }
+    }
+    if (stream_index == context->stream_count) {
+      stream->registration_state =
+          IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_UNREGISTERED;
+      iree_slim_mutex_unlock(&stream->mutex);
+      iree_slim_mutex_unlock(&context->stream_list_mutex);
+      if (graph) iree_slim_mutex_unlock(&graph->capture_mutex);
+      iree_hal_streaming_graph_release(graph);
+      return false;
+    }
+
+    const bool was_capture_origin = stream->capture_origin;
+    stream->registration_state =
+        IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_DETACHING;
+    iree_slim_mutex_unlock(&stream->mutex);
+
+    iree_host_size_t release_owned_graph_count = 0;
+    if (graph) {
+      const bool exact_session = capture_id != 0 && graph->context == context &&
+                                 graph->capture_id == capture_id;
+      if (was_capture_origin && exact_session) {
+        // With no origin left there is no API that can finish this session.
+        // Detach every exact member now so surviving joined streams can be
+        // reused, and leave all graph destruction until after unlocking.
+        release_owned_graph_count =
+            iree_hal_streaming_clear_capture_session_locked(
+                context, graph, capture_id,
+                /*preserve_owned_stream=*/NULL);
+      } else {
+        const int32_t capture_state =
+            iree_atomic_load(&graph->capture_state, iree_memory_order_acquire);
+        if (exact_session &&
+            capture_state == IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE) {
+          iree_atomic_store(&graph->capture_state,
+                            IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED,
+                            iree_memory_order_release);
+        }
+        iree_slim_mutex_lock(&stream->mutex);
+        if (iree_hal_streaming_clear_capture_stream_locked(stream, graph,
+                                                           capture_id)) {
+          ++release_owned_graph_count;
+        }
+        iree_slim_mutex_unlock(&stream->mutex);
+      }
     }
 
     iree_slim_mutex_lock(&stream->mutex);
-    if ((stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE ||
-         stream->capture_status ==
-             IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED) &&
-        stream->capture_graph == graph) {
-      iree_hal_streaming_stream_set_capture_status(
-          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_NONE);
-      stream->capture_id = 0;
-      stream->capture_owner_thread_id = 0;
-      const bool capture_graph_owned = stream->capture_graph_owned;
-      stream->capture_graph = NULL;
-      stream->capture_graph_owned = false;
-      stream->capture_origin = false;
-      stream->capture_joined_to_origin = false;
-      stream->capture_dependency_count = 0;
-      iree_slim_mutex_unlock(&stream->mutex);
-      if (capture_graph_owned) {
-        ++owned_graph_release_count;
-      }
-      continue;
-    }
+    context->streams[stream_index] =
+        context->streams[context->stream_count - 1];
+    --context->stream_count;
+    stream->registration_state =
+        IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_UNREGISTERED;
     iree_slim_mutex_unlock(&stream->mutex);
-  }
-  iree_slim_mutex_unlock(&context->stream_list_mutex);
-  while (owned_graph_release_count-- > 0) {
+
+    iree_slim_mutex_unlock(&context->stream_list_mutex);
+    if (graph) iree_slim_mutex_unlock(&graph->capture_mutex);
+    while (release_owned_graph_count-- > 0) {
+      iree_hal_streaming_graph_release(graph);
+    }
+    // Drop the temporary reference used to cross the lock-order handoff.
     iree_hal_streaming_graph_release(graph);
+    return true;
   }
 }
 
@@ -2332,12 +2757,27 @@ typedef struct iree_hal_streaming_graph_additional_edge_index_t {
   iree_hal_streaming_graph_node_t** from_nodes;
 } iree_hal_streaming_graph_additional_edge_index_t;
 
+typedef struct iree_hal_streaming_capture_reachability_scratch_t {
+  uint8_t* reachable_nodes;
+  iree_hal_streaming_graph_node_t** stack;
+  iree_hal_streaming_graph_additional_edge_index_t additional_edge_index;
+} iree_hal_streaming_capture_reachability_scratch_t;
+
 static void iree_hal_streaming_graph_deinitialize_additional_edge_index(
     iree_allocator_t host_allocator,
     iree_hal_streaming_graph_additional_edge_index_t* index) {
   iree_allocator_free(host_allocator, index->from_nodes);
   iree_allocator_free(host_allocator, index->next_indices);
   iree_allocator_free(host_allocator, index->head_indices);
+}
+
+static void iree_hal_streaming_capture_reachability_scratch_deinitialize(
+    iree_allocator_t host_allocator,
+    iree_hal_streaming_capture_reachability_scratch_t* scratch) {
+  iree_hal_streaming_graph_deinitialize_additional_edge_index(
+      host_allocator, &scratch->additional_edge_index);
+  iree_allocator_free(host_allocator, scratch->stack);
+  iree_allocator_free(host_allocator, scratch->reachable_nodes);
 }
 
 static iree_status_t iree_hal_streaming_graph_initialize_additional_edge_index(
@@ -2475,10 +2915,13 @@ static bool iree_hal_streaming_capture_frontier_is_joined(
 
 static iree_status_t iree_hal_streaming_has_unjoined_capture_participants(
     iree_hal_streaming_stream_t* origin_stream,
-    iree_hal_streaming_graph_t* graph, bool* out_has_unjoined_participant) {
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_capture_reachability_scratch_t* scratch,
+    bool* out_has_unjoined_participant) {
   *out_has_unjoined_participant = false;
+  memset(scratch, 0, sizeof(*scratch));
 
-  iree_allocator_t host_allocator = origin_stream->host_allocator;
+  iree_allocator_t host_allocator = graph->host_allocator;
   uint8_t* reachable_nodes = NULL;
   iree_hal_streaming_graph_node_t** stack = NULL;
   iree_hal_streaming_graph_additional_edge_index_t additional_edge_index;
@@ -2511,25 +2954,24 @@ static iree_status_t iree_hal_streaming_has_unjoined_capture_participants(
         origin_stream->capture_dependency_count, &additional_edge_index,
         reachable_nodes, stack);
   }
-  if (!iree_status_is_ok(status)) {
-    iree_hal_streaming_graph_deinitialize_additional_edge_index(
-        host_allocator, &additional_edge_index);
-    iree_allocator_free(host_allocator, stack);
-    iree_allocator_free(host_allocator, reachable_nodes);
-    return status;
-  }
 
-  iree_hal_streaming_context_t* context = origin_stream->context;
+  scratch->reachable_nodes = reachable_nodes;
+  scratch->stack = stack;
+  scratch->additional_edge_index = additional_edge_index;
+  if (!iree_status_is_ok(status)) return status;
+
+  iree_hal_streaming_context_t* context = graph->context;
   iree_slim_mutex_lock(&context->stream_list_mutex);
   for (iree_host_size_t i = 0; i < context->stream_count; ++i) {
     iree_hal_streaming_stream_t* stream = context->streams[i];
-    if (stream == origin_stream) {
-      continue;
-    }
+    if (stream == origin_stream) continue;
 
     iree_slim_mutex_lock(&stream->mutex);
-    if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE &&
+    if (stream->registration_state ==
+            IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED &&
+        stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE &&
         stream->capture_graph == graph &&
+        stream->capture_id == graph->capture_id &&
         !iree_hal_streaming_capture_frontier_is_joined(graph, reachable_nodes,
                                                        stream)) {
       *out_has_unjoined_participant = true;
@@ -2540,11 +2982,6 @@ static iree_status_t iree_hal_streaming_has_unjoined_capture_participants(
     }
   }
   iree_slim_mutex_unlock(&context->stream_list_mutex);
-
-  iree_hal_streaming_graph_deinitialize_additional_edge_index(
-      host_allocator, &additional_edge_index);
-  iree_allocator_free(host_allocator, stack);
-  iree_allocator_free(host_allocator, reachable_nodes);
   return iree_ok_status();
 }
 
@@ -2552,113 +2989,127 @@ iree_status_t iree_hal_streaming_end_capture(
     iree_hal_streaming_stream_t* stream,
     iree_hal_streaming_graph_t** out_graph) {
   IREE_ASSERT_ARGUMENT(stream);
+  if (out_graph) *out_graph = NULL;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_slim_mutex_lock(&stream->mutex);
+  const uintptr_t current_thread_id = iree_hal_streaming_current_thread_token();
 
-  // Check capture status.
+  // Retain the graph from a short stream-only snapshot, then reacquire locks
+  // in the global graph-before-stream order and revalidate the snapshot.
+  iree_slim_mutex_lock(&stream->mutex);
   if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
     iree_slim_mutex_unlock(&stream->mutex);
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "stream is not capturing");
   }
-  if (!stream->capture_origin) {
+  iree_hal_streaming_graph_t* graph = stream->capture_graph;
+  const unsigned long long capture_id = stream->capture_id;
+  if (!graph) {
     iree_slim_mutex_unlock(&stream->mutex);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_NOT_FOUND,
-                            "stream did not originate this capture");
-  }
-  if (stream->capture_mode != IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED &&
-      stream->capture_owner_thread_id !=
-          iree_hal_streaming_current_thread_token()) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_PERMISSION_DENIED,
-                            "stream capture ended from wrong thread");
-  }
-  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED) {
-    iree_hal_streaming_graph_t* graph = stream->capture_graph;
-    const bool capture_graph_owned = stream->capture_graph_owned;
-    iree_hal_streaming_stream_set_capture_status(
-        stream, IREE_HAL_STREAMING_CAPTURE_STATUS_NONE);
-    stream->capture_graph = NULL;
-    stream->capture_graph_owned = false;
-    stream->capture_origin = false;
-    stream->capture_joined_to_origin = false;
-    stream->capture_id = 0;
-    stream->capture_owner_thread_id = 0;
-    stream->capture_dependency_count = 0;
-    iree_slim_mutex_unlock(&stream->mutex);
-    iree_hal_streaming_clear_capture_participants(stream, graph);
-    if (capture_graph_owned) {
-      iree_hal_streaming_graph_release(graph);
-    }
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_DATA_LOSS,
-                            "stream capture has been invalidated");
+                            "stream capture has no graph");
   }
-
-  iree_hal_streaming_graph_t* graph = stream->capture_graph;
-  bool has_unjoined_participant = false;
-  iree_status_t joined_status =
-      iree_hal_streaming_has_unjoined_capture_participants(
-          stream, graph, &has_unjoined_participant);
-  if (!iree_status_is_ok(joined_status)) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    IREE_TRACE_ZONE_END(z0);
-    return joined_status;
-  }
-  if (has_unjoined_participant) {
-    const bool capture_graph_owned = stream->capture_graph_owned;
-    iree_hal_streaming_stream_set_capture_status(
-        stream, IREE_HAL_STREAMING_CAPTURE_STATUS_NONE);
-    stream->capture_graph = NULL;
-    stream->capture_graph_owned = false;
-    stream->capture_origin = false;
-    stream->capture_joined_to_origin = false;
-    stream->capture_id = 0;
-    stream->capture_owner_thread_id = 0;
-    stream->capture_dependency_count = 0;
-    iree_slim_mutex_unlock(&stream->mutex);
-    iree_hal_streaming_clear_capture_participants(stream, graph);
-    if (capture_graph_owned) {
-      iree_hal_streaming_graph_release(graph);
-    }
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(
-        IREE_STATUS_ABORTED,
-        "stream capture has participant work not joined to the origin stream");
-  }
-
-  stream->capture_graph = NULL;
-  stream->capture_graph_owned = false;
-  stream->capture_origin = false;
-  stream->capture_joined_to_origin = false;
-
-  // Clear capture state.
-  iree_hal_streaming_stream_set_capture_status(
-      stream, IREE_HAL_STREAMING_CAPTURE_STATUS_NONE);
-  stream->capture_id = 0;
-  stream->capture_owner_thread_id = 0;
-
-  // Reset dependency count but keep the buffer for reuse.
-  stream->capture_dependency_count = 0;
-  // Note: keeping capture_dependencies and capture_dependency_capacity
-  // unchanged for reuse in next capture session.
-
+  iree_hal_streaming_graph_retain(graph);
   iree_slim_mutex_unlock(&stream->mutex);
 
-  iree_hal_streaming_clear_capture_participants(stream, graph);
-
-  if (out_graph) {
-    *out_graph = graph;
-  } else {
+  iree_hal_streaming_context_t* context = graph->context;
+  iree_slim_mutex_lock(&graph->capture_mutex);
+  iree_slim_mutex_lock(&context->stream_list_mutex);
+  iree_slim_mutex_lock(&stream->mutex);
+  iree_status_t status = iree_ok_status();
+  if (stream->context != context || graph->capture_id != capture_id ||
+      stream->registration_state !=
+          IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED ||
+      stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE ||
+      stream->capture_graph != graph || stream->capture_id != capture_id) {
+    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "stream capture ended concurrently");
+  } else if (!stream->capture_origin) {
+    status = iree_make_status(IREE_STATUS_NOT_FOUND,
+                              "stream did not originate this capture");
+  } else if (stream->capture_mode != IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED &&
+             stream->capture_owner_thread_id != current_thread_id) {
+    status = iree_make_status(IREE_STATUS_PERMISSION_DENIED,
+                              "stream capture ended from wrong thread");
+  }
+  if (!iree_status_is_ok(status)) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    iree_slim_mutex_unlock(&context->stream_list_mutex);
+    iree_slim_mutex_unlock(&graph->capture_mutex);
     iree_hal_streaming_graph_release(graph);
+    IREE_TRACE_ZONE_END(z0);
+    return status;
+  }
+  const bool origin_graph_owned = stream->capture_graph_owned;
+  iree_slim_mutex_unlock(&stream->mutex);
+  iree_slim_mutex_unlock(&context->stream_list_mutex);
+
+  // Reachability allocations live until the capture transaction completes,
+  // but releasing them may invoke arbitrary host allocator work. Keep cleanup
+  // outside all graph, stream-list, and stream locks.
+  iree_hal_streaming_capture_reachability_scratch_t scratch = {0};
+  bool has_unjoined_participant = false;
+  const int32_t capture_state =
+      iree_atomic_load(&graph->capture_state, iree_memory_order_acquire);
+  if (capture_state == IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE) {
+    status = iree_hal_streaming_has_unjoined_capture_participants(
+        stream, graph, &scratch, &has_unjoined_participant);
+    if (!iree_status_is_ok(status)) {
+      iree_slim_mutex_unlock(&graph->capture_mutex);
+      iree_hal_streaming_capture_reachability_scratch_deinitialize(
+          graph->host_allocator, &scratch);
+      iree_hal_streaming_graph_release(graph);
+      IREE_TRACE_ZONE_END(z0);
+      return status;
+    }
+    if (has_unjoined_participant) {
+      status = iree_make_status(
+          IREE_STATUS_ABORTED,
+          "stream capture has participant work not joined to the origin "
+          "stream");
+    }
+  } else if (capture_state ==
+             IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED) {
+    status = iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "stream capture has been invalidated");
+  } else {
+    status = iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "stream capture session is inconsistent");
   }
 
+  // The graph transaction excludes recorders and adoption while the shared
+  // lifecycle helper detaches every exact member in graph -> stream-list ->
+  // stream order. Preserve an origin-owned reference for successful transfer;
+  // all other ownership is released after every capture lock is dropped.
+  iree_slim_mutex_lock(&context->stream_list_mutex);
+  iree_host_size_t graph_release_count =
+      iree_hal_streaming_clear_capture_session_locked(
+          context, graph, capture_id, origin_graph_owned ? stream : NULL);
+  iree_slim_mutex_unlock(&context->stream_list_mutex);
+
+  iree_slim_mutex_unlock(&graph->capture_mutex);
+  iree_hal_streaming_capture_reachability_scratch_deinitialize(
+      graph->host_allocator, &scratch);
+
+  while (graph_release_count-- > 0) {
+    iree_hal_streaming_graph_release(graph);
+  }
+  if (iree_status_is_ok(status)) {
+    if (out_graph) {
+      *out_graph = graph;
+    } else if (origin_graph_owned) {
+      iree_hal_streaming_graph_release(graph);
+    }
+  } else if (origin_graph_owned) {
+    iree_hal_streaming_graph_release(graph);
+  }
+  // Drop the temporary reference used to cross the lock-order handoff.
+  iree_hal_streaming_graph_release(graph);
+
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 iree_status_t iree_hal_streaming_capture_status(
@@ -2668,14 +3119,16 @@ iree_status_t iree_hal_streaming_capture_status(
   IREE_ASSERT_ARGUMENT(stream);
 
   iree_slim_mutex_lock(&stream->mutex);
-
-  if (out_status) {
-    *out_status = stream->capture_status;
+  iree_hal_streaming_capture_status_t capture_status = stream->capture_status;
+  if (capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE &&
+      stream->capture_graph &&
+      iree_atomic_load(&stream->capture_graph->capture_state,
+                       iree_memory_order_acquire) ==
+          IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED) {
+    capture_status = IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED;
   }
-  if (out_id) {
-    *out_id = stream->capture_id;
-  }
-
+  if (out_status) *out_status = capture_status;
+  if (out_id) *out_id = stream->capture_id;
   iree_slim_mutex_unlock(&stream->mutex);
   return iree_ok_status();
 }
@@ -2687,7 +3140,11 @@ iree_status_t iree_hal_streaming_is_capturing(
 
   iree_slim_mutex_lock(&stream->mutex);
   *out_is_capturing =
-      (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE);
+      stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE &&
+      stream->capture_graph &&
+      iree_atomic_load(&stream->capture_graph->capture_state,
+                       iree_memory_order_acquire) ==
+          IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE;
   iree_slim_mutex_unlock(&stream->mutex);
 
   return iree_ok_status();
@@ -2739,74 +3196,64 @@ iree_status_t iree_hal_streaming_update_capture_dependencies(
                             "dependency array must be provided");
   }
 
-  iree_slim_mutex_lock(&stream->mutex);
-
-  // Check if capturing.
-  if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-    iree_slim_mutex_unlock(&stream->mutex);
+  bool was_capturing = false;
+  iree_hal_streaming_capture_transaction_t transaction;
+  iree_status_t status = iree_hal_streaming_capture_transaction_begin(
+      stream, &transaction, &was_capturing);
+  if (!iree_status_is_ok(status)) {
+    IREE_TRACE_ZONE_END(z0);
+    return status;
+  }
+  if (!was_capturing) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "stream is not actively capturing");
   }
-  iree_hal_streaming_graph_t* capture_graph = stream->capture_graph;
-  for (iree_host_size_t i = 0; i < dependency_count; ++i) {
-    if (!iree_hal_streaming_graph_node_is_active_in_graph(capture_graph,
+
+  for (iree_host_size_t i = 0;
+       i < dependency_count && iree_status_is_ok(status); ++i) {
+    if (!iree_hal_streaming_graph_node_is_active_in_graph(transaction.graph,
                                                           dependencies[i])) {
-      iree_slim_mutex_unlock(&stream->mutex);
-      IREE_TRACE_ZONE_END(z0);
-      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "capture dependency at index %" PRIhsz
-                              " does not belong to the active capture graph",
-                              i);
+      status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "capture dependency at index %" PRIhsz
+                                " does not belong to the active capture graph",
+                                i);
     }
   }
 
-  // Calculate total count based on mode.
   iree_host_size_t total_count = dependency_count;
-  if (mode == IREE_HAL_STREAMING_CAPTURE_DEPENDENCIES_ADD &&
+  if (iree_status_is_ok(status) &&
+      mode == IREE_HAL_STREAMING_CAPTURE_DEPENDENCIES_ADD &&
       IREE_UNLIKELY(!iree_host_size_checked_add(
           stream->capture_dependency_count, dependency_count, &total_count))) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "capture dependency count overflow");
+    status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "capture dependency count overflow");
   }
-
-  // Grow dependency array if needed.
-  if (total_count > stream->capture_dependency_capacity) {
-    iree_status_t status =
-        iree_hal_streaming_grow_capture_dependencies(stream, total_count);
-    if (!iree_status_is_ok(status)) {
-      iree_slim_mutex_unlock(&stream->mutex);
-      IREE_TRACE_ZONE_END(z0);
-      return status;
+  if (iree_status_is_ok(status) &&
+      total_count > stream->capture_dependency_capacity) {
+    status = iree_hal_streaming_grow_capture_dependencies(stream, total_count);
+  }
+  if (iree_status_is_ok(status) &&
+      iree_atomic_load(&transaction.graph->capture_state,
+                       iree_memory_order_acquire) !=
+          IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE) {
+    status = iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "stream capture has been invalidated");
+    iree_hal_streaming_stream_set_capture_status(
+        stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
+  }
+  if (iree_status_is_ok(status)) {
+    if (dependency_count > 0) {
+      void* dest =
+          mode == IREE_HAL_STREAMING_CAPTURE_DEPENDENCIES_ADD
+              ? stream->capture_dependencies + stream->capture_dependency_count
+              : stream->capture_dependencies;
+      memcpy(dest, dependencies, dependency_count * sizeof(*dependencies));
     }
+    stream->capture_dependency_count = total_count;
   }
 
-  // Copy dependencies based on mode.
-  if (dependency_count > 0) {
-    void* dest =
-        (mode == IREE_HAL_STREAMING_CAPTURE_DEPENDENCIES_ADD)
-            ? stream->capture_dependencies + stream->capture_dependency_count
-            : stream->capture_dependencies;
-    memcpy(dest, dependencies, dependency_count * sizeof(*dependencies));
-  }
-
-  stream->capture_dependency_count = total_count;
-
-  iree_slim_mutex_unlock(&stream->mutex);
+  iree_hal_streaming_capture_transaction_unlock(&transaction);
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
-}
-
-iree_status_t iree_hal_streaming_capture_set_last_node(
-    iree_hal_streaming_stream_t* stream,
-    iree_hal_streaming_graph_node_t* node) {
-  IREE_ASSERT_ARGUMENT(stream);
-  IREE_ASSERT_ARGUMENT(node);
-  if (!stream->capture_origin) {
-    stream->capture_joined_to_origin = false;
-  }
-  return iree_hal_streaming_update_capture_dependencies(
-      stream, &node, 1, IREE_HAL_STREAMING_CAPTURE_DEPENDENCIES_SET);
+  return status;
 }

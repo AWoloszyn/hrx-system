@@ -19,7 +19,15 @@
 
 namespace {
 
+#if defined(HRX_TEST_LIBAMDHIP64_PATH)
+constexpr const char* kBuildHipDsoFallbackPath = HRX_TEST_LIBAMDHIP64_PATH;
+#else
+constexpr const char* kBuildHipDsoFallbackPath = nullptr;
+#endif
+
 using HipInitFn = hipError_t (*)(unsigned int flags);
+using HipHrxSetArrayLeaseObserverForTestingFn =
+    hipError_t (*)(hipHostFn_t observer, void* user_data);
 using HipGetDeviceCountFn = hipError_t (*)(int* count);
 using HipSetDeviceFn = hipError_t (*)(int device_id);
 using HipMallocFn = hipError_t (*)(hipDeviceptr_t* pointer, size_t size);
@@ -37,6 +45,29 @@ using HipMemcpyFn = hipError_t (*)(void* destination, const void* source,
 using HipMemcpyAsyncFn = hipError_t (*)(void* destination, const void* source,
                                         size_t size, hipMemcpyKind kind,
                                         hipStream_t stream);
+using HipMemcpyHtoAAsyncFn = hipError_t (*)(hipArray_t destination,
+                                            size_t destination_offset,
+                                            const void* source, size_t size,
+                                            hipStream_t stream);
+using HipMemcpyHtoAFn = hipError_t (*)(hipArray_t destination,
+                                       size_t destination_offset,
+                                       const void* source, size_t size);
+using HipMemcpyAtoHAsyncFn = hipError_t (*)(void* destination,
+                                            hipArray_t source,
+                                            size_t source_offset, size_t size,
+                                            hipStream_t stream);
+using HipMemcpyAtoHFn = hipError_t (*)(void* destination, hipArray_t source,
+                                       size_t source_offset, size_t size);
+using HipMemcpyDtoAFn = hipError_t (*)(hipArray_t destination,
+                                       size_t destination_offset,
+                                       hipDeviceptr_t source, size_t size);
+using HipMemcpyAtoDFn = hipError_t (*)(hipDeviceptr_t destination,
+                                       hipArray_t source, size_t source_offset,
+                                       size_t size);
+using HipMemcpyAtoAFn = hipError_t (*)(hipArray_t destination,
+                                       size_t destination_offset,
+                                       hipArray_t source, size_t source_offset,
+                                       size_t size);
 using HipMemcpy3DAsyncFn = hipError_t (*)(const hipMemcpy3DParms* parameters,
                                           hipStream_t stream);
 using HipMemcpy2DFromArrayAsyncSptFn = hipError_t (*)(
@@ -69,6 +100,13 @@ using HipStreamCreateWithPriorityFn = hipError_t (*)(hipStream_t* stream,
                                                      int priority);
 using HipStreamDestroyFn = hipError_t (*)(hipStream_t stream);
 using HipStreamSynchronizeFn = hipError_t (*)(hipStream_t stream);
+using HipEventCreateWithFlagsFn = hipError_t (*)(hipEvent_t* event,
+                                                 unsigned int flags);
+using HipEventRecordFn = hipError_t (*)(hipEvent_t event, hipStream_t stream);
+using HipStreamWaitEventFn = hipError_t (*)(hipStream_t stream,
+                                            hipEvent_t event,
+                                            unsigned int flags);
+using HipEventDestroyFn = hipError_t (*)(hipEvent_t event);
 using HipLaunchHostFuncFn = hipError_t (*)(hipStream_t stream, hipHostFn_t fn,
                                            void* user_data);
 using HipStreamBeginCaptureFn = hipError_t (*)(hipStream_t stream,
@@ -81,6 +119,8 @@ using HipGraphGetNodesFn = hipError_t (*)(hipGraph_t graph,
 using HipGraphDestroyFn = hipError_t (*)(hipGraph_t graph);
 
 struct HipRuntimeApi {
+  // Installs the deterministic production array-lease test observer.
+  HipHrxSetArrayLeaseObserverForTestingFn set_array_lease_observer = nullptr;
   // Initializes the exact runtime under test.
   HipInitFn init = nullptr;
   // Queries devices available to the exact runtime under test.
@@ -103,6 +143,20 @@ struct HipRuntimeApi {
   HipMemcpyFn memcpy = nullptr;
   // Enqueues ordinary memory copies used to produce stream-ordered input.
   HipMemcpyAsyncFn memcpy_async = nullptr;
+  // Enqueues a legacy host-to-array copy.
+  HipMemcpyHtoAAsyncFn memcpy_htoa_async = nullptr;
+  // Performs a synchronous legacy host-to-array copy.
+  HipMemcpyHtoAFn memcpy_htoa = nullptr;
+  // Enqueues a legacy array-to-host copy.
+  HipMemcpyAtoHAsyncFn memcpy_atoh_async = nullptr;
+  // Performs a synchronous legacy array-to-host copy.
+  HipMemcpyAtoHFn memcpy_atoh = nullptr;
+  // Performs a synchronous legacy device-to-array copy.
+  HipMemcpyDtoAFn memcpy_dtoa = nullptr;
+  // Performs a synchronous legacy array-to-device copy.
+  HipMemcpyAtoDFn memcpy_atod = nullptr;
+  // Performs a synchronous legacy array-to-array copy.
+  HipMemcpyAtoAFn memcpy_atoa = nullptr;
   // Performs generic asynchronous 3D memory copies.
   HipMemcpy3DAsyncFn memcpy_3d_async = nullptr;
   // Copies pitched array contents asynchronously on an SPT stream.
@@ -125,6 +179,14 @@ struct HipRuntimeApi {
   HipStreamDestroyFn stream_destroy = nullptr;
   // Waits for a selected stream timeline.
   HipStreamSynchronizeFn stream_synchronize = nullptr;
+  // Creates capture-only events used to join participant streams.
+  HipEventCreateWithFlagsFn event_create_with_flags = nullptr;
+  // Records an event frontier on a stream.
+  HipEventRecordFn event_record = nullptr;
+  // Makes a stream join a captured event frontier.
+  HipStreamWaitEventFn stream_wait_event = nullptr;
+  // Releases an event.
+  HipEventDestroyFn event_destroy = nullptr;
   // Enqueues gated host work used to expose ordering behavior.
   HipLaunchHostFuncFn launch_host_function = nullptr;
   // Starts capture on the selected stream.
@@ -140,11 +202,13 @@ struct HipRuntimeApi {
 class HipArrayCopySptApiTest : public testing::Test {
  protected:
   static void SetUpTestSuite() {
-    ASSERT_TRUE(dso_.Open()) << dso_.error();
+    ASSERT_TRUE(dso_.Open(kBuildHipDsoFallbackPath)) << dso_.error();
 #define HRX_RESOLVE_HIP_FIELD(field, symbol)               \
   api_.field = dso_.Resolve<decltype(api_.field)>(symbol); \
   ASSERT_NE(nullptr, api_.field) << dso_.error()
     HRX_RESOLVE_HIP_FIELD(init, "hipInit");
+    HRX_RESOLVE_HIP_FIELD(set_array_lease_observer,
+                          "hipHRXSetArrayLeaseObserverForTesting");
     HRX_RESOLVE_HIP_FIELD(get_device_count, "hipGetDeviceCount");
     HRX_RESOLVE_HIP_FIELD(set_device, "hipSetDevice");
     HRX_RESOLVE_HIP_FIELD(malloc, "hipMalloc");
@@ -155,6 +219,13 @@ class HipArrayCopySptApiTest : public testing::Test {
     HRX_RESOLVE_HIP_FIELD(free_array, "hipFreeArray");
     HRX_RESOLVE_HIP_FIELD(memcpy, "hipMemcpy");
     HRX_RESOLVE_HIP_FIELD(memcpy_async, "hipMemcpyAsync");
+    HRX_RESOLVE_HIP_FIELD(memcpy_htoa_async, "hipMemcpyHtoAAsync");
+    HRX_RESOLVE_HIP_FIELD(memcpy_htoa, "hipMemcpyHtoA");
+    HRX_RESOLVE_HIP_FIELD(memcpy_atoh_async, "hipMemcpyAtoHAsync");
+    HRX_RESOLVE_HIP_FIELD(memcpy_atoh, "hipMemcpyAtoH");
+    HRX_RESOLVE_HIP_FIELD(memcpy_dtoa, "hipMemcpyDtoA");
+    HRX_RESOLVE_HIP_FIELD(memcpy_atod, "hipMemcpyAtoD");
+    HRX_RESOLVE_HIP_FIELD(memcpy_atoa, "hipMemcpyAtoA");
     HRX_RESOLVE_HIP_FIELD(memcpy_3d_async, "hipMemcpy3DAsync");
     HRX_RESOLVE_HIP_FIELD(memcpy_2d_from_array_async_spt,
                           "hipMemcpy2DFromArrayAsync_spt");
@@ -169,6 +240,10 @@ class HipArrayCopySptApiTest : public testing::Test {
                           "hipStreamCreateWithPriority");
     HRX_RESOLVE_HIP_FIELD(stream_destroy, "hipStreamDestroy");
     HRX_RESOLVE_HIP_FIELD(stream_synchronize, "hipStreamSynchronize");
+    HRX_RESOLVE_HIP_FIELD(event_create_with_flags, "hipEventCreateWithFlags");
+    HRX_RESOLVE_HIP_FIELD(event_record, "hipEventRecord");
+    HRX_RESOLVE_HIP_FIELD(stream_wait_event, "hipStreamWaitEvent");
+    HRX_RESOLVE_HIP_FIELD(event_destroy, "hipEventDestroy");
     HRX_RESOLVE_HIP_FIELD(launch_host_function, "hipLaunchHostFunc");
     HRX_RESOLVE_HIP_FIELD(stream_begin_capture, "hipStreamBeginCapture");
     HRX_RESOLVE_HIP_FIELD(stream_end_capture, "hipStreamEndCapture");
@@ -179,10 +254,18 @@ class HipArrayCopySptApiTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (stream_) EXPECT_EQ(hipSuccess, api_.stream_destroy(stream_));
-    if (device_pointer_) EXPECT_EQ(hipSuccess, api_.free(device_pointer_));
-    if (host_pointer_) EXPECT_EQ(hipSuccess, api_.free_host(host_pointer_));
-    if (array_) EXPECT_EQ(hipSuccess, api_.free_array(array_));
+    if (stream_) {
+      EXPECT_EQ(hipSuccess, api_.stream_destroy(stream_));
+    }
+    if (device_pointer_) {
+      EXPECT_EQ(hipSuccess, api_.free(device_pointer_));
+    }
+    if (host_pointer_) {
+      EXPECT_EQ(hipSuccess, api_.free_host(host_pointer_));
+    }
+    if (array_) {
+      EXPECT_EQ(hipSuccess, api_.free_array(array_));
+    }
   }
 
   void AllocateArray(size_t width, size_t height) {
@@ -220,6 +303,13 @@ hrx::hip::testing::HipDso HipArrayCopySptApiTest::dso_;
 HipRuntimeApi HipArrayCopySptApiTest::api_;
 
 TEST_F(HipArrayCopySptApiTest, ExportsAllArrayCopyEntryPoints) {
+  EXPECT_NE(nullptr, api_.memcpy_htoa_async);
+  EXPECT_NE(nullptr, api_.memcpy_htoa);
+  EXPECT_NE(nullptr, api_.memcpy_atoh_async);
+  EXPECT_NE(nullptr, api_.memcpy_atoh);
+  EXPECT_NE(nullptr, api_.memcpy_dtoa);
+  EXPECT_NE(nullptr, api_.memcpy_atod);
+  EXPECT_NE(nullptr, api_.memcpy_atoa);
   EXPECT_NE(nullptr, api_.memcpy_2d_from_array_async_spt);
   EXPECT_NE(nullptr, api_.memcpy_2d_from_array_spt);
   EXPECT_NE(nullptr, api_.memcpy_2d_to_array_async_spt);
@@ -459,6 +549,54 @@ TEST_F(HipArrayCopySptApiTest,
   EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
 }
 
+TEST_F(HipArrayCopySptApiTest, JoinedParticipantCapturesH2DAndD2HArrayCopies) {
+  constexpr size_t kWidth = 8;
+  AllocateArray(kWidth, 1);
+  AllocateHost(kWidth);
+  auto* host = static_cast<uint8_t*>(host_pointer_);
+  ASSERT_EQ(hipSuccess, api_.stream_create(&stream_));
+  hipStream_t participant = nullptr;
+  ASSERT_EQ(hipSuccess, api_.stream_create(&participant));
+
+  for (int direction = 0; direction < 2; ++direction) {
+    hipEvent_t join_event = nullptr;
+    hipEvent_t return_event = nullptr;
+    ASSERT_EQ(hipSuccess,
+              api_.event_create_with_flags(&join_event, hipEventDisableTiming));
+    ASSERT_EQ(hipSuccess, api_.event_create_with_flags(&return_event,
+                                                       hipEventDisableTiming));
+    ASSERT_EQ(hipSuccess,
+              api_.stream_begin_capture(stream_, hipStreamCaptureModeRelaxed));
+    ASSERT_EQ(hipSuccess, api_.event_record(join_event, stream_));
+    ASSERT_EQ(hipSuccess,
+              api_.stream_wait_event(participant, join_event, /*flags=*/0));
+
+    const hipError_t copy_result =
+        direction == 0 ? api_.memcpy_2d_to_array_async_spt(
+                             array_, 0, 0, host, kWidth, kWidth, 1,
+                             hipMemcpyHostToDevice, participant)
+                       : api_.memcpy_2d_from_array_async_spt(
+                             host, kWidth, array_, 0, 0, kWidth, 1,
+                             hipMemcpyDeviceToHost, participant);
+    ASSERT_EQ(hipSuccess, copy_result) << "direction " << direction;
+    ASSERT_EQ(hipSuccess, api_.event_record(return_event, participant));
+    ASSERT_EQ(hipSuccess,
+              api_.stream_wait_event(stream_, return_event, /*flags=*/0));
+
+    hipGraph_t graph = nullptr;
+    ASSERT_EQ(hipSuccess, api_.stream_end_capture(stream_, &graph));
+    ASSERT_NE(nullptr, graph);
+    size_t node_count = 0;
+    ASSERT_EQ(hipSuccess, api_.graph_get_nodes(graph, nullptr, &node_count));
+    EXPECT_EQ(1u, node_count) << "direction " << direction;
+    EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+    EXPECT_EQ(hipSuccess, api_.event_destroy(return_event));
+    EXPECT_EQ(hipSuccess, api_.event_destroy(join_event));
+  }
+
+  EXPECT_EQ(hipSuccess, api_.stream_destroy(participant));
+}
+
 TEST_F(HipArrayCopySptApiTest, RelaxedCaptureEndSerializesWithAsyncCopies) {
   constexpr size_t kIterations = 64;
   constexpr size_t kWidth = 8;
@@ -550,6 +688,27 @@ struct WaitGate {
 
 void WaitForRelease(void* user_data) {
   auto* gate = static_cast<WaitGate*>(user_data);
+  gate->entered.store(true, std::memory_order_release);
+  while (!gate->release.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+}
+
+struct CountedWaitGate {
+  // Observer invocation that represents the post-lookup copy boundary.
+  int target_count = 0;
+  // Total observer invocations reached.
+  std::atomic<int> count = 0;
+  // Set when |target_count| is reached.
+  std::atomic<bool> entered = false;
+  // Set by the test to let the target invocation return.
+  std::atomic<bool> release = false;
+};
+
+void WaitForTargetCount(void* user_data) {
+  auto* gate = static_cast<CountedWaitGate*>(user_data);
+  const int count = gate->count.fetch_add(1, std::memory_order_acq_rel) + 1;
+  if (count != gate->target_count) return;
   gate->entered.store(true, std::memory_order_release);
   while (!gate->release.load(std::memory_order_acquire)) {
     std::this_thread::yield();
@@ -999,50 +1158,388 @@ TEST_F(HipArrayCopySptApiTest,
   ASSERT_EQ(hipSuccess, api_.set_device(/*device_id=*/0));
 }
 
-TEST_F(HipArrayCopySptApiTest, ConcurrentCopyAndFreeRetainArrayStorage) {
-  constexpr size_t kIterations = 64;
+TEST_F(HipArrayCopySptApiTest,
+       ProductionCopyLeaseKeepsArrayDestructionOnFreeCaller) {
   constexpr size_t kWidth = 32;
-  AllocateHost(kWidth);
+  AllocateArray(kWidth, /*height=*/1);
+  AllocateHost(2 * kWidth);
   auto* source = static_cast<uint8_t*>(host_pointer_);
-  for (size_t iteration = 0; iteration < kIterations; ++iteration) {
+  auto* destination = source + kWidth;
+  for (size_t i = 0; i < kWidth; ++i) {
+    source[i] = static_cast<uint8_t>(17 + i);
+    destination[i] = 0;
+  }
+  ASSERT_EQ(hipSuccess, api_.memcpy_to_array(array_, 0, 0, source, kWidth,
+                                             hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess, api_.stream_create(&stream_));
+
+  // Keep the selected stream busy so destruction on the copy thread recreates
+  // the old callback/synchronize cycle. The repaired close owner instead waits
+  // on the free thread while the copy API can drop its lease and return.
+  WaitGate callback_gate;
+  ASSERT_EQ(hipSuccess,
+            api_.launch_host_function(stream_, WaitForRelease, &callback_gate));
+  while (!callback_gate.entered.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+
+  WaitGate lease_gate;
+  ASSERT_EQ(hipSuccess,
+            api_.set_array_lease_observer(WaitForRelease, &lease_gate));
+  std::atomic<bool> copy_returned = false;
+  std::atomic<bool> free_started = false;
+  std::atomic<bool> free_returned = false;
+  hipError_t copy_result = hipErrorUnknown;
+  hipError_t free_result = hipErrorUnknown;
+  hipArray_t array = array_;
+  std::thread copy_thread([&] {
+    copy_result = api_.memcpy_2d_from_array_async_spt(
+        destination, kWidth, array, 0, 0, kWidth, 1, hipMemcpyDeviceToHost,
+        stream_);
+    copy_returned.store(true, std::memory_order_release);
+  });
+
+  bool observed_lease = false;
+  for (int i = 0; i < 1000000; ++i) {
+    if (lease_gate.entered.load(std::memory_order_acquire)) {
+      observed_lease = true;
+      break;
+    }
+    std::this_thread::yield();
+  }
+  if (!observed_lease) {
+    lease_gate.release.store(true, std::memory_order_release);
+    callback_gate.release.store(true, std::memory_order_release);
+    copy_thread.join();
+    EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
+    FAIL() << "production copy did not reach the post-retain observer";
+    return;
+  }
+
+  std::thread free_thread([&] {
+    free_started.store(true, std::memory_order_release);
+    free_result = api_.free_array(array);
+    free_returned.store(true, std::memory_order_release);
+  });
+  while (!free_started.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  for (int i = 0; i < 100000 && !free_returned.load(std::memory_order_acquire);
+       ++i) {
+    std::this_thread::yield();
+  }
+  EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+
+  lease_gate.release.store(true, std::memory_order_release);
+  bool copy_returned_before_callback = false;
+  for (int i = 0; i < 1000000; ++i) {
+    if (copy_returned.load(std::memory_order_acquire)) {
+      copy_returned_before_callback = true;
+      break;
+    }
+    std::this_thread::yield();
+  }
+  EXPECT_TRUE(copy_returned_before_callback);
+  EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+
+  callback_gate.release.store(true, std::memory_order_release);
+  copy_thread.join();
+  free_thread.join();
+  EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
+  array_ = nullptr;
+
+  EXPECT_EQ(hipSuccess, copy_result);
+  EXPECT_EQ(hipSuccess, free_result);
+  EXPECT_EQ(0, std::memcmp(source, destination, kWidth));
+}
+
+TEST_F(HipArrayCopySptApiTest,
+       LegacySynchronousEntryPointsHoldLeaseThroughDispatch) {
+  constexpr size_t kWidth = 32;
+  const hipChannelFormatDesc descriptor = {
+      /*.x=*/8,
+      /*.y=*/0,
+      /*.z=*/0,
+      /*.w=*/0,
+      /*.f=*/hipChannelFormatKindUnsigned,
+  };
+  AllocateHost(2 * kWidth);
+  auto* source = static_cast<uint8_t*>(host_pointer_);
+  auto* destination = source + kWidth;
+  for (size_t i = 0; i < kWidth; ++i) {
+    source[i] = static_cast<uint8_t>(23 + i);
+  }
+  ASSERT_EQ(hipSuccess, api_.malloc(&device_pointer_, kWidth));
+  ASSERT_EQ(hipSuccess, api_.memcpy(device_pointer_, source, kWidth,
+                                    hipMemcpyHostToDevice));
+
+  enum class CopyCase { kHtoA, kAtoH, kDtoA, kAtoD };
+  for (CopyCase copy_case :
+       {CopyCase::kHtoA, CopyCase::kAtoH, CopyCase::kDtoA, CopyCase::kAtoD}) {
     hipArray_t array = nullptr;
-    const hipChannelFormatDesc descriptor = {
-        /*.x=*/8,
-        /*.y=*/0,
-        /*.z=*/0,
-        /*.w=*/0,
-        /*.f=*/hipChannelFormatKindUnsigned,
-    };
-    ASSERT_EQ(hipSuccess, api_.malloc_array(&array, &descriptor, kWidth, 1,
-                                            /*flags=*/0));
-    std::atomic<bool> start = false;
+    ASSERT_EQ(hipSuccess, api_.malloc_array(&array, &descriptor, kWidth, 1, 0));
+    if (copy_case == CopyCase::kAtoH || copy_case == CopyCase::kAtoD) {
+      ASSERT_EQ(hipSuccess, api_.memcpy_htoa(array, 0, source, kWidth));
+    }
+    std::memset(destination, 0, kWidth);
+
+    CountedWaitGate lease_gate;
+    lease_gate.target_count = 2;
+    ASSERT_EQ(hipSuccess,
+              api_.set_array_lease_observer(WaitForTargetCount, &lease_gate));
     hipError_t copy_result = hipErrorUnknown;
-    hipError_t free_result = hipErrorUnknown;
     std::thread copy_thread([&] {
-      while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
-      if (iteration % 2 == 0) {
-        copy_result = api_.memcpy_2d_to_array_async_spt(
-            array, 0, 0, source, kWidth, kWidth, 1, hipMemcpyHostToDevice,
-            nullptr);
-      } else {
-        copy_result = api_.memcpy_2d_from_array_async_spt(
-            source, kWidth, array, 0, 0, kWidth, 1, hipMemcpyDeviceToHost,
-            nullptr);
+      switch (copy_case) {
+        case CopyCase::kHtoA:
+          copy_result = api_.memcpy_htoa(array, 0, source, kWidth);
+          break;
+        case CopyCase::kAtoH:
+          copy_result = api_.memcpy_atoh(destination, array, 0, kWidth);
+          break;
+        case CopyCase::kDtoA:
+          copy_result = api_.memcpy_dtoa(array, 0, device_pointer_, kWidth);
+          break;
+        case CopyCase::kAtoD:
+          copy_result = api_.memcpy_atod(device_pointer_, array, 0, kWidth);
+          break;
       }
     });
+
+    bool observed_boundary = false;
+    for (int i = 0; i < 1000000; ++i) {
+      if (lease_gate.entered.load(std::memory_order_acquire)) {
+        observed_boundary = true;
+        break;
+      }
+      std::this_thread::yield();
+    }
+    if (!observed_boundary) {
+      lease_gate.release.store(true, std::memory_order_release);
+      copy_thread.join();
+      EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
+      EXPECT_EQ(hipSuccess, api_.free_array(array));
+      FAIL() << "legacy synchronous copy missed the post-lookup boundary";
+      return;
+    }
+
+    std::atomic<bool> free_started = false;
+    std::atomic<bool> free_returned = false;
+    hipError_t free_result = hipErrorUnknown;
     std::thread free_thread([&] {
-      while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+      free_started.store(true, std::memory_order_release);
       free_result = api_.free_array(array);
+      free_returned.store(true, std::memory_order_release);
     });
-    start.store(true, std::memory_order_release);
+    while (!free_started.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    for (int i = 0;
+         i < 100000 && !free_returned.load(std::memory_order_acquire); ++i) {
+      std::this_thread::yield();
+    }
+    EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+
+    lease_gate.release.store(true, std::memory_order_release);
     copy_thread.join();
     free_thread.join();
+    EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
+    EXPECT_EQ(hipSuccess, copy_result);
     EXPECT_EQ(hipSuccess, free_result);
-    EXPECT_TRUE(copy_result == hipSuccess ||
-                copy_result == hipErrorInvalidValue)
-        << "unexpected copy result " << copy_result;
+    if (copy_case == CopyCase::kAtoH) {
+      EXPECT_EQ(0, std::memcmp(source, destination, kWidth));
+    } else if (copy_case == CopyCase::kAtoD) {
+      std::memset(destination, 0, kWidth);
+      ASSERT_EQ(hipSuccess, api_.memcpy(destination, device_pointer_, kWidth,
+                                        hipMemcpyDeviceToHost));
+      EXPECT_EQ(0, std::memcmp(source, destination, kWidth));
+    }
   }
-  EXPECT_EQ(hipSuccess, api_.stream_synchronize(hipStreamPerThread));
+}
+
+TEST_F(HipArrayCopySptApiTest,
+       LegacyAsyncEntryPointsKeepAcceptedWorkAliveAfterLeaseRelease) {
+  constexpr size_t kWidth = 32;
+  const hipChannelFormatDesc descriptor = {
+      /*.x=*/8,
+      /*.y=*/0,
+      /*.z=*/0,
+      /*.w=*/0,
+      /*.f=*/hipChannelFormatKindUnsigned,
+  };
+  AllocateHost(2 * kWidth);
+  auto* source = static_cast<uint8_t*>(host_pointer_);
+  auto* destination = source + kWidth;
+  for (size_t i = 0; i < kWidth; ++i) {
+    source[i] = static_cast<uint8_t>(47 + i);
+  }
+
+  for (bool array_is_source : {false, true}) {
+    hipArray_t array = nullptr;
+    hipStream_t stream = nullptr;
+    ASSERT_EQ(hipSuccess, api_.malloc_array(&array, &descriptor, kWidth, 1, 0));
+    ASSERT_EQ(hipSuccess, api_.stream_create(&stream));
+    if (array_is_source) {
+      ASSERT_EQ(hipSuccess, api_.memcpy_htoa(array, 0, source, kWidth));
+      std::memset(destination, 0, kWidth);
+    }
+
+    WaitGate callback_gate;
+
+    CountedWaitGate lease_gate;
+    lease_gate.target_count = 2;
+    ASSERT_EQ(hipSuccess,
+              api_.set_array_lease_observer(WaitForTargetCount, &lease_gate));
+    std::atomic<bool> copy_returned = false;
+    hipError_t copy_result = hipErrorUnknown;
+    std::thread copy_thread([&] {
+      copy_result =
+          array_is_source
+              ? api_.memcpy_atoh_async(destination, array, 0, kWidth, stream)
+              : api_.memcpy_htoa_async(array, 0, source, kWidth, stream);
+      copy_returned.store(true, std::memory_order_release);
+    });
+
+    bool observed_boundary = false;
+    for (int i = 0; i < 1000000; ++i) {
+      if (lease_gate.entered.load(std::memory_order_acquire)) {
+        observed_boundary = true;
+        break;
+      }
+      std::this_thread::yield();
+    }
+    if (!observed_boundary) {
+      lease_gate.release.store(true, std::memory_order_release);
+      callback_gate.release.store(true, std::memory_order_release);
+      copy_thread.join();
+      EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
+      EXPECT_EQ(hipSuccess, api_.stream_destroy(stream));
+      EXPECT_EQ(hipSuccess, api_.free_array(array));
+      FAIL() << "legacy asynchronous copy missed the post-lookup boundary";
+      return;
+    }
+
+    std::atomic<bool> free_started = false;
+    std::atomic<bool> free_returned = false;
+    hipError_t free_result = hipErrorUnknown;
+    std::thread free_thread([&] {
+      free_started.store(true, std::memory_order_release);
+      free_result = api_.free_array(array);
+      free_returned.store(true, std::memory_order_release);
+    });
+    while (!free_started.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    for (int i = 0;
+         i < 100000 && !free_returned.load(std::memory_order_acquire); ++i) {
+      std::this_thread::yield();
+    }
+    EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+
+    ASSERT_EQ(hipSuccess, api_.launch_host_function(stream, WaitForRelease,
+                                                    &callback_gate));
+    while (!callback_gate.entered.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+
+    lease_gate.release.store(true, std::memory_order_release);
+    bool returned_after_dispatch = false;
+    for (int i = 0; i < 1000000; ++i) {
+      if (copy_returned.load(std::memory_order_acquire)) {
+        returned_after_dispatch = true;
+        break;
+      }
+      std::this_thread::yield();
+    }
+    EXPECT_TRUE(returned_after_dispatch);
+    EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+
+    callback_gate.release.store(true, std::memory_order_release);
+    copy_thread.join();
+    free_thread.join();
+    EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
+    EXPECT_EQ(hipSuccess, copy_result);
+    EXPECT_EQ(hipSuccess, free_result);
+    EXPECT_EQ(hipSuccess, api_.stream_destroy(stream));
+    if (array_is_source) {
+      EXPECT_EQ(0, std::memcmp(source, destination, kWidth));
+    }
+  }
+}
+
+TEST_F(HipArrayCopySptApiTest, LegacyAtoAHoldsBothArrayLeasesThroughDispatch) {
+  constexpr size_t kWidth = 32;
+  const hipChannelFormatDesc descriptor = {
+      /*.x=*/8,
+      /*.y=*/0,
+      /*.z=*/0,
+      /*.w=*/0,
+      /*.f=*/hipChannelFormatKindUnsigned,
+  };
+  hipArray_t source_array = nullptr;
+  hipArray_t destination_array = nullptr;
+  ASSERT_EQ(hipSuccess,
+            api_.malloc_array(&source_array, &descriptor, kWidth, 1, 0));
+  ASSERT_EQ(hipSuccess,
+            api_.malloc_array(&destination_array, &descriptor, kWidth, 1, 0));
+
+  CountedWaitGate lease_gate;
+  lease_gate.target_count = 3;
+  ASSERT_EQ(hipSuccess,
+            api_.set_array_lease_observer(WaitForTargetCount, &lease_gate));
+  hipError_t copy_result = hipErrorUnknown;
+  std::thread copy_thread([&] {
+    copy_result =
+        api_.memcpy_atoa(destination_array, 0, source_array, 0, kWidth);
+  });
+
+  bool observed_boundary = false;
+  for (int i = 0; i < 1000000; ++i) {
+    if (lease_gate.entered.load(std::memory_order_acquire)) {
+      observed_boundary = true;
+      break;
+    }
+    std::this_thread::yield();
+  }
+  if (!observed_boundary) {
+    lease_gate.release.store(true, std::memory_order_release);
+    copy_thread.join();
+    EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
+    EXPECT_EQ(hipSuccess, api_.free_array(source_array));
+    EXPECT_EQ(hipSuccess, api_.free_array(destination_array));
+    FAIL() << "legacy AtoA copy missed the post-lookup boundary";
+    return;
+  }
+
+  std::atomic<int> free_started = 0;
+  std::atomic<bool> source_free_returned = false;
+  std::atomic<bool> destination_free_returned = false;
+  hipError_t source_free_result = hipErrorUnknown;
+  hipError_t destination_free_result = hipErrorUnknown;
+  std::thread source_free_thread([&] {
+    free_started.fetch_add(1, std::memory_order_release);
+    source_free_result = api_.free_array(source_array);
+    source_free_returned.store(true, std::memory_order_release);
+  });
+  std::thread destination_free_thread([&] {
+    free_started.fetch_add(1, std::memory_order_release);
+    destination_free_result = api_.free_array(destination_array);
+    destination_free_returned.store(true, std::memory_order_release);
+  });
+  while (free_started.load(std::memory_order_acquire) != 2) {
+    std::this_thread::yield();
+  }
+  for (int i = 0; i < 100000; ++i) std::this_thread::yield();
+  EXPECT_FALSE(source_free_returned.load(std::memory_order_acquire));
+  EXPECT_FALSE(destination_free_returned.load(std::memory_order_acquire));
+
+  lease_gate.release.store(true, std::memory_order_release);
+  copy_thread.join();
+  source_free_thread.join();
+  destination_free_thread.join();
+  EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
+  EXPECT_EQ(hipSuccess, copy_result);
+  EXPECT_EQ(hipSuccess, source_free_result);
+  EXPECT_EQ(hipSuccess, destination_free_result);
 }
 
 }  // namespace

@@ -75,10 +75,28 @@ typedef iree_status_t (*iree_hal_streaming_capture_record_node_fn_t)(
     iree_host_size_t dependency_count, void* user_data,
     iree_hal_streaming_graph_node_t** out_terminal_node);
 
+// Lifecycle of the capture session currently mutating a graph. State changes
+// are atomic so capture invalidation can race final publication without
+// requiring an arbitrary stream mutex to be acquired before the graph mutex.
+typedef enum iree_hal_streaming_graph_capture_state_e {
+  IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INACTIVE = 0,
+  IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE = 1,
+  IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INVALIDATED = 2,
+} iree_hal_streaming_graph_capture_state_t;
+
 // Graph structure (template).
 typedef struct iree_hal_streaming_graph_t {
   iree_atomic_ref_count_t ref_count;
 
+  // Serializes every capture-time graph mutation and frontier publication with
+  // participant adoption and origin termination. Capture lock order is always
+  // this mutex, then context->stream_list_mutex, then an individual stream
+  // mutex. Graph references are released only after all three are dropped.
+  iree_slim_mutex_t capture_mutex;
+  iree_atomic_int32_t capture_state;
+  unsigned long long capture_id;
+  iree_hal_streaming_capture_mode_t capture_mode;
+  uintptr_t capture_owner_thread_id;
   // Arena allocator for all graph allocations.
   iree_arena_allocator_t arena;
   iree_allocator_t arena_allocator;
@@ -139,6 +157,35 @@ iree_status_t iree_hal_streaming_capture_try_record_node(
 iree_status_t iree_hal_streaming_capture_try_record_noop(
     iree_hal_streaming_stream_t* stream, bool* out_was_capturing);
 
+// Snapshots the active capture frontier into |event| in the same graph-wide
+// transaction used by node recorders. Returns |*out_was_capturing| false when
+// the stream is not capturing.
+iree_status_t iree_hal_streaming_capture_try_record_event(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_event_t* event,
+    bool* out_was_capturing);
+
+// Invalidates the active capture session containing |stream|. Returns true if
+// the call observed that session before origin termination claimed it.
+bool iree_hal_streaming_capture_invalidate(iree_hal_streaming_stream_t* stream);
+
+// Invalidates exactly |capture_id| on |graph| and returns whether that session
+// still existed before origin termination claimed final publication.
+bool iree_hal_streaming_capture_graph_invalidate(
+    iree_hal_streaming_graph_t* graph, unsigned long long capture_id);
+
+// Joins |stream| to an active captured event frontier on |graph|. Participant
+// adoption and dependency publication are one graph-wide transaction.
+iree_status_t iree_hal_streaming_capture_join_graph(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_t* graph,
+    unsigned long long capture_id,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count);
+
+// Atomically detaches |stream| from any exact capture session and removes it
+// from |context|'s stream registry. Returns true when the registry reference
+// was removed. Lock order: graph/session -> context stream-list -> stream.
+bool iree_hal_streaming_capture_unregister_stream(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_stream_t* stream);
 // Type of partition - determines how nodes are executed.
 enum iree_hal_streaming_graph_partition_type_e {
   // Can go in command buffer (count 1 may also be optimizable into a queue op).

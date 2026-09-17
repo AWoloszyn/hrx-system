@@ -9,6 +9,7 @@
 #include "binding/hip/execution_resource.h"
 #include "binding/hip/execution_resource_descriptor.h"
 #include "binding/hip/stream.h"
+#include "common/graph.h"
 #include "common/internal.h"
 #include "common/stream.h"
 #include "iree/base/threading/call_once.h"
@@ -815,47 +816,9 @@ static bool iree_hip_execution_context_invalidate_captures(
     const iree_hip_execution_context_stream_snapshot_t* snapshot) {
   bool had_capture = false;
   for (iree_host_size_t i = 0; i < snapshot->stream_count; ++i) {
-    iree_hal_streaming_stream_t* stream = snapshot->streams[i];
-    iree_slim_mutex_lock(&stream->mutex);
-    if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-      had_capture = true;
-      if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-        iree_hal_streaming_stream_set_capture_status(
-            stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
-      }
-    }
-    iree_slim_mutex_unlock(&stream->mutex);
+    had_capture |= iree_hal_streaming_capture_invalidate(snapshot->streams[i]);
   }
   return had_capture;
-}
-
-// Invalidates streams participating in |capture_graph|. The event retaining
-// the graph also retains |common_context| for the duration of the call.
-static iree_status_t iree_hip_execution_context_invalidate_capture_graph(
-    iree_hal_streaming_context_t* common_context,
-    iree_hal_streaming_graph_t* capture_graph) {
-  IREE_ASSERT_ARGUMENT(common_context);
-  IREE_ASSERT_ARGUMENT(capture_graph);
-
-  iree_hal_streaming_stream_t** streams = NULL;
-  iree_host_size_t stream_count = 0;
-  iree_status_t status = iree_hal_streaming_context_snapshot_streams(
-      common_context, &streams, &stream_count);
-  if (iree_status_is_ok(status)) {
-    for (iree_host_size_t i = 0; i < stream_count; ++i) {
-      iree_hal_streaming_stream_t* stream = streams[i];
-      iree_slim_mutex_lock(&stream->mutex);
-      if (stream->capture_graph == capture_graph &&
-          stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-        iree_hal_streaming_stream_set_capture_status(
-            stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
-      }
-      iree_slim_mutex_unlock(&stream->mutex);
-    }
-  }
-  iree_hal_streaming_context_release_stream_snapshot(common_context, streams,
-                                                     stream_count);
-  return status;
 }
 
 hipError_t iree_hip_execution_context_record_event(
@@ -915,13 +878,14 @@ hipError_t iree_hip_execution_context_wait_event(
     return hipErrorInvalidValue;
   }
 
+  unsigned long long capture_id = 0;
   iree_hal_streaming_graph_t* capture_graph =
-      iree_hal_streaming_event_acquire_capture_graph(event);
+      iree_hal_streaming_event_acquire_capture_graph(event, &capture_id);
   iree_status_t status = iree_ok_status();
   const bool event_is_captured = capture_graph != NULL;
   if (capture_graph) {
-    status = iree_hip_execution_context_invalidate_capture_graph(event->context,
-                                                                 capture_graph);
+    (void)iree_hal_streaming_capture_graph_invalidate(capture_graph,
+                                                      capture_id);
   }
   iree_hal_streaming_graph_release(capture_graph);
 

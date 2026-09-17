@@ -469,13 +469,39 @@ struct ProbedHostAllocator {
   }
 };
 
+struct BlockingHostAllocator {
+  iree_allocator_t delegate = iree_allocator_system();
+  std::atomic<bool> block_next_allocation = false;
+  std::atomic<bool> allocation_entered = false;
+  std::atomic<bool> release_allocation = false;
+
+  static iree_status_t Control(void* self, iree_allocator_command_t command,
+                               const void* params, void** inout_ptr) {
+    auto* allocator = static_cast<BlockingHostAllocator*>(self);
+    const bool is_allocation = command == IREE_ALLOCATOR_COMMAND_MALLOC ||
+                               command == IREE_ALLOCATOR_COMMAND_CALLOC ||
+                               command == IREE_ALLOCATOR_COMMAND_REALLOC;
+    if (is_allocation && allocator->block_next_allocation.exchange(
+                             false, std::memory_order_acq_rel)) {
+      allocator->allocation_entered.store(true, std::memory_order_release);
+      while (!allocator->release_allocation.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+    }
+    return allocator->delegate.ctl(allocator->delegate.self, command, params,
+                                   inout_ptr);
+  }
+
+  iree_allocator_t AsAllocator() {
+    return iree_allocator_t{this, &BlockingHostAllocator::Control};
+  }
+};
+
 struct CaptureRecordGate {
-  // Set once the recorder is executing under the stream mutex.
+  // Set once the recorder is executing under the graph/session transaction.
   std::atomic<bool> entered = false;
-  // Set by the test after a concurrent capture end has started.
+  // Set by the test after a concurrent operation has attempted the transaction.
   std::atomic<bool> release = false;
-  // Existing graph node published as the terminal capture frontier.
-  iree_hal_streaming_graph_node_t* terminal_node = nullptr;
 };
 
 iree_status_t RecordGatedCaptureNode(
@@ -483,16 +509,13 @@ iree_status_t RecordGatedCaptureNode(
     iree_hal_streaming_graph_node_t** dependencies,
     iree_host_size_t dependency_count, void* user_data,
     iree_hal_streaming_graph_node_t** out_terminal_node) {
-  (void)graph;
-  (void)dependencies;
-  (void)dependency_count;
   auto* gate = static_cast<CaptureRecordGate*>(user_data);
   gate->entered.store(true, std::memory_order_release);
   while (!gate->release.load(std::memory_order_acquire)) {
     std::this_thread::yield();
   }
-  *out_terminal_node = gate->terminal_node;
-  return iree_ok_status();
+  return iree_hal_streaming_graph_add_empty_node(
+      graph, dependencies, dependency_count, out_terminal_node);
 }
 
 iree_status_t FailCaptureNodeRecording(
@@ -509,104 +532,494 @@ iree_status_t FailCaptureNodeRecording(
                           "injected capture construction failure");
 }
 
-// Initializes the minimum production-shaped capture state needed to exercise
-// capture recording and termination without creating a device.
+iree_status_t RecordLinkedNodeThenFail(
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, void* user_data,
+    iree_hal_streaming_graph_node_t** out_terminal_node) {
+  (void)user_data;
+  iree_hal_streaming_graph_node_t* linked_node = nullptr;
+  IREE_RETURN_IF_ERROR(iree_hal_streaming_graph_add_empty_node(
+      graph, dependencies, dependency_count, &linked_node));
+  *out_terminal_node = linked_node;
+  return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                          "injected failure after graph mutation");
+}
+
+// Initializes production graphs and the minimum stream/context state needed to
+// exercise shared capture transactions without creating a device.
 class CaptureTransactionTestState {
  public:
   CaptureTransactionTestState() {
+    iree_atomic_ref_count_init(&context_.ref_count);
     iree_slim_mutex_initialize(&context_.stream_list_mutex);
-    iree_slim_mutex_initialize(&stream_.mutex);
-    iree_atomic_store(&context_.capture_stream_count, 1,
+    iree_atomic_store(&context_.capture_stream_count, 0,
                       iree_memory_order_release);
-    context_.streams = streams_;
-    context_.stream_count = 1;
+    context_.next_capture_id = 2;
     context_.host_allocator = iree_allocator_system();
-    streams_[0] = &stream_;
+    context_.device_entry = &device_entry_;
+    iree_arena_block_pool_initialize(/*block_size=*/64 * 1024,
+                                     iree_allocator_system(),
+                                     &device_entry_.block_pool);
 
-    IREE_CHECK_OK(iree_allocator_malloc(iree_allocator_system(), sizeof(*node_),
-                                        (void**)&node_));
-    memset(node_, 0, sizeof(*node_));
-    IREE_CHECK_OK(iree_allocator_malloc(
-        iree_allocator_system(),
-        sizeof(iree_hal_streaming_node_block_t) + sizeof(node_block_->nodes[0]),
-        (void**)&node_block_));
-    memset(node_block_, 0,
-           sizeof(*node_block_) + sizeof(node_block_->nodes[0]));
-    node_block_->capacity = 1;
-    node_block_->count = 1;
-    node_block_->nodes[0] = node_;
-    node_->graph = &graph_;
-    node_->type = IREE_HAL_STREAMING_GRAPH_NODE_TYPE_EMPTY;
-    graph_.host_allocator = iree_allocator_system();
-    graph_.node_blocks = node_block_;
-    graph_.current_node_block = node_block_;
-    graph_.node_count = 1;
-    graph_.next_clone_source_node_index = 1;
+    InitializeStream(&origin_, /*stream_id=*/1);
+    InitializeStream(&participant_, /*stream_id=*/2);
+    InitializeStream(&waiter_, /*stream_id=*/3);
+    streams_[0] = &origin_;
+    streams_[1] = &participant_;
+    streams_[2] = &waiter_;
+    context_.streams = streams_;
+    context_.stream_count = std::size(streams_);
+    context_.stream_capacity = std::size(streams_);
 
-    stream_.context = &context_;
-    stream_.host_allocator = iree_allocator_system();
-    stream_.capture_status = IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE;
-    stream_.capture_mode = IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED;
-    stream_.capture_graph = &graph_;
-    stream_.capture_origin = true;
-    stream_.capture_joined_to_origin = true;
+    IREE_CHECK_OK(iree_hal_streaming_graph_create(
+        &context_, IREE_HAL_STREAMING_GRAPH_FLAG_NONE, iree_allocator_system(),
+        &graph_));
+    IREE_CHECK_OK(
+        iree_hal_streaming_graph_add_empty_node(graph_, nullptr, 0, &node_));
+    IREE_CHECK_OK(iree_hal_streaming_graph_create(
+        &context_, IREE_HAL_STREAMING_GRAPH_FLAG_NONE, iree_allocator_system(),
+        &second_graph_));
+
+    iree_slim_mutex_lock(&graph_->capture_mutex);
+    graph_->capture_id = 1;
+    graph_->capture_mode = IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED;
+    iree_atomic_store(&graph_->capture_state,
+                      IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_ACTIVE,
+                      iree_memory_order_release);
+    iree_slim_mutex_lock(&origin_.mutex);
+    origin_.capture_mode = IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED;
+    origin_.capture_graph = graph_;
+    origin_.capture_graph_owned = false;
+    origin_.capture_origin = true;
+    origin_.capture_id = 1;
+    iree_hal_streaming_stream_set_capture_status(
+        &origin_, IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE);
+    iree_slim_mutex_unlock(&origin_.mutex);
+    iree_slim_mutex_unlock(&graph_->capture_mutex);
   }
 
   ~CaptureTransactionTestState() {
-    iree_allocator_free(stream_.host_allocator, stream_.capture_dependencies);
-    iree_allocator_free(iree_allocator_system(), node_block_);
-    iree_allocator_free(iree_allocator_system(), node_);
-    iree_slim_mutex_deinitialize(&stream_.mutex);
+    iree_hal_streaming_context_unregister_stream(&context_, &waiter_);
+    iree_hal_streaming_context_unregister_stream(&context_, &participant_);
+    iree_hal_streaming_context_unregister_stream(&context_, &origin_);
+    iree_allocator_free(origin_.host_allocator, origin_.capture_dependencies);
+    iree_allocator_free(participant_.host_allocator,
+                        participant_.capture_dependencies);
+    iree_allocator_free(waiter_.host_allocator, waiter_.capture_dependencies);
+    iree_hal_streaming_graph_release(second_graph_);
+    iree_hal_streaming_graph_release(graph_);
+    iree_slim_mutex_deinitialize(&waiter_.mutex);
+    iree_slim_mutex_deinitialize(&participant_.mutex);
+    iree_slim_mutex_deinitialize(&origin_.mutex);
     iree_slim_mutex_deinitialize(&context_.stream_list_mutex);
+    iree_arena_block_pool_deinitialize(&device_entry_.block_pool);
+  }
+
+  iree_status_t SetOriginFrontierToPrimaryNode() {
+    iree_hal_streaming_graph_node_t* dependencies[] = {node_};
+    return iree_hal_streaming_update_capture_dependencies(
+        &origin_, dependencies, std::size(dependencies),
+        IREE_HAL_STREAMING_CAPTURE_DEPENDENCIES_SET);
+  }
+
+  iree_status_t JoinParticipantAtPrimaryNode() {
+    iree_hal_streaming_graph_node_t* dependencies[] = {node_};
+    return iree_hal_streaming_capture_join_graph(&participant_, graph_,
+                                                 /*capture_id=*/1, dependencies,
+                                                 std::size(dependencies));
+  }
+
+  iree_status_t BeginSecondGraphCapture() {
+    return iree_hal_streaming_begin_capture_to_graph(
+        &waiter_, second_graph_, nullptr, 0,
+        IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED);
   }
 
   iree_hal_streaming_context_t* context() { return &context_; }
-  iree_hal_streaming_stream_t* stream() { return &stream_; }
-  iree_hal_streaming_graph_t* graph() { return &graph_; }
+  iree_hal_streaming_stream_t* origin() { return &origin_; }
+  iree_hal_streaming_stream_t* participant() { return &participant_; }
+  iree_hal_streaming_stream_t* waiter() { return &waiter_; }
+  iree_hal_streaming_graph_t* graph() { return graph_; }
+  iree_hal_streaming_graph_t* second_graph() { return second_graph_; }
   iree_hal_streaming_graph_node_t* node() { return node_; }
 
  private:
+  void InitializeStream(iree_hal_streaming_stream_t* stream,
+                        unsigned long long stream_id) {
+    iree_atomic_ref_count_init_value(&stream->ref_count, 2);
+    iree_slim_mutex_initialize(&stream->mutex);
+    stream->context = &context_;
+    stream->registration_state =
+        IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED;
+    stream->stream_id = stream_id;
+    stream->host_allocator = iree_allocator_system();
+    stream->capture_status = IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+  }
+
   iree_hal_streaming_context_t context_ = {};
-  iree_hal_streaming_stream_t stream_ = {};
-  iree_hal_streaming_stream_t* streams_[1] = {};
-  iree_hal_streaming_graph_t graph_ = {};
+  iree_hal_streaming_device_t device_entry_ = {};
+  iree_hal_streaming_stream_t origin_ = {};
+  iree_hal_streaming_stream_t participant_ = {};
+  iree_hal_streaming_stream_t waiter_ = {};
+  iree_hal_streaming_stream_t* streams_[3] = {};
+  iree_hal_streaming_graph_t* graph_ = nullptr;
+  iree_hal_streaming_graph_t* second_graph_ = nullptr;
   iree_hal_streaming_graph_node_t* node_ = nullptr;
-  iree_hal_streaming_node_block_t* node_block_ = nullptr;
 };
 
-TEST(GraphTest, CaptureRecordingSerializesTermination) {
+TEST(GraphTest, ParticipantMutationSerializesOriginTermination) {
   CaptureTransactionTestState state;
+  IREE_ASSERT_OK(state.SetOriginFrontierToPrimaryNode());
+  IREE_ASSERT_OK(state.JoinParticipantAtPrimaryNode());
+  const iree_host_size_t initial_node_count = state.graph()->node_count;
+
   CaptureRecordGate gate;
-  gate.terminal_node = state.node();
   bool was_capturing = false;
-  iree_status_t record_status = iree_ok_status();
+  std::atomic<iree_status_code_t> record_status_code = IREE_STATUS_UNKNOWN;
   std::thread record_thread([&] {
-    record_status = iree_hal_streaming_capture_try_record_node(
-        state.stream(), RecordGatedCaptureNode, &gate, &was_capturing);
+    iree_status_t record_status = iree_hal_streaming_capture_try_record_node(
+        state.participant(), RecordGatedCaptureNode, &gate, &was_capturing);
+    record_status_code.store(iree_status_code(record_status),
+                             std::memory_order_release);
+    iree_status_ignore(record_status);
   });
   while (!gate.entered.load(std::memory_order_acquire)) {
     std::this_thread::yield();
   }
 
-  std::atomic<bool> end_started = false;
+  const int32_t graph_refs_before_end =
+      iree_atomic_ref_count_load(&state.graph()->ref_count);
+  std::atomic<bool> end_completed = false;
   iree_hal_streaming_graph_t* captured_graph = nullptr;
-  iree_status_t end_status = iree_ok_status();
+  std::atomic<iree_status_code_t> end_status_code = IREE_STATUS_UNKNOWN;
   std::thread end_thread([&] {
-    end_started.store(true, std::memory_order_release);
-    end_status =
-        iree_hal_streaming_end_capture(state.stream(), &captured_graph);
+    iree_status_t end_status =
+        iree_hal_streaming_end_capture(state.origin(), &captured_graph);
+    end_status_code.store(iree_status_code(end_status),
+                          std::memory_order_release);
+    iree_status_ignore(end_status);
+    end_completed.store(true, std::memory_order_release);
   });
-  while (!end_started.load(std::memory_order_acquire)) {
+  bool observed_end_snapshot = false;
+  for (int i = 0; i < 1000000; ++i) {
+    if (iree_atomic_ref_count_load(&state.graph()->ref_count) >
+        graph_refs_before_end) {
+      observed_end_snapshot = true;
+      break;
+    }
+    if (end_completed.load(std::memory_order_acquire)) break;
     std::this_thread::yield();
   }
+  EXPECT_TRUE(observed_end_snapshot);
+  // Keep the recorder gated long enough for an incorrectly unlocked end to
+  // finish; the graph-wide transaction must keep termination blocked.
+  if (observed_end_snapshot) {
+    for (int i = 0;
+         i < 100000 && !end_completed.load(std::memory_order_acquire); ++i) {
+      std::this_thread::yield();
+    }
+  }
+  EXPECT_FALSE(end_completed.load(std::memory_order_acquire));
+
   gate.release.store(true, std::memory_order_release);
   record_thread.join();
   end_thread.join();
 
-  IREE_EXPECT_OK(record_status);
-  IREE_EXPECT_OK(end_status);
+  EXPECT_EQ(IREE_STATUS_OK, record_status_code.load(std::memory_order_acquire));
+  EXPECT_EQ(IREE_STATUS_ABORTED,
+            end_status_code.load(std::memory_order_acquire));
   EXPECT_TRUE(was_capturing);
+  EXPECT_EQ(initial_node_count + 1, state.graph()->node_count);
+  EXPECT_EQ(nullptr, captured_graph);
+}
+TEST(GraphTest, ParticipantPartialPrefixInvalidatesSharedCapture) {
+  CaptureTransactionTestState state;
+  IREE_ASSERT_OK(state.JoinParticipantAtPrimaryNode());
+  const iree_host_size_t initial_node_count = state.graph()->node_count;
+
+  bool was_capturing = false;
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_hal_streaming_capture_try_record_node(
+                            state.participant(), RecordLinkedNodeThenFail,
+                            nullptr, &was_capturing));
+  EXPECT_TRUE(was_capturing);
+  EXPECT_EQ(initial_node_count + 1, state.graph()->node_count);
+
+  iree_hal_streaming_capture_status_t origin_status =
+      IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+  IREE_EXPECT_OK(iree_hal_streaming_capture_status(state.origin(),
+                                                   &origin_status, nullptr));
+  EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED, origin_status);
+  iree_hal_streaming_graph_t* captured_graph = nullptr;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DATA_LOSS,
+      iree_hal_streaming_end_capture(state.origin(), &captured_graph));
+  EXPECT_EQ(nullptr, captured_graph);
+}
+
+TEST(GraphTest, ParticipantUnregisterSerializesAndRejectsReadoption) {
+  CaptureTransactionTestState state;
+  IREE_ASSERT_OK(state.SetOriginFrontierToPrimaryNode());
+  IREE_ASSERT_OK(state.JoinParticipantAtPrimaryNode());
+
+  iree_slim_mutex_lock(&state.graph()->capture_mutex);
+  const int32_t graph_refs_before_unregister =
+      iree_atomic_ref_count_load(&state.graph()->ref_count);
+  std::atomic<bool> unregister_completed = false;
+  std::thread unregister_thread([&] {
+    iree_hal_streaming_context_unregister_stream(state.context(),
+                                                 state.participant());
+    unregister_completed.store(true, std::memory_order_release);
+  });
+  bool observed_unregister_snapshot = false;
+  for (int i = 0; i < 1000000; ++i) {
+    if (iree_atomic_ref_count_load(&state.graph()->ref_count) >
+        graph_refs_before_unregister) {
+      observed_unregister_snapshot = true;
+      break;
+    }
+    if (unregister_completed.load(std::memory_order_acquire)) break;
+    std::this_thread::yield();
+  }
+  // Keep the graph lock held long enough for an incorrectly unlocked
+  // unregister to finish; the real lifecycle transaction must remain blocked.
+  if (observed_unregister_snapshot) {
+    for (int i = 0;
+         i < 100000 && !unregister_completed.load(std::memory_order_acquire);
+         ++i) {
+      std::this_thread::yield();
+    }
+  }
+  EXPECT_TRUE(observed_unregister_snapshot);
+  EXPECT_FALSE(unregister_completed.load(std::memory_order_acquire));
+
+  iree_slim_mutex_unlock(&state.graph()->capture_mutex);
+  unregister_thread.join();
+  EXPECT_TRUE(unregister_completed.load(std::memory_order_acquire));
+  EXPECT_EQ(2u, state.context()->stream_count);
+  EXPECT_EQ(IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_UNREGISTERED,
+            state.participant()->registration_state);
+  EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_NONE,
+            state.participant()->capture_status);
+  EXPECT_EQ(nullptr, state.participant()->capture_graph);
+
+  iree_hal_streaming_graph_t* captured_graph = nullptr;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DATA_LOSS,
+      iree_hal_streaming_end_capture(state.origin(), &captured_graph));
+  EXPECT_EQ(nullptr, captured_graph);
+
+  IREE_ASSERT_OK(state.BeginSecondGraphCapture());
+  unsigned long long second_capture_id = 0;
+  iree_hal_streaming_capture_status_t second_capture_status =
+      IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+  IREE_ASSERT_OK(iree_hal_streaming_capture_status(
+      state.waiter(), &second_capture_status, &second_capture_id));
+  ASSERT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE, second_capture_status);
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
+                        iree_hal_streaming_capture_join_graph(
+                            state.participant(), state.second_graph(),
+                            second_capture_id, nullptr, 0));
+  EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_NONE,
+            state.participant()->capture_status);
+
+  IREE_EXPECT_OK(
+      iree_hal_streaming_end_capture(state.waiter(), &captured_graph));
+  EXPECT_EQ(state.second_graph(), captured_graph);
+}
+
+TEST(GraphTest, OriginUnregisterDetachesJoinedSessionAndParticipantCanReuse) {
+  CaptureTransactionTestState state;
+  IREE_ASSERT_OK(state.SetOriginFrontierToPrimaryNode());
+  IREE_ASSERT_OK(state.JoinParticipantAtPrimaryNode());
+
+  // Force unregister to take its retained snapshot and then stop at the graph
+  // transaction. This proves origin destruction uses the same lifecycle lock
+  // as adoption, recording, and end-capture.
+  iree_slim_mutex_lock(&state.graph()->capture_mutex);
+  const int32_t graph_refs_before_unregister =
+      iree_atomic_ref_count_load(&state.graph()->ref_count);
+  std::atomic<bool> unregister_completed = false;
+  std::thread unregister_thread([&] {
+    iree_hal_streaming_context_unregister_stream(state.context(),
+                                                 state.origin());
+    unregister_completed.store(true, std::memory_order_release);
+  });
+  bool observed_unregister_snapshot = false;
+  for (int i = 0; i < 1000000; ++i) {
+    if (iree_atomic_ref_count_load(&state.graph()->ref_count) >
+        graph_refs_before_unregister) {
+      observed_unregister_snapshot = true;
+      break;
+    }
+    if (unregister_completed.load(std::memory_order_acquire)) break;
+    std::this_thread::yield();
+  }
+  EXPECT_TRUE(observed_unregister_snapshot);
+  EXPECT_FALSE(unregister_completed.load(std::memory_order_acquire));
+
+  iree_slim_mutex_unlock(&state.graph()->capture_mutex);
+  unregister_thread.join();
+  EXPECT_TRUE(unregister_completed.load(std::memory_order_acquire));
+  EXPECT_EQ(IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_UNREGISTERED,
+            state.origin()->registration_state);
+  EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_NONE,
+            state.participant()->capture_status);
+  EXPECT_EQ(nullptr, state.participant()->capture_graph);
+  EXPECT_EQ(0u, state.participant()->capture_id);
+  EXPECT_EQ(0u, state.graph()->capture_id);
+  EXPECT_EQ(IREE_HAL_STREAMING_GRAPH_CAPTURE_STATE_INACTIVE,
+            iree_atomic_load(&state.graph()->capture_state,
+                             iree_memory_order_acquire));
+
+  // The surviving participant must not remain a non-origin member of the dead
+  // session. Reusing both it and the same graph is the observable guarantee.
+  IREE_ASSERT_OK(iree_hal_streaming_begin_capture_to_graph(
+      state.participant(), state.graph(), nullptr, 0,
+      IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED));
+  iree_hal_streaming_capture_status_t capture_status =
+      IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+  unsigned long long capture_id = 0;
+  IREE_ASSERT_OK(iree_hal_streaming_capture_status(
+      state.participant(), &capture_status, &capture_id));
+  EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE, capture_status);
+  EXPECT_NE(0u, capture_id);
+  EXPECT_NE(1u, capture_id);
+
+  iree_hal_streaming_graph_t* captured_graph = nullptr;
+  IREE_EXPECT_OK(
+      iree_hal_streaming_end_capture(state.participant(), &captured_graph));
   EXPECT_EQ(state.graph(), captured_graph);
+}
+
+TEST(GraphTest, CapturedEventWaitUsesAtomicSessionFrontierSnapshot) {
+  CaptureTransactionTestState state;
+  IREE_ASSERT_OK(state.SetOriginFrontierToPrimaryNode());
+  IREE_ASSERT_OK(state.BeginSecondGraphCapture());
+
+  BlockingHostAllocator allocator;
+  iree_hal_streaming_event_t* event = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_event_create(
+      state.context(), IREE_HAL_STREAMING_EVENT_FLAG_DISABLE_TIMING,
+      allocator.AsAllocator(), &event));
+  IREE_ASSERT_OK(iree_hal_streaming_event_record(event, state.origin()));
+  allocator.block_next_allocation.store(true, std::memory_order_release);
+
+  std::atomic<bool> wait_completed = false;
+  std::atomic<iree_status_code_t> wait_status_code = IREE_STATUS_UNKNOWN;
+  std::thread wait_thread([&] {
+    iree_status_t status = iree_hal_streaming_stream_wait_event(
+        state.participant(), event, /*capture_external_wait=*/false);
+    wait_status_code.store(iree_status_code(status), std::memory_order_release);
+    iree_status_ignore(status);
+    wait_completed.store(true, std::memory_order_release);
+  });
+  bool observed_blocked_snapshot = false;
+  for (int i = 0; i < 1000000; ++i) {
+    if (allocator.allocation_entered.load(std::memory_order_acquire)) {
+      observed_blocked_snapshot = true;
+      break;
+    }
+    if (wait_completed.load(std::memory_order_acquire)) break;
+    std::this_thread::yield();
+  }
+  if (!observed_blocked_snapshot) {
+    allocator.release_allocation.store(true, std::memory_order_release);
+    wait_thread.join();
+    iree_hal_streaming_event_release(event);
+    FAIL() << "captured-event snapshot allocation was not reached";
+    return;
+  }
+  EXPECT_FALSE(wait_completed.load(std::memory_order_acquire));
+
+  const int32_t second_graph_refs_before_record =
+      iree_atomic_ref_count_load(&state.second_graph()->ref_count);
+  std::atomic<bool> record_completed = false;
+  std::atomic<iree_status_code_t> record_status_code = IREE_STATUS_UNKNOWN;
+  std::thread record_thread([&] {
+    iree_status_t status =
+        iree_hal_streaming_event_record(event, state.waiter());
+    record_status_code.store(iree_status_code(status),
+                             std::memory_order_release);
+    iree_status_ignore(status);
+    record_completed.store(true, std::memory_order_release);
+  });
+  bool observed_blocked_record = false;
+  for (int i = 0; i < 1000000; ++i) {
+    if (iree_atomic_ref_count_load(&state.second_graph()->ref_count) >
+        second_graph_refs_before_record) {
+      observed_blocked_record = true;
+      break;
+    }
+    if (record_completed.load(std::memory_order_acquire)) break;
+    std::this_thread::yield();
+  }
+  EXPECT_TRUE(observed_blocked_record);
+  EXPECT_FALSE(record_completed.load(std::memory_order_acquire));
+
+  allocator.release_allocation.store(true, std::memory_order_release);
+  wait_thread.join();
+  record_thread.join();
+  EXPECT_EQ(IREE_STATUS_OK, wait_status_code.load(std::memory_order_acquire));
+  EXPECT_EQ(IREE_STATUS_OK, record_status_code.load(std::memory_order_acquire));
+  EXPECT_EQ(state.graph(), state.participant()->capture_graph);
+  EXPECT_EQ(1u, state.participant()->capture_id);
+
+  unsigned long long second_capture_id = 0;
+  iree_hal_streaming_graph_t* event_graph =
+      iree_hal_streaming_event_acquire_capture_graph(event, &second_capture_id);
+  EXPECT_EQ(state.second_graph(), event_graph);
+  EXPECT_NE(0u, second_capture_id);
+  iree_hal_streaming_graph_release(event_graph);
+  iree_hal_streaming_event_release(event);
+}
+
+TEST(GraphTest, StaleCapturedEventCannotAffectReusedGraphSession) {
+  CaptureTransactionTestState state;
+  iree_hal_streaming_event_t* event = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_event_create(
+      state.context(), IREE_HAL_STREAMING_EVENT_FLAG_DISABLE_TIMING,
+      iree_allocator_system(), &event));
+  IREE_ASSERT_OK(iree_hal_streaming_event_record(event, state.origin()));
+  unsigned long long stale_capture_id = 0;
+  iree_hal_streaming_graph_t* event_graph =
+      iree_hal_streaming_event_acquire_capture_graph(event, &stale_capture_id);
+  ASSERT_EQ(state.graph(), event_graph);
+  iree_hal_streaming_graph_release(event_graph);
+
+  iree_hal_streaming_graph_t* first_capture_graph = nullptr;
+  IREE_ASSERT_OK(
+      iree_hal_streaming_end_capture(state.origin(), &first_capture_graph));
+  ASSERT_EQ(state.graph(), first_capture_graph);
+  IREE_ASSERT_OK(iree_hal_streaming_begin_capture_to_graph(
+      state.origin(), state.graph(), nullptr, 0,
+      IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED));
+
+  unsigned long long current_capture_id = 0;
+  iree_hal_streaming_capture_status_t current_status =
+      IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+  IREE_ASSERT_OK(iree_hal_streaming_capture_status(
+      state.origin(), &current_status, &current_capture_id));
+  ASSERT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE, current_status);
+  ASSERT_NE(stale_capture_id, current_capture_id);
+
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DATA_LOSS,
+      iree_hal_streaming_stream_wait_event(state.participant(), event,
+                                           /*capture_external_wait=*/false));
+  EXPECT_FALSE(iree_hal_streaming_capture_graph_invalidate(state.graph(),
+                                                           stale_capture_id));
+  EXPECT_FALSE(iree_hal_streaming_capture_graph_invalidate(state.graph(), 0));
+  IREE_EXPECT_OK(iree_hal_streaming_capture_status(state.origin(),
+                                                   &current_status, nullptr));
+  EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE, current_status);
+
+  iree_hal_streaming_graph_t* second_capture_graph = nullptr;
+  IREE_EXPECT_OK(
+      iree_hal_streaming_end_capture(state.origin(), &second_capture_graph));
+  EXPECT_EQ(state.graph(), second_capture_graph);
+  iree_hal_streaming_event_release(event);
 }
 
 TEST(GraphTest, CaptureRecordingFailureInvalidatesCapture) {
@@ -615,22 +1028,22 @@ TEST(GraphTest, CaptureRecordingFailureInvalidatesCapture) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_RESOURCE_EXHAUSTED,
       iree_hal_streaming_capture_try_record_node(
-          state.stream(), FailCaptureNodeRecording, nullptr, &was_capturing));
+          state.origin(), FailCaptureNodeRecording, nullptr, &was_capturing));
   EXPECT_TRUE(was_capturing);
   EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED,
-            state.stream()->capture_status);
+            state.origin()->capture_status);
 }
 
 TEST(GraphTest, CaptureNoOpPreservesFrontier) {
   CaptureTransactionTestState state;
   bool was_capturing = false;
-  IREE_EXPECT_OK(iree_hal_streaming_capture_try_record_noop(state.stream(),
+  IREE_EXPECT_OK(iree_hal_streaming_capture_try_record_noop(state.origin(),
                                                             &was_capturing));
   EXPECT_TRUE(was_capturing);
   EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE,
-            state.stream()->capture_status);
-  EXPECT_EQ(0u, state.stream()->capture_dependency_count);
-  EXPECT_EQ(0u, state.stream()->capture_dependency_capacity);
+            state.origin()->capture_status);
+  EXPECT_EQ(0u, state.origin()->capture_dependency_count);
+  EXPECT_EQ(0u, state.origin()->capture_dependency_capacity);
   EXPECT_EQ(1u, state.graph()->node_count);
 }
 
