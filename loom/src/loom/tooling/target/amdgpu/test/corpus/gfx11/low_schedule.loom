@@ -1,0 +1,270 @@
+// Two BF16 tiles cross authored Low call boundaries under four schedule policies.
+// Every lane uses A=1 and B=1..32, so the two matrix products contribute 136 and
+// 392 to each result. Distinct contributions expose stale or duplicated tiles.
+// The matching native scheduling fixture checks load placement and partial
+// waits; these cases execute the default source compiler and HAL path.
+
+amdgpu.target<gfx11-generic> @schedule_wmma_target {subgroup_size = 32}
+
+low.func.def target<amdgpu.gfx11.generic.core>(@schedule_wmma_target) @schedule_wmma_free(%workitem_id: reg<amdgpu.vgpr>, %lhs_view: reg<amdgpu.sgpr x2>, %rhs_view: reg<amdgpu.sgpr x2>, %out_view: reg<amdgpu.sgpr x2>) asm {
+  %lane = v_and_b32_src0_inline %workitem_id, 15
+  %byte_offset = v_lshlrev_b32_src0_inline %lane, 6
+  %lhs0_low = global_load_b128_saddr %byte_offset, %lhs_view
+  %lhs0_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 16}
+  %lhs0 = concat(%lhs0_low, %lhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs0_low = global_load_b128_saddr %byte_offset, %rhs_view
+  %rhs0_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 16}
+  %rhs0 = concat(%rhs0_low, %rhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %zero = v_mov_b32 0
+  %zero_acc = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
+  %zero_acc_copy = copy %zero_acc : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %partial = v_wmma_f32_16x16x16_bf16 %lhs0, %rhs0, %zero_acc_copy
+  %lhs1_low = global_load_b128_saddr %byte_offset, %lhs_view {offset = 32}
+  %lhs1_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 48}
+  %lhs1 = concat(%lhs1_low, %lhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs1_low = global_load_b128_saddr %byte_offset, %rhs_view {offset = 32}
+  %rhs1_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 48}
+  %rhs1 = concat(%rhs1_low, %rhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %partial_copy = copy %partial : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %result = v_wmma_f32_16x16x16_bf16 %lhs1, %rhs1, %partial_copy
+  %out_offset = v_lshlrev_b32_src0_inline %workitem_id, 2
+  %result0 = slice %result[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result0, %out_view
+  %result1 = slice %result[1] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result1, %out_view {offset = 128}
+  %result2 = slice %result[2] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result2, %out_view {offset = 256}
+  %result3 = slice %result[3] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result3, %out_view {offset = 384}
+  %result4 = slice %result[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result4, %out_view {offset = 512}
+  %result5 = slice %result[5] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result5, %out_view {offset = 640}
+  %result6 = slice %result[6] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result6, %out_view {offset = 768}
+  %result7 = slice %result[7] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result7, %out_view {offset = 896}
+  return
+}
+
+kernel.def target(@schedule_wmma_target) @schedule_wmma_free_kernel() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%lhs: buffer, %rhs: buffer, %output: buffer) {
+  %workitem = kernel.workitem.id<x> : index
+  %workitem_i32 = index.cast %workitem : index to i32
+  %lane = vector.splat %workitem_i32 : vector<1xi32>
+  low.invoke @schedule_wmma_free(%lane, %lhs, %rhs, %output) : (vector<1xi32>, buffer, buffer, buffer)
+  kernel.return
+}
+
+check.case public @schedule_wmma_free_case {
+  %lhs = check.generate.fill value(1.0) : tensor<16x32xbf16>
+  %rhs = check.generate.iota offset(1.0) step(1.0) period(32) : tensor<16x32xbf16>
+  %output = check.generate.fill value(-1.0) : tensor<256xf32>
+  %expected = check.generate.fill value(528.0) : tensor<256xf32>
+  kernel.launch @schedule_wmma_free_kernel(%lhs, %rhs, %output) : (tensor<16x32xbf16>, tensor<16x32xbf16>, tensor<256xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<256xf32>
+  check.return
+}
+
+check.benchmark<@schedule_wmma_free_case> @schedule_wmma_free_time
+
+low.func.def target<amdgpu.gfx11.generic.core>(@schedule_wmma_target) @schedule_wmma_fenced(%workitem_id: reg<amdgpu.vgpr>, %lhs_view: reg<amdgpu.sgpr x2>, %rhs_view: reg<amdgpu.sgpr x2>, %out_view: reg<amdgpu.sgpr x2>) asm {
+  %lane = v_and_b32_src0_inline %workitem_id, 15
+  %byte_offset = v_lshlrev_b32_src0_inline %lane, 6
+  %lhs0_low = global_load_b128_saddr %byte_offset, %lhs_view
+  %lhs0_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 16}
+  %lhs0 = concat(%lhs0_low, %lhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs0_low = global_load_b128_saddr %byte_offset, %rhs_view
+  %rhs0_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 16}
+  %rhs0 = concat(%rhs0_low, %rhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %zero = v_mov_b32 0
+  %zero_acc = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
+  %zero_acc_copy = copy %zero_acc : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  low.schedule.fence
+  %partial = v_wmma_f32_16x16x16_bf16 %lhs0, %rhs0, %zero_acc_copy
+  low.schedule.fence
+  %lhs1_low = global_load_b128_saddr %byte_offset, %lhs_view {offset = 32}
+  %lhs1_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 48}
+  %lhs1 = concat(%lhs1_low, %lhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs1_low = global_load_b128_saddr %byte_offset, %rhs_view {offset = 32}
+  %rhs1_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 48}
+  %rhs1 = concat(%rhs1_low, %rhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %partial_copy = copy %partial : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %result = v_wmma_f32_16x16x16_bf16 %lhs1, %rhs1, %partial_copy
+  %out_offset = v_lshlrev_b32_src0_inline %workitem_id, 2
+  %result0 = slice %result[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result0, %out_view
+  %result1 = slice %result[1] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result1, %out_view {offset = 128}
+  %result2 = slice %result[2] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result2, %out_view {offset = 256}
+  %result3 = slice %result[3] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result3, %out_view {offset = 384}
+  %result4 = slice %result[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result4, %out_view {offset = 512}
+  %result5 = slice %result[5] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result5, %out_view {offset = 640}
+  %result6 = slice %result[6] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result6, %out_view {offset = 768}
+  %result7 = slice %result[7] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result7, %out_view {offset = 896}
+  return
+}
+
+kernel.def target(@schedule_wmma_target) @schedule_wmma_fenced_kernel() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%lhs: buffer, %rhs: buffer, %output: buffer) {
+  %workitem = kernel.workitem.id<x> : index
+  %workitem_i32 = index.cast %workitem : index to i32
+  %lane = vector.splat %workitem_i32 : vector<1xi32>
+  low.invoke @schedule_wmma_fenced(%lane, %lhs, %rhs, %output) : (vector<1xi32>, buffer, buffer, buffer)
+  kernel.return
+}
+
+check.case public @schedule_wmma_fenced_case {
+  %lhs = check.generate.fill value(1.0) : tensor<16x32xbf16>
+  %rhs = check.generate.iota offset(1.0) step(1.0) period(32) : tensor<16x32xbf16>
+  %output = check.generate.fill value(-1.0) : tensor<256xf32>
+  %expected = check.generate.fill value(528.0) : tensor<256xf32>
+  kernel.launch @schedule_wmma_fenced_kernel(%lhs, %rhs, %output) : (tensor<16x32xbf16>, tensor<16x32xbf16>, tensor<256xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<256xf32>
+  check.return
+}
+
+check.benchmark<@schedule_wmma_fenced_case> @schedule_wmma_fenced_time
+
+low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@schedule_wmma_target) @schedule_wmma_locked(%workitem_id: reg<amdgpu.vgpr>, %lhs_view: reg<amdgpu.sgpr x2>, %rhs_view: reg<amdgpu.sgpr x2>, %out_view: reg<amdgpu.sgpr x2>) asm {
+  %lane = v_and_b32_src0_inline %workitem_id, 15
+  %byte_offset = v_lshlrev_b32_src0_inline %lane, 6
+  %lhs0_low = global_load_b128_saddr %byte_offset, %lhs_view
+  %lhs0_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 16}
+  %lhs0 = concat(%lhs0_low, %lhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs0_low = global_load_b128_saddr %byte_offset, %rhs_view
+  %rhs0_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 16}
+  %rhs0 = concat(%rhs0_low, %rhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %zero = v_mov_b32 0
+  %zero_acc = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
+  %zero_acc_copy = copy %zero_acc : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %partial = v_wmma_f32_16x16x16_bf16 %lhs0, %rhs0, %zero_acc_copy
+  %lhs1_low = global_load_b128_saddr %byte_offset, %lhs_view {offset = 32}
+  %lhs1_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 48}
+  %lhs1 = concat(%lhs1_low, %lhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs1_low = global_load_b128_saddr %byte_offset, %rhs_view {offset = 32}
+  %rhs1_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 48}
+  %rhs1 = concat(%rhs1_low, %rhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %partial_copy = copy %partial : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %result = v_wmma_f32_16x16x16_bf16 %lhs1, %rhs1, %partial_copy
+  %out_offset = v_lshlrev_b32_src0_inline %workitem_id, 2
+  %result0 = slice %result[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result0, %out_view
+  %result1 = slice %result[1] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result1, %out_view {offset = 128}
+  %result2 = slice %result[2] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result2, %out_view {offset = 256}
+  %result3 = slice %result[3] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result3, %out_view {offset = 384}
+  %result4 = slice %result[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result4, %out_view {offset = 512}
+  %result5 = slice %result[5] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result5, %out_view {offset = 640}
+  %result6 = slice %result[6] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result6, %out_view {offset = 768}
+  %result7 = slice %result[7] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result7, %out_view {offset = 896}
+  return
+}
+
+kernel.def target(@schedule_wmma_target) @schedule_wmma_locked_kernel() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%lhs: buffer, %rhs: buffer, %output: buffer) {
+  %workitem = kernel.workitem.id<x> : index
+  %workitem_i32 = index.cast %workitem : index to i32
+  %lane = vector.splat %workitem_i32 : vector<1xi32>
+  low.invoke @schedule_wmma_locked(%lane, %lhs, %rhs, %output) : (vector<1xi32>, buffer, buffer, buffer)
+  kernel.return
+}
+
+check.case public @schedule_wmma_locked_case {
+  %lhs = check.generate.fill value(1.0) : tensor<16x32xbf16>
+  %rhs = check.generate.iota offset(1.0) step(1.0) period(32) : tensor<16x32xbf16>
+  %output = check.generate.fill value(-1.0) : tensor<256xf32>
+  %expected = check.generate.fill value(528.0) : tensor<256xf32>
+  kernel.launch @schedule_wmma_locked_kernel(%lhs, %rhs, %output) : (tensor<16x32xbf16>, tensor<16x32xbf16>, tensor<256xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<256xf32>
+  check.return
+}
+
+check.benchmark<@schedule_wmma_locked_case> @schedule_wmma_locked_time
+
+low.func.def target<amdgpu.gfx11.generic.core>(@schedule_wmma_target) @schedule_wmma_overlap(%workitem_id: reg<amdgpu.vgpr>, %lhs_view: reg<amdgpu.sgpr x2>, %rhs_view: reg<amdgpu.sgpr x2>, %out_view: reg<amdgpu.sgpr x2>) asm {
+  %lane = v_and_b32_src0_inline %workitem_id, 15
+  %byte_offset = v_lshlrev_b32_src0_inline %lane, 6
+  %lhs0_low = global_load_b128_saddr %byte_offset, %lhs_view
+  %lhs0_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 16}
+  %lhs0 = concat(%lhs0_low, %lhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs0_low = global_load_b128_saddr %byte_offset, %rhs_view
+  %rhs0_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 16}
+  %rhs0 = concat(%rhs0_low, %rhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %zero = v_mov_b32 0
+  %zero_acc = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
+  %zero_acc_copy = copy %zero_acc : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %lhs1_low = global_load_b128_saddr %byte_offset, %lhs_view {offset = 32}
+  %lhs1_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 48}
+  %lhs1 = concat(%lhs1_low, %lhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs1_low = global_load_b128_saddr %byte_offset, %rhs_view {offset = 32}
+  %rhs1_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 48}
+  %rhs1 = concat(%rhs1_low, %rhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  low.schedule.fence
+  %partial = v_wmma_f32_16x16x16_bf16 %lhs0, %rhs0, %zero_acc_copy
+  %partial_copy = copy %partial : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %result = v_wmma_f32_16x16x16_bf16 %lhs1, %rhs1, %partial_copy
+  %out_offset = v_lshlrev_b32_src0_inline %workitem_id, 2
+  %result0 = slice %result[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result0, %out_view
+  %result1 = slice %result[1] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result1, %out_view {offset = 128}
+  %result2 = slice %result[2] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result2, %out_view {offset = 256}
+  %result3 = slice %result[3] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result3, %out_view {offset = 384}
+  %result4 = slice %result[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result4, %out_view {offset = 512}
+  %result5 = slice %result[5] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result5, %out_view {offset = 640}
+  %result6 = slice %result[6] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result6, %out_view {offset = 768}
+  %result7 = slice %result[7] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %out_offset, %result7, %out_view {offset = 896}
+  return
+}
+
+kernel.def target(@schedule_wmma_target) @schedule_wmma_overlap_kernel() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%lhs: buffer, %rhs: buffer, %output: buffer) {
+  %workitem = kernel.workitem.id<x> : index
+  %workitem_i32 = index.cast %workitem : index to i32
+  %lane = vector.splat %workitem_i32 : vector<1xi32>
+  low.invoke @schedule_wmma_overlap(%lane, %lhs, %rhs, %output) : (vector<1xi32>, buffer, buffer, buffer)
+  kernel.return
+}
+
+check.case public @schedule_wmma_overlap_case {
+  %lhs = check.generate.fill value(1.0) : tensor<16x32xbf16>
+  %rhs = check.generate.iota offset(1.0) step(1.0) period(32) : tensor<16x32xbf16>
+  %output = check.generate.fill value(-1.0) : tensor<256xf32>
+  %expected = check.generate.fill value(528.0) : tensor<256xf32>
+  kernel.launch @schedule_wmma_overlap_kernel(%lhs, %rhs, %output) : (tensor<16x32xbf16>, tensor<16x32xbf16>, tensor<256xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<256xf32>
+  check.return
+}
+
+check.benchmark<@schedule_wmma_overlap_case> @schedule_wmma_overlap_time

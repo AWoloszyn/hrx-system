@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include "loom/codegen/low/function.h"
 #include "loom/codegen/low/schedule/diagnostics.h"
 #include "loom/codegen/low/storage_relation.h"
 #include "loom/ops/low/ops.h"
@@ -1215,6 +1216,13 @@ static iree_status_t loom_low_schedule_initialize_node_value_ordinals(
 
 iree_status_t loom_low_schedule_fill_nodes(
     loom_low_schedule_build_state_t* state) {
+  // A locked body is a sequence of one-node source ranges under every
+  // scheduling strategy. Retain the boundary on each node so packet formation
+  // also preserves authored order without adding artificial dependencies.
+  const loom_low_schedule_node_flags_t source_order_flags =
+      loom_low_function_schedule(state->function_op) == LOOM_LOW_SCHEDULE_LOCKED
+          ? LOOM_LOW_SCHEDULE_NODE_FLAG_SOURCE_ORDER_BOUNDARY
+          : 0;
   uint32_t next_node_index = 0;
   for (uint16_t block_index = 0; block_index < state->body->block_count;
        ++block_index) {
@@ -1240,6 +1248,7 @@ iree_status_t loom_low_schedule_fill_nodes(
           .source_ordinal = next_node_index,
           .scheduled_ordinal = LOOM_LOW_SCHEDULE_NODE_NONE,
           .kind = LOOM_LOW_SCHEDULE_NODE_STRUCTURAL,
+          .flags = source_order_flags,
           .traits = loom_op_effective_traits(state->module, op),
           .descriptor = NULL,
           .schedule_class = NULL,
