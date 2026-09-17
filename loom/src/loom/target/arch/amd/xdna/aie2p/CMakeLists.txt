@@ -484,7 +484,9 @@ loom_check_test_suite(
     "test/descriptors/scalar_carry.loom-test"
     "test/descriptors/scalar_nonlinear.loom-test"
     "test/descriptors/scalar_stream.loom-test"
+    "test/leaf_allocation.loom-test"
     "test/leaf_interfaces.loom-test"
+    "test/leaf_schedule.loom-test"
     "test/module_contracts.loom-test"
     "test/pipeline_composition.loom-test"
     "test/pipeline_ports.loom-test"
@@ -773,31 +775,6 @@ loom_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     loom::codegen::low::descriptors
-)
-
-loom_cc_test(
-  NAME
-    leaf_object_test
-  SRCS
-    "emit/leaf_object_test.cc"
-  DEPS
-    ::bundle_plan
-    ::core_descriptors
-    ::leaf_object
-    ::low_registry
-    ::machine
-    ::relocation
-    iree::base::internal::arena
-    iree::testing::gtest
-    iree::testing::gtest_main
-    loom::codegen::low::frame
-    loom::codegen::low::packet
-    loom::codegen::low::text_asm
-    loom::codegen::low::verify
-    loom::format::text::parser
-    loom::ir
-    loom::ops::low
-    loom::target::emit::native::object
 )
 
 loom_cc_test(
