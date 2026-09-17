@@ -80,7 +80,9 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*device),
                   amdf_alignof(amdf_gpu_device_t), (void**)&device);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   status = amdf_device_initialize(&device->base, &amdf_gpu_device_vtable,
                                   endpoint, AMDF_ENGINE_KIND_GPU);
   amdf_gpu_umd_device_result_t result = {0};

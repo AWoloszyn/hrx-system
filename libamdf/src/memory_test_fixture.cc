@@ -117,7 +117,9 @@ static amdf_status_t PrepareFakeMemory(
   const amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*memory), amdf_alignof(FakeMemory),
                   reinterpret_cast<void**>(&memory));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   base_memory->accesses[access_ordinal].native = memory;
   memory->device = device;
   memory->export_status = AMDF_STATUS_OK;
@@ -251,7 +253,9 @@ static amdf_status_t FakeDeviceMemoryPrepareImport(
       memory, access_ordinal, import_info->device_access, profile->ordinal,
       external_memory->source_byte_offset, external_memory->byte_length,
       external_memory->physical_backing_id, out_info);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (device->import_failure_stage == ImportFailureStage::kAfterAttachment) {
     return device->import_status;
   }

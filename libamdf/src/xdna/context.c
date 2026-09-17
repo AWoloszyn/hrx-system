@@ -104,7 +104,9 @@ amdf_status_t AMDF_CALL amdf_xdna_context_create(
   amdf_xdna_context_t* context = NULL;
   status = amdf_calloc(host_allocator, sizeof(*context),
                        amdf_alignof(amdf_xdna_context_t), (void**)&context);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   status = amdf_device_register_child(device);
   if (amdf_status_is_ok(status)) {
     context->device = device;
@@ -172,7 +174,9 @@ amdf_status_t AMDF_CALL amdf_xdna_context_query_placement_info(
   const amdf_status_t status = amdf_structure_validate_output(
       out_info, AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_PLACEMENT_INFO,
       (uint32_t)sizeof(amdf_xdna_context_placement_info_t));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (amdf_xdna_device_get_info(context->device)->placement_modes == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
@@ -200,7 +204,9 @@ amdf_status_t AMDF_CALL amdf_xdna_context_enumerate_memory_scopes(
       (capacity != 0 && scopes == NULL)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  if (capacity != 0) scopes[0] = &context->memory_scope;
+  if (capacity != 0) {
+    scopes[0] = &context->memory_scope;
+  }
   *out_count = 1;
   return capacity == 0 ? amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL)
                        : AMDF_STATUS_OK;

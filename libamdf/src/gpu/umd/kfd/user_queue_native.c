@@ -80,7 +80,9 @@ static amdf_status_t amdf_gpu_kfd_user_queue_doorbell_map(
   (void)user_data;
   void* mapping = mmap(NULL, byte_length, PROT_READ | PROT_WRITE, MAP_SHARED,
                        device->descriptor, (off_t)native_byte_offset);
-  if (mapping == MAP_FAILED) return amdf_linux_error(errno);
+  if (mapping == MAP_FAILED) {
+    return amdf_linux_error(errno);
+  }
   *out_mapping = mapping;
   return AMDF_STATUS_OK;
 }

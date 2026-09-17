@@ -37,7 +37,9 @@ amdf_status_t amdf_windows_xdna_query_tile_metadata(
   request.pPrivateDriverData = packet;
   request.PrivateDriverDataSize = sizeof(packet);
   const amdf_status_t status = amdf_kmt_make_status(kmt->escape(&request));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   // The public XRT aie2::aie_tiles_info record starts with uint32 col_size,
   // then uint16 status major/minor, columns, rows, and row-class counts/starts.

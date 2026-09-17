@@ -59,12 +59,16 @@ void* AMDF_CALL Allocate(void* user_data, uint64_t byte_length,
   auto* state = static_cast<FakeKmtState*>(user_data);
   void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
                                   static_cast<size_t>(minimum_alignment));
-  if (pointer != nullptr) ++state->live_allocation_count;
+  if (pointer != nullptr) {
+    ++state->live_allocation_count;
+  }
   return pointer;
 }
 
 void AMDF_CALL Free(void* user_data, void* allocation) {
-  if (allocation == nullptr) return;
+  if (allocation == nullptr) {
+    return;
+  }
   auto* state = static_cast<FakeKmtState*>(user_data);
   EXPECT_NE(state->live_allocation_count, 0u);
   --state->live_allocation_count;

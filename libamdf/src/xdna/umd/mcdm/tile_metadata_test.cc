@@ -39,7 +39,9 @@ NTSTATUS APIENTRY Query(const D3DKMT_ESCAPE* query) {
   };
   EXPECT_EQ(std::memcmp(query->pPrivateDriverData, expected, sizeof(expected)),
             0);
-  if (state->status < 0) return state->status;
+  if (state->status < 0) {
+    return state->status;
+  }
   std::memcpy(static_cast<uint8_t*>(query->pPrivateDriverData) + 100,
               state->fields, sizeof(state->fields));
   return 0;

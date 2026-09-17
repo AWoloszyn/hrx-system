@@ -62,7 +62,9 @@ class LinuxEndpointMetadataTest
     }
     EXPECT_EQ(amdf_linux_file_close(&instance_.sysfs_descriptor),
               AMDF_STATUS_OK);
-    if (!directory_.empty()) std::filesystem::remove_all(directory_);
+    if (!directory_.empty()) {
+      std::filesystem::remove_all(directory_);
+    }
   }
 
   void WriteAttribute(const std::filesystem::path& path, const char* value) {

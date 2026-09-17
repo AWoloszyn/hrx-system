@@ -137,7 +137,9 @@ amdf_status_t AMDF_WKMI_BRIDGE_CALL FakePrepareBufferImport(
   state->imported_handle = info->shared_handle;
   *resource_handle = state->resource_handle;
   *allocation_handle = 0x20;
-  if (!amdf_status_is_ok(state->import_status)) return state->import_status;
+  if (!amdf_status_is_ok(state->import_status)) {
+    return state->import_status;
+  }
   *out_native_byte_length = 65536;
   *out_buffer_byte_length = 16384;
   return AMDF_STATUS_OK;

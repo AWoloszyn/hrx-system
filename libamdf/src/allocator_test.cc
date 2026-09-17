@@ -36,7 +36,9 @@ struct TestAllocator {
     auto* self = static_cast<TestAllocator*>(user_data);
     ++self->allocation_count;
     self->requested_alignment = minimum_alignment;
-    if (self->fail_allocation) return nullptr;
+    if (self->fail_allocation) {
+      return nullptr;
+    }
 #if defined(_WIN32)
     void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
                                     static_cast<size_t>(minimum_alignment));
@@ -47,13 +49,17 @@ struct TestAllocator {
       pointer = nullptr;
     }
 #endif
-    if (pointer != nullptr) ++self->live_allocation_count;
+    if (pointer != nullptr) {
+      ++self->live_allocation_count;
+    }
     return pointer;
   }
 
   static void AMDF_CALL Free(void* user_data, void* pointer) {
     auto* self = static_cast<TestAllocator*>(user_data);
-    if (pointer == nullptr) return;
+    if (pointer == nullptr) {
+      return;
+    }
     ++self->free_count;
     --self->live_allocation_count;
 #if defined(_WIN32)

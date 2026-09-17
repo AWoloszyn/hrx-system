@@ -55,7 +55,9 @@ class KfdTopologyTest : public ::testing::Test {
   void TearDown() override {
     EXPECT_EQ(amdf_linux_file_close(&instance_.sysfs_descriptor),
               AMDF_STATUS_OK);
-    if (!directory_.empty()) std::filesystem::remove_all(directory_);
+    if (!directory_.empty()) {
+      std::filesystem::remove_all(directory_);
+    }
   }
 
   void WriteAttribute(const std::filesystem::path& path,
@@ -277,7 +279,9 @@ TEST_F(KfdTopologyTest, ChangedGenerationReleasesUnpublishedPeerMetadata) {
     EXPECT_TRUE(stream.good());
     const auto system = amdf_allocator_system();
     void* pointer = system.allocate(system.user_data, length, alignment);
-    if (pointer != nullptr) ++state->live_count;
+    if (pointer != nullptr) {
+      ++state->live_count;
+    }
     return pointer;
   };
   allocator.free = [](void* user_data, void* pointer) {
@@ -314,10 +318,14 @@ TEST_F(KfdTopologyTest, FailedSnapshotAllocationsLeaveNoMetadataOrOutput) {
     allocator.allocate = [](void* user_data, uint64_t length,
                             uint64_t alignment) -> void* {
       auto* state = static_cast<AllocationState*>(user_data);
-      if (state->count++ == state->failure_ordinal) return nullptr;
+      if (state->count++ == state->failure_ordinal) {
+        return nullptr;
+      }
       const auto system = amdf_allocator_system();
       void* pointer = system.allocate(system.user_data, length, alignment);
-      if (pointer != nullptr) ++state->live_count;
+      if (pointer != nullptr) {
+        ++state->live_count;
+      }
       return pointer;
     };
     allocator.free = [](void* user_data, void* pointer) {

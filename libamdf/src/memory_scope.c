@@ -24,7 +24,9 @@ static uint32_t amdf_memory_scope_profile_count(
 
 static amdf_memory_profile_roles_t amdf_memory_scope_profile_role(
     const amdf_memory_scope_t* scope, uint32_t ordinal) {
-  if (ordinal == 0) return AMDF_MEMORY_PROFILE_ROLE_CREATE;
+  if (ordinal == 0) {
+    return AMDF_MEMORY_PROFILE_ROLE_CREATE;
+  }
   return scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM && ordinal == 1
              ? AMDF_MEMORY_PROFILE_ROLE_REGISTER
              : AMDF_MEMORY_PROFILE_ROLE_IMPORT;
@@ -46,7 +48,9 @@ amdf_status_t AMDF_CALL amdf_instance_enumerate_memory_scopes(
       (capacity != 0 && scopes == NULL)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  if (capacity != 0) scopes[0] = &instance->system_memory_scope;
+  if (capacity != 0) {
+    scopes[0] = &instance->system_memory_scope;
+  }
   *out_count = 1;
   return capacity == 0 ? amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL)
                        : AMDF_STATUS_OK;
@@ -93,7 +97,9 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_info(
   }
   const amdf_status_t status = amdf_structure_validate_output(
       out_info, AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO, sizeof(*out_info));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_memory_scope_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO,
       .structure_size = out_info->structure_size,
@@ -199,7 +205,9 @@ static amdf_status_t amdf_memory_access_find_profile(
   for (uint32_t ordinal = 0; amdf_status_is_ok(status) && !found; ++ordinal) {
     status = amdf_memory_access_query_native_profile(query, access_ordinal,
                                                      ordinal, &profile);
-    if (!amdf_status_is_ok(status)) continue;
+    if (!amdf_status_is_ok(status)) {
+      continue;
+    }
     if (backing != NULL &&
         (profile.construction.query_access !=
              backing->construction.query_access ||
@@ -231,7 +239,9 @@ static amdf_status_t amdf_memory_access_find_profile(
     status = AMDF_STATUS_OK;
   }
   if (amdf_status_is_ok(status)) {
-    if (found) *out_profile = profile;
+    if (found) {
+      *out_profile = profile;
+    }
     *out_found = found;
   }
   return status;
@@ -257,7 +267,9 @@ static bool amdf_memory_merge_granularity(uint64_t a, uint64_t b,
     y = remainder;
   }
   const uint64_t quotient = a / x;
-  if (quotient > UINT64_MAX / b) return false;
+  if (quotient > UINT64_MAX / b) {
+    return false;
+  }
   *out_value = quotient * b;
   return true;
 }
@@ -409,7 +421,9 @@ static amdf_status_t amdf_memory_scope_select_acquisition(
       }
     }
   }
-  if (amdf_status_is_ok(status)) *out_found = found;
+  if (amdf_status_is_ok(status)) {
+    *out_found = found;
+  }
   return status;
 }
 
@@ -437,7 +451,9 @@ static amdf_status_t amdf_memory_scope_select_allocation(
     status = amdf_memory_access_find_profile(
         query, source, memory_class, AMDF_MEMORY_PROFILE_ROLE_CREATE, NULL,
         NULL, &source_profile, &source_found);
-    if (!amdf_status_is_ok(status) || !source_found) continue;
+    if (!amdf_status_is_ok(status) || !source_found) {
+      continue;
+    }
     plan->native_profiles[source] = source_profile;
     plan->backing_access_ordinal = source;
     plan->backing_access_count = 1;
@@ -473,13 +489,16 @@ static amdf_status_t amdf_memory_scope_select_allocation(
          ++t) {
       const amdf_external_memory_support_t* transport =
           &source_profile.external_memory_support[t];
-      if ((transport->flags & AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT) == 0)
+      if ((transport->flags & AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT) == 0) {
         continue;
+      }
       bool consumers_found = true;
       for (uint32_t i = 0;
            amdf_status_is_ok(status) && consumers_found && i < query->count;
            ++i) {
-        if (plan->native_owner_ordinals[i] == source) continue;
+        if (plan->native_owner_ordinals[i] == source) {
+          continue;
+        }
         status = amdf_memory_access_find_profile(
             query, i, memory_class, AMDF_MEMORY_PROFILE_ROLE_IMPORT, transport,
             NULL, &plan->native_profiles[i], &consumers_found);
@@ -492,7 +511,9 @@ static amdf_status_t amdf_memory_scope_select_allocation(
       }
     }
   }
-  if (amdf_status_is_ok(status)) *out_found = found;
+  if (amdf_status_is_ok(status)) {
+    *out_found = found;
+  }
   return status;
 }
 
@@ -512,17 +533,21 @@ static bool amdf_memory_scope_merge_profile(amdf_memory_profile_roles_t role,
             &plan->native_profiles[plan->backing_access_ordinal],
             plan->shared_external_type,
             AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT);
-    if (!amdf_memory_merge_granularity(construction->byte_length_granularity,
-                                       transport->byte_length_alignment,
-                                       &construction->byte_length_granularity))
+    if (!amdf_memory_merge_granularity(
+            construction->byte_length_granularity,
+            transport->byte_length_alignment,
+            &construction->byte_length_granularity)) {
       return false;
+    }
     if (transport->maximum_byte_length != 0) {
       construction->maximum_byte_length = amdf_memory_minimum(
           construction->maximum_byte_length, transport->maximum_byte_length);
     }
   }
   for (uint32_t i = 0; i < plan->access_count; ++i) {
-    if (i == plan->backing_access_ordinal) continue;
+    if (i == plan->backing_access_ordinal) {
+      continue;
+    }
     const amdf_memory_native_profile_t* consumer = &plan->native_profiles[i];
     const bool coordinated =
         role == AMDF_MEMORY_PROFILE_ROLE_CREATE &&
@@ -531,8 +556,9 @@ static bool amdf_memory_scope_merge_profile(amdf_memory_profile_roles_t role,
         coordinated                                 ? &consumer->allocation
         : role == AMDF_MEMORY_PROFILE_ROLE_REGISTER ? &consumer->registration
                                                     : &consumer->import;
-    if (!amdf_memory_merge_construction(consumer_construction, construction))
+    if (!amdf_memory_merge_construction(consumer_construction, construction)) {
       return false;
+    }
     if (role == AMDF_MEMORY_PROFILE_ROLE_CREATE && !coordinated) {
       const amdf_external_memory_support_t* support =
           amdf_memory_native_profile_find_transport(
@@ -541,8 +567,9 @@ static bool amdf_memory_scope_merge_profile(amdf_memory_profile_roles_t role,
       if (!amdf_memory_merge_granularity(
               construction->byte_length_granularity,
               support->byte_length_alignment,
-              &construction->byte_length_granularity))
+              &construction->byte_length_granularity)) {
         return false;
+      }
       if (support->maximum_byte_length != 0) {
         construction->maximum_byte_length = amdf_memory_minimum(
             construction->maximum_byte_length, support->maximum_byte_length);
@@ -563,7 +590,9 @@ static bool amdf_memory_scope_merge_profile(amdf_memory_profile_roles_t role,
         maximum_address = address->maximum_address;
       }
     }
-    if (minimum_address > maximum_address) return false;
+    if (minimum_address > maximum_address) {
+      return false;
+    }
     const uint64_t span_minus_one = maximum_address - minimum_address;
     if (span_minus_one < construction->maximum_byte_length) {
       construction->maximum_byte_length = span_minus_one + 1;
@@ -613,7 +642,9 @@ static bool amdf_memory_scope_merge_import_support(
         support.maximum_byte_length = consumer->maximum_byte_length;
       }
     }
-    if (supported) profile->external_memory_support[count++] = support;
+    if (supported) {
+      profile->external_memory_support[count++] = support;
+    }
   }
   memset(&profile->external_memory_support[count], 0,
          (AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY - count) *
@@ -631,7 +662,9 @@ amdf_status_t amdf_memory_scope_plan_initialize(
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
   amdf_status_t status = amdf_memory_access_query_validate(scope, query);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (query->count == 0 &&
       (scope->kind != AMDF_MEMORY_SCOPE_KIND_SYSTEM || profile_ordinal == 2)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
@@ -651,7 +684,9 @@ amdf_status_t amdf_memory_scope_plan_initialize(
   status = amdf_calloc(plan.host_allocator, count * plan_stride,
                        amdf_alignof(amdf_memory_native_profile_t),
                        (void**)&plan.native_profiles);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   plan.native_owner_ordinals = (uint32_t*)(plan.native_profiles + count);
   plan.backing_access_ordinals = plan.native_owner_ordinals + count;
   plan.backing_access_count = 1;
@@ -723,18 +758,24 @@ static amdf_status_t amdf_memory_scope_query_access_profile(
   }
   amdf_status_t status = amdf_structure_validate_output(
       out_profile, AMDF_STRUCTURE_TYPE_MEMORY_PROFILE, sizeof(*out_profile));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   for (uint32_t i = 0; amdf_status_is_ok(status) && i < query->count; ++i) {
     status = amdf_structure_validate_output(
         &out_access_capabilities[i],
         AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES,
         sizeof(out_access_capabilities[i]));
   }
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_memory_scope_plan_t plan;
   status = amdf_memory_scope_plan_initialize(scope, profile_ordinal, query,
                                              NULL, &plan);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   plan.profile.structure_size = out_profile->structure_size;
   plan.profile.next = out_profile->next;
   *out_profile = plan.profile;
@@ -878,7 +919,9 @@ static amdf_status_t amdf_memory_profile_describe_site(
     const amdf_status_t status = amdf_endpoint_query_queue_family_info(
         query->accesses[ordinal].device->endpoint,
         site->value.device.queue_family_ordinal, &family);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     const amdf_memory_site_query_t local_query = {
         .access = query->accesses[ordinal].requirements.access,
         .flags = amdf_memory_profile_access_flags(plan, query, ordinal),
@@ -924,10 +967,14 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_pair_info(
   }
   amdf_status_t status = amdf_structure_validate_input(
       query, AMDF_STRUCTURE_TYPE_MEMORY_PROFILE_PAIR_QUERY, sizeof(*query));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   status = amdf_structure_validate_output(
       out_info, AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO, sizeof(*out_info));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const bool imported =
       amdf_memory_scope_profile_role(scope, query->memory_profile_ordinal) ==
       AMDF_MEMORY_PROFILE_ROLE_IMPORT;
@@ -957,7 +1004,9 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_pair_info(
   status = amdf_memory_scope_plan_initialize(
       scope, query->memory_profile_ordinal, &accesses,
       imported ? &transport : NULL, &plan);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if ((query->required_flags & ~plan.profile.supported_flags) != 0) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }

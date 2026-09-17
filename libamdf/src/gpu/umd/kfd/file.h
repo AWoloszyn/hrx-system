@@ -18,7 +18,9 @@
 static inline amdf_status_t amdf_gpu_kfd_file_open(
     int* out_descriptor, struct kfd_ioctl_get_version_args* out_version) {
   int descriptor = open("/dev/kfd", O_RDWR | O_CLOEXEC);
-  if (descriptor < 0) return amdf_linux_error(errno);
+  if (descriptor < 0) {
+    return amdf_linux_error(errno);
+  }
   struct kfd_ioctl_get_version_args version = {0};
   amdf_status_t status = AMDF_STATUS_OK;
   if (ioctl(descriptor, AMDKFD_IOC_GET_VERSION, &version) != 0) {

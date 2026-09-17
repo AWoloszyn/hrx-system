@@ -48,7 +48,9 @@ TEST_F(WindowsXdnaAdapterInfoSystemTest,
             AMDF_STATUS_OK);
   bool found = false;
   for (const auto& summary : summaries) {
-    if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) continue;
+    if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) {
+      continue;
+    }
     SCOPED_TRACE(summary.name);
     amdf_endpoint_info_t info = {};
     ASSERT_EQ(

@@ -27,8 +27,12 @@ TEST(XdnaTransactionInterpreterTest, ClearsUnusedBindingsAndReservedBytes) {
   amdf_xdna_transaction_interpreter_packet_t packet;
   std::memset(&packet, 0xa5, sizeof(packet));
   amdf_xdna_transaction_interpreter_packet_build(0x04010000, 20, &packet);
-  for (size_t i = 12; i < 16; ++i) EXPECT_EQ(packet.bytes[i], 0);
-  for (size_t i = 28; i < sizeof(packet); ++i) EXPECT_EQ(packet.bytes[i], 0);
+  for (size_t i = 12; i < 16; ++i) {
+    EXPECT_EQ(packet.bytes[i], 0);
+  }
+  for (size_t i = 28; i < sizeof(packet); ++i) {
+    EXPECT_EQ(packet.bytes[i], 0);
+  }
 }
 
 }  // namespace

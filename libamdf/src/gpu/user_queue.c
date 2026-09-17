@@ -44,7 +44,9 @@ static amdf_status_t amdf_gpu_user_queue_mapping_destroy_native(
       (amdf_gpu_user_queue_mapping_t*)base_mapping;
   const amdf_status_t status =
       amdf_gpu_umd_user_queue_mapping_destroy(mapping->umd);
-  if (amdf_status_is_ok(status)) mapping->umd = NULL;
+  if (amdf_status_is_ok(status)) {
+    mapping->umd = NULL;
+  }
   return status;
 }
 
@@ -85,7 +87,9 @@ static amdf_status_t amdf_gpu_user_queue_map(
   amdf_status_t status = amdf_calloc(
       host_allocator, sizeof(*mapping),
       amdf_alignof(amdf_gpu_user_queue_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const amdf_user_queue_mapping_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_USER_QUEUE_MAPPING_INFO,
       .structure_size = sizeof(info),
@@ -138,7 +142,9 @@ static amdf_status_t amdf_gpu_user_queue_wait_consumed(
   amdf_wait_deadline_t deadline;
   const amdf_status_t status = amdf_wait_deadline_initialize(
       timeout_nanoseconds, poll_duration_nanoseconds, &deadline);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_gpu_user_queue_t* queue = (amdf_gpu_user_queue_t*)base_queue;
   return amdf_gpu_umd_user_queue_wait_consumed(queue->umd, published_index,
                                                &deadline);
@@ -171,7 +177,9 @@ static amdf_status_t amdf_gpu_user_queue_validate_scratch(
                         scratch->byte_length == 0 &&
                         scratch->maximum_private_segment_byte_length == 0 &&
                         scratch->maximum_wave_count == 0;
-  if (disabled) return AMDF_STATUS_OK;
+  if (disabled) {
+    return AMDF_STATUS_OK;
+  }
   if (scratch->memory == NULL || scratch->reserved != 0 ||
       scratch->byte_length == 0 ||
       scratch->maximum_private_segment_byte_length == 0 ||
@@ -232,7 +240,9 @@ amdf_status_t AMDF_CALL amdf_gpu_user_queue_create(
   amdf_status_t status = amdf_structure_validate_input(
       create_info, AMDF_STRUCTURE_TYPE_GPU_USER_QUEUE_CREATE_INFO,
       (uint32_t)sizeof(amdf_gpu_user_queue_create_info_t));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (create_info->reserved != 0 ||
       (create_info->priority != AMDF_QUEUE_PRIORITY_LOW &&
        create_info->priority != AMDF_QUEUE_PRIORITY_NORMAL &&
@@ -248,7 +258,9 @@ amdf_status_t AMDF_CALL amdf_gpu_user_queue_create(
   };
   status = amdf_endpoint_query_queue_family_info(
       device->endpoint, create_info->queue_family_ordinal, &family_info);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if ((family_info.command_type != AMDF_QUEUE_COMMAND_TYPE_GPU_PM4 &&
        family_info.command_type != AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA &&
        family_info.command_type != AMDF_QUEUE_COMMAND_TYPE_GPU_AQL) ||
@@ -275,7 +287,9 @@ amdf_status_t AMDF_CALL amdf_gpu_user_queue_create(
   amdf_gpu_umd_queue_scratch_t scratch = {0};
   status = amdf_gpu_user_queue_validate_scratch(
       device, &family_info, &create_info->scratch, &scratch);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   const amdf_gpu_device_info_t* device_info = amdf_gpu_device_get_info(device);
   const amdf_user_queue_info_t info = {
@@ -306,7 +320,9 @@ amdf_status_t AMDF_CALL amdf_gpu_user_queue_create(
   amdf_gpu_user_queue_t* queue = NULL;
   status = amdf_calloc(host_allocator, sizeof(*queue),
                        amdf_alignof(amdf_gpu_user_queue_t), (void**)&queue);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   status = amdf_user_queue_initialize(&queue->base, &amdf_gpu_user_queue_vtable,
                                       device, &info);
   amdf_gpu_umd_user_queue_result_t result = {0};

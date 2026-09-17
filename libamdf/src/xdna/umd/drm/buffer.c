@@ -148,7 +148,9 @@ amdf_status_t amdf_linux_xdna_buffer_attach(
       const size_t reserved_length = buffer->byte_length + alignment;
       void* reservation = mmap(NULL, reserved_length, PROT_NONE,
                                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-      if (reservation == MAP_FAILED) return amdf_linux_error(errno);
+      if (reservation == MAP_FAILED) {
+        return amdf_linux_error(errno);
+      }
       buffer->mapping.base = reservation;
       buffer->mapping.byte_length = reserved_length;
       address = (void*)(((uintptr_t)reservation + alignment - 1) &
@@ -158,7 +160,9 @@ amdf_status_t amdf_linux_xdna_buffer_attach(
     }
     void* mapping = mmap(address, buffer->byte_length, PROT_READ | PROT_WRITE,
                          flags, descriptor, (off_t)info.map_offset);
-    if (mapping == MAP_FAILED) return amdf_linux_error(errno);
+    if (mapping == MAP_FAILED) {
+      return amdf_linux_error(errno);
+    }
     if (buffer->mapping.base == NULL) {
       buffer->mapping.base = mapping;
       buffer->mapping.byte_length = buffer->byte_length;

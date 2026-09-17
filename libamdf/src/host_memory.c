@@ -38,11 +38,15 @@ static amdf_status_t amdf_host_memory_map(
   uint32_t line_size = 0;
   amdf_status_t status =
       amdf_platform_host_memory_query_cache_line_size(&line_size);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_host_mapping_t* mapping = NULL;
   status = amdf_calloc(memory->host_allocator, sizeof(*mapping),
                        amdf_alignof(amdf_host_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_host_mapping_initialize(mapping, &amdf_host_memory_mapping_vtable,
                                memory);
   const amdf_cache_transition_t flush = {
@@ -80,7 +84,9 @@ static amdf_status_t amdf_host_memory_destroy_native(amdf_memory_t* memory,
   const amdf_status_t status = amdf_platform_host_memory_free(
       memory->accesses[access_ordinal].native,
       memory->info.native_allocation_byte_length);
-  if (amdf_status_is_ok(status)) memory->accesses[access_ordinal].native = NULL;
+  if (amdf_status_is_ok(status)) {
+    memory->accesses[access_ordinal].native = NULL;
+  }
   return status;
 }
 

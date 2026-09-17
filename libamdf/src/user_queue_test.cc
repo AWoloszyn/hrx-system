@@ -43,12 +43,16 @@ static amdf_status_t FakeMap(amdf_user_queue_t* base_queue,
                              amdf_device_t* producer_device,
                              amdf_user_queue_mapping_t** out_mapping) {
   auto* queue = reinterpret_cast<FakeQueue*>(base_queue);
-  if (!amdf_status_is_ok(queue->map_status)) return queue->map_status;
+  if (!amdf_status_is_ok(queue->map_status)) {
+    return queue->map_status;
+  }
   FakeMapping* mapping = nullptr;
   amdf_status_t status = amdf_calloc(
       base_queue->host_allocator, sizeof(*mapping), amdf_alignof(FakeMapping),
       reinterpret_cast<void**>(&mapping));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_user_queue_mapping_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_USER_QUEUE_MAPPING_INFO,
       .structure_size = sizeof(info),
@@ -64,7 +68,9 @@ static amdf_status_t FakeMap(amdf_user_queue_t* base_queue,
       .index_bits = 64,
       .doorbell_bits = 64,
   };
-  if (producer_device != nullptr) info.producer_device_id.words[0] = 17;
+  if (producer_device != nullptr) {
+    info.producer_device_id.words[0] = 17;
+  }
   status = amdf_user_queue_mapping_initialize(
       &mapping->base, &kFakeMappingVtable, base_queue, producer_device, &info);
   if (amdf_status_is_ok(status)) {
@@ -113,7 +119,9 @@ static amdf_status_t CreateFakeQueue(amdf_device_t* device,
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*queue),
                   amdf_alignof(FakeQueue), reinterpret_cast<void**>(&queue));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const amdf_user_queue_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_USER_QUEUE_INFO,
       .structure_size = sizeof(info),

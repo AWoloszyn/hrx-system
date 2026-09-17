@@ -215,7 +215,9 @@ static amdf_status_t amdf_windows_gpu_memory_create_allocations(
   const amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_create_allocations(
       &memory->device->wkmi_adapter, &create_info, memory->allocation_capacity,
       memory->allocation_handles, &memory->resource, &created_allocation_count);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   // Capture every usable native handle before rejecting malformed driver
   // output. This memory object owns both rollback and the dependent backing.
   for (uint32_t i = 0; i < created_allocation_count; ++i) {
@@ -529,7 +531,9 @@ amdf_status_t amdf_gpu_umd_memory_prepare_import(
       offsetof(amdf_gpu_umd_memory_t, allocation_handles),
       sizeof(D3DKMT_HANDLE), amdf_alignof(amdf_gpu_umd_memory_t),
       (void**)&memory);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   memory->device = device;
   memory->allocation_capacity = 1;
   memory->flags = profile->guaranteed_flags;
@@ -657,7 +661,9 @@ amdf_status_t amdf_gpu_umd_memory_prepare(
       device->host_allocator,
       offsetof(amdf_gpu_umd_memory_t, allocation_handles), handle_bytes,
       amdf_alignof(amdf_gpu_umd_memory_t), (void**)&memory);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   memory->device = device;
   *memory_state = memory;
   memory->allocation_capacity = allocation_count;
@@ -734,7 +740,9 @@ amdf_status_t amdf_gpu_umd_memory_map(
   amdf_status_t status =
       amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
                   amdf_alignof(amdf_gpu_umd_host_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   mapping->memory = memory;
   mapping->pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
   mapping->byte_length = map_info->byte_length;

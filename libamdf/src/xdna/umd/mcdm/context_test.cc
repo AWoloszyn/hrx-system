@@ -82,8 +82,9 @@ FakeKmtState* current_state = nullptr;
 NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
   ++current_state->query_count;
   EXPECT_EQ(query->hAdapter, 0x08u);
-  if (current_state->query_status != kSuccess)
+  if (current_state->query_status != kSuccess) {
     return current_state->query_status;
+  }
   EXPECT_EQ(query->Type, KMTQAITYPE_UMDRIVERPRIVATE);
   if (current_state->protocol == AMDF_WINDOWS_XDNA_PROTOCOL_METADATA_COMPACT) {
     EXPECT_EQ(query->PrivateDriverDataSize, 8u);
@@ -95,8 +96,9 @@ NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
     std::memcpy(query->pPrivateDriverData, basic_info, sizeof(basic_info));
     return kSuccess;
   }
-  if (query->PrivateDriverDataSize == 8)
+  if (query->PrivateDriverDataSize == 8) {
     return static_cast<NTSTATUS>(0xC0000023u);
+  }
   EXPECT_EQ(query->PrivateDriverDataSize, 12u);
   static_cast<uint8_t*>(query->pPrivateDriverData)[8] =
       current_state->unshared_kernel_buffers;
@@ -148,7 +150,9 @@ FakeCreateContextVirtual(D3DKMT_CREATECONTEXTVIRTUAL* create) {
     EXPECT_EQ(partition + 0x50, bytes + create->PrivateDriverDataSize);
   }
   EXPECT_EQ(columns, current_state->expected_column_count);
-  if (current_state->failure == Operation::kCreateContext) return kFailure;
+  if (current_state->failure == Operation::kCreateContext) {
+    return kFailure;
+  }
   EXPECT_EQ(create->hDevice, 0x10u);
   EXPECT_EQ(create->NodeOrdinal, 0u);
   EXPECT_EQ(create->EngineAffinity, 1u);
@@ -171,20 +175,26 @@ FakeCreateContextVirtual(D3DKMT_CREATECONTEXTVIRTUAL* create) {
 
 NTSTATUS APIENTRY FakeCreateAllocation(D3DKMT_CREATEALLOCATION* create) {
   current_state->operations.push_back(Operation::kCreateKernelBuffer);
-  if (current_state->failure == Operation::kCreateKernelBuffer) return kFailure;
+  if (current_state->failure == Operation::kCreateKernelBuffer) {
+    return kFailure;
+  }
   EXPECT_EQ(create->Flags.CreateShared,
             current_state->unshared_kernel_buffers == 0);
   EXPECT_EQ(create->Flags.CreateResource, create->Flags.CreateShared);
   const auto allocation = current_state->next_allocation++;
   create->pAllocationInfo2->hAllocation = allocation;
-  if (create->Flags.CreateResource) create->hResource = allocation + 0x1000;
+  if (create->Flags.CreateResource) {
+    create->hResource = allocation + 0x1000;
+  }
   EXPECT_TRUE(current_state->kernel_buffers.try_emplace(allocation).second);
   return kSuccess;
 }
 
 NTSTATUS APIENTRY FakeMapAddress(D3DDDI_MAPGPUVIRTUALADDRESS* map) {
   current_state->operations.push_back(Operation::kMapKernelBuffer);
-  if (current_state->failure == Operation::kMapKernelBuffer) return kFailure;
+  if (current_state->failure == Operation::kMapKernelBuffer) {
+    return kFailure;
+  }
   EXPECT_EQ(current_state->kernel_buffers.count(map->hAllocation), 1u);
   map->VirtualAddress =
       UINT64_C(0x100000000) + uint64_t(map->hAllocation) * 4096;
@@ -200,7 +210,9 @@ NTSTATUS APIENTRY FakeMakeResident(D3DDDI_MAKERESIDENT*) {
 
 NTSTATUS APIENTRY FakeLock(D3DKMT_LOCK2* lock) {
   current_state->operations.push_back(Operation::kLockKernelBuffer);
-  if (current_state->failure == Operation::kLockKernelBuffer) return kFailure;
+  if (current_state->failure == Operation::kLockKernelBuffer) {
+    return kFailure;
+  }
   auto& buffer = current_state->kernel_buffers.at(lock->hAllocation);
   lock->pData = buffer.bytes.data();
   EXPECT_FALSE(buffer.locked);
@@ -252,15 +264,21 @@ void* AMDF_CALL FaultAllocate(void* user_data, uint64_t byte_length,
                               uint64_t minimum_alignment) {
   auto* state = static_cast<FaultAllocatorState*>(user_data);
   ++state->allocation_call_count;
-  if (state->allocation_call_count == state->failure_call) return nullptr;
+  if (state->allocation_call_count == state->failure_call) {
+    return nullptr;
+  }
   void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
                                   static_cast<size_t>(minimum_alignment));
-  if (pointer != nullptr) ++state->live_allocation_count;
+  if (pointer != nullptr) {
+    ++state->live_allocation_count;
+  }
   return pointer;
 }
 
 void AMDF_CALL FaultFree(void* user_data, void* allocation) {
-  if (allocation == nullptr) return;
+  if (allocation == nullptr) {
+    return;
+  }
   auto* state = static_cast<FaultAllocatorState*>(user_data);
   EXPECT_NE(state->live_allocation_count, 0u);
   --state->live_allocation_count;

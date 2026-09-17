@@ -237,7 +237,9 @@ class KfdBufferNativeTest : public ::testing::Test {
 
   amdf_status_t Destroy() {
     const amdf_status_t status = amdf_gpu_kfd_buffer_destroy(buffer_);
-    if (amdf_status_is_ok(status)) buffer_ = nullptr;
+    if (amdf_status_is_ok(status)) {
+      buffer_ = nullptr;
+    }
     return status;
   }
 

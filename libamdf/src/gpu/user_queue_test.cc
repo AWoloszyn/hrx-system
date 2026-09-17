@@ -390,7 +390,9 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
     amdf_gpu_umd_user_queue_result_t* out_result) {
   FakeNativeState* state = device->state;
   state->observed_create = *create_info;
-  if (!amdf_status_is_ok(state->create_status)) return state->create_status;
+  if (!amdf_status_is_ok(state->create_status)) {
+    return state->create_status;
+  }
   *out_result = {
       .queue_id = {.words = {19, 23}},
       .capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER |
@@ -409,7 +411,9 @@ amdf_status_t amdf_gpu_umd_user_queue_map(
     amdf_gpu_umd_user_queue_mapping_result_t* out_result) {
   FakeNativeState* state = queue->state;
   state->observed_producer = producer_device;
-  if (!amdf_status_is_ok(state->map_status)) return state->map_status;
+  if (!amdf_status_is_ok(state->map_status)) {
+    return state->map_status;
+  }
   *out_result = {
       .ring_address = UINT64_C(0x1000),
       .read_index_address = UINT64_C(0x2000),

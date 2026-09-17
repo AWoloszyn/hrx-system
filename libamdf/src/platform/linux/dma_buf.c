@@ -19,7 +19,9 @@ amdf_status_t amdf_linux_dma_buf_query(int descriptor,
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
   struct stat file_info = {0};
-  if (fstat(descriptor, &file_info) != 0) return amdf_linux_error(errno);
+  if (fstat(descriptor, &file_info) != 0) {
+    return amdf_linux_error(errno);
+  }
   if (file_info.st_size <= 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }

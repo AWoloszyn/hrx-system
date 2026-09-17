@@ -37,12 +37,16 @@ amdf_instance_create(const amdf_instance_create_info_t* create_info,
   amdf_allocator_t host_allocator;
   status =
       amdf_allocator_resolve(&create_info->host_allocator, &host_allocator);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   amdf_instance_t* instance = NULL;
   status = amdf_calloc(host_allocator, sizeof(*instance),
                        amdf_alignof(amdf_instance_t), (void**)&instance);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   instance->host_allocator = host_allocator;
   instance->native_lifetime = create_info->native_lifetime;
   instance->system_memory_scope.kind = AMDF_MEMORY_SCOPE_KIND_SYSTEM;
@@ -68,7 +72,9 @@ amdf_status_t AMDF_CALL amdf_instance_destroy(amdf_instance_t* instance) {
 #if defined(AMDF_HAVE_GPU)
   if (instance->gpu != NULL) {
     status = amdf_gpu_umd_instance_destroy(instance->gpu);
-    if (amdf_status_is_ok(status)) instance->gpu = NULL;
+    if (amdf_status_is_ok(status)) {
+      instance->gpu = NULL;
+    }
   }
 #endif  // AMDF_HAVE_GPU
   if (amdf_status_is_ok(status)) {

@@ -334,7 +334,9 @@ amdf_status_t amdf_windows_xdna_kernel_execution_prepare_memory(
     amdf_windows_xdna_private_allocation_t* allocation) {
   amdf_status_t status = amdf_windows_xdna_kernel_execution_prepare_through(
       execution, AMDF_WINDOWS_XDNA_KERNEL_EXECUTION_PHASE_READY);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   AcquireSRWLockExclusive(&execution->state_lock);
   if (execution->instruction_binding_claimed != 0) {
     ReleaseSRWLockExclusive(&execution->state_lock);
@@ -394,7 +396,9 @@ amdf_status_t amdf_windows_xdna_kernel_execution_release_memory(
   if (execution->preparation_submission != 0) {
     status = amdf_windows_xdna_kernel_execution_wait_synchronous(
         execution, execution->preparation_submission);
-    if (amdf_status_is_ok(status)) execution->preparation_submission = 0;
+    if (amdf_status_is_ok(status)) {
+      execution->preparation_submission = 0;
+    }
   }
   ReleaseSRWLockExclusive(&execution->state_lock);
   return status;
@@ -445,7 +449,9 @@ amdf_status_t amdf_windows_xdna_kernel_execution_create(
   amdf_status_t status = amdf_calloc(
       device->host_allocator, sizeof(*execution),
       amdf_alignof(amdf_windows_xdna_kernel_execution_t), (void**)&execution);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   execution->device = device;
   execution->context = context->handle;
   execution->protocol = context->adapter_info.protocol;
@@ -587,7 +593,9 @@ amdf_status_t amdf_windows_xdna_kernel_execution_submit(
       &execution->command_allocation, packet, &submission);
   const amdf_status_t status = amdf_windows_xdna_private_allocation_publish(
       &execution->packet_allocation, 0, sizeof(*packet));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   uint64_t* command_words = execution->command_allocation.host_pointer;
   command_words[0] = 1;
   command_words[1] = 0;
@@ -612,14 +620,20 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
     const amdf_wait_deadline_t* deadline) {
   const amdf_status_t terminal_status =
       amdf_windows_xdna_kernel_execution_query_terminal_status(execution);
-  if (!amdf_status_is_ok(terminal_status)) return terminal_status;
+  if (!amdf_status_is_ok(terminal_status)) {
+    return terminal_status;
+  }
   amdf_wait_budget_t remaining;
   while (amdf_windows_xdna_kernel_execution_query_progress(execution) <
          native_submission) {
     const amdf_status_t status =
         amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) return status;
-    if (remaining.poll == 0) break;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
+    if (remaining.poll == 0) {
+      break;
+    }
     YieldProcessor();
   }
   // A finite waiter never blocks acquiring the reusable event behind an
@@ -632,11 +646,15 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
     }
     const amdf_status_t status =
         amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     if (remaining.timeout == 0) {
       return amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED);
     }
-    if (TryAcquireSRWLockExclusive(&execution->wait_lock)) break;
+    if (TryAcquireSRWLockExclusive(&execution->wait_lock)) {
+      break;
+    }
     amdf_platform_wait_yield();
   }
   amdf_status_t status = AMDF_STATUS_OK;
@@ -644,7 +662,9 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
          amdf_windows_xdna_kernel_execution_query_progress(execution) <
              native_submission) {
     status = amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) break;
+    if (!amdf_status_is_ok(status)) {
+      break;
+    }
     if (remaining.timeout == 0) {
       status = amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED);
       break;
@@ -672,7 +692,9 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
     }
     // Native event registration may itself consume time, so sample again.
     status = amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) break;
+    if (!amdf_status_is_ok(status)) {
+      break;
+    }
     DWORD wait_milliseconds = INFINITE;
     if (remaining.timeout != AMDF_TIMEOUT_INFINITE) {
       const uint64_t milliseconds =
@@ -683,7 +705,9 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
     }
     const DWORD wait_result =
         WaitForSingleObject(execution->wait_event, wait_milliseconds);
-    if (wait_result == WAIT_TIMEOUT) continue;
+    if (wait_result == WAIT_TIMEOUT) {
+      continue;
+    }
     if (wait_result != AMDF_WINDOWS_WAIT_SIGNALED) {
       status = wait_result == WAIT_FAILED
                    ? amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError())
@@ -693,6 +717,8 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
     execution->wait_event_submission = 0;
   }
   ReleaseSRWLockExclusive(&execution->wait_lock);
-  if (amdf_status_is_ok(status)) MemoryBarrier();
+  if (amdf_status_is_ok(status)) {
+    MemoryBarrier();
+  }
   return status;
 }

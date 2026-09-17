@@ -94,7 +94,9 @@ NTSTATUS APIENTRY CreateAllocation(D3DKMT_CREATEALLOCATION* create) {
   allocation.byte_length = ReadU64(info->pPrivateDriverData, 0x10);
   allocation.pointer = VirtualAlloc(nullptr, allocation.byte_length,
                                     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  if (allocation.pointer == nullptr) return static_cast<NTSTATUS>(0xC0000017u);
+  if (allocation.pointer == nullptr) {
+    return static_cast<NTSTATUS>(0xC0000017u);
+  }
   if (allocation.type == 0x332C) {
     EXPECT_EQ(native_state->protocol, AMDF_WINDOWS_XDNA_PROTOCOL_DIRECT);
     EXPECT_EQ(ReadU32(info->pPrivateDriverData, 0x20), 2u);
@@ -120,7 +122,9 @@ NTSTATUS APIENTRY CreateAllocation(D3DKMT_CREATEALLOCATION* create) {
   }
   info->hAllocation =
       static_cast<D3DKMT_HANDLE>(native_state->allocations.size());
-  if (create->Flags.CreateResource) create->hResource = info->hAllocation;
+  if (create->Flags.CreateResource) {
+    create->hResource = info->hAllocation;
+  }
   native_state->allocations.push_back(allocation);
   return 0;
 }
@@ -334,8 +338,9 @@ class WindowsXdnaKernelExecutionTest
     EXPECT_EQ(
         amdf_windows_xdna_kernel_execution_destroy(context_.kernel_execution),
         AMDF_STATUS_OK);
-    for (const auto& allocation : native_.allocations)
+    for (const auto& allocation : native_.allocations) {
       EXPECT_EQ(allocation.pointer, nullptr);
+    }
     native_state = nullptr;
   }
 
@@ -381,8 +386,9 @@ TEST_P(WindowsXdnaKernelExecutionTest,
   EXPECT_EQ(ReadU32(bootstrap, 340), 0x004F4443u);
   EXPECT_EQ(ReadU32(bootstrap, 348), 1u);
   EXPECT_EQ(ReadU32(bootstrap, 356), 0x111u);
-  for (size_t i = 368; i < 32768 + 64; ++i)
+  for (size_t i = 368; i < 32768 + 64; ++i) {
     ASSERT_EQ(bootstrap[i], 0xA5) << "byte " << i;
+  }
   auto* instructions =
       static_cast<uint8_t*>(native_.allocations[3].pointer) + 32768;
   std::memset(instructions, 0xA7, 64);
@@ -396,7 +402,9 @@ TEST_P(WindowsXdnaKernelExecutionTest,
   EXPECT_EQ(submission, 4u);
   EXPECT_EQ(native_.instruction_address, result.device_address);
   EXPECT_EQ(native_.instruction_word_count, 16u);
-  for (size_t i = 0; i < 64; ++i) EXPECT_EQ(instructions[i], 0xA7);
+  for (size_t i = 0; i < 64; ++i) {
+    EXPECT_EQ(instructions[i], 0xA7);
+  }
   EXPECT_EQ(native_.allocations.size(), 4u);
   amdf_windows_xdna_kernel_execution_retire_command(execution);
   EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_terminal_status(execution),

@@ -51,7 +51,9 @@ static amdf_status_t amdf_gpu_memory_describe_site(
   const amdf_status_t status = amdf_endpoint_query_queue_family_info(
       memory->accesses[access_ordinal].device->endpoint, queue_family_ordinal,
       &queue_family_info);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const amdf_memory_site_query_t query = {
       .access = memory->accesses[access_ordinal].info.access,
       .flags = memory->accesses[access_ordinal].info.flags,
@@ -89,7 +91,9 @@ static amdf_status_t amdf_gpu_memory_map(
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*mapping),
                   amdf_alignof(amdf_gpu_host_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_host_mapping_initialize(&mapping->base, &amdf_gpu_host_mapping_vtable,
                                memory);
 
@@ -207,7 +211,9 @@ amdf_status_t amdf_gpu_memory_prepare(
     const amdf_status_t status = amdf_calloc_array(
         memory->host_allocator, peer_count, sizeof(*peer_devices),
         amdf_alignof(amdf_gpu_umd_device_t*), (void**)&peer_devices);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     for (uint32_t i = 0; i < peer_count; ++i) {
       peer_devices[i] = amdf_gpu_device_get_umd(
           memory->accesses[group->access_ordinals[i + 1]].device);

@@ -24,7 +24,9 @@ inline void* AllocateHostBytes(amdf_allocator_t allocator, size_t byte_length,
                                : minimum_alignment;
   void* pointer =
       allocator.allocate(allocator.user_data, byte_length, alignment);
-  if (pointer == nullptr) return nullptr;
+  if (pointer == nullptr) {
+    return nullptr;
+  }
   if ((reinterpret_cast<uintptr_t>(pointer) & (alignment - 1)) != 0) {
     allocator.free(allocator.user_data, pointer);
     return nullptr;
@@ -35,7 +37,9 @@ inline void* AllocateHostBytes(amdf_allocator_t allocator, size_t byte_length,
 
 // Frees bridge-controlled storage through the allocator that created it.
 inline void FreeHostBytes(amdf_allocator_t allocator, void* pointer) noexcept {
-  if (pointer != nullptr) allocator.free(allocator.user_data, pointer);
+  if (pointer != nullptr) {
+    allocator.free(allocator.user_data, pointer);
+  }
 }
 
 // Owns one zeroed bridge scratch buffer without using the sidecar CRT heap.
@@ -55,7 +59,9 @@ class HostBuffer {
     }
     void* pointer =
         AllocateHostBytes(allocator, byte_length, minimum_alignment);
-    if (pointer == nullptr) return false;
+    if (pointer == nullptr) {
+      return false;
+    }
     allocator_ = allocator;
     pointer_ = pointer;
     byte_length_ = byte_length;
@@ -92,7 +98,9 @@ class HostObject {
 
   bool Allocate() {
     void* storage = AllocateHostBytes(allocator_, sizeof(T), amdf_alignof(T));
-    if (storage == nullptr) return false;
+    if (storage == nullptr) {
+      return false;
+    }
     try {
       object_ = ::new (storage) T();
     } catch (...) {
@@ -103,7 +111,9 @@ class HostObject {
   }
 
   void Reset() noexcept {
-    if (object_ == nullptr) return;
+    if (object_ == nullptr) {
+      return;
+    }
     object_->~T();
     FreeHostBytes(allocator_, object_);
     object_ = nullptr;
@@ -128,7 +138,9 @@ class HostObject {
 // Destroys one placement-constructed object through its creating allocator.
 template <typename T>
 void DestroyHostObject(amdf_allocator_t allocator, T* object) noexcept {
-  if (object == nullptr) return;
+  if (object == nullptr) {
+    return;
+  }
   object->~T();
   FreeHostBytes(allocator, object);
 }

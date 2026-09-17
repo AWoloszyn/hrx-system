@@ -91,8 +91,12 @@ amdf_status_t FindDmaBufProfile(
       *out_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
       return AMDF_STATUS_OK;
     }
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
-    if (!amdf_status_is_ok(status)) return status;
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      continue;
+    }
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     if (profile.memory_class == AMDF_MEMORY_CLASS_SYSTEM &&
         (profile.roles & required_roles) == required_roles &&
         (required_memory_flags & ~profile.supported_flags) == 0 &&
@@ -113,7 +117,9 @@ amdf_status_t FindQueueFamilyOrdinal(const amdf_api_t* api,
   endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
   endpoint_info.structure_size = sizeof(endpoint_info);
   amdf_status_t status = api->endpoint_query_info(endpoint, &endpoint_info);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   for (uint32_t ordinal = 0; ordinal < endpoint_info.queue_family_count;
        ++ordinal) {
     amdf_queue_family_info_t family_info = {};
@@ -121,7 +127,9 @@ amdf_status_t FindQueueFamilyOrdinal(const amdf_api_t* api,
     family_info.structure_size = sizeof(family_info);
     status =
         api->endpoint_query_queue_family_info(endpoint, ordinal, &family_info);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     if (family_info.command_type == command_type) {
       *out_ordinal = ordinal;
       return AMDF_STATUS_OK;
@@ -172,7 +180,9 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
       info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
       info.structure_size = sizeof(info);
       ASSERT_EQ(api_->memory_scope_query_info(scope, &info), AMDF_STATUS_OK);
-      if (info.kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM) system_scope_ = scope;
+      if (info.kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM) {
+        system_scope_ = scope;
+      }
     }
     ASSERT_NE(system_scope_, nullptr);
 
@@ -256,9 +266,12 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
       }
       const amdf_status_t status = api_->memory_scope_query_device_profile(
           system_scope_, ordinal, 2, devices, &profile, capabilities);
-      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
-      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) {
+        break;
+      }
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
         continue;
+      }
       ASSERT_EQ(status, AMDF_STATUS_OK);
       if ((profile.roles & role) != 0 &&
           (profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) != 0) {
@@ -311,7 +324,9 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
     map_info.byte_length = byte_length;
     map_info.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
     amdf_status_t status = api_->memory_map(memory, &map_info, out_mapping);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     out_info->type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
     out_info->structure_size = sizeof(*out_info);
     return api_->host_mapping_query_info(*out_mapping, out_info);

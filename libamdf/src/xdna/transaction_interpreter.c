@@ -10,12 +10,16 @@
 
 static void amdf_xdna_transaction_interpreter_write_u32(uint8_t* bytes,
                                                         uint32_t value) {
-  for (uint32_t i = 0; i < 4; ++i) bytes[i] = (uint8_t)(value >> (i * 8));
+  for (uint32_t i = 0; i < 4; ++i) {
+    bytes[i] = (uint8_t)(value >> (i * 8));
+  }
 }
 
 static void amdf_xdna_transaction_interpreter_write_u64(uint8_t* bytes,
                                                         uint64_t value) {
-  for (uint32_t i = 0; i < 8; ++i) bytes[i] = (uint8_t)(value >> (i * 8));
+  for (uint32_t i = 0; i < 8; ++i) {
+    bytes[i] = (uint8_t)(value >> (i * 8));
+  }
 }
 
 void amdf_xdna_transaction_interpreter_packet_build(

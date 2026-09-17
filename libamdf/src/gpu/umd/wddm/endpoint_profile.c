@@ -55,7 +55,9 @@ amdf_status_t amdf_gpu_umd_create_endpoint_profile(
   if (amdf_status_is_ok(release_status) && loader.module != NULL) {
     release_status = amdf_gpu_wddm_wkmi_loader_deinitialize(&loader);
   }
-  if (!amdf_status_is_ok(release_status)) status = release_status;
+  if (!amdf_status_is_ok(release_status)) {
+    status = release_status;
+  }
 
   if (amdf_status_is_ok(status) && !profile_available) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);

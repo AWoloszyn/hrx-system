@@ -25,7 +25,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_create(
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*queue),
                   amdf_alignof(amdf_xdna_umd_kernel_queue_t), (void**)&queue);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   queue->host_allocator = device->host_allocator;
   status = amdf_windows_xdna_kernel_execution_acquire_queue(
       context->kernel_execution);

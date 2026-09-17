@@ -100,9 +100,12 @@ class XdnaDeviceFixture : public ::testing::Test {
       capabilities.structure_size = sizeof(capabilities);
       const amdf_status_t status =
           QueryMemoryProfile(ordinal, &profile, &capabilities);
-      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
-      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) {
+        break;
+      }
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
         continue;
+      }
       if (!amdf_status_is_ok(status)) {
         ADD_FAILURE() << "memory profile query failed: domain="
                       << amdf_status_domain(status)

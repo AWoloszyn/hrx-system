@@ -57,7 +57,9 @@ amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*endpoint),
                   amdf_alignof(amdf_endpoint_t), (void**)&endpoint);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_child_tracker_initialize(&endpoint->children);
   endpoint->local_memory_scope.kind = AMDF_MEMORY_SCOPE_KIND_LOCAL;
   endpoint->local_memory_scope.owner.endpoint = endpoint;

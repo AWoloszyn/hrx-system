@@ -24,7 +24,9 @@ static amdf_status_t amdf_gpu_kfd_read_attribute(int directory,
                                                  const char* name, char* text,
                                                  size_t capacity) {
   int descriptor = openat(directory, name, O_RDONLY | O_CLOEXEC);
-  if (descriptor < 0) return amdf_linux_error(errno);
+  if (descriptor < 0) {
+    return amdf_linux_error(errno);
+  }
   ssize_t length;
   do {
     length = read(descriptor, text, capacity - 1);
@@ -32,7 +34,9 @@ static amdf_status_t amdf_gpu_kfd_read_attribute(int directory,
   amdf_status_t status = length < 0 ? amdf_linux_error(errno) : AMDF_STATUS_OK;
   if (length >= 0) {
     text[length] = 0;
-    if ((size_t)length == capacity - 1) status = amdf_linux_error(EOVERFLOW);
+    if ((size_t)length == capacity - 1) {
+      status = amdf_linux_error(EOVERFLOW);
+    }
   }
   const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
   return amdf_status_is_ok(close_status) ? status : close_status;
@@ -43,7 +47,9 @@ static amdf_status_t amdf_gpu_kfd_read_number64(int directory, const char* name,
   char text[32];
   const amdf_status_t status =
       amdf_gpu_kfd_read_attribute(directory, name, text, sizeof(text));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   char* end = NULL;
   errno = 0;
   const unsigned long long value = strtoull(text, &end, 10);
@@ -60,8 +66,12 @@ static amdf_status_t amdf_gpu_kfd_read_number(int directory, const char* name,
   uint64_t value = 0;
   const amdf_status_t status =
       amdf_gpu_kfd_read_number64(directory, name, &value);
-  if (!amdf_status_is_ok(status)) return status;
-  if (value > UINT32_MAX) return amdf_linux_error(EPROTO);
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
+  if (value > UINT32_MAX) {
+    return amdf_linux_error(EPROTO);
+  }
   *out_value = (uint32_t)value;
   return AMDF_STATUS_OK;
 }
@@ -126,11 +136,15 @@ static amdf_status_t amdf_gpu_kfd_read_node(
   char text[8192];
   amdf_status_t status =
       amdf_gpu_kfd_read_attribute(directory, "properties", text, sizeof(text));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   char* cursor = text;
   while (*cursor != 0) {
     char* separator = strchr(cursor, ' ');
-    if (separator == NULL) return amdf_linux_error(EPROTO);
+    if (separator == NULL) {
+      return amdf_linux_error(EPROTO);
+    }
     *separator = 0;
     char* end = NULL;
     errno = 0;
@@ -139,7 +153,9 @@ static amdf_status_t amdf_gpu_kfd_read_node(
       return amdf_linux_error(EPROTO);
     }
     for (uint32_t i = 0; i < PROPERTY_COUNT; ++i) {
-      if (strcmp(cursor, names[i]) != 0) continue;
+      if (strcmp(cursor, names[i]) != 0) {
+        continue;
+      }
       if (value > UINT32_MAX || (present & (1u << i)) != 0) {
         return amdf_linux_error(EPROTO);
       }
@@ -249,7 +265,9 @@ static amdf_status_t amdf_gpu_kfd_query_sdma(
     }
   }
   const amdf_status_t close_status = amdf_linux_file_close(&directory);
-  if (!amdf_status_is_ok(close_status)) status = close_status;
+  if (!amdf_status_is_ok(close_status)) {
+    status = close_status;
+  }
   if (amdf_status_is_ok(status) && (values[0] | values[1] | values[2]) != 0) {
     topology->sdma.ip.major = values[0];
     topology->sdma.ip.minor = values[1];
@@ -270,7 +288,9 @@ static amdf_status_t amdf_gpu_kfd_read_memory(
            (uint32_t)endpoint->info.id.words[0]);
   int directory = openat(endpoint->instance->sysfs_descriptor, path,
                          O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-  if (directory < 0) return amdf_linux_error(errno);
+  if (directory < 0) {
+    return amdf_linux_error(errno);
+  }
   uint64_t total_vram = 0;
   uint64_t visible_vram = 0;
   amdf_status_t status =
@@ -283,7 +303,9 @@ static amdf_status_t amdf_gpu_kfd_read_memory(
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_kfd_read_number64(
         directory, "xgmi_hive_info/xgmi_hive_id", &hive_id);
-    if (status == amdf_linux_error(ENOENT)) status = AMDF_STATUS_OK;
+    if (status == amdf_linux_error(ENOENT)) {
+      status = AMDF_STATUS_OK;
+    }
   }
   uint32_t hive_sharing_enabled = 0;
   if (amdf_status_is_ok(status) && hive_id != 0) {
@@ -292,8 +314,12 @@ static amdf_status_t amdf_gpu_kfd_read_memory(
                                       &hive_sharing_enabled);
   }
   const amdf_status_t close_status = amdf_linux_file_close(&directory);
-  if (!amdf_status_is_ok(close_status)) status = close_status;
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(close_status)) {
+    status = close_status;
+  }
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   topology->vram.total_byte_length = total_vram;
   topology->vram.visible_byte_length = visible_vram;
   topology->memory_peers.hive_id = hive_id;
@@ -314,14 +340,18 @@ static amdf_status_t amdf_gpu_kfd_read_peer_link(int node,
   char text[2048];
   const amdf_status_t status =
       amdf_gpu_kfd_read_attribute(node, path, text, sizeof(text));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const char* names[] = {"type", "node_from", "node_to", "flags"};
   uint32_t values[4] = {0};
   uint32_t present = 0;
   char* cursor = text;
   while (*cursor != 0) {
     char* separator = strchr(cursor, ' ');
-    if (separator == NULL) return amdf_linux_error(EPROTO);
+    if (separator == NULL) {
+      return amdf_linux_error(EPROTO);
+    }
     *separator = 0;
     char* end = NULL;
     errno = 0;
@@ -331,7 +361,9 @@ static amdf_status_t amdf_gpu_kfd_read_peer_link(int node,
       return amdf_linux_error(EPROTO);
     }
     for (uint32_t i = 0; i < 4; ++i) {
-      if (strcmp(cursor, names[i]) != 0) continue;
+      if (strcmp(cursor, names[i]) != 0) {
+        continue;
+      }
       if (value > UINT32_MAX || (present & (1u << i)) != 0) {
         return amdf_linux_error(EPROTO);
       }
@@ -357,7 +389,9 @@ static amdf_status_t amdf_gpu_kfd_read_memory_peers(
     amdf_gpu_kfd_topology_t* topology) {
   const uint32_t link_count = topology->memory_peers.count;
   topology->memory_peers.count = 0;
-  if (link_count == 0) return AMDF_STATUS_OK;
+  if (link_count == 0) {
+    return AMDF_STATUS_OK;
+  }
   amdf_status_t status = amdf_malloc(
       host_allocator, (uint64_t)link_count * sizeof(uint32_t),
       amdf_alignof(uint32_t), (void**)&topology->memory_peers.gpu_ids);
@@ -366,7 +400,9 @@ static amdf_status_t amdf_gpu_kfd_read_memory_peers(
     bool enabled = false;
     status = amdf_gpu_kfd_read_peer_link(node, node_ordinal, i, &backing_node,
                                          &enabled);
-    if (!amdf_status_is_ok(status) || !enabled) continue;
+    if (!amdf_status_is_ok(status) || !enabled) {
+      continue;
+    }
     char path[64];
     snprintf(path, sizeof(path), "%u/gpu_id", backing_node);
     uint32_t gpu_id = 0;
@@ -389,7 +425,9 @@ amdf_gpu_device_features_t amdf_gpu_kfd_topology_memory_features(
     const amdf_gpu_kfd_topology_t* topology, bool integrated) {
   // APU VRAM requests may be redirected to GTT by KFD. System memory remains
   // available there without promising a physical placement the kernel changes.
-  if (integrated || topology->vram.total_byte_length == 0) return 0;
+  if (integrated || topology->vram.total_byte_length == 0) {
+    return 0;
+  }
   amdf_gpu_device_features_t features = AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
   if (topology->vram.visible_byte_length >= topology->vram.total_byte_length) {
     features |= AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY;
@@ -441,15 +479,18 @@ amdf_status_t amdf_gpu_kfd_topology_initialize(
   if (amdf_status_is_ok(status)) {
     nodes =
         openat(topology_directory, "nodes", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (nodes < 0) status = amdf_linux_error(errno);
+    if (nodes < 0) {
+      status = amdf_linux_error(errno);
+    }
   }
   DIR* directory = NULL;
   if (amdf_status_is_ok(status)) {
     directory = fdopendir(nodes);
-    if (directory == NULL)
+    if (directory == NULL) {
       status = amdf_linux_error(errno);
-    else
+    } else {
       nodes = -1;
+    }
   }
   amdf_gpu_kfd_topology_t topology = {0};
   bool found = false;
@@ -457,12 +498,15 @@ amdf_status_t amdf_gpu_kfd_topology_initialize(
     errno = 0;
     const struct dirent* entry = readdir(directory);
     if (entry == NULL) {
-      if (errno) status = amdf_linux_error(errno);
+      if (errno) {
+        status = amdf_linux_error(errno);
+      }
       break;
     }
     if (entry->d_name[0] == 0 ||
-        strspn(entry->d_name, "0123456789") != strlen(entry->d_name))
+        strspn(entry->d_name, "0123456789") != strlen(entry->d_name)) {
       continue;
+    }
     int node = openat(dirfd(directory), entry->d_name,
                       O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (node < 0) {
@@ -488,7 +532,9 @@ amdf_status_t amdf_gpu_kfd_topology_initialize(
       }
     }
     const amdf_status_t close_status = amdf_linux_file_close(&node);
-    if (!amdf_status_is_ok(close_status)) status = close_status;
+    if (!amdf_status_is_ok(close_status)) {
+      status = close_status;
+    }
   }
   if (amdf_status_is_ok(status) && found) {
     status = amdf_gpu_kfd_query_sdma(endpoint, &topology);
@@ -504,12 +550,17 @@ amdf_status_t amdf_gpu_kfd_topology_initialize(
       status = amdf_linux_error(EAGAIN);
     }
   }
-  if (directory != NULL && closedir(directory) != 0)
+  if (directory != NULL && closedir(directory) != 0) {
     status = amdf_linux_error(errno);
+  }
   const amdf_status_t nodes_status = amdf_linux_file_close(&nodes);
-  if (!amdf_status_is_ok(nodes_status)) status = nodes_status;
+  if (!amdf_status_is_ok(nodes_status)) {
+    status = nodes_status;
+  }
   const amdf_status_t close_status = amdf_linux_file_close(&topology_directory);
-  if (!amdf_status_is_ok(close_status)) status = close_status;
+  if (!amdf_status_is_ok(close_status)) {
+    status = close_status;
+  }
   if (amdf_status_is_ok(status) && !found) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }

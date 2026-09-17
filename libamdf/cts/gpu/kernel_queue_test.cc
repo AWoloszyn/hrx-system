@@ -93,7 +93,9 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
     endpoint_info.structure_size = sizeof(endpoint_info);
     amdf_status_t status = api_->endpoint_query_info(endpoint, &endpoint_info);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     for (uint32_t ordinal = 0; ordinal < endpoint_info.queue_family_count;
          ++ordinal) {
       amdf_queue_family_info_t family_info = {};
@@ -101,7 +103,9 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
       family_info.structure_size = sizeof(family_info);
       status = api_->endpoint_query_queue_family_info(endpoint, ordinal,
                                                       &family_info);
-      if (!amdf_status_is_ok(status)) return status;
+      if (!amdf_status_is_ok(status)) {
+        return status;
+      }
       if (family_info.command_type == command_type_ &&
           family_info.format_version ==
               (command_type_ == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4

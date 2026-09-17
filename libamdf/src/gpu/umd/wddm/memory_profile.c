@@ -16,7 +16,9 @@ amdf_status_t amdf_windows_gpu_query_memory_capabilities(
   const amdf_status_t status = amdf_kmt_query_adapter_info(
       &endpoint->instance->kmt, endpoint->adapter, KMTQAITYPE_QUERY_GPUMMU_CAPS,
       &query, sizeof(query));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (query.Caps.VirtualAddressBitCount == 0 ||
       query.Caps.VirtualAddressBitCount > 64) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
@@ -56,7 +58,9 @@ static uint64_t amdf_windows_gpu_maximum_alignment(
     const amdf_windows_gpu_memory_capabilities_t* capabilities) {
   uint64_t limit = amdf_windows_gpu_maximum_byte_length(capabilities);
   uint64_t alignment = 1;
-  while (alignment <= limit / 2) alignment <<= 1;
+  while (alignment <= limit / 2) {
+    alignment <<= 1;
+  }
   return alignment;
 }
 

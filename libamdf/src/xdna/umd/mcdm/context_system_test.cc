@@ -88,7 +88,9 @@ class WindowsXdnaContextSystemTest : public ::testing::Test {
         api_->endpoint_enumerate(instance_, count, summaries.data(), &count),
         AMDF_STATUS_OK);
     for (const auto& summary : summaries) {
-      if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) continue;
+      if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) {
+        continue;
+      }
       ASSERT_EQ(api_->endpoint_open(instance_, &summary.id, &endpoint_),
                 AMDF_STATUS_OK);
       break;

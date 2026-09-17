@@ -36,20 +36,26 @@ void* AMDF_CALL TestAllocate(void* user_data, uint64_t byte_length,
                              uint64_t minimum_alignment) {
   auto* state = static_cast<TestAllocatorState*>(user_data);
   const size_t ordinal = state->allocation_count++;
-  if (ordinal == state->failure_ordinal) return nullptr;
+  if (ordinal == state->failure_ordinal) {
+    return nullptr;
+  }
   if (minimum_alignment < amdf_max_align_t ||
       (minimum_alignment & (minimum_alignment - 1)) != 0) {
     ++state->invalid_alignment_count;
   }
   void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
                                   static_cast<size_t>(minimum_alignment));
-  if (pointer != nullptr) ++state->live_allocation_count;
+  if (pointer != nullptr) {
+    ++state->live_allocation_count;
+  }
   return pointer;
 }
 
 void AMDF_CALL TestFree(void* user_data, void* allocation) {
   auto* state = static_cast<TestAllocatorState*>(user_data);
-  if (allocation == nullptr) return;
+  if (allocation == nullptr) {
+    return;
+  }
   --state->live_allocation_count;
   _aligned_free(allocation);
 }

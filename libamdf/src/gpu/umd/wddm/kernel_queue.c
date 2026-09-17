@@ -58,7 +58,9 @@ amdf_status_t amdf_gpu_umd_kernel_queue_create(
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*queue),
                   amdf_alignof(amdf_gpu_umd_kernel_queue_t), (void**)&queue);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   queue->device = device;
   InitializeSRWLock(&queue->wait_lock);
 
@@ -155,13 +157,19 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
     const amdf_wait_deadline_t* deadline) {
   const amdf_status_t terminal_status =
       amdf_gpu_umd_kernel_queue_query_terminal_status(queue);
-  if (!amdf_status_is_ok(terminal_status)) return terminal_status;
+  if (!amdf_status_is_ok(terminal_status)) {
+    return terminal_status;
+  }
   amdf_wait_budget_t remaining;
   while (amdf_gpu_umd_kernel_queue_query_progress(queue) < native_submission) {
     const amdf_status_t status =
         amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) return status;
-    if (remaining.poll == 0) break;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
+    if (remaining.poll == 0) {
+      break;
+    }
     YieldProcessor();
   }
   // A finite waiter never blocks acquiring the reusable event behind an
@@ -173,18 +181,24 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
     }
     const amdf_status_t status =
         amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     if (remaining.timeout == 0) {
       return amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED);
     }
-    if (TryAcquireSRWLockExclusive(&queue->wait_lock)) break;
+    if (TryAcquireSRWLockExclusive(&queue->wait_lock)) {
+      break;
+    }
     amdf_platform_wait_yield();
   }
   amdf_status_t status = AMDF_STATUS_OK;
   while (amdf_status_is_ok(status) &&
          amdf_gpu_umd_kernel_queue_query_progress(queue) < native_submission) {
     status = amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) break;
+    if (!amdf_status_is_ok(status)) {
+      break;
+    }
     if (remaining.timeout == 0) {
       status = amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED);
       break;
@@ -211,7 +225,9 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
     }
     // Native event registration may itself consume time, so sample again.
     status = amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) break;
+    if (!amdf_status_is_ok(status)) {
+      break;
+    }
     DWORD wait_milliseconds = INFINITE;
     if (remaining.timeout != AMDF_TIMEOUT_INFINITE) {
       const uint64_t milliseconds =
@@ -222,7 +238,9 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
     }
     const DWORD wait_result =
         WaitForSingleObject(queue->wait_event, wait_milliseconds);
-    if (wait_result == WAIT_TIMEOUT) continue;
+    if (wait_result == WAIT_TIMEOUT) {
+      continue;
+    }
     if (wait_result != AMDF_GPU_WINDOWS_WAIT_SIGNALED) {
       status = wait_result == WAIT_FAILED
                    ? amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError())
@@ -232,7 +250,9 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
     queue->wait_event_submission = 0;
   }
   ReleaseSRWLockExclusive(&queue->wait_lock);
-  if (amdf_status_is_ok(status)) MemoryBarrier();
+  if (amdf_status_is_ok(status)) {
+    MemoryBarrier();
+  }
   return status;
 }
 

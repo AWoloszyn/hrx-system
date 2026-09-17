@@ -25,7 +25,9 @@ amdf_status_t amdf_linux_host_cache_query_line_size(uint32_t* out_line_size) {
 
 void amdf_linux_host_cache_transfer(void* pointer, uint64_t byte_length,
                                     uint32_t line_size) {
-  if (byte_length == 0) return;
+  if (byte_length == 0) {
+    return;
+  }
   const uintptr_t first = (uintptr_t)pointer & ~((uintptr_t)line_size - 1);
   const uintptr_t last =
       ((uintptr_t)pointer + byte_length - 1) & ~((uintptr_t)line_size - 1);

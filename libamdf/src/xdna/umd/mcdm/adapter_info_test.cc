@@ -35,13 +35,20 @@ NTSTATUS APIENTRY Query(const D3DKMT_QUERYADAPTERINFO* query) {
   ++query_state->query_count;
   EXPECT_EQ(query->hAdapter, 1u);
   EXPECT_EQ(query->Type, KMTQAITYPE_UMDRIVERPRIVATE);
-  if (query_state->status < 0) return query_state->status;
-  if (query->PrivateDriverDataSize < query_state->reply_byte_length)
+  if (query_state->status < 0) {
+    return query_state->status;
+  }
+  if (query->PrivateDriverDataSize < query_state->reply_byte_length) {
     return static_cast<NTSTATUS>(0xC0000023u);
+  }
   EXPECT_EQ(query->PrivateDriverDataSize, query_state->reply_byte_length);
-  if (query_state->reply_byte_length == 12 && query_state->extended_status < 0)
+  if (query_state->reply_byte_length == 12 &&
+      query_state->extended_status < 0) {
     return query_state->extended_status;
-  if (query_state->no_op) return 0;
+  }
+  if (query_state->no_op) {
+    return 0;
+  }
   // Native marshalling may zero storage that the basic provider never writes.
   std::memset(query->pPrivateDriverData, 0, query->PrivateDriverDataSize);
   std::memcpy(query->pPrivateDriverData, query_state->private_info,

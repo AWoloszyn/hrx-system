@@ -52,7 +52,9 @@ class D3D12MemoryInteropTest : public GpuDeviceFixture {
  protected:
   void SetUp() override {
     GpuDeviceFixture::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
     ASSERT_NE(local_scope_, nullptr);
     import_info_.type = AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO;
     import_info_.structure_size = sizeof(import_info_);
@@ -76,13 +78,16 @@ class D3D12MemoryInteropTest : public GpuDeviceFixture {
     for (UINT index = 0; !matched; ++index) {
       ComPtr<IDXGIAdapter1> candidate;
       const HRESULT status = factory_->EnumAdapters1(index, &candidate);
-      if (status == DXGI_ERROR_NOT_FOUND) break;
+      if (status == DXGI_ERROR_NOT_FOUND) {
+        break;
+      }
       ASSERT_TRUE(SUCCEEDED(status));
       DXGI_ADAPTER_DESC1 description = {};
       ASSERT_TRUE(SUCCEEDED(candidate->GetDesc1(&description)));
       if (description.VendorId != endpoint.pci.vendor_id ||
-          description.DeviceId != endpoint.pci.device_id)
+          description.DeviceId != endpoint.pci.device_id) {
         continue;
+      }
       adapter_ = candidate;
       d3d_.Reset();
       ASSERT_TRUE(SUCCEEDED(D3D12CreateDevice(
@@ -354,7 +359,9 @@ class D3D12MemoryInteropTest : public GpuDeviceFixture {
     }
     AppendSystemBarrier(words);
     size_t padding = 8 - words.size() % 8;
-    if (padding == 1) padding += 8;
+    if (padding == 1) {
+      padding += 8;
+    }
     words.push_back(MakePm4Header(0x10, static_cast<uint32_t>(padding)));
     words.resize(words.size() + padding - 1);
     command_byte_length_ = words.size() * sizeof(uint32_t);
@@ -493,11 +500,12 @@ class D3D12MemoryInteropTest : public GpuDeviceFixture {
       size_t mismatches = 0;
       for (size_t i = 0; i < expected.size(); ++i) {
         if (actual[i] != expected[i]) {
-          if (mismatches < 4)
+          if (mismatches < 4) {
             std::printf(
                 "mismatch: generation=%u offset=%zu expected=%08x "
                 "actual=%08x\n",
                 generation, i * 4, expected[i], actual[i]);
+          }
           ++mismatches;
         }
       }

@@ -56,8 +56,12 @@ static amdf_status_t amdf_linux_xdna_memory_query_dma_buf(
     status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
   }
   const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
-  if (!amdf_status_is_ok(close_status)) status = close_status;
-  if (amdf_status_is_ok(status)) *out_info = info;
+  if (!amdf_status_is_ok(close_status)) {
+    status = close_status;
+  }
+  if (amdf_status_is_ok(status)) {
+    *out_info = info;
+  }
   return status;
 }
 
@@ -193,7 +197,9 @@ amdf_status_t amdf_xdna_umd_memory_prepare_private(
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*memory),
                   amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   memory->device = device;
   memory->host_visibility = amdf_xdna_umd_memory_describe_host(device, 0, 0);
   *memory_state = memory;
@@ -239,7 +245,9 @@ amdf_status_t amdf_xdna_umd_memory_prepare_import(
   const int descriptor = (int)external_memory->payload.file_descriptor;
   amdf_linux_dma_buf_info_t dma_buf_info;
   amdf_status_t status = amdf_linux_dma_buf_query(descriptor, &dma_buf_info);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (amdf_physical_memory_id_is_valid(&external_memory->physical_backing_id) &&
       !amdf_physical_memory_id_is_equal(&external_memory->physical_backing_id,
                                         &dma_buf_info.physical_backing_id)) {
@@ -262,7 +270,9 @@ amdf_status_t amdf_xdna_umd_memory_prepare_import(
   amdf_xdna_umd_memory_t* memory = NULL;
   status = amdf_calloc(device->host_allocator, sizeof(*memory),
                        amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   memory->device = device;
   memory->host_visibility =
       amdf_xdna_umd_memory_describe_host(device, external_memory->type, 0);
@@ -334,7 +344,9 @@ amdf_status_t amdf_xdna_umd_memory_export(
     };
   } else {
     const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
-    if (!amdf_status_is_ok(close_status)) status = close_status;
+    if (!amdf_status_is_ok(close_status)) {
+      status = close_status;
+    }
   }
   return status;
 }
@@ -405,7 +417,9 @@ amdf_status_t amdf_xdna_umd_memory_prepare(
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*memory),
                   amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   memory->device = device;
   memory->host_visibility = amdf_xdna_umd_memory_describe_host(device, 0, 0);
   *memory_state = memory;
@@ -471,7 +485,9 @@ amdf_status_t amdf_xdna_umd_memory_map(
   amdf_status_t status =
       amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
                   amdf_alignof(amdf_xdna_umd_host_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   mapping->host_allocator = memory->device->host_allocator;
   mapping->pointer = (uint8_t*)memory->buffer.host_pointer +
                      memory->source_byte_offset + map_info->byte_offset;

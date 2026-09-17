@@ -75,7 +75,9 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
                                                summaries.data(), &count),
               AMDF_STATUS_OK);
     for (const auto& summary : summaries) {
-      if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) continue;
+      if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) {
+        continue;
+      }
       amdf_endpoint_info_t info;
       ASSERT_EQ(
           amdf_platform_endpoint_open(instance, &summary.id, &endpoint, &info),
@@ -183,7 +185,9 @@ TEST_P(LinuxXdnaDeviceTest,
         endpoint, profile, amdf_allocator_system(), &device, &result);
     EXPECT_EQ(status, AMDF_STATUS_OK);
     EXPECT_EQ(version_state.query_count, 1u);
-    if (!amdf_status_is_ok(status)) continue;
+    if (!amdf_status_is_ok(status)) {
+      continue;
+    }
     EXPECT_NE(result.id.words[0] | result.id.words[1], 0u);
     ASSERT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
     device = nullptr;

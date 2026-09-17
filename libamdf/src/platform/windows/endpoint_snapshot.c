@@ -56,7 +56,9 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
     const amdf_status_t allocation_status = amdf_calloc_array(
         host_allocator, (size_t)capacity, sizeof(*staged_summaries),
         amdf_alignof(amdf_endpoint_summary_t), (void**)&staged_summaries);
-    if (!amdf_status_is_ok(allocation_status)) return allocation_status;
+    if (!amdf_status_is_ok(allocation_status)) {
+      return allocation_status;
+    }
   }
 
   // Include compute/display-only application adapters. GPU-P partition

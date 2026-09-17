@@ -21,7 +21,9 @@ static inline amdf_status_t amdf_linux_error(int error) {
 // ownership before the call prevents a later teardown attempt from closing a
 // descriptor that another thread has since opened with the same number.
 static inline amdf_status_t amdf_linux_file_close(int* descriptor) {
-  if (*descriptor < 0) return AMDF_STATUS_OK;
+  if (*descriptor < 0) {
+    return AMDF_STATUS_OK;
+  }
   const int value = *descriptor;
   *descriptor = -1;
   return close(value) == 0 ? AMDF_STATUS_OK : amdf_linux_error(errno);

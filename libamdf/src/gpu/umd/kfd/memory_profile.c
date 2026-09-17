@@ -38,7 +38,9 @@ static bool amdf_gpu_kfd_query_group_access(
   for (uint32_t i = 0; !reachable && i < consumer->memory_peers.count; ++i) {
     reachable = consumer->memory_peers.gpu_ids[i] == source->gpu_id;
   }
-  if (!reachable) return false;
+  if (!reachable) {
+    return false;
+  }
   amdf_memory_native_profile_t profile = *backing;
   profile.ordinal = candidate->ordinal;
   profile.device_address = candidate->device_address;
@@ -66,7 +68,9 @@ static uint64_t amdf_gpu_kfd_maximum_alignment(
     const amdf_gpu_kfd_topology_t* topology, size_t page_size) {
   uint64_t limit = amdf_gpu_kfd_maximum_byte_length(topology, page_size);
   uint64_t alignment = 1;
-  while (alignment <= limit / 2) alignment <<= 1;
+  while (alignment <= limit / 2) {
+    alignment <<= 1;
+  }
   return alignment;
 }
 

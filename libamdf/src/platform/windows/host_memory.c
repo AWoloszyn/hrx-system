@@ -17,8 +17,9 @@ amdf_status_t amdf_platform_host_memory_allocate(uint64_t byte_length,
                                                  void** out_pointer) {
   void* pointer = VirtualAlloc(NULL, (SIZE_T)byte_length,
                                MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  if (pointer == NULL)
+  if (pointer == NULL) {
     return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
+  }
   *out_pointer = pointer;
   return AMDF_STATUS_OK;
 }

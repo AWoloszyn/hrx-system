@@ -25,7 +25,9 @@ using MemoryConstructionTest = MemoryTest;
 static bool QueryGroupAccess(const amdf_memory_native_profile_t* backing,
                              const amdf_memory_native_profile_t* candidate,
                              amdf_memory_native_profile_t* out_profile) {
-  if (backing->construction.data != candidate->construction.data) return false;
+  if (backing->construction.data != candidate->construction.data) {
+    return false;
+  }
   *out_profile = *candidate;
   return true;
 }
@@ -44,11 +46,15 @@ struct AllocationState {
     value.allocate = [](void* user_data, uint64_t byte_length,
                         uint64_t minimum_alignment) -> void* {
       auto* state = static_cast<AllocationState*>(user_data);
-      if (state->allocation_count++ == state->failure_ordinal) return nullptr;
+      if (state->allocation_count++ == state->failure_ordinal) {
+        return nullptr;
+      }
       const amdf_allocator_t system = amdf_allocator_system();
       void* pointer =
           system.allocate(system.user_data, byte_length, minimum_alignment);
-      if (pointer != nullptr) ++state->live_count;
+      if (pointer != nullptr) {
+        ++state->live_count;
+      }
       return pointer;
     };
     value.free = [](void* user_data, void* pointer) {
@@ -69,7 +75,9 @@ class MemoryGroupTest : public MemoryTest,
  protected:
   void InitializeGroupDevice(uint64_t identity, FakeDevice* device) {
     InitializeFakeDevice(identity, &instance_, device);
-    if (GetParam() == 0) return;
+    if (GetParam() == 0) {
+      return;
+    }
     device->profile.roles =
         AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
     device->profile.registration = device->profile.allocation;
@@ -529,10 +537,13 @@ TEST_F(MemoryConstructionTest,
       EXPECT_EQ(memory, sentinel);
       EXPECT_EQ(devices[1].export_release.count, 1u);
       std::vector<uint64_t> expected_order;
-      if (stage == ImportFailureStage::kAfterAttachment)
+      if (stage == ImportFailureStage::kAfterAttachment) {
         expected_order.push_back(3);
+      }
       expected_order.push_back(1);
-      if (amdf_status_is_ok(destroy_status)) expected_order.push_back(2);
+      if (amdf_status_is_ok(destroy_status)) {
+        expected_order.push_back(2);
+      }
       EXPECT_EQ(release_order, expected_order);
       EXPECT_EQ(devices[0].abandon_call_count,
                 amdf_status_is_ok(destroy_status) ? 0u : 1u);
@@ -617,8 +628,9 @@ TEST_F(MemoryConstructionTest,
           device.profile.address_kinds = UINT64_C(1)
                                          << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE;
         }
-        if (grouped && i != 0)
+        if (grouped && i != 0) {
           device.profile.construction = {QueryGroupAccess, devices.data()};
+        }
         if (i == failing_consumer) {
           device.create_status =
               amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
@@ -659,9 +671,10 @@ TEST_F(MemoryConstructionTest,
       for (uint32_t i = prepared_count; i != 0; --i) {
         expected_order.push_back(i);
       }
-      if (grouped)
+      if (grouped) {
         expected_order = failing_consumer == 1 ? std::vector<uint64_t>{2}
                                                : std::vector<uint64_t>{1, 2};
+      }
       EXPECT_EQ(release_order, expected_order);
       for (uint32_t i = 0; i < devices.size(); ++i) {
         const bool prepared =
@@ -675,7 +688,9 @@ TEST_F(MemoryConstructionTest,
         EXPECT_EQ(devices[i].abandon_call_count, 0u);
       }
       EXPECT_EQ(allocations.live_count, 0u);
-      if (grouped) continue;
+      if (grouped) {
+        continue;
+      }
       // Independently registering another GPU cannot establish one common GPU
       // pointer. Reject that joint contract before any native preparation.
       devices[1].profile.address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU;

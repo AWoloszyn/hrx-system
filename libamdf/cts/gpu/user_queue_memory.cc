@@ -59,22 +59,34 @@ class UserQueueMemoryScenario {
       const amdf_status_t status =
           api_->user_queue_mapping_destroy(queue_mapping_);
       EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) queue_mapping_ = nullptr;
+      if (amdf_status_is_ok(status)) {
+        queue_mapping_ = nullptr;
+      }
     }
-    if (queue_mapping_ != nullptr) return false;
+    if (queue_mapping_ != nullptr) {
+      return false;
+    }
     if (queue_ != nullptr) {
       const amdf_status_t status = api_->user_queue_destroy(queue_);
       EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) queue_ = nullptr;
+      if (amdf_status_is_ok(status)) {
+        queue_ = nullptr;
+      }
     }
     // Workload memory remains attached while native execution may still reach
     // it. A queue that cannot prove destruction retains the complete fixture.
-    if (queue_ != nullptr) return false;
+    if (queue_ != nullptr) {
+      return false;
+    }
 
     DestroyHostMapping(source_mapping_);
     DestroyHostMapping(target_mapping_);
-    if (source_mapping_ == nullptr) DestroyMemory(source_memory_);
-    if (target_mapping_ == nullptr) DestroyMemory(target_memory_);
+    if (source_mapping_ == nullptr) {
+      DestroyMemory(source_memory_);
+    }
+    if (target_mapping_ == nullptr) {
+      DestroyMemory(target_memory_);
+    }
     return source_memory_ == nullptr && target_memory_ == nullptr;
   }
 
@@ -155,14 +167,20 @@ class UserQueueMemoryScenario {
   }
 
   void DestroyHostMapping(amdf_host_mapping_t*& mapping) {
-    if (mapping == nullptr) return;
+    if (mapping == nullptr) {
+      return;
+    }
     const amdf_status_t status = api_->host_mapping_destroy(mapping);
     EXPECT_EQ(status, AMDF_STATUS_OK);
-    if (amdf_status_is_ok(status)) mapping = nullptr;
+    if (amdf_status_is_ok(status)) {
+      mapping = nullptr;
+    }
   }
 
   void DestroyMemory(amdf_memory_t*& memory) {
-    if (memory == nullptr) return;
+    if (memory == nullptr) {
+      return;
+    }
     const amdf_status_t status = api_->memory_destroy(memory);
     memory = nullptr;
     EXPECT_EQ(status, AMDF_STATUS_OK);
@@ -343,7 +361,9 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   // and CPU views are live, before the GPU proves their continued usability.
   if (before_publication) {
     before_publication();
-    if (::testing::Test::HasFatalFailure()) return;
+    if (::testing::Test::HasFatalFailure()) {
+      return;
+    }
   }
 
   auto* ring = reinterpret_cast<uint32_t*>(
@@ -401,13 +421,17 @@ amdf_status_t UserQueueMemoryTest::MatchGpuEndpoint(amdf_endpoint_t* endpoint,
   info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
   info.structure_size = sizeof(info);
   amdf_status_t status = api_->endpoint_query_info(endpoint, &info);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   for (uint32_t ordinal = 0; ordinal < info.queue_family_count; ++ordinal) {
     amdf_queue_family_info_t family = {};
     family.type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
     family.structure_size = sizeof(family);
     status = api_->endpoint_query_queue_family_info(endpoint, ordinal, &family);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     if (family.command_type == commands_.command_type &&
         family.format_version == commands_.format_version &&
         family.maximum_ring_byte_length >=
@@ -458,10 +482,14 @@ void UserQueueMemoryTest::RunConcurrentDeviceCreationAndRecreation() {
               gpu_api_->device_create(endpoint_, &create_info, &peers[i]);
         });
       }
-      for (auto& thread : threads) thread.join();
+      for (auto& thread : threads) {
+        thread.join();
+      }
       for (size_t i = 0; i < peers.size(); ++i) {
         EXPECT_EQ(statuses[i], AMDF_STATUS_OK);
-        if (peers[i] == nullptr) continue;
+        if (peers[i] == nullptr) {
+          continue;
+        }
         const bool released = RunUserQueueMemoryCopies(
             api_, gpu_api_, family_, commands_, peers[i], system_scope_);
         // An unretired queue retains its entire device chain on failure.

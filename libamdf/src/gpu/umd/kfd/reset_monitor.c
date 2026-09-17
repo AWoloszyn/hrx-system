@@ -48,7 +48,9 @@ amdf_status_t amdf_gpu_kfd_reset_monitor_initialize(
   };
   const amdf_status_t status = native_api->context_ioctl(
       native_api->user_data, render_descriptor, &context);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   amdf_gpu_kfd_reset_monitor_t monitor = {
       .native_api = native_api,
@@ -79,7 +81,9 @@ amdf_status_t amdf_gpu_kfd_reset_monitor_query(
   };
   const amdf_status_t status = monitor->native_api->context_ioctl(
       monitor->native_api->user_data, monitor->render_descriptor, &context);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   if ((context.out.state.flags & AMDGPU_CTX_QUERY2_FLAGS_RESET) != 0) {
     amdf_atomic_uint32_store_release(&monitor->reset_observed, 1);
@@ -99,7 +103,9 @@ amdf_status_t amdf_gpu_kfd_reset_monitor_deinitialize(
   if (monitor == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  if (!monitor->context_owned) return AMDF_STATUS_OK;
+  if (!monitor->context_owned) {
+    return AMDF_STATUS_OK;
+  }
   union drm_amdgpu_ctx context = {
       .in =
           {

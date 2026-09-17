@@ -92,7 +92,9 @@ static void amdf_gpu_kfd_memory_plan(
 amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory) {
   if (memory->buffer != NULL) {
     const amdf_status_t status = amdf_gpu_kfd_buffer_destroy(memory->buffer);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     memory->buffer = NULL;
   }
   amdf_free(memory->device->host_allocator, memory);
@@ -124,7 +126,9 @@ static amdf_status_t amdf_gpu_kfd_memory_open_dma_buf(
   amdf_status_t status = amdf_linux_dma_buf_query(descriptor, &info);
   if (!amdf_status_is_ok(status)) {
     const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
-    if (!amdf_status_is_ok(close_status)) status = close_status;
+    if (!amdf_status_is_ok(close_status)) {
+      status = close_status;
+    }
     return status;
   }
   *out_descriptor = descriptor;
@@ -142,8 +146,12 @@ static amdf_status_t amdf_gpu_kfd_memory_query_dma_buf(
     status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
   }
   const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
-  if (!amdf_status_is_ok(close_status)) status = close_status;
-  if (amdf_status_is_ok(status)) *out_info = info;
+  if (!amdf_status_is_ok(close_status)) {
+    status = close_status;
+  }
+  if (amdf_status_is_ok(status)) {
+    *out_info = info;
+  }
   return status;
 }
 
@@ -227,7 +235,9 @@ amdf_status_t amdf_gpu_umd_memory_export(
     };
   } else {
     const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
-    if (!amdf_status_is_ok(close_status)) status = close_status;
+    if (!amdf_status_is_ok(close_status)) {
+      status = close_status;
+    }
   }
   return status;
 }
@@ -245,7 +255,9 @@ amdf_status_t amdf_gpu_umd_memory_prepare(
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*memory),
                   amdf_alignof(amdf_gpu_umd_memory_t), (void**)&memory);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   memory->device = device;
   *memory_state = memory;
   memory->byte_length = plan.byte_length;

@@ -34,7 +34,9 @@ class GpuMemoryGroupTest
       ASSERT_EQ(api_->memory_destroy(std::exchange(memory_, nullptr)),
                 AMDF_STATUS_OK);
     }
-    if (!HasFailure()) std::free(caller_storage_);
+    if (!HasFailure()) {
+      std::free(caller_storage_);
+    }
     caller_storage_ = nullptr;
     GpuDeviceFixture::TearDown();
   }
@@ -60,7 +62,9 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
   const amdf_memory_profile_roles_t role = GetParam().role;
   const bool local = GetParam().memory_class == AMDF_MEMORY_CLASS_LOCAL;
   amdf_memory_scope_t* scope = local ? local_scope_ : system_scope_;
-  if (scope == nullptr) GTEST_SKIP() << "no local backing scope";
+  if (scope == nullptr) {
+    GTEST_SKIP() << "no local backing scope";
+  }
   const bool registered = role == AMDF_MEMORY_PROFILE_ROLE_REGISTER;
   uint32_t endpoint_count = 0;
   ASSERT_EQ(api_->endpoint_enumerate(instance_, 0, nullptr, &endpoint_count),
@@ -71,15 +75,21 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
             AMDF_STATUS_OK);
   amdf_endpoint_t* peer_endpoint = nullptr;
   for (const auto& summary : summaries) {
-    if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) continue;
+    if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) {
+      continue;
+    }
     amdf_endpoint_t* candidate = nullptr;
     ASSERT_EQ(GetCtsDeviceCache().OpenEndpoint(summary.id, &candidate),
               AMDF_STATUS_OK);
-    if (candidate == endpoint_) continue;
+    if (candidate == endpoint_) {
+      continue;
+    }
     peer_endpoint = candidate;
     break;
   }
-  if (peer_endpoint == nullptr) GTEST_SKIP() << "requires two physical GPUs";
+  if (peer_endpoint == nullptr) {
+    GTEST_SKIP() << "requires two physical GPUs";
+  }
 
   const amdf_memory_access_requirements_t requirements = {
       .access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
@@ -112,7 +122,9 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
     const amdf_status_t status = api_->memory_scope_query_device_profile(
         scope, i, accesses.size(), accesses.data(), &profile,
         capabilities.data());
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      continue;
+    }
     ASSERT_EQ(status, AMDF_STATUS_OK);
     const auto required_roles =
         role | (local ? 0 : AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
@@ -120,8 +132,9 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
       continue;
     }
     if (!local &&
-        (profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) == 0)
+        (profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) == 0) {
       continue;
+    }
     selected = i;
     break;
   }
@@ -191,13 +204,17 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
     ASSERT_EQ(api_->memory_query_address(memory_, i, AMDF_MEMORY_ADDRESS_GPU,
                                          &address),
               AMDF_STATUS_OK);
-    if (i == 0) common_address = address;
+    if (i == 0) {
+      common_address = address;
+    }
     EXPECT_EQ(address, common_address);
     EXPECT_GE(address, capabilities[i].device_address.minimum_address);
     EXPECT_LE(address, capabilities[i].device_address.maximum_address);
     EXPECT_EQ(address % capabilities[i].device_address.minimum_alignment, 0u);
   }
-  if (local) return;
+  if (local) {
+    return;
+  }
   amdf_memory_map_info_t map_info = {};
   map_info.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;
   map_info.structure_size = sizeof(map_info);

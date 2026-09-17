@@ -23,7 +23,9 @@ amdf_status_t amdf_platform_instance_create(
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*instance),
                   amdf_alignof(amdf_platform_instance_t), (void**)&instance);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   instance->host_allocator = host_allocator;
   instance->page_size = (size_t)page_size;
   const int mutex_error = pthread_mutex_init(&instance->native_mutex, NULL);

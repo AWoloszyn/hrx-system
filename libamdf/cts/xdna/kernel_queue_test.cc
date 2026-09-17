@@ -26,8 +26,9 @@ std::vector<uint8_t> MakeNoOpTransaction() {
   bytes[5] = 1;   // Memory row count.
   bytes[8] = 12;  // Twelve four-byte XAIE_IO_NOOP operations.
   bytes[12] = bytes.size();
-  for (size_t offset = 16; offset < bytes.size(); offset += 4)
+  for (size_t offset = 16; offset < bytes.size(); offset += 4) {
     bytes[offset] = 5;
+  }
   return bytes;
 }
 
@@ -38,8 +39,9 @@ enum class RegisterOperation : uint8_t {
 };
 
 void WriteU32(std::vector<uint8_t>& bytes, size_t offset, uint32_t value) {
-  for (uint32_t i = 0; i < 4; ++i)
+  for (uint32_t i = 0; i < 4; ++i) {
     bytes[offset + i] = static_cast<uint8_t>(value >> (i * 8));
+  }
 }
 
 // AIE-RT transaction 0.1 register operations carry a 64-bit array offset and
@@ -61,8 +63,9 @@ void AppendRegisterOperation(std::vector<uint8_t>& bytes,
     WriteU32(bytes, offset + 24, byte_length);
   }
   uint32_t operation_count = 0;
-  for (uint32_t i = 0; i < 4; ++i)
+  for (uint32_t i = 0; i < 4; ++i) {
     operation_count |= uint32_t{bytes[8 + i]} << (i * 8);
+  }
   WriteU32(bytes, 8, operation_count + 1);
   WriteU32(bytes, 12, static_cast<uint32_t>(bytes.size()));
 }
