@@ -1385,19 +1385,13 @@ static void loom_target_compile_report_record_low_allocation_identity(
     const loom_low_allocation_table_t* allocation) {
   const loom_target_bundle_t* bundle =
       loom_low_resolved_target_bundle(&allocation->target);
-  const iree_string_view_t export_symbol = bundle->export_plan->export_symbol;
-  report->function_name =
-      !iree_string_view_is_empty(export_symbol)
-          ? export_symbol
-          : loom_low_diagnostic_function_name(allocation->module,
-                                              allocation->function_op);
   report->lowered_symbol = loom_low_diagnostic_function_name(
       allocation->module, allocation->function_op);
-  report->target_bundle_name = bundle->name;
-  report->target_snapshot_name = bundle->snapshot->name;
-  report->target_export_name = bundle->export_plan->name;
-  report->target_export_symbol = bundle->export_plan->export_symbol;
-  report->target_config_name = bundle->config->name;
+  report->function_name =
+      bundle && !iree_string_view_is_empty(bundle->export_plan->export_symbol)
+          ? bundle->export_plan->export_symbol
+          : report->lowered_symbol;
+  loom_target_compile_report_record_target_bundle(report, bundle);
 }
 
 iree_status_t loom_target_compile_report_record_low_allocation_contents(

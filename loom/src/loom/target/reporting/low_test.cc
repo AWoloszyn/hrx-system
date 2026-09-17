@@ -34,7 +34,11 @@ static const T* CompileReportRowAt(
   return NULL;
 }
 
-TEST(CompileReportLowTest, RecordsPressureSpillAndAllocationFailureRows) {
+enum class TargetBinding { kNone, kFacts };
+
+class CompileReportLowTest : public ::testing::TestWithParam<TargetBinding> {};
+
+TEST_P(CompileReportLowTest, RecordsPressureSpillAndAllocationFailureRows) {
   constexpr uint32_t kSourceAssignmentIndex = 0;
   constexpr uint32_t kResultAssignmentIndex = 1;
   constexpr uint32_t kEdgeCopyCount = 1;
@@ -486,10 +490,15 @@ TEST(CompileReportLowTest, RecordsPressureSpillAndAllocationFailureRows) {
   loom_target_facts_builder_initialize(&loom_test_target_fact_type,
                                        target_bundle, &target_facts);
   const loom_low_resolved_target_t target = {
-      /*.target_facts=*/&target_facts,
-      /*.target_name=*/target_bundle->name,
+      /*.target_facts=*/GetParam() == TargetBinding::kFacts ? &target_facts
+                                                            : nullptr,
+      /*.target_name=*/GetParam() == TargetBinding::kFacts
+          ? target_bundle->name
+          : iree_string_view_empty(),
       /*.descriptor_set_key=*/target_bundle->config->contract_set_key,
-      /*.feature_bits=*/target_bundle->config->contract_feature_bits,
+      /*.feature_bits=*/GetParam() == TargetBinding::kFacts
+          ? target_bundle->config->contract_feature_bits
+          : 0,
       /*.descriptor_set=*/&descriptor_set,
   };
   loom_low_schedule_table_t schedule = {};
@@ -607,6 +616,10 @@ TEST(CompileReportLowTest, RecordsPressureSpillAndAllocationFailureRows) {
       LOOM_TARGET_COMPILE_REPORT_DETAIL_ALLOCATION_HIGH_WATER_ROWS));
   EXPECT_TRUE(
       iree_string_view_equal(report.function_name, IREE_SV("<unnamed>")));
+  EXPECT_TRUE(iree_string_view_equal(report.target_bundle_name,
+                                     GetParam() == TargetBinding::kFacts
+                                         ? target_bundle->name
+                                         : iree_string_view_empty()));
   EXPECT_EQ(report.schedule_node_count, 13u);
   EXPECT_EQ(report.register_pressure_summary_count, 2u);
   EXPECT_EQ(report.register_pressure_peak_live_units, 11u);
@@ -1004,11 +1017,30 @@ TEST(CompileReportLowTest, RecordsPressureSpillAndAllocationFailureRows) {
   EXPECT_EQ(summary_report.schedule_band_summary_rows.count, 7u);
   loom_target_compile_report_deinitialize(&summary_report);
 
+  loom_target_compile_report_t allocation_report = {};
+  loom_target_compile_report_initialize(&allocation_report,
+                                        iree_allocator_system());
+  IREE_ASSERT_OK(loom_target_compile_report_record_low_allocation(
+      &allocation_report, &frame.allocation));
+  EXPECT_TRUE(iree_string_view_equal(allocation_report.function_name,
+                                     report.function_name));
+  EXPECT_TRUE(iree_string_view_equal(allocation_report.target_bundle_name,
+                                     report.target_bundle_name));
+  EXPECT_EQ(allocation_report.allocation_spill_count,
+            report.allocation_spill_count);
+  EXPECT_EQ(allocation_report.allocation_assignment_count,
+            report.allocation_assignment_count);
+  loom_target_compile_report_deinitialize(&allocation_report);
+
   loom_target_compile_report_deinitialize(&report);
   loom_module_free(module);
   loom_context_deinitialize(&context);
   iree_arena_block_pool_deinitialize(&block_pool);
 }
+
+INSTANTIATE_TEST_SUITE_P(TargetBinding, CompileReportLowTest,
+                         ::testing::Values(TargetBinding::kNone,
+                                           TargetBinding::kFacts));
 
 }  // namespace
 }  // namespace loom
