@@ -983,6 +983,28 @@ TEST_F(FramingAdapterTest, SendCarrierError) {
   EXPECT_EQ(completion.count, 0);
 }
 
+TEST_F(FramingAdapterTest, SendCopiedPrefixForwardsAsynchronousError) {
+  ActivateWithCallbacks();
+
+  std::vector<uint8_t> prefix = {0x10, 0x20, 0x30};
+  SendCompletion completion;
+  iree_net_message_endpoint_send_params_t params = {
+      /*.copied_prefix=*/
+      iree_make_const_byte_span(prefix.data(), prefix.size()),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/completion.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
+  std::fill(prefix.begin(), prefix.end(), 0xFF);
+
+  mock_carrier_->CompleteNextSend(
+      iree_status_from_code(IREE_STATUS_UNAVAILABLE));
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_UNAVAILABLE);
+  EXPECT_EQ(completion.bytes_transferred, prefix.size());
+  EXPECT_EQ(mock_carrier_->retained_checksum, 0x20u);
+}
+
 TEST_F(FramingAdapterTest, SendRequiresCompletionCallback) {
   ActivateWithCallbacks();
 
