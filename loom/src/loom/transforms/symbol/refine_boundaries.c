@@ -600,11 +600,6 @@ static loom_value_facts_t loom_refine_boundaries_scalar_fact(
   return facts;
 }
 
-static bool loom_refine_boundaries_table_has_entry(
-    const loom_value_fact_table_t* table, loom_value_id_t value_id) {
-  return value_id < table->count && table->entries[value_id].known_divisor != 0;
-}
-
 static iree_status_t loom_refine_boundaries_join_facts(
     loom_value_fact_table_t* target_table,
     const loom_value_fact_table_t* existing_table,
@@ -651,7 +646,7 @@ static iree_status_t loom_refine_boundaries_merge_fact(
     const loom_value_fact_table_t* source_table, loom_value_facts_t facts) {
   // An observed unknown input participates in the join. Keeping it distinct
   // from an unseen boundary prevents later callers from narrowing the result.
-  if (!loom_refine_boundaries_table_has_entry(table, value_id)) {
+  if (!loom_value_fact_table_has_entry(table, value_id)) {
     loom_value_facts_t cloned_facts = loom_value_facts_unknown();
     IREE_RETURN_IF_ERROR(loom_value_fact_table_clone_fact(
         table, source_table, facts, &cloned_facts));
@@ -773,7 +768,7 @@ static iree_status_t loom_refine_boundaries_materialize_exact_value(
   if (!loom_refine_boundaries_value_has_uses(module, old_value)) {
     return iree_ok_status();
   }
-  if (!loom_refine_boundaries_table_has_entry(boundary_facts, fact_value)) {
+  if (!loom_value_fact_table_has_entry(boundary_facts, fact_value)) {
     return iree_ok_status();
   }
   loom_value_facts_t facts =
@@ -1162,7 +1157,7 @@ static iree_status_t loom_refine_boundaries_collect_call(
   IREE_RETURN_IF_ERROR(loom_refine_boundaries_collect_return_forwarding(
       collect, op, callee_info, operands, results));
 
-  if (callee_info->can_refine_boundary) {
+  if (callee_info->can_refine_argument_facts) {
     iree_host_size_t count = operands.count < callee_info->argument_count
                                  ? operands.count
                                  : callee_info->argument_count;

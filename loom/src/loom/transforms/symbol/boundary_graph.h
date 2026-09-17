@@ -55,6 +55,10 @@ typedef struct loom_refine_boundaries_function_t {
   // retain their independently owned contracts.
   bool can_refine_boundary;
 
+  // True when caller facts can refine arguments without recursive feedback.
+  // Cyclic functions retain their declared argument contracts.
+  bool can_refine_argument_facts;
+
   // True after return facts have been computed in the current round.
   bool has_return_facts;
 

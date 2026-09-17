@@ -273,6 +273,7 @@ iree_status_t loom_refine_boundaries_build_graph(
         loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_CALLABLE) &&
         loom_func_like_repr_contract(function) == LOOM_STRING_ID_INVALID &&
         loom_func_like_is_module_internal(function);
+    info->can_refine_argument_facts = info->can_refine_boundary;
     IREE_RETURN_IF_ERROR(loom_refine_boundaries_collect_argument_projections(
         module, info, arena));
     if (info->result_count > 0) {
@@ -308,5 +309,18 @@ iree_status_t loom_refine_boundaries_build_graph(
       .visit_successors = loom_scc_visit_successors_callback_make(
           loom_refine_boundaries_visit_successors, out_graph),
   };
-  return loom_scc_compute(&scc_graph, NULL, arena, out_sccs);
+  IREE_RETURN_IF_ERROR(loom_scc_compute(&scc_graph, NULL, arena, out_sccs));
+  // Recursive argument ranges can narrow one integer per round. The local
+  // simplifier cannot solve those recurrences; keep the declared domain while
+  // preserving private signature ownership and acyclic caller refinement.
+  for (iree_host_size_t i = 0; i < out_sccs->count; ++i) {
+    const loom_scc_t* scc = &out_sccs->values[i];
+    if (!scc->is_cycle) {
+      continue;
+    }
+    for (iree_host_size_t j = 0; j < scc->node_count; ++j) {
+      out_graph->functions[scc->nodes[j]].can_refine_argument_facts = false;
+    }
+  }
+  return iree_ok_status();
 }

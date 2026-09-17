@@ -36,6 +36,141 @@ func.def public @entry() -> (index) {
 
 // ====
 
+// An unknown recursive argument also contributes to the join. The exact entry
+// call cannot override that contribution and bake one iteration into the body.
+func.def noinline @repeat(%value: i64, %again: i1) {
+  test.use %value : i64
+  scf.if %again {
+    %increment = scalar.constant 1 : i64
+    %next = scalar.addi %value, %increment : i64
+    func.call @repeat(%next, %again) : (i64, i1)
+  }
+  func.return
+}
+
+func.def public @entry(%again: i1) {
+  %exact_input = scalar.constant 7 : i64
+  func.call @repeat(%exact_input, %again) : (i64, i1)
+  func.return
+}
+
+// ----
+func.def noinline @repeat(%value: i64, %again: i1) {
+  test.use %value : i64
+  scf.if %again {
+    %7 = scalar.constant true : i1
+    %increment = scalar.constant 1 : i64
+    %next = scalar.addi %value, %increment : i64
+    func.call @repeat(%next, %7) : (i64, i1)
+  }
+  func.return
+}
+
+func.def public @entry(%again: i1) {
+  %exact_input = scalar.constant 7 : i64
+  func.call @repeat(%exact_input, %again) : (i64, i1)
+  func.return
+}
+
+// ====
+
+// Recursive argument ranges cannot drive an unbounded narrowing loop. Local
+// branch facts still refine the decrement, while the function keeps its domain.
+func.def noinline @countdown(%value: i64) {
+  %limit = scalar.constant 0 : i64
+  %positive = scalar.cmpi sgt, %value, %limit : i64
+  scf.if %positive {
+    %decrement = scalar.constant 1 : i64
+    %next = scalar.subi %value, %decrement : i64
+    func.call @countdown(%next) : (i64)
+  }
+  func.return
+}
+
+func.def public @start_countdown() {
+  %initial_value = scalar.constant 7 : i64
+  func.call @countdown(%initial_value) : (i64)
+  func.return
+}
+
+// ----
+func.def noinline @countdown(%value: i64) {
+  %limit = scalar.constant 0 : i64
+  %positive = scalar.cmpi sgt, %value, %limit : i64
+  scf.if %positive {
+    %6 = scalar.assume %value [gt(%value, 0)] : i64
+    %7 = scalar.constant -1 : i64
+    %next = scalar.addi %6, %7 : i64
+    func.call @countdown(%next) : (i64)
+  }
+  func.return
+}
+
+func.def public @start_countdown() {
+  %initial_value = scalar.constant 7 : i64
+  func.call @countdown(%initial_value) : (i64)
+  func.return
+}
+
+// ====
+
+// The same rule applies to a multi-function cycle, independently of which
+// member the SCC traversal visits first. The return values remain dynamic.
+func.def noinline @step_a(%value: i64) -> (i64) {
+  %limit = scalar.constant 0 : i64
+  %positive = scalar.cmpi sgt, %value, %limit : i64
+  %result = scf.if %positive -> (i64) {
+    %decrement = scalar.constant 1 : i64
+    %next = scalar.subi %value, %decrement : i64
+    %nested = func.call @step_b(%next) : (i64) -> (i64)
+    scf.yield %nested : i64
+  } else {
+    scf.yield %value : i64
+  }
+  func.return %result : i64
+}
+
+func.def noinline @step_b(%value: i64) -> (i64) {
+  %result = func.call @step_a(%value) : (i64) -> (i64)
+  func.return %result : i64
+}
+
+func.def public @start_steps() -> (i64) {
+  %initial_value = scalar.constant 7 : i64
+  %result = func.call @step_a(%initial_value) : (i64) -> (i64)
+  func.return %result : i64
+}
+
+// ----
+func.def noinline @step_a(%value: i64) -> (i64) {
+  %limit = scalar.constant 0 : i64
+  %positive = scalar.cmpi sgt, %value, %limit : i64
+  %result = scf.if %positive -> (i64) {
+    %14 = scalar.assume %value [gt(%value, 0)] : i64
+    %16 = scalar.constant -1 : i64
+    %next = scalar.addi %14, %16 : i64
+    %nested = func.call @step_b(%next) : (i64) -> (i64)
+    scf.yield %nested : i64
+  } else {
+    %15 = scalar.assume %value [le(%value, 0)] : i64
+    scf.yield %15 : i64
+  }
+  func.return %result : i64
+}
+
+func.def noinline @step_b(%value: i64) -> (i64) {
+  %result = func.call @step_a(%value) : (i64) -> (i64)
+  func.return %result : i64
+}
+
+func.def public @start_steps() -> (i64) {
+  %initial_value = scalar.constant 7 : i64
+  %result = func.call @step_a(%initial_value) : (i64) -> (i64)
+  func.return %result : i64
+}
+
+// ====
+
 // Public callees do not receive argument facts from internal callers because
 // external callers may pass different values.
 func.def public @public_extent_identity(%n: index) -> (index) {
