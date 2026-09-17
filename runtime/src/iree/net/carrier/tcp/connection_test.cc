@@ -108,6 +108,9 @@ struct EndpointDeactivateResult {
 };
 
 struct ConnectionDeactivateResult {
+  // Number of terminal callbacks observed.
+  int callback_count = 0;
+
   // True after connection deactivation completes.
   bool completed = false;
 };
@@ -130,29 +133,41 @@ struct MalformedHeaderCase {
 };
 
 struct BlockingAllocator {
-  // Mutex serializing the one-shot allocation gate.
+  enum class Gate {
+    kNone,
+    kAllocation,
+    kFree,
+  };
+
+  // Mutex serializing the one-shot allocator gate.
   std::mutex mutex;
 
-  // Notifies the test when allocation enters and when it may resume.
+  // Notifies the test when an allocator command enters and may resume.
   std::condition_variable condition;
 
-  // True when the next allocation must stop at the gate.
-  bool armed = false;
+  // Allocator command family stopped by the one-shot gate.
+  Gate gate = Gate::kNone;
 
-  // True while an allocation is waiting at the gate.
+  // True while an allocator command is waiting at the gate.
   bool entered = false;
 
   // True when the waiting allocation may proceed.
   bool released = false;
 
-  // True when the allocation attempt returned without entering the gate.
+  // True when the gated operation returned without entering the gate.
   bool attempt_completed = false;
+
+  // Number of allocation commands observed by this wrapper.
+  iree_host_size_t allocation_count = 0;
+
+  // Number of free commands observed by this wrapper.
+  iree_host_size_t free_count = 0;
 
   iree_allocator_t allocator() { return {this, Control}; }
 
-  void Arm() {
+  void Arm(Gate new_gate) {
     std::lock_guard<std::mutex> lock(mutex);
-    armed = true;
+    gate = new_gate;
     entered = false;
     released = false;
     attempt_completed = false;
@@ -176,14 +191,34 @@ struct BlockingAllocator {
     condition.notify_all();
   }
 
+  iree_host_size_t AllocationCount() {
+    std::lock_guard<std::mutex> lock(mutex);
+    return allocation_count;
+  }
+
+  iree_host_size_t OutstandingAllocationCount() {
+    std::lock_guard<std::mutex> lock(mutex);
+    return allocation_count - free_count;
+  }
+
   static iree_status_t Control(void* self, iree_allocator_command_t command,
                                const void* params, void** inout_ptr) {
     auto* allocator = static_cast<BlockingAllocator*>(self);
-    if (command == IREE_ALLOCATOR_COMMAND_MALLOC ||
-        command == IREE_ALLOCATOR_COMMAND_CALLOC) {
+    const bool is_allocation = command == IREE_ALLOCATOR_COMMAND_MALLOC ||
+                               command == IREE_ALLOCATOR_COMMAND_CALLOC;
+    const bool is_free = command == IREE_ALLOCATOR_COMMAND_FREE;
+    if (is_allocation || is_free) {
       std::unique_lock<std::mutex> lock(allocator->mutex);
-      if (allocator->armed) {
-        allocator->armed = false;
+      if (is_allocation) {
+        ++allocator->allocation_count;
+      } else {
+        ++allocator->free_count;
+      }
+      const bool should_stop =
+          (allocator->gate == Gate::kAllocation && is_allocation) ||
+          (allocator->gate == Gate::kFree && is_free);
+      if (should_stop) {
+        allocator->gate = Gate::kNone;
         allocator->entered = true;
         allocator->condition.notify_all();
         allocator->condition.wait(lock, [&] { return allocator->released; });
@@ -263,6 +298,7 @@ static void EndpointDeactivated(void* user_data) {
 
 static void ConnectionDeactivated(void* user_data) {
   auto* result = static_cast<ConnectionDeactivateResult*>(user_data);
+  ++result->callback_count;
   result->completed = true;
 }
 
@@ -371,7 +407,8 @@ class TcpConnectionTest : public ::testing::Test {
           iree_net_tcp_connection_options_default(),
       iree_host_size_t receive_buffer_size = 4096,
       iree_host_size_t receive_buffer_count = 4,
-      iree_allocator_t client_host_allocator = iree_allocator_system()) {
+      iree_allocator_t client_host_allocator = iree_allocator_system(),
+      iree_allocator_t server_host_allocator = iree_allocator_system()) {
     CreateReceivePool(receive_buffer_size, receive_buffer_count,
                       &client_receive_pool_);
     CreateReceivePool(receive_buffer_size, receive_buffer_count,
@@ -382,7 +419,7 @@ class TcpConnectionTest : public ::testing::Test {
         client_host_allocator, &client_connection_));
     IREE_ASSERT_OK(iree_net_tcp_connection_create(
         proactor_, server_socket_, server_receive_pool_.pool, &server_options,
-        iree_allocator_system(), &server_connection_));
+        server_host_allocator, &server_connection_));
   }
 
   iree_net_message_endpoint_t OpenEndpoint(
@@ -662,7 +699,7 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
   send_result.callback_order = &callback_order;
   send_result.identifier = 1;
 
-  blocking_allocator_.Arm();
+  blocking_allocator_.Arm(BlockingAllocator::Gate::kAllocation);
   iree_status_code_t submit_status = IREE_STATUS_UNKNOWN;
   std::thread submit_thread([&] {
     iree_status_t status = SendMessage(
@@ -719,7 +756,7 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationRejectsPreparingReservation) {
   void* reservation_data = nullptr;
   iree_net_carrier_send_handle_t reservation_handle = 0;
   iree_status_code_t begin_status = IREE_STATUS_UNKNOWN;
-  blocking_allocator_.Arm();
+  blocking_allocator_.Arm(BlockingAllocator::Gate::kAllocation);
   std::thread begin_thread([&] {
     iree_status_t status = iree_net_message_endpoint_begin_send(
         client_endpoint, 64, &reservation_data, &reservation_handle);
@@ -1058,6 +1095,104 @@ TEST_F(TcpConnectionTest, ConnectionDrainCancelsPendingEndpointReady) {
 
   iree_net_connection_release(client_connection_);
   client_connection_ = nullptr;
+}
+
+TEST_F(TcpConnectionTest, ConnectionDrainClosesInactiveEndpointAdmission) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.max_endpoint_count = 2;
+  CreateConnectionPair(
+      options, options,
+      /*receive_buffer_size=*/64,
+      /*receive_buffer_count=*/4,
+      /*client_host_allocator=*/iree_allocator_system(),
+      /*server_host_allocator=*/blocking_allocator_.allocator());
+
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  ActivateEndpoint(client_endpoint, CreateMessageResult());
+
+  OpenEndpoint(server_connection_);
+
+  iree_net_message_endpoint_t server_active_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(server_active_endpoint, CreateMessageResult());
+  OperationResult activation_barrier;
+  iree_async_nop_operation_t barrier = {};
+  iree_async_operation_initialize(&barrier.base, IREE_ASYNC_OPERATION_TYPE_NOP,
+                                  IREE_ASYNC_OPERATION_FLAG_NONE,
+                                  OperationCompleted, &activation_barrier);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &barrier.base));
+  PollUntil([&] { return activation_barrier.completed; });
+
+  void* reservation_data = nullptr;
+  iree_net_carrier_send_handle_t reservation_handle = 0;
+  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(
+      server_active_endpoint, 1, &reservation_data, &reservation_handle));
+  *static_cast<uint8_t*>(reservation_data) = 42;
+
+  blocking_allocator_.Arm(BlockingAllocator::Gate::kFree);
+  ConnectionDeactivateResult deactivate_result;
+  std::thread deactivate_thread([&] {
+    iree_net_connection_deactivate(server_connection_,
+                                   {ConnectionDeactivated, &deactivate_result});
+    blocking_allocator_.CompleteAttempt();
+  });
+  const bool free_entered = blocking_allocator_.WaitUntilEnteredOrCompleted();
+  if (!free_entered) {
+    deactivate_thread.join();
+    ADD_FAILURE() << "connection drain did not release its reservation";
+    return;
+  }
+
+  auto finish_deactivation = [&] {
+    blocking_allocator_.Release();
+    deactivate_thread.join();
+    if (!deactivate_result.completed) {
+      PollUntil([&] { return deactivate_result.completed; });
+    }
+  };
+
+  const iree_host_size_t allocation_count_before =
+      blocking_allocator_.AllocationCount();
+  std::array<std::string, 2> payloads = {
+      std::string(128, 'a'),
+      std::string(128, 'b'),
+  };
+  std::array<iree_async_span_t, 2> spans;
+  std::array<SendResult, 2> send_results;
+  bool sends_accepted = true;
+  for (iree_host_size_t i = 0; i < payloads.size(); ++i) {
+    spans[i] = iree_async_span_from_ptr(payloads[i].data(), payloads[i].size());
+    send_results[i].is_polling = &is_polling_;
+    iree_status_t send_status =
+        SendMessage(client_endpoint, iree_async_span_list_make(&spans[i], 1),
+                    &send_results[i]);
+    const iree_status_code_t send_status_code = iree_status_code(send_status);
+    IREE_EXPECT_OK(send_status);
+    sends_accepted &= send_status_code == IREE_STATUS_OK;
+  }
+  if (!sends_accepted) {
+    finish_deactivation();
+    return;
+  }
+  // Each frame spans multiple receive buffers and allocates reassembly
+  // storage. Starting the second reassembly proves the first frame reached
+  // the connection admission boundary while deactivation is blocked.
+  PollUntil([&] {
+    return blocking_allocator_.AllocationCount() >=
+               allocation_count_before + payloads.size() &&
+           send_results[0].callback_count == 1 &&
+           send_results[1].callback_count == 1;
+  });
+  finish_deactivation();
+  EXPECT_EQ(deactivate_result.callback_count, 1);
+
+  // Destruction asserts that every pending-frame record was returned. A frame
+  // admitted after the inactive endpoint was cleared violates that invariant.
+  iree_net_connection_release(server_connection_);
+  server_connection_ = nullptr;
+  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(), 0u);
 }
 
 TEST_F(TcpConnectionTest, DeactivationKeepsSendCallbacksOnOwningProactor) {

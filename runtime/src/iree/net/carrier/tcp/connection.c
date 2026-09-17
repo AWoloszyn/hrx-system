@@ -529,6 +529,13 @@ static iree_status_t iree_net_tcp_on_wire_frame(
   iree_net_message_endpoint_message_fn_t on_message = NULL;
   void* callback_user_data = NULL;
   iree_slim_mutex_lock(&connection->mutex);
+  // Leaving OPEN closes receive admission before endpoint queues are cleared.
+  // Frames that lose this lock race remain owned by the framing adapter and
+  // are intentionally discarded during connection drain.
+  if (connection->state != IREE_NET_TCP_CONNECTION_STATE_OPEN) {
+    iree_slim_mutex_unlock(&connection->mutex);
+    return iree_ok_status();
+  }
   iree_status_t status = iree_ok_status();
   if (!iree_status_is_ok(connection->terminal_status)) {
     status = iree_status_clone(connection->terminal_status);
