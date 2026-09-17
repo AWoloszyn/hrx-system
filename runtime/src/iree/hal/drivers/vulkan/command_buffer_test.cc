@@ -246,6 +246,22 @@ class VulkanCommandBufferTest : public ::testing::Test {
   iree_hal_vulkan_atomic_pipelines_t atomic_pipelines_ = {};
 };
 
+TEST_F(VulkanCommandBufferTest, FinalAtomicTargetAlignmentFollowsMode) {
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
+                        iree_hal_vulkan_atomic_validate_target_address(
+                            /*target_address=*/0x1001, IREE_HAL_ATOMIC_WIDTH_32,
+                            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INCOMPATIBLE,
+                        iree_hal_vulkan_atomic_validate_target_address(
+                            /*target_address=*/0x1001, IREE_HAL_ATOMIC_WIDTH_32,
+                            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_hal_vulkan_atomic_validate_target_address(
+          /*target_address=*/0x1001, static_cast<iree_hal_atomic_width_t>(0),
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE));
+}
+
 TEST_F(VulkanCommandBufferTest, ReplaysDebugGroupsAsDebugUtilsLabels) {
   CommandBufferPtr command_buffer = CreateCommandBuffer();
   ASSERT_NE(command_buffer, nullptr);
@@ -556,6 +572,98 @@ TEST_F(VulkanCommandBufferTest,
     EXPECT_EQ(published_target_address, 0x3004u);
     g_native_replay_capture = nullptr;
   }
+}
+
+TEST_F(VulkanCommandBufferTest,
+       AtomicTargetModeDoesNotReclassifyReplayInfrastructureFailures) {
+  CommandBufferPtr command_buffer = CreateCommandBuffer(
+      /*binding_capacity=*/1, IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT);
+  ASSERT_NE(command_buffer, nullptr);
+
+  const iree_hal_atomic_rmw_params_t params = {
+      /*.operand=*/7,
+      /*.flags=*/IREE_HAL_ATOMIC_FLAG_ACQUIRE | IREE_HAL_ATOMIC_FLAG_RELEASE,
+      /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+      /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_ADD,
+      /*.target_error_mode=*/
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+      /*.reserved=*/0,
+  };
+  IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer.get()));
+  IREE_ASSERT_OK(iree_hal_command_buffer_atomic_rmw(
+      command_buffer.get(), IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
+      IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+      iree_hal_make_indirect_buffer_ref(/*buffer_slot=*/0, /*offset=*/0,
+                                        /*length=*/4),
+      params));
+
+  // Recording state is an internal command-buffer failure, not a target
+  // compatibility failure.
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      iree_hal_vulkan_command_buffer_publish_bda_replay_data(
+          command_buffer.get(), iree_hal_buffer_binding_table_empty(),
+          /*bda_publication=*/nullptr, /*bda_binding_cache=*/nullptr));
+  IREE_ASSERT_OK(iree_hal_command_buffer_end(command_buffer.get()));
+
+  // Missing or malformed publication storage also retains its existing
+  // FAILED_PRECONDITION classification in opt-in mode.
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      iree_hal_vulkan_command_buffer_publish_bda_replay_data(
+          command_buffer.get(), iree_hal_buffer_binding_table_empty(),
+          /*bda_publication=*/nullptr, /*bda_binding_cache=*/nullptr));
+  uint64_t published_target_address = 0;
+  const iree_hal_vulkan_command_buffer_bda_publication_t short_publication = {
+      /*.host_span=*/iree_make_byte_span(&published_target_address,
+                                         sizeof(published_target_address) - 1),
+      /*.device_address=*/0x4000,
+  };
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      iree_hal_vulkan_command_buffer_publish_bda_replay_data(
+          command_buffer.get(), iree_hal_buffer_binding_table_empty(),
+          &short_publication, /*bda_binding_cache=*/nullptr));
+
+  const iree_hal_buffer_binding_t binding = {};
+  const iree_hal_buffer_binding_table_t binding_table = {
+      /*.count=*/1,
+      /*.bindings=*/&binding,
+  };
+  iree_hal_vulkan_command_buffer_bda_binding_slot_t cached_slot = {
+      /*.device_address=*/0x1000,
+      /*.length=*/16,
+  };
+  iree_hal_vulkan_command_buffer_bda_binding_cache_t binding_cache = {
+      /*.slots=*/&cached_slot,
+      /*.slot_count=*/1,
+  };
+  const iree_hal_vulkan_command_buffer_bda_publication_t
+      misaligned_publication = {
+          /*.host_span=*/iree_make_byte_span(&published_target_address,
+                                             sizeof(published_target_address)),
+          /*.device_address=*/0x4001,
+      };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
+                        iree_hal_vulkan_command_buffer_publish_bda_replay_data(
+                            command_buffer.get(), binding_table,
+                            &misaligned_publication, &binding_cache));
+
+  const iree_hal_vulkan_command_buffer_bda_publication_t publication = {
+      /*.host_span=*/iree_make_byte_span(&published_target_address,
+                                         sizeof(published_target_address)),
+      /*.device_address=*/0x4000,
+  };
+  iree_hal_vulkan_command_buffer_bda_binding_cache_t empty_cache = {};
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_OUT_OF_RANGE,
+      iree_hal_vulkan_command_buffer_publish_bda_replay_data(
+          command_buffer.get(), iree_hal_buffer_binding_table_empty(),
+          &publication, &empty_cache));
+
+  IREE_ASSERT_OK(iree_hal_vulkan_command_buffer_publish_bda_replay_data(
+      command_buffer.get(), binding_table, &publication, &binding_cache));
+  EXPECT_EQ(published_target_address, 0x1000u);
 }
 
 #endif  // !IREE_HAL_VULKAN_LIBVULKAN_STATIC

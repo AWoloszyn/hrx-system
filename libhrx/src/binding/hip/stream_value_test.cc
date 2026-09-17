@@ -20,6 +20,8 @@ TEST(StreamValueTest, TranslatesGreaterEqualAndEqual) {
   EXPECT_EQ(15u, params.mask);
   EXPECT_EQ(IREE_HAL_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL,
             params.condition);
+  EXPECT_EQ(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+            params.target_error_mode);
 
   IREE_ASSERT_OK(iree_hip_stream_wait_value_params_initialize(
       7, 15, IREE_HIP_STREAM_WAIT_VALUE_EQ, IREE_HAL_ATOMIC_WIDTH_64, &params));
@@ -68,6 +70,8 @@ TEST(StreamValueTest, TranslatesWriteOperations) {
   EXPECT_EQ(2u, params.store.value);
   EXPECT_EQ(IREE_HAL_ATOMIC_WIDTH_32, params.store.width);
   EXPECT_EQ(IREE_HAL_ATOMIC_FLAG_RELEASE, params.store.flags);
+  EXPECT_EQ(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+            params.store.target_error_mode);
 
   IREE_ASSERT_OK(iree_hip_stream_write_value_params_initialize(
       7, IREE_HIP_EXT_STREAM_WRITE_VALUE_INCREMENT, IREE_HAL_ATOMIC_WIDTH_64,
@@ -77,6 +81,8 @@ TEST(StreamValueTest, TranslatesWriteOperations) {
   EXPECT_EQ(IREE_HAL_ATOMIC_RMW_OPERATION_ADD, params.update.operation);
   EXPECT_EQ(IREE_HAL_ATOMIC_FLAG_ACQUIRE | IREE_HAL_ATOMIC_FLAG_RELEASE,
             params.update.flags);
+  EXPECT_EQ(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+            params.update.target_error_mode);
 
   IREE_ASSERT_OK(iree_hip_stream_write_value_params_initialize(
       11, IREE_HIP_EXT_STREAM_WRITE_VALUE_DECREMENT, IREE_HAL_ATOMIC_WIDTH_64,
@@ -84,6 +90,8 @@ TEST(StreamValueTest, TranslatesWriteOperations) {
   EXPECT_EQ(IREE_HIP_STREAM_VALUE_WRITE_OPERATION_SUBTRACT, params.operation);
   EXPECT_EQ(11u, params.update.operand);
   EXPECT_EQ(IREE_HAL_ATOMIC_RMW_OPERATION_SUBTRACT, params.update.operation);
+  EXPECT_EQ(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+            params.update.target_error_mode);
 }
 
 TEST(StreamValueTest, RejectsUnknownWriteOperationAndWidth) {

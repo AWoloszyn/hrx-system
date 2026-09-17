@@ -1422,6 +1422,7 @@ static iree_status_t iree_hal_vulkan_command_buffer_resolve_descriptor_binding(
 static iree_status_t iree_hal_vulkan_command_buffer_resolve_bda_binding_slot(
     iree_hal_buffer_binding_table_t binding_table, uint32_t buffer_slot,
     iree_hal_vulkan_command_buffer_bda_binding_cache_t* bda_binding_cache,
+    iree_status_code_t missing_device_address_status_code,
     VkDeviceAddress* out_device_address, iree_device_size_t* out_length) {
   *out_device_address = 0;
   *out_length = 0;
@@ -1457,11 +1458,25 @@ static iree_status_t iree_hal_vulkan_command_buffer_resolve_bda_binding_slot(
   }
 
   VkDeviceAddress buffer_address = 0;
-  IREE_RETURN_IF_ERROR(iree_hal_vulkan_buffer_device_address(
-      resolved_ref.buffer, &buffer_address));
+  iree_status_t address_status = iree_hal_vulkan_buffer_device_address(
+      resolved_ref.buffer, &buffer_address);
+  if (!iree_status_is_ok(address_status)) {
+    // Only atomic target resolution requests INCOMPATIBLE here. Dispatch BDA
+    // resolution passes FAILED_PRECONDITION and retains its established
+    // capability status; range and binding failures return above unchanged.
+    if (missing_device_address_status_code == IREE_STATUS_INCOMPATIBLE &&
+        iree_status_code(address_status) == IREE_STATUS_FAILED_PRECONDITION) {
+      iree_status_free(address_status);
+      return iree_make_status(
+          IREE_STATUS_INCOMPATIBLE,
+          "Vulkan BDA binding table slot %u buffer has no device address",
+          buffer_slot);
+    }
+    return address_status;
+  }
   if (buffer_address == 0) {
     return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
+        missing_device_address_status_code,
         "Vulkan BDA binding table slot %u buffer has no device address",
         buffer_slot);
   }
@@ -1494,7 +1509,8 @@ iree_status_t iree_hal_vulkan_command_buffer_resolve_bda_binding_table_slot(
   IREE_ASSERT_ARGUMENT(out_slot);
   *out_slot = (iree_hal_vulkan_command_buffer_bda_binding_slot_t){0};
   return iree_hal_vulkan_command_buffer_resolve_bda_binding_slot(
-      binding_table, buffer_slot, bda_binding_cache, &out_slot->device_address,
+      binding_table, buffer_slot, bda_binding_cache,
+      IREE_STATUS_FAILED_PRECONDITION, &out_slot->device_address,
       &out_slot->length);
 }
 
@@ -1502,6 +1518,7 @@ static iree_status_t iree_hal_vulkan_command_buffer_resolve_bda_ref(
     iree_hal_buffer_binding_table_t binding_table,
     iree_hal_buffer_ref_t buffer_ref, iree_string_view_t usage,
     iree_hal_vulkan_command_buffer_bda_binding_cache_t* bda_binding_cache,
+    iree_status_code_t missing_device_address_status_code,
     VkDeviceAddress* out_device_address,
     iree_device_size_t* out_resolved_length) {
   *out_device_address = 0;
@@ -1515,7 +1532,8 @@ static iree_status_t iree_hal_vulkan_command_buffer_resolve_bda_ref(
     IREE_RETURN_IF_ERROR(
         iree_hal_vulkan_command_buffer_resolve_bda_binding_slot(
             binding_table, buffer_ref.buffer_slot, bda_binding_cache,
-            &slot_device_address, &slot_length));
+            missing_device_address_status_code, &slot_device_address,
+            &slot_length));
     iree_device_size_t resolved_offset = 0;
     IREE_RETURN_IF_ERROR(iree_hal_buffer_calculate_range(
         /*binding_offset=*/0, slot_length, buffer_ref.offset, buffer_ref.length,
@@ -1540,11 +1558,25 @@ static iree_status_t iree_hal_vulkan_command_buffer_resolve_bda_ref(
     }
 
     VkDeviceAddress buffer_address = 0;
-    IREE_RETURN_IF_ERROR(iree_hal_vulkan_buffer_device_address(
-        resolved_ref.buffer, &buffer_address));
+    iree_status_t address_status = iree_hal_vulkan_buffer_device_address(
+        resolved_ref.buffer, &buffer_address);
+    if (!iree_status_is_ok(address_status)) {
+      // A missing atomic target device address follows target_error_mode.
+      // Binding, range, usage, and dispatch failures are mode-independent and
+      // retain their existing status before reaching this translation.
+      if (missing_device_address_status_code == IREE_STATUS_INCOMPATIBLE &&
+          iree_status_code(address_status) == IREE_STATUS_FAILED_PRECONDITION) {
+        iree_status_free(address_status);
+        return iree_make_status(
+            IREE_STATUS_INCOMPATIBLE,
+            "Vulkan command buffer %.*s buffer has no device address",
+            (int)usage.size, usage.data);
+      }
+      return address_status;
+    }
     if (buffer_address == 0) {
       return iree_make_status(
-          IREE_STATUS_FAILED_PRECONDITION,
+          missing_device_address_status_code,
           "Vulkan command buffer %.*s buffer has no device address",
           (int)usage.size, usage.data);
     }
@@ -1583,7 +1615,8 @@ static iree_status_t iree_hal_vulkan_command_buffer_resolve_bda_binding(
   iree_device_size_t resolved_length = 0;
   IREE_RETURN_IF_ERROR(iree_hal_vulkan_command_buffer_resolve_bda_ref(
       binding_table, buffer_ref, IREE_SV("BDA dispatch binding"),
-      bda_binding_cache, &device_address, &resolved_length));
+      bda_binding_cache, IREE_STATUS_FAILED_PRECONDITION, &device_address,
+      &resolved_length));
   if (binding_ordinal < pipeline->bda.binding_requirement_count) {
     const iree_hal_vulkan_bda_binding_requirement_t* requirement =
         &pipeline->bda.binding_requirements[binding_ordinal];
@@ -2162,9 +2195,15 @@ static iree_status_t iree_hal_vulkan_command_buffer_resolve_atomic_target(
     iree_hal_vulkan_command_buffer_bda_binding_cache_t* bda_binding_cache,
     VkDeviceAddress* out_target_address) {
   iree_device_size_t target_length = 0;
+  const iree_status_code_t target_mismatch_status_code =
+      atomic->params.target_error_mode ==
+              IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+          ? IREE_STATUS_INCOMPATIBLE
+          : IREE_STATUS_FAILED_PRECONDITION;
   IREE_RETURN_IF_ERROR(iree_hal_vulkan_command_buffer_resolve_bda_ref(
       binding_table, atomic->target_ref, IREE_SV("atomic target"),
-      bda_binding_cache, out_target_address, &target_length));
+      bda_binding_cache, target_mismatch_status_code, out_target_address,
+      &target_length));
   const iree_device_size_t required_length =
       iree_hal_atomic_width_byte_count(atomic->params.width);
   if (target_length < required_length) {
@@ -2174,8 +2213,9 @@ static iree_status_t iree_hal_vulkan_command_buffer_resolve_atomic_target(
         "-bit operation requires %" PRIdsz " bytes",
         target_length, atomic->params.width, required_length);
   }
-  return iree_hal_vulkan_atomic_validate_target_address(*out_target_address,
-                                                        atomic->params.width);
+  return iree_hal_vulkan_atomic_validate_target_address(
+      *out_target_address, atomic->params.width,
+      atomic->params.target_error_mode);
 }
 
 static iree_status_t iree_hal_vulkan_command_buffer_publish_atomic_target(
@@ -2188,6 +2228,8 @@ static iree_status_t iree_hal_vulkan_command_buffer_publish_atomic_target(
   IREE_RETURN_IF_ERROR(iree_hal_vulkan_command_buffer_allocate_bda_publication(
       bda_recording_state, sizeof(uint64_t), &publication_span,
       out_publication_address));
+  // Publication storage transports the resolved address to the built-in
+  // shader; it is not the user atomic target and never follows target mode.
   if ((*out_publication_address & (sizeof(uint64_t) - 1)) != 0) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
@@ -2206,6 +2248,8 @@ static iree_status_t iree_hal_vulkan_command_buffer_publish_atomic_target(
 static iree_status_t iree_hal_vulkan_command_buffer_validate_bda_publication(
     const iree_hal_vulkan_command_buffer_t* command_buffer,
     const iree_hal_vulkan_command_buffer_bda_publication_t* bda_publication) {
+  // Publication storage and recording state are internal submission
+  // invariants, outside the user target-error classification contract.
   if (command_buffer->bda_publication_length != 0 && !bda_publication) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "Vulkan BDA publication storage is required");

@@ -315,6 +315,8 @@ TEST_F(AqlCommandBufferTest, AtomicCommandsPreserveTargetsAndDependencies) {
           /*.flags=*/IREE_HAL_ATOMIC_FLAG_ACQUIRE,
           /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
           /*.condition=*/IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL,
+          /*.target_error_mode=*/
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
       }));
   IREE_ASSERT_OK(iree_hal_command_buffer_atomic_store(
       command_buffer.get(), IREE_HAL_EXECUTION_STAGE_ATOMIC,
@@ -326,6 +328,8 @@ TEST_F(AqlCommandBufferTest, AtomicCommandsPreserveTargetsAndDependencies) {
           /*.flags=*/
           IREE_HAL_ATOMIC_FLAG_RELEASE | IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
           /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+          /*.target_error_mode=*/
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
       }));
   IREE_ASSERT_OK(iree_hal_command_buffer_atomic_rmw(
       command_buffer.get(), IREE_HAL_EXECUTION_STAGE_ATOMIC,
@@ -338,6 +342,8 @@ TEST_F(AqlCommandBufferTest, AtomicCommandsPreserveTargetsAndDependencies) {
               IREE_HAL_ATOMIC_FLAG_RELEASE | IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
           /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
           /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_ADD,
+          /*.target_error_mode=*/
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
       }));
   IREE_ASSERT_OK(iree_hal_command_buffer_end(command_buffer.get()));
 
@@ -362,6 +368,8 @@ TEST_F(AqlCommandBufferTest, AtomicCommandsPreserveTargetsAndDependencies) {
   EXPECT_EQ(atomic_wait->mask, UINT64_MAX);
   EXPECT_EQ(atomic_wait->width, IREE_HAL_ATOMIC_WIDTH_64);
   EXPECT_EQ(atomic_wait->condition, IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL);
+  EXPECT_EQ(atomic_wait->target_error_mode,
+            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE);
   EXPECT_TRUE(iree_any_bit_set(
       atomic_wait->header.flags,
       IREE_HAL_AMDGPU_COMMAND_BUFFER_COMMAND_FLAG_HAS_BARRIER));
@@ -382,6 +390,8 @@ TEST_F(AqlCommandBufferTest, AtomicCommandsPreserveTargetsAndDependencies) {
   EXPECT_EQ(atomic_store->atomic_flags,
             IREE_HAL_ATOMIC_FLAG_RELEASE | IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE);
   EXPECT_EQ(atomic_store->width, IREE_HAL_ATOMIC_WIDTH_32);
+  EXPECT_EQ(atomic_store->target_error_mode,
+            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE);
   EXPECT_EQ(iree_hal_amdgpu_command_buffer_command_flags_acquire_scope(
                 atomic_store->header.flags),
             IREE_HSA_FENCE_SCOPE_SYSTEM);
@@ -399,6 +409,8 @@ TEST_F(AqlCommandBufferTest, AtomicCommandsPreserveTargetsAndDependencies) {
                                           IREE_HAL_ATOMIC_FLAG_RELEASE |
                                           IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE);
   EXPECT_EQ(atomic_rmw->operation, IREE_HAL_ATOMIC_RMW_OPERATION_ADD);
+  EXPECT_EQ(atomic_rmw->target_error_mode,
+            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE);
   EXPECT_EQ(iree_hal_amdgpu_command_buffer_command_flags_acquire_scope(
                 atomic_rmw->header.flags),
             IREE_HSA_FENCE_SCOPE_SYSTEM);

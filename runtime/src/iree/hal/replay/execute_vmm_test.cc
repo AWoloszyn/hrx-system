@@ -378,7 +378,8 @@ class ReplayVmmExecutionTest : public ::testing::Test {
   void SetUp() override {
     options_ = iree_hal_replay_execute_options_default();
     IREE_ASSERT_OK(iree_hal_replay_executor_initialize(
-        &executor_, iree_const_byte_span_empty(), /*object_capacity=*/8,
+        &executor_, iree_const_byte_span_empty(),
+        IREE_HAL_REPLAY_FILE_VERSION_MINOR, /*object_capacity=*/8,
         /*device_group=*/nullptr, &options_, iree_allocator_system()));
     initialized_ = true;
     iree_hal_allocator_t* allocator = nullptr;

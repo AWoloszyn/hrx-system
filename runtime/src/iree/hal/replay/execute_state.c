@@ -488,11 +488,13 @@ iree_status_t iree_hal_replay_executor_resolve_function(
 
 iree_status_t iree_hal_replay_executor_initialize(
     iree_hal_replay_executor_t* executor, iree_const_byte_span_t file_contents,
-    iree_host_size_t object_capacity, iree_hal_device_group_t* device_group,
+    uint16_t file_version_minor, iree_host_size_t object_capacity,
+    iree_hal_device_group_t* device_group,
     const iree_hal_replay_execute_options_t* options,
     iree_allocator_t host_allocator) {
   memset(executor, 0, sizeof(*executor));
   executor->file_contents = file_contents;
+  executor->file_version_minor = file_version_minor;
   executor->device_group = device_group;
   executor->host_allocator = host_allocator;
   executor->options = options;

@@ -50,6 +50,7 @@ using HipMemcpyFn = hipError_t (*)(void* destination, const void* source,
                                    size_t size, hipMemcpyKind kind);
 using HipStreamCreateFn = hipError_t (*)(hipStream_t* stream);
 using HipStreamDestroyFn = hipError_t (*)(hipStream_t stream);
+using HipStreamQueryFn = hipError_t (*)(hipStream_t stream);
 using HipStreamSynchronizeFn = hipError_t (*)(hipStream_t stream);
 using HipStreamWriteValue32Fn = hipError_t (*)(hipStream_t stream,
                                                void* pointer, uint32_t value,
@@ -133,6 +134,8 @@ struct HipRuntimeApi {
   HipStreamCreateFn stream_create = nullptr;
   // Destroys a stream.
   HipStreamDestroyFn stream_destroy = nullptr;
+  // Queries one stream without blocking.
+  HipStreamQueryFn stream_query = nullptr;
   // Waits for all work on one stream.
   HipStreamSynchronizeFn stream_synchronize = nullptr;
   // Enqueues a 32-bit stream-ordered write.
@@ -253,6 +256,8 @@ class HipStreamValueApiTest : public testing::Test {
           ResolveHipSymbol<HipStreamCreateFn>(api_.library, "hipStreamCreate");
       api_.stream_destroy = ResolveHipSymbol<HipStreamDestroyFn>(
           api_.library, "hipStreamDestroy");
+      api_.stream_query =
+          ResolveHipSymbol<HipStreamQueryFn>(api_.library, "hipStreamQuery");
       api_.stream_synchronize = ResolveHipSymbol<HipStreamSynchronizeFn>(
           api_.library, "hipStreamSynchronize");
       api_.write_value_32 = ResolveHipSymbol<HipStreamWriteValue32Fn>(
@@ -321,6 +326,7 @@ class HipStreamValueApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.memcpy);
     ASSERT_NE(nullptr, api_.stream_create);
     ASSERT_NE(nullptr, api_.stream_destroy);
+    ASSERT_NE(nullptr, api_.stream_query);
     ASSERT_NE(nullptr, api_.stream_synchronize);
     ASSERT_NE(nullptr, api_.write_value_32);
     ASSERT_NE(nullptr, api_.write_value_64);
@@ -537,6 +543,180 @@ TEST_F(HipStreamValueApiTest, RejectsIncompatibleImportedBatchTargets) {
   // misclassifying the initialized runtime as uninitialized.
   ASSERT_EQ(hipSuccess, api_.batch_mem_op(stream, 2, parameters, /*flags=*/0));
   EXPECT_EQ(hipErrorInvalidValue, api_.stream_synchronize(stream));
+  cleanup();
+}
+
+TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
+  hipCtx_t original_context = nullptr;
+  ASSERT_EQ(hipSuccess, api_.ctx_get_current(&original_context));
+
+  hipCtx_t owner_context = nullptr;
+  hipCtx_t execution_context = nullptr;
+  void* imported_target = nullptr;
+  void* ready_signal = nullptr;
+  void* blocked_signal = nullptr;
+  std::vector<hipStream_t> context_streams;
+  auto cleanup = [&] {
+    if (execution_context) {
+      EXPECT_EQ(hipSuccess, api_.ctx_set_current(execution_context));
+      for (hipStream_t stream : context_streams) {
+        EXPECT_EQ(hipSuccess, api_.stream_destroy(stream));
+      }
+      context_streams.clear();
+      if (ready_signal) {
+        EXPECT_EQ(hipSuccess, api_.free(ready_signal));
+        ready_signal = nullptr;
+      }
+      if (blocked_signal) {
+        EXPECT_EQ(hipSuccess, api_.free(blocked_signal));
+        blocked_signal = nullptr;
+      }
+    }
+    if (imported_target) {
+      EXPECT_EQ(hipSuccess, api_.ctx_set_current(owner_context));
+      EXPECT_EQ(hipSuccess, api_.free(imported_target));
+      imported_target = nullptr;
+    }
+    EXPECT_EQ(hipSuccess, api_.ctx_set_current(original_context));
+    if (execution_context) {
+      EXPECT_EQ(hipSuccess, api_.ctx_destroy(execution_context));
+      execution_context = nullptr;
+    }
+    if (owner_context) {
+      EXPECT_EQ(hipSuccess, api_.ctx_destroy(owner_context));
+      owner_context = nullptr;
+    }
+  };
+
+  hipError_t setup_result =
+      api_.ctx_create(&owner_context, /*flags=*/0, /*device=*/0);
+  if (setup_result == hipSuccess) {
+    setup_result = api_.malloc(&imported_target, sizeof(uint64_t));
+  }
+  if (setup_result == hipSuccess) {
+    setup_result = api_.memset(imported_target, 0, sizeof(uint64_t));
+  }
+  if (setup_result == hipSuccess) {
+    setup_result =
+        api_.ctx_create(&execution_context, /*flags=*/0, /*device=*/0);
+  }
+  if (setup_result == hipSuccess) {
+    setup_result = api_.ctx_enable_peer_access(owner_context, /*flags=*/0);
+  }
+  if (setup_result == hipSuccess) {
+    setup_result = api_.ext_malloc_with_flags(&ready_signal, sizeof(uint64_t),
+                                              hipMallocSignalMemory);
+  }
+  if (setup_result == hipSuccess) {
+    setup_result = api_.ext_malloc_with_flags(&blocked_signal, sizeof(uint64_t),
+                                              hipMallocSignalMemory);
+  }
+  const uint32_t ready_value = 1;
+  const uint32_t blocked_value = 0;
+  if (setup_result == hipSuccess) {
+    setup_result = api_.memcpy(ready_signal, &ready_value, sizeof(ready_value),
+                               hipMemcpyHostToDevice);
+  }
+  if (setup_result == hipSuccess) {
+    setup_result = api_.memcpy(blocked_signal, &blocked_value,
+                               sizeof(blocked_value), hipMemcpyHostToDevice);
+  }
+  if (setup_result != hipSuccess) {
+    cleanup();
+    FAIL() << "cross-context wait-lane setup failed with " << setup_result;
+  }
+
+  hipStream_t support_stream = nullptr;
+  ASSERT_EQ(hipSuccess, api_.stream_create(&support_stream));
+  context_streams.push_back(support_stream);
+  if (!CheckWaitSupport(support_stream, ready_signal)) {
+    cleanup();
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
+  ASSERT_EQ(hipSuccess, api_.stream_destroy(support_stream));
+  context_streams.clear();
+
+  for (bool synchronize_owner_first : {false, true}) {
+    ASSERT_EQ(hipSuccess,
+              api_.memcpy(blocked_signal, &blocked_value, sizeof(blocked_value),
+                          hipMemcpyHostToDevice));
+    hipStream_t owner_stream = nullptr;
+    hipStream_t peer_stream = nullptr;
+    hipStream_t fresh_stream = nullptr;
+    ASSERT_EQ(hipSuccess, api_.stream_create(&owner_stream));
+    context_streams.push_back(owner_stream);
+    ASSERT_EQ(hipSuccess, api_.stream_create(&peer_stream));
+    context_streams.push_back(peer_stream);
+    ASSERT_EQ(hipSuccess, api_.stream_create(&fresh_stream));
+    context_streams.push_back(fresh_stream);
+
+    ASSERT_EQ(hipSuccess,
+              api_.wait_value_32(owner_stream, blocked_signal, ready_value,
+                                 hipStreamWaitValueEq, UINT32_MAX));
+
+    hipStreamBatchMemOpParams invalid_operations[2] = {};
+    invalid_operations[0].writeValue.operation = hipStreamMemOpWriteValue32;
+    invalid_operations[0].writeValue.address =
+        (hipDeviceptr_t)(uintptr_t)imported_target;
+    invalid_operations[0].writeValue.value = 1;
+    invalid_operations[0].writeValue.flags = hipStreamWriteValueDefault;
+    invalid_operations[1].writeValue.operation = hipStreamMemOpWriteValue64;
+    invalid_operations[1].writeValue.address =
+        (hipDeviceptr_t)(uintptr_t)imported_target;
+    invalid_operations[1].writeValue.value64 = 1;
+    invalid_operations[1].writeValue.flags = hipStreamWriteValueDefault;
+
+    // A query can win the race with the one-shot flush timer and report the
+    // batch error directly without failing the stream timeline. Repeat until a
+    // second query proves the timer published the persistent owner error. The
+    // accepted lane wait remains unresolved throughout.
+    hipError_t persistent_query_result = hipErrorNotReady;
+    while (persistent_query_result == hipErrorNotReady) {
+      ASSERT_EQ(hipSuccess,
+                api_.batch_mem_op(owner_stream, 2, invalid_operations,
+                                  /*flags=*/0));
+      EXPECT_EQ(hipSuccess,
+                api_.wait_value_32(peer_stream, ready_signal, ready_value,
+                                   hipStreamWaitValueEq, UINT32_MAX));
+      EXPECT_EQ(hipSuccess, api_.stream_synchronize(peer_stream));
+      ASSERT_EQ(hipErrorInvalidValue, api_.stream_query(owner_stream));
+      persistent_query_result = api_.stream_query(owner_stream);
+      ASSERT_TRUE(persistent_query_result == hipErrorNotReady ||
+                  persistent_query_result == hipErrorInvalidValue);
+      std::this_thread::yield();
+    }
+    ASSERT_EQ(hipErrorInvalidValue, persistent_query_result);
+    EXPECT_EQ(blocked_value,
+              __atomic_load_n(static_cast<uint32_t*>(blocked_signal),
+                              __ATOMIC_ACQUIRE));
+
+    // This scan occurs with both the accepted lane blocked and the owner's
+    // timeline failed. The fresh stream must make progress without reclaiming
+    // or reusing the occupied lane.
+    EXPECT_EQ(hipSuccess,
+              api_.wait_value_32(fresh_stream, ready_signal, ready_value,
+                                 hipStreamWaitValueEq, UINT32_MAX));
+    EXPECT_EQ(hipSuccess, api_.stream_synchronize(fresh_stream));
+    __atomic_store_n(static_cast<uint32_t*>(blocked_signal), ready_value,
+                     __ATOMIC_RELEASE);
+
+    if (synchronize_owner_first) {
+      EXPECT_EQ(hipErrorInvalidValue, api_.stream_synchronize(owner_stream));
+    }
+    EXPECT_EQ(hipSuccess,
+              api_.wait_value_32(peer_stream, ready_signal, ready_value,
+                                 hipStreamWaitValueEq, UINT32_MAX));
+    EXPECT_EQ(hipSuccess, api_.stream_synchronize(peer_stream));
+    if (!synchronize_owner_first) {
+      EXPECT_EQ(hipErrorInvalidValue, api_.stream_synchronize(owner_stream));
+    }
+
+    for (hipStream_t stream : {owner_stream, peer_stream, fresh_stream}) {
+      EXPECT_EQ(hipSuccess, api_.stream_destroy(stream));
+    }
+    context_streams.clear();
+  }
+
   cleanup();
 }
 

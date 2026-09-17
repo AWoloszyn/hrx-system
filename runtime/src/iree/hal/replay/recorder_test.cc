@@ -1165,17 +1165,23 @@ TEST(ReplayRecorderTest, RecordsAndReplaysCommandBufferAtomicOperations) {
       /*.flags=*/IREE_HAL_ATOMIC_FLAGS_KNOWN,
       /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
       /*.condition=*/IREE_HAL_ATOMIC_WAIT_CONDITION_NOT_EQUAL,
+      /*.target_error_mode=*/
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
   };
   const iree_hal_atomic_store_params_t store_params = {
       /*.value=*/UINT64_C(0xAABBCCDD),
       /*.flags=*/IREE_HAL_ATOMIC_FLAGS_KNOWN,
       /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+      /*.target_error_mode=*/
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
   };
   const iree_hal_atomic_rmw_params_t rmw_params = {
       /*.operand=*/UINT64_C(0x11223344),
       /*.flags=*/IREE_HAL_ATOMIC_FLAGS_KNOWN,
       /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
       /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_XOR,
+      /*.target_error_mode=*/
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
   };
 
   IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
@@ -1231,6 +1237,8 @@ TEST(ReplayRecorderTest, RecordsAndReplaysCommandBufferAtomicOperations) {
   EXPECT_EQ(IREE_HAL_ATOMIC_FLAGS_KNOWN, wait_payload.params.flags);
   EXPECT_EQ(wait_params.width, wait_payload.params.width);
   EXPECT_EQ(wait_params.condition, wait_payload.params.condition);
+  EXPECT_EQ(wait_params.target_error_mode,
+            wait_payload.params.target_error_mode);
   EXPECT_EQ(0u, wait_payload.params.reserved0);
 
   const auto* store_record = FindOperationRecord(
@@ -1253,6 +1261,8 @@ TEST(ReplayRecorderTest, RecordsAndReplaysCommandBufferAtomicOperations) {
   EXPECT_EQ(store_params.value, store_payload.params.value);
   EXPECT_EQ(IREE_HAL_ATOMIC_FLAGS_KNOWN, store_payload.params.flags);
   EXPECT_EQ(store_params.width, store_payload.params.width);
+  EXPECT_EQ(store_params.target_error_mode,
+            store_payload.params.target_error_mode);
   EXPECT_EQ(0, memcmp(store_payload.params.reserved0, store_params.reserved,
                       sizeof(store_params.reserved)));
 
@@ -1277,6 +1287,7 @@ TEST(ReplayRecorderTest, RecordsAndReplaysCommandBufferAtomicOperations) {
   EXPECT_EQ(IREE_HAL_ATOMIC_FLAGS_KNOWN, rmw_payload.params.flags);
   EXPECT_EQ(rmw_params.width, rmw_payload.params.width);
   EXPECT_EQ(rmw_params.operation, rmw_payload.params.operation);
+  EXPECT_EQ(rmw_params.target_error_mode, rmw_payload.params.target_error_mode);
   EXPECT_EQ(0u, rmw_payload.params.reserved0);
 
   iree_hal_device_group_t* replay_group = CreateTaskDeviceGroup();
@@ -1286,7 +1297,7 @@ TEST(ReplayRecorderTest, RecordsAndReplaysCommandBufferAtomicOperations) {
   iree_hal_device_group_release(replay_group);
 }
 
-TEST(ReplayRecorderTest, RecordsExactQueueAtomicOperations) {
+TEST(ReplayRecorderTest, RecordsAndReplaysVersion2ExactQueueAtomicOperations) {
   std::vector<uint8_t> storage(65536, 0);
   iree_hal_replay_recorder_t* recorder = CreateHostAllocationRecorder(&storage);
 
@@ -1358,17 +1369,23 @@ TEST(ReplayRecorderTest, RecordsExactQueueAtomicOperations) {
       /*.flags=*/IREE_HAL_ATOMIC_FLAGS_KNOWN,
       /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
       /*.condition=*/IREE_HAL_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL,
+      /*.target_error_mode=*/
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
   };
   const iree_hal_atomic_store_params_t store_params = {
       /*.value=*/UINT64_C(0xAABBCCDD),
       /*.flags=*/IREE_HAL_ATOMIC_FLAGS_KNOWN,
       /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+      /*.target_error_mode=*/
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
   };
   const iree_hal_atomic_rmw_params_t rmw_params = {
       /*.operand=*/UINT64_C(0x1122334455667788),
       /*.flags=*/IREE_HAL_ATOMIC_FLAGS_KNOWN,
       /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
       /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_ADD,
+      /*.target_error_mode=*/
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
   };
 
   IREE_ASSERT_OK(iree_hal_queue_atomic_wait(queue, wait_list, wait_signal_list,
@@ -1395,6 +1412,14 @@ TEST(ReplayRecorderTest, RecordsExactQueueAtomicOperations) {
   iree_hal_device_group_release(wrapped_group);
   iree_hal_device_group_release(source_group);
 
+  // The three target-error bytes occupied required-zero reserved storage in
+  // 7.2. This capture uses their default value, so changing only the file minor
+  // produces the exact legacy wire interpretation that current replay must
+  // continue to decode and execute.
+  auto* file_header =
+      reinterpret_cast<iree_hal_replay_file_header_t*>(storage.data());
+  file_header->version_minor = 2;
+
   const auto records = ParseOperationRecords(storage);
   const auto* wait_record = FindOperationRecord(
       records, IREE_HAL_REPLAY_OPERATION_CODE_QUEUE_ATOMIC_WAIT);
@@ -1418,6 +1443,8 @@ TEST(ReplayRecorderTest, RecordsExactQueueAtomicOperations) {
   EXPECT_EQ(IREE_HAL_ATOMIC_FLAGS_KNOWN, wait_payload.params.flags);
   EXPECT_EQ(wait_params.width, wait_payload.params.width);
   EXPECT_EQ(wait_params.condition, wait_payload.params.condition);
+  EXPECT_EQ(wait_params.target_error_mode,
+            wait_payload.params.target_error_mode);
   EXPECT_EQ(0u, wait_payload.params.reserved0);
   iree_hal_replay_semaphore_timepoint_payload_t wait_timepoint = {};
   iree_hal_replay_semaphore_timepoint_payload_t signal_timepoint = {};
@@ -1451,6 +1478,8 @@ TEST(ReplayRecorderTest, RecordsExactQueueAtomicOperations) {
   EXPECT_EQ(store_params.value, store_payload.params.value);
   EXPECT_EQ(IREE_HAL_ATOMIC_FLAGS_KNOWN, store_payload.params.flags);
   EXPECT_EQ(store_params.width, store_payload.params.width);
+  EXPECT_EQ(store_params.target_error_mode,
+            store_payload.params.target_error_mode);
   EXPECT_EQ(0, memcmp(store_payload.params.reserved0, store_params.reserved,
                       sizeof(store_params.reserved)));
   iree_hal_replay_semaphore_timepoint_payload_t store_wait_timepoint = {};
@@ -1484,6 +1513,7 @@ TEST(ReplayRecorderTest, RecordsExactQueueAtomicOperations) {
   EXPECT_EQ(IREE_HAL_ATOMIC_FLAGS_KNOWN, rmw_payload.params.flags);
   EXPECT_EQ(rmw_params.width, rmw_payload.params.width);
   EXPECT_EQ(rmw_params.operation, rmw_payload.params.operation);
+  EXPECT_EQ(rmw_params.target_error_mode, rmw_payload.params.target_error_mode);
   EXPECT_EQ(0u, rmw_payload.params.reserved0);
   iree_hal_replay_semaphore_timepoint_payload_t rmw_wait_timepoint = {};
   iree_hal_replay_semaphore_timepoint_payload_t rmw_signal_timepoint = {};
@@ -1493,6 +1523,12 @@ TEST(ReplayRecorderTest, RecordsExactQueueAtomicOperations) {
   EXPECT_EQ(signal_timepoint.semaphore_id, rmw_signal_timepoint.semaphore_id);
   EXPECT_EQ(7u, rmw_wait_timepoint.value);
   EXPECT_EQ(11u, rmw_signal_timepoint.value);
+
+  iree_hal_device_group_t* replay_group = CreateTaskDeviceGroup();
+  IREE_ASSERT_OK(iree_hal_replay_execute_file(GetCapturedFileContents(storage),
+                                              replay_group, /*options=*/nullptr,
+                                              iree_allocator_system()));
+  iree_hal_device_group_release(replay_group);
 }
 
 // Minimal VMM allocator used to verify recorder identity and forwarding rules.

@@ -373,6 +373,7 @@ IREE_API_EXPORT iree_status_t iree_hal_queue_dispatch(
 static iree_status_t iree_hal_queue_validate_atomic_target(
     const iree_hal_queue_t* queue, iree_hal_buffer_t* target_buffer,
     iree_device_size_t target_offset, iree_hal_atomic_width_t width,
+    iree_hal_atomic_target_error_mode_t target_error_mode,
     iree_hal_buffer_usage_t usage, iree_hal_memory_access_t access) {
   const iree_device_size_t byte_count = iree_hal_atomic_width_byte_count(width);
   if (IREE_UNLIKELY(target_offset > IREE_DEVICE_SIZE_MAX - byte_count)) {
@@ -400,7 +401,11 @@ static iree_status_t iree_hal_queue_validate_atomic_target(
   const iree_device_size_t absolute_offset =
       iree_hal_buffer_byte_offset(target_buffer) + target_offset;
   if (IREE_UNLIKELY((absolute_offset % byte_count) != 0)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+    const iree_status_code_t status_code =
+        target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+            ? IREE_STATUS_INCOMPATIBLE
+            : IREE_STATUS_INVALID_ARGUMENT;
+    return iree_make_status(status_code,
                             "atomic target address is not naturally aligned "
                             "(absolute_offset=%" PRIdsz ", alignment=%" PRIdsz
                             ")",
@@ -433,7 +438,8 @@ IREE_API_EXPORT iree_status_t iree_hal_queue_atomic_wait(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_queue_validate_atomic_target(
               queue, target_buffer, target_offset, params.width,
-              IREE_HAL_BUFFER_USAGE_STORAGE_READ, IREE_HAL_MEMORY_ACCESS_READ));
+              params.target_error_mode, IREE_HAL_BUFFER_USAGE_STORAGE_READ,
+              IREE_HAL_MEMORY_ACCESS_READ));
   iree_status_t status = _VTABLE_DISPATCH(queue, atomic_wait)(
       queue, wait_semaphore_list, signal_semaphore_list, target_buffer,
       target_offset, params);
@@ -463,10 +469,10 @@ IREE_API_EXPORT iree_status_t iree_hal_queue_atomic_store(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_atomic_store_params_validate(params));
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0,
-      iree_hal_queue_validate_atomic_target(
-          queue, target_buffer, target_offset, params.width,
-          IREE_HAL_BUFFER_USAGE_STORAGE_WRITE, IREE_HAL_MEMORY_ACCESS_WRITE));
+      z0, iree_hal_queue_validate_atomic_target(
+              queue, target_buffer, target_offset, params.width,
+              params.target_error_mode, IREE_HAL_BUFFER_USAGE_STORAGE_WRITE,
+              IREE_HAL_MEMORY_ACCESS_WRITE));
   iree_status_t status = _VTABLE_DISPATCH(queue, atomic_store)(
       queue, wait_semaphore_list, signal_semaphore_list, target_buffer,
       target_offset, params);
@@ -498,7 +504,7 @@ IREE_API_EXPORT iree_status_t iree_hal_queue_atomic_rmw(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_queue_validate_atomic_target(
               queue, target_buffer, target_offset, params.width,
-              IREE_HAL_BUFFER_USAGE_STORAGE,
+              params.target_error_mode, IREE_HAL_BUFFER_USAGE_STORAGE,
               IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE));
   iree_status_t status = _VTABLE_DISPATCH(queue, atomic_rmw)(
       queue, wait_semaphore_list, signal_semaphore_list, target_buffer,

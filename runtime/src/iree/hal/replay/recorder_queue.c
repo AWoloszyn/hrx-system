@@ -903,6 +903,7 @@ static iree_status_t iree_hal_replay_recorder_queue_atomic_wait(
   payload.params.flags = params.flags;
   payload.params.width = params.width;
   payload.params.condition = params.condition;
+  payload.params.target_error_mode = params.target_error_mode;
   payload.params.reserved0 = params.reserved;
 
   iree_hal_replay_recorder_semaphore_storage_t semaphore_storage = {0};
@@ -981,6 +982,7 @@ static iree_status_t iree_hal_replay_recorder_queue_atomic_store(
   payload.params.value = params.value;
   payload.params.flags = params.flags;
   payload.params.width = params.width;
+  payload.params.target_error_mode = params.target_error_mode;
   memcpy(payload.params.reserved0, params.reserved,
          sizeof(payload.params.reserved0));
 
@@ -1061,6 +1063,7 @@ static iree_status_t iree_hal_replay_recorder_queue_atomic_rmw(
   payload.params.flags = params.flags;
   payload.params.width = params.width;
   payload.params.operation = params.operation;
+  payload.params.target_error_mode = params.target_error_mode;
   payload.params.reserved0 = params.reserved;
 
   iree_hal_replay_recorder_semaphore_storage_t semaphore_storage = {0};

@@ -98,6 +98,8 @@ typedef struct iree_hal_replay_queue_completion_t {
 typedef struct iree_hal_replay_executor_t {
   // Original replay file bytes.
   iree_const_byte_span_t file_contents;
+  // Minor version of the replay file being executed.
+  uint16_t file_version_minor;
   // Retained topology supplied by the caller.
   iree_hal_device_group_t* device_group;
   // Host allocator used for temporary replay state.
@@ -189,7 +191,8 @@ typedef struct iree_hal_replay_buffer_binding_table_storage_t {
 
 iree_status_t iree_hal_replay_executor_initialize(
     iree_hal_replay_executor_t* executor, iree_const_byte_span_t file_contents,
-    iree_host_size_t object_capacity, iree_hal_device_group_t* device_group,
+    uint16_t file_version_minor, iree_host_size_t object_capacity,
+    iree_hal_device_group_t* device_group,
     const iree_hal_replay_execute_options_t* options,
     iree_allocator_t host_allocator);
 

@@ -32,6 +32,7 @@ iree_status_t iree_hip_stream_write_value_params_initialize(
           .value = value,
           .flags = IREE_HAL_ATOMIC_FLAG_RELEASE,
           .width = width,
+          .target_error_mode = IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
       };
       break;
     case IREE_HIP_EXT_STREAM_WRITE_VALUE_INCREMENT:
@@ -47,6 +48,7 @@ iree_status_t iree_hip_stream_write_value_params_initialize(
           .operation = flags == IREE_HIP_EXT_STREAM_WRITE_VALUE_INCREMENT
                            ? IREE_HAL_ATOMIC_RMW_OPERATION_ADD
                            : IREE_HAL_ATOMIC_RMW_OPERATION_SUBTRACT,
+          .target_error_mode = IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
       };
       break;
     default:
@@ -82,6 +84,7 @@ iree_status_t iree_hip_stream_wait_value_params_initialize(
       .mask = mask,
       .flags = IREE_HAL_ATOMIC_FLAG_ACQUIRE,
       .width = width,
+      .target_error_mode = IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
   };
   switch (flags) {
     case IREE_HIP_STREAM_WAIT_VALUE_GTE:

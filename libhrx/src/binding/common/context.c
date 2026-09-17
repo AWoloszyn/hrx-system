@@ -131,14 +131,11 @@ iree_status_t iree_hal_streaming_context_create(
   context->pageable_h2d_staging_size = 0;
   iree_atomic_store(&context->capture_stream_count, 0,
                     iree_memory_order_relaxed);
-  context->idle_value_wait_lanes = NULL;
-  context->idle_value_wait_lane_count = 0;
-  context->pending_value_wait_lanes = NULL;
   context->host_allocator = host_allocator;
   iree_slim_mutex_initialize(&context->mutex);
   iree_slim_mutex_initialize(&context->pending_free_mutex);
   iree_hal_streaming_capture_admission_initialize(&context->capture_admission);
-  iree_slim_mutex_initialize(&context->value_wait_lane_mutex);
+  iree_hal_streaming_value_wait_lanes_initialize(context);
 
   // Initialize global list pointers.
   context->context_list_entry.next = NULL;
@@ -343,7 +340,6 @@ static void iree_hal_streaming_context_destroy(
   iree_hal_streaming_event_timestamp_pool_deinitialize(
       &context->timestamp_pool);
   iree_hal_streaming_value_wait_lanes_deinitialize(context);
-  iree_slim_mutex_deinitialize(&context->value_wait_lane_mutex);
   iree_hal_streaming_capture_admission_deinitialize(
       &context->capture_admission);
 

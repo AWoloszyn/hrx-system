@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include "iree/hal/replay/atomic_params.h"
 #include "iree/hal/replay/digest.h"
 #include "iree/hal/replay/dump_layout.h"
 
@@ -68,35 +69,49 @@ static iree_status_t iree_hal_replay_dump_append_text_buffer_refs(
 }
 
 static iree_status_t iree_hal_replay_dump_append_text_atomic_wait_params(
-    iree_string_builder_t* builder,
+    iree_hal_replay_dump_context_t* context, iree_string_builder_t* builder,
     const iree_hal_replay_atomic_wait_params_payload_t* params) {
+  iree_hal_atomic_target_error_mode_t target_error_mode;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_atomic_target_error_mode_decode(
+      context->file_version_minor, params->target_error_mode,
+      &target_error_mode));
   return iree_string_builder_append_format(
       builder,
       " value=0x%016" PRIx64 " mask=0x%016" PRIx64 " flags=0x%08" PRIx32
-      " width=%" PRIu8 " condition=%s(%" PRIu8 ")",
+      " width=%" PRIu8 " condition=%s(%" PRIu8 ") target_error_mode=%" PRIu8,
       params->value, params->mask, params->flags, params->width,
       iree_hal_replay_dump_atomic_wait_condition_string(params->condition),
-      params->condition);
+      params->condition, target_error_mode);
 }
 
 static iree_status_t iree_hal_replay_dump_append_text_atomic_store_params(
-    iree_string_builder_t* builder,
+    iree_hal_replay_dump_context_t* context, iree_string_builder_t* builder,
     const iree_hal_replay_atomic_store_params_payload_t* params) {
+  iree_hal_atomic_target_error_mode_t target_error_mode;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_atomic_target_error_mode_decode(
+      context->file_version_minor, params->target_error_mode,
+      &target_error_mode));
   return iree_string_builder_append_format(
-      builder, " value=0x%016" PRIx64 " flags=0x%08" PRIx32 " width=%" PRIu8,
-      params->value, params->flags, params->width);
+      builder,
+      " value=0x%016" PRIx64 " flags=0x%08" PRIx32 " width=%" PRIu8
+      " target_error_mode=%" PRIu8,
+      params->value, params->flags, params->width, target_error_mode);
 }
 
 static iree_status_t iree_hal_replay_dump_append_text_atomic_rmw_params(
-    iree_string_builder_t* builder,
+    iree_hal_replay_dump_context_t* context, iree_string_builder_t* builder,
     const iree_hal_replay_atomic_rmw_params_payload_t* params) {
+  iree_hal_atomic_target_error_mode_t target_error_mode;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_atomic_target_error_mode_decode(
+      context->file_version_minor, params->target_error_mode,
+      &target_error_mode));
   return iree_string_builder_append_format(
       builder,
       " operand=0x%016" PRIx64 " flags=0x%08" PRIx32 " width=%" PRIu8
-      " operation=%s(%" PRIu8 ")",
+      " operation=%s(%" PRIu8 ") target_error_mode=%" PRIu8,
       params->operand, params->flags, params->width,
       iree_hal_replay_dump_atomic_rmw_operation_string(params->operation),
-      params->operation);
+      params->operation, target_error_mode);
 }
 
 static iree_status_t iree_hal_replay_dump_append_text_queue_semaphores(
@@ -166,7 +181,8 @@ static iree_status_t iree_hal_replay_dump_append_text_queue_transfer_operations(
 }
 
 static iree_status_t iree_hal_replay_dump_append_text_payload(
-    iree_string_builder_t* builder, const iree_hal_replay_file_record_t* record,
+    iree_hal_replay_dump_context_t* context, iree_string_builder_t* builder,
+    const iree_hal_replay_file_record_t* record,
     const iree_hal_replay_file_range_t* payload_range) {
   switch (record->header.payload_type) {
     case IREE_HAL_REPLAY_PAYLOAD_TYPE_NONE:
@@ -852,7 +868,7 @@ static iree_status_t iree_hal_replay_dump_append_text_payload(
           builder, payload_range, &layout, payload.wait_semaphore_count,
           payload.signal_semaphore_count));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_atomic_wait_params(
-          builder, &payload.params));
+          context, builder, &payload.params));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_buffer_ref(
           builder, "target_ref", &payload.target_ref));
       return iree_hal_replay_dump_append_text_queue_semaphores(
@@ -877,7 +893,7 @@ static iree_status_t iree_hal_replay_dump_append_text_payload(
           builder, payload_range, &layout, payload.wait_semaphore_count,
           payload.signal_semaphore_count));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_atomic_store_params(
-          builder, &payload.params));
+          context, builder, &payload.params));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_buffer_ref(
           builder, "target_ref", &payload.target_ref));
       return iree_hal_replay_dump_append_text_queue_semaphores(
@@ -902,7 +918,7 @@ static iree_status_t iree_hal_replay_dump_append_text_payload(
           builder, payload_range, &layout, payload.wait_semaphore_count,
           payload.signal_semaphore_count));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_atomic_rmw_params(
-          builder, &payload.params));
+          context, builder, &payload.params));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_buffer_ref(
           builder, "target_ref", &payload.target_ref));
       return iree_hal_replay_dump_append_text_queue_semaphores(
@@ -972,7 +988,7 @@ static iree_status_t iree_hal_replay_dump_append_text_payload(
           " source_stage_mask=0x%016" PRIx64 " target_stage_mask=0x%016" PRIx64,
           payload.source_stage_mask, payload.target_stage_mask));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_atomic_wait_params(
-          builder, &payload.params));
+          context, builder, &payload.params));
       return iree_hal_replay_dump_append_text_buffer_ref(builder, "target_ref",
                                                          &payload.target_ref);
     }
@@ -987,7 +1003,7 @@ static iree_status_t iree_hal_replay_dump_append_text_payload(
           " source_stage_mask=0x%016" PRIx64 " target_stage_mask=0x%016" PRIx64,
           payload.source_stage_mask, payload.target_stage_mask));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_atomic_store_params(
-          builder, &payload.params));
+          context, builder, &payload.params));
       return iree_hal_replay_dump_append_text_buffer_ref(builder, "target_ref",
                                                          &payload.target_ref);
     }
@@ -1001,7 +1017,7 @@ static iree_status_t iree_hal_replay_dump_append_text_payload(
           " source_stage_mask=0x%016" PRIx64 " target_stage_mask=0x%016" PRIx64,
           payload.source_stage_mask, payload.target_stage_mask));
       IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_atomic_rmw_params(
-          builder, &payload.params));
+          context, builder, &payload.params));
       return iree_hal_replay_dump_append_text_buffer_ref(builder, "target_ref",
                                                          &payload.target_ref);
     }
@@ -1105,7 +1121,7 @@ iree_status_t iree_hal_replay_dump_emit_text_record(
         iree_hal_replay_payload_type_string(header->payload_type),
         header->payload_type, payload_range->offset, payload_range->length));
     IREE_RETURN_IF_ERROR(iree_hal_replay_dump_append_text_payload(
-        builder, record, payload_range));
+        context, builder, record, payload_range));
   }
   IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(builder, "\n"));
   return iree_hal_replay_dump_emit(context, builder);

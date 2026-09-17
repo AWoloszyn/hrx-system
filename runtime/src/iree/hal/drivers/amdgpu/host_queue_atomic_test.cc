@@ -182,6 +182,7 @@ class HostQueueAtomicTest
 
   static iree_status_t CreateReusableDynamicStoreProgram(
       iree_hal_device_t* device, iree_hal_queue_t* queue,
+      iree_hal_atomic_target_error_mode_t target_error_mode,
       iree_hal_command_buffer_t** out_command_buffer) {
     Ref<iree_hal_command_buffer_t> command_buffer;
     IREE_RETURN_IF_ERROR(iree_hal_command_buffer_create(
@@ -199,6 +200,7 @@ class HostQueueAtomicTest
             /*.flags=*/IREE_HAL_ATOMIC_FLAG_RELEASE |
                 IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
             /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+            /*.target_error_mode=*/target_error_mode,
         }));
     IREE_RETURN_IF_ERROR(iree_hal_command_buffer_end(command_buffer));
     *out_command_buffer = command_buffer.release();
@@ -642,15 +644,18 @@ TEST_F(HostQueueAtomicTest, DeferredDirectMisalignmentFailsAndQueueRecovers) {
       /*.semaphores=*/&gate_semaphore,
       /*.payload_values=*/&gate_value,
   };
-  Ref<iree_hal_semaphore_t> failed_completion;
-  IREE_ASSERT_OK(
-      CreateSemaphore(test_device.base_device(), failed_completion.out()));
-  iree_hal_semaphore_t* failed_completion_semaphore = failed_completion.get();
-  uint64_t failed_completion_value = 1;
+  std::array<Ref<iree_hal_semaphore_t>, 2> failed_completions;
+  std::array<iree_hal_semaphore_t*, 2> failed_completion_semaphores = {};
+  std::array<uint64_t, 2> failed_completion_values = {1, 1};
+  for (iree_host_size_t i = 0; i < failed_completions.size(); ++i) {
+    IREE_ASSERT_OK(CreateSemaphore(test_device.base_device(),
+                                   failed_completions[i].out()));
+    failed_completion_semaphores[i] = failed_completions[i].get();
+  }
   const iree_hal_semaphore_list_t failed_signal_list = {
-      /*.count=*/1,
-      /*.semaphores=*/&failed_completion_semaphore,
-      /*.payload_values=*/&failed_completion_value,
+      /*.count=*/failed_completion_semaphores.size(),
+      /*.semaphores=*/failed_completion_semaphores.data(),
+      /*.payload_values=*/failed_completion_values.data(),
   };
   IREE_ASSERT_OK(iree_hal_queue_atomic_store(
       queue, wait_list, failed_signal_list, misaligned_buffer,
@@ -665,11 +670,13 @@ TEST_F(HostQueueAtomicTest, DeferredDirectMisalignmentFailsAndQueueRecovers) {
   EXPECT_EQ(misaligned_release_latch.remaining(), 1);
   IREE_ASSERT_OK(
       iree_hal_semaphore_signal(gate, gate_value, /*frontier=*/nullptr));
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_FAILED_PRECONDITION,
-      iree_hal_semaphore_wait(failed_completion, failed_completion_value,
-                              iree_infinite_timeout(),
-                              IREE_ASYNC_WAIT_FLAG_NONE));
+  for (iree_host_size_t i = 0; i < failed_completions.size(); ++i) {
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_INCOMPATIBLE,
+                          iree_hal_semaphore_wait(failed_completions[i],
+                                                  failed_completion_values[i],
+                                                  iree_infinite_timeout(),
+                                                  IREE_ASYNC_WAIT_FLAG_NONE));
+  }
   misaligned_release_latch.Wait();
 
   alignas(64) std::array<uint32_t, 16> valid_storage = {};
@@ -887,7 +894,8 @@ TEST_P(HostQueueAtomicTest, DeferredResolvedMisalignmentFailsAndQueueRecovers) {
   ASSERT_NE(queue, nullptr);
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(CreateReusableDynamicStoreProgram(
-      test_device.base_device(), queue, command_buffer.out()));
+      test_device.base_device(), queue,
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT, command_buffer.out()));
   if (GetParam() == IREE_HAL_AMDGPU_COMMAND_BUFFER_MODE_PM4) {
     const iree_hal_amdgpu_pm4_command_buffer_fixup_plan_t* fixup_plan =
         iree_hal_amdgpu_pm4_command_buffer_fixup_plan(command_buffer);
@@ -952,11 +960,70 @@ TEST_P(HostQueueAtomicTest, DeferredResolvedMisalignmentFailsAndQueueRecovers) {
   IREE_ASSERT_OK(
       iree_hal_semaphore_signal(gate, gate_value, /*frontier=*/nullptr));
   IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_FAILED_PRECONDITION,
+      IREE_STATUS_INCOMPATIBLE,
       iree_hal_semaphore_wait(failed_completion, failed_completion_value,
                               iree_infinite_timeout(),
                               IREE_ASYNC_WAIT_FLAG_NONE));
   misaligned_release_latch.Wait();
+
+  Ref<iree_hal_command_buffer_t> incompatible_command_buffer;
+  IREE_ASSERT_OK(CreateReusableDynamicStoreProgram(
+      test_device.base_device(), queue,
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+      incompatible_command_buffer.out()));
+  ReleaseLatch incompatible_release_latch(/*release_count=*/1);
+  Ref<iree_hal_buffer_t> incompatible_buffer;
+  IREE_ASSERT_OK(ImportHostAtomicBuffer(
+      &test_device, /*physical_device_ordinal=*/0,
+      misaligned_storage.data() + 1, misaligned_storage.size() - 1,
+      IREE_HAL_MEMORY_ACCESS_UNALIGNED,
+      /*minimum_alignment=*/1, incompatible_release_latch.callback(),
+      incompatible_buffer.out()));
+  Ref<iree_hal_semaphore_t> incompatible_completion;
+  IREE_ASSERT_OK(CreateSemaphore(test_device.base_device(),
+                                 incompatible_completion.out()));
+  Ref<iree_hal_semaphore_t> incompatible_gate;
+  IREE_ASSERT_OK(
+      CreateSemaphore(test_device.base_device(), incompatible_gate.out()));
+  iree_hal_semaphore_t* incompatible_gate_semaphore = incompatible_gate.get();
+  uint64_t incompatible_gate_value = 1;
+  const iree_hal_semaphore_list_t incompatible_wait_list = {
+      /*.count=*/1,
+      /*.semaphores=*/&incompatible_gate_semaphore,
+      /*.payload_values=*/&incompatible_gate_value,
+  };
+  iree_hal_semaphore_t* incompatible_completion_semaphore =
+      incompatible_completion.get();
+  uint64_t incompatible_completion_value = 1;
+  const iree_hal_semaphore_list_t incompatible_signal_list = {
+      /*.count=*/1,
+      /*.semaphores=*/&incompatible_completion_semaphore,
+      /*.payload_values=*/&incompatible_completion_value,
+  };
+  const iree_hal_buffer_binding_t incompatible_binding = {
+      /*.buffer=*/incompatible_buffer.get(),
+      /*.offset=*/0,
+      /*.length=*/IREE_HAL_WHOLE_BUFFER,
+  };
+  const iree_hal_buffer_binding_table_t incompatible_binding_table = {
+      /*.count=*/1,
+      /*.bindings=*/&incompatible_binding,
+  };
+  IREE_ASSERT_OK(iree_hal_queue_execute(
+      queue, incompatible_wait_list, incompatible_signal_list,
+      incompatible_command_buffer, incompatible_binding_table,
+      IREE_HAL_QUEUE_EXECUTE_FLAG_NONE));
+  incompatible_command_buffer.reset();
+  incompatible_buffer.reset();
+  IREE_ASSERT_OK(iree_hal_semaphore_signal(incompatible_gate,
+                                           incompatible_gate_value,
+                                           /*frontier=*/nullptr));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INCOMPATIBLE,
+                        iree_hal_semaphore_wait(incompatible_completion,
+                                                incompatible_completion_value,
+                                                iree_infinite_timeout(),
+                                                IREE_ASYNC_WAIT_FLAG_NONE));
+  incompatible_release_latch.Wait();
 
   alignas(64) std::array<uint32_t, 16> valid_storage = {};
   ReleaseLatch valid_release_latch(/*release_count=*/1);

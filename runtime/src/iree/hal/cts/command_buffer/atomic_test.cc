@@ -4,10 +4,12 @@
 // See https://llvm.org/LICENSE for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <future>
+#include <utility>
 
 #include "iree/hal/cts/util/atomic_test_util.h"
 #include "iree/hal/cts/util/test_base.h"
@@ -128,11 +130,15 @@ class CommandBufferAtomicTest : public CtsTestBase<> {
 
   void RunResolvedMisalignmentFailureTest(iree_hal_atomic_width_t width) {
     AtomicTestConfiguration configuration;
-    if (!SelectConfiguration(width, IREE_HAL_ATOMIC_OPERATION_FLAG_STORE,
-                             IREE_HAL_ATOMIC_WAIT_CONDITION_FLAG_NONE,
+    const iree_hal_atomic_operation_flags_t operation_flags =
+        IREE_HAL_ATOMIC_OPERATION_FLAG_WAIT |
+        IREE_HAL_ATOMIC_OPERATION_FLAG_STORE |
+        IREE_HAL_ATOMIC_OPERATION_FLAG_RMW_ADD;
+    if (!SelectConfiguration(width, operation_flags,
+                             IREE_HAL_ATOMIC_WAIT_CONDITION_FLAG_EQUAL,
                              &configuration)) {
       GTEST_SKIP() << "Device does not advertise the tested "
-                      "queue/memory atomic store";
+                      "queue/memory atomic operation set";
     }
 
     alignas(uint64_t) std::array<uint8_t, kBufferSize + 1> storage = {};
@@ -165,52 +171,99 @@ class CommandBufferAtomicTest : public CtsTestBase<> {
                    << import_status.ToString();
     }
 
-    const bool indirect = recording_mode() == RecordingMode::kIndirect;
-    const iree_host_size_t binding_capacity = indirect ? 1 : 0;
-    Ref<iree_hal_command_buffer_t> command_buffer;
-    IREE_ASSERT_OK(
-        CreateAtomicCommandBuffer(IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
-                                  binding_capacity, command_buffer.out()));
-    IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
-    const iree_hal_buffer_ref_t target_ref =
-        indirect ? iree_hal_make_indirect_buffer_ref(
-                       /*binding=*/0, /*offset=*/0, byte_count)
-                 : iree_hal_make_buffer_ref(buffer, /*offset=*/0, byte_count);
-    const iree_hal_atomic_store_params_t store_params = {
-        /*.value=*/1,
-        /*.flags=*/IREE_HAL_ATOMIC_FLAG_RELEASE,
-        /*.width=*/width,
+    enum class AtomicKind { kWait, kStore, kRmw };
+    const AtomicKind kinds[] = {AtomicKind::kWait, AtomicKind::kStore,
+                                AtomicKind::kRmw};
+    const iree_hal_atomic_target_error_mode_t modes[] = {
+        IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
+        IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
     };
-    IREE_ASSERT_OK(iree_hal_command_buffer_atomic_store(
-        command_buffer, IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
-        IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE, target_ref, store_params));
-    IREE_ASSERT_OK(iree_hal_command_buffer_end(command_buffer));
+    for (iree_hal_atomic_target_error_mode_t mode : modes) {
+      for (AtomicKind kind : kinds) {
+        const bool indirect = recording_mode() == RecordingMode::kIndirect;
+        const iree_host_size_t binding_capacity = indirect ? 1 : 0;
+        Ref<iree_hal_command_buffer_t> command_buffer;
+        IREE_ASSERT_OK(
+            CreateAtomicCommandBuffer(IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+                                      binding_capacity, command_buffer.out()));
+        IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
+        const iree_hal_buffer_ref_t target_ref =
+            indirect
+                ? iree_hal_make_indirect_buffer_ref(
+                      /*binding=*/0, /*offset=*/0, byte_count)
+                : iree_hal_make_buffer_ref(buffer, /*offset=*/0, byte_count);
+        switch (kind) {
+          case AtomicKind::kWait:
+            IREE_ASSERT_OK(iree_hal_command_buffer_atomic_wait(
+                command_buffer, IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
+                IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE, target_ref,
+                (iree_hal_atomic_wait_params_t){
+                    /*.value=*/0,
+                    /*.mask=*/width == IREE_HAL_ATOMIC_WIDTH_32 ? UINT32_MAX
+                                                                : UINT64_MAX,
+                    /*.flags=*/IREE_HAL_ATOMIC_FLAG_ACQUIRE,
+                    /*.width=*/width,
+                    /*.condition=*/IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL,
+                    /*.target_error_mode=*/mode,
+                }));
+            break;
+          case AtomicKind::kStore:
+            IREE_ASSERT_OK(iree_hal_command_buffer_atomic_store(
+                command_buffer, IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
+                IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE, target_ref,
+                (iree_hal_atomic_store_params_t){
+                    /*.value=*/1,
+                    /*.flags=*/IREE_HAL_ATOMIC_FLAG_RELEASE,
+                    /*.width=*/width,
+                    /*.target_error_mode=*/mode,
+                }));
+            break;
+          case AtomicKind::kRmw:
+            IREE_ASSERT_OK(iree_hal_command_buffer_atomic_rmw(
+                command_buffer, IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
+                IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE, target_ref,
+                (iree_hal_atomic_rmw_params_t){
+                    /*.operand=*/1,
+                    /*.flags=*/IREE_HAL_ATOMIC_FLAG_ACQUIRE |
+                        IREE_HAL_ATOMIC_FLAG_RELEASE,
+                    /*.width=*/width,
+                    /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_ADD,
+                    /*.target_error_mode=*/mode,
+                }));
+            break;
+        }
+        IREE_ASSERT_OK(iree_hal_command_buffer_end(command_buffer));
 
-    const iree_hal_buffer_binding_t binding = {
-        /*.buffer=*/indirect ? buffer.get() : nullptr,
-        /*.offset=*/0,
-        /*.length=*/indirect ? IREE_HAL_WHOLE_BUFFER : 0,
-    };
-    const iree_hal_buffer_binding_table_t binding_table = {
-        /*.count=*/indirect ? 1u : 0u,
-        /*.bindings=*/indirect ? &binding : nullptr,
-    };
-    SemaphoreList empty_wait;
-    SemaphoreList signal(device_, {0}, {1});
-    Status submission_status(iree_hal_queue_execute(
-        atomic_queue_, empty_wait, signal, command_buffer, binding_table,
-        IREE_HAL_QUEUE_EXECUTE_FLAG_NONE));
-    if (submission_status.ok()) {
-      EXPECT_THAT(
-          Status(iree_hal_semaphore_list_wait(signal, iree_infinite_timeout(),
-                                              IREE_ASYNC_WAIT_FLAG_NONE)),
-          StatusIs(StatusCode::kFailedPrecondition));
-    } else {
-      EXPECT_THAT(submission_status, StatusIs(StatusCode::kFailedPrecondition));
+        const iree_hal_buffer_binding_t binding = {
+            /*.buffer=*/indirect ? buffer.get() : nullptr,
+            /*.offset=*/0,
+            /*.length=*/indirect ? IREE_HAL_WHOLE_BUFFER : 0,
+        };
+        const iree_hal_buffer_binding_table_t binding_table = {
+            /*.count=*/indirect ? 1u : 0u,
+            /*.bindings=*/indirect ? &binding : nullptr,
+        };
+        SemaphoreList empty_wait;
+        SemaphoreList signal(device_, {0}, {1});
+        iree_status_t status = iree_hal_queue_execute(
+            atomic_queue_, empty_wait, signal, command_buffer, binding_table,
+            IREE_HAL_QUEUE_EXECUTE_FLAG_NONE);
+        if (iree_status_is_ok(status)) {
+          status = iree_hal_semaphore_list_wait(signal, iree_infinite_timeout(),
+                                                IREE_ASYNC_WAIT_FLAG_NONE);
+        }
+        const StatusCode expected_status =
+            mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+                ? StatusCode::kIncompatible
+                : static_cast<StatusCode>(
+                      this->GetParam().default_atomic_target_error_code);
+        EXPECT_THAT(Status(std::move(status)), StatusIs(expected_status));
+        EXPECT_TRUE(std::all_of(storage.begin(), storage.end(),
+                                [](uint8_t byte) { return byte == 0; }));
+      }
     }
 
     buffer.reset();
-    command_buffer.reset();
     released_future.wait();
   }
 

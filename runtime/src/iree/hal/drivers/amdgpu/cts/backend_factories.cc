@@ -123,6 +123,7 @@ BackendInfo MakeAmdgpuCtsBackendInfo(const char* name,
     return IsAmdgpuCtsBackendHostCompatible(mode, out_reason);
   };
   info.executable_target_selector = SelectAmdgpuCtsExecutableTarget;
+  info.default_atomic_target_error_code = IREE_STATUS_INCOMPATIBLE;
   return info;
 }
 

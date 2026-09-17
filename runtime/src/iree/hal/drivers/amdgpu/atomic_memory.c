@@ -256,7 +256,8 @@ iree_hal_amdgpu_atomic_memory_required_cell(
 iree_status_t iree_hal_amdgpu_atomic_memory_validate_target(
     iree_hal_amdgpu_atomic_memory_cell_flags_t available_cells,
     const void* target_pointer, iree_hal_atomic_width_t width,
-    iree_hal_atomic_flags_t atomic_flags) {
+    iree_hal_atomic_flags_t atomic_flags,
+    iree_hal_atomic_target_error_mode_t target_error_mode) {
   const iree_device_size_t byte_count = iree_hal_atomic_width_byte_count(width);
   if (IREE_UNLIKELY(byte_count == 0)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -265,13 +266,23 @@ iree_status_t iree_hal_amdgpu_atomic_memory_validate_target(
   const iree_hal_amdgpu_atomic_memory_cell_flags_t required_cell =
       iree_hal_amdgpu_atomic_memory_required_cell(width, atomic_flags);
   return iree_hal_amdgpu_atomic_memory_validate_required_cells(
-      available_cells, target_pointer, required_cell);
+      available_cells, target_pointer, required_cell, target_error_mode);
 }
 
 iree_status_t iree_hal_amdgpu_atomic_memory_validate_required_cells(
     iree_hal_amdgpu_atomic_memory_cell_flags_t available_cells,
     const void* target_pointer,
-    iree_hal_amdgpu_atomic_memory_cell_flags_t required_cells) {
+    iree_hal_amdgpu_atomic_memory_cell_flags_t required_cells,
+    iree_hal_atomic_target_error_mode_t target_error_mode) {
+  switch (target_error_mode) {
+    case IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT:
+    case IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE:
+      break;
+    default:
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "unsupported AMDGPU atomic target error mode %u",
+                              target_error_mode);
+  }
   if (IREE_UNLIKELY(iree_any_bit_set(
           required_cells, ~IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL))) {
     return iree_make_status(

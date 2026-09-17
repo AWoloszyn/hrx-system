@@ -72,7 +72,8 @@ void iree_hal_streaming_value_wait_lanes_deinitialize(
 // Enqueues |operations| as one ordered stream transaction. All resources and
 // command storage are prepared before the transaction is submitted. Batches
 // containing a wait use an independently progressing context-owned queue that
-// is recycled after the accepted operation reaches the stream timeline.
+// is recycled only after every accepted lane submission reaches its own
+// terminal completion record.
 // Synchronization: flushes pending stream commands before enqueueing.
 iree_status_t iree_hal_streaming_queue_value_operations(
     iree_hal_streaming_stream_t* stream, iree_host_size_t operation_count,

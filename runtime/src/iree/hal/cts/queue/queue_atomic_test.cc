@@ -4,11 +4,13 @@
 // See https://llvm.org/LICENSE for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <future>
 #include <limits>
+#include <utility>
 
 #include "iree/hal/cts/util/atomic_test_util.h"
 #include "iree/hal/cts/util/test_base.h"
@@ -115,11 +117,15 @@ class QueueAtomicTest : public CtsTestBase<> {
 
   void RunResolvedMisalignmentFailureTest(iree_hal_atomic_width_t width) {
     AtomicTestConfiguration configuration;
-    if (!SelectConfiguration(width, IREE_HAL_ATOMIC_OPERATION_FLAG_STORE,
-                             IREE_HAL_ATOMIC_WAIT_CONDITION_FLAG_NONE,
+    const iree_hal_atomic_operation_flags_t operation_flags =
+        IREE_HAL_ATOMIC_OPERATION_FLAG_WAIT |
+        IREE_HAL_ATOMIC_OPERATION_FLAG_STORE |
+        IREE_HAL_ATOMIC_OPERATION_FLAG_RMW_ADD;
+    if (!SelectConfiguration(width, operation_flags,
+                             IREE_HAL_ATOMIC_WAIT_CONDITION_FLAG_EQUAL,
                              &configuration)) {
       GTEST_SKIP() << "Device does not advertise the tested "
-                      "queue/memory atomic store";
+                      "queue/memory atomic operation set";
     }
 
     alignas(uint64_t) std::array<uint8_t, kBufferSize + 1> storage = {};
@@ -152,23 +158,71 @@ class QueueAtomicTest : public CtsTestBase<> {
                    << import_status.ToString();
     }
 
-    SemaphoreList empty_wait;
-    SemaphoreList signal(device_, {0}, {1});
-    const iree_hal_atomic_store_params_t store_params = {
-        /*.value=*/1,
-        /*.flags=*/IREE_HAL_ATOMIC_FLAG_RELEASE,
-        /*.width=*/width,
+    enum class AtomicKind { kWait, kStore, kRmw };
+    const AtomicKind kinds[] = {AtomicKind::kWait, AtomicKind::kStore,
+                                AtomicKind::kRmw};
+    const iree_hal_atomic_target_error_mode_t modes[] = {
+        IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
+        IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
     };
-    Status submission_status(
-        iree_hal_queue_atomic_store(atomic_queue_, empty_wait, signal, buffer,
-                                    /*target_offset=*/0, store_params));
-    if (submission_status.ok()) {
-      EXPECT_THAT(
-          Status(iree_hal_semaphore_list_wait(signal, iree_infinite_timeout(),
-                                              IREE_ASYNC_WAIT_FLAG_NONE)),
-          StatusIs(StatusCode::kFailedPrecondition));
-    } else {
-      EXPECT_THAT(submission_status, StatusIs(StatusCode::kFailedPrecondition));
+    for (iree_hal_atomic_target_error_mode_t mode : modes) {
+      for (AtomicKind kind : kinds) {
+        SemaphoreList empty_wait;
+        SemaphoreList signal(device_, {0}, {1});
+        iree_status_t status = iree_ok_status();
+        switch (kind) {
+          case AtomicKind::kWait:
+            status = iree_hal_queue_atomic_wait(
+                atomic_queue_, empty_wait, signal, buffer,
+                /*target_offset=*/0,
+                (iree_hal_atomic_wait_params_t){
+                    /*.value=*/0,
+                    /*.mask=*/width == IREE_HAL_ATOMIC_WIDTH_32 ? UINT32_MAX
+                                                                : UINT64_MAX,
+                    /*.flags=*/IREE_HAL_ATOMIC_FLAG_ACQUIRE,
+                    /*.width=*/width,
+                    /*.condition=*/IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL,
+                    /*.target_error_mode=*/mode,
+                });
+            break;
+          case AtomicKind::kStore:
+            status = iree_hal_queue_atomic_store(
+                atomic_queue_, empty_wait, signal, buffer,
+                /*target_offset=*/0,
+                (iree_hal_atomic_store_params_t){
+                    /*.value=*/1,
+                    /*.flags=*/IREE_HAL_ATOMIC_FLAG_RELEASE,
+                    /*.width=*/width,
+                    /*.target_error_mode=*/mode,
+                });
+            break;
+          case AtomicKind::kRmw:
+            status = iree_hal_queue_atomic_rmw(
+                atomic_queue_, empty_wait, signal, buffer,
+                /*target_offset=*/0,
+                (iree_hal_atomic_rmw_params_t){
+                    /*.operand=*/1,
+                    /*.flags=*/IREE_HAL_ATOMIC_FLAG_ACQUIRE |
+                        IREE_HAL_ATOMIC_FLAG_RELEASE,
+                    /*.width=*/width,
+                    /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_ADD,
+                    /*.target_error_mode=*/mode,
+                });
+            break;
+        }
+        if (iree_status_is_ok(status)) {
+          status = iree_hal_semaphore_list_wait(signal, iree_infinite_timeout(),
+                                                IREE_ASYNC_WAIT_FLAG_NONE);
+        }
+        const StatusCode expected_status =
+            mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+                ? StatusCode::kIncompatible
+                : static_cast<StatusCode>(
+                      this->GetParam().default_atomic_target_error_code);
+        EXPECT_THAT(Status(std::move(status)), StatusIs(expected_status));
+        EXPECT_TRUE(std::all_of(storage.begin(), storage.end(),
+                                [](uint8_t byte) { return byte == 0; }));
+      }
     }
 
     buffer.reset();

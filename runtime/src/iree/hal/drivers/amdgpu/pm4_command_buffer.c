@@ -597,7 +597,8 @@ typedef struct iree_hal_amdgpu_pm4_command_buffer_t {
   iree_hal_amdgpu_pm4_command_recording_state_t recording;
   // Per-binding atomic memory cells required at queue submission, or NULL
   // when no dynamic atomic targets were recorded.
-  iree_hal_amdgpu_atomic_memory_cell_flags_t* atomic_binding_requirements;
+  iree_hal_amdgpu_pm4_atomic_binding_requirements_t*
+      atomic_binding_requirements;
   // Profile metadata retained for iree-profile command-buffer records.
   struct {
     // Borrowed metadata registry owned by the logical device.
@@ -2211,7 +2212,7 @@ uint32_t iree_hal_amdgpu_pm4_command_buffer_operation_count(
   return command_buffer->recording.record_command_count;
 }
 
-const iree_hal_amdgpu_atomic_memory_cell_flags_t*
+const iree_hal_amdgpu_pm4_atomic_binding_requirements_t*
 iree_hal_amdgpu_pm4_command_buffer_atomic_binding_requirements(
     iree_hal_command_buffer_t* base_command_buffer, uint32_t* out_count) {
   IREE_ASSERT_ARGUMENT(out_count);
@@ -2519,7 +2520,8 @@ iree_hal_amdgpu_pm4_command_buffer_ensure_atomic_binding_requirements(
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       0, &byte_length,
       IREE_STRUCT_FIELD(command_buffer->base.binding_capacity,
-                        iree_hal_amdgpu_atomic_memory_cell_flags_t, NULL)));
+                        iree_hal_amdgpu_pm4_atomic_binding_requirements_t,
+                        NULL)));
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(
       command_buffer->host_allocator, byte_length,
       (void**)&command_buffer->atomic_binding_requirements));
@@ -2531,6 +2533,7 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_prepare_atomic_target(
     iree_hal_amdgpu_pm4_command_buffer_t* command_buffer,
     iree_hal_buffer_ref_t target_ref, iree_hal_atomic_width_t width,
     iree_hal_atomic_flags_t atomic_flags,
+    iree_hal_atomic_target_error_mode_t target_error_mode,
     iree_hal_amdgpu_pm4_buffer_ref_record_t* out_target,
     iree_hal_amdgpu_atomic_memory_cell_flags_t* out_required_cell) {
   memset(out_target, 0, sizeof(*out_target));
@@ -2566,7 +2569,8 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_prepare_atomic_target(
       iree_hal_buffer_allocated_buffer(target_ref.buffer);
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_atomic_memory_validate_target(
       iree_hal_amdgpu_buffer_atomic_memory_cells(allocated_buffer),
-      (const void*)(uintptr_t)out_target->value, width, atomic_flags));
+      (const void*)(uintptr_t)out_target->value, width, atomic_flags,
+      target_error_mode));
   IREE_RETURN_IF_ERROR(
       iree_hal_amdgpu_pm4_command_buffer_ensure_resource_set(command_buffer));
   if (command_buffer->resource_set) {
@@ -2599,6 +2603,7 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_prepare_atomic_record(
     iree_hal_execution_stage_t target_stage_mask,
     iree_hal_buffer_ref_t target_ref, iree_hal_atomic_width_t width,
     iree_hal_atomic_flags_t atomic_flags,
+    iree_hal_atomic_target_error_mode_t target_error_mode,
     iree_hal_atomic_flags_t source_ordering_flag,
     iree_hal_atomic_flags_t target_ordering_flag,
     iree_hal_amdgpu_pm4_buffer_ref_record_t* out_target,
@@ -2608,8 +2613,8 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_prepare_atomic_record(
     iree_hsa_fence_scope_t* out_barrier_release_scope,
     iree_hal_amdgpu_pm4_command_barrier_state_t* out_target_barrier_state) {
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_pm4_command_buffer_prepare_atomic_target(
-      command_buffer, target_ref, width, atomic_flags, out_target,
-      out_required_cell));
+      command_buffer, target_ref, width, atomic_flags, target_error_mode,
+      out_target, out_required_cell));
 
   iree_hal_amdgpu_pm4_command_barrier_state_t source_barrier_state =
       command_buffer->recording.barrier_state;
@@ -2640,7 +2645,27 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_append_atomic_record(
     iree_hal_amdgpu_pm4_command_buffer_t* command_buffer,
     iree_hal_amdgpu_pm4_atomic_record_t* record,
     iree_hal_amdgpu_atomic_memory_cell_flags_t required_cell,
+    iree_hal_atomic_target_error_mode_t target_error_mode,
     iree_hal_amdgpu_pm4_command_barrier_state_t target_barrier_state) {
+  iree_hal_amdgpu_atomic_memory_cell_flags_t* binding_requirements = NULL;
+  if (iree_any_bit_set(record->flags,
+                       IREE_HAL_AMDGPU_PM4_ATOMIC_RECORD_FLAG_DYNAMIC_TARGET)) {
+    iree_hal_amdgpu_pm4_atomic_binding_requirements_t* requirements =
+        &command_buffer
+             ->atomic_binding_requirements[record->target.binding_slot];
+    switch (target_error_mode) {
+      case IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT:
+        binding_requirements = &requirements->default_error_cells;
+        break;
+      case IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE:
+        binding_requirements = &requirements->incompatible_error_cells;
+        break;
+      default:
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "unsupported PM4 atomic target error mode %u",
+                                target_error_mode);
+    }
+  }
   iree_hal_amdgpu_pm4_command_record_measurement_t measurement;
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_pm4_atomic_record_measure(
       record, command_buffer->atomic_context,
@@ -2681,8 +2706,7 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_append_atomic_record(
                        IREE_HAL_AMDGPU_PM4_ATOMIC_RECORD_FLAG_DYNAMIC_TARGET)) {
     command_buffer->base.binding_count = iree_max(
         command_buffer->base.binding_count, record->target.binding_slot + 1u);
-    command_buffer->atomic_binding_requirements[record->target.binding_slot] |=
-        required_cell;
+    *binding_requirements |= required_cell;
   }
   ++command_buffer->recording.record_command_count;
   return iree_ok_status();
@@ -2709,15 +2733,17 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_atomic_wait(
   iree_hal_amdgpu_pm4_command_barrier_state_t target_barrier_state;
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_pm4_command_buffer_prepare_atomic_record(
       command_buffer, source_stage_mask, target_stage_mask, target_ref,
-      params.width, params.flags, IREE_HAL_ATOMIC_FLAG_NONE,
-      IREE_HAL_ATOMIC_FLAG_ACQUIRE, &target, &required_cell, &record_flags,
-      &barrier_acquire_scope, &barrier_release_scope, &target_barrier_state));
+      params.width, params.flags, params.target_error_mode,
+      IREE_HAL_ATOMIC_FLAG_NONE, IREE_HAL_ATOMIC_FLAG_ACQUIRE, &target,
+      &required_cell, &record_flags, &barrier_acquire_scope,
+      &barrier_release_scope, &target_barrier_state));
   iree_hal_amdgpu_pm4_atomic_record_t record;
   iree_hal_amdgpu_pm4_atomic_record_initialize_wait(
       target, params, command_buffer->recording.record_command_count,
       record_flags, barrier_acquire_scope, barrier_release_scope, &record);
   return iree_hal_amdgpu_pm4_command_buffer_append_atomic_record(
-      command_buffer, &record, required_cell, target_barrier_state);
+      command_buffer, &record, required_cell, params.target_error_mode,
+      target_barrier_state);
 }
 
 static iree_status_t iree_hal_amdgpu_pm4_command_buffer_atomic_store(
@@ -2741,15 +2767,17 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_atomic_store(
   iree_hal_amdgpu_pm4_command_barrier_state_t target_barrier_state;
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_pm4_command_buffer_prepare_atomic_record(
       command_buffer, source_stage_mask, target_stage_mask, target_ref,
-      params.width, params.flags, IREE_HAL_ATOMIC_FLAG_RELEASE,
-      IREE_HAL_ATOMIC_FLAG_NONE, &target, &required_cell, &record_flags,
-      &barrier_acquire_scope, &barrier_release_scope, &target_barrier_state));
+      params.width, params.flags, params.target_error_mode,
+      IREE_HAL_ATOMIC_FLAG_RELEASE, IREE_HAL_ATOMIC_FLAG_NONE, &target,
+      &required_cell, &record_flags, &barrier_acquire_scope,
+      &barrier_release_scope, &target_barrier_state));
   iree_hal_amdgpu_pm4_atomic_record_t record;
   iree_hal_amdgpu_pm4_atomic_record_initialize_store(
       target, params, command_buffer->recording.record_command_count,
       record_flags, barrier_acquire_scope, barrier_release_scope, &record);
   return iree_hal_amdgpu_pm4_command_buffer_append_atomic_record(
-      command_buffer, &record, required_cell, target_barrier_state);
+      command_buffer, &record, required_cell, params.target_error_mode,
+      target_barrier_state);
 }
 
 static iree_status_t iree_hal_amdgpu_pm4_command_buffer_atomic_rmw(
@@ -2773,15 +2801,17 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_atomic_rmw(
   iree_hal_amdgpu_pm4_command_barrier_state_t target_barrier_state;
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_pm4_command_buffer_prepare_atomic_record(
       command_buffer, source_stage_mask, target_stage_mask, target_ref,
-      params.width, params.flags, IREE_HAL_ATOMIC_FLAG_RELEASE,
-      IREE_HAL_ATOMIC_FLAG_ACQUIRE, &target, &required_cell, &record_flags,
-      &barrier_acquire_scope, &barrier_release_scope, &target_barrier_state));
+      params.width, params.flags, params.target_error_mode,
+      IREE_HAL_ATOMIC_FLAG_RELEASE, IREE_HAL_ATOMIC_FLAG_ACQUIRE, &target,
+      &required_cell, &record_flags, &barrier_acquire_scope,
+      &barrier_release_scope, &target_barrier_state));
   iree_hal_amdgpu_pm4_atomic_record_t record;
   iree_hal_amdgpu_pm4_atomic_record_initialize_rmw(
       target, params, command_buffer->recording.record_command_count,
       record_flags, barrier_acquire_scope, barrier_release_scope, &record);
   return iree_hal_amdgpu_pm4_command_buffer_append_atomic_record(
-      command_buffer, &record, required_cell, target_barrier_state);
+      command_buffer, &record, required_cell, params.target_error_mode,
+      target_barrier_state);
 }
 
 static iree_status_t iree_hal_amdgpu_pm4_command_buffer_advise_buffer(

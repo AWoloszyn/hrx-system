@@ -33,6 +33,28 @@ iree_runtime_cc_library(
 )
 
 iree_runtime_cc_library(
+    name = "atomic_params",
+    srcs = ["atomic_params.c"],
+    hdrs = ["atomic_params.h"],
+    deps = [
+        ":format",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "format_x86_32_compile_test",
+    testonly = True,
+    srcs = ["format_x86_32_compile_test.c"],
+    deps = [
+        ":format",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+    ],
+)
+
+iree_runtime_cc_library(
     name = "file_writer",
     srcs = ["file_writer.c"],
     hdrs = ["file_writer.h"],
@@ -79,6 +101,7 @@ iree_runtime_cc_library(
     ],
     hdrs = ["dump.h"],
     deps = [
+        ":atomic_params",
         ":digest",
         ":file_reader",
         ":format",
@@ -102,6 +125,7 @@ iree_runtime_cc_library(
     ],
     hdrs = ["execute.h"],
     deps = [
+        ":atomic_params",
         ":digest",
         ":file_reader",
         ":format",
@@ -152,6 +176,7 @@ iree_runtime_cc_test(
     srcs = ["dump_test.cc"],
     deps = [
         ":dump",
+        ":file_reader",
         ":file_writer",
         "//runtime/src/iree/base",
         "//runtime/src/iree/hal",
@@ -216,12 +241,14 @@ iree_runtime_cc_test(
     deps = [
         ":execute",
         ":file_reader",
+        ":file_writer",
         "//runtime/src/iree/async",
         "//runtime/src/iree/async/util:proactor_pool",
         "//runtime/src/iree/base",
         "//runtime/src/iree/hal",
         "//runtime/src/iree/hal/drivers/task/registration",
         "//runtime/src/iree/hal/memory:passthrough_pool",
+        "//runtime/src/iree/io:file_handle",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
