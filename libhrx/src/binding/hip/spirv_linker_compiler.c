@@ -118,7 +118,9 @@ typedef struct iree_hip_comgr_library_t {
 static iree_status_t iree_hip_comgr_status_to_iree(
     const iree_hip_comgr_library_t* comgr, iree_hip_comgr_status_t status,
     const char* operation) {
-  if (status == IREE_HIP_COMGR_STATUS_SUCCESS) return iree_ok_status();
+  if (status == IREE_HIP_COMGR_STATUS_SUCCESS) {
+    return iree_ok_status();
+  }
   const char* status_string = NULL;
   if (comgr->status_string) {
     comgr->status_string(status, &status_string);
@@ -361,9 +363,15 @@ static iree_status_t iree_hip_comgr_add_spirv_input(
   }
 
   iree_allocator_free(host_allocator, unbundled_data.data);
-  if (action_info.handle) comgr->destroy_action_info(action_info);
-  if (unbundled_outputs.handle) comgr->destroy_data_set(unbundled_outputs);
-  if (bundle_inputs.handle) comgr->destroy_data_set(bundle_inputs);
+  if (action_info.handle) {
+    comgr->destroy_action_info(action_info);
+  }
+  if (unbundled_outputs.handle) {
+    comgr->destroy_data_set(unbundled_outputs);
+  }
+  if (bundle_inputs.handle) {
+    comgr->destroy_data_set(bundle_inputs);
+  }
   return status;
 }
 
@@ -445,11 +453,21 @@ iree_status_t iree_hip_spirv_linker_compile(
                                             host_allocator, out_executable);
   }
 
-  if (link_action.handle) comgr.destroy_action_info(link_action);
-  if (compile_action.handle) comgr.destroy_action_info(compile_action);
-  if (executable_outputs.handle) comgr.destroy_data_set(executable_outputs);
-  if (relocatables.handle) comgr.destroy_data_set(relocatables);
-  if (compile_inputs.handle) comgr.destroy_data_set(compile_inputs);
+  if (link_action.handle) {
+    comgr.destroy_action_info(link_action);
+  }
+  if (compile_action.handle) {
+    comgr.destroy_action_info(compile_action);
+  }
+  if (executable_outputs.handle) {
+    comgr.destroy_data_set(executable_outputs);
+  }
+  if (relocatables.handle) {
+    comgr.destroy_data_set(relocatables);
+  }
+  if (compile_inputs.handle) {
+    comgr.destroy_data_set(compile_inputs);
+  }
   iree_hip_comgr_unload(&comgr);
   return status;
 }

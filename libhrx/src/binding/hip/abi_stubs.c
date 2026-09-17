@@ -1873,7 +1873,9 @@ HIPAPI hipError_t hipMemcpyFromSymbolAsync_spt(void* dst, const void* symbol,
                                                hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipMemcpyFromSymbolAsync(dst, symbol, size_bytes, offset, kind,
                                   resolved_stream);
 }

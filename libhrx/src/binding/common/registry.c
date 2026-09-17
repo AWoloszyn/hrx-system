@@ -39,7 +39,9 @@ static iree_status_t iree_hal_streaming_managed_storage_create(
 
 void iree_hal_streaming_managed_storage_retain(
     iree_hal_streaming_managed_storage_t* storage) {
-  if (!storage) return;
+  if (!storage) {
+    return;
+  }
   iree_atomic_ref_count_inc(&storage->ref_count);
 }
 
@@ -155,7 +157,9 @@ void iree_hal_streaming_global_symbol_registry_free(
            ++j) {
         iree_hal_streaming_symbol_registration_t* symbol =
             &registry->modules[i]->symbols[j];
-        if (symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_DATA) continue;
+        if (symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_DATA) {
+          continue;
+        }
         iree_hal_streaming_managed_storage_t* managed_storage =
             symbol->params.variable.managed_storage;
         if (managed_storage && symbol->params.variable.publication_slot &&
@@ -299,7 +303,9 @@ iree_status_t iree_hal_streaming_global_symbol_registry_unregister_module(
   // no longer visible to a device. Restore the compiler slot before freeing it.
   for (iree_host_size_t i = 0; i < module->symbol_count; ++i) {
     iree_hal_streaming_symbol_registration_t* symbol = &module->symbols[i];
-    if (symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_DATA) continue;
+    if (symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_DATA) {
+      continue;
+    }
     iree_hal_streaming_managed_storage_t* managed_storage =
         symbol->params.variable.managed_storage;
     if (managed_storage && symbol->params.variable.publication_slot &&
@@ -472,8 +478,9 @@ iree_hal_streaming_global_symbol_registry_insert_variable_with_type(
     symbol->params.variable.size = size;
     symbol->params.variable.alignment = alignment;
     managed_storage = NULL;
-    if (publication_slot)
+    if (publication_slot) {
       *publication_slot = symbol->params.variable.managed_storage->data;
+    }
   }
   iree_hal_streaming_managed_storage_release(managed_storage);
 
@@ -655,7 +662,9 @@ void iree_hal_streaming_context_symbol_map_deinitialize(
 
   // Unlink before releasing map-owned state. The registry lock excludes module
   // unregistration while the map lock drains active lookups.
-  if (registry) iree_slim_mutex_lock(&registry->mutex);
+  if (registry) {
+    iree_slim_mutex_lock(&registry->mutex);
+  }
   iree_slim_mutex_lock(&map->mutex);
 
   if (registry) {
@@ -664,7 +673,9 @@ void iree_hal_streaming_context_symbol_map_deinitialize(
     } else if (registry->context_maps_head == map) {
       registry->context_maps_head = map->next;
     }
-    if (map->next) map->next->prev = map->prev;
+    if (map->next) {
+      map->next->prev = map->prev;
+    }
   }
 
   // Release all loaded modules.
@@ -679,7 +690,9 @@ void iree_hal_streaming_context_symbol_map_deinitialize(
   iree_allocator_free(host_allocator, map->entries);
   map->entries = NULL;
   iree_slim_mutex_unlock(&map->mutex);
-  if (registry) iree_slim_mutex_unlock(&registry->mutex);
+  if (registry) {
+    iree_slim_mutex_unlock(&registry->mutex);
+  }
   iree_slim_mutex_deinitialize(&map->mutex);
 
   IREE_TRACE_ZONE_END(z0);
@@ -926,7 +939,9 @@ static iree_status_t iree_hal_streaming_context_symbol_map_prepare_module(
             entry->module, registration->symbols[i].device_name,
             managed_storage, registration->symbols[i].params.variable.size,
             &symbol);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
       }
 
       status = iree_hal_streaming_context_symbol_map_insert(

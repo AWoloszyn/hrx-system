@@ -91,7 +91,9 @@ TEST_F(FunctionHandleTest, ConcurrentLookupAndRetirementPreserveOwner) {
   }
   iree_hip_function_handle_retire_module(&module_);
   stop.store(true, std::memory_order_release);
-  for (std::thread& thread : threads) thread.join();
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
 
   iree_hal_streaming_symbol_t* resolved_symbol = nullptr;
   iree_hal_streaming_module_t* resolved_module = nullptr;
@@ -120,8 +122,12 @@ TEST_F(FunctionHandleTest, ReusesHandleForModuleSymbol) {
   }
 
   start.store(true, std::memory_order_release);
-  for (std::thread& thread : threads) thread.join();
-  for (void* handle : handles) EXPECT_EQ(expected_handle, handle);
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
+  for (void* handle : handles) {
+    EXPECT_EQ(expected_handle, handle);
+  }
   iree_hip_function_handle_retire_module(&module_);
 }
 

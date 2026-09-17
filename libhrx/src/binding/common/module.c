@@ -640,7 +640,9 @@ static iree_status_t iree_hal_streaming_module_create_from_memory_impl(
   iree_slim_mutex_initialize(&module->global_mutex);
   module->context = context;
   module->retains_context = retain_context;
-  if (retain_context) iree_hal_streaming_context_retain(context);
+  if (retain_context) {
+    iree_hal_streaming_context_retain(context);
+  }
   module->host_allocator = host_allocator;
 
   // HIP toolchains hand us several container formats: raw AMDGPU ELFs,
@@ -1018,7 +1020,9 @@ iree_hal_streaming_module_try_lookup_global_symbol_for_executable(
     if (iree_status_is_ok(status) && found) {
       status = iree_hal_streaming_module_create_global_symbol_locked(
           module, executable, global_handle, out_global);
-      if (iree_status_is_ok(status)) *out_found = true;
+      if (iree_status_is_ok(status)) {
+        *out_found = true;
+      }
     }
   }
 
@@ -1199,7 +1203,9 @@ static iree_status_t iree_hal_streaming_module_initialize_managed_symbol_pair(
     if (out_host_pointer) {
       *out_host_pointer = pointer_symbol->managed_buffer->host_ptr;
     }
-    if (out_size) *out_size = initializer_symbol->size_bytes;
+    if (out_size) {
+      *out_size = initializer_symbol->size_bytes;
+    }
   }
   iree_slim_mutex_unlock(&module->global_mutex);
   return status;
@@ -1239,7 +1245,9 @@ static iree_status_t iree_hal_streaming_module_visit_managed_global(
       iree_hal_streaming_module_try_lookup_global_symbol_for_executable(
           visitor->module, visitor->executable, pointer_name, &pointer_found,
           &pointer_symbol));
-  if (!pointer_found) return iree_ok_status();
+  if (!pointer_found) {
+    return iree_ok_status();
+  }
 
   bool initializer_found = false;
   iree_hal_streaming_symbol_t* initializer_symbol = NULL;
@@ -1319,7 +1327,9 @@ iree_status_t iree_hal_streaming_module_bind_registered_managed_global(
   iree_status_t status = iree_hal_streaming_module_try_lookup_global_symbol(
       module, initializer_name, &initializer_found, &initializer_symbol);
   iree_allocator_free(module->host_allocator, initializer_name);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   if (!initializer_found) {
     return iree_make_status(IREE_STATUS_NOT_FOUND,
                             "managed initializer for `%s` not found",
@@ -1385,7 +1395,9 @@ iree_status_t iree_hal_streaming_module_bind_registered_managed_global(
         "managed global `%s` is already bound to different storage",
         pointer_name);
   }
-  if (iree_status_is_ok(status)) *out_symbol = pointer_symbol;
+  if (iree_status_is_ok(status)) {
+    *out_symbol = pointer_symbol;
+  }
   iree_slim_mutex_unlock(&module->global_mutex);
   return status;
 }
@@ -1410,7 +1422,9 @@ iree_status_t iree_hal_streaming_module_try_initialize_managed_global(
   bool initializer_found = false;
   IREE_RETURN_IF_ERROR(iree_hal_streaming_module_try_lookup_global_symbol(
       module, initializer_name, &initializer_found, &initializer_symbol));
-  if (!initializer_found) return iree_ok_status();
+  if (!initializer_found) {
+    return iree_ok_status();
+  }
   *out_found = true;
   if (IREE_UNLIKELY(!initializer_symbol->executable)) {
     return iree_make_status(

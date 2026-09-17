@@ -239,7 +239,9 @@ bool iree_hip_handle_registry_lookup_retain_value(
           shard->handles[slot] == handle) {
         const uintptr_t value = shard->values[slot];
         retain_fn(value);
-        if (out_value) *out_value = value;
+        if (out_value) {
+          *out_value = value;
+        }
         found = true;
         break;
       }
@@ -277,7 +279,9 @@ bool iree_hip_handle_registry_remove_value(iree_hip_handle_registry_t* registry,
     while (shard->states[slot] != IREE_HIP_HANDLE_REGISTRY_SLOT_EMPTY) {
       if (shard->states[slot] == IREE_HIP_HANDLE_REGISTRY_SLOT_LIVE &&
           shard->handles[slot] == handle) {
-        if (out_value) *out_value = shard->values[slot];
+        if (out_value) {
+          *out_value = shard->values[slot];
+        }
         shard->states[slot] = IREE_HIP_HANDLE_REGISTRY_SLOT_TOMBSTONE;
         --shard->count;
         ++shard->tombstone_count;

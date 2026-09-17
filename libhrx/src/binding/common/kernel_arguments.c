@@ -327,7 +327,9 @@ static iree_status_t iree_hal_streaming_process_raw_argument_list(
   }
 
   uint8_t* constants = (uint8_t*)out_constants;
-  if (copy_arguments) memset(constants, 0, *out_constants_size);
+  if (copy_arguments) {
+    memset(constants, 0, *out_constants_size);
+  }
   const iree_hal_streaming_parameter_op_t* copy_ops = parameters->ops;
   const iree_hal_streaming_parameter_op_t* resolve_ops =
       parameters->ops + parameters->copy_count;

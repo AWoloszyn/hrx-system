@@ -461,7 +461,9 @@ class HipModuleLibraryExecutionTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    if (!library_) return;
+    if (!library_) {
+      return;
+    }
     if (api_.deinit) {
       EXPECT_EQ(hipSuccess, api_.deinit());
     }
@@ -800,7 +802,9 @@ TEST_F(HipModuleLibraryExecutionTest,
   hipDeviceProp_t other_properties = {};
   hrx_cts::AmdgpuExecutableTestImage other_image;
   for (int candidate = 0; candidate < device_count; ++candidate) {
-    if (candidate == device_) continue;
+    if (candidate == device_) {
+      continue;
+    }
     ASSERT_EQ(hipSuccess,
               api_.get_device_properties(&other_properties, candidate));
     other_image =
@@ -876,8 +880,12 @@ TEST_F(HipModuleLibraryExecutionTest,
   std::array<uint32_t, kOutputCount> values = {};
   ASSERT_EQ(hipSuccess, api_.memcpy(values.data(), output, sizeof(values),
                                     hipMemcpyDeviceToHost));
-  for (size_t i = 0; i < 100; ++i) EXPECT_EQ(i + 1, values[i]);
-  for (size_t i = 100; i < values.size(); ++i) EXPECT_EQ(0u, values[i]);
+  for (size_t i = 0; i < 100; ++i) {
+    EXPECT_EQ(i + 1, values[i]);
+  }
+  for (size_t i = 100; i < values.size(); ++i) {
+    EXPECT_EQ(0u, values[i]);
+  }
 
   hipStream_t capture_stream = nullptr;
   ASSERT_EQ(hipSuccess, api_.stream_create(&capture_stream));
@@ -926,8 +934,12 @@ TEST_F(HipModuleLibraryExecutionTest,
   values.fill(0);
   ASSERT_EQ(hipSuccess, api_.memcpy(values.data(), output, sizeof(values),
                                     hipMemcpyDeviceToHost));
-  for (size_t i = 0; i < 100; ++i) EXPECT_EQ(i + 1, values[i]);
-  for (size_t i = 100; i < values.size(); ++i) EXPECT_EQ(0u, values[i]);
+  for (size_t i = 0; i < 100; ++i) {
+    EXPECT_EQ(i + 1, values[i]);
+  }
+  for (size_t i = 100; i < values.size(); ++i) {
+    EXPECT_EQ(0u, values[i]);
+  }
   EXPECT_EQ(hipSuccess, api_.graph_exec_destroy(exact_exec));
   EXPECT_EQ(hipSuccess, api_.graph_destroy(exact_graph));
   EXPECT_EQ(hipSuccess, api_.stream_destroy(capture_stream));
@@ -1044,7 +1056,9 @@ TEST_F(HipModuleLibraryExecutionTest,
        LibraryKernelRejectsForeignExplicitAndDefaultStreams) {
   int device_count = 0;
   ASSERT_EQ(hipSuccess, api_.get_device_count(&device_count));
-  if (device_count < 2) GTEST_SKIP() << "requires two AMDGPU devices";
+  if (device_count < 2) {
+    GTEST_SKIP() << "requires two AMDGPU devices";
+  }
 
   hipLibrary_t library = nullptr;
   ASSERT_EQ(hipSuccess,

@@ -69,7 +69,9 @@ hipError_t iree_hip_validate_launch_block_configuration(
 
   const unsigned int block_dim[3] = {block_dim_x, block_dim_y, block_dim_z};
   for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(block_dim); ++i) {
-    if (block_dim[i] == 0) return hipErrorInvalidConfiguration;
+    if (block_dim[i] == 0) {
+      return hipErrorInvalidConfiguration;
+    }
     if (device->max_block_dim[i] != 0 &&
         block_dim[i] > device->max_block_dim[i]) {
       return hipErrorInvalidConfiguration;
@@ -115,7 +117,9 @@ hipError_t iree_hip_validate_launch_configuration(
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
     unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, size_t shared_memory_bytes) {
-  if (!device) return hipErrorInvalidDevice;
+  if (!device) {
+    return hipErrorInvalidDevice;
+  }
 
   const unsigned int grid_dim[3] = {grid_dim_x, grid_dim_y, grid_dim_z};
   for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(grid_dim); ++i) {

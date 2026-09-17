@@ -541,8 +541,12 @@ static iree_status_t hrx_fat_elf_checked_range(iree_const_byte_span_t elf,
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "ELF file range exceeds the available data");
   }
-  if (out_offset) *out_offset = offset;
-  if (out_end) *out_end = end;
+  if (out_offset) {
+    *out_offset = offset;
+  }
+  if (out_end) {
+    *out_end = end;
+  }
   return iree_ok_status();
 }
 
@@ -694,7 +698,9 @@ static iree_status_t hrx_fat_measure_elf(const hrx_elf64_view_t* view,
     for (iree_host_size_t i = 0; i < view->section_count; ++i) {
       hrx_elf64_section_header_t section;
       IREE_RETURN_IF_ERROR(hrx_fat_elf_read_section_header(view, i, &section));
-      if (section.type == HRX_ELF_SHT_NOBITS || section.size == 0) continue;
+      if (section.type == HRX_ELF_SHT_NOBITS || section.size == 0) {
+        continue;
+      }
       iree_host_size_t section_end = 0;
       IREE_RETURN_IF_ERROR(hrx_fat_elf_checked_range(
           view->data, section.offset, section.size, NULL, &section_end));
@@ -715,7 +721,9 @@ static iree_status_t hrx_fat_measure_elf(const hrx_elf64_view_t* view,
       memcpy(&program,
              view->data.data + view->program_table_offset + relative_offset,
              sizeof(program));
-      if (program.file_size == 0) continue;
+      if (program.file_size == 0) {
+        continue;
+      }
       iree_host_size_t segment_end = 0;
       IREE_RETURN_IF_ERROR(hrx_fat_elf_checked_range(
           view->data, program.offset, program.file_size, NULL, &segment_end));

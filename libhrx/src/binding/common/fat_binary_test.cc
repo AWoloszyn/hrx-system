@@ -147,7 +147,9 @@ std::vector<uint8_t> MakeAmdgpuElfWithGlobalSymbols() {
   const uint32_t undefined_name = local_name + sizeof("local_object");
   const uint32_t function_name = undefined_name + sizeof("undefined_object");
 
-  while (elf.size() % 8 != 0) elf.push_back(0);
+  while (elf.size() % 8 != 0) {
+    elf.push_back(0);
+  }
   const size_t symbol_offset = elf.size();
   const Elf64Symbol symbols[] = {
       {},
@@ -166,7 +168,9 @@ std::vector<uint8_t> MakeAmdgpuElfWithGlobalSymbols() {
   };
   AppendBytes(elf, symbols, sizeof(symbols));
 
-  while (elf.size() % 8 != 0) elf.push_back(0);
+  while (elf.size() % 8 != 0) {
+    elf.push_back(0);
+  }
   const size_t section_offset = elf.size();
   const Elf64SectionHeader sections[] = {
       {},

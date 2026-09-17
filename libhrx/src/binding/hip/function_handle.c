@@ -52,8 +52,12 @@ static void iree_hip_function_handle_record_retain(uintptr_t value) {
 
 static void iree_hip_function_handle_record_release(
     iree_hip_function_handle_record_t* record) {
-  if (!record) return;
-  if (iree_atomic_ref_count_dec(&record->ref_count) != 1) return;
+  if (!record) {
+    return;
+  }
+  if (iree_atomic_ref_count_dec(&record->ref_count) != 1) {
+    return;
+  }
   iree_hal_streaming_module_release(record->module);
   iree_allocator_free(record->host_allocator, record);
 }
@@ -99,9 +103,13 @@ iree_status_t iree_hip_function_handle_get_or_create(
   iree_slim_mutex_lock(&iree_hip_function_handle_mutex);
   iree_hip_function_handle_record_t* existing_record =
       iree_hip_function_handle_find_locked(module, symbol);
-  if (existing_record) *out_handle = (void*)existing_record->handle;
+  if (existing_record) {
+    *out_handle = (void*)existing_record->handle;
+  }
   iree_slim_mutex_unlock(&iree_hip_function_handle_mutex);
-  if (existing_record) return iree_ok_status();
+  if (existing_record) {
+    return iree_ok_status();
+  }
 
   iree_hip_function_handle_record_t* record = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(module->host_allocator,
@@ -145,7 +153,9 @@ bool iree_hip_function_handle_lookup(const void* handle,
   IREE_ASSERT_ARGUMENT(out_module);
   *out_symbol = NULL;
   *out_module = NULL;
-  if (!handle) return false;
+  if (!handle) {
+    return false;
+  }
 
   iree_hip_function_handle_ensure_initialized();
   uintptr_t record_value = 0;
@@ -166,7 +176,9 @@ bool iree_hip_function_handle_lookup(const void* handle,
 
 void iree_hip_function_handle_retire_module(
     iree_hal_streaming_module_t* module) {
-  if (!module) return;
+  if (!module) {
+    return;
+  }
   iree_hip_function_handle_ensure_initialized();
 
   iree_hip_function_handle_record_t* retired_head = NULL;
