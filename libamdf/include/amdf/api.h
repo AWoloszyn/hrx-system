@@ -389,7 +389,8 @@ typedef struct amdf_api_t {
   /// consume command results or retire submissions, even when the native
   /// completion fence has advanced. Use `kernel_queue_wait`, including a
   /// zero-time wait, to refresh native progress and perform checked retirement
-  /// before reusing command storage.
+  /// before reusing command storage. Submission may also reclaim completed
+  /// capacity as specified by its engine; this query never does so.
   /// The operation is thread-safe with submission and waits. It performs no
   /// allocation, system call, sleep, active polling, locking, lazy
   /// initialization or ownership-counter updates. No output is modified when
@@ -401,6 +402,7 @@ typedef struct amdf_api_t {
       amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
 
   /// Waits until `submission` retires, a failure is observed, or time expires.
+  /// `submission` must be a completion point returned by this exact queue.
   ///
   /// `timeout_nanoseconds` includes host contention, active polling, and native
   /// waiting under one deadline. A zero timeout attempts checked retirement

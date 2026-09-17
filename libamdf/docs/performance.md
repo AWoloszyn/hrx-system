@@ -21,7 +21,7 @@ not promise a wall-clock deadline for kernel submission.
 | Immutable object and address queries | Validate the public request and copy or directly index retained facts. | Locks, allocation, lazy initialization, ownership-counter updates and native queries. |
 | Scope-profile and visibility planning | Qualify a proposed consumer set and exact producer/consumer pair, using temporary host storage. | Device activation, native allocation, mapping and execution. This is not an allocation-free per-dispatch query. |
 | Device, memory, context and queue creation | Acquire the native resources, address mappings, residency, packet storage and completion objects required by the requested resource. | Deferring that resource's preparation to a metadata query or its first publication. |
-| Kernel publication | Claim a queue slot, resolve the caller-owned command range, fill required transport fields and publish natively. | Library locks, allocation, lazy setup, command parsing/copying, indirect-buffer scans and completion waits. |
+| Kernel publication | Claim publication, check pending capacity, resolve the caller-owned command range, fill required transport fields and publish natively. GPU capacity pressure can reclaim completed credits with one native fence sample. | Library locks, allocation, lazy setup, command parsing/copying, indirect-buffer scans and completion waits. |
 | Kernel progress observation | Read established retirement and cached terminal state without mutating either. | Native completion checks, command-result consumption, retirement, library locks, allocation, lazy setup, system calls and active polling. |
 | Explicit waiting | Refresh native progress, inspect command results and establish retirement; query clocks, poll within the requested budget, yield and enter native waits. | Allocation or first-wait resource creation. Wait-event serialization consumes the same deadline. |
 
@@ -47,6 +47,20 @@ retirement perform no memory-user tracking or reference-count updates. The
 runtime controls sharing and scheduling above this boundary. A wrapper that
 adds a mutex to every handle or a reference-count operation to every metadata
 read changes the steady-state contract.
+
+GPU kernel queues have a configurable pending-submission capacity, defaulting
+to 4096. The native publication claim lasts only through the driver call; it
+does not serialize submissions against execution completion. Accepted and
+checked-retired fence points account for the pending window without a
+per-submission object, command copy, or memory-retention list. When the window
+fills, submission samples native progress once and reclaims completed credits
+before returning `BUSY` if capacity is still unavailable. A caller can therefore
+pipeline commands without intermediate host waits. Native resource exhaustion
+can reject work before the configured admission bound is reached.
+
+This capacity counts unfinished submissions, unlike a user queue's byte-sized
+command ring. Native ring consumption permits those bytes to be reused but
+does not establish completion of the work they described.
 
 The wait path is deliberately different. Windows native waits reuse an event
 prepared during queue creation and serialize access to it. That serialization
