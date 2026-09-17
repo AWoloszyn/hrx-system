@@ -1422,11 +1422,23 @@ def _cases() -> Sequence[ContractCase]:
         _const_scalar_i64_rule(descriptor_lookup),
         _index_const_i64_rule(_INDEX, descriptor_lookup),
         _index_const_i64_rule(_OFFSET, descriptor_lookup),
-        _integer_compare_rule(
-            index.index_cmp, "ult", _INDEX, "gpr64", descriptor_lookup
-        ),
-        _integer_compare_rule(
-            index.index_cmp, "ult", _OFFSET, "gpr64", descriptor_lookup
+        *(
+            _integer_compare_rule(
+                index.index_cmp, predicate, type_pattern, "gpr64", descriptor_lookup
+            )
+            for type_pattern in (_INDEX, _OFFSET)
+            for predicate in (
+                "eq",
+                "ne",
+                "slt",
+                "sle",
+                "sgt",
+                "sge",
+                "ult",
+                "ule",
+                "ugt",
+                "uge",
+            )
         ),
         _index_cast_i32_extend_rule(
             "x86.scalar.movzx.gpr64.gpr32",
