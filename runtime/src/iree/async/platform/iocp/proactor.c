@@ -1510,6 +1510,22 @@ iree_async_proactor_iocp_drain_event_wait_fallback_completions(
   return completed_count;
 }
 
+static bool iree_async_proactor_iocp_operation_is_cancelled(
+    iree_async_operation_t* operation) {
+  return iree_any_bit_set(iree_async_operation_load_internal_flags(operation),
+                          IREE_ASYNC_IOCP_INTERNAL_FLAG_CANCELLED);
+}
+
+// Closes the race between checking cancellation and submitting an emulated
+// multishot re-arm. A concurrent cancel either reaches the new OVERLAPPED
+// itself or publishes the flag first and is repeated here after submission.
+static void iree_async_proactor_iocp_cancel_rearmed_socket_io(
+    iree_async_operation_t* operation, iree_async_iocp_carrier_t* carrier) {
+  if (!iree_async_proactor_iocp_operation_is_cancelled(operation)) return;
+  HANDLE handle = iree_async_proactor_iocp_handle_from_io_operation(operation);
+  CancelIoEx(handle, &carrier->overlapped);
+}
+
 // Retrieves the overlapped I/O result for a socket carrier and checks for
 // cancellation. Returns the status to use for dispatch.
 static iree_status_t iree_async_proactor_iocp_get_socket_io_result(
@@ -1537,8 +1553,7 @@ static iree_status_t iree_async_proactor_iocp_get_socket_io_result(
   }
 
   // Check for cancellation (may race with natural completion).
-  if (iree_any_bit_set(iree_async_operation_load_internal_flags(operation),
-                       IREE_ASYNC_IOCP_INTERNAL_FLAG_CANCELLED)) {
+  if (iree_async_proactor_iocp_operation_is_cancelled(operation)) {
     io_status = iree_status_join(iree_status_from_code(IREE_STATUS_CANCELLED),
                                  io_status);
   }
@@ -1591,15 +1606,26 @@ static void iree_async_proactor_iocp_complete_socket_io(
 
   // Multishot re-arm for recv operations.
   bool multishot_rearm = false;
-  if (iree_status_is_ok(io_status) && bytes_transferred > 0 &&
+  const bool should_rearm =
+      iree_status_is_ok(io_status) && bytes_transferred > 0 &&
       iree_any_bit_set(operation->flags, IREE_ASYNC_OPERATION_FLAG_MULTISHOT) &&
       (operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV ||
-       operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM)) {
+       operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM);
+  if (should_rearm) {
     // Dispatch with MORE flag, then re-arm.
     iree_async_proactor_iocp_dispatch_completion(
         proactor, operation, iree_ok_status(), IREE_ASYNC_COMPLETION_FLAG_MORE,
         completed_count);
+  }
 
+  // CancelIoEx cannot cancel the already-completed OVERLAPPED when the MORE
+  // callback cancels itself, so observe the flag before emulated re-arm.
+  if (should_rearm &&
+      iree_async_proactor_iocp_operation_is_cancelled(operation)) {
+    io_status = iree_status_from_code(IREE_STATUS_CANCELLED);
+  }
+
+  if (should_rearm && iree_status_is_ok(io_status)) {
     // Zero OVERLAPPED and re-issue WSARecv/WSARecvFrom.
     memset(&carrier->overlapped, 0, sizeof(carrier->overlapped));
     carrier->data.socket_io.flags = 0;
@@ -1625,6 +1651,7 @@ static void iree_async_proactor_iocp_complete_socket_io(
     int rearm_error = (rearm_result == SOCKET_ERROR) ? WSAGetLastError() : 0;
     if (rearm_result != SOCKET_ERROR || rearm_error == WSA_IO_PENDING) {
       multishot_rearm = true;
+      iree_async_proactor_iocp_cancel_rearmed_socket_io(operation, carrier);
     } else {
       io_status = iree_make_status(
           iree_status_code_from_win32_error(rearm_error),
@@ -1706,13 +1733,24 @@ static void iree_async_proactor_iocp_complete_accept(
 
   // Multishot accept re-arm.
   bool multishot_rearm = false;
-  if (iree_status_is_ok(io_status) &&
-      iree_any_bit_set(operation->flags, IREE_ASYNC_OPERATION_FLAG_MULTISHOT)) {
+  const bool should_rearm =
+      iree_status_is_ok(io_status) &&
+      iree_any_bit_set(operation->flags, IREE_ASYNC_OPERATION_FLAG_MULTISHOT);
+  if (should_rearm) {
     // Dispatch with MORE flag.
     iree_async_proactor_iocp_dispatch_completion(
         proactor, operation, iree_ok_status(), IREE_ASYNC_COMPLETION_FLAG_MORE,
         completed_count);
+  }
 
+  // CancelIoEx cannot cancel the already-completed OVERLAPPED when the MORE
+  // callback cancels itself, so observe the flag before emulated re-arm.
+  if (should_rearm &&
+      iree_async_proactor_iocp_operation_is_cancelled(operation)) {
+    io_status = iree_status_from_code(IREE_STATUS_CANCELLED);
+  }
+
+  if (should_rearm && iree_status_is_ok(io_status)) {
     // Create a new accept socket for the next accept.
     int domain = AF_INET;
     int protocol = IPPROTO_TCP;
@@ -1761,6 +1799,7 @@ static void iree_async_proactor_iocp_complete_accept(
         int rearm_error = rearm_ok ? 0 : WSAGetLastError();
         if (rearm_ok || rearm_error == WSA_IO_PENDING) {
           multishot_rearm = true;
+          iree_async_proactor_iocp_cancel_rearmed_socket_io(operation, carrier);
         } else {
           closesocket(new_accept_sock);
           io_status = iree_make_status(
@@ -1833,13 +1872,24 @@ static void iree_async_proactor_iocp_complete_recv_pool(
 
   // Multishot recv_pool re-arm.
   bool multishot_rearm = false;
-  if (iree_status_is_ok(io_status) && bytes_transferred > 0 &&
-      iree_any_bit_set(operation->flags, IREE_ASYNC_OPERATION_FLAG_MULTISHOT)) {
+  const bool should_rearm =
+      iree_status_is_ok(io_status) && bytes_transferred > 0 &&
+      iree_any_bit_set(operation->flags, IREE_ASYNC_OPERATION_FLAG_MULTISHOT);
+  if (should_rearm) {
     // Dispatch with MORE flag.
     iree_async_proactor_iocp_dispatch_completion(
         proactor, operation, iree_ok_status(), IREE_ASYNC_COMPLETION_FLAG_MORE,
         completed_count);
+  }
 
+  // CancelIoEx cannot cancel the already-completed OVERLAPPED when the MORE
+  // callback cancels itself, so observe the flag before emulated re-arm.
+  if (should_rearm &&
+      iree_async_proactor_iocp_operation_is_cancelled(operation)) {
+    io_status = iree_status_from_code(IREE_STATUS_CANCELLED);
+  }
+
+  if (should_rearm && iree_status_is_ok(io_status)) {
     // Acquire new buffer from pool for next receive.
     iree_status_t acquire_status = iree_async_buffer_pool_acquire(
         recv_pool_op->pool, &recv_pool_op->lease);
@@ -1857,6 +1907,7 @@ static void iree_async_proactor_iocp_complete_recv_pool(
       int rearm_error = (rearm_result == SOCKET_ERROR) ? WSAGetLastError() : 0;
       if (rearm_result != SOCKET_ERROR || rearm_error == WSA_IO_PENDING) {
         multishot_rearm = true;
+        iree_async_proactor_iocp_cancel_rearmed_socket_io(operation, carrier);
       } else {
         iree_async_buffer_lease_release(&recv_pool_op->lease);
         io_status = iree_make_status(

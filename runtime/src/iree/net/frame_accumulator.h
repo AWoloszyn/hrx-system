@@ -1,0 +1,159 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Reassembles length-prefixed frames from CPU-accessible byte streams.
+//
+// The accumulator embeds only the bounded header lookahead required to resolve
+// a frame length. Fragmented frames use an exact-size host-backed lease
+// allocated after their length is known, so the configured maximum frame size
+// is a validation bound rather than a per-endpoint resident allocation.
+
+#ifndef IREE_NET_FRAME_ACCUMULATOR_H_
+#define IREE_NET_FRAME_ACCUMULATOR_H_
+
+#include "iree/async/buffer_pool.h"
+#include "iree/base/api.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
+//===----------------------------------------------------------------------===//
+// Callback types
+//===----------------------------------------------------------------------===//
+
+// Resolves the total frame size (header + payload) from available stream data.
+//
+// The callback writes the complete frame size to |out_frame_size| when enough
+// header bytes are available and leaves it 0 when more bytes are needed.
+// Malformed headers return a non-OK status. The returned size includes all
+// header bytes and must not exceed the accumulator's configured maximum.
+typedef iree_status_t(IREE_API_PTR* iree_net_frame_length_fn_t)(
+    void* user_data, iree_const_byte_span_t available,
+    iree_host_size_t* out_frame_size);
+
+typedef struct iree_net_frame_length_callback_t {
+  // Function that resolves a complete frame length from available bytes.
+  iree_net_frame_length_fn_t fn;
+  // Opaque value passed to |fn|.
+  void* user_data;
+  // Maximum header bytes the function may require to resolve a frame length.
+  iree_host_size_t max_header_size;
+} iree_net_frame_length_callback_t;
+
+// Called when a complete frame is available for processing.
+//
+// |frame| includes the frame header. |lease| is non-NULL when ownership of the
+// backing storage can be moved for deferred processing. A callback moves the
+// lease by copying it and clearing the callback value before returning. When
+// |lease| is NULL the frame is borrowed and must be consumed before return.
+//
+// If the callback returns an error, frame processing stops and the stream is
+// terminal. Reset or deinitialize the accumulator before reusing it.
+typedef iree_status_t(IREE_API_PTR* iree_net_frame_complete_fn_t)(
+    void* user_data, iree_const_byte_span_t frame,
+    iree_async_buffer_lease_t* lease);
+
+typedef struct iree_net_frame_complete_callback_t {
+  // Function invoked for each complete frame.
+  iree_net_frame_complete_fn_t fn;
+  // Opaque value passed to |fn|.
+  void* user_data;
+} iree_net_frame_complete_callback_t;
+
+//===----------------------------------------------------------------------===//
+// Frame accumulator
+//===----------------------------------------------------------------------===//
+
+// Stream reassembly state with a flexible array for unresolved frame headers.
+// Use iree_net_frame_accumulator_calculate_storage_size() to size storage.
+typedef struct iree_net_frame_accumulator_t {
+  // Callback that determines frame lengths from bounded header prefixes.
+  iree_net_frame_length_callback_t frame_length;
+  // Callback invoked when a complete frame is available.
+  iree_net_frame_complete_callback_t on_frame_complete;
+  // Allocator used for exact-size fragmented frame storage.
+  iree_allocator_t host_allocator;
+  // Maximum accepted total frame size in bytes.
+  iree_host_size_t max_frame_size;
+  // Capacity of the embedded unresolved header buffer in bytes.
+  iree_host_size_t header_capacity;
+  // Bytes currently stored in the unresolved header buffer.
+  iree_host_size_t header_used;
+  // Resolved size of the fragmented frame under construction.
+  iree_host_size_t frame_size;
+  // Bytes copied into |frame_lease| for the fragmented frame.
+  iree_host_size_t frame_used;
+  // Exact-size storage owned while reassembling a fragmented frame.
+  iree_async_buffer_lease_t frame_lease;
+  // Unresolved frame header bytes, sized by the caller.
+  uint8_t header[];
+} iree_net_frame_accumulator_t;
+
+// Calculates storage required for an accumulator and its header lookahead.
+// Returns OUT_OF_RANGE if |max_header_size| cannot fit in one host allocation.
+static inline iree_status_t iree_net_frame_accumulator_calculate_storage_size(
+    iree_host_size_t max_header_size, iree_host_size_t* out_storage_size) {
+  IREE_ASSERT_ARGUMENT(out_storage_size);
+  return IREE_STRUCT_LAYOUT(sizeof(iree_net_frame_accumulator_t),
+                            out_storage_size,
+                            IREE_STRUCT_FIELD_FAM(max_header_size, uint8_t));
+}
+
+// Initializes an accumulator in preallocated storage.
+//
+// |accumulator| must reference the size calculated from
+// |frame_length.max_header_size|. |max_frame_size| is an admission bound and
+// does not contribute to resident accumulator storage. Fragmented frames are
+// allocated from |host_allocator| only after their length is resolved.
+IREE_API_EXPORT iree_status_t iree_net_frame_accumulator_initialize(
+    iree_net_frame_accumulator_t* accumulator, iree_host_size_t max_frame_size,
+    iree_net_frame_length_callback_t frame_length,
+    iree_net_frame_complete_callback_t on_frame_complete,
+    iree_allocator_t host_allocator);
+
+// Deinitializes an accumulator and releases any partial fragmented frame.
+IREE_API_EXPORT void iree_net_frame_accumulator_deinitialize(
+    iree_net_frame_accumulator_t* accumulator);
+
+// Discards any partial frame and returns the accumulator to its initial state.
+IREE_API_EXPORT void iree_net_frame_accumulator_reset(
+    iree_net_frame_accumulator_t* accumulator);
+
+// Processes borrowed stream bytes that remain valid only for this call.
+//
+// Complete frames are delivered with a NULL lease unless they were reassembled
+// into accumulator-owned storage. Returns FAILED_PRECONDITION when |data| is
+// not CPU-accessible and parser, allocation, or frame callback errors as-is.
+IREE_API_EXPORT iree_status_t iree_net_frame_accumulator_push_span(
+    iree_net_frame_accumulator_t* accumulator, iree_async_span_t data);
+
+// Processes stream bytes backed by an owned buffer lease.
+//
+// |data| must be a subspan of |lease->span|. The lease is consumed on every
+// return path. A complete final frame may move the input lease without a copy;
+// earlier packed frames are borrowed because later bytes still use the lease.
+IREE_API_EXPORT iree_status_t iree_net_frame_accumulator_push_lease(
+    iree_net_frame_accumulator_t* accumulator, iree_async_span_t data,
+    iree_async_buffer_lease_t* lease);
+
+// Returns bytes retained in unresolved-header or fragmented-frame storage.
+static inline iree_host_size_t iree_net_frame_accumulator_buffered_bytes(
+    const iree_net_frame_accumulator_t* accumulator) {
+  return accumulator->header_used + accumulator->frame_used;
+}
+
+// Returns true if a partial frame is currently retained.
+static inline bool iree_net_frame_accumulator_has_partial_frame(
+    const iree_net_frame_accumulator_t* accumulator) {
+  return iree_net_frame_accumulator_buffered_bytes(accumulator) > 0;
+}
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
+
+#endif  // IREE_NET_FRAME_ACCUMULATOR_H_
