@@ -4,6 +4,7 @@
 # These tests exercise Bazel toolchain actions and execution transitions.
 # bazel-to-cmake: skip
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
@@ -59,11 +60,19 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "shader_data",
+    srcs = ["shader_data.c"],
+    hdrs = ["shader_data.h"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":shader"],
+)
+
 cc_test(
     name = "dynamic_link_test",
     size = "small",
     srcs = ["dynamic_link_test.c"],
     linkstatic = False,
     target_compatible_with = ["@platforms//os:macos"],
-    deps = [":shader"],
+    deps = [":shader_data"],
 )
