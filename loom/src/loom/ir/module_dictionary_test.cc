@@ -81,7 +81,8 @@ class ModuleDictionaryTest : public ::testing::Test {
 };
 
 TEST_F(ModuleDictionaryTest, OrderedReversedAndShuffledAcrossSortBoundary) {
-  for (uint32_t count : {0, 1, 2, 63, 64, 65, 256, 4096, UINT16_MAX}) {
+  constexpr uint32_t counts[] = {0, 1, 2, 63, 64, 65, 256, 4096, UINT16_MAX};
+  for (uint32_t count : counts) {
     SCOPED_TRACE(count);
     auto entries = Entries(count);
     Check(entries);
