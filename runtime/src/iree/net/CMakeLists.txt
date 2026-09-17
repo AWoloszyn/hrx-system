@@ -18,6 +18,7 @@ iree_cc_library(
     ::carrier
     ::connection
     ::message_endpoint
+    ::session
     ::transport_factory
     ::transport_registry
   PUBLIC
@@ -83,6 +84,27 @@ iree_cc_library(
   DEPS
     ::bootstrap
     iree::base
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    session
+  HDRS
+    "session.h"
+  SRCS
+    "session.c"
+  DEPS
+    ::bootstrap
+    ::connection
+    ::message_endpoint
+    ::session_bootstrap
+    ::transport_factory
+    iree::async
+    iree::base
+    iree::base::internal
+    iree::base::threading
+    iree::net::channel::control::control_channel
   PUBLIC
 )
 

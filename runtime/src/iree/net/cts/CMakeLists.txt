@@ -25,6 +25,7 @@ iree_cc_library(
   NAME
     transport_tests
   SRCS
+    "session_test.cc"
     "transport_test.cc"
   DEPS
     ::transport_backend
@@ -34,6 +35,7 @@ iree_cc_library(
     iree::net::channel::control::control_channel
     iree::net::connection
     iree::net::message_endpoint
+    iree::net::session
     iree::net::transport_factory
     iree::testing::gtest
   TESTONLY
