@@ -602,6 +602,7 @@ static const iree_net_message_endpoint_vtable_t
 
 iree_status_t iree_net_loopback_framed_endpoint_allocate(
     iree_net_carrier_t* carrier, uint32_t max_send_operations,
+    iree_net_endpoint_deactivation_barrier_t* connection_barrier,
     iree_allocator_t host_allocator,
     iree_net_loopback_framed_endpoint_t** out_endpoint) {
   IREE_ASSERT_ARGUMENT(out_endpoint);
@@ -642,7 +643,7 @@ iree_status_t iree_net_loopback_framed_endpoint_allocate(
       .max_header_size = IREE_NET_LOOPBACK_FRAME_HEADER_SIZE,
   };
   iree_status_t status = iree_net_framing_adapter_allocate(
-      carrier, frame_length, UINT32_MAX, host_allocator,
+      carrier, frame_length, UINT32_MAX, connection_barrier, host_allocator,
       &endpoint->framing_adapter);
   if (iree_status_is_ok(status)) {
     endpoint->wire_endpoint =
@@ -676,10 +677,8 @@ void iree_net_loopback_framed_endpoint_free(
 }
 
 void iree_net_loopback_framed_endpoint_join_deactivation(
-    iree_net_loopback_framed_endpoint_t* endpoint,
-    iree_net_endpoint_deactivation_barrier_t* barrier) {
+    iree_net_loopback_framed_endpoint_t* endpoint) {
   IREE_ASSERT_ARGUMENT(endpoint);
-  IREE_ASSERT_ARGUMENT(barrier);
   iree_slim_mutex_lock(&endpoint->mutex);
   if (endpoint->state == IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_CREATED ||
       endpoint->state == IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE) {
@@ -687,8 +686,7 @@ void iree_net_loopback_framed_endpoint_join_deactivation(
     iree_net_loopback_clear_reservations_locked(endpoint);
   }
   iree_slim_mutex_unlock(&endpoint->mutex);
-  iree_net_framing_adapter_join_deactivation(endpoint->framing_adapter,
-                                             barrier);
+  iree_net_framing_adapter_join_deactivation(endpoint->framing_adapter);
 }
 
 iree_net_message_endpoint_t

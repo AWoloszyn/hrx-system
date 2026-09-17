@@ -1137,19 +1137,11 @@ static void iree_net_tcp_connection_deactivation_complete(void* user_data) {
 
 static void iree_net_tcp_connection_begin_endpoint_drain(
     iree_net_tcp_connection_t* connection) {
-  iree_net_endpoint_deactivation_barrier_initialize(
-      (iree_net_connection_deactivate_callback_t){
-          .fn = iree_net_tcp_connection_deactivation_complete,
-          .user_data = connection,
-      },
-      &connection->deactivation_barrier);
-
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
     iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[i];
     iree_slim_mutex_lock(&connection->mutex);
     iree_net_endpoint_lifecycle_actions_t actions =
-        iree_net_endpoint_lifecycle_join_deactivation(
-            &endpoint->lifecycle, &connection->deactivation_barrier);
+        iree_net_endpoint_lifecycle_join_deactivation(&endpoint->lifecycle);
     if (iree_any_bit_set(
             actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION)) {
       endpoint->phase = IREE_NET_TCP_ENDPOINT_PHASE_DRAINING;
@@ -1164,10 +1156,13 @@ static void iree_net_tcp_connection_begin_endpoint_drain(
     }
   }
 
-  iree_net_framing_adapter_join_deactivation(connection->framing_adapter,
-                                             &connection->deactivation_barrier);
+  iree_net_framing_adapter_join_deactivation(connection->framing_adapter);
   iree_net_endpoint_deactivation_barrier_commit(
-      &connection->deactivation_barrier);
+      &connection->deactivation_barrier,
+      (iree_net_connection_deactivate_callback_t){
+          .fn = iree_net_tcp_connection_deactivation_complete,
+          .user_data = connection,
+      });
 }
 
 static void iree_net_tcp_endpoint_ready_complete(
@@ -1438,6 +1433,8 @@ iree_status_t iree_net_tcp_connection_create(
                                  host_allocator, options->max_endpoint_count,
                                  &connection->base);
   iree_slim_mutex_initialize(&connection->mutex);
+  iree_net_endpoint_deactivation_barrier_initialize(
+      &connection->deactivation_barrier);
   connection->proactor = proactor;
   iree_async_proactor_retain(proactor);
   connection->state = IREE_NET_TCP_CONNECTION_STATE_OPEN;
@@ -1466,7 +1463,8 @@ iree_status_t iree_net_tcp_connection_create(
     endpoint->phase = IREE_NET_TCP_ENDPOINT_PHASE_CREATED;
     endpoint->pending_head = IREE_NET_TCP_INDEX_NONE;
     endpoint->pending_tail = IREE_NET_TCP_INDEX_NONE;
-    iree_net_endpoint_lifecycle_initialize(&endpoint->lifecycle);
+    iree_net_endpoint_lifecycle_initialize(&connection->deactivation_barrier,
+                                           &endpoint->lifecycle);
   }
   for (uint32_t i = 0; i < connection->send_state_count; ++i) {
     iree_net_tcp_send_state_t* send_state = &connection->send_states[i];
@@ -1492,7 +1490,8 @@ iree_status_t iree_net_tcp_connection_create(
         .max_header_size = IREE_NET_TCP_FRAME_HEADER_SIZE,
     };
     status = iree_net_framing_adapter_allocate(
-        carrier, frame_length, options->max_frame_size, host_allocator,
+        carrier, frame_length, options->max_frame_size,
+        &connection->deactivation_barrier, host_allocator,
         &connection->framing_adapter);
     if (iree_status_is_ok(status)) carrier = NULL;
   }

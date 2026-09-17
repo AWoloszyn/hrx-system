@@ -31,8 +31,10 @@ typedef struct iree_net_loopback_framed_endpoint_t
 // |max_send_operations| must match the carrier's configured operation limit.
 // The endpoint preallocates the same number of framing records so adding a
 // stable wire header introduces no additional send-admission limit.
+// |connection_barrier| must be initialized and outlive the endpoint.
 IREE_API_EXPORT iree_status_t iree_net_loopback_framed_endpoint_allocate(
     iree_net_carrier_t* carrier, uint32_t max_send_operations,
+    iree_net_endpoint_deactivation_barrier_t* connection_barrier,
     iree_allocator_t host_allocator,
     iree_net_loopback_framed_endpoint_t** out_endpoint);
 
@@ -46,8 +48,7 @@ IREE_API_EXPORT void iree_net_loopback_framed_endpoint_free(
 // drain begins. Callers must externally synchronize reservation writes and
 // terminal commit/abort operations against connection deactivation.
 IREE_API_EXPORT void iree_net_loopback_framed_endpoint_join_deactivation(
-    iree_net_loopback_framed_endpoint_t* endpoint,
-    iree_net_endpoint_deactivation_barrier_t* barrier);
+    iree_net_loopback_framed_endpoint_t* endpoint);
 
 // Returns a borrowed payload-message endpoint view.
 IREE_API_EXPORT iree_net_message_endpoint_t

@@ -33,7 +33,8 @@
 //
 //   iree_net_framing_adapter_t* adapter = NULL;
 //   IREE_RETURN_IF_ERROR(iree_net_framing_adapter_allocate(
-//       carrier, frame_length, max_frame_size, allocator, &adapter));
+//       carrier, frame_length, max_frame_size,
+//       /*connection_barrier=*/NULL, allocator, &adapter));
 //   iree_net_message_endpoint_t endpoint =
 //       iree_net_framing_adapter_as_endpoint(adapter);
 //   iree_net_message_endpoint_set_callbacks(endpoint, callbacks);
@@ -71,6 +72,10 @@ typedef struct iree_net_framing_adapter_t iree_net_framing_adapter_t;
 // freed. On failure the caller retains ownership. The carrier must not be
 // activated before passing to this function.
 //
+// |connection_barrier| optionally binds this adapter to the drain barrier of
+// its owning connection. The barrier must be initialized before this call and
+// outlive the adapter. Standalone adapters pass NULL.
+//
 // The |frame_length| callback determines frame boundaries by examining at most
 // |frame_length.max_header_size| bytes. It reports the total frame size when
 // determinable, leaves the size 0 when more bytes are needed, and rejects
@@ -81,8 +86,9 @@ typedef struct iree_net_framing_adapter_t iree_net_framing_adapter_t;
 // error handler.
 IREE_API_EXPORT iree_status_t iree_net_framing_adapter_allocate(
     iree_net_carrier_t* carrier, iree_net_frame_length_callback_t frame_length,
-    iree_host_size_t max_frame_size, iree_allocator_t host_allocator,
-    iree_net_framing_adapter_t** out_adapter);
+    iree_host_size_t max_frame_size,
+    iree_net_endpoint_deactivation_barrier_t* connection_barrier,
+    iree_allocator_t host_allocator, iree_net_framing_adapter_t** out_adapter);
 
 // Frees the adapter and releases the owned carrier.
 //
@@ -93,13 +99,12 @@ IREE_API_EXPORT void iree_net_framing_adapter_free(
 
 // Joins connection deactivation to this adapter's carrier drain.
 //
-// Starts carrier deactivation when the adapter is ACTIVE, joins an endpoint-
-// initiated drain when it is DRAINING, and does nothing when it is CREATED or
-// DEACTIVATED. The caller must initialize and commit |barrier| around all
-// endpoint joins owned by the connection.
+// Starts carrier deactivation when the adapter is ACTIVE, observes an already
+// held connection barrier when it is DRAINING, and does nothing when it is
+// CREATED or DEACTIVATED. The adapter must have been allocated with its owning
+// connection's barrier.
 IREE_API_EXPORT void iree_net_framing_adapter_join_deactivation(
-    iree_net_framing_adapter_t* adapter,
-    iree_net_endpoint_deactivation_barrier_t* barrier);
+    iree_net_framing_adapter_t* adapter);
 
 // Returns a borrowed message_endpoint view into this adapter.
 //

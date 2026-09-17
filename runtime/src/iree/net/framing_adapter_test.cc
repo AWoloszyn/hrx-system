@@ -377,7 +377,7 @@ class FramingAdapterTest : public ::testing::Test {
     iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
     IREE_ASSERT_OK(iree_net_framing_adapter_allocate(
         &mock_carrier_->base, frame_length, kMaxFrameSize,
-        iree_allocator_system(), &adapter_));
+        /*connection_barrier=*/nullptr, iree_allocator_system(), &adapter_));
     endpoint_ = iree_net_framing_adapter_as_endpoint(adapter_);
   }
 
@@ -427,6 +427,7 @@ TEST_F(FramingAdapterTest, AllocateRequiresCarrier) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       iree_net_framing_adapter_allocate(nullptr, frame_length, kMaxFrameSize,
+                                        /*connection_barrier=*/nullptr,
                                         iree_allocator_system(), &adapter));
 }
 
@@ -438,10 +439,11 @@ TEST_F(FramingAdapterTest, AllocateRequiresFrameLengthFn) {
       /*.user_data=*/nullptr,
       /*.max_header_size=*/kHeaderSize,
   };
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        iree_net_framing_adapter_allocate(
-                            &carrier->base, frame_length, kMaxFrameSize,
-                            iree_allocator_system(), &adapter));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_net_framing_adapter_allocate(
+          &carrier->base, frame_length, kMaxFrameSize,
+          /*connection_barrier=*/nullptr, iree_allocator_system(), &adapter));
 }
 
 TEST_F(FramingAdapterTest, AllocateRequiresNonZeroMaxFrameSize) {
@@ -451,6 +453,7 @@ TEST_F(FramingAdapterTest, AllocateRequiresNonZeroMaxFrameSize) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       iree_net_framing_adapter_allocate(&carrier->base, frame_length, 0,
+                                        /*connection_barrier=*/nullptr,
                                         iree_allocator_system(), &adapter));
 }
 
@@ -459,20 +462,22 @@ TEST_F(FramingAdapterTest, AllocateRejectsActivatedCarrier) {
   iree_net_carrier_set_state(&carrier->base, IREE_NET_CARRIER_STATE_ACTIVE);
   iree_net_framing_adapter_t* adapter = nullptr;
   iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
-                        iree_net_framing_adapter_allocate(
-                            &carrier->base, frame_length, kMaxFrameSize,
-                            iree_allocator_system(), &adapter));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      iree_net_framing_adapter_allocate(
+          &carrier->base, frame_length, kMaxFrameSize,
+          /*connection_barrier=*/nullptr, iree_allocator_system(), &adapter));
 }
 
 TEST_F(FramingAdapterTest, FailedAllocationRetainsCarrierOwnership) {
   auto carrier = MockCarrier::Create();
   iree_net_framing_adapter_t* adapter = nullptr;
   iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        iree_net_framing_adapter_allocate(
-                            &carrier->base, frame_length, kMaxFrameSize,
-                            iree_allocator_null(), &adapter));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_net_framing_adapter_allocate(
+          &carrier->base, frame_length, kMaxFrameSize,
+          /*connection_barrier=*/nullptr, iree_allocator_null(), &adapter));
   EXPECT_EQ(adapter, nullptr);
   EXPECT_EQ(carrier->destroy_count, 0);
 

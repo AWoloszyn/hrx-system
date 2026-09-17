@@ -32,14 +32,27 @@ static bool iree_net_endpoint_lifecycle_try_finish_locked(
   out_completion->connection_barrier = lifecycle->connection_barrier;
   lifecycle->endpoint_callback.fn = NULL;
   lifecycle->endpoint_callback.user_data = NULL;
-  lifecycle->connection_barrier = NULL;
   return true;
+}
+
+static void iree_net_endpoint_lifecycle_begin_drain_locked(
+    iree_net_endpoint_lifecycle_t* lifecycle) {
+  IREE_ASSERT(lifecycle->state == IREE_NET_ENDPOINT_LIFECYCLE_STATE_ACTIVE,
+              "endpoint lifecycle began draining from state %d",
+              (int)lifecycle->state);
+  lifecycle->state = IREE_NET_ENDPOINT_LIFECYCLE_STATE_DRAINING;
+  if (lifecycle->connection_barrier) {
+    iree_atomic_fetch_add(&lifecycle->connection_barrier->pending_count, 1,
+                          iree_memory_order_relaxed);
+  }
 }
 
 static void iree_net_endpoint_deactivation_barrier_arrive(
     iree_net_endpoint_deactivation_barrier_t* barrier) {
   if (iree_atomic_fetch_sub(&barrier->pending_count, 1,
                             iree_memory_order_acq_rel) == 1) {
+    IREE_ASSERT(barrier->callback.fn,
+                "endpoint deactivation barrier completed before commit");
     barrier->callback.fn(barrier->callback.user_data);
   }
 }
@@ -56,11 +69,13 @@ static void iree_net_endpoint_lifecycle_dispatch_completion(
 }
 
 void iree_net_endpoint_lifecycle_initialize(
+    iree_net_endpoint_deactivation_barrier_t* connection_barrier,
     iree_net_endpoint_lifecycle_t* out_lifecycle) {
   IREE_ASSERT_ARGUMENT(out_lifecycle);
   memset(out_lifecycle, 0, sizeof(*out_lifecycle));
   iree_slim_mutex_initialize(&out_lifecycle->mutex);
   out_lifecycle->state = IREE_NET_ENDPOINT_LIFECYCLE_STATE_CREATED;
+  out_lifecycle->connection_barrier = connection_barrier;
 }
 
 void iree_net_endpoint_lifecycle_deinitialize(
@@ -72,8 +87,6 @@ void iree_net_endpoint_lifecycle_deinitialize(
       "endpoint lifecycle destroyed in state %d", (int)lifecycle->state);
   IREE_ASSERT(!lifecycle->endpoint_callback.fn,
               "endpoint lifecycle destroyed with a pending callback");
-  IREE_ASSERT(!lifecycle->connection_barrier,
-              "endpoint lifecycle destroyed with a pending connection drain");
   IREE_ASSERT(lifecycle->pending_operation_count == 0,
               "endpoint lifecycle destroyed with pending operations");
   iree_slim_mutex_deinitialize(&lifecycle->mutex);
@@ -150,7 +163,7 @@ iree_status_t iree_net_endpoint_lifecycle_request_deactivation(
                               "endpoint is not active (state=%d)",
                               (int)lifecycle->state);
   } else {
-    lifecycle->state = IREE_NET_ENDPOINT_LIFECYCLE_STATE_DRAINING;
+    iree_net_endpoint_lifecycle_begin_drain_locked(lifecycle);
     lifecycle->endpoint_callback.fn = callback;
     lifecycle->endpoint_callback.user_data = user_data;
     *out_actions = IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION;
@@ -160,35 +173,27 @@ iree_status_t iree_net_endpoint_lifecycle_request_deactivation(
 }
 
 void iree_net_endpoint_deactivation_barrier_initialize(
-    iree_net_connection_deactivate_callback_t callback,
     iree_net_endpoint_deactivation_barrier_t* out_barrier) {
-  IREE_ASSERT_ARGUMENT(callback.fn);
   IREE_ASSERT_ARGUMENT(out_barrier);
   iree_atomic_store(&out_barrier->pending_count, 1, iree_memory_order_relaxed);
-  out_barrier->callback = callback;
+  out_barrier->callback = (iree_net_connection_deactivate_callback_t){0};
 }
 
 iree_net_endpoint_lifecycle_actions_t
 iree_net_endpoint_lifecycle_join_deactivation(
-    iree_net_endpoint_lifecycle_t* lifecycle,
-    iree_net_endpoint_deactivation_barrier_t* barrier) {
+    iree_net_endpoint_lifecycle_t* lifecycle) {
   IREE_ASSERT_ARGUMENT(lifecycle);
-  IREE_ASSERT_ARGUMENT(barrier);
+  IREE_ASSERT(lifecycle->connection_barrier,
+              "connection-owned endpoint lifecycle has no drain barrier");
 
   iree_net_endpoint_lifecycle_actions_t actions =
       IREE_NET_ENDPOINT_LIFECYCLE_ACTION_NONE;
   iree_slim_mutex_lock(&lifecycle->mutex);
   if (lifecycle->state == IREE_NET_ENDPOINT_LIFECYCLE_STATE_ACTIVE) {
-    lifecycle->state = IREE_NET_ENDPOINT_LIFECYCLE_STATE_DRAINING;
+    iree_net_endpoint_lifecycle_begin_drain_locked(lifecycle);
     actions |= IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION;
   }
-  if (lifecycle->state == IREE_NET_ENDPOINT_LIFECYCLE_STATE_DRAINING) {
-    IREE_ASSERT(!lifecycle->connection_barrier,
-                "endpoint lifecycle joined by multiple connections");
-    iree_atomic_fetch_add(&barrier->pending_count, 1,
-                          iree_memory_order_relaxed);
-    lifecycle->connection_barrier = barrier;
-  } else {
+  if (lifecycle->state != IREE_NET_ENDPOINT_LIFECYCLE_STATE_DRAINING) {
     IREE_ASSERT(
         lifecycle->state == IREE_NET_ENDPOINT_LIFECYCLE_STATE_CREATED ||
             lifecycle->state == IREE_NET_ENDPOINT_LIFECYCLE_STATE_DEACTIVATED,
@@ -199,8 +204,13 @@ iree_net_endpoint_lifecycle_join_deactivation(
 }
 
 void iree_net_endpoint_deactivation_barrier_commit(
-    iree_net_endpoint_deactivation_barrier_t* barrier) {
+    iree_net_endpoint_deactivation_barrier_t* barrier,
+    iree_net_connection_deactivate_callback_t callback) {
   IREE_ASSERT_ARGUMENT(barrier);
+  IREE_ASSERT_ARGUMENT(callback.fn);
+  IREE_ASSERT(!barrier->callback.fn,
+              "endpoint deactivation barrier committed more than once");
+  barrier->callback = callback;
   iree_net_endpoint_deactivation_barrier_arrive(barrier);
 }
 

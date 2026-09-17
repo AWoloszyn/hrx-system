@@ -112,6 +112,8 @@ static iree_status_t iree_net_loopback_connection_create(
                                  host_allocator, max_endpoint_count,
                                  &connection->base);
   iree_slim_mutex_initialize(&connection->mutex);
+  iree_net_endpoint_deactivation_barrier_initialize(
+      &connection->deactivation_barrier);
   connection->proactor = proactor;
   iree_async_proactor_retain(proactor);
   connection->state = IREE_NET_LOOPBACK_CONNECTION_STATE_OPEN;
@@ -144,18 +146,16 @@ static void iree_net_loopback_connection_deactivation_complete(
 
 static void iree_net_loopback_connection_begin_endpoint_drain(
     iree_net_loopback_connection_t* connection) {
-  iree_net_endpoint_deactivation_barrier_initialize(
+  for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
+    iree_net_loopback_framed_endpoint_join_deactivation(
+        connection->endpoints[i].endpoint);
+  }
+  iree_net_endpoint_deactivation_barrier_commit(
+      &connection->deactivation_barrier,
       (iree_net_connection_deactivate_callback_t){
           .fn = iree_net_loopback_connection_deactivation_complete,
           .user_data = connection,
-      },
-      &connection->deactivation_barrier);
-  for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
-    iree_net_loopback_framed_endpoint_join_deactivation(
-        connection->endpoints[i].endpoint, &connection->deactivation_barrier);
-  }
-  iree_net_endpoint_deactivation_barrier_commit(
-      &connection->deactivation_barrier);
+      });
 }
 
 static void iree_net_loopback_connection_deactivate(
@@ -337,13 +337,15 @@ iree_status_t iree_net_loopback_connection_create_pair(
         &client_carrier, &server_carrier);
     if (iree_status_is_ok(status)) {
       status = iree_net_loopback_framed_endpoint_allocate(
-          client_carrier, carrier_options->max_send_operations, host_allocator,
+          client_carrier, carrier_options->max_send_operations,
+          &client_connection->deactivation_barrier, host_allocator,
           &client_connection->endpoints[i].endpoint);
       if (iree_status_is_ok(status)) client_carrier = NULL;
     }
     if (iree_status_is_ok(status)) {
       status = iree_net_loopback_framed_endpoint_allocate(
-          server_carrier, carrier_options->max_send_operations, host_allocator,
+          server_carrier, carrier_options->max_send_operations,
+          &server_connection->deactivation_barrier, host_allocator,
           &server_connection->endpoints[i].endpoint);
       if (iree_status_is_ok(status)) server_carrier = NULL;
     }

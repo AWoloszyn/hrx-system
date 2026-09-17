@@ -49,14 +49,18 @@ typedef enum iree_net_endpoint_lifecycle_state_e {
 
 // Barrier joining all endpoint drains owned by one connection.
 //
-// Initialize immediately before visiting endpoint lifecycles, join each
-// lifecycle, and then commit. The callback may fire synchronously from commit
-// when no endpoint requires a drain. The barrier must remain live until its
+// Initialize before constructing any bound endpoint lifecycles. Each lifecycle
+// acquires a barrier hold when its drain begins and releases it only after its
+// endpoint callback returns. Connection deactivation visits every lifecycle to
+// begin any remaining drains and then commits the barrier with its completion
+// callback. The setup hold prevents connection completion before commit, even
+// when endpoints deactivate earlier. The callback may fire synchronously from
+// commit when no endpoint drain remains. The barrier must remain live until its
 // callback fires.
 typedef struct iree_net_endpoint_deactivation_barrier_t {
   // Pending endpoint drains plus one setup hold released by commit.
   iree_atomic_int32_t pending_count;
-  // Callback invoked when the setup hold and all endpoint drains are released.
+  // Callback published by commit before releasing the setup hold.
   iree_net_connection_deactivate_callback_t callback;
 } iree_net_endpoint_deactivation_barrier_t;
 
@@ -81,12 +85,19 @@ typedef struct iree_net_endpoint_lifecycle_t {
     // Opaque value passed to |fn|.
     void* user_data;
   } endpoint_callback;
-  // Connection barrier joined while this endpoint is draining.
+  // Optional connection barrier bound for the lifetime of this lifecycle.
+  // A hold is acquired when the lifecycle begins draining and released only
+  // after the endpoint callback returns.
   iree_net_endpoint_deactivation_barrier_t* connection_barrier;
 } iree_net_endpoint_lifecycle_t;
 
 // Initializes an endpoint lifecycle in the CREATED state.
+//
+// |connection_barrier| must have been initialized and must outlive the
+// lifecycle. Pass NULL for a standalone endpoint that cannot participate in a
+// connection drain.
 IREE_API_EXPORT void iree_net_endpoint_lifecycle_initialize(
+    iree_net_endpoint_deactivation_barrier_t* connection_barrier,
     iree_net_endpoint_lifecycle_t* out_lifecycle);
 
 // Deinitializes an endpoint lifecycle.
@@ -137,25 +148,28 @@ IREE_API_EXPORT iree_status_t iree_net_endpoint_lifecycle_request_deactivation(
     iree_net_endpoint_lifecycle_actions_t* out_actions);
 
 // Initializes a connection-level endpoint deactivation barrier.
+//
+// Must be called before initializing any lifecycle bound to the barrier.
 IREE_API_EXPORT void iree_net_endpoint_deactivation_barrier_initialize(
-    iree_net_connection_deactivate_callback_t callback,
     iree_net_endpoint_deactivation_barrier_t* out_barrier);
 
 // Joins a connection-level barrier to an endpoint drain.
 //
-// CREATED and DEACTIVATED endpoints require no work. ACTIVE endpoints return
-// BEGIN_DEACTIVATION. DRAINING endpoints join the in-flight carrier drain
-// without starting a second one.
+// The lifecycle must have been initialized with a connection barrier. CREATED
+// and DEACTIVATED endpoints require no work. ACTIVE endpoints return
+// BEGIN_DEACTIVATION and acquire their barrier hold. DRAINING endpoints already
+// hold the barrier and join without starting a second carrier drain.
 IREE_API_EXPORT iree_net_endpoint_lifecycle_actions_t
 iree_net_endpoint_lifecycle_join_deactivation(
-    iree_net_endpoint_lifecycle_t* lifecycle,
-    iree_net_endpoint_deactivation_barrier_t* barrier);
+    iree_net_endpoint_lifecycle_t* lifecycle);
 
-// Releases the barrier setup hold after all endpoint lifecycles are joined.
+// Publishes the connection callback and releases the barrier setup hold after
+// all endpoint lifecycles are joined.
 //
 // The connection callback may fire synchronously and release the connection.
 IREE_API_EXPORT void iree_net_endpoint_deactivation_barrier_commit(
-    iree_net_endpoint_deactivation_barrier_t* barrier);
+    iree_net_endpoint_deactivation_barrier_t* barrier,
+    iree_net_connection_deactivate_callback_t callback);
 
 // Marks the owner-controlled transport drain complete.
 //

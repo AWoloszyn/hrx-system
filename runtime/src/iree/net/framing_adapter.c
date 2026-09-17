@@ -181,8 +181,9 @@ static void iree_net_framing_adapter_abort_send(
 
 iree_status_t iree_net_framing_adapter_allocate(
     iree_net_carrier_t* carrier, iree_net_frame_length_callback_t frame_length,
-    iree_host_size_t max_frame_size, iree_allocator_t host_allocator,
-    iree_net_framing_adapter_t** out_adapter) {
+    iree_host_size_t max_frame_size,
+    iree_net_endpoint_deactivation_barrier_t* connection_barrier,
+    iree_allocator_t host_allocator, iree_net_framing_adapter_t** out_adapter) {
   IREE_ASSERT_ARGUMENT(out_adapter);
   *out_adapter = NULL;
 
@@ -229,7 +230,8 @@ iree_status_t iree_net_framing_adapter_allocate(
   if (iree_status_is_ok(status)) {
     memset(adapter, 0, total_size);
     adapter->host_allocator = host_allocator;
-    iree_net_endpoint_lifecycle_initialize(&adapter->lifecycle);
+    iree_net_endpoint_lifecycle_initialize(connection_barrier,
+                                           &adapter->lifecycle);
   }
 
   iree_net_frame_complete_callback_t on_frame_complete = {
@@ -266,13 +268,10 @@ void iree_net_framing_adapter_free(iree_net_framing_adapter_t* adapter) {
 }
 
 void iree_net_framing_adapter_join_deactivation(
-    iree_net_framing_adapter_t* adapter,
-    iree_net_endpoint_deactivation_barrier_t* barrier) {
+    iree_net_framing_adapter_t* adapter) {
   IREE_ASSERT_ARGUMENT(adapter);
-  IREE_ASSERT_ARGUMENT(barrier);
   iree_net_endpoint_lifecycle_actions_t actions =
-      iree_net_endpoint_lifecycle_join_deactivation(&adapter->lifecycle,
-                                                    barrier);
+      iree_net_endpoint_lifecycle_join_deactivation(&adapter->lifecycle);
   if (iree_any_bit_set(actions,
                        IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION)) {
     iree_net_carrier_deactivate(adapter->carrier,
