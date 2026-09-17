@@ -2495,7 +2495,9 @@ iree_status_t iree_hal_streaming_memcpy_host_to_device_2d(
   if (iree_status_is_ok(status) && source_is_registered) {
     status = iree_allocator_malloc(context->host_allocator, refs_size,
                                    (void**)&source_refs);
-    if (iree_status_is_ok(status)) source_refs[0] = first_source_ref;
+    if (iree_status_is_ok(status)) {
+      source_refs[0] = first_source_ref;
+    }
     for (iree_host_size_t row = 1; row < height && iree_status_is_ok(status);
          ++row) {
       iree_device_size_t source_offset = 0;
@@ -2601,7 +2603,9 @@ iree_status_t iree_hal_streaming_memcpy_value_to_device(
     IREE_RETURN_IF_ERROR(iree_hal_streaming_capture_try_record_node(
         stream, iree_hal_streaming_capture_record_host_to_device, &capture,
         &was_capturing));
-    if (was_capturing) return iree_ok_status();
+    if (was_capturing) {
+      return iree_ok_status();
+    }
   }
   return iree_hal_streaming_memcpy_host_to_device(context, dst, src, size,
                                                   stream);

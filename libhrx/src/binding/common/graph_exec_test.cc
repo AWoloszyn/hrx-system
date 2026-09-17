@@ -607,7 +607,9 @@ TEST_F(GraphExecTest,
       observed_later_rejection = true;
       break;
     }
-    if (launch_returned.load(std::memory_order_acquire)) break;
+    if (launch_returned.load(std::memory_order_acquire)) {
+      break;
+    }
     std::this_thread::yield();
   }
   if (!observed_later_rejection) {

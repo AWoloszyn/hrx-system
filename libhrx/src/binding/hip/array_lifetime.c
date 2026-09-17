@@ -29,7 +29,9 @@ bool iree_hip_array_lifetime_try_acquire(iree_hip_array_lifetime_t* lifetime) {
   iree_slim_mutex_lock(&lifetime->mutex);
   const bool acquired =
       !lifetime->is_closing && lifetime->active_use_count != SIZE_MAX;
-  if (acquired) ++lifetime->active_use_count;
+  if (acquired) {
+    ++lifetime->active_use_count;
+  }
   iree_slim_mutex_unlock(&lifetime->mutex);
   return acquired;
 }

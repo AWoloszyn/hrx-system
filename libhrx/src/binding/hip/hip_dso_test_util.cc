@@ -35,11 +35,15 @@ std::string CanonicalPath(const char* path) {
 }  // namespace
 
 HipDso::~HipDso() {
-  if (handle_) dlclose(handle_);
+  if (handle_) {
+    dlclose(handle_);
+  }
 }
 
 bool HipDso::Open(const char* fallback_path) {
-  if (handle_) return true;
+  if (handle_) {
+    return true;
+  }
   error_.clear();
 
   const char* configured_path = ConfiguredPath(fallback_path);
@@ -74,11 +78,15 @@ bool HipDso::Open(const char* fallback_path) {
 }
 
 bool HipDso::Close() {
-  if (!handle_) return true;
+  if (!handle_) {
+    return true;
+  }
   void* handle = handle_;
   handle_ = nullptr;
   canonical_path_.clear();
-  if (dlclose(handle) == 0) return true;
+  if (dlclose(handle) == 0) {
+    return true;
+  }
   const char* loader_error = dlerror();
   error_ = loader_error ? loader_error : "dlclose failed";
   return false;

@@ -745,7 +745,9 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
       source_timeline_value = source_stream->pending_value;
     }
     iree_slim_mutex_unlock(&source_stream->mutex);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     status = iree_status_join(
         status,
@@ -1095,7 +1097,9 @@ static iree_status_t iree_hal_streaming_stream_synchronize_impl(
     }
     target_completed = iree_status_is_ok(wait_status);
     status = iree_status_join(status, wait_status);
-    if (target_completed) completed_value = target_value;
+    if (target_completed) {
+      completed_value = target_value;
+    }
   }
 
   if (target_completed) {
@@ -1837,7 +1841,9 @@ iree_status_t iree_hal_streaming_launch_kernel(
         status = iree_hal_streaming_capture_try_record_node(
             stream, iree_hal_streaming_capture_record_kernel, &capture,
             &was_captured);
-        if (!iree_status_is_ok(status) || was_captured) break;
+        if (!iree_status_is_ok(status) || was_captured) {
+          break;
+        }
         continue;
       }
 

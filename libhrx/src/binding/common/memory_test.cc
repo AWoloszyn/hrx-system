@@ -451,7 +451,9 @@ TEST_F(CpuStreamingMemoryTest,
     observed_second_submission =
         second_stream->pending_value > second_initial_pending;
     iree_slim_mutex_unlock(&second_stream->mutex);
-    if (observed_second_submission) break;
+    if (observed_second_submission) {
+      break;
+    }
     std::this_thread::yield();
   }
   EXPECT_TRUE(observed_second_submission);

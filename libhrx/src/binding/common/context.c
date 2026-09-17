@@ -1208,7 +1208,9 @@ iree_hal_streaming_context_synchronize_streams_without_snapshot(
     }
     iree_hal_streaming_stream_retain(stream);
     iree_slim_mutex_unlock(&context->stream_list_mutex);
-    if (!stream) break;
+    if (!stream) {
+      break;
+    }
     stream_id = next_stream_id;
     if (flush_before_wait) {
       status =
@@ -1448,7 +1450,9 @@ iree_status_t iree_hal_streaming_context_wait_blocking_streams(
         iree_hal_streaming_capture_status(source_stream, &capture_status, NULL);
     if (!iree_status_is_ok(status) ||
         capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       continue;
     }
     // Partition selected sources into the front while preserving every

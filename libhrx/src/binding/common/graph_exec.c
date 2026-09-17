@@ -2159,7 +2159,9 @@ static iree_status_t iree_hal_streaming_accepted_signal_list_drain(
     iree_hal_streaming_accepted_signal_list_t* list) {
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0; i < list->count; ++i) {
-    if (!list->signals[i].semaphore) continue;
+    if (!list->signals[i].semaphore) {
+      continue;
+    }
     iree_status_t wait_status = iree_hal_semaphore_wait(
         list->signals[i].semaphore, list->signals[i].value,
         iree_infinite_timeout(), IREE_ASYNC_WAIT_FLAG_NONE);

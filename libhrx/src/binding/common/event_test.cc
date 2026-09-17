@@ -705,7 +705,9 @@ TEST_F(CpuStreamingContextTest,
     allocator.fail_allocations.store(false, std::memory_order_release);
     context_->host_allocator = original_allocator;
     IREE_EXPECT_OK(ReleaseAllGates());
-    if (synchronize_thread.joinable()) synchronize_thread.join();
+    if (synchronize_thread.joinable()) {
+      synchronize_thread.join();
+    }
     iree_hal_streaming_stream_release(second_stream);
     iree_hal_streaming_stream_release(first_stream);
   });
@@ -807,8 +809,12 @@ TEST_F(CpuStreamingContextTest,
     first_gate.release.store(true, std::memory_order_release);
     second_gate.release.store(true, std::memory_order_release);
     IREE_EXPECT_OK(ReleaseAllGates());
-    if (first_thread.joinable()) first_thread.join();
-    if (second_thread.joinable()) second_thread.join();
+    if (first_thread.joinable()) {
+      first_thread.join();
+    }
+    if (second_thread.joinable()) {
+      second_thread.join();
+    }
     iree_hal_streaming_stream_release(stream);
   });
 

@@ -708,7 +708,9 @@ TEST(GraphTest, ParticipantMutationSerializesOriginTermination) {
       observed_end_snapshot = true;
       break;
     }
-    if (end_completed.load(std::memory_order_acquire)) break;
+    if (end_completed.load(std::memory_order_acquire)) {
+      break;
+    }
     std::this_thread::yield();
   }
   EXPECT_TRUE(observed_end_snapshot);
@@ -779,7 +781,9 @@ TEST(GraphTest, ParticipantUnregisterSerializesAndRejectsReadoption) {
       observed_unregister_snapshot = true;
       break;
     }
-    if (unregister_completed.load(std::memory_order_acquire)) break;
+    if (unregister_completed.load(std::memory_order_acquire)) {
+      break;
+    }
     std::this_thread::yield();
   }
   // Keep the graph lock held long enough for an incorrectly unlocked
@@ -853,7 +857,9 @@ TEST(GraphTest, OriginUnregisterDetachesJoinedSessionAndParticipantCanReuse) {
       observed_unregister_snapshot = true;
       break;
     }
-    if (unregister_completed.load(std::memory_order_acquire)) break;
+    if (unregister_completed.load(std::memory_order_acquire)) {
+      break;
+    }
     std::this_thread::yield();
   }
   EXPECT_TRUE(observed_unregister_snapshot);
@@ -921,7 +927,9 @@ TEST(GraphTest, CapturedEventWaitUsesAtomicSessionFrontierSnapshot) {
       observed_blocked_snapshot = true;
       break;
     }
-    if (wait_completed.load(std::memory_order_acquire)) break;
+    if (wait_completed.load(std::memory_order_acquire)) {
+      break;
+    }
     std::this_thread::yield();
   }
   if (!observed_blocked_snapshot) {
@@ -952,7 +960,9 @@ TEST(GraphTest, CapturedEventWaitUsesAtomicSessionFrontierSnapshot) {
       observed_blocked_record = true;
       break;
     }
-    if (record_completed.load(std::memory_order_acquire)) break;
+    if (record_completed.load(std::memory_order_acquire)) {
+      break;
+    }
     std::this_thread::yield();
   }
   EXPECT_TRUE(observed_blocked_record);

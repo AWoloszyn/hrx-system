@@ -729,7 +729,9 @@ struct CountedWaitGate {
 void WaitForTargetCount(void* user_data) {
   auto* gate = static_cast<CountedWaitGate*>(user_data);
   const int count = gate->count.fetch_add(1, std::memory_order_acq_rel) + 1;
-  if (count != gate->target_count) return;
+  if (count != gate->target_count) {
+    return;
+  }
   gate->entered.Post();
   gate->release.Wait();
 }
@@ -772,7 +774,9 @@ TEST_F(HipArrayCopySptApiTest, CrossDeviceCopiesUseTheSelectedStream) {
   constexpr size_t kWidth = 32;
   int device_count = 0;
   ASSERT_EQ(hipSuccess, api_.get_device_count(&device_count));
-  if (device_count < 2) GTEST_SKIP() << "requires two devices";
+  if (device_count < 2) {
+    GTEST_SKIP() << "requires two devices";
+  }
 
   const hipChannelFormatDesc descriptor = {
       /*.x=*/8,

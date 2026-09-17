@@ -40,5 +40,7 @@ void iree_hip_notify_array_lease_observer(void) {
   hipHostFn_t observer = iree_hip_array_lease_observer;
   void* user_data = iree_hip_array_lease_observer_user_data;
   iree_slim_mutex_unlock(&iree_hip_array_lease_observer_mutex);
-  if (observer) observer(user_data);
+  if (observer) {
+    observer(user_data);
+  }
 }
