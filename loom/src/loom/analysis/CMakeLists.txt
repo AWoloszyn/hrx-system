@@ -23,6 +23,7 @@ loom_cc_library(
     loom::ir::facts
     loom::ops::op_defs
     loom::util::cfg_graph
+    loom::util::cfg_postdominance
     loom::util::fact_table
   PUBLIC
 )

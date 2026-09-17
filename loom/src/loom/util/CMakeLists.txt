@@ -395,6 +395,34 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    cfg_postdominance
+  HDRS
+    "cfg_postdominance.h"
+  SRCS
+    "cfg_postdominance.c"
+  DEPS
+    ::cfg_graph
+    iree::base
+    iree::base::internal::arena
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    cfg_postdominance_test
+  SRCS
+    "cfg_postdominance_test.cc"
+  DEPS
+    ::cfg_graph
+    ::cfg_postdominance
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_library(
+  NAME
     dominance
   HDRS
     "dominance.h"

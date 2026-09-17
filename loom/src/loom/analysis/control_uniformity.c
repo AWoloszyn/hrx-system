@@ -10,13 +10,12 @@
 
 #include "loom/ops/op_defs.h"
 #include "loom/util/cfg_graph.h"
+#include "loom/util/cfg_postdominance.h"
 
-#define LOOM_CONTROL_UNIFORMITY_NODE_INVALID UINT32_MAX
 #define LOOM_CONTROL_UNIFORMITY_RECORD_INVALID UINT32_MAX
 
 typedef enum loom_control_uniformity_cfg_node_flag_bits_e {
-  LOOM_CONTROL_UNIFORMITY_CFG_NODE_CAN_REACH_EXIT = 1u << 0,
-  LOOM_CONTROL_UNIFORMITY_CFG_NODE_QUEUED = 1u << 1,
+  LOOM_CONTROL_UNIFORMITY_CFG_NODE_QUEUED = 1u << 0,
 } loom_control_uniformity_cfg_node_flag_bits_t;
 typedef uint8_t loom_control_uniformity_cfg_node_flags_t;
 
@@ -28,30 +27,12 @@ typedef struct loom_control_uniformity_cfg_record_t {
 } loom_control_uniformity_cfg_record_t;
 
 typedef struct loom_control_uniformity_cfg_node_t {
-  // One-based reverse-CFG depth-first-search number, or zero when unvisited.
-  uint32_t dfs_number;
-  // Parent node in the reverse-CFG depth-first-search tree.
-  uint32_t dfs_parent;
-  // Lengauer-Tarjan semidominator DFS number.
-  uint32_t semidominator;
-  // Best semidominator representative maintained by path compression.
-  uint32_t label;
-  // Lengauer-Tarjan union-forest ancestor.
-  uint32_t ancestor;
-  // Immediate postdominator, represented as a dense analysis node index.
-  uint32_t immediate_postdominator;
-  // Head node in the semidominator bucket collision chain.
-  uint32_t bucket_head;
-  // Next node in the semidominator bucket collision chain.
-  uint32_t bucket_next;
-  // Reused first as a DFS successor cursor and then as a path-skip parent.
+  // Path-compression parent for the current execution scope.
   uint32_t scratch;
   // CFG edge identifying the weakest controller assigned to this block.
   loom_cfg_edge_index_t controller_edge_index;
   // Head of the lazily retained control-alternative record list.
   uint32_t control_record_head;
-  // Depth in the postdominator tree.
-  uint32_t postdominator_depth;
   // Strongest execution scope proven for the block.
   loom_value_fact_uniform_scope_t execution_scope;
   // Analysis flags from loom_control_uniformity_cfg_node_flag_bits_t.
@@ -65,8 +46,8 @@ struct loom_control_uniformity_cfg_region_t {
   const loom_cfg_graph_t* graph;
   // Per-block analysis nodes followed by one synthetic exit node.
   loom_control_uniformity_cfg_node_t* nodes;
-  // Synthetic exit node index, equal to graph->block_count.
-  uint32_t exit_node;
+  // Immutable postdominator tree constructed from the retained graph.
+  loom_cfg_postdominance_t postdominance;
   // Control-alternative records shared by per-block intrusive lists.
   loom_control_uniformity_cfg_record_t* control_records;
   // Number of initialized control-alternative records.
@@ -158,232 +139,6 @@ loom_control_uniformity_lookup_cfg_region(
   return NULL;
 }
 
-static bool loom_control_uniformity_cfg_block_is_synthetic_exit(
-    const loom_control_uniformity_cfg_region_t* summary, uint32_t block_index) {
-  const loom_control_uniformity_cfg_node_t* node = &summary->nodes[block_index];
-  const loom_cfg_block_index_span_t successors =
-      loom_cfg_graph_successors(summary->graph, (uint16_t)block_index);
-  return successors.count == 0 ||
-         !iree_any_bit_set(node->flags,
-                           LOOM_CONTROL_UNIFORMITY_CFG_NODE_CAN_REACH_EXIT);
-}
-
-static void loom_control_uniformity_cfg_mark_exit_reachability(
-    loom_control_uniformity_cfg_region_t* summary, uint32_t* stack) {
-  iree_host_size_t stack_count = 0;
-  for (uint32_t block_index = 0; block_index < summary->exit_node;
-       ++block_index) {
-    if (!loom_cfg_graph_block_is_reachable(summary->graph,
-                                           (uint16_t)block_index) ||
-        loom_cfg_graph_successors(summary->graph, (uint16_t)block_index)
-                .count != 0) {
-      continue;
-    }
-    summary->nodes[block_index].flags |=
-        LOOM_CONTROL_UNIFORMITY_CFG_NODE_CAN_REACH_EXIT;
-    stack[stack_count++] = block_index;
-  }
-  while (stack_count > 0) {
-    const uint32_t block_index = stack[--stack_count];
-    const loom_cfg_block_index_span_t predecessors =
-        loom_cfg_graph_predecessors(summary->graph, (uint16_t)block_index);
-    for (iree_host_size_t i = 0; i < predecessors.count; ++i) {
-      const uint32_t predecessor_index = predecessors.values[i];
-      loom_control_uniformity_cfg_node_t* predecessor =
-          &summary->nodes[predecessor_index];
-      if (!loom_cfg_graph_block_is_reachable(summary->graph,
-                                             (uint16_t)predecessor_index) ||
-          iree_any_bit_set(predecessor->flags,
-                           LOOM_CONTROL_UNIFORMITY_CFG_NODE_CAN_REACH_EXIT)) {
-        continue;
-      }
-      predecessor->flags |= LOOM_CONTROL_UNIFORMITY_CFG_NODE_CAN_REACH_EXIT;
-      stack[stack_count++] = predecessor_index;
-    }
-  }
-}
-
-static bool loom_control_uniformity_cfg_next_reverse_successor(
-    loom_control_uniformity_cfg_region_t* summary, uint32_t node_index,
-    uint32_t* out_successor_index) {
-  loom_control_uniformity_cfg_node_t* node = &summary->nodes[node_index];
-  if (node_index == summary->exit_node) {
-    while (node->scratch < summary->exit_node) {
-      const uint32_t candidate_index = node->scratch++;
-      if (loom_cfg_graph_block_is_reachable(summary->graph,
-                                            (uint16_t)candidate_index) &&
-          loom_control_uniformity_cfg_block_is_synthetic_exit(
-              summary, candidate_index)) {
-        *out_successor_index = candidate_index;
-        return true;
-      }
-    }
-    return false;
-  }
-
-  const loom_cfg_block_index_span_t predecessors =
-      loom_cfg_graph_predecessors(summary->graph, (uint16_t)node_index);
-  while (node->scratch < predecessors.count) {
-    const uint32_t candidate_index = predecessors.values[node->scratch++];
-    if (loom_cfg_graph_block_is_reachable(summary->graph,
-                                          (uint16_t)candidate_index)) {
-      *out_successor_index = candidate_index;
-      return true;
-    }
-  }
-  return false;
-}
-
-static uint32_t loom_control_uniformity_cfg_build_reverse_dfs(
-    loom_control_uniformity_cfg_region_t* summary, uint32_t* vertex_by_dfs,
-    uint32_t* stack) {
-  uint32_t dfs_count = 1;
-  loom_control_uniformity_cfg_node_t* exit =
-      &summary->nodes[summary->exit_node];
-  exit->dfs_number = dfs_count;
-  exit->dfs_parent = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-  vertex_by_dfs[dfs_count] = summary->exit_node;
-
-  iree_host_size_t stack_count = 0;
-  stack[stack_count++] = summary->exit_node;
-  while (stack_count > 0) {
-    const uint32_t node_index = stack[stack_count - 1];
-    uint32_t successor_index = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    if (!loom_control_uniformity_cfg_next_reverse_successor(summary, node_index,
-                                                            &successor_index)) {
-      --stack_count;
-      continue;
-    }
-    loom_control_uniformity_cfg_node_t* successor =
-        &summary->nodes[successor_index];
-    if (successor->dfs_number != 0) {
-      continue;
-    }
-    successor->dfs_number = ++dfs_count;
-    successor->dfs_parent = node_index;
-    vertex_by_dfs[dfs_count] = successor_index;
-    stack[stack_count++] = successor_index;
-  }
-  return dfs_count;
-}
-
-static bool loom_control_uniformity_cfg_next_reverse_predecessor(
-    const loom_control_uniformity_cfg_region_t* summary, uint32_t node_index,
-    uint32_t* cursor, uint32_t* out_predecessor_index) {
-  if (node_index == summary->exit_node) {
-    return false;
-  }
-  const loom_cfg_block_index_span_t successors =
-      loom_cfg_graph_successors(summary->graph, (uint16_t)node_index);
-  while (*cursor < successors.count) {
-    const uint32_t candidate_index = successors.values[(*cursor)++];
-    if (summary->nodes[candidate_index].dfs_number != 0) {
-      *out_predecessor_index = candidate_index;
-      return true;
-    }
-  }
-  if (*cursor == successors.count) {
-    ++*cursor;
-    if (loom_control_uniformity_cfg_block_is_synthetic_exit(summary,
-                                                            node_index)) {
-      *out_predecessor_index = summary->exit_node;
-      return true;
-    }
-  }
-  return false;
-}
-
-static uint32_t loom_control_uniformity_cfg_eval(
-    loom_control_uniformity_cfg_node_t* nodes, uint32_t node_index,
-    uint32_t* stack) {
-  if (nodes[node_index].ancestor == LOOM_CONTROL_UNIFORMITY_NODE_INVALID) {
-    return nodes[node_index].label;
-  }
-
-  iree_host_size_t stack_count = 0;
-  uint32_t current_index = node_index;
-  while (nodes[current_index].ancestor !=
-             LOOM_CONTROL_UNIFORMITY_NODE_INVALID &&
-         nodes[nodes[current_index].ancestor].ancestor !=
-             LOOM_CONTROL_UNIFORMITY_NODE_INVALID) {
-    stack[stack_count++] = current_index;
-    current_index = nodes[current_index].ancestor;
-  }
-  while (stack_count > 0) {
-    current_index = stack[--stack_count];
-    const uint32_t ancestor_index = nodes[current_index].ancestor;
-    if (nodes[nodes[ancestor_index].label].semidominator <
-        nodes[nodes[current_index].label].semidominator) {
-      nodes[current_index].label = nodes[ancestor_index].label;
-    }
-    nodes[current_index].ancestor = nodes[ancestor_index].ancestor;
-  }
-  return nodes[node_index].label;
-}
-
-static void loom_control_uniformity_cfg_compute_postdominators(
-    loom_control_uniformity_cfg_region_t* summary, uint32_t dfs_count,
-    const uint32_t* vertex_by_dfs, uint32_t* stack) {
-  loom_control_uniformity_cfg_node_t* nodes = summary->nodes;
-  for (uint32_t dfs_number = 1; dfs_number <= dfs_count; ++dfs_number) {
-    const uint32_t node_index = vertex_by_dfs[dfs_number];
-    loom_control_uniformity_cfg_node_t* node = &nodes[node_index];
-    node->semidominator = dfs_number;
-    node->label = node_index;
-    node->ancestor = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    node->immediate_postdominator = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    node->bucket_head = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    node->bucket_next = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-  }
-
-  for (uint32_t dfs_number = dfs_count; dfs_number > 1; --dfs_number) {
-    const uint32_t node_index = vertex_by_dfs[dfs_number];
-    loom_control_uniformity_cfg_node_t* node = &nodes[node_index];
-    uint32_t predecessor_cursor = 0;
-    uint32_t predecessor_index = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    while (loom_control_uniformity_cfg_next_reverse_predecessor(
-        summary, node_index, &predecessor_cursor, &predecessor_index)) {
-      const uint32_t representative =
-          loom_control_uniformity_cfg_eval(nodes, predecessor_index, stack);
-      node->semidominator =
-          iree_min(node->semidominator, nodes[representative].semidominator);
-    }
-
-    const uint32_t semidominator_index = vertex_by_dfs[node->semidominator];
-    node->bucket_next = nodes[semidominator_index].bucket_head;
-    nodes[semidominator_index].bucket_head = node_index;
-    node->ancestor = node->dfs_parent;
-
-    loom_control_uniformity_cfg_node_t* parent = &nodes[node->dfs_parent];
-    uint32_t bucket_index = parent->bucket_head;
-    parent->bucket_head = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    while (bucket_index != LOOM_CONTROL_UNIFORMITY_NODE_INVALID) {
-      loom_control_uniformity_cfg_node_t* bucket_node = &nodes[bucket_index];
-      const uint32_t next_bucket_index = bucket_node->bucket_next;
-      const uint32_t representative =
-          loom_control_uniformity_cfg_eval(nodes, bucket_index, stack);
-      bucket_node->immediate_postdominator =
-          nodes[representative].semidominator < bucket_node->semidominator
-              ? representative
-              : node->dfs_parent;
-      bucket_index = next_bucket_index;
-    }
-  }
-
-  nodes[summary->exit_node].immediate_postdominator = summary->exit_node;
-  for (uint32_t dfs_number = 2; dfs_number <= dfs_count; ++dfs_number) {
-    const uint32_t node_index = vertex_by_dfs[dfs_number];
-    loom_control_uniformity_cfg_node_t* node = &nodes[node_index];
-    const uint32_t semidominator_index = vertex_by_dfs[node->semidominator];
-    if (node->immediate_postdominator != semidominator_index) {
-      node->immediate_postdominator =
-          nodes[node->immediate_postdominator].immediate_postdominator;
-    }
-    node->postdominator_depth =
-        nodes[node->immediate_postdominator].postdominator_depth + 1;
-  }
-}
-
 static uint32_t loom_control_uniformity_cfg_find_path_parent(
     loom_control_uniformity_cfg_node_t* nodes, uint32_t node_index) {
   uint32_t root_index = node_index;
@@ -427,9 +182,10 @@ loom_control_uniformity_cfg_selector_scope(
 
 static void loom_control_uniformity_cfg_initialize_path_parents(
     loom_control_uniformity_cfg_region_t* summary) {
-  for (uint32_t node_index = 0; node_index <= summary->exit_node;
+  for (uint32_t node_index = 0; node_index <= summary->postdominance.exit_node;
        ++node_index) {
-    if (summary->nodes[node_index].dfs_number != 0) {
+    if (summary->postdominance.nodes[node_index].immediate_postdominator !=
+        LOOM_CFG_POSTDOMINATOR_INVALID) {
       summary->nodes[node_index].scratch = node_index;
       summary->nodes[node_index].flags &=
           ~LOOM_CONTROL_UNIFORMITY_CFG_NODE_QUEUED;
@@ -443,6 +199,7 @@ static void loom_control_uniformity_cfg_assign_control_path(
     loom_value_fact_uniform_scope_t execution_scope, uint32_t* worklist,
     iree_host_size_t* worklist_count) {
   loom_control_uniformity_cfg_node_t* nodes = summary->nodes;
+  const loom_cfg_postdominator_t* postdominators = summary->postdominance.nodes;
   const loom_control_uniformity_cfg_node_t* controller =
       &nodes[edge->source_block_index];
   const loom_cfg_edge_index_t controller_edge_index =
@@ -450,11 +207,10 @@ static void loom_control_uniformity_cfg_assign_control_path(
           ? controller->controller_edge_index
           : (loom_cfg_edge_index_t)(edge - summary->graph->edges);
   const uint32_t stop_index =
-      nodes[edge->source_block_index].immediate_postdominator;
+      postdominators[edge->source_block_index].immediate_postdominator;
   uint32_t node_index = loom_control_uniformity_cfg_find_path_parent(
       nodes, edge->target_block_index);
-  while (nodes[node_index].postdominator_depth >
-         nodes[stop_index].postdominator_depth) {
+  while (postdominators[node_index].depth > postdominators[stop_index].depth) {
     loom_control_uniformity_cfg_node_t* node = &nodes[node_index];
     if (node->execution_scope > execution_scope) {
       node->execution_scope = execution_scope;
@@ -466,7 +222,7 @@ static void loom_control_uniformity_cfg_assign_control_path(
       }
     }
     const uint32_t parent_index = loom_control_uniformity_cfg_find_path_parent(
-        nodes, node->immediate_postdominator);
+        nodes, postdominators[node_index].immediate_postdominator);
     node->scratch = parent_index;
     node_index = parent_index;
   }
@@ -478,9 +234,10 @@ static void loom_control_uniformity_cfg_assign_control_scope(
     loom_value_fact_uniform_scope_t selector_scope, uint32_t* worklist) {
   loom_control_uniformity_cfg_initialize_path_parents(summary);
   iree_host_size_t worklist_count = 0;
-  for (uint32_t block_index = 0; block_index < summary->exit_node;
+  for (uint32_t block_index = 0; block_index < summary->postdominance.exit_node;
        ++block_index) {
-    if (summary->nodes[block_index].dfs_number == 0 ||
+    if (summary->postdominance.nodes[block_index].immediate_postdominator ==
+            LOOM_CFG_POSTDOMINATOR_INVALID ||
         !loom_control_uniformity_cfg_block_has_distinct_successors(
             summary->graph, block_index)) {
       continue;
@@ -516,7 +273,9 @@ static void loom_control_uniformity_cfg_assign_control_scope(
     for (iree_host_size_t i = 0; i < edges.count; ++i) {
       const loom_cfg_edge_info_t* edge =
           loom_cfg_graph_edge(summary->graph, edges.values[i]);
-      if (edge && summary->nodes[edge->target_block_index].dfs_number != 0) {
+      if (edge &&
+          summary->postdominance.nodes[edge->target_block_index]
+                  .immediate_postdominator != LOOM_CFG_POSTDOMINATOR_INVALID) {
         loom_control_uniformity_cfg_assign_control_path(
             summary, edge, selector_scope, worklist, &worklist_count);
       }
@@ -557,13 +316,15 @@ static iree_status_t loom_control_uniformity_cfg_retain_control_path(
   const loom_cfg_edge_info_t* edge =
       loom_cfg_graph_edge(summary->graph, edge_index);
   const uint32_t stop_index =
-      summary->nodes[edge->source_block_index].immediate_postdominator;
+      summary->postdominance.nodes[edge->source_block_index]
+          .immediate_postdominator;
   uint32_t node_index = edge->target_block_index;
-  while (summary->nodes[node_index].postdominator_depth >
-         summary->nodes[stop_index].postdominator_depth) {
+  while (summary->postdominance.nodes[node_index].depth >
+         summary->postdominance.nodes[stop_index].depth) {
     IREE_RETURN_IF_ERROR(loom_control_uniformity_cfg_append_control_record(
         info, summary, node_index, edge_index));
-    node_index = summary->nodes[node_index].immediate_postdominator;
+    node_index =
+        summary->postdominance.nodes[node_index].immediate_postdominator;
   }
   return iree_ok_status();
 }
@@ -574,9 +335,10 @@ static iree_status_t loom_control_uniformity_cfg_initialize_exclusivity(
   if (summary->exclusivity_initialized || !summary->nodes) {
     return iree_ok_status();
   }
-  for (uint32_t block_index = 0; block_index < summary->exit_node;
+  for (uint32_t block_index = 0; block_index < summary->postdominance.exit_node;
        ++block_index) {
-    if (summary->nodes[block_index].dfs_number == 0 ||
+    if (summary->postdominance.nodes[block_index].immediate_postdominator ==
+            LOOM_CFG_POSTDOMINATOR_INVALID ||
         !loom_control_uniformity_cfg_block_has_distinct_successors(
             summary->graph, block_index)) {
       continue;
@@ -586,21 +348,23 @@ static iree_status_t loom_control_uniformity_cfg_initialize_exclusivity(
     for (iree_host_size_t i = 0; i < edges.count; ++i) {
       const loom_cfg_edge_info_t* edge =
           loom_cfg_graph_edge(summary->graph, edges.values[i]);
-      if (edge && summary->nodes[edge->target_block_index].dfs_number != 0) {
+      if (edge &&
+          summary->postdominance.nodes[edge->target_block_index]
+                  .immediate_postdominator != LOOM_CFG_POSTDOMINATOR_INVALID) {
         IREE_RETURN_IF_ERROR(loom_control_uniformity_cfg_retain_control_path(
             info, summary, edges.values[i]));
       }
     }
   }
-  if (summary->exit_node != 0) {
+  if (summary->postdominance.exit_node != 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        info->arena, summary->exit_node, sizeof(*summary->query_marks),
-        (void**)&summary->query_marks));
+        info->arena, summary->postdominance.exit_node,
+        sizeof(*summary->query_marks), (void**)&summary->query_marks));
     memset(summary->query_marks, 0,
-           summary->exit_node * sizeof(*summary->query_marks));
+           summary->postdominance.exit_node * sizeof(*summary->query_marks));
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        info->arena, summary->exit_node, sizeof(*summary->query_stack),
-        (void**)&summary->query_stack));
+        info->arena, summary->postdominance.exit_node,
+        sizeof(*summary->query_stack), (void**)&summary->query_stack));
   }
   if (summary->control_record_count != 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -619,7 +383,7 @@ static uint32_t loom_control_uniformity_cfg_next_query_generation(
   ++summary->query_generation;
   if (summary->query_generation == 0) {
     memset(summary->query_marks, 0,
-           summary->exit_node * sizeof(*summary->query_marks));
+           summary->postdominance.exit_node * sizeof(*summary->query_marks));
     summary->query_generation = 1;
   }
   return summary->query_generation;
@@ -673,55 +437,31 @@ static iree_status_t loom_control_uniformity_cfg_region_initialize(
     return iree_ok_status();
   }
 
-  summary->exit_node = (uint32_t)summary->graph->block_count;
+  IREE_RETURN_IF_ERROR(loom_cfg_postdominance_build(summary->graph, info->arena,
+                                                    &summary->postdominance));
   const iree_host_size_t node_count = summary->graph->block_count + 1;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(info->arena, node_count,
                                                  sizeof(*summary->nodes),
                                                  (void**)&summary->nodes));
   memset(summary->nodes, 0, node_count * sizeof(*summary->nodes));
   for (iree_host_size_t i = 0; i < node_count; ++i) {
-    summary->nodes[i].dfs_parent = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    summary->nodes[i].ancestor = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    summary->nodes[i].immediate_postdominator =
-        LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    summary->nodes[i].bucket_head = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
-    summary->nodes[i].bucket_next = LOOM_CONTROL_UNIFORMITY_NODE_INVALID;
     summary->nodes[i].controller_edge_index = LOOM_CFG_EDGE_INDEX_INVALID;
     summary->nodes[i].control_record_head =
         LOOM_CONTROL_UNIFORMITY_RECORD_INVALID;
-    summary->nodes[i].execution_scope = LOOM_VALUE_FACT_UNIFORM_SCOPE_NONE;
-  }
-
-  const iree_arena_checkpoint_t scratch_checkpoint =
-      iree_arena_checkpoint_save(info->arena);
-  uint32_t* vertex_by_dfs = NULL;
-  uint32_t* stack = NULL;
-  iree_status_t status =
-      iree_arena_allocate_array(info->arena, node_count + 1,
-                                sizeof(*vertex_by_dfs), (void**)&vertex_by_dfs);
-  if (iree_status_is_ok(status)) {
-    status = iree_arena_allocate_array(info->arena, node_count, sizeof(*stack),
-                                       (void**)&stack);
-  }
-  if (iree_status_is_ok(status)) {
-    loom_control_uniformity_cfg_mark_exit_reachability(summary, stack);
-    const uint32_t dfs_count = loom_control_uniformity_cfg_build_reverse_dfs(
-        summary, vertex_by_dfs, stack);
-    loom_control_uniformity_cfg_compute_postdominators(summary, dfs_count,
-                                                       vertex_by_dfs, stack);
-
     // Reachable CFG blocks begin cluster-uniform and are weakened by each
-    // selector scope below. This ceiling lets the same summary answer subgroup,
-    // workgroup, and cluster collective queries without special-case walks.
-    for (uint32_t block_index = 0; block_index < summary->exit_node;
-         ++block_index) {
-      if (loom_cfg_graph_block_is_reachable(summary->graph,
-                                            (uint16_t)block_index) &&
-          summary->nodes[block_index].dfs_number != 0) {
-        summary->nodes[block_index].execution_scope =
-            LOOM_VALUE_FACT_UNIFORM_SCOPE_CLUSTER;
-      }
-    }
+    // selector scope below. This ceiling serves subgroup, workgroup and cluster
+    // collective queries from the same summary.
+    summary->nodes[i].execution_scope =
+        i < summary->graph->block_count && summary->graph->blocks[i].reachable
+            ? LOOM_VALUE_FACT_UNIFORM_SCOPE_CLUSTER
+            : LOOM_VALUE_FACT_UNIFORM_SCOPE_NONE;
+  }
+  const iree_arena_checkpoint_t checkpoint =
+      iree_arena_checkpoint_save(info->arena);
+  uint32_t* stack = NULL;
+  iree_status_t status = iree_arena_allocate_array(
+      info->arena, node_count, sizeof(*stack), (void**)&stack);
+  if (iree_status_is_ok(status)) {
     loom_control_uniformity_cfg_assign_control_scope(
         info, summary, LOOM_VALUE_FACT_UNIFORM_SCOPE_NONE, stack);
     loom_control_uniformity_cfg_assign_control_scope(
@@ -729,7 +469,7 @@ static iree_status_t loom_control_uniformity_cfg_region_initialize(
     loom_control_uniformity_cfg_assign_control_scope(
         info, summary, LOOM_VALUE_FACT_UNIFORM_SCOPE_WORKGROUP, stack);
   }
-  iree_arena_checkpoint_restore(&scratch_checkpoint);
+  iree_arena_checkpoint_restore(&checkpoint);
   return status;
 }
 
@@ -794,7 +534,8 @@ static iree_status_t loom_control_uniformity_prove_cfg_block(
   loom_control_uniformity_cfg_region_t* summary = NULL;
   IREE_RETURN_IF_ERROR(
       loom_control_uniformity_cfg_region(info, block->parent_region, &summary));
-  if (!summary->nodes || block->region_index >= summary->exit_node) {
+  if (!summary->nodes ||
+      block->region_index >= summary->postdominance.exit_node) {
     if (out_failure) {
       *out_failure = (loom_control_uniformity_failure_t){
           .control_value = LOOM_VALUE_ID_INVALID,
@@ -961,7 +702,7 @@ iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
   IREE_RETURN_IF_ERROR(
       loom_control_uniformity_cfg_initialize_exclusivity(info, summary));
 
-  if (first_block->region_index >= summary->exit_node) {
+  if (first_block->region_index >= summary->postdominance.exit_node) {
     return iree_ok_status();
   }
   iree_host_size_t candidate_edge_count =
@@ -970,7 +711,7 @@ iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
           summary->query_lhs_edges);
   for (iree_host_size_t i = 1; i < lhs_op_count; ++i) {
     const loom_block_t* block = lhs_ops[i]->parent_block;
-    if (block->region_index >= summary->exit_node) {
+    if (block->region_index >= summary->postdominance.exit_node) {
       return iree_ok_status();
     }
     const iree_host_size_t edge_count =
@@ -999,7 +740,7 @@ iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
 
   for (iree_host_size_t i = 0; i < rhs_op_count; ++i) {
     const loom_block_t* block = rhs_ops[i]->parent_block;
-    if (block->region_index >= summary->exit_node) {
+    if (block->region_index >= summary->postdominance.exit_node) {
       return iree_ok_status();
     }
     const iree_host_size_t edge_count =

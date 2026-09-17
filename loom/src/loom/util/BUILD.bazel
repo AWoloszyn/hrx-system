@@ -344,6 +344,30 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "cfg_postdominance",
+    srcs = ["cfg_postdominance.c"],
+    hdrs = ["cfg_postdominance.h"],
+    deps = [
+        ":cfg_graph",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "cfg_postdominance_test",
+    srcs = ["cfg_postdominance_test.cc"],
+    deps = [
+        ":cfg_graph",
+        ":cfg_postdominance",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
     name = "dominance",
     srcs = ["dominance.c"],
     hdrs = ["dominance.h"],
