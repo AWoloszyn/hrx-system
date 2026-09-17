@@ -58,7 +58,9 @@ iree_async_continuation_t iree_async_continuation_begin(
       .submit_status = iree_ok_status(),
       .cancel_chain = false,
   };
-  if (!chain_head) return continuation;
+  if (!chain_head) {
+    return continuation;
+  }
   if (trigger_status_code != IREE_STATUS_OK) {
     // A deliberately suppressed tail has no successor callback to order after
     // the trigger. Consume it now so the trigger callback may release its
@@ -75,7 +77,9 @@ iree_async_continuation_t iree_async_continuation_begin(
   }
 
   iree_status_t submit_status = submit_fn(submit_user_data, chain_head);
-  if (iree_status_is_ok(submit_status)) return continuation;
+  if (iree_status_is_ok(submit_status)) {
+    return continuation;
+  }
 
   // As above, a suppressed chain tail has no observable callback to defer.
   // Free its handled submission error while its storage is still valid.
@@ -99,7 +103,9 @@ iree_host_size_t iree_async_continuation_finish(
   continuation->submit_status = iree_ok_status();
   continuation->cancel_chain = false;
 
-  if (!chain_head) return 0;
+  if (!chain_head) {
+    return 0;
+  }
   if (cancel_chain) {
     return iree_async_continuation_cancel(chain_head);
   }

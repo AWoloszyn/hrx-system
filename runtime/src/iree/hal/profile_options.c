@@ -22,7 +22,9 @@ struct iree_hal_device_profiling_options_storage_t {
 
 static iree_status_t iree_hal_device_profiling_options_add_string_storage(
     iree_host_size_t string_length, iree_host_size_t* inout_storage_length) {
-  if (string_length == 0) return iree_ok_status();
+  if (string_length == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!iree_host_size_checked_add(
           *inout_storage_length, string_length, inout_storage_length))) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -33,7 +35,9 @@ static iree_status_t iree_hal_device_profiling_options_add_string_storage(
 
 static iree_string_view_t iree_hal_device_profiling_options_clone_string_view(
     iree_string_view_t source, char** inout_storage) {
-  if (iree_string_view_is_empty(source)) return iree_string_view_empty();
+  if (iree_string_view_is_empty(source)) {
+    return iree_string_view_empty();
+  }
   char* storage = *inout_storage;
   memcpy(storage, source.data, source.size);
   *inout_storage += source.size;
@@ -172,7 +176,9 @@ IREE_API_EXPORT iree_status_t iree_hal_device_profiling_options_clone(
 IREE_API_EXPORT void iree_hal_device_profiling_options_storage_free(
     iree_hal_device_profiling_options_storage_t* storage,
     iree_allocator_t host_allocator) {
-  if (!storage) return;
+  if (!storage) {
+    return;
+  }
   iree_hal_profile_sink_release(storage->sink);
   iree_allocator_free(host_allocator, storage);
 }

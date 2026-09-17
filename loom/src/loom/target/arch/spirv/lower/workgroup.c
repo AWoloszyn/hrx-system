@@ -249,11 +249,15 @@ static iree_status_t loom_spirv_prepare_workgroup_carriers(
     const loom_value_ordinal_t root_ordinal =
         loom_local_value_domain_try_ordinal(value_domain,
                                             reference.root_value_id);
-    if (root_ordinal == LOOM_VALUE_ORDINAL_INVALID) continue;
+    if (root_ordinal == LOOM_VALUE_ORDINAL_INVALID) {
+      continue;
+    }
 
     const loom_spirv_scalar_type_descriptor_t* scalar_descriptor =
         loom_spirv_scalar_type_descriptor(scalar_type);
-    if (scalar_descriptor == NULL) continue;
+    if (scalar_descriptor == NULL) {
+      continue;
+    }
     loom_spirv_workgroup_root_carrier_t* root_carrier =
         &root_carriers[root_ordinal];
     if (root_carrier->bit_width == 0) {
@@ -291,10 +295,14 @@ static iree_status_t loom_spirv_prepare_workgroup_carriers(
     const loom_value_ordinal_t root_ordinal =
         loom_local_value_domain_try_ordinal(value_domain,
                                             reference.root_value_id);
-    if (root_ordinal == LOOM_VALUE_ORDINAL_INVALID) continue;
+    if (root_ordinal == LOOM_VALUE_ORDINAL_INVALID) {
+      continue;
+    }
     const loom_spirv_workgroup_root_carrier_t root_carrier =
         root_carriers[root_ordinal];
-    if (root_carrier.incompatible) continue;
+    if (root_carrier.incompatible) {
+      continue;
+    }
     scalar_types[value_ordinal] =
         root_carrier.requires_integer
             ? loom_spirv_workgroup_signed_integer_carrier(
@@ -376,7 +384,9 @@ iree_status_t loom_spirv_resolve_workgroup_contract_view_reg_class(
         loom_target_contract_query_get_or_allocate_target_state(
             environment, &kLoomSpirvWorkgroupCarrierStateKey, sizeof(*state),
             (void**)&state));
-    if (state == NULL) return iree_ok_status();
+    if (state == NULL) {
+      return iree_ok_status();
+    }
   }
   const loom_target_bundle_t* bundle =
       loom_target_contract_query_environment_bundle(environment);

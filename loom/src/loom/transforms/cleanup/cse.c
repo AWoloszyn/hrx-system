@@ -96,12 +96,24 @@ static uint32_t loom_cse_hash_op(const loom_module_t* module,
 // equal via loom_attribute_equal), instance flags, and no regions.
 static bool loom_cse_ops_equal(const loom_module_t* module, const loom_op_t* a,
                                const loom_op_t* b) {
-  if (a->kind != b->kind) return false;
-  if (a->operand_count != b->operand_count) return false;
-  if (a->result_count != b->result_count) return false;
-  if (a->attribute_count != b->attribute_count) return false;
-  if (a->instance_flags != b->instance_flags) return false;
-  if (a->region_count > 0) return false;
+  if (a->kind != b->kind) {
+    return false;
+  }
+  if (a->operand_count != b->operand_count) {
+    return false;
+  }
+  if (a->result_count != b->result_count) {
+    return false;
+  }
+  if (a->attribute_count != b->attribute_count) {
+    return false;
+  }
+  if (a->instance_flags != b->instance_flags) {
+    return false;
+  }
+  if (a->region_count > 0) {
+    return false;
+  }
   const loom_value_id_t* a_operands = loom_op_operands((loom_op_t*)a);
   const loom_value_id_t* b_operands = loom_op_operands((loom_op_t*)b);
   if (memcmp(a_operands, b_operands,
@@ -124,14 +136,18 @@ static bool loom_cse_ops_equal(const loom_module_t* module, const loom_op_t* a,
         b_results[i] != LOOM_VALUE_ID_INVALID) {
       loom_type_t a_type = loom_module_value_type(module, a_results[i]);
       loom_type_t b_type = loom_module_value_type(module, b_results[i]);
-      if (!loom_type_equal(a_type, b_type)) return false;
+      if (!loom_type_equal(a_type, b_type)) {
+        return false;
+      }
     }
   }
   if (a->attribute_count > 0) {
     const loom_attribute_t* a_attrs = loom_op_attrs((loom_op_t*)a);
     const loom_attribute_t* b_attrs = loom_op_attrs((loom_op_t*)b);
     for (uint8_t i = 0; i < a->attribute_count; ++i) {
-      if (!loom_attribute_equal(&a_attrs[i], &b_attrs[i])) return false;
+      if (!loom_attribute_equal(&a_attrs[i], &b_attrs[i])) {
+        return false;
+      }
     }
   }
   return true;
@@ -301,7 +317,9 @@ static loom_op_t* loom_cse_table_find(const loom_cse_table_t* table,
   iree_host_size_t slot = hash & mask;
   while (true) {
     const loom_cse_entry_t* entry = &table->entries[slot];
-    if (!entry->op) return NULL;  // Empty — end of probe chain.
+    if (!entry->op) {
+      return NULL;  // Empty — end of probe chain.
+    }
     if (entry->op != LOOM_CSE_TOMBSTONE && entry->hash == hash &&
         loom_cse_ops_equal(module, entry->op, op)) {
       return entry->op;
@@ -343,7 +361,9 @@ static loom_cse_entry_t* loom_cse_table_insert(loom_cse_table_t* table,
 // The non-PURE slot list avoids scanning the full hash table capacity on
 // every write in large blocks that alternate reads and writes.
 static void loom_cse_table_invalidate_reads(loom_cse_table_t* table) {
-  if (table->non_pure.count == 0) return;
+  if (table->non_pure.count == 0) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < table->non_pure.count; ++i) {
     iree_host_size_t slot = table->non_pure.slots[i];
     loom_op_t* op = table->entries[slot].op;
@@ -361,7 +381,9 @@ static void loom_cse_table_invalidate_reads(loom_cse_table_t* table) {
 // Each cleared slot was recorded by an insertion, so total clearing work is
 // bounded by block insertions instead of barriers times hash-table capacity.
 static void loom_cse_table_invalidate_all(loom_cse_table_t* table) {
-  if (table->occupied.count == 0) return;
+  if (table->occupied.count == 0) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < table->occupied.count; ++i) {
     table->entries[table->occupied.slots[i]].op = NULL;
   }
@@ -829,7 +851,9 @@ static iree_status_t loom_cse_stack_reserve(loom_cse_stack_t* stack,
                                             iree_arena_allocator_t* arena,
                                             iree_host_size_t additional) {
   iree_host_size_t required = stack->count + additional;
-  if (required <= stack->capacity) return iree_ok_status();
+  if (required <= stack->capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(arena, stack->count, required,
                                sizeof(loom_cse_frame_t), &stack->capacity,
                                (void**)&stack->frames);
@@ -1072,7 +1096,9 @@ static bool loom_cse_result_is_consumed(const loom_module_t* module,
 
 iree_status_t loom_cse_run(loom_pass_t* pass, loom_module_t* module,
                            loom_func_like_t function) {
-  if (!loom_func_like_body(function)) return iree_ok_status();
+  if (!loom_func_like_body(function)) {
+    return iree_ok_status();
+  }
   loom_cse_statistics_t* statistics = loom_cse_statistics(pass);
 
   loom_low_resolved_target_t low_target = {0};
@@ -1110,7 +1136,9 @@ iree_status_t loom_cse_run(loom_pass_t* pass, loom_module_t* module,
        iree_status_is_ok(status);
        ++region_index) {
     loom_region_t* region = loom_func_like_region(function, region_index);
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
 
     iree_arena_reset(&scope_arena);
     stack.count = 0;
@@ -1132,7 +1160,9 @@ iree_status_t loom_cse_run(loom_pass_t* pass, loom_module_t* module,
 
       loom_op_t* op = frame->next_op;
       frame->next_op = op->next_op;
-      if (op->flags & LOOM_OP_FLAG_DEAD) continue;
+      if (op->flags & LOOM_OP_FLAG_DEAD) {
+        continue;
+      }
 
       const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
       if (!vtable) {
@@ -1220,12 +1250,18 @@ iree_status_t loom_cse_run(loom_pass_t* pass, loom_module_t* module,
               existing_results[r] != LOOM_VALUE_ID_INVALID) {
             status = loom_value_replace_all_uses_with(module, op_results[r],
                                                       existing_results[r]);
-            if (!iree_status_is_ok(status)) break;
+            if (!iree_status_is_ok(status)) {
+              break;
+            }
           }
         }
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
         status = loom_op_erase(module, op);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
         loom_pass_mark_changed(pass);
         ++statistics->expressions_eliminated;
       } else {

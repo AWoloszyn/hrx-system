@@ -54,7 +54,9 @@ static iree_status_t loom_parser_acquire_encoding_params(
 
 static void loom_parser_release_encoding_params(
     loom_parser_t* parser, loom_parser_encoding_params_t* params) {
-  if (!params) return;
+  if (!params) {
+    return;
+  }
   params->next_free = parser->encoding_params_free_list;
   parser->encoding_params_free_list = params;
 }
@@ -226,7 +228,9 @@ static iree_status_t loom_parser_allocate_type_list(
     loom_parser_t* parser, iree_host_size_t minimum_capacity,
     loom_parser_type_list_t** out_list) {
   iree_host_size_t capacity = LOOM_PARSER_TYPE_LIST_MIN_CAPACITY;
-  if (capacity < minimum_capacity) capacity = minimum_capacity;
+  if (capacity < minimum_capacity) {
+    capacity = minimum_capacity;
+  }
 
   iree_host_size_t alloc_size = 0;
   IREE_RETURN_IF_ERROR(
@@ -263,7 +267,9 @@ static iree_status_t loom_parser_acquire_type_list(
 // its retained FAM capacity for later sibling parses.
 static void loom_parser_release_type_list(loom_parser_t* parser,
                                           loom_parser_type_list_t* list) {
-  if (!list) return;
+  if (!list) {
+    return;
+  }
   list->next_free = parser->type_list_free_list;
   parser->type_list_free_list = list;
 }
@@ -276,7 +282,9 @@ static iree_status_t loom_parser_type_list_append(
   loom_parser_type_list_t* list = *inout_list;
   if (list->count >= list->capacity) {
     iree_host_size_t new_capacity = list->capacity * 2;
-    if (new_capacity < list->count + 1) new_capacity = list->count + 1;
+    if (new_capacity < list->count + 1) {
+      new_capacity = list->count + 1;
+    }
 
     loom_parser_type_list_t* new_list = NULL;
     IREE_RETURN_IF_ERROR(
@@ -354,7 +362,9 @@ static iree_status_t loom_resolve_type_reference(
 static loom_parser_unresolved_placeholder_t*
 loom_type_binding_lookup_placeholder(loom_parser_t* parser,
                                      loom_value_id_t value_id) {
-  if (!loom_parser_in_definition_scope(parser)) return NULL;
+  if (!loom_parser_in_definition_scope(parser)) {
+    return NULL;
+  }
   for (iree_host_size_t i = parser->definition_scope.placeholder_start;
        i < parser->unresolved_placeholders.count; ++i) {
     loom_parser_unresolved_placeholder_t* placeholder =
@@ -532,7 +542,9 @@ static iree_status_t loom_intern_shaped_type(
         break;
       }
     }
-    if (all_static) flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+    if (all_static) {
+      flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+    }
 
     type.header = loom_type_make_header(kind, element_type, rank, flags);
     type.encoding_id = encoding_id;
@@ -540,7 +552,9 @@ static iree_status_t loom_intern_shaped_type(
     type.dims[0] = (uint64_t)(uintptr_t)overflow;
     // Precompute hash for fast inequality rejection.
     uint64_t hash = 0;
-    for (uint8_t i = 0; i < rank; ++i) hash = hash * 31 + dims[i];
+    for (uint8_t i = 0; i < rank; ++i) {
+      hash = hash * 31 + dims[i];
+    }
     type.dims[1] = hash;
   }
 
@@ -613,7 +627,9 @@ static iree_status_t loom_parse_shaped_type(
   uint8_t rank = 0;
   const uint32_t errors_before = parser->error_count;
   IREE_RETURN_IF_ERROR(loom_parse_shaped_dims(parser, mode, dims, &rank));
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
 
   if (kind == LOOM_TYPE_VECTOR && rank == 0) {
     loom_token_t token = loom_tokenizer_peek(&parser->tokenizer);
@@ -705,7 +721,9 @@ static iree_status_t loom_parse_dialect_type_params(
 
     loom_type_t param_type = {0};
     IREE_RETURN_IF_ERROR(loom_parse_type(parser, mode, &param_type));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(
         loom_parser_type_list_append(parser, inout_param_types, param_type));
   }
@@ -782,7 +800,9 @@ static iree_status_t loom_parse_type_list(loom_parser_t* parser,
     }
     loom_type_t type = {0};
     IREE_RETURN_IF_ERROR(loom_parse_type(parser, mode, &type));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(
         loom_parser_type_list_append(parser, inout_types, type));
   }
@@ -803,7 +823,9 @@ static iree_status_t loom_parse_function_type_impl(
   uint16_t arg_count = 0;
   IREE_RETURN_IF_ERROR(
       loom_parse_type_list(parser, mode, inout_types, &arg_count));
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
 
   if (!loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_ARROW)) {
     loom_token_t peek = loom_tokenizer_peek(&parser->tokenizer);
@@ -817,7 +839,9 @@ static iree_status_t loom_parse_function_type_impl(
   uint16_t result_count = 0;
   IREE_RETURN_IF_ERROR(
       loom_parse_type_list(parser, mode, inout_types, &result_count));
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
 
   loom_type_t* arg_types = (*inout_types)->types;
   loom_type_t* result_types = arg_types + arg_count;
@@ -990,7 +1014,9 @@ static bool loom_parse_type_format_keyword_try_consume(
   loom_token_kind_t expected_kind = loom_keyword_token_kind(keyword_id);
   if (expected_kind != LOOM_TOKEN_BARE_IDENT) {
     bool was_in_dim_list = tokenizer->in_dim_list;
-    if (expected_kind == LOOM_TOKEN_DIM_X) tokenizer->in_dim_list = true;
+    if (expected_kind == LOOM_TOKEN_DIM_X) {
+      tokenizer->in_dim_list = true;
+    }
     bool consumed = loom_tokenizer_try_consume(tokenizer, expected_kind);
     tokenizer->in_dim_list = was_in_dim_list;
     return consumed;
@@ -1095,10 +1121,14 @@ static iree_status_t loom_parse_parameterized_type_contents(
         IREE_ASSERT_UNREACHABLE("unsupported parameterized type format kind");
         IREE_BUILTIN_UNREACHABLE();
     }
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
   }
   LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_RANGLE, NULL);
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
   return loom_module_make_parameterized_type(
       parser->module, parameterized, parameter_slots,
       parameterized->parameter_count, out_type);
@@ -1145,7 +1175,9 @@ static iree_status_t loom_parse_registered_type(loom_parser_t* parser,
   *out_matched = false;
   const loom_type_descriptor_t* descriptor =
       loom_type_registry_lookup(parser->context, token.text);
-  if (!descriptor) return iree_ok_status();
+  if (!descriptor) {
+    return iree_ok_status();
+  }
   *out_matched = true;
 
   if (descriptor->parameterized) {

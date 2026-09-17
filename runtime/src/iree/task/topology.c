@@ -60,7 +60,9 @@ iree_host_size_t iree_task_topology_group_count(
 
 const iree_task_topology_group_t* iree_task_topology_get_group(
     const iree_task_topology_t* topology, iree_host_size_t group_index) {
-  if (group_index >= topology->group_count) return NULL;
+  if (group_index >= topology->group_count) {
+    return NULL;
+  }
   return &topology->groups[group_index];
 }
 
@@ -109,8 +111,12 @@ void iree_task_topology_initialize_from_group_count(
   // estimates when platform queries are unavailable.
   iree_task_topology_caches_t caches = {0};
   iree_task_topology_query_default_caches(&caches);
-  if (!caches.l1_data) caches.l1_data = 32 * 1024;
-  if (!caches.l2_data) caches.l2_data = 128 * 1024;
+  if (!caches.l1_data) {
+    caches.l1_data = 32 * 1024;
+  }
+  if (!caches.l2_data) {
+    caches.l2_data = 128 * 1024;
+  }
 
   // Initialize default groups with no affinities specified.
   iree_task_topology_initialize(out_topology);
@@ -166,7 +172,9 @@ iree_status_t iree_task_topology_initialize_from_logical_cpu_set_string(
   }
   iree_host_size_t count = 1;
   for (iree_host_size_t i = 0; i < cpu_id_set.size; ++i) {
-    if (cpu_id_set.data[i] == ',') ++count;
+    if (cpu_id_set.data[i] == ',') {
+      ++count;
+    }
   }
   uint32_t* cpu_ids = (uint32_t*)iree_alloca(count * sizeof(uint32_t));
   memset(cpu_ids, 0, count * sizeof(uint32_t));

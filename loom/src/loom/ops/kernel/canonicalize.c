@@ -14,7 +14,9 @@
 static const loom_op_t* loom_kernel_enclosing_def(const loom_op_t* op) {
   for (const loom_op_t* ancestor = op ? op->parent_op : NULL; ancestor;
        ancestor = ancestor->parent_op) {
-    if (loom_kernel_def_isa(ancestor)) return ancestor;
+    if (loom_kernel_def_isa(ancestor)) {
+      return ancestor;
+    }
   }
   return NULL;
 }
@@ -22,9 +24,13 @@ static const loom_op_t* loom_kernel_enclosing_def(const loom_op_t* op) {
 static bool loom_kernel_has_trivial_workgroup_cluster(
     const loom_op_t* op, const loom_rewriter_t* rewriter) {
   const loom_op_t* kernel_op = loom_kernel_enclosing_def(op);
-  if (!kernel_op) return false;
+  if (!kernel_op) {
+    return false;
+  }
   const loom_op_t* launch_config = loom_kernel_def_launch_config_op(kernel_op);
-  if (!launch_config) return false;
+  if (!launch_config) {
+    return false;
+  }
   if (!loom_kernel_launch_config_has_workgroup_cluster_size(launch_config)) {
     return true;
   }
@@ -137,7 +143,9 @@ iree_status_t loom_kernel_cluster_count_canonicalize(
 }
 
 static loom_op_t* loom_kernel_region_return(loom_region_t* region) {
-  if (!region || region->block_count != 1) return NULL;
+  if (!region || region->block_count != 1) {
+    return NULL;
+  }
   loom_block_t* block = loom_region_entry_block(region);
   if (!block || !block->last_op || !loom_kernel_return_isa(block->last_op)) {
     return NULL;
@@ -149,7 +157,9 @@ static iree_status_t loom_kernel_move_region_body_before_op(
     loom_rewriter_t* rewriter, loom_region_t* region, loom_op_t* old_return,
     loom_op_t* before_op) {
   loom_block_t* block = loom_region_entry_block(region);
-  if (!block) return iree_ok_status();
+  if (!block) {
+    return iree_ok_status();
+  }
   loom_op_t* child_op = block->first_op;
   while (child_op && child_op != old_return) {
     loom_op_t* next_child_op = child_op->next_op;
@@ -189,13 +199,17 @@ iree_status_t loom_kernel_exit_canonicalize(loom_op_t* op,
     return iree_ok_status();
   }
   loom_op_t* final_return = op->parent_block->last_op;
-  if (op == final_return) return iree_ok_status();
+  if (op == final_return) {
+    return iree_ok_status();
+  }
 
   loom_region_t* body = loom_kernel_exit_body(op);
   loom_op_t* body_return = NULL;
   if (body) {
     body_return = loom_kernel_region_return(body);
-    if (!body_return) return iree_ok_status();
+    if (!body_return) {
+      return iree_ok_status();
+    }
   }
 
   loom_builder_set_before(&rewriter->builder, op);

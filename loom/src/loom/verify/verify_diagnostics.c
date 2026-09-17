@@ -26,7 +26,9 @@ static bool loom_verify_resolve_location_id(const loom_verify_state_t* state,
 static bool loom_verify_resolve_location(const loom_verify_state_t* state,
                                          const loom_op_t* op,
                                          loom_source_range_t* out_range) {
-  if (!op) return false;
+  if (!op) {
+    return false;
+  }
   return loom_verify_resolve_location_id(state, op->location, out_range);
 }
 
@@ -230,7 +232,9 @@ static iree_host_size_t loom_collect_source_backed_highlights(
     const loom_verify_highlight_target_t* target =
         loom_verify_match_highlight_target(wanted_targets, wanted_count,
                                            span_field_ref, target_occurrences);
-    if (!target) continue;
+    if (!target) {
+      continue;
+    }
 
     const loom_location_field_span_t* field_span =
         &location->file.field_spans[span_index];
@@ -319,7 +323,9 @@ static iree_host_size_t loom_verify_collect_related_locations(
 
   iree_host_size_t related_location_count = 0;
   for (iree_host_size_t i = 0; i < related_op_count; ++i) {
-    if (!related_ops[i].op) continue;
+    if (!related_ops[i].op) {
+      continue;
+    }
     loom_source_range_t source_location = {
         .provenance = LOOM_SOURCE_PROVENANCE_UNAVAILABLE_SOURCE,
     };
@@ -377,7 +383,9 @@ static iree_host_size_t loom_verify_collect_related_locations(
 // for caret output and machine JSON.
 void loom_verify_emit_diagnostic(loom_verify_state_t* state,
                                  const loom_diagnostic_emission_t* emission) {
-  if (!iree_status_is_ok(state->diagnostic_status)) return;
+  if (!iree_status_is_ok(state->diagnostic_status)) {
+    return;
+  }
 
   if (loom_error_def_severity(emission->error) == LOOM_DIAGNOSTIC_ERROR) {
     ++state->result->error_count;
@@ -386,7 +394,9 @@ void loom_verify_emit_diagnostic(loom_verify_state_t* state,
     ++state->result->warning_count;
   }
 
-  if (!state->sink.fn) return;
+  if (!state->sink.fn) {
+    return;
+  }
 
   loom_diagnostic_t diagnostic = {0};
   diagnostic.severity = loom_error_def_severity(emission->error);

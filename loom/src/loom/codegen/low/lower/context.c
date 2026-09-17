@@ -436,7 +436,9 @@ iree_status_t loom_low_lower_get_or_allocate_target_state(
        ++i) {
     loom_low_lower_target_state_record_t* record =
         &context->lowering.target_state_records[i];
-    if (record->key != key) continue;
+    if (record->key != key) {
+      continue;
+    }
     IREE_ASSERT_EQ(record->data_length, data_length);
     *out_data = record->data;
     return iree_ok_status();

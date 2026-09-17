@@ -60,7 +60,9 @@ void loom_reference_call_initialize(
   bool has_storage_argument = false;
   for (iree_host_size_t i = 0; i < arguments.count; ++i) {
     loom_type_t type = loom_module_value_type(module, arguments.values[i]);
-    if (!loom_type_is_buffer(type) && !loom_type_is_view(type)) continue;
+    if (!loom_type_is_buffer(type) && !loom_type_is_view(type)) {
+      continue;
+    }
     loom_value_fact_reference_origin_t origin =
         loom_value_facts_reference_origin(
             &argument_facts->context,
@@ -78,8 +80,9 @@ loom_value_fact_reference_origin_t loom_reference_call_result_origin(
     loom_value_fact_reference_origin_t return_origin) {
   switch (return_origin.kind) {
     case LOOM_VALUE_FACT_REFERENCE_ORIGIN_ENTRY:
-      if (return_origin.entry_value_id == LOOM_VALUE_ID_INVALID)
+      if (return_origin.entry_value_id == LOOM_VALUE_ID_INVALID) {
         return call->common_origin;
+      }
       return loom_value_facts_reference_origin(
           &call->argument_facts->context,
           loom_value_fact_table_lookup(

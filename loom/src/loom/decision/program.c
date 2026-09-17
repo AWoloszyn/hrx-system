@@ -232,8 +232,12 @@ void loom_decision_program_evaluate(
                                             out_live_action_count);
         }
       } else if (choice_result.feasibility == LOOM_DECISION_TRUTH_TRUE) {
-        if (match_count == 0) selected_action = choice->action_ordinal;
-        if (match_count < 2) ++match_count;
+        if (match_count == 0) {
+          selected_action = choice->action_ordinal;
+        }
+        if (match_count < 2) {
+          ++match_count;
+        }
         loom_decision_program_append_live(choice->action_ordinal,
                                           live_action_ordinals,
                                           out_live_action_count);
@@ -320,8 +324,12 @@ static void loom_decision_program_reduce_evidence(
                                             out_live_action_count);
         }
       } else if (evidence->feasibility == LOOM_DECISION_TRUTH_TRUE) {
-        if (match_count == 0) selected_action = choice->action_ordinal;
-        if (match_count < 2) ++match_count;
+        if (match_count == 0) {
+          selected_action = choice->action_ordinal;
+        }
+        if (match_count < 2) {
+          ++match_count;
+        }
         loom_decision_program_append_live(choice->action_ordinal,
                                           live_action_ordinals,
                                           out_live_action_count);
@@ -392,7 +400,9 @@ void loom_decision_program_evaluate_all(
   if (hard_requirements.feasibility == LOOM_DECISION_TRUTH_UNKNOWN) {
     out_result->kind = LOOM_DECISION_PROGRAM_RESULT_UNRESOLVED;
     out_result->unresolved_constraint = hard_requirements.unresolved_constraint;
-    if (resolution_policy != LOOM_DECISION_PROGRAM_DEFER_UNRESOLVED) return;
+    if (resolution_policy != LOOM_DECISION_PROGRAM_DEFER_UNRESOLVED) {
+      return;
+    }
     for (uint32_t i = 0; i < program->choice_count; ++i) {
       const loom_decision_program_choice_t* choice = &program->choices[i];
       const loom_decision_program_conjunction_result_t choice_result =

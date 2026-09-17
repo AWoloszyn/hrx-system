@@ -48,9 +48,15 @@
 // only considered equal when it is bit-equal to actual.
 static inline bool iree_math_fuzzy_compare_f64(double actual, double expected,
                                                double atol, double rtol) {
-  if (actual == expected) return true;
-  if (isnan(actual) && isnan(expected)) return true;
-  if (!isfinite(expected)) return false;
+  if (actual == expected) {
+    return true;
+  }
+  if (isnan(actual) && isnan(expected)) {
+    return true;
+  }
+  if (!isfinite(expected)) {
+    return false;
+  }
   return fabs(actual - expected) <= atol + rtol * fabs(expected);
 }
 
@@ -70,7 +76,9 @@ static inline uint64_t iree_math_saturating_add_u64(uint64_t lhs,
 
 static inline uint64_t iree_math_saturating_mul_u64(uint64_t lhs,
                                                     uint64_t rhs) {
-  if (lhs == 0 || rhs == 0) return 0;
+  if (lhs == 0 || rhs == 0) {
+    return 0;
+  }
   return lhs > UINT64_MAX / rhs ? UINT64_MAX : lhs * rhs;
 }
 
@@ -141,7 +149,9 @@ static inline bool iree_math_checked_lcm_i64(int64_t a, int64_t b,
 static inline uint64_t iree_math_rotl_u64(const uint64_t n, uint32_t c) {
   const uint32_t mask = 8 * sizeof(n) - 1;
   c &= mask;
-  if (!c) return n;
+  if (!c) {
+    return n;
+  }
   return (n << c) | (n >> (64 - c));
 }
 
@@ -153,7 +163,9 @@ static inline uint64_t iree_math_rotl_u64(const uint64_t n, uint32_t c) {
 static inline uint64_t iree_math_rotr_u64(const uint64_t n, uint32_t c) {
   const uint32_t mask = 8 * sizeof(n) - 1;
   c &= mask;
-  if (!c) return n;
+  if (!c) {
+    return n;
+  }
   return (n >> c) | (n << ((-c) & mask));
 }
 
@@ -179,7 +191,9 @@ static inline int iree_math_count_leading_zeros_u32(const uint32_t n) {
 #endif  // defined(__LCZNT__)
 
   // Handle 0 as a special case because __builtin_clz(0) is undefined.
-  if (n == 0) return 32;
+  if (n == 0) {
+    return 32;
+  }
   // Use __builtin_clz, which uses the following instructions:
   //  x86: bsr
   //  ARM64: clz
@@ -222,7 +236,9 @@ static inline int iree_math_count_leading_zeros_u64(uint64_t n) {
   return (int)__builtin_clzll(n);
 #endif
   // Handle 0 as a special case because __builtin_clzll(0) is undefined.
-  if (!n) return 64;
+  if (!n) {
+    return 64;
+  }
   // Use __builtin_clzll, which uses the following instructions:
   //    x86: bsr
   //    PPC: cntlzd
@@ -244,11 +260,21 @@ static inline int iree_math_count_trailing_zeros_u32(uint32_t n) {
 #else
   int c = 31;
   n &= ~n + 1;
-  if (n & 0x0000FFFFu) c -= 16;
-  if (n & 0x00FF00FFu) c -= 8;
-  if (n & 0x0F0F0F0Fu) c -= 4;
-  if (n & 0x33333333u) c -= 2;
-  if (n & 0x55555555u) c -= 1;
+  if (n & 0x0000FFFFu) {
+    c -= 16;
+  }
+  if (n & 0x00FF00FFu) {
+    c -= 8;
+  }
+  if (n & 0x0F0F0F0Fu) {
+    c -= 4;
+  }
+  if (n & 0x33333333u) {
+    c -= 2;
+  }
+  if (n & 0x55555555u) {
+    c -= 1;
+  }
   return c;
 #endif  // IREE_COMPILER_MSVC / IREE_COMPILER_GCC_COMPAT
 }
@@ -276,12 +302,24 @@ static inline int iree_math_count_trailing_zeros_u64(uint64_t n) {
 #else
   int c = 63;
   n &= ~n + 1;
-  if (n & 0x00000000FFFFFFFFull) c -= 32;
-  if (n & 0x0000FFFF0000FFFFull) c -= 16;
-  if (n & 0x00FF00FF00FF00FFull) c -= 8;
-  if (n & 0x0F0F0F0F0F0F0F0Full) c -= 4;
-  if (n & 0x3333333333333333ull) c -= 2;
-  if (n & 0x5555555555555555ull) c -= 1;
+  if (n & 0x00000000FFFFFFFFull) {
+    c -= 32;
+  }
+  if (n & 0x0000FFFF0000FFFFull) {
+    c -= 16;
+  }
+  if (n & 0x00FF00FF00FF00FFull) {
+    c -= 8;
+  }
+  if (n & 0x0F0F0F0F0F0F0F0Full) {
+    c -= 4;
+  }
+  if (n & 0x3333333333333333ull) {
+    c -= 2;
+  }
+  if (n & 0x5555555555555555ull) {
+    c -= 1;
+  }
   return c;
 #endif  // IREE_COMPILER_MSVC / IREE_COMPILER_GCC_COMPAT
 }
@@ -319,8 +357,12 @@ static inline int iree_math_count_ones_u64(uint64_t n) {
 // clamp to the empty or full domain.
 static inline uint32_t iree_math_mask_low_bits_u32(uint32_t value,
                                                    int32_t bit_count) {
-  if (bit_count <= 0) return 0;
-  if (bit_count >= 32) return value;
+  if (bit_count <= 0) {
+    return 0;
+  }
+  if (bit_count >= 32) {
+    return value;
+  }
   return value & ((UINT32_C(1) << bit_count) - 1);
 }
 
@@ -328,8 +370,12 @@ static inline uint32_t iree_math_mask_low_bits_u32(uint32_t value,
 // clamp to the empty or full domain.
 static inline uint64_t iree_math_mask_low_bits_u64(uint64_t value,
                                                    int32_t bit_count) {
-  if (bit_count <= 0) return 0;
-  if (bit_count >= 64) return value;
+  if (bit_count <= 0) {
+    return 0;
+  }
+  if (bit_count >= 64) {
+    return value;
+  }
   return value & ((UINT64_C(1) << bit_count) - 1);
 }
 
@@ -338,7 +384,9 @@ static inline int iree_math_count_leading_zeros_u64_width(uint64_t value,
                                                           int32_t bit_count) {
   bit_count = iree_max(0, iree_min(bit_count, 64));
   value = iree_math_mask_low_bits_u64(value, bit_count);
-  if (value == 0) return bit_count;
+  if (value == 0) {
+    return bit_count;
+  }
   return iree_math_count_leading_zeros_u64(value) - (64 - bit_count);
 }
 
@@ -347,7 +395,9 @@ static inline int iree_math_count_trailing_zeros_u64_width(uint64_t value,
                                                            int32_t bit_count) {
   bit_count = iree_max(0, iree_min(bit_count, 64));
   value = iree_math_mask_low_bits_u64(value, bit_count);
-  if (value == 0) return bit_count;
+  if (value == 0) {
+    return bit_count;
+  }
   return iree_math_count_trailing_zeros_u64(value);
 }
 
@@ -456,7 +506,9 @@ static inline bool iree_math_div_u128_by_u64_to_u64(uint64_t high, uint64_t low,
                                                     uint64_t denominator,
                                                     uint64_t* out_quotient) {
   *out_quotient = 0;
-  if (denominator == 0 || high >= denominator) return false;
+  if (denominator == 0 || high >= denominator) {
+    return false;
+  }
 
   uint64_t quotient = 0;
   uint64_t remainder = high;
@@ -481,8 +533,12 @@ static inline bool iree_math_round_mul_div_u64_portable(uint64_t value,
                                                         uint64_t denominator,
                                                         uint64_t* out_result) {
   *out_result = 0;
-  if (denominator == 0) return false;
-  if (value == 0 || numerator == 0) return true;
+  if (denominator == 0) {
+    return false;
+  }
+  if (value == 0 || numerator == 0) {
+    return true;
+  }
 
   uint64_t product_high = 0;
   uint64_t product_low = 0;
@@ -490,7 +546,9 @@ static inline bool iree_math_round_mul_div_u64_portable(uint64_t value,
 
   const uint64_t rounding_bias = denominator / 2;
   product_low += rounding_bias;
-  if (product_low < rounding_bias) ++product_high;
+  if (product_low < rounding_bias) {
+    ++product_high;
+  }
 
   return iree_math_div_u128_by_u64_to_u64(product_high, product_low,
                                           denominator, out_result);
@@ -503,22 +561,30 @@ static inline bool iree_math_round_mul_div_u64(uint64_t value,
                                                uint64_t denominator,
                                                uint64_t* out_result) {
   *out_result = 0;
-  if (denominator == 0) return false;
-  if (value == 0 || numerator == 0) return true;
+  if (denominator == 0) {
+    return false;
+  }
+  if (value == 0 || numerator == 0) {
+    return true;
+  }
 
 #if defined(IREE_COMPILER_MSVC_COMPAT) && defined(IREE_ARCH_X86_64)
   uint64_t product_high = 0;
   uint64_t product_low = _umul128(value, numerator, &product_high);
   const uint64_t rounding_bias = denominator / 2;
   product_low += rounding_bias;
-  if (product_low < rounding_bias) ++product_high;
+  if (product_low < rounding_bias) {
+    ++product_high;
+  }
   return iree_math_div_u128_by_u64_to_u64(product_high, product_low,
                                           denominator, out_result);
 #elif defined(__SIZEOF_INT128__) && !defined(IREE_COMPILER_MSVC_COMPAT)
   __uint128_t product = (__uint128_t)value * (__uint128_t)numerator;
   product += denominator / 2;
   __uint128_t quotient = product / denominator;
-  if (quotient > UINT64_MAX) return false;
+  if (quotient > UINT64_MAX) {
+    return false;
+  }
   *out_result = (uint64_t)quotient;
   return true;
 #else
@@ -585,7 +651,9 @@ static inline uint32_t iree_math_make_f32_bits_from_bits(
 
   const uint32_t significand =
       src_exp == 0 ? src_mantissa : (1u << src_mantissa_bits) | src_mantissa;
-  if (significand == 0) return f32_sign;
+  if (significand == 0) {
+    return f32_sign;
+  }
 
   // Interpret the finite value as |significand| * 2^|scale| and normalize the
   // integer significand directly into an f32 payload. This avoids executing
@@ -638,7 +706,9 @@ static inline uint64_t iree_math_make_f64_bits_from_f32_bits(
   const uint32_t f32_exp = f32_bits & f32_exp_mask;
   const uint32_t f32_mantissa = f32_bits & f32_mantissa_mask;
   if (f32_exp == f32_exp_mask) {
-    if (f32_mantissa == 0) return f64_sign | f64_exp_mask;
+    if (f32_mantissa == 0) {
+      return f64_sign | f64_exp_mask;
+    }
     const uint64_t f64_mantissa =
         ((uint64_t)f32_mantissa << (f64_mantissa_bits - f32_mantissa_bits)) |
         (UINT64_C(1) << (f64_mantissa_bits - 1));
@@ -647,7 +717,9 @@ static inline uint64_t iree_math_make_f64_bits_from_f32_bits(
 
   const uint32_t significand =
       f32_exp == 0 ? f32_mantissa : (1u << f32_mantissa_bits) | f32_mantissa;
-  if (significand == 0) return f64_sign;
+  if (significand == 0) {
+    return f64_sign;
+  }
 
   const int encoded_exp = (int)(f32_exp >> f32_exp_shift);
   const int scale =
@@ -977,8 +1049,12 @@ IREE_MATH_MAKE_FLOAT_TYPE_HELPERS(f4e2m1fn, uint8_t, 2, 1,
 // no zero. Retrofitting it into the above shared conversion code would be
 // tricky and not worth it, so here are stand-alone conversion routines:
 static inline uint32_t iree_math_f8e8m0fnu_to_f32_bits(uint8_t src) {
-  if (src == 0xFF) return UINT32_C(0x7FC00000);
-  if (src == 0) return UINT32_C(0x00400000);
+  if (src == 0xFF) {
+    return UINT32_C(0x7FC00000);
+  }
+  if (src == 0) {
+    return UINT32_C(0x00400000);
+  }
   return (uint32_t)src << 23;
 }
 static inline float iree_math_f8e8m0fnu_to_f32(uint8_t src) {

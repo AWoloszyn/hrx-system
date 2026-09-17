@@ -436,7 +436,9 @@ static iree_string_view_t loom_low_target_legalize_nonempty(
 
 static iree_string_view_t loom_low_target_legalize_value_name(
     const loom_module_t* module, loom_value_id_t value_id) {
-  if (value_id >= module->values.count) return IREE_SV("<unknown>");
+  if (value_id >= module->values.count) {
+    return IREE_SV("<unknown>");
+  }
   const loom_value_t* value = loom_module_value(module, value_id);
   if (value->name_id == LOOM_STRING_ID_INVALID ||
       value->name_id >= module->strings.count) {
@@ -454,7 +456,9 @@ static bool loom_low_target_legalize_should_stop_preflight(
 static bool loom_low_target_legalize_op_is_in_function_entry_block(
     const loom_low_target_legalize_function_state_t* state,
     const loom_op_t* op) {
-  if (!op->parent_block) return false;
+  if (!op->parent_block) {
+    return false;
+  }
   const loom_region_t* body = loom_func_like_body(state->selection->func);
   return op->parent_block->parent_region == body &&
          op->parent_block->region_index == 0;
@@ -535,7 +539,9 @@ static bool loom_low_target_legalize_lookup_assume_operand_facts(
   }
   const loom_value_id_t target_value = (loom_value_id_t)predicate->args[0];
   for (uint16_t i = 0; i < values.count; ++i) {
-    if (values.values[i] != target_value) continue;
+    if (values.values[i] != target_value) {
+      continue;
+    }
     *out_facts = loom_value_fact_table_lookup(fact_table, target_value);
     loom_value_facts_t element_facts = loom_value_facts_unknown();
     if (loom_value_facts_query_all_equal_element(&fact_table->context,

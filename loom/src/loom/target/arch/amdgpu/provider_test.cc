@@ -296,7 +296,9 @@ class AmdgpuProviderTest : public ::testing::Test {
     loom_op_t* target_op =
         module->symbols.entries[target_symbol_id].defining_op;
     IREE_ASSERT(target_op != nullptr);
-    if (out_target_op != nullptr) *out_target_op = target_op;
+    if (out_target_op != nullptr) {
+      *out_target_op = target_op;
+    }
     return module;
   }
 

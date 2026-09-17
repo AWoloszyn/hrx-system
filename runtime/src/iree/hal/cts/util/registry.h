@@ -221,7 +221,9 @@ inline const std::string& GetBackendDeviceCacheKey(const BackendInfo& info) {
 // Returns true if |info| is compatible with this host build/configuration.
 inline bool IsBackendHostCompatible(const BackendInfo& info,
                                     std::string* out_reason) {
-  if (!info.host_compatibility_fn) return true;
+  if (!info.host_compatibility_fn) {
+    return true;
+  }
   return info.host_compatibility_fn(out_reason);
 }
 

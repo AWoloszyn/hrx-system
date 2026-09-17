@@ -14,8 +14,12 @@ static bool loom_loop_domain_value_equal(
   if (lhs == LOOM_VALUE_ID_INVALID || rhs == LOOM_VALUE_ID_INVALID) {
     return false;
   }
-  if (lhs == rhs) return true;
-  if (!fact_table) return false;
+  if (lhs == rhs) {
+    return true;
+  }
+  if (!fact_table) {
+    return false;
+  }
 
   loom_value_facts_t lhs_facts = loom_value_fact_table_lookup(fact_table, lhs);
   loom_value_facts_t rhs_facts = loom_value_fact_table_lookup(fact_table, rhs);

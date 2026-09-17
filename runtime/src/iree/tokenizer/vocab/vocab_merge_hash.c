@@ -110,7 +110,9 @@ iree_status_t iree_tokenizer_vocab_merge_hash_build(
 
 void iree_tokenizer_vocab_merge_hash_free(
     iree_tokenizer_vocab_merge_hash_t* hash) {
-  if (!hash) return;
+  if (!hash) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t allocator = hash->allocator;
   // Entries are part of the same allocation as hash, so just free hash.

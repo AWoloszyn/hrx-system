@@ -274,7 +274,9 @@ static loom_scf_unroll_trip_count_state_t loom_scf_unroll_resolve_trip_count(
     uint32_t trip_count = 0;
     loom_scf_unroll_trip_count_state_t state =
         loom_scf_unroll_compute_trip_count_i64(lower, upper, step, &trip_count);
-    if (state != LOOM_SCF_UNROLL_TRIP_COUNT_EXACT) return state;
+    if (state != LOOM_SCF_UNROLL_TRIP_COUNT_EXACT) {
+      return state;
+    }
     *out_trip_count = (loom_scf_unroll_trip_count_t){
         .count = trip_count,
         .step = step,
@@ -759,7 +761,9 @@ static iree_status_t loom_scf_unroll_clone_iteration(
       const loom_value_id_t* source_results = loom_op_const_results(source_op);
       for (uint16_t i = 0; i < source_op->result_count; ++i) {
         loom_value_id_t source_result = source_results[i];
-        if (source_result == LOOM_VALUE_ID_INVALID) continue;
+        if (source_result == LOOM_VALUE_ID_INVALID) {
+          continue;
+        }
         loom_value_id_t target_result = LOOM_VALUE_ID_INVALID;
         if (!loom_ir_remap_try_lookup_value(remap, source_result,
                                             &target_result)) {
@@ -825,7 +829,9 @@ static iree_status_t loom_scf_unroll_copy_result_types(
     loom_scf_unroll_context_t* context, loom_op_t* op,
     loom_type_t** out_result_types) {
   *out_result_types = NULL;
-  if (op->result_count == 0) return iree_ok_status();
+  if (op->result_count == 0) {
+    return iree_ok_status();
+  }
   loom_type_t* result_types = NULL;
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate_array(context->pass->arena, op->result_count,
@@ -844,7 +850,9 @@ static iree_status_t loom_scf_unroll_adjust_tied_results_for_policy_clear(
     uint16_t* out_tied_result_count) {
   *out_tied_results = NULL;
   *out_tied_result_count = 0;
-  if (op->tied_result_count == 0) return iree_ok_status();
+  if (op->tied_result_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_tied_result_t* tied_results = NULL;
   IREE_RETURN_IF_ERROR(
@@ -1199,11 +1207,15 @@ static iree_status_t loom_scf_unroll_full_unroll_scheduled_with_arena(
       iter_args.values, schedule, scratch_arena, final_carried_values);
   loom_builder_restore(&context->rewriter->builder, saved_ip);
   IREE_RETURN_IF_ERROR(status);
-  if (loom_pass_has_error_diagnostics(context->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(context->pass)) {
+    return iree_ok_status();
+  }
 
   if (carried_count > 0) {
     for (uint16_t i = 0; i < carried_count; ++i) {
-      if (final_carried_values[i] < context->module->values.count) continue;
+      if (final_carried_values[i] < context->module->values.count) {
+        continue;
+      }
       return loom_scf_unroll_emit_policy_error(
           context, op, IREE_SV("schedule"), schedule,
           IREE_SV("acyclic loop-carried dependencies"));

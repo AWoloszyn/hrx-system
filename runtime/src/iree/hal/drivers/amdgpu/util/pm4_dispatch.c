@@ -306,7 +306,9 @@ static bool iree_hal_amdgpu_pm4_dispatch_entry_address_is_supported(
 static bool iree_hal_amdgpu_pm4_dispatch_descriptor_is_supported(
     iree_hal_amdgpu_gfxip_version_t gfxip_version,
     const iree_hal_amdgpu_kernel_descriptor_t* descriptor) {
-  if (descriptor->private_segment_fixed_size != 0) return false;
+  if (descriptor->private_segment_fixed_size != 0) {
+    return false;
+  }
   if (iree_any_bit_set(
           descriptor->compute_pgm_rsrc2,
           IREE_HAL_AMDGPU_COMPUTE_PGM_RSRC2_ENABLE_PRIVATE_SEGMENT)) {
@@ -338,12 +340,16 @@ static bool iree_hal_amdgpu_pm4_dispatch_descriptor_is_supported(
   if (has_kernarg_pointer && user_data_dword_count < user_data_prefix_count) {
     return false;
   }
-  if (!has_kernarg_pointer && user_data_dword_count != 0) return false;
+  if (!has_kernarg_pointer && user_data_dword_count != 0) {
+    return false;
+  }
 
   const uint32_t kernarg_preload_dword_count =
       iree_hal_amdgpu_pm4_kernel_descriptor_kernarg_preload_count(descriptor);
   if (kernarg_preload_dword_count != 0) {
-    if (!has_kernarg_pointer) return false;
+    if (!has_kernarg_pointer) {
+      return false;
+    }
     if (kernarg_preload_dword_count >
         user_data_dword_count - user_data_prefix_count) {
       return false;
@@ -371,7 +377,9 @@ bool iree_hal_amdgpu_pm4_dispatch_launch_state_is_supported(
     const iree_hal_amdgpu_kernel_descriptor_t* descriptor,
     uint64_t kernel_object, const uint16_t workgroup_size[3],
     iree_hal_amdgpu_pm4_dispatch_launch_flags_t flags) {
-  if (!descriptor || !workgroup_size || kernel_object == 0) return false;
+  if (!descriptor || !workgroup_size || kernel_object == 0) {
+    return false;
+  }
   if (!iree_hal_amdgpu_pm4_dispatch_gfxip_is_supported(gfxip_version)) {
     return false;
   }
@@ -379,7 +387,9 @@ bool iree_hal_amdgpu_pm4_dispatch_launch_state_is_supported(
     return false;
   }
   for (iree_host_size_t i = 0; i < 3; ++i) {
-    if (workgroup_size[i] == 0) return false;
+    if (workgroup_size[i] == 0) {
+      return false;
+    }
   }
   return iree_hal_amdgpu_pm4_dispatch_descriptor_is_supported(gfxip_version,
                                                               descriptor) &&
@@ -552,7 +562,9 @@ iree_status_t iree_hal_amdgpu_pm4_dispatch_emit_user_data(
   IREE_ASSERT_ARGUMENT(target_dwords);
   IREE_ASSERT_ARGUMENT(out_dword_count);
   *out_dword_count = 0;
-  if (state->user_data_dword_count == 0) return iree_ok_status();
+  if (state->user_data_dword_count == 0) {
+    return iree_ok_status();
+  }
 
   const uint32_t required_dword_count = 2 + state->user_data_dword_count;
   if (IREE_UNLIKELY(capacity < required_dword_count)) {

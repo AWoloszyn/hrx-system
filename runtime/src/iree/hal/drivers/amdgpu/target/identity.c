@@ -62,7 +62,9 @@ static const iree_hal_amdgpu_physical_target_mapping_t
 };
 
 static bool iree_hal_amdgpu_parse_decimal_digit(char c, uint32_t* out_value) {
-  if (c < '0' || c > '9') return false;
+  if (c < '0' || c > '9') {
+    return false;
+  }
   *out_value = (uint32_t)(c - '0');
   return true;
 }
@@ -83,7 +85,9 @@ static bool iree_hal_amdgpu_parse_hex_digit(char c, uint32_t* out_value) {
 
 static bool iree_hal_amdgpu_parse_decimal_number(iree_string_view_t value,
                                                  uint32_t* out_number) {
-  if (iree_string_view_is_empty(value)) return false;
+  if (iree_string_view_is_empty(value)) {
+    return false;
+  }
   uint64_t number = 0;
   for (iree_host_size_t i = 0; i < value.size; ++i) {
     uint32_t digit = 0;
@@ -91,7 +95,9 @@ static bool iree_hal_amdgpu_parse_decimal_number(iree_string_view_t value,
       return false;
     }
     number = number * 10 + digit;
-    if (number > UINT32_MAX) return false;
+    if (number > UINT32_MAX) {
+      return false;
+    }
   }
   *out_number = (uint32_t)number;
   return true;
@@ -189,7 +195,9 @@ static void iree_hal_amdgpu_target_identity_apply_known_feature_support(
     iree_hal_amdgpu_target_identity_t* identity) {
   const iree_hal_amdgpu_target_mapping_t* mapping =
       iree_hal_amdgpu_target_lookup_mapping(identity->target);
-  if (mapping == NULL) return;
+  if (mapping == NULL) {
+    return;
+  }
 
   if (identity->amdhsa_features.sramecc ==
           IREE_HAL_AMDGPU_TARGET_FEATURE_STATE_ANY &&
@@ -518,7 +526,9 @@ iree_hal_amdgpu_target_identity_format_artifact_key(
       .capacity = buffer_capacity,
       .length = 0,
   };
-  if (buffer != NULL && buffer_capacity > 0) buffer[0] = 0;
+  if (buffer != NULL && buffer_capacity > 0) {
+    buffer[0] = 0;
+  }
   iree_hal_amdgpu_target_identity_formatter_append(&formatter,
                                                    identity->target);
   iree_hal_amdgpu_target_identity_formatter_append_feature(
@@ -540,7 +550,9 @@ static bool iree_hal_amdgpu_target_lookup_code_object_processor(
     iree_string_view_t* out_code_object_processor) {
   const iree_hal_amdgpu_target_mapping_t* mapping =
       iree_hal_amdgpu_target_lookup_mapping(exact_target);
-  if (mapping == NULL) return false;
+  if (mapping == NULL) {
+    return false;
+  }
   *out_code_object_processor = mapping->code_object_processor;
   return true;
 }
@@ -597,7 +609,9 @@ iree_hal_amdgpu_target_identity_lookup_wavefront_size_support(
   }
   const iree_hal_amdgpu_target_mapping_t* mapping =
       iree_hal_amdgpu_target_lookup_mapping(exact_identity->target);
-  if (mapping == NULL) return false;
+  if (mapping == NULL) {
+    return false;
+  }
   *out_support = mapping->wavefront;
   return true;
 }
@@ -683,7 +697,9 @@ IREE_API_EXPORT iree_status_t iree_hal_amdgpu_target_compatibility_format(
       .capacity = buffer_capacity,
       .length = 0,
   };
-  if (buffer != NULL && buffer_capacity > 0) buffer[0] = 0;
+  if (buffer != NULL && buffer_capacity > 0) {
+    buffer[0] = 0;
+  }
 
   iree_host_size_t reason_count = 0;
   if (compatibility == IREE_HAL_AMDGPU_TARGET_COMPATIBILITY_COMPATIBLE) {

@@ -77,7 +77,9 @@ static iree_status_t iree_hal_replay_file_calculate_payload_length(
     }
     payload_length_valid = iree_host_size_checked_add(
         payload_length, iovecs[i].data_length, &payload_length);
-    if (!payload_length_valid) break;
+    if (!payload_length_valid) {
+      break;
+    }
   }
   if (IREE_UNLIKELY(!payload_length_valid)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -127,7 +129,9 @@ IREE_API_EXPORT iree_status_t iree_hal_replay_file_writer_allocate(
 IREE_API_EXPORT iree_status_t
 iree_hal_replay_file_writer_close(iree_hal_replay_file_writer_t* writer) {
   IREE_ASSERT_ARGUMENT(writer);
-  if (writer->closed) return iree_ok_status();
+  if (writer->closed) {
+    return iree_ok_status();
+  }
 
   iree_io_stream_pos_t file_length = iree_io_stream_offset(writer->stream);
   if (IREE_UNLIKELY(file_length < 0)) {
@@ -143,13 +147,17 @@ iree_hal_replay_file_writer_close(iree_hal_replay_file_writer_t* writer) {
     status = iree_io_stream_seek(writer->stream, IREE_IO_STREAM_SEEK_SET,
                                  file_length);
   }
-  if (iree_status_is_ok(status)) writer->closed = true;
+  if (iree_status_is_ok(status)) {
+    writer->closed = true;
+  }
   return status;
 }
 
 IREE_API_EXPORT void iree_hal_replay_file_writer_free(
     iree_hal_replay_file_writer_t* writer) {
-  if (!writer) return;
+  if (!writer) {
+    return;
+  }
   iree_allocator_t host_allocator = writer->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 

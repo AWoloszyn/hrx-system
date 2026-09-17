@@ -170,7 +170,9 @@ static IdleHandlerContext* CreateIdleHandlerContext(
 }
 
 static void DestroyIdleHandlerContext(IdleHandlerContext* ctx) {
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
   if (ctx->active_relay) {
     WaitForRelayUnregistration(ctx->proactor, ctx->active_relay);
   }
@@ -191,7 +193,9 @@ static void BM_DispatchAmongIdleHandlers(::benchmark::State& state,
                                          const ProactorFactory& factory) {
   size_t idle_count = static_cast<size_t>(state.range(0));
   auto* ctx = CreateIdleHandlerContext(factory, idle_count, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   for (auto _ : state) {
     uint32_t observed = iree_async_notification_query_epoch(ctx->active_sink);
@@ -295,7 +299,9 @@ static RelayScalabilityContext* CreateRelayScalabilityContext(
 }
 
 static void DestroyRelayScalabilityContext(RelayScalabilityContext* ctx) {
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
   for (size_t i = 0; i < ctx->relays.size(); ++i) {
     if (ctx->relays[i]) {
       WaitForRelayUnregistration(ctx->proactor, ctx->relays[i]);
@@ -313,7 +319,9 @@ static void BM_RelayDispatchScalability(::benchmark::State& state,
                                         const ProactorFactory& factory) {
   size_t relay_count = static_cast<size_t>(state.range(0));
   auto* ctx = CreateRelayScalabilityContext(factory, relay_count, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Signal the last source each iteration. With linear scan, this would be the
   // worst case (scanning all N-1 other entries first). With hash lookup, the
@@ -422,7 +430,9 @@ static FanOutContext* CreateFanOutContext(const ProactorFactory& factory,
 }
 
 static void DestroyFanOutContext(FanOutContext* ctx) {
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
   for (size_t i = 0; i < ctx->relays.size(); ++i) {
     if (ctx->relays[i]) {
       WaitForRelayUnregistration(ctx->proactor, ctx->relays[i]);
@@ -440,7 +450,9 @@ static void BM_NotificationRelayFanOut(::benchmark::State& state,
                                        const ProactorFactory& factory) {
   size_t fan_out = static_cast<size_t>(state.range(0));
   auto* ctx = CreateFanOutContext(factory, fan_out, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Pre-allocate observed epochs to avoid per-iteration allocation.
   std::vector<uint32_t> observed(fan_out);

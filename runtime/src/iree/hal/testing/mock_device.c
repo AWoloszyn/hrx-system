@@ -225,7 +225,9 @@ static iree_status_t iree_hal_mock_executable_function_parameters(
   const iree_hal_mock_executable_parameter_metadata_t* parameter_metadata =
       &iree_hal_mock_executable_parameter_metadata(
           executable)[function_ordinal];
-  if (!parameter_metadata->size) return iree_ok_status();
+  if (!parameter_metadata->size) {
+    return iree_ok_status();
+  }
   if (capacity < 1 || !out_parameters) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "mock executable parameter output too small");

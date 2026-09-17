@@ -32,7 +32,9 @@ static iree_status_t count_callback(void* user_data,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 4) return 0;
+  if (size < 4) {
+    return 0;
+  }
 
   // First 2 bytes encode pattern length as a fraction of remaining data.
   // This ensures we always have valid bounds.
@@ -42,9 +44,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Calculate pattern length (max half the remaining data, min 1 byte).
   iree_host_size_t max_pattern_len = size / 2;
-  if (max_pattern_len == 0) max_pattern_len = size;
+  if (max_pattern_len == 0) {
+    max_pattern_len = size;
+  }
   iree_host_size_t pattern_len = pattern_frac % (max_pattern_len + 1);
-  if (pattern_len == 0 && size > 0) pattern_len = 1;
+  if (pattern_len == 0 && size > 0) {
+    pattern_len = 1;
+  }
 
   iree_string_view_t pattern =
       iree_make_string_view(reinterpret_cast<const char*>(data), pattern_len);
@@ -102,7 +108,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   while (offset < input.size) {
     // Vary chunk sizes to stress boundary handling.
     iree_host_size_t chunk_size = ((offset % 7) + 1) * 16;
-    if (chunk_size > input.size - offset) chunk_size = input.size - offset;
+    if (chunk_size > input.size - offset) {
+      chunk_size = input.size - offset;
+    }
 
     iree_string_view_t chunk =
         iree_make_string_view(input.data + offset, chunk_size);

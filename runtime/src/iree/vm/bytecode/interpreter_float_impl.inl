@@ -132,9 +132,15 @@ static inline IREE_ATTRIBUTE_ALWAYS_INLINE uint64_t IREE_VM_BYTECODE_FLOAT_BITS(
              IREE_VM_BYTECODE_FLOAT_BITS_TYPE rhs_bits, uint8_t predicate) {
   const bool ordered = !IREE_VM_BYTECODE_FLOAT_PRIVATE(is_nan)(lhs_bits) &&
                        !IREE_VM_BYTECODE_FLOAT_PRIVATE(is_nan)(rhs_bits);
-  if (!ordered) return predicate >= IREE_VM_BYTECODE_FLOAT_COMPARE_UEQ;
-  if (predicate == IREE_VM_BYTECODE_FLOAT_COMPARE_ORD) return 1;
-  if (predicate == IREE_VM_BYTECODE_FLOAT_COMPARE_UNO) return 0;
+  if (!ordered) {
+    return predicate >= IREE_VM_BYTECODE_FLOAT_COMPARE_UEQ;
+  }
+  if (predicate == IREE_VM_BYTECODE_FLOAT_COMPARE_ORD) {
+    return 1;
+  }
+  if (predicate == IREE_VM_BYTECODE_FLOAT_COMPARE_UNO) {
+    return 0;
+  }
   const uint8_t relation = predicate >= IREE_VM_BYTECODE_FLOAT_COMPARE_UEQ
                                ? predicate - IREE_VM_BYTECODE_FLOAT_COMPARE_UEQ
                                : predicate;

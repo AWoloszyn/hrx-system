@@ -37,16 +37,24 @@ static inline char iree_tolower(char c) {
 
 IREE_API_EXPORT bool iree_string_view_equal(iree_string_view_t lhs,
                                             iree_string_view_t rhs) {
-  if (lhs.size != rhs.size) return false;
-  if (lhs.size == 0) return true;  // Both empty - equal without memcmp.
+  if (lhs.size != rhs.size) {
+    return false;
+  }
+  if (lhs.size == 0) {
+    return true;  // Both empty - equal without memcmp.
+  }
   return memcmp(lhs.data, rhs.data, lhs.size) == 0;
 }
 
 IREE_API_EXPORT bool iree_string_view_equal_case(iree_string_view_t lhs,
                                                  iree_string_view_t rhs) {
-  if (lhs.size != rhs.size) return false;
+  if (lhs.size != rhs.size) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < lhs.size; ++i) {
-    if (iree_tolower(lhs.data[i]) != iree_tolower(rhs.data[i])) return false;
+    if (iree_tolower(lhs.data[i]) != iree_tolower(rhs.data[i])) {
+      return false;
+    }
   }
   return true;
 }
@@ -56,7 +64,9 @@ IREE_API_EXPORT int iree_string_view_compare(iree_string_view_t lhs,
   iree_host_size_t min_size = iree_min_host_size(lhs.size, rhs.size);
   if (min_size == 0) {
     // Both empty, or one is a prefix of the other starting from empty.
-    if (lhs.size == rhs.size) return 0;
+    if (lhs.size == rhs.size) {
+      return 0;
+    }
     return lhs.size < rhs.size ? -1 : 1;
   }
   int cmp = strncmp(lhs.data, rhs.data, min_size);
@@ -80,10 +90,16 @@ IREE_API_EXPORT iree_host_size_t iree_string_view_find_char(
 
 IREE_API_EXPORT iree_host_size_t iree_string_view_find(
     iree_string_view_t value, iree_string_view_t needle, iree_host_size_t pos) {
-  if (needle.size == 0) return pos <= value.size ? pos : IREE_STRING_VIEW_NPOS;
-  if (needle.size > value.size) return IREE_STRING_VIEW_NPOS;
+  if (needle.size == 0) {
+    return pos <= value.size ? pos : IREE_STRING_VIEW_NPOS;
+  }
+  if (needle.size > value.size) {
+    return IREE_STRING_VIEW_NPOS;
+  }
   // Safe: needle.size <= value.size, so subtraction cannot underflow.
-  if (pos > value.size - needle.size) return IREE_STRING_VIEW_NPOS;
+  if (pos > value.size - needle.size) {
+    return IREE_STRING_VIEW_NPOS;
+  }
   // Single character: delegate to memchr.
   if (needle.size == 1) {
     return iree_string_view_find_char(value, needle.data[0], pos);
@@ -208,7 +224,9 @@ IREE_API_EXPORT bool iree_string_view_consume_suffix(
 
 IREE_API_EXPORT iree_string_view_t
 iree_string_view_trim(iree_string_view_t value) {
-  if (iree_string_view_is_empty(value)) return value;
+  if (iree_string_view_is_empty(value)) {
+    return value;
+  }
   iree_host_size_t start = 0;
   while (start < value.size && isspace((unsigned char)value.data[start])) {
     ++start;
@@ -231,14 +249,20 @@ IREE_API_EXPORT intptr_t iree_string_view_split(iree_string_view_t value,
                                                 char split_char,
                                                 iree_string_view_t* out_lhs,
                                                 iree_string_view_t* out_rhs) {
-  if (out_lhs) *out_lhs = iree_string_view_empty();
-  if (out_rhs) *out_rhs = iree_string_view_empty();
+  if (out_lhs) {
+    *out_lhs = iree_string_view_empty();
+  }
+  if (out_rhs) {
+    *out_rhs = iree_string_view_empty();
+  }
   if (!value.data || !value.size) {
     return -1;
   }
   const void* first_ptr = memchr(value.data, split_char, value.size);
   if (!first_ptr) {
-    if (out_lhs) *out_lhs = value;
+    if (out_lhs) {
+      *out_lhs = value;
+    }
     return -1;
   }
   intptr_t offset = (intptr_t)((const char*)(first_ptr)-value.data);
@@ -258,7 +282,9 @@ IREE_API_EXPORT void iree_string_view_replace_char(iree_string_view_t value,
                                                    char new_char) {
   char* p = (char*)value.data;
   for (iree_host_size_t i = 0; i < value.size; ++i) {
-    if (p[i] == old_char) p[i] = new_char;
+    if (p[i] == old_char) {
+      p[i] = new_char;
+    }
   }
 }
 
@@ -285,7 +311,9 @@ IREE_API_EXPORT bool iree_string_view_match_pattern(
       ++value_position;
       continue;
     }
-    if (star_pattern_position == IREE_STRING_VIEW_NPOS) return false;
+    if (star_pattern_position == IREE_STRING_VIEW_NPOS) {
+      return false;
+    }
     pattern_position = star_pattern_position + 1;
     value_position = ++star_value_position;
   }
@@ -300,7 +328,9 @@ IREE_API_EXPORT bool iree_string_view_match_pattern(
 
 IREE_API_EXPORT void iree_string_view_to_cstring(
     iree_string_view_t value, char* buffer, iree_host_size_t buffer_length) {
-  if (!buffer_length) return;
+  if (!buffer_length) {
+    return;
+  }
   // Truncate and ensure there's space for the NUL terminator.
   iree_host_size_t length = iree_min(value.size, buffer_length - 1);
   // Copy string contents up to the truncated length.
@@ -344,7 +374,9 @@ IREE_API_EXPORT bool iree_string_view_atoi_int32_base(iree_string_view_t value,
   errno = 0;
   char* end = NULL;
   long parsed_value = strtol(temp, &end, base);
-  if (temp == end) return false;
+  if (temp == end) {
+    return false;
+  }
   if ((parsed_value == LONG_MIN || parsed_value == LONG_MAX) &&
       errno == ERANGE) {
     return false;
@@ -372,8 +404,12 @@ IREE_API_EXPORT bool iree_string_view_atoi_uint32_base(iree_string_view_t value,
   errno = 0;
   char* end = NULL;
   unsigned long parsed_value = strtoul(temp, &end, base);
-  if (temp == end) return false;
-  if (parsed_value == ULONG_MAX && errno == ERANGE) return false;
+  if (temp == end) {
+    return false;
+  }
+  if (parsed_value == ULONG_MAX && errno == ERANGE) {
+    return false;
+  }
   *out_value = (uint32_t)parsed_value;
   return parsed_value != 0 || errno == 0;
 }
@@ -397,7 +433,9 @@ IREE_API_EXPORT bool iree_string_view_atoi_int64_base(iree_string_view_t value,
   errno = 0;
   char* end = NULL;
   long long parsed_value = strtoll(temp, &end, base);
-  if (temp == end) return false;
+  if (temp == end) {
+    return false;
+  }
   if ((parsed_value == LLONG_MIN || parsed_value == LLONG_MAX) &&
       errno == ERANGE) {
     return false;
@@ -425,8 +463,12 @@ IREE_API_EXPORT bool iree_string_view_atoi_uint64_base(iree_string_view_t value,
   errno = 0;
   char* end = NULL;
   unsigned long long parsed_value = strtoull(temp, &end, base);
-  if (temp == end) return false;
-  if (parsed_value == ULLONG_MAX && errno == ERANGE) return false;
+  if (temp == end) {
+    return false;
+  }
+  if (parsed_value == ULLONG_MAX && errno == ERANGE) {
+    return false;
+  }
   *out_value = (uint64_t)parsed_value;
   return parsed_value != 0 || errno == 0;
 }
@@ -452,8 +494,12 @@ typedef struct iree_hex_float_t {
 } iree_hex_float_t;
 
 static int64_t iree_saturating_add_int64(int64_t lhs, int64_t rhs) {
-  if (rhs > 0 && lhs > INT64_MAX - rhs) return INT64_MAX;
-  if (rhs < 0 && lhs < INT64_MIN - rhs) return INT64_MIN;
+  if (rhs > 0 && lhs > INT64_MAX - rhs) {
+    return INT64_MAX;
+  }
+  if (rhs < 0 && lhs < INT64_MIN - rhs) {
+    return INT64_MIN;
+  }
   return lhs + rhs;
 }
 
@@ -465,7 +511,9 @@ static int64_t iree_saturating_sub_int64(int64_t lhs, int64_t rhs) {
 }
 
 static int iree_hex_digit_value(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
   c = iree_tolower(c);
   return c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
 }
@@ -502,7 +550,9 @@ static bool iree_string_view_parse_hex_float(iree_string_view_t value,
   iree_host_size_t position = 0;
   if (value.data[position] == '+' || value.data[position] == '-') {
     out_parsed->is_negative = value.data[position] == '-';
-    if (++position == value.size) return false;
+    if (++position == value.size) {
+      return false;
+    }
   }
   if (position + 2 > value.size || value.data[position] != '0' ||
       iree_tolower(value.data[position + 1]) != 'x') {
@@ -522,9 +572,13 @@ static bool iree_string_view_parse_hex_float(iree_string_view_t value,
       continue;
     }
     const int digit = iree_hex_digit_value(c);
-    if (digit < 0) break;
+    if (digit < 0) {
+      break;
+    }
     saw_digit = true;
-    if (saw_point) ++fractional_nibble_count;
+    if (saw_point) {
+      ++fractional_nibble_count;
+    }
     if (!saw_nonzero_digit) {
       if (digit == 0) {
         ++position;
@@ -569,7 +623,9 @@ static bool iree_string_view_parse_hex_float(iree_string_view_t value,
     }
     ++position;
   }
-  if (position != value.size) return false;
+  if (position != value.size) {
+    return false;
+  }
   if (exponent_is_negative) {
     explicit_exponent =
         explicit_exponent == INT64_MAX ? INT64_MIN : -explicit_exponent;
@@ -581,7 +637,9 @@ static bool iree_string_view_parse_hex_float(iree_string_view_t value,
 
 static uint64_t iree_hex_float_prefix(const iree_hex_float_t* parsed,
                                       uint32_t bit_count) {
-  if (bit_count == 0) return 0;
+  if (bit_count == 0) {
+    return 0;
+  }
   return parsed->prefix_bits >> (parsed->prefix_bit_count - bit_count);
 }
 
@@ -598,7 +656,9 @@ static bool iree_hex_float_has_one_after(const iree_hex_float_t* parsed,
       parsed->prefix_bit_count - bit_position - 1;
   if (remaining_prefix_bit_count != 0) {
     const uint64_t mask = (UINT64_C(1) << remaining_prefix_bit_count) - 1;
-    if ((parsed->prefix_bits & mask) != 0) return true;
+    if ((parsed->prefix_bits & mask) != 0) {
+      return true;
+    }
   }
   return parsed->has_trailing_one;
 }
@@ -611,14 +671,18 @@ static uint64_t iree_hex_float_round_right(const iree_hex_float_t* parsed,
     const uint32_t left_shift = (uint32_t)-right_shift;
     return parsed->prefix_bits << left_shift;
   }
-  if (right_shift > parsed->total_bit_count) return 0;
+  if (right_shift > parsed->total_bit_count) {
+    return 0;
+  }
 
   const uint32_t quotient_bit_count =
       (uint32_t)(parsed->total_bit_count - right_shift);
   uint64_t quotient = iree_hex_float_prefix(parsed, quotient_bit_count);
   const bool round_bit = iree_hex_float_bit(parsed, quotient_bit_count);
   const bool sticky = iree_hex_float_has_one_after(parsed, quotient_bit_count);
-  if (round_bit && (sticky || (quotient & 1) != 0)) ++quotient;
+  if (round_bit && (sticky || (quotient & 1) != 0)) {
+    ++quotient;
+  }
   return quotient;
 }
 
@@ -630,7 +694,9 @@ static uint64_t iree_hex_float_to_ieee_bits(const iree_hex_float_t* parsed,
                                             uint32_t sign_bit_position) {
   const uint64_t sign =
       parsed->is_negative ? UINT64_C(1) << sign_bit_position : 0;
-  if (parsed->total_bit_count == 0) return sign;
+  if (parsed->total_bit_count == 0) {
+    return sign;
+  }
 
   int64_t exponent = iree_saturating_add_int64(parsed->binary_exponent,
                                                parsed->total_bit_count - 1);
@@ -680,7 +746,9 @@ IREE_API_EXPORT bool iree_string_view_atof(iree_string_view_t value,
   value = iree_string_view_trim(value);
   if (iree_string_view_is_hex_float(value)) {
     iree_hex_float_t parsed;
-    if (!iree_string_view_parse_hex_float(value, &parsed)) return false;
+    if (!iree_string_view_parse_hex_float(value, &parsed)) {
+      return false;
+    }
     const uint32_t bits = (uint32_t)iree_hex_float_to_ieee_bits(
         &parsed, FLT_MANT_DIG, FLT_MIN_EXP - 1, FLT_MAX_EXP - 1,
         2 - FLT_MIN_EXP, 31);
@@ -701,7 +769,9 @@ IREE_API_EXPORT bool iree_string_view_atof(iree_string_view_t value,
   errno = 0;
   char* end = NULL;
   float parsed_value = strtof(temp, &end);
-  if (temp == end || end != temp + value.size) return false;
+  if (temp == end || end != temp + value.size) {
+    return false;
+  }
   *out_value = parsed_value;
   return true;
 }
@@ -711,7 +781,9 @@ IREE_API_EXPORT bool iree_string_view_atod(iree_string_view_t value,
   value = iree_string_view_trim(value);
   if (iree_string_view_is_hex_float(value)) {
     iree_hex_float_t parsed;
-    if (!iree_string_view_parse_hex_float(value, &parsed)) return false;
+    if (!iree_string_view_parse_hex_float(value, &parsed)) {
+      return false;
+    }
     const uint64_t bits =
         iree_hex_float_to_ieee_bits(&parsed, DBL_MANT_DIG, DBL_MIN_EXP - 1,
                                     DBL_MAX_EXP - 1, 2 - DBL_MIN_EXP, 63);
@@ -732,7 +804,9 @@ IREE_API_EXPORT bool iree_string_view_atod(iree_string_view_t value,
   errno = 0;
   char* end = NULL;
   double parsed_value = strtod(temp, &end);
-  if (temp == end || end != temp + value.size) return false;
+  if (temp == end || end != temp + value.size) {
+    return false;
+  }
   *out_value = parsed_value;
   return true;
 }
@@ -768,7 +842,9 @@ IREE_API_EXPORT bool iree_string_view_parse_hex_bytes(
     }
 
     // Ensure there are two nibbles.
-    if (value.size < 2) return false;
+    if (value.size < 2) {
+      return false;
+    }
 
     // Hex nibbles to byte; fail if invalid characters.
     uint8_t b0 = 0, b1 = 0;

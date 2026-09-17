@@ -709,7 +709,9 @@ static bool loom_pass_interpreter_attr_string_value_equal(
     uint8_t enum_value = loom_attr_as_enum(actual_attr);
     loom_bstring_t case_name =
         loom_attr_descriptor_enum_case_name(descriptor, enum_value);
-    if (!case_name) return false;
+    if (!case_name) {
+      return false;
+    }
     return iree_string_view_equal(loom_bstring_view(case_name),
                                   expected_string);
   }
@@ -954,7 +956,9 @@ static iree_status_t loom_pass_interpreter_execute_if_changed(
     const loom_pass_interpreter_frame_t* frame,
     const loom_pass_program_instruction_t* instruction,
     bool preceding_instruction_changed, bool* out_changed) {
-  if (!preceding_instruction_changed) return iree_ok_status();
+  if (!preceding_instruction_changed) {
+    return iree_ok_status();
+  }
   return loom_pass_interpreter_execute_nested_body(
       state, frame, &instruction->if_changed, out_changed);
 }

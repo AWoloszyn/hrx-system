@@ -18,18 +18,26 @@ static bool loom_cfg_find_fusable_predecessor(const loom_cfg_graph_t* graph,
                                               loom_value_slice_t* out_args) {
   *out_predecessor_br = NULL;
   *out_args = (loom_value_slice_t){0};
-  if (block_index == 0) return false;
+  if (block_index == 0) {
+    return false;
+  }
 
   const loom_block_t* block = graph->blocks[block_index].block;
   loom_cfg_block_index_span_t predecessors =
       loom_cfg_graph_predecessors(graph, block_index);
-  if (predecessors.count != 1) return false;
+  if (predecessors.count != 1) {
+    return false;
+  }
 
   const loom_block_t* predecessor = graph->blocks[predecessors.values[0]].block;
-  if (predecessor == block) return false;
+  if (predecessor == block) {
+    return false;
+  }
 
   loom_op_t* terminator = ((loom_block_t*)predecessor)->last_op;
-  if (!loom_cfg_br_isa(terminator)) return false;
+  if (!loom_cfg_br_isa(terminator)) {
+    return false;
+  }
   *out_predecessor_br = terminator;
   *out_args = loom_cfg_br_args(terminator);
   return true;
@@ -52,7 +60,9 @@ iree_status_t loom_cfg_fuse_single_predecessor_blocks(
     const loom_dominance_info_t* dominance, iree_arena_allocator_t* arena,
     uint16_t* out_fused_count) {
   *out_fused_count = 0;
-  if (graph->malformed) return iree_ok_status();
+  if (graph->malformed) {
+    return iree_ok_status();
+  }
   loom_op_t** predecessor_branches = NULL;
   bool* remove_blocks = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -83,7 +93,9 @@ iree_status_t loom_cfg_fuse_single_predecessor_blocks(
     remove_blocks[block_index] = true;
     ++fusion_count;
   }
-  if (fusion_count == 0) return iree_ok_status();
+  if (fusion_count == 0) {
+    return iree_ok_status();
+  }
 
   // Every selected predecessor dominates its block, so graph-owned reverse
   // postorder contracts chains from their surviving head. Incoming branches
@@ -93,7 +105,9 @@ iree_status_t loom_cfg_fuse_single_predecessor_blocks(
   for (iree_host_size_t i = 0; i < graph->reverse_postorder.count; ++i) {
     uint16_t block_index = graph->reverse_postorder.values[i];
     loom_op_t* predecessor_br = predecessor_branches[block_index];
-    if (!predecessor_br) continue;
+    if (!predecessor_br) {
+      continue;
+    }
     loom_block_t* block = (loom_block_t*)graph->blocks[block_index].block;
     loom_value_slice_t replacements = loom_cfg_br_args(predecessor_br);
     for (uint16_t argument_index = 0; argument_index < block->arg_count;

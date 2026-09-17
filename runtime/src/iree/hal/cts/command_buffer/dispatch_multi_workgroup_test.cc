@@ -24,7 +24,9 @@ class DispatchMultiWorkgroupTest : public CtsTestBase<> {
 
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
 
     LoadExecutableOrSkipUnsupported(
         "command_buffer_dispatch_multi_workgroup_test.bin", &executable_);

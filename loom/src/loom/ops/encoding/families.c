@@ -143,7 +143,9 @@ static iree_status_t loom_encoding_operand_verify_optional_static_i64(
   IREE_RETURN_IF_ERROR(loom_encoding_static_i64(
       parameter, op, emitter, loom_encoding_operand_name(), param_name,
       LOOM_ENCODING_OPERAND_PARAM_OPTIONAL, default_value, out_value, out_ok));
-  if (!*out_ok) return iree_ok_status();
+  if (!*out_ok) {
+    return iree_ok_status();
+  }
   if (*out_value < 0) {
     return loom_encoding_operand_verify_i64_range(
         emitter, op, param_name, *out_value, IREE_SV("non-negative i64"));
@@ -174,7 +176,9 @@ static iree_status_t loom_encoding_operand_verify_scale_group_shape(
   IREE_RETURN_IF_ERROR(loom_encoding_operand_verify_optional_static_i64(
       element_count_parameter, op, emitter, IREE_SV("scale_group_elements"),
       /*default_value=*/0, &element_count, &element_count_ok));
-  if (!element_count_ok) return iree_ok_status();
+  if (!element_count_ok) {
+    return iree_ok_status();
+  }
   if (element_count > UINT16_MAX) {
     return loom_encoding_operand_verify_i64_range(
         emitter, op, IREE_SV("scale_group_elements"), element_count,
@@ -330,12 +334,16 @@ static bool loom_encoding_operand_static_scale_group_shape_valid(
   *out_element_count = 0;
   memset(out_shape, 0,
          LOOM_VALUE_FACT_SCALE_GROUP_MAX_RANK * sizeof(out_shape[0]));
-  if (element_count_parameter && shape_parameter) return false;
+  if (element_count_parameter && shape_parameter) {
+    return false;
+  }
 
   if (element_count_parameter) {
     const int64_t element_count =
         loom_attr_as_i64(element_count_parameter->value);
-    if (element_count < 0 || element_count > UINT16_MAX) return false;
+    if (element_count < 0 || element_count > UINT16_MAX) {
+      return false;
+    }
     *out_element_count = (uint16_t)element_count;
   }
 
@@ -346,7 +354,9 @@ static bool loom_encoding_operand_static_scale_group_shape_valid(
   const bool is_2d =
       iree_any_bit_set(topology, LOOM_VALUE_FACT_SCALE_TOPOLOGY_BLOCK_2D);
   if (!shape_parameter) {
-    if (is_2d) return false;
+    if (is_2d) {
+      return false;
+    }
     if (is_1d && *out_element_count > 0) {
       out_shape[0] = *out_element_count;
     }
@@ -527,7 +537,9 @@ static iree_status_t loom_encoding_operand_diagnose_static(
       emitter, loom_encoding_operand_name(), IREE_SV("payload_elements"),
       LOOM_ENCODING_OPERAND_PARAM_REQUIRED,
       /*default_value=*/0, &payload_elements, &param_ok));
-  if (!param_ok) return iree_ok_status();
+  if (!param_ok) {
+    return iree_ok_status();
+  }
   if (payload_elements <= 0 || payload_elements > UINT16_MAX) {
     return loom_encoding_operand_verify_i64_range(
         emitter, op, IREE_SV("payload_elements"), payload_elements,
@@ -540,7 +552,9 @@ static iree_status_t loom_encoding_operand_diagnose_static(
       emitter, loom_encoding_operand_name(), IREE_SV("payload_registers"),
       LOOM_ENCODING_OPERAND_PARAM_OPTIONAL,
       /*default_value=*/0, &payload_registers, &param_ok));
-  if (!param_ok) return iree_ok_status();
+  if (!param_ok) {
+    return iree_ok_status();
+  }
   if (payload_registers < 0 || payload_registers > UINT16_MAX) {
     return loom_encoding_operand_verify_i64_range(
         emitter, op, IREE_SV("payload_registers"), payload_registers,
@@ -561,14 +575,18 @@ static iree_status_t loom_encoding_operand_diagnose_static(
       static_params[LOOM_ENCODING_OPERAND_PARAMETER_SCALE_GROUP_SHAPE], op,
       emitter, scale_topology, &scale_group_elements, scale_group_shape,
       &param_ok));
-  if (!param_ok) return iree_ok_status();
+  if (!param_ok) {
+    return iree_ok_status();
+  }
 
   int64_t scale_operands = 0;
   IREE_RETURN_IF_ERROR(loom_encoding_operand_verify_optional_static_i64(
       static_params[LOOM_ENCODING_OPERAND_PARAMETER_SCALE_OPERANDS], op,
       emitter, IREE_SV("scale_operands"),
       /*default_value=*/0, &scale_operands, &param_ok));
-  if (!param_ok) return iree_ok_status();
+  if (!param_ok) {
+    return iree_ok_status();
+  }
   if (scale_operands > UINT16_MAX) {
     return loom_encoding_operand_verify_i64_range(
         emitter, op, IREE_SV("scale_operands"), scale_operands,
@@ -585,7 +603,9 @@ static iree_status_t loom_encoding_operand_diagnose_static(
       static_params[LOOM_ENCODING_OPERAND_PARAMETER_SPARSITY_GROUP_ELEMENTS],
       op, emitter, IREE_SV("sparsity_group_elements"),
       /*default_value=*/0, &sparsity_group_elements, &param_ok));
-  if (!param_ok) return iree_ok_status();
+  if (!param_ok) {
+    return iree_ok_status();
+  }
   if (sparsity_group_elements > UINT16_MAX) {
     return loom_encoding_operand_verify_i64_range(
         emitter, op, IREE_SV("sparsity_group_elements"),
@@ -598,7 +618,9 @@ static iree_status_t loom_encoding_operand_diagnose_static(
           [LOOM_ENCODING_OPERAND_PARAMETER_SPARSITY_GROUP_NONZERO_ELEMENTS],
       op, emitter, IREE_SV("sparsity_group_nonzero_elements"),
       /*default_value=*/0, &sparsity_group_nonzero_elements, &param_ok));
-  if (!param_ok) return iree_ok_status();
+  if (!param_ok) {
+    return iree_ok_status();
+  }
   if (sparsity_group_nonzero_elements > UINT16_MAX) {
     return loom_encoding_operand_verify_i64_range(
         emitter, op, IREE_SV("sparsity_group_nonzero_elements"),

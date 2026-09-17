@@ -421,7 +421,9 @@ static void iree_async_proactor_iocp_signal_dispatch(
     iree_async_proactor_iocp_t* proactor, iree_async_signal_t signal) {
   iree_async_signal_subscription_t* head =
       proactor->signal.subscriptions[signal];
-  if (!head) return;
+  if (!head) {
+    return;
+  }
 
   iree_async_signal_subscription_t* to_free =
       iree_async_signal_subscription_dispatch(
@@ -443,11 +445,15 @@ static void iree_async_proactor_iocp_signal_dispatch(
 // Called from the poll thread when a SIGNAL_COMPLETION_KEY completion arrives.
 static void iree_async_proactor_iocp_dispatch_pending_signals(
     iree_async_proactor_iocp_t* proactor) {
-  if (!proactor->signal.initialized) return;
+  if (!proactor->signal.initialized) {
+    return;
+  }
 
   int32_t events = iree_atomic_exchange(&g_iocp_pending_ctrl_events, 0,
                                         iree_memory_order_acquire);
-  if (events == 0) return;
+  if (events == 0) {
+    return;
+  }
 
   if (events & ((1 << CTRL_C_EVENT) | (1 << CTRL_BREAK_EVENT))) {
     iree_async_proactor_iocp_signal_dispatch(proactor,
@@ -597,7 +603,9 @@ static iree_status_t iree_async_proactor_iocp_subscribe_signal(
 static void iree_async_proactor_iocp_unsubscribe_signal(
     iree_async_proactor_t* base_proactor,
     iree_async_signal_subscription_t* subscription) {
-  if (!subscription) return;
+  if (!subscription) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_async_proactor_iocp_t* proactor =
@@ -653,7 +661,9 @@ static void iree_async_proactor_iocp_destroy(
         // WaitCompletionPacket path: cancel and close. Always non-blocking.
         proactor->nt_wait_api.NtCancelWaitCompletionPacket(
             carrier->data.event_wait.wait_handle, TRUE);
-        if (!CloseHandle(carrier->data.event_wait.wait_handle)) iree_abort();
+        if (!CloseHandle(carrier->data.event_wait.wait_handle)) {
+          iree_abort();
+        }
       } else {
         // RegisterWaitForSingleObject path: INVALID_HANDLE_VALUE blocks until
         // the threadpool callback has completed, ensuring no dangling refs.
@@ -1002,7 +1012,9 @@ static iree_host_size_t iree_async_proactor_iocp_drain_timer_cancellations(
     iree_async_proactor_iocp_t* proactor) {
   int32_t cancellation_count = iree_atomic_load(
       &proactor->pending_timer_cancellation_count, iree_memory_order_acquire);
-  if (cancellation_count == 0) return 0;
+  if (cancellation_count == 0) {
+    return 0;
+  }
 
   iree_host_size_t direct_completions = 0;
 
@@ -1051,7 +1063,9 @@ static iree_host_size_t iree_async_proactor_iocp_drain_event_wait_cancellations(
   int32_t cancellation_count =
       iree_atomic_load(&proactor->pending_event_wait_cancellation_count,
                        iree_memory_order_acquire);
-  if (cancellation_count == 0) return 0;
+  if (cancellation_count == 0) {
+    return 0;
+  }
 
   iree_host_size_t direct_completions = 0;
 
@@ -1077,7 +1091,9 @@ static iree_host_size_t iree_async_proactor_iocp_drain_event_wait_cancellations(
       NTSTATUS cancel_status =
           proactor->nt_wait_api.NtCancelWaitCompletionPacket(
               carrier->data.event_wait.wait_handle, TRUE);
-      if (!CloseHandle(carrier->data.event_wait.wait_handle)) iree_abort();
+      if (!CloseHandle(carrier->data.event_wait.wait_handle)) {
+        iree_abort();
+      }
       carrier->data.event_wait.wait_handle = NULL;
       cancel_succeeded = NT_SUCCESS(cancel_status);
     } else {
@@ -1521,7 +1537,9 @@ static bool iree_async_proactor_iocp_operation_is_cancelled(
 // itself or publishes the flag first and is repeated here after submission.
 static void iree_async_proactor_iocp_cancel_rearmed_socket_io(
     iree_async_operation_t* operation, iree_async_iocp_carrier_t* carrier) {
-  if (!iree_async_proactor_iocp_operation_is_cancelled(operation)) return;
+  if (!iree_async_proactor_iocp_operation_is_cancelled(operation)) {
+    return;
+  }
   HANDLE handle = iree_async_proactor_iocp_handle_from_io_operation(operation);
   CancelIoEx(handle, &carrier->overlapped);
 }
@@ -2053,7 +2071,9 @@ static iree_status_t iree_async_proactor_iocp_poll(
         iree_async_proactor_iocp_calculate_timeout_ms(proactor, timeout);
     const bool force_nonblocking =
         completed_count > 0 || base_proactor->progress_list || observed_wake;
-    if (force_nonblocking) timeout_ms = 0;
+    if (force_nonblocking) {
+      timeout_ms = 0;
+    }
 
     // Phase 4: Dequeue completions from the IOCP port.
     entry_count = 0;
@@ -2266,9 +2286,13 @@ static iree_status_t iree_async_proactor_iocp_poll(
   // callbacks might have already expired).
   completed_count += iree_async_proactor_iocp_process_expired_timers(proactor);
 
-  if (out_completed_count) *out_completed_count = completed_count;
+  if (out_completed_count) {
+    *out_completed_count = completed_count;
+  }
   IREE_TRACE_ZONE_END(z0);
-  if (!iree_status_is_ok(gqcs_status)) return gqcs_status;
+  if (!iree_status_is_ok(gqcs_status)) {
+    return gqcs_status;
+  }
   return completed_count > 0 || entry_count > 0 || observed_wake
              ? iree_ok_status()
              : iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
@@ -2744,7 +2768,9 @@ static iree_status_t iree_async_proactor_iocp_create_notification_shared(
 static void iree_async_proactor_iocp_destroy_notification(
     iree_async_proactor_t* base_proactor,
     iree_async_notification_t* notification) {
-  if (!notification) return;
+  if (!notification) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_async_proactor_iocp_t* proactor =
@@ -2815,13 +2841,19 @@ static bool iree_async_proactor_iocp_notification_wait(
   while (iree_time_now() < deadline_ns) {
     int32_t current_epoch =
         iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-    if (current_epoch != wait_epoch) return true;
+    if (current_epoch != wait_epoch) {
+      return true;
+    }
     // Calculate remaining time for WaitOnAddress timeout.
     iree_time_t now = iree_time_now();
-    if (now >= deadline_ns) break;
+    if (now >= deadline_ns) {
+      break;
+    }
     int64_t remaining_ns = deadline_ns - now;
     DWORD remaining_ms = (DWORD)((remaining_ns + 999999) / 1000000);
-    if (remaining_ms == 0) remaining_ms = 1;
+    if (remaining_ms == 0) {
+      remaining_ms = 1;
+    }
     BOOL waited = WaitOnAddress((volatile void*)notification->epoch_ptr,
                                 &wait_epoch, sizeof(int32_t), remaining_ms);
     (void)waited;
@@ -3051,7 +3083,9 @@ static iree_status_t iree_async_proactor_iocp_register_relay(
 static void iree_async_proactor_iocp_unregister_relay(
     iree_async_proactor_t* base_proactor, iree_async_relay_t* relay,
     iree_async_relay_unregistered_callback_t callback) {
-  if (!relay) return;
+  if (!relay) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_async_proactor_iocp_t* proactor =
       iree_async_proactor_iocp_cast(base_proactor);
@@ -3071,7 +3105,9 @@ static void iree_async_proactor_iocp_unregister_relay(
 
   // Release retained notifications and free.
   iree_async_proactor_iocp_relay_release_resources(relay);
-  if (callback.fn) callback.fn(callback.user_data);
+  if (callback.fn) {
+    callback.fn(callback.user_data);
+  }
   IREE_TRACE_ZONE_END(z0);
 }
 

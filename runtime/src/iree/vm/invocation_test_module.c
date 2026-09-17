@@ -257,7 +257,9 @@ static void iree_vm_test_module_destroy(iree_vm_module_t* base_module) {
 }
 
 static void iree_vm_test_wake(iree_vm_invocation_wake_callback_t callback) {
-  if (callback.fn) callback.fn(callback.user_data);
+  if (callback.fn) {
+    callback.fn(callback.user_data);
+  }
 }
 
 static void iree_vm_test_frame_cleanup(iree_vm_frame_t* frame) {
@@ -377,7 +379,9 @@ static iree_status_t iree_vm_test_return_function(
     status = iree_vm_function_ref_from_import(&params->execution,
                                               import_ordinal, &function_ref);
   }
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   iree_vm_call_function_result_store(&params->call, 0, function_ref);
   *out_outcome = IREE_VM_EXECUTION_OUTCOME_COMPLETED;
   return iree_ok_status();

@@ -109,7 +109,9 @@ static void loom_control_uniformity_insert_cfg_region(
 static iree_status_t loom_control_uniformity_reserve_cfg_regions(
     loom_control_uniformity_info_t* info, iree_host_size_t minimum_count) {
   iree_host_size_t capacity = info->cfg_regions.capacity;
-  if (capacity == 0) capacity = 8;
+  if (capacity == 0) {
+    capacity = 8;
+  }
   while (minimum_count > capacity - capacity / 4) {
     if (capacity > SIZE_MAX / 2) {
       return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -117,7 +119,9 @@ static iree_status_t loom_control_uniformity_reserve_cfg_regions(
     }
     capacity *= 2;
   }
-  if (capacity == info->cfg_regions.capacity) return iree_ok_status();
+  if (capacity == info->cfg_regions.capacity) {
+    return iree_ok_status();
+  }
 
   loom_control_uniformity_cfg_region_t** slots = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -137,13 +141,17 @@ static iree_status_t loom_control_uniformity_reserve_cfg_regions(
 static loom_control_uniformity_cfg_region_t*
 loom_control_uniformity_lookup_cfg_region(
     const loom_control_uniformity_info_t* info, const loom_region_t* region) {
-  if (info->cfg_regions.capacity == 0) return NULL;
+  if (info->cfg_regions.capacity == 0) {
+    return NULL;
+  }
   iree_host_size_t slot_index = loom_control_uniformity_region_hash(region) &
                                 (info->cfg_regions.capacity - 1);
   while (info->cfg_regions.slots[slot_index]) {
     loom_control_uniformity_cfg_region_t* summary =
         info->cfg_regions.slots[slot_index];
-    if (summary->region == region) return summary;
+    if (summary->region == region) {
+      return summary;
+    }
     slot_index = (slot_index + 1) & (info->cfg_regions.capacity - 1);
   }
   return NULL;
@@ -247,7 +255,9 @@ static uint32_t loom_control_uniformity_cfg_build_reverse_dfs(
     }
     loom_control_uniformity_cfg_node_t* successor =
         &summary->nodes[successor_index];
-    if (successor->dfs_number != 0) continue;
+    if (successor->dfs_number != 0) {
+      continue;
+    }
     successor->dfs_number = ++dfs_count;
     successor->dfs_parent = node_index;
     vertex_by_dfs[dfs_count] = successor_index;
@@ -259,7 +269,9 @@ static uint32_t loom_control_uniformity_cfg_build_reverse_dfs(
 static bool loom_control_uniformity_cfg_next_reverse_predecessor(
     const loom_control_uniformity_cfg_region_t* summary, uint32_t node_index,
     uint32_t* cursor, uint32_t* out_predecessor_index) {
-  if (node_index == summary->exit_node) return false;
+  if (node_index == summary->exit_node) {
+    return false;
+  }
   const loom_cfg_block_index_span_t successors =
       loom_cfg_graph_successors(summary->graph, (uint16_t)node_index);
   while (*cursor < successors.count) {
@@ -389,10 +401,14 @@ static bool loom_control_uniformity_cfg_block_has_distinct_successors(
     const loom_cfg_graph_t* graph, uint32_t block_index) {
   const loom_cfg_block_index_span_t successors =
       loom_cfg_graph_successors(graph, (uint16_t)block_index);
-  if (successors.count < 2) return false;
+  if (successors.count < 2) {
+    return false;
+  }
   const uint16_t first_successor = successors.values[0];
   for (iree_host_size_t i = 1; i < successors.count; ++i) {
-    if (successors.values[i] != first_successor) return true;
+    if (successors.values[i] != first_successor) {
+      return true;
+    }
   }
   return false;
 }
@@ -456,7 +472,9 @@ static void loom_control_uniformity_cfg_assign_control_scope(
     }
     const loom_cfg_edge_index_span_t edges =
         loom_cfg_graph_successor_edges(summary->graph, (uint16_t)block_index);
-    if (edges.count == 0) continue;
+    if (edges.count == 0) {
+      continue;
+    }
     const loom_cfg_edge_info_t* first_edge =
         loom_cfg_graph_edge(summary->graph, edges.values[0]);
     if (loom_control_uniformity_cfg_selector_scope(info, first_edge) !=
@@ -819,10 +837,14 @@ iree_status_t loom_control_uniformity_prove_execution(
     IREE_RETURN_IF_ERROR(loom_control_uniformity_prove_cfg_block(
         info, current_op->parent_block, required_scope, out_failure,
         &cfg_proven));
-    if (!cfg_proven) return iree_ok_status();
+    if (!cfg_proven) {
+      return iree_ok_status();
+    }
 
     const loom_op_t* ancestor_op = current_op->parent_op;
-    if (!ancestor_op) continue;
+    if (!ancestor_op) {
+      continue;
+    }
     const loom_region_branch_t branch =
         loom_region_branch_cast(info->module, (loom_op_t*)ancestor_op);
     if (loom_region_branch_isa(branch) &&
@@ -835,7 +857,9 @@ iree_status_t loom_control_uniformity_prove_execution(
 
     const loom_loop_like_t loop =
         loom_loop_like_cast(info->module, (loom_op_t*)ancestor_op);
-    if (!loom_loop_like_isa(loop)) continue;
+    if (!loom_loop_like_isa(loop)) {
+      continue;
+    }
     if (!loom_loop_like_has_counted_range(loop)) {
       loom_control_uniformity_prove_value(
           info, ancestor_op, LOOM_VALUE_ID_INVALID,
@@ -885,29 +909,39 @@ iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
   for (iree_host_size_t i = 0; i < lhs_op_count; ++i) {
     IREE_ASSERT_ARGUMENT(lhs_ops[i]);
     const loom_block_t* block = lhs_ops[i]->parent_block;
-    if (!block || block->parent_region != region) return iree_ok_status();
+    if (!block || block->parent_region != region) {
+      return iree_ok_status();
+    }
   }
   for (iree_host_size_t i = 0; i < rhs_op_count; ++i) {
     IREE_ASSERT_ARGUMENT(rhs_ops[i]);
     const loom_block_t* block = rhs_ops[i]->parent_block;
-    if (!block || block->parent_region != region) return iree_ok_status();
+    if (!block || block->parent_region != region) {
+      return iree_ok_status();
+    }
   }
 
   loom_control_uniformity_cfg_region_t* summary = NULL;
   IREE_RETURN_IF_ERROR(
       loom_control_uniformity_cfg_region(info, region, &summary));
-  if (!summary->nodes) return iree_ok_status();
+  if (!summary->nodes) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       loom_control_uniformity_cfg_initialize_exclusivity(info, summary));
 
-  if (first_block->region_index >= summary->exit_node) return iree_ok_status();
+  if (first_block->region_index >= summary->exit_node) {
+    return iree_ok_status();
+  }
   iree_host_size_t candidate_edge_count =
       loom_control_uniformity_cfg_collect_control_context(
           info, summary, first_block->region_index, required_scope,
           summary->query_lhs_edges);
   for (iree_host_size_t i = 1; i < lhs_op_count; ++i) {
     const loom_block_t* block = lhs_ops[i]->parent_block;
-    if (block->region_index >= summary->exit_node) return iree_ok_status();
+    if (block->region_index >= summary->exit_node) {
+      return iree_ok_status();
+    }
     const iree_host_size_t edge_count =
         loom_control_uniformity_cfg_collect_control_context(
             info, summary, block->region_index, required_scope,
@@ -927,12 +961,16 @@ iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
       }
     }
     candidate_edge_count = retained_edge_count;
-    if (candidate_edge_count == 0) return iree_ok_status();
+    if (candidate_edge_count == 0) {
+      return iree_ok_status();
+    }
   }
 
   for (iree_host_size_t i = 0; i < rhs_op_count; ++i) {
     const loom_block_t* block = rhs_ops[i]->parent_block;
-    if (block->region_index >= summary->exit_node) return iree_ok_status();
+    if (block->region_index >= summary->exit_node) {
+      return iree_ok_status();
+    }
     const iree_host_size_t edge_count =
         loom_control_uniformity_cfg_collect_control_context(
             info, summary, block->region_index, required_scope,
@@ -958,7 +996,9 @@ iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
       }
     }
     candidate_edge_count = retained_edge_count;
-    if (candidate_edge_count == 0) return iree_ok_status();
+    if (candidate_edge_count == 0) {
+      return iree_ok_status();
+    }
   }
   *out_proven = true;
   return iree_ok_status();

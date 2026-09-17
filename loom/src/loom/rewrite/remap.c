@@ -319,7 +319,9 @@ iree_status_t loom_ir_remap_resolve_value(const loom_ir_remap_t* remap,
 
 static iree_status_t loom_ir_remap_ensure_block_map_capacity(
     loom_ir_remap_t* remap, iree_host_size_t required_count) {
-  if (required_count <= remap->block_map_capacity) return iree_ok_status();
+  if (required_count <= remap->block_map_capacity) {
+    return iree_ok_status();
+  }
   iree_host_size_t source_capacity = remap->block_map_capacity;
   const loom_block_t** sources = remap->block_map_sources;
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
@@ -341,7 +343,9 @@ iree_status_t loom_ir_remap_map_block(loom_ir_remap_t* remap,
                                       const loom_block_t* source_block,
                                       loom_block_t* target_block) {
   for (iree_host_size_t i = 0; i < remap->block_map_count; ++i) {
-    if (remap->block_map_sources[i] != source_block) continue;
+    if (remap->block_map_sources[i] != source_block) {
+      continue;
+    }
     remap->block_map_targets[i] = target_block;
     return iree_ok_status();
   }
@@ -356,11 +360,19 @@ iree_status_t loom_ir_remap_map_block(loom_ir_remap_t* remap,
 bool loom_ir_remap_try_lookup_block(const loom_ir_remap_t* remap,
                                     const loom_block_t* source_block,
                                     loom_block_t** out_target_block) {
-  if (out_target_block) *out_target_block = NULL;
-  if (!remap || !source_block) return false;
+  if (out_target_block) {
+    *out_target_block = NULL;
+  }
+  if (!remap || !source_block) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < remap->block_map_count; ++i) {
-    if (remap->block_map_sources[i] != source_block) continue;
-    if (out_target_block) *out_target_block = remap->block_map_targets[i];
+    if (remap->block_map_sources[i] != source_block) {
+      continue;
+    }
+    if (out_target_block) {
+      *out_target_block = remap->block_map_targets[i];
+    }
     return true;
   }
   return false;
@@ -391,7 +403,9 @@ iree_status_t loom_ir_remap_string_id(loom_ir_remap_t* remap,
                                       loom_string_id_t* out_string_id) {
   *out_string_id = LOOM_STRING_ID_INVALID;
   if (source_string_id == LOOM_STRING_ID_INVALID) {
-    if (allow_invalid) return iree_ok_status();
+    if (allow_invalid) {
+      return iree_ok_status();
+    }
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "source string id is invalid");
   }
@@ -584,7 +598,9 @@ iree_status_t loom_ir_remap_location_id(
     loom_ir_remap_t* remap, loom_location_id_t source_location_id,
     loom_location_id_t* out_target_location_id) {
   *out_target_location_id = LOOM_LOCATION_UNKNOWN;
-  if (source_location_id == LOOM_LOCATION_UNKNOWN) return iree_ok_status();
+  if (source_location_id == LOOM_LOCATION_UNKNOWN) {
+    return iree_ok_status();
+  }
   if (source_location_id >= remap->source_module->locations.count) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -648,7 +664,9 @@ static iree_status_t loom_ir_remap_type_sequence(
     loom_ir_remap_t* remap, const loom_type_t* source_types,
     uint16_t type_count, loom_type_t** out_target_types) {
   *out_target_types = NULL;
-  if (type_count == 0) return iree_ok_status();
+  if (type_count == 0) {
+    return iree_ok_status();
+  }
   if (!source_types) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "type sequence has %u entries but a NULL payload",
@@ -787,7 +805,9 @@ iree_status_t loom_ir_remap_type(loom_ir_remap_t* remap,
     if (loom_type_has_inline_dims(source_type)) {
       for (uint8_t i = 0; i < rank; ++i) {
         uint64_t dim = target_type.dims[i];
-        if (!loom_dim_is_dynamic(dim)) continue;
+        if (!loom_dim_is_dynamic(dim)) {
+          continue;
+        }
         loom_value_id_t target_value = LOOM_VALUE_ID_INVALID;
         IREE_RETURN_IF_ERROR(loom_ir_remap_resolve_value(
             remap, loom_dim_value_id(dim), &target_value));
@@ -803,7 +823,9 @@ iree_status_t loom_ir_remap_type(loom_ir_remap_t* remap,
       }
       for (uint8_t i = 0; i < rank; ++i) {
         target_overflow_dims[i] = source_dims[i];
-        if (!loom_dim_is_dynamic(target_overflow_dims[i])) continue;
+        if (!loom_dim_is_dynamic(target_overflow_dims[i])) {
+          continue;
+        }
         loom_value_id_t target_value = LOOM_VALUE_ID_INVALID;
         IREE_RETURN_IF_ERROR(loom_ir_remap_resolve_value(
             remap, loom_dim_value_id(target_overflow_dims[i]), &target_value));
@@ -844,7 +866,9 @@ iree_status_t loom_ir_remap_value_types(loom_ir_remap_t* remap,
                                         iree_host_size_t value_count,
                                         loom_type_t** out_target_types) {
   *out_target_types = NULL;
-  if (value_count == 0) return iree_ok_status();
+  if (value_count == 0) {
+    return iree_ok_status();
+  }
   if (!source_values) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "non-empty source value array requires a payload");
@@ -875,7 +899,9 @@ static iree_status_t loom_ir_remap_predicate_list_into(
     iree_host_size_t predicate_count, iree_arena_allocator_t* payload_arena,
     loom_predicate_t** out_target_predicates) {
   *out_target_predicates = NULL;
-  if (predicate_count == 0) return iree_ok_status();
+  if (predicate_count == 0) {
+    return iree_ok_status();
+  }
   if (!source_predicates) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -1276,7 +1302,9 @@ iree_status_t loom_ir_remap_encoding_id(loom_ir_remap_t* remap,
     status = loom_ir_remap_string_id(
         remap, source_encoding->attributes[i].name_id,
         /*allow_invalid=*/false, &target_attrs[i].name_id);
-    if (!iree_status_is_ok(status)) continue;
+    if (!iree_status_is_ok(status)) {
+      continue;
+    }
     status = loom_ir_remap_attribute_impl(
         remap, source_encoding->attributes[i].value, /*aggregate_depth=*/0,
         remap->arena, &target_attrs[i].value);

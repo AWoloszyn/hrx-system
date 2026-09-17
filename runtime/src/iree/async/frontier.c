@@ -53,12 +53,22 @@ iree_async_frontier_comparison_t iree_async_frontier_compare(
     }
     if (axes_match) {
       for (uint8_t k = 0; k < a->entry_count; ++k) {
-        if (a->entries[k].epoch < b->entries[k].epoch) has_less = true;
-        if (a->entries[k].epoch > b->entries[k].epoch) has_greater = true;
-        if (has_less && has_greater) return IREE_ASYNC_FRONTIER_CONCURRENT;
+        if (a->entries[k].epoch < b->entries[k].epoch) {
+          has_less = true;
+        }
+        if (a->entries[k].epoch > b->entries[k].epoch) {
+          has_greater = true;
+        }
+        if (has_less && has_greater) {
+          return IREE_ASYNC_FRONTIER_CONCURRENT;
+        }
       }
-      if (has_less) return IREE_ASYNC_FRONTIER_BEFORE;
-      if (has_greater) return IREE_ASYNC_FRONTIER_AFTER;
+      if (has_less) {
+        return IREE_ASYNC_FRONTIER_BEFORE;
+      }
+      if (has_greater) {
+        return IREE_ASYNC_FRONTIER_AFTER;
+      }
       return IREE_ASYNC_FRONTIER_EQUAL;
     }
   }
@@ -67,8 +77,12 @@ iree_async_frontier_comparison_t iree_async_frontier_compare(
   uint8_t i = 0, j = 0;
   while (i < a->entry_count && j < b->entry_count) {
     if (a->entries[i].axis == b->entries[j].axis) {
-      if (a->entries[i].epoch < b->entries[j].epoch) has_less = true;
-      if (a->entries[i].epoch > b->entries[j].epoch) has_greater = true;
+      if (a->entries[i].epoch < b->entries[j].epoch) {
+        has_less = true;
+      }
+      if (a->entries[i].epoch > b->entries[j].epoch) {
+        has_greater = true;
+      }
       ++i;
       ++j;
     } else if (a->entries[i].axis < b->entries[j].axis) {
@@ -82,13 +96,23 @@ iree_async_frontier_comparison_t iree_async_frontier_compare(
     }
   }
   // Remaining entries in a: a has axes b doesn't.
-  if (i < a->entry_count) has_greater = true;
+  if (i < a->entry_count) {
+    has_greater = true;
+  }
   // Remaining entries in b: b has axes a doesn't.
-  if (j < b->entry_count) has_less = true;
+  if (j < b->entry_count) {
+    has_less = true;
+  }
 
-  if (has_less && has_greater) return IREE_ASYNC_FRONTIER_CONCURRENT;
-  if (has_less) return IREE_ASYNC_FRONTIER_BEFORE;
-  if (has_greater) return IREE_ASYNC_FRONTIER_AFTER;
+  if (has_less && has_greater) {
+    return IREE_ASYNC_FRONTIER_CONCURRENT;
+  }
+  if (has_less) {
+    return IREE_ASYNC_FRONTIER_BEFORE;
+  }
+  if (has_greater) {
+    return IREE_ASYNC_FRONTIER_AFTER;
+  }
   return IREE_ASYNC_FRONTIER_EQUAL;
 }
 
@@ -294,7 +318,9 @@ bool iree_async_frontier_is_satisfied(
     const iree_async_frontier_t* frontier,
     const iree_async_frontier_entry_t* current_epochs,
     iree_host_size_t current_epochs_count) {
-  if (frontier->entry_count == 0) return true;
+  if (frontier->entry_count == 0) {
+    return true;
+  }
 
   // Merge-scan with early exit on first unsatisfied entry.
   iree_host_size_t i = 0, j = 0;
@@ -305,11 +331,17 @@ bool iree_async_frontier_is_satisfied(
       ++j;
     }
     // No more current epochs — remaining frontier entries are unsatisfied.
-    if (j >= current_epochs_count) return false;
+    if (j >= current_epochs_count) {
+      return false;
+    }
     // Frontier axis not present in current_epochs — epoch is implicitly 0.
-    if (current_epochs[j].axis != frontier->entries[i].axis) return false;
+    if (current_epochs[j].axis != frontier->entries[i].axis) {
+      return false;
+    }
     // Axis matched — check that current epoch has reached the target.
-    if (current_epochs[j].epoch < frontier->entries[i].epoch) return false;
+    if (current_epochs[j].epoch < frontier->entries[i].epoch) {
+      return false;
+    }
     ++i;
   }
   return true;

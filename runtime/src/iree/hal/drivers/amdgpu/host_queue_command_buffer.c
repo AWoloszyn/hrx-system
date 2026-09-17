@@ -115,7 +115,9 @@ iree_hal_amdgpu_host_queue_make_pm4_publication_retire_action(
 static void iree_hal_amdgpu_host_queue_cancel_pm4_publication_reference(
     iree_hal_command_buffer_t* command_buffer,
     hsa_signal_t publication_signal) {
-  if (iree_hsa_signal_is_null(publication_signal)) return;
+  if (iree_hsa_signal_is_null(publication_signal)) {
+    return;
+  }
   iree_hal_amdgpu_pm4_command_buffer_cancel_publication_reference(
       command_buffer);
 }
@@ -167,8 +169,12 @@ typedef struct iree_hal_amdgpu_host_queue_pm4_profile_dispatch_selection_t {
 static bool
 iree_hal_amdgpu_host_queue_should_profile_all_pm4_command_buffer_dispatches(
     const iree_hal_amdgpu_host_queue_t* queue, uint64_t command_buffer_id) {
-  if (command_buffer_id == 0) return false;
-  if (!queue->profiling.hsa_queue_timestamps_enabled) return false;
+  if (command_buffer_id == 0) {
+    return false;
+  }
+  if (!queue->profiling.hsa_queue_timestamps_enabled) {
+    return false;
+  }
 
   iree_hal_amdgpu_logical_device_t* logical_device =
       (iree_hal_amdgpu_logical_device_t*)queue->logical_device;
@@ -219,15 +225,23 @@ iree_hal_amdgpu_host_queue_select_pm4_command_buffer_profile_dispatches(
       (iree_hal_amdgpu_host_queue_pm4_profile_dispatch_selection_t){0};
   const uint64_t command_buffer_id =
       iree_hal_amdgpu_pm4_command_buffer_profile_id(command_buffer);
-  if (command_buffer_id == 0) return iree_ok_status();
-  if (!queue->profiling.hsa_queue_timestamps_enabled) return iree_ok_status();
-  if (!queue->profiling.dispatch_profiling_enabled) return iree_ok_status();
+  if (command_buffer_id == 0) {
+    return iree_ok_status();
+  }
+  if (!queue->profiling.hsa_queue_timestamps_enabled) {
+    return iree_ok_status();
+  }
+  if (!queue->profiling.dispatch_profiling_enabled) {
+    return iree_ok_status();
+  }
 
   uint32_t operation_count = 0;
   const iree_hal_profile_command_operation_record_t* operations =
       iree_hal_amdgpu_pm4_command_buffer_profile_operations(command_buffer,
                                                             &operation_count);
-  if (operation_count == 0) return iree_ok_status();
+  if (operation_count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!operations)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
@@ -300,7 +314,9 @@ iree_hal_amdgpu_host_queue_validate_pm4_atomic_binding_requirements(
   const iree_hal_amdgpu_atomic_memory_cell_flags_t* requirements =
       iree_hal_amdgpu_pm4_command_buffer_atomic_binding_requirements(
           command_buffer, &requirement_count);
-  if (requirement_count == 0) return iree_ok_status();
+  if (requirement_count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(requirement_count > binding_table.count)) {
     return iree_make_status(
         IREE_STATUS_INTERNAL,
@@ -734,7 +750,9 @@ iree_status_t iree_hal_amdgpu_host_queue_submit_command_buffer(
         iree_hal_amdgpu_command_buffer_replay_start_under_lock(
             queue, resolution, signal_semaphore_list, command_buffer,
             binding_table, execute_flags, inout_binding_resource_set);
-    if (iree_status_is_ok(status)) *out_ready = true;
+    if (iree_status_is_ok(status)) {
+      *out_ready = true;
+    }
     return status;
   }
   if (!*inout_binding_resource_set) {

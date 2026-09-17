@@ -32,7 +32,9 @@ inline const File* FindAmdgpuTestImageForTarget(
   }
   const std::string filename = filename_prefix + fragment + ".so";
   for (size_t i = 0; i < file_count; ++i) {
-    if (filename == files[i].name) return &files[i];
+    if (filename == files[i].name) {
+      return &files[i];
+    }
   }
   return nullptr;
 }

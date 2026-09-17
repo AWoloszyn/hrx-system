@@ -57,7 +57,9 @@ iree_status_t loom_low_lower_module_state_get_or_allocate(
        ++i) {
     loom_low_lower_module_target_state_record_t* record =
         &module_state->target_state_records[i];
-    if (record->key != key) continue;
+    if (record->key != key) {
+      continue;
+    }
     IREE_ASSERT_EQ(record->data_length, data_length);
     *out_data = record->data;
     return iree_ok_status();

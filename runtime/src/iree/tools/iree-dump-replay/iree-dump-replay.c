@@ -92,7 +92,9 @@ static iree_status_t iree_dump_replay_parse_format(
 static iree_status_t iree_dump_replay_write_file(void* user_data,
                                                  iree_string_view_t text) {
   FILE* file = (FILE*)user_data;
-  if (text.size == 0) return iree_ok_status();
+  if (text.size == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(fwrite(text.data, 1, text.size, file) != text.size)) {
     return iree_make_status(IREE_STATUS_INTERNAL,
                             "failed to write replay dump output");

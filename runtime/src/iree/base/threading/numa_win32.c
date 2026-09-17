@@ -69,7 +69,9 @@ IREE_API_EXPORT iree_numa_node_id_t iree_numa_node_for_current_thread(void) {
   PROCESSOR_NUMBER processor_number;
   GetCurrentProcessorNumberEx(&processor_number);
   USHORT node_number = 0;
-  if (!GetNumaProcessorNodeEx(&processor_number, &node_number)) return 0;
+  if (!GetNumaProcessorNodeEx(&processor_number, &node_number)) {
+    return 0;
+  }
   return (iree_numa_node_id_t)node_number;
 }
 
@@ -151,7 +153,9 @@ iree_numa_alloc(iree_host_size_t size, const iree_numa_alloc_options_t* options,
 
 IREE_API_EXPORT void iree_numa_free(void* ptr,
                                     const iree_numa_alloc_info_t* info) {
-  if (!ptr) return;
+  if (!ptr) {
+    return;
+  }
   // VirtualFree with MEM_RELEASE frees the entire region regardless of size.
   // The size parameter must be 0 when using MEM_RELEASE.
   VirtualFree(ptr, 0, MEM_RELEASE);

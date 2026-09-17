@@ -53,7 +53,9 @@ iree_hal_amdgpu_host_queue_initialize_profile_queue_device_event(
     iree_hal_amdgpu_host_queue_t* queue,
     iree_hal_amdgpu_profile_queue_device_event_reservation_t reservation,
     const iree_hal_amdgpu_host_queue_profile_event_info_t* info) {
-  if (reservation.event_count == 0) return NULL;
+  if (reservation.event_count == 0) {
+    return NULL;
+  }
   IREE_ASSERT(info != NULL,
               "queue device event reservation requires profile event info");
   iree_hal_amdgpu_profile_queue_device_event_t* event =
@@ -94,7 +96,9 @@ void iree_hal_amdgpu_host_queue_record_profile_queue_event(
     const iree_hal_amdgpu_wait_resolution_t* resolution,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     const iree_hal_amdgpu_host_queue_profile_event_info_t* info) {
-  if (!queue->profiling.queue_events_enabled) return;
+  if (!queue->profiling.queue_events_enabled) {
+    return;
+  }
 
   iree_hal_profile_queue_event_t event = iree_hal_profile_queue_event_default();
   event.type = info->type;

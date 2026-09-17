@@ -125,10 +125,14 @@ iree_status_t loom_parse_body_result_type(loom_parser_t* parser,
   uint16_t operand_index = UINT16_MAX;
   IREE_RETURN_IF_ERROR(loom_parse_format_resolve_tied_result_operand(
       parser, operands, operand_count, ssa_token, &operand_index));
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_parse_type(parser, LOOM_TYPE_PARSE_BODY, out_type));
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
 
   loom_type_t operand_type =
       loom_module_value_type(parser->module, operands[operand_index]);
@@ -235,7 +239,9 @@ static iree_status_t loom_parse_format_lhs_result_type_list(
     }
     IREE_RETURN_IF_ERROR(loom_parse_format_assign_lhs_result_type(
         parser, vtable, op_name_token, parsed, result_index, type));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     ++result_index;
   }
 

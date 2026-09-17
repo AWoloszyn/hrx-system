@@ -271,9 +271,13 @@ bool loom_low_representation_plan_component_is_constrained(
     loom_low_representation_plan_t* plan, loom_value_ordinal_t value_ordinal) {
   IREE_ASSERT_ARGUMENT(plan);
   IREE_ASSERT_LT(value_ordinal, plan->value_count);
-  if (plan->node_ordinals == NULL) return false;
+  if (plan->node_ordinals == NULL) {
+    return false;
+  }
   const uint32_t node_ordinal = plan->node_ordinals[value_ordinal];
-  if (node_ordinal == UINT32_MAX) return false;
+  if (node_ordinal == UINT32_MAX) {
+    return false;
+  }
   const uint32_t root_ordinal =
       loom_low_representation_plan_find_root(plan, node_ordinal);
   return plan->nodes[root_ordinal].constraint_head != NULL;

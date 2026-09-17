@@ -14,9 +14,13 @@ static bool loom_encoding_one_hot_fact_enum(uint64_t value,
     *out_enum_value = 0;
     return true;
   }
-  if (!iree_is_power_of_two_uint64(value)) return false;
+  if (!iree_is_power_of_two_uint64(value)) {
+    return false;
+  }
   uint8_t enum_value = 1;
-  while ((value >>= 1) != 0) ++enum_value;
+  while ((value >>= 1) != 0) {
+    ++enum_value;
+  }
   *out_enum_value = enum_value;
   return true;
 }
@@ -52,7 +56,9 @@ iree_string_view_t loom_encoding_operand_fact_name(
     default:
       break;
   }
-  if (!has_enum_value) return iree_string_view_empty();
+  if (!has_enum_value) {
+    return iree_string_view_empty();
+  }
 
   const loom_attr_descriptor_t* descriptor =
       &loom_encoding_operand_family_descriptor.parameter_descriptors[parameter];

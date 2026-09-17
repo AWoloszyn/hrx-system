@@ -71,7 +71,9 @@ iree_status_t iree_task_worker_initialize(
 }
 
 void iree_task_worker_request_exit(iree_task_worker_t* worker) {
-  if (!worker->thread) return;
+  if (!worker->thread) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // If the thread is already in the exiting/zombie state we don't need to do
@@ -111,7 +113,9 @@ static bool iree_task_worker_is_zombie_thunk(void* arg) {
 }
 
 void iree_task_worker_await_exit(iree_task_worker_t* worker) {
-  if (!worker->thread) return;
+  if (!worker->thread) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_task_worker_request_exit(worker);
@@ -129,7 +133,9 @@ void iree_task_worker_deinitialize(iree_task_worker_t* worker) {
   // never-initialized pthread_mutex_t (undefined behavior on non-glibc).
   // worker->executor is set at the start of iree_task_worker_initialize,
   // before notification init, so NULL means initialize was never called.
-  if (!worker->executor) return;
+  if (!worker->executor) {
+    return;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
 
@@ -185,7 +191,9 @@ static bool iree_task_worker_drain_process(iree_task_worker_t* worker) {
   iree_task_executor_t* executor = worker->executor;
   iree_task_process_t* process =
       iree_task_process_slist_pop(&executor->immediate_list);
-  if (!process) return false;
+  if (!process) {
+    return false;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
 
@@ -241,7 +249,9 @@ static bool iree_task_worker_drain_process(iree_task_worker_t* worker) {
 
     // Process has more work or asked to remain active through a short handoff
     // window; loop immediately.
-    if (result.did_work || result.keep_active) continue;
+    if (result.did_work || result.keep_active) {
+      continue;
+    }
 
     // Only go idle if no wake arrived while draining. Publishing IDLE lets
     // another worker acquire, complete, and free the process, so this must be
@@ -458,7 +468,9 @@ static bool iree_task_worker_try_claim_compute_process_release(
     int32_t expected_placement_epoch, int64_t* out_tagged_sentinel) {
   int64_t current_drainers =
       iree_atomic_load(&slot->active_drainers, iree_memory_order_acquire);
-  if (current_drainers != expected_empty_drainers) return false;
+  if (current_drainers != expected_empty_drainers) {
+    return false;
+  }
   if (iree_atomic_load(&slot->placement_epoch, iree_memory_order_acquire) !=
       expected_placement_epoch) {
     return false;
@@ -558,7 +570,9 @@ static void iree_task_worker_release_final_warm_compute_process(
 
 static iree_time_t iree_task_worker_deadline_after(iree_time_t now,
                                                    iree_duration_t duration) {
-  if (duration <= IREE_DURATION_ZERO) return now;
+  if (duration <= IREE_DURATION_ZERO) {
+    return now;
+  }
   iree_time_t deadline = now + duration;
   return deadline < now ? IREE_TIME_INFINITE_FUTURE : deadline;
 }
@@ -568,7 +582,9 @@ static iree_time_t iree_task_worker_seed_warm_spin_deadline(
     iree_duration_t spin_duration) {
   int64_t current_deadline = iree_atomic_load(
       &process->retention_spin_deadline_ns, iree_memory_order_acquire);
-  if (current_deadline > now) return current_deadline;
+  if (current_deadline > now) {
+    return current_deadline;
+  }
 
   const iree_time_t new_deadline =
       iree_task_worker_deadline_after(now, spin_duration);
@@ -640,7 +656,9 @@ static bool iree_task_worker_wait_warm_compute_process(
         if (now >= spin_deadline_ns) {
           const iree_time_t extended_deadline = iree_atomic_load(
               &process->retention_spin_deadline_ns, iree_memory_order_acquire);
-          if (extended_deadline <= spin_deadline_ns) break;
+          if (extended_deadline <= spin_deadline_ns) {
+            break;
+          }
           spin_deadline_ns = extended_deadline;
           continue;
         }
@@ -648,7 +666,9 @@ static bool iree_task_worker_wait_warm_compute_process(
       }
       IREE_TRACE_ZONE_END(z_warm_spin);
 
-      if (spin_wait_resolved) return spin_wait_result;
+      if (spin_wait_resolved) {
+        return spin_wait_result;
+      }
     }
 
     if (iree_atomic_load(&worker->state, iree_memory_order_acquire) ==
@@ -714,7 +734,9 @@ static bool iree_task_worker_try_rejoin_warm_compute_process(
   while (true) {
     IREE_ASSERT(current_count > 0, "warm retainer count underflow");
     const int32_t wake_budget = iree_task_process_wake_budget(process);
-    if (current_count <= wake_budget) return true;
+    if (current_count <= wake_budget) {
+      return true;
+    }
     if (iree_atomic_compare_exchange_weak(
             &process->warm_retainers, &current_count, current_count - 1,
             iree_memory_order_acq_rel, iree_memory_order_acquire)) {
@@ -752,7 +774,9 @@ static bool iree_task_worker_drain_compute_slots(iree_task_worker_t* worker) {
     // slots; the process pointer is revalidated after registering below.
     intptr_t quick =
         iree_atomic_load(&slot->process, iree_memory_order_acquire);
-    if (!quick || quick == IREE_TASK_COMPUTE_SLOT_RESERVED) continue;
+    if (!quick || quick == IREE_TASK_COMPUTE_SLOT_RESERVED) {
+      continue;
+    }
 
     // Register as an active drainer BEFORE accessing the process. This
     // prevents the release callback from firing while we're in drain().
@@ -994,7 +1018,9 @@ static bool iree_task_worker_drain_compute_slots(iree_task_worker_t* worker) {
       break;
     }
 
-    if (did_work) break;  // Return to main loop to interleave with immediate.
+    if (did_work) {
+      break;  // Return to main loop to interleave with immediate.
+    }
   }
 
   // Advance scan start for round-robin fairness.
@@ -1028,7 +1054,9 @@ static void iree_task_worker_relay_wake(iree_task_worker_t* worker) {
       iree_atomic_load(&executor->desired_wake, iree_memory_order_acquire);
   while (desired > 0) {
     int32_t claim = desired;
-    if (claim > IREE_TASK_WAKE_FANOUT) claim = IREE_TASK_WAKE_FANOUT;
+    if (claim > IREE_TASK_WAKE_FANOUT) {
+      claim = IREE_TASK_WAKE_FANOUT;
+    }
     if (iree_atomic_compare_exchange_weak(
             &executor->desired_wake, &desired, desired - claim,
             iree_memory_order_acq_rel, iree_memory_order_acquire)) {
@@ -1038,7 +1066,9 @@ static void iree_task_worker_relay_wake(iree_task_worker_t* worker) {
     // CAS failed: desired was updated by another thread. Loop retries
     // with the new value loaded into desired by CAS.
   }
-  if (claimed <= 0) return;
+  if (claimed <= 0) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN_NAMED(z_wake, "iree_task_worker_relay_wake_claim");
 
   // Wake |claimed| idle workers. Skip ourselves (already active).
@@ -1048,7 +1078,9 @@ static void iree_task_worker_relay_wake(iree_task_worker_t* worker) {
 
   while (claimed > 0) {
     int target = iree_task_affinity_set_find_first(idle_mask);
-    if (target < 0 || target >= (int)executor->worker_count) break;
+    if (target < 0 || target >= (int)executor->worker_count) {
+      break;
+    }
     IREE_TRACE_ZONE_BEGIN_NAMED(z_post, "iree_task_worker_relay_wake_worker");
     iree_notification_post(&executor->workers[target].wake_notification, 1);
     IREE_TRACE_ZONE_END(z_post);

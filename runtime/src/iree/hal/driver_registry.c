@@ -76,7 +76,9 @@ iree_hal_driver_registry_allocate(iree_allocator_t host_allocator,
 
 IREE_API_EXPORT void iree_hal_driver_registry_free(
     iree_hal_driver_registry_t* registry) {
-  if (!registry) return;
+  if (!registry) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t host_allocator = registry->host_allocator;
 
@@ -135,7 +137,9 @@ IREE_API_EXPORT iree_status_t iree_hal_driver_registry_unregister_factory(
   iree_status_t status = iree_ok_status();
   iree_host_size_t index = -1;
   for (iree_host_size_t i = 0; i < registry->factory_count; ++i) {
-    if (registry->factories[i] != factory) continue;
+    if (registry->factories[i] != factory) {
+      continue;
+    }
     index = i;
     break;
   }
@@ -211,7 +215,9 @@ IREE_API_EXPORT iree_status_t iree_hal_driver_registry_enumerate(
     iree_host_size_t driver_info_count = 0;
     status =
         factory->enumerate(factory->self, &driver_info_count, &driver_infos);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     total_driver_info_count += driver_info_count;
     for (iree_host_size_t j = 0; j < driver_info_count; j++) {
       total_storage_size +=
@@ -242,7 +248,9 @@ IREE_API_EXPORT iree_status_t iree_hal_driver_registry_enumerate(
       iree_host_size_t driver_info_count = 0;
       status =
           factory->enumerate(factory->self, &driver_info_count, &driver_infos);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       for (iree_host_size_t j = 0; j < driver_info_count; j++) {
         string_storage_ptr += iree_hal_driver_info_copy(
             &driver_infos[j], driver_info_storage_ptr, string_storage_ptr);
@@ -289,7 +297,9 @@ IREE_API_EXPORT iree_status_t iree_hal_driver_registry_try_create(
     iree_host_size_t driver_info_count = 0;
     status =
         factory->enumerate(factory->self, &driver_info_count, &driver_infos);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     // Scan for the specific driver by name.
     // NOTE: we scan in reverse here too so multiple drivers with the same name
@@ -304,7 +314,9 @@ IREE_API_EXPORT iree_status_t iree_hal_driver_registry_try_create(
     }
     // Since we are scanning in reverse we stop searching when we find the first
     // hit (aka the most recently added driver).
-    if (hit_factory != NULL) break;
+    if (hit_factory != NULL) {
+      break;
+    }
   }
 
   // If we found a driver during the scan try to create it now.

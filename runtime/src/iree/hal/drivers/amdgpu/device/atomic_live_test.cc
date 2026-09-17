@@ -93,7 +93,9 @@ static bool WaitForSignal(const iree_hal_amdgpu_libhsa_t* libhsa,
   const hsa_signal_value_t value = iree_hsa_signal_wait_scacquire(
       IREE_LIBHSA(libhsa), signal, HSA_SIGNAL_CONDITION_EQ,
       /*compare_value=*/0, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
-  if (value == 0) return true;
+  if (value == 0) {
+    return true;
+  }
   ADD_FAILURE() << "HSA signal wait returned unexpected value " << value;
   return false;
 }
@@ -118,7 +120,9 @@ static bool WaitForQueueCompletion(const iree_hal_amdgpu_libhsa_t* libhsa,
   const uint32_t signal_index = iree_hsa_amd_signal_wait_any(
       IREE_LIBHSA(libhsa), kSignalCount, signals, conditions, values,
       UINT64_MAX, HSA_WAIT_STATE_BLOCKED, /*satisfying_value=*/nullptr);
-  if (signal_index == kCompletionSignalIndex) return true;
+  if (signal_index == kCompletionSignalIndex) {
+    return true;
+  }
   if (signal_index == kErrorSignalIndex) {
     IREE_TSAN_ACQUIRE(queue_error);
     ADD_FAILURE() << "HSA queue entered terminal error state "
@@ -374,7 +378,9 @@ TEST_F(AtomicLiveTest, CompleteKernelMatrix) {
                 (release ? IREE_HAL_ATOMIC_FLAG_RELEASE : 0) |
                 (scope ? IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE : 0);
             const uint64_t value = 0x89ABCDEF01234567ull & width_mask;
-            if (!write_target(target, 0)) return false;
+            if (!write_target(target, 0)) {
+              return false;
+            }
             const iree_hal_atomic_store_params_t params = {
                 /*.value=*/value,
                 /*.flags=*/flags,
@@ -390,7 +396,9 @@ TEST_F(AtomicLiveTest, CompleteKernelMatrix) {
               return false;
             }
             uint64_t actual_value = 0;
-            if (!read_target(target, &actual_value)) return false;
+            if (!read_target(target, &actual_value)) {
+              return false;
+            }
             EXPECT_EQ(actual_value & width_mask, value);
           }
         }
@@ -411,7 +419,9 @@ TEST_F(AtomicLiveTest, CompleteKernelMatrix) {
             for (const iree_hal_atomic_rmw_operation_t operation : operations) {
               const uint64_t initial = 0x76543210FEDCBA98ull & width_mask;
               const uint64_t operand = 0x111111110F0F0F0Full & width_mask;
-              if (!write_target(target, initial)) return false;
+              if (!write_target(target, initial)) {
+                return false;
+              }
               const iree_hal_atomic_rmw_params_t params = {
                   /*.operand=*/operand,
                   /*.flags=*/flags,
@@ -429,7 +439,9 @@ TEST_F(AtomicLiveTest, CompleteKernelMatrix) {
                 return false;
               }
               uint64_t actual_value = 0;
-              if (!read_target(target, &actual_value)) return false;
+              if (!read_target(target, &actual_value)) {
+                return false;
+              }
               EXPECT_EQ(actual_value & width_mask,
                         ApplyRmw(width, operation, initial, operand));
             }
@@ -449,7 +461,9 @@ TEST_F(AtomicLiveTest, CompleteKernelMatrix) {
                 (scope ? IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE : 0);
             for (const iree_hal_atomic_wait_condition_t condition :
                  conditions) {
-              if (!write_target(target, 0x1234u)) return false;
+              if (!write_target(target, 0x1234u)) {
+                return false;
+              }
               const uint64_t value =
                   condition == IREE_HAL_ATOMIC_WAIT_CONDITION_NOT_EQUAL ? 0x35u
                   : condition ==
@@ -477,7 +491,9 @@ TEST_F(AtomicLiveTest, CompleteKernelMatrix) {
           }
         }
 
-        if (!write_target(target, 0)) return false;
+        if (!write_target(target, 0)) {
+          return false;
+        }
         const iree_hal_atomic_flags_t cross_queue_flags =
             target.kind == AtomicTargetKind::kFineHost
                 ? IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE
@@ -513,9 +529,13 @@ TEST_F(AtomicLiveTest, CompleteKernelMatrix) {
         }
         const bool consumer_completed = WaitForQueueCompletion(
             &libhsa, completion_signals[0], &queue_errors[0]);
-        if (!producer_completed || !consumer_completed) return false;
+        if (!producer_completed || !consumer_completed) {
+          return false;
+        }
         uint64_t actual_value = 0;
-        if (!read_target(target, &actual_value)) return false;
+        if (!read_target(target, &actual_value)) {
+          return false;
+        }
         EXPECT_EQ(actual_value & width_mask, 1u);
       }
     }

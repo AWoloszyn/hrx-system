@@ -145,7 +145,9 @@ IREE_API_EXPORT iree_status_t iree_hal_allocator_query_memory_heaps(
     iree_hal_allocator_memory_heap_t* IREE_RESTRICT heaps,
     iree_host_size_t* IREE_RESTRICT out_count) {
   IREE_ASSERT_ARGUMENT(allocator);
-  if (out_count) *out_count = 0;
+  if (out_count) {
+    *out_count = 0;
+  }
   if (capacity && !heaps) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -167,8 +169,12 @@ iree_hal_allocator_query_buffer_compatibility(
       _VTABLE_DISPATCH(allocator, query_buffer_compatibility)(
           allocator, &params, &allocation_size);
   if (result != IREE_HAL_BUFFER_COMPATIBILITY_NONE) {
-    if (out_params) *out_params = params;
-    if (out_allocation_size) *out_allocation_size = allocation_size;
+    if (out_params) {
+      *out_params = params;
+    }
+    if (out_allocation_size) {
+      *out_allocation_size = allocation_size;
+    }
   }
   return result;
 }

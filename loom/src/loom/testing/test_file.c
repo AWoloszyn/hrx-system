@@ -54,7 +54,9 @@ static loom_test_source_range_t loom_test_source_range_from_pointers(
 
 static loom_test_source_range_t loom_test_source_range_from_view(
     const char* source_start, iree_string_view_t view) {
-  if (!view.data) return loom_test_source_range_empty();
+  if (!view.data) {
+    return loom_test_source_range_empty();
+  }
   return loom_test_source_range_from_pointers(source_start, view.data,
                                               view.data + view.size);
 }
@@ -322,7 +324,9 @@ static bool loom_test_file_requirement_list_contains(
     const iree_string_view_t* requirements, iree_host_size_t requirement_count,
     iree_string_view_t requirement) {
   for (iree_host_size_t i = 0; i < requirement_count; ++i) {
-    if (iree_string_view_equal(requirements[i], requirement)) return true;
+    if (iree_string_view_equal(requirements[i], requirement)) {
+      return true;
+    }
   }
   return false;
 }
@@ -343,7 +347,9 @@ static iree_status_t loom_test_file_parse_requirement_list(
   iree_string_view_t scanner = value;
   while (!iree_string_view_is_empty(scanner)) {
     scanner = iree_string_view_trim(scanner);
-    if (iree_string_view_is_empty(scanner)) break;
+    if (iree_string_view_is_empty(scanner)) {
+      break;
+    }
     if (scanner.data[0] == ',') {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "empty requirement name in REQUIRES directive");
@@ -440,7 +446,9 @@ static iree_status_t loom_test_file_combine_requirement_lists(
       ++unique_requirement_count;
     }
   }
-  if (unique_requirement_count == 0) return iree_ok_status();
+  if (unique_requirement_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_string_view_t* requirements = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -502,7 +510,9 @@ static bool loom_test_file_looks_like_annotation(
     iree_string_view_t comment_text) {
   iree_string_view_t text = iree_string_view_trim(comment_text);
   loom_diagnostic_severity_t unused;
-  if (!loom_test_file_parse_severity(&text, &unused)) return false;
+  if (!loom_test_file_parse_severity(&text, &unused)) {
+    return false;
+  }
   return iree_string_view_starts_with_char(text, ':') ||
          iree_string_view_starts_with_char(text, '@');
 }
@@ -531,7 +541,9 @@ static iree_string_view_t loom_test_file_extract_comment_text(
 static bool loom_test_file_is_annotation_line(iree_string_view_t trimmed_line) {
   iree_string_view_t comment =
       loom_test_file_extract_comment_text(trimmed_line);
-  if (iree_string_view_is_empty(comment)) return false;
+  if (iree_string_view_is_empty(comment)) {
+    return false;
+  }
   return loom_test_file_looks_like_annotation(comment);
 }
 
@@ -878,15 +890,21 @@ static iree_status_t loom_test_file_extract_annotations(
     iree_string_view_t line = loom_test_file_consume_line(&scanner);
     ++line_number;
     iree_string_view_t comment_text = loom_test_file_extract_comment_text(line);
-    if (iree_string_view_is_empty(comment_text)) continue;
+    if (iree_string_view_is_empty(comment_text)) {
+      continue;
+    }
     loom_test_annotation_t annotation;
     bool found = false;
     IREE_RETURN_IF_ERROR(loom_test_file_try_parse_annotation(
         comment_text, line_number, &annotation, &found));
-    if (found) ++annotation_count;
+    if (found) {
+      ++annotation_count;
+    }
   }
 
-  if (annotation_count == 0) return iree_ok_status();
+  if (annotation_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, annotation_count,
                                                  sizeof(loom_test_annotation_t),
@@ -902,7 +920,9 @@ static iree_status_t loom_test_file_extract_annotations(
     iree_string_view_t line = loom_test_file_consume_line(&scanner);
     ++line_number;
     iree_string_view_t comment_text = loom_test_file_extract_comment_text(line);
-    if (iree_string_view_is_empty(comment_text)) continue;
+    if (iree_string_view_is_empty(comment_text)) {
+      continue;
+    }
     loom_test_annotation_t annotation;
     bool found = false;
     IREE_RETURN_IF_ERROR(loom_test_file_try_parse_annotation(
@@ -948,7 +968,9 @@ static iree_status_t loom_test_file_parse_case_sections(
   // Guard against NULL-backed empty views (iree_string_view_empty has
   // data == NULL). Pointer arithmetic on NULL is undefined behavior.
   static const char kEmptySource[] = "";
-  if (!case_text.data) case_text.data = kEmptySource;
+  if (!case_text.data) {
+    case_text.data = kEmptySource;
+  }
   const char* case_end = case_text.data + case_text.size;
   out_case->source_range =
       loom_test_source_range_from_view(source_start, case_text);
@@ -1258,7 +1280,9 @@ static void loom_test_file_find_template_preamble_prefix(
 
     if (iree_string_view_is_empty(trimmed)) {
       preamble_end = next_line;
-      if (saw_template) break;
+      if (saw_template) {
+        break;
+      }
       continue;
     }
 
@@ -1298,7 +1322,9 @@ iree_status_t loom_test_file_parse(iree_string_view_t source,
   // Normalize NULL-backed empty views. iree_string_view_empty() has
   // data == NULL, and pointer arithmetic on NULL is undefined behavior.
   static const char kEmptySource[] = "";
-  if (!source.data) source.data = kEmptySource;
+  if (!source.data) {
+    source.data = kEmptySource;
+  }
 
   out_file->default_mode = LOOM_TEST_MODE_ROUNDTRIP;
   out_file->default_output_flags = 0;

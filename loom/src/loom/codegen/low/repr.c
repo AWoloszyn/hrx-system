@@ -34,7 +34,9 @@ static bool loom_low_repr_resolve_descriptor_impl(
       loom_low_repr_descriptor_set(descriptor_set_handle);
   const uint32_t ordinal =
       loom_low_descriptor_set_lookup_descriptor(descriptor_set, key);
-  if (ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE) return false;
+  if (ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE) {
+    return false;
+  }
   const loom_low_descriptor_t* descriptor =
       &descriptor_set->descriptors[ordinal];
   *out_value = (loom_low_repr_descriptor_value_t){
@@ -54,7 +56,9 @@ static iree_string_view_t loom_low_repr_descriptor_key_impl(
       loom_low_repr_descriptor_set(descriptor_set_handle);
   const loom_low_descriptor_t* descriptor =
       loom_low_descriptor_set_descriptor_at(descriptor_set, ordinal);
-  if (!descriptor) return iree_string_view_empty();
+  if (!descriptor) {
+    return iree_string_view_empty();
+  }
   return loom_low_descriptor_set_string(descriptor_set,
                                         descriptor->key_string_offset);
 }

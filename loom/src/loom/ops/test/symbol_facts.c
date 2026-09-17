@@ -17,7 +17,9 @@ static bool loom_test_record_dict_lookup(const loom_module_t* module,
   *out_attr = NULL;
   for (iree_host_size_t i = 0; i < dict.count; ++i) {
     loom_string_id_t name_id = dict.entries[i].name_id;
-    if (name_id >= module->strings.count) continue;
+    if (name_id >= module->strings.count) {
+      continue;
+    }
     if (iree_string_view_equal(module->strings.entries[name_id], name)) {
       *out_attr = &dict.entries[i].value;
       return true;

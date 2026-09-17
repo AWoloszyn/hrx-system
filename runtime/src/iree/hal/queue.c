@@ -868,7 +868,9 @@ static iree_status_t iree_hal_queue_validate_transfer_operation(
   iree_status_t status = iree_ok_status();
   switch (operation->type) {
     case IREE_HAL_TRANSFER_OPERATION_TYPE_FILL:
-      if (operation->fill.length == 0) break;
+      if (operation->fill.length == 0) {
+        break;
+      }
       if (IREE_UNLIKELY(operation->fill.flags != IREE_HAL_FILL_FLAG_NONE)) {
         status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                   "unsupported fill flags: 0x%016" PRIx64,
@@ -900,7 +902,9 @@ static iree_status_t iree_hal_queue_validate_transfer_operation(
       }
       break;
     case IREE_HAL_TRANSFER_OPERATION_TYPE_UPDATE:
-      if (operation->update.length == 0) break;
+      if (operation->update.length == 0) {
+        break;
+      }
       if (IREE_UNLIKELY(operation->update.flags != IREE_HAL_UPDATE_FLAG_NONE)) {
         status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                   "unsupported update flags: 0x%016" PRIx64,
@@ -928,7 +932,9 @@ static iree_status_t iree_hal_queue_validate_transfer_operation(
       }
       break;
     case IREE_HAL_TRANSFER_OPERATION_TYPE_COPY:
-      if (operation->copy.length == 0) break;
+      if (operation->copy.length == 0) {
+        break;
+      }
       if (IREE_UNLIKELY(operation->copy.flags != IREE_HAL_COPY_FLAG_NONE)) {
         status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                   "unsupported copy flags: 0x%016" PRIx64,
@@ -958,7 +964,9 @@ static iree_status_t iree_hal_queue_validate_transfer_operation(
       }
       break;
     case IREE_HAL_TRANSFER_OPERATION_TYPE_UPLOAD:
-      if (operation->upload.length == 0) break;
+      if (operation->upload.length == 0) {
+        break;
+      }
       if (IREE_UNLIKELY(operation->upload.length > IREE_HOST_SIZE_MAX)) {
         status = iree_make_status(
             IREE_STATUS_OUT_OF_RANGE,
@@ -976,7 +984,9 @@ static iree_status_t iree_hal_queue_validate_transfer_operation(
       has_borrowed_host_range = iree_status_is_ok(status);
       break;
     case IREE_HAL_TRANSFER_OPERATION_TYPE_DOWNLOAD:
-      if (operation->download.length == 0) break;
+      if (operation->download.length == 0) {
+        break;
+      }
       if (IREE_UNLIKELY(operation->download.length > IREE_HOST_SIZE_MAX)) {
         status = iree_make_status(
             IREE_STATUS_OUT_OF_RANGE,

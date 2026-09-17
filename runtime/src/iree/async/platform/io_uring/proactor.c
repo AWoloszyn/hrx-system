@@ -370,7 +370,9 @@ static void iree_async_proactor_io_uring_drain_pending_messages(
 void iree_async_proactor_io_uring_submit_continuation_chain(
     iree_async_proactor_io_uring_t* proactor,
     iree_async_operation_t* chain_head) {
-  if (!chain_head) return;
+  if (!chain_head) {
+    return;
+  }
 
   // Count operations in the chain (must happen before submit, which rebuilds
   // linked_next from LINKED flags and destroys the incoming chain).
@@ -579,8 +581,12 @@ iree_async_proactor_io_uring_drain_pending_semaphore_waits(
 // to interrupt a blocking poll().
 static iree_status_t iree_async_proactor_io_uring_arm_wake(
     iree_async_proactor_io_uring_t* proactor) {
-  if (proactor->wake_poll_armed) return iree_ok_status();
-  if (proactor->wake_eventfd < 0) return iree_ok_status();
+  if (proactor->wake_poll_armed) {
+    return iree_ok_status();
+  }
+  if (proactor->wake_eventfd < 0) {
+    return iree_ok_status();
+  }
 
   iree_io_uring_ring_sq_lock(&proactor->ring);
   iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
@@ -746,7 +752,9 @@ static void iree_async_proactor_io_uring_handle_event_source_cqe(
   iree_async_event_source_t* source =
       (iree_async_event_source_t*)(uintptr_t)iree_io_uring_internal_payload(
           cqe->user_data);
-  if (!source) return;
+  if (!source) {
+    return;
+  }
 
   // Unregistration clears the callback before queuing cancellation so a CQE
   // already in flight cannot reach caller-owned state after unregister
@@ -756,15 +764,27 @@ static void iree_async_proactor_io_uring_handle_event_source_cqe(
     // cqe->res contains the poll mask for POLL_ADD completions.
     iree_async_poll_events_t events = IREE_ASYNC_POLL_EVENT_NONE;
     if (cqe->res >= 0) {
-      if (cqe->res & POLLIN) events |= IREE_ASYNC_POLL_EVENT_IN;
-      if (cqe->res & POLLOUT) events |= IREE_ASYNC_POLL_EVENT_OUT;
-      if (cqe->res & POLLERR) events |= IREE_ASYNC_POLL_EVENT_ERR;
-      if (cqe->res & POLLHUP) events |= IREE_ASYNC_POLL_EVENT_HUP;
+      if (cqe->res & POLLIN) {
+        events |= IREE_ASYNC_POLL_EVENT_IN;
+      }
+      if (cqe->res & POLLOUT) {
+        events |= IREE_ASYNC_POLL_EVENT_OUT;
+      }
+      if (cqe->res & POLLERR) {
+        events |= IREE_ASYNC_POLL_EVENT_ERR;
+      }
+      if (cqe->res & POLLHUP) {
+        events |= IREE_ASYNC_POLL_EVENT_HUP;
+      }
       // POLLRDHUP: peer closed write half (common during clean shutdown).
       // POLLNVAL: fd was revoked or invalid.
       // Both indicate the fd is no longer usable for normal I/O.
-      if (cqe->res & POLLRDHUP) events |= IREE_ASYNC_POLL_EVENT_HUP;
-      if (cqe->res & POLLNVAL) events |= IREE_ASYNC_POLL_EVENT_ERR;
+      if (cqe->res & POLLRDHUP) {
+        events |= IREE_ASYNC_POLL_EVENT_HUP;
+      }
+      if (cqe->res & POLLNVAL) {
+        events |= IREE_ASYNC_POLL_EVENT_ERR;
+      }
     } else {
       // Kernel error (EBADF, ECANCELED, etc.) - treat as error event.
       events = IREE_ASYNC_POLL_EVENT_ERR;
@@ -886,7 +906,9 @@ static void iree_async_proactor_io_uring_signal_dispatch_callback(
 static void iree_async_proactor_io_uring_handle_signal_cqe(
     iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe) {
   // Only process if signal handling is still active.
-  if (!proactor->signal.initialized) return;
+  if (!proactor->signal.initialized) {
+    return;
+  }
 
   // Read and dispatch all pending signals from signalfd.
   if (cqe->res >= 0 && (cqe->res & POLLIN)) {
@@ -1116,10 +1138,18 @@ static iree_status_t iree_async_proactor_io_uring_populate_result(
       // Translate to portable iree_async_poll_events_t.
       int revents = cqe->res;
       iree_async_poll_events_t events = IREE_ASYNC_POLL_EVENT_NONE;
-      if (revents & POLLIN) events |= IREE_ASYNC_POLL_EVENT_IN;
-      if (revents & POLLOUT) events |= IREE_ASYNC_POLL_EVENT_OUT;
-      if (revents & POLLERR) events |= IREE_ASYNC_POLL_EVENT_ERR;
-      if (revents & POLLHUP) events |= IREE_ASYNC_POLL_EVENT_HUP;
+      if (revents & POLLIN) {
+        events |= IREE_ASYNC_POLL_EVENT_IN;
+      }
+      if (revents & POLLOUT) {
+        events |= IREE_ASYNC_POLL_EVENT_OUT;
+      }
+      if (revents & POLLERR) {
+        events |= IREE_ASYNC_POLL_EVENT_ERR;
+      }
+      if (revents & POLLHUP) {
+        events |= IREE_ASYNC_POLL_EVENT_HUP;
+      }
       handle_poll->result_events = events;
       break;
     }
@@ -1265,14 +1295,18 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     iree_async_io_uring_socket_send_completion_t completion =
         iree_async_io_uring_socket_process_send_cqe(
             cqe, (iree_async_socket_send_operation_t*)operation);
-    if (!completion.is_terminal) return 0;
+    if (!completion.is_terminal) {
+      return 0;
+    }
     status = completion.status;
     flags = completion.flags;
   } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO) {
     iree_async_io_uring_socket_send_completion_t completion =
         iree_async_io_uring_socket_process_sendto_cqe(
             cqe, (iree_async_socket_sendto_operation_t*)operation);
-    if (!completion.is_terminal) return 0;
+    if (!completion.is_terminal) {
+      return 0;
+    }
     status = completion.status;
     flags = completion.flags;
   } else {
@@ -1359,7 +1393,9 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   iree_async_proactor_io_uring_t* proactor =
       iree_async_proactor_io_uring_cast(base_proactor);
 
-  if (out_completed_count) *out_completed_count = 0;
+  if (out_completed_count) {
+    *out_completed_count = 0;
+  }
 
   // Enable the ring on first poll. When created with R_DISABLED (which happens
   // automatically when SINGLE_ISSUER is in the setup flags), this call binds
@@ -1394,7 +1430,9 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   // the busy-loop duration.
   iree_host_size_t progress_count =
       iree_async_proactor_run_progress(base_proactor);
-  if (progress_count > 0 || base_proactor->progress_list) is_immediate = true;
+  if (progress_count > 0 || base_proactor->progress_list) {
+    is_immediate = true;
+  }
 
   // If no CQEs are available after flushing and timeout allows blocking,
   // wait for completions.
@@ -1485,7 +1523,9 @@ static iree_status_t iree_async_proactor_io_uring_poll(
     uint32_t drain_tail_snapshot =
         iree_atomic_load((iree_atomic_int32_t*)proactor->ring.cq_tail,
                          iree_memory_order_acquire);
-    if (*proactor->ring.cq_head == drain_tail_snapshot) break;
+    if (*proactor->ring.cq_head == drain_tail_snapshot) {
+      break;
+    }
     while (*proactor->ring.cq_head != drain_tail_snapshot) {
       iree_io_uring_cqe_t* cqe =
           &proactor->ring
@@ -1517,7 +1557,9 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   completed +=
       iree_async_proactor_io_uring_drain_pending_software_completions(proactor);
 
-  if (out_completed_count) *out_completed_count = completed;
+  if (out_completed_count) {
+    *out_completed_count = completed;
+  }
 
   // Return DEADLINE_EXCEEDED for immediate poll with no completions.
   if (completed == 0 && is_immediate) {
@@ -1547,7 +1589,9 @@ static void iree_async_proactor_io_uring_wake(
   iree_async_proactor_io_uring_t* proactor =
       iree_async_proactor_io_uring_cast(base_proactor);
 
-  if (proactor->wake_eventfd < 0) return;
+  if (proactor->wake_eventfd < 0) {
+    return;
+  }
 
   // Write to eventfd to wake a blocked poll. This is thread-safe and
   // signal-safe. EAGAIN means the counter is saturated and therefore already
@@ -1557,7 +1601,9 @@ static void iree_async_proactor_io_uring_wake(
   do {
     result = write(proactor->wake_eventfd, &value, sizeof(value));
   } while (result < 0 && errno == EINTR);
-  if (result < 0 && errno == EAGAIN) return;
+  if (result < 0 && errno == EAGAIN) {
+    return;
+  }
   IREE_ASSERT(result == sizeof(value),
               "failed to signal io_uring wake eventfd: %zd (errno=%d)", result,
               errno);
@@ -2032,7 +2078,9 @@ static iree_status_t iree_async_proactor_io_uring_register_event_source(
 static void iree_async_proactor_io_uring_unregister_event_source(
     iree_async_proactor_t* base_proactor,
     iree_async_event_source_t* event_source) {
-  if (!event_source) return;
+  if (!event_source) {
+    return;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_async_proactor_io_uring_t* proactor =
@@ -2208,7 +2256,9 @@ static iree_status_t iree_async_proactor_io_uring_subscribe_signal(
 static void iree_async_proactor_io_uring_unsubscribe_signal(
     iree_async_proactor_t* base_proactor,
     iree_async_signal_subscription_t* subscription) {
-  if (!subscription) return;
+  if (!subscription) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_async_proactor_io_uring_t* proactor =

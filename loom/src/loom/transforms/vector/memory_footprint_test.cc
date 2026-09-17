@@ -35,7 +35,9 @@ class VectorMemoryFootprintPassTest : public ::testing::Test {
 
   void TearDown() override {
     loom_pass_value_fact_owner_deinitialize(&value_facts_);
-    if (module_) loom_module_free(module_);
+    if (module_) {
+      loom_module_free(module_);
+    }
     loom_context_deinitialize(&context_);
     iree_arena_deinitialize(&pass_arena_);
     iree_arena_block_pool_deinitialize(&block_pool_);

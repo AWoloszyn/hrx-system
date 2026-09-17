@@ -131,7 +131,9 @@ void iree_hal_amdgpu_reclaim_entry_release(
 
 static inline void iree_hal_amdgpu_reclaim_entry_execute_pre_signal_action(
     iree_hal_amdgpu_reclaim_entry_t* entry, const iree_status_t status) {
-  if (!entry->pre_signal_action.fn) return;
+  if (!entry->pre_signal_action.fn) {
+    return;
+  }
   iree_hal_amdgpu_reclaim_action_fn_t fn = entry->pre_signal_action.fn;
   void* user_data = entry->pre_signal_action.user_data;
   entry->pre_signal_action.fn = NULL;
@@ -511,7 +513,9 @@ static void iree_hal_amdgpu_notification_ring_discard_stale_frontier_snapshots(
     const iree_hal_amdgpu_frontier_snapshot_t* snapshot =
         iree_hal_amdgpu_notification_ring_frontier_snapshot_at(ring,
                                                                &snapshot_read);
-    if (snapshot->epoch > last_drained_epoch) break;
+    if (snapshot->epoch > last_drained_epoch) {
+      break;
+    }
     read = snapshot_read +
            iree_hal_amdgpu_notification_ring_frontier_snapshot_size(snapshot);
   }
@@ -582,7 +586,9 @@ iree_host_size_t iree_hal_amdgpu_notification_ring_drain_reclaim_positions(
   memset(out_reclaim_positions, 0, sizeof(*out_reclaim_positions));
 
   // Early out if the ring was never initialized or already deinitialized.
-  if (!ring->epoch.signal.handle) return 0;
+  if (!ring->epoch.signal.handle) {
+    return 0;
+  }
 
   hsa_signal_value_t signal_value = iree_hsa_signal_load_scacquire(
       IREE_LIBHSA(ring->libhsa), ring->epoch.signal);
@@ -590,11 +596,15 @@ iree_host_size_t iree_hal_amdgpu_notification_ring_drain_reclaim_positions(
       (uint64_t)(IREE_HAL_AMDGPU_EPOCH_INITIAL_VALUE - signal_value);
   const uint64_t last_published = (uint64_t)iree_atomic_load(
       &ring->epoch.last_published, iree_memory_order_acquire);
-  if (current_epoch > last_published) current_epoch = last_published;
+  if (current_epoch > last_published) {
+    current_epoch = last_published;
+  }
 
   uint64_t previous_drained = (uint64_t)iree_atomic_load(
       &ring->epoch.last_drained, iree_memory_order_relaxed);
-  if (current_epoch <= previous_drained) return 0;
+  if (current_epoch <= previous_drained) {
+    return 0;
+  }
   iree_hal_amdgpu_notification_ring_discard_stale_frontier_snapshots(
       ring, previous_drained);
 
@@ -651,7 +661,9 @@ iree_host_size_t iree_hal_amdgpu_notification_ring_drain_reclaim_positions(
   while (read < write) {
     uint32_t index = (uint32_t)(read & (ring->capacity - 1));
     iree_hal_amdgpu_notification_entry_t* entry = &ring->entries[index];
-    if (entry->submission_epoch > current_epoch) break;
+    if (entry->submission_epoch > current_epoch) {
+      break;
+    }
 
     if (entry->semaphore != pending_semaphore) {
       // Semaphore changed — flush the previous span.
@@ -792,7 +804,9 @@ iree_host_size_t iree_hal_amdgpu_notification_ring_fail_all_reclaim_positions(
   while (read < write) {
     uint32_t index = (uint32_t)(read & (ring->capacity - 1));
     iree_hal_amdgpu_notification_entry_t* entry = &ring->entries[index];
-    if (entry->submission_epoch > last_published) break;
+    if (entry->submission_epoch > last_published) {
+      break;
+    }
 
     // Check-before-clone: only clone and fail if this semaphore hasn't been
     // failed yet. Avoids cloning status objects (which contain stack traces)

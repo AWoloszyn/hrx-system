@@ -228,7 +228,9 @@ static void loom_target_compile_report_record_edge_copy_moves(
   for (iree_host_size_t i = 0; i < allocation->edge_copy_group_count; ++i) {
     const loom_low_allocation_edge_copy_group_t* group =
         &allocation->edge_copy_groups[i];
-    if (group->move_group.moves.count == 0) continue;
+    if (group->move_group.moves.count == 0) {
+      continue;
+    }
     ++packet_count;
     unit_count += group->move_group.moves.count;
   }
@@ -565,7 +567,9 @@ iree_status_t loom_target_compile_report_record_low_lowering(
 void loom_target_compile_report_record_low_planning(
     loom_target_compile_report_t* report,
     const loom_low_planning_statistics_t* statistics) {
-  if (statistics->frame_build_count == 0) return;
+  if (statistics->frame_build_count == 0) {
+    return;
+  }
   const bool first_record = !iree_any_bit_set(
       report->detail_flags, LOOM_TARGET_COMPILE_REPORT_DETAIL_LOW_PLANNING);
   report->detail_flags |= LOOM_TARGET_COMPILE_REPORT_DETAIL_LOW_PLANNING;

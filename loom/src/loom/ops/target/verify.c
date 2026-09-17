@@ -50,9 +50,13 @@ static iree_status_t loom_target_verify_u32_projection(
     const loom_target_projection_t* projection,
     iree_diagnostic_emitter_t emitter) {
   loom_attribute_t attr = loom_op_attrs(op)[projection->attr_index];
-  if (loom_attr_is_absent(attr)) return iree_ok_status();
+  if (loom_attr_is_absent(attr)) {
+    return iree_ok_status();
+  }
   const int64_t value = loom_attr_as_i64(attr);
-  if (value >= 0 && value <= UINT32_MAX) return iree_ok_status();
+  if (value >= 0 && value <= UINT32_MAX) {
+    return iree_ok_status();
+  }
   return loom_target_emit_attr_constraint(
       emitter, op, loom_target_attr_name(module, op, projection->attr_index),
       value, IREE_SV("an unsigned 32-bit integer"));
@@ -63,9 +67,13 @@ static iree_status_t loom_target_verify_u64_projection(
     const loom_target_projection_t* projection,
     iree_diagnostic_emitter_t emitter) {
   loom_attribute_t attr = loom_op_attrs(op)[projection->attr_index];
-  if (loom_attr_is_absent(attr)) return iree_ok_status();
+  if (loom_attr_is_absent(attr)) {
+    return iree_ok_status();
+  }
   const int64_t value = loom_attr_as_i64(attr);
-  if (value >= 0) return iree_ok_status();
+  if (value >= 0) {
+    return iree_ok_status();
+  }
   return loom_target_emit_attr_constraint(
       emitter, op, loom_target_attr_name(module, op, projection->attr_index),
       value, IREE_SV("a non-negative integer"));

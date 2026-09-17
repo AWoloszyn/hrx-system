@@ -29,7 +29,9 @@ void loom_bytecode_page_writer_initialize(loom_bytecode_page_writer_t* writer,
 
 iree_status_t loom_bytecode_page_writer_flush(
     loom_bytecode_page_writer_t* writer) {
-  if (writer->position == 0) return iree_ok_status();
+  if (writer->position == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       iree_io_stream_write(writer->stream, writer->position, writer->page));
   writer->position = 0;
@@ -39,7 +41,9 @@ iree_status_t loom_bytecode_page_writer_flush(
 iree_status_t loom_bytecode_page_writer_write(
     loom_bytecode_page_writer_t* writer, const void* data,
     iree_host_size_t length) {
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   writer->total_written += length;
   const uint8_t* source = (const uint8_t*)data;
 
@@ -150,7 +154,9 @@ iree_status_t loom_bytecode_page_writer_write_zeros(
 iree_status_t loom_bytecode_page_writer_pad_to_alignment(
     loom_bytecode_page_writer_t* writer, iree_host_size_t alignment) {
   iree_host_size_t remainder = writer->total_written % alignment;
-  if (remainder == 0) return iree_ok_status();
+  if (remainder == 0) {
+    return iree_ok_status();
+  }
   return loom_bytecode_page_writer_write_zeros(writer, alignment - remainder);
 }
 
@@ -218,7 +224,9 @@ iree_status_t loom_bytecode_emit_u8(iree_string_builder_t* builder,
                                     uint8_t value) {
   char* head = NULL;
   IREE_RETURN_IF_ERROR(iree_string_builder_append_inline(builder, 1, &head));
-  if (head) head[0] = (char)value;
+  if (head) {
+    head[0] = (char)value;
+  }
   return iree_ok_status();
 }
 

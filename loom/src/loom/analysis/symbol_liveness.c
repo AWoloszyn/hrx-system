@@ -69,8 +69,12 @@ static iree_status_t loom_symbol_liveness_mark_symbol_id_impl(
         "live symbol id %u is outside the module symbol table",
         (uint32_t)symbol_id);
   }
-  if (contributed) ++state->contributed_edge_count;
-  if (state->live_symbols[symbol_id]) return iree_ok_status();
+  if (contributed) {
+    ++state->contributed_edge_count;
+  }
+  if (state->live_symbols[symbol_id]) {
+    return iree_ok_status();
+  }
   if (state->worklist.count >= state->worklist.capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         state->arena, state->worklist.count, state->worklist.count + 1,
@@ -118,7 +122,9 @@ static iree_status_t loom_symbol_liveness_seed_roots(
   if (state->options.root_query) {
     const loom_symbol_t* symbol = NULL;
     loom_module_for_each_symbol(state->module, symbol) {
-      if (!symbol->defining_op) continue;
+      if (!symbol->defining_op) {
+        continue;
+      }
       loom_symbol_id_t symbol_id =
           (loom_symbol_id_t)(symbol - state->module->symbols.entries);
       if (!state->options.root_query(state->options.root_query_user_data,
@@ -179,7 +185,9 @@ static iree_status_t loom_symbol_liveness_visit_contributors(
 
 static iree_status_t loom_symbol_liveness_traverse_symbol(
     loom_symbol_liveness_state_t* state, loom_symbol_id_t symbol_id) {
-  if (symbol_id >= state->references->symbol_count) return iree_ok_status();
+  if (symbol_id >= state->references->symbol_count) {
+    return iree_ok_status();
+  }
 
   loom_symbol_reference_occurrence_id_t edge_id =
       state->references->symbols[symbol_id].first_outgoing_occurrence_id;
@@ -196,7 +204,9 @@ static iree_status_t loom_symbol_liveness_traverse_symbol(
     edge_id = edge->next_outgoing_occurrence_id;
   }
 
-  if (!state->has_contributors) return iree_ok_status();
+  if (!state->has_contributors) {
+    return iree_ok_status();
+  }
   const loom_symbol_t* symbol = &state->module->symbols.entries[symbol_id];
   loom_template_demand_id_t demand_id =
       state->references->symbols[symbol_id].first_template_demand_id;

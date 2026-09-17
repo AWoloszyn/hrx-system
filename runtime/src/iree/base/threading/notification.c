@@ -384,7 +384,9 @@ bool iree_notification_await(iree_notification_t* notification,
   }
 
   // If a (silly) query then bail immediately after our first condition check.
-  if (iree_timeout_is_immediate(timeout)) return false;
+  if (iree_timeout_is_immediate(timeout)) {
+    return false;
+  }
   const iree_time_t deadline_ns = iree_timeout_as_deadline_ns(timeout);
 
   // Slow-path: try-wait until the condition is met.

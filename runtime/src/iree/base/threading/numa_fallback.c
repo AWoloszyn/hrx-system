@@ -76,7 +76,9 @@ iree_numa_alloc(iree_host_size_t size, const iree_numa_alloc_options_t* options,
 
 IREE_API_EXPORT void iree_numa_free(void* ptr,
                                     const iree_numa_alloc_info_t* info) {
-  if (!ptr) return;
+  if (!ptr) {
+    return;
+  }
   iree_aligned_free(ptr);
 }
 

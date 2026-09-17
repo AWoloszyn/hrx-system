@@ -34,7 +34,9 @@ static constexpr std::array<iree_device_size_t, kBindingCount>
 
 static ByteSequencePtr LoadMulI32Image() {
   EXPECT_EQ(iree_hal_amd_xdna_test_mul_i32_size(), 1u);
-  if (iree_hal_amd_xdna_test_mul_i32_size() != 1u) return {};
+  if (iree_hal_amd_xdna_test_mul_i32_size() != 1u) {
+    return {};
+  }
   const iree_file_toc_t* file = iree_hal_amd_xdna_test_mul_i32_create();
   const auto* begin = reinterpret_cast<const uint8_t*>(file->data);
   return MakeOwnedByteSequence(std::vector<uint8_t>(begin, begin + file->size));
@@ -320,7 +322,9 @@ TEST_F(XdnaPreparedCommandTest, BoundsUnrestrictedOffsetsByTheActualBuffer) {
   ++bindings_[0].buffer_ref.offset;
   IREE_EXPECT_STATUS_IS(StatusCode::kOutOfRange, CreatePrepared());
   EXPECT_EQ(prepared_command_, nullptr);
-  for (uint8_t byte : instructions_) EXPECT_EQ(byte, 0xCC);
+  for (uint8_t byte : instructions_) {
+    EXPECT_EQ(byte, 0xCC);
+  }
 }
 
 TEST_F(XdnaPreparedCommandTest, EnforcesBindingAccess) {
@@ -355,7 +359,9 @@ TEST_F(XdnaPreparedCommandTest, RejectsUnrepresentableDmaAddressWithoutWrites) {
   bindings_[0].device_address = UINT64_C(1) << 48;
   IREE_EXPECT_STATUS_IS(StatusCode::kOutOfRange, CreatePrepared());
   EXPECT_EQ(prepared_command_, nullptr);
-  for (uint8_t byte : instructions_) EXPECT_EQ(byte, 0xCC);
+  for (uint8_t byte : instructions_) {
+    EXPECT_EQ(byte, 0xCC);
+  }
   for (iree_host_size_t i = 0; i < buffers_.size(); ++i) {
     iree_hal_buffer_release(buffers_[i]);
     buffers_[i] = nullptr;
@@ -380,7 +386,9 @@ TEST_F(XdnaPreparedCommandTest, RejectsShortStorageWithoutPublishing) {
           bindings_.size(), bindings_.data(), iree_allocator_system(),
           &output));
   EXPECT_EQ(output, sentinel);
-  for (uint8_t byte : instructions_) EXPECT_EQ(byte, 0xCC);
+  for (uint8_t byte : instructions_) {
+    EXPECT_EQ(byte, 0xCC);
+  }
 }
 
 }  // namespace

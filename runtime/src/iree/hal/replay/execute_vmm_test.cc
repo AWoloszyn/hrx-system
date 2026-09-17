@@ -392,7 +392,9 @@ class ReplayVmmExecutionTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    if (!initialized_) return;
+    if (!initialized_) {
+      return;
+    }
     state_.fail_release = false;
     state_.fail_physical_free = false;
     state_.fail_unmap = false;

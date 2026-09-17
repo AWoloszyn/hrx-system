@@ -1439,12 +1439,16 @@ static iree_status_t loom_template_selection_allocate_decision_scratch(
     loom_template_selection_state_t* state) {
   const uint32_t maximum_choice_count =
       state->decision_models.maximum_choice_count;
-  if (maximum_choice_count == 0) return iree_ok_status();
+  if (maximum_choice_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       state->arena, maximum_choice_count,
       sizeof(*state->decision_scratch.live_provider_ordinals),
       (void**)&state->decision_scratch.live_provider_ordinals));
-  if (!state->reports_enabled) return iree_ok_status();
+  if (!state->reports_enabled) {
+    return iree_ok_status();
+  }
   return iree_arena_allocate_array(
       state->arena, maximum_choice_count,
       sizeof(*state->decision_scratch.provider_evidence),

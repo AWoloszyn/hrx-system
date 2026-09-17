@@ -175,14 +175,18 @@ static iree_status_t loom_liveness_bitset_allocate(
 }
 
 static void loom_liveness_bitset_clear_all(loom_liveness_bitset_t bitset) {
-  if (bitset.word_count == 0) return;
+  if (bitset.word_count == 0) {
+    return;
+  }
   memset(bitset.words, 0, bitset.word_count * sizeof(*bitset.words));
 }
 
 static void loom_liveness_bitset_copy(loom_liveness_bitset_t target,
                                       loom_liveness_bitset_t source) {
   IREE_ASSERT(target.word_count == source.word_count);
-  if (target.word_count == 0) return;
+  if (target.word_count == 0) {
+    return;
+  }
   memcpy(target.words, source.words, target.word_count * sizeof(*target.words));
 }
 
@@ -190,7 +194,9 @@ static bool loom_liveness_bitset_equals(loom_liveness_bitset_t lhs,
                                         loom_liveness_bitset_t rhs) {
   IREE_ASSERT(lhs.word_count == rhs.word_count);
   for (iree_host_size_t i = 0; i < lhs.word_count; ++i) {
-    if (lhs.words[i] != rhs.words[i]) return false;
+    if (lhs.words[i] != rhs.words[i]) {
+      return false;
+    }
   }
   return true;
 }
@@ -646,7 +652,9 @@ static bool loom_liveness_op_defines_value(const loom_op_t* op,
                                            loom_value_id_t value_id) {
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (results[i] == value_id) return true;
+    if (results[i] == value_id) {
+      return true;
+    }
   }
   return false;
 }
@@ -663,7 +671,9 @@ static bool loom_liveness_block_is_nested_in_op(const loom_op_t* owner_op,
 static bool loom_liveness_value_is_defined_inside_op(
     const loom_op_t* owner_op, const loom_module_t* module,
     loom_value_id_t value_id) {
-  if (value_id >= module->values.count) return false;
+  if (value_id >= module->values.count) {
+    return false;
+  }
   const loom_value_t* value = loom_module_value(module, value_id);
   if (loom_value_is_block_arg(value)) {
     return loom_liveness_block_is_nested_in_op(owner_op,
@@ -671,7 +681,9 @@ static bool loom_liveness_value_is_defined_inside_op(
   }
   const loom_op_t* def_op = loom_value_def_op(value);
   while (def_op) {
-    if (def_op == owner_op) return true;
+    if (def_op == owner_op) {
+      return true;
+    }
     def_op = def_op->parent_op;
   }
   return false;
@@ -679,15 +691,21 @@ static bool loom_liveness_value_is_defined_inside_op(
 
 static bool loom_liveness_region_is_nested_in_op(const loom_op_t* owner_op,
                                                  const loom_region_t* region) {
-  if (!owner_op || !region) return false;
+  if (!owner_op || !region) {
+    return false;
+  }
   loom_region_t* const* regions = loom_op_regions(owner_op);
   for (uint8_t i = 0; i < owner_op->region_count; ++i) {
-    if (regions[i] == region) return true;
+    if (regions[i] == region) {
+      return true;
+    }
     const loom_block_t* block = NULL;
     loom_region_for_each_block(regions[i], block) {
       const loom_op_t* op = NULL;
       loom_block_for_each_op(block, op) {
-        if (loom_liveness_region_is_nested_in_op(op, region)) return true;
+        if (loom_liveness_region_is_nested_in_op(op, region)) {
+          return true;
+        }
       }
     }
   }
@@ -1676,7 +1694,9 @@ static iree_status_t loom_liveness_finalize_interval_array(
   iree_host_size_t count = 0;
   for (iree_host_size_t value_ordinal = 0; value_ordinal < state->value_count;
        ++value_ordinal) {
-    if (state->value_interval_indices[value_ordinal] != UINT32_MAX) ++count;
+    if (state->value_interval_indices[value_ordinal] != UINT32_MAX) {
+      ++count;
+    }
   }
   loom_liveness_interval_t* intervals = NULL;
   if (count > 0) {
@@ -1686,7 +1706,9 @@ static iree_status_t loom_liveness_finalize_interval_array(
   iree_host_size_t interval_index = 0;
   for (iree_host_size_t value_ordinal = 0; value_ordinal < state->value_count;
        ++value_ordinal) {
-    if (state->value_interval_indices[value_ordinal] == UINT32_MAX) continue;
+    if (state->value_interval_indices[value_ordinal] == UINT32_MAX) {
+      continue;
+    }
     state->value_interval_indices[value_ordinal] = (uint32_t)interval_index;
     intervals[interval_index++] =
         state->interval_states[value_ordinal].interval;
@@ -2014,9 +2036,13 @@ loom_value_ordinal_t loom_liveness_operation_use_ordinal(
 
 const loom_liveness_interval_t* loom_liveness_interval_for_value(
     const loom_liveness_analysis_t* analysis, loom_value_id_t value_id) {
-  if (!analysis) return NULL;
+  if (!analysis) {
+    return NULL;
+  }
   for (iree_host_size_t i = 0; i < analysis->value_count; ++i) {
-    if (analysis->value_ids[i] != value_id) continue;
+    if (analysis->value_ids[i] != value_id) {
+      continue;
+    }
     return loom_liveness_interval_for_value_ordinal(analysis,
                                                     (loom_value_ordinal_t)i);
   }
@@ -2075,7 +2101,9 @@ bool loom_liveness_segment_ranges_overlap(
   IREE_ASSERT_ARGUMENT(analysis);
   IREE_ASSERT_LE((uint64_t)lhs.start + lhs.count, analysis->segment_count);
   IREE_ASSERT_LE((uint64_t)rhs.start + rhs.count, analysis->segment_count);
-  if (lhs.count == 0 || rhs.count == 0) return false;
+  if (lhs.count == 0 || rhs.count == 0) {
+    return false;
+  }
   const loom_liveness_segment_t* lhs_segment = &analysis->segments[lhs.start];
   const loom_liveness_segment_t* rhs_segment = &analysis->segments[rhs.start];
   const loom_liveness_segment_t* lhs_end = lhs_segment + lhs.count;
@@ -2084,9 +2112,13 @@ bool loom_liveness_segment_ranges_overlap(
   // exhausted; the other segment remains available for the next comparison.
   for (;;) {
     if (lhs_segment->end_point <= rhs_segment->start_point) {
-      if (++lhs_segment == lhs_end) return false;
+      if (++lhs_segment == lhs_end) {
+        return false;
+      }
     } else if (rhs_segment->end_point <= lhs_segment->start_point) {
-      if (++rhs_segment == rhs_end) return false;
+      if (++rhs_segment == rhs_end) {
+        return false;
+      }
     } else {
       return true;
     }
@@ -2095,10 +2127,16 @@ bool loom_liveness_segment_ranges_overlap(
 
 const loom_liveness_block_info_t* loom_liveness_block_info_for_block(
     const loom_liveness_analysis_t* analysis, const loom_block_t* block) {
-  if (!analysis) return NULL;
-  if (!block) return NULL;
+  if (!analysis) {
+    return NULL;
+  }
+  if (!block) {
+    return NULL;
+  }
   for (iree_host_size_t i = 0; i < analysis->block_count; ++i) {
-    if (analysis->blocks[i].block == block) return &analysis->blocks[i];
+    if (analysis->blocks[i].block == block) {
+      return &analysis->blocks[i];
+    }
   }
   return NULL;
 }
@@ -2141,7 +2179,9 @@ iree_status_t loom_liveness_collect_pressure_budget_violations(
     iree_host_size_t* out_violation_count) {
   *out_violations = NULL;
   *out_violation_count = 0;
-  if (budget_count == 0) return iree_ok_status();
+  if (budget_count == 0) {
+    return iree_ok_status();
+  }
   if (!budgets) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "pressure budgets are required when budget count "
@@ -2154,13 +2194,17 @@ iree_status_t loom_liveness_collect_pressure_budget_violations(
     const loom_liveness_pressure_summary_t* summary =
         loom_liveness_pressure_summary_for_class(
             analysis, budgets[budget_index].value_class);
-    if (!summary) continue;
+    if (!summary) {
+      continue;
+    }
     if (loom_liveness_pressure_budget_violation_bits(
             summary, &budgets[budget_index]) != 0) {
       ++violation_count;
     }
   }
-  if (violation_count == 0) return iree_ok_status();
+  if (violation_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_liveness_pressure_budget_violation_t* violations = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -2171,11 +2215,15 @@ iree_status_t loom_liveness_collect_pressure_budget_violations(
     const loom_liveness_pressure_summary_t* summary =
         loom_liveness_pressure_summary_for_class(
             analysis, budgets[budget_index].value_class);
-    if (!summary) continue;
+    if (!summary) {
+      continue;
+    }
     loom_liveness_pressure_budget_violation_flags_t violation_bits =
         loom_liveness_pressure_budget_violation_bits(summary,
                                                      &budgets[budget_index]);
-    if (violation_bits == 0) continue;
+    if (violation_bits == 0) {
+      continue;
+    }
     violations[violation_index++] = (loom_liveness_pressure_budget_violation_t){
         .budget_index = budget_index,
         .budget = budgets[budget_index],

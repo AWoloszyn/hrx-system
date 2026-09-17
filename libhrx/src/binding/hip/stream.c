@@ -49,8 +49,12 @@ void iree_hip_queue_family_priority_range(
       family_spec->priority_count - normal_priority_index - 1;
   const int greatest_priority =
       -(int)iree_min(higher_priority_count, (iree_host_size_t)INT_MAX);
-  if (out_least_priority) *out_least_priority = least_priority;
-  if (out_greatest_priority) *out_greatest_priority = greatest_priority;
+  if (out_least_priority) {
+    *out_least_priority = least_priority;
+  }
+  if (out_greatest_priority) {
+    *out_greatest_priority = greatest_priority;
+  }
 }
 
 iree_hal_queue_priority_t iree_hip_queue_family_select_priority(
@@ -67,7 +71,9 @@ iree_hal_queue_priority_t iree_hip_queue_family_select_priority(
                                        &greatest_priority);
   const int hip_priority =
       iree_min(iree_max(requested_priority, greatest_priority), least_priority);
-  if (out_hip_priority) *out_hip_priority = hip_priority;
+  if (out_hip_priority) {
+    *out_hip_priority = hip_priority;
+  }
   const iree_host_size_t queue_priority_index =
       hip_priority < 0
           ? normal_priority_index + (iree_host_size_t) - (int64_t)hip_priority
@@ -191,7 +197,9 @@ bool iree_hip_stream_retain_attached(
   }
   iree_slim_mutex_unlock(&handle->mutex);
 
-  if (!stream) return false;
+  if (!stream) {
+    return false;
+  }
   *out_stream = stream;
   *out_context = context;
   return true;
@@ -213,20 +221,28 @@ bool iree_hip_stream_detach(hipStream_t handle,
   }
   iree_slim_mutex_unlock(&handle->mutex);
 
-  if (!stream) return false;
+  if (!stream) {
+    return false;
+  }
   *out_stream = stream;
   *out_context = context;
   return true;
 }
 
 void iree_hip_stream_retain(hipStream_t handle) {
-  if (!handle) return;
+  if (!handle) {
+    return;
+  }
   iree_atomic_ref_count_inc(&handle->ref_count);
 }
 
 void iree_hip_stream_release(hipStream_t handle) {
-  if (!handle) return;
-  if (iree_atomic_ref_count_dec(&handle->ref_count) != 1) return;
+  if (!handle) {
+    return;
+  }
+  if (iree_atomic_ref_count_dec(&handle->ref_count) != 1) {
+    return;
+  }
 
   iree_slim_mutex_lock(&handle->mutex);
   IREE_ASSERT(handle->stream == NULL);

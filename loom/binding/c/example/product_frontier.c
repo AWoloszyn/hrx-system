@@ -134,12 +134,16 @@ static void print_status(loomc_status_t status) {
 }
 
 static void print_result_diagnostics(const loomc_result_t* result) {
-  if (result == NULL) return;
+  if (result == NULL) {
+    return;
+  }
   for (loomc_host_size_t i = 0; i < loomc_result_diagnostic_count(result);
        ++i) {
     const loomc_diagnostic_t* diagnostic =
         loomc_result_diagnostic_at(result, i);
-    if (diagnostic == NULL) continue;
+    if (diagnostic == NULL) {
+      continue;
+    }
     fprintf(stderr, "%.*s: %.*s\n", (int)diagnostic->code.size,
             diagnostic->code.data, (int)diagnostic->message.size,
             diagnostic->message.data);
@@ -270,7 +274,9 @@ static loomc_status_t schedule_kernel_request(void* user_data,
     status = loomc_task_sink_submit(scheduler->compile_sink, task);
   }
   if (!loomc_status_is_ok(status)) {
-    if (task != NULL) loomc_task_destroy(task);
+    if (task != NULL) {
+      loomc_task_destroy(task);
+    }
     loomc_request_release(output->request);
     memset(output, 0, sizeof(*output));
     return status;
@@ -336,7 +342,9 @@ static loomc_status_t prepare_source_catalog(jit_scheduler_t* scheduler,
     status = loomc_make_status(LOOMC_STATUS_NOT_FOUND,
                                "command root @run was not indexed");
   }
-  if (loomc_status_is_ok(status)) *out_root = root_symbol.ordinal;
+  if (loomc_status_is_ok(status)) {
+    *out_root = root_symbol.ordinal;
+  }
 
   loomc_result_release(index_result);
   loomc_link_index_builder_release(builder);
@@ -392,7 +400,9 @@ static loomc_status_t prepare_compile_scheduler(jit_scheduler_t* scheduler) {
     status = loomc_workspace_create(
         NULL, scheduler->allocator,
         &scheduler->worker_workspaces[initialized_workspace_count]);
-    if (loomc_status_is_ok(status)) ++initialized_workspace_count;
+    if (loomc_status_is_ok(status)) {
+      ++initialized_workspace_count;
+    }
   }
   scheduler->worker_workspace_count = initialized_workspace_count;
   return status;
@@ -436,7 +446,9 @@ static loomc_status_t build_command_product(jit_scheduler_t* scheduler,
 // --8<-- [end:build-command]
 
 static loomc_status_t drain_compile_queue(jit_scheduler_t* scheduler) {
-  if (scheduler->compile_queue == NULL) return loomc_ok_status();
+  if (scheduler->compile_queue == NULL) {
+    return loomc_ok_status();
+  }
   loomc_status_t status = loomc_task_queue_shutdown(scheduler->compile_queue);
   if (loomc_status_is_ok(status)) {
     status = loomc_task_queue_await_shutdown(scheduler->compile_queue);
@@ -463,7 +475,9 @@ static loomc_status_t inspect_kernel_products(jit_scheduler_t* scheduler,
     const bool compile_call_succeeded = loomc_status_is_ok(output->status);
     status = loomc_status_join(status, output->status);
     output->status = loomc_ok_status();
-    if (!compile_call_succeeded) continue;
+    if (!compile_call_succeeded) {
+      continue;
+    }
 
     if (output->result == NULL || !loomc_result_succeeded(output->result)) {
       print_result_diagnostics(output->result);
@@ -494,7 +508,9 @@ static loomc_status_t inspect_kernel_products(jit_scheduler_t* scheduler,
       continue;
     }
 
-    if (!parent_succeeded) continue;
+    if (!parent_succeeded) {
+      continue;
+    }
     const loomc_host_size_t binding_count =
         loomc_request_binding_count(output->request);
     for (loomc_host_size_t j = 0; j < binding_count; ++j) {
@@ -516,11 +532,15 @@ static loomc_status_t inspect_kernel_products(jit_scheduler_t* scheduler,
     }
   }
 
-  if (!parent_succeeded || !loomc_status_is_ok(status)) return status;
+  if (!parent_succeeded || !loomc_status_is_ok(status)) {
+    return status;
+  }
 
   loomc_host_size_t external_requirement_count = 0;
   for (loomc_host_size_t i = 0; i < COMMAND_REQUIREMENT_CAPACITY; ++i) {
-    if (resolved_requirements[i]) continue;
+    if (resolved_requirements[i]) {
+      continue;
+    }
     loomc_cmd_entry_requirement_t requirement = {0};
     if (!loomc_cmd_program_product_entry_requirement_at(
             scheduler->command_product, i, &requirement) ||
@@ -575,7 +595,9 @@ static loomc_status_t run_scheduled_jit_example(void) {
 
 int main(void) {
   loomc_status_t status = run_scheduled_jit_example();
-  if (loomc_status_is_ok(status)) return 0;
+  if (loomc_status_is_ok(status)) {
+    return 0;
+  }
   print_status(status);
   loomc_status_free(status);
   return 1;

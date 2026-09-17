@@ -16,7 +16,9 @@
 #pragma comment(lib, "bcrypt.lib")
 
 IREE_API_EXPORT iree_status_t iree_csprng_fill(iree_byte_span_t buffer) {
-  if (buffer.data_length == 0) return iree_ok_status();
+  if (buffer.data_length == 0) {
+    return iree_ok_status();
+  }
   NTSTATUS status =
       BCryptGenRandom(NULL, buffer.data, (ULONG)buffer.data_length,
                       BCRYPT_USE_SYSTEM_PREFERRED_RNG);
@@ -32,7 +34,9 @@ IREE_API_EXPORT iree_status_t iree_csprng_fill(iree_byte_span_t buffer) {
 #include <stdlib.h>
 
 IREE_API_EXPORT iree_status_t iree_csprng_fill(iree_byte_span_t buffer) {
-  if (buffer.data_length == 0) return iree_ok_status();
+  if (buffer.data_length == 0) {
+    return iree_ok_status();
+  }
   arc4random_buf(buffer.data, buffer.data_length);
   return iree_ok_status();
 }
@@ -43,13 +47,17 @@ IREE_API_EXPORT iree_status_t iree_csprng_fill(iree_byte_span_t buffer) {
 #include <sys/random.h>
 
 IREE_API_EXPORT iree_status_t iree_csprng_fill(iree_byte_span_t buffer) {
-  if (buffer.data_length == 0) return iree_ok_status();
+  if (buffer.data_length == 0) {
+    return iree_ok_status();
+  }
   iree_host_size_t total_read = 0;
   while (total_read < buffer.data_length) {
     ssize_t bytes_read =
         getrandom(buffer.data + total_read, buffer.data_length - total_read, 0);
     if (bytes_read < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR) {
+        continue;
+      }
       return iree_make_status(iree_status_code_from_errno(errno),
                               "getrandom failed");
     }
@@ -66,7 +74,9 @@ extern int32_t __wasi_random_get(uint8_t* buffer, uint32_t length)
                    __import_name__("random_get")));
 
 IREE_API_EXPORT iree_status_t iree_csprng_fill(iree_byte_span_t buffer) {
-  if (buffer.data_length == 0) return iree_ok_status();
+  if (buffer.data_length == 0) {
+    return iree_ok_status();
+  }
   int32_t error = __wasi_random_get(buffer.data, (uint32_t)buffer.data_length);
   if (error != 0) {
     return iree_make_status(IREE_STATUS_INTERNAL, "wasi random_get failed: %d",
@@ -83,7 +93,9 @@ IREE_API_EXPORT iree_status_t iree_csprng_fill(iree_byte_span_t buffer) {
 extern int iree_wasm_csprng_fill(uint8_t* buffer, uint32_t length);
 
 IREE_API_EXPORT iree_status_t iree_csprng_fill(iree_byte_span_t buffer) {
-  if (buffer.data_length == 0) return iree_ok_status();
+  if (buffer.data_length == 0) {
+    return iree_ok_status();
+  }
   int result = iree_wasm_csprng_fill(buffer.data, (uint32_t)buffer.data_length);
   if (result != 0) {
     return iree_make_status(IREE_STATUS_INTERNAL,

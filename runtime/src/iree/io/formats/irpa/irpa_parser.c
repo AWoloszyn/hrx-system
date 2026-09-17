@@ -22,7 +22,9 @@ static iree_status_t iree_io_resolve_irpa_file_range(
     iree_io_irpa_resolved_range_t* out_range) {
   out_range->offset = 0;
   out_range->contents = iree_const_byte_span_empty();
-  if (range.length == 0) return iree_ok_status();
+  if (range.length == 0) {
+    return iree_ok_status();
+  }
 
   iree_io_physical_offset_t absolute_offset = 0;
   if (!iree_checked_add_u64(base_offset, range.offset, &absolute_offset) ||
@@ -50,7 +52,9 @@ static iree_status_t iree_io_resolve_irpa_subrange(
     iree_io_irpa_resolved_range_t* out_range) {
   out_range->offset = 0;
   out_range->contents = iree_const_byte_span_empty();
-  if (range.length == 0) return iree_ok_status();
+  if (range.length == 0) {
+    return iree_ok_status();
+  }
 
   if (range.offset > parent_range->contents.data_length ||
       range.length >
@@ -358,7 +362,9 @@ static iree_status_t iree_io_parse_irpa_index_from_memory(
     // Advance through the linked list without carrying user-controlled depth on
     // the native stack. A nonzero relative offset makes forward progress; the
     // checked addition rejects wraparound before the next pointer is formed.
-    if (header_prefix->next_header_offset == 0) return iree_ok_status();
+    if (header_prefix->next_header_offset == 0) {
+      return iree_ok_status();
+    }
     if (header_prefix->next_header_offset %
             IREE_IO_PARAMETER_ARCHIVE_HEADER_ALIGNMENT !=
         0) {

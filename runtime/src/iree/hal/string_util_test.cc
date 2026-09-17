@@ -349,17 +349,25 @@ class Handle {
   Handle(T* value) noexcept : value_(value) { retain_fn(value_); }
 
   ~Handle() noexcept {
-    if (value_) release_fn(value_);
+    if (value_) {
+      release_fn(value_);
+    }
   }
 
   Handle(const Handle& rhs) noexcept : value_(rhs.value_) {
-    if (value_) retain_fn(value_);
+    if (value_) {
+      retain_fn(value_);
+    }
   }
   Handle& operator=(const Handle& rhs) noexcept {
     if (value_ != rhs.value_) {
-      if (value_) release_fn(value_);
+      if (value_) {
+        release_fn(value_);
+      }
       value_ = rhs.get();
-      if (value_) retain_fn(value_);
+      if (value_) {
+        retain_fn(value_);
+      }
     }
     return *this;
   }
@@ -367,7 +375,9 @@ class Handle {
   Handle(Handle&& rhs) noexcept : value_(rhs.release()) {}
   Handle& operator=(Handle&& rhs) noexcept {
     if (value_ != rhs.value_) {
-      if (value_) release_fn(value_);
+      if (value_) {
+        release_fn(value_);
+      }
       value_ = rhs.release();
     }
     return *this;

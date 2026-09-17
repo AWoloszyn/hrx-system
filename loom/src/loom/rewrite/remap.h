@@ -282,10 +282,14 @@ iree_status_t loom_ir_remap_predicate_list(
 static inline void loom_ir_remap_record_cloned_op(loom_ir_remap_t* remap,
                                                   const loom_op_t* source_op,
                                                   loom_op_t* target_op) {
-  if (remap->op_projection.cursor == remap->op_projection.count) return;
+  if (remap->op_projection.cursor == remap->op_projection.count) {
+    return;
+  }
   loom_ir_remap_op_projection_t* entry =
       &remap->op_projection.entries[remap->op_projection.cursor];
-  if (entry->source_op != source_op) return;
+  if (entry->source_op != source_op) {
+    return;
+  }
   entry->target_op = target_op;
   ++remap->op_projection.cursor;
 }

@@ -262,7 +262,9 @@ iree_vm_program_resolve_callable_abi(const iree_vm_program_t* program,
 static inline bool iree_vm_program_function_ref_matches_mapping(
     const iree_vm_program_t* program, iree_vm_function_ref_t function_ref,
     uint32_t expected_mapping) {
-  if (iree_vm_function_ref_is_null(function_ref)) return true;
+  if (iree_vm_function_ref_is_null(function_ref)) {
+    return true;
+  }
   if (function_ref.program_bits != (uint64_t)(uintptr_t)program ||
       (function_ref.target_bits & 3u) != 0) {
     return false;

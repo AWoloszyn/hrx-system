@@ -71,7 +71,9 @@ struct NumaTopology {
   // Returns a different NUMA node than current_node, or IREE_NUMA_NODE_ANY
   // if there is only one node.
   iree_numa_node_id_t other_node() const {
-    if (!is_multi_numa) return IREE_NUMA_NODE_ANY;
+    if (!is_multi_numa) {
+      return IREE_NUMA_NODE_ANY;
+    }
     // Pick a node that isn't the current one.
     for (iree_host_size_t i = 0; i < node_count; ++i) {
       if (static_cast<iree_numa_node_id_t>(i) != current_node) {
@@ -229,7 +231,9 @@ inline BenchmarkContext* CreateBenchmarkContext(ProactorCreateFn create_fn,
 
 // Destroys a benchmark context created with CreateBenchmarkContext().
 inline void DestroyBenchmarkContext(BenchmarkContext* context) {
-  if (!context) return;
+  if (!context) {
+    return;
+  }
   iree_async_proactor_release(context->proactor);
   delete context;
 }

@@ -44,7 +44,9 @@ static iree_status_t iree_elf_arch_x86_32_apply_rel(
   for (iree_host_size_t i = 0; i < rel_count; ++i) {
     const iree_elf_rel_t* rel = &rel_table[i];
     uint32_t type = IREE_ELF_R_TYPE(rel->r_info);
-    if (type == IREE_ELF_R_386_NONE) continue;
+    if (type == IREE_ELF_R_386_NONE) {
+      continue;
+    }
 
     iree_elf_addr_t sym_addr = 0;
     uint32_t sym_ordinal = (uint32_t)IREE_ELF_R_SYM(rel->r_info);
@@ -110,7 +112,9 @@ iree_status_t iree_elf_arch_apply_relocations(
         break;
     }
   }
-  if (!rel_table) rel_count = 0;
+  if (!rel_table) {
+    rel_count = 0;
+  }
 
   if (rel_count > 0) {
     IREE_RETURN_IF_ERROR(

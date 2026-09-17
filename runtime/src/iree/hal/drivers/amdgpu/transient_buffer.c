@@ -154,7 +154,9 @@ iree_status_t iree_hal_amdgpu_transient_buffer_pool_initialize(
 
 void iree_hal_amdgpu_transient_buffer_pool_deinitialize(
     iree_hal_amdgpu_transient_buffer_pool_t* pool) {
-  if (!pool || !pool->block_pool) return;
+  if (!pool || !pool->block_pool) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
 #if !defined(NDEBUG)

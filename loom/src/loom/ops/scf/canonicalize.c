@@ -47,7 +47,9 @@ static bool loom_scf_lookup_selected_row(loom_rewriter_t* rewriter,
 }
 
 static bool loom_scf_lookup_has_well_formed_table_shape(loom_op_t* op) {
-  if (op->result_count == 0) return false;
+  if (op->result_count == 0) {
+    return false;
+  }
   loom_attribute_t case_keys = loom_scf_lookup_case_keys(op);
   if (case_keys.kind != LOOM_ATTR_I64_ARRAY ||
       (case_keys.count > 0 && !case_keys.i64_array)) {
@@ -60,7 +62,9 @@ static bool loom_scf_lookup_has_well_formed_table_shape(loom_op_t* op) {
 
 static bool loom_scf_lookup_key_matches_selector_facts(
     loom_value_facts_t selector_facts, int64_t key) {
-  if (loom_value_facts_is_float(selector_facts)) return true;
+  if (loom_value_facts_is_float(selector_facts)) {
+    return true;
+  }
   if (key < selector_facts.range_lo || key > selector_facts.range_hi) {
     return false;
   }
@@ -71,15 +75,21 @@ static bool loom_scf_lookup_key_matches_selector_facts(
 static bool loom_scf_lookup_key_is_explicit(loom_attribute_t case_keys,
                                             int64_t key) {
   for (uint16_t i = 0; i < case_keys.count; ++i) {
-    if (case_keys.i64_array[i] == key) return true;
-    if (case_keys.i64_array[i] > key) return false;
+    if (case_keys.i64_array[i] == key) {
+      return true;
+    }
+    if (case_keys.i64_array[i] > key) {
+      return false;
+    }
   }
   return false;
 }
 
 static bool loom_scf_lookup_default_row_may_match(
     loom_value_facts_t selector_facts, loom_attribute_t case_keys) {
-  if (loom_value_facts_is_float(selector_facts)) return true;
+  if (loom_value_facts_is_float(selector_facts)) {
+    return true;
+  }
   if (loom_value_facts_is_exact(selector_facts)) {
     return !loom_scf_lookup_key_is_explicit(case_keys, selector_facts.range_lo);
   }
@@ -97,7 +107,9 @@ static bool loom_scf_lookup_default_row_may_match(
                                                     candidate)) {
       continue;
     }
-    if (!loom_scf_lookup_key_is_explicit(case_keys, candidate)) return true;
+    if (!loom_scf_lookup_key_is_explicit(case_keys, candidate)) {
+      return true;
+    }
   }
   return false;
 }
@@ -122,7 +134,9 @@ static void loom_scf_lookup_mark_reachable_rows(
       continue;
     }
     reachable_rows[i] = true;
-    if (*out_reachable_count == 0) *out_first_reachable_row = i;
+    if (*out_reachable_count == 0) {
+      *out_first_reachable_row = i;
+    }
     ++*out_reachable_count;
     ++*out_reachable_explicit_count;
   }
@@ -130,13 +144,17 @@ static void loom_scf_lookup_mark_reachable_rows(
   iree_host_size_t default_row = case_keys.count;
   if (loom_scf_lookup_default_row_may_match(selector_facts, case_keys)) {
     reachable_rows[default_row] = true;
-    if (*out_reachable_count == 0) *out_first_reachable_row = default_row;
+    if (*out_reachable_count == 0) {
+      *out_first_reachable_row = default_row;
+    }
     ++*out_reachable_count;
   }
 }
 
 static loom_op_t* loom_scf_region_terminator(loom_region_t* region) {
-  if (!region || region->block_count != 1) return NULL;
+  if (!region || region->block_count != 1) {
+    return NULL;
+  }
   loom_block_t* block = loom_region_entry_block(region);
   if (!block || !block->last_op || !loom_scf_yield_isa(block->last_op)) {
     return NULL;
@@ -148,7 +166,9 @@ static iree_status_t loom_scf_move_region_body_before_op(
     loom_rewriter_t* rewriter, loom_region_t* region, loom_op_t* old_yield,
     loom_op_t* before_op) {
   loom_block_t* block = loom_region_entry_block(region);
-  if (!block) return iree_ok_status();
+  if (!block) {
+    return iree_ok_status();
+  }
   loom_op_t* child_op = block->first_op;
   while (child_op && child_op != old_yield) {
     loom_op_t* next_child_op = child_op->next_op;
@@ -162,8 +182,12 @@ static iree_status_t loom_scf_move_region_body_before_op(
 static iree_status_t loom_scf_replace_results_and_erase(
     loom_op_t* op, loom_rewriter_t* rewriter,
     const loom_value_id_t* replacements, uint16_t replacement_count) {
-  if (replacement_count != op->result_count) return iree_ok_status();
-  if (op->result_count == 0) return loom_rewriter_erase(rewriter, op);
+  if (replacement_count != op->result_count) {
+    return iree_ok_status();
+  }
+  if (op->result_count == 0) {
+    return loom_rewriter_erase(rewriter, op);
+  }
   return loom_rewriter_replace_all_uses_and_erase(rewriter, op, replacements,
                                                   replacement_count);
 }
@@ -177,7 +201,9 @@ static bool loom_scf_lookup_reachable_column_is_uniform(
   iree_host_size_t row_count = (iree_host_size_t)case_keys.count + 1;
   loom_value_id_t first_value = LOOM_VALUE_ID_INVALID;
   for (iree_host_size_t row = 0; row < row_count; ++row) {
-    if (!reachable_rows[row]) continue;
+    if (!reachable_rows[row]) {
+      continue;
+    }
     loom_value_id_t value = values.values[row * result_count + column];
     if (first_value == LOOM_VALUE_ID_INVALID) {
       first_value = value;
@@ -187,7 +213,9 @@ static bool loom_scf_lookup_reachable_column_is_uniform(
       return false;
     }
   }
-  if (first_value == LOOM_VALUE_ID_INVALID) return false;
+  if (first_value == LOOM_VALUE_ID_INVALID) {
+    return false;
+  }
   *out_value = first_value;
   return true;
 }
@@ -276,7 +304,9 @@ static iree_status_t loom_scf_lookup_compact_uniform_columns(
   loom_scf_lookup_mark_reachable_rows(
       op, selector_facts, reachable_rows, &reachable_count,
       &reachable_explicit_count, &first_reachable_row);
-  if (reachable_count == 0) return iree_ok_status();
+  if (reachable_count == 0) {
+    return iree_ok_status();
+  }
 
   bool* forwarded_results = NULL;
   loom_value_id_t* replacements = NULL;
@@ -291,13 +321,17 @@ static iree_status_t loom_scf_lookup_compact_uniform_columns(
   for (uint16_t i = 0; i < op->result_count; ++i) {
     forwarded_results[i] = loom_scf_lookup_reachable_column_is_uniform(
         op, reachable_rows, i, &replacements[i]);
-    if (forwarded_results[i]) ++forwarded_count;
+    if (forwarded_results[i]) {
+      ++forwarded_count;
+    }
   }
   bool default_reachable = reachable_rows[case_keys.count];
   bool default_row_matches_dead_source = true;
   if (!default_reachable) {
     for (uint16_t i = 0; i < op->result_count; ++i) {
-      if (forwarded_results[i]) continue;
+      if (forwarded_results[i]) {
+        continue;
+      }
       loom_value_id_t default_value =
           old_values.values[case_keys.count * op->result_count + i];
       loom_value_id_t source_value =
@@ -336,7 +370,9 @@ static iree_status_t loom_scf_lookup_compact_uniform_columns(
 
   uint16_t kept_ordinal = 0;
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (forwarded_results[i]) continue;
+    if (forwarded_results[i]) {
+      continue;
+    }
     kept_result_types[kept_ordinal] =
         loom_module_value_type(rewriter->module, old_results[i]);
     ++kept_ordinal;
@@ -344,11 +380,15 @@ static iree_status_t loom_scf_lookup_compact_uniform_columns(
 
   iree_host_size_t new_row = 0;
   for (uint16_t row = 0; row < case_keys.count; ++row) {
-    if (!reachable_rows[row]) continue;
+    if (!reachable_rows[row]) {
+      continue;
+    }
     kept_case_keys[new_row] = case_keys.i64_array[row];
     kept_ordinal = 0;
     for (uint16_t column = 0; column < op->result_count; ++column) {
-      if (forwarded_results[column]) continue;
+      if (forwarded_results[column]) {
+        continue;
+      }
       kept_values[new_row * kept_count + kept_ordinal] =
           old_values.values[row * op->result_count + column];
       ++kept_ordinal;
@@ -360,7 +400,9 @@ static iree_status_t loom_scf_lookup_compact_uniform_columns(
       reachable_rows[case_keys.count] ? case_keys.count : first_reachable_row;
   kept_ordinal = 0;
   for (uint16_t column = 0; column < op->result_count; ++column) {
-    if (forwarded_results[column]) continue;
+    if (forwarded_results[column]) {
+      continue;
+    }
     kept_values[new_row * kept_count + kept_ordinal] =
         old_values.values[default_source_row * op->result_count + column];
     ++kept_ordinal;
@@ -438,11 +480,15 @@ static bool loom_scf_region_branch_tail_result_has_single_yield_use(
 
 static bool loom_scf_region_branch_tail_attrs_match(const loom_op_t* lhs,
                                                     const loom_op_t* rhs) {
-  if (lhs->attribute_count != rhs->attribute_count) return false;
+  if (lhs->attribute_count != rhs->attribute_count) {
+    return false;
+  }
   const loom_attribute_t* lhs_attrs = loom_op_const_attrs(lhs);
   const loom_attribute_t* rhs_attrs = loom_op_const_attrs(rhs);
   for (uint8_t i = 0; i < lhs->attribute_count; ++i) {
-    if (!loom_attribute_equal(&lhs_attrs[i], &rhs_attrs[i])) return false;
+    if (!loom_attribute_equal(&lhs_attrs[i], &rhs_attrs[i])) {
+      return false;
+    }
   }
   return true;
 }
@@ -503,7 +549,9 @@ static iree_status_t loom_scf_region_branch_tail_ops_match(
   IREE_RETURN_IF_ERROR(loom_availability_op_attrs_are_available_before_op(
       availability, /*moving_root_op=*/NULL, branch_op, reference_tail,
       &attrs_available));
-  if (!attrs_available) return iree_ok_status();
+  if (!attrs_available) {
+    return iree_ok_status();
+  }
 
   loom_value_id_t branch_result = loom_op_const_results(branch_op)[0];
   if (branch_result == LOOM_VALUE_ID_INVALID ||
@@ -553,7 +601,9 @@ static iree_status_t loom_scf_region_branch_tail_ops_match(
     IREE_RETURN_IF_ERROR(loom_availability_type_is_available_before_op(
         availability, /*moving_root_op=*/NULL, branch_op, reference_type,
         &type_available));
-    if (!type_available) return iree_ok_status();
+    if (!type_available) {
+      return iree_ok_status();
+    }
   }
   *out_match = true;
   return iree_ok_status();
@@ -675,7 +725,9 @@ static iree_status_t loom_scf_region_branch_factor_common_tail(
   for (uint8_t i = 0; i < op->region_count; ++i) {
     loom_region_t* region =
         loom_region_branch_region(rewriter->module, branch, i);
-    if (!region || region->block_count != 1) return iree_ok_status();
+    if (!region || region->block_count != 1) {
+      return iree_ok_status();
+    }
     loom_block_t* block = loom_region_entry_block(region);
     loom_op_t* terminator =
         loom_region_branch_region_terminator(rewriter->module, branch, i);
@@ -684,7 +736,9 @@ static iree_status_t loom_scf_region_branch_factor_common_tail(
     }
     tail_ops[i] = loom_scf_region_branch_tail_op_from_yielded_value(
         rewriter->module, block, terminator, loom_op_operands(terminator)[0]);
-    if (!tail_ops[i]) return iree_ok_status();
+    if (!tail_ops[i]) {
+      return iree_ok_status();
+    }
   }
 
   loom_availability_analysis_t availability;
@@ -696,7 +750,9 @@ static iree_status_t loom_scf_region_branch_factor_common_tail(
     IREE_RETURN_IF_ERROR(loom_scf_region_branch_tail_ops_match(
         rewriter, op, reference_tail, tail_ops[i], &availability,
         &tail_ops_match));
-    if (!tail_ops_match) return iree_ok_status();
+    if (!tail_ops_match) {
+      return iree_ok_status();
+    }
   }
 
   loom_type_t* operand_types = NULL;
@@ -726,7 +782,9 @@ static iree_status_t loom_scf_region_branch_factor_common_tail(
     IREE_RETURN_IF_ERROR(loom_scf_region_branch_build_operand_yield(
         rewriter, new_branch, i, loom_op_const_operands(tail_ops[i]),
         reference_tail->operand_count, op->location, &new_terminator));
-    if (!new_terminator) return iree_ok_status();
+    if (!new_terminator) {
+      return iree_ok_status();
+    }
     loom_region_t* old_region =
         loom_region_branch_region(rewriter->module, branch, i);
     IREE_RETURN_IF_ERROR(loom_scf_move_region_body_before_op(
@@ -769,7 +827,9 @@ static bool loom_scf_switch_selected_region(loom_rewriter_t* rewriter,
     return false;
   }
   loom_region_slice_t case_regions = loom_scf_switch_case_regions(op);
-  if (case_regions.count != case_keys.count) return false;
+  if (case_regions.count != case_keys.count) {
+    return false;
+  }
 
   for (uint16_t i = 0; i < case_keys.count; ++i) {
     if (case_keys.i64_array[i] == selector) {
@@ -799,7 +859,9 @@ static bool loom_scf_switch_yielded_value_types_match_results(
     }
     loom_type_t result_type = loom_module_value_type(module, results[i]);
     loom_type_t yielded_type = loom_module_value_type(module, yielded_value);
-    if (!loom_type_equal(result_type, yielded_type)) return false;
+    if (!loom_type_equal(result_type, yielded_type)) {
+      return false;
+    }
   }
   return true;
 }
@@ -810,7 +872,9 @@ static iree_status_t loom_scf_switch_selectify_yield_only(
     return iree_ok_status();
   }
   loom_region_branch_t branch = loom_region_branch_cast(rewriter->module, op);
-  if (!loom_region_branch_isa(branch)) return iree_ok_status();
+  if (!loom_region_branch_isa(branch)) {
+    return iree_ok_status();
+  }
 
   loom_attribute_t case_keys = loom_scf_switch_case_keys(op);
   if (case_keys.kind != LOOM_ATTR_I64_ARRAY ||
@@ -818,14 +882,18 @@ static iree_status_t loom_scf_switch_selectify_yield_only(
     return iree_ok_status();
   }
   loom_region_slice_t case_regions = loom_scf_switch_case_regions(op);
-  if (case_regions.count != case_keys.count) return iree_ok_status();
+  if (case_regions.count != case_keys.count) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t row_count = (iree_host_size_t)case_keys.count + 1;
   iree_host_size_t value_count = 0;
   if (!iree_host_size_checked_mul(row_count, op->result_count, &value_count)) {
     return iree_ok_status();
   }
-  if (value_count > UINT16_MAX - 1) return iree_ok_status();
+  if (value_count > UINT16_MAX - 1) {
+    return iree_ok_status();
+  }
 
   loom_value_slice_t yielded_values = {0};
   for (uint16_t row = 0; row < case_regions.count; ++row) {
@@ -915,13 +983,17 @@ iree_status_t loom_scf_switch_canonicalize(loom_op_t* op,
   loom_region_branch_t branch = loom_region_branch_cast(rewriter->module, op);
   loom_op_t* yield = loom_region_branch_region_terminator(
       rewriter->module, branch, selected_region_index);
-  if (!yield) return iree_ok_status();
+  if (!yield) {
+    return iree_ok_status();
+  }
 
   loom_value_slice_t yielded_values = {
       .values = loom_op_operands(yield),
       .count = yield->operand_count,
   };
-  if (yielded_values.count != op->result_count) return iree_ok_status();
+  if (yielded_values.count != op->result_count) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_scf_move_region_body_before_op(
       rewriter, selected_region, yield, op));
@@ -943,8 +1015,12 @@ static bool loom_scf_if_regions_are_discardable(const loom_op_t* op) {
   // Read-only branch work with no yielded observer is dead. Writes,
   // convergence, and hints are retained because they affect memory,
   // participant-set semantics, or requested code-generation shape.
-  if (loom_op_regions_have_write_effects(op)) return false;
-  if (loom_op_regions_have_convergent_effects(op)) return false;
+  if (loom_op_regions_have_write_effects(op)) {
+    return false;
+  }
+  if (loom_op_regions_have_convergent_effects(op)) {
+    return false;
+  }
   return !loom_op_regions_have_hints(op);
 }
 
@@ -968,9 +1044,13 @@ static iree_status_t loom_scf_if_fold_exact_boolean_yields(
   loom_op_t* then_yield =
       loom_scf_region_terminator(loom_scf_if_then_region(op));
   loom_region_t* else_region = loom_scf_if_else_region(op);
-  if (!else_region) return iree_ok_status();
+  if (!else_region) {
+    return iree_ok_status();
+  }
   loom_op_t* else_yield = loom_scf_region_terminator(else_region);
-  if (!then_yield || !else_yield) return iree_ok_status();
+  if (!then_yield || !else_yield) {
+    return iree_ok_status();
+  }
 
   loom_value_slice_t then_values = loom_scf_yield_values(then_yield);
   loom_value_slice_t else_values = loom_scf_yield_values(else_yield);
@@ -1024,7 +1104,9 @@ static bool loom_scf_value_has_no_uses(const loom_module_t* module,
 static iree_status_t loom_scf_if_erase_if_effect_free_resultless(
     loom_op_t* op, loom_rewriter_t* rewriter, bool* out_erased) {
   *out_erased = false;
-  if (op->result_count != 0) return iree_ok_status();
+  if (op->result_count != 0) {
+    return iree_ok_status();
+  }
   if (!loom_scf_if_regions_are_discardable(op)) {
     return iree_ok_status();
   }
@@ -1043,9 +1125,13 @@ static iree_status_t loom_scf_if_compact_results(loom_op_t* op,
   loom_op_t* then_yield =
       loom_scf_region_terminator(loom_scf_if_then_region(op));
   loom_region_t* else_region = loom_scf_if_else_region(op);
-  if (!else_region) return iree_ok_status();
+  if (!else_region) {
+    return iree_ok_status();
+  }
   loom_op_t* else_yield = loom_scf_region_terminator(else_region);
-  if (!then_yield || !else_yield) return iree_ok_status();
+  if (!then_yield || !else_yield) {
+    return iree_ok_status();
+  }
 
   loom_value_slice_t then_values = loom_scf_yield_values(then_yield);
   loom_value_slice_t else_values = loom_scf_yield_values(else_yield);
@@ -1069,9 +1155,13 @@ static iree_status_t loom_scf_if_compact_results(loom_op_t* op,
     dropped_results[i] =
         forwarded_results[i] ||
         loom_scf_value_has_no_uses(rewriter->module, old_results[i]);
-    if (dropped_results[i]) ++dropped_count;
+    if (dropped_results[i]) {
+      ++dropped_count;
+    }
   }
-  if (dropped_count == 0) return iree_ok_status();
+  if (dropped_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_value_id_t* replacements = NULL;
   IREE_RETURN_IF_ERROR(
@@ -1107,7 +1197,9 @@ static iree_status_t loom_scf_if_compact_results(loom_op_t* op,
 
   uint16_t kept_ordinal = 0;
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (dropped_results[i]) continue;
+    if (dropped_results[i]) {
+      continue;
+    }
     kept_result_types[kept_ordinal] =
         loom_module_value_type(rewriter->module, old_results[i]);
     kept_then_values[kept_ordinal] = then_values.values[i];
@@ -1194,13 +1286,19 @@ static bool loom_scf_if_op_is_strippable_fact_identity(
 
 static bool loom_scf_if_op_can_selectify_speculate(const loom_module_t* module,
                                                    const loom_op_t* op) {
-  if (!op || iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) return false;
-  if (op->region_count != 0 || op->tied_result_count != 0) return false;
+  if (!op || iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
+    return false;
+  }
+  if (op->region_count != 0 || op->tied_result_count != 0) {
+    return false;
+  }
   loom_trait_flags_t traits = loom_op_effective_traits(module, op);
   if (loom_scf_if_op_is_strippable_fact_identity(module, op, traits)) {
     return true;
   }
-  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) return false;
+  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) {
+    return false;
+  }
   if (iree_any_bit_set(traits, LOOM_TRAIT_HINT | LOOM_TRAIT_CONVERGENT)) {
     return false;
   }
@@ -1213,7 +1311,9 @@ static bool loom_scf_if_op_can_selectify_speculate(const loom_module_t* module,
 static bool loom_scf_if_block_can_selectify_speculate(
     const loom_module_t* module, const loom_block_t* block,
     const loom_op_t* yield) {
-  if (!block || block->arg_count != 0 || !yield) return false;
+  if (!block || block->arg_count != 0 || !yield) {
+    return false;
+  }
   uint16_t speculative_op_count = 0;
   for (const loom_op_t* child_op = block->first_op; child_op != yield;
        child_op = child_op->next_op) {
@@ -1255,10 +1355,14 @@ static iree_status_t loom_scf_if_selectify_yield_only(
 
   loom_region_t* then_region = loom_scf_if_then_region(op);
   loom_region_t* else_region = loom_scf_if_else_region(op);
-  if (!else_region) return iree_ok_status();
+  if (!else_region) {
+    return iree_ok_status();
+  }
   loom_op_t* then_yield = loom_scf_region_terminator(then_region);
   loom_op_t* else_yield = loom_scf_region_terminator(else_region);
-  if (!then_yield || !else_yield) return iree_ok_status();
+  if (!then_yield || !else_yield) {
+    return iree_ok_status();
+  }
 
   loom_block_t* then_block = loom_region_entry_block(then_region);
   loom_block_t* else_block = loom_region_entry_block(else_region);
@@ -1316,10 +1420,14 @@ static iree_status_t loom_scf_if_selectify_speculatable_values(
 
   loom_region_t* then_region = loom_scf_if_then_region(op);
   loom_region_t* else_region = loom_scf_if_else_region(op);
-  if (!else_region) return iree_ok_status();
+  if (!else_region) {
+    return iree_ok_status();
+  }
   loom_op_t* then_yield = loom_scf_region_terminator(then_region);
   loom_op_t* else_yield = loom_scf_region_terminator(else_region);
-  if (!then_yield || !else_yield) return iree_ok_status();
+  if (!then_yield || !else_yield) {
+    return iree_ok_status();
+  }
 
   loom_block_t* then_block = loom_region_entry_block(then_region);
   loom_block_t* else_block = loom_region_entry_block(else_region);
@@ -1391,7 +1499,9 @@ iree_status_t loom_scf_if_canonicalize(loom_op_t* op,
     bool erased = false;
     IREE_RETURN_IF_ERROR(
         loom_scf_if_erase_if_effect_free_resultless(op, rewriter, &erased));
-    if (erased) return iree_ok_status();
+    if (erased) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_scf_if_compact_results(op, rewriter));
     if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
       return iree_ok_status();
@@ -1406,7 +1516,9 @@ iree_status_t loom_scf_if_canonicalize(loom_op_t* op,
     bool exact_boolean_folded = false;
     IREE_RETURN_IF_ERROR(loom_scf_if_fold_exact_boolean_yields(
         op, rewriter, &exact_boolean_folded));
-    if (exact_boolean_folded) return iree_ok_status();
+    if (exact_boolean_folded) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_scf_if_selectify_yield_only(op, rewriter));
     if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
       return iree_ok_status();
@@ -1423,10 +1535,14 @@ iree_status_t loom_scf_if_canonicalize(loom_op_t* op,
     return iree_ok_status();
   }
   loom_op_t* yield = loom_scf_region_terminator(selected_region);
-  if (!yield) return iree_ok_status();
+  if (!yield) {
+    return iree_ok_status();
+  }
 
   loom_value_slice_t yielded_values = loom_scf_yield_values(yield);
-  if (yielded_values.count != op->result_count) return iree_ok_status();
+  if (yielded_values.count != op->result_count) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_scf_move_region_body_before_op(
       rewriter, selected_region, yield, op));
@@ -1457,7 +1573,9 @@ static bool loom_scf_for_has_zero_trip_count(loom_op_t* op,
 
   loom_value_facts_t step =
       loom_rewriter_value_facts(rewriter, loom_scf_for_step(op));
-  if (!loom_value_facts_is_positive(step)) return false;
+  if (!loom_value_facts_is_positive(step)) {
+    return false;
+  }
   return lower_bound.range_lo >= upper_bound.range_hi;
 }
 
@@ -1482,7 +1600,9 @@ static bool loom_scf_for_has_single_trip_count(loom_op_t* op,
     return false;
   }
 
-  if (lower_bound.range_hi >= upper_bound.range_lo) return false;
+  if (lower_bound.range_hi >= upper_bound.range_lo) {
+    return false;
+  }
   int64_t next_iv_lower_bound = 0;
   if (!iree_checked_add_i64(lower_bound.range_lo, step.range_lo,
                             &next_iv_lower_bound)) {
@@ -1494,11 +1614,17 @@ static bool loom_scf_for_has_single_trip_count(loom_op_t* op,
 static bool loom_scf_for_yields_loop_carried_args(loom_op_t* op) {
   loom_region_t* body = loom_scf_for_body(op);
   loom_op_t* yield = loom_scf_region_terminator(body);
-  if (!yield) return false;
+  if (!yield) {
+    return false;
+  }
 
   loom_block_t* block = loom_region_entry_block(body);
-  if (block->first_op != yield) return false;
-  if (op->result_count == 0) return true;
+  if (block->first_op != yield) {
+    return false;
+  }
+  if (op->result_count == 0) {
+    return true;
+  }
 
   loom_value_slice_t iter_args = loom_scf_for_iter_args(op);
   loom_value_slice_t yielded_values = loom_scf_yield_values(yield);
@@ -1506,7 +1632,9 @@ static bool loom_scf_for_yields_loop_carried_args(loom_op_t* op) {
       yielded_values.count != op->result_count) {
     return false;
   }
-  if (block->arg_count < 1 + op->result_count) return false;
+  if (block->arg_count < 1 + op->result_count) {
+    return false;
+  }
   for (uint16_t i = 0; i < op->result_count; ++i) {
     if (yielded_values.values[i] != loom_block_arg_id(block, 1 + i)) {
       return false;
@@ -1523,7 +1651,9 @@ static iree_status_t loom_scf_for_inline_single_trip(
 
   loom_region_t* body = loom_scf_for_body(op);
   loom_op_t* yield = loom_scf_region_terminator(body);
-  if (!yield) return iree_ok_status();
+  if (!yield) {
+    return iree_ok_status();
+  }
 
   loom_value_slice_t iter_args = loom_scf_for_iter_args(op);
   loom_value_slice_t yielded_values = loom_scf_yield_values(yield);
@@ -1533,7 +1663,9 @@ static iree_status_t loom_scf_for_inline_single_trip(
   }
 
   loom_block_t* block = loom_region_entry_block(body);
-  if (block->arg_count < 1 + iter_args.count) return iree_ok_status();
+  if (block->arg_count < 1 + iter_args.count) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_rewriter_replace_all_uses_with(
       rewriter, loom_block_arg_id(block, 0), loom_scf_for_lower_bound(op)));
@@ -1567,7 +1699,9 @@ static iree_status_t loom_scf_for_adjust_tied_results(
   *out_tied_results = NULL;
   *out_tied_result_count = 0;
   *out_supported = true;
-  if (op->tied_result_count == 0) return iree_ok_status();
+  if (op->tied_result_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_tied_result_t* tied_results = NULL;
   IREE_RETURN_IF_ERROR(
@@ -1587,7 +1721,9 @@ static iree_status_t loom_scf_for_adjust_tied_results(
       return iree_ok_status();
     }
     uint16_t new_result_index = result_map[tied_result.result_index];
-    if (new_result_index == UINT16_MAX) continue;
+    if (new_result_index == UINT16_MAX) {
+      continue;
+    }
 
     uint16_t new_operand_index = tied_result.operand_index;
     if (new_operand_index >= old_iter_arg_offset) {
@@ -1629,7 +1765,9 @@ static iree_status_t loom_scf_for_forward_loop_carried_results(
 
   loom_region_t* body = loom_scf_for_body(op);
   loom_op_t* yield = loom_scf_region_terminator(body);
-  if (!yield) return iree_ok_status();
+  if (!yield) {
+    return iree_ok_status();
+  }
 
   loom_value_slice_t iter_args = loom_scf_for_iter_args(op);
   loom_value_slice_t yielded_values = loom_scf_yield_values(yield);
@@ -1662,7 +1800,9 @@ static iree_status_t loom_scf_for_forward_loop_carried_results(
   uint16_t new_iter_arg_offset = 3;
 
   loom_block_t* old_block = loom_region_entry_block(body);
-  if (old_block->arg_count < 1 + op->result_count) return iree_ok_status();
+  if (old_block->arg_count < 1 + op->result_count) {
+    return iree_ok_status();
+  }
 
   bool* forwarded_results = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -1673,9 +1813,13 @@ static iree_status_t loom_scf_for_forward_loop_carried_results(
     loom_value_id_t carried_arg =
         loom_block_arg_id(old_block, (uint16_t)(1 + i));
     forwarded_results[i] = yielded_values.values[i] == carried_arg;
-    if (forwarded_results[i]) ++forwarded_count;
+    if (forwarded_results[i]) {
+      ++forwarded_count;
+    }
   }
-  if (forwarded_count == 0) return iree_ok_status();
+  if (forwarded_count == 0) {
+    return iree_ok_status();
+  }
 
   uint16_t kept_count = (uint16_t)(op->result_count - forwarded_count);
   uint16_t* result_map = NULL;
@@ -1704,7 +1848,9 @@ static iree_status_t loom_scf_for_forward_loop_carried_results(
 
   uint16_t kept_ordinal = 0;
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (forwarded_results[i]) continue;
+    if (forwarded_results[i]) {
+      continue;
+    }
     result_map[i] = kept_ordinal;
     iter_arg_map[i] = kept_ordinal;
     kept_iter_args[kept_ordinal] = iter_args.values[i];
@@ -1718,7 +1864,9 @@ static iree_status_t loom_scf_for_forward_loop_carried_results(
   IREE_RETURN_IF_ERROR(loom_scf_for_adjust_tied_results(
       op, result_map, iter_arg_map, old_iter_arg_offset, new_iter_arg_offset,
       rewriter, &tied_results, &tied_result_count, &tied_results_supported));
-  if (!tied_results_supported) return iree_ok_status();
+  if (!tied_results_supported) {
+    return iree_ok_status();
+  }
 
   loom_builder_set_before(&rewriter->builder, op);
   loom_value_id_t value_checkpoint = loom_rewriter_value_checkpoint(rewriter);
@@ -1749,7 +1897,9 @@ static iree_status_t loom_scf_for_forward_loop_carried_results(
       loom_block_arg_id(new_block, 0)));
   kept_ordinal = 0;
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (forwarded_results[i]) continue;
+    if (forwarded_results[i]) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_scf_preserve_value_name(
         rewriter->module, loom_block_arg_id(old_block, (uint16_t)(1 + i)),
         loom_block_arg_id(new_block, (uint16_t)(1 + kept_ordinal++))));
@@ -1801,7 +1951,9 @@ iree_status_t loom_scf_for_canonicalize(loom_op_t* op,
                                               iter_args.count);
   }
   IREE_RETURN_IF_ERROR(loom_scf_for_inline_single_trip(op, rewriter));
-  if (op->flags & LOOM_OP_FLAG_DEAD) return iree_ok_status();
+  if (op->flags & LOOM_OP_FLAG_DEAD) {
+    return iree_ok_status();
+  }
   if (loom_scf_for_step_is_positive(op, rewriter) &&
       loom_scf_for_yields_loop_carried_args(op)) {
     return loom_scf_replace_results_and_erase(op, rewriter, iter_args.values,

@@ -137,7 +137,9 @@ void loom_amdgpu_memory_calculate_subgroup_geometry(
   bool has_previous_lane = false;
   uint64_t previous_lane_offset = 0;
   for (uint8_t lane = 0; lane < subgroup_size; ++lane) {
-    if ((active_lane_mask & (UINT64_C(1) << lane)) == 0) continue;
+    if ((active_lane_mask & (UINT64_C(1) << lane)) == 0) {
+      continue;
+    }
     const uint64_t byte_offset =
         loom_amdgpu_fragment_memory_relative_lane_byte_offset(address_layout,
                                                               lane);

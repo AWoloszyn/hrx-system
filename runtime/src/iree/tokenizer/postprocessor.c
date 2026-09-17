@@ -67,7 +67,9 @@ iree_status_t iree_tokenizer_postprocessor_initialize(
 
 void iree_tokenizer_postprocessor_deinitialize(
     iree_tokenizer_postprocessor_t* postprocessor) {
-  if (!postprocessor) return;
+  if (!postprocessor) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   memset(postprocessor, 0, sizeof(*postprocessor));
   IREE_TRACE_ZONE_END(z0);
@@ -112,7 +114,9 @@ static iree_host_size_t iree_tokenizer_postprocessor_emit_phase(
 iree_host_size_t iree_tokenizer_postprocessor_emit_prefix(
     iree_tokenizer_postprocessor_encode_state_t* state,
     iree_tokenizer_token_output_t output, iree_host_size_t output_offset) {
-  if (state->phase != IREE_TOKENIZER_POSTPROCESSOR_PHASE_PREFIX) return 0;
+  if (state->phase != IREE_TOKENIZER_POSTPROCESSOR_PHASE_PREFIX) {
+    return 0;
+  }
   iree_host_size_t emitted = iree_tokenizer_postprocessor_emit_phase(
       state->active_template, /*base=*/0, state->active_template->prefix_count,
       &state->position, output, output_offset);
@@ -126,7 +130,9 @@ iree_host_size_t iree_tokenizer_postprocessor_emit_prefix(
 iree_host_size_t iree_tokenizer_postprocessor_emit_infix(
     iree_tokenizer_postprocessor_encode_state_t* state,
     iree_tokenizer_token_output_t output, iree_host_size_t output_offset) {
-  if (state->phase != IREE_TOKENIZER_POSTPROCESSOR_PHASE_INFIX) return 0;
+  if (state->phase != IREE_TOKENIZER_POSTPROCESSOR_PHASE_INFIX) {
+    return 0;
+  }
   uint8_t base = state->active_template->prefix_count;
   iree_host_size_t emitted = iree_tokenizer_postprocessor_emit_phase(
       state->active_template, base, state->active_template->infix_count,
@@ -142,7 +148,9 @@ void iree_tokenizer_postprocessor_assign_type_ids(
     const iree_tokenizer_postprocessor_encode_state_t* state,
     iree_tokenizer_token_output_t output, iree_host_size_t offset,
     iree_host_size_t count) {
-  if (!output.type_ids || count == 0) return;
+  if (!output.type_ids || count == 0) {
+    return;
+  }
   uint8_t type_id = 0;
   if (state->phase == IREE_TOKENIZER_POSTPROCESSOR_PHASE_SEQUENCE_A) {
     type_id = state->active_template->sequence_a_type_id;
@@ -164,7 +172,9 @@ void iree_tokenizer_postprocessor_assign_type_ids(
 iree_host_size_t iree_tokenizer_postprocessor_emit_suffix(
     iree_tokenizer_postprocessor_encode_state_t* state,
     iree_tokenizer_token_output_t output, iree_host_size_t output_offset) {
-  if (state->phase != IREE_TOKENIZER_POSTPROCESSOR_PHASE_SUFFIX) return 0;
+  if (state->phase != IREE_TOKENIZER_POSTPROCESSOR_PHASE_SUFFIX) {
+    return 0;
+  }
   uint8_t base = state->active_template->prefix_count +
                  state->active_template->infix_count;
   iree_host_size_t emitted = iree_tokenizer_postprocessor_emit_phase(
@@ -259,8 +269,12 @@ void iree_tokenizer_postprocessor_trim_token_offsets(
                         IREE_TOKENIZER_POSTPROCESSOR_FLAG_TRIM_OFFSETS)) {
     return;
   }
-  if (!output.token_offsets || model_token_count == 0) return;
-  if (!vocab) return;
+  if (!output.token_offsets || model_token_count == 0) {
+    return;
+  }
+  if (!vocab) {
+    return;
+  }
 
   for (iree_host_size_t i = 0; i < model_token_count; ++i) {
     // Compute token_index with overflow protection.
@@ -273,7 +287,9 @@ void iree_tokenizer_postprocessor_trim_token_offsets(
     iree_tokenizer_token_id_t token_id = output.token_ids[token_index];
     iree_string_view_t token_text =
         iree_tokenizer_vocab_token_text(vocab, token_id);
-    if (token_text.size == 0) continue;
+    if (token_text.size == 0) {
+      continue;
+    }
 
     iree_host_size_t leading =
         iree_tokenizer_postprocessor_count_leading_whitespace(token_text);

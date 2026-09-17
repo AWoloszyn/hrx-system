@@ -118,7 +118,9 @@ static void process_with_config(uint32_t replacement_codepoint,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 2) return 0;  // Need at least config byte + data.
+  if (size < 2) {
+    return 0;  // Need at least config byte + data.
+  }
 
   // Extract configuration from first bytes.
   uint8_t config_byte = data[0];

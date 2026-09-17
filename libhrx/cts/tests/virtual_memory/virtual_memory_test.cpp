@@ -8,7 +8,9 @@
 namespace {
 
 static void IgnoreCleanupStatus(hrx_status_t status) {
-  if (!hrx_status_is_ok(status)) hrx().status_ignore(status);
+  if (!hrx_status_is_ok(status)) {
+    hrx().status_ignore(status);
+  }
 }
 
 class VirtualMemoryResources {

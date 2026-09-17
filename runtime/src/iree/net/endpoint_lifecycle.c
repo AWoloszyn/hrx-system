@@ -125,7 +125,9 @@ bool iree_net_endpoint_lifecycle_try_begin_operation(
   iree_slim_mutex_lock(&lifecycle->mutex);
   const bool accepted =
       lifecycle->state == IREE_NET_ENDPOINT_LIFECYCLE_STATE_ACTIVE;
-  if (accepted) ++lifecycle->pending_operation_count;
+  if (accepted) {
+    ++lifecycle->pending_operation_count;
+  }
   iree_slim_mutex_unlock(&lifecycle->mutex);
   return accepted;
 }

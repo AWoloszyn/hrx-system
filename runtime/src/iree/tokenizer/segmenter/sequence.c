@@ -496,7 +496,9 @@ static iree_status_t iree_tokenizer_segmenter_sequence_state_process(
       IREE_RETURN_IF_ERROR(
           iree_tokenizer_segmenter_sequence_pull_next_output_segment(
               state, segmenter, input, &segment, &exhausted, final_level));
-      if (exhausted) break;
+      if (exhausted) {
+        break;
+      }
       output.values[output_count++] = segment;
     }
 
@@ -577,7 +579,9 @@ static iree_status_t iree_tokenizer_segmenter_sequence_state_process(
                 final_child_state, probe_remaining,
                 iree_tokenizer_make_segment_output(probe_segments, 64),
                 &probe_consumed, &probe_count));
-            if (probe_consumed == 0) break;
+            if (probe_consumed == 0) {
+              break;
+            }
             total_probe_consumed += probe_consumed;
             probe_remaining.data += probe_consumed;
             probe_remaining.size -= probe_consumed;
@@ -718,7 +722,9 @@ static iree_status_t iree_tokenizer_segmenter_sequence_state_finalize(
           iree_tokenizer_segmenter_sequence_pull_next_output_segment(
               state, segmenter, remaining_input, &segment, &exhausted,
               final_level));
-      if (exhausted) break;
+      if (exhausted) {
+        break;
+      }
       output.values[output_count++] = segment;
     }
 

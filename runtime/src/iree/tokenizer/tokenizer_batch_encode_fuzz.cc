@@ -47,7 +47,9 @@ static constexpr size_t kMaxBatchItems = 16;
 static constexpr size_t kMaxTokensPerItem = 1024;
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (g_tokenizer == NULL || size < 2) return 0;
+  if (g_tokenizer == NULL || size < 2) {
+    return 0;
+  }
 
   // First byte: number of batch items (1-16).
   size_t item_count = (data[0] % kMaxBatchItems) + 1;

@@ -24,7 +24,9 @@
 // Releases all blocks back to the pool. Does not free the block_ptrs array.
 static void iree_hal_webgpu_builder_release_blocks(
     iree_hal_webgpu_builder_t* builder) {
-  if (builder->block_count == 0) return;
+  if (builder->block_count == 0) {
+    return;
+  }
 
   // Reconstruct the arena footer chain from our block pointer table.
   // The footer is at the end of each block's full allocation. Since we use the
@@ -183,7 +185,9 @@ static iree_status_t iree_hal_webgpu_builder_resolve_ref(
 // Emits ENCODER_BEGIN if not already in an encoder context.
 static iree_status_t iree_hal_webgpu_builder_ensure_encoder_open(
     iree_hal_webgpu_builder_t* builder) {
-  if (builder->in_encoder) return iree_ok_status();
+  if (builder->in_encoder) {
+    return iree_ok_status();
+  }
   uint32_t* words;
   IREE_RETURN_IF_ERROR(iree_hal_webgpu_builder_reserve(builder, 1, &words));
   words[0] = iree_hal_webgpu_isa_header_encode(
@@ -195,7 +199,9 @@ static iree_status_t iree_hal_webgpu_builder_ensure_encoder_open(
 // Emits ENCODER_END if currently in an encoder context.
 static iree_status_t iree_hal_webgpu_builder_ensure_encoder_closed(
     iree_hal_webgpu_builder_t* builder) {
-  if (!builder->in_encoder) return iree_ok_status();
+  if (!builder->in_encoder) {
+    return iree_ok_status();
+  }
   uint32_t* words;
   IREE_RETURN_IF_ERROR(iree_hal_webgpu_builder_reserve(builder, 1, &words));
   words[0] = iree_hal_webgpu_isa_header_encode(

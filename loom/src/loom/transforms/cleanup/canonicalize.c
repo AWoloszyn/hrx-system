@@ -168,7 +168,9 @@ iree_status_t loom_canonicalize_create(loom_pass_t* pass,
 //===----------------------------------------------------------------------===//
 
 static bool loom_canonicalize_value_type_has_poison(loom_type_t type) {
-  if (loom_type_is_scalar(type)) return true;
+  if (loom_type_is_scalar(type)) {
+    return true;
+  }
   if (loom_type_is_vector(type)) {
     return !loom_type_has_static_zero_extent(type);
   }
@@ -192,22 +194,36 @@ static bool loom_canonicalize_op_has_poison_operand(const loom_module_t* module,
                                                     const loom_op_t* op) {
   const loom_value_id_t* operands = loom_op_const_operands(op);
   for (uint16_t i = 0; i < op->operand_count; ++i) {
-    if (operands[i] == LOOM_VALUE_ID_INVALID) continue;
-    if (loom_value_is_poison(module, operands[i])) return true;
+    if (operands[i] == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
+    if (loom_value_is_poison(module, operands[i])) {
+      return true;
+    }
   }
   return false;
 }
 
 static bool loom_canonicalize_can_replace_results_with_poison(
     const loom_module_t* module, const loom_op_t* op) {
-  if (op->result_count == 0) return false;
-  if (op->region_count != 0) return false;
-  if (op->tied_result_count != 0) return false;
+  if (op->result_count == 0) {
+    return false;
+  }
+  if (op->region_count != 0) {
+    return false;
+  }
+  if (op->tied_result_count != 0) {
+    return false;
+  }
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (results[i] == LOOM_VALUE_ID_INVALID) return false;
+    if (results[i] == LOOM_VALUE_ID_INVALID) {
+      return false;
+    }
     loom_type_t type = loom_module_value_type(module, results[i]);
-    if (!loom_canonicalize_value_type_has_poison(type)) return false;
+    if (!loom_canonicalize_value_type_has_poison(type)) {
+      return false;
+    }
   }
   return true;
 }
@@ -215,10 +231,16 @@ static bool loom_canonicalize_can_replace_results_with_poison(
 static iree_status_t loom_canonicalize_try_propagate_poison(
     loom_rewriter_t* rewriter, loom_op_t* op, bool* out_propagated) {
   *out_propagated = false;
-  if (!loom_module_has_poison(rewriter->module)) return iree_ok_status();
+  if (!loom_module_has_poison(rewriter->module)) {
+    return iree_ok_status();
+  }
   loom_trait_flags_t traits = loom_op_effective_traits(rewriter->module, op);
-  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) return iree_ok_status();
-  if (loom_traits_are_convergent(traits)) return iree_ok_status();
+  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) {
+    return iree_ok_status();
+  }
+  if (loom_traits_are_convergent(traits)) {
+    return iree_ok_status();
+  }
   if (!loom_canonicalize_op_has_poison_operand(rewriter->module, op)) {
     return iree_ok_status();
   }
@@ -236,20 +258,32 @@ static iree_status_t loom_canonicalize_try_propagate_poison(
 
 static bool loom_canonicalize_extract_consumes_static_empty_axis(
     const loom_module_t* module, const loom_op_t* op) {
-  if (!loom_vector_extract_isa(op)) return false;
+  if (!loom_vector_extract_isa(op)) {
+    return false;
+  }
   loom_type_t source_type =
       loom_module_value_type(module, loom_vector_extract_source(op));
-  if (!loom_type_is_vector(source_type)) return false;
+  if (!loom_type_is_vector(source_type)) {
+    return false;
+  }
 
   loom_attribute_t static_indices = loom_vector_extract_static_indices(op);
-  if (static_indices.kind != LOOM_ATTR_I64_ARRAY) return false;
+  if (static_indices.kind != LOOM_ATTR_I64_ARRAY) {
+    return false;
+  }
 
   uint8_t source_rank = loom_type_rank(source_type);
   uint16_t consumed_rank = static_indices.count;
-  if (consumed_rank > source_rank) consumed_rank = source_rank;
+  if (consumed_rank > source_rank) {
+    consumed_rank = source_rank;
+  }
   for (uint16_t axis = 0; axis < consumed_rank; ++axis) {
-    if (loom_type_dim_is_dynamic_at(source_type, axis)) continue;
-    if (loom_type_dim_static_size_at(source_type, axis) == 0) return true;
+    if (loom_type_dim_is_dynamic_at(source_type, axis)) {
+      continue;
+    }
+    if (loom_type_dim_static_size_at(source_type, axis) == 0) {
+      return true;
+    }
   }
   return false;
 }
@@ -262,7 +296,9 @@ static iree_status_t loom_canonicalize_try_replace_empty_extract_with_poison(
     return iree_ok_status();
   }
   loom_value_id_t result = loom_vector_extract_result(op);
-  if (result == LOOM_VALUE_ID_INVALID) return iree_ok_status();
+  if (result == LOOM_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
   loom_type_t result_type = loom_module_value_type(rewriter->module, result);
   if (!loom_canonicalize_value_type_has_poison(result_type)) {
     return iree_ok_status();
@@ -305,20 +341,36 @@ static iree_status_t loom_canonicalize_try_fold_empty_accumulator_op(
 
 static bool loom_canonicalize_can_replace_results_with_empty(
     const loom_module_t* module, const loom_op_t* op) {
-  if (loom_op_is_empty(op) || loom_op_is_poison(op)) return false;
-  if (op->result_count == 0) return false;
-  if (op->region_count != 0) return false;
-  if (op->tied_result_count != 0) return false;
+  if (loom_op_is_empty(op) || loom_op_is_poison(op)) {
+    return false;
+  }
+  if (op->result_count == 0) {
+    return false;
+  }
+  if (op->region_count != 0) {
+    return false;
+  }
+  if (op->tied_result_count != 0) {
+    return false;
+  }
 
   loom_trait_flags_t traits = loom_op_effective_traits(module, op);
-  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) return false;
-  if (loom_traits_are_convergent(traits)) return false;
+  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) {
+    return false;
+  }
+  if (loom_traits_are_convergent(traits)) {
+    return false;
+  }
 
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (results[i] == LOOM_VALUE_ID_INVALID) return false;
+    if (results[i] == LOOM_VALUE_ID_INVALID) {
+      return false;
+    }
     loom_type_t type = loom_module_value_type(module, results[i]);
-    if (!loom_type_has_empty_materializer(type)) return false;
+    if (!loom_type_has_empty_materializer(type)) {
+      return false;
+    }
   }
   return true;
 }
@@ -342,7 +394,9 @@ static bool loom_canonicalize_required_empty_value(const loom_module_t* module,
 
 static bool loom_canonicalize_memory_access_results_are_empty(
     const loom_module_t* module, const loom_op_t* op) {
-  if (op->result_count == 0) return false;
+  if (op->result_count == 0) {
+    return false;
+  }
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
     if (!loom_canonicalize_required_empty_value(module, results[i])) {
@@ -399,7 +453,9 @@ static iree_status_t loom_canonicalize_try_elide_empty_memory_effect(
   *out_elided = false;
 
   loom_memory_access_t access = loom_memory_access_cast(rewriter->module, op);
-  if (!loom_memory_access_isa(access)) return iree_ok_status();
+  if (!loom_memory_access_isa(access)) {
+    return iree_ok_status();
+  }
   if (!loom_canonicalize_memory_access_has_empty_footprint(rewriter->module, op,
                                                            access)) {
     return iree_ok_status();
@@ -423,15 +479,21 @@ static iree_status_t loom_canonicalize_try_elide_empty_vector_op(
 
   IREE_RETURN_IF_ERROR(loom_canonicalize_try_replace_empty_extract_with_poison(
       rewriter, op, out_elided));
-  if (*out_elided) return iree_ok_status();
+  if (*out_elided) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_canonicalize_try_fold_empty_accumulator_op(
       rewriter, op, out_elided));
-  if (*out_elided) return iree_ok_status();
+  if (*out_elided) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_canonicalize_try_elide_empty_memory_effect(
       rewriter, op, out_elided));
-  if (*out_elided) return iree_ok_status();
+  if (*out_elided) {
+    return iree_ok_status();
+  }
 
   if (!loom_canonicalize_can_replace_results_with_empty(rewriter->module, op)) {
     return iree_ok_status();
@@ -447,7 +509,9 @@ static iree_status_t loom_canonicalize_try_symbolic_index_sub(
     loom_rewriter_t* rewriter, loom_symbolic_expr_context_t* expression_context,
     loom_op_t* op, bool* out_changed) {
   *out_changed = false;
-  if (!loom_index_sub_isa(op)) return iree_ok_status();
+  if (!loom_index_sub_isa(op)) {
+    return iree_ok_status();
+  }
 
   loom_symbolic_value_difference_t difference = {0};
   IREE_RETURN_IF_ERROR(loom_symbolic_expr_simplify_value_difference(
@@ -491,7 +555,9 @@ static iree_status_t loom_canonicalize_try_symbolic_integer_cmp(
     loom_value_id_t lhs = loom_index_cmp_lhs(op);
     loom_value_id_t rhs = loom_index_cmp_rhs(op);
     loom_type_t operand_type = loom_module_value_type(rewriter->module, lhs);
-    if (!loom_type_is_scalar(operand_type)) return iree_ok_status();
+    if (!loom_type_is_scalar(operand_type)) {
+      return iree_ok_status();
+    }
     loom_value_facts_t lhs_facts = loom_rewriter_value_facts(rewriter, lhs);
     loom_value_facts_t rhs_facts = loom_rewriter_value_facts(rewriter, rhs);
     const loom_fact_context_t* fact_context =
@@ -539,7 +605,9 @@ static iree_status_t loom_canonicalize_try_symbolic_integer_cmp(
         expression_context, relation->relation, relation->left.value_id,
         relation->right.value_id, &proof));
   }
-  if (proof == LOOM_SYMBOLIC_PROOF_UNKNOWN) return iree_ok_status();
+  if (proof == LOOM_SYMBOLIC_PROOF_UNKNOWN) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_canonicalize_replace_single_result_with_exact_i64(
       rewriter, op, proof == LOOM_SYMBOLIC_PROOF_TRUE ? 1 : 0));
@@ -554,7 +622,9 @@ static iree_status_t loom_canonicalize_try_symbolic_integer_cleanup(
 
   IREE_RETURN_IF_ERROR(loom_canonicalize_try_symbolic_index_sub(
       rewriter, expression_context, op, out_changed));
-  if (*out_changed) return iree_ok_status();
+  if (*out_changed) {
+    return iree_ok_status();
+  }
 
   return loom_canonicalize_try_symbolic_integer_cmp(
       rewriter, expression_context, op, out_changed);
@@ -633,7 +703,9 @@ typedef struct loom_canonicalize_edge_assume_set_t {
 
 static bool loom_canonicalize_type_uses_index_assume(loom_type_t type,
                                                      bool* out_uses_index) {
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   loom_scalar_type_t scalar_type = loom_type_element_type(type);
   if (scalar_type == LOOM_SCALAR_TYPE_INDEX ||
       scalar_type == LOOM_SCALAR_TYPE_OFFSET) {
@@ -823,9 +895,13 @@ static iree_status_t loom_canonicalize_edge_assume_set_append_relation(
 static bool loom_canonicalize_field_ref_matches_operand(
     const loom_op_vtable_t* vtable, loom_field_ref_t field_ref,
     uint16_t operand_index) {
-  if (LOOM_FIELD_REF_CATEGORY(field_ref) != LOOM_FIELD_OPERAND) return false;
+  if (LOOM_FIELD_REF_CATEGORY(field_ref) != LOOM_FIELD_OPERAND) {
+    return false;
+  }
   uint8_t field_index = LOOM_FIELD_REF_INDEX(field_ref);
-  if (field_index == operand_index) return true;
+  if (field_index == operand_index) {
+    return true;
+  }
   if (!vtable || !vtable->operand_descriptors ||
       field_index < vtable->fixed_operand_count) {
     return false;
@@ -871,8 +947,12 @@ static bool loom_canonicalize_type_constraint_mentions_operand(
 
 static bool loom_canonicalize_op_type_constraints_mention_operand(
     const loom_op_vtable_t* vtable, uint16_t operand_index) {
-  if (!vtable) return true;
-  if (vtable->constraint_count > 0 && !vtable->constraints) return true;
+  if (!vtable) {
+    return true;
+  }
+  if (vtable->constraint_count > 0 && !vtable->constraints) {
+    return true;
+  }
   for (uint8_t i = vtable->operand_dictionary_count;
        i < vtable->constraint_count; ++i) {
     if (loom_canonicalize_type_constraint_mentions_operand(
@@ -892,9 +972,13 @@ static bool loom_canonicalize_value_has_type_sensitive_use(
   const loom_use_t* uses = loom_value_uses(value);
   for (uint32_t i = 0; i < value->use_count; ++i) {
     loom_op_t* user = loom_use_user_op(uses[i]);
-    if (!user || iree_any_bit_set(user->flags, LOOM_OP_FLAG_DEAD)) continue;
+    if (!user || iree_any_bit_set(user->flags, LOOM_OP_FLAG_DEAD)) {
+      continue;
+    }
     const loom_op_vtable_t* vtable = loom_op_vtable(module, user);
-    if (!vtable) return true;
+    if (!vtable) {
+      return true;
+    }
     if (iree_any_bit_set(vtable->traits, LOOM_TRAIT_TERMINATOR)) {
       return true;
     }
@@ -971,16 +1055,26 @@ static bool loom_canonicalize_index_cast_preserves_value(
 static bool loom_canonicalize_value_preserves_condition_value(
     const loom_module_t* module, loom_value_id_t value_id,
     loom_value_id_t condition_value_id) {
-  if (!module) return false;
+  if (!module) {
+    return false;
+  }
   iree_host_size_t remaining_steps = module->values.count;
   loom_value_id_t current_value = value_id;
   while (remaining_steps-- > 0) {
-    if (current_value == condition_value_id) return true;
-    if (current_value >= module->values.count) return false;
+    if (current_value == condition_value_id) {
+      return true;
+    }
+    if (current_value >= module->values.count) {
+      return false;
+    }
     const loom_value_t* value = loom_module_value(module, current_value);
-    if (loom_value_is_block_arg(value)) return false;
+    if (loom_value_is_block_arg(value)) {
+      return false;
+    }
     const loom_op_t* defining_op = loom_value_def_op(value);
-    if (!defining_op) return false;
+    if (!defining_op) {
+      return false;
+    }
     if (loom_index_cast_isa(defining_op)) {
       if (!loom_canonicalize_index_cast_preserves_value(module, defining_op)) {
         return false;
@@ -1019,7 +1113,9 @@ loom_canonicalize_edge_assume_set_append_relation_for_value(
     mapped_relation.right.value_id = value_id;
     matched = true;
   }
-  if (!matched) return iree_ok_status();
+  if (!matched) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t predicate = {0};
   if (loom_condition_integer_relation_make_predicate_for_value(
@@ -1087,17 +1183,23 @@ static bool loom_canonicalize_is_edge_assume_op(
     const loom_canonicalize_edge_assume_set_t* assume_set,
     const loom_op_t* op) {
   for (uint16_t i = 0; i < assume_set->candidate_count; ++i) {
-    if (assume_set->candidates[i].assume_op == op) return true;
+    if (assume_set->candidates[i].assume_op == op) {
+      return true;
+    }
   }
   return false;
 }
 
 static bool loom_canonicalize_region_contains_block(
     const loom_region_t* region, const loom_block_t* target_block) {
-  if (!region || !target_block) return false;
+  if (!region || !target_block) {
+    return false;
+  }
   const loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {
-    if (block == target_block) return true;
+    if (block == target_block) {
+      return true;
+    }
     const loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
       loom_region_t** regions = loom_op_regions(op);
@@ -1119,10 +1221,14 @@ static loom_op_t* loom_canonicalize_edge_assume_insertion_anchor(
     return NULL;
   }
   const loom_value_t* value = loom_module_value(module, source);
-  if (loom_value_is_block_arg(value)) return NULL;
+  if (loom_value_is_block_arg(value)) {
+    return NULL;
+  }
 
   loom_op_t* defining_op = loom_value_def_op(value);
-  if (!defining_op || !defining_op->parent_block) return NULL;
+  if (!defining_op || !defining_op->parent_block) {
+    return NULL;
+  }
   return loom_canonicalize_region_contains_block(region,
                                                  defining_op->parent_block)
              ? defining_op
@@ -1146,7 +1252,9 @@ static iree_status_t loom_canonicalize_rewrite_type_with_edge_assumes(
        candidate_index < assume_set->candidate_count; ++candidate_index) {
     const loom_canonicalize_edge_assume_candidate_t* candidate =
         &assume_set->candidates[candidate_index];
-    if (candidate->replacement == LOOM_VALUE_ID_INVALID) continue;
+    if (candidate->replacement == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     loom_type_t rewritten_type = *out_type;
     bool candidate_changed = false;
     IREE_RETURN_IF_ERROR(loom_module_replace_type_value_references(
@@ -1238,7 +1346,9 @@ static iree_status_t loom_canonicalize_materialize_edge_assumes(
       rewriter->arena, &walk_result));
 
   loom_block_t* entry_block = loom_region_entry_block(region);
-  if (!entry_block || !entry_block->first_op) return iree_ok_status();
+  if (!entry_block || !entry_block->first_op) {
+    return iree_ok_status();
+  }
 
   iree_status_t status = iree_ok_status();
   loom_builder_ip_t saved_ip = loom_builder_save(&rewriter->builder);
@@ -1287,21 +1397,27 @@ static iree_status_t loom_canonicalize_materialize_edge_assumes(
       status = iree_arena_allocate_array(
           &rewriter->module->arena, predicate_count, sizeof(loom_predicate_t),
           (void**)&predicates);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       memcpy(predicates, source_predicates,
              predicate_count * sizeof(loom_predicate_t));
       if (candidate->refinement.predicates.uses_index_assume) {
         status = loom_index_assume_build(
             &rewriter->builder, &value, 1, predicates, predicate_count,
             &result_type, 1, parent_op->location, &candidate->assume_op);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
         candidate->replacement =
             loom_index_assume_results(candidate->assume_op).values[0];
       } else {
         status = loom_scalar_assume_build(
             &rewriter->builder, &value, 1, predicates, predicate_count,
             &result_type, 1, parent_op->location, &candidate->assume_op);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
         candidate->replacement =
             loom_scalar_assume_results(candidate->assume_op).values[0];
       }
@@ -1310,7 +1426,9 @@ static iree_status_t loom_canonicalize_materialize_edge_assumes(
           rewriter, candidate->refinement.semantic.condition_op, value,
           candidate->refinement.semantic.assumed_truth,
           &candidate->replacement);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       IREE_ASSERT(candidate->replacement < rewriter->module->values.count);
       const loom_value_t* replacement_value =
           loom_module_value(rewriter->module, candidate->replacement);
@@ -1320,9 +1438,13 @@ static iree_status_t loom_canonicalize_materialize_edge_assumes(
     *out_changed = true;
   }
   loom_builder_restore(&rewriter->builder, saved_ip);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
-  if (!*out_changed) return iree_ok_status();
+  if (!*out_changed) {
+    return iree_ok_status();
+  }
   loom_canonicalize_region_replacement_t replacement = {
       .rewriter = rewriter,
       .assume_set = assume_set,
@@ -1354,7 +1476,9 @@ static iree_status_t loom_canonicalize_materialize_condition_facts_in_region(
   IREE_RETURN_IF_ERROR(loom_condition_facts_query_edge(
       condition_query, rewriter->fact_table, condition, assumed_truth,
       &condition_facts, &condition_refinements, &complete));
-  if (!complete) return iree_ok_status();
+  if (!complete) {
+    return iree_ok_status();
+  }
   if (condition_facts.integer_relation_count == 0 &&
       condition_refinements.refinement_count == 0) {
     return iree_ok_status();
@@ -1440,7 +1564,9 @@ static iree_status_t loom_canonicalize_try_materialize_branch_edge_facts(
     *out_changed = then_changed || else_changed;
     return iree_ok_status();
   }
-  if (!loom_scf_switch_isa(op)) return iree_ok_status();
+  if (!loom_scf_switch_isa(op)) {
+    return iree_ok_status();
+  }
 
   loom_attribute_t case_keys = loom_scf_switch_case_keys(op);
   if (case_keys.kind != LOOM_ATTR_I64_ARRAY ||
@@ -1448,7 +1574,9 @@ static iree_status_t loom_canonicalize_try_materialize_branch_edge_facts(
     return iree_ok_status();
   }
   loom_region_slice_t case_regions = loom_scf_switch_case_regions(op);
-  if (case_regions.count != case_keys.count) return iree_ok_status();
+  if (case_regions.count != case_keys.count) {
+    return iree_ok_status();
+  }
 
   loom_value_id_t selector = loom_scf_switch_selector(op);
   for (uint16_t i = 0; i < case_keys.count; ++i) {
@@ -1492,7 +1620,9 @@ static iree_status_t loom_canonicalize_materialize_branch_edge_facts_preorder(
   IREE_RETURN_IF_ERROR(loom_canonicalize_try_materialize_branch_edge_facts(
       materialization->rewriter, materialization->condition_query, op,
       &op_changed));
-  if (!op_changed) return iree_ok_status();
+  if (!op_changed) {
+    return iree_ok_status();
+  }
 
   materialization->changed = true;
   loom_greedy_rewrite_result_record_change(
@@ -1541,7 +1671,9 @@ static void loom_canonicalizer_reset_run_state(
 static void loom_canonicalizer_merge_result(
     loom_canonicalizer_result_t* target,
     const loom_canonicalizer_result_t* source) {
-  if (!target || !source) return;
+  if (!target || !source) {
+    return;
+  }
   target->changed |= source->changed;
   target->facts_changed |= source->facts_changed;
   target->types_changed |= source->types_changed;
@@ -1572,7 +1704,9 @@ iree_status_t loom_canonicalizer_initialize(
 }
 
 void loom_canonicalizer_deinitialize(loom_canonicalizer_t* canonicalizer) {
-  if (!canonicalizer) return;
+  if (!canonicalizer) {
+    return;
+  }
   loom_canonicalizer_reset_run_state(canonicalizer);
   if (canonicalizer->scratch_arena_initialized) {
     iree_arena_deinitialize(&canonicalizer->scratch_arena);
@@ -1758,7 +1892,9 @@ static iree_status_t loom_canonicalize_rewrite_op(
   }
 
   // Structural canonicalization patterns.
-  if (!vtable || !vtable->canonicalize) return iree_ok_status();
+  if (!vtable || !vtable->canonicalize) {
+    return iree_ok_status();
+  }
 
   rewriter->flags = 0;
   IREE_RETURN_IF_ERROR(vtable->canonicalize(op, rewriter));
@@ -1775,7 +1911,9 @@ static iree_status_t loom_canonicalize_rewrite_op(
 static void loom_canonicalizer_import_greedy_result(
     const loom_greedy_rewrite_result_t* source,
     loom_canonicalizer_result_t* target) {
-  if (!source || !target) return;
+  if (!source || !target) {
+    return;
+  }
   *target = (loom_canonicalizer_result_t){
       .changed = source->changed,
       .facts_changed = source->facts_changed,
@@ -1790,7 +1928,9 @@ static iree_status_t loom_canonicalizer_run_precomputed_region(
     loom_region_t* region, loom_op_t* parent_op,
     const loom_canonicalizer_options_t* options,
     loom_canonicalizer_result_t* out_result) {
-  if (out_result) memset(out_result, 0, sizeof(*out_result));
+  if (out_result) {
+    memset(out_result, 0, sizeof(*out_result));
+  }
   loom_canonicalize_rewrite_state_t state = {
       .flags = options ? options->flags : 0,
   };
@@ -1868,9 +2008,13 @@ iree_status_t loom_canonicalizer_run_region(
     loom_region_t* region, loom_op_t* parent_op,
     const loom_canonicalizer_options_t* options,
     loom_canonicalizer_result_t* out_result) {
-  if (out_result) memset(out_result, 0, sizeof(*out_result));
+  if (out_result) {
+    memset(out_result, 0, sizeof(*out_result));
+  }
   loom_canonicalizer_reset_run_state(canonicalizer);
-  if (!region) return iree_ok_status();
+  if (!region) {
+    return iree_ok_status();
+  }
   iree_status_t status = loom_canonicalizer_prepare_region_facts(
       canonicalizer, function, region, parent_op, options);
   if (iree_status_is_ok(status)) {
@@ -1889,10 +2033,14 @@ iree_status_t loom_canonicalizer_run_function(
     loom_canonicalizer_t* canonicalizer, loom_func_like_t function,
     const loom_canonicalizer_options_t* options,
     loom_canonicalizer_result_t* out_result) {
-  if (out_result) memset(out_result, 0, sizeof(*out_result));
+  if (out_result) {
+    memset(out_result, 0, sizeof(*out_result));
+  }
   loom_canonicalizer_reset_run_state(canonicalizer);
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   iree_status_t status = loom_canonicalizer_prepare_function_facts(
       canonicalizer, function, options);
@@ -1906,13 +2054,19 @@ iree_status_t loom_canonicalizer_run_function(
   const uint8_t body_region_index = loom_func_like_body_region_index(function);
   loom_canonicalizer_result_t aggregate_result = {0};
   for (uint8_t i = 0; i < loom_func_like_region_count(function); ++i) {
-    if (i == body_region_index) continue;
+    if (i == body_region_index) {
+      continue;
+    }
     loom_region_t* region = loom_func_like_region(function, i);
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     loom_canonicalizer_result_t region_result = {0};
     status = loom_canonicalizer_run_precomputed_region(
         canonicalizer, function, region, function.op, options, &region_result);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     loom_canonicalizer_merge_result(&aggregate_result, &region_result);
   }
 
@@ -1930,7 +2084,9 @@ iree_status_t loom_canonicalizer_run_function(
     loom_greedy_rewrite_driver_set_fact_table(
         &canonicalizer->state->rewrite_driver, NULL);
   }
-  if (out_result) *out_result = aggregate_result;
+  if (out_result) {
+    *out_result = aggregate_result;
+  }
   return status;
 }
 

@@ -73,8 +73,12 @@ iree_string_view_t FindStringOption(loom_module_t* module,
   for (iree_host_size_t i = 0; i < options.count; ++i) {
     const loom_named_attr_t* option = &options.entries[i];
     iree_string_view_t option_name = module->strings.entries[option->name_id];
-    if (!iree_string_view_equal(option_name, name)) continue;
-    if (option->value.kind != LOOM_ATTR_STRING) return iree_string_view_empty();
+    if (!iree_string_view_equal(option_name, name)) {
+      continue;
+    }
+    if (option->value.kind != LOOM_ATTR_STRING) {
+      return iree_string_view_empty();
+    }
     return module->strings.entries[loom_attr_as_string_id(option->value)];
   }
   return iree_string_view_empty();

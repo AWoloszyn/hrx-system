@@ -86,14 +86,18 @@ static void iree_hal_cmd_block_processor_advance_retention_epoch(
 
 static iree_time_t iree_hal_cmd_block_processor_retention_deadline_after(
     iree_time_t now, iree_duration_t duration) {
-  if (duration <= IREE_DURATION_ZERO) return now;
+  if (duration <= IREE_DURATION_ZERO) {
+    return now;
+  }
   iree_time_t deadline = now + duration;
   return deadline < now ? IREE_TIME_INFINITE_FUTURE : deadline;
 }
 
 static void iree_hal_cmd_block_processor_extend_retention_deadline(
     iree_hal_cmd_block_processor_context_t* context, iree_time_t deadline) {
-  if (!context->retention_spin_deadline_ns_ptr) return;
+  if (!context->retention_spin_deadline_ns_ptr) {
+    return;
+  }
   int64_t current_deadline = iree_atomic_load(
       context->retention_spin_deadline_ns_ptr, iree_memory_order_relaxed);
   while (current_deadline < deadline) {
@@ -108,8 +112,12 @@ static void iree_hal_cmd_block_processor_extend_retention_deadline(
 // Keeps warm task workers alive across region-transition bookkeeping.
 static void iree_hal_cmd_block_processor_begin_retention_transition(
     iree_hal_cmd_block_processor_context_t* context) {
-  if (context->retention_transition_spin_ns <= IREE_DURATION_ZERO) return;
-  if (!context->retention_spin_deadline_ns_ptr) return;
+  if (context->retention_transition_spin_ns <= IREE_DURATION_ZERO) {
+    return;
+  }
+  if (!context->retention_spin_deadline_ns_ptr) {
+    return;
+  }
   const iree_time_t now = iree_time_now();
   iree_hal_cmd_block_processor_extend_retention_deadline(
       context, iree_hal_cmd_block_processor_retention_deadline_after(
@@ -154,7 +162,9 @@ static iree_hal_cmd_block_state_t* iree_hal_cmd_block_processor_state_at(
 
 static iree_hal_cmd_block_state_t* iree_hal_cmd_block_processor_next_state(
     iree_hal_cmd_block_processor_context_t* context) {
-  if (context->next_block_state_index >= context->state_count) return NULL;
+  if (context->next_block_state_index >= context->state_count) {
+    return NULL;
+  }
   iree_hal_cmd_block_state_t* state = iree_hal_cmd_block_processor_state_at(
       context, context->next_block_state_index);
   ++context->next_block_state_index;
@@ -319,7 +329,9 @@ static void iree_hal_cmd_block_processor_profile_reset_dispatch(
 
 static void iree_hal_cmd_block_processor_profile_reset_dispatches(
     iree_hal_cmd_block_processor_context_t* context) {
-  if (!context->profile.dispatches) return;
+  if (!context->profile.dispatches) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < context->profile.dispatch_capacity; ++i) {
     iree_hal_cmd_block_processor_profile_reset_dispatch(
         &context->profile.dispatches[i]);
@@ -375,7 +387,9 @@ static void iree_hal_cmd_block_processor_profile_atomic_max_i32(
 static uint32_t
 iree_hal_cmd_block_processor_profile_remaining_tile_bucket_index(
     uint32_t remaining_tile_count) {
-  if (remaining_tile_count <= 2) return remaining_tile_count;
+  if (remaining_tile_count <= 2) {
+    return remaining_tile_count;
+  }
   uint32_t bucket_index = 3;
   uint32_t bucket_limit = 4;
   while (remaining_tile_count > bucket_limit &&
@@ -559,7 +573,9 @@ iree_hal_cmd_block_processor_profile_snapshot_active_region(
 
 static void iree_hal_cmd_block_processor_profile_begin_region(
     iree_hal_cmd_block_processor_context_t* context, uint32_t tile_count) {
-  if (!iree_hal_cmd_block_processor_profile_records_regions(context)) return;
+  if (!iree_hal_cmd_block_processor_profile_records_regions(context)) {
+    return;
+  }
   iree_atomic_store(&context->profile.command_region.start_host_time_ns,
                     iree_time_now(), iree_memory_order_relaxed);
   iree_atomic_store(&context->profile.command_region.tile_count,
@@ -706,7 +722,9 @@ static inline void iree_hal_cmd_dispatch_initialize_workgroup_state(
 
 static uint32_t iree_hal_cmd_dispatch_tiles_per_reservation(
     uint32_t tile_count, uint32_t worker_count, uint32_t explicit_value) {
-  if (explicit_value != 0) return explicit_value;
+  if (explicit_value != 0) {
+    return explicit_value;
+  }
   if (tile_count <
       worker_count * IREE_HAL_CMD_DISPATCH_MAX_TILES_PER_RESERVATION) {
     return 1;
@@ -734,7 +752,9 @@ static iree_status_t iree_hal_cmd_execute_dispatch_tiles(
 
   const uint32_t tile_count =
       workgroup_count[0] * workgroup_count[1] * workgroup_count[2];
-  if (tile_count == 0) return iree_ok_status();
+  if (tile_count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(dispatch->local_memory_size >
                     worker_context->local_memory.data_length)) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -822,7 +842,9 @@ static iree_status_t iree_hal_cmd_execute_dispatch_tiles(
           return iree_ok_status();
         }
         new_counter = counter + tiles_per_reservation;
-        if (new_counter > tile_count) new_counter = tile_count;
+        if (new_counter > tile_count) {
+          new_counter = tile_count;
+        }
         const int64_t desired =
             ((int64_t)region_epoch << 32) | (int64_t)new_counter;
         if (iree_atomic_compare_exchange_weak(tile_index, &current, desired,
@@ -831,7 +853,9 @@ static iree_status_t iree_hal_cmd_execute_dispatch_tiles(
           break;
         }
       }
-      if (counter >= tile_count) break;
+      if (counter >= tile_count) {
+        break;
+      }
 
       IREE_TRACE_ZONE_BEGIN_NAMED_DYNAMIC(z_dispatch, trace_name.data,
                                           trace_name.size);
@@ -861,9 +885,13 @@ static bool iree_hal_cmd_transfer_claim_tile(iree_atomic_int64_t* tile_index,
                                              uint32_t* out_tile) {
   int64_t current = iree_atomic_load(tile_index, iree_memory_order_relaxed);
   while (true) {
-    if ((current >> 32) != region_epoch) return false;
+    if ((current >> 32) != region_epoch) {
+      return false;
+    }
     const uint32_t tile = (uint32_t)current;
-    if (tile >= tile_count) return false;
+    if (tile >= tile_count) {
+      return false;
+    }
     const int64_t desired = ((int64_t)region_epoch << 32) | (int64_t)(tile + 1);
     if (iree_atomic_compare_exchange_weak(tile_index, &current, desired,
                                           iree_memory_order_relaxed,
@@ -1092,7 +1120,9 @@ static uint32_t iree_hal_cmd_execute_fill(const iree_hal_cmd_fill_t* fill,
   const iree_hal_fill_params_t params =
       iree_hal_cmd_fill_read_params(fill, binding_ptrs);
   const uint32_t tile_count = iree_hal_cmd_transfer_tile_count(params.length);
-  if (tile_count == 0) return 0;
+  if (tile_count == 0) {
+    return 0;
+  }
 
   uint32_t completed = 0;
   if (worker_count == 1) {
@@ -1135,7 +1165,9 @@ static uint32_t iree_hal_cmd_execute_copy(const iree_hal_cmd_copy_t* copy,
   const iree_hal_copy_params_t params =
       iree_hal_cmd_copy_read_params(copy, binding_ptrs);
   const uint32_t tile_count = iree_hal_cmd_transfer_tile_count(params.length);
-  if (tile_count == 0) return 0;
+  if (tile_count == 0) {
+    return 0;
+  }
 
   uint32_t completed = 0;
   if (worker_count == 1) {
@@ -1159,7 +1191,9 @@ static uint32_t iree_hal_cmd_execute_copy(const iree_hal_cmd_copy_t* copy,
 static bool iree_hal_cmd_claim_single_tile(iree_atomic_int64_t* tile_index,
                                            int32_t region_epoch,
                                            uint32_t worker_count) {
-  if (worker_count == 1) return true;
+  if (worker_count == 1) {
+    return true;
+  }
   int64_t current = iree_atomic_load(tile_index, iree_memory_order_relaxed);
   while (true) {
     if ((current >> 32) != region_epoch || (uint32_t)current != 0) {
@@ -1183,7 +1217,9 @@ static uint32_t iree_hal_cmd_execute_update(const iree_hal_cmd_update_t* update,
                                             int32_t region_epoch,
                                             uint32_t worker_count) {
   const uint32_t tile_count = iree_hal_cmd_transfer_tile_count(update->length);
-  if (tile_count == 0) return 0;
+  if (tile_count == 0) {
+    return 0;
+  }
   IREE_ASSERT(tile_count == 1,
               "inline update commands must contain at most one tile");
   if (!iree_hal_cmd_claim_single_tile(tile_index, region_epoch, worker_count)) {
@@ -1296,7 +1332,9 @@ static uint32_t iree_hal_cmd_block_processor_process_region(
 
   const iree_hal_cmd_header_t* cmd = iree_hal_cmd_next(&barrier->header);
   for (uint8_t d = 0; d < dispatch_count; ++d) {
-    if (IREE_UNLIKELY(iree_hal_cmd_block_processor_has_error(context))) break;
+    if (IREE_UNLIKELY(iree_hal_cmd_block_processor_has_error(context))) {
+      break;
+    }
 
     iree_atomic_int64_t* tile_idx =
         iree_hal_cmd_block_state_tile_index(state, cmd->dispatch_index);
@@ -1401,8 +1439,12 @@ static int32_t iree_hal_cmd_block_processor_calculate_wake_budget(
     const iree_hal_cmd_block_processor_context_t* context,
     uint32_t remaining_tiles) {
   uint32_t wake_budget = remaining_tiles;
-  if (wake_budget == 0) wake_budget = 1;
-  if (wake_budget > context->worker_count) wake_budget = context->worker_count;
+  if (wake_budget == 0) {
+    wake_budget = 1;
+  }
+  if (wake_budget > context->worker_count) {
+    wake_budget = context->worker_count;
+  }
   return (int32_t)wake_budget;
 }
 
@@ -1680,10 +1722,14 @@ static iree_status_t iree_hal_cmd_block_processor_execute_single_worker(
               (size_t)((const uint8_t*)cmd - (const uint8_t*)block));
         }
       }
-      if (!branch_taken) cmd = iree_hal_cmd_next(cmd);
+      if (!branch_taken) {
+        cmd = iree_hal_cmd_next(cmd);
+      }
     }
 
-    if (branch_taken) continue;
+    if (branch_taken) {
+      continue;
+    }
 
     return iree_make_status(
         IREE_STATUS_INTERNAL,
@@ -1791,7 +1837,9 @@ iree_hal_cmd_block_processor_update_budget(
       context, next_remaining_tiles);
   iree_atomic_store(&context->current_wake_budget, new_budget,
                     iree_memory_order_relaxed);
-  if (!context->wake_budget_ptr) return update;
+  if (!context->wake_budget_ptr) {
+    return update;
+  }
   int32_t old_budget = iree_atomic_exchange(
       context->wake_budget_ptr, new_budget, iree_memory_order_relaxed);
   update.old_budget = old_budget;
@@ -1826,7 +1874,9 @@ static void iree_hal_cmd_block_processor_profile_append_command_region_event(
     uint32_t next_remaining_tiles,
     iree_hal_cmd_block_processor_budget_update_t budget_update,
     iree_hal_profile_command_region_event_flags_t transition_flags) {
-  if (!iree_hal_cmd_block_processor_profile_records_regions(context)) return;
+  if (!iree_hal_cmd_block_processor_profile_records_regions(context)) {
+    return;
+  }
 
   const iree_hal_cmd_region_summary_t* completed_summary = NULL;
   if (completed_region_index >= 0 &&
@@ -2299,7 +2349,9 @@ static void iree_hal_cmd_block_processor_drain_multi_worker(
     int64_t current =
         iree_atomic_load(&state->remaining_tiles, iree_memory_order_acquire);
     while (true) {
-      if ((current >> 32) != region_epoch) break;
+      if ((current >> 32) != region_epoch) {
+        break;
+      }
       const uint32_t count = (uint32_t)(current & 0xFFFFFFFFu);
       IREE_ASSERT(count >= my_tiles);
       const uint32_t new_count = count - my_tiles;
@@ -2314,7 +2366,9 @@ static void iree_hal_cmd_block_processor_drain_multi_worker(
     }
   }
 
-  if (!is_completer) return;
+  if (!is_completer) {
+    return;
+  }
   IREE_TRACE(out_result->reason =
                  IREE_HAL_CMD_BLOCK_PROCESSOR_DRAIN_REASON_COMPLETER);
 
@@ -2427,7 +2481,9 @@ void iree_hal_cmd_block_processor_context_set_profile_recorder(
     uint64_t command_buffer_id,
     iree_hal_cmd_block_processor_profile_dispatch_t* dispatches,
     iree_host_size_t dispatch_capacity) {
-  if (!context) return;
+  if (!context) {
+    return;
+  }
   context->profile.recorder = recorder;
   context->profile.scope = scope;
   context->profile.submission_id = submission_id;
@@ -2487,23 +2543,31 @@ void iree_hal_cmd_block_processor_context_profile_record_retention(
 bool iree_hal_cmd_block_processor_context_did_advance(
     const iree_hal_cmd_block_processor_context_t* context,
     const iree_hal_cmd_block_processor_drain_result_t* drain_result) {
-  if (!context || !drain_result) return true;
+  if (!context || !drain_result) {
+    return true;
+  }
   if (iree_atomic_load(&context->completed, iree_memory_order_acquire)) {
     return true;
   }
   if (drain_result->block_sequence != 0) {
     int32_t block_sequence =
         iree_atomic_load(&context->block_sequence, iree_memory_order_acquire);
-    if (block_sequence != drain_result->block_sequence) return true;
+    if (block_sequence != drain_result->block_sequence) {
+      return true;
+    }
   }
   if (drain_result->region_epoch != 0) {
     iree_hal_cmd_block_state_t* state =
         iree_hal_cmd_block_processor_current_state(context);
-    if (!state) return true;
+    if (!state) {
+      return true;
+    }
     int64_t region_state =
         iree_atomic_load(&state->region_state, iree_memory_order_acquire);
     int32_t region_epoch = iree_hal_cmd_block_region_state_epoch(region_state);
-    if (region_epoch != drain_result->region_epoch) return true;
+    if (region_epoch != drain_result->region_epoch) {
+      return true;
+    }
   }
   return false;
 }
@@ -2515,8 +2579,12 @@ iree_status_t iree_hal_cmd_block_processor_context_allocate(
     iree_allocator_t allocator,
     iree_hal_cmd_block_processor_context_t** out_context) {
   *out_context = NULL;
-  if (!recording->first_block) return iree_ok_status();
-  if (worker_count == 0) worker_count = 1;
+  if (!recording->first_block) {
+    return iree_ok_status();
+  }
+  if (worker_count == 0) {
+    worker_count = 1;
+  }
 
   // Allocate .data sized to the highwater mark across all blocks. Multi-worker
   // execution gets one slot per block so block-local binding fixups are never
@@ -2619,7 +2687,9 @@ void iree_hal_cmd_block_processor_drain(
 
 iree_status_t iree_hal_cmd_block_processor_context_consume_result(
     iree_hal_cmd_block_processor_context_t* context) {
-  if (!context) return iree_ok_status();
+  if (!context) {
+    return iree_ok_status();
+  }
   intptr_t error = iree_atomic_exchange(&context->error_status, 0,
                                         iree_memory_order_acquire);
   return (iree_status_t)error;
@@ -2628,6 +2698,8 @@ iree_status_t iree_hal_cmd_block_processor_context_consume_result(
 void iree_hal_cmd_block_processor_context_free(
     iree_hal_cmd_block_processor_context_t* context,
     iree_allocator_t allocator) {
-  if (!context) return;
+  if (!context) {
+    return;
+  }
   iree_allocator_free_aligned(allocator, context);
 }

@@ -93,7 +93,9 @@ static bool loom_cmd_transient_align_offset(uint64_t value, uint64_t alignment,
                                             uint64_t* out_value) {
   IREE_ASSERT(iree_is_power_of_two_uint64(alignment));
   const uint64_t mask = alignment - 1;
-  if (value > UINT64_MAX - mask) return false;
+  if (value > UINT64_MAX - mask) {
+    return false;
+  }
   *out_value = (value + mask) & ~mask;
   return true;
 }
@@ -235,10 +237,14 @@ static void loom_cmd_transient_mark_value_uses(
   for (uint16_t i = 0; i < values.count; ++i) {
     const loom_value_id_t root_value =
         loom_cmd_transient_resolve_root_value(build, values.values[i]);
-    if (root_value == LOOM_VALUE_ID_INVALID) continue;
+    if (root_value == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     loom_cmd_transient_allocation_t* allocation =
         loom_cmd_transient_find_mutable_allocation(build, root_value);
-    if (!allocation) continue;
+    if (!allocation) {
+      continue;
+    }
     IREE_ASSERT_LE(allocation->definition_wave, wave_index);
     allocation->first_wave = allocation->definition_wave;
     allocation->last_wave = iree_max(allocation->last_wave, wave_index);
@@ -275,10 +281,18 @@ static int loom_cmd_transient_compare_allocations(const void* lhs_ptr,
       (const loom_cmd_transient_allocation_t*)lhs_ptr;
   const loom_cmd_transient_allocation_t* rhs =
       (const loom_cmd_transient_allocation_t*)rhs_ptr;
-  if (lhs->first_wave < rhs->first_wave) return -1;
-  if (lhs->first_wave > rhs->first_wave) return 1;
-  if (lhs->source_ordinal < rhs->source_ordinal) return -1;
-  if (lhs->source_ordinal > rhs->source_ordinal) return 1;
+  if (lhs->first_wave < rhs->first_wave) {
+    return -1;
+  }
+  if (lhs->first_wave > rhs->first_wave) {
+    return 1;
+  }
+  if (lhs->source_ordinal < rhs->source_ordinal) {
+    return -1;
+  }
+  if (lhs->source_ordinal > rhs->source_ordinal) {
+    return 1;
+  }
   return 0;
 }
 
@@ -286,7 +300,9 @@ static void loom_cmd_transient_insert_free_range(
     loom_cmd_transient_free_range_t* free_ranges,
     iree_host_size_t* free_range_count, uint64_t byte_offset,
     uint64_t byte_length) {
-  if (byte_length == 0) return;
+  if (byte_length == 0) {
+    return;
+  }
   iree_host_size_t insert_index = 0;
   while (insert_index < *free_range_count &&
          free_ranges[insert_index].byte_offset < byte_offset) {
@@ -349,7 +365,9 @@ static bool loom_cmd_transient_allocate_free_range(
       best_waste = waste;
     }
   }
-  if (best_index == IREE_HOST_SIZE_MAX) return false;
+  if (best_index == IREE_HOST_SIZE_MAX) {
+    return false;
+  }
 
   const loom_cmd_transient_free_range_t selected = free_ranges[best_index];
   memmove(&free_ranges[best_index], &free_ranges[best_index + 1],
@@ -369,7 +387,9 @@ static bool loom_cmd_transient_allocate_free_range(
 
 static iree_status_t loom_cmd_transient_pack_allocations(
     loom_cmd_transient_build_t* build) {
-  if (build->allocation_count == 0) return iree_ok_status();
+  if (build->allocation_count == 0) {
+    return iree_ok_status();
+  }
   qsort(build->allocations, build->allocation_count,
         sizeof(*build->allocations), loom_cmd_transient_compare_allocations);
 
@@ -388,7 +408,9 @@ static iree_status_t loom_cmd_transient_pack_allocations(
        allocation_index < build->allocation_count; ++allocation_index) {
     loom_cmd_transient_allocation_t* allocation =
         &build->allocations[allocation_index];
-    if (allocation->first_wave == IREE_HOST_SIZE_MAX) break;
+    if (allocation->first_wave == IREE_HOST_SIZE_MAX) {
+      break;
+    }
 
     for (iree_host_size_t active_index = 0; active_index < active_count;) {
       const iree_host_size_t retired_index = active_indices[active_index];
@@ -441,7 +463,9 @@ static iree_status_t loom_cmd_transient_append_result_range(
         loom_cmd_transient_find_allocation(
             build, loom_value_fact_view_reference_resolve_root_value(
                        view_reference, result));
-    if (!allocation) return iree_ok_status();
+    if (!allocation) {
+      return iree_ok_status();
+    }
     int64_t byte_offset = 0;
     int64_t byte_length = 0;
     if (!loom_value_facts_as_exact_i64(view_reference.base_byte_offset,
@@ -469,7 +493,9 @@ static iree_status_t loom_cmd_transient_append_result_range(
                                                           result);
   const loom_cmd_transient_allocation_t* allocation =
       loom_cmd_transient_find_allocation(build, root_value);
-  if (!allocation) return iree_ok_status();
+  if (!allocation) {
+    return iree_ok_status();
+  }
   return loom_cmd_transient_append_range(
       build, result, allocation, /*byte_offset=*/0, allocation->byte_length);
 }

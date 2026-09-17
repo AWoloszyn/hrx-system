@@ -118,7 +118,9 @@ TEST_F(HandleRegistryTest, ConcurrentLookupsAndRemovalRejectStaleHandles) {
   for (uintptr_t handle = 1; handle <= handle_count; ++handle) {
     EXPECT_TRUE(iree_hip_handle_registry_remove(&registry_, handle));
   }
-  for (std::thread& thread : threads) thread.join();
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
 
   for (uintptr_t handle = 1; handle <= handle_count; ++handle) {
     EXPECT_FALSE(iree_hip_handle_registry_lookup_retain(&registry_, handle,

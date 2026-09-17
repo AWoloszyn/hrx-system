@@ -2103,7 +2103,9 @@ TEST_F(HostQueueCommandBufferProfilingTest,
                 sink, IREE_HAL_PROFILE_QUEUE_EVENT_TYPE_EXECUTE));
   uint32_t execute_signal_count = 0;
   for (const auto& event : sink.queue_events) {
-    if (event.type != IREE_HAL_PROFILE_QUEUE_EVENT_TYPE_EXECUTE) continue;
+    if (event.type != IREE_HAL_PROFILE_QUEUE_EVENT_TYPE_EXECUTE) {
+      continue;
+    }
     EXPECT_EQ(sink.command_buffer_ids[0], event.command_buffer_id);
     execute_signal_count += event.signal_count;
   }

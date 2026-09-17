@@ -52,7 +52,9 @@ iree_hal_amdgpu_hsaco_loaded_code_object_rebase_string_view(
   IREE_ASSERT_ARGUMENT(out_view);
 
   *out_view = iree_string_view_empty();
-  if (source_view.size == 0) return iree_ok_status();
+  if (source_view.size == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!source_view.data)) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -480,7 +482,9 @@ static void iree_hal_amdgpu_hsaco_load_plan_populate_workgroup_size(
 static void iree_hal_amdgpu_hsaco_load_plan_populate_workgroup_cluster_size(
     const iree_hal_amdgpu_hsaco_metadata_kernel_t* kernel,
     iree_hal_amdgpu_executable_export_t* out_export) {
-  if (!kernel->has_workgroup_cluster_size) return;
+  if (!kernel->has_workgroup_cluster_size) {
+    return;
+  }
   memcpy(out_export->workgroup_cluster_size, kernel->workgroup_cluster_size,
          sizeof(out_export->workgroup_cluster_size));
 }

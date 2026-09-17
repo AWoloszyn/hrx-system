@@ -162,7 +162,9 @@ static iree_status_t loom_pass_report_copy_detail_fields(
     copied_fields[i] = fields[i];
     status = loom_pass_report_copy_string(report, fields[i].name,
                                           &copied_fields[i].name);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     ++copied_count;
     if (fields[i].value_kind == LOOM_PASS_REPORT_DETAIL_VALUE_STRING) {
       status = loom_pass_report_copy_string(report, fields[i].string_value,

@@ -105,7 +105,9 @@ static void iree_hal_amdgpu_profile_hash64_compress(
 static void iree_hal_amdgpu_profile_hash64_append(
     iree_hal_amdgpu_profile_hash64_state_t* state, const void* data,
     iree_host_size_t data_length) {
-  if (data_length == 0) return;
+  if (data_length == 0) {
+    return;
+  }
 
   const uint8_t* cursor = (const uint8_t*)data;
   const uint8_t* const end = cursor + data_length;
@@ -431,14 +433,18 @@ static bool iree_hal_amdgpu_profile_metadata_has_executable_locked(
 static bool iree_hal_amdgpu_profile_metadata_has_code_object_locked(
     const iree_hal_amdgpu_profile_metadata_registry_t* registry,
     uint64_t executable_id) {
-  if (registry->executable_code_object_record_data_length == 0) return false;
+  if (registry->executable_code_object_record_data_length == 0) {
+    return false;
+  }
   const uint8_t* current = registry->executable_code_object_record_data;
   const uint8_t* end =
       current + registry->executable_code_object_record_data_length;
   while (current < end) {
     const iree_hal_profile_executable_code_object_record_t* record =
         (const iree_hal_profile_executable_code_object_record_t*)current;
-    if (record->executable_id == executable_id) return true;
+    if (record->executable_id == executable_id) {
+      return true;
+    }
     current += record->record_length;
   }
   return false;
@@ -812,7 +818,9 @@ bool iree_hal_amdgpu_profile_metadata_function_matches(
     iree_hal_amdgpu_profile_metadata_registry_t* registry,
     uint64_t executable_id, uint32_t function_ordinal,
     iree_string_view_t pattern) {
-  if (iree_string_view_is_empty(pattern)) return true;
+  if (iree_string_view_is_empty(pattern)) {
+    return true;
+  }
 
   bool matches = false;
   iree_slim_mutex_lock(&registry->mutex);

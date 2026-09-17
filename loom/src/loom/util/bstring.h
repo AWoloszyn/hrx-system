@@ -82,7 +82,9 @@ static inline iree_string_view_t loom_bstring_view(loom_bstring_t bstring) {
 static inline bool loom_bstring_equal(loom_bstring_t bstring,
                                       iree_string_view_t view) {
   uint8_t length = bstring[0];
-  if (view.size != length) return false;
+  if (view.size != length) {
+    return false;
+  }
   return length == 0 || memcmp(view.data, bstring + 1, length) == 0;
 }
 
@@ -108,9 +110,15 @@ static inline loom_bstring_t loom_bstring_table_get(
 static inline bool loom_bstring_table_try_get(
     const loom_bstring_table_t* table, loom_bstring_table_offset_t offset,
     loom_bstring_t* out_bstring) {
-  if (out_bstring != NULL) *out_bstring = NULL;
-  if (!loom_bstring_table_contains(table, offset)) return false;
-  if (out_bstring != NULL) *out_bstring = loom_bstring_table_get(table, offset);
+  if (out_bstring != NULL) {
+    *out_bstring = NULL;
+  }
+  if (!loom_bstring_table_contains(table, offset)) {
+    return false;
+  }
+  if (out_bstring != NULL) {
+    *out_bstring = loom_bstring_table_get(table, offset);
+  }
   return true;
 }
 

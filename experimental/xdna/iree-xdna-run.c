@@ -141,7 +141,9 @@ static iree_status_t iree_xdna_run_load_image(
   }
   iree_allocator_free(host_allocator, span.data);
   iree_io_file_contents_free(contents);
-  if (iree_status_is_ok(status)) *out_sequence = sequence;
+  if (iree_status_is_ok(status)) {
+    *out_sequence = sequence;
+  }
   return status;
 }
 
@@ -273,8 +275,12 @@ static iree_status_t iree_xdna_run_open_endpoint(iree_xdna_run_t* run) {
       "endpoint_enumerate");
   uint32_t xdna_ordinal = 0;
   for (uint32_t i = 0; iree_status_is_ok(status) && i < count; ++i) {
-    if (summaries[i].engine_kind != AMDF_ENGINE_KIND_XDNA) continue;
-    if (xdna_ordinal++ != (uint32_t)FLAG_device) continue;
+    if (summaries[i].engine_kind != AMDF_ENGINE_KIND_XDNA) {
+      continue;
+    }
+    if (xdna_ordinal++ != (uint32_t)FLAG_device) {
+      continue;
+    }
     status = IREE_HAL_AMD_STATUS_FROM_AMDF(
         run->api->endpoint_open(run->instance, &summaries[i].id,
                                 &run->endpoint),
@@ -347,7 +353,9 @@ static iree_status_t iree_xdna_run_create_device(
       break;
     }
   }
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   if (family_ordinal == UINT32_MAX) {
     return iree_make_status(IREE_STATUS_UNAVAILABLE,
                             "endpoint has no XDNA kernel queue family");
@@ -381,9 +389,12 @@ static iree_status_t iree_xdna_run_create_device(
         run->api->memory_scope_query_device_profile(run->memory_scope, ordinal,
                                                     1, &run->memory_access,
                                                     &profile, &capabilities);
-    if (amdf_status_code(query_status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
-    if (query_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+    if (amdf_status_code(query_status) == AMDF_STATUS_CODE_OUT_OF_RANGE) {
+      break;
+    }
+    if (query_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
       continue;
+    }
     IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
         query_status, "memory_scope_query_device_profile"));
     if ((profile.roles & required_roles) == required_roles &&
@@ -704,7 +715,9 @@ static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
        iree_status_is_ok(status) && i < run->binding_count; ++i) {
     status = iree_xdna_run_prepare_binding(run, function, i);
   }
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   IREE_RETURN_IF_ERROR(iree_xdna_run_prepare_invocation(run, function));
   const amdf_xdna_kernel_queue_create_info_t queue_info = {
       .type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO,
@@ -752,7 +765,9 @@ static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
   for (iree_host_size_t i = 0;
        iree_status_is_ok(status) && i < run->binding_count; ++i) {
     iree_xdna_run_binding_t* binding = &run->bindings[i];
-    if (iree_string_view_is_empty(binding->output_path)) continue;
+    if (iree_string_view_is_empty(binding->output_path)) {
+      continue;
+    }
     const iree_host_size_t length =
         binding->initial_contents->buffer.data_length;
     status = IREE_HAL_AMD_STATUS_FROM_AMDF(
@@ -808,7 +823,9 @@ static iree_status_t iree_xdna_run_deinitialize(iree_xdna_run_t* run) {
       status = IREE_HAL_AMD_STATUS_FROM_AMDF(
           run->api->host_mapping_destroy(binding->mapping),
           "host_mapping_destroy");
-      if (iree_status_is_ok(status)) binding->mapping = NULL;
+      if (iree_status_is_ok(status)) {
+        binding->mapping = NULL;
+      }
     }
     if (iree_status_is_ok(status) && binding->memory != NULL) {
       status = IREE_HAL_AMD_STATUS_FROM_AMDF(
@@ -833,7 +850,9 @@ static iree_status_t iree_xdna_run_deinitialize(iree_xdna_run_t* run) {
       }
     }
   }
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   for (iree_host_size_t i = 0; i < run->binding_count; ++i) {
     iree_allocator_free_aligned(run->host_allocator,
                                 run->bindings[i].registered_allocation);
@@ -879,7 +898,9 @@ static iree_status_t iree_xdna_run_main(void) {
   IREE_RETURN_IF_ERROR(iree_xdna_run_load_image(
       iree_make_cstring_view(FLAG_image), run.host_allocator, &image));
   iree_status_t status = iree_xdna_run_load_bindings(&run);
-  if (iree_status_is_ok(status)) status = iree_xdna_run_execute(&run, image);
+  if (iree_status_is_ok(status)) {
+    status = iree_xdna_run_execute(&run, image);
+  }
   const iree_status_t cleanup_status = iree_xdna_run_deinitialize(&run);
   if (iree_status_is_ok(cleanup_status)) {
     fprintf(stderr, "All native resources released\n");

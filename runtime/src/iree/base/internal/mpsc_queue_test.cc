@@ -384,7 +384,9 @@ TEST_F(MpscQueueTest, BeginWriteFullReturnsNull) {
     iree_mpsc_queue_reservation_t reservation;
     void* payload =
         iree_mpsc_queue_begin_write(&queue, sizeof(uint32_t), &reservation);
-    if (!payload) break;
+    if (!payload) {
+      break;
+    }
     uint32_t value = (uint32_t)committed;
     memcpy(payload, &value, sizeof(value));
     iree_mpsc_queue_commit_write(&queue, reservation);
@@ -657,7 +659,9 @@ TEST_F(MpscQueueTest, ConcurrentProducers) {
     }
   });
 
-  for (auto& t : producers) t.join();
+  for (auto& t : producers) {
+    t.join();
+  }
   consumer.join();
 
   EXPECT_EQ(received, total_messages);
@@ -719,7 +723,9 @@ TEST_F(MpscQueueTest, ConcurrentBeginWriteCommit) {
     }
   });
 
-  for (auto& t : producers) t.join();
+  for (auto& t : producers) {
+    t.join();
+  }
   consumer.join();
 
   EXPECT_EQ(received, total_messages);
@@ -781,7 +787,9 @@ TEST_F(MpscQueueTest, ConcurrentVariableSizeStress) {
     }
   });
 
-  for (auto& t : producers) t.join();
+  for (auto& t : producers) {
+    t.join();
+  }
   consumer.join();
 
   EXPECT_EQ(received, total_messages);
@@ -848,7 +856,9 @@ TEST_F(MpscQueueTest, ConcurrentCancelStress) {
     }
   });
 
-  for (auto& t : producers) t.join();
+  for (auto& t : producers) {
+    t.join();
+  }
   consumer.join();
 
   EXPECT_EQ(received, total_committed);

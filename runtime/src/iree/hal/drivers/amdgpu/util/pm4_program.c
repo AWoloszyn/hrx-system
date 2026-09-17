@@ -30,7 +30,9 @@ iree_status_t iree_hal_amdgpu_pm4_program_initialize_with_stats(
   IREE_ASSERT_ARGUMENT(source_dwords);
   IREE_ASSERT_ARGUMENT(out_program);
   memset(out_program, 0, sizeof(*out_program));
-  if (out_stats) memset(out_stats, 0, sizeof(*out_stats));
+  if (out_stats) {
+    memset(out_stats, 0, sizeof(*out_stats));
+  }
   if (IREE_UNLIKELY(!memory_pool.handle)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "PM4 program memory pool is required");
@@ -54,7 +56,9 @@ iree_status_t iree_hal_amdgpu_pm4_program_initialize_with_stats(
       z0, IREE_STRUCT_LAYOUT(0, &byte_length,
                              IREE_STRUCT_FIELD(dword_count, uint32_t, NULL)));
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, byte_length);
-  if (out_stats) out_stats->byte_length = byte_length;
+  if (out_stats) {
+    out_stats->byte_length = byte_length;
+  }
   const bool collect_stats = out_stats != NULL;
 
   IREE_AMDGPU_DEVICE_PTR uint32_t* dwords = NULL;
@@ -62,7 +66,9 @@ iree_status_t iree_hal_amdgpu_pm4_program_initialize_with_stats(
   iree_status_t status = iree_hsa_amd_memory_pool_allocate(
       IREE_LIBHSA(libhsa), memory_pool, byte_length,
       HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG, (void**)&dwords);
-  if (collect_stats) out_stats->allocate_ns += iree_time_now() - time_start;
+  if (collect_stats) {
+    out_stats->allocate_ns += iree_time_now() - time_start;
+  }
 
   if (iree_status_is_ok(status)) {
     time_start = collect_stats ? iree_time_now() : 0;
@@ -78,7 +84,9 @@ iree_status_t iree_hal_amdgpu_pm4_program_initialize_with_stats(
     time_start = collect_stats ? iree_time_now() : 0;
     status = iree_hsa_memory_copy(IREE_LIBHSA(libhsa), dwords, source_dwords,
                                   byte_length);
-    if (collect_stats) out_stats->copy_ns += iree_time_now() - time_start;
+    if (collect_stats) {
+      out_stats->copy_ns += iree_time_now() - time_start;
+    }
   }
 
   if (iree_status_is_ok(status)) {
@@ -98,7 +106,9 @@ iree_status_t iree_hal_amdgpu_pm4_program_initialize_with_stats(
 
 void iree_hal_amdgpu_pm4_program_deinitialize(
     iree_hal_amdgpu_pm4_program_t* program) {
-  if (!program) return;
+  if (!program) {
+    return;
+  }
   if (!program->dwords) {
     memset(program, 0, sizeof(*program));
     return;

@@ -171,7 +171,9 @@ static iree_status_t loom_call_graph_compute_sccs(
   uint16_t discovery_counter = 0;
 
   for (uint16_t root = 0; root < node_count; ++root) {
-    if (state[root].index != UINT16_MAX) continue;  // Already visited.
+    if (state[root].index != UINT16_MAX) {
+      continue;  // Already visited.
+    }
 
     // Push root.
     dfs_stack[dfs_top++] =
@@ -191,7 +193,9 @@ static iree_status_t loom_call_graph_compute_sccs(
         // Process next callee.
         loom_symbol_id_t callee_sym = node->callees[frame->callee_cursor++];
         uint16_t w = graph->symbol_to_node[callee_sym];
-        if (w == UINT16_MAX) continue;  // External/declaration only.
+        if (w == UINT16_MAX) {
+          continue;  // External/declaration only.
+        }
 
         if (state[w].index == UINT16_MAX) {
           // Not yet visited — push onto DFS stack.
@@ -285,7 +289,9 @@ iree_status_t loom_call_graph_build(const loom_module_t* module,
     if (loom_symbol_implements(sym, LOOM_SYMBOL_INTERFACE_FUNC_LIKE) &&
         sym->defining_op) {
       loom_func_like_t func = loom_func_like_cast(module, sym->defining_op);
-      if (loom_func_like_body(func)) ++func_count;
+      if (loom_func_like_body(func)) {
+        ++func_count;
+      }
     }
   }
 
@@ -323,7 +329,9 @@ iree_status_t loom_call_graph_build(const loom_module_t* module,
     }
     loom_func_like_t func = loom_func_like_cast(module, sym->defining_op);
     loom_region_t* body = loom_func_like_body(func);
-    if (!body) continue;
+    if (!body) {
+      continue;
+    }
 
     loom_symbol_id_t sym_id = (loom_symbol_id_t)(sym - module->symbols.entries);
     out_graph->nodes[node_index].symbol_id = sym_id;
@@ -356,18 +364,28 @@ iree_status_t loom_call_graph_build(const loom_module_t* module,
 
 bool loom_call_graph_is_recursive(const loom_call_graph_t* graph,
                                   loom_symbol_id_t symbol_id) {
-  if (symbol_id >= graph->symbol_to_node_count) return false;
+  if (symbol_id >= graph->symbol_to_node_count) {
+    return false;
+  }
   uint16_t node_index = graph->symbol_to_node[symbol_id];
-  if (node_index == UINT16_MAX) return false;
+  if (node_index == UINT16_MAX) {
+    return false;
+  }
   uint16_t scc_id = graph->nodes[node_index].scc_id;
-  if (scc_id == UINT16_MAX || scc_id >= graph->scc_count) return false;
+  if (scc_id == UINT16_MAX || scc_id >= graph->scc_count) {
+    return false;
+  }
   return graph->scc_recursive[scc_id];
 }
 
 const loom_call_graph_node_t* loom_call_graph_node(
     const loom_call_graph_t* graph, loom_symbol_id_t symbol_id) {
-  if (symbol_id >= graph->symbol_to_node_count) return NULL;
+  if (symbol_id >= graph->symbol_to_node_count) {
+    return NULL;
+  }
   uint16_t node_index = graph->symbol_to_node[symbol_id];
-  if (node_index == UINT16_MAX) return NULL;
+  if (node_index == UINT16_MAX) {
+    return NULL;
+  }
   return &graph->nodes[node_index];
 }

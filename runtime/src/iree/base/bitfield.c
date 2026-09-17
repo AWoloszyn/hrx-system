@@ -35,7 +35,9 @@ IREE_API_EXPORT iree_status_t iree_bitfield_parse(
     iree_string_view_t part = iree_string_view_empty();
     iree_string_view_split(value, '|', &part, &value);
     part = iree_string_view_trim(part);
-    if (iree_string_view_is_empty(part)) continue;
+    if (iree_string_view_is_empty(part)) {
+      continue;
+    }
 
     // Scan the mapping table and match case-insensitive.
     uint32_t mapping_bits = 0;

@@ -62,14 +62,22 @@ static iree_status_t loom_global_load_rodata_facts(
 }
 
 static loom_value_id_t loom_global_definition_value(const loom_op_t* op) {
-  if (loom_global_constant_isa(op)) return loom_global_constant_type(op);
-  if (loom_global_variable_isa(op)) return loom_global_variable_type(op);
+  if (loom_global_constant_isa(op)) {
+    return loom_global_constant_type(op);
+  }
+  if (loom_global_variable_isa(op)) {
+    return loom_global_variable_type(op);
+  }
   return LOOM_VALUE_ID_INVALID;
 }
 
 static loom_attribute_t loom_global_definition_predicates(const loom_op_t* op) {
-  if (loom_global_constant_isa(op)) return loom_global_constant_predicates(op);
-  if (loom_global_variable_isa(op)) return loom_global_variable_predicates(op);
+  if (loom_global_constant_isa(op)) {
+    return loom_global_constant_predicates(op);
+  }
+  if (loom_global_variable_isa(op)) {
+    return loom_global_variable_predicates(op);
+  }
   return loom_attr_absent();
 }
 
@@ -108,7 +116,9 @@ static bool loom_global_scalar_initializer_facts(
 }
 
 static bool loom_global_predicate_facts_support_type(loom_type_t type) {
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   loom_scalar_type_t scalar_type = loom_type_element_type(type);
   return scalar_type == LOOM_SCALAR_TYPE_INDEX ||
          scalar_type == LOOM_SCALAR_TYPE_OFFSET ||
@@ -130,23 +140,33 @@ static bool loom_global_map_definition_type_value(
   bool found = false;
   uint8_t rank = loom_type_rank(definition_type);
   for (uint8_t i = 0; i < rank; ++i) {
-    if (!loom_type_dim_is_dynamic_at(definition_type, i)) continue;
+    if (!loom_type_dim_is_dynamic_at(definition_type, i)) {
+      continue;
+    }
     if (loom_type_dim_value_id_at(definition_type, i) != definition_value) {
       continue;
     }
-    if (!loom_type_dim_is_dynamic_at(load_type, i)) return false;
+    if (!loom_type_dim_is_dynamic_at(load_type, i)) {
+      return false;
+    }
 
     loom_value_id_t load_value = loom_type_dim_value_id_at(load_type, i);
-    if (found && load_value != *out_load_value) return false;
+    if (found && load_value != *out_load_value) {
+      return false;
+    }
     *out_load_value = load_value;
     found = true;
   }
 
   if (loom_type_has_ssa_encoding(definition_type) &&
       loom_type_encoding_value_id(definition_type) == definition_value) {
-    if (!loom_type_has_ssa_encoding(load_type)) return false;
+    if (!loom_type_has_ssa_encoding(load_type)) {
+      return false;
+    }
     loom_value_id_t load_value = loom_type_encoding_value_id(load_type);
-    if (found && load_value != *out_load_value) return false;
+    if (found && load_value != *out_load_value) {
+      return false;
+    }
     *out_load_value = load_value;
     found = true;
   }
@@ -158,7 +178,9 @@ static bool loom_global_load_result_index(loom_value_slice_t results,
                                           loom_value_id_t value_id,
                                           iree_host_size_t* out_index) {
   for (iree_host_size_t i = 0; i < results.count; ++i) {
-    if (results.values[i] != value_id) continue;
+    if (results.values[i] != value_id) {
+      continue;
+    }
     *out_index = i;
     return true;
   }
@@ -183,7 +205,9 @@ static void loom_global_load_apply_definition_predicates(
   }
 
   loom_value_slice_t results = loom_global_load_result(op);
-  if (results.count == 0 || results.values[0] >= module->values.count) return;
+  if (results.count == 0 || results.values[0] >= module->values.count) {
+    return;
+  }
 
   loom_type_t definition_type =
       loom_module_value_type(module, definition_value);
@@ -207,10 +231,14 @@ static void loom_global_load_apply_definition_predicates(
     if (!loom_global_load_result_index(results, load_value, &result_index)) {
       continue;
     }
-    if (results.values[result_index] >= module->values.count) continue;
+    if (results.values[result_index] >= module->values.count) {
+      continue;
+    }
     loom_type_t result_type =
         loom_module_value_type(module, results.values[result_index]);
-    if (!loom_global_predicate_facts_support_type(result_type)) continue;
+    if (!loom_global_predicate_facts_support_type(result_type)) {
+      continue;
+    }
     loom_value_facts_apply_predicate(&result_facts[result_index], predicate);
   }
 }
@@ -228,7 +256,9 @@ iree_status_t loom_global_load_facts(loom_fact_context_t* context,
   }
 
   const loom_symbol_t* symbol = loom_global_load_symbol(module, op);
-  if (!symbol || !symbol->defining_op) return iree_ok_status();
+  if (!symbol || !symbol->defining_op) {
+    return iree_ok_status();
+  }
   const loom_op_t* definition_op = symbol->defining_op;
 
   if (loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_RODATA)) {

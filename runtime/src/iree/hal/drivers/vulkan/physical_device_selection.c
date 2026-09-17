@@ -98,7 +98,9 @@ iree_status_t iree_hal_vulkan_physical_device_select(
     iree_hal_vulkan_physical_device_snapshot_t snapshot;
     status = iree_hal_vulkan_physical_device_snapshot_initialize(
         out_instance, physical_devices[i], i, host_allocator, &snapshot);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     bool matches = false;
     status = iree_hal_vulkan_physical_device_selector_match(selector, &snapshot,

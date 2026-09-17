@@ -96,7 +96,9 @@ static bool iree_sysfs_query_current_affinity(cpu_set_t* out_cpu_set) {
 // Returns true if |processor| is currently available to the calling thread.
 static bool iree_sysfs_is_processor_available(
     uint32_t processor, const cpu_set_t* current_affinity) {
-  if (!current_affinity) return true;
+  if (!current_affinity) {
+    return true;
+  }
   return processor < CPU_SETSIZE && CPU_ISSET(processor, current_affinity);
 }
 
@@ -649,7 +651,9 @@ static uint32_t iree_sysfs_find_first_domain_processor(
 static iree_host_size_t iree_sysfs_enumerate_cache_domains(
     iree_host_size_t core_count, const uint32_t* core_map,
     iree_sysfs_cache_domain_t* out_domains, iree_host_size_t max_domains) {
-  if (core_count == 0 || max_domains == 0) return 0;
+  if (core_count == 0 || max_domains == 0) {
+    return 0;
+  }
 
   // Build domains by grouping cores with identical sharing masks.
   iree_host_size_t domain_count = 0;
@@ -852,11 +856,15 @@ iree_status_t iree_task_topology_initialize_from_physical_cores(
               break;
             }
           }
-          if (new_core_count >= core_count) break;
+          if (new_core_count >= core_count) {
+            break;
+          }
         }
 
         // All domains exhausted.
-        if (!assigned_any) break;
+        if (!assigned_any) {
+          break;
+        }
       }
 
       // Use reordered map.

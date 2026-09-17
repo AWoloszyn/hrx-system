@@ -554,7 +554,9 @@ iree_status_t loom_tooling_config_materialize_module(
 
   loom_tooling_config_materialize_result_t result = {0};
   if (binding_count == 0) {
-    if (out_result) *out_result = result;
+    if (out_result) {
+      *out_result = result;
+    }
     return iree_ok_status();
   }
 
@@ -593,7 +595,9 @@ iree_status_t loom_tooling_config_materialize_module(
     ++result.materialized_count;
   }
 
-  if (out_result) *out_result = result;
+  if (out_result) {
+    *out_result = result;
+  }
   return iree_ok_status();
 }
 

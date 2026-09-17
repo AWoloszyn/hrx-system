@@ -394,7 +394,9 @@ static bool iree_hal_amdgpu_aql_program_command_fits_current_block(
     const iree_hal_amdgpu_aql_program_builder_t* builder,
     uint16_t binding_source_count, uint32_t aql_packet_count,
     uint32_t kernarg_length) {
-  if (builder->current_block.command_count > UINT16_MAX - 2) return false;
+  if (builder->current_block.command_count > UINT16_MAX - 2) {
+    return false;
+  }
   if (binding_source_count >
       UINT16_MAX - builder->current_block.binding_source_count) {
     return false;
@@ -491,7 +493,9 @@ iree_status_t iree_hal_amdgpu_aql_program_builder_append_command(
                             "command output pointers are required");
   }
   *out_command = NULL;
-  if (out_binding_sources) *out_binding_sources = NULL;
+  if (out_binding_sources) {
+    *out_binding_sources = NULL;
+  }
 
   if (IREE_UNLIKELY(builder->command_count == UINT32_MAX)) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -616,7 +620,9 @@ iree_status_t iree_hal_amdgpu_aql_program_builder_append_command(
   builder->current_block.kernarg_length += kernarg_length;
 
   *out_command = command;
-  if (out_binding_sources) *out_binding_sources = binding_sources;
+  if (out_binding_sources) {
+    *out_binding_sources = binding_sources;
+  }
   return iree_ok_status();
 }
 

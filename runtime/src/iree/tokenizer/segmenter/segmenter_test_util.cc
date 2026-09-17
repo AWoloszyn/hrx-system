@@ -191,14 +191,15 @@ std::vector<std::string> ProcessChunkedAndFinalizeUtf8(
     if (this_chunk == 0 && remaining > 0) {
       // Start of a multi-byte sequence; include the whole codepoint.
       uint8_t first_byte = (uint8_t)input.data[position];
-      if ((first_byte & 0xE0) == 0xC0)
+      if ((first_byte & 0xE0) == 0xC0) {
         this_chunk = std::min(remaining, size_t{2});
-      else if ((first_byte & 0xF0) == 0xE0)
+      } else if ((first_byte & 0xF0) == 0xE0) {
         this_chunk = std::min(remaining, size_t{3});
-      else if ((first_byte & 0xF8) == 0xF0)
+      } else if ((first_byte & 0xF8) == 0xF0) {
         this_chunk = std::min(remaining, size_t{4});
-      else
+      } else {
         this_chunk = 1;  // ASCII or invalid, take one byte.
+      }
     }
 
     iree_string_view_t chunk =

@@ -135,7 +135,9 @@ iree_status_t iree_hal_amdgpu_feedback_channel_initialize(
 
 void iree_hal_amdgpu_feedback_channel_deinitialize(
     iree_hal_amdgpu_feedback_channel_t* channel) {
-  if (!channel || !channel->libhsa) return;
+  if (!channel || !channel->libhsa) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   if (!iree_hsa_signal_is_null(channel->notify_signal)) {

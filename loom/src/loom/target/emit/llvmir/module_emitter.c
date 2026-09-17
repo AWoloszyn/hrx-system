@@ -205,7 +205,9 @@ static iree_status_t loom_llvmir_emit_prepare_function_profile(
 static iree_status_t loom_llvmir_emit_prepare_module(
     loom_llvmir_emit_module_state_t* state,
     const loom_llvmir_target_profile_t* profile, iree_allocator_t allocator) {
-  if (state->llvmir_module != NULL) return iree_ok_status();
+  if (state->llvmir_module != NULL) {
+    return iree_ok_status();
+  }
 
   loom_llvmir_target_config_t config = {0};
   loom_llvmir_target_profile_module_config(profile, iree_string_view_empty(),
@@ -351,7 +353,9 @@ iree_status_t loom_llvmir_emit_low_module(
       continue;
     }
     status = loom_llvmir_emit_low_function_into_module(&state, op, allocator);
-    if (!iree_status_is_ok(status) || state.error_count != 0) break;
+    if (!iree_status_is_ok(status) || state.error_count != 0) {
+      break;
+    }
   }
 
   if (iree_status_is_ok(status) && state.error_count == 0 &&

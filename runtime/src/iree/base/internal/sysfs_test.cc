@@ -24,7 +24,9 @@ struct CpuRanges {
 static bool AppendCpuRange(uint32_t start_cpu, uint32_t end_cpu,
                            void* user_data) {
   CpuRanges* ranges = (CpuRanges*)user_data;
-  if (ranges->count >= IREE_ARRAYSIZE(ranges->start_cpus)) return false;
+  if (ranges->count >= IREE_ARRAYSIZE(ranges->start_cpus)) {
+    return false;
+  }
   ranges->start_cpus[ranges->count] = start_cpu;
   ranges->end_cpus[ranges->count] = end_cpu;
   ++ranges->count;

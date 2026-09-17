@@ -185,7 +185,9 @@ class HostQueueStagingTest : public ::testing::Test {
 
     iree_hal_amdgpu_physical_device_t* first_physical_device() const {
       iree_hal_amdgpu_logical_device_t* logical_device = this->logical_device();
-      if (logical_device->physical_device_count == 0) return NULL;
+      if (logical_device->physical_device_count == 0) {
+        return NULL;
+      }
       return logical_device->physical_devices[0];
     }
 
@@ -371,7 +373,9 @@ class HostQueueStagingTest : public ::testing::Test {
                                       iree_device_size_t offset,
                                       iree_device_size_t length,
                                       uint8_t pattern) {
-    if (length == 0) return iree_ok_status();
+    if (length == 0) {
+      return iree_ok_status();
+    }
     Ref<iree_hal_semaphore_t> signal_semaphore;
     IREE_RETURN_IF_ERROR(CreateSemaphore(device, signal_semaphore.out()));
     uint64_t signal_value = 1;

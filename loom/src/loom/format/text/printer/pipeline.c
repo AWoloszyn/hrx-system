@@ -112,7 +112,9 @@ static bool loom_print_pipeline_enum_attr(const loom_op_t* op,
   }
   loom_bstring_t case_name =
       loom_attr_descriptor_enum_case_name(descriptor, (uint8_t)attr->raw);
-  if (!case_name) return false;
+  if (!case_name) {
+    return false;
+  }
   *out_value = loom_bstring_view(case_name);
   return true;
 }
@@ -185,7 +187,9 @@ static bool loom_print_pipeline_attr_value_is_printable(
             loom_signed_enum_set_contains_positive(set, (uint8_t)value);
         bool negative =
             loom_signed_enum_set_contains_negative(set, (uint8_t)value);
-        if (positive && negative) return false;
+        if (positive && negative) {
+          return false;
+        }
         if ((positive || negative) &&
             !loom_attr_descriptor_has_enum_case(descriptor, (uint8_t)value)) {
           return false;

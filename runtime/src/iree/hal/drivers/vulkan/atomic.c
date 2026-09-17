@@ -148,7 +148,9 @@ iree_status_t iree_hal_vulkan_atomic_pipelines_initialize(
 
 void iree_hal_vulkan_atomic_pipelines_deinitialize(
     iree_hal_vulkan_atomic_pipelines_t* pipelines) {
-  if (!pipelines || !pipelines->logical_device) return;
+  if (!pipelines || !pipelines->logical_device) {
+    return;
+  }
   if (pipelines->pipeline_64) {
     iree_vkDestroyPipeline(IREE_VULKAN_DEVICE(&pipelines->syms),
                            pipelines->logical_device, pipelines->pipeline_64,
@@ -240,10 +242,14 @@ iree_status_t iree_hal_vulkan_atomic_validate(
   }
   switch (params.width) {
     case IREE_HAL_ATOMIC_WIDTH_32:
-      if (pipelines->pipeline_32) return iree_ok_status();
+      if (pipelines->pipeline_32) {
+        return iree_ok_status();
+      }
       break;
     case IREE_HAL_ATOMIC_WIDTH_64:
-      if (pipelines->pipeline_64) return iree_ok_status();
+      if (pipelines->pipeline_64) {
+        return iree_ok_status();
+      }
       break;
   }
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,

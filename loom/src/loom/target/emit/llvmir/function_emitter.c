@@ -29,7 +29,9 @@ static iree_string_view_t loom_llvmir_emit_string_or_empty(
 
 iree_string_view_t loom_llvmir_emit_value_name(const loom_module_t* module,
                                                loom_value_id_t value_id) {
-  if (value_id >= module->values.count) return iree_string_view_empty();
+  if (value_id >= module->values.count) {
+    return iree_string_view_empty();
+  }
   const loom_value_t* value = loom_module_value(module, value_id);
   return loom_llvmir_emit_string_or_empty(module, value->name_id);
 }
@@ -38,10 +40,14 @@ static const loom_named_attr_t* loom_llvmir_emit_find_attr(
     const loom_module_t* module, loom_named_attr_slice_t attrs,
     iree_string_view_t name) {
   const loom_string_id_t name_id = loom_module_lookup_string(module, name);
-  if (name_id == LOOM_STRING_ID_INVALID) return NULL;
+  if (name_id == LOOM_STRING_ID_INVALID) {
+    return NULL;
+  }
   for (iree_host_size_t i = 0; i < attrs.count; ++i) {
     const loom_named_attr_t* attr = &attrs.entries[i];
-    if (attr->name_id == name_id) return attr;
+    if (attr->name_id == name_id) {
+      return attr;
+    }
   }
   return NULL;
 }
@@ -231,7 +237,9 @@ iree_status_t loom_llvmir_emit_read_optional_i64_immediate(
       loom_llvmir_emit_packet_attrs(packet, &attrs_attr_index);
   const loom_named_attr_t* attr =
       loom_llvmir_emit_find_attr(state->module, attrs, immediate_name);
-  if (!attr) return iree_ok_status();
+  if (!attr) {
+    return iree_ok_status();
+  }
   if (attr->value.kind != LOOM_ATTR_I64) {
     IREE_RETURN_IF_ERROR(loom_llvmir_emit_immediate_kind_diagnostic(
         state, packet, immediate_name, attrs_attr_index, attr->value.kind));
@@ -293,7 +301,9 @@ iree_status_t loom_llvmir_emit_core_type(loom_llvmir_module_t* module,
 
 bool loom_llvmir_emit_low_value_is_pointer_register(
     loom_llvmir_emit_function_state_t* state, loom_value_id_t value_id) {
-  if (value_id >= state->module->values.count) return false;
+  if (value_id >= state->module->values.count) {
+    return false;
+  }
   const loom_type_t type = loom_module_value_type(state->module, value_id);
   const loom_low_register_type_resolver_t resolver =
       loom_low_register_type_resolver_for_descriptor_set(
@@ -367,7 +377,9 @@ iree_status_t loom_llvmir_emit_type_for_low_value(
     IREE_RETURN_IF_ERROR(loom_llvmir_emit_pointer_address_space_for_low_value(
         state, op, value_id, value_kind, IREE_SV("reg<llvmir.ptr>"),
         &pointer_address_space, &supported));
-    if (!supported) return iree_ok_status();
+    if (!supported) {
+      return iree_ok_status();
+    }
   }
   return loom_llvmir_emit_core_type(state->llvmir_module, core_type,
                                     loom_low_register_type_unit_count(type),
@@ -420,13 +432,21 @@ static iree_status_t loom_llvmir_emit_packet(
   bool matched = false;
   IREE_RETURN_IF_ERROR(
       loom_llvmir_emit_arithmetic_packet(state, packet, &matched));
-  if (matched) return iree_ok_status();
+  if (matched) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_kernel_packet(state, packet, &matched));
-  if (matched) return iree_ok_status();
+  if (matched) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_vector_packet(state, packet, &matched));
-  if (matched) return iree_ok_status();
+  if (matched) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_memory_packet(state, packet, &matched));
-  if (matched) return iree_ok_status();
+  if (matched) {
+    return iree_ok_status();
+  }
   return loom_llvmir_emit_unsupported_descriptor_diagnostic(state, packet);
 }
 
@@ -455,7 +475,9 @@ static iree_status_t loom_llvmir_emit_return(
 
 static void loom_llvmir_emit_compile_time_op(
     loom_llvmir_emit_function_state_t* state, const loom_op_t* op) {
-  if (op->result_count == 0) return;
+  if (op->result_count == 0) {
+    return;
+  }
   IREE_ASSERT(loom_traits_are_fact_identity(op->traits));
   IREE_ASSERT_EQ(op->operand_count, op->result_count);
   const loom_value_id_t* operands = loom_op_const_operands(op);
@@ -532,7 +554,9 @@ static iree_status_t loom_llvmir_emit_resource_parameter(
       state, resource_op, result_value, IREE_SV("resource"),
       IREE_SV("native_pointer or hal_binding pointer resource"),
       &pointer_address_space, &supported));
-  if (!supported) return iree_ok_status();
+  if (!supported) {
+    return iree_ok_status();
+  }
 
   loom_llvmir_type_id_t parameter_type = LOOM_LLVMIR_TYPE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_module_get_pointer_type(
@@ -568,7 +592,9 @@ static iree_status_t loom_llvmir_emit_resource_parameters(
   const loom_block_t* entry_block = loom_region_const_entry_block(state->body);
   loom_op_t* op = NULL;
   loom_block_for_each_op(entry_block, op) {
-    if (!loom_low_resource_isa(op)) continue;
+    if (!loom_low_resource_isa(op)) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_llvmir_emit_resource_parameter(state, op));
   }
   return iree_ok_status();
@@ -595,7 +621,9 @@ static iree_status_t loom_llvmir_emit_function_signature(
         loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_RESULT, 0),
         &return_type));
   }
-  if (return_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (return_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_block_t* entry_block = loom_region_const_entry_block(state->body);
   loom_llvmir_type_id_t* arg_types = NULL;
@@ -615,7 +643,9 @@ static iree_status_t loom_llvmir_emit_function_signature(
       valid_signature = false;
     }
   }
-  if (!valid_signature) return iree_ok_status();
+  if (!valid_signature) {
+    return iree_ok_status();
+  }
 
   const iree_string_view_t export_symbol =
       loom_low_resolved_target_bundle(state->target)
@@ -701,7 +731,9 @@ static iree_status_t loom_llvmir_emit_declare_blocks(
             : loom_llvmir_emit_string_or_empty(state->module, block->label_id);
     IREE_RETURN_IF_ERROR(loom_llvmir_function_add_block(
         state->llvmir_function, name, &state->block_map[i]));
-    if (i == 0 && !entry->block) continue;
+    if (i == 0 && !entry->block) {
+      continue;
+    }
     for (uint16_t j = 0; j < block->arg_count; ++j) {
       const loom_value_id_t argument = loom_block_arg_id(block, j);
       // A parameter's ABI address space does not describe pointers carried
@@ -716,7 +748,9 @@ static iree_status_t loom_llvmir_emit_declare_blocks(
       IREE_RETURN_IF_ERROR(loom_llvmir_emit_type_for_low_value(
           state, block->first_op, argument, IREE_SV("block_argument"),
           loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_OPERAND, j), &type));
-      if (state->error_count != 0) return iree_ok_status();
+      if (state->error_count != 0) {
+        return iree_ok_status();
+      }
       loom_llvmir_value_id_t phi;
       IREE_RETURN_IF_ERROR(loom_llvmir_build_phi(
           state->block_map[i],
@@ -737,7 +771,9 @@ static iree_status_t loom_llvmir_emit_phi_incoming(
     const loom_llvmir_emit_entry_t* entry) {
   for (uint16_t i = entry->block ? 0 : 1; i < graph->block_count; ++i) {
     const loom_block_t* block = graph->blocks[i].block;
-    if (!graph->blocks[i].reachable || block->arg_count == 0) continue;
+    if (!graph->blocks[i].reachable || block->arg_count == 0) {
+      continue;
+    }
     const loom_cfg_edge_index_span_t edges =
         loom_cfg_graph_predecessor_edges(graph, i);
     loom_llvmir_phi_incoming_t* incoming = NULL;
@@ -754,7 +790,9 @@ static iree_status_t loom_llvmir_emit_phi_incoming(
       }
       for (iree_host_size_t e = 0; e < edges.count; ++e) {
         const loom_cfg_edge_info_t* edge = &graph->edges[edges.values[e]];
-        if (!graph->blocks[edge->source_block_index].reachable) continue;
+        if (!graph->blocks[edge->source_block_index].reachable) {
+          continue;
+        }
         const loom_value_slice_t arguments = loom_low_br_args(edge->terminator);
         incoming[incoming_count].value =
             loom_llvmir_emit_lookup_value(state, arguments.values[j]);
@@ -773,7 +811,9 @@ static iree_status_t loom_llvmir_emit_phi_incoming(
 static iree_status_t loom_llvmir_emit_function_body(
     loom_llvmir_emit_function_state_t* state) {
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_function_signature(state));
-  if (state->llvmir_function == NULL) return iree_ok_status();
+  if (state->llvmir_function == NULL) {
+    return iree_ok_status();
+  }
   loom_cfg_graph_t graph;
   IREE_RETURN_IF_ERROR(loom_cfg_graph_build(state->module, state->body,
                                             state->scratch_arena, &graph));
@@ -793,7 +833,9 @@ static iree_status_t loom_llvmir_emit_function_body(
     }
   }
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_declare_blocks(state, &graph, &entry));
-  if (state->error_count != 0) return iree_ok_status();
+  if (state->error_count != 0) {
+    return iree_ok_status();
+  }
   if (entry.block) {
     IREE_RETURN_IF_ERROR(loom_llvmir_build_br(
         entry.block, loom_llvmir_block_id(state->block_map[0])));
@@ -804,7 +846,9 @@ static iree_status_t loom_llvmir_emit_function_body(
     loom_op_t* op = NULL;
     loom_block_for_each_op(graph.blocks[index].block, op) {
       IREE_RETURN_IF_ERROR(loom_llvmir_emit_low_op(state, op));
-      if (state->error_count != 0) return iree_ok_status();
+      if (state->error_count != 0) {
+        return iree_ok_status();
+      }
     }
   }
   return loom_llvmir_emit_phi_incoming(state, &graph, &entry);

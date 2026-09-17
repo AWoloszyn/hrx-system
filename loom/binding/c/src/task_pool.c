@@ -37,7 +37,9 @@ static loomc_status_t loomc_task_pool_allocate_with_executor(
   iree_status_t status = iree_allocator_malloc_aligned(
       iree_allocator, sizeof(*pool), iree_alignof(loomc_task_pool_t),
       /*offset=*/0, (void**)&pool);
-  if (!iree_status_is_ok(status)) return loomc_status_from_iree(status);
+  if (!iree_status_is_ok(status)) {
+    return loomc_status_from_iree(status);
+  }
   memset(pool, 0, sizeof(*pool));
   pool->allocator = iree_allocator;
   iree_task_executor_retain(executor);
@@ -103,7 +105,9 @@ loomc_status_t loomc_task_pool_allocate(
     }
     iree_task_topology_deinitialize(&topology);
   }
-  if (!iree_status_is_ok(status)) return loomc_status_from_iree(status);
+  if (!iree_status_is_ok(status)) {
+    return loomc_status_from_iree(status);
+  }
 
   loomc_status_t public_status =
       loomc_task_pool_allocate_with_executor(executor, allocator, out_pool);
@@ -118,7 +122,9 @@ loomc_host_size_t loomc_task_pool_worker_count(const loomc_task_pool_t* pool) {
 }
 
 void loomc_task_pool_free(loomc_task_pool_t* pool) {
-  if (pool == NULL) return;
+  if (pool == NULL) {
+    return;
+  }
   iree_task_executor_release(pool->executor);
   iree_allocator_free_aligned(pool->allocator, pool);
 }

@@ -32,22 +32,32 @@ static constexpr iree_host_size_t kMaxOutputSize = 2048;
 static void test_with_pattern(const uint8_t* data, size_t size,
                               iree_string_view_t pattern,
                               iree_string_view_t content) {
-  if (size < 2) return;
+  if (size < 2) {
+    return;
+  }
 
   iree_host_size_t pos = 0;
 
   // Parse token list.
   iree_host_size_t token_count = data[pos++];
-  if (token_count > kMaxTokens) token_count = kMaxTokens;
-  if (token_count == 0) return;
+  if (token_count > kMaxTokens) {
+    token_count = kMaxTokens;
+  }
+  if (token_count == 0) {
+    return;
+  }
 
   iree_string_view_t tokens[kMaxTokens];
   iree_host_size_t actual_token_count = 0;
 
   for (iree_host_size_t i = 0; i < token_count && pos < size; ++i) {
     iree_host_size_t length = data[pos++];
-    if (length > kMaxTokenLength) length = kMaxTokenLength;
-    if (pos + length > size) length = size - pos;
+    if (length > kMaxTokenLength) {
+      length = kMaxTokenLength;
+    }
+    if (pos + length > size) {
+      length = size - pos;
+    }
 
     tokens[actual_token_count] = iree_make_string_view(
         reinterpret_cast<const char*>(data + pos), length);
@@ -55,7 +65,9 @@ static void test_with_pattern(const uint8_t* data, size_t size,
     ++actual_token_count;
   }
 
-  if (actual_token_count == 0) return;
+  if (actual_token_count == 0) {
+    return;
+  }
 
   // Allocate decoder.
   iree_tokenizer_decoder_t* decoder = NULL;
@@ -139,7 +151,9 @@ static void test_with_pattern(const uint8_t* data, size_t size,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 4) return 0;
+  if (size < 4) {
+    return 0;
+  }
 
   // Test with standard metaspace replacement (▁ -> space).
   // ▁ = U+2581 = E2 96 81 in UTF-8.
@@ -148,7 +162,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Test with fuzz-derived pattern/content.
   size_t pattern_len = (data[0] % 4) + 1;  // 1-4 bytes.
-  if (pattern_len > size - 1) return 0;
+  if (pattern_len > size - 1) {
+    return 0;
+  }
   size_t content_len = data[1] % pattern_len;  // Must be <= pattern_len.
 
   iree_string_view_t pattern = iree_make_string_view(

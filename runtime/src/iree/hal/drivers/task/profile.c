@@ -292,7 +292,9 @@ static iree_status_t iree_hal_task_profile_recorder_allocate_events(
           iree_hal_profile_command_region_event_t,
           iree_alignof(iree_hal_profile_command_region_event_t),
           &command_region_events_offset)));
-  if (total_size == 0) return iree_ok_status();
+  if (total_size == 0) {
+    return iree_ok_status();
+  }
 
   void* event_storage = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(recorder->host_allocator,
@@ -356,7 +358,9 @@ static iree_status_t iree_hal_task_profile_recorder_write_records(
     iree_hal_task_profile_recorder_t* recorder, iree_string_view_t content_type,
     const void* records, iree_host_size_t record_count,
     iree_host_size_t record_size) {
-  if (record_count == 0) return iree_ok_status();
+  if (record_count == 0) {
+    return iree_ok_status();
+  }
   iree_host_size_t byte_length = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(record_count, record_size,
                                                 &byte_length))) {
@@ -470,7 +474,9 @@ iree_status_t iree_hal_task_profile_recorder_create(
 
 void iree_hal_task_profile_recorder_destroy(
     iree_hal_task_profile_recorder_t* recorder) {
-  if (!recorder) return;
+  if (!recorder) {
+    return;
+  }
   IREE_ASSERT(!recorder->active,
               "active task profile recorders must be ended before destroy");
   iree_allocator_t host_allocator = recorder->host_allocator;
@@ -529,7 +535,9 @@ static iree_status_t iree_hal_task_profile_id_set_reserve(
   }
   const iree_host_size_t required_capacity = minimum_capacity * 2;
   iree_host_size_t capacity = set->capacity;
-  if (required_capacity <= capacity) return iree_ok_status();
+  if (required_capacity <= capacity) {
+    return iree_ok_status();
+  }
   capacity = capacity != 0 ? capacity : 16;
   while (required_capacity > capacity) {
     if (IREE_UNLIKELY(capacity > IREE_HOST_SIZE_MAX / 2)) {
@@ -557,7 +565,9 @@ static iree_status_t iree_hal_task_profile_id_set_reserve(
   };
   for (iree_host_size_t i = 0; i < set->capacity; ++i) {
     const uint64_t id = set->ids[i];
-    if (id == 0) continue;
+    if (id == 0) {
+      continue;
+    }
     iree_host_size_t slot = 0;
     iree_hal_task_profile_id_set_find_slot(&new_set, id, &slot);
     ids[slot] = id;
@@ -650,7 +660,9 @@ static iree_status_t iree_hal_task_profile_executable_function_data_length(
           "profile executable function metadata length overflow");
     }
   }
-  if (iree_status_is_ok(status)) *out_data_length = data_length;
+  if (iree_status_is_ok(status)) {
+    *out_data_length = data_length;
+  }
   return status;
 }
 
@@ -694,7 +706,9 @@ static iree_status_t iree_hal_task_profile_append_executable_function_records(
 static iree_status_t iree_hal_task_profile_recorder_write_span(
     iree_hal_task_profile_recorder_t* recorder, iree_string_view_t content_type,
     iree_const_byte_span_t span) {
-  if (span.data_length == 0) return iree_ok_status();
+  if (span.data_length == 0) {
+    return iree_ok_status();
+  }
   iree_hal_profile_chunk_metadata_t metadata =
       iree_hal_task_profile_recorder_metadata(recorder, content_type);
   return iree_hal_profile_sink_write(recorder->options.sink, &metadata, 1,
@@ -807,7 +821,9 @@ iree_status_t iree_hal_task_profile_recorder_record_command_buffer(
   IREE_RETURN_IF_ERROR(iree_hal_task_profile_recorder_mark_id_emitted(
       recorder, &recorder->emitted.command_buffers,
       command_buffer->command_buffer_id, "command-buffer", &should_emit));
-  if (!should_emit) return iree_ok_status();
+  if (!should_emit) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_hal_task_profile_recorder_write_records(
       recorder, IREE_HAL_PROFILE_CONTENT_TYPE_COMMAND_BUFFERS, command_buffer,
@@ -854,7 +870,9 @@ void iree_hal_task_profile_recorder_append_queue_event(
     const iree_hal_task_profile_queue_event_info_t* event_info,
     uint64_t* out_event_id) {
   IREE_ASSERT_ARGUMENT(event_info);
-  if (out_event_id) *out_event_id = 0;
+  if (out_event_id) {
+    *out_event_id = 0;
+  }
   if (!iree_hal_task_profile_recorder_is_enabled(
           recorder, IREE_HAL_DEVICE_PROFILING_DATA_QUEUE_EVENTS)) {
     return;
@@ -863,7 +881,9 @@ void iree_hal_task_profile_recorder_append_queue_event(
       iree_hal_task_profile_queue_scope_is_valid(&event_info->scope) &&
       event_info->type != IREE_HAL_PROFILE_QUEUE_EVENT_TYPE_NONE;
   IREE_ASSERT(is_valid);
-  if (IREE_UNLIKELY(!is_valid)) return;
+  if (IREE_UNLIKELY(!is_valid)) {
+    return;
+  }
 
   iree_hal_profile_event_ring_t* ring = &recorder->queue_event_ring;
   iree_slim_mutex_lock(&recorder->mutex);
@@ -896,7 +916,9 @@ void iree_hal_task_profile_recorder_append_queue_event(
   event->barrier_count = event_info->barrier_count;
   event->operation_count = event_info->operation_count;
   event->payload_length = event_info->payload_length;
-  if (out_event_id) *out_event_id = event_id;
+  if (out_event_id) {
+    *out_event_id = event_id;
+  }
   iree_slim_mutex_unlock(&recorder->mutex);
 }
 
@@ -905,7 +927,9 @@ void iree_hal_task_profile_recorder_append_host_execution_event(
     const iree_hal_task_profile_host_execution_event_info_t* event_info,
     uint64_t* out_event_id) {
   IREE_ASSERT_ARGUMENT(event_info);
-  if (out_event_id) *out_event_id = 0;
+  if (out_event_id) {
+    *out_event_id = 0;
+  }
   if (!iree_hal_task_profile_recorder_is_enabled(
           recorder, IREE_HAL_DEVICE_PROFILING_DATA_HOST_EXECUTION_EVENTS)) {
     return;
@@ -914,15 +938,23 @@ void iree_hal_task_profile_recorder_append_host_execution_event(
       iree_hal_task_profile_queue_scope_is_valid(&event_info->scope) &&
       event_info->type != IREE_HAL_PROFILE_QUEUE_EVENT_TYPE_NONE;
   IREE_ASSERT(is_valid);
-  if (IREE_UNLIKELY(!is_valid)) return;
+  if (IREE_UNLIKELY(!is_valid)) {
+    return;
+  }
 
   iree_time_t start_time_ns = event_info->start_host_time_ns;
   iree_time_t end_time_ns = event_info->end_host_time_ns;
-  if (start_time_ns == 0) start_time_ns = iree_time_now();
-  if (end_time_ns == 0) end_time_ns = iree_time_now();
+  if (start_time_ns == 0) {
+    start_time_ns = iree_time_now();
+  }
+  if (end_time_ns == 0) {
+    end_time_ns = iree_time_now();
+  }
   const bool has_valid_range = end_time_ns >= start_time_ns;
   IREE_ASSERT(has_valid_range);
-  if (IREE_UNLIKELY(!has_valid_range)) end_time_ns = start_time_ns;
+  if (IREE_UNLIKELY(!has_valid_range)) {
+    end_time_ns = start_time_ns;
+  }
 
   iree_hal_profile_event_ring_t* ring = &recorder->host_execution_event_ring;
   iree_slim_mutex_lock(&recorder->mutex);
@@ -960,7 +992,9 @@ void iree_hal_task_profile_recorder_append_host_execution_event(
   event->tile_count = event_info->tile_count;
   event->tile_duration_sum_ns = event_info->tile_duration_sum_ns;
   event->operation_count = event_info->operation_count;
-  if (out_event_id) *out_event_id = event_id;
+  if (out_event_id) {
+    *out_event_id = event_id;
+  }
   iree_slim_mutex_unlock(&recorder->mutex);
 }
 
@@ -969,7 +1003,9 @@ void iree_hal_task_profile_recorder_append_command_region_event(
     const iree_hal_task_profile_command_region_event_info_t* event_info,
     uint64_t* out_event_id) {
   IREE_ASSERT_ARGUMENT(event_info);
-  if (out_event_id) *out_event_id = 0;
+  if (out_event_id) {
+    *out_event_id = 0;
+  }
   if (!iree_hal_task_profile_recorder_is_enabled(
           recorder, IREE_HAL_DEVICE_PROFILING_DATA_COMMAND_REGION_EVENTS)) {
     return;
@@ -979,15 +1015,23 @@ void iree_hal_task_profile_recorder_append_command_region_event(
       event_info->command_buffer_id != 0 &&
       event_info->command_region.index >= 0;
   IREE_ASSERT(is_valid);
-  if (IREE_UNLIKELY(!is_valid)) return;
+  if (IREE_UNLIKELY(!is_valid)) {
+    return;
+  }
 
   iree_time_t start_time_ns = event_info->command_region.start_host_time_ns;
   iree_time_t end_time_ns = event_info->command_region.end_host_time_ns;
-  if (start_time_ns == 0) start_time_ns = iree_time_now();
-  if (end_time_ns == 0) end_time_ns = iree_time_now();
+  if (start_time_ns == 0) {
+    start_time_ns = iree_time_now();
+  }
+  if (end_time_ns == 0) {
+    end_time_ns = iree_time_now();
+  }
   const bool has_valid_range = end_time_ns >= start_time_ns;
   IREE_ASSERT(has_valid_range);
-  if (IREE_UNLIKELY(!has_valid_range)) end_time_ns = start_time_ns;
+  if (IREE_UNLIKELY(!has_valid_range)) {
+    end_time_ns = start_time_ns;
+  }
 
   iree_hal_profile_event_ring_t* ring = &recorder->command_region_event_ring;
   iree_slim_mutex_lock(&recorder->mutex);
@@ -1063,14 +1107,20 @@ void iree_hal_task_profile_recorder_append_command_region_event(
   event->retention.publish_keep_active_count =
       event_info->retention.publish_keep_active_count;
   event->retention.keep_warm_count = event_info->retention.keep_warm_count;
-  if (out_event_id) *out_event_id = event_id;
+  if (out_event_id) {
+    *out_event_id = event_id;
+  }
   iree_slim_mutex_unlock(&recorder->mutex);
 }
 
 static bool iree_hal_task_profile_memory_event_is_valid(
     const iree_hal_profile_memory_event_t* event) {
-  if (event->type == IREE_HAL_PROFILE_MEMORY_EVENT_TYPE_NONE) return false;
-  if (event->physical_device_ordinal == UINT32_MAX) return false;
+  if (event->type == IREE_HAL_PROFILE_MEMORY_EVENT_TYPE_NONE) {
+    return false;
+  }
+  if (event->physical_device_ordinal == UINT32_MAX) {
+    return false;
+  }
   if (iree_all_bits_set(event->flags,
                         IREE_HAL_PROFILE_MEMORY_EVENT_FLAG_QUEUE_OPERATION) &&
       event->queue_ordinal == UINT32_MAX) {
@@ -1083,14 +1133,18 @@ void iree_hal_task_profile_recorder_append_memory_event(
     iree_hal_task_profile_recorder_t* recorder,
     const iree_hal_profile_memory_event_t* event, uint64_t* out_event_id) {
   IREE_ASSERT_ARGUMENT(event);
-  if (out_event_id) *out_event_id = 0;
+  if (out_event_id) {
+    *out_event_id = 0;
+  }
   if (!iree_hal_task_profile_recorder_is_enabled(
           recorder, IREE_HAL_DEVICE_PROFILING_DATA_MEMORY_EVENTS)) {
     return;
   }
   const bool is_valid = iree_hal_task_profile_memory_event_is_valid(event);
   IREE_ASSERT(is_valid);
-  if (IREE_UNLIKELY(!is_valid)) return;
+  if (IREE_UNLIKELY(!is_valid)) {
+    return;
+  }
 
   iree_hal_profile_event_ring_t* ring = &recorder->memory_event_ring;
   iree_slim_mutex_lock(&recorder->mutex);
@@ -1110,7 +1164,9 @@ void iree_hal_task_profile_recorder_append_memory_event(
   if (record->host_time_ns == 0) {
     record->host_time_ns = iree_time_now();
   }
-  if (out_event_id) *out_event_id = event_id;
+  if (out_event_id) {
+    *out_event_id = event_id;
+  }
   iree_slim_mutex_unlock(&recorder->mutex);
 }
 
@@ -1170,13 +1226,17 @@ static iree_status_t iree_hal_task_profile_recorder_flush_records(
 
 iree_status_t iree_hal_task_profile_recorder_flush(
     iree_hal_task_profile_recorder_t* recorder) {
-  if (!recorder || !recorder->active) return iree_ok_status();
+  if (!recorder || !recorder->active) {
+    return iree_ok_status();
+  }
   return iree_hal_task_profile_recorder_flush_records(recorder);
 }
 
 iree_status_t iree_hal_task_profile_recorder_end(
     iree_hal_task_profile_recorder_t* recorder) {
-  if (!recorder || !recorder->active) return iree_ok_status();
+  if (!recorder || !recorder->active) {
+    return iree_ok_status();
+  }
 
   iree_status_t status = iree_hal_task_profile_recorder_flush_records(recorder);
   iree_hal_profile_chunk_metadata_t metadata =

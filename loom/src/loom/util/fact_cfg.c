@@ -11,7 +11,9 @@
 iree_host_size_t loom_value_fact_cfg_region_argument_index(
     const loom_value_fact_cfg_region_t* region, loom_value_id_t value_id) {
   const loom_value_t* value = loom_module_value(region->graph.module, value_id);
-  if (!loom_value_is_block_arg(value)) return IREE_HOST_SIZE_MAX;
+  if (!loom_value_is_block_arg(value)) {
+    return IREE_HOST_SIZE_MAX;
+  }
   iree_host_size_t block_index =
       loom_cfg_graph_block_index(&region->graph, loom_value_def_block(value));
   if (block_index == IREE_HOST_SIZE_MAX || block_index == 0 ||
@@ -70,7 +72,9 @@ iree_status_t loom_value_fact_cfg_update_forwarding(
     iree_host_size_t component_index, iree_arena_allocator_t* scratch_arena) {
   loom_value_fact_cfg_forwarding_t* partition =
       &region->control_flow.forwarding[component_index];
-  if (!partition->dirty) return iree_ok_status();
+  if (!partition->dirty) {
+    return iree_ok_status();
+  }
   loom_value_fact_cfg_forwarding_graph_t forwarding_graph = {
       .region = region,
       .partition = partition,
@@ -123,7 +127,9 @@ static iree_status_t loom_value_fact_cfg_group_control_flow(
       arena, graph->reverse_postorder.count, sizeof(*nodes), (void**)&nodes));
   for (uint16_t i = 0; i < graph->block_count; ++i) {
     const loom_cfg_block_info_t* block = &graph->blocks[i];
-    if (!block->reachable) continue;
+    if (!block->reachable) {
+      continue;
+    }
     ++components[block->component].node_count;
     components[block->component].is_cycle = block->component_is_cyclic;
   }
@@ -135,7 +141,9 @@ static iree_status_t loom_value_fact_cfg_group_control_flow(
   }
   for (uint16_t i = 0; i < graph->block_count; ++i) {
     const loom_cfg_block_info_t* block = &graph->blocks[i];
-    if (!block->reachable) continue;
+    if (!block->reachable) {
+      continue;
+    }
     loom_scc_t* component = &components[block->component];
     nodes[(component->nodes - nodes) + component->node_count++] = i;
   }
@@ -152,7 +160,9 @@ iree_status_t loom_value_fact_cfg_region_initialize(
   *out_region = (loom_value_fact_cfg_region_t){0};
   IREE_RETURN_IF_ERROR(
       loom_cfg_graph_build(module, region, arena, &out_region->graph));
-  if (out_region->graph.backward_edge_count == 0) return iree_ok_status();
+  if (out_region->graph.backward_edge_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_value_fact_cfg_group_control_flow(
       &out_region->graph, arena, &out_region->control_flow.components));
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -189,10 +199,13 @@ iree_status_t loom_value_fact_cfg_region_initialize(
       iree_host_size_t block_index = component->nodes[j];
       const loom_block_t* block = out_region->graph.blocks[block_index].block;
       out_region->argument_offsets[block_index] = out_region->argument_count;
-      if (block_index != 0) out_region->argument_count += block->arg_count;
+      if (block_index != 0) {
+        out_region->argument_count += block->arg_count;
+      }
       if (!component->is_cycle || !block->arg_count ||
-          out_region->control_flow.anchors[i])
+          out_region->control_flow.anchors[i]) {
         continue;
+      }
       loom_cfg_edge_index_span_t predecessors =
           loom_cfg_graph_predecessor_edges(&out_region->graph, block_index);
       for (iree_host_size_t k = 0; k < predecessors.count; ++k) {
@@ -209,7 +222,9 @@ iree_status_t loom_value_fact_cfg_region_initialize(
         out_region->argument_count - partition->argument_offset;
     partition->dirty = component->is_cycle && partition->argument_count != 0;
   }
-  if (out_region->argument_count == 0) return iree_ok_status();
+  if (out_region->argument_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, out_region->argument_count, sizeof(*out_region->arguments),
       (void**)&out_region->arguments));
@@ -232,7 +247,9 @@ iree_status_t loom_value_fact_cfg_region_initialize(
     };
   }
   for (uint16_t i = 1; i < region->block_count; ++i) {
-    if (!loom_cfg_graph_block_is_reachable(&out_region->graph, i)) continue;
+    if (!loom_cfg_graph_block_is_reachable(&out_region->graph, i)) {
+      continue;
+    }
     const loom_block_t* block = out_region->graph.blocks[i].block;
     for (uint16_t j = 0; j < block->arg_count; ++j) {
       out_region->arguments[out_region->argument_offsets[i] + j] =

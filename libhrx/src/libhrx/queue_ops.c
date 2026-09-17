@@ -43,7 +43,9 @@ static iree_status_t hrx_hal_semaphore_list_from_hrx(
     const char* list_name, const hrx_semaphore_list_t* list,
     hrx_hal_semaphore_list_storage_t* out_storage) {
   memset(out_storage, 0, sizeof(*out_storage));
-  if (!list || list->count == 0) return iree_ok_status();
+  if (!list || list->count == 0) {
+    return iree_ok_status();
+  }
   if (!list->semaphores || !list->values) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "%s semaphore list storage is NULL for %zu entries",
@@ -251,7 +253,9 @@ hrx_status_t hrx_queue_dispatch(
   iree_hal_dispatch_flags_t hal_flags = IREE_HAL_DISPATCH_FLAG_NONE;
   hrx_status_t flag_status =
       hrx_iree_dispatch_flags_from_hrx(flags, &hal_flags);
-  if (!hrx_status_is_ok(flag_status)) HRX_RETURN_AND_END_ZONE(z0, flag_status);
+  if (!hrx_status_is_ok(flag_status)) {
+    HRX_RETURN_AND_END_ZONE(z0, flag_status);
+  }
 
   iree_hal_queue_t* queue = NULL;
   iree_status_t status = hrx_hal_device_select_queue(

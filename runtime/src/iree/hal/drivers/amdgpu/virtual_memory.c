@@ -240,7 +240,9 @@ iree_status_t iree_hal_amdgpu_virtual_memory_state_create(
 
 void iree_hal_amdgpu_virtual_memory_state_destroy(
     iree_hal_amdgpu_virtual_memory_state_t* state) {
-  if (!state) return;
+  if (!state) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_free(state->host_allocator, state);
   IREE_TRACE_ZONE_END(z0);

@@ -15,7 +15,9 @@ static bool iree_hip_launch_extra_value_is_marker(void* value) {
 
 hipError_t iree_hip_parse_launch_extra(void** extra, void** out_buffer,
                                        size_t* out_buffer_size) {
-  if (!extra || !out_buffer || !out_buffer_size) return hipErrorInvalidValue;
+  if (!extra || !out_buffer || !out_buffer_size) {
+    return hipErrorInvalidValue;
+  }
   *out_buffer = NULL;
   *out_buffer_size = 0;
 
@@ -24,7 +26,9 @@ hipError_t iree_hip_parse_launch_extra(void** extra, void** out_buffer,
   for (iree_host_size_t i = 0; extra[i] != HIP_LAUNCH_PARAM_END; i += 2) {
     void* key = extra[i];
     void* value = extra[i + 1];
-    if (value == HIP_LAUNCH_PARAM_END) return hipErrorInvalidValue;
+    if (value == HIP_LAUNCH_PARAM_END) {
+      return hipErrorInvalidValue;
+    }
 
     if (key == HIP_LAUNCH_PARAM_BUFFER_POINTER) {
       if (saw_buffer || iree_hip_launch_extra_value_is_marker(value)) {
@@ -43,8 +47,12 @@ hipError_t iree_hip_parse_launch_extra(void** extra, void** out_buffer,
     }
   }
 
-  if (saw_buffer != saw_size) return hipErrorInvalidValue;
-  if (*out_buffer_size != 0 && !*out_buffer) return hipErrorInvalidValue;
+  if (saw_buffer != saw_size) {
+    return hipErrorInvalidValue;
+  }
+  if (*out_buffer_size != 0 && !*out_buffer) {
+    return hipErrorInvalidValue;
+  }
   return hipSuccess;
 }
 
@@ -53,8 +61,12 @@ hipError_t iree_hip_validate_launch_configuration(
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
     unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, size_t shared_memory_bytes) {
-  if (!device) return hipErrorInvalidDevice;
-  if (shared_memory_bytes > UINT32_MAX) return hipErrorInvalidConfiguration;
+  if (!device) {
+    return hipErrorInvalidDevice;
+  }
+  if (shared_memory_bytes > UINT32_MAX) {
+    return hipErrorInvalidConfiguration;
+  }
 
   const unsigned int grid_dim[3] = {grid_dim_x, grid_dim_y, grid_dim_z};
   const unsigned int block_dim[3] = {block_dim_x, block_dim_y, block_dim_z};

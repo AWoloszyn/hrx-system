@@ -45,7 +45,9 @@ static iree_status_t iree_elf_arch_riscv_apply_rela(
   for (iree_host_size_t i = 0; i < rela_count; ++i) {
     const iree_elf_rela_t* rela = &rela_table[i];
     uint32_t type = IREE_ELF_R_TYPE(rela->r_info);
-    if (type == 0) continue;
+    if (type == 0) {
+      continue;
+    }
 
     iree_elf_addr_t sym_addr = 0;
     uint32_t sym_ordinal = (uint32_t)IREE_ELF_R_SYM(rela->r_info);
@@ -88,7 +90,9 @@ static iree_status_t iree_elf_arch_riscv_apply_rela(
   for (iree_host_size_t i = 0; i < rela_count; ++i) {
     const iree_elf_rela_t* rela = &rela_table[i];
     uint32_t type = IREE_ELF_R_TYPE(rela->r_info);
-    if (type == 0) continue;
+    if (type == 0) {
+      continue;
+    }
 
     iree_elf_addr_t sym_addr = 0;
     uint32_t sym_ordinal = (uint32_t)IREE_ELF_R_SYM(rela->r_info);
@@ -154,7 +158,9 @@ iree_status_t iree_elf_arch_apply_relocations(
         break;
     }
   }
-  if (!rela_table) rela_count = 0;
+  if (!rela_table) {
+    rela_count = 0;
+  }
 
   if (rela_count > 0) {
     IREE_RETURN_IF_ERROR(

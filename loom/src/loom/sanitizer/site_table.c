@@ -137,7 +137,9 @@ static iree_status_t loom_sanitizer_site_table_record_source_string(
     const loom_sanitizer_site_table_file_location_t* file_location,
     uint32_t* source_string_offsets,
     iree_host_size_t* inout_string_table_length) {
-  if (!file_location->has_file_location) return iree_ok_status();
+  if (!file_location->has_file_location) {
+    return iree_ok_status();
+  }
 
   uint32_t* source_string_offset =
       &source_string_offsets[file_location->source_id];

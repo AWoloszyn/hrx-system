@@ -82,14 +82,18 @@ class TestLogicalDevice {
 
   iree_hal_amdgpu_physical_device_t* first_physical_device() const {
     iree_hal_amdgpu_logical_device_t* device = this->logical_device();
-    if (device->physical_device_count == 0) return NULL;
+    if (device->physical_device_count == 0) {
+      return NULL;
+    }
     return device->physical_devices[0];
   }
 
   iree_hal_amdgpu_host_queue_t* first_host_queue() const {
     iree_hal_amdgpu_physical_device_t* physical_device =
         this->first_physical_device();
-    if (!physical_device || physical_device->host_queue_count == 0) return NULL;
+    if (!physical_device || physical_device->host_queue_count == 0) {
+      return NULL;
+    }
     return &physical_device->host_queues[0];
   }
 
@@ -472,7 +476,9 @@ TEST_P(HostQueueTimestampTest, DeviceSpecFrequencyMatchesAgentTickRate) {
     ASSERT_GT(agent_frequency_hz, 0u);
     EXPECT_EQ(queues->families[i].timestamp_frequency_hz, agent_frequency_hz);
     EXPECT_EQ(queues->families[i].timestamp_valid_bits, 64u);
-    if (i == 0) first_agent_frequency_hz = agent_frequency_hz;
+    if (i == 0) {
+      first_agent_frequency_hz = agent_frequency_hz;
+    }
   }
 
   // The default topology only groups agents of the same model, so every agent

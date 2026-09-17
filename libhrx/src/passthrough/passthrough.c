@@ -237,44 +237,58 @@ hip_function_table_t* hip_passthrough_get_active_table(void) {
 // Device Management
 hipError_t hipInit(unsigned int flags) {
   ensure_initialized();
-  if (!g_active_table->hipInit) return 1;
+  if (!g_active_table->hipInit) {
+    return 1;
+  }
   return g_active_table->hipInit(flags);
 }
 
 hipError_t hipGetDevice(int* deviceId) {
   ensure_initialized();
-  if (!g_active_table->hipGetDevice) return 1;
+  if (!g_active_table->hipGetDevice) {
+    return 1;
+  }
   return g_active_table->hipGetDevice(deviceId);
 }
 
 hipError_t hipGetDeviceCount(int* count) {
   ensure_initialized();
-  if (!g_active_table->hipGetDeviceCount) return 1;
+  if (!g_active_table->hipGetDeviceCount) {
+    return 1;
+  }
   return g_active_table->hipGetDeviceCount(count);
 }
 
 hipError_t hipSetDevice(int deviceId) {
   ensure_initialized();
-  if (!g_active_table->hipSetDevice) return 1;
+  if (!g_active_table->hipSetDevice) {
+    return 1;
+  }
   return g_active_table->hipSetDevice(deviceId);
 }
 
 hipError_t hipDeviceSynchronize(void) {
   ensure_initialized();
-  if (!g_active_table->hipDeviceSynchronize) return 1;
+  if (!g_active_table->hipDeviceSynchronize) {
+    return 1;
+  }
   return g_active_table->hipDeviceSynchronize();
 }
 
 // Memory Management
 hipError_t hipMalloc(void** ptr, size_t size) {
   ensure_initialized();
-  if (!g_active_table->hipMalloc) return 1;
+  if (!g_active_table->hipMalloc) {
+    return 1;
+  }
   return g_active_table->hipMalloc(ptr, size);
 }
 
 hipError_t hipFree(void* ptr) {
   ensure_initialized();
-  if (!g_active_table->hipFree) return 1;
+  if (!g_active_table->hipFree) {
+    return 1;
+  }
   return g_active_table->hipFree(ptr);
 }
 
@@ -282,58 +296,76 @@ hipError_t hipFree(void* ptr) {
 hipError_t hipMemcpy(void* dst, const void* src, size_t sizeBytes,
                      hipMemcpyKind kind) {
   ensure_initialized();
-  if (!g_active_table->hipMemcpy) return 1;
+  if (!g_active_table->hipMemcpy) {
+    return 1;
+  }
   return g_active_table->hipMemcpy(dst, src, sizeBytes, kind);
 }
 
 hipError_t hipMemcpyAsync(void* dst, const void* src, size_t sizeBytes,
                           hipMemcpyKind kind, hipStream_t stream) {
   ensure_initialized();
-  if (!g_active_table->hipMemcpyAsync) return 1;
+  if (!g_active_table->hipMemcpyAsync) {
+    return 1;
+  }
   return g_active_table->hipMemcpyAsync(dst, src, sizeBytes, kind, stream);
 }
 
 // Stream Management
 hipError_t hipStreamCreate(hipStream_t* stream) {
   ensure_initialized();
-  if (!g_active_table->hipStreamCreate) return 1;
+  if (!g_active_table->hipStreamCreate) {
+    return 1;
+  }
   return g_active_table->hipStreamCreate(stream);
 }
 
 hipError_t hipStreamDestroy(hipStream_t stream) {
   ensure_initialized();
-  if (!g_active_table->hipStreamDestroy) return 1;
+  if (!g_active_table->hipStreamDestroy) {
+    return 1;
+  }
   return g_active_table->hipStreamDestroy(stream);
 }
 
 hipError_t hipStreamSynchronize(hipStream_t stream) {
   ensure_initialized();
-  if (!g_active_table->hipStreamSynchronize) return 1;
+  if (!g_active_table->hipStreamSynchronize) {
+    return 1;
+  }
   return g_active_table->hipStreamSynchronize(stream);
 }
 
 // Event Management
 hipError_t hipEventCreate(hipEvent_t* event) {
   ensure_initialized();
-  if (!g_active_table->hipEventCreate) return 1;
+  if (!g_active_table->hipEventCreate) {
+    return 1;
+  }
   return g_active_table->hipEventCreate(event);
 }
 
 hipError_t hipEventDestroy(hipEvent_t event) {
   ensure_initialized();
-  if (!g_active_table->hipEventDestroy) return 1;
+  if (!g_active_table->hipEventDestroy) {
+    return 1;
+  }
   return g_active_table->hipEventDestroy(event);
 }
 
 hipError_t hipEventRecord(hipEvent_t event, hipStream_t stream) {
   ensure_initialized();
-  if (!g_active_table->hipEventRecord) return 1;
+  if (!g_active_table->hipEventRecord) {
+    return 1;
+  }
   return g_active_table->hipEventRecord(event, stream);
 }
 
 hipError_t hipEventSynchronize(hipEvent_t event) {
   ensure_initialized();
-  if (!g_active_table->hipEventSynchronize) return 1;
+  if (!g_active_table->hipEventSynchronize) {
+    return 1;
+  }
   return g_active_table->hipEventSynchronize(event);
 }
 
@@ -346,7 +378,9 @@ hipError_t hipModuleLaunchKernel(hipFunction_t f, unsigned int gridDimX,
                                  hipStream_t stream, void** kernelParams,
                                  void** extra) {
   ensure_initialized();
-  if (!g_active_table->hipModuleLaunchKernel) return 1;
+  if (!g_active_table->hipModuleLaunchKernel) {
+    return 1;
+  }
   return g_active_table->hipModuleLaunchKernel(
       f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ,
       sharedMemBytes, stream, kernelParams, extra);
@@ -356,7 +390,9 @@ hipError_t hipLaunchKernel(const void* function_address, dim3 numBlocks,
                            dim3 dimBlocks, void** args, size_t sharedMemBytes,
                            hipStream_t stream) {
   ensure_initialized();
-  if (!g_active_table->hipLaunchKernel) return 1;
+  if (!g_active_table->hipLaunchKernel) {
+    return 1;
+  }
   return g_active_table->hipLaunchKernel(function_address, numBlocks, dimBlocks,
                                          args, sharedMemBytes, stream);
 }
@@ -364,26 +400,34 @@ hipError_t hipLaunchKernel(const void* function_address, dim3 numBlocks,
 // Error Handling
 hipError_t hipGetLastError(void) {
   ensure_initialized();
-  if (!g_active_table->hipGetLastError) return 0;
+  if (!g_active_table->hipGetLastError) {
+    return 0;
+  }
   return g_active_table->hipGetLastError();
 }
 
 const char* hipGetErrorString(hipError_t hipError) {
   ensure_initialized();
-  if (!g_active_table->hipGetErrorString) return "unknown";
+  if (!g_active_table->hipGetErrorString) {
+    return "unknown";
+  }
   return g_active_table->hipGetErrorString(hipError);
 }
 
 const char* hipGetErrorName(hipError_t hipError) {
   ensure_initialized();
-  if (!g_active_table->hipGetErrorName) return "unknown";
+  if (!g_active_table->hipGetErrorName) {
+    return "unknown";
+  }
   return g_active_table->hipGetErrorName(hipError);
 }
 
 // Fat Binary Registration
 void** __hipRegisterFatBinary(const void* data) {
   ensure_initialized();
-  if (!g_active_table->__hipRegisterFatBinary) return NULL;
+  if (!g_active_table->__hipRegisterFatBinary) {
+    return NULL;
+  }
   return g_active_table->__hipRegisterFatBinary(data);
 }
 

@@ -77,7 +77,9 @@ iree_status_t iree_hal_amd_status_from_amdf_status(const char* file,
                                                    uint32_t line,
                                                    amdf_status_t amdf_status,
                                                    const char* operation) {
-  if (amdf_status_is_ok(amdf_status)) return iree_ok_status();
+  if (amdf_status_is_ok(amdf_status)) {
+    return iree_ok_status();
+  }
   const amdf_status_domain_t domain = amdf_status_domain(amdf_status);
   const uint32_t code = amdf_status_code(amdf_status);
   return iree_status_allocate_f(

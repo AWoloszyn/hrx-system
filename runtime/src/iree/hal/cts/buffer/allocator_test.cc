@@ -138,7 +138,9 @@ TEST_P(AllocatorTest, ImportHostAllocationNullCallback) {
             static_cast<iree_device_size_t>(IREE_HOST_SIZE_MAX));
   iree_host_size_t host_alignment =
       static_cast<iree_host_size_t>(compat_params.min_alignment);
-  if (host_alignment == 0) host_alignment = 64;
+  if (host_alignment == 0) {
+    host_alignment = 64;
+  }
   void* host_ptr = nullptr;
   IREE_ASSERT_OK(iree_allocator_malloc_aligned(
       iree_allocator_system(), static_cast<iree_host_size_t>(compat_size),
@@ -193,7 +195,9 @@ TEST_P(AllocatorTest, ImportHostAllocationWithCallback) {
             static_cast<iree_device_size_t>(IREE_HOST_SIZE_MAX));
   iree_host_size_t host_alignment =
       static_cast<iree_host_size_t>(compat_params.min_alignment);
-  if (host_alignment == 0) host_alignment = 64;
+  if (host_alignment == 0) {
+    host_alignment = 64;
+  }
   void* host_ptr = nullptr;
   IREE_ASSERT_OK(iree_allocator_malloc_aligned(
       iree_allocator_system(), static_cast<iree_host_size_t>(compat_size),

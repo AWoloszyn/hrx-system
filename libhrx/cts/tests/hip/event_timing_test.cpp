@@ -323,7 +323,9 @@ class HipEventTimingTest : public ::testing::Test {
   hipEvent_t CreateEvent(unsigned int flags = 0) {
     hipEvent_t event = nullptr;
     EXPECT_EQ(hipSuccess, event_create_with_flags_(&event, flags));
-    if (event) events_.push_back(event);
+    if (event) {
+      events_.push_back(event);
+    }
     return event;
   }
 

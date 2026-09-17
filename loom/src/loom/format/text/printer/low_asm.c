@@ -55,8 +55,12 @@ static bool loom_print_low_asm_source_is_marked(const loom_region_t* region) {
 
 bool loom_print_low_asm_is_requested(loom_print_context_t* ctx,
                                      const loom_region_t* region) {
-  if (ctx->low_repr.descriptor_set == NULL) return false;
-  if (ctx->low_asm_region_depth != 0) return true;
+  if (ctx->low_repr.descriptor_set == NULL) {
+    return false;
+  }
+  if (ctx->low_asm_region_depth != 0) {
+    return true;
+  }
   if (loom_print_low_asm_preserves_source(ctx)) {
     return loom_print_low_asm_source_is_marked(region);
   }

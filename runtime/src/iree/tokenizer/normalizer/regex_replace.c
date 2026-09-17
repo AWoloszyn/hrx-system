@@ -522,11 +522,15 @@ static bool iree_tokenizer_normalizer_regex_replace_state_has_pending(
     const iree_tokenizer_normalizer_state_t* base_state) {
   const iree_tokenizer_normalizer_regex_replace_state_t* state =
       (const iree_tokenizer_normalizer_regex_replace_state_t*)base_state;
-  if (state->has_pending_match || state->content_emitted > 0) return true;
+  if (state->has_pending_match || state->content_emitted > 0) {
+    return true;
+  }
   // Trailing passthrough gap: process() consumed bytes the regex DFA was
   // evaluating but couldn't emit. After finalize resolves the partial match,
   // the gap bytes are emitted from the rewind buffer.
-  if (state->output_position < state->bytes_processed) return true;
+  if (state->output_position < state->bytes_processed) {
+    return true;
+  }
   return false;
 }
 

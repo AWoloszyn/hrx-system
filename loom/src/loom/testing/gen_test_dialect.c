@@ -288,12 +288,13 @@ static iree_status_t loom_test_gen_region_loop(
                                    LOOM_LOCATION_UNKNOWN, &const_op));
       loom_value_id_t id = loom_op_results(const_op)[0];
       loom_test_gen_values_add(context->values, id, index_type);
-      if (k == 0)
+      if (k == 0) {
         lower = id;
-      else if (k == 1)
+      } else if (k == 1) {
         upper = id;
-      else
+      } else {
         step = id;
+      }
     }
   }
 

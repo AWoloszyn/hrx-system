@@ -118,7 +118,9 @@ static iree_status_t iree_profile_queue_event_query_process_queue_events(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_queue_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));
@@ -150,7 +152,9 @@ static iree_status_t iree_profile_queue_event_query_process_device_events(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_queue_device_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));
@@ -183,7 +187,9 @@ static iree_status_t iree_profile_queue_event_query_process_host_executions(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_host_execution_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));

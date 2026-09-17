@@ -44,7 +44,9 @@ iree_hal_profile_builtin_metric_descriptor_lookup(uint64_t metric_id) {
        i < IREE_ARRAYSIZE(iree_hal_profile_builtin_metric_descriptors); ++i) {
     const iree_hal_profile_metric_descriptor_t* descriptor =
         &iree_hal_profile_builtin_metric_descriptors[i];
-    if (descriptor->metric_id == metric_id) return descriptor;
+    if (descriptor->metric_id == metric_id) {
+      return descriptor;
+    }
   }
   return NULL;
 }
@@ -56,7 +58,9 @@ iree_hal_profile_builtin_metric_descriptor_lookup_name(
        i < IREE_ARRAYSIZE(iree_hal_profile_builtin_metric_descriptors); ++i) {
     const iree_hal_profile_metric_descriptor_t* descriptor =
         &iree_hal_profile_builtin_metric_descriptors[i];
-    if (iree_string_view_equal(descriptor->name, name)) return descriptor;
+    if (iree_string_view_equal(descriptor->name, name)) {
+      return descriptor;
+    }
   }
   return NULL;
 }

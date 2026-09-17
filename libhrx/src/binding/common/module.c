@@ -23,8 +23,12 @@ static int iree_hal_streaming_compare_resolve_op_source_ordinals(
       &((const iree_hal_streaming_parameter_op_t*)lhs)->resolve;
   const iree_hal_streaming_parameter_resolve_op_t* rhs_op =
       &((const iree_hal_streaming_parameter_op_t*)rhs)->resolve;
-  if (lhs_op->source_ordinal < rhs_op->source_ordinal) return -1;
-  if (lhs_op->source_ordinal > rhs_op->source_ordinal) return 1;
+  if (lhs_op->source_ordinal < rhs_op->source_ordinal) {
+    return -1;
+  }
+  if (lhs_op->source_ordinal > rhs_op->source_ordinal) {
+    return 1;
+  }
   return 0;
 }
 
@@ -225,7 +229,9 @@ iree_status_t iree_hal_streaming_module_extract_metadata(
       status = iree_hal_executable_export_info(executable,
                                                export_ordinals[symbol_index],
                                                &export_infos[symbol_index]);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       if (IREE_UNLIKELY(!iree_host_size_checked_add(
               total_parameter_count, export_infos[symbol_index].parameter_count,
               &total_parameter_count))) {
@@ -275,7 +281,9 @@ iree_status_t iree_hal_streaming_module_extract_metadata(
       status = iree_hal_executable_export_parameters(
           export_executables[i], export_ordinals[i], parameter_count,
           &parameters[parameter_base]);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
     for (iree_host_size_t j = 0;
          iree_status_is_ok(status) && j < parameter_count; ++j) {
@@ -351,7 +359,9 @@ iree_status_t iree_hal_streaming_module_extract_metadata(
     status = iree_allocator_malloc(module->host_allocator, total_size,
                                    (void**)&buffer);
   }
-  if (iree_status_is_ok(status)) memset(buffer, 0, total_size);
+  if (iree_status_is_ok(status)) {
+    memset(buffer, 0, total_size);
+  }
   module->symbols = (iree_hal_streaming_symbol_t*)buffer;
   iree_hal_streaming_parameter_op_t* ops_base =
       buffer ? (iree_hal_streaming_parameter_op_t*)(buffer + ops_offset) : NULL;
@@ -373,7 +383,9 @@ iree_status_t iree_hal_streaming_module_extract_metadata(
     // launch validation.
     status = iree_hal_streaming_function_attributes_initialize(
         device_spec, &export_infos[i], &symbol->function_attributes);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     // Initialize parameter info.
     iree_hal_streaming_parameter_info_t* parameter_info = &symbol->parameters;
@@ -500,7 +512,9 @@ iree_status_t iree_hal_streaming_module_extract_metadata(
       direct_arg_offset = native_extent;
       native_abi_written_end = native_extent;
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     if (IREE_UNLIKELY(copy_count != symbol_op_counts[i].copy_count ||
                       resolve_count != symbol_op_counts[i].resolve_count)) {
       status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
@@ -553,7 +567,9 @@ iree_status_t iree_hal_streaming_module_extract_metadata(
       has_previous_source_ordinal = true;
       previous_source_ordinal = source_ordinal;
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     parameter_info->buffer_size = (uint16_t)source_offset;
     parameter_info->constant_bytes =
@@ -732,7 +748,9 @@ iree_status_t iree_hal_streaming_module_create_from_file(
       context, load_flags, image, host_allocator, &module);
 
   iree_io_file_mapping_release(file_mapping);
-  if (iree_status_is_ok(status)) *out_module = module;
+  if (iree_status_is_ok(status)) {
+    *out_module = module;
+  }
 
   IREE_TRACE_ZONE_END(z0);
   return status;
@@ -789,7 +807,9 @@ void iree_hal_streaming_module_release(iree_hal_streaming_module_t* module) {
 
 static bool iree_hal_streaming_module_symbol_name_matches(
     iree_string_view_t symbol_name, iree_string_view_t name) {
-  if (iree_string_view_equal(symbol_name, name)) return true;
+  if (iree_string_view_equal(symbol_name, name)) {
+    return true;
+  }
   iree_string_view_t stripped_name =
       iree_string_view_strip_suffix(name, IREE_SV(".kd"));
   return stripped_name.size != name.size &&
@@ -850,7 +870,9 @@ iree_hal_streaming_module_find_global_locked(
 
 static iree_status_t iree_hal_streaming_module_grow_globals_locked(
     iree_hal_streaming_module_t* module, iree_host_size_t minimum_capacity) {
-  if (minimum_capacity <= module->global_capacity) return iree_ok_status();
+  if (minimum_capacity <= module->global_capacity) {
+    return iree_ok_status();
+  }
 
   const iree_host_size_t minimum_allocated_capacity =
       minimum_capacity < 4 ? 4 : minimum_capacity;
@@ -958,11 +980,17 @@ iree_status_t iree_hal_streaming_module_try_lookup_global_symbol(
       bool found = false;
       status = iree_hal_executable_try_lookup_global_by_name(
           executable, name_view, &found, &global_handle);
-      if (!iree_status_is_ok(status)) break;
-      if (!found) continue;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
+      if (!found) {
+        continue;
+      }
       status = iree_hal_streaming_module_create_global_symbol_locked(
           module, executable, global_handle, out_global);
-      if (iree_status_is_ok(status)) *out_found = true;
+      if (iree_status_is_ok(status)) {
+        *out_found = true;
+      }
       break;
     }
   }
@@ -982,7 +1010,9 @@ iree_status_t iree_hal_streaming_module_global_symbol(
   bool found = false;
   IREE_RETURN_IF_ERROR(iree_hal_streaming_module_try_lookup_global_symbol(
       module, name, &found, out_global));
-  if (found) return iree_ok_status();
+  if (found) {
+    return iree_ok_status();
+  }
 
   iree_string_view_t name_view =
       iree_string_view_trim(iree_make_cstring_view(name));
@@ -999,13 +1029,17 @@ iree_status_t iree_hal_streaming_module_global(
   IREE_ASSERT_ARGUMENT(name);
   IREE_ASSERT_ARGUMENT(out_device_ptr);
   *out_device_ptr = 0;
-  if (out_size) *out_size = 0;
+  if (out_size) {
+    *out_size = 0;
+  }
 
   iree_hal_streaming_symbol_t* symbol = NULL;
   IREE_RETURN_IF_ERROR(
       iree_hal_streaming_module_global_symbol(module, name, &symbol));
 
   *out_device_ptr = symbol->device_address;
-  if (out_size) *out_size = symbol->size_bytes;
+  if (out_size) {
+    *out_size = symbol->size_bytes;
+  }
   return iree_ok_status();
 }

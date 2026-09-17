@@ -400,13 +400,17 @@ bool iree_hal_amdgpu_libaqlprofile_has_att_support(
 static void iree_hal_amdgpu_libaqlprofile_append_missing_symbol(
     const char* symbol_name, bool is_missing, char* buffer,
     iree_host_size_t buffer_capacity, iree_host_size_t* inout_length) {
-  if (!is_missing || *inout_length >= buffer_capacity) return;
+  if (!is_missing || *inout_length >= buffer_capacity) {
+    return;
+  }
 
   const char* separator = *inout_length ? ", " : "";
   const int written =
       iree_snprintf(buffer + *inout_length, buffer_capacity - *inout_length,
                     "%s%s", separator, symbol_name);
-  if (written <= 0) return;
+  if (written <= 0) {
+    return;
+  }
 
   const iree_host_size_t available = buffer_capacity - *inout_length;
   if ((iree_host_size_t)written >= available) {
@@ -457,7 +461,9 @@ iree_status_t iree_status_from_aqlprofile_status(
     const iree_hal_amdgpu_libaqlprofile_t* libaqlprofile, const char* file,
     uint32_t line, hsa_status_t hsa_status, const char* symbol,
     const char* message) {
-  if (hsa_status == HSA_STATUS_SUCCESS) return iree_ok_status();
+  if (hsa_status == HSA_STATUS_SUCCESS) {
+    return iree_ok_status();
+  }
 
   const char* error_string = NULL;
   if (libaqlprofile && libaqlprofile->hsa_ven_amd_aqlprofile_error_string) {

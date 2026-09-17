@@ -21,7 +21,9 @@ static const loom_value_id_t* loom_print_func_arg_ids(
     const loom_op_t* op, const loom_op_vtable_t* vtable,
     uint16_t* out_arg_count) {
   *out_arg_count = 0;
-  if (!vtable->func_like) return NULL;
+  if (!vtable->func_like) {
+    return NULL;
+  }
   return loom_func_like_arg_ids(
       (loom_func_like_t){
           .op = (loom_op_t*)op,

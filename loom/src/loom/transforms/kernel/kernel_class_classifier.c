@@ -72,14 +72,18 @@ static iree_status_t loom_kernel_class_allocate_array(
     iree_arena_allocator_t* arena, iree_host_size_t count,
     iree_host_size_t element_size, void** out_values) {
   *out_values = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   return iree_arena_allocate_array(arena, count, element_size, out_values);
 }
 
 static bool loom_kernel_class_value_ids_are_ordered(
     const loom_value_id_t* value_ids, uint16_t count) {
   for (uint16_t i = 1; i < count; ++i) {
-    if (value_ids[i - 1] >= value_ids[i]) return false;
+    if (value_ids[i - 1] >= value_ids[i]) {
+      return false;
+    }
   }
   return true;
 }
@@ -137,12 +141,18 @@ static bool loom_kernel_class_lookup_argument(
       end = middle;
     }
   }
-  if (begin == lookup->argument_count) return false;
+  if (begin == lookup->argument_count) {
+    return false;
+  }
   if (lookup->arguments_are_ordered) {
-    if (lookup->argument_ids[begin] != value_id) return false;
+    if (lookup->argument_ids[begin] != value_id) {
+      return false;
+    }
     *out_argument_ordinal = begin;
   } else {
-    if (lookup->sorted_entries[begin].value_id != value_id) return false;
+    if (lookup->sorted_entries[begin].value_id != value_id) {
+      return false;
+    }
     *out_argument_ordinal = lookup->sorted_entries[begin].argument_ordinal;
   }
   return true;
@@ -314,7 +324,9 @@ iree_status_t loom_kernel_class_classifier_build(
     demand_id = demand->next_source_demand_id;
   }
   out_classifier->decision_count = decision_count;
-  if (decision_count == 0) return iree_ok_status();
+  if (decision_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_kernel_class_decision_t* decisions = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -383,7 +395,9 @@ iree_status_t loom_kernel_class_classifier_build(
       for (uint8_t k = 0; k < predicate->operand_count; ++k) {
         const loom_decision_program_operand_ref_t operand_ref =
             predicate->operands[k];
-        if (loom_decision_program_operand_is_constant(operand_ref)) continue;
+        if (loom_decision_program_operand_is_constant(operand_ref)) {
+          continue;
+        }
         referenced_value_ids[referenced_value_count++] =
             loom_kernel_class_decision_source_value(decision->demand,
                                                     operand_ref);
@@ -443,7 +457,9 @@ iree_status_t loom_kernel_class_classifier_build(
         .static_facts = expression->facts,
     };
     projection->static_facts.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
-    if (!loom_symbolic_expr_is_linear(expression)) continue;
+    if (!loom_symbolic_expr_is_linear(expression)) {
+      continue;
+    }
     if (expression->term_count == 0) {
       projection->kind = LOOM_KERNEL_CLASS_PROJECTION_CONSTANT;
       projection->constant = expression->constant;
@@ -465,7 +481,9 @@ iree_status_t loom_kernel_class_classifier_build(
           .argument_ordinal = argument_ordinal,
       };
     }
-    if (!projects_to_boundary) continue;
+    if (!projects_to_boundary) {
+      continue;
+    }
     projection->kind = LOOM_KERNEL_CLASS_PROJECTION_AFFINE;
     projection->constant = expression->constant;
     projection->terms = terms + term_cursor;
@@ -543,7 +561,9 @@ iree_status_t loom_kernel_class_classifier_build(
       for (uint8_t k = 0; k < predicate->operand_count; ++k) {
         const loom_decision_program_operand_ref_t operand_ref =
             predicate->operands[k];
-        if (loom_decision_program_operand_is_constant(operand_ref)) continue;
+        if (loom_decision_program_operand_is_constant(operand_ref)) {
+          continue;
+        }
         const loom_value_id_t source_value_id =
             loom_kernel_class_decision_source_value(decision->demand,
                                                     operand_ref);
@@ -745,7 +765,9 @@ iree_status_t loom_kernel_class_classifier_collect(
   *out_collection = (loom_kernel_class_collection_t){
       .site_count = site_count,
   };
-  if (site_count == 0) return iree_ok_status();
+  if (site_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_decision_class_partition_t partition;
   IREE_RETURN_IF_ERROR(loom_decision_class_partition_initialize(

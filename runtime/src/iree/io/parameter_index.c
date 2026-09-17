@@ -105,7 +105,9 @@ iree_io_parameter_index_count(iree_io_parameter_index_t* index) {
 static iree_status_t iree_io_parameter_index_reserve_unsafe(
     iree_io_parameter_index_t* index, iree_host_size_t new_capacity) {
   IREE_ASSERT_ARGUMENT(index);
-  if (new_capacity <= index->entry_capacity) return iree_ok_status();
+  if (new_capacity <= index->entry_capacity) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, new_capacity);
 

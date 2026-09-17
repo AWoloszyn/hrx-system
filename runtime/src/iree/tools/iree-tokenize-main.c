@@ -95,7 +95,9 @@ IREE_FLAG(int32_t, benchmark_chunk_size, 4096,
 static void iree_tooling_print_token(iree_tokenizer_token_id_t token_id,
                                      const iree_tokenizer_offset_t* offset,
                                      bool first) {
-  if (!first) fputc(',', stdout);
+  if (!first) {
+    fputc(',', stdout);
+  }
   fprintf(stdout, "%" PRId32, token_id);
   if (offset) {
     fprintf(stdout, "[%zu:%zu]", (size_t)offset->start, (size_t)offset->end);
@@ -120,14 +122,18 @@ static void iree_tooling_print_json_tokens(
     const iree_tokenizer_offset_t* offsets, iree_host_size_t count) {
   fputs("{\"ids\":[", stdout);
   for (iree_host_size_t i = 0; i < count; ++i) {
-    if (i > 0) fputc(',', stdout);
+    if (i > 0) {
+      fputc(',', stdout);
+    }
     fprintf(stdout, "%" PRId32, token_ids[i]);
   }
   fputc(']', stdout);
   if (offsets) {
     fputs(",\"offsets\":[", stdout);
     for (iree_host_size_t i = 0; i < count; ++i) {
-      if (i > 0) fputc(',', stdout);
+      if (i > 0) {
+        fputc(',', stdout);
+      }
       fprintf(stdout, "[%zu,%zu]", (size_t)offsets[i].start,
               (size_t)offsets[i].end);
     }
@@ -186,11 +192,15 @@ static void iree_tooling_print_text(const char* data, iree_host_size_t length,
 static iree_tokenizer_encode_flags_t iree_tooling_encode_flags(void) {
   iree_tokenizer_encode_flags_t flags =
       IREE_TOKENIZER_ENCODE_FLAG_AT_INPUT_START;
-  if (FLAG_special) flags |= IREE_TOKENIZER_ENCODE_FLAG_ADD_SPECIAL_TOKENS;
+  if (FLAG_special) {
+    flags |= IREE_TOKENIZER_ENCODE_FLAG_ADD_SPECIAL_TOKENS;
+  }
   if (!FLAG_match_special) {
     flags |= IREE_TOKENIZER_ENCODE_FLAG_NO_SPECIAL_TOKEN_MATCHING;
   }
-  if (FLAG_offsets) flags |= IREE_TOKENIZER_ENCODE_FLAG_TRACK_OFFSETS;
+  if (FLAG_offsets) {
+    flags |= IREE_TOKENIZER_ENCODE_FLAG_TRACK_OFFSETS;
+  }
   return flags;
 }
 
@@ -262,7 +272,9 @@ static iree_status_t iree_tooling_parse_ids(iree_string_view_t text,
                                             iree_host_size_t max_ids,
                                             iree_host_size_t* out_count) {
   *out_count = 0;
-  if (text.size == 0) return iree_ok_status();
+  if (text.size == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t position = 0;
   while (position < text.size) {
@@ -271,7 +283,9 @@ static iree_status_t iree_tooling_parse_ids(iree_string_view_t text,
            (text.data[position] == ' ' || text.data[position] == '\t')) {
       ++position;
     }
-    if (position >= text.size) break;
+    if (position >= text.size) {
+      break;
+    }
 
     // Parse number.
     bool negative = false;
@@ -291,7 +305,9 @@ static iree_status_t iree_tooling_parse_ids(iree_string_view_t text,
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "expected number at position %zu", position);
     }
-    if (negative) value = -value;
+    if (negative) {
+      value = -value;
+    }
 
     if (*out_count >= max_ids) {
       return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -334,7 +350,9 @@ static iree_status_t iree_tooling_tokenize_decode(
   for (;;) {
     status =
         iree_allocator_malloc(allocator, text_capacity, (void**)&text_buffer);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     iree_mutable_string_view_t text_output = {text_buffer, text_capacity};
     iree_tokenizer_decode_flags_t decode_flags =
@@ -391,13 +409,27 @@ static iree_status_t iree_tooling_tokenize_info(
   }
 
   // Special tokens.
-  if (special.bos >= 0) fprintf(stdout, ",\"bos_id\":%" PRId32, special.bos);
-  if (special.eos >= 0) fprintf(stdout, ",\"eos_id\":%" PRId32, special.eos);
-  if (special.unk >= 0) fprintf(stdout, ",\"unk_id\":%" PRId32, special.unk);
-  if (special.pad >= 0) fprintf(stdout, ",\"pad_id\":%" PRId32, special.pad);
-  if (special.cls >= 0) fprintf(stdout, ",\"cls_id\":%" PRId32, special.cls);
-  if (special.sep >= 0) fprintf(stdout, ",\"sep_id\":%" PRId32, special.sep);
-  if (special.mask >= 0) fprintf(stdout, ",\"mask_id\":%" PRId32, special.mask);
+  if (special.bos >= 0) {
+    fprintf(stdout, ",\"bos_id\":%" PRId32, special.bos);
+  }
+  if (special.eos >= 0) {
+    fprintf(stdout, ",\"eos_id\":%" PRId32, special.eos);
+  }
+  if (special.unk >= 0) {
+    fprintf(stdout, ",\"unk_id\":%" PRId32, special.unk);
+  }
+  if (special.pad >= 0) {
+    fprintf(stdout, ",\"pad_id\":%" PRId32, special.pad);
+  }
+  if (special.cls >= 0) {
+    fprintf(stdout, ",\"cls_id\":%" PRId32, special.cls);
+  }
+  if (special.sep >= 0) {
+    fprintf(stdout, ",\"sep_id\":%" PRId32, special.sep);
+  }
+  if (special.mask >= 0) {
+    fprintf(stdout, ",\"mask_id\":%" PRId32, special.mask);
+  }
 
   fputs("}\n", stdout);
 
@@ -464,7 +496,9 @@ static iree_status_t iree_tooling_tokenize_stdin_streaming(
       token_buffer, NULL, NULL, IREE_ARRAYSIZE(token_buffer));
 
   // Start output.
-  if (FLAG_json) fputs("{\"ids\":[", stdout);
+  if (FLAG_json) {
+    fputs("{\"ids\":[", stdout);
+  }
   bool first_token = true;
 
   // Read and feed chunks until EOF.
@@ -558,10 +592,14 @@ static intptr_t iree_tooling_getline(char** line_ptr,
     }
 
     (*line_ptr)[position++] = (char)character;
-    if (character == '\n') break;
+    if (character == '\n') {
+      break;
+    }
   }
 
-  if (position == 0 && character == EOF) return -1;
+  if (position == 0 && character == EOF) {
+    return -1;
+  }
 
   (*line_ptr)[position] = '\0';
   return (intptr_t)position;
@@ -620,8 +658,12 @@ static void iree_tooling_benchmark_stats_initialize(
 static void iree_tooling_benchmark_stats_record(
     iree_tooling_benchmark_stats_t* stats, iree_time_t elapsed_ns,
     iree_host_size_t input_bytes, iree_host_size_t tokens) {
-  if (elapsed_ns < stats->min_ns) stats->min_ns = elapsed_ns;
-  if (elapsed_ns > stats->max_ns) stats->max_ns = elapsed_ns;
+  if (elapsed_ns < stats->min_ns) {
+    stats->min_ns = elapsed_ns;
+  }
+  if (elapsed_ns > stats->max_ns) {
+    stats->max_ns = elapsed_ns;
+  }
   stats->total_ns += elapsed_ns;
   stats->iterations++;
   stats->total_input_bytes += input_bytes;
@@ -773,7 +815,9 @@ static iree_status_t iree_tooling_benchmark_stream(
     status = iree_tokenizer_encode_state_initialize(
         tokenizer, state_span, transform_span,
         iree_tokenizer_offset_run_list_empty(), flags, &state);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     // Feed text in chunks.
     iree_host_size_t text_position = 0;
@@ -1180,8 +1224,12 @@ int main(int argc, char** argv) {
   }
 
   // Cleanup.
-  if (tokenizer) iree_tokenizer_free(tokenizer);
-  if (file_contents) iree_io_file_contents_free(file_contents);
+  if (tokenizer) {
+    iree_tokenizer_free(tokenizer);
+  }
+  if (file_contents) {
+    iree_io_file_contents_free(file_contents);
+  }
 
   fflush(stdout);
   if (!iree_status_is_ok(status)) {

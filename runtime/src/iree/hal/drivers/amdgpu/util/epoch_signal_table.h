@@ -140,9 +140,13 @@ static inline bool iree_hal_amdgpu_epoch_signal_table_lookup(
     return false;
   }
   uint8_t queue_index = iree_async_axis_queue_index(axis);
-  if (queue_index >= table->queue_count) return false;
+  if (queue_index >= table->queue_count) {
+    return false;
+  }
   hsa_signal_t signal = table->signals[queue_index];
-  if (signal.handle == 0) return false;  // Slot not registered.
+  if (signal.handle == 0) {
+    return false;  // Slot not registered.
+  }
   *out_signal = signal;
   return true;
 }

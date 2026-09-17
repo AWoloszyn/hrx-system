@@ -42,7 +42,9 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (g_tokenizer == NULL) return 0;
+  if (g_tokenizer == NULL) {
+    return 0;
+  }
 
   iree_string_view_t input =
       iree_make_string_view(reinterpret_cast<const char*>(data), size);
@@ -123,7 +125,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                                       : ((offset % 5) == 2) ? 64
                                       : ((offset % 5) == 3) ? 256
                                                             : 512;
-        if (chunk_size > size - offset) chunk_size = size - offset;
+        if (chunk_size > size - offset) {
+          chunk_size = size - offset;
+        }
 
         iree_string_view_t chunk =
             iree_make_string_view(input.data + offset, chunk_size);

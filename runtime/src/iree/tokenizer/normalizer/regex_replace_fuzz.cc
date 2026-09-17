@@ -64,16 +64,18 @@ static bool RunNormalization(iree_tokenizer_normalizer_t* normalizer,
       normalizer, state_buffer, &state);
   if (!iree_status_is_ok(status)) {
     iree_status_ignore(status);
-    if (heap_allocated)
+    if (heap_allocated) {
       iree_allocator_free(iree_allocator_system(), state_buffer);
+    }
     return false;
   }
 
   // Allocate output buffer.
   char* output = (char*)malloc(output_size);
   if (!output) {
-    if (heap_allocated)
+    if (heap_allocated) {
       iree_allocator_free(iree_allocator_system(), state_buffer);
+    }
     return false;
   }
 
@@ -168,7 +170,9 @@ static bool RunNormalization(iree_tokenizer_normalizer_t* normalizer,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < kMinInputSize) return 0;
+  if (size < kMinInputSize) {
+    return 0;
+  }
 
   // First two bytes control pattern and content sizes.
   uint8_t pattern_size_byte = data[0];
@@ -187,7 +191,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   data += pattern_size;
   size -= pattern_size;
 
-  if (size < 1) return 0;
+  if (size < 1) {
+    return 0;
+  }
 
   // Derive content size (0-32 bytes, can be 0 for deletion).
   size_t content_size = content_size_byte % (kMaxContentSize + 1);

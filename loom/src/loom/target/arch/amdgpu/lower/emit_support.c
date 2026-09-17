@@ -867,7 +867,9 @@ static iree_status_t loom_amdgpu_resolve_cndmask_b32_descriptor_set(
        i < IREE_ARRAYSIZE(kCndmaskB32DescriptorResolutions); ++i) {
     const loom_amdgpu_cndmask_b32_descriptor_resolution_t* resolution =
         &kCndmaskB32DescriptorResolutions[i];
-    if (!iree_any_bit_set(requested_flags, resolution->flag)) continue;
+    if (!iree_any_bit_set(requested_flags, resolution->flag)) {
+      continue;
+    }
     bool present = false;
     loom_low_lower_resolved_descriptor_t* destination =
         (loom_low_lower_resolved_descriptor_t*)((uint8_t*)out_descriptors +

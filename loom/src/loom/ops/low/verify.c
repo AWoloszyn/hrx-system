@@ -628,7 +628,9 @@ static iree_status_t loom_low_emit_subrange_error(
 }
 
 static uint32_t loom_low_saturating_u32(iree_host_size_t value) {
-  if (value > UINT32_MAX) return UINT32_MAX;
+  if (value > UINT32_MAX) {
+    return UINT32_MAX;
+  }
   return (uint32_t)value;
 }
 
@@ -670,7 +672,9 @@ static iree_status_t loom_low_emit_value_type_mismatch(
 
 static const loom_block_t* loom_low_region_entry_block_or_null(
     const loom_region_t* region) {
-  if (!region || region->block_count == 0) return NULL;
+  if (!region || region->block_count == 0) {
+    return NULL;
+  }
   return loom_region_const_entry_block(region);
 }
 
@@ -903,11 +907,15 @@ static iree_status_t loom_low_verify_concat_register_value_relation(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter) {
   const loom_value_slice_t sources = loom_low_concat_sources(op);
-  if (sources.count == 0) return iree_ok_status();
+  if (sources.count == 0) {
+    return iree_ok_status();
+  }
 
   const loom_type_t result_type =
       loom_module_value_type(module, loom_low_concat_result(op));
-  if (!loom_low_type_is_register(result_type)) return iree_ok_status();
+  if (!loom_low_type_is_register(result_type)) {
+    return iree_ok_status();
+  }
 
   uint64_t source_unit_count = 0;
   uint16_t diagnostic_source_index = 0;
@@ -920,7 +928,9 @@ static iree_status_t loom_low_verify_concat_register_value_relation(
     }
     source_unit_count += loom_low_register_type_unit_count(source_type);
     if (loom_type_register_has_value_type(source_type)) {
-      if (!has_typed_register) diagnostic_source_index = i;
+      if (!has_typed_register) {
+        diagnostic_source_index = i;
+      }
       has_typed_register = true;
     }
   }
@@ -1002,9 +1012,13 @@ static bool loom_low_try_resolve_storage_reference(
   int64_t projection_byte_length = 0;
   while (true) {
     const loom_value_t* storage_value = loom_module_value(module, storage_id);
-    if (!storage_value || loom_value_is_block_arg(storage_value)) return false;
+    if (!storage_value || loom_value_is_block_arg(storage_value)) {
+      return false;
+    }
     const loom_op_t* defining_op = loom_value_def_op(storage_value);
-    if (!defining_op) return false;
+    if (!defining_op) {
+      return false;
+    }
 
     const bool is_reserve = loom_low_storage_reserve_isa(defining_op);
     int64_t available_byte_length = 0;
@@ -1015,7 +1029,9 @@ static bool loom_low_try_resolve_storage_reference(
     } else {
       return false;
     }
-    if (available_byte_length <= 0) return false;
+    if (available_byte_length <= 0) {
+      return false;
+    }
 
     if (resolved_byte_length == 0) {
       resolved_byte_length = available_byte_length;

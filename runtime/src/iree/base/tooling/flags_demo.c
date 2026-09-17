@@ -55,7 +55,9 @@ int main(int argc, char** argv) {
   iree_flag_string_list_t strings = FLAG_test_strings_list();
   printf("FLAG[test_strings] = %" PRIhsz ": ", strings.count);
   for (iree_host_size_t i = 0; i < strings.count; ++i) {
-    if (i > 0) printf(", ");
+    if (i > 0) {
+      printf(", ");
+    }
     printf("%.*s", (int)strings.values[i].size, strings.values[i].data);
   }
   printf("\n");

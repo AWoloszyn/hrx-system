@@ -146,9 +146,13 @@ void hrx_graph_barrier_state_reset(hrx_graph_barrier_state_t* state) {
 
 static bool hrx_graph_barrier_state_test_hazard(
     const hrx_graph_barrier_state_t* state, uint32_t value) {
-  if (state->invalid) return true;
+  if (state->invalid) {
+    return true;
+  }
   for (uint32_t i = 0; i < state->count; ++i) {
-    if (state->values[i] == value) return true;
+    if (state->values[i] == value) {
+      return true;
+    }
   }
   return false;
 }
@@ -178,7 +182,9 @@ iree_status_t hrx_graph_record_node_barrier(
   for (uint32_t i = 0; i < node->dependency_count; ++i) {
     const uint32_t dependency_sort_index =
         node_index_map[node->dependencies[i]->node_index];
-    if (dependency_sort_index == UINT32_MAX) continue;
+    if (dependency_sort_index == UINT32_MAX) {
+      continue;
+    }
     if (hrx_graph_barrier_state_test_hazard(state, dependency_sort_index)) {
       has_hazard = true;
       break;
@@ -186,10 +192,14 @@ iree_status_t hrx_graph_record_node_barrier(
   }
   for (const hrx_graph_edge_t* edge = additional_edges;
        !has_hazard && edge != NULL; edge = edge->next) {
-    if (edge->to != node) continue;
+    if (edge->to != node) {
+      continue;
+    }
     const uint32_t dependency_sort_index =
         node_index_map[edge->from->node_index];
-    if (dependency_sort_index == UINT32_MAX) continue;
+    if (dependency_sort_index == UINT32_MAX) {
+      continue;
+    }
     has_hazard =
         hrx_graph_barrier_state_test_hazard(state, dependency_sort_index);
   }
@@ -238,7 +248,9 @@ static iree_status_t hrx_graph_record_partition(
   hrx_graph_barrier_state_reset(&barrier_state);
   for (uint32_t i = 0; iree_status_is_ok(status) && i < node_count; ++i) {
     hrx_graph_sort_node_t* sort_node = &sorted_nodes[node_start_index + i];
-    if (sort_node->stream_id != stream_id) continue;
+    if (sort_node->stream_id != stream_id) {
+      continue;
+    }
     hrx_graph_node_s* node = sort_node->node;
     bool did_barrier = false;
     IREE_RETURN_AND_END_ZONE_IF_ERROR(

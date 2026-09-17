@@ -2974,7 +2974,9 @@ static iree_status_t loom_low_verify_schedule_class_minimum_issue_cycles(
         break;
       }
     }
-    if (!is_first_use_of_resource) continue;
+    if (!is_first_use_of_resource) {
+      continue;
+    }
 
     uint64_t resource_unit_cycles = 0;
     for (uint16_t j = i; j < schedule_class->issue_use_count; ++j) {

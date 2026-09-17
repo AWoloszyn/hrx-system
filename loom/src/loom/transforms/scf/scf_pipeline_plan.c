@@ -18,7 +18,9 @@ static iree_status_t loom_scf_pipeline_plan_partition(
   for (uint32_t i = 0; i < plan->body.count; ++i) {
     const loom_scf_body_operation_t* operation = &plan->body.operations[i];
     plan->stages[i] = LOOM_SCF_PIPELINE_STAGE_CONSUMER;
-    if (operation->effects == 0) continue;
+    if (operation->effects == 0) {
+      continue;
+    }
     if (operation->effects != LOOM_SCF_BODY_EFFECT_READ) {
       *rejection = (loom_scf_pipeline_rejection_t){
           .op = operation->op,
@@ -59,14 +61,20 @@ static iree_status_t loom_scf_pipeline_plan_partition(
   // unit. A reverse traversal therefore computes the complete producer cut.
   for (uint32_t reverse = plan->body.count; reverse > 0; --reverse) {
     const uint32_t i = reverse - 1;
-    if (plan->stages[i] != LOOM_SCF_PIPELINE_STAGE_PRODUCER) continue;
+    if (plan->stages[i] != LOOM_SCF_PIPELINE_STAGE_PRODUCER) {
+      continue;
+    }
     const loom_scf_body_operation_t* operation = &plan->body.operations[i];
     for (iree_host_size_t j = 0; j < operation->reference_count; ++j) {
       const loom_scf_body_reference_t* reference =
           &plan->body.references[operation->reference_begin + j];
-      if (reference->allow_identity_mapping) continue;
+      if (reference->allow_identity_mapping) {
+        continue;
+      }
       const loom_value_id_t value_id = reference->value_id;
-      if (value_id == block->arg_ids[0]) continue;
+      if (value_id == block->arg_ids[0]) {
+        continue;
+      }
       const uint32_t producer =
           producers[loom_local_value_domain_ordinal(domain, value_id)];
       if (producer == UINT32_MAX) {
@@ -94,7 +102,9 @@ static iree_status_t loom_scf_pipeline_plan_partition(
     for (iree_host_size_t j = 0; j < operation->reference_count; ++j) {
       const loom_scf_body_reference_t* reference =
           &plan->body.references[operation->reference_begin + j];
-      if (reference->allow_identity_mapping) continue;
+      if (reference->allow_identity_mapping) {
+        continue;
+      }
       const loom_value_id_t value_id = reference->value_id;
       const loom_value_ordinal_t ordinal =
           loom_local_value_domain_ordinal(domain, value_id);
@@ -107,7 +117,9 @@ static iree_status_t loom_scf_pipeline_plan_partition(
     }
   }
   for (loom_value_ordinal_t i = 0; i < domain->value_count; ++i) {
-    if (queued_values[i]) ++plan->queue_value_count;
+    if (queued_values[i]) {
+      ++plan->queue_value_count;
+    }
   }
   if (plan->queue_value_count == 0) {
     *rejection = (loom_scf_pipeline_rejection_t){
@@ -121,7 +133,9 @@ static iree_status_t loom_scf_pipeline_plan_partition(
                                                  (void**)&plan->queue_values));
   uint32_t next_queue_value = 0;
   for (loom_value_ordinal_t i = 0; i < domain->value_count; ++i) {
-    if (!queued_values[i]) continue;
+    if (!queued_values[i]) {
+      continue;
+    }
     const loom_value_id_t value_id = domain->value_ids[i];
     plan->queue_values[next_queue_value++] = value_id;
     for (loom_type_use_id_t use_id =

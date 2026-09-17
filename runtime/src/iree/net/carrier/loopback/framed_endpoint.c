@@ -166,7 +166,9 @@ iree_net_loopback_acquire_send_state_locked(
   --endpoint->free_send_state_count;
   send_state->next_free = IREE_NET_LOOPBACK_SEND_STATE_NONE;
   ++send_state->generation;
-  if (send_state->generation == 0) ++send_state->generation;
+  if (send_state->generation == 0) {
+    ++send_state->generation;
+  }
   send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_RESERVED;
   return send_state;
 }
@@ -189,7 +191,9 @@ iree_net_loopback_lookup_reservation_locked(
     iree_net_carrier_send_handle_t handle) {
   const uint32_t index = (uint32_t)handle;
   const uint32_t generation = (uint32_t)(handle >> 32);
-  if (index >= endpoint->send_state_count || generation == 0) return NULL;
+  if (index >= endpoint->send_state_count || generation == 0) {
+    return NULL;
+  }
   iree_net_loopback_send_state_t* send_state = &endpoint->send_states[index];
   if (send_state->phase != IREE_NET_LOOPBACK_SEND_STATE_PHASE_RESERVED ||
       send_state->generation != generation) {
@@ -275,7 +279,9 @@ static iree_status_t iree_net_loopback_activate(void* self) {
     endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE;
   }
   iree_slim_mutex_unlock(&endpoint->mutex);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   status = iree_net_message_endpoint_activate(endpoint->wire_endpoint);
   if (!iree_status_is_ok(status)) {
@@ -311,7 +317,9 @@ static void iree_net_loopback_on_wire_deactivated(void* user_data) {
   endpoint->deactivate_callback.user_data = NULL;
   iree_slim_mutex_unlock(&endpoint->mutex);
 
-  if (callback) callback(callback_user_data);
+  if (callback) {
+    callback(callback_user_data);
+  }
 }
 
 static iree_status_t iree_net_loopback_deactivate(
@@ -332,7 +340,9 @@ static iree_status_t iree_net_loopback_deactivate(
     iree_net_loopback_clear_reservations_locked(endpoint);
   }
   iree_slim_mutex_unlock(&endpoint->mutex);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   status = iree_net_message_endpoint_deactivate(
       endpoint->wire_endpoint, iree_net_loopback_on_wire_deactivated, endpoint);
@@ -665,7 +675,9 @@ iree_status_t iree_net_loopback_framed_endpoint_allocate(
 
 void iree_net_loopback_framed_endpoint_free(
     iree_net_loopback_framed_endpoint_t* endpoint) {
-  if (!endpoint) return;
+  if (!endpoint) {
+    return;
+  }
   IREE_ASSERT(endpoint->state != IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_ACTIVE,
               "active loopback endpoint cannot be freed");
   IREE_ASSERT(endpoint->free_send_state_count == endpoint->send_state_count,

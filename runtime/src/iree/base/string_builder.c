@@ -208,12 +208,16 @@ static void iree_string_builder_printf_out(char character, void* user_data) {
   }
 
   // Bail if a previous callback already failed (allocation error).
-  if (!iree_status_is_ok(state->status)) return;
+  if (!iree_status_is_ok(state->status)) {
+    return;
+  }
 
   // Ensure capacity for this character + NUL terminator.
   if (builder->size + 1 >= builder->capacity) {
     state->status = iree_string_builder_reserve(builder, builder->size + 2);
-    if (!iree_status_is_ok(state->status)) return;
+    if (!iree_status_is_ok(state->status)) {
+      return;
+    }
   }
   builder->buffer[builder->size++] = character;
 }

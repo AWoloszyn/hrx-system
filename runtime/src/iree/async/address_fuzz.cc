@@ -26,7 +26,9 @@
   } while (0)
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 2) return 0;
+  if (size < 2) {
+    return 0;
+  }
 
   // Extract port from first 2 bytes of fuzz input.
   uint16_t port;

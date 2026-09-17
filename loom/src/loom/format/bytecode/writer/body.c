@@ -42,7 +42,9 @@ static void loom_bytecode_count_op_regions(
     const loom_op_t* op, loom_bytecode_body_counts_t* counts) {
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
-    if (!regions[i]) continue;
+    if (!regions[i]) {
+      continue;
+    }
     loom_bytecode_count_region_tree(regions[i], counts);
   }
 }
@@ -145,13 +147,17 @@ static iree_status_t loom_bytecode_write_value_def(
   uint8_t rank = loom_type_rank(type);
   uint32_t dynamic_count = 0;
   for (uint8_t i = 0; i < rank; ++i) {
-    if (loom_type_dim_is_dynamic_at(type, i)) ++dynamic_count;
+    if (loom_type_dim_is_dynamic_at(type, i)) {
+      ++dynamic_count;
+    }
   }
   IREE_RETURN_IF_ERROR(
       loom_bytecode_page_writer_write_uvarint(writer, dynamic_count));
   for (uint8_t i = 0; i < rank; ++i) {
     uint64_t packed = loom_type_dim(type, i);
-    if (!loom_dim_is_dynamic(packed)) continue;
+    if (!loom_dim_is_dynamic(packed)) {
+      continue;
+    }
     loom_value_id_t dim_value_id = loom_dim_value_id(packed);
     uint32_t value_number = 0;
     IREE_RETURN_IF_ERROR(loom_bytecode_resolve_value_number(
@@ -196,13 +202,17 @@ iree_status_t loom_bytecode_emit_value_def(
   uint8_t rank = loom_type_rank(type);
   uint32_t dynamic_count = 0;
   for (uint8_t i = 0; i < rank; ++i) {
-    if (loom_type_dim_is_dynamic_at(type, i)) ++dynamic_count;
+    if (loom_type_dim_is_dynamic_at(type, i)) {
+      ++dynamic_count;
+    }
   }
   IREE_RETURN_IF_ERROR(
       loom_bytecode_emit_uvarint(builder, (uint64_t)dynamic_count));
   for (uint8_t i = 0; i < rank; ++i) {
     uint64_t packed = loom_type_dim(type, i);
-    if (!loom_dim_is_dynamic(packed)) continue;
+    if (!loom_dim_is_dynamic(packed)) {
+      continue;
+    }
     loom_value_id_t dim_value_id = loom_dim_value_id(packed);
     uint32_t value_number = 0;
     IREE_RETURN_IF_ERROR(loom_bytecode_resolve_value_number(
@@ -230,7 +240,9 @@ static uint8_t loom_bytecode_instance_flags_mask(
                          LOOM_OP_VTABLE_HAS_INSTANCE_FLAGS)) {
     return 0;
   }
-  if (vtable->instance_flags_case_count >= 8) return UINT8_MAX;
+  if (vtable->instance_flags_case_count >= 8) {
+    return UINT8_MAX;
+  }
   return (uint8_t)((1u << vtable->instance_flags_case_count) - 1u);
 }
 
@@ -375,7 +387,9 @@ static iree_status_t loom_bytecode_write_operation(
     bool present = false;
     IREE_RETURN_IF_ERROR(loom_bytecode_op_attr_is_present(
         op, &vtable->attr_descriptors[i], attrs[i], &present));
-    if (present) ++present_attr_count;
+    if (present) {
+      ++present_attr_count;
+    }
   }
   IREE_RETURN_IF_ERROR(
       loom_bytecode_page_writer_write_uvarint(writer, present_attr_count));
@@ -383,7 +397,9 @@ static iree_status_t loom_bytecode_write_operation(
     bool present = false;
     IREE_RETURN_IF_ERROR(loom_bytecode_op_attr_is_present(
         op, &vtable->attr_descriptors[i], attrs[i], &present));
-    if (!present) continue;
+    if (!present) {
+      continue;
+    }
 
     iree_string_view_t key_name =
         loom_attr_descriptor_name(&vtable->attr_descriptors[i]);
@@ -557,7 +573,9 @@ iree_status_t loom_bytecode_write_ir_section(
         (void**)&region_list->values));
     loom_region_t** regions = loom_op_regions(symbol->defining_op);
     for (uint8_t i = 0; i < symbol->defining_op->region_count; ++i) {
-      if (!regions[i]) continue;
+      if (!regions[i]) {
+        continue;
+      }
 
       loom_bytecode_body_counts_t region_counts = {0};
       loom_bytecode_count_region_tree(regions[i], &region_counts);

@@ -660,7 +660,13 @@ def render_instruction_verifier_cases(specification: Specification) -> str:
         effects = []
         for predicate, effect in checks:
             if predicate:
-                lines.append(f"  if (!({predicate})) return false;")
+                lines.extend(
+                    [
+                        f"  if (!({predicate})) {{",
+                        "    return false;",
+                        "  }",
+                    ]
+                )
             if effect:
                 effects.append(effect)
         lines.extend(f"  {effect}" for effect in effects)
@@ -822,10 +828,13 @@ def render_module_verifier_cases(specification: Specification) -> str:
             )
         lines.append(f"  // {', '.join(record.name for record in records)}")
         for predicate, failure in checks:
-            if failure:
-                lines.append(f"  if (!({predicate})) {failure}")
-            else:
-                lines.append(f"  if (!({predicate})) break;")
+            lines.extend(
+                [
+                    f"  if (!({predicate})) {{",
+                    f"    {failure or 'break;'}",
+                    "  }",
+                ]
+            )
         lines.append("  return iree_ok_status();")
     return "\n".join(lines) + "\n"
 

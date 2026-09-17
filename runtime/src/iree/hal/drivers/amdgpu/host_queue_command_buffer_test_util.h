@@ -84,10 +84,14 @@ class TestLogicalDevice {
 
   iree_hal_amdgpu_host_queue_t* first_host_queue() const {
     iree_hal_amdgpu_logical_device_t* logical_device = this->logical_device();
-    if (logical_device->physical_device_count == 0) return NULL;
+    if (logical_device->physical_device_count == 0) {
+      return NULL;
+    }
     iree_hal_amdgpu_physical_device_t* physical_device =
         logical_device->physical_devices[0];
-    if (physical_device->host_queue_count == 0) return NULL;
+    if (physical_device->host_queue_count == 0) {
+      return NULL;
+    }
     return &physical_device->host_queues[0];
   }
 
@@ -169,10 +173,14 @@ static iree_status_t LoadCtsExecutable(
   bool found_target = false;
   bool found_executable_data = false;
   for (const auto& target : targets) {
-    if (!IsAmdgpuCtsExecutableTarget(target)) continue;
+    if (!IsAmdgpuCtsExecutableTarget(target)) {
+      continue;
+    }
     found_target = true;
     const iree_const_byte_span_t executable_data = target.data_fn(file_name);
-    if (iree_const_byte_span_is_empty(executable_data)) continue;
+    if (iree_const_byte_span_is_empty(executable_data)) {
+      continue;
+    }
     found_executable_data = true;
 
     iree_hal_executable_target_selection_result_t target_result;

@@ -346,9 +346,13 @@ void loom_low_schedule_candidate_policy_record_decision(
 static bool loom_low_schedule_add_ready_nominee(uint32_t node_index,
                                                 uint32_t* nominees,
                                                 uint8_t* nominee_count) {
-  if (node_index == LOOM_LOW_SCHEDULE_NODE_NONE) return false;
+  if (node_index == LOOM_LOW_SCHEDULE_NODE_NONE) {
+    return false;
+  }
   for (uint8_t i = 0; i < *nominee_count; ++i) {
-    if (nominees[i] == node_index) return false;
+    if (nominees[i] == node_index) {
+      return false;
+    }
   }
   IREE_ASSERT_LT(*nominee_count, LOOM_LOW_SCHEDULE_READY_NOMINEE_CAPACITY);
   nominees[(*nominee_count)++] = node_index;

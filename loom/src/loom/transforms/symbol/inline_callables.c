@@ -112,7 +112,9 @@ iree_status_t loom_inline_callables_create(loom_pass_t* pass,
     for (uint16_t i = 0; i < pass->decoded_options->option_count; ++i) {
       const loom_pass_decoded_option_t* option =
           &pass->decoded_options->options[i];
-      if (!option->present) continue;
+      if (!option->present) {
+        continue;
+      }
       if (iree_string_view_equal(option->schema->name, IREE_SV("policy"))) {
         IREE_RETURN_IF_ERROR(loom_inline_callables_parse_policy(
             option->schema->enum_values[option->enum_value_index].value,
@@ -647,7 +649,9 @@ static iree_status_t loom_inline_compute_required_sccs(
 
 static iree_status_t loom_inline_index_required_entries_by_component(
     loom_inline_state_t* state) {
-  if (state->sccs.count == 0) return iree_ok_status();
+  if (state->sccs.count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       state->pass->arena, state->sccs.count, sizeof(*state->component_entries),
       (void**)&state->component_entries));
@@ -669,7 +673,9 @@ static iree_status_t loom_inline_index_required_entries_by_component(
     }
     const iree_host_size_t component_index =
         state->component_by_symbol[entry->source_symbol_id];
-    if (component_index >= state->sccs.count) continue;
+    if (component_index >= state->sccs.count) {
+      continue;
+    }
     loom_inline_component_entries_t* component_entries =
         &state->component_entries[component_index];
     uint32_t previous_entry = component_entries->last_entry;
@@ -732,14 +738,18 @@ static void loom_inline_propagate_required_cfg_shapes(
   for (iree_host_size_t component_index = 0;
        component_index < state->sccs.count; ++component_index) {
     const loom_scc_t* component = &state->sccs.values[component_index];
-    if (component->is_cycle) continue;
+    if (component->is_cycle) {
+      continue;
+    }
     for (iree_host_size_t node_index = 0; node_index < component->node_count;
          ++node_index) {
       const loom_symbol_id_t source_symbol_id =
           (loom_symbol_id_t)component->nodes[node_index];
       loom_inline_symbol_info_t* source_info =
           &state->symbols[source_symbol_id];
-      if (!source_info->body_will_be_linear) continue;
+      if (!source_info->body_will_be_linear) {
+        continue;
+      }
       for (uint32_t entry_index =
                state->first_required_by_source[source_symbol_id];
            entry_index != LOOM_INLINE_PLAN_ENTRY_INVALID;
@@ -795,7 +805,9 @@ static loom_inline_blocker_t loom_inline_validate_low_body_op(
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     const loom_region_t* region = regions[region_index];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     for (uint16_t block_index = 0; block_index < region->block_count;
          ++block_index) {
       const loom_block_t* block = loom_region_const_block(region, block_index);
@@ -803,7 +815,9 @@ static loom_inline_blocker_t loom_inline_validate_low_body_op(
       loom_block_for_each_op(block, child_op) {
         loom_inline_blocker_t blocker =
             loom_inline_validate_low_body_op(child_op, schedule_locked);
-        if (blocker != LOOM_INLINE_BLOCKER_NONE) return blocker;
+        if (blocker != LOOM_INLINE_BLOCKER_NONE) {
+          return blocker;
+        }
       }
     }
   }
@@ -875,7 +889,9 @@ static loom_inline_blocker_t loom_inline_validate_inline_body(
       loom_block_for_each_op(block, body_op) {
         loom_inline_blocker_t low_blocker =
             loom_inline_validate_low_body_op(body_op, schedule_locked);
-        if (low_blocker != LOOM_INLINE_BLOCKER_NONE) return low_blocker;
+        if (low_blocker != LOOM_INLINE_BLOCKER_NONE) {
+          return low_blocker;
+        }
       }
     }
   }
@@ -939,7 +955,9 @@ static loom_inline_blocker_t loom_inline_validate_inline_body(
         return LOOM_INLINE_BLOCKER_CALLEE_SUCCESSOR_OUTSIDE_BODY;
       }
     }
-    if (terminator->kind != body_descriptor->terminator) continue;
+    if (terminator->kind != body_descriptor->terminator) {
+      continue;
+    }
     if (terminator->operand_count != call_results.count) {
       return LOOM_INLINE_BLOCKER_RETURN_COUNT_MISMATCH;
     }
@@ -1140,7 +1158,9 @@ static iree_status_t loom_inline_execute_entry(
 // for every erased helper.
 static iree_host_size_t loom_inline_prune_erased_function_versions(
     loom_function_version_owner_t* owner) {
-  if (owner == NULL) return 0;
+  if (owner == NULL) {
+    return 0;
+  }
   iree_host_size_t write_index = 0;
   iree_host_size_t removed_count = 0;
   for (iree_host_size_t read_index = 0; read_index < owner->list.count;
@@ -1186,7 +1206,9 @@ static iree_status_t loom_inline_materialize_locked_low_schedules(
       loom_block_t* block = loom_region_block(body, block_index);
       loom_op_t* terminator = block->last_op;
       loom_op_t* first_op = block->first_op;
-      if (first_op == terminator) continue;
+      if (first_op == terminator) {
+        continue;
+      }
 
       loom_builder_set_before(&rewriter->builder, first_op);
       loom_op_t* fence_op = NULL;
@@ -1263,7 +1285,9 @@ static void loom_inline_complete_execution_entry(
     loom_inline_execution_symbol_t* source =
         &execution_symbols[entry->source_symbol_id];
     IREE_ASSERT_GT(source->remaining_outgoing_count, 0u);
-    if (--source->remaining_outgoing_count != 0) return;
+    if (--source->remaining_outgoing_count != 0) {
+      return;
+    }
 
     for (uint32_t clone_index = source->first_clone_entry;
          clone_index != LOOM_INLINE_PLAN_ENTRY_INVALID;
@@ -1272,7 +1296,9 @@ static void loom_inline_complete_execution_entry(
                                       inout_linear_ready_count,
                                       inout_cfg_ready_count);
     }
-    if (!source->transfer_executed) return;
+    if (!source->transfer_executed) {
+      return;
+    }
     entry_index = source->transfer_entry;
   }
 }
@@ -1297,7 +1323,9 @@ static iree_status_t loom_inline_execute_plan(loom_inline_state_t* state) {
       ++execution_count;
     }
   }
-  if (execution_count == 0) return iree_ok_status();
+  if (execution_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter = {0};
   IREE_RETURN_IF_ERROR(
@@ -1335,7 +1363,9 @@ static iree_status_t loom_inline_execute_plan(loom_inline_state_t* state) {
        iree_status_is_ok(status) && entry_index < state->entry_count;
        ++entry_index) {
     loom_inline_plan_entry_t* entry = &state->entries[entry_index];
-    if (!loom_inline_action_executes(entry->action)) continue;
+    if (!loom_inline_action_executes(entry->action)) {
+      continue;
+    }
     IREE_ASSERT_LT(entry->source_symbol_id, symbol_count);
     IREE_ASSERT_LT(entry->target_symbol_id, symbol_count);
     ++execution_symbols[entry->source_symbol_id].remaining_outgoing_count;
@@ -1368,7 +1398,9 @@ static iree_status_t loom_inline_execute_plan(loom_inline_state_t* state) {
          entry_index != LOOM_INLINE_PLAN_ENTRY_INVALID;
          entry_index = state->entries[entry_index].next_required_in_component) {
       const loom_inline_plan_entry_t* entry = &state->entries[entry_index];
-      if (!loom_inline_action_executes(entry->action)) continue;
+      if (!loom_inline_action_executes(entry->action)) {
+        continue;
+      }
       const loom_inline_execution_symbol_t* target =
           &execution_symbols[entry->target_symbol_id];
       const bool ready = entry->action == LOOM_INLINE_PLAN_ACTION_CLONE
@@ -1399,7 +1431,9 @@ static iree_status_t loom_inline_execute_plan(loom_inline_state_t* state) {
         !cfg_topology_changed) {
       status = loom_availability_analysis_initialize(
           state->module, state->pass->arena, &transfer_availability);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       transfer_availability_valid = true;
     }
     bool changed_cfg_topology = false;
@@ -1408,7 +1442,9 @@ static iree_status_t loom_inline_execute_plan(loom_inline_state_t* state) {
                                                       : NULL;
     status = loom_inline_execute_entry(state, &rewriter, availability, entry,
                                        &changed_cfg_topology);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     ++executed_count;
     if (changed_cfg_topology) {
       transfer_availability_valid = false;

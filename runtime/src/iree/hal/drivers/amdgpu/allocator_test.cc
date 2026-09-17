@@ -133,10 +133,14 @@ class VirtualMemoryReservation {
   iree_hal_buffer_t** out() { return &buffer_; }
 
   iree_status_t Release() {
-    if (!buffer_) return iree_ok_status();
+    if (!buffer_) {
+      return iree_ok_status();
+    }
     iree_status_t status =
         iree_hal_allocator_virtual_memory_release(allocator_, buffer_);
-    if (iree_status_is_ok(status)) buffer_ = nullptr;
+    if (iree_status_is_ok(status)) {
+      buffer_ = nullptr;
+    }
     return status;
   }
 
@@ -160,10 +164,14 @@ class PhysicalMemoryAllocation {
   iree_hal_physical_memory_t** out() { return &memory_; }
 
   iree_status_t Release() {
-    if (!memory_) return iree_ok_status();
+    if (!memory_) {
+      return iree_ok_status();
+    }
     iree_status_t status =
         iree_hal_allocator_physical_memory_free(allocator_, memory_);
-    if (iree_status_is_ok(status)) memory_ = nullptr;
+    if (iree_status_is_ok(status)) {
+      memory_ = nullptr;
+    }
     return status;
   }
 
@@ -198,10 +206,14 @@ class VirtualMemoryMapping {
   }
 
   iree_status_t Unmap() {
-    if (!is_mapped_) return iree_ok_status();
+    if (!is_mapped_) {
+      return iree_ok_status();
+    }
     iree_status_t status = iree_hal_allocator_virtual_memory_unmap(
         allocator_, virtual_buffer_, virtual_offset_, size_);
-    if (iree_status_is_ok(status)) is_mapped_ = false;
+    if (iree_status_is_ok(status)) {
+      is_mapped_ = false;
+    }
     return status;
   }
 
@@ -311,7 +323,9 @@ class AllocatorTest : public ::testing::Test {
     }
 
     void Reset() {
-      if (!ptr_) return;
+      if (!ptr_) {
+        return;
+      }
       iree_hal_amdgpu_hsa_cleanup_assert_success(
           iree_hsa_amd_memory_pool_free_raw(libhsa_, ptr_));
       ptr_ = nullptr;

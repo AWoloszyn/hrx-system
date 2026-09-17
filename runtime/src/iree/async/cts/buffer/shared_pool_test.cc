@@ -543,7 +543,9 @@ TEST_P(SharedBufferPoolTest, ConcurrentAcquireRelease) {
   // Track which buffer indices are currently held by any thread.
   // Uses an atomic flag per index to detect double-allocation.
   std::vector<std::atomic<bool>> held(kStressBufferCount);
-  for (auto& flag : held) flag.store(false);
+  for (auto& flag : held) {
+    flag.store(false);
+  }
 
   std::atomic<int> error_count{0};
 

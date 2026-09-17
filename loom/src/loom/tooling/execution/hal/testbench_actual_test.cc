@@ -431,7 +431,9 @@ static bool ModuleHasSymbol(const loom_module_t* module,
 static bool ModuleSymbolIsFuncDef(const loom_module_t* module,
                                   iree_string_view_t name) {
   const loom_string_id_t name_id = loom_module_lookup_string(module, name);
-  if (name_id == LOOM_STRING_ID_INVALID) return false;
+  if (name_id == LOOM_STRING_ID_INVALID) {
+    return false;
+  }
   const uint16_t symbol_id = loom_module_find_symbol(module, name_id);
   return symbol_id != LOOM_SYMBOL_ID_INVALID &&
          loom_func_def_isa(module->symbols.entries[symbol_id].defining_op);

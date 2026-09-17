@@ -97,7 +97,9 @@ static iree_status_t iree_profile_att_parse_code_objects(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_executable_code_object_record_t code_object_record;
     memcpy(&code_object_record, typed_record.contents.data,
@@ -133,7 +135,9 @@ static iree_status_t iree_profile_att_parse_code_object_loads(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_executable_code_object_load_record_t load_record;
     memcpy(&load_record, typed_record.contents.data, sizeof(load_record));
@@ -169,7 +173,9 @@ static iree_status_t iree_profile_att_parse_functions(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_executable_function_record_t function_record;
     memcpy(&function_record, typed_record.contents.data,
@@ -206,7 +212,9 @@ static iree_status_t iree_profile_att_parse_dispatches(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_profile_att_dispatch_t dispatch = {
         .physical_device_ordinal = record->header.physical_device_ordinal,

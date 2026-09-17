@@ -106,7 +106,9 @@ iree_status_t iree_hal_streaming_global_symbol_registry_allocate(
 
 void iree_hal_streaming_global_symbol_registry_free(
     iree_hal_streaming_global_symbol_registry_t* registry) {
-  if (!registry) return;
+  if (!registry) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_allocator_t host_allocator = registry->host_allocator;
@@ -204,7 +206,9 @@ iree_status_t iree_hal_streaming_global_symbol_registry_unregister_module(
     iree_hal_streaming_global_symbol_registry_t* registry,
     iree_hal_streaming_module_registration_t* module) {
   IREE_ASSERT_ARGUMENT(registry);
-  if (!module) return iree_ok_status();
+  if (!module) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_slim_mutex_lock(&registry->mutex);
@@ -375,15 +379,23 @@ iree_status_t iree_hal_streaming_global_symbol_registry_insert_managed_variable(
 bool iree_hal_streaming_global_symbol_registry_query_variable(
     iree_hal_streaming_global_symbol_registry_t* registry, void* host_variable,
     iree_hal_streaming_symbol_type_t* out_type, size_t* out_size) {
-  if (out_type) *out_type = IREE_HAL_STREAMING_SYMBOL_TYPE_UNDEFINED;
-  if (out_size) *out_size = 0;
-  if (!registry || !host_variable) return false;
+  if (out_type) {
+    *out_type = IREE_HAL_STREAMING_SYMBOL_TYPE_UNDEFINED;
+  }
+  if (out_size) {
+    *out_size = 0;
+  }
+  if (!registry || !host_variable) {
+    return false;
+  }
 
   bool found = false;
   iree_slim_mutex_lock(&registry->mutex);
   for (iree_host_size_t i = 0; i < registry->module_count && !found; ++i) {
     iree_hal_streaming_module_registration_t* module = registry->modules[i];
-    if (!module) continue;
+    if (!module) {
+      continue;
+    }
     for (iree_host_size_t j = 0; j < module->symbol_count; ++j) {
       const iree_hal_streaming_symbol_registration_t* symbol =
           &module->symbols[j];
@@ -392,8 +404,12 @@ bool iree_hal_streaming_global_symbol_registry_query_variable(
            symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_DATA)) {
         continue;
       }
-      if (out_type) *out_type = symbol->type;
-      if (out_size) *out_size = symbol->params.variable.size;
+      if (out_type) {
+        *out_type = symbol->type;
+      }
+      if (out_size) {
+        *out_size = symbol->params.variable.size;
+      }
       found = true;
       break;
     }
@@ -410,7 +426,9 @@ bool iree_hal_streaming_global_symbol_registry_query_variable(
 static const iree_hal_streaming_symbol_registration_t*
 iree_hal_streaming_global_symbol_registry_lookup(
     iree_hal_streaming_global_symbol_registry_t* registry, void* host_pointer) {
-  if (!registry || !host_pointer) return NULL;
+  if (!registry || !host_pointer) {
+    return NULL;
+  }
 
   iree_slim_mutex_lock(&registry->mutex);
 
@@ -418,14 +436,18 @@ iree_hal_streaming_global_symbol_registry_lookup(
   const iree_hal_streaming_symbol_registration_t* result = NULL;
   for (iree_host_size_t i = 0; i < registry->module_count; ++i) {
     iree_hal_streaming_module_registration_t* module = registry->modules[i];
-    if (!module) continue;
+    if (!module) {
+      continue;
+    }
     for (iree_host_size_t j = 0; j < module->symbol_count; ++j) {
       if (module->symbols[j].host_pointer == host_pointer) {
         result = &module->symbols[j];
         break;
       }
     }
-    if (result) break;
+    if (result) {
+      break;
+    }
   }
 
   iree_slim_mutex_unlock(&registry->mutex);
@@ -478,7 +500,9 @@ iree_status_t iree_hal_streaming_context_symbol_map_initialize(
 
 void iree_hal_streaming_context_symbol_map_deinitialize(
     iree_hal_streaming_context_symbol_map_t* map) {
-  if (!map || !map->entries) return;
+  if (!map || !map->entries) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_allocator_t host_allocator = map->host_allocator;

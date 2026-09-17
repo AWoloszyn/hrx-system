@@ -381,7 +381,9 @@ void iree_tokenizer_builder_initialize(iree_allocator_t allocator,
 }
 
 void iree_tokenizer_builder_deinitialize(iree_tokenizer_builder_t* builder) {
-  if (!builder) return;
+  if (!builder) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Free any components still owned by builder.
@@ -663,7 +665,9 @@ static bool iree_tokenizer_byte_level_token_needs_accumulator(
 // fed through the byte accumulator; normal tokens use the memcpy fast path.
 static iree_status_t iree_tokenizer_build_pre_decoded(
     iree_tokenizer_t* tokenizer) {
-  if (!tokenizer->decoder || !tokenizer->vocab) return iree_ok_status();
+  if (!tokenizer->decoder || !tokenizer->vocab) {
+    return iree_ok_status();
+  }
 
   iree_tokenizer_decoder_capability_t capabilities =
       iree_tokenizer_decoder_capabilities(tokenizer->decoder);
@@ -686,7 +690,9 @@ static iree_status_t iree_tokenizer_build_pre_decoded(
 
   iree_host_size_t vocab_capacity =
       iree_tokenizer_vocab_capacity(tokenizer->vocab);
-  if (vocab_capacity == 0) return iree_ok_status();
+  if (vocab_capacity == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t max_token_length =
       iree_tokenizer_vocab_max_token_length(tokenizer->vocab);
@@ -735,7 +741,9 @@ static iree_status_t iree_tokenizer_build_pre_decoded(
       uint8_t byte_value;
       if (iree_tokenizer_decoder_byte_fallback_parse_byte_token(token_text,
                                                                 &byte_value)) {
-        if (byte_token_first_id < 0) byte_token_first_id = (int32_t)id;
+        if (byte_token_first_id < 0) {
+          byte_token_first_id = (int32_t)id;
+        }
         byte_token_last_id = (int32_t)id;
         ++byte_token_count;
       }
@@ -836,7 +844,9 @@ static iree_status_t iree_tokenizer_build_pre_decoded(
       uint8_t* bitmap = has_partial_utf8
                             ? (uint8_t*)slab + offsets_size + total_data_size
                             : NULL;
-      if (bitmap) memset(bitmap, 0, bitmap_size);
+      if (bitmap) {
+        memset(bitmap, 0, bitmap_size);
+      }
       uint32_t data_position = 0;
       for (iree_host_size_t id = 0;
            id < vocab_capacity && iree_status_is_ok(status); ++id) {
@@ -982,7 +992,9 @@ iree_status_t iree_tokenizer_builder_build(iree_tokenizer_builder_t* builder,
 //===----------------------------------------------------------------------===//
 
 void iree_tokenizer_free(iree_tokenizer_t* tokenizer) {
-  if (!tokenizer) return;
+  if (!tokenizer) {
+    return;
+  }
 
   iree_allocator_t allocator = tokenizer->allocator;
 
@@ -1282,7 +1294,9 @@ static iree_status_t iree_tokenizer_encode_state_finalize_internal(
 static iree_status_t iree_tokenizer_encode_state_reset_internal(
     iree_tokenizer_encode_state_t* state, iree_tokenizer_encode_flags_t flags,
     iree_tokenizer_encode_state_reset_flags_t reset_flags) {
-  if (!state) return iree_ok_status();
+  if (!state) {
+    return iree_ok_status();
+  }
   const iree_tokenizer_t* tokenizer = state->tokenizer;
 
   // Deinitialize and re-initialize pipeline stage states.
@@ -1372,7 +1386,9 @@ static iree_status_t iree_tokenizer_encode_batch_feed_sequence(
     iree_status_t status = iree_tokenizer_encode_state_feed(
         state, text, sub_output, &bytes_consumed, &tokens_written);
     *total_tokens += tokens_written;
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     text.data += bytes_consumed;
     text.size -= bytes_consumed;
   }
@@ -1781,7 +1797,9 @@ iree_status_t iree_tokenizer_encode_state_initialize(
 
 void iree_tokenizer_encode_state_deinitialize(
     iree_tokenizer_encode_state_t* state) {
-  if (!state) return;
+  if (!state) {
+    return;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
   // Deinitialize stage states (does not free storage).
@@ -1804,8 +1822,12 @@ iree_status_t iree_tokenizer_encode_state_reset(
 // data (e.g., NFC combining sequences).
 static inline bool iree_tokenizer_encode_state_pipeline_has_content(
     const iree_tokenizer_encode_state_t* state) {
-  if (state->write_position > state->read_position) return true;
-  if (state->segment_count > 0) return true;
+  if (state->write_position > state->read_position) {
+    return true;
+  }
+  if (state->segment_count > 0) {
+    return true;
+  }
   if (state->normalizer_state &&
       iree_tokenizer_normalizer_state_has_pending(state->normalizer_state)) {
     return true;
@@ -1827,7 +1849,9 @@ bool iree_tokenizer_encode_state_has_pending(
           &state->special_token_match)) {
     return true;
   }
-  if (state->segment_count > state->segments_consumed) return true;
+  if (state->segment_count > state->segments_consumed) {
+    return true;
+  }
   if (state->write_position > state->segmenter_view_start) {
     return true;
   }
@@ -2060,7 +2084,9 @@ static iree_host_size_t iree_tokenizer_strip_lstrip_whitespace(
       iree_string_view_t tail =
           iree_make_string_view(input.data + start, safe - start);
       uint32_t codepoint = iree_unicode_utf8_decode(tail, &pos);
-      if (!iree_unicode_is_whitespace(codepoint)) break;
+      if (!iree_unicode_is_whitespace(codepoint)) {
+        break;
+      }
       safe = start;
     }
   }
@@ -2282,13 +2308,17 @@ iree_tokenizer_encode_state_match_post_norm_special_tokens(
 static bool iree_tokenizer_try_emit_pending_special_token(
     iree_tokenizer_encode_state_t* state, iree_tokenizer_token_output_t output,
     iree_host_size_t* total_tokens) {
-  if (state->pending_special_token < 0) return false;
+  if (state->pending_special_token < 0) {
+    return false;
+  }
 
   // Only emit when pipeline is flushed: no ring buffer content, no segments,
   // and no normalizer-buffered data (e.g., NFC combining sequences).
   bool pipeline_flushed =
       !iree_tokenizer_encode_state_pipeline_has_content(state);
-  if (!pipeline_flushed) return false;
+  if (!pipeline_flushed) {
+    return false;
+  }
 
   // Emit the deferred token.
   if (output.capacity > *total_tokens) {
@@ -2325,7 +2355,9 @@ static void iree_tokenizer_strip_trailing_whitespace_segments(
         break;
       }
     }
-    if (!all_whitespace) break;
+    if (!all_whitespace) {
+      break;
+    }
     // Remove this whitespace-only segment and don't consume those bytes.
     *bytes_consumed = last_segment->start;
     (*segments_produced)--;
@@ -2756,7 +2788,9 @@ static iree_status_t iree_tokenizer_encode_state_pump(
             iree_string_view_t remaining =
                 iree_make_string_view(chunk->data, chunk->size);
             uint32_t codepoint = iree_unicode_utf8_decode(remaining, &pos);
-            if (!iree_unicode_is_whitespace(codepoint)) break;
+            if (!iree_unicode_is_whitespace(codepoint)) {
+              break;
+            }
             chunk->data += pos;
             chunk->size -= pos;
           }
@@ -3496,7 +3530,9 @@ iree_status_t iree_tokenizer_decode_state_initialize(
 
 void iree_tokenizer_decode_state_deinitialize(
     iree_tokenizer_decode_state_t* state) {
-  if (!state) return;
+  if (!state) {
+    return;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_tokenizer_decoder_state_deinitialize(state->decoder_state);
@@ -3648,7 +3684,9 @@ static iree_host_size_t iree_tokenizer_decode_pre_decoded_first_token(
       ++start;
       --length;
     }
-    if (length > output_capacity) return i;  // Output full, token not consumed.
+    if (length > output_capacity) {
+      return i;  // Output full, token not consumed.
+    }
     memcpy(output, src_data + start, length);
     *out_bytes_written = length;
     return i + 1;
@@ -3664,10 +3702,14 @@ static iree_host_size_t iree_tokenizer_decode_flush_pending_as_replacement(
     iree_host_size_t position, iree_host_size_t output_capacity) {
   iree_host_size_t written = 0;
   while (state->byte_fallback_pending_count > 0) {
-    if (position + written + 3 > output_capacity) break;
+    if (position + written + 3 > output_capacity) {
+      break;
+    }
     int encoded_length = iree_unicode_utf8_encode(
         IREE_UNICODE_REPLACEMENT_CHAR, (char*)(output + position + written));
-    if (encoded_length <= 0) break;
+    if (encoded_length <= 0) {
+      break;
+    }
     written += (iree_host_size_t)encoded_length;
     // Shift pending bytes left.
     for (uint8_t j = 0; j < state->byte_fallback_pending_count - 1; ++j) {
@@ -3916,7 +3958,9 @@ iree_tokenizer_decode_state_feed_pre_decoded_with_byte_fallback(
         iree_host_size_t flushed =
             iree_tokenizer_decode_flush_pending_as_replacement(
                 state, output, total_written, output_capacity);
-        if (flushed == 0 && state->byte_fallback_pending_count > 0) break;
+        if (flushed == 0 && state->byte_fallback_pending_count > 0) {
+          break;
+        }
         total_written += flushed;
       }
 

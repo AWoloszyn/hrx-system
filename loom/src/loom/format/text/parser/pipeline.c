@@ -51,7 +51,9 @@ static iree_status_t loom_pipeline_token_location(
     loom_parser_t* parser, loom_token_t token,
     loom_location_id_t* out_location) {
   *out_location = LOOM_LOCATION_UNKNOWN;
-  if (parser->source_id == LOOM_SOURCE_ID_INVALID) return iree_ok_status();
+  if (parser->source_id == LOOM_SOURCE_ID_INVALID) {
+    return iree_ok_status();
+  }
   loom_location_entry_t entry = loom_location_file_range(
       parser->source_id, (uint16_t)token.line, (uint16_t)token.column,
       (uint16_t)token.line, (uint16_t)token.end_column);
@@ -112,7 +114,9 @@ static iree_status_t loom_parse_pipeline_attr_parens(
     loom_attribute_t value = {0};
     IREE_RETURN_IF_ERROR(
         loom_parse_generic_attr_value(parser, /*nesting_depth=*/1, &value));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
 
     stack_entries[count++] = (loom_pipeline_attr_entry_t){
         .attr =
@@ -124,7 +128,9 @@ static iree_status_t loom_parse_pipeline_attr_parens(
     };
   }
   LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_RPAREN, NULL);
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
 
   loom_named_attr_t* attrs = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -196,7 +202,9 @@ static iree_status_t loom_pipeline_set_string_attr(
 static iree_status_t loom_pipeline_set_dict_attr(
     loom_parser_t* parser, loom_op_t* op, const loom_op_vtable_t* vtable,
     iree_string_view_t attr_name, loom_named_attr_slice_t attrs) {
-  if (attrs.count == 0) return iree_ok_status();
+  if (attrs.count == 0) {
+    return iree_ok_status();
+  }
   loom_attribute_t canonical_attr = {0};
   IREE_RETURN_IF_ERROR(loom_module_make_canonical_attr_dict(
       parser->module, attrs, &canonical_attr));
@@ -257,7 +265,9 @@ static iree_status_t loom_pipeline_alloc_op(
   const uint32_t errors_before = parser->error_count;
   IREE_RETURN_IF_ERROR(
       loom_pipeline_lookup_op(parser, op_name, token, &kind, &vtable));
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
   if (loom_op_vtable_operand_descriptor_count(vtable) != 0 ||
       vtable->fixed_result_count != 0) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -379,10 +389,14 @@ static iree_status_t loom_parse_pipeline_statement(loom_parser_t* parser) {
     const loom_op_vtable_t* vtable = NULL;
     IREE_RETURN_IF_ERROR(loom_pipeline_alloc_op(
         parser, IREE_SV("pass.for"), start_token, location, &op, &vtable));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_pipeline_set_enum_attr(
         parser, op, vtable, IREE_SV("anchor"), anchor_token));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_pipeline_finalize_statement(
         parser, op, comments, comment_count, source_flags));
     return loom_parse_pipeline_nested_region(
@@ -397,13 +411,17 @@ static iree_status_t loom_parse_pipeline_statement(loom_parser_t* parser) {
         parser, IREE_SV("pass predicate"), &predicate_token));
     loom_named_attr_slice_t attrs = {0};
     IREE_RETURN_IF_ERROR(loom_parse_pipeline_attr_parens(parser, &attrs));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
 
     loom_op_t* op = NULL;
     const loom_op_vtable_t* vtable = NULL;
     IREE_RETURN_IF_ERROR(loom_pipeline_alloc_op(
         parser, IREE_SV("pass.where"), start_token, location, &op, &vtable));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_pipeline_set_string_attr(
         parser, op, vtable, IREE_SV("predicate"), predicate_token));
     IREE_RETURN_IF_ERROR(loom_pipeline_set_dict_attr(parser, op, vtable,
@@ -422,18 +440,24 @@ static iree_status_t loom_parse_pipeline_statement(loom_parser_t* parser) {
         loom_parse_pipeline_name(parser, IREE_SV("repeat mode"), &mode_token));
     loom_named_attr_slice_t attrs = {0};
     IREE_RETURN_IF_ERROR(loom_parse_pipeline_attr_parens(parser, &attrs));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
 
     loom_op_t* op = NULL;
     const loom_op_vtable_t* vtable = NULL;
     IREE_RETURN_IF_ERROR(loom_pipeline_alloc_op(
         parser, IREE_SV("pass.repeat"), start_token, location, &op, &vtable));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_pipeline_set_enum_attr(
         parser, op, vtable, IREE_SV("mode"), mode_token));
     IREE_RETURN_IF_ERROR(loom_parse_pipeline_repeat_options(parser, start_token,
                                                             attrs, op, vtable));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_pipeline_finalize_statement(
         parser, op, comments, comment_count, source_flags));
     return loom_parse_pipeline_nested_region(
@@ -450,14 +474,18 @@ static iree_status_t loom_parse_pipeline_statement(loom_parser_t* parser) {
       IREE_RETURN_IF_ERROR(loom_parser_emit_unexpected_token(
           parser, condition_token, IREE_SV("'changed'")));
     }
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
 
     loom_op_t* op = NULL;
     const loom_op_vtable_t* vtable = NULL;
     IREE_RETURN_IF_ERROR(
         loom_pipeline_alloc_op(parser, IREE_SV("pass.if_changed"), start_token,
                                location, &op, &vtable));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_pipeline_finalize_statement(
         parser, op, comments, comment_count, source_flags));
     return loom_parse_pipeline_nested_region(
@@ -469,13 +497,17 @@ static iree_status_t loom_parse_pipeline_statement(loom_parser_t* parser) {
     loom_tokenizer_next(&parser->tokenizer);
     loom_attribute_t callee_attr = {0};
     IREE_RETURN_IF_ERROR(loom_parse_symbol_ref_attr(parser, &callee_attr));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
 
     loom_op_t* op = NULL;
     const loom_op_vtable_t* vtable = NULL;
     IREE_RETURN_IF_ERROR(loom_pipeline_alloc_op(
         parser, IREE_SV("pass.call"), start_token, location, &op, &vtable));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_pipeline_set_symbol_attr(
         op, vtable, IREE_SV("callee"), callee_attr));
     return loom_pipeline_finalize_statement(parser, op, comments, comment_count,
@@ -496,7 +528,9 @@ static iree_status_t loom_parse_pipeline_statement(loom_parser_t* parser) {
     const loom_op_vtable_t* vtable = NULL;
     IREE_RETURN_IF_ERROR(loom_pipeline_alloc_op(parser, op_name, start_token,
                                                 location, &op, &vtable));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_pipeline_set_string_attr(
         parser, op, vtable, IREE_SV("message"), message_token));
     return loom_pipeline_finalize_statement(parser, op, comments, comment_count,
@@ -508,13 +542,17 @@ static iree_status_t loom_parse_pipeline_statement(loom_parser_t* parser) {
       loom_parse_pipeline_name(parser, IREE_SV("pass name"), &key_token));
   loom_named_attr_slice_t options = {0};
   IREE_RETURN_IF_ERROR(loom_parse_pipeline_attr_parens(parser, &options));
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
 
   loom_op_t* op = NULL;
   const loom_op_vtable_t* vtable = NULL;
   IREE_RETURN_IF_ERROR(loom_pipeline_alloc_op(
       parser, IREE_SV("pass.run"), start_token, location, &op, &vtable));
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_pipeline_set_string_attr(
       parser, op, vtable, IREE_SV("key"), key_token));
   IREE_RETURN_IF_ERROR(loom_pipeline_set_dict_attr(
@@ -535,7 +573,9 @@ static iree_status_t loom_parse_pipeline_region_contents(
   const uint32_t block_errors_before = parser->error_count;
   while (!loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_RBRACE) &&
          !loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_EOF)) {
-    if (loom_parser_at_error_limit(parser)) break;
+    if (loom_parser_at_error_limit(parser)) {
+      break;
+    }
 
     if (loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_BLOCK_LABEL)) {
       loom_token_t label_token = loom_tokenizer_next(&parser->tokenizer);
@@ -604,7 +644,9 @@ iree_status_t loom_parse_pipeline_prefixed_region(
   loom_builder_restore(&parser->builder, saved_ip);
   loom_parser_scope_pop(parser);
   IREE_RETURN_IF_ERROR(status);
-  if (parser->error_count > errors_before) return iree_ok_status();
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
 
   *out_region = region;
   return iree_ok_status();

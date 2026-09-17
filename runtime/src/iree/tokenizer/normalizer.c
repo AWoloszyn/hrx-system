@@ -19,6 +19,8 @@ void iree_tokenizer_normalizer_initialize(
 }
 
 void iree_tokenizer_normalizer_free(iree_tokenizer_normalizer_t* normalizer) {
-  if (!normalizer) return;
+  if (!normalizer) {
+    return;
+  }
   normalizer->vtable->destroy(normalizer);
 }

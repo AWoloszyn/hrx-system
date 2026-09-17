@@ -29,7 +29,9 @@ bool iree_hal_platform_try_query_numa_distance_impl(uint8_t node_a,
                                                     uint8_t node_b,
                                                     uint8_t* out_distance) {
   IREE_ASSERT_ARGUMENT(out_distance);
-  if (node_a != 0 || node_b != 0) return false;
+  if (node_a != 0 || node_b != 0) {
+    return false;
+  }
   *out_distance = 10;
   return true;
 }

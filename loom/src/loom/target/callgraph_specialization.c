@@ -240,7 +240,9 @@ static iree_status_t loom_target_callgraph_initialize_state(
   state->source_symbol_count = state->module->symbols.count;
   state->plan_valid = true;
   loom_symbol_fact_table_initialize(&state->fact_table, state->pass->arena);
-  if (state->source_symbol_count == 0) return iree_ok_status();
+  if (state->source_symbol_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       state->pass->arena, state->source_symbol_count, sizeof(*state->symbols),
@@ -271,7 +273,9 @@ static iree_status_t loom_target_callgraph_prepare_symbol(
                             (unsigned)symbol_id);
   }
   loom_target_callgraph_symbol_t* info = &state->symbols[symbol_id];
-  if (info->initialized) return iree_ok_status();
+  if (info->initialized) {
+    return iree_ok_status();
+  }
 
   loom_symbol_t* symbol = &state->module->symbols.entries[symbol_id];
   info->function = loom_func_like_cast(state->module, symbol->defining_op);
@@ -361,7 +365,9 @@ static iree_status_t loom_target_callgraph_get_root_context(
     loom_target_callgraph_context_t** out_context) {
   *out_context = loom_target_callgraph_find_root_context(state, resolved_target,
                                                          requirement);
-  if (*out_context != NULL) return iree_ok_status();
+  if (*out_context != NULL) {
+    return iree_ok_status();
+  }
 
   loom_target_callgraph_context_t* context = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate(state->pass->arena, sizeof(*context),
@@ -386,7 +392,9 @@ static bool loom_target_callgraph_context_contains_requirement(
     const loom_target_facts_t* requirement) {
   for (const loom_target_callgraph_context_t* current = context;
        current != NULL; current = current->parent) {
-    if (current->applied_requirement == requirement) return true;
+    if (current->applied_requirement == requirement) {
+      return true;
+    }
   }
   return false;
 }
@@ -417,7 +425,9 @@ loom_target_callgraph_find_derived_context(
   }
   for (loom_target_callgraph_context_t* child = parent->first_child;
        child != NULL; child = child->next_sibling) {
-    if (child->applied_requirement == requirement) return child;
+    if (child->applied_requirement == requirement) {
+      return child;
+    }
   }
   return NULL;
 }
@@ -467,7 +477,9 @@ static iree_status_t loom_target_callgraph_derive_context(
     loom_target_callgraph_context_t** out_context) {
   *out_context =
       loom_target_callgraph_find_derived_context(state, parent, callee);
-  if (*out_context != NULL) return iree_ok_status();
+  if (*out_context != NULL) {
+    return iree_ok_status();
+  }
 
   if (!loom_target_facts_satisfy_specialization_requirement(
           parent->resolved_target.facts, callee->authored_target_requirement)) {
@@ -613,7 +625,9 @@ static iree_status_t loom_target_callgraph_seed_versions(
     const loom_symbol_id_t symbol_id = (loom_symbol_id_t)i;
     loom_target_function_version_t* version = loom_target_function_version_cast(
         loom_target_function_version_snapshot_handle_at(&snapshot, symbol_id));
-    if (version == NULL) continue;
+    if (version == NULL) {
+      continue;
+    }
     const iree_host_size_t next_target_context_ordinal =
         (iree_host_size_t)version->target_context_ordinal + 1;
     if (next_target_context_ordinal > state->next_target_context_ordinal) {
@@ -630,7 +644,9 @@ static iree_status_t loom_target_callgraph_seed_versions(
     IREE_RETURN_IF_ERROR(loom_target_callgraph_append_row(
         state, symbol_id, context, version, /*artifact_root=*/true,
         /*demanding_call=*/NULL, &row_id));
-    if (!state->plan_valid) return iree_ok_status();
+    if (!state->plan_valid) {
+      return iree_ok_status();
+    }
   }
   return iree_ok_status();
 }
@@ -671,7 +687,9 @@ static iree_status_t loom_target_callgraph_seed_authored_roots(
   for (loom_symbol_id_t symbol_id = 0; symbol_id < state->source_symbol_count;
        ++symbol_id) {
     loom_target_callgraph_symbol_t* info = &state->symbols[symbol_id];
-    if (info->first_row_id != LOOM_TARGET_CALLGRAPH_ROW_ID_INVALID) continue;
+    if (info->first_row_id != LOOM_TARGET_CALLGRAPH_ROW_ID_INVALID) {
+      continue;
+    }
     const loom_symbol_t* symbol = &state->module->symbols.entries[symbol_id];
     if (!loom_func_like_isa(
             loom_func_like_cast(state->module, symbol->defining_op))) {
@@ -698,7 +716,9 @@ static iree_status_t loom_target_callgraph_seed_authored_roots(
     // A public entry remains open when its target provider is unavailable in a
     // source-only pipeline. It still protects its private dependencies.
     if (provider == NULL) {
-      if (!info->externally_visible) continue;
+      if (!info->externally_visible) {
+        continue;
+      }
       loom_target_callgraph_row_id_t row_id =
           LOOM_TARGET_CALLGRAPH_ROW_ID_INVALID;
       IREE_RETURN_IF_ERROR(loom_target_callgraph_append_row(
@@ -735,7 +755,9 @@ static iree_status_t loom_target_callgraph_seed_authored_roots(
     IREE_RETURN_IF_ERROR(loom_target_callgraph_append_row(
         state, symbol_id, context, /*existing_version=*/NULL,
         /*artifact_root=*/true, /*demanding_call=*/NULL, &row_id));
-    if (!state->plan_valid) return iree_ok_status();
+    if (!state->plan_valid) {
+      return iree_ok_status();
+    }
   }
   return iree_ok_status();
 }
@@ -783,7 +805,9 @@ static iree_status_t loom_target_callgraph_plan_reachable_rows(
       IREE_RETURN_IF_ERROR(loom_target_callgraph_derive_context(
           state, caller_context, callee_symbol_id,
           &state->symbols[callee_symbol_id], edge->user_op, &callee_context));
-      if (!state->plan_valid) continue;
+      if (!state->plan_valid) {
+        continue;
+      }
       if (loom_target_callgraph_find_row(state, callee_symbol_id,
                                          callee_context) !=
           LOOM_TARGET_CALLGRAPH_ROW_ID_INVALID) {
@@ -1011,7 +1035,9 @@ static iree_status_t loom_target_callgraph_materialize_clones(
   for (loom_target_callgraph_row_id_t row_id = 0; row_id < state->row_count;
        ++row_id) {
     loom_target_callgraph_row_t* row = &state->rows[row_id];
-    if (!row->clone_required) continue;
+    if (!row->clone_required) {
+      continue;
+    }
     loom_target_callgraph_symbol_t* info =
         &state->symbols[row->source_symbol_id];
     loom_string_id_t concrete_name_id = LOOM_STRING_ID_INVALID;
@@ -1115,7 +1141,9 @@ static iree_status_t loom_target_callgraph_retarget_calls(
   for (loom_target_callgraph_row_id_t row_id = 0;
        iree_status_is_ok(status) && row_id < state->row_count; ++row_id) {
     // Unknown reachability keeps original definitions and references intact.
-    if (state->rows[row_id].context->resolved_target.facts == NULL) continue;
+    if (state->rows[row_id].context->resolved_target.facts == NULL) {
+      continue;
+    }
     loom_target_callgraph_retarget_walk_t walk = {
         .state = state,
         .caller_row_id = row_id,
@@ -1138,7 +1166,9 @@ static iree_status_t loom_target_callgraph_publish_versions(
        ++row_id) {
     loom_target_function_version_t* version =
         state->rows[row_id].pending_version;
-    if (version == NULL) continue;
+    if (version == NULL) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_function_version_owner_append(
         state->version_owner, &version->base));
     ++state->statistics->versions_created;
@@ -1171,17 +1201,27 @@ iree_status_t loom_target_callgraph_specialization_run(loom_pass_t* pass,
                               LOOM_TARGET_CONTEXT_ORDINAL_INVALID},
   };
   IREE_RETURN_IF_ERROR(loom_target_callgraph_initialize_state(&state));
-  if (state.source_symbol_count == 0) return iree_ok_status();
+  if (state.source_symbol_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_symbol_reference_table_build(module, pass->arena,
                                                          &state.references));
   IREE_RETURN_IF_ERROR(loom_target_callgraph_seed_versions(&state));
   IREE_RETURN_IF_ERROR(loom_target_callgraph_seed_authored_roots(&state));
-  if (state.root_contexts == NULL) return iree_ok_status();
-  if (!state.plan_valid) return iree_ok_status();
+  if (state.root_contexts == NULL) {
+    return iree_ok_status();
+  }
+  if (!state.plan_valid) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_target_callgraph_plan_reachable_rows(&state));
-  if (!state.plan_valid) return iree_ok_status();
+  if (!state.plan_valid) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_target_callgraph_prepare_materializations(&state));
-  if (!state.plan_valid) return iree_ok_status();
+  if (!state.plan_valid) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_target_callgraph_materialize_clones(&state));
   IREE_RETURN_IF_ERROR(loom_target_callgraph_retarget_calls(&state));

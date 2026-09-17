@@ -90,11 +90,21 @@ static void iree_tokenizer_decoder_byte_fallback_state_deinitialize(
 bool iree_tokenizer_decoder_byte_fallback_parse_byte_token(
     iree_string_view_t token, uint8_t* out_byte) {
   // Pattern: `<0xHH>` where H is hex digit. Exactly 6 characters.
-  if (token.size != 6) return false;
-  if (token.data[0] != '<') return false;
-  if (token.data[1] != '0') return false;
-  if (token.data[2] != 'x' && token.data[2] != 'X') return false;
-  if (token.data[5] != '>') return false;
+  if (token.size != 6) {
+    return false;
+  }
+  if (token.data[0] != '<') {
+    return false;
+  }
+  if (token.data[1] != '0') {
+    return false;
+  }
+  if (token.data[2] != 'x' && token.data[2] != 'X') {
+    return false;
+  }
+  if (token.data[5] != '>') {
+    return false;
+  }
 
   // Extract the two hex digits and parse.
   iree_string_view_t hex_digits = iree_make_string_view(&token.data[3], 2);
@@ -102,7 +112,9 @@ bool iree_tokenizer_decoder_byte_fallback_parse_byte_token(
   if (!iree_string_view_atoi_uint32_base(hex_digits, 16, &value)) {
     return false;
   }
-  if (value > 255) return false;
+  if (value > 255) {
+    return false;
+  }
 
   *out_byte = (uint8_t)value;
   return true;
@@ -126,7 +138,9 @@ iree_tokenizer_decoder_byte_fallback_flush_as_replacement(
     // Encode U+FFFD replacement character.
     int encoded_length = iree_unicode_utf8_encode(
         IREE_UNICODE_REPLACEMENT_CHAR, output.data + position + written);
-    if (encoded_length <= 0) break;  // Should not happen.
+    if (encoded_length <= 0) {
+      break;  // Should not happen.
+    }
     written += (iree_host_size_t)encoded_length;
 
     // Shift pending bytes left.
@@ -248,7 +262,9 @@ static iree_status_t iree_tokenizer_decoder_byte_fallback_state_process(
         // No pending - start new sequence.
         int result = iree_tokenizer_decoder_byte_fallback_start_sequence(
             state, byte_value, output, &bytes_written);
-        if (result < 0) break;  // No buffer space.
+        if (result < 0) {
+          break;  // No buffer space.
+        }
         strings_consumed++;
         continue;
       }
@@ -259,11 +275,15 @@ static iree_status_t iree_tokenizer_decoder_byte_fallback_state_process(
         bytes_written +=
             iree_tokenizer_decoder_byte_fallback_flush_as_replacement(
                 state, output, bytes_written);
-        if (state->pending_count > 0) break;  // Partial flush, stop here.
+        if (state->pending_count > 0) {
+          break;  // Partial flush, stop here.
+        }
 
         int result = iree_tokenizer_decoder_byte_fallback_start_sequence(
             state, byte_value, output, &bytes_written);
-        if (result < 0) break;
+        if (result < 0) {
+          break;
+        }
         strings_consumed++;
         continue;
       }
@@ -303,10 +323,14 @@ static iree_status_t iree_tokenizer_decoder_byte_fallback_state_process(
         bytes_written +=
             iree_tokenizer_decoder_byte_fallback_flush_as_replacement(
                 state, output, bytes_written);
-        if (state->pending_count > 0) break;  // Partial flush, retry later.
+        if (state->pending_count > 0) {
+          break;  // Partial flush, retry later.
+        }
         int result = iree_tokenizer_decoder_byte_fallback_start_sequence(
             state, byte_value, output, &bytes_written);
-        if (result < 0) break;  // No buffer space.
+        if (result < 0) {
+          break;  // No buffer space.
+        }
       }
 
       strings_consumed++;
@@ -315,7 +339,9 @@ static iree_status_t iree_tokenizer_decoder_byte_fallback_state_process(
       if (state->pending_count > 0) {
         iree_host_size_t replacement_size =
             state->pending_count * kReplacementLength;
-        if (bytes_written + replacement_size > output.size) break;
+        if (bytes_written + replacement_size > output.size) {
+          break;
+        }
         bytes_written +=
             iree_tokenizer_decoder_byte_fallback_flush_as_replacement(
                 state, output, bytes_written);

@@ -291,7 +291,9 @@ static iree_status_t loom_parser_verify_symbols_resolved(
     loom_parser_symbol_origin_t origin = parser->symbol_origins.entries[i];
     const loom_symbol_t* symbol =
         &parser->module->symbols.entries[origin.symbol_id];
-    if (symbol->definition && symbol->defining_op) continue;
+    if (symbol->definition && symbol->defining_op) {
+      continue;
+    }
 
     bool has_reference = false;
     bool has_availability = false;
@@ -329,7 +331,9 @@ static bool loom_parser_type_is_known(loom_type_t type) {
 static bool loom_parser_resolve_operand_segment_value(
     const loom_parsed_op_t* parsed, uint8_t field_index,
     loom_value_id_t* out_value_id) {
-  if (field_index >= parsed->operand_segment_count) return false;
+  if (field_index >= parsed->operand_segment_count) {
+    return false;
+  }
   uint32_t start = 0;
   for (uint8_t i = 0; i < field_index; ++i) {
     start += parsed->operand_segment_counts[i];
@@ -1209,7 +1213,9 @@ static iree_status_t loom_text_parse_impl(
               .pop_at = UINT16_MAX,
           },
   };
-  if (options) parser.low_asm_environment = options->low_asm_environment;
+  if (options) {
+    parser.low_asm_environment = options->low_asm_environment;
+  }
   if (parser.max_errors == 0) {
     parser.max_errors = 20;
   }

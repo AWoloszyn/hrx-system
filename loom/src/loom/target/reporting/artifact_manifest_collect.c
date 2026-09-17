@@ -80,7 +80,9 @@ static iree_status_t loom_target_artifact_manifest_allocate_array(
     iree_arena_allocator_t* arena, iree_host_size_t count,
     iree_host_size_t element_size, void** out_values) {
   *out_values = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate_array(arena, count, element_size, out_values));
   memset(*out_values, 0, count * element_size);
@@ -117,7 +119,9 @@ static iree_status_t loom_target_artifact_manifest_try_u32_attr(
   *out_value = 0;
   const loom_attribute_t* attr =
       loom_target_artifact_manifest_find_named_attr(module, attrs, name);
-  if (attr == NULL) return iree_ok_status();
+  if (attr == NULL) {
+    return iree_ok_status();
+  }
   if (attr->kind != LOOM_ATTR_I64) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "artifact manifest ABI layout field '%.*s' has "
@@ -140,7 +144,9 @@ static iree_status_t loom_target_artifact_manifest_collect_parameters(
     const loom_module_t* module, const loom_value_id_t* argument_ids,
     uint16_t argument_count, iree_arena_allocator_t* arena,
     loom_target_artifact_manifest_interface_t* out_interface) {
-  if (argument_count == 0) return iree_ok_status();
+  if (argument_count == 0) {
+    return iree_ok_status();
+  }
   loom_target_artifact_manifest_parameter_t* parameters = NULL;
   IREE_RETURN_IF_ERROR(loom_target_artifact_manifest_allocate_array(
       arena, argument_count, sizeof(*parameters), (void**)&parameters));
@@ -265,7 +271,9 @@ static iree_status_t loom_target_artifact_manifest_collect_low_resources(
     loom_target_artifact_manifest_interface_t* out_interface) {
   loom_region_t* body =
       loom_func_like_body(loom_func_like_const_cast(module, function_op));
-  if (body == NULL) return iree_ok_status();
+  if (body == NULL) {
+    return iree_ok_status();
+  }
 
   uint32_t resource_count = 0;
   for (uint16_t block_index = 0; block_index < body->block_count;
@@ -321,7 +329,9 @@ static iree_status_t loom_target_artifact_manifest_collect_low_resources(
   }
 
   for (uint32_t i = 0; i < resource_count; ++i) {
-    if (seen_bindings[i]) continue;
+    if (seen_bindings[i]) {
+      continue;
+    }
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "artifact manifest cannot report a dense binding count for missing "
@@ -534,7 +544,9 @@ static iree_status_t loom_target_artifact_manifest_collect_targets(
   *out_targets = NULL;
   *out_target_count = 0;
   *out_target_name_refs = NULL;
-  if (entries.count == 0) return iree_ok_status();
+  if (entries.count == 0) {
+    return iree_ok_status();
+  }
 
   loom_target_artifact_manifest_target_t* targets = NULL;
   IREE_RETURN_IF_ERROR(loom_target_artifact_manifest_allocate_array(
@@ -646,7 +658,9 @@ static iree_status_t loom_target_artifact_manifest_mark_function_closure(
     loom_target_entry_list_t entries,
     const loom_symbol_reference_table_t* reference_table,
     iree_arena_allocator_t* arena, uint8_t* function_marks) {
-  if (reference_table->symbol_count == 0) return iree_ok_status();
+  if (reference_table->symbol_count == 0) {
+    return iree_ok_status();
+  }
   loom_symbol_id_t* stack = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, reference_table->symbol_count, sizeof(*stack), (void**)&stack));
@@ -714,7 +728,9 @@ static iree_status_t loom_target_artifact_manifest_mark_used_globals(
 
   iree_host_size_t global_count = 0;
   for (iree_host_size_t i = 0; i < reference_table->symbol_count; ++i) {
-    if (!function_marks[i]) continue;
+    if (!function_marks[i]) {
+      continue;
+    }
     loom_symbol_reference_occurrence_id_t edge_id =
         reference_table->symbols[i].first_outgoing_occurrence_id;
     while (edge_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
@@ -763,7 +779,9 @@ static iree_status_t loom_target_artifact_manifest_collect_globals(
   iree_host_size_t global_count = 0;
   IREE_RETURN_IF_ERROR(loom_target_artifact_manifest_mark_used_globals(
       entries, reference_table, arena, global_marks, &global_count));
-  if (global_count == 0) return iree_ok_status();
+  if (global_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_target_artifact_manifest_global_t* globals = NULL;
   IREE_RETURN_IF_ERROR(loom_target_artifact_manifest_allocate_array(
@@ -775,8 +793,12 @@ static iree_status_t loom_target_artifact_manifest_collect_globals(
   loom_block_for_each_op(module_block, op) {
     const loom_symbol_id_t symbol_id =
         loom_op_defining_symbol_id(module, op, loom_op_vtable(module, op));
-    if (symbol_id == LOOM_SYMBOL_ID_INVALID) continue;
-    if (!global_marks[symbol_id]) continue;
+    if (symbol_id == LOOM_SYMBOL_ID_INVALID) {
+      continue;
+    }
+    if (!global_marks[symbol_id]) {
+      continue;
+    }
     const iree_string_view_t name = loom_target_artifact_manifest_module_string(
         module, module->symbols.entries[symbol_id].name_id);
     globals[global_index++] = (loom_target_artifact_manifest_global_t){

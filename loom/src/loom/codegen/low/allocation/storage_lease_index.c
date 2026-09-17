@@ -163,7 +163,9 @@ iree_status_t loom_low_allocation_storage_lease_unit_index_initialize(
       .instances = instances,
       .unit_roots = {UINT32_MAX, UINT32_MAX},
   };
-  if (lease_unit_capacity == 0) return iree_ok_status();
+  if (lease_unit_capacity == 0) {
+    return iree_ok_status();
+  }
   if (lease_count > UINT32_MAX || lease_unit_capacity > UINT32_MAX / 3u) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "allocation storage lease index exceeds u32 range");
@@ -246,7 +248,9 @@ iree_status_t loom_low_allocation_storage_lease_selection_initialize(
   *out_selection = (loom_low_allocation_storage_lease_selection_t){
       .index = index,
   };
-  if (index == NULL || index->node_count == 0) return iree_ok_status();
+  if (index == NULL || index->node_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, index->node_count, sizeof(*out_selection->subtree_counts),
       (void**)&out_selection->subtree_counts));
@@ -318,7 +322,9 @@ bool loom_low_allocation_storage_lease_unit_query_next(
       const bool selected_match =
           query->selection != NULL &&
           query->selection->subtree_counts[node_index] != 0;
-      if (!temporal_match && !selected_match) continue;
+      if (!temporal_match && !selected_match) {
+        continue;
+      }
       if (node->level == 0) {
         *out_storage_lease_index = node->data.lease.index;
         return true;
@@ -326,7 +332,9 @@ bool loom_low_allocation_storage_lease_unit_query_next(
       query->stack[query->stack_count++] = node->data.children[0];
       query->stack[query->stack_count++] = node->data.children[1];
     }
-    if (query->next_unit_offset == query->location_count) return false;
+    if (query->next_unit_offset == query->location_count) {
+      return false;
+    }
     query->active_location = query->location_base + query->next_unit_offset++;
     const uint64_t key =
         ((uint64_t)query->storage_key << 32) | query->active_location;

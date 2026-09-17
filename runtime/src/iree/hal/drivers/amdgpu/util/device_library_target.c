@@ -23,7 +23,9 @@ static const iree_hal_amdgpu_device_library_target_variant_t
 
 bool iree_hal_amdgpu_device_library_target_matches_file_arch(
     iree_string_view_t file_arch, iree_string_view_t target) {
-  if (iree_string_view_is_empty(target)) return false;
+  if (iree_string_view_is_empty(target)) {
+    return false;
+  }
   if (!iree_string_view_starts_with(file_arch, target)) {
     return false;
   }
@@ -37,7 +39,9 @@ static iree_status_t
 iree_hal_amdgpu_device_library_target_append_unique_candidate(
     iree_string_view_t target,
     iree_hal_amdgpu_device_library_target_candidate_list_t* candidates) {
-  if (iree_string_view_is_empty(target)) return iree_ok_status();
+  if (iree_string_view_is_empty(target)) {
+    return iree_ok_status();
+  }
   for (iree_host_size_t i = 0; i < candidates->count; ++i) {
     if (iree_string_view_equal(target, candidates->values[i].value)) {
       return iree_ok_status();

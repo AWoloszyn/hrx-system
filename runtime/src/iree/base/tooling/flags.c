@@ -326,7 +326,9 @@ static void iree_flag_print(FILE* file, iree_flag_t* flag) {
     return;
   }
   fprintf(file, "--%.*s", (int)flag->name.size, flag->name.data);
-  if (flag->storage == NULL) return;
+  if (flag->storage == NULL) {
+    return;
+  }
   switch (flag->type) {
     case IREE_FLAG_TYPE_bool:
       fprintf(file, "=%s", (*(bool*)flag->storage) ? "true" : "false");
@@ -549,7 +551,9 @@ void iree_flags_parse_checked(iree_flags_parse_mode_t mode, int* argc,
   }
   iree_status_t status = iree_flags_parse(mode, argc, argv);
   IREE_TRACE_ZONE_END(z0);
-  if (iree_status_is_ok(status)) return;
+  if (iree_status_is_ok(status)) {
+    return;
+  }
 
   fprintf(stderr, "\x1b[31mFLAGS ERROR: (╯°□°)╯︵👻\x1b[0m\n");
   iree_status_fprint(stderr, status);
@@ -594,7 +598,9 @@ static iree_status_t iree_flags_parse_file(iree_string_view_t file_path) {
 
     // Strip whitespace.
     line = iree_string_view_trim(line);
-    if (iree_string_view_is_empty(line)) continue;
+    if (iree_string_view_is_empty(line)) {
+      continue;
+    }
 
     // Ignore comments.
     if (iree_string_view_starts_with(line, iree_make_cstring_view("#")) ||

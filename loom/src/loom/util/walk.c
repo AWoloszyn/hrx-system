@@ -45,7 +45,9 @@ static iree_status_t loom_walk_stack_reserve(loom_walk_stack_t* stack,
                                              iree_arena_allocator_t* arena,
                                              iree_host_size_t additional) {
   iree_host_size_t required = stack->count + additional;
-  if (required <= stack->capacity) return iree_ok_status();
+  if (required <= stack->capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(arena, stack->count, required,
                                sizeof(loom_walk_frame_t), &stack->capacity,
                                (void**)&stack->frames);
@@ -74,7 +76,9 @@ static iree_host_size_t loom_walk_total_block_count(const loom_op_t* op) {
   iree_host_size_t total = 0;
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t r = 0; r < op->region_count; ++r) {
-    if (regions[r]) total += regions[r]->block_count;
+    if (regions[r]) {
+      total += regions[r]->block_count;
+    }
   }
   return total;
 }
@@ -94,7 +98,9 @@ static void loom_walk_push_region_frames(loom_walk_stack_t* stack,
   // is on top of the stack and processed first.
   for (int32_t r = (int32_t)op->region_count - 1; r >= 0; --r) {
     loom_region_t* region = regions[r];
-    if (!region || region->block_count == 0) continue;
+    if (!region || region->block_count == 0) {
+      continue;
+    }
     if (region->block_count == 1) {
       loom_walk_stack_push(stack, loom_region_entry_block(region), region,
                            (loom_op_t*)op, child_depth);
@@ -121,7 +127,9 @@ iree_status_t loom_walk_region(const loom_module_t* module,
                                iree_arena_allocator_t* arena,
                                loom_walk_result_t* out_result) {
   *out_result = LOOM_WALK_CONTINUE;
-  if (!region || region->block_count == 0) return iree_ok_status();
+  if (!region || region->block_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_walk_stack_t stack;
   IREE_RETURN_IF_ERROR(loom_walk_stack_initialize(arena, &stack));
@@ -174,7 +182,9 @@ iree_status_t loom_walk_region(const loom_module_t* module,
 
     loom_op_t* op = frame->next_op;
     frame->next_op = op->next_op;
-    if (op->flags & LOOM_OP_FLAG_DEAD) continue;
+    if (op->flags & LOOM_OP_FLAG_DEAD) {
+      continue;
+    }
 
     loom_walk_context_t context = {
         .block = frame->block,
@@ -239,10 +249,14 @@ iree_status_t loom_walk_function(const loom_module_t* module,
   *out_result = LOOM_WALK_CONTINUE;
   for (uint8_t i = 0; i < loom_func_like_region_count(function); ++i) {
     loom_region_t* region = loom_func_like_region(function, i);
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(
         loom_walk_region(module, region, order, callback, arena, out_result));
-    if (*out_result == LOOM_WALK_ABORT) break;
+    if (*out_result == LOOM_WALK_ABORT) {
+      break;
+    }
   }
   return iree_ok_status();
 }

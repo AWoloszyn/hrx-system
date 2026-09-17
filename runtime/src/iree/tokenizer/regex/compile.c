@@ -19,7 +19,9 @@
 // Used to propagate the global CASE_INSENSITIVE flag to all nodes.
 static void iree_tokenizer_regex_ast_propagate_case_insensitive(
     iree_tokenizer_regex_ast_node_t* node) {
-  if (!node) return;
+  if (!node) {
+    return;
+  }
   node->case_insensitive = true;
 
   switch (node->type) {

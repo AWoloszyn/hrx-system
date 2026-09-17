@@ -38,7 +38,9 @@ static iree_status_t hrx_mem_pool_parse_range_length_env(
   *out_length = 0;
 
   const char* value = getenv(name);
-  if (!value || !value[0]) return iree_ok_status();
+  if (!value || !value[0]) {
+    return iree_ok_status();
+  }
 
   char* end = NULL;
   unsigned long long parsed = strtoull(value, &end, 10);
@@ -154,7 +156,9 @@ static bool hrx_mem_pool_uses_virtual_memory_slabs(
 }
 
 static iree_status_t hrx_mem_pool_ensure_hal_pools_locked(hrx_mem_pool_t pool) {
-  if (pool->hal_pool && pool->oversized_hal_pool) return iree_ok_status();
+  if (pool->hal_pool && pool->oversized_hal_pool) {
+    return iree_ok_status();
+  }
   IREE_ASSERT(!pool->hal_pool);
   IREE_ASSERT(!pool->oversized_hal_pool);
 
@@ -204,7 +208,9 @@ static iree_status_t hrx_mem_pool_ensure_hal_pools_locked(hrx_mem_pool_t pool) {
       options, slab_provider, backend.notification, backend.epoch_query,
       iree_allocator_system(), &hal_pool);
   if (!iree_status_is_ok(status)) {
-    if (owns_slab_provider) iree_hal_slab_provider_release(slab_provider);
+    if (owns_slab_provider) {
+      iree_hal_slab_provider_release(slab_provider);
+    }
     return status;
   }
 
@@ -218,10 +224,14 @@ static iree_status_t hrx_mem_pool_ensure_hal_pools_locked(hrx_mem_pool_t pool) {
       iree_allocator_system(), &oversized_hal_pool);
   if (!iree_status_is_ok(status)) {
     iree_hal_pool_release(hal_pool);
-    if (owns_slab_provider) iree_hal_slab_provider_release(slab_provider);
+    if (owns_slab_provider) {
+      iree_hal_slab_provider_release(slab_provider);
+    }
     return status;
   }
-  if (owns_slab_provider) iree_hal_slab_provider_release(slab_provider);
+  if (owns_slab_provider) {
+    iree_hal_slab_provider_release(slab_provider);
+  }
 
   pool->hal_pool = hal_pool;
   pool->oversized_hal_pool = oversized_hal_pool;
@@ -445,7 +455,9 @@ hrx_status_t hrx_mem_pool_release_unused(hrx_mem_pool_t pool) {
 }
 
 void hrx_mem_pool_record_logical_allocation(hrx_mem_pool_t pool, size_t size) {
-  if (!pool || size == 0) return;
+  if (!pool || size == 0) {
+    return;
+  }
 
   iree_slim_mutex_lock(&pool->mutex);
   if (size >= UINT64_MAX - pool->used_mem_current) {
@@ -458,7 +470,9 @@ void hrx_mem_pool_record_logical_allocation(hrx_mem_pool_t pool, size_t size) {
 }
 
 void hrx_mem_pool_record_logical_free(hrx_mem_pool_t pool, size_t size) {
-  if (!pool || size == 0) return;
+  if (!pool || size == 0) {
+    return;
+  }
 
   iree_slim_mutex_lock(&pool->mutex);
   IREE_ASSERT(pool->used_mem_current >= size);
@@ -467,7 +481,9 @@ void hrx_mem_pool_record_logical_free(hrx_mem_pool_t pool, size_t size) {
 }
 
 void hrx_mem_pool_release_allocation_budget(hrx_mem_pool_t pool, size_t size) {
-  if (!pool || size == 0) return;
+  if (!pool || size == 0) {
+    return;
+  }
 
   iree_slim_mutex_lock(&pool->mutex);
   IREE_ASSERT(pool->allocation_budget_current >= size);
@@ -514,7 +530,9 @@ static iree_status_t hrx_mem_pool_allocate_hal_buffer(
     ++pool->inflight_allocation_count;
   }
   iree_slim_mutex_unlock(&pool->mutex);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   status = iree_hal_pool_allocate_buffer(hal_pool, params, size,
                                          /*requester_frontier=*/NULL,

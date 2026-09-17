@@ -141,7 +141,9 @@ iree_status_t iree_hal_amdgpu_buffer_pool_initialize(
 
 void iree_hal_amdgpu_buffer_pool_deinitialize(
     iree_hal_amdgpu_buffer_pool_t* pool) {
-  if (!pool || !pool->block_pool) return;
+  if (!pool || !pool->block_pool) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
 #if !defined(NDEBUG)
@@ -231,7 +233,9 @@ void* iree_hal_amdgpu_buffer_device_pointer(iree_hal_buffer_t* base_buffer) {
     if (iree_hal_amdgpu_transient_buffer_isa(base_buffer)) {
       iree_hal_buffer_t* backing_buffer =
           iree_hal_amdgpu_transient_buffer_backing_buffer(base_buffer);
-      if (!backing_buffer) return NULL;
+      if (!backing_buffer) {
+        return NULL;
+      }
       return iree_hal_amdgpu_buffer_device_pointer(backing_buffer);
     }
     return NULL;

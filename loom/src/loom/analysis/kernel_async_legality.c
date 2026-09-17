@@ -265,7 +265,9 @@ static iree_status_t loom_kernel_async_legality_ensure_movement_analysis(
 static bool loom_kernel_async_legality_exact_value(
     const loom_kernel_async_legality_state_t* state, loom_value_id_t value_id,
     int64_t expected_value) {
-  if (value_id == LOOM_VALUE_ID_INVALID) return false;
+  if (value_id == LOOM_VALUE_ID_INVALID) {
+    return false;
+  }
   int64_t actual_value = 0;
   return loom_value_facts_as_exact_i64(
              loom_value_fact_table_lookup(state->fact_table, value_id),
@@ -287,9 +289,13 @@ static bool loom_kernel_async_legality_cluster_shape(
   // gfx1250 encodes at most sixteen participant ranks in the semantic set.
   // Reject each dimension before multiplication so malformed large extents
   // cannot overflow while proving the bounded product.
-  if (out_size->x > 16 || out_size->y > 16 || out_size->z > 16) return false;
+  if (out_size->x > 16 || out_size->y > 16 || out_size->z > 16) {
+    return false;
+  }
   const uint32_t volume = out_size->x * out_size->y * out_size->z;
-  if (volume <= 1 || volume > 16) return false;
+  if (volume <= 1 || volume > 16) {
+    return false;
+  }
   *out_volume = volume;
   return true;
 }
@@ -315,7 +321,9 @@ static bool loom_kernel_async_legality_cluster_expression_agrees(
     const loom_kernel_async_legality_state_t* state,
     const loom_target_workgroup_cluster_size_t* cluster_size,
     const loom_symbolic_expr_t* expression) {
-  if (!loom_symbolic_expr_is_linear(expression)) return false;
+  if (!loom_symbolic_expr_is_linear(expression)) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < expression->term_count; ++i) {
     const loom_symbolic_term_t* term = &expression->terms[i];
     const loom_value_id_t relation_value_id =
@@ -331,7 +339,9 @@ static bool loom_kernel_async_legality_cluster_expression_agrees(
 
     const loom_value_fact_topology_domain_t* topology =
         loom_value_facts_topology_domain(facts);
-    if (!topology) return false;
+    if (!topology) {
+      return false;
+    }
     switch (topology->value_kind) {
       case LOOM_VALUE_FACT_TOPOLOGY_VALUE_WORKITEM_ID:
       case LOOM_VALUE_FACT_TOPOLOGY_VALUE_SUBGROUP_LANE_ID:
@@ -474,12 +484,16 @@ static iree_status_t loom_kernel_async_legality_pending_source_overlaps(
     if (!loom_kernel_async_legality_endpoint_is_pending(stream, endpoint)) {
       continue;
     }
-    if (endpoint->request.source.kind != LOOM_MOVEMENT_ENDPOINT_VIEW) continue;
+    if (endpoint->request.source.kind != LOOM_MOVEMENT_ENDPOINT_VIEW) {
+      continue;
+    }
 
     bool overlaps = false;
     IREE_RETURN_IF_ERROR(loom_kernel_async_legality_endpoints_overlap(
         state, &endpoint->request.source, access_region, &overlaps));
-    if (!overlaps) continue;
+    if (!overlaps) {
+      continue;
+    }
     *out_overlaps = true;
     return iree_ok_status();
   }
@@ -508,7 +522,9 @@ static iree_status_t loom_kernel_async_legality_check_pending_source_hazard(
     loom_kernel_async_legality_state_t* state,
     const loom_kernel_async_legality_stream_t* stream, const loom_op_t* op,
     const loom_view_region_t* access_region, loom_operand_flags_t flags) {
-  if (!iree_any_bit_set(flags, LOOM_OPERAND_WRITES)) return iree_ok_status();
+  if (!iree_any_bit_set(flags, LOOM_OPERAND_WRITES)) {
+    return iree_ok_status();
+  }
   bool overlaps = false;
   IREE_RETURN_IF_ERROR(loom_kernel_async_legality_pending_source_overlaps(
       state, stream, access_region, &overlaps));
@@ -548,10 +564,14 @@ static iree_status_t loom_kernel_async_legality_check_op_memory_accesses(
     }
     IREE_RETURN_IF_ERROR(loom_kernel_async_legality_check_pending_dest_hazard(
         state, stream, op, access_region, flags));
-    if (state->failed) return iree_ok_status();
+    if (state->failed) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_kernel_async_legality_check_pending_source_hazard(
         state, stream, op, access_region, flags));
-    if (state->failed) return iree_ok_status();
+    if (state->failed) {
+      return iree_ok_status();
+    }
   }
   return iree_ok_status();
 }
@@ -559,9 +579,13 @@ static iree_status_t loom_kernel_async_legality_check_op_memory_accesses(
 static bool loom_kernel_async_legality_transfer_token_use_is_local_group(
     const loom_kernel_async_legality_state_t* state,
     const loom_op_t* producer_op, loom_value_id_t token_id) {
-  if (token_id >= state->module->values.count) return false;
+  if (token_id >= state->module->values.count) {
+    return false;
+  }
   const loom_value_t* token_value = loom_module_value(state->module, token_id);
-  if (token_value->use_count != 1) return false;
+  if (token_value->use_count != 1) {
+    return false;
+  }
   const loom_use_t* use = NULL;
   loom_value_for_each_use(token_value, use) {
     const loom_op_t* user_op = loom_use_user_op(*use);
@@ -594,7 +618,9 @@ static iree_status_t loom_kernel_async_legality_append_transfer(
   }
   IREE_RETURN_IF_ERROR(loom_kernel_async_legality_check_cluster_request(
       state, producer_op, &request));
-  if (state->failed) return iree_ok_status();
+  if (state->failed) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t token_id = loom_op_const_results(producer_op)[0];
   if (!loom_kernel_async_legality_transfer_token_use_is_local_group(
@@ -612,7 +638,9 @@ static iree_status_t loom_kernel_async_legality_append_transfer(
     }
     IREE_RETURN_IF_ERROR(loom_kernel_async_legality_check_pending_dest_hazard(
         state, stream, producer_op, &source_region, LOOM_OPERAND_READS));
-    if (state->failed) return iree_ok_status();
+    if (state->failed) {
+      return iree_ok_status();
+    }
   }
 
   loom_view_region_t dest_region = {0};
@@ -629,7 +657,9 @@ static iree_status_t loom_kernel_async_legality_append_transfer(
   }
   IREE_RETURN_IF_ERROR(loom_kernel_async_legality_check_pending_source_hazard(
       state, stream, producer_op, &dest_region, LOOM_OPERAND_WRITES));
-  if (state->failed) return iree_ok_status();
+  if (state->failed) {
+    return iree_ok_status();
+  }
 
   stream->endpoints[stream->endpoint_count++] =
       (loom_kernel_async_legality_endpoint_t){
@@ -646,11 +676,15 @@ static bool loom_kernel_async_legality_group_commits_pending_transfers(
   loom_value_slice_t tokens = loom_kernel_async_group_tokens(op);
   const iree_host_size_t pending_count =
       stream->endpoint_count - stream->committed_endpoint_count;
-  if (tokens.count != pending_count) return false;
+  if (tokens.count != pending_count) {
+    return false;
+  }
   for (uint16_t i = 0; i < tokens.count; ++i) {
     const loom_kernel_async_legality_endpoint_t* endpoint =
         &stream->endpoints[stream->committed_endpoint_count + i];
-    if (loom_value_slice_get(tokens, i) != endpoint->token_id) return false;
+    if (loom_value_slice_get(tokens, i) != endpoint->token_id) {
+      return false;
+    }
   }
   return true;
 }
@@ -774,7 +808,9 @@ static iree_host_size_t loom_kernel_async_legality_block_endpoint_capacity(
   iree_host_size_t endpoint_capacity = 0;
   loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
-    if (loom_movement_op_kind_is_async(op->kind)) ++endpoint_capacity;
+    if (loom_movement_op_kind_is_async(op->kind)) {
+      ++endpoint_capacity;
+    }
   }
   return endpoint_capacity;
 }
@@ -836,7 +872,9 @@ static iree_status_t loom_kernel_async_legality_check_block(
   loom_kernel_async_legality_add_blocks_checked(state, 1);
   IREE_RETURN_IF_ERROR(
       loom_kernel_async_legality_check_uncommitted_transfers(state, &stream));
-  if (state->failed) return iree_ok_status();
+  if (state->failed) {
+    return iree_ok_status();
+  }
   return loom_kernel_async_legality_check_uncompleted_groups(state, &stream);
 }
 

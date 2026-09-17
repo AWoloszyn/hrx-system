@@ -412,13 +412,17 @@ loomc_status_t loomc_launch_config_program_load(
 
 void loomc_launch_config_program_retain(
     loomc_launch_config_program_t* program) {
-  if (program == NULL) return;
+  if (program == NULL) {
+    return;
+  }
   iree_atomic_ref_count_inc(&program->ref_count);
 }
 
 void loomc_launch_config_program_release(
     loomc_launch_config_program_t* program) {
-  if (program == NULL) return;
+  if (program == NULL) {
+    return;
+  }
   if (iree_atomic_ref_count_dec(&program->ref_count) == 1) {
     loomc_launch_config_program_destroy(program);
   }
@@ -516,7 +520,9 @@ static iree_status_t loomc_launch_config_check_argument(
   const loom_value_id_t value_id = function->argument_ids[argument_ordinal];
   const loom_type_t type = loom_module_value_type(module, value_id);
   const loom_scalar_type_t scalar_type = loom_type_element_type(type);
-  if (loom_scalar_type_is_float(scalar_type)) return iree_ok_status();
+  if (loom_scalar_type_is_float(scalar_type)) {
+    return iree_ok_status();
+  }
 
   int64_t exact_value = 0;
   if (!loom_value_facts_as_exact_i64(facts, &exact_value)) {

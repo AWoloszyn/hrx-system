@@ -510,7 +510,9 @@ loom_amdgpu_matrix_contract_select(
   if (request == NULL) {
     diagnostic.rejection_bits =
         LOOM_AMDGPU_MATRIX_CONTRACT_REJECTION_INVALID_REQUEST;
-    if (out_diagnostic != NULL) *out_diagnostic = diagnostic;
+    if (out_diagnostic != NULL) {
+      *out_diagnostic = diagnostic;
+    }
     return NULL;
   }
 
@@ -580,7 +582,9 @@ loom_amdgpu_matrix_contract_select(
       IREE_ASSERT_LE(i, UINT16_MAX);
       *out_descriptor_ordinal = (uint16_t)i;
     }
-    if (out_diagnostic != NULL) *out_diagnostic = diagnostic;
+    if (out_diagnostic != NULL) {
+      *out_diagnostic = diagnostic;
+    }
     return descriptor;
   }
 
@@ -603,7 +607,9 @@ loom_amdgpu_matrix_contract_select(
   } else if (diagnostic.wave_candidate_count == 0) {
     diagnostic.rejection_bits = LOOM_AMDGPU_MATRIX_CONTRACT_REJECTION_WAVE_SIZE;
   }
-  if (out_diagnostic != NULL) *out_diagnostic = diagnostic;
+  if (out_diagnostic != NULL) {
+    *out_diagnostic = diagnostic;
+  }
   return NULL;
 }
 

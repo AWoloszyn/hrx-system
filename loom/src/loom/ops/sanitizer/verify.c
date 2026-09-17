@@ -165,7 +165,9 @@ static iree_status_t loom_sanitizer_assert_accesses_verify_static_shape(
     loom_type_t view_type, loom_attribute_t static_indices,
     loom_attribute_t static_extents, loom_attribute_t static_strides,
     int64_t static_count) {
-  if (!loom_type_is_view(view_type)) return iree_ok_status();
+  if (!loom_type_is_view(view_type)) {
+    return iree_ok_status();
+  }
   if (static_count <= 0) {
     return loom_sanitizer_emit_static_count_constraint(emitter, op,
                                                        static_count);
@@ -245,7 +247,9 @@ static iree_string_view_t loom_sanitizer_predicate_expected_type(
 static bool loom_sanitizer_value_is_assert_operand(loom_value_slice_t values,
                                                    loom_value_id_t value_id) {
   for (uint16_t i = 0; i < values.count; ++i) {
-    if (values.values[i] == value_id) return true;
+    if (values.values[i] == value_id) {
+      return true;
+    }
   }
   return false;
 }
@@ -300,7 +304,9 @@ static iree_status_t loom_sanitizer_verify_predicates_reference_values(
         &predicates.predicate_list[predicate_index];
     for (uint8_t argument_index = 0; argument_index < predicate->arg_count;
          ++argument_index) {
-      if (predicate->arg_tags[argument_index] != LOOM_PRED_ARG_VALUE) continue;
+      if (predicate->arg_tags[argument_index] != LOOM_PRED_ARG_VALUE) {
+        continue;
+      }
       if (predicate->args[argument_index] < 0) {
         return loom_sanitizer_emit_unlisted_predicate_value(
             module, emitter, op, predicate_index, argument_index,
@@ -340,7 +346,9 @@ static iree_status_t loom_sanitizer_verify_static_dimensions(
     }
     int64_t source_size = loom_type_dim_static_size_at(source_type, axis);
     int64_t result_size = loom_type_dim_static_size_at(result_type, axis);
-    if (source_size == result_size) continue;
+    if (source_size == result_size) {
+      continue;
+    }
 
     loom_diagnostic_param_t params[] = {
         loom_param_string(IREE_SV("source static dimension")),

@@ -49,7 +49,9 @@ iree_status_t loom_vector_to_scalar_copy_static_indices(
     loom_builder_t* builder, const int64_t* indices,
     iree_host_size_t index_count, int64_t** out_indices) {
   *out_indices = NULL;
-  if (index_count == 0) return iree_ok_status();
+  if (index_count == 0) {
+    return iree_ok_status();
+  }
   int64_t* copied_indices = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       builder->arena, index_count, sizeof(int64_t), (void**)&copied_indices));
@@ -101,8 +103,12 @@ static int64_t loom_vector_to_scalar_static_index_divide(int64_t lhs,
                                                          int64_t rhs) {
   // Zero-sized axes have no observable lanes; use the same all-zero coordinate
   // convention as ordinal-to-index expansion.
-  if (rhs == 0) return 0;
-  if (lhs == INT64_MIN && rhs == -1) return 0;
+  if (rhs == 0) {
+    return 0;
+  }
+  if (lhs == INT64_MIN && rhs == -1) {
+    return 0;
+  }
   return lhs / rhs;
 }
 
@@ -110,8 +116,12 @@ static int64_t loom_vector_to_scalar_static_index_remainder(int64_t lhs,
                                                             int64_t rhs) {
   // Zero-sized axes have no observable lanes; use the same all-zero coordinate
   // convention as ordinal-to-index expansion.
-  if (rhs == 0) return 0;
-  if (lhs == INT64_MIN && rhs == -1) return 0;
+  if (rhs == 0) {
+    return 0;
+  }
+  if (lhs == INT64_MIN && rhs == -1) {
+    return 0;
+  }
   return lhs % rhs;
 }
 
@@ -234,7 +244,9 @@ iree_status_t loom_vector_to_scalar_build_term_binary(
 bool loom_vector_to_scalar_terms_equal_static(
     loom_vector_to_scalar_index_term_t lhs,
     loom_vector_to_scalar_index_term_t rhs, bool* out_equal) {
-  if (lhs.is_dynamic || rhs.is_dynamic) return false;
+  if (lhs.is_dynamic || rhs.is_dynamic) {
+    return false;
+  }
   *out_equal = lhs.static_value == rhs.static_value;
   return true;
 }
@@ -402,7 +414,9 @@ void loom_vector_to_scalar_indices_from_ordinal(loom_type_t vector_type,
     uint8_t axis = (uint8_t)(rank - reverse_axis - 1);
     int64_t dim = loom_type_dim_static_size_at(vector_type, axis);
     indices[axis] = dim == 0 ? 0 : (int64_t)(ordinal % dim);
-    if (dim != 0) ordinal /= dim;
+    if (dim != 0) {
+      ordinal /= dim;
+    }
   }
 }
 

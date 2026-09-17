@@ -112,7 +112,9 @@ static void iree_tokenizer_normalizer_nfc_state_deinitialize(
 // the composed result ready for emission.
 static void iree_tokenizer_nfc_compose_sequence(
     iree_tokenizer_normalizer_nfc_state_t* state) {
-  if (state->sequence_count <= 1) return;
+  if (state->sequence_count <= 1) {
+    return;
+  }
 
   // Step 1: Canonical ordering — insertion sort combining marks by CCC.
   // Stable: marks with equal CCC preserve their relative order.
@@ -188,7 +190,9 @@ static iree_host_size_t iree_tokenizer_nfc_emit_codepoint(
   int encoded_length = iree_unicode_utf8_encoded_length(codepoint);
   IREE_ASSERT(encoded_length > 0,
               "invalid codepoint U+%04X in NFC emit (internal bug)", codepoint);
-  if (encoded_length <= 0) return 0;
+  if (encoded_length <= 0) {
+    return 0;
+  }
 
   if ((iree_host_size_t)encoded_length <= output_capacity) {
     iree_unicode_utf8_encode(codepoint, (char*)output);
@@ -222,7 +226,9 @@ static iree_host_size_t iree_tokenizer_nfc_emit_sequence(
     ++state->emit_position;
 
     // If we have pending_utf8 that couldn't be fully written, stop.
-    if (state->pending_utf8_count > state->pending_utf8_position) break;
+    if (state->pending_utf8_count > state->pending_utf8_position) {
+      break;
+    }
   }
 
   // If fully emitted, reset the sequence.
@@ -240,7 +246,9 @@ static iree_host_size_t iree_tokenizer_nfc_emit_sequence(
 static iree_host_size_t iree_tokenizer_nfc_flush_and_emit(
     iree_tokenizer_normalizer_nfc_state_t* state, uint8_t* output,
     iree_host_size_t output_capacity) {
-  if (state->sequence_count == 0) return 0;
+  if (state->sequence_count == 0) {
+    return 0;
+  }
   iree_tokenizer_nfc_compose_sequence(state);
   state->emit_position = 0;
   return iree_tokenizer_nfc_emit_sequence(state, output, output_capacity);
@@ -429,9 +437,12 @@ static iree_status_t iree_tokenizer_normalizer_nfc_state_process(
         *out_ptr++ = *in_ptr++;
       }
       if (in_ptr >= in_end ||
-          (state->sequence_count == 0 && out_ptr >= out_end))
+          (state->sequence_count == 0 && out_ptr >= out_end)) {
         break;
-      if (state->sequence_count > 0 && in_ptr >= in_end) break;
+      }
+      if (state->sequence_count > 0 && in_ptr >= in_end) {
+        break;
+      }
     }
 
     // Output full — stop processing. When sequence_count > 0, any
@@ -486,7 +497,9 @@ static iree_status_t iree_tokenizer_normalizer_nfc_state_process(
       }
     }
 
-    if (!all_consumed) break;
+    if (!all_consumed) {
+      break;
+    }
     in_ptr += byte_count;
   }
 

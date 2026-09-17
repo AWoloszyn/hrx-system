@@ -91,12 +91,16 @@ static void print_status(loomc_status_t status) {
 }
 
 static void print_result_diagnostics(const loomc_result_t* result) {
-  if (result == NULL) return;
+  if (result == NULL) {
+    return;
+  }
   for (loomc_host_size_t i = 0; i < loomc_result_diagnostic_count(result);
        ++i) {
     const loomc_diagnostic_t* diagnostic =
         loomc_result_diagnostic_at(result, i);
-    if (diagnostic == NULL) continue;
+    if (diagnostic == NULL) {
+      continue;
+    }
     fprintf(stderr, "%.*s: %.*s\n", (int)diagnostic->code.size,
             diagnostic->code.data, (int)diagnostic->message.size,
             diagnostic->message.data);
@@ -236,7 +240,9 @@ static loomc_status_t configure_jit_service(jit_service_t* service) {
          loomc_status_is_ok(status) && i < worker_count; ++i) {
       status = loomc_workspace_create(NULL, service->allocator,
                                       &service->workspaces[i]);
-      if (loomc_status_is_ok(status)) ++service->workspace_count;
+      if (loomc_status_is_ok(status)) {
+        ++service->workspace_count;
+      }
     }
   }
   for (loomc_host_size_t i = 0;
@@ -391,7 +397,9 @@ static loomc_status_t run_jit_task_pool_example(void) {
 
 int main(void) {
   loomc_status_t status = run_jit_task_pool_example();
-  if (loomc_status_is_ok(status)) return 0;
+  if (loomc_status_is_ok(status)) {
+    return 0;
+  }
   print_status(status);
   loomc_status_free(status);
   return 1;

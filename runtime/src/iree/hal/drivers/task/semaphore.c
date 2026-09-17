@@ -96,7 +96,9 @@ static iree_status_t iree_hal_task_semaphore_signal(
   // Advance the timeline (CAS) and merge frontier.
   iree_status_t status = iree_async_semaphore_advance_timeline(
       base_semaphore, new_value, frontier);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   // Dispatch satisfied timepoints.
   iree_async_semaphore_dispatch_timepoints(base_semaphore, new_value);

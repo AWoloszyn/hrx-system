@@ -24,7 +24,9 @@ iree_status_t iree_vm_bytecode_process_seal_state(iree_vm_module_t* base_module,
       iree_vm_bytecode_image_from_module(base_module);
   const iree_vm_bytecode_v0_globals_header_t* globals =
       image->layout.globals.header;
-  if (!globals) return iree_ok_status();
+  if (!globals) {
+    return iree_ok_status();
+  }
 
   iree_vm_bytecode_process_header_t* header =
       iree_vm_bytecode_process_header(storage.data);
@@ -90,7 +92,9 @@ void iree_vm_bytecode_process_detach_state(iree_vm_module_t* base_module,
       iree_vm_bytecode_image_from_module(base_module);
   const iree_vm_bytecode_v0_globals_header_t* globals =
       image->layout.globals.header;
-  if (!globals) return;
+  if (!globals) {
+    return;
+  }
   iree_vm_ref_t* refs = iree_vm_bytecode_process_refs(image, storage.data);
   for (uint32_t i = 0; i < globals->ref_count_u32; ++i) {
     iree_vm_ref_reset(&refs[i]);

@@ -727,7 +727,9 @@ loom_amdgpu_fragment_memory_narrowed_result_sources(
       loom_amdgpu_fragment_memory_same_lane_packed_16bit_source(
           module, fact_table, payload, role_layout, storage_element_type,
           &sources.packed_register_count);
-  if (sources.packed_source != LOOM_VALUE_ID_INVALID) return sources;
+  if (sources.packed_source != LOOM_VALUE_ID_INVALID) {
+    return sources;
+  }
 
   sources.round_source =
       loom_amdgpu_fragment_memory_is_f32_result_source(module, payload,
@@ -735,7 +737,9 @@ loom_amdgpu_fragment_memory_narrowed_result_sources(
           ? payload
           : loom_amdgpu_fragment_memory_same_lane_round_source(
                 module, fact_table, payload, role_layout);
-  if (sources.round_source == LOOM_VALUE_ID_INVALID) return sources;
+  if (sources.round_source == LOOM_VALUE_ID_INVALID) {
+    return sources;
+  }
 
   loom_value_fact_uniform_scale_origin_t scale_origin = {0};
   if (loom_value_fact_table_query_uniform_scale_origin(
@@ -897,7 +901,9 @@ loom_amdgpu_fragment_memory_evaluate_layout(
       };
   const loom_matrix_fragment_role_layout_t* role_layout =
       loom_matrix_fragment_role_layout(layout, role);
-  if (role_layout == NULL) return LOOM_AMDGPU_FRAGMENT_MEMORY_LAYOUT_MATCH_NONE;
+  if (role_layout == NULL) {
+    return LOOM_AMDGPU_FRAGMENT_MEMORY_LAYOUT_MATCH_NONE;
+  }
   const bool source_is_sparse =
       view_storage_schema != NULL &&
       iree_any_bit_set(view_storage_schema->encoded_operand.sparsity_policy,
@@ -1651,7 +1657,9 @@ iree_status_t loom_amdgpu_query_accumulator_fragment_store_representations(
       NULL;
   IREE_RETURN_IF_ERROR(loom_amdgpu_matrix_fragment_contract_candidates(
       context, &contract_candidates));
-  if (contract_candidates == NULL) return iree_ok_status();
+  if (contract_candidates == NULL) {
+    return iree_ok_status();
+  }
   const loom_amdgpu_source_alloca_layout_t* alloca_layout = NULL;
   IREE_RETURN_IF_ERROR(loom_amdgpu_source_alloca_layout_for_lower_context(
       context, &alloca_layout));

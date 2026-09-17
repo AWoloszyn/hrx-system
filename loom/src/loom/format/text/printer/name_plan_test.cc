@@ -46,7 +46,9 @@ class NamePlanTest : public ::testing::Test {
         &builder_, loom_attr_i64(1), loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
         LOOM_LOCATION_UNKNOWN, &op));
     loom_value_id_t value_id = loom_test_constant_result(op);
-    if (!name.empty()) SetName(value_id, name);
+    if (!name.empty()) {
+      SetName(value_id, name);
+    }
     return value_id;
   }
 

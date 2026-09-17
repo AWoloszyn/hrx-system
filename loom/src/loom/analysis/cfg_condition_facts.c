@@ -29,7 +29,9 @@ static bool loom_cfg_condition_edge_implies_bool(const loom_block_t* target,
 
   bool is_true_edge = loom_cfg_cond_br_true_dest(terminator) == target;
   bool is_false_edge = loom_cfg_cond_br_false_dest(terminator) == target;
-  if (is_true_edge == is_false_edge) return false;
+  if (is_true_edge == is_false_edge) {
+    return false;
+  }
   *out_condition = loom_cfg_cond_br_condition(terminator);
   *out_value = is_true_edge;
   return true;
@@ -75,11 +77,15 @@ static bool loom_cfg_condition_try_map_branch_arg_to_block_arg(
     loom_value_id_t* out_block_arg, bool* out_ambiguous) {
   *out_block_arg = LOOM_VALUE_ID_INVALID;
   *out_ambiguous = false;
-  if (!block || branch_arg_count != block->arg_count) return false;
+  if (!block || branch_arg_count != block->arg_count) {
+    return false;
+  }
 
   bool found_mapping = false;
   for (uint16_t i = 0; i < branch_arg_count; ++i) {
-    if (branch_args[i] != value_id) continue;
+    if (branch_args[i] != value_id) {
+      continue;
+    }
     if (found_mapping) {
       *out_ambiguous = true;
       *out_block_arg = LOOM_VALUE_ID_INVALID;
@@ -134,14 +140,18 @@ static bool loom_cfg_condition_remap_operand_to_block_entry(
     loom_condition_integer_operand_t operand,
     loom_condition_integer_operand_t* out_operand) {
   *out_operand = operand;
-  if (operand.kind != LOOM_CONDITION_INTEGER_OPERAND_VALUE) return true;
+  if (operand.kind != LOOM_CONDITION_INTEGER_OPERAND_VALUE) {
+    return true;
+  }
 
   loom_value_id_t block_arg = LOOM_VALUE_ID_INVALID;
   bool ambiguous_mapping = false;
   bool found_mapping = loom_cfg_condition_try_map_terminator_arg_to_block_arg(
       block, predecessor_terminator, operand.value_id, &block_arg,
       &ambiguous_mapping);
-  if (ambiguous_mapping) return false;
+  if (ambiguous_mapping) {
+    return false;
+  }
   if (found_mapping) {
     *out_operand = loom_cfg_condition_value_operand(block_arg);
     return true;
@@ -160,7 +170,9 @@ static bool loom_cfg_condition_remap_value_to_block_entry(
   bool ambiguous_mapping = false;
   bool found_mapping = loom_cfg_condition_try_map_terminator_arg_to_block_arg(
       block, predecessor_terminator, value_id, &block_arg, &ambiguous_mapping);
-  if (ambiguous_mapping) return false;
+  if (ambiguous_mapping) {
+    return false;
+  }
   if (found_mapping) {
     *out_value_id = block_arg;
     return true;
@@ -315,7 +327,9 @@ static iree_status_t loom_cfg_condition_compute_block_entry_facts(
   }
 
   const loom_block_t* block = graph->blocks[block_index].block;
-  if (!block) return iree_ok_status();
+  if (!block) {
+    return iree_ok_status();
+  }
 
   bool saw_reachable_predecessor = false;
   bool condition_candidate_initialized = false;
@@ -326,9 +340,13 @@ static iree_status_t loom_cfg_condition_compute_block_entry_facts(
       loom_cfg_graph_predecessors(graph, block_index);
   for (iree_host_size_t i = 0; i < predecessors.count; ++i) {
     uint16_t predecessor_index = predecessors.values[i];
-    if (!loom_cfg_graph_block_is_reachable(graph, predecessor_index)) continue;
+    if (!loom_cfg_graph_block_is_reachable(graph, predecessor_index)) {
+      continue;
+    }
     const loom_block_t* predecessor = graph->blocks[predecessor_index].block;
-    if (!predecessor) return iree_ok_status();
+    if (!predecessor) {
+      return iree_ok_status();
+    }
     saw_reachable_predecessor = true;
 
     loom_condition_integer_relation_t
@@ -359,7 +377,9 @@ static iree_status_t loom_cfg_condition_compute_block_entry_facts(
         edge_fact.integer_relation_count);
   }
 
-  if (!saw_reachable_predecessor) return iree_ok_status();
+  if (!saw_reachable_predecessor) {
+    return iree_ok_status();
+  }
   out_fact->condition_known =
       condition_candidate_valid && condition_candidate_initialized;
   if (!out_fact->condition_known) {
@@ -375,7 +395,9 @@ static iree_status_t loom_cfg_condition_copy_relations(
     const loom_condition_integer_relation_t* relations,
     iree_host_size_t relation_count,
     loom_cfg_block_entry_condition_facts_t* inout_fact) {
-  if (relation_count == 0) return iree_ok_status();
+  if (relation_count == 0) {
+    return iree_ok_status();
+  }
   loom_condition_integer_relation_t* copied_relations = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, relation_count,
                                                  sizeof(*copied_relations),
@@ -447,6 +469,8 @@ iree_status_t loom_cfg_condition_fact_table_compute(
 const loom_cfg_block_entry_condition_facts_t*
 loom_cfg_condition_fact_table_block(
     const loom_cfg_condition_fact_table_t* table, uint16_t block_index) {
-  if (!table || block_index >= table->block_count) return NULL;
+  if (!table || block_index >= table->block_count) {
+    return NULL;
+  }
   return &table->block_facts[block_index];
 }

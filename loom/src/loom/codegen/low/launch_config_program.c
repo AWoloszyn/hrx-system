@@ -80,7 +80,9 @@ void loom_kernel_launch_config_program_deinitialize(
 
 loom_kernel_launch_config_program_t*
 loom_kernel_launch_config_program_from_pass(const loom_pass_t* pass) {
-  if (pass == NULL || pass->environment == NULL) return NULL;
+  if (pass == NULL || pass->environment == NULL) {
+    return NULL;
+  }
   return (loom_kernel_launch_config_program_t*)loom_pass_environment_lookup(
       pass->environment, &loom_kernel_launch_config_program_capability_type);
 }
@@ -91,7 +93,9 @@ static iree_status_t loom_kernel_launch_config_copy_value_name(
     loom_value_id_t target_value) {
   const loom_string_id_t source_name =
       loom_module_value(source_module, source_value)->name_id;
-  if (source_name == LOOM_STRING_ID_INVALID) return iree_ok_status();
+  if (source_name == LOOM_STRING_ID_INVALID) {
+    return iree_ok_status();
+  }
   loom_string_id_t target_name = LOOM_STRING_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_ir_remap_string_id(
       remap, source_name, /*allow_invalid=*/false, &target_name));
@@ -101,7 +105,9 @@ static iree_status_t loom_kernel_launch_config_copy_value_name(
 static bool loom_kernel_launch_config_predicate_uses_only_workload_values(
     const loom_ir_remap_t* remap, const loom_predicate_t* predicate) {
   for (uint8_t i = 0; i < predicate->arg_count; ++i) {
-    if (predicate->arg_tags[i] != LOOM_PRED_ARG_VALUE) continue;
+    if (predicate->arg_tags[i] != LOOM_PRED_ARG_VALUE) {
+      continue;
+    }
     loom_value_id_t ignored = LOOM_VALUE_ID_INVALID;
     if (!loom_ir_remap_try_lookup_value(
             remap, (loom_value_id_t)predicate->args[i], &ignored)) {
@@ -117,7 +123,9 @@ static iree_status_t loom_kernel_launch_config_copy_workload_predicates(
   uint16_t source_predicate_count = 0;
   const loom_predicate_t* source_predicates =
       loom_func_like_predicates(source_function, &source_predicate_count);
-  if (source_predicate_count == 0) return iree_ok_status();
+  if (source_predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t* workload_predicates = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -130,7 +138,9 @@ static iree_status_t loom_kernel_launch_config_copy_workload_predicates(
       workload_predicates[workload_predicate_count++] = source_predicates[i];
     }
   }
-  if (workload_predicate_count == 0) return iree_ok_status();
+  if (workload_predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t* target_predicates = NULL;
   IREE_RETURN_IF_ERROR(loom_ir_remap_predicate_list(remap, workload_predicates,
@@ -270,7 +280,9 @@ static iree_status_t loom_kernel_launch_config_program_build_function(
       loom_region_const_entry_block(source_config);
   const loom_op_t* source_op = NULL;
   loom_block_for_each_op(source_block, source_op) {
-    if (source_op == source_launch_config) continue;
+    if (source_op == source_launch_config) {
+      continue;
+    }
     bool materialize_results = source_op->result_count != 0;
     const loom_value_id_t* source_results = loom_op_const_results(source_op);
     for (uint16_t i = 0; i < source_op->result_count; ++i) {
@@ -370,7 +382,9 @@ iree_status_t loom_kernel_launch_config_program_capture(
     loom_function_version_t* version_handle,
     const loom_target_facts_t* target_facts,
     const loom_value_fact_table_t* source_facts) {
-  if (!loom_kernel_def_isa(source_function.op)) return iree_ok_status();
+  if (!loom_kernel_def_isa(source_function.op)) {
+    return iree_ok_status();
+  }
 
   iree_arena_allocator_t scratch_arena;
   iree_arena_initialize(program->module->arena.block_pool, &scratch_arena);
@@ -471,7 +485,9 @@ iree_status_t loom_kernel_launch_config_program_finalize(
       status = loom_kernel_launch_config_workgroup_storage_bytes(
           lowered_module, low_function, &workgroup_storage_bytes);
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     if (workgroup_storage_bytes > INT64_MAX) {
       status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                                 "workgroup storage size %" PRIu64

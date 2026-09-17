@@ -34,7 +34,9 @@ IREE_API_EXPORT void iree_hal_amdgpu_driver_options_initialize(
 IREE_API_EXPORT iree_status_t iree_hal_amdgpu_driver_options_parse(
     iree_hal_amdgpu_driver_options_t* options, iree_string_pair_list_t params) {
   IREE_ASSERT_ARGUMENT(options);
-  if (!params.count) return iree_ok_status();
+  if (!params.count) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   const iree_string_pair_t* first_param = &params.pairs[0];
@@ -213,7 +215,9 @@ static iree_status_t iree_hal_amdgpu_driver_append_topology_device_infos(
       status = iree_hal_amdgpu_driver_populate_physical_device_info(
           libhsa, topology->gpu_agents[i], i,
           device_infos ? &device_infos[*device_info_count] : NULL, builder);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       *device_info_count = *device_info_count + 1;
     }
   }

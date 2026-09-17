@@ -296,7 +296,9 @@ static iree_status_t iree_hal_amdgpu_pm4_transfer_record_measure(
   for (uint32_t i = 0; i < layout.binding_count; ++i) {
     const iree_hal_amdgpu_pm4_transfer_binding_layout_t* binding =
         &layout.bindings[i];
-    if (binding->buffer_ref->binding_slot == UINT32_MAX) continue;
+    if (binding->buffer_ref->binding_slot == UINT32_MAX) {
+      continue;
+    }
     ++out_measurement->fixup_entry_count;
     ++out_measurement->profile_fixup_entry_count;
     bool is_preloaded = false;
@@ -586,7 +588,9 @@ iree_status_t iree_hal_amdgpu_pm4_transfer_record_materialize(
   for (uint32_t i = 0; i < layout.binding_count; ++i) {
     const iree_hal_amdgpu_pm4_transfer_binding_layout_t* binding =
         &layout.bindings[i];
-    if (binding->buffer_ref->binding_slot == UINT32_MAX) continue;
+    if (binding->buffer_ref->binding_slot == UINT32_MAX) {
+      continue;
+    }
     iree_host_size_t target_offset = 0;
     if (IREE_UNLIKELY(
             !iree_host_size_checked_add(state->resident_template_offset,
@@ -636,14 +640,18 @@ iree_status_t iree_hal_amdgpu_pm4_transfer_record_materialize(
   for (uint32_t i = 0; i < layout.binding_count; ++i) {
     const iree_hal_amdgpu_pm4_transfer_binding_layout_t* binding =
         &layout.bindings[i];
-    if (binding->buffer_ref->binding_slot == UINT32_MAX) continue;
+    if (binding->buffer_ref->binding_slot == UINT32_MAX) {
+      continue;
+    }
     bool is_preloaded = false;
     uint32_t preload_dword_offset = 0;
     IREE_RETURN_IF_ERROR(
         iree_hal_amdgpu_pm4_dispatch_kernarg_range_preload_offset(
             launch_state, binding->kernarg_offset, sizeof(uint64_t),
             &is_preloaded, &preload_dword_offset));
-    if (!is_preloaded) continue;
+    if (!is_preloaded) {
+      continue;
+    }
 
     const uint32_t user_data_payload_dword_offset =
         launch_state->kernarg_preload_user_data_offset + preload_dword_offset;
@@ -670,7 +678,9 @@ iree_status_t iree_hal_amdgpu_pm4_transfer_record_materialize(
       launch_state->dispatch_initiator));
   stats.dispatch_dwords =
       state->dword_builder->dword_count - dword_count_before;
-  if (out_stats) *out_stats = stats;
+  if (out_stats) {
+    *out_stats = stats;
+  }
   return iree_ok_status();
 }
 

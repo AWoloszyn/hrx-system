@@ -28,7 +28,9 @@ typedef struct loom_stream_printf_state_t {
 
 static void loom_stream_printf_callback(char character, void* user_data) {
   loom_stream_printf_state_t* state = (loom_stream_printf_state_t*)user_data;
-  if (!iree_status_is_ok(state->status)) return;
+  if (!iree_status_is_ok(state->status)) {
+    return;
+  }
   state->buffer[state->position++] = character;
   if (state->position == LOOM_STREAM_FORMAT_BUFFER_SIZE) {
     state->status = loom_output_stream_write(
@@ -52,7 +54,9 @@ iree_status_t loom_output_stream_write_format(loom_output_stream_t* stream,
   if (result < 0) {
     return iree_make_status(IREE_STATUS_INTERNAL, "format error");
   }
-  if (!iree_status_is_ok(state.status)) return state.status;
+  if (!iree_status_is_ok(state.status)) {
+    return state.status;
+  }
   // Flush remaining bytes.
   if (state.position > 0) {
     return loom_output_stream_write(

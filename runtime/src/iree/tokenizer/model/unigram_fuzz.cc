@@ -47,8 +47,12 @@ static iree_host_size_t parse_token(const uint8_t* data, iree_host_size_t size,
     return 0;
   }
   iree_host_size_t length = data[0];
-  if (length > max_length) length = max_length;
-  if (length > size - 1) length = size - 1;
+  if (length > max_length) {
+    length = max_length;
+  }
+  if (length > size - 1) {
+    length = size - 1;
+  }
   *out_token =
       iree_make_string_view(reinterpret_cast<const char*>(data + 1), length);
   return 1 + length;
@@ -56,7 +60,9 @@ static iree_host_size_t parse_token(const uint8_t* data, iree_host_size_t size,
 
 // Parses a 32-bit float from 4 bytes. Sanitizes NaN/Inf to finite values.
 static float parse_score(const uint8_t* data, iree_host_size_t size) {
-  if (size < 4) return -1.0f;
+  if (size < 4) {
+    return -1.0f;
+  }
   uint32_t bits = (uint32_t)data[0] | ((uint32_t)data[1] << 8) |
                   ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
   float value;
@@ -66,14 +72,20 @@ static float parse_score(const uint8_t* data, iree_host_size_t size) {
     value = -10.0f;
   }
   // Clamp to reasonable range for scores.
-  if (value > 0.0f) value = 0.0f;
-  if (value < -100.0f) value = -100.0f;
+  if (value > 0.0f) {
+    value = 0.0f;
+  }
+  if (value < -100.0f) {
+    value = -100.0f;
+  }
   return value;
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // Need at least: flags (1) + token_count (1) + unk_id (1) + input_len (1)
-  if (size < 4) return 0;
+  if (size < 4) {
+    return 0;
+  }
 
   iree_host_size_t pos = 0;
 
@@ -86,8 +98,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Byte 1: Token count.
   iree_host_size_t token_count = data[pos++];
-  if (token_count > kMaxTokens) token_count = kMaxTokens;
-  if (token_count == 0) return 0;  // Need at least one token.
+  if (token_count > kMaxTokens) {
+    token_count = kMaxTokens;
+  }
+  if (token_count == 0) {
+    return 0;  // Need at least one token.
+  }
 
   // Byte 2: UNK token ID (0xFF = no UNK).
   uint8_t unk_id_byte = data[pos++];
@@ -97,7 +113,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Byte 3: Input text length.
   iree_host_size_t input_length = data[pos++];
-  if (input_length > kMaxInputLength) input_length = kMaxInputLength;
+  if (input_length > kMaxInputLength) {
+    input_length = kMaxInputLength;
+  }
 
   //===--------------------------------------------------------------------===//
   // Phase 2: Build vocabulary from fuzzed tokens with scores
@@ -119,15 +137,21 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     iree_string_view_t token_text;
     iree_host_size_t consumed =
         parse_token(data + pos, size - pos, kMaxTokenLength, &token_text);
-    if (consumed == 0) break;
+    if (consumed == 0) {
+      break;
+    }
     pos += consumed;
 
     // Parse score (4 bytes).
     float score = parse_score(data + pos, size - pos);
-    if (pos + 4 <= size) pos += 4;
+    if (pos + 4 <= size) {
+      pos += 4;
+    }
 
     // Empty tokens are invalid, skip them.
-    if (token_text.size == 0) continue;
+    if (token_text.size == 0) {
+      continue;
+    }
 
     status = iree_tokenizer_vocab_builder_add_token(
         builder, token_text, score, IREE_TOKENIZER_TOKEN_ATTR_NONE);
@@ -188,7 +212,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Get remaining bytes as input text (up to input_length).
   iree_host_size_t available_input = size - pos;
-  if (available_input > input_length) available_input = input_length;
+  if (available_input > input_length) {
+    available_input = input_length;
+  }
   const char* input_data = reinterpret_cast<const char*>(data + pos);
 
   // Allocate state storage.
@@ -330,7 +356,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         iree_status_ignore(status);
         break;
       }
-      if (final_count == 0) break;
+      if (final_count == 0) {
+        break;
+      }
     }
   } else {
     iree_status_ignore(status);

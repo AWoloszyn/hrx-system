@@ -17,10 +17,14 @@ static iree_status_t iree_hal_memory_trace_initialize_impl(
 
 #if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
   out_trace->memory_id = NULL;
-  if (!enabled) return iree_ok_status();
+  if (!enabled) {
+    return iree_ok_status();
+  }
   IREE_ASSERT_ARGUMENT(default_memory_id);
   out_trace->memory_id = default_memory_id;
-  if (iree_string_view_is_empty(trace_name)) return iree_ok_status();
+  if (iree_string_view_is_empty(trace_name)) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(trace_name.size == IREE_HOST_SIZE_MAX)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "trace memory identifier is too large");

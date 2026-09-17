@@ -115,7 +115,9 @@ iree_status_t AttachTestState(iree_vm_module_t* base_module,
     std::memset(storage.data, module->module_id, storage.data_length);
   }
   if (module->failure_phase == FailurePhase::kAttach) {
-    if (storage.data_length) std::memset(storage.data, 0, storage.data_length);
+    if (storage.data_length) {
+      std::memset(storage.data, 0, storage.data_length);
+    }
     return iree_make_status(IREE_STATUS_ABORTED, "injected attach failure");
   }
   return iree_ok_status();
@@ -138,7 +140,9 @@ iree_status_t SealTestState(iree_vm_module_t* base_module,
 void DetachTestState(iree_vm_module_t* base_module, iree_byte_span_t storage) {
   TestModule* module = CastTestModule(base_module);
   module->log->Record(module->module_id, EventKind::kDetach);
-  if (storage.data_length) std::memset(storage.data, 0, storage.data_length);
+  if (storage.data_length) {
+    std::memset(storage.data, 0, storage.data_length);
+  }
 }
 
 struct InitializerFrame {
@@ -169,7 +173,9 @@ iree_status_t StartTestFunction(
   payload->module = module;
   const iree_vm_invocation_wake_callback_t wake_callback =
       iree_vm_invocation_wake_callback(params->execution.invocation);
-  if (wake_callback.fn) wake_callback.fn(wake_callback.user_data);
+  if (wake_callback.fn) {
+    wake_callback.fn(wake_callback.user_data);
+  }
   *out_outcome = IREE_VM_EXECUTION_OUTCOME_SUSPENDED;
   return iree_ok_status();
 }

@@ -38,7 +38,9 @@ bool loom_vector_memory_access_describe(
     const loom_fact_context_t* context, const loom_module_t* module,
     loom_type_t view_type, loom_type_t vector_type,
     loom_vector_memory_access_t* out_access) {
-  if (!out_access) return false;
+  if (!out_access) {
+    return false;
+  }
   *out_access = (loom_vector_memory_access_t){0};
 
   if (!loom_type_is_view(view_type) || !loom_type_is_vector(vector_type)) {
@@ -47,7 +49,9 @@ bool loom_vector_memory_access_describe(
 
   uint8_t view_rank = loom_type_rank(view_type);
   uint8_t vector_rank = loom_type_rank(vector_type);
-  if (vector_rank == 0 || vector_rank > view_rank) return false;
+  if (vector_rank == 0 || vector_rank > view_rank) {
+    return false;
+  }
 
   int32_t element_bit_count =
       loom_scalar_type_bitwidth(loom_type_element_type(view_type));
@@ -108,9 +112,13 @@ static bool loom_vector_memory_value_type(const loom_module_t* module,
     *out_type = loom_module_value_type(module, value);
     return true;
   }
-  if (op->result_count == 0) return false;
+  if (op->result_count == 0) {
+    return false;
+  }
   const loom_value_id_t result = loom_op_const_results(op)[0];
-  if (result == LOOM_VALUE_ID_INVALID) return false;
+  if (result == LOOM_VALUE_ID_INVALID) {
+    return false;
+  }
   *out_type = loom_module_value_type(module, result);
   return true;
 }
@@ -119,7 +127,9 @@ static bool loom_vector_memory_fragment_footprint_type(
     const loom_module_t* module, loom_type_t view_type, const loom_op_t* op,
     loom_overflow_dim_t dimension_storage[3], loom_type_t* out_type) {
   *out_type = loom_type_none();
-  if (loom_type_rank(view_type) < 2) return false;
+  if (loom_type_rank(view_type) < 2) {
+    return false;
+  }
 
   loom_value_id_t blocks = LOOM_VALUE_ID_INVALID;
   loom_value_id_t rows = LOOM_VALUE_ID_INVALID;
@@ -269,7 +279,9 @@ loom_vector_memory_footprint_kind_t loom_vector_memory_op_footprint_kind(
 bool loom_vector_memory_footprint_describe(
     const loom_fact_context_t* context, const loom_module_t* module,
     const loom_op_t* op, loom_vector_memory_footprint_t* out_footprint) {
-  if (!out_footprint) return false;
+  if (!out_footprint) {
+    return false;
+  }
   *out_footprint = (loom_vector_memory_footprint_t){
       .kind = LOOM_VECTOR_MEMORY_FOOTPRINT_NONE,
       .view = LOOM_VALUE_ID_INVALID,
@@ -284,10 +296,14 @@ bool loom_vector_memory_footprint_describe(
   }
 
   loom_memory_access_t access = loom_memory_access_cast(module, op);
-  if (!loom_memory_access_isa(access)) return false;
+  if (!loom_memory_access_isa(access)) {
+    return false;
+  }
 
   const loom_value_id_t view = loom_memory_access_view(access);
-  if (view >= module->values.count) return false;
+  if (view >= module->values.count) {
+    return false;
+  }
   const loom_type_t view_type = loom_module_value_type(module, view);
 
   *out_footprint = (loom_vector_memory_footprint_t){
@@ -357,12 +373,16 @@ bool loom_vector_memory_cache_policy_from_attrs(
     loom_vector_memory_cache_policy_t* out_policy) {
   *out_policy = (loom_vector_memory_cache_policy_t){0};
   if (!loom_attr_is_absent(cache_scope_attr)) {
-    if (cache_scope_attr.kind != LOOM_ATTR_ENUM) return false;
+    if (cache_scope_attr.kind != LOOM_ATTR_ENUM) {
+      return false;
+    }
     out_policy->build_flags |= LOOM_VECTOR_MEMORY_CACHE_POLICY_BUILD_FLAG_SCOPE;
     out_policy->cache_scope = loom_attr_as_enum(cache_scope_attr);
   }
   if (!loom_attr_is_absent(cache_temporal_attr)) {
-    if (cache_temporal_attr.kind != LOOM_ATTR_ENUM) return false;
+    if (cache_temporal_attr.kind != LOOM_ATTR_ENUM) {
+      return false;
+    }
     out_policy->build_flags |=
         LOOM_VECTOR_MEMORY_CACHE_POLICY_BUILD_FLAG_TEMPORAL;
     out_policy->cache_temporal = loom_attr_as_enum(cache_temporal_attr);
@@ -389,7 +409,9 @@ bool loom_vector_memory_cache_policy_from_op(
 bool loom_vector_memory_access_static_axis_extent(
     const loom_vector_memory_access_t* access, uint8_t view_axis,
     int64_t* out_extent) {
-  if (!access || !out_extent || view_axis >= access->view_rank) return false;
+  if (!access || !out_extent || view_axis >= access->view_rank) {
+    return false;
+  }
   if (view_axis < access->first_vector_axis) {
     *out_extent = 1;
     return true;
@@ -426,7 +448,9 @@ static bool loom_vector_memory_access_static_dense_axis_stride(
 bool loom_vector_memory_access_static_axis_stride(
     const loom_vector_memory_access_t* access, uint8_t view_axis,
     int64_t* out_stride) {
-  if (!access || !out_stride || view_axis >= access->view_rank) return false;
+  if (!access || !out_stride || view_axis >= access->view_rank) {
+    return false;
+  }
 
   switch (access->layout_kind) {
     case LOOM_VECTOR_MEMORY_LAYOUT_DENSE:
@@ -456,26 +480,42 @@ bool loom_vector_memory_access_static_lane_element_offset(
     const loom_vector_memory_access_t* access, loom_attribute_t static_indices,
     const int64_t* lane_indices, uint8_t lane_index_count,
     int64_t* out_element_offset) {
-  if (!access || !out_element_offset) return false;
-  if (static_indices.kind != LOOM_ATTR_I64_ARRAY) return false;
-  if (static_indices.count != access->view_rank) return false;
-  if (lane_index_count != access->vector_rank) return false;
-  if (lane_index_count > 0 && !lane_indices) return false;
+  if (!access || !out_element_offset) {
+    return false;
+  }
+  if (static_indices.kind != LOOM_ATTR_I64_ARRAY) {
+    return false;
+  }
+  if (static_indices.count != access->view_rank) {
+    return false;
+  }
+  if (lane_index_count != access->vector_rank) {
+    return false;
+  }
+  if (lane_index_count > 0 && !lane_indices) {
+    return false;
+  }
 
   int64_t element_offset = 0;
   for (uint8_t view_axis = 0; view_axis < access->view_rank; ++view_axis) {
     int64_t origin = static_indices.i64_array[view_axis];
-    if (origin == INT64_MIN) return false;
+    if (origin == INT64_MIN) {
+      return false;
+    }
 
     int64_t lane_index = 0;
     if (view_axis >= access->first_vector_axis) {
       uint8_t vector_axis = view_axis - access->first_vector_axis;
       lane_index = lane_indices[vector_axis];
-      if (lane_index < 0) return false;
+      if (lane_index < 0) {
+        return false;
+      }
       if (!loom_type_dim_is_dynamic_at(access->vector_type, vector_axis)) {
         int64_t lane_bound =
             loom_type_dim_static_size_at(access->vector_type, vector_axis);
-        if (lane_bound < 0 || lane_index >= lane_bound) return false;
+        if (lane_bound < 0 || lane_index >= lane_bound) {
+          return false;
+        }
       }
     }
 
@@ -483,7 +523,9 @@ bool loom_vector_memory_access_static_lane_element_offset(
     if (!iree_checked_add_i64(origin, lane_index, &logical_index)) {
       return false;
     }
-    if (logical_index == 0) continue;
+    if (logical_index == 0) {
+      continue;
+    }
 
     int64_t stride = 0;
     if (!loom_vector_memory_access_static_axis_stride(access, view_axis,

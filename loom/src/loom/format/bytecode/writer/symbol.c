@@ -58,7 +58,9 @@ static iree_status_t loom_bytecode_symbol_kind_byte(loom_symbol_kind_t kind,
 static bool loom_bytecode_func_metadata_attr_is_shared(
     const loom_op_vtable_t* vtable, const loom_func_like_vtable_t* func_like,
     uint8_t attr_index) {
-  if (loom_bytecode_attr_is_symbol_identity(vtable, attr_index)) return true;
+  if (loom_bytecode_attr_is_symbol_identity(vtable, attr_index)) {
+    return true;
+  }
   iree_string_view_t name =
       loom_attr_descriptor_name(&vtable->attr_descriptors[attr_index]);
   if (iree_string_view_equal(name, IREE_SV("import_module")) ||
@@ -400,7 +402,9 @@ static iree_status_t loom_bytecode_write_record_metadata(
 static loom_attribute_t loom_bytecode_find_op_attr_by_name(
     const loom_op_vtable_t* vtable, const loom_op_t* op,
     iree_string_view_t name) {
-  if (!vtable || !vtable->attr_descriptors) return loom_attr_absent();
+  if (!vtable || !vtable->attr_descriptors) {
+    return loom_attr_absent();
+  }
   const loom_attribute_t* attrs = loom_op_attrs(op);
   for (uint8_t i = 0; i < op->attribute_count; ++i) {
     if (iree_string_view_equal(
@@ -445,9 +449,13 @@ typedef struct loom_bytecode_symbol_linkage_t {
 
 static bool loom_bytecode_symbol_has_visibility_attr(
     const loom_module_t* module, const loom_symbol_t* symbol) {
-  if (!symbol->defining_op) return false;
+  if (!symbol->defining_op) {
+    return false;
+  }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, symbol->defining_op);
-  if (!vtable || !vtable->attr_descriptors) return false;
+  if (!vtable || !vtable->attr_descriptors) {
+    return false;
+  }
   const loom_attribute_t* attrs = loom_op_const_attrs(symbol->defining_op);
   for (uint8_t i = 0; i < vtable->attribute_count; ++i) {
     const loom_attr_descriptor_t* descriptor = &vtable->attr_descriptors[i];
@@ -477,10 +485,14 @@ static iree_status_t loom_bytecode_symbol_linkage(
       .import_symbol_id = LOOM_STRING_ID_INVALID,
   };
   out_linkage->is_export = out_linkage->is_public;
-  if (!symbol->defining_op) return iree_ok_status();
+  if (!symbol->defining_op) {
+    return iree_ok_status();
+  }
 
   loom_func_like_t func_like = loom_func_like_cast(module, symbol->defining_op);
-  if (!loom_func_like_isa(func_like)) return iree_ok_status();
+  if (!loom_func_like_isa(func_like)) {
+    return iree_ok_status();
+  }
   if (loom_func_like_export_symbol(func_like) != LOOM_STRING_ID_INVALID) {
     out_linkage->is_export = true;
   }

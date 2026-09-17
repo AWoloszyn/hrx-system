@@ -138,7 +138,9 @@ static void iree_hal_passthrough_pool_reservation_state_release_reference(
   const int32_t previous_count = iree_atomic_fetch_sub(
       &reservation_state->reference_count, 1, iree_memory_order_acq_rel);
   IREE_ASSERT(previous_count > 0);
-  if (previous_count != 1) return;
+  if (previous_count != 1) {
+    return;
+  }
 
   iree_hal_slab_provider_release_slab(pool->slab_provider,
                                       &reservation_state->slab);
@@ -455,7 +457,9 @@ static iree_status_t iree_hal_passthrough_pool_acquire_reservations(
         base_pool, &requests[acquired_count], requester_frontier, flags,
         &elements[acquired_count].reservation, &elements[acquired_count].info,
         &item_result);
-    if (iree_status_is_ok(status)) ++acquired_count;
+    if (iree_status_is_ok(status)) {
+      ++acquired_count;
+    }
   }
   if (!iree_status_is_ok(status)) {
     for (iree_host_size_t i = 0; i < acquired_count; ++i) {
@@ -554,7 +558,9 @@ static iree_status_t iree_hal_passthrough_pool_materialize_reservations(
     }
     status =
         iree_allocator_malloc(pool->host_allocator, state_size, (void**)&state);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     memset(state, 0, state_size);
     state->host_allocator = pool->host_allocator;
     iree_atomic_store(&state->reference_count, (int32_t)reservation_count,
@@ -570,7 +576,9 @@ static iree_status_t iree_hal_passthrough_pool_materialize_reservations(
     status = iree_allocator_malloc_array(
         pool->host_allocator, reservation_count, sizeof(*staged_buffers),
         (void**)&staged_buffers);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     staged_buffers_allocated = true;
     memset(staged_buffers, 0, reservation_count * sizeof(*staged_buffers));
   }
@@ -607,7 +615,9 @@ static iree_status_t iree_hal_passthrough_pool_materialize_reservations(
   }
 
   if (iree_status_is_ok(status)) {
-    if (state) state->ownership_committed = true;
+    if (state) {
+      state->ownership_committed = true;
+    }
     for (iree_host_size_t i = 0; i < reservation_count; ++i) {
       out_buffers[i] = state ? state->elements[i].buffer : staged_buffers[i];
     }

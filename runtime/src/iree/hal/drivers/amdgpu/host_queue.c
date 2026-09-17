@@ -274,7 +274,9 @@ iree_status_t iree_hal_amdgpu_host_queue_initialize_tsan_state(
 
 void iree_hal_amdgpu_host_queue_deinitialize_tsan_state(
     iree_hal_amdgpu_host_queue_t* queue) {
-  if (!queue->tsan.allocation_base) return;
+  if (!queue->tsan.allocation_base) {
+    return;
+  }
   iree_hal_amdgpu_hsa_cleanup_assert_success(iree_hsa_amd_memory_pool_free_raw(
       queue->libhsa, queue->tsan.allocation_base));
   memset(&queue->tsan, 0, sizeof(queue->tsan));
@@ -520,7 +522,9 @@ void iree_hal_amdgpu_host_queue_record_failure(
 iree_status_t iree_hal_amdgpu_host_queue_wait_for_setup_epoch(
     iree_hal_amdgpu_host_queue_t* queue, uint64_t epoch) {
   IREE_ASSERT_ARGUMENT(queue);
-  if (epoch == 0) return iree_ok_status();
+  if (epoch == 0) {
+    return iree_ok_status();
+  }
   if (!queue->hardware_queue || !queue->notification_ring.epoch.signal.handle) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "AMDGPU host queue cannot wait for epoch %" PRIu64
@@ -577,7 +581,9 @@ iree_status_t iree_hal_amdgpu_host_queue_wait_for_setup_epoch(
     } else if (signal_index == IREE_HAL_AMDGPU_EPOCH_WAIT_STOP_SIGNAL) {
       iree_status_t error =
           iree_hal_amdgpu_host_queue_clone_error_status(queue);
-      if (!iree_status_is_ok(error)) return error;
+      if (!iree_status_is_ok(error)) {
+        return error;
+      }
       return iree_make_status(IREE_STATUS_CANCELLED,
                               "AMDGPU host queue stopped while waiting for "
                               "epoch %" PRIu64,
@@ -1401,7 +1407,9 @@ typedef enum iree_hal_amdgpu_host_queue_buffer_state_e {
 // deallocated wrappers are terminal and cannot be submitted again.
 static iree_hal_amdgpu_host_queue_buffer_state_t
 iree_hal_amdgpu_host_queue_buffer_state(iree_hal_buffer_t* buffer) {
-  if (!buffer) return IREE_HAL_AMDGPU_HOST_QUEUE_BUFFER_STATE_READY;
+  if (!buffer) {
+    return IREE_HAL_AMDGPU_HOST_QUEUE_BUFFER_STATE_READY;
+  }
   iree_hal_buffer_t* allocated_buffer =
       iree_hal_buffer_allocated_buffer(buffer);
   if (!iree_hal_amdgpu_transient_buffer_isa(allocated_buffer)) {
@@ -1428,12 +1436,16 @@ iree_hal_amdgpu_host_queue_binding_table_state(
     iree_hal_buffer_binding_table_t binding_table) {
   iree_hal_amdgpu_host_queue_buffer_state_t state =
       IREE_HAL_AMDGPU_HOST_QUEUE_BUFFER_STATE_READY;
-  if (!binding_table.bindings) return state;
+  if (!binding_table.bindings) {
+    return state;
+  }
   for (iree_host_size_t i = 0; i < binding_table.count; ++i) {
     state = iree_hal_amdgpu_host_queue_merge_buffer_states(
         state, iree_hal_amdgpu_host_queue_buffer_state(
                    binding_table.bindings[i].buffer));
-    if (state == IREE_HAL_AMDGPU_HOST_QUEUE_BUFFER_STATE_DEALLOCATED) break;
+    if (state == IREE_HAL_AMDGPU_HOST_QUEUE_BUFFER_STATE_DEALLOCATED) {
+      break;
+    }
   }
   return state;
 }
@@ -1443,12 +1455,16 @@ iree_hal_amdgpu_host_queue_binding_refs_state(
     iree_hal_buffer_ref_list_t bindings) {
   iree_hal_amdgpu_host_queue_buffer_state_t state =
       IREE_HAL_AMDGPU_HOST_QUEUE_BUFFER_STATE_READY;
-  if (!bindings.values) return state;
+  if (!bindings.values) {
+    return state;
+  }
   for (iree_host_size_t i = 0; i < bindings.count; ++i) {
     state = iree_hal_amdgpu_host_queue_merge_buffer_states(
         state,
         iree_hal_amdgpu_host_queue_buffer_state(bindings.values[i].buffer));
-    if (state == IREE_HAL_AMDGPU_HOST_QUEUE_BUFFER_STATE_DEALLOCATED) break;
+    if (state == IREE_HAL_AMDGPU_HOST_QUEUE_BUFFER_STATE_DEALLOCATED) {
+      break;
+    }
   }
   return state;
 }

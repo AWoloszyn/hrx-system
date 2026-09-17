@@ -67,7 +67,9 @@ iree_status_t loom_llvmir_bitstream_writer_write_bits(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "LLVM bit field value exceeds its width");
   }
-  if (bit_count == 0) return iree_ok_status();
+  if (bit_count == 0) {
+    return iree_ok_status();
+  }
   if (UINT64_MAX - writer->bit_offset < bit_count) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "LLVM bitstream offset overflow");
@@ -127,14 +129,18 @@ iree_status_t loom_llvmir_bitstream_writer_write_vbr(
 iree_status_t loom_llvmir_bitstream_writer_align32(
     loom_llvmir_bitstream_writer_t* writer) {
   uint32_t misalignment = (uint32_t)(writer->bit_offset & 31);
-  if (misalignment == 0) return iree_ok_status();
+  if (misalignment == 0) {
+    return iree_ok_status();
+  }
   return loom_llvmir_bitstream_writer_write_bits(writer, 0, 32 - misalignment);
 }
 
 iree_status_t loom_llvmir_bitstream_writer_write_bytes(
     loom_llvmir_bitstream_writer_t* writer, const void* data,
     iree_host_size_t length) {
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   if (length > (UINT64_MAX - writer->bit_offset) / 8) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "LLVM bitstream offset overflow");
@@ -190,7 +196,9 @@ iree_status_t loom_llvmir_bitstream_writer_patch_u32(
 
 iree_status_t loom_llvmir_bitstream_writer_flush(
     loom_llvmir_bitstream_writer_t* writer) {
-  if (writer->page_position == 0) return iree_ok_status();
+  if (writer->page_position == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_io_stream_write(
       writer->stream, writer->page_position, writer->page));
   writer->page_position = 0;

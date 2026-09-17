@@ -21,7 +21,9 @@
 
 IREE_API_EXPORT void iree_io_file_contents_free(
     iree_io_file_contents_t* contents) {
-  if (!contents) return;
+  if (!contents) {
+    return;
+  }
   iree_allocator_t allocator = contents->allocator;
   iree_io_file_mapping_release(contents->mapping);
   iree_allocator_free(allocator, contents);
@@ -187,17 +189,25 @@ static uint64_t iree_io_stdio_file_length(FILE* file) {
 
   // Capture original offset so we can return to it.
   int64_t origin = iree_ftell(file);
-  if (origin == -1) return 0;
+  if (origin == -1) {
+    return 0;
+  }
 
   // Seek to the end of the file.
-  if (iree_fseek(file, 0, SEEK_END) != 0) return 0;
+  if (iree_fseek(file, 0, SEEK_END) != 0) {
+    return 0;
+  }
 
   // Query the position, telling us the total file length in bytes.
   int64_t length = iree_ftell(file);
-  if (length == -1) return 0;
+  if (length == -1) {
+    return 0;
+  }
 
   // Seek back to the file origin.
-  if (iree_fseek(file, origin, SEEK_SET) != 0) return 0;
+  if (iree_fseek(file, origin, SEEK_SET) != 0) {
+    return 0;
+  }
 
   return (uint64_t)length;
 }

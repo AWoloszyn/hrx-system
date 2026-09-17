@@ -260,7 +260,9 @@ static iree_status_t iree_tokenizer_decoder_metaspace_state_process(
   iree_host_size_t bytes_written = 0;
 
   for (iree_host_size_t i = 0; i < token_strings.count; ++i) {
-    if (bytes_written >= output.size) break;
+    if (bytes_written >= output.size) {
+      break;
+    }
 
     bool token_fully_consumed = false;
     iree_host_size_t written = iree_tokenizer_decoder_metaspace_process_token(

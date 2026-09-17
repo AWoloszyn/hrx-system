@@ -839,8 +839,12 @@ static uint32_t
 iree_hal_amdgpu_aql_block_processor_payload_acquire_packet_count(
     const iree_hal_amdgpu_aql_block_processor_t* processor,
     const iree_hal_amdgpu_command_buffer_block_header_t* block) {
-  if (processor->payload.acquire_scope == IREE_HSA_FENCE_SCOPE_NONE) return 0;
-  if (block->aql_packet_count == 0) return 0;
+  if (processor->payload.acquire_scope == IREE_HSA_FENCE_SCOPE_NONE) {
+    return 0;
+  }
+  if (block->aql_packet_count == 0) {
+    return 0;
+  }
   iree_hal_amdgpu_aql_block_processor_packet_flags_t packet_flags =
       IREE_HAL_AMDGPU_AQL_BLOCK_PROCESSOR_PACKET_FLAG_NONE;
   if (block->aql_packet_count == 1 &&

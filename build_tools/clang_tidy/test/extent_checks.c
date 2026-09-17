@@ -74,25 +74,45 @@ void iree_clang_tidy_extent_aggregate_zero_initializers(void) {
 }
 
 int iree_clang_tidy_extent_string_view_is_empty(iree_string_view_t view) {
-  if (view.data == NULL || view.size == 0) return 1;
+  if (view.data == NULL || view.size == 0) {
+    return 1;
+  }
   return 0;
 }
 
 void iree_clang_tidy_extent_pointer_empty_predicates(
     iree_string_view_t view, iree_const_byte_span_t span) {
-  if (!view.data && !view.size) return;
-  if (!span.data && !span.data_length) return;
+  if (!view.data && !view.size) {
+    return;
+  }
+  if (!span.data && !span.data_length) {
+    return;
+  }
 }
 
 void iree_clang_tidy_extent_allowed_predicates(iree_string_view_t view,
                                                iree_const_byte_span_t span) {
-  if (!view.data || !view.size) return;
-  if (span.data == NULL || span.data_length == 0) return;
-  if (view.size > 0 && view.data == NULL) return;
-  if (span.data_length > 0 && !span.data) return;
-  if (iree_string_view_is_empty(view)) return;
-  if (iree_const_byte_span_is_empty(span)) return;
-  if (iree_clang_tidy_extent_other_predicate()) return;
+  if (!view.data || !view.size) {
+    return;
+  }
+  if (span.data == NULL || span.data_length == 0) {
+    return;
+  }
+  if (view.size > 0 && view.data == NULL) {
+    return;
+  }
+  if (span.data_length > 0 && !span.data) {
+    return;
+  }
+  if (iree_string_view_is_empty(view)) {
+    return;
+  }
+  if (iree_const_byte_span_is_empty(span)) {
+    return;
+  }
+  if (iree_clang_tidy_extent_other_predicate()) {
+    return;
+  }
 }
 
 void iree_clang_tidy_extent_allowed_initializers(void) {

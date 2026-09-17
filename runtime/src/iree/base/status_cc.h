@@ -145,7 +145,9 @@ class Status final {
                                      iree_status_from_code(other.code()))) {}
   Status& operator=(Status&& other) {
     if (this != &other) {
-      if (IREE_UNLIKELY(value_)) iree_status_ignore(value_);
+      if (IREE_UNLIKELY(value_)) {
+        iree_status_ignore(value_);
+      }
       value_ = status_impl::exchange(other.value_,
                                      iree_status_from_code(other.code()));
     }
@@ -154,14 +156,18 @@ class Status final {
 
   Status(iree_status_code_t code) : value_(iree_status_from_code(code)) {}
   Status& operator=(const iree_status_code_t& code) {
-    if (IREE_UNLIKELY(value_)) iree_status_ignore(value_);
+    if (IREE_UNLIKELY(value_)) {
+      iree_status_ignore(value_);
+    }
     value_ = iree_status_from_code(code);
     return *this;
   }
 
   Status(StatusCode code) : value_(iree_status_from_code(code)) {}
   Status& operator=(const StatusCode& code) {
-    if (IREE_UNLIKELY(value_)) iree_status_ignore(value_);
+    if (IREE_UNLIKELY(value_)) {
+      iree_status_ignore(value_);
+    }
     value_ = iree_status_from_code(code);
     return *this;
   }
@@ -345,7 +351,9 @@ template <typename T, typename... Args>
 void PlacementNew(void* p, Args&&... args) {
 #if defined(__GNUC__) && !defined(__clang__)
   // Teach gcc that 'p' cannot be null, fixing code size issues.
-  if (p == nullptr) __builtin_unreachable();
+  if (p == nullptr) {
+    __builtin_unreachable();
+  }
 #endif
   new (p) T(std::forward<Args>(args)...);
 }
@@ -414,7 +422,9 @@ class StatusOrData {
   }
 
   StatusOrData& operator=(const StatusOrData& other) {
-    if (this == &other) return *this;
+    if (this == &other) {
+      return *this;
+    }
     if (other.ok()) {
       Assign(other.data_);
     } else {
@@ -424,7 +434,9 @@ class StatusOrData {
   }
 
   StatusOrData& operator=(StatusOrData&& other) {
-    if (this == &other) return *this;
+    if (this == &other) {
+      return *this;
+    }
     if (other.ok()) {
       Assign(std::move(other.data_));
     } else {
@@ -489,7 +501,9 @@ class StatusOrData {
   };
 
   void Clear() {
-    if (ok()) data_.~T();
+    if (ok()) {
+      data_.~T();
+    }
   }
 
   void EnsureOk() const {

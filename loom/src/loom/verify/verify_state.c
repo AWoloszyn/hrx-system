@@ -11,7 +11,9 @@
 
 void loom_verify_record_diagnostic_status(loom_verify_state_t* state,
                                           iree_status_t status) {
-  if (iree_status_is_ok(status)) return;
+  if (iree_status_is_ok(status)) {
+    return;
+  }
   if (iree_status_is_ok(state->diagnostic_status)) {
     state->diagnostic_status = status;
   } else {
@@ -142,7 +144,9 @@ iree_string_view_t loom_verify_symbol_name(const loom_verify_state_t* state,
 
 iree_string_view_t loom_verify_symbol_definition_name(
     const loom_symbol_t* symbol) {
-  if (!symbol || !symbol->definition) return IREE_SV("unresolved");
+  if (!symbol || !symbol->definition) {
+    return IREE_SV("unresolved");
+  }
   return loom_symbol_definition_descriptor_name(symbol->definition);
 }
 bool loom_verify_at_error_limit(const loom_verify_state_t* state) {
@@ -158,7 +162,9 @@ bool loom_verify_at_error_limit(const loom_verify_state_t* state) {
 iree_host_size_t loom_verify_source_byte_offset(iree_string_view_t source,
                                                 uint32_t line,
                                                 uint32_t column) {
-  if (line == 0) return 0;
+  if (line == 0) {
+    return 0;
+  }
   // Scan newlines to find the byte offset of the start of |line|.
   uint32_t current_line = 1;
   iree_host_size_t offset = 0;
@@ -168,7 +174,9 @@ iree_host_size_t loom_verify_source_byte_offset(iree_string_view_t source,
     }
     ++offset;
   }
-  if (current_line < line) return source.size;
+  if (current_line < line) {
+    return source.size;
+  }
   // Walk UTF-8 codepoints to reach the target column (1-based).
   // Column 1 means "start of line" = offset stays where it is.
   iree_host_size_t line_start = offset;
@@ -214,11 +222,15 @@ loom_value_id_t loom_verify_resolve_value_field(const loom_op_t* op,
         loom_value_slice_t span = loom_op_operand_field_span(vtable, op, index);
         return span.count > 0 ? span.values[0] : LOOM_VALUE_ID_INVALID;
       }
-      if (index < op->operand_count) return loom_op_const_operands(op)[index];
+      if (index < op->operand_count) {
+        return loom_op_const_operands(op)[index];
+      }
       break;
     }
     case LOOM_FIELD_RESULT:
-      if (index < op->result_count) return loom_op_const_results(op)[index];
+      if (index < op->result_count) {
+        return loom_op_const_results(op)[index];
+      }
       break;
     default:
       break;

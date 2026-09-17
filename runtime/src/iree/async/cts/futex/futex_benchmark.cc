@@ -72,7 +72,9 @@ static void InitFutexWakeOp(iree_async_futex_wake_operation_t* operation,
 static void BM_WakeNoWaiters(::benchmark::State& state,
                              const ProactorFactory& factory) {
   auto* context = CreateBenchmarkContext(factory, state);
-  if (!context) return;
+  if (!context) {
+    return;
+  }
 
   if (!RequireCapability(
           context, IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS, state)) {
@@ -116,7 +118,9 @@ static void BM_WakeNoWaiters(::benchmark::State& state,
 static void BM_CrossThread(::benchmark::State& state,
                            const ProactorFactory& factory) {
   auto* context = CreateBenchmarkContext(factory, state);
-  if (!context) return;
+  if (!context) {
+    return;
+  }
 
   if (!RequireCapability(
           context, IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS, state)) {

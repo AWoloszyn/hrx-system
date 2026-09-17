@@ -165,7 +165,9 @@ class CatalogBytecodeFixture final : public SerializedBytecodeFixture {
       uint16_t argument_count = 0;
       const loom_value_id_t* arguments =
           loom_func_like_arg_ids(function, &argument_count);
-      if (argument_count != 1) abort();
+      if (argument_count != 1) {
+        abort();
+      }
 
       loom_builder_t body_builder;
       loom_builder_initialize(
@@ -355,7 +357,9 @@ static CatalogMetadataStats InspectCatalogMetadata(
       iree_make_const_byte_span(fixture.bytes().data(), fixture.bytes().size()),
       IREE_SV("catalog_benchmark.loombc"), fixture.context(), block_pool,
       &metadata_arena, /*options=*/nullptr, &result, &metadata));
-  if (result.error_count != 0 || metadata.module_count != 1) abort();
+  if (result.error_count != 0 || metadata.module_count != 1) {
+    abort();
+  }
 
   const loom_bytecode_module_metadata_t& module = metadata.modules[0];
   CatalogMetadataStats stats = {
@@ -393,7 +397,9 @@ static void BM_ReadIndex_Catalog(benchmark::State& state) {
   iree_arena_block_pool_t block_pool;
   iree_arena_block_pool_initialize(65536, iree_allocator_system(), &block_pool);
   CatalogMetadataStats stats = InspectCatalogMetadata(fixture, &block_pool);
-  if (stats.symbol_count != symbol_count) abort();
+  if (stats.symbol_count != symbol_count) {
+    abort();
+  }
 
   iree_arena_allocator_t metadata_arena;
   iree_arena_initialize(&block_pool, &metadata_arena);
@@ -405,7 +411,9 @@ static void BM_ReadIndex_Catalog(benchmark::State& state) {
                                   fixture.bytes().size()),
         IREE_SV("catalog_benchmark.loombc"), fixture.context(), &block_pool,
         &metadata_arena, /*options=*/nullptr, &result, &metadata));
-    if (result.error_count != 0 || metadata.module_count != 1) abort();
+    if (result.error_count != 0 || metadata.module_count != 1) {
+      abort();
+    }
     benchmark::DoNotOptimize(metadata.modules[0].symbols);
 
     state.PauseTiming();
@@ -429,7 +437,9 @@ static void BM_ReadModule_Catalog(benchmark::State& state) {
   iree_arena_block_pool_t block_pool;
   iree_arena_block_pool_initialize(65536, iree_allocator_system(), &block_pool);
   CatalogMetadataStats stats = InspectCatalogMetadata(fixture, &block_pool);
-  if (stats.symbol_count != symbol_count) abort();
+  if (stats.symbol_count != symbol_count) {
+    abort();
+  }
 
   uint32_t diagnostic_count = 0;
   loom_bytecode_read_options_t options = ReadOptions(&diagnostic_count);
@@ -492,7 +502,9 @@ static SelectedMaterializationStats InspectSelectedMaterialization(
   loom_module_t* output_module = nullptr;
   IgnoreStatusOrAbort(loom_bytecode_selected_module_materialize(
       &materializer, ordinals.data(), ordinals.size(), &output_module));
-  if (error_count != 0 || output_module == nullptr) abort();
+  if (error_count != 0 || output_module == nullptr) {
+    abort();
+  }
 
   SelectedMaterializationStats stats = {
       /*.body_bytes=*/0,

@@ -133,7 +133,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_submit_pm4_timestamp(
       queue, resolution, signal_semaphore_list,
       IREE_ARRAYSIZE(operation_resources), iree_hsa_signal_null(),
       /*profile_queue_event_info=*/NULL, out_ready, &submission));
-  if (!*out_ready) return iree_ok_status();
+  if (!*out_ready) {
+    return iree_ok_status();
+  }
 
   const bool did_emit =
       iree_hal_amdgpu_pm4_ib_builder_emit_copy_timestamp_to_memory(

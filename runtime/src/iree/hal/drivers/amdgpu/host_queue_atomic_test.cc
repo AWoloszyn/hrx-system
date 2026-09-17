@@ -34,7 +34,9 @@ class ReleaseLatch {
     (void)buffer;
     ReleaseLatch* latch = static_cast<ReleaseLatch*>(user_data);
     const int previous = latch->remaining_.fetch_sub(1);
-    if (previous == 1) latch->promise_.set_value();
+    if (previous == 1) {
+      latch->promise_.set_value();
+    }
   }
 
   iree_hal_buffer_release_callback_t callback() {

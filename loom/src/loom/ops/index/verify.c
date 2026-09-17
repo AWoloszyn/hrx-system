@@ -24,14 +24,18 @@ static iree_status_t loom_index_emit(iree_diagnostic_emitter_t emitter,
 }
 
 static bool loom_index_type_is_address(loom_type_t type) {
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   loom_scalar_type_t scalar_type = loom_type_element_type(type);
   return scalar_type == LOOM_SCALAR_TYPE_INDEX ||
          scalar_type == LOOM_SCALAR_TYPE_OFFSET;
 }
 
 static bool loom_index_type_is_integer_or_address(loom_type_t type) {
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   loom_scalar_type_t scalar_type = loom_type_element_type(type);
   return loom_scalar_type_is_integer(scalar_type) ||
          scalar_type == LOOM_SCALAR_TYPE_INDEX ||

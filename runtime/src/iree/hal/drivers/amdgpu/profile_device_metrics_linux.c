@@ -417,7 +417,9 @@ static iree_status_t iree_hal_amdgpu_profile_device_metrics_read_file(
     iree_host_size_t* out_length) {
   *out_available = false;
   *out_length = 0;
-  if (file_descriptor < 0) return iree_ok_status();
+  if (file_descriptor < 0) {
+    return iree_ok_status();
+  }
 
   ssize_t read_length = 0;
   do {
@@ -433,7 +435,9 @@ static iree_status_t iree_hal_amdgpu_profile_device_metrics_read_file(
                             "failed to read AMDGPU metric sysfs file %s: %s",
                             name, strerror(error_code));
   }
-  if (read_length == 0) return iree_ok_status();
+  if (read_length == 0) {
+    return iree_ok_status();
+  }
 
   *out_available = true;
   *out_length = (iree_host_size_t)read_length;
@@ -450,7 +454,9 @@ static iree_status_t iree_hal_amdgpu_profile_device_metrics_read_uint64_file(
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_profile_device_metrics_read_file(
       file_descriptor, name, buffer, sizeof(buffer) - 1, out_available,
       &length));
-  if (!*out_available) return iree_ok_status();
+  if (!*out_available) {
+    return iree_ok_status();
+  }
 
   buffer[length] = 0;
   iree_string_view_t text =
@@ -481,7 +487,9 @@ static iree_status_t iree_hal_amdgpu_profile_device_metrics_open_device_file(
   IREE_RETURN_IF_ERROR(
       iree_hal_amdgpu_profile_device_metrics_open_optional_file(
           path, out_file_descriptor));
-  if (*out_file_descriptor >= 0) ++state->discovery.readable_file_count;
+  if (*out_file_descriptor >= 0) {
+    ++state->discovery.readable_file_count;
+  }
   return iree_ok_status();
 }
 
@@ -505,7 +513,9 @@ static iree_status_t iree_hal_amdgpu_profile_device_metrics_read_label(
       file_descriptor, path, (uint8_t*)buffer, buffer_capacity - 1,
       out_available, &length);
   iree_hal_amdgpu_profile_device_metrics_close_file(&file_descriptor);
-  if (!iree_status_is_ok(status) || !*out_available) return status;
+  if (!iree_status_is_ok(status) || !*out_available) {
+    return status;
+  }
 
   buffer[length] = 0;
   *out_label =
@@ -546,7 +556,9 @@ static iree_status_t iree_hal_amdgpu_profile_device_metrics_discover_hwmon_freq(
     IREE_RETURN_IF_ERROR(iree_hal_amdgpu_profile_device_metrics_read_label(
         directory_path, "freq", i, label_buffer, sizeof(label_buffer),
         &label_available, &label));
-    if (!label_available) continue;
+    if (!label_available) {
+      continue;
+    }
 
     if (iree_string_view_equal(label, IREE_SV("sclk")) ||
         iree_string_view_equal(label, IREE_SV("gfxclk"))) {
@@ -576,7 +588,9 @@ iree_hal_amdgpu_profile_device_metrics_discover_hwmon_temperature(
     IREE_RETURN_IF_ERROR(iree_hal_amdgpu_profile_device_metrics_read_label(
         directory_path, "temp", i, label_buffer, sizeof(label_buffer),
         &label_available, &label));
-    if (!label_available) continue;
+    if (!label_available) {
+      continue;
+    }
 
     if (iree_string_view_equal(label, IREE_SV("edge"))) {
       IREE_RETURN_IF_ERROR(iree_hal_amdgpu_profile_device_metrics_open_hwmon_input(
@@ -612,9 +626,13 @@ iree_hal_amdgpu_profile_device_metrics_discover_hwmon_power(
 
 static bool iree_hal_amdgpu_profile_device_metrics_is_hwmon_dirent(
     const char* name) {
-  if (strncmp(name, "hwmon", 5) != 0) return false;
+  if (strncmp(name, "hwmon", 5) != 0) {
+    return false;
+  }
   for (const char* cursor = name + 5; *cursor; ++cursor) {
-    if (*cursor < '0' || *cursor > '9') return false;
+    if (*cursor < '0' || *cursor > '9') {
+      return false;
+    }
   }
   return true;
 }
@@ -844,7 +862,9 @@ static iree_status_t iree_hal_amdgpu_profile_device_metrics_sample_scalars(
   for (iree_host_size_t i = 0;
        i < IREE_HAL_AMDGPU_PROFILE_DEVICE_METRICS_LINUX_SYSFS_SLOT_COUNT; ++i) {
     const int file_descriptor = state->files.scalars[i];
-    if (file_descriptor < 0) continue;
+    if (file_descriptor < 0) {
+      continue;
+    }
 
     bool available = false;
     uint64_t value = 0;
@@ -963,7 +983,9 @@ iree_status_t iree_hal_amdgpu_profile_device_metric_source_initialize(
 
 void iree_hal_amdgpu_profile_device_metric_source_deinitialize(
     iree_hal_amdgpu_profile_device_metric_source_t* source) {
-  if (!source) return;
+  if (!source) {
+    return;
+  }
   iree_hal_amdgpu_profile_linux_sysfs_source_state_t* state =
       (iree_hal_amdgpu_profile_linux_sysfs_source_state_t*)
           source->platform.state;
@@ -1010,7 +1032,9 @@ iree_status_t iree_hal_amdgpu_profile_device_metric_source_initialize(
 
 void iree_hal_amdgpu_profile_device_metric_source_deinitialize(
     iree_hal_amdgpu_profile_device_metric_source_t* source) {
-  if (!source) return;
+  if (!source) {
+    return;
+  }
   memset(source, 0, sizeof(*source));
 }
 

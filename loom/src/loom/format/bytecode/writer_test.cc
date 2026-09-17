@@ -267,7 +267,9 @@ class WriterTest : public ::testing::Test {
     while (*offset < bytes.size()) {
       uint8_t byte = bytes[(*offset)++];
       value |= (uint64_t)(byte & 0x7F) << shift;
-      if ((byte & 0x80) == 0) return value;
+      if ((byte & 0x80) == 0) {
+        return value;
+      }
       shift += 7;
     }
     return value;
@@ -344,7 +346,9 @@ class WriterTest : public ::testing::Test {
     uint64_t module_offset = ReadU64LE(bytes, dir_offset + 8);
     auto entries = ReadSectionDirectory(bytes, module_offset);
     SectionEntry section_entry = {};
-    if (!FindSection(entries, section_kind, &section_entry)) return 0;
+    if (!FindSection(entries, section_kind, &section_entry)) {
+      return 0;
+    }
     return (size_t)module_offset + (size_t)section_entry.offset;
   }
 

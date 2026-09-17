@@ -272,7 +272,9 @@ static const iree_net_listener_vtable_t iree_net_loopback_listener_vtable = {
 
 static void iree_net_loopback_accept_dispatch_discard(
     iree_net_loopback_accept_dispatch_t* dispatch) {
-  if (!dispatch) return;
+  if (!dispatch) {
+    return;
+  }
   iree_net_loopback_listener_t* listener = dispatch->listener;
   iree_allocator_t host_allocator = listener->factory->host_allocator;
   iree_net_connection_release(dispatch->server_connection);
@@ -411,7 +413,9 @@ static iree_status_t iree_net_loopback_factory_connect(
   iree_slim_mutex_lock(&factory->mutex);
   iree_net_loopback_listener_t* listener =
       iree_net_loopback_factory_find_listener_locked(factory, address);
-  if (listener) ++listener->pending_accept_count;
+  if (listener) {
+    ++listener->pending_accept_count;
+  }
   iree_slim_mutex_unlock(&factory->mutex);
 
   iree_status_t status = iree_ok_status();
@@ -561,7 +565,9 @@ iree_status_t iree_net_loopback_factory_create(
   *out_factory = NULL;
   iree_net_loopback_factory_options_t default_options =
       iree_net_loopback_factory_options_default();
-  if (!options) options = &default_options;
+  if (!options) {
+    options = &default_options;
+  }
   if (options->max_endpoint_count == 0) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "loopback connections require endpoint slots");

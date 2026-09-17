@@ -40,7 +40,9 @@ static bool loom_index_cast_scalar_type(const loom_module_t* module,
                                         loom_value_id_t value,
                                         loom_scalar_type_t* out_scalar_type) {
   loom_type_t type = loom_module_value_type(module, value);
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   *out_scalar_type = loom_type_element_type(type);
   return true;
 }
@@ -163,13 +165,19 @@ static bool loom_index_assume_source_for_result(const loom_module_t* module,
                                                 const loom_op_t** out_assume_op,
                                                 loom_value_id_t* out_source) {
   const loom_value_t* value = loom_module_value(module, value_id);
-  if (loom_value_is_block_arg(value)) return false;
+  if (loom_value_is_block_arg(value)) {
+    return false;
+  }
   const loom_op_t* defining_op = loom_value_def_op(value);
-  if (!defining_op || !loom_index_assume_isa(defining_op)) return false;
+  if (!defining_op || !loom_index_assume_isa(defining_op)) {
+    return false;
+  }
 
   loom_value_slice_t sources = loom_index_assume_values(defining_op);
   uint16_t result_index = loom_value_def_index(value);
-  if (result_index >= sources.count) return false;
+  if (result_index >= sources.count) {
+    return false;
+  }
   *out_assume_op = defining_op;
   *out_source = sources.values[result_index];
   return true;

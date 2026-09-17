@@ -112,7 +112,9 @@ IREE_API_EXPORT iree_status_t iree_status_from_vk_result(const char* file,
                                                          uint32_t line,
                                                          VkResult result,
                                                          const char* symbol) {
-  if (result == VK_SUCCESS) return iree_ok_status();
+  if (result == VK_SUCCESS) {
+    return iree_ok_status();
+  }
   return iree_status_allocate_f(iree_hal_vulkan_status_code(result), file, line,
                                 "[%s] %s", symbol,
                                 iree_hal_vulkan_result_string(result));

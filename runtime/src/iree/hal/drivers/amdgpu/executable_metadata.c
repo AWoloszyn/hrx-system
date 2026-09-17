@@ -104,7 +104,9 @@ iree_status_t iree_hal_amdgpu_executable_metadata_allocate(
 
 void iree_hal_amdgpu_executable_metadata_free(
     iree_hal_amdgpu_executable_metadata_t* metadata) {
-  if (!metadata) return;
+  if (!metadata) {
+    return;
+  }
   iree_allocator_t host_allocator = metadata->host_allocator;
   iree_allocator_free(host_allocator, metadata);
 }

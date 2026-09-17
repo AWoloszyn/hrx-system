@@ -123,10 +123,18 @@ static int iree_profile_att_instruction_stats_compare(const void* lhs,
       (const iree_profile_att_instruction_stats_t*)lhs;
   const iree_profile_att_instruction_stats_t* rhs_stats =
       (const iree_profile_att_instruction_stats_t*)rhs;
-  if (lhs_stats->pc.code_object_id < rhs_stats->pc.code_object_id) return -1;
-  if (lhs_stats->pc.code_object_id > rhs_stats->pc.code_object_id) return 1;
-  if (lhs_stats->pc.address < rhs_stats->pc.address) return -1;
-  if (lhs_stats->pc.address > rhs_stats->pc.address) return 1;
+  if (lhs_stats->pc.code_object_id < rhs_stats->pc.code_object_id) {
+    return -1;
+  }
+  if (lhs_stats->pc.code_object_id > rhs_stats->pc.code_object_id) {
+    return 1;
+  }
+  if (lhs_stats->pc.address < rhs_stats->pc.address) {
+    return -1;
+  }
+  if (lhs_stats->pc.address > rhs_stats->pc.address) {
+    return 1;
+  }
   return 0;
 }
 
@@ -135,7 +143,9 @@ static void iree_profile_att_decode_callback(
     uint64_t trace_event_count, void* user_data) {
   iree_profile_att_decode_context_t* context =
       (iree_profile_att_decode_context_t*)user_data;
-  if (!iree_status_is_ok(context->callback_status)) return;
+  if (!iree_status_is_ok(context->callback_status)) {
+    return;
+  }
 
   iree_profile_att_decoded_trace_t* decoded_trace = context->decoded_trace;
   switch (record_type) {
@@ -240,7 +250,9 @@ static iree_status_t iree_profile_att_load_trace_code_objects(
       status = iree_profile_att_disassembly_context_ensure_code_object_loaded(
           decoded_trace->disassembly, code_object);
     }
-    if (iree_status_is_ok(status)) ++loaded_count;
+    if (iree_status_is_ok(status)) {
+      ++loaded_count;
+    }
   }
   if (iree_status_is_ok(status) && loaded_count == 0) {
     status = iree_make_status(

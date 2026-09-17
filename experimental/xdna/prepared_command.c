@@ -327,7 +327,9 @@ iree_status_t iree_hal_amd_xdna_prepared_command_create(
 
 void iree_hal_amd_xdna_prepared_command_destroy(
     iree_hal_amd_xdna_prepared_command_t* prepared_command) {
-  if (prepared_command == NULL) return;
+  if (prepared_command == NULL) {
+    return;
+  }
   for (iree_host_size_t i = prepared_command->retained_buffer_count; i > 0;
        --i) {
     iree_hal_buffer_release(prepared_command->retained_buffers[i - 1]);

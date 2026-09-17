@@ -245,7 +245,9 @@ static iree_string_view_t iree_vm_bytecode_disassembler_text_at(
 
 static iree_status_t iree_vm_bytecode_disassembler_write(
     iree_vm_bytecode_disassembler_t* disassembler, iree_string_view_t value) {
-  if (value.size == 0) return iree_ok_status();
+  if (value.size == 0) {
+    return iree_ok_status();
+  }
   return disassembler->write_callback.fn(disassembler->write_callback.user_data,
                                          value);
 }
@@ -292,7 +294,9 @@ static int64_t iree_vm_bytecode_disassembler_signed_value(uint64_t value,
                                                           uint8_t width) {
   const uint8_t bit_count = width * 8;
   const uint64_t sign_bit = UINT64_C(1) << (bit_count - 1);
-  if ((value & sign_bit) == 0) return (int64_t)value;
+  if ((value & sign_bit) == 0) {
+    return (int64_t)value;
+  }
   const uint64_t mask =
       bit_count == 64 ? UINT64_MAX : (UINT64_C(1) << bit_count) - 1;
   return -1 - (int64_t)(mask - value);
@@ -487,7 +491,9 @@ iree_vm_bytecode_disassembler_find_numeric(uint8_t table_ordinal,
   for (uint16_t i = 0; i < table->value_count; ++i) {
     const iree_vm_bytecode_disassembler_numeric_value_t* value =
         &iree_vm_bytecode_disassembler_numeric_values[table->value_base + i];
-    if (value->value == number) return value;
+    if (value->value == number) {
+      return value;
+    }
   }
   return NULL;
 }
@@ -519,7 +525,9 @@ static iree_status_t iree_vm_bytecode_disassembler_numeric(
   for (uint16_t i = 0; i < table->value_count; ++i) {
     const iree_vm_bytecode_disassembler_numeric_value_t* value =
         &iree_vm_bytecode_disassembler_numeric_values[table->value_base + i];
-    if (value->value == 0 || (number & value->value) == 0) continue;
+    if (value->value == 0 || (number & value->value) == 0) {
+      continue;
+    }
     if (has_previous) {
       IREE_RETURN_IF_ERROR(
           iree_vm_bytecode_disassembler_write_cstring(disassembler, ", "));
@@ -548,7 +556,9 @@ static iree_status_t iree_vm_bytecode_disassembler_quoted_bytes(
     const bool needs_escape = value == '\\' || value == '"' || value == '\n' ||
                               value == '\r' || value == '\t' || value < 0x20 ||
                               value == 0x7F;
-    if (!needs_escape) continue;
+    if (!needs_escape) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(iree_vm_bytecode_disassembler_write(
         disassembler, iree_make_string_view((const char*)bytes.data + run_begin,
                                             i - run_begin)));
@@ -632,7 +642,9 @@ iree_vm_bytecode_disassembler_lane(
   for (uint8_t i = 0; i < instruction->lane_count; ++i) {
     const iree_vm_bytecode_disassembler_lane_t* lane =
         &iree_vm_bytecode_disassembler_lanes[instruction->lane_base + i];
-    if (lane->value == encoded_value) return lane;
+    if (lane->value == encoded_value) {
+      return lane;
+    }
   }
   IREE_ASSERT_UNREACHABLE("verified memory format has no text projection");
   return NULL;

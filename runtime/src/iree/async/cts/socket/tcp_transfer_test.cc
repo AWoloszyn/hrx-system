@@ -573,12 +573,22 @@ TEST_P(LargeTransferTest, LargeTransfer_Bidirectional) {
       client_total_sent < kTransferSize || server_total_sent < kTransferSize ||
       client_total_recv < kTransferSize || server_total_recv < kTransferSize) {
     int pending_count = 0;
-    if (client_send_pending) ++pending_count;
-    if (server_send_pending) ++pending_count;
-    if (client_recv_pending) ++pending_count;
-    if (server_recv_pending) ++pending_count;
+    if (client_send_pending) {
+      ++pending_count;
+    }
+    if (server_send_pending) {
+      ++pending_count;
+    }
+    if (client_recv_pending) {
+      ++pending_count;
+    }
+    if (server_recv_pending) {
+      ++pending_count;
+    }
 
-    if (pending_count == 0) break;
+    if (pending_count == 0) {
+      break;
+    }
 
     PollUntil(/*min_completions=*/pending_count);
 

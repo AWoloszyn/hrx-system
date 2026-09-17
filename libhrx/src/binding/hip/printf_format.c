@@ -74,7 +74,9 @@ typedef unsigned long long iree_hip_printf_unsigned_ptrdiff_t;
 static iree_host_size_t iree_hip_printf_strnlen(const char* data,
                                                 iree_host_size_t data_length) {
   iree_host_size_t length = 0;
-  while (length < data_length && data[length] != '\0') ++length;
+  while (length < data_length && data[length] != '\0') {
+    ++length;
+  }
   return length;
 }
 
@@ -263,7 +265,9 @@ static iree_status_t iree_hip_printf_append_format(
 
 static iree_status_t iree_hip_printf_append_bytes(
     iree_string_builder_t* builder, const char* data, iree_host_size_t length) {
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   const iree_host_size_t current_length = iree_string_builder_size(builder);
   if (IREE_UNLIKELY(current_length > INT_MAX ||
                     length > (iree_host_size_t)INT_MAX - current_length)) {
@@ -517,7 +521,9 @@ static iree_status_t iree_hip_printf_format_impl(
     iree_string_view_t format, const uint8_t* arguments,
     iree_host_size_t argument_length) {
   uint8_t empty_arguments = 0;
-  if (!arguments) arguments = &empty_arguments;
+  if (!arguments) {
+    arguments = &empty_arguments;
+  }
   const uint8_t* argument = arguments;
   const uint8_t* argument_end = arguments + argument_length;
   iree_host_size_t cursor = 0;

@@ -79,9 +79,15 @@ int iree_unicode_utf8_encoded_length(uint32_t codepoint) {
       (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
     return 0;
   }
-  if (codepoint < 0x80) return 1;
-  if (codepoint < 0x800) return 2;
-  if (codepoint < 0x10000) return 3;
+  if (codepoint < 0x80) {
+    return 1;
+  }
+  if (codepoint < 0x800) {
+    return 2;
+  }
+  if (codepoint < 0x10000) {
+    return 3;
+  }
   return 4;
 }
 
@@ -120,7 +126,9 @@ bool iree_unicode_utf8_validate(iree_string_view_t text) {
 
 iree_host_size_t iree_unicode_utf8_incomplete_tail_length(
     const char* data, iree_host_size_t size) {
-  if (size == 0) return 0;
+  if (size == 0) {
+    return 0;
+  }
 
   // Scan backwards to find a lead byte (max 3 bytes back since longest
   // sequence is 4 bytes and we need at least 1 byte present).
@@ -129,7 +137,9 @@ iree_host_size_t iree_unicode_utf8_incomplete_tail_length(
     uint8_t byte = (uint8_t)data[size - i];
 
     // Continuation bytes (10xxxxxx) are not lead bytes - keep scanning.
-    if ((byte & 0xC0) == 0x80) continue;
+    if ((byte & 0xC0) == 0x80) {
+      continue;
+    }
 
     // Found a lead byte. Use the sequence length helper.
     iree_host_size_t expected_length = iree_unicode_utf8_sequence_length(byte);
@@ -629,12 +639,16 @@ static void iree_unicode_canonical_order(uint32_t* codepoints,
     uint32_t current = codepoints[i];
     uint8_t current_ccc = iree_unicode_ccc(current);
     // Only reorder combining marks (CCC > 0).
-    if (current_ccc == 0) continue;
+    if (current_ccc == 0) {
+      continue;
+    }
     iree_host_size_t j = i;
     while (j > 0) {
       uint8_t prev_ccc = iree_unicode_ccc(codepoints[j - 1]);
       // Stop if prev is a starter or has lower/equal CCC.
-      if (prev_ccc == 0 || prev_ccc <= current_ccc) break;
+      if (prev_ccc == 0 || prev_ccc <= current_ccc) {
+        break;
+      }
       codepoints[j] = codepoints[j - 1];
       --j;
     }
@@ -646,7 +660,9 @@ static void iree_unicode_canonical_order(uint32_t* codepoints,
 // Modifies the array in place and returns the new count.
 static iree_host_size_t iree_unicode_compose_codepoints(
     uint32_t* codepoints, iree_host_size_t count) {
-  if (count < 2) return count;
+  if (count < 2) {
+    return count;
+  }
 
   iree_host_size_t write_index = 0;
   iree_host_size_t starter_index = 0;
@@ -706,7 +722,9 @@ static iree_host_size_t iree_unicode_compose_codepoints(
 static iree_host_size_t iree_unicode_flush_sequence(
     uint32_t* sequence, iree_host_size_t sequence_count, char* out_buffer,
     iree_host_size_t capacity, iree_host_size_t output_position) {
-  if (sequence_count == 0) return 0;
+  if (sequence_count == 0) {
+    return 0;
+  }
 
   // Apply canonical ordering and composition.
   iree_unicode_canonical_order(sequence, sequence_count);
@@ -733,7 +751,9 @@ iree_status_t iree_unicode_compose(iree_string_view_t input, char* out_buffer,
   // Fast path: ASCII-only input needs no composition.
   bool all_ascii = true;
   for (iree_host_size_t i = 0; i < input.size && all_ascii; ++i) {
-    if ((uint8_t)input.data[i] > 0x7F) all_ascii = false;
+    if ((uint8_t)input.data[i] > 0x7F) {
+      all_ascii = false;
+    }
   }
   if (all_ascii) {
     if (input.size > capacity) {
@@ -910,7 +930,9 @@ iree_status_t iree_unicode_nfc(iree_string_view_t input,
   // Fast path: ASCII-only input needs no normalization.
   bool all_ascii = true;
   for (iree_host_size_t i = 0; i < input.size && all_ascii; ++i) {
-    if ((uint8_t)input.data[i] > 0x7F) all_ascii = false;
+    if ((uint8_t)input.data[i] > 0x7F) {
+      all_ascii = false;
+    }
   }
   if (all_ascii) {
     if (input.size > out_capacity) {

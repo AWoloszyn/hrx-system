@@ -510,37 +510,49 @@ static iree_status_t loom_testbench_reference_store_integer_element_at(
       element_offset * loom_testbench_reference_numeric_kind_byte_count(kind);
   switch (kind) {
     case LOOM_TESTBENCH_REFERENCE_NUMERIC_I8: {
-      if (value < INT8_MIN || value > INT8_MAX) break;
+      if (value < INT8_MIN || value > INT8_MAX) {
+        break;
+      }
       int8_t i8_value = (int8_t)value;
       memcpy(element_data, &i8_value, sizeof(i8_value));
       return iree_ok_status();
     }
     case LOOM_TESTBENCH_REFERENCE_NUMERIC_U8: {
-      if (value < 0 || value > UINT8_MAX) break;
+      if (value < 0 || value > UINT8_MAX) {
+        break;
+      }
       uint8_t u8_value = (uint8_t)value;
       memcpy(element_data, &u8_value, sizeof(u8_value));
       return iree_ok_status();
     }
     case LOOM_TESTBENCH_REFERENCE_NUMERIC_I16: {
-      if (value < INT16_MIN || value > INT16_MAX) break;
+      if (value < INT16_MIN || value > INT16_MAX) {
+        break;
+      }
       int16_t i16_value = (int16_t)value;
       memcpy(element_data, &i16_value, sizeof(i16_value));
       return iree_ok_status();
     }
     case LOOM_TESTBENCH_REFERENCE_NUMERIC_U16: {
-      if (value < 0 || value > UINT16_MAX) break;
+      if (value < 0 || value > UINT16_MAX) {
+        break;
+      }
       uint16_t u16_value = (uint16_t)value;
       memcpy(element_data, &u16_value, sizeof(u16_value));
       return iree_ok_status();
     }
     case LOOM_TESTBENCH_REFERENCE_NUMERIC_I32: {
-      if (value < INT32_MIN || value > INT32_MAX) break;
+      if (value < INT32_MIN || value > INT32_MAX) {
+        break;
+      }
       int32_t i32_value = (int32_t)value;
       memcpy(element_data, &i32_value, sizeof(i32_value));
       return iree_ok_status();
     }
     case LOOM_TESTBENCH_REFERENCE_NUMERIC_U32: {
-      if (value < 0 || value > UINT32_MAX) break;
+      if (value < 0 || value > UINT32_MAX) {
+        break;
+      }
       uint32_t u32_value = (uint32_t)value;
       memcpy(element_data, &u32_value, sizeof(u32_value));
       return iree_ok_status();

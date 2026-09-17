@@ -210,10 +210,14 @@ static bool loom_amdgpu_index_cmp_requires_native_mask(
   // Full-width address comparisons are assembled from 32-bit vector compares
   // and therefore produce a native lane mask. Address comparisons proven to
   // fit in 32 bits retain the scalar SCC path.
-  if (!loom_index_cmp_isa(source_op)) return false;
+  if (!loom_index_cmp_isa(source_op)) {
+    return false;
+  }
   const loom_value_id_t lhs = loom_index_cmp_lhs(source_op);
   const loom_value_id_t rhs = loom_index_cmp_rhs(source_op);
-  if (lhs >= module->values.count || rhs >= module->values.count) return false;
+  if (lhs >= module->values.count || rhs >= module->values.count) {
+    return false;
+  }
   const loom_value_fact_table_t* fact_table =
       analysis != NULL ? analysis->fact_table : NULL;
   return loom_amdgpu_source_address_value_needs_64bit(

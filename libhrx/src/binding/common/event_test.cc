@@ -389,7 +389,9 @@ class CpuStreamingContextTest : public ::testing::Test {
   iree_status_t ReleaseAllGates() {
     iree_status_t status = iree_ok_status();
     for (iree_host_size_t i = 0; i < gate_count_; ++i) {
-      if (gates_[i].signaled_value >= gates_[i].release_value) continue;
+      if (gates_[i].signaled_value >= gates_[i].release_value) {
+        continue;
+      }
       iree_status_t signal_status = iree_hal_semaphore_signal(
           gates_[i].semaphore, gates_[i].release_value, /*frontier=*/nullptr);
       if (iree_status_is_ok(signal_status)) {
@@ -424,7 +426,9 @@ class CpuStreamingContextTest : public ::testing::Test {
           /*priority=*/0, iree_allocator_system(), &stream);
     }
     iree_hal_queue_release(queue);
-    if (iree_status_is_ok(status)) *out_stream = stream;
+    if (iree_status_is_ok(status)) {
+      *out_stream = stream;
+    }
     return status;
   }
 

@@ -93,7 +93,9 @@ static iree_status_t loom_amdgpu_bank_service_check_emit_provider_execute(
         (const loom_target_compile_report_source_low_memory_row_t*)
             loom_target_compile_report_vec_const_rows(vec);
     for (iree_host_size_t i = 0; i < vec->count; ++i) {
-      if (iree_string_view_is_empty(rows[i].bank_service.model_key)) continue;
+      if (iree_string_view_is_empty(rows[i].bank_service.model_key)) {
+        continue;
+      }
       IREE_RETURN_IF_ERROR(loom_amdgpu_bank_service_check_append_row(
           &rows[i], &request->result->actual_output));
     }

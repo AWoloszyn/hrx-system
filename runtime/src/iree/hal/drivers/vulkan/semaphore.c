@@ -36,7 +36,9 @@ bool iree_hal_vulkan_last_signal_load(
   int32_t sequence = 0;
   do {
     sequence = iree_atomic_load(&cache->sequence, iree_memory_order_acquire);
-    if (IREE_UNLIKELY(sequence & 1)) continue;
+    if (IREE_UNLIKELY(sequence & 1)) {
+      continue;
+    }
     *out_flags = (iree_hal_vulkan_last_signal_flags_t)iree_atomic_load(
         &cache->flags, iree_memory_order_relaxed);
     *out_producer_axis = (iree_async_axis_t)iree_atomic_load(
@@ -255,7 +257,9 @@ static uint64_t iree_hal_vulkan_semaphore_observe_native_value(
   do {
     current_raw = iree_atomic_load(&base_semaphore->timeline_value,
                                    iree_memory_order_acquire);
-    if (value <= (uint64_t)current_raw) return (uint64_t)current_raw;
+    if (value <= (uint64_t)current_raw) {
+      return (uint64_t)current_raw;
+    }
   } while (!iree_atomic_compare_exchange_weak(
       &base_semaphore->timeline_value, &current_raw, (int64_t)value,
       iree_memory_order_release, iree_memory_order_relaxed));
@@ -323,7 +327,9 @@ static iree_status_t iree_hal_vulkan_semaphore_signal(
       iree_hal_vulkan_semaphore_cast(iree_hal_semaphore_cast(base_semaphore));
   iree_status_t status = iree_async_semaphore_advance_timeline(
       base_semaphore, new_value, frontier);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   VkSemaphoreSignalInfo signal_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO,
@@ -360,8 +366,12 @@ static void iree_hal_vulkan_semaphore_on_fail(
 
 static uint64_t iree_hal_vulkan_timeout_to_nanoseconds(iree_timeout_t timeout) {
   iree_time_t deadline_ns = iree_timeout_as_deadline_ns(timeout);
-  if (deadline_ns == IREE_TIME_INFINITE_FUTURE) return UINT64_MAX;
-  if (deadline_ns == IREE_TIME_INFINITE_PAST) return 0;
+  if (deadline_ns == IREE_TIME_INFINITE_FUTURE) {
+    return UINT64_MAX;
+  }
+  if (deadline_ns == IREE_TIME_INFINITE_PAST) {
+    return 0;
+  }
   iree_time_t now_ns = iree_time_now();
   return deadline_ns < now_ns ? 0 : (uint64_t)(deadline_ns - now_ns);
 }

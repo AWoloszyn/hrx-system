@@ -71,7 +71,9 @@ typedef struct {
 static inline void iree_tokenizer_punctuation_emit(
     iree_tokenizer_punctuation_emitter_t* emitter, iree_host_size_t start,
     iree_host_size_t end) {
-  if (start >= end || emitter->full) return;
+  if (start >= end || emitter->full) {
+    return;
+  }
   if (emitter->count >= emitter->output.capacity) {
     emitter->full = true;
     return;

@@ -146,7 +146,9 @@ static void fuzz_strategy_raw_parse(const uint8_t* data, size_t size) {
 
 static void fuzz_strategy_generated_roundtrip(const uint8_t* data,
                                               size_t size) {
-  if (size < 2) return;
+  if (size < 2) {
+    return;
+  }
 
   uint8_t preset = data[0];
   uint8_t scale = (uint8_t)((data[1] % 5) + 1);
@@ -164,7 +166,9 @@ static void fuzz_strategy_generated_roundtrip(const uint8_t* data,
   loom_module_t* generated_module = NULL;
   fuzz_ignore_status_or_trap(loom_test_gen_module(
       &generator, &config, &g_context, &block_pool, &generated_module));
-  if (!generated_module) __builtin_trap();
+  if (!generated_module) {
+    __builtin_trap();
+  }
 
   iree_string_builder_t printed_builder;
   iree_string_builder_initialize(iree_allocator_system(), &printed_builder);

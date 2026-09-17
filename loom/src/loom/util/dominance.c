@@ -106,7 +106,9 @@ static iree_status_t loom_dominance_info_add_cfg_region(
 
 static iree_status_t loom_dominance_info_build_region(
     loom_dominance_info_t* info, const loom_region_t* region) {
-  if (!region) return iree_ok_status();
+  if (!region) {
+    return iree_ok_status();
+  }
   if (iree_any_bit_set(region->flags, LOOM_REGION_INSTANCE_FLAG_CFG) ||
       region->block_count > 1) {
     IREE_RETURN_IF_ERROR(loom_dominance_info_add_cfg_region(info, region));
@@ -130,7 +132,9 @@ static const loom_cfg_dominance_region_t* loom_dominance_lookup_cfg_region(
     const loom_dominance_info_t* info, const loom_region_t* region) {
   for (const loom_cfg_dominance_region_t* cache = info->cfg_regions; cache;
        cache = cache->next) {
-    if (cache->region == region) return cache;
+    if (cache->region == region) {
+      return cache;
+    }
   }
   return NULL;
 }
@@ -138,10 +142,16 @@ static const loom_cfg_dominance_region_t* loom_dominance_lookup_cfg_region(
 bool loom_dominates_block(const loom_dominance_info_t* info,
                           const loom_block_t* dominator_block,
                           const loom_block_t* dominated_block) {
-  if (!dominator_block || !dominated_block) return false;
-  if (dominator_block == dominated_block) return true;
+  if (!dominator_block || !dominated_block) {
+    return false;
+  }
+  if (dominator_block == dominated_block) {
+    return true;
+  }
   const loom_region_t* region = dominator_block->parent_region;
-  if (!region || region != dominated_block->parent_region) return false;
+  if (!region || region != dominated_block->parent_region) {
+    return false;
+  }
   if (!iree_any_bit_set(region->flags, LOOM_REGION_INSTANCE_FLAG_CFG) &&
       region->block_count <= 1) {
     return false;
@@ -166,12 +176,18 @@ bool loom_dominates_block(const loom_dominance_info_t* info,
 
 const loom_block_t* loom_dominance_immediate_dominator_block(
     const loom_dominance_info_t* info, const loom_block_t* block) {
-  if (!info || !block) return NULL;
+  if (!info || !block) {
+    return NULL;
+  }
   const loom_region_t* region = block->parent_region;
-  if (!region) return NULL;
+  if (!region) {
+    return NULL;
+  }
 
   const loom_block_t* entry_block = loom_region_const_entry_block(region);
-  if (block == entry_block) return NULL;
+  if (block == entry_block) {
+    return NULL;
+  }
 
   if (!iree_any_bit_set(region->flags, LOOM_REGION_INSTANCE_FLAG_CFG) &&
       region->block_count <= 1) {
@@ -185,7 +201,9 @@ const loom_block_t* loom_dominance_immediate_dominator_block(
   }
   iree_host_size_t block_index =
       loom_cfg_graph_block_index(&cache->graph, block);
-  if (block_index == IREE_HOST_SIZE_MAX) return NULL;
+  if (block_index == IREE_HOST_SIZE_MAX) {
+    return NULL;
+  }
   uint16_t immediate_dominator =
       cache->dominance.immediate_dominators[block_index];
   if (immediate_dominator == LOOM_CFG_DOMINATOR_INVALID ||
@@ -208,10 +226,14 @@ static bool loom_op_crosses_isolation_boundary(
 
 bool loom_dominates_op(const loom_dominance_info_t* info, const loom_op_t* a,
                        const loom_op_t* b) {
-  if (!info || !info->module || !a || !b) return false;
+  if (!info || !info->module || !a || !b) {
+    return false;
+  }
 
   // Self-dominance.
-  if (a == b) return true;
+  if (a == b) {
+    return true;
+  }
 
   // Same block: compare sparse block ordinals.
   if (a->parent_block == b->parent_block) {
@@ -230,7 +252,9 @@ bool loom_dominates_op(const loom_dominance_info_t* info, const loom_op_t* a,
 
   // If a is deeper than b, a cannot dominate b (inner doesn't
   // dominate outer).
-  if (depth_a > depth_b) return false;
+  if (depth_a > depth_b) {
+    return false;
+  }
 
   // Check if a is an ancestor of b: walk b up to a's depth and
   // see if we reach a's parent_op at a's level. If a's parent_op
@@ -257,7 +281,9 @@ bool loom_dominates_op(const loom_dominance_info_t* info, const loom_op_t* a,
   // An op dominates everything in its own regions, so a dominates b.
   // (This is distinct from self-dominance, which was handled above —
   // here a != b but a is b's ancestor.)
-  if (a == b_at_a_depth) return true;
+  if (a == b_at_a_depth) {
+    return true;
+  }
 
   // Different ops at the same depth in the same block: compare sparse block
   // ordinals.
@@ -288,14 +314,18 @@ bool loom_dominates_value(const loom_dominance_info_t* info,
     // Block argument: dominates all ops in dominated blocks and all ops in
     // nested regions reached without crossing an isolation boundary.
     const loom_block_t* def_block = loom_value_def_block(value);
-    if (!def_block) return false;
+    if (!def_block) {
+      return false;
+    }
 
     const loom_op_t* current = use_op;
     while (current) {
       if (loom_dominates_block(info, def_block, current->parent_block)) {
         return true;
       }
-      if (!current->parent_op) return false;
+      if (!current->parent_op) {
+        return false;
+      }
       if (loom_op_crosses_isolation_boundary(info, current->parent_op)) {
         return false;
       }
@@ -306,7 +336,9 @@ bool loom_dominates_value(const loom_dominance_info_t* info,
 
   // Op result: the defining op must dominate the use op.
   const loom_op_t* def_op = loom_value_def_op(value);
-  if (!def_op) return false;
+  if (!def_op) {
+    return false;
+  }
   return loom_dominates_op(info, def_op, use_op);
 }
 
@@ -348,7 +380,9 @@ static iree_status_t loom_type_availability_check_ref(loom_value_id_t value_id,
 bool loom_type_is_available_before_op(const loom_dominance_info_t* info,
                                       loom_type_t type,
                                       const loom_op_t* before_op) {
-  if (!info || !info->module || !before_op) return false;
+  if (!info || !info->module || !before_op) {
+    return false;
+  }
   loom_type_availability_query_t query = {
       .info = info,
       .before_op = before_op,

@@ -39,7 +39,9 @@ iree_status_t DeviceProfilingScope::Begin(
 }
 
 iree_status_t DeviceProfilingScope::End() {
-  if (!is_active_) return iree_ok_status();
+  if (!is_active_) {
+    return iree_ok_status();
+  }
   is_active_ = false;
   return iree_hal_device_profiling_end(device_);
 }
@@ -76,7 +78,9 @@ static iree_status_t TestProfileSinkWrite(
   }
   EXPECT_EQ(test_sink->session_id, metadata->session_id);
 
-  if (iovec_count == 0) return iree_ok_status();
+  if (iovec_count == 0) {
+    return iree_ok_status();
+  }
   if (iovec_count != 1) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "expected one profile chunk iovec");

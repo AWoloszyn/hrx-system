@@ -77,7 +77,9 @@ static hrx_status_t hrx_buffer_table_ensure_insert_capacity_locked(
       table->count + table->reserved_insert_count + additional_reservations;
   while (table->capacity < required_capacity) {
     hrx_status_t status = hrx_buffer_table_grow(table);
-    if (!hrx_status_is_ok(status)) return status;
+    if (!hrx_status_is_ok(status)) {
+      return status;
+    }
   }
   return hrx_ok_status();
 }
@@ -213,7 +215,9 @@ static void hrx_buffer_table_fill_result(hrx_buffer_table_entry_t* e,
                                          hrx_buffer_t* out_buffer,
                                          size_t* out_offset,
                                          void** out_user_data) {
-  if (out_buffer) *out_buffer = e->buffer;
+  if (out_buffer) {
+    *out_buffer = e->buffer;
+  }
   if (out_offset) {
     if (any_ptr >= e->device_ptr &&
         any_ptr - e->device_ptr < (uint64_t)e->size) {
@@ -223,7 +227,9 @@ static void hrx_buffer_table_fill_result(hrx_buffer_table_entry_t* e,
       *out_offset = (size_t)(any_ptr - host_addr);
     }
   }
-  if (out_user_data) *out_user_data = e->user_data;
+  if (out_user_data) {
+    *out_user_data = e->user_data;
+  }
 }
 
 hrx_status_t hrx_buffer_table_find(hrx_buffer_table_t* table, uint64_t any_ptr,
@@ -234,9 +240,15 @@ hrx_status_t hrx_buffer_table_find(hrx_buffer_table_t* table, uint64_t any_ptr,
   size_t idx = hrx_buffer_table_find_index(table, any_ptr);
   if (idx >= table->count) {
     iree_slim_mutex_unlock(&table->mutex);
-    if (out_buffer) *out_buffer = NULL;
-    if (out_offset) *out_offset = 0;
-    if (out_user_data) *out_user_data = NULL;
+    if (out_buffer) {
+      *out_buffer = NULL;
+    }
+    if (out_offset) {
+      *out_offset = 0;
+    }
+    if (out_user_data) {
+      *out_user_data = NULL;
+    }
     return hrx_make_status(HRX_STATUS_NOT_FOUND,
                            "pointer not found in buffer table");
   }
@@ -252,9 +264,15 @@ hrx_status_t hrx_buffer_table_find_range(hrx_buffer_table_t* table,
                                          hrx_buffer_t* out_buffer,
                                          size_t* out_offset,
                                          void** out_user_data) {
-  if (out_buffer) *out_buffer = NULL;
-  if (out_offset) *out_offset = 0;
-  if (out_user_data) *out_user_data = NULL;
+  if (out_buffer) {
+    *out_buffer = NULL;
+  }
+  if (out_offset) {
+    *out_offset = 0;
+  }
+  if (out_user_data) {
+    *out_user_data = NULL;
+  }
 
   if (size == 0) {
     return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
@@ -279,7 +297,9 @@ hrx_status_t hrx_buffer_table_find_range(hrx_buffer_table_t* table,
     }
     if (e->host_ptr) {
       const uint64_t host_start = (uint64_t)(uintptr_t)e->host_ptr;
-      if (any_ptr < host_start) continue;
+      if (any_ptr < host_start) {
+        continue;
+      }
       const uint64_t offset = any_ptr - host_start;
       if (offset <= (uint64_t)e->size &&
           (uint64_t)size <= (uint64_t)e->size - offset) {

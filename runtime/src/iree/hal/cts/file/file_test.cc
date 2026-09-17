@@ -173,7 +173,9 @@ class FileTest : public CtsTestBase<> {
                          TestFile* out_file) {
     iree_status_t status =
         CreateTestFileStatus(provider, access, initial_contents, out_file);
-    if (ProviderSkipped(provider, status)) return false;
+    if (ProviderSkipped(provider, status)) {
+      return false;
+    }
     if (!iree_status_is_ok(status)) {
       IREE_EXPECT_OK(status);
       return false;
@@ -289,7 +291,9 @@ class FileTest : public CtsTestBase<> {
   }
 
   bool ProviderSkipped(const FileProvider& provider, iree_status_t status) {
-    if (iree_status_is_ok(status)) return false;
+    if (iree_status_is_ok(status)) {
+      return false;
+    }
     const iree_status_code_t code = iree_status_code(status);
     if (provider.kind == FileProviderKind::kNative &&
         (code == IREE_STATUS_UNAVAILABLE ||

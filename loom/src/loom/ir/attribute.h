@@ -817,7 +817,9 @@ static inline loom_symbol_ref_t loom_attr_as_symbol(loom_attribute_t attr) {
 // loom_attr_is_absent when presence matters.
 static inline loom_symbol_ref_array_t loom_attr_as_symbol_array(
     loom_attribute_t attr) {
-  if (loom_attr_is_absent(attr)) return loom_symbol_ref_array_empty();
+  if (loom_attr_is_absent(attr)) {
+    return loom_symbol_ref_array_empty();
+  }
   IREE_ASSERT(attr.kind == LOOM_ATTR_SYMBOL_ARRAY);
   return loom_make_symbol_ref_array(attr.symbol_refs, attr.count);
 }
@@ -828,7 +830,9 @@ static inline loom_symbol_ref_array_t loom_attr_as_symbol_array(
 // when presence matters.
 static inline loom_symbol_ref_array_t loom_attr_as_symbol_set(
     loom_attribute_t attr) {
-  if (loom_attr_is_absent(attr)) return loom_symbol_ref_array_empty();
+  if (loom_attr_is_absent(attr)) {
+    return loom_symbol_ref_array_empty();
+  }
   IREE_ASSERT(attr.kind == LOOM_ATTR_SYMBOL_SET);
   return loom_make_symbol_ref_array(attr.symbol_refs, attr.count);
 }
@@ -857,7 +861,9 @@ static inline iree_const_byte_span_t loom_attr_as_bytes(loom_attribute_t attr) {
 // An absent optional attribute reads as an empty array. Call
 // loom_attr_is_absent when presence matters.
 static inline loom_enum_array_t loom_attr_as_enum_array(loom_attribute_t attr) {
-  if (loom_attr_is_absent(attr)) return loom_enum_array_empty();
+  if (loom_attr_is_absent(attr)) {
+    return loom_enum_array_empty();
+  }
   IREE_ASSERT(attr.kind == LOOM_ATTR_ENUM_ARRAY);
   return loom_make_enum_array(attr.enum_array, attr.count);
 }
@@ -868,7 +874,9 @@ static inline loom_enum_array_t loom_attr_as_enum_array(loom_attribute_t attr) {
 // when presence matters.
 static inline loom_signed_enum_set_t loom_attr_as_signed_enum_set(
     loom_attribute_t attr) {
-  if (loom_attr_is_absent(attr)) return loom_signed_enum_set_empty();
+  if (loom_attr_is_absent(attr)) {
+    return loom_signed_enum_set_empty();
+  }
   IREE_ASSERT(attr.kind == LOOM_ATTR_SIGNED_ENUM_SET);
   return loom_make_signed_enum_set(attr.signed_enum_set_words, attr.count);
 }
@@ -878,7 +886,9 @@ static inline loom_signed_enum_set_t loom_attr_as_signed_enum_set(
 // An absent optional attribute reads as an empty array. Call
 // loom_attr_is_absent when presence matters.
 static inline loom_i64_array_t loom_attr_as_i64_array(loom_attribute_t attr) {
-  if (loom_attr_is_absent(attr)) return loom_i64_array_empty();
+  if (loom_attr_is_absent(attr)) {
+    return loom_i64_array_empty();
+  }
   IREE_ASSERT(attr.kind == LOOM_ATTR_I64_ARRAY);
   return loom_make_i64_array(attr.i64_array, attr.count);
 }

@@ -148,7 +148,9 @@ static iree_status_t iree_tokenizer_parse_roberta_postprocessor(
                                              &add_prefix_space));
   iree_tokenizer_postprocessor_flags_t flags =
       IREE_TOKENIZER_POSTPROCESSOR_FLAG_NONE;
-  if (trim_offsets) flags |= IREE_TOKENIZER_POSTPROCESSOR_FLAG_TRIM_OFFSETS;
+  if (trim_offsets) {
+    flags |= IREE_TOKENIZER_POSTPROCESSOR_FLAG_TRIM_OFFSETS;
+  }
   if (add_prefix_space) {
     flags |= IREE_TOKENIZER_POSTPROCESSOR_FLAG_ADD_PREFIX_SPACE;
   }
@@ -210,7 +212,9 @@ static iree_status_t iree_tokenizer_parse_byte_level_postprocessor(
 
   iree_tokenizer_postprocessor_flags_t flags =
       IREE_TOKENIZER_POSTPROCESSOR_FLAG_NONE;
-  if (trim_offsets) flags |= IREE_TOKENIZER_POSTPROCESSOR_FLAG_TRIM_OFFSETS;
+  if (trim_offsets) {
+    flags |= IREE_TOKENIZER_POSTPROCESSOR_FLAG_TRIM_OFFSETS;
+  }
   if (add_prefix_space) {
     flags |= IREE_TOKENIZER_POSTPROCESSOR_FLAG_ADD_PREFIX_SPACE;
   }

@@ -87,7 +87,9 @@ IREE_API_EXPORT iree_status_t iree_net_transport_registry_allocate(
 
 IREE_API_EXPORT void iree_net_transport_registry_free(
     iree_net_transport_registry_t* registry) {
-  if (!registry) return;
+  if (!registry) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_allocator_t host_allocator = registry->host_allocator;

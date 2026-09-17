@@ -24,7 +24,9 @@ static constexpr uint32_t kMetadataValueTypeUint64 = 10;
 static const struct iree_file_toc_t* FindTestFile(const char* name) {
   const struct iree_file_toc_t* files = iree_io_gguf_files_create();
   for (size_t i = 0; i < iree_io_gguf_files_size(); ++i) {
-    if (strcmp(files[i].name, name) == 0) return &files[i];
+    if (strcmp(files[i].name, name) == 0) {
+      return &files[i];
+    }
   }
   IREE_CHECK_OK(iree_make_status(
       IREE_STATUS_NOT_FOUND,

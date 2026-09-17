@@ -78,7 +78,9 @@ IREE_API_EXPORT iree_status_t iree_hal_fence_join(
   // Find the maximum required timepoint capacity.
   iree_host_size_t total_count = 0;
   for (iree_host_size_t i = 0; i < fence_count; ++i) {
-    if (fences[i]) total_count += fences[i]->count;
+    if (fences[i]) {
+      total_count += fences[i]->count;
+    }
   }
 
   // Empty list -> NULL.
@@ -100,9 +102,13 @@ IREE_API_EXPORT iree_status_t iree_hal_fence_join(
     for (iree_host_size_t j = 0; j < source_list.count; ++j) {
       status = iree_hal_fence_insert(fence, source_list.semaphores[j],
                                      source_list.payload_values[j]);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   if (iree_status_is_ok(status)) {
@@ -166,7 +172,9 @@ iree_hal_fence_semaphore_list(iree_hal_fence_t* fence) {
 
 IREE_API_EXPORT iree_host_size_t
 iree_hal_fence_timepoint_count(const iree_hal_fence_t* fence) {
-  if (!fence) return 0;
+  if (!fence) {
+    return 0;
+  }
   return fence->count;
 }
 
@@ -212,7 +220,9 @@ IREE_API_EXPORT iree_status_t iree_hal_fence_extend(
 }
 
 IREE_API_EXPORT iree_status_t iree_hal_fence_query(iree_hal_fence_t* fence) {
-  if (!fence) return iree_ok_status();
+  if (!fence) {
+    return iree_ok_status();
+  }
 
   iree_hal_semaphore_list_t semaphore_list =
       iree_hal_fence_semaphore_list(fence);
@@ -248,7 +258,9 @@ IREE_API_EXPORT void iree_hal_fence_fail(iree_hal_fence_t* fence,
 IREE_API_EXPORT iree_status_t
 iree_hal_fence_wait(iree_hal_fence_t* fence, iree_timeout_t timeout,
                     iree_async_wait_flags_t flags) {
-  if (!fence || !fence->count) return iree_ok_status();
+  if (!fence || !fence->count) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_status_t status = iree_hal_semaphore_list_wait(
       iree_hal_fence_semaphore_list(fence), timeout, flags);

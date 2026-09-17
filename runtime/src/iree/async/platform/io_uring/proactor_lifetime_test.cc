@@ -147,7 +147,9 @@ class IoUringRegistrationOwnerTest : public ::testing::Test {
     iree_async_region_release(region_);
     iree_async_slab_release(slab_);
     iree_async_file_release(file_);
-    if (raw_file_fd_ >= 0) close(raw_file_fd_);
+    if (raw_file_fd_ >= 0) {
+      close(raw_file_fd_);
+    }
     if (proactor_thread_) {
       iree_async_proactor_thread_request_stop(proactor_thread_);
       IREE_EXPECT_OK(iree_async_proactor_thread_join(proactor_thread_,
@@ -380,7 +382,9 @@ TEST_F(IoUringRegistrationOwnerTest, ConcurrentFinalSlabRelease) {
     release_requested = true;
   }
   gate_condition.notify_all();
-  for (std::thread& thread : release_threads) thread.join();
+  for (std::thread& thread : release_threads) {
+    thread.join();
+  }
 
   IREE_ASSERT_OK(iree_async_proactor_register_slab(proactor_, slab_,
                                                    access_mode, &region_));
@@ -397,7 +401,9 @@ TEST(IoUringCrossThreadTest,
   for (iree_host_size_t i = 0; i < kEventSourceCount; ++i) {
     int event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     if (event_fd < 0) {
-      for (int open_fd : event_fds) close(open_fd);
+      for (int open_fd : event_fds) {
+        close(open_fd);
+      }
       FAIL() << "eventfd creation failed: " << errno;
     }
     event_fds.push_back(event_fd);
@@ -411,11 +417,15 @@ TEST(IoUringCrossThreadTest,
       options, iree_allocator_system(), &proactor);
   if (iree_status_is_unavailable(status)) {
     iree_status_free(status);
-    for (int event_fd : event_fds) close(event_fd);
+    for (int event_fd : event_fds) {
+      close(event_fd);
+    }
     GTEST_SKIP() << "io_uring is unavailable";
   }
   if (!iree_status_is_ok(status)) {
-    for (int event_fd : event_fds) close(event_fd);
+    for (int event_fd : event_fds) {
+      close(event_fd);
+    }
     IREE_ASSERT_OK(status);
   }
 
@@ -459,7 +469,9 @@ TEST(IoUringCrossThreadTest,
     if (!iree_status_is_ok(status)) {
       iree_notification_deinitialize(&callback_state.notification);
       iree_async_proactor_release(proactor);
-      for (int event_fd : event_fds) close(event_fd);
+      for (int event_fd : event_fds) {
+        close(event_fd);
+      }
       IREE_ASSERT_OK(status);
     }
     ASSERT_NE(event_source, nullptr);
@@ -476,7 +488,9 @@ TEST(IoUringCrossThreadTest,
   if (!iree_status_is_ok(status)) {
     iree_notification_deinitialize(&callback_state.notification);
     iree_async_proactor_release(proactor);
-    for (int event_fd : event_fds) close(event_fd);
+    for (int event_fd : event_fds) {
+      close(event_fd);
+    }
     IREE_ASSERT_OK(status);
   }
 
@@ -494,7 +508,9 @@ TEST(IoUringCrossThreadTest,
   iree_async_proactor_thread_release(proactor_thread);
   iree_async_proactor_release(proactor);
   iree_notification_deinitialize(&callback_state.notification);
-  for (int event_fd : event_fds) close(event_fd);
+  for (int event_fd : event_fds) {
+    close(event_fd);
+  }
 }
 
 TEST(IoUringCrossThreadTest, MessageQueuedBeforePollOwnerStarts) {
@@ -840,7 +856,9 @@ TEST_F(ProactorLifetimeTest,
   uint64_t signal_value = 1;
   ASSERT_EQ(write(source_fd, &signal_value, sizeof(signal_value)),
             sizeof(signal_value));
-  while (!fault_state.faulted) PollOnce();
+  while (!fault_state.faulted) {
+    PollOnce();
+  }
   EXPECT_NE(fault_state.status_code, IREE_STATUS_OK);
 
   struct UnregistrationState {
@@ -854,7 +872,9 @@ TEST_F(ProactorLifetimeTest,
       &unregistration_state,
   };
   iree_async_proactor_unregister_relay(proactor_, relay, unregistered_callback);
-  while (!unregistration_state.completed) PollOnce();
+  while (!unregistration_state.completed) {
+    PollOnce();
+  }
 
   close(source_fd);
 }

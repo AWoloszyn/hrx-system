@@ -187,7 +187,9 @@ static iree_status_t expect_invalid_module(iree_const_byte_span_t file_data) {
     return iree_make_status(IREE_STATUS_INTERNAL,
                             "malformed ELF headers were accepted");
   }
-  if (!iree_status_is_failed_precondition(status)) return status;
+  if (!iree_status_is_failed_precondition(status)) {
+    return status;
+  }
   iree_status_free(status);
   return iree_ok_status();
 }
@@ -219,7 +221,9 @@ static iree_status_t run_invalid_header_tests(iree_byte_span_t storage) {
         storage.data + original_header.e_phoff + i * sizeof(iree_elf_phdr_t);
     iree_elf_phdr_t header;
     memcpy(&header, header_bytes, sizeof(header));
-    if (header.p_type != IREE_ELF_PT_LOAD) continue;
+    if (header.p_type != IREE_ELF_PT_LOAD) {
+      continue;
+    }
     // The source extent wraps if the loader adds these untrusted fields.
     header.p_offset = (iree_elf_off_t)-1;
     header.p_filesz = 1;
@@ -240,13 +244,17 @@ static uint8_t* find_dynamic_entry(uint8_t* file_data, int64_t tag) {
     memcpy(&program_header,
            file_data + header.e_phoff + i * sizeof(program_header),
            sizeof(program_header));
-    if (program_header.p_type != IREE_ELF_PT_DYNAMIC) continue;
+    if (program_header.p_type != IREE_ELF_PT_DYNAMIC) {
+      continue;
+    }
     for (iree_host_size_t offset = 0; offset < program_header.p_filesz;
          offset += sizeof(iree_elf_dyn_t)) {
       uint8_t* entry_data = file_data + program_header.p_offset + offset;
       iree_elf_dyn_t entry;
       memcpy(&entry, entry_data, sizeof(entry));
-      if (entry.d_tag == tag) return entry_data;
+      if (entry.d_tag == tag) {
+        return entry_data;
+      }
     }
   }
   return NULL;

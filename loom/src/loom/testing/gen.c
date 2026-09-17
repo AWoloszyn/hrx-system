@@ -80,7 +80,9 @@ uint32_t loom_test_gen_next_uint32(loom_test_gen_t* gen) {
 
 uint32_t loom_test_gen_next_range(loom_test_gen_t* gen,
                                   uint32_t upper_exclusive) {
-  if (upper_exclusive <= 1) return 0;
+  if (upper_exclusive <= 1) {
+    return 0;
+  }
   // Fast path for powers of two.
   if ((upper_exclusive & (upper_exclusive - 1)) == 0) {
     return loom_test_gen_next_uint32(gen) & (upper_exclusive - 1);
@@ -101,8 +103,12 @@ bool loom_test_gen_next_bool(loom_test_gen_t* gen) {
 }
 
 bool loom_test_gen_next_probability(loom_test_gen_t* gen, uint8_t percent) {
-  if (percent == 0) return false;
-  if (percent >= 100) return true;
+  if (percent == 0) {
+    return false;
+  }
+  if (percent >= 100) {
+    return true;
+  }
   return loom_test_gen_next_range(gen, 100) < percent;
 }
 
@@ -173,13 +179,17 @@ bool loom_test_gen_type_palette_pick_constrained(
       matching_weight += palette->weights[i];
     }
   }
-  if (matching_weight == 0) return false;
+  if (matching_weight == 0) {
+    return false;
+  }
   // Weighted pick among matching entries only.
   uint32_t target = loom_test_gen_next_range(gen, matching_weight);
   uint32_t cumulative = 0;
   for (uint16_t i = 0; i < palette->count; ++i) {
     loom_type_t type = loom_type_scalar(palette->types[i]);
-    if (!loom_type_satisfies_constraint(type, constraint)) continue;
+    if (!loom_type_satisfies_constraint(type, constraint)) {
+      continue;
+    }
     cumulative += palette->weights[i];
     if (target < cumulative) {
       *out_type = type;
@@ -209,7 +219,9 @@ void loom_test_gen_values_initialize(loom_test_gen_values_t* values) {
 void loom_test_gen_values_add(loom_test_gen_values_t* values,
                               loom_value_id_t id, loom_type_t type) {
   ++values->total_count;
-  if (values->count >= LOOM_TEST_GEN_VALUES_MAX_CAPACITY) return;
+  if (values->count >= LOOM_TEST_GEN_VALUES_MAX_CAPACITY) {
+    return;
+  }
   values->entries[values->count] = id;
   values->types[values->count] = type;
   values->count++;
@@ -218,7 +230,9 @@ void loom_test_gen_values_add(loom_test_gen_values_t* values,
 
 loom_value_id_t loom_test_gen_values_pick_any(
     loom_test_gen_t* gen, const loom_test_gen_values_t* values) {
-  if (values->count == 0) return LOOM_VALUE_ID_INVALID;
+  if (values->count == 0) {
+    return LOOM_VALUE_ID_INVALID;
+  }
   uint32_t index = loom_test_gen_next_range(gen, values->count);
   return values->entries[index];
 }
@@ -226,7 +240,9 @@ loom_value_id_t loom_test_gen_values_pick_any(
 // Rebuilds per-scalar-type bucket indices from the entries array.
 static void loom_test_gen_values_rebuild_buckets(
     loom_test_gen_values_t* values) {
-  if (!values->buckets_dirty) return;
+  if (!values->buckets_dirty) {
+    return;
+  }
   memset(values->bucket_counts, 0, sizeof(values->bucket_counts));
   // Count entries per scalar type.
   for (uint16_t i = 0; i < values->count; ++i) {
@@ -265,9 +281,13 @@ loom_value_id_t loom_test_gen_values_pick_typed(loom_test_gen_t* gen,
                                                 loom_test_gen_values_t* values,
                                                 loom_scalar_type_t type) {
   loom_test_gen_values_rebuild_buckets(values);
-  if (!loom_scalar_type_is_valid(type)) return LOOM_VALUE_ID_INVALID;
+  if (!loom_scalar_type_is_valid(type)) {
+    return LOOM_VALUE_ID_INVALID;
+  }
   uint16_t bucket_count = values->bucket_counts[type];
-  if (bucket_count == 0) return LOOM_VALUE_ID_INVALID;
+  if (bucket_count == 0) {
+    return LOOM_VALUE_ID_INVALID;
+  }
   uint32_t pick = loom_test_gen_next_range(gen, bucket_count);
   uint16_t entry_index =
       values->bucket_indices[values->bucket_starts[type] + pick];
@@ -308,7 +328,9 @@ loom_value_id_t loom_test_gen_values_pick_integer(
        ++t) {
     total += values->bucket_counts[t];
   }
-  if (total == 0) return LOOM_VALUE_ID_INVALID;
+  if (total == 0) {
+    return LOOM_VALUE_ID_INVALID;
+  }
   uint32_t pick = loom_test_gen_next_range(gen, total);
   uint16_t cumulative = 0;
   for (loom_scalar_type_t t = LOOM_SCALAR_TYPE_I1; t <= LOOM_SCALAR_TYPE_I64;
@@ -333,7 +355,9 @@ loom_value_id_t loom_test_gen_values_pick_float(
        t <= LOOM_SCALAR_TYPE_F64; ++t) {
     total += values->bucket_counts[t];
   }
-  if (total == 0) return LOOM_VALUE_ID_INVALID;
+  if (total == 0) {
+    return LOOM_VALUE_ID_INVALID;
+  }
   uint32_t pick = loom_test_gen_next_range(gen, total);
   uint16_t cumulative = 0;
   for (loom_scalar_type_t t = LOOM_SCALAR_TYPE_F8E4M3;
@@ -356,7 +380,9 @@ loom_value_id_t loom_test_gen_values_pick_float(
 loom_type_t loom_test_gen_values_type_of(const loom_test_gen_values_t* values,
                                          loom_value_id_t id) {
   for (uint16_t i = 0; i < values->count; ++i) {
-    if (values->entries[i] == id) return values->types[i];
+    if (values->entries[i] == id) {
+      return values->types[i];
+    }
   }
   return loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 }
@@ -506,7 +532,9 @@ bool loom_test_gen_values_pick_binary_integer(loom_test_gen_t* gen,
       candidates[candidate_count++] = t;
     }
   }
-  if (candidate_count == 0) return false;
+  if (candidate_count == 0) {
+    return false;
+  }
   loom_scalar_type_t chosen =
       candidates[loom_test_gen_next_range(gen, candidate_count)];
   *out_lhs = loom_test_gen_values_pick_typed(gen, values, chosen);
@@ -530,7 +558,9 @@ bool loom_test_gen_values_pick_binary_float(loom_test_gen_t* gen,
       candidates[candidate_count++] = t;
     }
   }
-  if (candidate_count == 0) return false;
+  if (candidate_count == 0) {
+    return false;
+  }
   loom_scalar_type_t chosen =
       candidates[loom_test_gen_next_range(gen, candidate_count)];
   *out_lhs = loom_test_gen_values_pick_typed(gen, values, chosen);
@@ -551,12 +581,16 @@ static iree_host_size_t loom_test_gen_select_hook(
   for (iree_host_size_t i = 0; i < hook_count; ++i) {
     total_weight += hooks[i].weight;
   }
-  if (total_weight == 0) return 0;
+  if (total_weight == 0) {
+    return 0;
+  }
   uint32_t target = loom_test_gen_next_range(gen, total_weight);
   uint32_t cumulative = 0;
   for (iree_host_size_t i = 0; i < hook_count; ++i) {
     cumulative += hooks[i].weight;
-    if (target < cumulative) return i;
+    if (target < cumulative) {
+      return i;
+    }
   }
   return hook_count - 1;
 }
@@ -565,7 +599,9 @@ iree_status_t loom_test_gen_body_internal(
     loom_test_gen_t* gen, const loom_test_gen_body_config_t* config,
     loom_builder_t* builder, loom_test_gen_values_t* values,
     uint16_t current_depth) {
-  if (config->hook_count == 0) return iree_ok_status();
+  if (config->hook_count == 0) {
+    return iree_ok_status();
+  }
 
   uint16_t consecutive_failures = 0;
   uint16_t max_consecutive = (uint16_t)(config->hook_count * 3);

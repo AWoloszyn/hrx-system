@@ -668,7 +668,9 @@ iree_status_t loom_low_schedule_format_json(
           table->scheduled_node_indices[scheduled_index];
       const loom_low_schedule_node_t* node = &table->nodes[node_index];
       const loom_low_schedule_class_t* schedule_class = node->schedule_class;
-      if (schedule_class == NULL) continue;
+      if (schedule_class == NULL) {
+        continue;
+      }
       for (uint16_t issue_use_ordinal = 0;
            issue_use_ordinal < schedule_class->issue_use_count;
            ++issue_use_ordinal) {

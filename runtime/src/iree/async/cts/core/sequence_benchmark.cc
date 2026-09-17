@@ -59,7 +59,9 @@ static void BM_SequenceLinkNops(::benchmark::State& state,
                                 const ProactorFactory& factory) {
   size_t step_count = static_cast<size_t>(state.range(0));
   auto* context = CreateBenchmarkContext(factory, state);
-  if (!context) return;
+  if (!context) {
+    return;
+  }
 
   // Allocate NOP operations and step pointer array.
   std::vector<iree_async_nop_operation_t> nops(step_count);
@@ -120,7 +122,9 @@ static void BM_SequenceEmulationNops(::benchmark::State& state,
                                      const ProactorFactory& factory) {
   size_t step_count = static_cast<size_t>(state.range(0));
   auto* context = CreateBenchmarkContext(factory, state);
-  if (!context) return;
+  if (!context) {
+    return;
+  }
 
   std::vector<iree_async_nop_operation_t> nops(step_count);
   std::vector<iree_async_operation_t*> steps(step_count);
@@ -176,7 +180,9 @@ static void BM_SequenceVsRawLinked(::benchmark::State& state,
                                    const ProactorFactory& factory) {
   size_t step_count = static_cast<size_t>(state.range(0));
   auto* context = CreateBenchmarkContext(factory, state);
-  if (!context) return;
+  if (!context) {
+    return;
+  }
 
   if (!(context->capabilities &
         IREE_ASYNC_PROACTOR_CAPABILITY_LINKED_OPERATIONS)) {

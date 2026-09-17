@@ -80,6 +80,18 @@ ctest --test-dir .tmp/iree-clang-tidy-plugin --output-on-failure
 
 ## Checks
 
+### `readability-braces-around-statements`
+
+Conditional and loop bodies use braces, including single-statement bodies.
+This keeps statement macros such as GoogleTest assertions inside an explicit
+block and makes control-flow grouping visible at the callsite. The repository
+clang-format policy inserts braces automatically. Code generators emit braced
+bodies directly, so generated C/C++ follows the same rule without a formatting
+step in build actions.
+
+Header diagnostics cover first-party source and generated code. External and
+vendored third-party headers retain their own style policy.
+
 ### `iree-assert-output-call`
 
 `iree-assert-output-call` diagnoses calls with writable `out_*` parameters
@@ -345,8 +357,12 @@ only pure empty predicates collapse to the named helper.
 Examples:
 
 ```c
-if (iree_string_view_is_empty(name)) return iree_ok_status();
-if (iree_const_byte_span_is_empty(bytes)) return iree_ok_status();
+if (iree_string_view_is_empty(name)) {
+  return iree_ok_status();
+}
+if (iree_const_byte_span_is_empty(bytes)) {
+  return iree_ok_status();
+}
 
 if (name.size > 0 && name.data == NULL) {
   return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,

@@ -86,7 +86,9 @@ static iree_status_t iree_hal_profile_file_calculate_record_layout(
   for (iree_host_size_t i = 0; i < iovec_count; ++i) {
     payload_length_valid = iree_host_size_checked_add(
         payload_length, iovecs[i].data_length, &payload_length);
-    if (!payload_length_valid) break;
+    if (!payload_length_valid) {
+      break;
+    }
   }
   if (IREE_UNLIKELY(!payload_length_valid)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,

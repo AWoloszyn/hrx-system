@@ -30,7 +30,9 @@ constexpr uint32_t kFrontierAxisTableCapacity = 256;
 class BlitBenchmark : public benchmark::Fixture {
  public:
   static void InitializeOnce() {
-    if (initialized_) return;
+    if (initialized_) {
+      return;
+    }
     initialized_ = true;
     host_allocator_ = iree_allocator_system();
 
@@ -101,7 +103,9 @@ class BlitBenchmark : public benchmark::Fixture {
   }
 
   static void DeinitializeOnce() {
-    if (!initialized_) return;
+    if (!initialized_) {
+      return;
+    }
     queue_ = nullptr;
     iree_hal_device_release(device_);
     iree_hal_device_group_release(device_group_);
@@ -123,7 +127,9 @@ class BlitBenchmark : public benchmark::Fixture {
 
  protected:
   bool PrepareCopy(benchmark::State& state) {
-    if (!available_) return false;
+    if (!available_) {
+      return false;
+    }
     length_ = static_cast<iree_device_size_t>(state.range(0));
     source_offset_ = static_cast<iree_device_size_t>(state.range(1));
     target_offset_ = static_cast<iree_device_size_t>(state.range(2));
@@ -139,13 +145,17 @@ class BlitBenchmark : public benchmark::Fixture {
   }
 
   bool PrepareCopyBatch(benchmark::State& state, int64_t batch_count) {
-    if (!PrepareCopy(state)) return false;
+    if (!PrepareCopy(state)) {
+      return false;
+    }
     batch_count_ = batch_count;
     return true;
   }
 
   bool PrepareFill(benchmark::State& state) {
-    if (!available_) return false;
+    if (!available_) {
+      return false;
+    }
     length_ = static_cast<iree_device_size_t>(state.range(0));
     target_offset_ = static_cast<iree_device_size_t>(state.range(1));
     pattern_length_ = static_cast<iree_host_size_t>(state.range(2));
@@ -163,13 +173,17 @@ class BlitBenchmark : public benchmark::Fixture {
   }
 
   bool PrepareFillBatch(benchmark::State& state, int64_t batch_count) {
-    if (!PrepareFill(state)) return false;
+    if (!PrepareFill(state)) {
+      return false;
+    }
     batch_count_ = batch_count;
     return true;
   }
 
   bool PrepareUpdate(benchmark::State& state) {
-    if (!available_) return false;
+    if (!available_) {
+      return false;
+    }
     length_ = static_cast<iree_device_size_t>(state.range(0));
     source_offset_ = static_cast<iree_device_size_t>(state.range(1));
     target_offset_ = static_cast<iree_device_size_t>(state.range(2));
@@ -186,7 +200,9 @@ class BlitBenchmark : public benchmark::Fixture {
   }
 
   bool PrepareUpdateBatch(benchmark::State& state, int64_t batch_count) {
-    if (!PrepareUpdate(state)) return false;
+    if (!PrepareUpdate(state)) {
+      return false;
+    }
     batch_count_ = batch_count;
     return true;
   }
@@ -363,7 +379,9 @@ class BlitBenchmark : public benchmark::Fixture {
 
   bool HandleStatus(benchmark::State& state, iree_status_t status,
                     const char* message) {
-    if (iree_status_is_ok(status)) return true;
+    if (iree_status_is_ok(status)) {
+      return true;
+    }
     iree_status_fprint(stderr, status);
     iree_status_free(status);
     state.SkipWithError(message);
@@ -469,15 +487,21 @@ iree_hal_device_t* BlitBenchmark::device_ = nullptr;
 iree_hal_queue_t* BlitBenchmark::queue_ = nullptr;
 
 BENCHMARK_DEFINE_F(BlitBenchmark, QueueCopy)(benchmark::State& state) {
-  if (!PrepareCopy(state)) return;
+  if (!PrepareCopy(state)) {
+    return;
+  }
   for (auto _ : state) {
-    if (!HandleStatus(state, QueueCopyAndWait(), "queue_copy failed")) break;
+    if (!HandleStatus(state, QueueCopyAndWait(), "queue_copy failed")) {
+      break;
+    }
   }
   SetBytesProcessed(state);
 }
 
 BENCHMARK_DEFINE_F(BlitBenchmark, QueueFill)(benchmark::State& state) {
-  if (!PrepareFill(state)) return;
+  if (!PrepareFill(state)) {
+    return;
+  }
   for (auto _ : state) {
     if (!HandleStatus(state, QueueBenchmarkFillAndWait(),
                       "queue_fill failed")) {
@@ -488,7 +512,9 @@ BENCHMARK_DEFINE_F(BlitBenchmark, QueueFill)(benchmark::State& state) {
 }
 
 BENCHMARK_DEFINE_F(BlitBenchmark, QueueCopyBatch20)(benchmark::State& state) {
-  if (!PrepareCopyBatch(state, kBatchCount)) return;
+  if (!PrepareCopyBatch(state, kBatchCount)) {
+    return;
+  }
   for (auto _ : state) {
     if (!HandleStatus(state, QueueCopyBatchAndWait(),
                       "queue_copy batch failed")) {
@@ -500,7 +526,9 @@ BENCHMARK_DEFINE_F(BlitBenchmark, QueueCopyBatch20)(benchmark::State& state) {
 
 BENCHMARK_DEFINE_F(BlitBenchmark,
                    QueueCopyBatch20SubmitOnly)(benchmark::State& state) {
-  if (!PrepareCopyBatch(state, kBatchCount)) return;
+  if (!PrepareCopyBatch(state, kBatchCount)) {
+    return;
+  }
   for (auto _ : state) {
     uint64_t payload_value = 0;
     if (!HandleStatus(state, QueueCopyBatchSubmit(&payload_value),
@@ -510,13 +538,17 @@ BENCHMARK_DEFINE_F(BlitBenchmark,
     state.PauseTiming();
     iree_status_t status = WaitForCompletion(payload_value);
     state.ResumeTiming();
-    if (!HandleStatus(state, status, "queue_copy batch wait failed")) break;
+    if (!HandleStatus(state, status, "queue_copy batch wait failed")) {
+      break;
+    }
   }
   SetBytesProcessed(state);
 }
 
 BENCHMARK_DEFINE_F(BlitBenchmark, QueueFillBatch20)(benchmark::State& state) {
-  if (!PrepareFillBatch(state, kBatchCount)) return;
+  if (!PrepareFillBatch(state, kBatchCount)) {
+    return;
+  }
   for (auto _ : state) {
     if (!HandleStatus(state, QueueFillBatchAndWait(),
                       "queue_fill batch failed")) {
@@ -528,7 +560,9 @@ BENCHMARK_DEFINE_F(BlitBenchmark, QueueFillBatch20)(benchmark::State& state) {
 
 BENCHMARK_DEFINE_F(BlitBenchmark,
                    QueueFillBatch20SubmitOnly)(benchmark::State& state) {
-  if (!PrepareFillBatch(state, kBatchCount)) return;
+  if (!PrepareFillBatch(state, kBatchCount)) {
+    return;
+  }
   for (auto _ : state) {
     uint64_t payload_value = 0;
     if (!HandleStatus(state, QueueFillBatchSubmit(&payload_value),
@@ -538,13 +572,17 @@ BENCHMARK_DEFINE_F(BlitBenchmark,
     state.PauseTiming();
     iree_status_t status = WaitForCompletion(payload_value);
     state.ResumeTiming();
-    if (!HandleStatus(state, status, "queue_fill batch wait failed")) break;
+    if (!HandleStatus(state, status, "queue_fill batch wait failed")) {
+      break;
+    }
   }
   SetBytesProcessed(state);
 }
 
 BENCHMARK_DEFINE_F(BlitBenchmark, QueueUpdate)(benchmark::State& state) {
-  if (!PrepareUpdate(state)) return;
+  if (!PrepareUpdate(state)) {
+    return;
+  }
   for (auto _ : state) {
     if (!HandleStatus(state, QueueUpdateAndWait(), "queue_update failed")) {
       break;
@@ -554,7 +592,9 @@ BENCHMARK_DEFINE_F(BlitBenchmark, QueueUpdate)(benchmark::State& state) {
 }
 
 BENCHMARK_DEFINE_F(BlitBenchmark, QueueUpdateBatch20)(benchmark::State& state) {
-  if (!PrepareUpdateBatch(state, kBatchCount)) return;
+  if (!PrepareUpdateBatch(state, kBatchCount)) {
+    return;
+  }
   for (auto _ : state) {
     if (!HandleStatus(state, QueueUpdateBatchAndWait(),
                       "queue_update batch failed")) {
@@ -566,7 +606,9 @@ BENCHMARK_DEFINE_F(BlitBenchmark, QueueUpdateBatch20)(benchmark::State& state) {
 
 BENCHMARK_DEFINE_F(BlitBenchmark,
                    QueueUpdateBatch20SubmitOnly)(benchmark::State& state) {
-  if (!PrepareUpdateBatch(state, kBatchCount)) return;
+  if (!PrepareUpdateBatch(state, kBatchCount)) {
+    return;
+  }
   for (auto _ : state) {
     uint64_t payload_value = 0;
     if (!HandleStatus(state, QueueUpdateBatchSubmit(&payload_value),
@@ -576,7 +618,9 @@ BENCHMARK_DEFINE_F(BlitBenchmark,
     state.PauseTiming();
     iree_status_t status = WaitForCompletion(payload_value);
     state.ResumeTiming();
-    if (!HandleStatus(state, status, "queue_update batch wait failed")) break;
+    if (!HandleStatus(state, status, "queue_update batch wait failed")) {
+      break;
+    }
   }
   SetBytesProcessed(state);
 }
@@ -611,7 +655,9 @@ void ApplyFillArguments(benchmark::Benchmark* benchmark) {
   const int64_t pattern_lengths[] = {1, 2, 4};
   for (int64_t pattern_length : pattern_lengths) {
     for (int64_t length : common_sizes) {
-      if ((length % pattern_length) != 0) continue;
+      if ((length % pattern_length) != 0) {
+        continue;
+      }
       const int64_t offsets[] = {0, pattern_length};
       for (int64_t offset : offsets) {
         benchmark->Args({length, offset, pattern_length});
@@ -710,7 +756,9 @@ int main(int argc, char** argv) {
                                IREE_FLAGS_PARSE_MODE_CONTINUE_AFTER_HELP,
                            &argc, &argv);
   benchmark::Initialize(&argc, argv);
-  if (benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+  if (benchmark::ReportUnrecognizedArguments(argc, argv)) {
+    return 1;
+  }
   benchmark::RunSpecifiedBenchmarks();
   benchmark::Shutdown();
   BlitBenchmark::DeinitializeOnce();

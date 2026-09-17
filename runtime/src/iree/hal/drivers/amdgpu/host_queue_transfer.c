@@ -557,7 +557,9 @@ static iree_status_t iree_hal_amdgpu_transfer_start(
 
   for (iree_host_size_t i = 0; i < transaction->operation_count; ++i) {
     iree_hal_amdgpu_transfer_child_t* child = &transaction->children[i];
-    if (!child->staging_transfer) continue;
+    if (!child->staging_transfer) {
+      continue;
+    }
     iree_hal_amdgpu_staging_transfer_t* staging_transfer =
         child->staging_transfer;
     child->staging_transfer = NULL;

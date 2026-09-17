@@ -593,7 +593,9 @@ static void iree_hal_vulkan_allocator_append_unique_memory_type(
     uint32_t memory_type_index, uint32_t* selected_indices,
     iree_host_size_t* selected_count) {
   for (iree_host_size_t i = 0; i < *selected_count; ++i) {
-    if (selected_indices[i] == memory_type_index) return;
+    if (selected_indices[i] == memory_type_index) {
+      return;
+    }
   }
   selected_indices[*selected_count] = memory_type_index;
   *selected_count = *selected_count + 1;
@@ -605,7 +607,9 @@ static iree_string_view_t iree_hal_vulkan_allocator_format_pool_trace_name(
   const int length =
       snprintf(storage, storage_capacity, "vulkan-%.*s-memory-type-%u",
                (int)kind.size, kind.data, memory_type_index);
-  if (length < 0) return iree_string_view_empty();
+  if (length < 0) {
+    return iree_string_view_empty();
+  }
   const iree_host_size_t clamped_length =
       iree_min((iree_host_size_t)length, storage_capacity - 1);
   return iree_make_string_view(storage, clamped_length);
@@ -801,7 +805,9 @@ static iree_status_t iree_hal_vulkan_allocator_initialize_default_pools(
     status = iree_hal_vulkan_allocator_create_pool_pair(
         allocator, i, memory_type, vk_memory_type->propertyFlags,
         supported_usage, &pool_pair);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     if (iree_status_is_ok(status)) {
       if (pool_pair.memory_priority > default_queue_provider_priority) {
@@ -843,7 +849,9 @@ static iree_status_t iree_hal_vulkan_allocator_query_memory_heaps(
                             " is smaller than the memory type count %" PRIhsz,
                             capacity, heap_count);
   }
-  if (heaps == NULL) return iree_ok_status();
+  if (heaps == NULL) {
+    return iree_ok_status();
+  }
 
   uint32_t memory_type_indices[VK_MAX_MEMORY_TYPES];
   for (iree_host_size_t i = 0; i < heap_count; ++i) {
@@ -978,12 +986,16 @@ static bool iree_hal_vulkan_allocator_resolve_memory_placement(
   memset(&best_placement, 0, sizeof(best_placement));
 
   for (uint32_t i = 0; i < memory_properties->memoryTypeCount; ++i) {
-    if (!iree_all_bits_set(allowed_memory_type_bits, 1u << i)) continue;
+    if (!iree_all_bits_set(allowed_memory_type_bits, 1u << i)) {
+      continue;
+    }
     const VkMemoryType* vk_memory_type = &memory_properties->memoryTypes[i];
     const iree_hal_memory_type_t memory_type =
         iree_hal_vulkan_allocator_memory_type_from_properties(
             allocator, vk_memory_type->propertyFlags);
-    if (!iree_all_bits_set(memory_type, required_type)) continue;
+    if (!iree_all_bits_set(memory_type, required_type)) {
+      continue;
+    }
 
     iree_hal_buffer_params_t candidate_params = *params;
     const iree_hal_buffer_usage_t allowed_usage =
@@ -993,7 +1005,9 @@ static bool iree_hal_vulkan_allocator_resolve_memory_placement(
               &candidate_params)) {
         continue;
       }
-      if (!iree_all_bits_set(allowed_usage, candidate_params.usage)) continue;
+      if (!iree_all_bits_set(allowed_usage, candidate_params.usage)) {
+        continue;
+      }
     }
 
     const int score = iree_hal_vulkan_allocator_score_memory_type(
@@ -1011,7 +1025,9 @@ static bool iree_hal_vulkan_allocator_resolve_memory_placement(
     }
   }
 
-  if (!found) return false;
+  if (!found) {
+    return false;
+  }
   *params = best_params;
   *out_placement = best_placement;
   return true;
@@ -1019,7 +1035,9 @@ static bool iree_hal_vulkan_allocator_resolve_memory_placement(
 
 static iree_status_t iree_hal_vulkan_allocator_align_allocation_size(
     iree_device_size_t* allocation_size) {
-  if (*allocation_size == 0) *allocation_size = 4;
+  if (*allocation_size == 0) {
+    *allocation_size = 4;
+  }
   if (!iree_device_size_checked_align(*allocation_size, 4, allocation_size)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "Vulkan allocation size overflows 4-byte "

@@ -16,7 +16,9 @@
 static bool iree_vm_bytecode_bytes_are_zero(const uint8_t* data,
                                             iree_host_size_t length) {
   for (iree_host_size_t i = 0; i < length; ++i) {
-    if (data[i] != 0) return false;
+    if (data[i] != 0) {
+      return false;
+    }
   }
   return true;
 }
@@ -86,7 +88,9 @@ static iree_status_t iree_vm_bytecode_verify_requirements(
 
 static iree_status_t iree_vm_bytecode_verify_strings(
     const iree_vm_bytecode_module_layout_t* layout) {
-  if (!layout->strings.offsets) return iree_ok_status();
+  if (!layout->strings.offsets) {
+    return iree_ok_status();
+  }
   const iree_vm_bytecode_v0_strings_header_t* header =
       (const iree_vm_bytecode_v0_strings_header_t*)((const uint8_t*)layout
                                                         ->strings.offsets -
@@ -122,7 +126,9 @@ static iree_status_t iree_vm_bytecode_verify_strings(
 
 static iree_status_t iree_vm_bytecode_verify_ref_types(
     const iree_vm_bytecode_module_layout_t* layout) {
-  if (!layout->ref_types.groups) return iree_ok_status();
+  if (!layout->ref_types.groups) {
+    return iree_ok_status();
+  }
   const iree_vm_bytecode_v0_ref_types_header_t* header =
       (const iree_vm_bytecode_v0_ref_types_header_t*)((const uint8_t*)layout
                                                           ->ref_types.groups -
@@ -215,7 +221,9 @@ static iree_status_t iree_vm_bytecode_verify_signature_descriptors(
 
 static iree_status_t iree_vm_bytecode_verify_signatures(
     const iree_vm_bytecode_module_layout_t* layout) {
-  if (!layout->signatures.rows) return iree_ok_status();
+  if (!layout->signatures.rows) {
+    return iree_ok_status();
+  }
   const iree_vm_bytecode_v0_signatures_header_t* header =
       (const iree_vm_bytecode_v0_signatures_header_t*)((const uint8_t*)layout
                                                            ->signatures.rows -
@@ -271,10 +279,14 @@ static int iree_vm_bytecode_compare_signature_descriptors(
   for (uint32_t i = 0; i < count; ++i) {
     int comparison =
         iree_vm_bytecode_compare_u32(lhs[i].kind_u16, rhs[i].kind_u16);
-    if (comparison != 0) return comparison;
+    if (comparison != 0) {
+      return comparison;
+    }
     comparison = iree_vm_bytecode_compare_u32(lhs[i].type_ordinal_u16,
                                               rhs[i].type_ordinal_u16);
-    if (comparison != 0) return comparison;
+    if (comparison != 0) {
+      return comparison;
+    }
   }
   return 0;
 }
@@ -287,7 +299,9 @@ static int iree_vm_bytecode_compare_callable_types(
   *out_same_signature = false;
   int comparison = iree_vm_bytecode_compare_u32(lhs->nesting_depth_u16,
                                                 rhs->nesting_depth_u16);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   const iree_vm_bytecode_v0_signature_row_t* lhs_signature =
       &layout->signatures.rows[lhs->signature_ordinal_u16];
   const iree_vm_bytecode_v0_signature_row_t* rhs_signature =
@@ -298,7 +312,9 @@ static int iree_vm_bytecode_compare_callable_types(
       iree_vm_bytecode_signature_argument_count(rhs_signature);
   comparison =
       iree_vm_bytecode_compare_u32(lhs_argument_count, rhs_argument_count);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   const iree_vm_bytecode_v0_signature_descriptor_row_t* lhs_descriptors =
       iree_vm_bytecode_signature_descriptors(&layout->signatures,
                                              lhs->signature_ordinal_u16);
@@ -307,17 +323,23 @@ static int iree_vm_bytecode_compare_callable_types(
                                              rhs->signature_ordinal_u16);
   comparison = iree_vm_bytecode_compare_signature_descriptors(
       lhs_descriptors, rhs_descriptors, lhs_argument_count);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   const uint32_t lhs_result_count =
       iree_vm_bytecode_signature_result_count(lhs_signature);
   const uint32_t rhs_result_count =
       iree_vm_bytecode_signature_result_count(rhs_signature);
   comparison = iree_vm_bytecode_compare_u32(lhs_result_count, rhs_result_count);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   comparison = iree_vm_bytecode_compare_signature_descriptors(
       lhs_descriptors + lhs_argument_count,
       rhs_descriptors + rhs_argument_count, lhs_result_count);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   *out_same_signature = true;
   return iree_vm_bytecode_compare_u32(lhs->flags_u16, rhs->flags_u16);
 }
@@ -408,7 +430,9 @@ static iree_status_t iree_vm_bytecode_verify_callable_types(
 
 static iree_status_t iree_vm_bytecode_verify_imports(
     const iree_vm_bytecode_module_layout_t* layout) {
-  if (!layout->imports.groups) return iree_ok_status();
+  if (!layout->imports.groups) {
+    return iree_ok_status();
+  }
   const iree_vm_bytecode_v0_imports_header_t* header =
       (const iree_vm_bytecode_v0_imports_header_t*)((const uint8_t*)
                                                         layout->imports.groups -
@@ -476,7 +500,9 @@ static iree_status_t iree_vm_bytecode_verify_imports(
 
 static iree_status_t iree_vm_bytecode_verify_exports(
     const iree_vm_bytecode_module_layout_t* layout) {
-  if (!layout->exports.rows) return iree_ok_status();
+  if (!layout->exports.rows) {
+    return iree_ok_status();
+  }
   const iree_vm_bytecode_v0_exports_header_t* header =
       (const iree_vm_bytecode_v0_exports_header_t*)((const uint8_t*)
                                                         layout->exports.rows -
@@ -541,7 +567,9 @@ static iree_status_t iree_vm_bytecode_verify_function_signature(
 
 static iree_status_t iree_vm_bytecode_verify_functions(
     const iree_vm_bytecode_module_layout_t* layout) {
-  if (!layout->functions.rows) return iree_ok_status();
+  if (!layout->functions.rows) {
+    return iree_ok_status();
+  }
   const iree_vm_bytecode_v0_functions_header_t* header =
       (const iree_vm_bytecode_v0_functions_header_t*)((const uint8_t*)layout
                                                           ->functions.rows -
@@ -598,7 +626,9 @@ static iree_status_t iree_vm_bytecode_verify_constants(
 static iree_status_t iree_vm_bytecode_verify_globals(
     const iree_vm_bytecode_module_layout_t* layout) {
   const iree_vm_bytecode_v0_globals_header_t* header = layout->globals.header;
-  if (!header) return iree_ok_status();
+  if (!header) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_vm_bytecode_verify_record(
       IREE_VM_BYTECODE_MODULE_RECORD_GLOBALS_HEADER, (const uint8_t*)header,
       layout));
@@ -625,7 +655,9 @@ static iree_status_t iree_vm_bytecode_verify_globals(
 
 static iree_status_t iree_vm_bytecode_verify_rodata(
     const iree_vm_bytecode_module_layout_t* layout) {
-  if (!layout->rodata.descriptors) return iree_ok_status();
+  if (!layout->rodata.descriptors) {
+    return iree_ok_status();
+  }
   const iree_vm_bytecode_v0_rodata_header_t* header =
       (const iree_vm_bytecode_v0_rodata_header_t*)layout->rodata.section_begin;
   IREE_RETURN_IF_ERROR(iree_vm_bytecode_verify_record(
@@ -657,7 +689,9 @@ iree_vm_bytecode_presentation_callable(
 
 static iree_status_t iree_vm_bytecode_verify_presentation(
     const iree_vm_bytecode_module_layout_t* layout) {
-  if (!layout->presentation.entries) return iree_ok_status();
+  if (!layout->presentation.entries) {
+    return iree_ok_status();
+  }
   const iree_vm_bytecode_v0_presentation_header_t* header =
       (const iree_vm_bytecode_v0_presentation_header_t*)((const uint8_t*)layout
                                                              ->presentation
@@ -752,7 +786,9 @@ static iree_status_t iree_vm_bytecode_verify_metadata_value(
     case IREE_VM_BYTECODE_METADATA_VALUE_TYPE_I64:
     case IREE_VM_BYTECODE_METADATA_VALUE_TYPE_U64:
     case IREE_VM_BYTECODE_METADATA_VALUE_TYPE_F64:
-      if (value.data_length == 8) return iree_ok_status();
+      if (value.data_length == 8) {
+        return iree_ok_status();
+      }
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
           "64-bit metadata value must contain exactly eight bytes");
@@ -830,7 +866,9 @@ static iree_status_t iree_vm_bytecode_verify_metadata_scopes(
 static iree_status_t iree_vm_bytecode_verify_metadata(
     const iree_vm_bytecode_module_layout_t* layout) {
   const iree_vm_bytecode_v0_metadata_header_t* header = layout->metadata.header;
-  if (!header) return iree_ok_status();
+  if (!header) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_vm_bytecode_verify_record(
       IREE_VM_BYTECODE_MODULE_RECORD_METADATA_HEADER, (const uint8_t*)header,
       layout));
@@ -980,7 +1018,9 @@ static bool iree_vm_bytecode_range_fits_u64(uint64_t base, uint64_t length,
 static bool iree_vm_bytecode_verify_global_ordinal(
     const iree_vm_bytecode_instruction_context_t* context, uint32_t ordinal,
     uint32_t packed_extent) {
-  if (!context->layout->globals.header) return false;
+  if (!context->layout->globals.header) {
+    return false;
+  }
   const uint32_t upper_offset = packed_extent & 0xFFFFu;
   const uint32_t lower_offset_plus_one = packed_extent >> 16;
   const uint8_t* globals = (const uint8_t*)context->layout->globals.header;
@@ -1108,7 +1148,9 @@ static bool iree_vm_bytecode_verify_call_packet(
     const iree_vm_bytecode_instruction_context_t* context,
     const iree_vm_bytecode_v0_callable_type_row_t* callable_type,
     uint16_t direct_ref_move_mask) {
-  if (!callable_type) return false;
+  if (!callable_type) {
+    return false;
+  }
   const iree_vm_bytecode_v0_signature_row_t* signature =
       &context->layout->signatures.rows[callable_type->signature_ordinal_u16];
   if (context->function->value_register_count_u16 <
@@ -1129,7 +1171,9 @@ static bool iree_vm_bytecode_verify_call_packet(
       direct_ref_argument_count == IREE_VM_CALL_DIRECT_REGISTER_COUNT
           ? UINT16_MAX
           : (uint16_t)((1u << direct_ref_argument_count) - 1u);
-  if ((direct_ref_move_mask & ~valid_ref_move_mask) != 0) return false;
+  if ((direct_ref_move_mask & ~valid_ref_move_mask) != 0) {
+    return false;
+  }
 
   const uint32_t required_local_bytes =
       sizeof(uint64_t) *
@@ -1158,13 +1202,17 @@ iree_vm_bytecode_direct_target_callable(
     const iree_vm_bytecode_instruction_context_t* context, uint8_t target_kind,
     uint16_t target_ordinal) {
   if (target_kind == IREE_VM_BYTECODE_CONTROL_CALL_TARGET_LOCAL) {
-    if (target_ordinal >= context->layout->functions.count) return NULL;
+    if (target_ordinal >= context->layout->functions.count) {
+      return NULL;
+    }
     return iree_vm_bytecode_function_callable_type(
         context->layout, &context->layout->functions.rows[target_ordinal]);
   }
   if (target_kind == IREE_VM_BYTECODE_CONTROL_CALL_TARGET_REQUIRED_IMPORT ||
       target_kind == IREE_VM_BYTECODE_CONTROL_CALL_TARGET_OPTIONAL_IMPORT) {
-    if (target_ordinal >= context->layout->imports.entry_count) return NULL;
+    if (target_ordinal >= context->layout->imports.entry_count) {
+      return NULL;
+    }
     const iree_vm_bytecode_v0_import_entry_row_t* import =
         &context->layout->imports.entries[target_ordinal];
     const bool is_optional = iree_any_bit_set(
@@ -1194,10 +1242,14 @@ static bool iree_vm_bytecode_verify_function_address(
     uint16_t target_ordinal, uint16_t callable_type_ordinal) {
   const iree_vm_bytecode_v0_callable_type_row_t* destination =
       iree_vm_bytecode_callable_type_at(context, callable_type_ordinal);
-  if (!destination) return false;
+  if (!destination) {
+    return false;
+  }
 
   if (target_kind == IREE_VM_BYTECODE_CONTROL_CALL_TARGET_LOCAL) {
-    if (target_ordinal >= context->layout->functions.count) return false;
+    if (target_ordinal >= context->layout->functions.count) {
+      return false;
+    }
     const iree_vm_bytecode_v0_function_row_t* target =
         &context->layout->functions.rows[target_ordinal];
     const iree_vm_bytecode_v0_callable_type_row_t* source =
@@ -1210,7 +1262,9 @@ static bool iree_vm_bytecode_verify_function_address(
   }
   if (target_kind == IREE_VM_BYTECODE_CONTROL_CALL_TARGET_REQUIRED_IMPORT ||
       target_kind == IREE_VM_BYTECODE_CONTROL_CALL_TARGET_OPTIONAL_IMPORT) {
-    if (target_ordinal >= context->layout->imports.entry_count) return false;
+    if (target_ordinal >= context->layout->imports.entry_count) {
+      return false;
+    }
     const iree_vm_bytecode_v0_import_entry_row_t* import =
         &context->layout->imports.entries[target_ordinal];
     const bool is_optional = iree_any_bit_set(
@@ -1416,6 +1470,8 @@ iree_status_t iree_vm_bytecode_verify_module(
   if (block_offsets != inline_block_offsets) {
     iree_allocator_free(scratch_allocator, block_offsets);
   }
-  if (iree_status_is_ok(status)) *out_plan = plan;
+  if (iree_status_is_ok(status)) {
+    *out_plan = plan;
+  }
   return status;
 }

@@ -239,7 +239,9 @@ static iree_status_t iree_profile_att_report_file(
   for (iree_host_size_t i = 0;
        iree_status_is_ok(status) && i < profile->trace_count; ++i) {
     const iree_profile_att_trace_t* trace = &profile->traces[i];
-    if (!iree_profile_att_trace_matches(profile, trace, filter, id)) continue;
+    if (!iree_profile_att_trace_matches(profile, trace, filter, id)) {
+      continue;
+    }
 
     iree_profile_att_decoded_trace_t decoded_trace;
     status = iree_profile_att_decode_trace(profile, trace, &rocprofiler, &comgr,

@@ -122,14 +122,18 @@ static iree_host_size_t iree_tokenizer_bpe_window_find_by_start_byte(
 void iree_tokenizer_bpe_maybe_add_merge(iree_tokenizer_bpe_state_t* state,
                                         const iree_tokenizer_bpe_model_t* model,
                                         iree_host_size_t position) {
-  if (position + 1 >= state->window.count) return;
+  if (position + 1 >= state->window.count) {
+    return;
+  }
 
   iree_tokenizer_bpe_window_token_t* left =
       iree_tokenizer_bpe_window_at(state, model, position);
   iree_tokenizer_bpe_window_token_t* right =
       iree_tokenizer_bpe_window_at(state, model, position + 1);
 
-  if (left->token_id < 0 || right->token_id < 0) return;
+  if (left->token_id < 0 || right->token_id < 0) {
+    return;
+  }
 
   iree_tokenizer_merge_hash_result_t merge =
       iree_tokenizer_vocab_merge_hash_lookup(model->merge_hash, left->token_id,

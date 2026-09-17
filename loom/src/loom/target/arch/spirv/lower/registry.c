@@ -54,7 +54,9 @@ static bool loom_spirv_source_type_is_offset64(loom_type_t type) {
 }
 
 static bool loom_spirv_source_type_is_fp8(loom_type_t type) {
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   const loom_scalar_type_t scalar_type = loom_type_element_type(type);
   return scalar_type == LOOM_SCALAR_TYPE_F8E4M3 ||
          scalar_type == LOOM_SCALAR_TYPE_F8E5M2;
@@ -252,7 +254,9 @@ static iree_status_t loom_spirv_map_contract_value(
   *out_mapped_value = loom_low_lower_rule_mapped_value_none();
   const loom_type_t source_type =
       loom_module_value_type(environment->module, source_value_id);
-  if (!loom_type_is_view(source_type)) return iree_ok_status();
+  if (!loom_type_is_view(source_type)) {
+    return iree_ok_status();
+  }
 
   bool is_workgroup = false;
   uint16_t register_class_id = LOOM_LOW_REG_CLASS_NONE;

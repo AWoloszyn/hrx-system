@@ -268,7 +268,9 @@ static float iree_math_cospi_f32_finite(float value) {
   // Large values have no residual beyond an exact table entry. Values at
   // least 2^23 are integral binary32 values and therefore return one.
   if (IREE_UNLIKELY(table_shift > 31)) {
-    if (IREE_UNLIKELY(table_shift > 63)) return 1.0f;
+    if (IREE_UNLIKELY(table_shift > 63)) {
+      return 1.0f;
+    }
     const uint32_t table_index = (uint32_t)mantissa << (table_shift - 32);
     return (
         float)iree_math_turns_sine_table[(table_index + 32) & UINT32_C(127)];
@@ -323,6 +325,8 @@ IREE_API_EXPORT float iree_math_cos_turns_f32_approx(float turns) {
     return iree_math_f32_canonical_nan();
   }
   // Every binary32 value at least 2^23 is an integer number of turns.
-  if (IREE_UNLIKELY(magnitude_bits >= UINT32_C(0x4B000000))) return 1.0f;
+  if (IREE_UNLIKELY(magnitude_bits >= UINT32_C(0x4B000000))) {
+    return 1.0f;
+  }
   return iree_math_cospi_f32_finite(turns * 2.0f);
 }

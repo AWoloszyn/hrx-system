@@ -17,7 +17,9 @@ namespace {
 TEST(ScalarTypeTest, RoundTripNames) {
   for (int i = 0; i < LOOM_SCALAR_TYPE_COUNT_; ++i) {
     loom_scalar_type_t scalar_type = (loom_scalar_type_t)i;
-    if (!loom_scalar_type_is_valid(scalar_type)) continue;
+    if (!loom_scalar_type_is_valid(scalar_type)) {
+      continue;
+    }
     const char* name = loom_scalar_type_name(scalar_type);
     ASSERT_NE(name, nullptr) << i;
 

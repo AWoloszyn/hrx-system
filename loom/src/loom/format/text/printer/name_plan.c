@@ -35,14 +35,18 @@ typedef struct loom_print_name_index_entry_t {
 
 static const loom_op_vtable_t* loom_print_name_defining_op_vtable(
     const loom_module_t* module, const loom_op_t* op) {
-  if (!module || !module->context || !op) return NULL;
+  if (!module || !module->context || !op) {
+    return NULL;
+  }
   return loom_context_resolve_op(module->context, op->kind);
 }
 
 // Returns the parser scope that receives |value_id|'s printed definition.
 static const void* loom_print_name_parse_scope(const loom_module_t* module,
                                                loom_value_id_t value_id) {
-  if (!module || value_id >= module->values.count) return NULL;
+  if (!module || value_id >= module->values.count) {
+    return NULL;
+  }
   const loom_value_t* value = loom_module_value(module, value_id);
   if (loom_value_is_block_arg(value)) {
     loom_block_t* block = loom_value_def_block(value);
@@ -61,7 +65,9 @@ static const void* loom_print_name_parse_scope(const loom_module_t* module,
   }
 
   const loom_use_t* uses = loom_value_uses(value);
-  if (!uses || value->use_count == 0) return NULL;
+  if (!uses || value->use_count == 0) {
+    return NULL;
+  }
   loom_op_t* user_op = loom_use_user_op(uses[0]);
   const loom_op_vtable_t* user_vtable =
       loom_print_name_defining_op_vtable(module, user_op);
@@ -75,13 +81,17 @@ static const void* loom_print_name_parse_scope(const loom_module_t* module,
 
 static bool loom_print_name_value_is_printable(const loom_module_t* module,
                                                loom_value_id_t value_id) {
-  if (!module || value_id >= module->values.count) return false;
+  if (!module || value_id >= module->values.count) {
+    return false;
+  }
   const loom_value_t* value = loom_module_value(module, value_id);
   if (loom_value_is_block_arg(value)) {
     return loom_value_def_block(value) != NULL;
   }
   loom_op_t* def_op = loom_value_def_op(value);
-  if (def_op) return !iree_any_bit_set(def_op->flags, LOOM_OP_FLAG_DEAD);
+  if (def_op) {
+    return !iree_any_bit_set(def_op->flags, LOOM_OP_FLAG_DEAD);
+  }
   return value->use_count > 0;
 }
 
@@ -89,7 +99,9 @@ static bool loom_print_name_value_has_name(const loom_module_t* module,
                                            loom_value_id_t value_id,
                                            loom_string_id_t* out_name_id) {
   *out_name_id = LOOM_STRING_ID_INVALID;
-  if (!module || value_id >= module->values.count) return false;
+  if (!module || value_id >= module->values.count) {
+    return false;
+  }
   loom_string_id_t name_id = loom_module_value(module, value_id)->name_id;
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return false;
@@ -113,7 +125,9 @@ static uint64_t loom_print_name_hash(const void* scope,
 static loom_print_name_index_entry_t* loom_print_name_index_find(
     loom_print_name_index_entry_t* entries, iree_host_size_t capacity,
     const void* scope, loom_string_id_t name_id) {
-  if (!entries || capacity == 0) return NULL;
+  if (!entries || capacity == 0) {
+    return NULL;
+  }
   const uint32_t name_key = name_id + 1;
   const iree_host_size_t mask = capacity - 1;
   iree_host_size_t slot =
@@ -179,14 +193,18 @@ static uint32_t loom_print_name_resolve_suffix(
     const loom_module_t* module, const uint8_t* explicit_names,
     loom_value_id_t value_id, iree_string_view_t base_name, uint32_t suffix,
     char* buffer, iree_host_size_t buffer_capacity) {
-  if (base_name.size) memcpy(buffer, base_name.data, base_name.size);
+  if (base_name.size) {
+    memcpy(buffer, base_name.data, base_name.size);
+  }
   for (;;) {
     iree_string_view_t tail =
         loom_print_name_format_suffix(value_id, suffix, buffer + base_name.size,
                                       buffer_capacity - base_name.size);
     iree_string_view_t candidate =
         iree_make_string_view(buffer, base_name.size + tail.size);
-    if (!loom_print_name_is_explicit(module, explicit_names, candidate)) break;
+    if (!loom_print_name_is_explicit(module, explicit_names, candidate)) {
+      break;
+    }
     ++suffix;
   }
   return suffix;
@@ -196,7 +214,9 @@ iree_status_t loom_print_name_plan_initialize(
     const loom_module_t* module, loom_print_name_plan_t* out_plan) {
   memset(out_plan, 0, sizeof(*out_plan));
   iree_arena_initialize(module->arena.block_pool, &out_plan->arena);
-  if (module->values.count == 0) return iree_ok_status();
+  if (module->values.count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t named_value_count = 0;
   iree_host_size_t indexed_name_count = 0;
@@ -214,7 +234,9 @@ iree_status_t loom_print_name_plan_initialize(
       ++indexed_name_count;
     }
   }
-  if (named_value_count == 0) return iree_ok_status();
+  if (named_value_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_status_t status = iree_arena_allocate_array(
       &out_plan->arena, module->values.count, sizeof(*out_plan->resolutions),
@@ -226,7 +248,9 @@ iree_status_t loom_print_name_plan_initialize(
   memset(out_plan->resolutions, 0,
          module->values.count * sizeof(*out_plan->resolutions));
 
-  if (indexed_name_count == 0) return iree_ok_status();
+  if (indexed_name_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t index_capacity =
       iree_host_size_next_power_of_two((indexed_name_count * 4 + 2) / 3);
@@ -235,7 +259,9 @@ iree_status_t loom_print_name_plan_initialize(
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "SSA name index capacity exceeds storage limit");
   }
-  if (index_capacity < 16) index_capacity = 16;
+  if (index_capacity < 16) {
+    index_capacity = 16;
+  }
 
   iree_host_size_t index_offset = 0;
   iree_host_size_t explicit_names_offset = 0;
@@ -303,7 +329,9 @@ iree_status_t loom_print_name_plan_initialize(
     const bool duplicated =
         entry && (entry->duplicated ||
                   !loom_print_name_value_is_printable(module, value_id));
-    if (!duplicated) continue;
+    if (!duplicated) {
+      continue;
+    }
     out_plan->resolutions[i].suffix = loom_print_name_resolve_suffix(
         module, explicit_names, value_id, module->strings.entries[name_id], 1,
         candidate_buffer, candidate_buffer_capacity);
@@ -326,7 +354,9 @@ static iree_status_t loom_print_name_write_resolution(
   if (loom_print_name_value_has_name(module, value_id, &name_id)) {
     IREE_RETURN_IF_ERROR(
         loom_output_stream_write(stream, module->strings.entries[name_id]));
-    if (resolution.suffix == 0) return iree_ok_status();
+    if (resolution.suffix == 0) {
+      return iree_ok_status();
+    }
   }
   char buffer[LOOM_PRINT_NAME_SUFFIX_BUFFER_SIZE];
   return loom_output_stream_write(

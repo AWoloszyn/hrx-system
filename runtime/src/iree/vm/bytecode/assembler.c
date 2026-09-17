@@ -396,7 +396,9 @@ static bool iree_vm_bytecode_assembler_range_fits(uint64_t base,
 
 static bool iree_vm_bytecode_assembler_validate_scalar(uint64_t value,
                                                        uint8_t constraint) {
-  if (constraint == 0) return true;
+  if (constraint == 0) {
+    return true;
+  }
   const uint8_t ordinal = constraint - 1;
   if (value < iree_vm_bytecode_assembler_scalar_minimums[ordinal] ||
       value > iree_vm_bytecode_assembler_scalar_maximums[ordinal]) {
@@ -475,7 +477,9 @@ static iree_status_t iree_vm_bytecode_assembler_parse_numeric(
             assembler, "flag list contains zero or a duplicate flag");
       }
       bits |= value;
-      if (!iree_vm_bytecode_assembler_try_char(assembler, ',')) break;
+      if (!iree_vm_bytecode_assembler_try_char(assembler, ',')) {
+        break;
+      }
     }
     if (!iree_vm_bytecode_assembler_try_char(assembler, ']')) {
       return iree_vm_bytecode_assembler_error(assembler,
@@ -520,7 +524,9 @@ static iree_status_t iree_vm_bytecode_assembler_parse_numeric(
 static iree_status_t iree_vm_bytecode_assembler_seek_write(
     iree_vm_bytecode_assembler_t* assembler, uint64_t offset,
     iree_host_size_t length, const void* data) {
-  if (!assembler->is_emitting) return iree_ok_status();
+  if (!assembler->is_emitting) {
+    return iree_ok_status();
+  }
   if (offset > INT64_MAX) {
     return iree_vm_bytecode_assembler_error(assembler,
                                             "output exceeds stream range");
@@ -590,7 +596,9 @@ iree_vm_bytecode_assembler_append_record(
     IREE_RETURN_IF_ERROR(iree_vm_bytecode_assembler_add_count(
         assembler, &assembler->summary.record_counts[record], 1));
   }
-  if (out_ordinal) *out_ordinal = ordinal;
+  if (out_ordinal) {
+    *out_ordinal = ordinal;
+  }
   *out_offset =
       assembler->record_offsets[record] +
       (uint64_t)ordinal * iree_vm_bytecode_assembler_record_lengths[record];
@@ -1135,7 +1143,9 @@ static bool iree_vm_bytecode_assembler_validate_instruction_fields(
           record + field->primary_offset + j * element_width, element_width);
       switch (field->kind) {
         case IREE_VM_BYTECODE_ASSEMBLER_FIELD_VALUE_REGISTER:
-          if (value >= assembler->value_register_count) return false;
+          if (value >= assembler->value_register_count) {
+            return false;
+          }
           break;
         case IREE_VM_BYTECODE_ASSEMBLER_FIELD_VALUE_REGISTER_RANGE: {
           const uint64_t count = iree_vm_bytecode_assembler_load(
@@ -1159,10 +1169,14 @@ static bool iree_vm_bytecode_assembler_validate_instruction_fields(
           break;
         }
         case IREE_VM_BYTECODE_ASSEMBLER_FIELD_REF_REGISTER:
-          if (value >= assembler->ref_register_count) return false;
+          if (value >= assembler->ref_register_count) {
+            return false;
+          }
           break;
         case IREE_VM_BYTECODE_ASSEMBLER_FIELD_FUNCTION_REGISTER:
-          if (value >= assembler->function_register_count) return false;
+          if (value >= assembler->function_register_count) {
+            return false;
+          }
           break;
         case IREE_VM_BYTECODE_ASSEMBLER_FIELD_UNSIGNED:
           if (!iree_vm_bytecode_assembler_validate_scalar(
@@ -1218,7 +1232,9 @@ static bool iree_vm_bytecode_assembler_validate_instruction_fields(
           }
           break;
         case IREE_VM_BYTECODE_ASSEMBLER_FIELD_REF_SLOT:
-          if (value >= assembler->local_ref_count) return false;
+          if (value >= assembler->local_ref_count) {
+            return false;
+          }
           break;
         default:
           break;
@@ -1497,7 +1513,9 @@ static iree_status_t iree_vm_bytecode_assembler_parse_signature_fields(
         iree_vm_bytecode_assembler_record_lengths[descriptor_record],
         descriptor));
 
-    if (iree_vm_bytecode_assembler_try_char(assembler, ')')) break;
+    if (iree_vm_bytecode_assembler_try_char(assembler, ')')) {
+      break;
+    }
     IREE_RETURN_IF_ERROR(iree_vm_bytecode_assembler_parse_char(
         assembler, ',', "expected signature field separator"));
   }
@@ -1675,7 +1693,9 @@ iree_vm_bytecode_assembler_parse_function_body(
                                                 "unterminated function body");
       }
       const char next = *assembler->lexer.cursor;
-      if (next == '^' || next == '}') break;
+      if (next == '^' || next == '}') {
+        break;
+      }
       uint8_t control_flow = 0;
       IREE_RETURN_IF_ERROR(iree_vm_bytecode_assembler_parse_instruction(
           assembler, tail_ordinal, &control_flow));
@@ -1807,7 +1827,9 @@ static iree_status_t iree_vm_bytecode_assembler_parse_grammar(
       iree_vm_bytecode_assembler_program + grammar->program_offset;
   for (;;) {
     const uint8_t opcode = *program++;
-    if (opcode == IREE_VM_BYTECODE_ASSEMBLER_FORMAT_END) break;
+    if (opcode == IREE_VM_BYTECODE_ASSEMBLER_FORMAT_END) {
+      break;
+    }
     if (opcode == IREE_VM_BYTECODE_ASSEMBLER_FORMAT_LITERAL) {
       const uint16_t literal_offset = iree_unaligned_load_le_u16(program);
       program += 2;
@@ -2652,7 +2674,9 @@ static iree_status_t iree_vm_bytecode_assembler_finalize(
        i < IREE_ARRAYSIZE(iree_vm_bytecode_assembler_derivations); ++i) {
     const iree_vm_bytecode_assembler_derivation_t* derivation =
         &iree_vm_bytecode_assembler_derivations[i];
-    if (assembler->record_offsets[derivation->record] == UINT64_MAX) continue;
+    if (assembler->record_offsets[derivation->record] == UINT64_MAX) {
+      continue;
+    }
     uint64_t value = 0;
     if (derivation->kind ==
         IREE_VM_BYTECODE_ASSEMBLER_DERIVATION_RECORD_COUNT) {
@@ -2680,7 +2704,9 @@ static iree_status_t iree_vm_bytecode_assembler_finalize(
        i < IREE_ARRAYSIZE(iree_vm_bytecode_assembler_terminal_offsets); ++i) {
     const iree_vm_bytecode_assembler_terminal_offset_t* terminal =
         &iree_vm_bytecode_assembler_terminal_offsets[i];
-    if (assembler->record_offsets[terminal->record] == UINT64_MAX) continue;
+    if (assembler->record_offsets[terminal->record] == UINT64_MAX) {
+      continue;
+    }
     const uint64_t row_offset =
         assembler->record_offsets[terminal->record] +
         (uint64_t)assembler->summary.record_counts[terminal->record] *

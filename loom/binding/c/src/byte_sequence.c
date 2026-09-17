@@ -58,15 +58,21 @@ void loomc_byte_sequence_release(loomc_byte_sequence_t* sequence) {
 }
 
 uint64_t loomc_byte_sequence_length(const loomc_byte_sequence_t* sequence) {
-  if (sequence == NULL) return 0;
+  if (sequence == NULL) {
+    return 0;
+  }
   return iree_byte_sequence_length((const iree_byte_sequence_t*)sequence);
 }
 
 bool loomc_byte_sequence_try_get_contiguous_span(
     const loomc_byte_sequence_t* sequence, loomc_byte_span_t* out_span) {
-  if (out_span == NULL) return false;
+  if (out_span == NULL) {
+    return false;
+  }
   *out_span = loomc_byte_span_empty();
-  if (sequence == NULL) return false;
+  if (sequence == NULL) {
+    return false;
+  }
   iree_const_byte_span_t span = iree_const_byte_span_empty();
   const bool is_contiguous = iree_byte_sequence_try_get_contiguous_span(
       (const iree_byte_sequence_t*)sequence, &span);

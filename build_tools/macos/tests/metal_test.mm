@@ -27,7 +27,9 @@ TEST(MacOSToolchainTest, EmbeddedShaderDispatch) {
     ASSERT_TRUE(pipeline) << error.localizedDescription.UTF8String;
 
     std::vector<uint32_t> input(128);
-    for (size_t i = 0; i < input.size(); ++i) input[i] = i;
+    for (size_t i = 0; i < input.size(); ++i) {
+      input[i] = i;
+    }
     const size_t byte_length = input.size() * sizeof(input[0]);
     id<MTLBuffer> input_buffer = [device newBufferWithBytes:input.data()
                                                      length:byte_length

@@ -279,7 +279,9 @@ iree_status_t iree_async_operation_pool_allocate(
 }
 
 void iree_async_operation_pool_free(iree_async_operation_pool_t* pool) {
-  if (!pool) return;
+  if (!pool) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Free all blocks. Flush the block list and walk it.
@@ -365,7 +367,9 @@ iree_status_t iree_async_operation_pool_acquire(
 
 void iree_async_operation_pool_release(iree_async_operation_pool_t* pool,
                                        iree_async_operation_t* operation) {
-  if (!pool || !operation) return;
+  if (!pool || !operation) {
+    return;
+  }
 
   // Get the slot header (immediately before the operation).
   iree_async_op_pool_slot_header_t* header =

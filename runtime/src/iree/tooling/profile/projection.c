@@ -844,7 +844,9 @@ static iree_status_t iree_profile_projection_index_allocate_row_links(
     iree_allocator_t host_allocator, iree_host_size_t row_count,
     iree_host_size_t** out_next_indices) {
   *out_next_indices = NULL;
-  if (row_count == 0) return iree_ok_status();
+  if (row_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
       host_allocator, row_count, sizeof((*out_next_indices)[0]),
       (void**)out_next_indices));
@@ -1799,7 +1801,9 @@ static void iree_profile_command_print_jsonl_executions(
     const iree_profile_model_command_buffer_t* command_buffer =
         iree_profile_model_find_command_buffer(&context->model,
                                                (uint64_t)id_filter);
-    if (!command_buffer) return;
+    if (!command_buffer) {
+      return;
+    }
     const iree_host_size_t command_buffer_index =
         (iree_host_size_t)(command_buffer - context->model.command_buffers);
     const iree_profile_projection_row_list_t* row_list =
@@ -1855,7 +1859,9 @@ static void iree_profile_command_print_jsonl_host_executions(
     const iree_profile_model_command_buffer_t* command_buffer =
         iree_profile_model_find_command_buffer(&context->model,
                                                (uint64_t)id_filter);
-    if (!command_buffer) return;
+    if (!command_buffer) {
+      return;
+    }
     const iree_host_size_t command_buffer_index =
         (iree_host_size_t)(command_buffer - context->model.command_buffers);
     const iree_profile_projection_row_list_t* row_list =

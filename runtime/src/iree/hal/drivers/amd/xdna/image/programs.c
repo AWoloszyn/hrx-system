@@ -344,7 +344,9 @@ static iree_status_t iree_hal_amd_xdna_image_decode_programs(
           iree_make_const_byte_span(payload.data, payload.data_length),
           validator, record_ordinal, programs->record_count - record_ordinal,
           programs->records);
-      if (iree_status_is_ok(status)) record_ordinal += info.record_count;
+      if (iree_status_is_ok(status)) {
+        record_ordinal += info.record_count;
+      }
     }
     iree_allocator_free(programs->host_allocator, payload.data);
   }
@@ -434,7 +436,9 @@ iree_status_t iree_hal_amd_xdna_image_programs_create(
 
 void iree_hal_amd_xdna_image_programs_destroy(
     iree_hal_amd_xdna_image_programs_t* programs) {
-  if (programs == NULL) return;
+  if (programs == NULL) {
+    return;
+  }
   iree_allocator_free(programs->host_allocator, programs);
 }
 

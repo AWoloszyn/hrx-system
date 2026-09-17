@@ -30,12 +30,16 @@ bool loomc_product_isa(const loomc_product_t* product,
 }
 
 void loomc_product_retain(loomc_product_t* product) {
-  if (product == NULL) return;
+  if (product == NULL) {
+    return;
+  }
   iree_atomic_ref_count_inc(&product->ref_count);
 }
 
 void loomc_product_release(loomc_product_t* product) {
-  if (product == NULL) return;
+  if (product == NULL) {
+    return;
+  }
   if (iree_atomic_ref_count_dec(&product->ref_count) == 1) {
     product->descriptor->destroy(product);
   }
@@ -52,7 +56,9 @@ loomc_host_size_t loomc_product_artifact_count(const loomc_product_t* product) {
 
 const loomc_artifact_t* loomc_product_artifact_at(
     const loomc_product_t* product, loomc_host_size_t ordinal) {
-  if (product == NULL || ordinal >= product->artifacts.count) return NULL;
+  if (product == NULL || ordinal >= product->artifacts.count) {
+    return NULL;
+  }
   return &product->artifacts.values[ordinal];
 }
 
@@ -202,13 +208,19 @@ loomc_status_t loomc_request_create(
 }
 
 void loomc_request_retain(loomc_request_t* request) {
-  if (request == NULL) return;
+  if (request == NULL) {
+    return;
+  }
   iree_atomic_ref_count_inc(&request->ref_count);
 }
 
 void loomc_request_release(loomc_request_t* request) {
-  if (request == NULL) return;
-  if (iree_atomic_ref_count_dec(&request->ref_count) != 1) return;
+  if (request == NULL) {
+    return;
+  }
+  if (iree_atomic_ref_count_dec(&request->ref_count) != 1) {
+    return;
+  }
   loomc_allocator_t allocator = request->allocator;
   loomc_source_release(request->source);
   loomc_allocator_free(allocator, request);

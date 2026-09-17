@@ -463,11 +463,17 @@ BINARY_FACTS(loom_scalar_shrui_facts, loom_value_facts_shrui)
 
 static bool loom_scalar_integer_bitwidth(loom_type_t type,
                                          int32_t* out_bitwidth) {
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   loom_scalar_type_t element_type = loom_type_element_type(type);
-  if (!loom_scalar_type_is_integer(element_type)) return false;
+  if (!loom_scalar_type_is_integer(element_type)) {
+    return false;
+  }
   int32_t bitwidth = loom_scalar_type_bitwidth(element_type);
-  if (bitwidth <= 0 || bitwidth > 64) return false;
+  if (bitwidth <= 0 || bitwidth > 64) {
+    return false;
+  }
   *out_bitwidth = bitwidth;
   return true;
 }

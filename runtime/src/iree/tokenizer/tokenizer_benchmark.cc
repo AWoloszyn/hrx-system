@@ -102,10 +102,14 @@ static std::string GenerateText(uint32_t seed, size_t target_length) {
 // file cannot be read.
 static std::string LoadTextFromEnvFile(size_t target_length) {
   const char* path = std::getenv("IREE_BENCHMARK_TEXT_FILE");
-  if (!path || path[0] == '\0') return "";
+  if (!path || path[0] == '\0') {
+    return "";
+  }
 
   std::ifstream file(path, std::ios::binary);
-  if (!file) return "";
+  if (!file) {
+    return "";
+  }
 
   // Read up to target_length bytes.
   std::string result(target_length, '\0');
@@ -118,7 +122,9 @@ static std::string LoadTextFromEnvFile(size_t target_length) {
 // otherwise generates pseudo-random text.
 static std::string GetBenchmarkText(uint32_t seed, size_t target_length) {
   std::string text = LoadTextFromEnvFile(target_length);
-  if (!text.empty()) return text;
+  if (!text.empty()) {
+    return text;
+  }
   return GenerateText(seed, target_length);
 }
 
@@ -352,7 +358,9 @@ class EncodeBenchmark : public benchmark::Fixture {
  public:
   static iree_tokenizer_t* GetCachedTokenizer(size_t vocab_size) {
     for (auto& entry : cache_.entries) {
-      if (entry.vocab_size == vocab_size) return entry.tokenizer;
+      if (entry.vocab_size == vocab_size) {
+        return entry.tokenizer;
+      }
     }
     iree_tokenizer_t* tokenizer = BuildBenchmarkTokenizer(vocab_size);
     cache_.entries.push_back({vocab_size, tokenizer});
@@ -755,7 +763,9 @@ class DecodeBenchmark : public benchmark::Fixture {
  public:
   static iree_tokenizer_t* GetCachedDecodeTokenizer(size_t vocab_size) {
     for (auto& entry : cache_.entries) {
-      if (entry.vocab_size == vocab_size) return entry.tokenizer;
+      if (entry.vocab_size == vocab_size) {
+        return entry.tokenizer;
+      }
     }
     iree_tokenizer_t* tokenizer =
         BuildBenchmarkTokenizerWithDecoder(vocab_size);
@@ -936,7 +946,9 @@ BENCHMARK_DEFINE_F(StreamingDecodeBenchmark, Stream)
     size_t token_position = 0;
     while (token_position < tokens.size()) {
       size_t chunk = tokens.size() - token_position;
-      if (chunk > tokens_per_call_) chunk = tokens_per_call_;
+      if (chunk > tokens_per_call_) {
+        chunk = tokens_per_call_;
+      }
 
       iree_tokenizer_token_id_list_t id_list = {
           /*.count=*/chunk,
@@ -957,7 +969,9 @@ BENCHMARK_DEFINE_F(StreamingDecodeBenchmark, Stream)
       total_text += text_written;
 
       // Avoid infinite loop if no progress.
-      if (tokens_consumed == 0) break;
+      if (tokens_consumed == 0) {
+        break;
+      }
     }
 
     iree_host_size_t finalize_length = 0;

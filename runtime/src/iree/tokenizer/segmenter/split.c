@@ -324,7 +324,9 @@ typedef struct {
 static inline void iree_tokenizer_split_emit(
     iree_tokenizer_split_emitter_t* emitter, iree_host_size_t start,
     iree_host_size_t end, bool absolute) {
-  if (start >= end || emitter->full) return;
+  if (start >= end || emitter->full) {
+    return;
+  }
   if (emitter->count >= emitter->output.capacity) {
     emitter->full = true;
     return;
@@ -537,7 +539,9 @@ static iree_status_t iree_tokenizer_split_literal_finalize(
   while (scan_position < remaining_input.size) {
     const char* found = memchr(remaining_input.data + scan_position, pattern[0],
                                remaining_input.size - scan_position);
-    if (!found) break;
+    if (!found) {
+      break;
+    }
 
     iree_host_size_t match_offset =
         (iree_host_size_t)(found - remaining_input.data);
@@ -1025,12 +1029,16 @@ static bool iree_tokenizer_segmenter_split_state_has_pending(
       (const iree_tokenizer_segmenter_split_state_t*)state;
 
   // Check if there's a buffered pending segment.
-  if (self->has_pending) return true;
+  if (self->has_pending) {
+    return true;
+  }
 
   // Check if process() capped consumed due to a pending regex match.
   // The regex state was reset, but finalize() will re-scan the unconsumed
   // bytes to emit the deferred match.
-  if (self->deferred_to_finalize) return true;
+  if (self->deferred_to_finalize) {
+    return true;
+  }
 
   // Check if the regex has a partial match that finalize() will complete.
   // This is critical for patterns like \w+ where the match extends to end of

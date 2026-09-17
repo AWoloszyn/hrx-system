@@ -125,9 +125,13 @@ static kpack_mp_reader_t kpack_mp_reader(iree_const_byte_span_t span) {
 
 // Reads an |n|-byte big-endian unsigned integer, advancing the cursor.
 static bool kpack_mp_read_be(kpack_mp_reader_t* r, int n, uint64_t* out) {
-  if ((uint64_t)(r->end - r->p) < (uint64_t)n) return false;
+  if ((uint64_t)(r->end - r->p) < (uint64_t)n) {
+    return false;
+  }
   uint64_t v = 0;
-  for (int i = 0; i < n; ++i) v = (v << 8) | (uint64_t)r->p[i];
+  for (int i = 0; i < n; ++i) {
+    v = (v << 8) | (uint64_t)r->p[i];
+  }
   r->p += n;
   *out = v;
   return true;
@@ -138,7 +142,9 @@ static bool kpack_mp_read_be(kpack_mp_reader_t* r, int n, uint64_t* out) {
 // elements in the stream for the caller to walk.
 static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
   memset(out, 0, sizeof(*out));
-  if (r->p >= r->end) return false;
+  if (r->p >= r->end) {
+    return false;
+  }
   uint8_t b = *r->p++;
   uint64_t len = 0;
   if (b <= 0x7f) {  // positive fixint
@@ -163,7 +169,9 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
   }
   if (b >= 0xa0 && b <= 0xbf) {  // fixstr
     len = b & 0x1f;
-    if (len > (uint64_t)(r->end - r->p)) return false;
+    if (len > (uint64_t)(r->end - r->p)) {
+      return false;
+    }
     out->type = KPACK_MP_STR;
     out->u = len;
     out->data = r->p;
@@ -182,8 +190,12 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
     case 0xc4:  // bin8
     case 0xc5:  // bin16
     case 0xc6:  // bin32
-      if (!kpack_mp_read_be(r, 1 << (b - 0xc4), &len)) return false;
-      if (len > (uint64_t)(r->end - r->p)) return false;
+      if (!kpack_mp_read_be(r, 1 << (b - 0xc4), &len)) {
+        return false;
+      }
+      if (len > (uint64_t)(r->end - r->p)) {
+        return false;
+      }
       out->type = KPACK_MP_BIN;
       out->u = len;
       out->data = r->p;
@@ -192,19 +204,27 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
     case 0xc7:  // ext8
     case 0xc8:  // ext16
     case 0xc9:  // ext32
-      if (!kpack_mp_read_be(r, 1 << (b - 0xc7), &len)) return false;
-      if (len + 1 > (uint64_t)(r->end - r->p)) return false;  // +1 type byte
+      if (!kpack_mp_read_be(r, 1 << (b - 0xc7), &len)) {
+        return false;
+      }
+      if (len + 1 > (uint64_t)(r->end - r->p)) {
+        return false;  // +1 type byte
+      }
       out->type = KPACK_MP_EXT;
       out->u = len;
       r->p += len + 1;
       return true;
     case 0xca:  // float32
-      if ((uint64_t)(r->end - r->p) < 4) return false;
+      if ((uint64_t)(r->end - r->p) < 4) {
+        return false;
+      }
       out->type = KPACK_MP_FLOAT;
       r->p += 4;
       return true;
     case 0xcb:  // float64
-      if ((uint64_t)(r->end - r->p) < 8) return false;
+      if ((uint64_t)(r->end - r->p) < 8) {
+        return false;
+      }
       out->type = KPACK_MP_FLOAT;
       r->p += 8;
       return true;
@@ -212,7 +232,9 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
     case 0xcd:  // uint16
     case 0xce:  // uint32
     case 0xcf:  // uint64
-      if (!kpack_mp_read_be(r, 1 << (b - 0xcc), &out->u)) return false;
+      if (!kpack_mp_read_be(r, 1 << (b - 0xcc), &out->u)) {
+        return false;
+      }
       out->type = KPACK_MP_INT;
       return true;
     case 0xd0:    // int8
@@ -221,10 +243,14 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
     case 0xd3: {  // int64
       int n = 1 << (b - 0xd0);
       uint64_t raw = 0;
-      if (!kpack_mp_read_be(r, n, &raw)) return false;
+      if (!kpack_mp_read_be(r, n, &raw)) {
+        return false;
+      }
       // Sign-extend from n bytes.
       uint64_t sign_bit = 1ull << (n * 8 - 1);
-      if (raw & sign_bit) raw |= ~((sign_bit << 1) - 1);
+      if (raw & sign_bit) {
+        raw |= ~((sign_bit << 1) - 1);
+      }
       out->type = KPACK_MP_INT;
       out->u = raw;
       return true;
@@ -235,7 +261,9 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
     case 0xd7:  // fixext8
     case 0xd8:  // fixext16
       len = (uint64_t)1 << (b - 0xd4);
-      if (len + 1 > (uint64_t)(r->end - r->p)) return false;  // +1 type byte
+      if (len + 1 > (uint64_t)(r->end - r->p)) {
+        return false;  // +1 type byte
+      }
       out->type = KPACK_MP_EXT;
       out->u = len;
       r->p += len + 1;
@@ -243,8 +271,12 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
     case 0xd9:  // str8
     case 0xda:  // str16
     case 0xdb:  // str32
-      if (!kpack_mp_read_be(r, 1 << (b - 0xd9), &len)) return false;
-      if (len > (uint64_t)(r->end - r->p)) return false;
+      if (!kpack_mp_read_be(r, 1 << (b - 0xd9), &len)) {
+        return false;
+      }
+      if (len > (uint64_t)(r->end - r->p)) {
+        return false;
+      }
       out->type = KPACK_MP_STR;
       out->u = len;
       out->data = r->p;
@@ -252,12 +284,16 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
       return true;
     case 0xdc:  // array16
     case 0xdd:  // array32
-      if (!kpack_mp_read_be(r, 2 << (b - 0xdc), &out->u)) return false;
+      if (!kpack_mp_read_be(r, 2 << (b - 0xdc), &out->u)) {
+        return false;
+      }
       out->type = KPACK_MP_ARRAY;
       return true;
     case 0xde:  // map16
     case 0xdf:  // map32
-      if (!kpack_mp_read_be(r, 2 << (b - 0xde), &out->u)) return false;
+      if (!kpack_mp_read_be(r, 2 << (b - 0xde), &out->u)) {
+        return false;
+      }
       out->type = KPACK_MP_MAP;
       return true;
     default:  // 0xc1 (never used)
@@ -268,17 +304,27 @@ static bool kpack_mp_read_value(kpack_mp_reader_t* r, kpack_mp_value_t* out) {
 
 // Advances the cursor past one complete value, recursing into containers.
 static bool kpack_mp_skip_value(kpack_mp_reader_t* r, int depth) {
-  if (depth <= 0) return false;
+  if (depth <= 0) {
+    return false;
+  }
   kpack_mp_value_t v;
-  if (!kpack_mp_read_value(r, &v)) return false;
+  if (!kpack_mp_read_value(r, &v)) {
+    return false;
+  }
   if (v.type == KPACK_MP_ARRAY) {
     for (uint64_t i = 0; i < v.u; ++i) {
-      if (!kpack_mp_skip_value(r, depth - 1)) return false;
+      if (!kpack_mp_skip_value(r, depth - 1)) {
+        return false;
+      }
     }
   } else if (v.type == KPACK_MP_MAP) {
     for (uint64_t i = 0; i < v.u; ++i) {
-      if (!kpack_mp_skip_value(r, depth - 1)) return false;  // key
-      if (!kpack_mp_skip_value(r, depth - 1)) return false;  // value
+      if (!kpack_mp_skip_value(r, depth - 1)) {
+        return false;  // key
+      }
+      if (!kpack_mp_skip_value(r, depth - 1)) {
+        return false;  // value
+      }
     }
   } else if (v.type == KPACK_MP_INVALID) {
     return false;
@@ -290,7 +336,9 @@ static bool kpack_mp_skip_value(kpack_mp_reader_t* r, int depth) {
 static bool kpack_mp_capture(kpack_mp_reader_t* r,
                              iree_const_byte_span_t* out) {
   const uint8_t* start = r->p;
-  if (!kpack_mp_skip_value(r, KPACK_MP_MAX_DEPTH)) return false;
+  if (!kpack_mp_skip_value(r, KPACK_MP_MAX_DEPTH)) {
+    return false;
+  }
   *out = iree_make_const_byte_span(start, (iree_host_size_t)(r->p - start));
   return true;
 }
@@ -303,15 +351,21 @@ static bool kpack_mp_map_find(iree_const_byte_span_t map_bytes,
                               iree_const_byte_span_t* out_value) {
   kpack_mp_reader_t r = kpack_mp_reader(map_bytes);
   kpack_mp_value_t m;
-  if (!kpack_mp_read_value(&r, &m) || m.type != KPACK_MP_MAP) return false;
+  if (!kpack_mp_read_value(&r, &m) || m.type != KPACK_MP_MAP) {
+    return false;
+  }
   for (uint64_t i = 0; i < m.u; ++i) {
     // Capture the key as a complete value so a container-typed key (which
     // read_value only consumes the header of) cannot desync the key/value
     // pairing for the rest of the map, then capture the value.
     iree_const_byte_span_t key_span;
-    if (!kpack_mp_capture(&r, &key_span)) return false;
+    if (!kpack_mp_capture(&r, &key_span)) {
+      return false;
+    }
     iree_const_byte_span_t value;
-    if (!kpack_mp_capture(&r, &value)) return false;
+    if (!kpack_mp_capture(&r, &value)) {
+      return false;
+    }
     // Valid kpack/HIPK maps always use string keys; ignore anything else.
     kpack_mp_reader_t kr = kpack_mp_reader(key_span);
     kpack_mp_value_t k;
@@ -333,10 +387,16 @@ static bool kpack_mp_array_at(iree_const_byte_span_t array_bytes,
                               iree_const_byte_span_t* out_value) {
   kpack_mp_reader_t r = kpack_mp_reader(array_bytes);
   kpack_mp_value_t a;
-  if (!kpack_mp_read_value(&r, &a) || a.type != KPACK_MP_ARRAY) return false;
-  if (index >= a.u) return false;
+  if (!kpack_mp_read_value(&r, &a) || a.type != KPACK_MP_ARRAY) {
+    return false;
+  }
+  if (index >= a.u) {
+    return false;
+  }
   for (uint64_t i = 0; i < index; ++i) {
-    if (!kpack_mp_skip_value(&r, KPACK_MP_MAX_DEPTH)) return false;
+    if (!kpack_mp_skip_value(&r, KPACK_MP_MAX_DEPTH)) {
+      return false;
+    }
   }
   return kpack_mp_capture(&r, out_value);
 }
@@ -345,7 +405,9 @@ static bool kpack_mp_as_str(iree_const_byte_span_t span,
                             iree_string_view_t* out) {
   kpack_mp_reader_t r = kpack_mp_reader(span);
   kpack_mp_value_t v;
-  if (!kpack_mp_read_value(&r, &v) || v.type != KPACK_MP_STR) return false;
+  if (!kpack_mp_read_value(&r, &v) || v.type != KPACK_MP_STR) {
+    return false;
+  }
   *out = iree_make_string_view((const char*)v.data, (iree_host_size_t)v.u);
   return true;
 }
@@ -353,7 +415,9 @@ static bool kpack_mp_as_str(iree_const_byte_span_t span,
 static bool kpack_mp_as_u64(iree_const_byte_span_t span, uint64_t* out) {
   kpack_mp_reader_t r = kpack_mp_reader(span);
   kpack_mp_value_t v;
-  if (!kpack_mp_read_value(&r, &v) || v.type != KPACK_MP_INT) return false;
+  if (!kpack_mp_read_value(&r, &v) || v.type != KPACK_MP_INT) {
+    return false;
+  }
   *out = v.u;
   return true;
 }
@@ -377,7 +441,9 @@ iree_status_t iree_hal_streaming_kpack_for_each_compatible_target(
     iree_hal_streaming_kpack_target_callback_t callback, void* user_data) {
   iree_string_view_t isa =
       iree_hal_streaming_kpack_strip_target_prefix(agent_isa);
-  if (isa.size == 0) return iree_ok_status();  // no candidates
+  if (isa.size == 0) {
+    return iree_ok_status();  // no candidates
+  }
 
   // Split "<processor>[:<feature>]*" on ':'.
   iree_string_view_t processor = isa;
@@ -407,7 +473,9 @@ iree_status_t iree_hal_streaming_kpack_for_each_compatible_target(
       break;
     }
   }
-  if (processor.size == 0) return iree_ok_status();  // no candidates
+  if (processor.size == 0) {
+    return iree_ok_status();  // no candidates
+  }
 
   // The processor prefixes every candidate, so a processor that does not fit
   // the target buffer leaves no candidate representable at all.
@@ -461,7 +529,9 @@ iree_status_t iree_hal_streaming_kpack_for_each_compatible_target(
           }
         }
       }
-      if (mask == 0) break;
+      if (mask == 0) {
+        break;
+      }
     }
   }
   return iree_ok_status();
@@ -508,7 +578,9 @@ iree_status_t iree_hal_streaming_kpack_parse_metadata(
                               "HIPK metadata search path array is truncated");
     }
     iree_string_view_t path;
-    if (!kpack_mp_as_str(elem, &path)) continue;  // skip non-string entries
+    if (!kpack_mp_as_str(elem, &path)) {
+      continue;  // skip non-string entries
+    }
     if (out_metadata->search_path_count >=
         IREE_HAL_STREAMING_KPACK_MAX_SEARCH_PATHS) {
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -840,7 +912,9 @@ iree_status_t iree_hal_streaming_kpack_expand_gfxarch(
     iree_host_size_t out_capacity, bool* out_had_placeholder) {
   static const char kPlaceholder[] = "@GFXARCH@";
   const iree_host_size_t plen = sizeof(kPlaceholder) - 1;
-  if (out_had_placeholder) *out_had_placeholder = false;
+  if (out_had_placeholder) {
+    *out_had_placeholder = false;
+  }
   IREE_ASSERT_ARGUMENT(out);
   if (out_capacity == 0) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE, "empty output buffer");
@@ -870,7 +944,9 @@ iree_status_t iree_hal_streaming_kpack_expand_gfxarch(
     out[pattern.size] = '\0';
     return iree_ok_status();
   }
-  if (out_had_placeholder) *out_had_placeholder = true;
+  if (out_had_placeholder) {
+    *out_had_placeholder = true;
+  }
   iree_host_size_t len = 0;
   memcpy(out + len, pattern.data, pos);
   len += pos;
@@ -903,7 +979,9 @@ static iree_status_t kpack_normalize_path(iree_string_view_t path, char* out,
     out[out_len++] = (ch);                                       \
   } while (0)
 
-  if (is_absolute) KPACK_PUT('/');
+  if (is_absolute) {
+    KPACK_PUT('/');
+  }
 
   iree_host_size_t i = 0;
   while (i < path.size) {
@@ -913,19 +991,27 @@ static iree_status_t kpack_normalize_path(iree_string_view_t path, char* out,
       continue;
     }
     iree_host_size_t start = i;
-    while (i < path.size && path.data[i] != '/') ++i;
+    while (i < path.size && path.data[i] != '/') {
+      ++i;
+    }
     iree_string_view_t comp =
         iree_make_string_view(path.data + start, i - start);
     if (iree_string_view_equal(comp, IREE_SV("."))) {
       continue;
     }
-    for (iree_host_size_t k = 0; k < comp.size; ++k) KPACK_PUT(comp.data[k]);
+    for (iree_host_size_t k = 0; k < comp.size; ++k) {
+      KPACK_PUT(comp.data[k]);
+    }
     KPACK_PUT('/');
   }
 
   // Strip a single trailing '/' (but keep a lone root "/").
-  if (out_len > 1 && out[out_len - 1] == '/') --out_len;
-  if (out_len == 0) KPACK_PUT('.');  // path named only "." components
+  if (out_len > 1 && out[out_len - 1] == '/') {
+    --out_len;
+  }
+  if (out_len == 0) {
+    KPACK_PUT('.');  // path named only "." components
+  }
   out[out_len] = '\0';
 #undef KPACK_PUT
   return iree_ok_status();
@@ -986,9 +1072,13 @@ static iree_status_t kpack_parse_maps_entry(
     iree_hal_streaming_kpack_mapping_t* out_mapping) {
   // Remaining fields: "<perms> <offset> <dev> <inode> <path>".
   char* cursor = fields;
-  while (*cursor == ' ') ++cursor;
+  while (*cursor == ' ') {
+    ++cursor;
+  }
   const char* permissions = cursor;
-  while (*cursor && *cursor != ' ') ++cursor;
+  while (*cursor && *cursor != ' ') {
+    ++cursor;
+  }
   const iree_host_size_t permissions_length =
       (iree_host_size_t)(cursor - permissions);
   // A mapping carries the read bit only when its pages can actually be
@@ -1004,17 +1094,33 @@ static iree_status_t kpack_parse_maps_entry(
         address, (int)permissions_length, permissions);
   }
 
-  while (*cursor == ' ') ++cursor;
-  while (*cursor && *cursor != ' ') ++cursor;  // skip offset
-  while (*cursor == ' ') ++cursor;
-  while (*cursor && *cursor != ' ') ++cursor;  // skip dev
-  while (*cursor == ' ') ++cursor;
-  while (*cursor && *cursor != ' ') ++cursor;  // skip inode
-  while (*cursor == ' ') ++cursor;             // cursor -> path (or EOL)
+  while (*cursor == ' ') {
+    ++cursor;
+  }
+  while (*cursor && *cursor != ' ') {
+    ++cursor;  // skip offset
+  }
+  while (*cursor == ' ') {
+    ++cursor;
+  }
+  while (*cursor && *cursor != ' ') {
+    ++cursor;  // skip dev
+  }
+  while (*cursor == ' ') {
+    ++cursor;
+  }
+  while (*cursor && *cursor != ' ') {
+    ++cursor;  // skip inode
+  }
+  while (*cursor == ' ') {
+    ++cursor;  // cursor -> path (or EOL)
+  }
 
   // Terminate the path at the line's newline.
   char* newline = cursor;
-  while (*newline && *newline != '\n') ++newline;
+  while (*newline && *newline != '\n') {
+    ++newline;
+  }
   *newline = '\0';
 
   const iree_host_size_t readable_bytes =
@@ -1074,12 +1180,18 @@ iree_status_t iree_hal_streaming_kpack_query_mapping(
   while (fgets(line, sizeof(line), maps)) {
     // Format: "<low>-<high> <perms> <offset> <dev> <inode> <path>".
     char* dash = strchr(line, '-');
-    if (!dash) continue;
+    if (!dash) {
+      continue;
+    }
     char* end_pointer = NULL;
     const uintptr_t low = (uintptr_t)strtoull(line, &end_pointer, 16);
-    if (end_pointer != dash) continue;
+    if (end_pointer != dash) {
+      continue;
+    }
     const uintptr_t high = (uintptr_t)strtoull(dash + 1, &end_pointer, 16);
-    if (target < low || target >= high) continue;
+    if (target < low || target >= high) {
+      continue;
+    }
     found = true;
     // end_pointer points just past the high address, at the space before perms.
     status = kpack_parse_maps_entry(end_pointer, address, high, path_buffer,
@@ -1338,7 +1450,9 @@ static iree_status_t kpack_open_path_list(kpack_resolve_state_t* state,
     iree_string_view_t rest;
     iree_string_view_split(list, ':', &entry, &rest);
     list = rest;  // empty when no separator remains, terminating the loop
-    if (entry.size == 0) continue;
+    if (entry.size == 0) {
+      continue;
+    }
     char path[KPACK_PATH_MAX];
     if (entry.size + 1 > sizeof(path)) {
       kpack_note_search_error(

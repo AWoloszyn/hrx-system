@@ -119,7 +119,9 @@ typedef struct iree_hal_amdgpu_allocator_placement_t {
 static iree_hal_memory_type_t
 iree_hal_amdgpu_allocator_expand_unified_memory_type(
     iree_hal_memory_type_t memory_type, bool unified_memory) {
-  if (!unified_memory) return memory_type;
+  if (!unified_memory) {
+    return memory_type;
+  }
   if (iree_all_bits_set(memory_type, IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
                                          IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE)) {
     memory_type |= IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL;
@@ -135,7 +137,9 @@ iree_hal_amdgpu_allocator_expand_unified_memory_type(
 // host. Affinity-free heap declarations must be valid for every queue.
 static bool iree_hal_amdgpu_allocator_has_uniform_unified_memory(
     const iree_hal_amdgpu_allocator_t* allocator) {
-  if (allocator->logical_device->physical_device_count == 0) return false;
+  if (allocator->logical_device->physical_device_count == 0) {
+    return false;
+  }
   for (iree_host_size_t i = 0;
        i < allocator->logical_device->physical_device_count; ++i) {
     const iree_hal_amdgpu_physical_device_t* physical_device =
@@ -166,7 +170,9 @@ static bool iree_hal_amdgpu_allocator_supports_device_fine_direct_host_access(
 static bool
 iree_hal_amdgpu_allocator_has_uniform_device_fine_direct_host_access(
     const iree_hal_amdgpu_allocator_t* allocator) {
-  if (allocator->logical_device->physical_device_count == 0) return false;
+  if (allocator->logical_device->physical_device_count == 0) {
+    return false;
+  }
   for (iree_host_size_t i = 0;
        i < allocator->logical_device->physical_device_count; ++i) {
     if (!iree_hal_amdgpu_allocator_supports_device_fine_direct_host_access(
@@ -450,7 +456,9 @@ iree_hal_amdgpu_allocator_select_imported_device_cells(
       iree_hal_amdgpu_allocator_match_imported_device_pool(
           allocator, pointer_range->physical_device_ordinal,
           pointer_range->global_flags);
-  if (!pool) return IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE;
+  if (!pool) {
+    return IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE;
+  }
 
   const iree_hal_amdgpu_atomic_memory_import_selection_t selection = {
       .global_flags = pointer_range->global_flags,
@@ -692,12 +700,16 @@ static bool iree_hal_amdgpu_allocator_resolve_placement(
       IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_HOST_COHERENT |
       IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE;
   if (requires_device_uncached) {
-    if (!requires_device_local || requires_host_access) return false;
+    if (!requires_device_local || requires_host_access) {
+      return false;
+    }
     memory_pool = &allocator->memory_pools.device_uncached[device_ordinal];
     memory_type = IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL |
                   IREE_HAL_MEMORY_TYPE_DEVICE_UNCACHED;
   } else if (requires_host_local) {
-    if (requires_device_local && !unified_memory) return false;
+    if (requires_device_local && !unified_memory) {
+      return false;
+    }
     if (requires_device_local && prefers_device_local &&
         (device_fine_direct_host_access || device_fine_vmm_host_access)) {
       memory_pool = &allocator->memory_pools.device_fine[device_ordinal];
@@ -729,8 +741,12 @@ static bool iree_hal_amdgpu_allocator_resolve_placement(
   }
   memory_type = iree_hal_amdgpu_allocator_expand_unified_memory_type(
       memory_type, unified_memory);
-  if (!memory_pool->memory_pool.handle) return false;
-  if (!iree_all_bits_set(memory_type, required_type)) return false;
+  if (!memory_pool->memory_pool.handle) {
+    return false;
+  }
+  if (!iree_all_bits_set(memory_type, required_type)) {
+    return false;
+  }
 
   if (iree_any_bit_set(memory_type, IREE_HAL_MEMORY_TYPE_HOST_VISIBLE)) {
     supported_usage |= IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED |
@@ -753,7 +769,9 @@ static bool iree_hal_amdgpu_allocator_resolve_placement(
           ~(mapping_usage | IREE_HAL_BUFFER_USAGE_MAPPING_OPTIONAL);
     }
   }
-  if (!iree_all_bits_set(supported_usage, params->usage)) return false;
+  if (!iree_all_bits_set(supported_usage, params->usage)) {
+    return false;
+  }
 
   params->type = memory_type;
   params->usage &= supported_usage;
@@ -1006,13 +1024,17 @@ static bool iree_hal_amdgpu_allocator_query_pool_family_properties(
   *out_max_allocation_size = 0;
   *out_min_alignment = 0;
   memset(out_atomic_operations, 0, sizeof(*out_atomic_operations));
-  if (pool_count == 0 || !pools[0].memory_pool.handle) return false;
+  if (pool_count == 0 || !pools[0].memory_pool.handle) {
+    return false;
+  }
   iree_device_size_t max_allocation_size = pools[0].max_allocation_size;
   iree_device_size_t min_alignment = pools[0].allocation_alignment;
   iree_hal_amdgpu_atomic_memory_cell_flags_t atomic_memory_cells =
       IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL;
   for (iree_host_size_t i = 0; i < pool_count; ++i) {
-    if (!pools[i].memory_pool.handle) return false;
+    if (!pools[i].memory_pool.handle) {
+      return false;
+    }
     if (i != 0) {
       max_allocation_size = iree_hal_amdgpu_allocator_min_pool_limit(
           max_allocation_size, pools[i].max_allocation_size);
@@ -1160,7 +1182,9 @@ iree_hal_amdgpu_allocator_query_buffer_compatibility_impl(
     iree_hal_buffer_params_t* IREE_RESTRICT params,
     iree_device_size_t* IREE_RESTRICT allocation_size,
     iree_hal_amdgpu_allocator_placement_t* out_placement) {
-  if (out_placement) memset(out_placement, 0, sizeof(*out_placement));
+  if (out_placement) {
+    memset(out_placement, 0, sizeof(*out_placement));
+  }
 
   iree_hal_amdgpu_allocator_placement_t placement;
   if (!iree_hal_amdgpu_allocator_resolve_placement(
@@ -1172,7 +1196,9 @@ iree_hal_amdgpu_allocator_query_buffer_compatibility_impl(
   }
 
   // Guard against 0-byte allocations.
-  if (*allocation_size == 0) *allocation_size = 4;
+  if (*allocation_size == 0) {
+    *allocation_size = 4;
+  }
 
   iree_device_size_t aligned_allocation_size = 0;
   if (!iree_device_size_checked_align(*allocation_size,
@@ -1240,7 +1266,9 @@ iree_hal_amdgpu_allocator_query_buffer_compatibility_impl(
     compatibility |= IREE_HAL_BUFFER_COMPATIBILITY_LOW_PERFORMANCE;
   }
 
-  if (out_placement) *out_placement = placement;
+  if (out_placement) {
+    *out_placement = placement;
+  }
   return compatibility;
 }
 
@@ -1529,7 +1557,9 @@ static iree_status_t iree_hal_amdgpu_allocator_allocate_buffer(
   }
 
   // Guard against 0-byte allocations and align to the HSA allocation granule.
-  if (allocation_size == 0) allocation_size = 4;
+  if (allocation_size == 0) {
+    allocation_size = 4;
+  }
   if (!iree_device_size_checked_align(
           allocation_size, memory_placement.memory_pool->allocation_granule,
           &allocation_size)) {

@@ -335,10 +335,14 @@ static bool loom_amdgpu_source_vector_value_register_shape(
 static bool loom_amdgpu_source_buffer_value_register_shape(
     const loom_value_fact_table_t* fact_table, loom_value_id_t source_value_id,
     loom_type_t source_type, loom_amdgpu_register_shape_t* out_shape) {
-  if (!loom_type_is_buffer(source_type) || fact_table == NULL) return false;
+  if (!loom_type_is_buffer(source_type) || fact_table == NULL) {
+    return false;
+  }
   const loom_value_facts_t facts =
       loom_value_fact_table_lookup(fact_table, source_value_id);
-  if (loom_value_facts_is_lane_varying(facts)) return false;
+  if (loom_value_facts_is_lane_varying(facts)) {
+    return false;
+  }
   loom_value_fact_buffer_reference_t reference = {0};
   if (!loom_value_facts_query_buffer_reference(&fact_table->context, facts,
                                                &reference)) {

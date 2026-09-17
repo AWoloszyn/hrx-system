@@ -728,13 +728,17 @@ TEST_P(SendFlagsTest, ConcurrentRegisteredSends) {
   // completions from the proactor.
   int send_completed = 0;
   for (int i = 0; i < kNumConcurrent; ++i) {
-    if (trackers[i].call_count > 0) ++send_completed;
+    if (trackers[i].call_count > 0) {
+      ++send_completed;
+    }
   }
   while (send_completed < kNumConcurrent) {
     PollUntil(/*min_completions=*/1);
     send_completed = 0;
     for (int i = 0; i < kNumConcurrent; ++i) {
-      if (trackers[i].call_count > 0) ++send_completed;
+      if (trackers[i].call_count > 0) {
+        ++send_completed;
+      }
     }
   }
 
@@ -1095,13 +1099,17 @@ TEST_P(SendFlagsTest, ZeroCopySendMultipleSlabs) {
   // completions from the proactor.
   int send_completed = 0;
   for (int i = 0; i < 3; ++i) {
-    if (trackers[i].call_count > 0) ++send_completed;
+    if (trackers[i].call_count > 0) {
+      ++send_completed;
+    }
   }
   while (send_completed < 3) {
     PollUntil(/*min_completions=*/1);
     send_completed = 0;
     for (int i = 0; i < 3; ++i) {
-      if (trackers[i].call_count > 0) ++send_completed;
+      if (trackers[i].call_count > 0) {
+        ++send_completed;
+      }
     }
   }
 

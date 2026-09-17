@@ -173,7 +173,9 @@ static iree_status_t iree_numpy_consume_dict_key_value(
 // Consumes the prefix character if present.
 // https://numpy.org/doc/stable/reference/generated/numpy.dtype.byteorder.html
 static bool iree_numpy_consume_descr_byte_order(iree_string_view_t* descr) {
-  if (descr->size == 0) return false;
+  if (descr->size == 0) {
+    return false;
+  }
   char c = descr->data[0];
   if (c == '|' || c == '=' || c == '<') {
     // Little-endian (or native, which is little).
@@ -254,12 +256,16 @@ static iree_status_t iree_numpy_descr_to_element_type(
 //   `1,` = 1
 //   `2, 2, 1` = 3
 static iree_host_size_t iree_numpy_parse_shape_rank(iree_string_view_t shape) {
-  if (iree_string_view_is_empty(shape)) return 0;
+  if (iree_string_view_is_empty(shape)) {
+    return 0;
+  }
   // NOTE: possibility of trailing , because python.
   iree_string_view_consume_suffix(&shape, IREE_SV(","));
   iree_host_size_t rank = 1;
   for (iree_host_size_t i = 0; i < shape.size; ++i) {
-    if (shape.data[i] == ',') ++rank;
+    if (shape.data[i] == ',') {
+      ++rank;
+    }
   }
   return rank;
 }
@@ -334,7 +340,9 @@ IREE_API_EXPORT iree_status_t iree_numpy_npy_load_ndarray(
     // header => 'key': value{, header}
     iree_string_view_t key, value;
     status = iree_numpy_consume_dict_key_value(&header, &key, &value);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     if (iree_string_view_equal(key, IREE_SV("descr"))) {
       status = iree_numpy_descr_to_element_type(value, &element_type);
@@ -356,7 +364,9 @@ IREE_API_EXPORT iree_status_t iree_numpy_npy_load_ndarray(
         status = iree_numpy_parse_shape_dims(value, shape_rank, shape);
       }
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   // Allocate the buffer view and directly read into the allocated memory.
@@ -437,7 +447,9 @@ static iree_status_t iree_numpy_npy_build_dtype(
 static iree_status_t iree_numpy_npy_build_shape(
     iree_hal_buffer_view_t* buffer_view, iree_string_builder_t* builder) {
   iree_host_size_t shape_rank = iree_hal_buffer_view_shape_rank(buffer_view);
-  if (shape_rank == 0) return iree_ok_status();
+  if (shape_rank == 0) {
+    return iree_ok_status();
+  }
 
   // dim, dim, ...
   for (iree_host_size_t i = 0; i < shape_rank; ++i) {

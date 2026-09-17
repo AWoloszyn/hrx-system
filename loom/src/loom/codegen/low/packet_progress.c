@@ -107,7 +107,9 @@ const loom_low_packet_progress_class_chain_entry_t*
 loom_low_packet_progress_class_chain_index_lookup(
     const loom_low_packet_progress_class_chain_index_t* index,
     uint16_t progress_class_id) {
-  if (index == NULL) return NULL;
+  if (index == NULL) {
+    return NULL;
+  }
   for (uint32_t i = 0; i < index->class_count; ++i) {
     if (index->classes[i].progress_class_id == progress_class_id) {
       return &index->classes[i];
@@ -173,11 +175,15 @@ uint32_t loom_low_packet_progress_class_chain_index_observed_progress(
     const loom_low_packet_progress_class_chain_index_t* index,
     iree_host_size_t start_packet_index, iree_host_size_t end_packet_index,
     uint16_t progress_class_id) {
-  if (start_packet_index >= end_packet_index) return 0;
+  if (start_packet_index >= end_packet_index) {
+    return 0;
+  }
   const loom_low_packet_progress_class_chain_entry_t* class_entry =
       loom_low_packet_progress_class_chain_index_lookup(index,
                                                         progress_class_id);
-  if (class_entry == NULL) return 0;
+  if (class_entry == NULL) {
+    return 0;
+  }
 
   uint32_t observed_progress = 0;
   const loom_low_packet_progress_table_t* progress = index->progress;
@@ -186,8 +192,12 @@ uint32_t loom_low_packet_progress_class_chain_index_observed_progress(
        record_index = index->next_record_indices[record_index]) {
     const loom_low_packet_progress_record_t* record =
         &progress->records[record_index];
-    if (record->packet_index <= start_packet_index) continue;
-    if (record->packet_index >= end_packet_index) break;
+    if (record->packet_index <= start_packet_index) {
+      continue;
+    }
+    if (record->packet_index >= end_packet_index) {
+      break;
+    }
     if (record->action == LOOM_LOW_PACKET_PROGRESS_ACTION_RESET) {
       return UINT32_MAX;
     } else if (record->action != LOOM_LOW_PACKET_PROGRESS_ACTION_ADVANCE) {
@@ -205,7 +215,9 @@ const loom_low_packet_progress_class_range_entry_t*
 loom_low_packet_progress_class_range_index_lookup(
     const loom_low_packet_progress_class_range_index_t* index,
     uint16_t progress_class_id) {
-  if (index == NULL) return NULL;
+  if (index == NULL) {
+    return NULL;
+  }
   for (uint32_t i = 0; i < index->class_count; ++i) {
     if (index->classes[i].progress_class_id == progress_class_id) {
       return &index->classes[i];
@@ -322,11 +334,15 @@ uint32_t loom_low_packet_progress_class_range_index_observed_progress(
     const loom_low_packet_progress_class_range_index_t* index,
     iree_host_size_t start_packet_index, iree_host_size_t end_packet_index,
     uint16_t progress_class_id) {
-  if (start_packet_index >= end_packet_index) return 0;
+  if (start_packet_index >= end_packet_index) {
+    return 0;
+  }
   const loom_low_packet_progress_class_range_entry_t* class_entry =
       loom_low_packet_progress_class_range_index_lookup(index,
                                                         progress_class_id);
-  if (class_entry == NULL) return 0;
+  if (class_entry == NULL) {
+    return 0;
+  }
 
   const uint32_t class_begin = class_entry->record_start;
   const uint32_t class_end = class_begin + class_entry->record_count;
@@ -336,7 +352,9 @@ uint32_t loom_low_packet_progress_class_range_index_observed_progress(
   const uint32_t range_end =
       loom_low_packet_progress_class_range_index_lower_bound(
           index, range_begin, class_end, end_packet_index);
-  if (range_begin == range_end) return 0;
+  if (range_begin == range_end) {
+    return 0;
+  }
 
   const loom_low_packet_progress_class_range_record_t* last_record =
       &index->records[range_end - 1];

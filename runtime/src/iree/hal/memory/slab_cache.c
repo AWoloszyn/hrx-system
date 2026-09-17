@@ -389,7 +389,9 @@ static iree_status_t iree_hal_slab_cache_acquire_slab(
   // thread; consuming them promptly lets the next caller retry instead of
   // silently draining the remaining cache and leaving refill parked.
   iree_status_t status = iree_hal_slab_cache_consume_error(cache);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   // Fast path: pop from the freelist.
   if (iree_hal_slab_cache_pop_entry(cache, out_slab)) {
@@ -416,7 +418,9 @@ static iree_status_t iree_hal_slab_cache_acquire_slab(
                             iree_infinite_timeout());
 
     status = iree_hal_slab_cache_consume_error(cache);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
 
     if (iree_hal_slab_cache_pop_entry(cache, out_slab)) {
       return iree_ok_status();

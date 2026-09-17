@@ -89,7 +89,9 @@ bool iree_sysfs_try_read_small_file(const char* path, char* buffer,
   *out_length = 0;
 
   FILE* file = fopen(path, "r");
-  if (!file) return false;
+  if (!file) {
+    return false;
+  }
 
   const size_t bytes_read = fread(buffer, 1, buffer_size - 1, file);
   if (ferror(file) || (bytes_read == buffer_size - 1 && !feof(file))) {
@@ -197,7 +199,9 @@ static bool iree_sysfs_try_parse_size_string_impl(iree_string_view_t text,
   *out_size = 0;
 
   text = iree_string_view_trim(text);
-  if (iree_string_view_is_empty(text)) return false;
+  if (iree_string_view_is_empty(text)) {
+    return false;
+  }
 
   // Check for optional K suffix (case-insensitive).
   uint64_t scale = 1;
@@ -209,8 +213,12 @@ static bool iree_sysfs_try_parse_size_string_impl(iree_string_view_t text,
   // Parse the numeric part.
   text = iree_string_view_trim(text);
   uint64_t value = 0;
-  if (!iree_string_view_atoi_uint64(text, &value)) return false;
-  if (value > UINT64_MAX / scale) return false;
+  if (!iree_string_view_atoi_uint64(text, &value)) {
+    return false;
+  }
+  if (value > UINT64_MAX / scale) {
+    return false;
+  }
 
   *out_size = value * scale;
   return true;

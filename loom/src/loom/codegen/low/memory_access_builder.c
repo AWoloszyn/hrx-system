@@ -60,7 +60,9 @@ iree_status_t loom_low_memory_access_builder_finish(
     const loom_op_t* function_op, iree_arena_allocator_t* arena,
     loom_low_memory_access_table_t* out_table) {
   *out_table = loom_low_memory_access_table_empty();
-  if (builder->count == 0) return iree_ok_status();
+  if (builder->count == 0) {
+    return iree_ok_status();
+  }
 
   loom_low_memory_access_record_t* records = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(

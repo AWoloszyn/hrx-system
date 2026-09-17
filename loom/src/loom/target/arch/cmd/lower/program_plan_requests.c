@@ -105,7 +105,9 @@ iree_status_t loom_cmd_program_plan_publish_kernel_requests(
       ++source_site_count;
     }
   }
-  if (source_site_count == 0) return iree_ok_status();
+  if (source_site_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t* site_offsets = NULL;
   iree_host_size_t* site_cursors = NULL;
@@ -154,7 +156,9 @@ iree_status_t loom_cmd_program_plan_publish_kernel_requests(
 
   for (iree_host_size_t symbol_id = 0; symbol_id < symbol_count; ++symbol_id) {
     const iree_host_size_t site_count = site_counts[symbol_id];
-    if (site_count == 0) continue;
+    if (site_count == 0) {
+      continue;
+    }
     const iree_arena_checkpoint_t kernel_checkpoint =
         iree_arena_checkpoint_save(scratch_arena);
     const iree_host_size_t site_offset = site_offsets[symbol_id];

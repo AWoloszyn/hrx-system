@@ -34,7 +34,9 @@ static constexpr size_t kMaxPatternSize = 32;
 static constexpr size_t kMaxContentSize = 32;
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < kMinInputSize) return 0;
+  if (size < kMinInputSize) {
+    return 0;
+  }
 
   // First two bytes control pattern and content sizes.
   uint8_t pattern_size_byte = data[0];
@@ -54,7 +56,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   data += pattern_size;
   size -= pattern_size;
 
-  if (size < 1) return 0;
+  if (size < 1) {
+    return 0;
+  }
 
   // Derive content size (0-32 bytes, can be 0 for deletion).
   size_t content_size = content_size_byte % (kMaxContentSize + 1);
@@ -139,7 +143,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       size_t chunk_base =
           (chunk_index < size) ? (data[chunk_index % size] & 0x1F) : 8;
       size_t chunk_size = chunk_base + 1;
-      if (chunk_size > size - offset) chunk_size = size - offset;
+      if (chunk_size > size - offset) {
+        chunk_size = size - offset;
+      }
 
       iree_string_view_t chunk =
           iree_make_string_view(input.data + offset, chunk_size);

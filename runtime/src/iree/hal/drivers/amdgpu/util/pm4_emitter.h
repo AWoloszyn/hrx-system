@@ -246,10 +246,14 @@ static inline uint32_t* iree_hal_amdgpu_pm4_ib_builder_append_dwords(
 static inline uint32_t* iree_hal_amdgpu_pm4_ib_builder_append_packet(
     iree_hal_amdgpu_pm4_ib_builder_t* builder, uint32_t opcode,
     uint32_t dword_count) {
-  if (dword_count < 2) return NULL;
+  if (dword_count < 2) {
+    return NULL;
+  }
   uint32_t* packet =
       iree_hal_amdgpu_pm4_ib_builder_append_dwords(builder, dword_count);
-  if (!packet) return NULL;
+  if (!packet) {
+    return NULL;
+  }
   packet[0] = iree_hal_amdgpu_pm4_make_header(opcode, dword_count);
   return packet;
 }
@@ -322,11 +326,15 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_acquire_mem_gfx10(
       engine != IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_ENGINE_ME) {
     return false;
   }
-  if (gcr_cntl == 0) return false;
+  if (gcr_cntl == 0) {
+    return false;
+  }
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_ACQUIRE_MEM,
       IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GFX10_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = iree_hal_amdgpu_pm4_acquire_mem_gfx10_engine(engine);
   dword[2] = IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_COHER_SIZE;
   dword[3] = IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GFX10_COHER_SIZE_HI;
@@ -342,11 +350,15 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_acquire_mem_gfx10(
 // seven dwords with CP_COHER_CNTL immediately after the packet header.
 static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_acquire_mem_gfx9(
     iree_hal_amdgpu_pm4_ib_builder_t* builder, uint32_t cp_coher_cntl) {
-  if (cp_coher_cntl == 0) return false;
+  if (cp_coher_cntl == 0) {
+    return false;
+  }
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_ACQUIRE_MEM,
       IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GFX9_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[0] |= IREE_HAL_AMDGPU_PM4_HDR_SHADER_TYPE_COMPUTE;
   dword[1] = cp_coher_cntl;
   dword[2] = IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_COHER_SIZE;
@@ -364,7 +376,9 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_dispatch_direct(
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_DISPATCH_DIRECT,
       IREE_HAL_AMDGPU_PM4_DISPATCH_DIRECT_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[0] = iree_hal_amdgpu_pm4_make_compute_header(
       IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_DISPATCH_DIRECT,
       IREE_HAL_AMDGPU_PM4_DISPATCH_DIRECT_DWORD_COUNT);
@@ -379,11 +393,15 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_dispatch_indirect_mec(
     iree_hal_amdgpu_pm4_ib_builder_t* builder, const void* indirect_args,
     uint32_t dispatch_initiator) {
   const uintptr_t address = (uintptr_t)indirect_args;
-  if (!iree_host_ptr_has_alignment(indirect_args, 4)) return false;
+  if (!iree_host_ptr_has_alignment(indirect_args, 4)) {
+    return false;
+  }
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_DISPATCH_INDIRECT,
       IREE_HAL_AMDGPU_PM4_DISPATCH_INDIRECT_MEC_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[0] = iree_hal_amdgpu_pm4_make_compute_header(
       IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_DISPATCH_INDIRECT,
       IREE_HAL_AMDGPU_PM4_DISPATCH_INDIRECT_MEC_DWORD_COUNT);
@@ -402,7 +420,9 @@ iree_hal_amdgpu_pm4_ib_builder_emit_event_write_cs_partial_flush(
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_EVENT_WRITE,
       IREE_HAL_AMDGPU_PM4_EVENT_WRITE_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = IREE_HAL_AMDGPU_PM4_EVENT_WRITE_EVENT_TYPE_CS_PARTIAL_FLUSH |
              IREE_HAL_AMDGPU_PM4_EVENT_WRITE_EVENT_INDEX_CS_PARTIAL_FLUSH;
   return true;
@@ -419,7 +439,9 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_set_sh_reg(
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_SET_SH_REG,
       IREE_HAL_AMDGPU_PM4_SET_REGISTER_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = register_address - IREE_HAL_AMDGPU_PM4_PERSISTENT_SPACE_START;
   dword[2] = value;
   return true;
@@ -436,7 +458,9 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_set_uconfig_reg(
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_SET_UCONFIG_REG,
       IREE_HAL_AMDGPU_PM4_SET_REGISTER_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = register_address - IREE_HAL_AMDGPU_PM4_UCONFIG_SPACE_START;
   dword[2] = value;
   return true;
@@ -458,7 +482,9 @@ iree_hal_amdgpu_pm4_ib_builder_emit_copy_immediate32_to_register(
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_COPY_DATA,
       IREE_HAL_AMDGPU_PM4_COPY_DATA_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] =
       IREE_HAL_AMDGPU_PM4_COPY_DATA_SRC_SEL_IMMEDIATE_DATA |
       iree_hal_amdgpu_pm4_copy_data_target_register_space(register_space) |
@@ -488,7 +514,9 @@ iree_hal_amdgpu_pm4_ib_builder_emit_copy_register32_to_memory(
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_COPY_DATA,
       IREE_HAL_AMDGPU_PM4_COPY_DATA_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] =
       iree_hal_amdgpu_pm4_copy_data_source_register_space(register_space) |
       IREE_HAL_AMDGPU_PM4_COPY_DATA_DST_SEL_TC_L2 |
@@ -532,12 +560,16 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_copy_timestamp_to_memory(
     iree_hal_amdgpu_pm4_ib_builder_t* builder,
     iree_hal_amdgpu_pm4_timestamp_strategy_t strategy, void* target) {
   const uint32_t control = iree_hal_amdgpu_pm4_copy_timestamp_control(strategy);
-  if (control == 0 || !iree_host_ptr_has_alignment(target, 8)) return false;
+  if (control == 0 || !iree_host_ptr_has_alignment(target, 8)) {
+    return false;
+  }
   const uintptr_t address = (uintptr_t)target;
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_COPY_DATA,
       IREE_HAL_AMDGPU_PM4_COPY_TIMESTAMP_DWORD_COUNT);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = control;
   dword[2] = 0;
   dword[3] = 0;
@@ -604,11 +636,15 @@ static inline uint32_t iree_hal_amdgpu_pm4_wait_reg_mem_dw1(
 // memory visible through TC L2.
 static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_write_data32(
     iree_hal_amdgpu_pm4_ib_builder_t* builder, void* target, uint32_t value) {
-  if (!iree_host_ptr_has_alignment(target, 4)) return false;
+  if (!iree_host_ptr_has_alignment(target, 4)) {
+    return false;
+  }
   const uintptr_t address = (uintptr_t)target;
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_WRITE_DATA, 5);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = IREE_HAL_AMDGPU_PM4_WRITE_DATA_DST_SEL_TC_L2 |
              IREE_HAL_AMDGPU_PM4_WRITE_DATA_WR_CONFIRM_WAIT_CONFIRMATION;
   dword[2] = iree_hal_amdgpu_pm4_addr_lo(address);
@@ -621,11 +657,15 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_write_data32(
 // memory visible through TC L2.
 static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_write_data64(
     iree_hal_amdgpu_pm4_ib_builder_t* builder, void* target, uint64_t value) {
-  if (!iree_host_ptr_has_alignment(target, 4)) return false;
+  if (!iree_host_ptr_has_alignment(target, 4)) {
+    return false;
+  }
   const uintptr_t address = (uintptr_t)target;
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_WRITE_DATA, 6);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = IREE_HAL_AMDGPU_PM4_WRITE_DATA_DST_SEL_TC_L2 |
              IREE_HAL_AMDGPU_PM4_WRITE_DATA_WR_CONFIRM_WAIT_CONFIRMATION;
   dword[2] = iree_hal_amdgpu_pm4_addr_lo(address);
@@ -647,7 +687,9 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_copy_data32(
   const uintptr_t target_address = (uintptr_t)target;
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_COPY_DATA, 6);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = IREE_HAL_AMDGPU_PM4_COPY_DATA_SRC_SEL_TC_L2 |
              IREE_HAL_AMDGPU_PM4_COPY_DATA_DST_SEL_TC_L2 |
              IREE_HAL_AMDGPU_PM4_COPY_DATA_WR_CONFIRM_WAIT_CONFIRMATION;
@@ -670,7 +712,9 @@ static inline bool iree_hal_amdgpu_pm4_ib_builder_emit_copy_data64(
   const uintptr_t target_address = (uintptr_t)target;
   uint32_t* dword = iree_hal_amdgpu_pm4_ib_builder_append_packet(
       builder, IREE_HAL_AMDGPU_PM4_HDR_IT_OPCODE_COPY_DATA, 6);
-  if (!dword) return false;
+  if (!dword) {
+    return false;
+  }
   dword[1] = IREE_HAL_AMDGPU_PM4_COPY_DATA_SRC_SEL_TC_L2 |
              IREE_HAL_AMDGPU_PM4_COPY_DATA_DST_SEL_TC_L2 |
              IREE_HAL_AMDGPU_PM4_COPY_DATA_COUNT_SEL_64_BITS |

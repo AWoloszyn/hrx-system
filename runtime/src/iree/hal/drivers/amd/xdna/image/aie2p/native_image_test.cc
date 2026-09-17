@@ -73,7 +73,9 @@ static NativeImagePtr CreateNativeImage(
 
 static std::vector<uint8_t> LoadMulI32ImageBytes() {
   EXPECT_EQ(iree_hal_amd_xdna_test_mul_i32_size(), 1u);
-  if (iree_hal_amd_xdna_test_mul_i32_size() != 1u) return {};
+  if (iree_hal_amd_xdna_test_mul_i32_size() != 1u) {
+    return {};
+  }
   const iree_file_toc_t* file = iree_hal_amd_xdna_test_mul_i32_create();
   const auto* data = reinterpret_cast<const uint8_t*>(file->data);
   return std::vector<uint8_t>(data, data + file->size);

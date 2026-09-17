@@ -95,7 +95,9 @@ iree_status_t loom_sanitizer_checks_parse(iree_string_view_t value,
                               "%.*s has a trailing separator",
                               (int)diagnostic_name.size, diagnostic_name.data);
     }
-    if (separator_position < 0) break;
+    if (separator_position < 0) {
+      break;
+    }
   }
 
   const loom_sanitizer_options_t options = {

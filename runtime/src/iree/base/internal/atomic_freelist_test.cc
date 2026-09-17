@@ -45,7 +45,9 @@ class SlotsArray {
   }
   SlotsArray& operator=(SlotsArray&& other) noexcept {
     if (this != &other) {
-      if (slots_) iree_aligned_free(slots_);
+      if (slots_) {
+        iree_aligned_free(slots_);
+      }
       slots_ = other.slots_;
       count_ = other.count_;
       other.slots_ = nullptr;
@@ -57,7 +59,9 @@ class SlotsArray {
   SlotsArray& operator=(const SlotsArray&) = delete;
 
   ~SlotsArray() {
-    if (slots_) iree_aligned_free(slots_);
+    if (slots_) {
+      iree_aligned_free(slots_);
+    }
   }
   iree_atomic_freelist_slot_t* data() { return slots_; }
   size_t size() const { return count_; }

@@ -34,7 +34,9 @@ static iree_string_view_t loom_test_symbol_name(const loom_module_t* module,
 
 static iree_string_view_t loom_test_symbol_definition_name(
     const loom_symbol_t* symbol) {
-  if (!symbol || !symbol->definition) return IREE_SV("unresolved");
+  if (!symbol || !symbol->definition) {
+    return IREE_SV("unresolved");
+  }
   return loom_symbol_definition_descriptor_name(symbol->definition);
 }
 

@@ -111,7 +111,9 @@ typedef struct iree_async_axis_table_t {
 static iree_status_t iree_async_axis_table_calculate_slot_count(
     uint32_t capacity, uint32_t* out_slot_count) {
   *out_slot_count = 0;
-  if (capacity == 0) return iree_ok_status();
+  if (capacity == 0) {
+    return iree_ok_status();
+  }
   if (capacity > (UINT32_MAX >> 2)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "axis table capacity %u is too large", capacity);
@@ -151,14 +153,18 @@ static inline uint32_t iree_async_axis_table_hash(iree_async_axis_t axis) {
 // Looks up |axis| and returns the matching entry, or NULL if not registered.
 static inline iree_async_axis_table_entry_t* iree_async_axis_table_lookup(
     const iree_async_axis_table_t* table, iree_async_axis_t axis) {
-  if (table->slot_count == 0) return NULL;
+  if (table->slot_count == 0) {
+    return NULL;
+  }
   uint32_t slot = iree_async_axis_table_hash(axis) & table->slot_mask;
   for (uint32_t probe = 0; probe < table->slot_count; ++probe) {
     iree_async_axis_table_entry_t* entry = &table->entries[slot];
     if (!iree_atomic_load(&entry->occupied, iree_memory_order_acquire)) {
       return NULL;
     }
-    if (entry->axis == axis) return entry;
+    if (entry->axis == axis) {
+      return entry;
+    }
     slot = (slot + 1) & table->slot_mask;
   }
   return NULL;
@@ -275,7 +281,9 @@ iree_async_frontier_tracker_exchange_waiters_head(
 static int32_t iree_async_frontier_find_axis(
     const iree_async_frontier_t* frontier, iree_async_axis_t axis) {
   for (uint8_t i = 0; i < frontier->entry_count; ++i) {
-    if (frontier->entries[i].axis == axis) return (int32_t)i;
+    if (frontier->entries[i].axis == axis) {
+      return (int32_t)i;
+    }
   }
   return -1;
 }
@@ -455,7 +463,9 @@ IREE_API_EXPORT bool iree_async_frontier_tracker_query_epoch(
   IREE_ASSERT_ARGUMENT(tracker);
   iree_async_axis_table_entry_t* entry =
       iree_async_axis_table_lookup(&tracker->axis_table, axis);
-  if (entry == NULL) return false;
+  if (entry == NULL) {
+    return false;
+  }
   int64_t current_epoch =
       iree_atomic_load(&entry->current_epoch, iree_memory_order_acquire);
   return (uint64_t)current_epoch >= epoch;
@@ -471,7 +481,9 @@ iree_host_size_t iree_async_frontier_tracker_advance(
   // Phase 1: Find axis and update epoch without taking the waiter lock.
   iree_async_axis_table_entry_t* entry =
       iree_async_axis_table_lookup(&tracker->axis_table, axis);
-  if (entry == NULL) return 0;
+  if (entry == NULL) {
+    return 0;
+  }
 
   // CAS loop to update epoch if advancing. Uses acq_rel ordering so that the
   // subsequent load of waiters_head (lock-free fast path) cannot be reordered

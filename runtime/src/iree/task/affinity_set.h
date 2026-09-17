@@ -101,7 +101,9 @@ static inline iree_task_affinity_set_t iree_task_affinity_for_any_worker(void) {
 static inline bool iree_task_affinity_set_equal(iree_task_affinity_set_t a,
                                                 iree_task_affinity_set_t b) {
   for (iree_host_size_t i = 0; i < IREE_TASK_AFFINITY_SET_WORD_COUNT; ++i) {
-    if (a.words[i] != b.words[i]) return false;
+    if (a.words[i] != b.words[i]) {
+      return false;
+    }
   }
   return true;
 }

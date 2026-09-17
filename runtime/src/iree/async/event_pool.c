@@ -80,7 +80,9 @@ IREE_API_EXPORT iree_status_t iree_async_event_pool_initialize(
 
 IREE_API_EXPORT void iree_async_event_pool_deinitialize(
     iree_async_event_pool_t* pool) {
-  if (!pool) return;
+  if (!pool) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Destroy all events in the all_events list.

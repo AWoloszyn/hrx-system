@@ -132,7 +132,9 @@ static loom_func_like_t AddFunction(loom_module_t* module,
       /*tied_result_count=*/0, /*predicates=*/nullptr,
       /*predicates_count=*/0, LOOM_LOCATION_UNKNOWN, &function_op));
   loom_func_like_t function = loom_func_like_cast(module, function_op);
-  if (!loom_func_like_isa(function)) std::abort();
+  if (!loom_func_like_isa(function)) {
+    std::abort();
+  }
 
   loom_builder_t body_builder;
   loom_builder_initialize(
@@ -142,7 +144,9 @@ static loom_func_like_t AddFunction(loom_module_t* module,
   uint16_t argument_count = 0;
   const loom_value_id_t* arguments =
       loom_func_like_arg_ids(function, &argument_count);
-  if (argument_count != 1) std::abort();
+  if (argument_count != 1) {
+    std::abort();
+  }
   loom_value_id_t current_value = arguments[0];
   for (int64_t i = 0; i < kBodyOpCount; ++i) {
     loom_op_t* add_op = nullptr;
@@ -271,7 +275,9 @@ class FunctionVersionProjectionFixture {
         source_module_->symbols.count +
         (shape == ProjectionShape::kDistinctContexts ? context_count : 0) +
         (shape == ProjectionShape::kSharedContext ? 1 : 0);
-    if (projected_module->symbols.count != expected_symbol_count) std::abort();
+    if (projected_module->symbols.count != expected_symbol_count) {
+      std::abort();
+    }
     output_owned_bytes_ = projected_module->arena.total_allocation_size;
     output_used_bytes_ = projected_module->arena.used_allocation_size;
     loom_module_free(projected_module);
@@ -293,14 +299,18 @@ class FunctionVersionProjectionFixture {
     IREE_CHECK_OK(loom_target_function_versions_project_module(
         source_module_, version_list_.count > 0 ? &version_list_ : nullptr,
         &block_pool_, iree_allocator_system(), &projected_module));
-    if (projected_module == nullptr) std::abort();
+    if (projected_module == nullptr) {
+      std::abort();
+    }
     return projected_module;
   }
 
   int64_t function_count() const { return function_count_; }
 
   int64_t target_context_count() const {
-    if (shape_ == ProjectionShape::kCloneOnly) return 0;
+    if (shape_ == ProjectionShape::kCloneOnly) {
+      return 0;
+    }
     return shape_ == ProjectionShape::kSharedContext ? 1 : function_count_;
   }
 
@@ -390,7 +400,9 @@ static void BM_ExactAuthoredContexts(benchmark::State& state) {
 
 static void RegisterScalingArguments(benchmark::Benchmark* value) {
   value->ArgName("functions");
-  for (int64_t scale : {1, 16, 64, 512, 4096}) value->Arg(scale);
+  for (int64_t scale : {1, 16, 64, 512, 4096}) {
+    value->Arg(scale);
+  }
 }
 
 BENCHMARK(BM_CloneOnly)

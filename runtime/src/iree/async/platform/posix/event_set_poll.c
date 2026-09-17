@@ -135,7 +135,9 @@ static iree_status_t iree_async_posix_event_set_poll_wait(
     iree_host_size_t* out_ready_count, bool* out_timed_out) {
   iree_async_posix_event_set_poll_t* event_set =
       iree_async_posix_event_set_poll_cast(base_event_set);
-  if (out_ready_count) *out_ready_count = 0;
+  if (out_ready_count) {
+    *out_ready_count = 0;
+  }
   *out_timed_out = false;
 
   // Clear revents before polling.
@@ -159,7 +161,9 @@ static iree_status_t iree_async_posix_event_set_poll_wait(
     return iree_ok_status();
   }
 
-  if (out_ready_count) *out_ready_count = (iree_host_size_t)result;
+  if (out_ready_count) {
+    *out_ready_count = (iree_host_size_t)result;
+  }
   return iree_ok_status();
 }
 

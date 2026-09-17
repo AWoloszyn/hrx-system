@@ -45,7 +45,9 @@ iree_status_t DeviceCreateContext::Initialize(iree_allocator_t host_allocator) {
 
 iree_status_t DeviceCreateContext::Initialize(
     iree_allocator_t host_allocator, iree_hal_device_event_sink_t event_sink) {
-  if (state_) return iree_ok_status();
+  if (state_) {
+    return iree_ok_status();
+  }
 
   auto state = std::make_unique<State>();
   iree_status_t status = iree_async_proactor_pool_create(

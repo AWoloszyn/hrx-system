@@ -1379,7 +1379,9 @@ static loom_value_id_t build_constant(loom_builder_t* builder,
   loom_op_t* op = NULL;
   IREE_CHECK_OK(loom_test_constant_build(builder, loom_attr_i64(0), type,
                                          LOOM_LOCATION_UNKNOWN, &op));
-  if (out_op) *out_op = op;
+  if (out_op) {
+    *out_op = op;
+  }
   return loom_test_constant_result(op);
 }
 
@@ -1869,9 +1871,15 @@ TEST_F(BuilderTest, HighFanoutUsesExceedUint16AndRemoveInConstantTime) {
     loom_op_t* op = NULL;
     IREE_ASSERT_OK(
         loom_test_neg_build(&builder_, v, i32, LOOM_LOCATION_UNKNOWN, &op));
-    if (i == 0) first = op;
-    if (i == kUseCount / 2) middle = op;
-    if (i == kUseCount - 1) last = op;
+    if (i == 0) {
+      first = op;
+    }
+    if (i == kUseCount / 2) {
+      middle = op;
+    }
+    if (i == kUseCount - 1) {
+      last = op;
+    }
   }
 
   loom_value_t* value_v = loom_module_value(module_, v);
@@ -2022,8 +2030,12 @@ TEST_F(BuilderTest, ForEachUseMacro) {
   int neg_count = 0;
   const loom_use_t* use = NULL;
   loom_value_for_each_use(value_a, use) {
-    if (loom_use_user_op(*use) == addi) ++addi_count;
-    if (loom_use_user_op(*use) == neg) ++neg_count;
+    if (loom_use_user_op(*use) == addi) {
+      ++addi_count;
+    }
+    if (loom_use_user_op(*use) == neg) {
+      ++neg_count;
+    }
   }
   EXPECT_EQ(addi_count, 2);  // lhs and rhs
   EXPECT_EQ(neg_count, 1);

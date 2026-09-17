@@ -69,13 +69,17 @@ static bool loom_low_representation_count_op(
     return false;
   }
   if (loom_low_op_isa(op) || loom_low_const_isa(op)) {
-    if (!loom_low_representation_count_add(1, descriptor_count)) return false;
+    if (!loom_low_representation_count_add(1, descriptor_count)) {
+      return false;
+    }
   }
   loom_region_t* const* regions = loom_op_regions(op);
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     const loom_region_t* region = regions[region_index];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     for (uint16_t block_index = 0; block_index < region->block_count;
          ++block_index) {
       const loom_block_t* block = loom_region_const_block(region, block_index);
@@ -262,7 +266,9 @@ static iree_status_t loom_low_representation_plan_op(
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     loom_region_t* region = regions[region_index];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     for (uint16_t block_index = 0; block_index < region->block_count;
          ++block_index) {
       loom_block_t* block = loom_region_block(region, block_index);

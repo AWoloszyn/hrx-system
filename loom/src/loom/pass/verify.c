@@ -191,7 +191,9 @@ static iree_status_t loom_pass_verify_pipeline_symbol(
 static bool loom_pass_verify_stack_contains(
     const loom_pass_verify_call_frame_t* frame, const loom_op_t* pipeline_op) {
   for (const loom_pass_verify_call_frame_t* it = frame; it; it = it->parent) {
-    if (it->pipeline_op == pipeline_op) return true;
+    if (it->pipeline_op == pipeline_op) {
+      return true;
+    }
   }
   return false;
 }
@@ -573,7 +575,9 @@ static iree_status_t loom_pass_verify_region(
   const loom_op_t* previous_op = NULL;
   const loom_op_t* op = NULL;
   loom_block_for_each_op(entry_block, op) {
-    if (op == last_op) break;
+    if (op == last_op) {
+      break;
+    }
     if (loom_pass_if_changed_isa(op) && previous_op == NULL) {
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,

@@ -167,7 +167,9 @@ static int iree_vm_module_compare_signature_type(
     const iree_vm_module_t* module, iree_vm_module_signature_type_t lhs,
     iree_vm_module_signature_type_t rhs) {
   int comparison = iree_vm_module_compare_u32(lhs.kind, rhs.kind);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   if (lhs.kind == IREE_VM_MODULE_SIGNATURE_TYPE_KIND_REF) {
     const iree_vm_ref_type_key_t lhs_key = iree_vm_ref_type_key(
         module->descriptor->ref_types.data[lhs.type_ordinal]);
@@ -187,11 +189,15 @@ static int iree_vm_module_compare_signature_sides(
     iree_vm_module_signature_side_t rhs) {
   int comparison =
       iree_vm_module_compare_u32((uint32_t)lhs.count, (uint32_t)rhs.count);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   for (iree_host_size_t i = 0; i < lhs.count; ++i) {
     comparison =
         iree_vm_module_compare_signature_type(module, lhs.data[i], rhs.data[i]);
-    if (comparison != 0) return comparison;
+    if (comparison != 0) {
+      return comparison;
+    }
   }
   return 0;
 }
@@ -202,10 +208,14 @@ static int iree_vm_module_compare_callable_types(
     const iree_vm_module_callable_type_declaration_t* rhs) {
   int comparison =
       iree_vm_module_compare_u32(lhs->nesting_depth, rhs->nesting_depth);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   comparison = iree_vm_module_compare_signature_sides(
       module, lhs->signature.arguments, rhs->signature.arguments);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   comparison = iree_vm_module_compare_signature_sides(
       module, lhs->signature.results, rhs->signature.results);
   return comparison != 0 ? comparison

@@ -826,13 +826,17 @@ def render_header():
         "",
         "static inline const char* iree_amdgpu_code_object_target_for_exact(",
         "    const char* exact_target) {",
-        "  if (!exact_target) return NULL;",
+        "  if (!exact_target) {",
+        "    return NULL;",
+        "  }",
     ]
     for info in AMDGPU_EXACT_TARGET_INFOS:
-        lines.append(
-            '  if (strcmp(exact_target, "{}") == 0) return "{}";'.format(
-                info.exact_processor, info.code_object_processor
-            )
+        lines.extend(
+            [
+                f'  if (strcmp(exact_target, "{info.exact_processor}") == 0) {{',
+                f'    return "{info.code_object_processor}";',
+                "  }",
+            ]
         )
     lines.extend(
         [
@@ -842,7 +846,9 @@ def render_header():
             "static inline int iree_amdgpu_target_label_fragment(const char* target,",
             "                                                    char* buffer,",
             "                                                    size_t capacity) {",
-            "  if (!target || !buffer || capacity == 0) return 0;",
+            "  if (!target || !buffer || capacity == 0) {",
+            "    return 0;",
+            "  }",
             "  size_t i = 0;",
             "  for (; target[i] != '\\0'; ++i) {",
             "    if (i + 1 >= capacity) {",

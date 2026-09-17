@@ -158,7 +158,9 @@ iree_status_t iree_task_executor_create(iree_task_executor_options_t options,
           iree_make_byte_span(worker_local_memory, worker_local_memory_size),
           &seed_prng, worker);
       worker_local_memory += worker_local_memory_size;
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
   }
 
@@ -176,7 +178,9 @@ iree_status_t iree_task_executor_create(iree_task_executor_options_t options,
 }
 
 static void iree_task_executor_destroy(iree_task_executor_t* executor) {
-  if (!executor) return;
+  if (!executor) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // First ask all workers to exit. We do this prior to waiting on them to exit
@@ -247,7 +251,9 @@ iree_host_size_t iree_task_executor_minimum_worker_local_memory_size(
 
 void iree_task_executor_wake_workers(iree_task_executor_t* executor,
                                      int32_t count) {
-  if (count <= 0) return;
+  if (count <= 0) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN_NAMED(z_wake, "iree_task_executor_wake_workers");
 
   int32_t remaining_count = count;
@@ -259,7 +265,9 @@ void iree_task_executor_wake_workers(iree_task_executor_t* executor,
       &executor->worker_idle_mask, iree_memory_order_relaxed);
   while (remaining_count > 0) {
     int idle_target = iree_task_affinity_set_find_first(idle_mask);
-    if (idle_target < 0 || idle_target >= (int)executor->worker_count) break;
+    if (idle_target < 0 || idle_target >= (int)executor->worker_count) {
+      break;
+    }
     IREE_TRACE_ZONE_BEGIN_NAMED(z_post, "iree_task_executor_wake_idle_worker");
     iree_notification_post(&executor->workers[idle_target].wake_notification,
                            1);
@@ -437,7 +445,9 @@ void iree_task_executor_dump_wake_state(iree_task_executor_t* executor,
   for (iree_host_size_t i = 0; i < IREE_TASK_EXECUTOR_MAX_COMPUTE_SLOTS; ++i) {
     intptr_t process = iree_atomic_load(&executor->compute_slots[i].process,
                                         iree_memory_order_relaxed);
-    if (!process || process == IREE_TASK_COMPUTE_SLOT_RESERVED) continue;
+    if (!process || process == IREE_TASK_COMPUTE_SLOT_RESERVED) {
+      continue;
+    }
     int64_t active_drainers = iree_atomic_load(
         &executor->compute_slots[i].active_drainers, iree_memory_order_relaxed);
     int32_t completion_claimed =

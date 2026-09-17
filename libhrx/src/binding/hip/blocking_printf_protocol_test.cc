@@ -70,7 +70,9 @@ static void CaptureOutput(void* user_data,
   ServiceRecorder* recorder = (ServiceRecorder*)user_data;
   OutputEvent event;
   event.stream = stream;
-  if (text.size != 0) event.text.assign(text.data, text.size);
+  if (text.size != 0) {
+    event.text.assign(text.data, text.size);
+  }
   recorder->output_events.push_back(std::move(event));
   recorder->output_observed_ready = HeaderIsReady(recorder->observed_header);
   recorder->output_entered.store(true, std::memory_order_release);

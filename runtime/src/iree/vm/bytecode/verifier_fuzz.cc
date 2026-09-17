@@ -34,7 +34,9 @@ void VerifyRawInput(const uint8_t* data, size_t size) {
   // The production boundary requires aligned image storage. Copying also
   // makes the fuzz engine input lifetime independent from mapped table views.
   std::vector<uint8_t> aligned_bytes(size);
-  if (size != 0) std::memcpy(aligned_bytes.data(), data, size);
+  if (size != 0) {
+    std::memcpy(aligned_bytes.data(), data, size);
+  }
   VerifyImage(
       iree_make_const_byte_span(aligned_bytes.data(), aligned_bytes.size()));
 }
@@ -77,7 +79,9 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size > kMaximumInputSize) return 0;
+  if (size > kMaximumInputSize) {
+    return 0;
+  }
   VerifyRawInput(data, size);
   VerifyFixtureMutation(data, size);
   return 0;

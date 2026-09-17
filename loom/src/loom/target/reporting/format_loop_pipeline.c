@@ -123,8 +123,9 @@ iree_status_t loom_target_compile_report_format_loop_pipelines_text(
           row->depth, row->depth - 1, row->values_per_record, row->read_count));
     }
   }
-  if (mode != LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS)
+  if (mode != LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS) {
     return iree_ok_status();
+  }
   for (const loom_target_compile_report_vec_t* vec =
            report->loop_pipeline_stage_rows.head;
        vec; vec = vec->next) {

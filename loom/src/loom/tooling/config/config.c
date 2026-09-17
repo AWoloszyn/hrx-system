@@ -15,8 +15,12 @@
 #include "loom/tooling/config/config_application.h"
 
 loom_value_id_t loom_tooling_config_symbol_result_value(const loom_op_t* op) {
-  if (loom_config_decl_isa(op)) return loom_config_decl_type(op);
-  if (loom_config_def_isa(op)) return loom_config_def_type(op);
+  if (loom_config_decl_isa(op)) {
+    return loom_config_decl_type(op);
+  }
+  if (loom_config_def_isa(op)) {
+    return loom_config_def_type(op);
+  }
   return LOOM_VALUE_ID_INVALID;
 }
 
@@ -195,7 +199,9 @@ iree_status_t loom_tooling_config_overlay_module(
     ++result.materialized_count;
   }
 
-  if (out_result) *out_result = result;
+  if (out_result) {
+    *out_result = result;
+  }
   return iree_ok_status();
 }
 
@@ -217,7 +223,9 @@ iree_status_t loom_tooling_config_require_resolved_module(
     ++result.unresolved_count;
   }
 
-  if (out_result) *out_result = result;
+  if (out_result) {
+    *out_result = result;
+  }
   if (result.unresolved_count == 0) {
     return iree_ok_status();
   }

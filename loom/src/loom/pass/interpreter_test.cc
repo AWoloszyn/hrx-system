@@ -33,7 +33,9 @@ static const loom_pass_report_detail_t* FindReportDetail(
     iree_string_view_t category) {
   const loom_pass_report_detail_t* detail = invocation.details;
   while (detail) {
-    if (iree_string_view_equal(detail->category, category)) return detail;
+    if (iree_string_view_equal(detail->category, category)) {
+      return detail;
+    }
     detail = detail->next;
   }
   return nullptr;
@@ -41,7 +43,9 @@ static const loom_pass_report_detail_t* FindReportDetail(
 
 static const loom_pass_report_detail_field_t* FindReportDetailField(
     const loom_pass_report_detail_t* detail, iree_string_view_t name) {
-  if (!detail) return nullptr;
+  if (!detail) {
+    return nullptr;
+  }
   for (uint16_t i = 0; i < detail->field_count; ++i) {
     if (iree_string_view_equal(detail->fields[i].name, name)) {
       return &detail->fields[i];

@@ -111,7 +111,9 @@ iree_host_size_t iree_file_path_canonicalize(char* path,
 
   // Replace `/` with `\`.
   for (iree_host_size_t i = 0; i < new_length; ++i) {
-    if (p[i] == '/') p[i] = '\\';
+    if (p[i] == '/') {
+      p[i] = '\\';
+    }
   }
 
   // Replace `\\` with `\`.
@@ -252,10 +254,14 @@ iree_string_view_t iree_file_path_extension(iree_string_view_t path) {
 
 static bool iree_file_path_has_versioned_so_suffix(iree_string_view_t path) {
   iree_string_view_t basename = iree_file_path_basename(path);
-  if (basename.size < 6) return false;  // "x.so.1"
+  if (basename.size < 6) {
+    return false;  // "x.so.1"
+  }
 
   for (iree_host_size_t i = 1; i + 4 <= basename.size; ++i) {
-    if (memcmp(basename.data + i, ".so.", 4) != 0) continue;
+    if (memcmp(basename.data + i, ".so.", 4) != 0) {
+      continue;
+    }
 
     bool needs_digit = true;
     for (iree_host_size_t j = i + 4; j < basename.size; ++j) {
@@ -296,7 +302,9 @@ static bool iree_file_path_has_win32_namespace_prefix(iree_string_view_t path) {
 }
 
 static bool iree_file_path_has_win32_drive_designator(iree_string_view_t path) {
-  if (path.size < 2 || path.data[1] != ':') return false;
+  if (path.size < 2 || path.data[1] != ':') {
+    return false;
+  }
   const char drive = path.data[0];
   return (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z');
 }
@@ -520,7 +528,9 @@ void iree_uri_split(iree_string_view_t uri, iree_string_view_t* out_schema,
   *out_schema = iree_string_view_empty();
   *out_path = iree_string_view_empty();
   *out_params = iree_string_view_empty();
-  if (iree_string_view_is_empty(uri)) return;
+  if (iree_string_view_is_empty(uri)) {
+    return;
+  }
 
   // Split on `schema` `:` (anything).
   iree_string_view_t rhs = iree_string_view_empty();
@@ -566,11 +576,17 @@ bool iree_uri_split_params(iree_string_view_t params, iree_host_size_t capacity,
   iree_host_size_t required_capacity =
       iree_string_view_is_empty(params) ? 0 : 1;
   for (iree_host_size_t i = 0; i < params.size; ++i) {
-    if (params.data[i] == '&') ++required_capacity;
+    if (params.data[i] == '&') {
+      ++required_capacity;
+    }
   }
   *out_count = required_capacity;
-  if (capacity < required_capacity) return false;
-  if (!out_params) return true;
+  if (capacity < required_capacity) {
+    return false;
+  }
+  if (!out_params) {
+    return true;
+  }
 
   // Parse each param into a key=value pair.
   iree_string_view_t remaining = params;

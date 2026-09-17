@@ -28,7 +28,9 @@ bool loom_attr_matches_scalar_type(loom_attribute_t attr,
     expected_kind = LOOM_ATTR_F64;
     matches = attr.kind == LOOM_ATTR_F64;
   }
-  if (out_expected_kind) *out_expected_kind = expected_kind;
+  if (out_expected_kind) {
+    *out_expected_kind = expected_kind;
+  }
   return matches;
 }
 
@@ -96,10 +98,14 @@ uint8_t loom_predicate_kind_argument_count(uint8_t kind) {
 bool loom_predicate_kind_accepts_value_type(uint8_t kind, loom_type_t type) {
   if (loom_type_is_register(type)) {
     const loom_type_t* value_type = loom_type_register_value_type(type);
-    if (value_type == NULL) return false;
+    if (value_type == NULL) {
+      return false;
+    }
     type = *value_type;
   }
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
 
   const loom_scalar_type_t scalar_type = loom_type_element_type(type);
   switch ((loom_predicate_kind_t)kind) {
@@ -140,7 +146,9 @@ iree_status_t loom_signed_enum_set_canonical_word_count(
         "signed enum set has %" PRIhsz " words per polarity, max %u",
         set.word_count, (unsigned)LOOM_SIGNED_ENUM_SET_MAX_WORD_COUNT);
   }
-  if (set.word_count == 0) return iree_ok_status();
+  if (set.word_count == 0) {
+    return iree_ok_status();
+  }
   if (set.words == NULL) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -174,53 +182,97 @@ iree_status_t loom_signed_enum_set_canonical_word_count(
 static bool loom_attribute_equal_impl(const loom_attribute_t* a,
                                       const loom_attribute_t* b,
                                       iree_host_size_t depth) {
-  if (a->kind != b->kind) return false;
+  if (a->kind != b->kind) {
+    return false;
+  }
   switch ((loom_attr_kind_t)a->kind) {
     case LOOM_ATTR_I64_ARRAY:
-      if (a->count != b->count) return false;
-      if (a->i64_array == b->i64_array) return true;
+      if (a->count != b->count) {
+        return false;
+      }
+      if (a->i64_array == b->i64_array) {
+        return true;
+      }
       return memcmp(a->i64_array, b->i64_array,
                     (iree_host_size_t)a->count * sizeof(int64_t)) == 0;
     case LOOM_ATTR_ENUM_ARRAY:
-      if (a->count != b->count) return false;
-      if (a->count == 0) return true;
-      if (a->enum_array == NULL || b->enum_array == NULL) return false;
-      if (a->enum_array == b->enum_array) return true;
+      if (a->count != b->count) {
+        return false;
+      }
+      if (a->count == 0) {
+        return true;
+      }
+      if (a->enum_array == NULL || b->enum_array == NULL) {
+        return false;
+      }
+      if (a->enum_array == b->enum_array) {
+        return true;
+      }
       return memcmp(a->enum_array, b->enum_array, a->count) == 0;
     case LOOM_ATTR_SIGNED_ENUM_SET:
-      if (a->count != b->count) return false;
-      if (a->count == 0) return true;
+      if (a->count != b->count) {
+        return false;
+      }
+      if (a->count == 0) {
+        return true;
+      }
       if (a->signed_enum_set_words == NULL ||
           b->signed_enum_set_words == NULL) {
         return false;
       }
-      if (a->signed_enum_set_words == b->signed_enum_set_words) return true;
+      if (a->signed_enum_set_words == b->signed_enum_set_words) {
+        return true;
+      }
       return memcmp(a->signed_enum_set_words, b->signed_enum_set_words,
                     (iree_host_size_t)a->count * 2 * sizeof(uint64_t)) == 0;
     case LOOM_ATTR_SYMBOL_ARRAY:
     case LOOM_ATTR_SYMBOL_SET: {
-      if (a->count != b->count) return false;
-      if (a->count == 0) return true;
-      if (a->symbol_refs == b->symbol_refs) return true;
+      if (a->count != b->count) {
+        return false;
+      }
+      if (a->count == 0) {
+        return true;
+      }
+      if (a->symbol_refs == b->symbol_refs) {
+        return true;
+      }
       return memcmp(a->symbol_refs, b->symbol_refs,
                     (iree_host_size_t)a->count * sizeof(loom_symbol_ref_t)) ==
              0;
     }
     case LOOM_ATTR_PREDICATE_LIST:
-      if (a->count != b->count) return false;
-      if (a->predicate_list == b->predicate_list) return true;
+      if (a->count != b->count) {
+        return false;
+      }
+      if (a->predicate_list == b->predicate_list) {
+        return true;
+      }
       return memcmp(a->predicate_list, b->predicate_list,
                     (iree_host_size_t)a->count * sizeof(loom_predicate_t)) == 0;
     case LOOM_ATTR_BYTES:
-      if (a->reserved_1 != b->reserved_1) return false;
-      if (a->reserved_1 == 0) return true;
-      if (a->bytes == NULL || b->bytes == NULL) return false;
-      if (a->bytes == b->bytes) return true;
+      if (a->reserved_1 != b->reserved_1) {
+        return false;
+      }
+      if (a->reserved_1 == 0) {
+        return true;
+      }
+      if (a->bytes == NULL || b->bytes == NULL) {
+        return false;
+      }
+      if (a->bytes == b->bytes) {
+        return true;
+      }
       return memcmp(a->bytes, b->bytes, a->reserved_1) == 0;
     case LOOM_ATTR_DICT:
-      if (a->count != b->count) return false;
-      if (a->dict_entries == b->dict_entries) return true;
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) return false;
+      if (a->count != b->count) {
+        return false;
+      }
+      if (a->dict_entries == b->dict_entries) {
+        return true;
+      }
+      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
+        return false;
+      }
       for (uint16_t i = 0; i < a->count; ++i) {
         if (a->dict_entries[i].name_id != b->dict_entries[i].name_id) {
           return false;
@@ -232,8 +284,12 @@ static bool loom_attribute_equal_impl(const loom_attribute_t* a,
       }
       return true;
     case LOOM_ATTR_PARAMETERIZED:
-      if (a->reserved_1 != b->reserved_1 || a->count != b->count) return false;
-      if (a->parameterized_slots == b->parameterized_slots) return true;
+      if (a->reserved_1 != b->reserved_1 || a->count != b->count) {
+        return false;
+      }
+      if (a->parameterized_slots == b->parameterized_slots) {
+        return true;
+      }
       if (a->parameterized_slots == NULL || b->parameterized_slots == NULL ||
           depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return false;
@@ -246,8 +302,12 @@ static bool loom_attribute_equal_impl(const loom_attribute_t* a,
       }
       return true;
     case LOOM_ATTR_PARAMETERIZED_ARRAY:
-      if (a->count != b->count) return false;
-      if (a->parameterized_array == b->parameterized_array) return true;
+      if (a->count != b->count) {
+        return false;
+      }
+      if (a->parameterized_array == b->parameterized_array) {
+        return true;
+      }
       if (a->parameterized_array == NULL || b->parameterized_array == NULL ||
           depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return false;

@@ -69,7 +69,9 @@ struct ImageTargetFixture {
 
 static std::vector<uint8_t> LoadMulI32ImageBytes() {
   EXPECT_EQ(iree_hal_amd_xdna_test_mul_i32_size(), 1u);
-  if (iree_hal_amd_xdna_test_mul_i32_size() != 1u) return {};
+  if (iree_hal_amd_xdna_test_mul_i32_size() != 1u) {
+    return {};
+  }
   const iree_file_toc_t* file = iree_hal_amd_xdna_test_mul_i32_create();
   EXPECT_STREQ(file->name, "mul_i32.xdna");
   const auto* data = reinterpret_cast<const uint8_t*>(file->data);
@@ -448,7 +450,9 @@ static uint8_t* FindProgramRecord(std::vector<uint8_t>& bytes,
       iree_unaligned_load_le_u32(bytes.data() + program_offset + 12);
   uint8_t* record = bytes.data() + program_offset + program_header_size;
   for (uint32_t i = 0; i < record_count; ++i) {
-    if (iree_unaligned_load_le_u16(record) == record_type) return record;
+    if (iree_unaligned_load_le_u16(record) == record_type) {
+      return record;
+    }
     record += iree_unaligned_load_le_u32(record + 4);
   }
   ADD_FAILURE() << "required program record is missing from the fixture";
@@ -490,7 +494,9 @@ static void MutateTileProgramReference(std::vector<uint8_t>& bytes) {
   uint8_t* record = FindProgramRecord(
       bytes, kArrayProgramOrdinal, IREE_HAL_AMD_XDNA_ELF_ARRAY_HEADER_SIZE,
       IREE_HAL_AMD_XDNA_AIE2P_PROGRAM_RECORD_TILE_PROGRAM_LOAD);
-  if (record == nullptr) return;
+  if (record == nullptr) {
+    return;
+  }
   iree_unaligned_store_le_u32(record + 8, kRelocationProgramOrdinal);
 }
 
@@ -555,7 +561,9 @@ TEST(XdnaImageCorpusTest, RejectsMutationsAcrossConstructionPhases) {
     EXPECT_EQ(status.code(), test_case.status_code);
     EXPECT_THAT(status.ToString(), HasSubstr(test_case.message_substring));
     EXPECT_EQ(image, nullptr);
-    if (status.ok()) iree_hal_amd_xdna_image_destroy(image);
+    if (status.ok()) {
+      iree_hal_amd_xdna_image_destroy(image);
+    }
   }
 }
 

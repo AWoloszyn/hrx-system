@@ -42,7 +42,9 @@ void iree_hal_amdgpu_pm4_dword_builder_borrow_storage(
 
 iree_status_t iree_hal_amdgpu_pm4_dword_builder_reserve(
     iree_hal_amdgpu_pm4_dword_builder_t* builder, uint32_t required_capacity) {
-  if (required_capacity <= builder->capacity) return iree_ok_status();
+  if (required_capacity <= builder->capacity) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!builder->owns_storage)) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,
@@ -172,7 +174,9 @@ iree_status_t iree_hal_amdgpu_pm4_dword_builder_emit_user_data(
     iree_hal_amdgpu_pm4_dword_builder_t* builder,
     const iree_hal_amdgpu_pm4_dispatch_launch_state_t* launch_state,
     uint64_t kernarg_address, const void* kernarg_preload_data) {
-  if (launch_state->user_data_dword_count == 0) return iree_ok_status();
+  if (launch_state->user_data_dword_count == 0) {
+    return iree_ok_status();
+  }
 
   const uint32_t user_data_dword_count =
       2u + launch_state->user_data_dword_count;
@@ -237,7 +241,9 @@ iree_status_t iree_hal_amdgpu_pm4_dispatch_kernarg_range_preload_offset(
     bool* out_is_preloaded, uint32_t* out_preload_dword_offset) {
   *out_is_preloaded = false;
   *out_preload_dword_offset = 0;
-  if (launch_state->kernarg_preload_dword_count == 0) return iree_ok_status();
+  if (launch_state->kernarg_preload_dword_count == 0) {
+    return iree_ok_status();
+  }
 
   if (IREE_UNLIKELY(kernarg_byte_offset > UINT32_MAX - kernarg_byte_length)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -251,7 +257,9 @@ iree_status_t iree_hal_amdgpu_pm4_dispatch_kernarg_range_preload_offset(
   const uint32_t kernarg_end = kernarg_byte_offset + kernarg_byte_length;
   const bool overlaps =
       kernarg_byte_offset < preload_end && kernarg_end > preload_start;
-  if (!overlaps) return iree_ok_status();
+  if (!overlaps) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(
           kernarg_byte_offset < preload_start || kernarg_end > preload_end ||
           (kernarg_byte_offset - preload_start) % sizeof(uint32_t) != 0)) {
@@ -298,7 +306,9 @@ void iree_hal_amdgpu_pm4_byte_builder_borrow_storage(
 iree_status_t iree_hal_amdgpu_pm4_byte_builder_reserve(
     iree_hal_amdgpu_pm4_byte_builder_t* builder,
     iree_host_size_t required_capacity) {
-  if (required_capacity <= builder->capacity) return iree_ok_status();
+  if (required_capacity <= builder->capacity) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!builder->owns_storage)) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,
@@ -410,7 +420,9 @@ void iree_hal_amdgpu_pm4_fixup_entry_builder_borrow_storage(
 iree_status_t iree_hal_amdgpu_pm4_fixup_entry_builder_reserve(
     iree_hal_amdgpu_pm4_fixup_entry_builder_t* builder,
     uint32_t required_capacity) {
-  if (required_capacity <= builder->capacity) return iree_ok_status();
+  if (required_capacity <= builder->capacity) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!builder->owns_storage)) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,

@@ -29,7 +29,9 @@
 #include "iree/tokenizer/vocab/vocab_builder.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 2) return 0;
+  if (size < 2) {
+    return 0;
+  }
 
   iree_tokenizer_vocab_builder_t* builder = NULL;
   iree_status_t status = iree_tokenizer_vocab_builder_allocate(
@@ -52,7 +54,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   while (pos < size && token_count < max_tokens) {
     // Read length byte.
     uint8_t len = data[pos++];
-    if (pos + len > size) break;
+    if (pos + len > size) {
+      break;
+    }
 
     // Read token text.
     iree_string_view_t text =
@@ -117,7 +121,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // Query the vocab with various substrings from the input.
   for (iree_host_size_t i = 0; i < size && i < 100; ++i) {
     iree_host_size_t query_len = (i % 16) + 1;
-    if (i + query_len > size) query_len = size - i;
+    if (i + query_len > size) {
+      query_len = size - i;
+    }
 
     iree_string_view_t query = iree_make_string_view(
         reinterpret_cast<const char*>(data + i), query_len);

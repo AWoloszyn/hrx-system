@@ -122,7 +122,9 @@ static iree_status_t loom_encoding_define_resolve_params(
           &descriptor->dynamic_parameter_descriptors[descriptor_index];
       descriptor_comparison = iree_string_view_compare(
           loom_bstring_view(dynamic_descriptor->name), dynamic_name);
-      if (descriptor_comparison >= 0) break;
+      if (descriptor_comparison >= 0) {
+        break;
+      }
       ++descriptor_index;
     }
     if (descriptor_index == descriptor_count || descriptor_comparison != 0) {
@@ -172,7 +174,9 @@ static loom_string_id_t loom_encoding_define_find_duplicate_param(
     const int comparison =
         iree_string_view_compare(module->strings.entries[static_name_id],
                                  module->strings.entries[dynamic_name_id]);
-    if (comparison == 0) return dynamic_name_id;
+    if (comparison == 0) {
+      return dynamic_name_id;
+    }
     if (comparison < 0) {
       ++static_index;
     } else {
@@ -209,10 +213,14 @@ static iree_status_t loom_encoding_emit_attribute_value_constraint(
 }
 
 static uint16_t loom_encoding_dynamic_sentinel_count(loom_attribute_t values) {
-  if (values.kind != LOOM_ATTR_I64_ARRAY) return 0;
+  if (values.kind != LOOM_ATTR_I64_ARRAY) {
+    return 0;
+  }
   uint16_t dynamic_count = 0;
   for (uint16_t i = 0; i < values.count; ++i) {
-    if (values.i64_array[i] == INT64_MIN) ++dynamic_count;
+    if (values.i64_array[i] == INT64_MIN) {
+      ++dynamic_count;
+    }
   }
   return dynamic_count;
 }
@@ -223,7 +231,9 @@ static iree_status_t loom_encoding_verify_dynamic_index_count(
     uint16_t dynamic_count) {
   uint16_t expected_dynamic_count =
       loom_encoding_dynamic_sentinel_count(static_values);
-  if (dynamic_count == expected_dynamic_count) return iree_ok_status();
+  if (dynamic_count == expected_dynamic_count) {
+    return iree_ok_status();
+  }
 
   iree_string_view_t op_name = loom_op_name(module, op);
   loom_diagnostic_param_t params[] = {
@@ -259,7 +269,9 @@ iree_status_t loom_encoding_layout_assume_strided_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter) {
   int64_t rank = loom_encoding_layout_assume_strided_rank(op);
-  if (rank >= 0 && rank <= UINT8_MAX) return iree_ok_status();
+  if (rank >= 0 && rank <= UINT8_MAX) {
+    return iree_ok_status();
+  }
   return loom_encoding_emit_attribute_value_constraint(
       emitter, op, IREE_SV("rank"), rank, IREE_SV("rank in [0, 255]"));
 }
@@ -269,7 +281,9 @@ iree_status_t loom_encoding_define_verify(const loom_module_t* module,
                                           iree_diagnostic_emitter_t emitter) {
   loom_encoding_define_param_view_t params =
       loom_encoding_define_param_view(module, op);
-  if (!params.spec) return iree_ok_status();
+  if (!params.spec) {
+    return iree_ok_status();
+  }
 
   iree_string_view_t encoding_name =
       module->strings.entries[params.spec->name_id];
@@ -288,7 +302,9 @@ iree_status_t loom_encoding_define_verify(const loom_module_t* module,
     IREE_RETURN_IF_ERROR(loom_encoding_define_resolve_params(
         module, op, emitter, encoding_name, vtable->descriptor, &params,
         dynamic_binding_slots, &resolved_params, &params_valid));
-    if (!params_valid) return iree_ok_status();
+    if (!params_valid) {
+      return iree_ok_status();
+    }
   } else {
     const loom_string_id_t duplicate_name_id =
         loom_encoding_define_find_duplicate_param(module, &params);
@@ -324,15 +340,21 @@ iree_status_t loom_encoding_assume_spec_verify(
     iree_diagnostic_emitter_t emitter) {
   const loom_encoding_t* spec =
       loom_module_encoding(module, loom_encoding_assume_spec_spec(op));
-  if (!spec) return iree_ok_status();
+  if (!spec) {
+    return iree_ok_status();
+  }
 
   loom_type_t result_type =
       loom_module_value_type(module, loom_encoding_assume_spec_result(op));
-  if (!loom_type_is_encoding(result_type)) return iree_ok_status();
+  if (!loom_type_is_encoding(result_type)) {
+    return iree_ok_status();
+  }
 
   loom_encoding_role_t result_role = loom_type_encoding_role(result_type);
   loom_encoding_role_t expected_role = loom_encoding_static_role(module, spec);
-  if (result_role == expected_role) return iree_ok_status();
+  if (result_role == expected_role) {
+    return iree_ok_status();
+  }
 
   iree_string_view_t encoding_name = module->strings.entries[spec->name_id];
   return loom_encoding_define_emit_result_role_error(
@@ -345,11 +367,15 @@ iree_status_t loom_encoding_isa_verify(const loom_module_t* module,
                                        iree_diagnostic_emitter_t emitter) {
   const loom_encoding_t* spec =
       loom_module_encoding(module, loom_encoding_isa_spec(op));
-  if (!spec) return iree_ok_status();
+  if (!spec) {
+    return iree_ok_status();
+  }
 
   const loom_type_t operand_type =
       loom_module_value_type(module, loom_encoding_isa_enc(op));
-  if (!loom_type_is_encoding(operand_type)) return iree_ok_status();
+  if (!loom_type_is_encoding(operand_type)) {
+    return iree_ok_status();
+  }
 
   const loom_encoding_role_t operand_role =
       loom_type_encoding_role(operand_type);

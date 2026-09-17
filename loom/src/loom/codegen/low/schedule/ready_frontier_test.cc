@@ -187,7 +187,9 @@ TEST_F(ScheduleReadyFrontierTest, MatchesSortedOracleUnderMutations) {
   const auto verify = [&]() {
     std::vector<uint32_t> expected_nodes;
     for (uint32_t node = 0; node < kNodeCapacity; ++node) {
-      if (active[node]) expected_nodes.push_back(node);
+      if (active[node]) {
+        expected_nodes.push_back(node);
+      }
     }
     ASSERT_EQ(loom_low_schedule_ready_frontier_count(&frontier),
               expected_nodes.size());
@@ -257,7 +259,9 @@ TEST_F(ScheduleReadyFrontierTest, MatchesSortedOracleUnderMutations) {
       keys[node].values[view] = key;
       loom_low_schedule_ready_frontier_update_key(&frontier, view, node, key);
     }
-    if ((step & 31u) == 0) verify();
+    if ((step & 31u) == 0) {
+      verify();
+    }
   }
   verify();
 }

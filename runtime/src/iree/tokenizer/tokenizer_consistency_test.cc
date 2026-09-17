@@ -203,7 +203,9 @@ static std::string FormatTokens(
     const std::vector<iree_tokenizer_token_id_t>& tokens) {
   std::string result = "[";
   for (size_t i = 0; i < tokens.size(); ++i) {
-    if (i > 0) result += ", ";
+    if (i > 0) {
+      result += ", ";
+    }
     result += std::to_string(tokens[i]);
     if (i > 20) {
       result += ", ...(" + std::to_string(tokens.size() - i - 1) + " more)";

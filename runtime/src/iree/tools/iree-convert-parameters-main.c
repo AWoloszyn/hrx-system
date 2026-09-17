@@ -127,7 +127,9 @@ static iree_status_t iree_tooling_convert_parameter_index(
     iree_io_parameter_index_entry_t target_entry = *source_entry;
 
     // If the parameter is in the exclude list then we just skip it.
-    if (iree_tooling_is_parameter_excluded(source_entry->key)) continue;
+    if (iree_tooling_is_parameter_excluded(source_entry->key)) {
+      continue;
+    }
 
     // If the parameter is in the rename list we'll add it with the new name.
     target_entry.key =

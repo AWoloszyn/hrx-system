@@ -148,7 +148,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     uint32_t nfd_current = nfd;
     for (int depth = 0; depth < 10; ++depth) {
       uint32_t nfd_next = iree_unicode_nfd_base(nfd_current);
-      if (nfd_next == nfd_current) break;  // Reached fixed point.
+      if (nfd_next == nfd_current) {
+        break;  // Reached fixed point.
+      }
       nfd_current = nfd_next;
     }
     // After at most 10 iterations, we must have reached a fixed point.

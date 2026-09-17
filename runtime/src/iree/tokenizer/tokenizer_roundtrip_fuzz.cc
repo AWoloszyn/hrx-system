@@ -37,7 +37,9 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (g_tokenizer == NULL || size == 0) return 0;
+  if (g_tokenizer == NULL || size == 0) {
+    return 0;
+  }
 
   iree_string_view_t input =
       iree_make_string_view(reinterpret_cast<const char*>(data), size);
@@ -67,7 +69,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     return 0;
   }
 
-  if (token_count == 0) return 0;
+  if (token_count == 0) {
+    return 0;
+  }
 
   //===--------------------------------------------------------------------===//
   // Step 2: Decode tokens back to text
@@ -160,7 +164,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                                       : ((offset % 4) == 1) ? 17
                                       : ((offset % 4) == 2) ? 64
                                                             : 256;
-        if (chunk_size > size - offset) chunk_size = size - offset;
+        if (chunk_size > size - offset) {
+          chunk_size = size - offset;
+        }
 
         iree_string_view_t chunk =
             iree_make_string_view(input.data + offset, chunk_size);
@@ -175,7 +181,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         }
         streaming_token_count += count;
         offset += bytes_consumed;
-        if (bytes_consumed == 0 && count == 0) break;
+        if (bytes_consumed == 0 && count == 0) {
+          break;
+        }
       }
 
       // Finalize encode.
@@ -232,7 +240,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                   break;
                 }
                 token_offset += tokens_consumed;
-                if (tokens_consumed == 0 && text_length == 0) break;
+                if (tokens_consumed == 0 && text_length == 0) {
+                  break;
+                }
               }
 
               // Finalize decode.

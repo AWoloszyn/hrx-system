@@ -95,7 +95,9 @@ static iree_status_t iree_net_status_wire_size_payload(
     void* user_data, const iree_status_payload_t* payload) {
   iree_host_size_t text_length = 0;
   iree_status_payload_format(payload, 0, NULL, &text_length);
-  if (text_length == 0) return iree_ok_status();
+  if (text_length == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(text_length > INT_MAX)) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,
@@ -208,7 +210,9 @@ static iree_status_t iree_net_status_wire_serialize_payload(
     void* user_data, const iree_status_payload_t* payload) {
   iree_host_size_t text_length = 0;
   iree_status_payload_format(payload, 0, NULL, &text_length);
-  if (text_length == 0) return iree_ok_status();
+  if (text_length == 0) {
+    return iree_ok_status();
+  }
 
   iree_net_status_wire_entry_type_t type =
       iree_status_payload_type(payload) == IREE_STATUS_PAYLOAD_TYPE_STACK_TRACE
@@ -470,7 +474,9 @@ iree_status_t iree_net_status_wire_deserialize(iree_const_byte_span_t data,
 
   iree_net_status_wire_parse_result_t parse_result;
   IREE_RETURN_IF_ERROR(iree_net_status_wire_validate(data, &parse_result));
-  if (parse_result.status_code == IREE_STATUS_OK) return iree_ok_status();
+  if (parse_result.status_code == IREE_STATUS_OK) {
+    return iree_ok_status();
+  }
 
   iree_status_t result = iree_status_allocate_copy(
       parse_result.status_code, parse_result.source_file,

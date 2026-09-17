@@ -128,7 +128,9 @@ iree_hal_amdgpu_semaphore_queue_family_affinity(
 bool iree_hal_amdgpu_semaphore_has_private_stream_semantics(
     iree_hal_semaphore_t* semaphore,
     const iree_hal_amdgpu_logical_device_t* device) {
-  if (!iree_hal_amdgpu_semaphore_is_local(semaphore, device)) return false;
+  if (!iree_hal_amdgpu_semaphore_is_local(semaphore, device)) {
+    return false;
+  }
 
   const iree_hal_semaphore_flags_t flags =
       iree_hal_amdgpu_semaphore_flags(semaphore);
@@ -216,7 +218,9 @@ static iree_status_t iree_hal_amdgpu_semaphore_signal(
   // Advance the timeline (CAS) and merge frontier.
   iree_status_t status = iree_async_semaphore_advance_timeline(
       base_semaphore, new_value, frontier);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   // Dispatch satisfied timepoints.
   iree_async_semaphore_dispatch_timepoints(base_semaphore, new_value);
@@ -246,7 +250,9 @@ static uint64_t iree_hal_amdgpu_host_queue_epoch_wait_hint(
   }
 
   const iree_time_t now_ns = iree_time_now();
-  if (now_ns >= deadline_ns) return 0;
+  if (now_ns >= deadline_ns) {
+    return 0;
+  }
 
   const uint64_t remaining_ns = (uint64_t)(deadline_ns - now_ns);
   const uint64_t timestamp_frequency = wait_state->timestamp_frequency;
@@ -259,7 +265,9 @@ static uint64_t iree_hal_amdgpu_host_queue_epoch_wait_hint(
           (remaining_ns * timestamp_frequency + 999999999ull) / 1000000000ull;
     }
   }
-  if (remaining_ticks == 0) remaining_ticks = 1;
+  if (remaining_ticks == 0) {
+    remaining_ticks = 1;
+  }
   return iree_min(remaining_ticks, wait_state->wait_timeout_hint);
 }
 
@@ -305,7 +313,9 @@ static iree_status_t iree_hal_amdgpu_semaphore_wait_for_epoch(
       if (deadline_ns != IREE_TIME_INFINITE_FUTURE && now_ns >= deadline_ns) {
         return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
       }
-      if (is_yield_wait && iree_time_now() >= spin_deadline_ns) break;
+      if (is_yield_wait && iree_time_now() >= spin_deadline_ns) {
+        break;
+      }
       iree_processor_yield();
     }
   }
@@ -342,7 +352,9 @@ static iree_status_t iree_hal_amdgpu_semaphore_wait(
   if (current >= IREE_HAL_SEMAPHORE_FAILURE_VALUE) {
     return iree_hal_semaphore_failure_as_status(current);
   }
-  if (current >= value) return iree_ok_status();
+  if (current >= value) {
+    return iree_ok_status();
+  }
 
   iree_hal_amdgpu_last_signal_flags_t last_signal_flags =
       IREE_HAL_AMDGPU_LAST_SIGNAL_FLAG_NONE;

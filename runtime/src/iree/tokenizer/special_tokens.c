@@ -24,7 +24,9 @@ void iree_tokenizer_special_tokens_initialize(
 
 void iree_tokenizer_special_tokens_deinitialize(
     iree_tokenizer_special_tokens_t* special_tokens) {
-  if (!special_tokens) return;
+  if (!special_tokens) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_free(special_tokens->allocator, special_tokens->slab);
   memset(special_tokens, 0, sizeof(*special_tokens));
@@ -39,7 +41,9 @@ void iree_tokenizer_special_tokens_deinitialize(
 static iree_status_t iree_tokenizer_special_tokens_builder_reserve_entries(
     iree_tokenizer_special_tokens_builder_t* builder,
     iree_host_size_t min_capacity) {
-  if (builder->entry_capacity >= min_capacity) return iree_ok_status();
+  if (builder->entry_capacity >= min_capacity) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_grow_array(
@@ -54,7 +58,9 @@ static iree_status_t iree_tokenizer_special_tokens_builder_reserve_entries(
 static iree_status_t iree_tokenizer_special_tokens_builder_reserve_strings(
     iree_tokenizer_special_tokens_builder_t* builder,
     iree_host_size_t min_capacity) {
-  if (builder->string_capacity >= min_capacity) return iree_ok_status();
+  if (builder->string_capacity >= min_capacity) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0,
@@ -127,7 +133,9 @@ iree_status_t iree_tokenizer_special_tokens_builder_add(
 
 void iree_tokenizer_special_tokens_builder_deinitialize(
     iree_tokenizer_special_tokens_builder_t* builder) {
-  if (!builder) return;
+  if (!builder) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_free(builder->allocator, builder->entries);
   iree_allocator_free(builder->allocator, builder->string_data);
@@ -145,7 +153,9 @@ static int iree_tokenizer_special_tokens_compare_entries(
   // Primary: first byte ascending.
   uint8_t first_a = string_data[ea->string_offset];
   uint8_t first_b = string_data[eb->string_offset];
-  if (first_a != first_b) return (int)first_a - (int)first_b;
+  if (first_a != first_b) {
+    return (int)first_a - (int)first_b;
+  }
 
   // Secondary: length descending (longer first for longest-match).
   if (ea->string_length != eb->string_length) {
@@ -181,7 +191,9 @@ static iree_host_size_t iree_tokenizer_compute_common_prefix(
     iree_host_size_t b_length) {
   iree_host_size_t max_length = iree_min(iree_min(a_length, b_length), 4);
   for (iree_host_size_t i = 0; i < max_length; ++i) {
-    if (a[i] != b[i]) return i;
+    if (a[i] != b[i]) {
+      return i;
+    }
   }
   return max_length;
 }
@@ -190,7 +202,9 @@ static iree_host_size_t iree_tokenizer_compute_common_prefix(
 static iree_host_size_t iree_tokenizer_special_tokens_count_buckets(
     const iree_tokenizer_special_tokens_builder_entry_t* entries,
     iree_host_size_t entry_count, const uint8_t* string_data) {
-  if (entry_count == 0) return 0;
+  if (entry_count == 0) {
+    return 0;
+  }
   iree_host_size_t bucket_count = 1;
   uint8_t prev_first = string_data[entries[0].string_offset];
   for (iree_host_size_t i = 1; i < entry_count; ++i) {
@@ -259,8 +273,12 @@ iree_status_t iree_tokenizer_special_tokens_builder_build(
                                iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                                                 "B-string data size overflow"));
     }
-    if (length < min_length) min_length = length;
-    if (length > max_length) max_length = length;
+    if (length < min_length) {
+      min_length = length;
+    }
+    if (length > max_length) {
+      max_length = length;
+    }
   }
 
   // Calculate slab layout: [ids][flags][bstring_offsets][bstring_data].
@@ -313,7 +331,9 @@ iree_status_t iree_tokenizer_special_tokens_builder_build(
     while (bucket_end < builder->entry_count) {
       uint8_t entry_first =
           builder->string_data[builder->entries[bucket_end].string_offset];
-      if (entry_first != first_byte) break;
+      if (entry_first != first_byte) {
+        break;
+      }
       ++bucket_end;
     }
 
@@ -329,9 +349,13 @@ iree_status_t iree_tokenizer_special_tokens_builder_build(
       iree_host_size_t length = builder->entries[i].string_length;
       iree_host_size_t common = iree_tokenizer_compute_common_prefix(
           first_content, prefix_length, content, length);
-      if (common < prefix_length) prefix_length = common;
+      if (common < prefix_length) {
+        prefix_length = common;
+      }
     }
-    if (prefix_length == 0) prefix_length = 1;
+    if (prefix_length == 0) {
+      prefix_length = 1;
+    }
 
     // Populate bucket metadata.
     memcpy(bucket->prefix, first_content, prefix_length);
@@ -484,7 +508,9 @@ iree_tokenizer_special_tokens_match(
       const uint8_t* token_content = bstring + 1;
 
       // Skip tokens shorter than what we've already matched.
-      if (token_length <= state->match_position) continue;
+      if (token_length <= state->match_position) {
+        continue;
+      }
 
       // Check if new input matches token at the continuation position.
       iree_host_size_t bytes_to_check =
@@ -603,7 +629,9 @@ iree_host_size_t iree_tokenizer_special_tokens_encode_state_get_partial(
     const iree_tokenizer_special_tokens_encode_state_t* state,
     const iree_tokenizer_special_tokens_t* special_tokens,
     uint8_t* out_buffer) {
-  if (state->match_position == 0) return 0;
+  if (state->match_position == 0) {
+    return 0;
+  }
 
   // Get the specific token that was being matched. The match() function
   // tracks which token caused NEED_MORE, so we use that exact token's

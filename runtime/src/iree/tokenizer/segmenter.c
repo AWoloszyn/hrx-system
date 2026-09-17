@@ -19,6 +19,8 @@ void iree_tokenizer_segmenter_initialize(
 }
 
 void iree_tokenizer_segmenter_free(iree_tokenizer_segmenter_t* segmenter) {
-  if (!segmenter) return;
+  if (!segmenter) {
+    return;
+  }
   segmenter->vtable->destroy(segmenter);
 }

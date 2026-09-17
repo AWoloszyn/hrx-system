@@ -43,7 +43,9 @@ static iree_status_t iree_hal_memory_tlsf_grow_pool(
       tlsf->host_allocator, /*minimum_capacity=*/old_capacity + 1,
       tlsf->block_stride, &new_capacity, (void**)&tlsf->block_storage));
   // Cap at UINT32_MAX since block indices are uint32_t.
-  if (new_capacity > UINT32_MAX) new_capacity = UINT32_MAX;
+  if (new_capacity > UINT32_MAX) {
+    new_capacity = UINT32_MAX;
+  }
   // Initialize new nodes and link them into the unused list.
   for (iree_host_size_t i = old_capacity; i < new_capacity; ++i) {
     iree_hal_memory_tlsf_block_t* block =
@@ -228,13 +230,17 @@ iree_hal_memory_tlsf_find_suitable_block(iree_hal_memory_tlsf_t* tlsf,
 static void iree_hal_memory_tlsf_merge_frontiers(
     iree_hal_memory_tlsf_t* tlsf, iree_hal_memory_tlsf_block_t* target_block,
     const iree_async_frontier_t* source_frontier) {
-  if (!source_frontier || source_frontier->entry_count == 0) return;
+  if (!source_frontier || source_frontier->entry_count == 0) {
+    return;
+  }
 
   iree_async_frontier_t* target_frontier =
       iree_hal_memory_tlsf_block_frontier(tlsf, target_block);
 
   // If target is already tainted, nothing to do; the frontier is meaningless.
-  if (target_block->flags & IREE_HAL_MEMORY_TLSF_BLOCK_FLAG_TAINTED) return;
+  if (target_block->flags & IREE_HAL_MEMORY_TLSF_BLOCK_FLAG_TAINTED) {
+    return;
+  }
 
   if (!iree_async_frontier_merge(target_frontier, tlsf->frontier_capacity,
                                  source_frontier)) {
@@ -712,7 +718,9 @@ bool iree_hal_memory_tlsf_query_full_free_block(
 iree_device_size_t iree_hal_memory_tlsf_largest_free_block(
     const iree_hal_memory_tlsf_t* tlsf) {
   IREE_ASSERT_ARGUMENT(tlsf);
-  if (tlsf->fl_bitmap == 0) return 0;
+  if (tlsf->fl_bitmap == 0) {
+    return 0;
+  }
 
   // Find the highest populated FL level.
   int fl = 63 - iree_math_count_leading_zeros_u64(tlsf->fl_bitmap);

@@ -323,7 +323,9 @@ static DirectoryPtr open_directory(const std::vector<uint8_t>& bytes,
   iree_hal_amd_xdna_image_directory_t* directory = nullptr;
   IREE_CHECK_OK(iree_hal_amd_xdna_image_directory_create(
       sequence.get(), iree_allocator_system(), &directory));
-  if (out_sequence != nullptr) *out_sequence = std::move(sequence);
+  if (out_sequence != nullptr) {
+    *out_sequence = std::move(sequence);
+  }
   return DirectoryPtr(directory);
 }
 

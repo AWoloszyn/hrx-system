@@ -94,7 +94,9 @@ iree_status_t PrintCompilerDiagnostic(
       case LOOM_PARAM_STRING_LIST:
         fprintf(stderr, "  %s = [", name);
         for (iree_host_size_t j = 0; j < param->string_list.count; ++j) {
-          if (j != 0) fprintf(stderr, ", ");
+          if (j != 0) {
+            fprintf(stderr, ", ");
+          }
           const iree_string_view_t value = param->string_list.values[j];
           fprintf(stderr, "%.*s", (int)value.size,
                   value.data ? value.data : "");

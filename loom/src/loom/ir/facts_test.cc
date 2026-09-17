@@ -496,10 +496,14 @@ TEST(FactsWrapInteger, ExactAndRangedLowBits) {
       for (int64_t length : {0, 4, 20, 300}) {
         loom_value_facts_t source =
             loom_value_facts_make(lo, lo + length, divisor);
-        if (length != 0) loom_value_facts_mark_lane_varying(&source);
+        if (length != 0) {
+          loom_value_facts_mark_lane_varying(&source);
+        }
         loom_value_facts_t result = loom_value_facts_wrap_integer(source, 8);
         for (int64_t value = lo; value <= lo + length; ++value) {
-          if (value % source.known_divisor != 0) continue;
+          if (value % source.known_divisor != 0) {
+            continue;
+          }
           const int64_t bits = (uint64_t)value & 255;
           const int64_t wrapped = bits >= 128 ? bits - 256 : bits;
           EXPECT_LE(result.range_lo, wrapped);
@@ -1144,12 +1148,18 @@ TEST(FactsApplyPredicate, DivisibleRangesMatchEnumeratedIntegers) {
         int64_t expected_lower = INT64_MAX;
         int64_t expected_upper = INT64_MIN;
         for (int64_t value = lower; value <= upper; ++value) {
-          if (value % divisor != 0) continue;
-          if (expected_lower == INT64_MAX) expected_lower = value;
+          if (value % divisor != 0) {
+            continue;
+          }
+          if (expected_lower == INT64_MAX) {
+            expected_lower = value;
+          }
           expected_upper = value;
         }
         // Empty branch domains have no representable bottom in this lattice.
-        if (expected_lower > expected_upper) continue;
+        if (expected_lower > expected_upper) {
+          continue;
+        }
         loom_value_facts_t facts = loom_value_facts_make(-32, 32, divisor);
         const loom_predicate_t predicate = make_predicate_range(lower, upper);
         loom_value_facts_apply_predicate(&facts, &predicate);
@@ -1825,7 +1835,9 @@ TEST(AndiTransfer, BoundedConcreteValuesSatisfyResultFacts) {
   }
   for (int64_t lower : {-16, 0, 4}) {
     for (int64_t upper : {-1, 0, 16}) {
-      if (lower > upper) continue;
+      if (lower > upper) {
+        continue;
+      }
       for (int64_t divisor : {1, 2, 3, 4, 6, 8}) {
         inputs.push_back(loom_value_facts_make(lower, upper, divisor));
       }
@@ -1837,9 +1849,13 @@ TEST(AndiTransfer, BoundedConcreteValuesSatisfyResultFacts) {
       loom_value_facts_andi(&left, &right, &output);
       ASSERT_GE(output.known_divisor, 1);
       for (int64_t lhs = left.range_lo; lhs <= left.range_hi; ++lhs) {
-        if (lhs % left.known_divisor != 0) continue;
+        if (lhs % left.known_divisor != 0) {
+          continue;
+        }
         for (int64_t rhs = right.range_lo; rhs <= right.range_hi; ++rhs) {
-          if (rhs % right.known_divisor != 0) continue;
+          if (rhs % right.known_divisor != 0) {
+            continue;
+          }
           const int64_t result = lhs & rhs;
           ASSERT_LE(output.range_lo, result) << lhs << " & " << rhs;
           ASSERT_GE(output.range_hi, result) << lhs << " & " << rhs;

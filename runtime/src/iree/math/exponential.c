@@ -78,7 +78,9 @@ static bool iree_math_exp2_f32_handle_special(float value, float* out_result) {
 
 IREE_API_EXPORT float iree_math_exp2_f32_approx(float value) {
   float result = 0.0f;
-  if (iree_math_exp2_f32_handle_special(value, &result)) return result;
+  if (iree_math_exp2_f32_handle_special(value, &result)) {
+    return result;
+  }
 
   // Round value*32 to an integer using the binary64 shift trick. The encoded
   // rounded value carries both the table index and output exponent.
@@ -163,7 +165,9 @@ static bool iree_math_log2_f32_handle_special(float value, float* out_result) {
 
 IREE_API_EXPORT float iree_math_log2_f32_approx(float value) {
   float result = 0.0f;
-  if (iree_math_log2_f32_handle_special(value, &result)) return result;
+  if (iree_math_log2_f32_handle_special(value, &result)) {
+    return result;
+  }
 
   // Normalize the input and select one of sixteen centers without a division.
   const uint32_t value_bits = iree_math_f32_to_bits(value);

@@ -656,7 +656,9 @@ static const iree_hal_resource_vtable_t
 
 static void iree_hal_amdgpu_staging_transfer_record_failure(
     iree_hal_amdgpu_staging_transfer_t* transfer, iree_status_t status) {
-  if (iree_status_is_ok(status)) return;
+  if (iree_status_is_ok(status)) {
+    return;
+  }
   iree_slim_mutex_lock(&transfer->mutex);
   transfer->failure_status = iree_status_join(transfer->failure_status, status);
   iree_slim_mutex_unlock(&transfer->mutex);
@@ -719,7 +721,9 @@ static iree_status_t iree_hal_amdgpu_staging_transfer_submit_signal_barrier(
 
 static void iree_hal_amdgpu_staging_transfer_fail_signals(
     iree_hal_amdgpu_staging_transfer_t* transfer, iree_status_t status) {
-  if (iree_status_is_ok(status)) return;
+  if (iree_status_is_ok(status)) {
+    return;
+  }
   if (iree_hal_semaphore_list_is_empty(transfer->signal_semaphore_list)) {
     iree_status_free(status);
     return;

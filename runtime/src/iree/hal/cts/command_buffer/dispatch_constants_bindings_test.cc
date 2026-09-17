@@ -22,7 +22,9 @@ class DispatchConstantsBindingsTest : public CtsTestBase<> {
  protected:
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
 
     LoadExecutableOrSkipUnsupported(
         "command_buffer_dispatch_constants_bindings_test.bin", &executable_);

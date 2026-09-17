@@ -101,7 +101,9 @@ void iree_task_process_release_compute_placement(iree_task_process_t* process,
     IREE_ASSERT(placement_count > 0, "compute placement count underflow");
     int32_t desired = (current & IREE_TASK_PROCESS_COMPUTE_RELEASE_PENDING) |
                       (placement_count - 1);
-    if (terminal) desired |= IREE_TASK_PROCESS_COMPUTE_RELEASE_PENDING;
+    if (terminal) {
+      desired |= IREE_TASK_PROCESS_COMPUTE_RELEASE_PENDING;
+    }
     if (iree_atomic_compare_exchange_weak(
             &process->compute_placement_state, &current, desired,
             iree_memory_order_acq_rel, iree_memory_order_acquire)) {
@@ -118,7 +120,9 @@ bool iree_task_process_wake(iree_task_process_t* process) {
                                            iree_memory_order_acq_rel);
   IREE_ASSERT(previous > 0,
               "wake called on process with suspend_count already at 0");
-  if (previous != 1) return false;  // Still suspended.
+  if (previous != 1) {
+    return false;  // Still suspended.
+  }
 
   // We drove suspend_count to zero. Transition SUSPENDED -> RUNNABLE.
   // If the process was already cancelled or completed (e.g., by a concurrent

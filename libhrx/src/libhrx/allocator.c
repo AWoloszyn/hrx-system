@@ -10,13 +10,17 @@ hrx_allocator_t hrx_device_allocator(hrx_device_t device) {
 }
 
 void hrx_allocator_retain(hrx_allocator_t allocator) {
-  if (!allocator) return;
+  if (!allocator) {
+    return;
+  }
   iree_hal_allocator_retain(allocator->hal_allocator);
   hrx_device_retain(allocator->device);
 }
 
 void hrx_allocator_release(hrx_allocator_t allocator) {
-  if (!allocator) return;
+  if (!allocator) {
+    return;
+  }
   iree_hal_allocator_release(allocator->hal_allocator);
   hrx_device_release(allocator->device);
 }
@@ -148,8 +152,12 @@ hrx_status_t hrx_allocator_query_virtual_memory(hrx_allocator_t allocator,
 
   if (!iree_hal_allocator_supports_virtual_memory(allocator->hal_allocator)) {
     *supported = false;
-    if (min_page_size) *min_page_size = 0;
-    if (recommended_page_size) *recommended_page_size = 0;
+    if (min_page_size) {
+      *min_page_size = 0;
+    }
+    if (recommended_page_size) {
+      *recommended_page_size = 0;
+    }
     return hrx_ok_status();
   }
 
@@ -168,7 +176,9 @@ hrx_status_t hrx_allocator_query_virtual_memory(hrx_allocator_t allocator,
   }
 
   *supported = true;
-  if (min_page_size) *min_page_size = (size_t)hal_minimum_page_size;
+  if (min_page_size) {
+    *min_page_size = (size_t)hal_minimum_page_size;
+  }
   if (recommended_page_size) {
     *recommended_page_size = (size_t)hal_recommended_page_size;
   }

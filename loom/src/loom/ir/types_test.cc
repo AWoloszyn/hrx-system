@@ -23,7 +23,9 @@ class OwnedFunctionType {
     other.type_ = loom_type_none();
   }
   OwnedFunctionType& operator=(OwnedFunctionType&& other) noexcept {
-    if (this == &other) return *this;
+    if (this == &other) {
+      return *this;
+    }
     iree_allocator_free(iree_allocator_system(),
                         (void*)loom_type_func_data(type_));
     type_ = other.type_;

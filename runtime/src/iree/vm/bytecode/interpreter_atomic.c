@@ -76,7 +76,9 @@ static bool iree_vm_bytecode_atomic_compare_exchange_u32(
   (void)failure_ordering;
   const uint32_t observed_bits = (uint32_t)_InterlockedCompareExchange(
       (volatile long*)address, (long)replacement_bits, (long)*expected_bits);
-  if (observed_bits == *expected_bits) return true;
+  if (observed_bits == *expected_bits) {
+    return true;
+  }
   *expected_bits = observed_bits;
   return false;
 #else
@@ -121,7 +123,9 @@ static bool iree_vm_bytecode_atomic_compare_exchange_u64(
   const uint64_t observed_bits = (uint64_t)_InterlockedCompareExchange64(
       (volatile __int64*)address, (__int64)replacement_bits,
       (__int64)*expected_bits);
-  if (observed_bits == *expected_bits) return true;
+  if (observed_bits == *expected_bits) {
+    return true;
+  }
   *expected_bits = observed_bits;
   return false;
 #else

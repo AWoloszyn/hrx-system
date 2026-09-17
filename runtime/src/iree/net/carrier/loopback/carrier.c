@@ -183,9 +183,13 @@ static void iree_net_loopback_event_queue_push(
 static iree_net_loopback_pending_send_t* iree_net_loopback_event_queue_pop(
     iree_net_loopback_event_queue_t* queue) {
   iree_net_loopback_pending_send_t* pending_send = queue->head;
-  if (!pending_send) return NULL;
+  if (!pending_send) {
+    return NULL;
+  }
   queue->head = pending_send->next;
-  if (!queue->head) queue->tail = NULL;
+  if (!queue->head) {
+    queue->tail = NULL;
+  }
   pending_send->next = NULL;
   return pending_send;
 }
@@ -201,7 +205,9 @@ static void iree_net_loopback_pair_release(iree_net_loopback_pair_t* pair) {
 }
 
 static iree_status_t iree_net_loopback_validate_span(iree_async_span_t span) {
-  if (span.length == 0) return iree_ok_status();
+  if (span.length == 0) {
+    return iree_ok_status();
+  }
   if (!iree_async_span_is_cpu_accessible(span)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "loopback send span is not CPU-accessible");
@@ -244,7 +250,9 @@ static iree_status_t iree_net_loopback_pending_send_allocate(
 static void iree_net_loopback_pending_send_destroy(
     iree_net_loopback_pair_t* pair,
     iree_net_loopback_pending_send_t* pending_send) {
-  if (!pending_send) return;
+  if (!pending_send) {
+    return;
+  }
   if (pending_send->regions_retained) {
     iree_async_span_list_release_regions(iree_async_span_list_make(
         iree_net_loopback_pending_send_spans(pending_send),
@@ -252,7 +260,9 @@ static void iree_net_loopback_pending_send_destroy(
   }
   iree_net_loopback_carrier_t* source = pending_send->source;
   iree_allocator_free(pair->host_allocator, pending_send);
-  if (source) iree_net_carrier_release(&source->base);
+  if (source) {
+    iree_net_carrier_release(&source->base);
+  }
 }
 
 static void iree_net_loopback_retire_pending_operation_locked(
@@ -342,7 +352,9 @@ static iree_net_loopback_pending_send_t* iree_net_loopback_detach_locked(
       } else {
         own_queue->head = next;
       }
-      if (own_queue->tail == pending_send) own_queue->tail = previous;
+      if (own_queue->tail == pending_send) {
+        own_queue->tail = previous;
+      }
       pending_send->next = NULL;
       iree_net_loopback_fail_delivery_locked(carrier, pending_send,
                                              IREE_STATUS_UNAVAILABLE,
@@ -368,7 +380,9 @@ static iree_net_loopback_pending_send_t* iree_net_loopback_detach_locked(
       } else {
         peer_queue->head = next;
       }
-      if (peer_queue->tail == pending_send) peer_queue->tail = previous;
+      if (peer_queue->tail == pending_send) {
+        peer_queue->tail = previous;
+      }
       pending_send->next = NULL;
       IREE_ASSERT(peer);
       iree_net_loopback_fail_delivery_locked(
@@ -383,7 +397,9 @@ static iree_net_loopback_pending_send_t* iree_net_loopback_detach_locked(
   if (was_attached && peer &&
       iree_net_carrier_state(&peer->base) == IREE_NET_CARRIER_STATE_ACTIVE) {
     peer->peer_departed_pending = true;
-    if (!peer->dispatch_failed) iree_net_loopback_signal_locked(peer);
+    if (!peer->dispatch_failed) {
+      iree_net_loopback_signal_locked(peer);
+    }
   }
 
   return iree_net_loopback_cancel_reservations_locked(carrier);
@@ -425,7 +441,9 @@ static void iree_net_loopback_maybe_complete_deactivation(
     carrier->deactivate_callback.user_data = NULL;
   }
   iree_slim_mutex_unlock(&carrier->pair->mutex);
-  if (callback) callback(callback_user_data);
+  if (callback) {
+    callback(callback_user_data);
+  }
 }
 
 static void iree_net_loopback_process_send_completion(
@@ -461,7 +479,9 @@ static void iree_net_loopback_process_send_completion(
   const bool should_signal = iree_net_carrier_state(&source->base) ==
                                  IREE_NET_CARRIER_STATE_DRAINING &&
                              source->wait_armed;
-  if (should_signal) iree_net_loopback_signal_locked(source);
+  if (should_signal) {
+    iree_net_loopback_signal_locked(source);
+  }
   iree_slim_mutex_unlock(&pair->mutex);
 
   iree_net_loopback_pending_send_destroy(pair, pending_send);
@@ -507,12 +527,18 @@ static void iree_net_loopback_drain_failed_dispatch(
 static void iree_net_loopback_drain_failed_dispatch_mask(
     iree_net_loopback_pair_t* pair, uint32_t fallback_drain_mask) {
   for (uint8_t i = 0; i < 2; ++i) {
-    if (!iree_all_bits_set(fallback_drain_mask, 1u << i)) continue;
+    if (!iree_all_bits_set(fallback_drain_mask, 1u << i)) {
+      continue;
+    }
     iree_net_loopback_carrier_t* carrier = NULL;
     iree_slim_mutex_lock(&pair->mutex);
     iree_net_loopback_event_queue_t* queue = &pair->event_queues[i];
-    if (queue->head) carrier = queue->head->source;
-    if (carrier) iree_net_carrier_retain(&carrier->base);
+    if (queue->head) {
+      carrier = queue->head->source;
+    }
+    if (carrier) {
+      iree_net_carrier_retain(&carrier->base);
+    }
     iree_slim_mutex_unlock(&pair->mutex);
     if (carrier) {
       iree_net_loopback_drain_failed_dispatch(carrier);
@@ -529,7 +555,9 @@ static void iree_net_loopback_process_delivery(
   iree_async_span_t* spans = iree_net_loopback_pending_send_spans(pending_send);
   for (iree_host_size_t i = 0;
        i < pending_send->span_count && iree_status_is_ok(receive_status); ++i) {
-    if (spans[i].length == 0) continue;
+    if (spans[i].length == 0) {
+      continue;
+    }
     receive_status = target->base.handlers.on_receive(
         target->base.handlers.user_data, spans[i], /*lease=*/NULL);
   }
@@ -796,12 +824,16 @@ static void iree_net_loopback_carrier_deactivate(
     carrier->deactivate_callback.user_data = user_data;
     reservations =
         iree_net_loopback_detach_locked(carrier, &fallback_drain_mask);
-    if (carrier->wait_armed) iree_net_loopback_signal_locked(carrier);
+    if (carrier->wait_armed) {
+      iree_net_loopback_signal_locked(carrier);
+    }
   }
   iree_slim_mutex_unlock(&pair->mutex);
 
   IREE_ASSERT(valid_request, "loopback carrier deactivated more than once");
-  if (!valid_request) return;
+  if (!valid_request) {
+    return;
+  }
   iree_net_loopback_destroy_reservation_list(pair, reservations);
   iree_net_loopback_drain_failed_dispatch_mask(pair, fallback_drain_mask);
   iree_net_loopback_maybe_complete_deactivation(carrier);
@@ -927,7 +959,9 @@ static uint64_t iree_net_loopback_allocate_reservation_id_locked(
     iree_net_loopback_carrier_t* carrier) {
   while (true) {
     uint64_t reservation_id = carrier->next_reservation_id++;
-    if (reservation_id == 0) continue;
+    if (reservation_id == 0) {
+      continue;
+    }
     bool already_used = false;
     for (iree_net_loopback_pending_send_t* reservation = carrier->reservations;
          reservation; reservation = reservation->next) {
@@ -936,7 +970,9 @@ static uint64_t iree_net_loopback_allocate_reservation_id_locked(
         break;
       }
     }
-    if (!already_used) return reservation_id;
+    if (!already_used) {
+      return reservation_id;
+    }
   }
 }
 
@@ -1137,7 +1173,9 @@ IREE_API_EXPORT iree_status_t iree_net_loopback_carrier_create_pair(
 
   iree_net_loopback_carrier_options_t default_options =
       iree_net_loopback_carrier_options_default();
-  if (!options) options = &default_options;
+  if (!options) {
+    options = &default_options;
+  }
   if (options->max_send_operations == 0 || options->max_send_spans == 0) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,

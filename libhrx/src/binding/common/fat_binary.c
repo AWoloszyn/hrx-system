@@ -179,7 +179,9 @@ static bool hrx_fat_length_at_least(iree_const_byte_span_t data,
 }
 
 static bool hrx_fat_is_elf(iree_const_byte_span_t data) {
-  if (!data.data || !hrx_fat_length_at_least(data, 4)) return false;
+  if (!data.data || !hrx_fat_length_at_least(data, 4)) {
+    return false;
+  }
   uint32_t magic;
   memcpy(&magic, data.data, sizeof(magic));
   return magic == HRX_ELF_MAGIC_INT;
@@ -421,7 +423,9 @@ iree_status_t iree_hal_streaming_fat_binary_describe_amdgpu_elf(
                             " bytes available",
                             size, elf.data_length);
   }
-  if (out_size) *out_size = size;
+  if (out_size) {
+    *out_size = size;
+  }
   return iree_ok_status();
 }
 
@@ -437,7 +441,9 @@ static iree_status_t hrx_fat_parse_ccob(iree_const_byte_span_t data,
                                         uint64_t* out_uncompressed_size,
                                         uint64_t* out_file_size,
                                         iree_host_size_t* out_payload_offset) {
-  if (out_file_size) *out_file_size = 0;
+  if (out_file_size) {
+    *out_file_size = 0;
+  }
   if (!hrx_fat_length_at_least(data, sizeof(hrx_ccob_header_v1_t))) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "CCOB header truncated");
@@ -461,7 +467,9 @@ static iree_status_t hrx_fat_parse_ccob(iree_const_byte_span_t data,
     *out_method = h.method;
     *out_uncompressed_size = h.uncompressed_size;
     *out_payload_offset = sizeof(hrx_ccob_header_v2_t);
-    if (out_file_size) *out_file_size = h.file_size;
+    if (out_file_size) {
+      *out_file_size = h.file_size;
+    }
   } else if (version >= 3) {
     if (!hrx_fat_length_at_least(data, sizeof(hrx_ccob_header_v3_t))) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -472,7 +480,9 @@ static iree_status_t hrx_fat_parse_ccob(iree_const_byte_span_t data,
     *out_method = h.method;
     *out_uncompressed_size = h.uncompressed_size;
     *out_payload_offset = sizeof(hrx_ccob_header_v3_t);
-    if (out_file_size) *out_file_size = h.file_size;
+    if (out_file_size) {
+      *out_file_size = h.file_size;
+    }
   } else {
     return iree_make_status(IREE_STATUS_INCOMPATIBLE,
                             "unsupported CCOB version %u", version);
@@ -502,7 +512,9 @@ static iree_status_t hrx_fat_parse_ccob(iree_const_byte_span_t data,
 static iree_string_view_t hrx_fat_strip_feature_suffix(iree_string_view_t sv) {
   // Features always start at the first ':'.
   for (iree_host_size_t i = 0; i < sv.size; ++i) {
-    if (sv.data[i] == ':') return iree_make_string_view(sv.data, i);
+    if (sv.data[i] == ':') {
+      return iree_make_string_view(sv.data, i);
+    }
   }
   return sv;
 }
@@ -544,7 +556,9 @@ static bool hrx_fat_triple_matches(iree_string_view_t triple,
   target = hrx_fat_strip_feature_suffix(target);
   // Only consider gfx-flavoured targets — the streaming layer exclusively
   // feeds AMDGPU today.
-  if (target.size < 3 || memcmp(target.data, "gfx", 3) != 0) return false;
+  if (target.size < 3 || memcmp(target.data, "gfx", 3) != 0) {
+    return false;
+  }
   return iree_string_view_equal(target,
                                 hrx_fat_strip_feature_suffix(target_value));
 }
@@ -834,7 +848,9 @@ static iree_status_t hrx_fat_extract_from_bundle(
     if (executable_target == NULL || target_index != triple_target_index) {
       continue;
     }
-    if (target_index > selected_target_index) continue;
+    if (target_index > selected_target_index) {
+      continue;
+    }
     if (target_index < selected_target_index) {
       hrx_fat_extract_clear_matches(extract);
       selected_target_index = target_index;
@@ -1068,7 +1084,9 @@ static iree_status_t hrx_fat_extract_from_hipk(
 
 void iree_hal_streaming_fat_binary_extract_reset(
     iree_hal_streaming_fat_binary_extract_t* extract) {
-  if (!extract) return;
+  if (!extract) {
+    return;
+  }
   if (extract->owned_buffer) {
     iree_allocator_free(extract->host_allocator, extract->owned_buffer);
   }

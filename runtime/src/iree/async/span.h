@@ -119,7 +119,9 @@ static inline bool iree_async_span_is_empty(iree_async_span_t span) {
 // require content inspection (compression, encryption).
 static inline bool iree_async_span_is_cpu_accessible(iree_async_span_t span) {
   // Raw pointer spans are always CPU-accessible (caller gave us a pointer).
-  if (!span.region) return true;
+  if (!span.region) {
+    return true;
+  }
   // Region spans are CPU-accessible if base_ptr is non-NULL.
   return span.region->base_ptr != NULL;
 }
@@ -128,7 +130,9 @@ static inline bool iree_async_span_is_cpu_accessible(iree_async_span_t span) {
 // For registered spans, returns region->base_ptr + offset.
 // For raw pointer spans (region == NULL), returns the pointer stored in offset.
 static inline uint8_t* iree_async_span_ptr(iree_async_span_t span) {
-  if (!span.region) return (uint8_t*)(uintptr_t)span.offset;
+  if (!span.region) {
+    return (uint8_t*)(uintptr_t)span.offset;
+  }
   return (uint8_t*)span.region->base_ptr + span.offset;
 }
 
@@ -182,7 +186,9 @@ static inline bool iree_async_span_list_is_empty(iree_async_span_list_t list) {
 // Called by proactor implementations at submit time to ensure the region
 // remains valid for the duration of the operation.
 static inline void iree_async_span_retain_region(iree_async_span_t span) {
-  if (span.region) iree_async_region_retain(span.region);
+  if (span.region) {
+    iree_async_region_retain(span.region);
+  }
 }
 
 // Releases the region referenced by a span. No-op if the region is NULL.

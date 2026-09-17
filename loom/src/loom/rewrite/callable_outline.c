@@ -50,11 +50,17 @@ typedef struct loom_callable_outline_value_list_t {
 
 static bool loom_callable_outline_root_is_selected(
     const loom_callable_outline_range_state_t* state, const loom_op_t* op) {
-  if (!op || op->parent_block != state->block) return false;
+  if (!op || op->parent_block != state->block) {
+    return false;
+  }
   for (const loom_op_t* current = state->first_op; current;
        current = current->next_op) {
-    if (current == state->after_last_op) break;
-    if (current == op) return true;
+    if (current == state->after_last_op) {
+      break;
+    }
+    if (current == op) {
+      return true;
+    }
   }
   return false;
 }
@@ -62,18 +68,24 @@ static bool loom_callable_outline_root_is_selected(
 static bool loom_callable_outline_op_is_inside_range(
     const loom_callable_outline_range_state_t* state, const loom_op_t* op) {
   for (const loom_op_t* current = op; current; current = current->parent_op) {
-    if (loom_callable_outline_root_is_selected(state, current)) return true;
+    if (loom_callable_outline_root_is_selected(state, current)) {
+      return true;
+    }
   }
   return false;
 }
 
 static bool loom_callable_outline_region_contains_block(
     const loom_region_t* region, const loom_block_t* target_block) {
-  if (!region || !target_block) return false;
+  if (!region || !target_block) {
+    return false;
+  }
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {
     const loom_block_t* block = loom_region_const_block(region, block_index);
-    if (block == target_block) return true;
+    if (block == target_block) {
+      return true;
+    }
     const loom_op_t* op = block->first_op;
     while (op) {
       loom_region_t** regions = loom_op_regions(op);
@@ -92,15 +104,21 @@ static bool loom_callable_outline_region_contains_block(
 static bool loom_callable_outline_block_is_inside_range(
     const loom_callable_outline_range_state_t* state,
     const loom_block_t* block) {
-  if (!block) return false;
-  if (block == state->block) return false;
+  if (!block) {
+    return false;
+  }
+  if (block == state->block) {
+    return false;
+  }
   if (block->first_op) {
     return loom_callable_outline_op_is_inside_range(state,
                                                     block->first_op->parent_op);
   }
   for (const loom_op_t* root_op = state->first_op; root_op;
        root_op = root_op->next_op) {
-    if (root_op == state->after_last_op) break;
+    if (root_op == state->after_last_op) {
+      break;
+    }
     loom_region_t** regions = loom_op_regions(root_op);
     for (uint8_t i = 0; i < root_op->region_count; ++i) {
       if (loom_callable_outline_region_contains_block(regions[i], block)) {
@@ -132,7 +150,9 @@ static iree_status_t loom_callable_outline_value_list_initialize(
     loom_callable_outline_value_list_t* out_list) {
   memset(out_list, 0, sizeof(*out_list));
   out_list->mark_capacity = state->value_domain->value_count;
-  if (out_list->mark_capacity == 0) return iree_ok_status();
+  if (out_list->mark_capacity == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate_array(state->arena, out_list->mark_capacity,
                                 sizeof(uint8_t), (void**)&out_list->marks));
@@ -259,7 +279,9 @@ static iree_status_t loom_callable_outline_collect_attr_captures(
     const loom_callable_outline_range_state_t* state,
     loom_callable_outline_value_list_t* captures, const loom_attribute_t* attr,
     uint8_t depth) {
-  if (!attr) return iree_ok_status();
+  if (!attr) {
+    return iree_ok_status();
+  }
   if (depth > LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "attribute nesting exceeds maximum depth");
@@ -321,7 +343,9 @@ static iree_status_t loom_callable_outline_collect_op_captures(
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     const loom_region_t* region = regions[region_index];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     for (uint16_t block_index = 0; block_index < region->block_count;
          ++block_index) {
       const loom_block_t* block = loom_region_const_block(region, block_index);
@@ -369,7 +393,9 @@ static bool loom_callable_outline_value_has_use_outside_range(
                             state, loom_value_def_block(user_value))
                       : loom_callable_outline_op_is_inside_range(
                             state, loom_value_def_op(user_value));
-    if (!inside) return true;
+    if (!inside) {
+      return true;
+    }
     use_id = type_use->next_incoming_use_id;
   }
   return false;
@@ -475,7 +501,9 @@ static iree_status_t loom_callable_outline_validate_range(
   for (loom_op_t* parent = first_op->parent_op; parent;
        parent = parent->parent_op) {
     loom_func_like_t function = loom_func_like_cast(rewriter->module, parent);
-    if (!loom_func_like_isa(function)) continue;
+    if (!loom_func_like_isa(function)) {
+      continue;
+    }
     if (loom_func_like_repr_contract(function) != LOOM_STRING_ID_INVALID) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
@@ -545,7 +573,9 @@ static iree_status_t loom_callable_outline_collect_root_ops(
     const loom_callable_outline_range_state_t* state, iree_host_size_t count,
     loom_op_t*** out_ops) {
   *out_ops = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   loom_op_t** ops = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       state->arena, count, sizeof(loom_op_t*), (void**)&ops));
@@ -562,7 +592,9 @@ static iree_status_t loom_callable_outline_make_none_types(
     iree_arena_allocator_t* arena, iree_host_size_t count,
     loom_type_t** out_types) {
   *out_types = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   loom_type_t* types = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, count, sizeof(loom_type_t), (void**)&types));

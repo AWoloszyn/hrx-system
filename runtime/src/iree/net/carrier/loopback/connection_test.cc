@@ -159,7 +159,9 @@ class LoopbackConnectionTest : public ::testing::Test {
 
   void PollUntil(iree_async_proactor_t* proactor, PollSide side,
                  const std::function<bool()>& condition) {
-    while (!condition()) Poll(proactor, side);
+    while (!condition()) {
+      Poll(proactor, side);
+    }
   }
 
   iree_net_message_endpoint_t OpenEndpoint(iree_net_connection_t* connection,
@@ -188,7 +190,9 @@ class LoopbackConnectionTest : public ::testing::Test {
 
   void DeactivateAndRelease(iree_net_connection_t*& connection,
                             iree_async_proactor_t* proactor, PollSide side) {
-    if (!connection) return;
+    if (!connection) {
+      return;
+    }
     DeactivateState state;
     state.current_poll_side = &current_poll_side_;
     state.expected_poll_side = side;

@@ -134,7 +134,9 @@ BENCHMARK(BM_FlushEmpty);
 void BM_PushNPopN(benchmark::State& state) {
   const int count = static_cast<int>(state.range(0));
   std::vector<bench_entry_t> entries(count);
-  for (int i = 0; i < count; ++i) entries[i].value = i;
+  for (int i = 0; i < count; ++i) {
+    entries[i].value = i;
+  }
 
   bench_slist_t list;
   bench_slist_initialize(&list);
@@ -160,7 +162,9 @@ BENCHMARK(BM_PushNPopN)->Arg(1)->Arg(4)->Arg(16)->Arg(64)->Arg(256)->Arg(1024);
 void BM_PushNFlushLIFO(benchmark::State& state) {
   const int count = static_cast<int>(state.range(0));
   std::vector<bench_entry_t> entries(count);
-  for (int i = 0; i < count; ++i) entries[i].value = i;
+  for (int i = 0; i < count; ++i) {
+    entries[i].value = i;
+  }
 
   bench_slist_t list;
   bench_slist_initialize(&list);
@@ -193,7 +197,9 @@ BENCHMARK(BM_PushNFlushLIFO)
 void BM_PushNFlushFIFO(benchmark::State& state) {
   const int count = static_cast<int>(state.range(0));
   std::vector<bench_entry_t> entries(count);
-  for (int i = 0; i < count; ++i) entries[i].value = i;
+  for (int i = 0; i < count; ++i) {
+    entries[i].value = i;
+  }
 
   bench_slist_t list;
   bench_slist_initialize(&list);
@@ -224,7 +230,9 @@ BENCHMARK(BM_PushNFlushFIFO)
 void BM_Concat(benchmark::State& state) {
   const int count = static_cast<int>(state.range(0));
   std::vector<bench_entry_t> entries(count);
-  for (int i = 0; i < count; ++i) entries[i].value = i;
+  for (int i = 0; i < count; ++i) {
+    entries[i].value = i;
+  }
 
   bench_slist_t list;
   bench_slist_initialize(&list);
@@ -260,7 +268,9 @@ BENCHMARK(BM_Concat)->Arg(1)->Arg(4)->Arg(16)->Arg(64)->Arg(256)->Arg(1024);
 // and flush between iterations would add noise, so we accept the growing list
 // and report per-operation throughput.
 void BM_ContentionPush(benchmark::State& state) {
-  if (ShouldSkipThreadCount(state)) return;
+  if (ShouldSkipThreadCount(state)) {
+    return;
+  }
 
   // Shared list, initialized once by thread 0.
   static bench_slist_t list;
@@ -299,7 +309,9 @@ BENCHMARK(BM_ContentionPush)
 // immediately pops (which may get its own entry back, or another thread's —
 // that's fine, we're measuring contention cost not correctness).
 void BM_ContentionPushPop(benchmark::State& state) {
-  if (ShouldSkipThreadCount(state)) return;
+  if (ShouldSkipThreadCount(state)) {
+    return;
+  }
 
   static bench_slist_t list;
   if (state.thread_index() == 0) {
@@ -339,7 +351,9 @@ BENCHMARK(BM_ContentionPushPop)
 // touch the mutex and should scale perfectly. Without it, every pop would
 // contend on the mutex even though the list is always empty.
 void BM_PopEmptyContention(benchmark::State& state) {
-  if (ShouldSkipThreadCount(state)) return;
+  if (ShouldSkipThreadCount(state)) {
+    return;
+  }
 
   static bench_slist_t list;
   if (state.thread_index() == 0) {
@@ -360,7 +374,9 @@ BENCHMARK(BM_PopEmptyContention)->Apply(ThreadRange)->UseRealTime();
 // N threads all flushing an empty list. Same fast-path test as PopEmpty
 // but for the flush path.
 void BM_FlushEmptyContention(benchmark::State& state) {
-  if (ShouldSkipThreadCount(state)) return;
+  if (ShouldSkipThreadCount(state)) {
+    return;
+  }
 
   static bench_slist_t list;
   if (state.thread_index() == 0) {
@@ -392,7 +408,9 @@ BENCHMARK(BM_FlushEmptyContention)->Apply(ThreadRange)->UseRealTime();
 // For the single-thread case, the one thread does push+pop (no point in
 // having zero producers or zero consumers).
 void BM_ProducerConsumerPop(benchmark::State& state) {
-  if (ShouldSkipThreadCount(state)) return;
+  if (ShouldSkipThreadCount(state)) {
+    return;
+  }
 
   static bench_slist_t list;
   if (state.thread_index() == 0) {
@@ -433,7 +451,9 @@ BENCHMARK(BM_ProducerConsumerPop)
 // typical pattern for work-stealing schedulers and batch processing: the
 // flush amortizes mutex cost across all accumulated entries.
 void BM_ProducerConsumerFlush(benchmark::State& state) {
-  if (ShouldSkipThreadCount(state)) return;
+  if (ShouldSkipThreadCount(state)) {
+    return;
+  }
 
   static bench_slist_t list;
   if (state.thread_index() == 0) {

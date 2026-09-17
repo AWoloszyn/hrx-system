@@ -25,9 +25,13 @@ iree_hal_vulkan_pipeline_stage_mask_from_hal_execution_stage(
   if (iree_any_bit_set(stage_mask, IREE_HAL_EXECUTION_STAGE_HOST)) {
     pipeline_stage_mask |= VK_PIPELINE_STAGE_2_HOST_BIT;
   }
-  if (pipeline_stage_mask) return pipeline_stage_mask;
+  if (pipeline_stage_mask) {
+    return pipeline_stage_mask;
+  }
 
-  if (access_mask) return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+  if (access_mask) {
+    return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+  }
   if (iree_any_bit_set(stage_mask, IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE)) {
     return VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
   }

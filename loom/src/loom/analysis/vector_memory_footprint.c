@@ -1411,7 +1411,9 @@ static bool loom_vector_memory_footprint_access_empty(
 static bool loom_vector_memory_footprint_value_is_scalar_element(
     const loom_vector_memory_footprint_state_t* state, loom_value_id_t value_id,
     loom_scalar_type_t element_type) {
-  if (value_id >= state->module->values.count) return false;
+  if (value_id >= state->module->values.count) {
+    return false;
+  }
   const loom_type_t value_type =
       loom_module_value_type(state->module, value_id);
   return loom_type_equal(value_type, loom_type_scalar(element_type));
@@ -1423,7 +1425,9 @@ static bool loom_vector_memory_footprint_access_is_scalar_element(
   const loom_scalar_type_t element_type = loom_type_element_type(view_type);
   switch (loom_memory_access_operation_kind(memory_access)) {
     case LOOM_MEMORY_ACCESS_OPERATION_LOAD:
-      if (op->result_count != 1) return false;
+      if (op->result_count != 1) {
+        return false;
+      }
       return loom_vector_memory_footprint_value_is_scalar_element(
           state, loom_op_const_results(op)[0], element_type);
     case LOOM_MEMORY_ACCESS_OPERATION_STORE:
@@ -1568,7 +1572,9 @@ static iree_status_t loom_vector_memory_footprint_ensure_dominance(
 static void loom_vector_memory_footprint_append_condition_facts(
     const loom_condition_fact_set_t* source,
     loom_condition_fact_set_t* destination) {
-  if (!source) return;
+  if (!source) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < source->integer_relation_count &&
                                destination->integer_relation_count <
                                    destination->integer_relation_capacity;
@@ -1715,14 +1721,18 @@ loom_vector_memory_footprint_stack_top(
 
 static void loom_vector_memory_footprint_stack_pop(
     loom_vector_memory_footprint_stack_t* stack) {
-  if (stack->count > 0) --stack->count;
+  if (stack->count > 0) {
+    --stack->count;
+  }
 }
 
 static iree_status_t loom_vector_memory_footprint_push_region(
     loom_vector_memory_footprint_state_t* state,
     loom_vector_memory_footprint_stack_t* stack, loom_region_t* region,
     const loom_condition_fact_set_t* condition_facts) {
-  if (!region) return iree_ok_status();
+  if (!region) {
+    return iree_ok_status();
+  }
   return loom_vector_memory_footprint_stack_push(
       state->arena, stack,
       (loom_vector_memory_footprint_frame_t){
@@ -1736,7 +1746,9 @@ static iree_status_t loom_vector_memory_footprint_push_block(
     loom_vector_memory_footprint_state_t* state,
     loom_vector_memory_footprint_stack_t* stack, loom_block_t* block,
     const loom_condition_fact_set_t* condition_facts) {
-  if (!block) return iree_ok_status();
+  if (!block) {
+    return iree_ok_status();
+  }
   return loom_vector_memory_footprint_stack_push(
       state->arena, stack,
       (loom_vector_memory_footprint_frame_t){
@@ -1786,7 +1798,9 @@ static iree_status_t loom_vector_memory_footprint_push_cfg_blocks(
       continue;
     }
     loom_block_t* block = (loom_block_t*)graph.blocks[block_index].block;
-    if (!block) continue;
+    if (!block) {
+      continue;
+    }
     const loom_condition_fact_set_t* block_condition_facts = NULL;
     IREE_RETURN_IF_ERROR(
         loom_vector_memory_footprint_condition_facts_for_cfg_block(
@@ -1844,7 +1858,9 @@ static iree_status_t loom_vector_memory_footprint_push_op_regions(
 static void loom_vector_memory_footprint_activate_condition_facts(
     loom_vector_memory_footprint_state_t* state,
     const loom_condition_fact_set_t* condition_facts) {
-  if (state->expression_context.condition_facts == condition_facts) return;
+  if (state->expression_context.condition_facts == condition_facts) {
+    return;
+  }
   state->expression_context.condition_facts = condition_facts;
   loom_symbolic_expr_context_reset(&state->expression_context);
 }

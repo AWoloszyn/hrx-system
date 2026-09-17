@@ -135,7 +135,9 @@ static iree_status_t loom_scf_to_cfg_region_stack_initialize(
 static iree_status_t loom_scf_to_cfg_region_stack_push(
     iree_arena_allocator_t* arena, loom_scf_to_cfg_region_stack_t* stack,
     loom_region_t* region) {
-  if (!region || region->block_count == 0) return iree_ok_status();
+  if (!region || region->block_count == 0) {
+    return iree_ok_status();
+  }
   if (stack->count >= stack->capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         arena, stack->count, stack->count + 1, sizeof(loom_region_t*),
@@ -213,7 +215,9 @@ static void loom_scf_to_cfg_record_subtree_summaries(loom_module_t* module,
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     loom_region_t* region = regions[region_index];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
       loom_op_t* child_op = NULL;
@@ -309,7 +313,9 @@ static iree_status_t loom_scf_to_cfg_define_remapped_block_args(
     const loom_value_id_t* source_values, uint16_t source_value_count,
     loom_value_id_t** out_args) {
   *out_args = NULL;
-  if (source_value_count == 0) return iree_ok_status();
+  if (source_value_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_value_id_t* args = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -395,7 +401,9 @@ static void loom_scf_to_cfg_read_single_block_region(
 
 static iree_status_t loom_scf_to_cfg_verify_op_preconditions(
     loom_scf_to_cfg_state_t* state, loom_op_t* op) {
-  if (op->tied_result_count == 0) return iree_ok_status();
+  if (op->tied_result_count == 0) {
+    return iree_ok_status();
+  }
   return loom_scf_to_cfg_emit(state, op, LOOM_ERR_STRUCTURE_036);
 }
 
@@ -561,7 +569,9 @@ static bool loom_scf_to_cfg_for_iv_facts_are_materializable(
 
 static bool loom_scf_to_cfg_value_has_exact_integer_facts(
     loom_value_fact_table_t* fact_table, loom_value_id_t value) {
-  if (!fact_table || value == LOOM_VALUE_ID_INVALID) return false;
+  if (!fact_table || value == LOOM_VALUE_ID_INVALID) {
+    return false;
+  }
   int64_t exact_value = 0;
   return loom_value_facts_as_exact_i64(
       loom_value_fact_table_lookup(fact_table, value), &exact_value);
@@ -592,7 +602,9 @@ static uint16_t loom_scf_to_cfg_for_iv_bound_predicates(
     loom_value_fact_table_t* fact_table, loom_value_id_t value,
     loom_value_id_t lower_bound, loom_value_id_t upper_bound,
     loom_predicate_t* predicates) {
-  if (value == LOOM_VALUE_ID_INVALID) return 0;
+  if (value == LOOM_VALUE_ID_INVALID) {
+    return 0;
+  }
   uint16_t count = 0;
   if (loom_scf_to_cfg_for_iv_bound_predicate_is_needed(fact_table,
                                                        lower_bound)) {
@@ -620,7 +632,9 @@ static uint16_t loom_scf_to_cfg_for_iv_bound_predicates(
 static bool loom_scf_to_cfg_for_iv_assume_is_materializable(
     loom_value_fact_table_t* fact_table, loom_op_t* op,
     loom_value_facts_t facts) {
-  if (loom_scf_to_cfg_for_iv_facts_are_materializable(facts)) return true;
+  if (loom_scf_to_cfg_for_iv_facts_are_materializable(facts)) {
+    return true;
+  }
   return loom_scf_to_cfg_for_iv_bound_predicate_count(
              fact_table, loom_scf_for_lower_bound(op),
              loom_scf_for_upper_bound(op)) > 0;
@@ -1172,7 +1186,9 @@ static iree_status_t loom_scf_to_cfg_collect_block_frontier(
     loom_scf_to_cfg_state_t* state, loom_block_t* block) {
   loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
-    if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) continue;
+    if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
+      continue;
+    }
     loom_scf_to_cfg_lowering_kind_t lowering_kind;
     if (loom_scf_to_cfg_classify_op(op, &lowering_kind)) {
       IREE_RETURN_IF_ERROR(loom_scf_to_cfg_frontier_push(
@@ -1187,7 +1203,9 @@ static iree_status_t loom_scf_to_cfg_collect_block_frontier(
 static iree_status_t loom_scf_to_cfg_collect_frontier(
     loom_scf_to_cfg_state_t* state, loom_func_like_t function) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   state->region_stack.count = 0;
   state->frontier.count = 0;
@@ -1197,7 +1215,9 @@ static iree_status_t loom_scf_to_cfg_collect_frontier(
   while (true) {
     loom_region_t* region =
         loom_scf_to_cfg_region_stack_pop(&state->region_stack);
-    if (!region || loom_pass_has_error_diagnostics(state->pass)) break;
+    if (!region || loom_pass_has_error_diagnostics(state->pass)) {
+      break;
+    }
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
       IREE_RETURN_IF_ERROR(
@@ -1305,7 +1325,9 @@ static iree_status_t loom_scf_to_cfg_lower_frontier(
         break;
       }
     }
-    if (loom_pass_has_error_diagnostics(state->pass)) break;
+    if (loom_pass_has_error_diagnostics(state->pass)) {
+      break;
+    }
   }
   return loom_pass_has_error_diagnostics(state->pass)
              ? iree_ok_status()
@@ -1314,7 +1336,9 @@ static iree_status_t loom_scf_to_cfg_lower_frontier(
 
 iree_status_t loom_scf_to_cfg_run(loom_pass_t* pass, loom_module_t* module,
                                   loom_func_like_t function) {
-  if (!loom_func_like_body(function)) return iree_ok_status();
+  if (!loom_func_like_body(function)) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(
@@ -1339,11 +1363,17 @@ iree_status_t loom_scf_to_cfg_run(loom_pass_t* pass, loom_module_t* module,
     status = loom_pass_value_facts_acquire(
         pass, module, loom_pass_value_fact_scope_function(function),
         &state.fact_table);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     status = loom_scf_to_cfg_collect_frontier(&state, function);
-    if (!iree_status_is_ok(status) || state.frontier.count == 0) break;
+    if (!iree_status_is_ok(status) || state.frontier.count == 0) {
+      break;
+    }
     status = loom_scf_to_cfg_lower_frontier(&state);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     any_changed = true;
     loom_pass_value_fact_owner_invalidate(pass->value_facts);
   }

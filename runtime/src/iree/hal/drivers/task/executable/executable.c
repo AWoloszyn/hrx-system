@@ -118,7 +118,9 @@ iree_status_t iree_hal_task_executable_issue_dispatch_inline(
         status = iree_hal_task_executable_issue_call(
             executable, ordinal, dispatch_state, &workgroup_state,
             /*worker_id=*/0);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
       }
     }
   }

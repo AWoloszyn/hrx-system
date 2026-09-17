@@ -270,7 +270,9 @@ static bool loom_low_schedule_reg_class_is_state(
 static const uint16_t* loom_low_schedule_index_descriptor_operands(
     loom_low_schedule_build_state_t* state,
     const loom_low_descriptor_t* descriptor, uint16_t operand_count) {
-  if (descriptor == NULL) return NULL;
+  if (descriptor == NULL) {
+    return NULL;
+  }
   IREE_ASSERT_LE(operand_count, state->descriptor_operands.capacity);
   const bool has_variadic_operands =
       loom_low_descriptor_has_variadic_operands(descriptor);
@@ -283,7 +285,9 @@ static const uint16_t* loom_low_schedule_index_descriptor_operands(
     const loom_low_operand_t* operand =
         &state->target.descriptor_set
              ->operands[descriptor->operand_start + descriptor_operand_index];
-    if (!loom_low_operand_role_is_packet_operand(operand->role)) continue;
+    if (!loom_low_operand_role_is_packet_operand(operand->role)) {
+      continue;
+    }
     IREE_ASSERT_LT(operand->source_value_index, operand_count);
     state->descriptor_operands.indices[operand->source_value_index] =
         descriptor_operand_index;

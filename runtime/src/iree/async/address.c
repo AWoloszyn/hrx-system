@@ -121,9 +121,15 @@ iree_status_t iree_async_address_parse_ipv4(iree_string_view_t host,
 //===----------------------------------------------------------------------===//
 
 static inline int iree_hex_digit_value(char character) {
-  if (character >= '0' && character <= '9') return character - '0';
-  if (character >= 'a' && character <= 'f') return character - 'a' + 10;
-  if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+  if (character >= '0' && character <= '9') {
+    return character - '0';
+  }
+  if (character >= 'a' && character <= 'f') {
+    return character - 'a' + 10;
+  }
+  if (character >= 'A' && character <= 'F') {
+    return character - 'A' + 10;
+  }
   return -1;
 }
 
@@ -150,7 +156,9 @@ iree_status_t iree_async_address_parse_ipv6(iree_string_view_t host,
       }
       compression_index = group_count;
       position += 2;
-      if (position >= length) break;
+      if (position >= length) {
+        break;
+      }
       continue;
     }
 
@@ -194,7 +202,9 @@ iree_status_t iree_async_address_parse_ipv6(iree_string_view_t host,
     int digit_count = 0;
     while (position < length && digit_count < 4) {
       int digit = iree_hex_digit_value(data[position]);
-      if (digit < 0) break;
+      if (digit < 0) {
+        break;
+      }
       value = (value << 4) | (uint32_t)digit;
       ++digit_count;
       ++position;

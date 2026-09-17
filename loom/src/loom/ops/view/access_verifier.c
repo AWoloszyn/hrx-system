@@ -26,7 +26,9 @@ static uint16_t loom_view_access_dynamic_sentinel_count(
     loom_attribute_t values) {
   uint16_t dynamic_count = 0;
   for (uint16_t i = 0; i < values.count; ++i) {
-    if (values.i64_array[i] == INT64_MIN) ++dynamic_count;
+    if (values.i64_array[i] == INT64_MIN) {
+      ++dynamic_count;
+    }
   }
   return dynamic_count;
 }
@@ -37,7 +39,9 @@ static iree_status_t loom_view_access_verify_dynamic_index_count(
     uint16_t dynamic_count) {
   uint16_t expected_dynamic_count =
       loom_view_access_dynamic_sentinel_count(static_values);
-  if (dynamic_count == expected_dynamic_count) return iree_ok_status();
+  if (dynamic_count == expected_dynamic_count) {
+    return iree_ok_status();
+  }
 
   loom_diagnostic_param_t params[] = {
       loom_param_string(loom_op_name(module, op)),
@@ -53,7 +57,9 @@ static iree_status_t loom_view_access_verify_static_index_count_matches_rank(
     iree_string_view_t operand_name, loom_attribute_t static_values,
     loom_type_t shaped_type) {
   uint8_t rank = loom_type_rank(shaped_type);
-  if (static_values.count == rank) return iree_ok_status();
+  if (static_values.count == rank) {
+    return iree_ok_status();
+  }
 
   loom_diagnostic_param_t params[] = {
       loom_param_string(operand_name),
@@ -67,8 +73,12 @@ static iree_status_t loom_view_access_verify_static_index_count_matches_rank(
 static bool loom_view_access_static_index_in_bounds(loom_type_t view_type,
                                                     uint8_t axis,
                                                     int64_t static_index) {
-  if (static_index < 0) return false;
-  if (loom_type_dim_is_dynamic_at(view_type, axis)) return true;
+  if (static_index < 0) {
+    return false;
+  }
+  if (loom_type_dim_is_dynamic_at(view_type, axis)) {
+    return true;
+  }
   return static_index < loom_type_dim_static_size_at(view_type, axis);
 }
 
@@ -78,7 +88,9 @@ static bool loom_view_access_find_static_index_out_of_bounds(
   for (uint16_t i = 0; i < static_indices.count; ++i) {
     uint8_t axis = (uint8_t)i;
     int64_t static_index = static_indices.i64_array[i];
-    if (static_index == INT64_MIN) continue;
+    if (static_index == INT64_MIN) {
+      continue;
+    }
     if (loom_view_access_static_index_in_bounds(view_type, axis,
                                                 static_index)) {
       continue;
@@ -112,7 +124,9 @@ iree_status_t loom_view_verify_index_list_rank(
     uint16_t dynamic_index_count) {
   IREE_RETURN_IF_ERROR(loom_view_access_verify_dynamic_index_count(
       module, op, emitter, static_indices, dynamic_index_count));
-  if (!loom_type_is_view(view_type)) return iree_ok_status();
+  if (!loom_type_is_view(view_type)) {
+    return iree_ok_status();
+  }
   return loom_view_access_verify_static_index_count_matches_rank(
       op, emitter, view_field_name, static_indices, view_type);
 }
@@ -125,7 +139,9 @@ iree_status_t loom_view_verify_element_access(
   IREE_RETURN_IF_ERROR(loom_view_verify_index_list_rank(
       module, op, emitter, view_field_name, view_type, static_indices,
       dynamic_index_count));
-  if (!loom_type_is_view(view_type)) return iree_ok_status();
+  if (!loom_type_is_view(view_type)) {
+    return iree_ok_status();
+  }
 
   uint16_t out_of_bounds_axis = 0;
   int64_t out_of_bounds_index = 0;

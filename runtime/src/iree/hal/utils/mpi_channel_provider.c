@@ -105,7 +105,9 @@ IREE_API_EXPORT iree_status_t iree_hal_mpi_channel_provider_create(
 // Returns true if MPI has been initialized.
 static bool iree_hal_mpi_channel_provider_is_initialized(
     iree_hal_mpi_channel_provider_t* channel_provider) {
-  if (!channel_provider->library) return false;
+  if (!channel_provider->library) {
+    return false;
+  }
   int flag = 0;
   MPI_IGNORE_ERROR(&channel_provider->symbols, MPI_Initialized(&flag));
   return flag ? true : false;
@@ -148,7 +150,9 @@ IREE_API_EXPORT iree_hal_mpi_dynamic_symbols_t*
 iree_hal_mpi_channel_provider_symbols(
     iree_hal_channel_provider_t* base_channel_provider) {
   IREE_ASSERT_ARGUMENT(base_channel_provider);
-  if (!iree_hal_mpi_channel_provider_isa(base_channel_provider)) return NULL;
+  if (!iree_hal_mpi_channel_provider_isa(base_channel_provider)) {
+    return NULL;
+  }
   iree_hal_mpi_channel_provider_t* channel_provider =
       iree_hal_mpi_channel_provider_cast(base_channel_provider);
   return &channel_provider->symbols;

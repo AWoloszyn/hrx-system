@@ -511,7 +511,9 @@ TEST(VocabBuilderTest, SparseIdsConvBERTPattern) {
 
   // All tokens retrievable.
   for (int i = 0; i < 6; ++i) {
-    if (i == 4) continue;  // Gap.
+    if (i == 4) {
+      continue;  // Gap.
+    }
     std::string expected = "tok" + std::to_string(i);
     EXPECT_EQ(
         iree_tokenizer_vocab_lookup(

@@ -360,7 +360,9 @@ bool iree_hal_amdgpu_source_context_try_resolve_sanitizer_site(
     iree_hal_device_event_site_t* out_site) {
   IREE_ASSERT_ARGUMENT(out_site);
   *out_site = iree_hal_device_event_site_default();
-  if (!context || site_id > UINT32_MAX) return false;
+  if (!context || site_id > UINT32_MAX) {
+    return false;
+  }
   if (!iree_atomic_load(&context->sanitizer_site_table_published,
                         iree_memory_order_acquire)) {
     return false;
@@ -368,7 +370,9 @@ bool iree_hal_amdgpu_source_context_try_resolve_sanitizer_site(
 
   const iree_hal_amdgpu_source_context_site_table_t* table =
       &context->sanitizer_site_table;
-  if (!table->data || site_id >= table->row_count) return false;
+  if (!table->data || site_id >= table->row_count) {
+    return false;
+  }
 
   const uint8_t* record = table->data +
                           IREE_HAL_AMDGPU_LOOM_SITE_TABLE_HEADER_LENGTH +

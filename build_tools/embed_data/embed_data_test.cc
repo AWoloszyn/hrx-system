@@ -14,7 +14,9 @@
 
 static int expect_string(const char* label, const char* actual,
                          const char* expected) {
-  if (strcmp(actual, expected) == 0) return 0;
+  if (strcmp(actual, expected) == 0) {
+    return 0;
+  }
   fprintf(stderr, "%s: expected '%s', got '%s'\n", label, expected, actual);
   return 1;
 }
@@ -32,7 +34,9 @@ static int expect_data(const char* label, const iree_file_toc_t* entry,
 }
 
 static int expect_sentinel(const char* label, const iree_file_toc_t* entry) {
-  if (entry->name == NULL && entry->data == NULL && entry->size == 0) return 0;
+  if (entry->name == NULL && entry->data == NULL && entry->size == 0) {
+    return 0;
+  }
   fprintf(stderr, "%s: missing sentinel entry\n", label);
   return 1;
 }

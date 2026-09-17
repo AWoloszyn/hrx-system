@@ -86,7 +86,9 @@ static void process_with_flags(iree_tokenizer_bert_normalizer_flags_t flags,
     iree_string_view_t input_chunk = iree_make_string_view(
         reinterpret_cast<const char*>(data + offset), this_chunk);
 
-    if (total_written >= output_capacity) break;
+    if (total_written >= output_capacity) {
+      break;
+    }
     iree_mutable_string_view_t output_view = iree_make_mutable_string_view(
         output + total_written, output_capacity - total_written);
 
@@ -155,20 +157,26 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     // Extract flag bits from first byte to vary configuration.
     uint8_t flag_byte = data[0];
     base_flags = 0;
-    if (flag_byte & 0x01)
+    if (flag_byte & 0x01) {
       base_flags |= IREE_TOKENIZER_BERT_NORMALIZER_FLAG_CLEAN_TEXT;
-    if (flag_byte & 0x02)
+    }
+    if (flag_byte & 0x02) {
       base_flags |= IREE_TOKENIZER_BERT_NORMALIZER_FLAG_HANDLE_CHINESE_CHARS;
-    if (flag_byte & 0x04)
+    }
+    if (flag_byte & 0x04) {
       base_flags |= IREE_TOKENIZER_BERT_NORMALIZER_FLAG_STRIP_ACCENTS;
-    if (flag_byte & 0x08)
+    }
+    if (flag_byte & 0x08) {
       base_flags |= IREE_TOKENIZER_BERT_NORMALIZER_FLAG_LOWERCASE;
+    }
     // Skip the flag byte for actual input.
     data++;
     size--;
   }
 
-  if (size == 0) return 0;
+  if (size == 0) {
+    return 0;
+  }
 
   // Test with different chunk sizes.
   process_with_flags(base_flags, data, size, 1);     // Byte at a time.

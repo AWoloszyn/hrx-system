@@ -67,7 +67,9 @@ static bool loom_refine_boundaries_can_specialize_function(
 static bool loom_refine_boundaries_result_types_are_static(
     const loom_module_t* module, loom_value_slice_t results,
     uint16_t expected_result_count) {
-  if (results.count != expected_result_count) return false;
+  if (results.count != expected_result_count) {
+    return false;
+  }
   for (uint16_t i = 0; i < expected_result_count; ++i) {
     loom_value_id_t result = results.values[i];
     if (result == LOOM_VALUE_ID_INVALID || result >= module->values.count) {
@@ -200,7 +202,9 @@ static iree_status_t loom_refine_boundaries_collect_specialization_plans(
     iree_arena_allocator_t* arena, iree_arena_allocator_t* walk_arena,
     loom_refine_boundaries_specialization_plan_t** out_plans) {
   *out_plans = NULL;
-  if (graph->function_count == 0) return iree_ok_status();
+  if (graph->function_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_refine_boundaries_specialization_plan_t* plans = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -399,7 +403,9 @@ static iree_status_t loom_refine_boundaries_create_specializations(
   *out_specialization_count = 0;
   for (iree_host_size_t node = 0; node < graph->function_count; ++node) {
     loom_refine_boundaries_specialization_plan_t* plan = &plans[node];
-    if (plan->group_count < 2) continue;
+    if (plan->group_count < 2) {
+      continue;
+    }
 
     const loom_refine_boundaries_function_t* function_info =
         &graph->functions[node];
@@ -433,7 +439,9 @@ iree_status_t loom_refine_boundaries_specialize_internal_boundaries(
   loom_refine_boundaries_specialization_plan_t* plans = NULL;
   IREE_RETURN_IF_ERROR(loom_refine_boundaries_collect_specialization_plans(
       module, graph, arena, walk_arena, &plans));
-  if (!plans) return iree_ok_status();
+  if (!plans) {
+    return iree_ok_status();
+  }
   return loom_refine_boundaries_create_specializations(
       module, graph, plans, arena, out_specialization_count);
 }

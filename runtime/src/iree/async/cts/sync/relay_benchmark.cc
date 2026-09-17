@@ -119,7 +119,9 @@ static RelayContext* CreateRelayContext(const ProactorFactory& factory,
 }
 
 static void DestroyRelayContext(RelayContext* ctx) {
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Cleanup resources.
   WaitForRelayUnregistration(ctx->proactor, ctx->relay);
@@ -143,7 +145,9 @@ static void DestroyRelayContext(RelayContext* ctx) {
 static void BM_Throughput(::benchmark::State& state,
                           const ProactorFactory& factory) {
   auto* ctx = CreateRelayContext(factory, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   for (auto _ : state) {
     // Capture sink epoch before signaling.
@@ -174,7 +178,9 @@ static void BM_Throughput(::benchmark::State& state,
 static void BM_Latency(::benchmark::State& state,
                        const ProactorFactory& factory) {
   auto* ctx = CreateRelayContext(factory, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   for (auto _ : state) {
     // Capture sink epoch before signaling.
@@ -297,7 +303,9 @@ static ScalabilityContext* CreateScalabilityContext(
 }
 
 static void DestroyScalabilityContext(ScalabilityContext* ctx) {
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Cleanup resources.
   for (auto& channel : ctx->channels) {
@@ -320,7 +328,9 @@ static void BM_Scalability(::benchmark::State& state,
                            const ProactorFactory& factory,
                            size_t channel_count) {
   auto* ctx = CreateScalabilityContext(factory, channel_count, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Pre-allocate observed epochs array to avoid per-iteration allocation.
   std::vector<uint32_t> observed(channel_count);

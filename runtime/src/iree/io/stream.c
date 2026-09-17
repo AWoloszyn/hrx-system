@@ -130,7 +130,9 @@ IREE_API_EXPORT iree_status_t iree_io_stream_seek(
 IREE_API_EXPORT iree_status_t iree_io_stream_seek_to_alignment(
     iree_io_stream_t* stream, iree_io_stream_pos_t alignment) {
   IREE_ASSERT_ARGUMENT(stream);
-  if (alignment == 0) return iree_ok_status();
+  if (alignment == 0) {
+    return iree_ok_status();
+  }
   if (!iree_is_power_of_two_uint64(alignment)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "alignment %" PRIu64 " not a power of two",
@@ -155,12 +157,16 @@ iree_io_stream_read(iree_io_stream_t* stream, iree_host_size_t buffer_capacity,
                     void* buffer, iree_host_size_t* out_buffer_length) {
   IREE_ASSERT_ARGUMENT(stream);
   IREE_ASSERT_ARGUMENT(!buffer_capacity || buffer);
-  if (out_buffer_length) *out_buffer_length = 0;
+  if (out_buffer_length) {
+    *out_buffer_length = 0;
+  }
   IREE_RETURN_IF_ERROR(
       iree_io_stream_validate_mode(iree_io_stream_mode(stream),
                                    IREE_IO_STREAM_MODE_READABLE),
       "reading from the stream");
-  if (buffer_capacity == 0) return iree_ok_status();
+  if (buffer_capacity == 0) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (int64_t)buffer_capacity);
   iree_status_t status =
@@ -181,7 +187,9 @@ iree_io_stream_write(iree_io_stream_t* stream, iree_host_size_t buffer_length,
       iree_io_stream_validate_mode(iree_io_stream_mode(stream),
                                    IREE_IO_STREAM_MODE_WRITABLE),
       "writing to the stream");
-  if (!buffer_length) return iree_ok_status();
+  if (!buffer_length) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (int64_t)buffer_length);
   iree_status_t status = stream->vtable->write(stream, buffer_length, buffer);
@@ -196,7 +204,9 @@ iree_io_stream_write_char(iree_io_stream_t* stream, char c) {
 
 IREE_API_EXPORT iree_status_t iree_io_stream_write_string(
     iree_io_stream_t* stream, iree_string_view_t value) {
-  if (!value.size) return iree_ok_status();
+  if (!value.size) {
+    return iree_ok_status();
+  }
   return iree_io_stream_write(stream, value.size, value.data);
 }
 
@@ -220,7 +230,9 @@ iree_io_stream_fill(iree_io_stream_t* stream, iree_io_stream_pos_t count,
                               "unsupported fill pattern length: %" PRIhsz,
                               pattern_length);
   }
-  if (!count || !pattern_length) return iree_ok_status();
+  if (!count || !pattern_length) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (int64_t)count);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (int64_t)pattern_length);
@@ -272,7 +284,9 @@ IREE_API_EXPORT iree_status_t iree_io_stream_copy(
     iree_io_stream_pos_t length) {
   IREE_ASSERT_ARGUMENT(source_stream);
   IREE_ASSERT_ARGUMENT(target_stream);
-  if (!length) return iree_ok_status();
+  if (!length) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (int64_t)length);
 
@@ -285,7 +299,9 @@ IREE_API_EXPORT iree_status_t iree_io_stream_copy(
     iree_host_size_t read_length = 0;
     status =
         iree_io_stream_read(source_stream, block_length, buffer, &read_length);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     if (read_length != block_length) {
       status = iree_make_status(
           IREE_STATUS_OUT_OF_RANGE,
@@ -295,7 +311,9 @@ IREE_API_EXPORT iree_status_t iree_io_stream_copy(
       break;
     }
     status = iree_io_stream_write(target_stream, read_length, buffer);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     remaining_length -= read_length;
   }
 
@@ -347,7 +365,9 @@ IREE_API_EXPORT iree_status_t iree_io_stream_open(
               file_primitive.value.host_allocation.data + file_offset,
               file_primitive.value.host_allocation.data_length - file_offset),
           release_callback, host_allocator, &stream);
-      if (!iree_status_is_ok(status)) iree_io_file_handle_release(file_handle);
+      if (!iree_status_is_ok(status)) {
+        iree_io_file_handle_release(file_handle);
+      }
       break;
     }
     case IREE_IO_FILE_HANDLE_TYPE_FD: {

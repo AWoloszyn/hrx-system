@@ -35,13 +35,17 @@ bool loom_refine_boundaries_read_call(const loom_module_t* module,
   if (!loom_call_like_isa(call) ||
       !loom_refine_boundaries_call_kind_participates(
           loom_call_like_kind(call))) {
-    if (out_call) *out_call = (loom_call_like_t){0};
+    if (out_call) {
+      *out_call = (loom_call_like_t){0};
+    }
     *out_callee = loom_symbol_ref_null();
     *out_operands = (loom_value_slice_t){0};
     *out_results = (loom_value_slice_t){0};
     return false;
   }
-  if (out_call) *out_call = call;
+  if (out_call) {
+    *out_call = call;
+  }
   *out_callee = loom_call_like_callee(call);
   *out_operands = loom_call_like_operands(call);
   *out_results = loom_call_like_results(call);
@@ -56,7 +60,9 @@ bool loom_refine_boundaries_callee_node(
     return false;
   }
   iree_host_size_t node = graph->symbol_to_node[callee.symbol_id];
-  if (node == IREE_HOST_SIZE_MAX) return false;
+  if (node == IREE_HOST_SIZE_MAX) {
+    return false;
+  }
   *out_node = node;
   return true;
 }
@@ -222,7 +228,9 @@ iree_status_t loom_refine_boundaries_build_graph(
     }
     loom_func_like_t function =
         loom_func_like_cast(module, symbol->defining_op);
-    if (loom_func_like_body(function)) ++function_count;
+    if (loom_func_like_body(function)) {
+      ++function_count;
+    }
   }
 
   if (function_count == 0) {
@@ -245,7 +253,9 @@ iree_status_t loom_refine_boundaries_build_graph(
     }
     loom_func_like_t function =
         loom_func_like_cast(module, symbol->defining_op);
-    if (!loom_func_like_body(function)) continue;
+    if (!loom_func_like_body(function)) {
+      continue;
+    }
 
     loom_symbol_id_t symbol_id =
         (loom_symbol_id_t)(symbol - module->symbols.entries);

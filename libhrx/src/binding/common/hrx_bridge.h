@@ -35,7 +35,9 @@
 //===----------------------------------------------------------------------===//
 
 static inline iree_status_t hrx_to_iree_status(hrx_status_t s) {
-  if (hrx_status_is_ok(s)) return iree_ok_status();
+  if (hrx_status_is_ok(s)) {
+    return iree_ok_status();
+  }
   iree_status_code_t code = (iree_status_code_t)hrx_status_code(s);
   char* message_buf = NULL;
   size_t message_len = 0;
@@ -47,8 +49,12 @@ static inline iree_status_t hrx_to_iree_status(hrx_status_t s) {
   } else {
     iree_s = iree_status_from_code(code);
   }
-  if (message_buf) free(message_buf);
-  if (!hrx_status_is_ok(to_str_status)) hrx_status_ignore(to_str_status);
+  if (message_buf) {
+    free(message_buf);
+  }
+  if (!hrx_status_is_ok(to_str_status)) {
+    hrx_status_ignore(to_str_status);
+  }
   hrx_status_ignore(s);
   return iree_s;
 }
@@ -121,9 +127,13 @@ static inline iree_status_t hrx_buffer_create_from_hal(
   memset(buf, 0, sizeof(*buf));
   iree_atomic_ref_count_init(&buf->ref_count);
   buf->hal_buffer = hal_buffer;
-  if (hal_buffer) iree_hal_buffer_retain(hal_buffer);
+  if (hal_buffer) {
+    iree_hal_buffer_retain(hal_buffer);
+  }
   buf->device = device;
-  if (device) hrx_device_retain(device);
+  if (device) {
+    hrx_device_retain(device);
+  }
   buf->mem_type = mem_type;
   buf->size = size;
   buf->mapped_ptr = mapped_ptr;

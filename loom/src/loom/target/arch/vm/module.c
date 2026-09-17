@@ -25,18 +25,26 @@ static int loom_vm_signature_compare(const void* lhs_ptr, const void* rhs_ptr) {
   const loom_vm_module_function_t* rhs =
       *(const loom_vm_module_function_t* const*)rhs_ptr;
   int comparison = (int)lhs->argument_count - (int)rhs->argument_count;
-  if (comparison) return comparison;
+  if (comparison) {
+    return comparison;
+  }
   for (uint16_t i = 0; i < lhs->argument_count; ++i) {
     comparison = (int)lhs->signature.fields[i].kind_u16 -
                  (int)rhs->signature.fields[i].kind_u16;
-    if (comparison) return comparison;
+    if (comparison) {
+      return comparison;
+    }
   }
   comparison = (int)lhs->results.count - (int)rhs->results.count;
-  if (comparison) return comparison;
+  if (comparison) {
+    return comparison;
+  }
   for (uint16_t i = 0; i < lhs->results.count; ++i) {
     comparison = (int)lhs->signature.fields[lhs->argument_count + i].kind_u16 -
                  (int)rhs->signature.fields[rhs->argument_count + i].kind_u16;
-    if (comparison) return comparison;
+    if (comparison) {
+      return comparison;
+    }
   }
   return 0;
 }
@@ -127,7 +135,9 @@ static iree_status_t loom_vm_module_collect(
       rodata_symbols[rodata_count++] = (loom_symbol_id_t)i;
       continue;
     }
-    if (!loom_low_func_def_isa(op)) continue;
+    if (!loom_low_func_def_isa(op)) {
+      continue;
+    }
     loom_func_like_t function = loom_func_like_cast(module, op);
     const loom_string_id_t contract = loom_func_like_repr_contract(function);
     if (contract == LOOM_STRING_ID_INVALID ||

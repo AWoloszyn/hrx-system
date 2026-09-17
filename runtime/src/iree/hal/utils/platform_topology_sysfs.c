@@ -55,7 +55,9 @@ iree_host_size_t iree_hal_platform_query_numa_node_count_impl(void) {
         // Single node: "N".
         uint32_t node_id;
         if (iree_string_view_atoi_uint32(segment, &node_id)) {
-          if (node_id > max_node_id) max_node_id = node_id;
+          if (node_id > max_node_id) {
+            max_node_id = node_id;
+          }
         }
       } else {
         // Range: "N-M".
@@ -63,7 +65,9 @@ iree_host_size_t iree_hal_platform_query_numa_node_count_impl(void) {
             iree_string_view_substr(segment, dash_pos + 1, IREE_HOST_SIZE_MAX);
         uint32_t end_node_id;
         if (iree_string_view_atoi_uint32(end_str, &end_node_id)) {
-          if (end_node_id > max_node_id) max_node_id = end_node_id;
+          if (end_node_id > max_node_id) {
+            max_node_id = end_node_id;
+          }
         }
       }
     }
@@ -121,7 +125,9 @@ bool iree_hal_platform_try_query_numa_distance_impl(uint8_t node_a,
       offset++;
     }
 
-    if (offset >= text.size) break;
+    if (offset >= text.size) {
+      break;
+    }
 
     // Find end of current number.
     iree_host_size_t number_start = offset;
@@ -253,7 +259,9 @@ iree_status_t iree_hal_platform_query_pcie_bdf_from_path_impl(
     while (offset < text.size) {
       iree_host_size_t line_end =
           iree_string_view_find_char(text, '\n', offset);
-      if (line_end == IREE_STRING_VIEW_NPOS) line_end = text.size;
+      if (line_end == IREE_STRING_VIEW_NPOS) {
+        line_end = text.size;
+      }
 
       iree_string_view_t line =
           iree_string_view_substr(text, offset, line_end - offset);

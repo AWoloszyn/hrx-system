@@ -130,7 +130,9 @@ static uint64_t loom_amdgpu_branch_layout_translate_offset(
 static iree_status_t loom_amdgpu_branch_layout_rebuild_physical_layout(
     loom_amdgpu_branch_layout_build_state_t* state) {
   state->group_count = 0;
-  if (state->node_count == 0) return iree_ok_status();
+  if (state->node_count == 0) {
+    return iree_ok_status();
+  }
   loom_amdgpu_branch_layout_sort_nodes(state);
 
   uint64_t inserted_byte_count = 0;
@@ -143,7 +145,9 @@ static iree_status_t loom_amdgpu_branch_layout_rebuild_physical_layout(
     while (sorted_node_index + group_node_count < state->node_count) {
       const uint32_t next_node_index =
           state->sorted_node_indices[sorted_node_index + group_node_count];
-      if (state->nodes[next_node_index].anchor_index != anchor_index) break;
+      if (state->nodes[next_node_index].anchor_index != anchor_index) {
+        break;
+      }
       ++group_node_count;
     }
     if (group_node_count > INT16_MAX) {
@@ -192,7 +196,9 @@ static bool loom_amdgpu_branch_layout_path_uses_anchor(
   while (node_index != LOOM_AMDGPU_BRANCH_ISLAND_NONE) {
     const loom_amdgpu_branch_layout_path_node_t* node =
         &state->nodes[node_index];
-    if (node->anchor_index == anchor_index) return true;
+    if (node->anchor_index == anchor_index) {
+      return true;
+    }
     node_index = node->next_node_index;
   }
   return false;
@@ -212,7 +218,9 @@ static uint32_t loom_amdgpu_branch_layout_select_midpoint_anchor(
   uint64_t selected_distance = UINT64_MAX;
   for (iree_host_size_t i = 0; i < state->input->anchor_count; ++i) {
     const uint64_t anchor_byte_offset = state->input->anchors[i].byte_offset;
-    if (anchor_byte_offset <= lower || anchor_byte_offset >= upper) continue;
+    if (anchor_byte_offset <= lower || anchor_byte_offset >= upper) {
+      continue;
+    }
     if (loom_amdgpu_branch_layout_path_uses_anchor(state, edge_index,
                                                    (uint32_t)i)) {
       continue;
@@ -230,7 +238,9 @@ static uint32_t loom_amdgpu_branch_layout_select_midpoint_anchor(
 
 static iree_status_t loom_amdgpu_branch_layout_grow_nodes(
     loom_amdgpu_branch_layout_build_state_t* state) {
-  if (state->node_count < state->node_capacity) return iree_ok_status();
+  if (state->node_count < state->node_capacity) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
       state->arena, state->node_count, state->node_count + 1,
       sizeof(*state->nodes), &state->node_capacity, (void**)&state->nodes));
@@ -316,7 +326,9 @@ static iree_status_t loom_amdgpu_branch_layout_relax_first_long_segment(
         *out_changed = true;
         return iree_ok_status();
       }
-      if (target_node_index == LOOM_AMDGPU_BRANCH_ISLAND_NONE) break;
+      if (target_node_index == LOOM_AMDGPU_BRANCH_ISLAND_NONE) {
+        break;
+      }
       source_node_index = target_node_index;
       const loom_amdgpu_branch_layout_path_node_t* source_node =
           &state->nodes[source_node_index];
@@ -359,7 +371,9 @@ static uint64_t loom_amdgpu_branch_layout_target_final_offset(
 static iree_status_t loom_amdgpu_branch_layout_export(
     const loom_amdgpu_branch_layout_build_state_t* state,
     loom_amdgpu_branch_layout_t* out_layout) {
-  if (state->node_count == 0) return iree_ok_status();
+  if (state->node_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_amdgpu_branch_layout_edge_t* edges = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -456,7 +470,9 @@ iree_status_t loom_amdgpu_branch_layout_build(
     const loom_amdgpu_branch_layout_input_t* input,
     iree_arena_allocator_t* arena, loom_amdgpu_branch_layout_t* out_layout) {
   *out_layout = (loom_amdgpu_branch_layout_t){0};
-  if (input->edge_count == 0) return iree_ok_status();
+  if (input->edge_count == 0) {
+    return iree_ok_status();
+  }
   if (input->byte_length > (uint64_t)INT64_MAX) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,
@@ -486,7 +502,9 @@ iree_status_t loom_amdgpu_branch_layout_build(
     bool changed = false;
     IREE_RETURN_IF_ERROR(
         loom_amdgpu_branch_layout_relax_first_long_segment(&state, &changed));
-    if (!changed) break;
+    if (!changed) {
+      break;
+    }
   }
   return loom_amdgpu_branch_layout_export(&state, out_layout);
 }

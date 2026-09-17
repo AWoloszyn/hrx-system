@@ -64,15 +64,21 @@ struct AllocationObserver {
     if (command == IREE_ALLOCATOR_COMMAND_FREE ||
         command == IREE_ALLOCATOR_COMMAND_REALLOC) {
       old_pointer = *pointer;
-      if (old_pointer != nullptr) old_size = observer.sizes.at(old_pointer);
+      if (old_pointer != nullptr) {
+        old_size = observer.sizes.at(old_pointer);
+      }
     }
     const iree_status_t status =
         delegate.ctl(delegate.self, command, parameters, pointer);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     if (command == IREE_ALLOCATOR_COMMAND_FREE ||
         command == IREE_ALLOCATOR_COMMAND_REALLOC) {
       observer.live_bytes -= old_size;
-      if (old_pointer != nullptr) observer.sizes.erase(old_pointer);
+      if (old_pointer != nullptr) {
+        observer.sizes.erase(old_pointer);
+      }
     }
     if (command == IREE_ALLOCATOR_COMMAND_MALLOC ||
         command == IREE_ALLOCATOR_COMMAND_CALLOC ||
@@ -104,12 +110,16 @@ std::string MakeSource(uint32_t chain_length, uint32_t component_count,
         "test.target<low_core> @target\n"
         "low.func.def target<test.low.core>(@target) @kernel(";
     for (uint32_t i = 0; i < component_count; ++i) {
-      if (i != 0) source += ", ";
+      if (i != 0) {
+        source += ", ";
+      }
       source += "%seed" + std::to_string(i) + ": " + type;
     }
     source += ") -> (";
     for (uint32_t i = 0; i < count; ++i) {
-      if (i != 0) source += ", ";
+      if (i != 0) {
+        source += ", ";
+      }
       source += type;
     }
     source += ") asm {\n";
@@ -125,7 +135,9 @@ std::string MakeSource(uint32_t chain_length, uint32_t component_count,
     }
     source += "  return ";
     for (uint32_t i = 0; i < count; ++i) {
-      if (i != 0) source += ", ";
+      if (i != 0) {
+        source += ", ";
+      }
       source += "%next" + std::to_string(i);
     }
     return source + "\n}\n";
@@ -140,14 +152,18 @@ std::string MakeSource(uint32_t chain_length, uint32_t component_count,
   }
   source += ") -> (";
   for (uint32_t i = 0; i < component_count; ++i) {
-    if (i != 0) source += ", ";
+    if (i != 0) {
+      source += ", ";
+    }
     source += type;
   }
   source += ") asm {\n";
   auto payload = [&](const std::string& prefix) {
     std::string text;
     for (uint32_t i = 0; i < component_count; ++i) {
-      if (i != 0) text += ", ";
+      if (i != 0) {
+        text += ", ";
+      }
       text += "%" + prefix + std::to_string(i) + ": " + type;
     }
     return text;
@@ -166,8 +182,9 @@ std::string MakeSource(uint32_t chain_length, uint32_t component_count,
   for (uint32_t branch = 0; branch < branches; ++branch) {
     std::string result_payload;
     result_names.clear();
-    if (shape == Shape::kBranch)
+    if (shape == Shape::kBranch) {
       source += branch == 0 ? "^left:\n" : "^right:\n";
+    }
     for (uint32_t component = 0; component < component_count; ++component) {
       std::string value = std::string(has_loop ? "%state" : "%seed") +
                           std::to_string(component);
@@ -200,7 +217,9 @@ std::string MakeSource(uint32_t chain_length, uint32_t component_count,
     source += "^exit:\n";
     result_names.clear();
     for (uint32_t i = 0; i < component_count; ++i) {
-      if (i != 0) result_names += ", ";
+      if (i != 0) {
+        result_names += ", ";
+      }
       result_names += "%state" + std::to_string(i);
     }
   }
@@ -269,7 +288,9 @@ class AllocationBenchmark {
   AllocationBenchmark& operator=(const AllocationBenchmark&) = delete;
 
   ~AllocationBenchmark() {
-    if (phase_ != Phase::kModel) loom_low_function_model_deinitialize(&model_);
+    if (phase_ != Phase::kModel) {
+      loom_low_function_model_deinitialize(&model_);
+    }
     iree_arena_deinitialize(&base_arena_);
     loom_module_free(module_);
     loom_context_deinitialize(&context_);
@@ -476,7 +497,9 @@ void RunBenchmark(benchmark::State& state, Shape shape, Phase phase) {
       for (int64_t components : {2, 4, 8, 16}) {
         registration->Args({64, components, 1});
       }
-      for (int64_t count : {64, 256, 1024}) registration->Args({count, 1, 4});
+      for (int64_t count : {64, 256, 1024}) {
+        registration->Args({count, 1, 4});
+      }
     }
   }
   return true;

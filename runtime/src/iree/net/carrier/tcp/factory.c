@@ -183,7 +183,9 @@ static void iree_net_tcp_listener_finish_stop(
     callback = listener->stopped_callback;
   }
   iree_slim_mutex_unlock(&listener->mutex);
-  if (callback.fn) callback.fn(callback.user_data);
+  if (callback.fn) {
+    callback.fn(callback.user_data);
+  }
 }
 
 static iree_status_t iree_net_tcp_listener_submit_accept_locked(
@@ -199,7 +201,9 @@ static iree_status_t iree_net_tcp_listener_submit_accept_locked(
   listener->accept_operation.listen_socket = listener->listen_socket;
   iree_status_t status = iree_async_proactor_submit_one(
       listener->proactor, &listener->accept_operation.base);
-  if (iree_status_is_ok(status)) listener->accept_pending = true;
+  if (iree_status_is_ok(status)) {
+    listener->accept_pending = true;
+  }
   return status;
 }
 
@@ -314,7 +318,9 @@ static void iree_net_tcp_listener_accept_complete(
     listener->accept_callback.fn(listener->accept_callback.user_data,
                                  rearm_status, NULL);
   }
-  if (is_final) iree_net_tcp_listener_finish_stop(listener);
+  if (is_final) {
+    iree_net_tcp_listener_finish_stop(listener);
+  }
 }
 
 static iree_status_t iree_net_tcp_listener_stop(
@@ -573,7 +579,9 @@ iree_status_t iree_net_tcp_factory_create(
   *out_factory = NULL;
   iree_net_tcp_factory_options_t default_options =
       iree_net_tcp_factory_options_default();
-  if (!options) options = &default_options;
+  if (!options) {
+    options = &default_options;
+  }
   IREE_RETURN_IF_ERROR(
       iree_net_tcp_connection_options_validate(&options->connection_options));
   if (options->receive_buffer_size == 0) {

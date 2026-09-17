@@ -83,7 +83,9 @@ IREE_API_EXPORT iree_status_t iree_vm_invocation_initialize(
 
 IREE_API_EXPORT void iree_vm_invocation_deinitialize(
     iree_vm_invocation_t* invocation) {
-  if (!invocation) return;
+  if (!invocation) {
+    return;
+  }
   IREE_ASSERT(iree_vm_invocation_is_idle(invocation));
   IREE_ASSERT(!invocation->is_allocated);
   memset(invocation, 0, sizeof(*invocation));
@@ -115,7 +117,9 @@ IREE_API_EXPORT iree_status_t iree_vm_invocation_allocate(
 }
 
 IREE_API_EXPORT void iree_vm_invocation_free(iree_vm_invocation_t* invocation) {
-  if (!invocation) return;
+  if (!invocation) {
+    return;
+  }
   IREE_ASSERT(iree_vm_invocation_is_idle(invocation));
   IREE_ASSERT(invocation->is_allocated);
   iree_vm_invocation_allocation_t* allocation =
@@ -475,7 +479,9 @@ iree_vm_invocation_validate_dispatch_outcome_slow(
     return iree_make_status(IREE_STATUS_INTERNAL,
                             "module callback returned an invalid outcome");
   }
-  if (has_call_request) return iree_ok_status();
+  if (has_call_request) {
+    return iree_ok_status();
+  }
   if (!has_continuation) {
     return iree_make_status(
         IREE_STATUS_INTERNAL,
@@ -624,7 +630,9 @@ iree_vm_invocation_drive_continuations(
       *out_outcome = IREE_VM_EXECUTION_OUTCOME_COMPLETED;
       return iree_ok_status();
     }
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     if (outcome == IREE_VM_EXECUTION_OUTCOME_COMPLETED ||
         call_request->linked_module) {
       continue;
@@ -823,7 +831,9 @@ IREE_API_EXPORT bool iree_vm_invocation_request_cancel(
   }
   const iree_vm_invocation_wake_callback_t wake_callback =
       invocation->wake_callback;
-  if (wake_callback.fn) wake_callback.fn(wake_callback.user_data);
+  if (wake_callback.fn) {
+    wake_callback.fn(wake_callback.user_data);
+  }
   return true;
 }
 
@@ -877,7 +887,9 @@ IREE_API_EXPORT iree_status_t iree_vm_invocation_start(
   iree_status_t status = iree_vm_invocation_preflight_root(
       invocation, program, function.target_bits, callable_abi, arguments,
       results, &has_external_borrowed_arguments);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   const iree_vm_call_packet_t root_packet = iree_vm_invocation_commit_root(
       invocation, IREE_VM_INVOCATION_OPERATION_CALL, process, callable_abi,
       arguments, wake_callback, has_external_borrowed_arguments);

@@ -392,7 +392,9 @@ static bool loom_amdgpu_atomic_source_describe(
       .result = LOOM_VALUE_ID_INVALID,
   };
   loom_memory_access_t access = loom_memory_access_cast(module, op);
-  if (!loom_memory_access_isa(access)) return false;
+  if (!loom_memory_access_isa(access)) {
+    return false;
+  }
   out_source->access = access;
 
   if (!loom_amdgpu_atomic_operation_kind_from_memory_access(
@@ -405,7 +407,9 @@ static bool loom_amdgpu_atomic_source_describe(
                                      ? loom_op_const_results(op)[0]
                                      : LOOM_VALUE_ID_INVALID;
   if (out_source->operation_kind == LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG) {
-    if (result == LOOM_VALUE_ID_INVALID) return false;
+    if (result == LOOM_VALUE_ID_INVALID) {
+      return false;
+    }
     out_source->ordering = loom_amdgpu_atomic_u8_attr(
         loom_memory_access_atomic_success_ordering(access));
     out_source->failure_ordering = loom_amdgpu_atomic_u8_attr(
@@ -584,7 +588,9 @@ static bool loom_amdgpu_atomic_scalar_source_shape(
 static bool loom_amdgpu_atomic_bitwise_scalar_source_shape(
     const loom_low_source_memory_access_plan_t* source,
     loom_type_t value_type) {
-  if (!loom_type_is_scalar(value_type)) return false;
+  if (!loom_type_is_scalar(value_type)) {
+    return false;
+  }
   const int32_t bit_count =
       loom_scalar_type_bitwidth(loom_type_element_type(value_type));
   return (bit_count == 32 || bit_count == 64) &&

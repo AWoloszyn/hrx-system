@@ -468,7 +468,9 @@ static iree_status_t loom_llvmir_emit_binary(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_llvmir_value_id_t lhs = loom_llvmir_emit_lookup_value(
       state, loom_op_const_operands(packet->op)[0]);
@@ -507,7 +509,9 @@ static iree_status_t loom_llvmir_emit_unary(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_llvmir_value_id_t input = loom_llvmir_emit_lookup_value(
       state, loom_op_const_operands(packet->op)[0]);
@@ -531,7 +535,9 @@ static iree_status_t loom_llvmir_emit_declare_same_type_intrinsic(
     loom_llvmir_type_id_t type_id, uint32_t parameter_count,
     loom_llvmir_function_t** out_function) {
   *out_function = loom_llvmir_module_find_function(state->llvmir_module, name);
-  if (*out_function != NULL) return iree_ok_status();
+  if (*out_function != NULL) {
+    return iree_ok_status();
+  }
 
   loom_llvmir_function_desc_t desc = {
       .kind = LOOM_LLVMIR_FUNCTION_DECLARATION,
@@ -565,7 +571,9 @@ static iree_status_t loom_llvmir_emit_binary_intrinsic(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t* operands = loom_op_const_operands(packet->op);
   loom_llvmir_value_id_t args[2] = {
@@ -608,7 +616,9 @@ static iree_status_t loom_llvmir_emit_unary_intrinsic(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_llvmir_value_id_t arg = loom_llvmir_emit_lookup_value(
       state, loom_op_const_operands(packet->op)[0]);
@@ -643,7 +653,9 @@ static iree_status_t loom_llvmir_emit_ternary_intrinsic(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t* operands = loom_op_const_operands(packet->op);
   loom_llvmir_value_id_t args[3] = {
@@ -687,7 +699,9 @@ static iree_status_t loom_llvmir_emit_compare(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_llvmir_value_id_t lhs = loom_llvmir_emit_lookup_value(
       state, loom_op_const_operands(packet->op)[0]);
@@ -737,7 +751,9 @@ static iree_status_t loom_llvmir_emit_cast(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_llvmir_value_id_t value = loom_llvmir_emit_lookup_value(
       state, loom_op_const_operands(packet->op)[0]);
@@ -768,7 +784,9 @@ static iree_status_t loom_llvmir_emit_select(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t* operands = loom_op_const_operands(packet->op);
   const loom_llvmir_value_id_t condition =

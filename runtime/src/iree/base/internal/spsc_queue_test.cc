@@ -680,7 +680,9 @@ TEST_F(SpscQueueTest, VariableSizeStress) {
       // Size varies from 1 to 128 bytes. The first 4 bytes are the sequence
       // number for verification.
       iree_host_size_t payload_size = (iree_host_size_t)(1 + (i % 128));
-      if (payload_size < sizeof(uint32_t)) payload_size = sizeof(uint32_t);
+      if (payload_size < sizeof(uint32_t)) {
+        payload_size = sizeof(uint32_t);
+      }
 
       uint8_t payload[128 + sizeof(uint32_t)];
       uint32_t sequence = (uint32_t)i;

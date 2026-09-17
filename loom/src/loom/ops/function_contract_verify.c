@@ -57,10 +57,14 @@ static bool loom_function_contract_signature_contains_value(
     const loom_value_id_t* result_ids, uint16_t result_count,
     loom_value_id_t value_id) {
   for (uint16_t i = 0; i < argument_count; ++i) {
-    if (argument_ids[i] == value_id) return true;
+    if (argument_ids[i] == value_id) {
+      return true;
+    }
   }
   for (uint16_t i = 0; i < result_count; ++i) {
-    if (result_ids[i] == value_id) return true;
+    if (result_ids[i] == value_id) {
+      return true;
+    }
   }
   return false;
 }
@@ -133,7 +137,9 @@ static iree_status_t loom_function_contract_verify_predicates(
   uint16_t predicate_count = 0;
   const loom_predicate_t* predicates =
       loom_func_like_predicates(function, &predicate_count);
-  if (predicate_count == 0) return iree_ok_status();
+  if (predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   uint16_t argument_count = 0;
   const loom_value_id_t* argument_ids =
@@ -148,7 +154,9 @@ static iree_status_t loom_function_contract_verify_predicates(
     }
     for (uint8_t argument_index = 0; argument_index < predicate->arg_count;
          ++argument_index) {
-      if (predicate->arg_tags[argument_index] != LOOM_PRED_ARG_VALUE) continue;
+      if (predicate->arg_tags[argument_index] != LOOM_PRED_ARG_VALUE) {
+        continue;
+      }
       const int64_t encoded_value_id = predicate->args[argument_index];
       if (encoded_value_id < 0 || encoded_value_id > UINT32_MAX) {
         return loom_function_contract_emit_predicate_origin_error(

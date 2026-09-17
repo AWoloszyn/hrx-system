@@ -97,9 +97,13 @@ class GreedyRewriteTest : public ::testing::Test {
 
 static iree_status_t pattern_one_to_two(const loom_pattern_t*, loom_op_t* op,
                                         loom_rewriter_t* rewriter) {
-  if (!loom_test_constant_isa(op)) return iree_ok_status();
+  if (!loom_test_constant_isa(op)) {
+    return iree_ok_status();
+  }
   int64_t value = loom_attr_as_i64(loom_op_attrs(op)[0]);
-  if (value != 1) return iree_ok_status();
+  if (value != 1) {
+    return iree_ok_status();
+  }
   loom_value_id_t old_result = loom_test_constant_result(op);
   loom_type_t type = loom_module_value_type(rewriter->module, old_result);
   loom_op_t* replacement = NULL;
@@ -116,9 +120,13 @@ static iree_status_t pattern_two_no_match(const loom_pattern_t*, loom_op_t*,
 
 static iree_status_t pattern_two_to_ten(const loom_pattern_t*, loom_op_t* op,
                                         loom_rewriter_t* rewriter) {
-  if (!loom_test_constant_isa(op)) return iree_ok_status();
+  if (!loom_test_constant_isa(op)) {
+    return iree_ok_status();
+  }
   int64_t value = loom_attr_as_i64(loom_op_attrs(op)[0]);
-  if (value != 2) return iree_ok_status();
+  if (value != 2) {
+    return iree_ok_status();
+  }
   loom_value_id_t old_result = loom_test_constant_result(op);
   loom_type_t type = loom_module_value_type(rewriter->module, old_result);
   loom_op_t* replacement = NULL;
@@ -130,9 +138,13 @@ static iree_status_t pattern_two_to_ten(const loom_pattern_t*, loom_op_t* op,
 
 static iree_status_t pattern_two_error(const loom_pattern_t*, loom_op_t* op,
                                        loom_rewriter_t*) {
-  if (!loom_test_constant_isa(op)) return iree_ok_status();
+  if (!loom_test_constant_isa(op)) {
+    return iree_ok_status();
+  }
   int64_t value = loom_attr_as_i64(loom_op_attrs(op)[0]);
-  if (value != 2) return iree_ok_status();
+  if (value != 2) {
+    return iree_ok_status();
+  }
   return iree_make_status(IREE_STATUS_INTERNAL, "pattern error on value 2");
 }
 

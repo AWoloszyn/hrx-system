@@ -70,7 +70,9 @@ static iree_status_t iree_vm_process_attach_modules(
           iree_vm_process_module_state(process, linked_module),
           process->host_allocator);
     }
-    if (iree_status_is_ok(status)) ++*out_attached_count;
+    if (iree_status_is_ok(status)) {
+      ++*out_attached_count;
+    }
   }
   return status;
 }
@@ -98,7 +100,9 @@ IREE_API_EXPORT void iree_vm_process_retain(iree_vm_process_t* process) {
 }
 
 IREE_API_EXPORT void iree_vm_process_release(iree_vm_process_t* process) {
-  if (!process) return;
+  if (!process) {
+    return;
+  }
   if (iree_atomic_ref_count_dec(&process->ref_count) == 1) {
     iree_vm_process_detach_modules(process,
                                    process->program->linked_module_count);
@@ -248,7 +252,9 @@ IREE_API_EXPORT iree_status_t iree_vm_process_create_start(
         invocation, program, program->initializer.target_bits,
         program->initializer.callable_abi, arguments,
         iree_vm_variant_span_empty(), &has_external_borrowed_arguments);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
   }
 
   iree_vm_process_t* process = NULL;
@@ -270,7 +276,9 @@ IREE_API_EXPORT iree_status_t iree_vm_process_create_start(
   iree_host_size_t attached_count = 0;
   status = iree_vm_process_attach_modules(process, &attached_count);
   if (!iree_status_is_ok(status)) {
-    if (program->initializer.target_bits) iree_vm_invocation_abort(invocation);
+    if (program->initializer.target_bits) {
+      iree_vm_invocation_abort(invocation);
+    }
     iree_vm_process_free_unpublished(process, attached_count);
     return status;
   }

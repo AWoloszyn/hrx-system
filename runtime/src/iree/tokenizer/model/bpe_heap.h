@@ -56,7 +56,9 @@ iree_tokenizer_make_bpe_heap_entry(uint32_t rank, uint32_t left_start_byte) {
 // for equal ranks (smaller start_byte = higher priority = leftmost first).
 static inline bool iree_tokenizer_bpe_heap_entry_less(
     iree_tokenizer_bpe_heap_entry_t a, iree_tokenizer_bpe_heap_entry_t b) {
-  if (a.rank != b.rank) return a.rank < b.rank;
+  if (a.rank != b.rank) {
+    return a.rank < b.rank;
+  }
   return a.left_start_byte < b.left_start_byte;
 }
 

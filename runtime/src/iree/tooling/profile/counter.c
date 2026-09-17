@@ -401,7 +401,9 @@ static iree_status_t iree_profile_counter_process_counter_set_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_profile_counter_set_t counter_set;
     status = iree_profile_counter_decode_counter_set_record(&typed_record,
@@ -425,7 +427,9 @@ static iree_status_t iree_profile_counter_process_counter_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_profile_counter_t counter;
     status = iree_profile_counter_decode_counter_record(context, &typed_record,
@@ -487,7 +491,9 @@ static const char* iree_profile_counter_sample_scope_name(
 
 static bool iree_profile_counter_sample_matches_id(
     const iree_hal_profile_counter_sample_record_t* sample, int64_t id_filter) {
-  if (id_filter < 0) return true;
+  if (id_filter < 0) {
+    return true;
+  }
   const uint64_t id = (uint64_t)id_filter;
   return sample->sample_id == id || sample->dispatch_event_id == id ||
          sample->submission_id == id || sample->command_buffer_id == id;
@@ -556,7 +562,9 @@ static void iree_profile_counter_print_sample_values_jsonl(
         ((iree_host_size_t)counter->record.sample_value_offset + i) *
         sizeof(raw_value);
     memcpy(&raw_value, sample_values + value_offset, sizeof(raw_value));
-    if (i != 0) fputc(',', file);
+    if (i != 0) {
+      fputc(',', file);
+    }
     fprintf(file, "%" PRIu64, raw_value);
   }
   fputc(']', file);
@@ -843,7 +851,9 @@ iree_status_t iree_profile_counter_process_sample_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     ++counter_context->total_sample_count;
 
@@ -853,7 +863,9 @@ iree_status_t iree_profile_counter_process_sample_records(
         sample_callback, &matched_sample);
     if (iree_status_is_ok(status) && matched_sample) {
       ++counter_context->matched_sample_count;
-      if (is_truncated) ++counter_context->truncated_sample_count;
+      if (is_truncated) {
+        ++counter_context->truncated_sample_count;
+      }
     }
   }
   return status;

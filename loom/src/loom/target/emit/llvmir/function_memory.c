@@ -526,7 +526,9 @@ static iree_status_t loom_llvmir_emit_alloca(
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
       state, packet, IREE_SV("base_alignment"), &has_base_alignment,
       &base_alignment));
-  if (!has_base_alignment) return iree_ok_status();
+  if (!has_base_alignment) {
+    return iree_ok_status();
+  }
 
   uint32_t pointer_address_space = 0;
   if (!loom_llvmir_emit_memory_space_address_space(
@@ -638,14 +640,18 @@ static iree_status_t loom_llvmir_emit_memory(
   loom_llvmir_value_id_t pointer = LOOM_LLVMIR_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_byte_pointer(
       state, packet, info, pointer_operand_index, base, &pointer));
-  if (pointer == LOOM_LLVMIR_VALUE_ID_INVALID) return iree_ok_status();
+  if (pointer == LOOM_LLVMIR_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   if (is_load) {
     loom_llvmir_type_id_t result_type = LOOM_LLVMIR_TYPE_ID_INVALID;
     loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
         state, packet, &result_type, &result_value));
-    if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+    if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+      return iree_ok_status();
+    }
 
     loom_llvmir_value_id_t llvmir_result = LOOM_LLVMIR_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_llvmir_build_load(
@@ -707,7 +713,9 @@ static iree_status_t loom_llvmir_emit_atomic(
     IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
         state, packet, IREE_SV("success_ordering"), &has_success_ordering,
         &success_ordering_attr));
-    if (!has_success_ordering) return iree_ok_status();
+    if (!has_success_ordering) {
+      return iree_ok_status();
+    }
     if (!loom_llvmir_emit_atomic_ordering(success_ordering_attr,
                                           &success_ordering)) {
       return loom_llvmir_emit_shape_diagnostic(
@@ -719,7 +727,9 @@ static iree_status_t loom_llvmir_emit_atomic(
     IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
         state, packet, IREE_SV("failure_ordering"), &has_failure_ordering,
         &failure_ordering_attr));
-    if (!has_failure_ordering) return iree_ok_status();
+    if (!has_failure_ordering) {
+      return iree_ok_status();
+    }
     if (!loom_llvmir_emit_atomic_ordering(failure_ordering_attr,
                                           &failure_ordering)) {
       return loom_llvmir_emit_shape_diagnostic(
@@ -731,7 +741,9 @@ static iree_status_t loom_llvmir_emit_atomic(
     bool has_ordering = false;
     IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
         state, packet, IREE_SV("ordering"), &has_ordering, &ordering_attr));
-    if (!has_ordering) return iree_ok_status();
+    if (!has_ordering) {
+      return iree_ok_status();
+    }
     if (!loom_llvmir_emit_atomic_ordering(ordering_attr, &success_ordering)) {
       return loom_llvmir_emit_shape_diagnostic(
           state, packet->op, IREE_SV("atomic_ordering"),
@@ -743,7 +755,9 @@ static iree_status_t loom_llvmir_emit_atomic(
   bool has_scope = false;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
       state, packet, IREE_SV("scope"), &has_scope, &scope_attr));
-  if (!has_scope) return iree_ok_status();
+  if (!has_scope) {
+    return iree_ok_status();
+  }
   iree_string_view_t sync_scope = iree_string_view_empty();
   if (!loom_llvmir_emit_atomic_sync_scope(scope_attr, &sync_scope)) {
     return loom_llvmir_emit_shape_diagnostic(
@@ -764,7 +778,9 @@ static iree_status_t loom_llvmir_emit_atomic(
   loom_llvmir_value_id_t pointer = LOOM_LLVMIR_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_byte_pointer(
       state, packet, &memory_info, pointer_operand_index, base, &pointer));
-  if (pointer == LOOM_LLVMIR_VALUE_ID_INVALID) return iree_ok_status();
+  if (pointer == LOOM_LLVMIR_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   loom_llvmir_type_id_t value_type = LOOM_LLVMIR_TYPE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_core_type(
@@ -842,7 +858,9 @@ static iree_status_t loom_llvmir_emit_atomic(
                                        .alignment = alignment,
                                    },
                                    &llvmir_result));
-  if (!returns_value) return iree_ok_status();
+  if (!returns_value) {
+    return iree_ok_status();
+  }
   loom_llvmir_emit_define_value(state, result_value, llvmir_result);
   return iree_ok_status();
 }

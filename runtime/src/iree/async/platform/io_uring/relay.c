@@ -456,7 +456,9 @@ static void iree_async_io_uring_relay_fill_unregistration_sqe(
 void iree_async_io_uring_unregister_relay(
     iree_async_proactor_io_uring_t* proactor, iree_async_relay_t* relay,
     iree_async_relay_unregistered_callback_t callback) {
-  if (!relay) return;
+  if (!relay) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   relay->unregistered_callback = callback;
@@ -526,7 +528,9 @@ void iree_async_io_uring_unregister_relay(
 void iree_async_io_uring_handle_relay_cqe(
     iree_async_proactor_io_uring_t* proactor, iree_async_relay_t* relay,
     int32_t result, uint32_t cqe_flags) {
-  if (!relay) return;
+  if (!relay) {
+    return;
+  }
 
   bool is_unregistering =
       relay->platform.io_uring.state ==
@@ -651,7 +655,9 @@ void iree_async_io_uring_handle_relay_cqe(
   // preserve their normal auto-cleanup contract.
   if (relay->platform.io_uring.state ==
       IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED) {
-    if (!is_persistent) iree_async_io_uring_relay_cleanup(proactor, relay);
+    if (!is_persistent) {
+      iree_async_io_uring_relay_cleanup(proactor, relay);
+    }
     return;
   }
 

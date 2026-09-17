@@ -48,7 +48,9 @@ static bool iree_hal_amdgpu_host_queue_can_use_agent_scope(
       IREE_HAL_SEMAPHORE_FLAG_HOST_INTERRUPT |
       IREE_HAL_SEMAPHORE_FLAG_EXPORTABLE |
       IREE_HAL_SEMAPHORE_FLAG_EXPORTABLE_TIMEPOINTS;
-  if (iree_any_bit_set(flags, public_flags)) return false;
+  if (iree_any_bit_set(flags, public_flags)) {
+    return false;
+  }
 
   return iree_hal_amdgpu_host_queue_family_affinity_is_same_agent(
       queue, iree_hal_amdgpu_semaphore_queue_family_affinity(semaphore));

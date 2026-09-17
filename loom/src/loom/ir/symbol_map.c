@@ -66,7 +66,9 @@ static iree_status_t loom_symbol_map_ensure_capacity(
   // Rehash live entries (skip tombstones — they are dropped).
   iree_host_size_t mask = new_capacity - 1;
   for (iree_host_size_t i = 0; i < old_capacity; ++i) {
-    if (!loom_symbol_map_slot_is_occupied(old_entries[i].name_id)) continue;
+    if (!loom_symbol_map_slot_is_occupied(old_entries[i].name_id)) {
+      continue;
+    }
     uint32_t hash = loom_symbol_map_hash(old_entries[i].name_id);
     iree_host_size_t slot = hash & mask;
     while (!loom_symbol_map_slot_is_empty(new_entries[slot].name_id)) {

@@ -314,7 +314,9 @@ TEST_F(CfgGraphTest, ReachabilityProofsForAllThreeBlockBinaryGraphs) {
             target_info.preorder < graph.blocks[earliest].preorder) {
           earliest = target;
         }
-        if (!target_info.reachable) continue;
+        if (!target_info.reachable) {
+          continue;
+        }
         EXPECT_EQ(info.component == target_info.component,
                   source == target ||
                       (reaches[source][target] && reaches[target][source]));

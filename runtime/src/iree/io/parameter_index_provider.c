@@ -593,7 +593,9 @@ static iree_status_t iree_io_parameter_op_batch_enqueue_file_read(
 static iree_status_t iree_io_parameter_op_batch_flush_file_read(
     iree_io_parameter_op_batch_t* batch,
     iree_io_parameter_file_transfer_t* transfer) {
-  if (!transfer->file) return iree_ok_status();
+  if (!transfer->file) {
+    return iree_ok_status();
+  }
   iree_status_t status = iree_io_parameter_op_batch_enqueue_file_read(
       batch, transfer->file, transfer->file_offset, transfer->buffer,
       transfer->buffer_offset, transfer->length, 0);
@@ -628,7 +630,9 @@ static iree_status_t iree_io_parameter_op_batch_enqueue_file_write(
 static iree_status_t iree_io_parameter_op_batch_flush_file_write(
     iree_io_parameter_op_batch_t* batch,
     iree_io_parameter_file_transfer_t* transfer) {
-  if (!transfer->file) return iree_ok_status();
+  if (!transfer->file) {
+    return iree_ok_status();
+  }
   iree_status_t status = iree_io_parameter_op_batch_enqueue_file_write(
       batch, transfer->buffer, transfer->buffer_offset, transfer->file,
       transfer->file_offset, transfer->length, 0);
@@ -953,7 +957,9 @@ static iree_status_t iree_io_parameter_transfer_batch_enqueue_file_read(
 static iree_status_t iree_io_parameter_transfer_batch_flush_file_read(
     iree_io_parameter_transfer_batch_t* batch, iree_host_size_t group_index,
     iree_io_parameter_file_transfer_t* transfer) {
-  if (!transfer->file) return iree_ok_status();
+  if (!transfer->file) {
+    return iree_ok_status();
+  }
   iree_status_t status = iree_io_parameter_transfer_batch_enqueue_file_read(
       batch, group_index, transfer->file, transfer->file_offset,
       transfer->buffer, transfer->buffer_offset, transfer->length, 0);
@@ -987,7 +993,9 @@ static iree_status_t iree_io_parameter_transfer_batch_enqueue_file_write(
 static iree_status_t iree_io_parameter_transfer_batch_flush_file_write(
     iree_io_parameter_transfer_batch_t* batch, iree_host_size_t group_index,
     iree_io_parameter_file_transfer_t* transfer) {
-  if (!transfer->file) return iree_ok_status();
+  if (!transfer->file) {
+    return iree_ok_status();
+  }
   iree_status_t status = iree_io_parameter_transfer_batch_enqueue_file_write(
       batch, group_index, transfer->buffer, transfer->buffer_offset,
       transfer->file, transfer->file_offset, transfer->length, 0);
@@ -1012,7 +1020,9 @@ static iree_status_t iree_io_parameter_transfer_batch_complete_group(
   iree_host_size_t wait_count = 0;
   for (iree_host_size_t i = 0; i < batch->concurrency; ++i) {
     const uint8_t timeline_bit = (uint8_t)(1u << i);
-    if (!iree_all_bits_set(group->timeline_mask, timeline_bit)) continue;
+    if (!iree_all_bits_set(group->timeline_mask, timeline_bit)) {
+      continue;
+    }
     wait_semaphores[wait_count] = batch->timeline_semaphores[i];
     wait_values[wait_count++] = group->timeline_values[i];
   }
@@ -1214,7 +1224,9 @@ static iree_status_t iree_io_parameter_index_provider_load(
     iree_hal_buffer_release(target_buffer);
 
     IREE_TRACE_ZONE_END(z_entry);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   // Flush any outstanding batch operations and end the batch.
@@ -1311,7 +1323,9 @@ static iree_status_t iree_io_parameter_index_provider_gather(
     iree_hal_file_release(source_file);
 
     IREE_TRACE_ZONE_END(z_entry);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
   if (iree_status_is_ok(status)) {
     status =
@@ -1438,7 +1452,9 @@ static iree_status_t iree_io_parameter_index_provider_gather_batch(
 
       iree_hal_file_release(source_file);
       IREE_TRACE_ZONE_END(z_entry);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
     if (iree_status_is_ok(status)) {
       status = iree_io_parameter_transfer_batch_flush_file_read(
@@ -1529,7 +1545,9 @@ static iree_status_t iree_io_parameter_index_provider_scatter(
     iree_hal_file_release(target_file);
 
     IREE_TRACE_ZONE_END(z_entry);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
   if (iree_status_is_ok(status)) {
     status = iree_io_parameter_op_batch_flush_file_write(&batch,
@@ -1645,7 +1663,9 @@ static iree_status_t iree_io_parameter_index_provider_scatter_batch(
 
       iree_hal_file_release(target_file);
       IREE_TRACE_ZONE_END(z_entry);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
     if (iree_status_is_ok(status)) {
       status = iree_io_parameter_transfer_batch_flush_file_write(

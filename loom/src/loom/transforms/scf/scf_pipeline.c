@@ -148,7 +148,9 @@ static iree_status_t loom_scf_pipeline_reject(loom_pass_t* pass,
 static iree_status_t loom_scf_pipeline_report(
     loom_scf_pipeline_context_t* context, iree_host_size_t loop_ordinal,
     uint32_t depth, const loom_scf_pipeline_plan_t* plan) {
-  if (!loom_pass_report_is_enabled(context->pass)) return iree_ok_status();
+  if (!loom_pass_report_is_enabled(context->pass)) {
+    return iree_ok_status();
+  }
   loom_pass_report_detail_field_t fields[] = {
       loom_pass_report_detail_uint64_field(IREE_SV("loop"), loop_ordinal),
       loom_pass_report_detail_string_field(
@@ -194,7 +196,9 @@ static iree_status_t loom_scf_pipeline_retain(
   loom_function_version_owner_t* owner =
       loom_target_pass_capability_function_version_owner(
           loom_target_pass_capability_from_pass(context->pass));
-  if (!version || !owner) return iree_ok_status();
+  if (!version || !owner) {
+    return iree_ok_status();
+  }
 
   loom_source_loop_pipeline_t* observation = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate(owner->arena, sizeof(*observation),
@@ -295,7 +299,9 @@ static iree_status_t loom_scf_pipeline_emit_stage(
     loom_scf_pipeline_context_t* context, const loom_scf_pipeline_plan_t* plan,
     loom_scf_pipeline_stage_t stage, loom_ir_remap_t* remap) {
   for (uint32_t i = 0; i < plan->body.count; ++i) {
-    if (plan->stages[i] != stage) continue;
+    if (plan->stages[i] != stage) {
+      continue;
+    }
     loom_op_t* clone = NULL;
     IREE_RETURN_IF_ERROR(loom_ir_clone_op(&context->rewriter->builder,
                                           plan->body.operations[i].op, remap,
@@ -619,7 +625,9 @@ static iree_status_t loom_scf_pipeline_process_loop(
 
 iree_status_t loom_scf_pipeline_run(loom_pass_t* pass, loom_module_t* module,
                                     loom_func_like_t function) {
-  if (!loom_func_like_body(function)) return iree_ok_status();
+  if (!loom_func_like_body(function)) {
+    return iree_ok_status();
+  }
   loom_scf_pipeline_loop_list_t loops = {.arena = pass->arena};
   loom_walk_result_t result = LOOM_WALK_CONTINUE;
   IREE_RETURN_IF_ERROR(loom_walk_function(
@@ -627,7 +635,9 @@ iree_status_t loom_scf_pipeline_run(loom_pass_t* pass, loom_module_t* module,
       (loom_walk_callback_t){.fn = loom_scf_pipeline_collect_loop,
                              .user_data = &loops},
       pass->arena, &result));
-  if (loops.count == 0) return iree_ok_status();
+  if (loops.count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       loom_scf_pipeline_resolve_facts(pass, module, function, &loops));
   loom_rewriter_t rewriter;

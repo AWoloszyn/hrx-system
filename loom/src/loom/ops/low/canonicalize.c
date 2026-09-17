@@ -18,7 +18,9 @@ static loom_op_t* loom_low_defining_op(loom_rewriter_t* rewriter,
     return NULL;
   }
   loom_value_t* value = loom_module_value(rewriter->module, value_id);
-  if (loom_value_is_block_arg(value)) return NULL;
+  if (loom_value_is_block_arg(value)) {
+    return NULL;
+  }
   return loom_value_def_op(value);
 }
 
@@ -34,11 +36,15 @@ static bool loom_low_slice_matches_concat_source(loom_rewriter_t* rewriter,
                                                  loom_value_id_t* out_source) {
   *out_source = LOOM_VALUE_ID_INVALID;
   const int64_t slice_offset = loom_low_slice_offset(slice_op);
-  if (slice_offset < 0) return false;
+  if (slice_offset < 0) {
+    return false;
+  }
 
   const loom_type_t slice_type =
       loom_module_value_type(rewriter->module, loom_low_slice_result(slice_op));
-  if (!loom_type_is_register(slice_type)) return false;
+  if (!loom_type_is_register(slice_type)) {
+    return false;
+  }
   const uint32_t slice_unit_count =
       loom_low_register_type_unit_count(slice_type);
 
@@ -48,7 +54,9 @@ static bool loom_low_slice_matches_concat_source(loom_rewriter_t* rewriter,
     const loom_value_id_t source = sources.values[i];
     const loom_type_t source_type =
         loom_module_value_type(rewriter->module, source);
-    if (!loom_type_is_register(source_type)) return false;
+    if (!loom_type_is_register(source_type)) {
+      return false;
+    }
 
     const uint32_t source_unit_count =
         loom_low_register_type_unit_count(source_type);
@@ -58,7 +66,9 @@ static bool loom_low_slice_matches_concat_source(loom_rewriter_t* rewriter,
       *out_source = source;
       return true;
     }
-    if (source_unit_count > UINT32_MAX - source_offset) return false;
+    if (source_unit_count > UINT32_MAX - source_offset) {
+      return false;
+    }
     source_offset += source_unit_count;
   }
   return false;
@@ -136,13 +146,17 @@ iree_status_t loom_low_slice_canonicalize(loom_op_t* op,
     bool changed = false;
     IREE_RETURN_IF_ERROR(loom_low_slice_canonicalize_concat_slice(
         op, rewriter, source_op, &changed));
-    if (changed) return iree_ok_status();
+    if (changed) {
+      return iree_ok_status();
+    }
   }
   if (loom_low_slice_isa(source_op)) {
     bool changed = false;
     IREE_RETURN_IF_ERROR(loom_low_slice_canonicalize_nested_slice(
         op, rewriter, source_op, &changed));
-    if (changed) return iree_ok_status();
+    if (changed) {
+      return iree_ok_status();
+    }
   }
   return iree_ok_status();
 }

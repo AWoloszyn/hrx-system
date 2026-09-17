@@ -101,7 +101,9 @@ __attribute__((destructor)) static void passthrough_fini(void) {
 
 // Intercepted functions with logging
 __attribute__((visibility("default"))) int hipInit(unsigned int flags) {
-  if (!real_hipInit) return 1;
+  if (!real_hipInit) {
+    return 1;
+  }
   int ret = real_hipInit(flags);
   if (g_log_file) {
     fprintf(g_log_file, "hipInit(flags=0x%x) -> %d\n", flags, ret);
@@ -111,7 +113,9 @@ __attribute__((visibility("default"))) int hipInit(unsigned int flags) {
 }
 
 __attribute__((visibility("default"))) int hipGetDevice(int* deviceId) {
-  if (!real_hipGetDevice) return 1;
+  if (!real_hipGetDevice) {
+    return 1;
+  }
   int ret = real_hipGetDevice(deviceId);
   if (g_log_file) {
     fprintf(g_log_file, "hipGetDevice() -> device=%d, ret=%d\n",
@@ -122,7 +126,9 @@ __attribute__((visibility("default"))) int hipGetDevice(int* deviceId) {
 }
 
 __attribute__((visibility("default"))) int hipGetDeviceCount(int* count) {
-  if (!real_hipGetDeviceCount) return 1;
+  if (!real_hipGetDeviceCount) {
+    return 1;
+  }
   int ret = real_hipGetDeviceCount(count);
   if (g_log_file) {
     fprintf(g_log_file, "hipGetDeviceCount() -> count=%d, ret=%d\n",
@@ -133,7 +139,9 @@ __attribute__((visibility("default"))) int hipGetDeviceCount(int* count) {
 }
 
 __attribute__((visibility("default"))) int hipSetDevice(int deviceId) {
-  if (!real_hipSetDevice) return 1;
+  if (!real_hipSetDevice) {
+    return 1;
+  }
   int ret = real_hipSetDevice(deviceId);
   if (g_log_file) {
     fprintf(g_log_file, "hipSetDevice(%d) -> %d\n", deviceId, ret);
@@ -143,7 +151,9 @@ __attribute__((visibility("default"))) int hipSetDevice(int deviceId) {
 }
 
 __attribute__((visibility("default"))) int hipDeviceSynchronize(void) {
-  if (!real_hipDeviceSynchronize) return 1;
+  if (!real_hipDeviceSynchronize) {
+    return 1;
+  }
   int ret = real_hipDeviceSynchronize();
   if (g_log_file) {
     fprintf(g_log_file, "hipDeviceSynchronize() -> %d\n", ret);
@@ -153,7 +163,9 @@ __attribute__((visibility("default"))) int hipDeviceSynchronize(void) {
 }
 
 __attribute__((visibility("default"))) int hipMalloc(void** ptr, size_t size) {
-  if (!real_hipMalloc) return 1;
+  if (!real_hipMalloc) {
+    return 1;
+  }
   int ret = real_hipMalloc(ptr, size);
   if (g_log_file) {
     fprintf(g_log_file, "hipMalloc(size=%zu) -> ptr=%p, ret=%d\n", size,
@@ -164,7 +176,9 @@ __attribute__((visibility("default"))) int hipMalloc(void** ptr, size_t size) {
 }
 
 __attribute__((visibility("default"))) int hipFree(void* ptr) {
-  if (!real_hipFree) return 1;
+  if (!real_hipFree) {
+    return 1;
+  }
   int ret = real_hipFree(ptr);
   if (g_log_file) {
     fprintf(g_log_file, "hipFree(%p) -> %d\n", ptr, ret);
@@ -175,7 +189,9 @@ __attribute__((visibility("default"))) int hipFree(void* ptr) {
 
 __attribute__((visibility("default"))) int hipMemcpy(void* dst, const void* src,
                                                      size_t size, int kind) {
-  if (!real_hipMemcpy) return 1;
+  if (!real_hipMemcpy) {
+    return 1;
+  }
   int ret = real_hipMemcpy(dst, src, size, kind);
   if (g_log_file) {
     const char* kind_str = "unknown";

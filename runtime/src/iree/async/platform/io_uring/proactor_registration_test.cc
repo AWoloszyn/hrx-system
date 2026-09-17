@@ -123,7 +123,9 @@ INSTANTIATE_TEST_SUITE_P(FaultPosition, SlabRegistrationFaultTest,
 TEST_F(SlabRegistrationTest, PinLimitReleasesPartialRegistration) {
   constexpr rlim_t kMaxPinLimit = 8 * 1024 * 1024;
   struct rlimit limit = original_limit_;
-  if (limit.rlim_cur > kMaxPinLimit) limit.rlim_cur = kMaxPinLimit;
+  if (limit.rlim_cur > kMaxPinLimit) {
+    limit.rlim_cur = kMaxPinLimit;
+  }
   const iree_host_size_t buffer_count = limit.rlim_cur / page_size_ + 1;
   ASSERT_NO_FATAL_FAILURE(CreateSlab(page_size_, buffer_count));
   ASSERT_EQ(setrlimit(RLIMIT_MEMLOCK, &limit), 0);

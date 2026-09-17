@@ -89,7 +89,9 @@ static iree_status_t loom_local_value_domain_for_each_value_type_ref(
     loom_local_value_domain_value_callback_t visitor) {
   loom_type_use_id_t use_id =
       loom_module_value_first_outgoing_type_use(module, user_value_id);
-  if (use_id == LOOM_TYPE_USE_ID_INVALID) return iree_ok_status();
+  if (use_id == LOOM_TYPE_USE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   // Records are inserted at the adjacency head, so find the oldest record and
   // walk back toward the head to retain the type walk's structural order.

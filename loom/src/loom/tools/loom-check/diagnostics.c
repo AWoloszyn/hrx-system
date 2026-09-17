@@ -102,8 +102,12 @@ static bool loom_check_diagnostic_resolve_location(
     const loom_check_diagnostic_emitter_capture_t* capture,
     const loom_module_t* module, const loom_op_t* op,
     loom_source_range_t* out_source_location) {
-  if (!capture || !op) return false;
-  if (!module) module = capture->module;
+  if (!capture || !op) {
+    return false;
+  }
+  if (!module) {
+    module = capture->module;
+  }
   if (!module || !loom_source_resolve(capture->source_resolver, module,
                                       op->location, out_source_location)) {
     return false;
@@ -123,7 +127,9 @@ static iree_host_size_t loom_check_diagnostic_collect_related_locations(
     loom_diagnostic_related_location_t* out_related_locations,
     iree_host_size_t* out_omitted_count) {
   *out_omitted_count = 0;
-  if (!related_ops || related_op_count == 0) return 0;
+  if (!related_ops || related_op_count == 0) {
+    return 0;
+  }
   iree_host_size_t related_location_count = 0;
   for (iree_host_size_t i = 0; i < related_op_count; ++i) {
     loom_source_range_t source_location = {
@@ -259,7 +265,9 @@ iree_status_t loom_check_diagnostic_collector_emit_case_source(
     const loom_test_case_t* test_case, iree_string_view_t filename,
     loom_emitter_t emitter, const loom_error_def_t* error,
     const loom_diagnostic_param_t* params, iree_host_size_t param_count) {
-  if (!collector) return iree_ok_status();
+  if (!collector) {
+    return iree_ok_status();
+  }
   if (!test_case || !error) {
     return iree_make_status(IREE_STATUS_INTERNAL,
                             "case-source diagnostic emission is malformed");
@@ -342,7 +350,9 @@ static bool loom_check_find_input_line_start(
     loom_test_source_range_t* out_range, iree_string_view_t* out_indentation) {
   *out_indentation = iree_string_view_empty();
 
-  if (target_line == 0 || !test_case->input.data) return false;
+  if (target_line == 0 || !test_case->input.data) {
+    return false;
+  }
 
   iree_string_view_t scanner = test_case->input;
   iree_host_size_t line_number = 1;
@@ -382,7 +392,9 @@ static bool loom_check_find_input_line_start(
       *out_indentation = iree_string_view_substr(line, 0, indentation_length);
       return true;
     }
-    if (iree_string_view_is_empty(scanner)) break;
+    if (iree_string_view_is_empty(scanner)) {
+      break;
+    }
 
     intptr_t newline = iree_string_view_find_char(scanner, '\n', 0);
     if (newline < 0) {
@@ -474,7 +486,9 @@ static iree_status_t loom_check_build_annotation_edits(
     bool annotation_matched = false;
     IREE_RETURN_IF_ERROR(loom_check_file_report_annotation_matched(
         report, case_index, a, &annotation_matched));
-    if (annotation_matched) continue;
+    if (annotation_matched) {
+      continue;
+    }
     const loom_test_annotation_t* annotation = &annotations[a];
     loom_test_source_range_t delete_range =
         loom_check_annotation_delete_range(test_case, annotation);
@@ -485,7 +499,9 @@ static iree_status_t loom_check_build_annotation_edits(
 
   for (iree_host_size_t d = 0; d < diagnostic_count; ++d) {
     const loom_check_collected_diagnostic_t* diagnostic = &diagnostics[d];
-    if (diagnostic->matched || diagnostic->origin_line == 0) continue;
+    if (diagnostic->matched || diagnostic->origin_line == 0) {
+      continue;
+    }
     if (loom_check_previous_unmatched_diagnostic_on_line(
             diagnostics, d, diagnostic->origin_line)) {
       continue;
@@ -538,7 +554,9 @@ static iree_status_t loom_check_assemble_diagnostic_match_detail(
     bool annotation_matched = false;
     IREE_RETURN_IF_ERROR(loom_check_file_report_annotation_matched(
         report, case_index, a, &annotation_matched));
-    if (annotation_matched) continue;
+    if (annotation_matched) {
+      continue;
+    }
     const loom_test_annotation_t* annotation = &annotations[a];
     const char* severity_name =
         loom_diagnostic_severity_name(annotation->severity);
@@ -573,7 +591,9 @@ static iree_status_t loom_check_assemble_diagnostic_match_detail(
   }
 
   for (iree_host_size_t d = 0; d < diagnostic_count; ++d) {
-    if (diagnostics[d].matched) continue;
+    if (diagnostics[d].matched) {
+      continue;
+    }
     const loom_check_collected_diagnostic_t* diagnostic = &diagnostics[d];
     const char* severity_name =
         loom_diagnostic_severity_name(diagnostic->severity);

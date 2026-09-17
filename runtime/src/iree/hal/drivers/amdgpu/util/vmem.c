@@ -26,8 +26,12 @@ static hsa_status_t iree_hal_amdgpu_find_global_memory_pool_iterator(
   hsa_region_segment_t segment = 0;
   hsa_status_t hsa_status = iree_hsa_amd_memory_pool_get_info_raw(
       state->libhsa, memory_pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment);
-  if (hsa_status != HSA_STATUS_SUCCESS) return hsa_status;
-  if (segment != HSA_REGION_SEGMENT_GLOBAL) return HSA_STATUS_SUCCESS;
+  if (hsa_status != HSA_STATUS_SUCCESS) {
+    return hsa_status;
+  }
+  if (segment != HSA_REGION_SEGMENT_GLOBAL) {
+    return HSA_STATUS_SUCCESS;
+  }
 
   // Must be able to allocate. This should be true for any pool we query that
   // matches the other flags. Workgroup-private pools won't have this set.
@@ -35,15 +39,21 @@ static hsa_status_t iree_hal_amdgpu_find_global_memory_pool_iterator(
   hsa_status = iree_hsa_amd_memory_pool_get_info_raw(
       state->libhsa, memory_pool,
       HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_ALLOWED, &alloc_allowed);
-  if (hsa_status != HSA_STATUS_SUCCESS) return hsa_status;
-  if (!alloc_allowed) return HSA_STATUS_SUCCESS;
+  if (hsa_status != HSA_STATUS_SUCCESS) {
+    return hsa_status;
+  }
+  if (!alloc_allowed) {
+    return HSA_STATUS_SUCCESS;
+  }
 
   // Match if flags are present.
   uint32_t global_flags = 0;
   hsa_status = iree_hsa_amd_memory_pool_get_info_raw(
       state->libhsa, memory_pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS,
       &global_flags);
-  if (hsa_status != HSA_STATUS_SUCCESS) return hsa_status;
+  if (hsa_status != HSA_STATUS_SUCCESS) {
+    return hsa_status;
+  }
   if (global_flags & state->match_flags) {
     state->best_pool = memory_pool;
     return HSA_STATUS_INFO_BREAK;
@@ -375,7 +385,9 @@ iree_status_t iree_hal_amdgpu_vmem_ringbuffer_initialize(
     status =
         iree_hsa_amd_vmem_set_access(IREE_LIBHSA(libhsa), va_offsets[i],
                                      capacity, access_descs, access_desc_count);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   if (!iree_status_is_ok(status)) {

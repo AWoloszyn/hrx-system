@@ -33,22 +33,32 @@ static void test_with_config(const uint8_t* data, size_t size,
                              iree_string_view_t pad_token,
                              iree_string_view_t word_delimiter_token,
                              bool cleanup) {
-  if (size < 2) return;
+  if (size < 2) {
+    return;
+  }
 
   iree_host_size_t pos = 0;
 
   // Parse token list.
   iree_host_size_t token_count = data[pos++];
-  if (token_count > kMaxTokens) token_count = kMaxTokens;
-  if (token_count == 0) return;
+  if (token_count > kMaxTokens) {
+    token_count = kMaxTokens;
+  }
+  if (token_count == 0) {
+    return;
+  }
 
   iree_string_view_t tokens[kMaxTokens];
   iree_host_size_t actual_token_count = 0;
 
   for (iree_host_size_t i = 0; i < token_count && pos < size; ++i) {
     iree_host_size_t length = data[pos++];
-    if (length > kMaxTokenLength) length = kMaxTokenLength;
-    if (pos + length > size) length = size - pos;
+    if (length > kMaxTokenLength) {
+      length = kMaxTokenLength;
+    }
+    if (pos + length > size) {
+      length = size - pos;
+    }
 
     tokens[actual_token_count] = iree_make_string_view(
         reinterpret_cast<const char*>(data + pos), length);
@@ -56,7 +66,9 @@ static void test_with_config(const uint8_t* data, size_t size,
     ++actual_token_count;
   }
 
-  if (actual_token_count == 0) return;
+  if (actual_token_count == 0) {
+    return;
+  }
 
   // Allocate decoder.
   iree_tokenizer_decoder_t* decoder = NULL;
@@ -140,7 +152,9 @@ static void test_with_config(const uint8_t* data, size_t size,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 2) return 0;
+  if (size < 2) {
+    return 0;
+  }
 
   // Test with standard CTC tokens.
   test_with_config(data, size, iree_make_cstring_view("<pad>"),

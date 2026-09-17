@@ -75,7 +75,9 @@ class LowMemoryAccessIrTest : public ::testing::Test {
   loom_op_t* FindLowFunction(loom_module_t* module) {
     loom_op_t* op = nullptr;
     loom_block_for_each_op(loom_region_entry_block(module->body), op) {
-      if (loom_low_func_def_isa(op)) return op;
+      if (loom_low_func_def_isa(op)) {
+        return op;
+      }
     }
     ADD_FAILURE() << "low function not found";
     return nullptr;
@@ -85,7 +87,9 @@ class LowMemoryAccessIrTest : public ::testing::Test {
     loom_region_t* body = loom_low_function_body(function_op);
     loom_op_t* op = nullptr;
     loom_block_for_each_op(loom_region_entry_block(body), op) {
-      if (loom_low_op_isa(op)) return op;
+      if (loom_low_op_isa(op)) {
+        return op;
+      }
     }
     ADD_FAILURE() << "low packet not found";
     return nullptr;
@@ -206,7 +210,9 @@ low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.pt
   const loom_low_byte_interval_t expected_interval = interval;
   loom_op_t* op = nullptr;
   loom_block_for_each_op(block, op) {
-    if (!loom_low_op_isa(op)) continue;
+    if (!loom_low_op_isa(op)) {
+      continue;
+    }
     loom_low_memory_access_record_t record = {};
     record.position.block_index = 0;
     record.position.block_ordinal = op->block_ordinal;

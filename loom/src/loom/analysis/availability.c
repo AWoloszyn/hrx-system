@@ -37,9 +37,13 @@ iree_status_t loom_availability_analysis_initialize_region(
 
 static bool loom_availability_op_is_nested_under(const loom_op_t* root,
                                                  const loom_op_t* op) {
-  if (!root || !op) return false;
+  if (!root || !op) {
+    return false;
+  }
   for (const loom_op_t* current = op; current; current = current->parent_op) {
-    if (current == root) return true;
+    if (current == root) {
+      return true;
+    }
   }
   return false;
 }
@@ -214,8 +218,12 @@ static bool loom_availability_predicate_is_available_before_op(
     const loom_op_t* moving_root_op, const loom_op_t* before_op,
     const loom_predicate_t* predicate) {
   for (uint8_t i = 0; i < IREE_ARRAYSIZE(predicate->arg_tags); ++i) {
-    if (predicate->arg_tags[i] != LOOM_PRED_ARG_VALUE) continue;
-    if (predicate->args[i] < 0) return false;
+    if (predicate->arg_tags[i] != LOOM_PRED_ARG_VALUE) {
+      continue;
+    }
+    if (predicate->args[i] < 0) {
+      return false;
+    }
     loom_value_id_t value_id = (loom_value_id_t)predicate->args[i];
     if (!loom_availability_value_id_is_valid(analysis->module, value_id)) {
       return false;
@@ -236,7 +244,9 @@ static iree_status_t loom_availability_attr_is_available_before_op_impl(
   if (!loom_availability_query_is_valid(analysis, before_op) || !attr) {
     return iree_ok_status();
   }
-  if (depth > LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) return iree_ok_status();
+  if (depth > LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
+    return iree_ok_status();
+  }
   switch (attr->kind) {
     case LOOM_ATTR_ABSENT:
     case LOOM_ATTR_I64:
@@ -263,7 +273,9 @@ static iree_status_t loom_availability_attr_is_available_before_op_impl(
           analysis, moving_root_op, before_op,
           analysis->module->types.entries[attr->type_id], out_available);
     case LOOM_ATTR_PREDICATE_LIST:
-      if (attr->count > 0 && !attr->predicate_list) return iree_ok_status();
+      if (attr->count > 0 && !attr->predicate_list) {
+        return iree_ok_status();
+      }
       for (uint16_t i = 0; i < attr->count; ++i) {
         if (!loom_availability_predicate_is_available_before_op(
                 analysis, moving_root_op, before_op,
@@ -274,12 +286,16 @@ static iree_status_t loom_availability_attr_is_available_before_op_impl(
       *out_available = true;
       return iree_ok_status();
     case LOOM_ATTR_DICT:
-      if (attr->count > 0 && !attr->dict_entries) return iree_ok_status();
+      if (attr->count > 0 && !attr->dict_entries) {
+        return iree_ok_status();
+      }
       for (uint16_t i = 0; i < attr->count; ++i) {
         IREE_RETURN_IF_ERROR(loom_availability_attr_is_available_before_op_impl(
             analysis, moving_root_op, before_op, &attr->dict_entries[i].value,
             (uint8_t)(depth + 1), out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
       *out_available = true;
       return iree_ok_status();
@@ -291,7 +307,9 @@ static iree_status_t loom_availability_attr_is_available_before_op_impl(
         IREE_RETURN_IF_ERROR(loom_availability_attr_is_available_before_op_impl(
             analysis, moving_root_op, before_op, &attr->parameterized_slots[i],
             (uint8_t)(depth + 1), out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
       *out_available = true;
       return iree_ok_status();
@@ -303,14 +321,18 @@ static iree_status_t loom_availability_attr_is_available_before_op_impl(
         IREE_RETURN_IF_ERROR(loom_availability_attr_is_available_before_op_impl(
             analysis, moving_root_op, before_op, &attr->parameterized_array[i],
             (uint8_t)(depth + 1), out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
       *out_available = true;
       return iree_ok_status();
     case LOOM_ATTR_ENCODING: {
       const loom_encoding_t* encoding =
           loom_module_encoding(analysis->module, attr->encoding_id);
-      if (!encoding) return iree_ok_status();
+      if (!encoding) {
+        return iree_ok_status();
+      }
       if (encoding->attribute_count > 0 && !encoding->attributes) {
         return iree_ok_status();
       }
@@ -318,7 +340,9 @@ static iree_status_t loom_availability_attr_is_available_before_op_impl(
         IREE_RETURN_IF_ERROR(loom_availability_attr_is_available_before_op_impl(
             analysis, moving_root_op, before_op, &encoding->attributes[i].value,
             (uint8_t)(depth + 1), out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
       *out_available = true;
       return iree_ok_status();
@@ -348,7 +372,9 @@ iree_status_t loom_availability_op_attrs_are_available_before_op(
   for (uint8_t i = 0; i < op->attribute_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_availability_attr_is_available_before_op(
         analysis, moving_root_op, before_op, &attrs[i], out_available));
-    if (!*out_available) return iree_ok_status();
+    if (!*out_available) {
+      return iree_ok_status();
+    }
   }
   *out_available = true;
   return iree_ok_status();
@@ -379,7 +405,9 @@ iree_status_t loom_availability_op_captures_are_available_before_op(
   for (uint16_t i = 0; i < op->result_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_availability_value_type_is_available_before_op(
         analysis, moving_root_op, before_op, results[i], out_available));
-    if (!*out_available) return iree_ok_status();
+    if (!*out_available) {
+      return iree_ok_status();
+    }
   }
 
   return loom_availability_op_attrs_are_available_before_op(
@@ -398,7 +426,9 @@ iree_status_t loom_availability_block_arg_types_are_available_before_op(
     IREE_RETURN_IF_ERROR(loom_availability_value_type_is_available_before_op(
         analysis, moving_root_op, before_op, loom_block_arg_id(block, i),
         out_available));
-    if (!*out_available) return iree_ok_status();
+    if (!*out_available) {
+      return iree_ok_status();
+    }
   }
   *out_available = true;
   return iree_ok_status();

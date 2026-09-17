@@ -89,7 +89,9 @@ std::string CopyStringView(hrx_string_view_t view) {
 }
 
 std::vector<uint8_t> CopyByteSpan(hrx_const_byte_span_t span) {
-  if (span.data_length == 0) return {};
+  if (span.data_length == 0) {
+    return {};
+  }
   const auto* data = static_cast<const uint8_t*>(span.data);
   return std::vector<uint8_t>(data, data + span.data_length);
 }

@@ -158,12 +158,22 @@ void VKAPI_PTR MockGetPhysicalDeviceFeatures2(
 
 uint32_t MockDeviceExtensionCount(const MockVulkanDevice& device) {
   uint32_t extension_count = 0;
-  if (device.reports_shader_float16_int8_extension) ++extension_count;
-  if (device.reports_storage_8bit_extension) ++extension_count;
-  if (device.reports_storage_16bit_extension) ++extension_count;
-  if (device.reports_buffer_device_address_extension) ++extension_count;
+  if (device.reports_shader_float16_int8_extension) {
+    ++extension_count;
+  }
+  if (device.reports_storage_8bit_extension) {
+    ++extension_count;
+  }
+  if (device.reports_storage_16bit_extension) {
+    ++extension_count;
+  }
+  if (device.reports_buffer_device_address_extension) {
+    ++extension_count;
+  }
 #if defined(VK_KHR_cooperative_matrix)
-  if (device.reports_cooperative_matrix_extension) ++extension_count;
+  if (device.reports_cooperative_matrix_extension) {
+    ++extension_count;
+  }
 #endif  // defined(VK_KHR_cooperative_matrix)
   return extension_count;
 }

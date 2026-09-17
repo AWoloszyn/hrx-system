@@ -26,7 +26,9 @@ struct SlotAddress {
   iree_device_size_t offset;
 
   bool operator<(const SlotAddress& other) const {
-    if (buffer != other.buffer) return buffer < other.buffer;
+    if (buffer != other.buffer) {
+      return buffer < other.buffer;
+    }
     return offset < other.offset;
   }
   bool operator==(const SlotAddress& other) const {
@@ -164,14 +166,18 @@ class EventTimestampPoolTest : public ::testing::Test {
       size_t count) {
     std::vector<iree_hal_streaming_event_timestamp_slot_t*> slots;
     slots.reserve(count);
-    for (size_t i = 0; i < count; ++i) slots.push_back(Acquire());
+    for (size_t i = 0; i < count; ++i) {
+      slots.push_back(Acquire());
+    }
     return slots;
   }
 
   std::set<SlotAddress> AddressesOf(
       const std::vector<iree_hal_streaming_event_timestamp_slot_t*>& slots) {
     std::set<SlotAddress> addresses;
-    for (auto* slot : slots) addresses.insert(AddressOf(slot));
+    for (auto* slot : slots) {
+      addresses.insert(AddressOf(slot));
+    }
     return addresses;
   }
 
@@ -340,7 +346,9 @@ TEST_F(EventTimestampPoolPendingTest, RetiredWritesReturnTheirSlots) {
   std::set<SlotAddress> all_addresses;
   for (size_t round = 0; round < kRoundCount; ++round) {
     auto slots = AcquireMany(kSlotsSpanningSeveralSlabs);
-    for (auto* slot : slots) all_addresses.insert(AddressOf(slot));
+    for (auto* slot : slots) {
+      all_addresses.insert(AddressOf(slot));
+    }
     // Released while the write is still outstanding, so every slot lands on the
     // pending list, then retired so the next round can recover it.
     for (auto* slot : slots) {
@@ -348,7 +356,9 @@ TEST_F(EventTimestampPoolPendingTest, RetiredWritesReturnTheirSlots) {
           slot, semaphore_, /*retire_value=*/round + 1);
     }
     IREE_ASSERT_OK(iree_hal_semaphore_signal(semaphore_, round + 1, nullptr));
-    if (round == 0) allocations_after_first_round = AllocationCount();
+    if (round == 0) {
+      allocations_after_first_round = AllocationCount();
+    }
   }
   EXPECT_EQ(allocations_after_first_round, AllocationCount())
       << "the pool asked the device for more memory instead of recovering "
@@ -446,7 +456,9 @@ TEST_F(EventTimestampPoolTest, ConcurrentHoldersNeverShareASlot) {
       }
     });
   }
-  for (auto& thread : threads) thread.join();
+  for (auto& thread : threads) {
+    thread.join();
+  }
 
   std::set<SlotAddress> addresses;
   size_t total = 0;

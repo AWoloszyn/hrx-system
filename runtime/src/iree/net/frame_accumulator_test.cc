@@ -27,7 +27,9 @@ static iree_status_t TestFrameLength(void* user_data,
                                      iree_host_size_t* out_frame_size) {
   (void)user_data;
   *out_frame_size = 0;
-  if (available.data_length < kHeaderSize) return iree_ok_status();
+  if (available.data_length < kHeaderSize) {
+    return iree_ok_status();
+  }
   uint32_t frame_size =
       (uint32_t)available.data[0] | ((uint32_t)available.data[1] << 8) |
       ((uint32_t)available.data[2] << 16) | ((uint32_t)available.data[3] << 24);

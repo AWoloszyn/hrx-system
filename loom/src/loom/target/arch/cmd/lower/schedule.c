@@ -74,7 +74,9 @@ typedef struct loom_cmd_schedule_build_t {
 static iree_status_t loom_cmd_schedule_reserve_frames(
     loom_cmd_schedule_build_t* build, iree_host_size_t additional_count) {
   const iree_host_size_t required_count = build->frame_count + additional_count;
-  if (required_count <= build->frame_capacity) return iree_ok_status();
+  if (required_count <= build->frame_capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(build->arena, build->frame_count, required_count,
                                sizeof(*build->frames), &build->frame_capacity,
                                (void**)&build->frames);
@@ -84,7 +86,9 @@ static iree_status_t loom_cmd_schedule_reserve_commands(
     loom_cmd_schedule_build_t* build, iree_host_size_t additional_count) {
   const iree_host_size_t required_count =
       build->command_count + additional_count;
-  if (required_count <= build->command_capacity) return iree_ok_status();
+  if (required_count <= build->command_capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(build->arena, build->command_count,
                                required_count, sizeof(*build->commands),
                                &build->command_capacity,
@@ -95,7 +99,9 @@ static iree_status_t loom_cmd_schedule_reserve_allocations(
     loom_cmd_schedule_build_t* build, iree_host_size_t additional_count) {
   const iree_host_size_t required_count =
       build->allocation_count + additional_count;
-  if (required_count <= build->allocation_capacity) return iree_ok_status();
+  if (required_count <= build->allocation_capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(build->arena, build->allocation_count,
                                required_count, sizeof(*build->allocations),
                                &build->allocation_capacity,
@@ -229,8 +235,12 @@ static iree_status_t loom_cmd_schedule_build_commands(
 
     loom_op_t* op = frame->next_op;
     frame->next_op = op->next_op;
-    if (op->flags & LOOM_OP_FLAG_DEAD) continue;
-    if (loom_cmd_schedule_is_terminator(op)) continue;
+    if (op->flags & LOOM_OP_FLAG_DEAD) {
+      continue;
+    }
+    if (loom_cmd_schedule_is_terminator(op)) {
+      continue;
+    }
 
     loom_region_t* child_region = NULL;
     loom_cmd_schedule_mode_t child_mode = LOOM_CMD_SCHEDULE_MODE_SERIAL;
@@ -341,6 +351,8 @@ iree_status_t loom_cmd_schedule_plan_build(const loom_module_t* module,
   iree_host_size_t wave_count = 0;
   IREE_RETURN_IF_ERROR(
       loom_cmd_schedule_build_commands(&build, program_body, &wave_count));
-  if (wave_count == 0) return iree_ok_status();
+  if (wave_count == 0) {
+    return iree_ok_status();
+  }
   return loom_cmd_schedule_group_waves(&build, wave_count, out_plan);
 }

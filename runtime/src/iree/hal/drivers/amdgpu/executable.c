@@ -1084,7 +1084,9 @@ static iree_status_t iree_hal_amdgpu_executable_select_load_variant_for_queue(
     iree_hal_queue_ordinal_t queue_ordinal,
     iree_host_size_t* out_variant_ordinal) {
   *out_variant_ordinal = 0;
-  if (!executable->requires_queue_scope) return iree_ok_status();
+  if (!executable->requires_queue_scope) {
+    return iree_ok_status();
+  }
 
   const iree_hal_amdgpu_queue_scope_t* queue_scope = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_executable_select_queue_scope(
@@ -1120,7 +1122,9 @@ iree_hal_amdgpu_executable_find_queue_scope(
 
 static void iree_hal_amdgpu_executable_invalidate_host_kernel_objects(
     iree_hal_amdgpu_executable_t* executable) {
-  if (!executable) return;
+  if (!executable) {
+    return;
+  }
   for (iree_host_size_t kernel_ordinal = 0;
        kernel_ordinal < executable->kernel_count; ++kernel_ordinal) {
     executable->host_kernel_args[kernel_ordinal].kernel_object = 0;
@@ -1139,7 +1143,9 @@ iree_hal_amdgpu_executable_try_lookup_required_config_global(
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_global_table_try_lookup(
       global_table, iree_make_cstring_view(global_name), out_found,
       out_global));
-  if (!*out_found) return iree_ok_status();
+  if (!*out_found) {
+    return iree_ok_status();
+  }
 
   if (IREE_UNLIKELY(!capability_enabled)) {
     return iree_make_status(
@@ -1177,7 +1183,9 @@ static iree_status_t iree_hal_amdgpu_executable_publish_asan_config(
           "AMDGPU ASAN shadow memory",
           "enable HAL ASAN runtime support before loading this executable",
           &found, &global));
-  if (!found) return iree_ok_status();
+  if (!found) {
+    return iree_ok_status();
+  }
 
   iree_hal_amdgpu_asan_config_t config;
   iree_hal_amdgpu_asan_state_populate_config(asan_state, &config);
@@ -1217,7 +1225,9 @@ static iree_status_t iree_hal_amdgpu_executable_publish_tsan_config(
           "AMDGPU TSAN shadow memory",
           "enable HAL TSAN runtime support before loading this executable",
           &found, &global));
-  if (!found) return iree_ok_status();
+  if (!found) {
+    return iree_ok_status();
+  }
 
   const iree_host_size_t device_ordinal = executable->physical_device_ordinal;
   iree_hal_amdgpu_tsan_config_t config;
@@ -1285,7 +1295,9 @@ static iree_status_t iree_hal_amdgpu_executable_try_attach_sanitizer_site_table(
       iree_make_cstring_view(
           IREE_HAL_AMDGPU_LOOM_SANITIZER_SITE_TABLE_GLOBAL_NAME),
       &found, &global));
-  if (!found) return iree_ok_status();
+  if (!found) {
+    return iree_ok_status();
+  }
 
   iree_hal_executable_global_info_t info;
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_global_table_info(
@@ -1337,7 +1349,9 @@ static iree_status_t iree_hal_amdgpu_executable_publish_feedback_config(
           "the AMDGPU feedback channel",
           "enable HAL feedback runtime support before loading this executable",
           &found, &global));
-  if (!found) return iree_ok_status();
+  if (!found) {
+    return iree_ok_status();
+  }
 
   const iree_host_size_t device_ordinal = executable->physical_device_ordinal;
   iree_hal_amdgpu_feedback_config_t config;

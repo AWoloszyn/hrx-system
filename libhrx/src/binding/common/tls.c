@@ -76,7 +76,9 @@ IREE_API_EXPORT iree_status_t iree_hal_streaming_tls_key_create(
 
 IREE_API_EXPORT void iree_hal_streaming_tls_key_delete(
     iree_hal_streaming_tls_key_t key) {
-  if (!iree_hal_streaming_tls_slot_is_allocated(key)) return;
+  if (!iree_hal_streaming_tls_slot_is_allocated(key)) {
+    return;
+  }
   iree_hal_streaming_tls_values[key] = NULL;
   iree_hal_streaming_tls_slots[key].destructor = NULL;
   iree_atomic_store(&iree_hal_streaming_tls_slots[key].state,
@@ -112,19 +114,25 @@ static void iree_hal_streaming_tls_cleanup_current_thread(void) {
     for (iree_hal_streaming_tls_key_t key = 0;
          key < IREE_HAL_STREAMING_TLS_KEY_CAPACITY; ++key) {
       void* value = iree_hal_streaming_tls_values[key];
-      if (!value) continue;
+      if (!value) {
+        continue;
+      }
       if (!iree_hal_streaming_tls_slot_is_allocated(key)) {
         iree_hal_streaming_tls_values[key] = NULL;
         continue;
       }
       iree_hal_streaming_tls_destructor_t destructor =
           iree_hal_streaming_tls_slots[key].destructor;
-      if (!destructor) continue;
+      if (!destructor) {
+        continue;
+      }
       iree_hal_streaming_tls_values[key] = NULL;
       destructor(value);
       invoked_destructor = true;
     }
-    if (!invoked_destructor) break;
+    if (!invoked_destructor) {
+      break;
+    }
   }
 }
 
@@ -169,7 +177,9 @@ IREE_API_EXPORT iree_status_t iree_hal_streaming_tls_key_create(
 
 IREE_API_EXPORT void iree_hal_streaming_tls_key_delete(
     iree_hal_streaming_tls_key_t key) {
-  if (!iree_hal_streaming_tls_slot_is_allocated(key)) return;
+  if (!iree_hal_streaming_tls_slot_is_allocated(key)) {
+    return;
+  }
   int32_t expected_state = IREE_HAL_STREAMING_TLS_SLOT_STATE_ALLOCATED;
   if (!iree_atomic_compare_exchange_strong(
           &iree_hal_streaming_tls_slots[key].state, &expected_state,
@@ -240,7 +250,9 @@ IREE_API_EXPORT iree_status_t iree_hal_streaming_tls_key_create(
 
 IREE_API_EXPORT void iree_hal_streaming_tls_key_delete(
     iree_hal_streaming_tls_key_t key) {
-  if (!iree_hal_streaming_tls_slot_is_allocated(key)) return;
+  if (!iree_hal_streaming_tls_slot_is_allocated(key)) {
+    return;
+  }
   int32_t expected_state = IREE_HAL_STREAMING_TLS_SLOT_STATE_ALLOCATED;
   if (!iree_atomic_compare_exchange_strong(
           &iree_hal_streaming_tls_slots[key].state, &expected_state,

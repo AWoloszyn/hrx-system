@@ -35,7 +35,9 @@ void iree_atomic_slist_deinitialize(iree_atomic_slist_t* list) {
 void iree_atomic_slist_concat(iree_atomic_slist_t* list,
                               iree_atomic_slist_entry_t* head,
                               iree_atomic_slist_entry_t* tail) {
-  if (IREE_UNLIKELY(!head)) return;
+  if (IREE_UNLIKELY(!head)) {
+    return;
+  }
   iree_slim_mutex_lock(&list->mutex);
   tail->next = iree_atomic_slist_load_head(list, iree_memory_order_relaxed);
   iree_atomic_slist_store_head(list, head);
@@ -94,21 +96,27 @@ bool iree_atomic_slist_flush(iree_atomic_slist_t* list,
       iree_atomic_slist_load_head(list, iree_memory_order_relaxed);
   iree_atomic_slist_store_head(list, NULL);
   iree_slim_mutex_unlock(&list->mutex);
-  if (!head) return false;
+  if (!head) {
+    return false;
+  }
 
   switch (flush_order) {
     case IREE_ATOMIC_SLIST_FLUSH_ORDER_APPROXIMATE_LIFO: {
       *out_head = head;
       if (out_tail) {
         iree_atomic_slist_entry_t* p = head;
-        while (p->next) p = p->next;
+        while (p->next) {
+          p = p->next;
+        }
         *out_tail = p;
       }
       break;
     }
     case IREE_ATOMIC_SLIST_FLUSH_ORDER_APPROXIMATE_FIFO: {
       iree_atomic_slist_entry_t* tail = head;
-      if (out_tail) *out_tail = tail;
+      if (out_tail) {
+        *out_tail = tail;
+      }
       iree_atomic_slist_entry_t* p = head;
       do {
         iree_atomic_slist_entry_t* next = p->next;

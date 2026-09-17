@@ -163,7 +163,9 @@ iree_status_t iree_hal_memory_fixed_block_allocator_allocate(
 
 void iree_hal_memory_fixed_block_allocator_free(
     iree_hal_memory_fixed_block_allocator_t* pool) {
-  if (!pool) return;
+  if (!pool) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   uint32_t count =
       iree_atomic_load(&pool->allocation_count, iree_memory_order_relaxed);
@@ -193,7 +195,9 @@ iree_status_t iree_hal_memory_fixed_block_allocator_try_acquire(
   // Start scanning from the roving hint for better locality.
   uint16_t start_word = (uint16_t)iree_atomic_load(&pool->alloc_hint_word,
                                                    iree_memory_order_relaxed);
-  if (start_word >= word_count) start_word = 0;
+  if (start_word >= word_count) {
+    start_word = 0;
+  }
 
   // Scan all bitmap words starting from the hint, wrapping around.
   uint16_t word_index = start_word;
@@ -247,7 +251,9 @@ iree_status_t iree_hal_memory_fixed_block_allocator_try_acquire(
     }
 
     // Advance to next word, wrapping around without division.
-    if (++word_index >= word_count) word_index = 0;
+    if (++word_index >= word_count) {
+      word_index = 0;
+    }
   }
 
   return iree_ok_status();

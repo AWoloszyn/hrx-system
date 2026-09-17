@@ -228,7 +228,9 @@ static iree_status_t QueueSendsAndFail(void* user_data, iree_async_span_t data,
                                        iree_async_buffer_lease_t* lease) {
   (void)lease;
   auto* context = static_cast<ReentrantFailureContext*>(user_data);
-  if (data.length == 0) return iree_ok_status();
+  if (data.length == 0) {
+    return iree_ok_status();
+  }
   ++context->receive_count;
 
   iree_async_span_t submitted_span = iree_async_span_from_ptr(
@@ -434,7 +436,9 @@ class TcpCarrierTest : public ::testing::Test {
   }
 
   void BeginDeactivation(iree_net_carrier_t* carrier, bool* completed) {
-    if (!carrier || *completed) return;
+    if (!carrier || *completed) {
+      return;
+    }
     const iree_net_carrier_state_t state = iree_net_carrier_state(carrier);
     if (state == IREE_NET_CARRIER_STATE_CREATED ||
         state == IREE_NET_CARRIER_STATE_ACTIVE) {

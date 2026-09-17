@@ -273,7 +273,9 @@ static inline iree_io_uring_cqe_t* iree_io_uring_ring_peek_cqe(
   uint32_t tail = iree_atomic_load((iree_atomic_int32_t*)ring->cq_tail,
                                    iree_memory_order_acquire);
   uint32_t head = *ring->cq_head;
-  if (head == tail) return NULL;
+  if (head == tail) {
+    return NULL;
+  }
   return &ring->cqes[head & ring->cq_mask];
 }
 

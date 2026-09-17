@@ -61,7 +61,9 @@ static iree_status_t AppendAgentUuidPathFragment(
   IREE_RETURN_IF_ERROR(iree_hsa_agent_get_info(
       IREE_LIBHSA(libhsa), agent, (hsa_agent_info_t)HSA_AMD_AGENT_INFO_UUID,
       agent_uuid));
-  if (!path->empty()) path->append(",");
+  if (!path->empty()) {
+    path->append(",");
+  }
   path->append(agent_uuid);
   return iree_ok_status();
 }

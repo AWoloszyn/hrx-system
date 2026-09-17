@@ -288,7 +288,9 @@ static inline iree_status_t iree_async_socket_query_failure(
 // that supports peek semantics in iree_async_socket_query_failure().
 static inline void iree_async_socket_set_failure(
     iree_async_socket_t* socket, iree_status_code_t status_code) {
-  if (status_code == IREE_STATUS_OK) return;
+  if (status_code == IREE_STATUS_OK) {
+    return;
+  }
   intptr_t failure_code = (intptr_t)iree_status_from_code(status_code);
   intptr_t expected = (intptr_t)iree_ok_status();
   iree_atomic_compare_exchange_strong(&socket->failure_status, &expected,

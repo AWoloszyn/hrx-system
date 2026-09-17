@@ -54,11 +54,15 @@ hipError_t iree_hip_execution_resource_descriptor_create(
   const iree_hal_streaming_execution_resource_set_t* first_set = NULL;
   hipError_t result = iree_hip_execution_resource_resolve_sm_for_device(
       &resources[0], device, &first_set);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
 
   const iree_hal_queue_family_t* queue_family = iree_hal_device_queue_family(
       device->hal_device, first_set->queue_family_ordinal);
-  if (!queue_family) return hipErrorInvalidResourceConfiguration;
+  if (!queue_family) {
+    return hipErrorInvalidResourceConfiguration;
+  }
   const iree_hal_queue_family_spec_t* family_spec =
       iree_hal_queue_family_spec(queue_family);
   // Descriptors can outlive the device-table incarnation they reference. Use
@@ -88,7 +92,9 @@ hipError_t iree_hip_execution_resource_descriptor_create(
       result = iree_hip_execution_resource_resolve_sm_for_device(
           &resources[resource_index], device, &set);
     }
-    if (result != hipSuccess) break;
+    if (result != hipSuccess) {
+      break;
+    }
     if (set->queue_family_ordinal != first_set->queue_family_ordinal) {
       result = hipErrorInvalidResourceConfiguration;
       break;
@@ -184,7 +190,9 @@ bool iree_hip_execution_resource_descriptor_lookup_retain(
     hipDevResourceDesc_t handle,
     iree_hip_execution_resource_descriptor_t** out_descriptor) {
   IREE_ASSERT_ARGUMENT(out_descriptor);
-  if (!handle) return false;
+  if (!handle) {
+    return false;
+  }
 
   iree_call_once(&iree_hip_execution_resource_descriptor_registry_once,
                  iree_hip_execution_resource_descriptor_registry_initialize);
@@ -201,7 +209,9 @@ bool iree_hip_execution_resource_descriptor_take(
     hipDevResourceDesc_t handle,
     iree_hip_execution_resource_descriptor_t** out_descriptor) {
   IREE_ASSERT_ARGUMENT(out_descriptor);
-  if (!handle) return false;
+  if (!handle) {
+    return false;
+  }
 
   iree_call_once(&iree_hip_execution_resource_descriptor_registry_once,
                  iree_hip_execution_resource_descriptor_registry_initialize);
@@ -216,7 +226,11 @@ bool iree_hip_execution_resource_descriptor_take(
 
 void iree_hip_execution_resource_descriptor_release(
     iree_hip_execution_resource_descriptor_t* descriptor) {
-  if (!descriptor) return;
-  if (iree_atomic_ref_count_dec(&descriptor->ref_count) != 1) return;
+  if (!descriptor) {
+    return;
+  }
+  if (iree_atomic_ref_count_dec(&descriptor->ref_count) != 1) {
+    return;
+  }
   iree_allocator_free(descriptor->host_allocator, descriptor);
 }

@@ -136,7 +136,9 @@ static iree_status_t loom_func_symbol_resolve_target_conditions(
   const loom_parameterized_attr_array_t authored_requirements =
       loom_func_like_requires(func);
   facts->target_condition_count = (uint16_t)authored_requirements.count;
-  if (authored_requirements.count == 0) return iree_ok_status();
+  if (authored_requirements.count == 0) {
+    return iree_ok_status();
+  }
 
   loom_target_condition_t* target_conditions = NULL;
   IREE_RETURN_IF_ERROR(loom_symbol_fact_context_allocate(

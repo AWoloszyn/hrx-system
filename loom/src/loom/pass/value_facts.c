@@ -57,7 +57,9 @@ static iree_status_t loom_pass_value_fact_scope_validate(
 
 static void loom_pass_value_fact_owner_record_scope_clear(
     loom_pass_value_fact_owner_t* owner) {
-  if (!owner->lifecycle_counts) return;
+  if (!owner->lifecycle_counts) {
+    return;
+  }
   if (owner->active_scope.kind == LOOM_PASS_VALUE_FACT_SCOPE_NONE &&
       owner->table.touched_count == 0) {
     return;

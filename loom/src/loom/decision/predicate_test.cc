@@ -25,7 +25,9 @@ static loom_decision_predicate_operand_t Operand(
 
 static loom_decision_truth_t TruthFromPossibilities(bool can_be_false,
                                                     bool can_be_true) {
-  if (can_be_false && can_be_true) return LOOM_DECISION_TRUTH_UNKNOWN;
+  if (can_be_false && can_be_true) {
+    return LOOM_DECISION_TRUTH_UNKNOWN;
+  }
   return can_be_true ? LOOM_DECISION_TRUTH_TRUE : LOOM_DECISION_TRUTH_FALSE;
 }
 

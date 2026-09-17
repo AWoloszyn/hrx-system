@@ -40,7 +40,9 @@ iree_status_t loom_vector_transpose_type_transfer(
     }
     uint8_t source_axis = (uint8_t)source_axis_i64;
     uint32_t axis_bit = 1u << source_axis;
-    if (iree_all_bits_set(seen_axes, axis_bit)) return iree_ok_status();
+    if (iree_all_bits_set(seen_axes, axis_bit)) {
+      return iree_ok_status();
+    }
     seen_axes |= axis_bit;
 
     result_dimensions[result_axis] = loom_type_dim(source_type, source_axis);

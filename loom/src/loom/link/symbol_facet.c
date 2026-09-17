@@ -31,8 +31,12 @@ static loom_link_symbol_facet_family_t loom_link_symbol_facet_family(
   const bool is_command =
       iree_any_bit_set(interfaces, LOOM_SYMBOL_INTERFACE_COMMAND_PROGRAM);
   IREE_ASSERT(!(is_kernel && is_command));
-  if (is_kernel) return LOOM_LINK_SYMBOL_FACET_FAMILY_KERNEL;
-  if (is_command) return LOOM_LINK_SYMBOL_FACET_FAMILY_COMMAND;
+  if (is_kernel) {
+    return LOOM_LINK_SYMBOL_FACET_FAMILY_KERNEL;
+  }
+  if (is_command) {
+    return LOOM_LINK_SYMBOL_FACET_FAMILY_COMMAND;
+  }
   return LOOM_LINK_SYMBOL_FACET_FAMILY_DEFINITION;
 }
 

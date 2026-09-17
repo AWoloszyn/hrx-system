@@ -422,7 +422,9 @@ static iree_status_t loom_amdgpu_matrix_coexecution_retain_consumers(
     const uint32_t vgpr_index = coexecution->active_vgpr_indices[i];
     const uint8_t channels =
         coexecution->active_states[vgpr_index].consumer_channels;
-    if (channels == 0) continue;
+    if (channels == 0) {
+      continue;
+    }
     loom_amdgpu_matrix_coexecution_consumer_t* consumer = NULL;
     IREE_RETURN_IF_ERROR(loom_amdgpu_matrix_coexecution_allocate_consumer(
         coexecution, &consumer));
@@ -442,10 +444,14 @@ static void loom_amdgpu_matrix_coexecution_apply_consumers(
     loom_amdgpu_matrix_coexecution_active_state_t* active =
         loom_amdgpu_matrix_coexecution_try_active_mutable(coexecution,
                                                           consumer->vgpr_index);
-    if (active == NULL) continue;
+    if (active == NULL) {
+      continue;
+    }
     for (uint32_t channel = 0;
          channel < LOOM_AMDGPU_MATRIX_COEXECUTION_CHANNEL_COUNT; ++channel) {
-      if ((consumer->channels & (1u << channel)) == 0) continue;
+      if ((consumer->channels & (1u << channel)) == 0) {
+        continue;
+      }
       active->release_positions[channel] = 0;
       active->required[channel] = 0;
       active->producer_nodes[channel] = LOOM_LOW_SCHEDULE_NODE_NONE;
@@ -463,7 +469,9 @@ static void loom_amdgpu_matrix_coexecution_merge_active_frontier(
                                                   node->vgpr_index);
     for (uint32_t channel = 0;
          channel < LOOM_AMDGPU_MATRIX_COEXECUTION_CHANNEL_COUNT; ++channel) {
-      if (node->remaining[channel] == 0) continue;
+      if (node->remaining[channel] == 0) {
+        continue;
+      }
       const uint64_t release_position =
           coexecution->current_issue_position + node->remaining[channel];
       const uint8_t required = node->required[channel] != 0
@@ -513,7 +521,9 @@ static iree_status_t loom_amdgpu_matrix_coexecution_merge_outgoing(
       remaining[channel] = (uint8_t)residual;
       has_remaining = true;
     }
-    if (!has_remaining) continue;
+    if (!has_remaining) {
+      continue;
+    }
 
     loom_amdgpu_matrix_coexecution_frontier_node_t* node =
         coexecution->frontier_lookup[vgpr_index];
@@ -561,7 +571,9 @@ static void loom_amdgpu_matrix_coexecution_worklist_push(
     return;
   }
   coexecution->worklist[*tail] = block_index;
-  if (++*tail == block_count) *tail = 0;
+  if (++*tail == block_count) {
+    *tail = 0;
+  }
   ++*count;
   block->flags |= LOOM_AMDGPU_MATRIX_COEXECUTION_BLOCK_FLAG_QUEUED;
 }
@@ -580,7 +592,9 @@ static void loom_amdgpu_matrix_coexecution_note_channel(
   const uint64_t residual =
       state->release_positions[channel] - consumer_position;
   IREE_ASSERT_LE(residual, UINT16_MAX);
-  if (residual <= inout_match->residual_issue_count) return;
+  if (residual <= inout_match->residual_issue_count) {
+    return;
+  }
   IREE_ASSERT_LE(residual, state->required[channel]);
   inout_match->producer_node = state->producer_nodes[channel];
   inout_match->required_issue_count = state->required[channel];
@@ -788,10 +802,14 @@ iree_status_t loom_amdgpu_matrix_coexecution_allocate(
   *out_coexecution = NULL;
   const loom_amdgpu_matrix_coexecution_profile_info_t* profile_model =
       loom_amdgpu_target_info_matrix_coexecution_profile(profile);
-  if (profile_model->releases == NULL) return iree_ok_status();
+  if (profile_model->releases == NULL) {
+    return iree_ok_status();
+  }
   const iree_host_size_t source_capacity =
       schedule->matrix_coexecution_source_use_count;
-  if (source_capacity == 0) return iree_ok_status();
+  if (source_capacity == 0) {
+    return iree_ok_status();
+  }
   const uint32_t vgpr_count =
       allocation->physical_extents
           .ends_by_reg_class[LOOM_AMDGPU_REG_CLASS_ID_VGPR];
@@ -873,7 +891,9 @@ void loom_amdgpu_matrix_coexecution_commit_static_packet(
                                                           packet->descriptor)) {
     source = loom_amdgpu_matrix_coexecution_append_source(coexecution, packet);
   }
-  if (coexecution->blocks == NULL) return;
+  if (coexecution->blocks == NULL) {
+    return;
+  }
 
   loom_amdgpu_matrix_coexecution_match_t match = {
       .producer_node = LOOM_LOW_SCHEDULE_NODE_NONE,
@@ -901,7 +921,9 @@ void loom_amdgpu_matrix_coexecution_commit_static_vopd_pair(
       coexecution, first_packet->descriptor));
   IREE_ASSERT(!loom_amdgpu_matrix_coexecution_descriptor_is_source(
       coexecution, second_packet->descriptor));
-  if (coexecution->blocks == NULL) return;
+  if (coexecution->blocks == NULL) {
+    return;
+  }
 
   loom_amdgpu_matrix_coexecution_match_t match = {
       .producer_node = LOOM_LOW_SCHEDULE_NODE_NONE,
@@ -943,7 +965,9 @@ iree_status_t loom_amdgpu_matrix_coexecution_end_static_block(
 iree_status_t loom_amdgpu_matrix_coexecution_finalize_static(
     loom_amdgpu_matrix_coexecution_t* coexecution) {
   IREE_ASSERT_EQ(coexecution->source_count, coexecution->source_capacity);
-  if (coexecution->blocks == NULL) return iree_ok_status();
+  if (coexecution->blocks == NULL) {
+    return iree_ok_status();
+  }
   const loom_cfg_graph_t* graph = &coexecution->schedule->cfg_graph;
   const uint32_t block_count = (uint32_t)coexecution->schedule->block_count;
   uint32_t head = 0;
@@ -957,7 +981,9 @@ iree_status_t loom_amdgpu_matrix_coexecution_finalize_static(
   }
   while (count != 0) {
     const uint16_t block_index = coexecution->worklist[head];
-    if (++head == block_count) head = 0;
+    if (++head == block_count) {
+      head = 0;
+    }
     --count;
     loom_amdgpu_matrix_coexecution_block_t* block =
         &coexecution->blocks[block_index];
@@ -983,7 +1009,9 @@ iree_status_t loom_amdgpu_matrix_coexecution_finalize_static(
     IREE_RETURN_IF_ERROR(loom_amdgpu_matrix_coexecution_merge_outgoing(
         coexecution, &block->static_outgoing,
         /*preserve_provenance=*/false, &changed));
-    if (!changed) continue;
+    if (!changed) {
+      continue;
+    }
     const loom_cfg_block_index_span_t successors =
         loom_cfg_graph_successors(graph, block_index);
     for (iree_host_size_t i = 0; i < successors.count; ++i) {
@@ -1004,13 +1032,17 @@ void loom_amdgpu_matrix_coexecution_begin_block(
   IREE_ASSERT_LT(block_index, coexecution->schedule->block_count);
   loom_amdgpu_matrix_coexecution_reset_active(coexecution);
   coexecution->active_block_index = block_index;
-  if (coexecution->blocks == NULL) return;
+  if (coexecution->blocks == NULL) {
+    return;
+  }
   const loom_cfg_graph_t* graph = &coexecution->schedule->cfg_graph;
   const loom_cfg_block_index_span_t predecessors =
       loom_cfg_graph_predecessors(graph, block_index);
   for (iree_host_size_t i = 0; i < predecessors.count; ++i) {
     const uint16_t predecessor_index = predecessors.values[i];
-    if (!loom_cfg_graph_block_is_reachable(graph, predecessor_index)) continue;
+    if (!loom_cfg_graph_block_is_reachable(graph, predecessor_index)) {
+      continue;
+    }
     const loom_amdgpu_matrix_coexecution_block_t* predecessor =
         &coexecution->blocks[predecessor_index];
     const bool resolved = iree_any_bit_set(
@@ -1045,7 +1077,9 @@ void loom_amdgpu_matrix_coexecution_commit_packet(
   loom_amdgpu_matrix_coexecution_advance(coexecution, vector_issue_count);
   const loom_amdgpu_matrix_coexecution_source_t* source =
       loom_amdgpu_matrix_coexecution_current_source(coexecution, packet);
-  if (source == NULL) return;
+  if (source == NULL) {
+    return;
+  }
   loom_amdgpu_matrix_coexecution_publish_source(coexecution, packet, source);
   ++coexecution->source_cursor;
 }

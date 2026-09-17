@@ -24,21 +24,27 @@ namespace {
 // Stop on native failure without retrying work or freeing potentially live DMA
 // backing. Successful runs check retirement before caller-ordered teardown.
 void CheckStatus(amdf_status_t status, const char* operation) {
-  if (amdf_status_is_ok(status)) return;
+  if (amdf_status_is_ok(status)) {
+    return;
+  }
   std::fprintf(stderr, "%s failed: domain=%u code=%u\n", operation,
                amdf_status_domain(status), amdf_status_code(status));
   std::exit(EXIT_FAILURE);
 }
 
 void CheckIreeStatus(iree_status_t status) {
-  if (iree_status_is_ok(status)) return;
+  if (iree_status_is_ok(status)) {
+    return;
+  }
   iree_status_fprint(stderr, status);
   iree_status_free(status);
   std::exit(EXIT_FAILURE);
 }
 
 void Check(bool condition, const char* message) {
-  if (condition) return;
+  if (condition) {
+    return;
+  }
   std::fprintf(stderr, "%s\n", message);
   std::exit(EXIT_FAILURE);
 }
@@ -81,12 +87,16 @@ class ExecutionBenchmark {
         "endpoint_enumerate");
     amdf_endpoint_t* endpoint = nullptr;
     for (const auto& summary : summaries) {
-      if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) continue;
+      if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) {
+        continue;
+      }
       CheckStatus(GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint),
                   "endpoint_open");
       break;
     }
-    if (!endpoint) return;
+    if (!endpoint) {
+      return;
+    }
     amdf_xdna_endpoint_info_t info = {};
     info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
     info.structure_size = sizeof(info);
@@ -95,7 +105,9 @@ class ExecutionBenchmark {
     skip_reason_ = "native XDNA device materialization unavailable";
     const amdf_status_t status =
         GetCtsDeviceCache().GetXdnaDevice(endpoint, &device_);
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) return;
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      return;
+    }
     CheckStatus(status, "device_create");
 
     amdf_xdna_device_info_t device_info = {};
@@ -105,8 +117,9 @@ class ExecutionBenchmark {
                 "device_info");
     skip_reason_ = "time-sliced XDNA contexts unavailable";
     if (!(device_info.context.scheduling_modes &
-          AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED))
+          AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED)) {
       return;
+    }
     iree_hal_amd_xdna_aie2p_target_t target;
     CheckIreeStatus(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
         iree_make_cstring_view(info.target_id), 1, &target));
@@ -118,7 +131,9 @@ class ExecutionBenchmark {
       image = iree_hal_amd_xdna_test_mul_i32_create();
     }
     skip_reason_ = "no canonical multiplication fixture for this XDNA target";
-    if (!image) return;
+    if (!image) {
+      return;
+    }
 
     amdf_endpoint_info_t endpoint_info = {};
     endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
@@ -196,12 +211,14 @@ class ExecutionBenchmark {
   }
 
   void Deinitialize() {
-    if (queue_)
+    if (queue_) {
       CheckStatus(api_->kernel_queue_destroy(queue_), "queue_destroy");
+    }
     iree_hal_amd_xdna_prepared_command_destroy(prepared_);
     DestroyMemory(instructions_);
-    if (context_)
+    if (context_) {
       CheckStatus(xdna_api_->context_destroy(context_), "context_destroy");
+    }
     for (auto& binding : bindings_) {
       iree_hal_buffer_release(binding.buffer);
       DestroyMemory(binding.storage);
@@ -236,11 +253,13 @@ class ExecutionBenchmark {
   }
 
   void DestroyMemory(const MappedMemory& memory) {
-    if (memory.mapping)
+    if (memory.mapping) {
       CheckStatus(api_->host_mapping_destroy(memory.mapping),
                   "mapping_destroy");
-    if (memory.memory)
+    }
+    if (memory.memory) {
       CheckStatus(api_->memory_destroy(memory.memory), "memory_destroy");
+    }
   }
 
   void CreateBindings(amdf_instance_t* instance) {
@@ -282,9 +301,12 @@ class ExecutionBenchmark {
       capabilities.structure_size = sizeof(capabilities);
       const auto status = api_->memory_scope_query_device_profile(
           system_scope, ordinal, 1, &access, &profile, &capabilities);
-      if (status == amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE)) break;
-      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE)) {
+        break;
+      }
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
         continue;
+      }
       CheckStatus(status, "data_profile");
       constexpr auto roles =
           AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
@@ -539,11 +561,13 @@ class ExecutionBenchmark {
 }  // namespace
 
 int main(int argument_count, char** argument_values) {
-  if (!amdf_cts_provider_initialize(&argument_count, &argument_values))
+  if (!amdf_cts_provider_initialize(&argument_count, &argument_values)) {
     return EXIT_FAILURE;
+  }
   benchmark::Initialize(&argument_count, argument_values);
-  if (benchmark::ReportUnrecognizedArguments(argument_count, argument_values))
+  if (benchmark::ReportUnrecognizedArguments(argument_count, argument_values)) {
     return EXIT_FAILURE;
+  }
   ExecutionBenchmark fixture;
   fixture.Initialize();
   benchmark::RegisterBenchmark(

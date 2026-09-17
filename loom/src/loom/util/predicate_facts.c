@@ -35,15 +35,21 @@ static bool loom_value_fact_alias_map_find(
     const loom_value_fact_alias_map_t* map, loom_value_id_t value_id,
     uint16_t* out_ordinal) {
   if (map->ordinals) {
-    if (value_id >= map->ordinal_capacity) return false;
+    if (value_id >= map->ordinal_capacity) {
+      return false;
+    }
     const uint16_t ordinal_plus_one = map->ordinals[value_id];
-    if (ordinal_plus_one == 0) return false;
+    if (ordinal_plus_one == 0) {
+      return false;
+    }
     *out_ordinal = ordinal_plus_one - 1;
     return true;
   }
 
   for (uint16_t i = 0; i < map->value_count; ++i) {
-    if (map->values[i] != value_id) continue;
+    if (map->values[i] != value_id) {
+      continue;
+    }
     *out_ordinal = i;
     return true;
   }
@@ -72,7 +78,9 @@ static iree_status_t loom_value_fact_alias_map_prepare(
   uint16_t* ordinals = table->scratch.alias_ordinals.values;
   for (uint16_t i = 0; i < value_count; ++i) {
     const loom_value_id_t value_id = values[i];
-    if (ordinals[value_id] == 0) ordinals[value_id] = (uint16_t)(i + 1);
+    if (ordinals[value_id] == 0) {
+      ordinals[value_id] = (uint16_t)(i + 1);
+    }
   }
   *out_map = (loom_value_fact_alias_map_t){
       /*.values=*/values,
@@ -98,12 +106,20 @@ static bool loom_value_fact_alias_map_resolve(
     const loom_value_facts_t* alias_facts, loom_value_id_t value_id,
     bool* out_is_alias, uint16_t* out_alias_ordinal,
     loom_value_facts_t* out_facts) {
-  if (out_is_alias) *out_is_alias = false;
-  if (out_alias_ordinal) *out_alias_ordinal = 0;
+  if (out_is_alias) {
+    *out_is_alias = false;
+  }
+  if (out_alias_ordinal) {
+    *out_alias_ordinal = 0;
+  }
   uint16_t alias_ordinal = 0;
   if (loom_value_fact_alias_map_find(alias_map, value_id, &alias_ordinal)) {
-    if (out_is_alias) *out_is_alias = true;
-    if (out_alias_ordinal) *out_alias_ordinal = alias_ordinal;
+    if (out_is_alias) {
+      *out_is_alias = true;
+    }
+    if (out_alias_ordinal) {
+      *out_alias_ordinal = alias_ordinal;
+    }
     *out_facts = alias_facts[alias_ordinal];
     return true;
   }

@@ -204,7 +204,9 @@ static double loom_float_reduce_turns_f64(double input, int* out_quadrant) {
   int quotient = 0;
   const double residual = remquo(input, 0.25, &quotient);
   int quadrant = quotient % 4;
-  if (quadrant < 0) quadrant += 4;
+  if (quadrant < 0) {
+    quadrant += 4;
+  }
   *out_quadrant = quadrant;
   return residual * 6.2831853071795864769252867665590057683943387987502;
 }
@@ -223,12 +225,20 @@ static double loom_float_eval_turns_f64(double input, const void* user_data) {
   const double angle = loom_float_reduce_turns_f64(input, &quadrant);
   if (angle == 0.0) {
     if (kind == LOOM_FLOAT_TURNS_SIN) {
-      if (quadrant == 1) return 1.0;
-      if (quadrant == 3) return -1.0;
+      if (quadrant == 1) {
+        return 1.0;
+      }
+      if (quadrant == 3) {
+        return -1.0;
+      }
       return copysign(0.0, input);
     }
-    if (quadrant == 0) return 1.0;
-    if (quadrant == 2) return -1.0;
+    if (quadrant == 0) {
+      return 1.0;
+    }
+    if (quadrant == 2) {
+      return -1.0;
+    }
     return 0.0;
   }
   if (kind == LOOM_FLOAT_TURNS_SIN) {
@@ -415,7 +425,9 @@ static void loom_value_facts_eval_float_clamp_ordered(
                                                         out_facts);
         return;
       }
-      if (result < lower_value) result = lower_value;
+      if (result < lower_value) {
+        result = lower_value;
+      }
     }
     if (!loom_value_facts_is_nan(*upper)) {
       double upper_value = 0.0;
@@ -425,7 +437,9 @@ static void loom_value_facts_eval_float_clamp_ordered(
                                                         out_facts);
         return;
       }
-      if (result > upper_value) result = upper_value;
+      if (result > upper_value) {
+        result = upper_value;
+      }
     }
     *out_facts = loom_value_facts_exact_float(scalar_type, result);
   }
@@ -576,7 +590,9 @@ static bool loom_float_bits_are_nan(loom_scalar_type_t scalar_type,
 bool loom_value_facts_from_float_bits(loom_scalar_type_t scalar_type,
                                       uint64_t bits,
                                       loom_value_facts_t* out_facts) {
-  if (!loom_float_type_is_supported(scalar_type)) return false;
+  if (!loom_float_type_is_supported(scalar_type)) {
+    return false;
+  }
   const int32_t bit_count = loom_scalar_type_bitwidth(scalar_type);
   bits = iree_math_mask_low_bits_u64(bits, bit_count);
   if (loom_float_bits_are_nan(scalar_type, bits)) {

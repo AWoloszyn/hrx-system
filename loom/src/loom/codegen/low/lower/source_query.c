@@ -69,7 +69,9 @@ static iree_status_t loom_low_lower_source_query_map_value(
     IREE_RETURN_IF_ERROR(
         map_contract_value.fn(map_contract_value.user_data, state->environment,
                               source_op, source_value_id, out_mapped_value));
-    if (out_mapped_value->is_register) return iree_ok_status();
+    if (out_mapped_value->is_register) {
+      return iree_ok_status();
+    }
   }
   loom_type_t low_type = loom_type_none();
   IREE_RETURN_IF_ERROR(loom_low_lower_query_value(state->context, source_op,

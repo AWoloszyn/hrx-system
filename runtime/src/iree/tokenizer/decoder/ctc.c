@@ -74,7 +74,9 @@ static iree_host_size_t iree_tokenizer_decoder_ctc_replace_one(
     uint8_t* data, iree_host_size_t length, const char* pattern,
     iree_host_size_t pattern_length, const char* replacement,
     iree_host_size_t replacement_length) {
-  if (pattern_length > length) return length;
+  if (pattern_length > length) {
+    return length;
+  }
 
   iree_host_size_t read_pos = 0;
   iree_host_size_t write_pos = 0;
@@ -109,7 +111,9 @@ static iree_host_size_t iree_tokenizer_decoder_ctc_replace_one(
 static iree_host_size_t iree_tokenizer_decoder_ctc_remove_substr(
     uint8_t* data, iree_host_size_t length, const uint8_t* substr,
     iree_host_size_t substr_length) {
-  if (substr_length == 0 || substr_length > length) return length;
+  if (substr_length == 0 || substr_length > length) {
+    return length;
+  }
 
   iree_host_size_t read_pos = 0;
   iree_host_size_t write_pos = 0;
@@ -149,8 +153,12 @@ static iree_host_size_t iree_tokenizer_decoder_ctc_filter_map(
   length = iree_tokenizer_decoder_ctc_remove_substr(
       output, length, state->pad_token, state->pad_token_length);
 
-  if (length == 0) return 0;
-  if (!state->cleanup) return length;
+  if (length == 0) {
+    return 0;
+  }
+  if (!state->cleanup) {
+    return length;
+  }
 
   // Step 2a: Apply wordpiece cleanup rules.
   for (iree_host_size_t i = 0; i < kCleanupRuleCount; ++i) {
@@ -203,7 +211,9 @@ static iree_host_size_t iree_tokenizer_decoder_ctc_drain_pending(
 static iree_host_size_t iree_tokenizer_decoder_ctc_emit_prev_token(
     iree_tokenizer_decoder_ctc_state_t* state,
     iree_mutable_string_view_t* output) {
-  if (state->prev_token_length == 0) return 0;
+  if (state->prev_token_length == 0) {
+    return 0;
+  }
 
   uint8_t transformed[IREE_TOKENIZER_DECODER_CTC_MAX_TOKEN_SIZE];
   iree_host_size_t transformed_length = iree_tokenizer_decoder_ctc_filter_map(

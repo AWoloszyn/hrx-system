@@ -50,7 +50,9 @@ iree_hal_amdgpu_host_queue_require_profiling_signal_memory_pool(
 static iree_status_t
 iree_hal_amdgpu_host_queue_require_profiling_event_memory_pool(
     iree_hal_amdgpu_host_queue_t* queue) {
-  if (queue->profiling.memory.event_memory_pool.handle) return iree_ok_status();
+  if (queue->profiling.memory.event_memory_pool.handle) {
+    return iree_ok_status();
+  }
   return iree_make_status(
       IREE_STATUS_UNAVAILABLE,
       "AMDGPU profiling requires CPU-writable device-visible event memory");
@@ -158,7 +160,9 @@ iree_hal_amdgpu_host_queue_allocate_profiling_completion_signals(
 
 iree_status_t iree_hal_amdgpu_host_queue_ensure_profiling_completion_signals(
     iree_hal_amdgpu_host_queue_t* queue) {
-  if (queue->profiling.completion_signals) return iree_ok_status();
+  if (queue->profiling.completion_signals) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       iree_hal_amdgpu_host_queue_require_profiling_signal_memory_pool(queue));
   return iree_hal_amdgpu_host_queue_allocate_profiling_completion_signals(
@@ -167,7 +171,9 @@ iree_status_t iree_hal_amdgpu_host_queue_ensure_profiling_completion_signals(
 
 void iree_hal_amdgpu_host_queue_deallocate_profiling_completion_signals(
     iree_hal_amdgpu_host_queue_t* queue) {
-  if (!queue->profiling.completion_signals) return;
+  if (!queue->profiling.completion_signals) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_amdgpu_hsa_cleanup_assert_success(iree_hsa_amd_memory_pool_free_raw(
@@ -179,7 +185,9 @@ void iree_hal_amdgpu_host_queue_deallocate_profiling_completion_signals(
 
 iree_status_t iree_hal_amdgpu_host_queue_ensure_profile_event_storage(
     iree_hal_amdgpu_host_queue_t* queue) {
-  if (queue->profiling.event_storage) return iree_ok_status();
+  if (queue->profiling.event_storage) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       iree_hal_amdgpu_host_queue_require_profiling_event_memory_pool(queue));
 
@@ -271,7 +279,9 @@ void iree_hal_amdgpu_host_queue_clear_profile_events(
 
 void iree_hal_amdgpu_host_queue_deallocate_profile_events(
     iree_hal_amdgpu_host_queue_t* queue) {
-  if (!queue->profiling.event_storage) return;
+  if (!queue->profiling.event_storage) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_amdgpu_hsa_cleanup_assert_success(iree_hsa_amd_memory_pool_free_raw(
       queue->libhsa, queue->profiling.event_storage));
@@ -356,7 +366,9 @@ iree_status_t iree_hal_amdgpu_host_queue_reserve_profile_dispatch_events(
 void iree_hal_amdgpu_host_queue_cancel_profile_dispatch_events(
     iree_hal_amdgpu_host_queue_t* queue,
     iree_hal_amdgpu_profile_dispatch_event_reservation_t reservation) {
-  if (!reservation.event_count) return;
+  if (!reservation.event_count) {
+    return;
+  }
   iree_slim_mutex_lock(&queue->profiling.event_mutex);
   queue->profiling.dispatch_events.write_position =
       reservation.first_event_position;
@@ -375,7 +387,9 @@ iree_hal_amdgpu_host_queue_profile_dispatch_event_at(
 void iree_hal_amdgpu_host_queue_retire_profile_dispatch_events(
     iree_hal_amdgpu_host_queue_t* queue,
     iree_hal_amdgpu_profile_dispatch_event_reservation_t reservation) {
-  if (!reservation.event_count) return;
+  if (!reservation.event_count) {
+    return;
+  }
   iree_slim_mutex_lock(&queue->profiling.event_mutex);
   queue->profiling.dispatch_events.ready_position =
       reservation.first_event_position + reservation.event_count;
@@ -468,7 +482,9 @@ iree_status_t iree_hal_amdgpu_host_queue_reserve_profile_queue_device_events(
 void iree_hal_amdgpu_host_queue_cancel_profile_queue_device_events(
     iree_hal_amdgpu_host_queue_t* queue,
     iree_hal_amdgpu_profile_queue_device_event_reservation_t reservation) {
-  if (!reservation.event_count) return;
+  if (!reservation.event_count) {
+    return;
+  }
   iree_slim_mutex_lock(&queue->profiling.event_mutex);
   queue->profiling.queue_device_events.write_position =
       reservation.first_event_position;
@@ -487,7 +503,9 @@ iree_hal_amdgpu_host_queue_profile_queue_device_event_at(
 void iree_hal_amdgpu_host_queue_retire_profile_queue_device_events(
     iree_hal_amdgpu_host_queue_t* queue,
     iree_hal_amdgpu_profile_queue_device_event_reservation_t reservation) {
-  if (!reservation.event_count) return;
+  if (!reservation.event_count) {
+    return;
+  }
   iree_slim_mutex_lock(&queue->profiling.event_mutex);
   queue->profiling.queue_device_events.ready_position =
       reservation.first_event_position + reservation.event_count;
@@ -500,7 +518,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_copy_dispatch_events(
     iree_hal_profile_dispatch_event_t** out_events) {
   *out_storage_size = 0;
   *out_events = NULL;
-  if (event_count == 0) return iree_ok_status();
+  if (event_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       0, out_storage_size,
@@ -536,7 +556,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_copy_queue_device_events(
     iree_hal_profile_queue_device_event_t** out_events) {
   *out_storage_size = 0;
   *out_events = NULL;
-  if (event_count == 0) return iree_ok_status();
+  if (event_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       0, out_storage_size,
@@ -567,7 +589,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_build_event_relationships(
 
   const iree_host_size_t max_relationship_count =
       dispatch_event_count + queue_device_event_count;
-  if (max_relationship_count == 0) return iree_ok_status();
+  if (max_relationship_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       0, out_storage_size,
@@ -579,7 +603,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_build_event_relationships(
   iree_host_size_t relationship_count = 0;
   for (iree_host_size_t i = 0; i < dispatch_event_count; ++i) {
     const iree_hal_profile_dispatch_event_t* event = &dispatch_events[i];
-    if (event->submission_id == 0) continue;
+    if (event->submission_id == 0) {
+      continue;
+    }
     iree_hal_profile_event_relationship_record_t* relationship =
         &(*out_relationships)[relationship_count++];
     *relationship = iree_hal_profile_event_relationship_record_default();
@@ -600,7 +626,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_build_event_relationships(
   for (iree_host_size_t i = 0; i < queue_device_event_count; ++i) {
     const iree_hal_profile_queue_device_event_t* event =
         &queue_device_events[i];
-    if (event->submission_id == 0) continue;
+    if (event->submission_id == 0) {
+      continue;
+    }
     iree_hal_profile_event_relationship_record_t* relationship =
         &(*out_relationships)[relationship_count++];
     *relationship = iree_hal_profile_event_relationship_record_default();
@@ -626,7 +654,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_build_event_relationships(
 iree_status_t iree_hal_amdgpu_host_queue_write_profile_events(
     iree_hal_amdgpu_host_queue_t* queue, iree_hal_profile_sink_t* sink,
     uint64_t session_id) {
-  if (!sink) return iree_ok_status();
+  if (!sink) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(queue->device_ordinal > UINT32_MAX)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "profile event physical device ordinal out of "

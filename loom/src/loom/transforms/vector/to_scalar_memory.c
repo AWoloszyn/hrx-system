@@ -544,7 +544,9 @@ static iree_status_t loom_vector_to_scalar_emit_prepared_store_lane(
       lane->indices.dynamic_index_count, lane->indices.static_indices,
       lane->indices.static_index_count, cache_policy.cache_scope,
       cache_policy.cache_temporal, state->location, &store_op));
-  if (!if_op) return iree_ok_status();
+  if (!if_op) {
+    return iree_ok_status();
+  }
 
   loom_op_t* then_yield = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_yield_build(&state->rewriter->builder, NULL, 0,
@@ -623,7 +625,9 @@ static iree_status_t loom_vector_to_scalar_lower_static_memory_store(
   uint16_t element_count = 0;
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_static_element_count(
       state, state->vector_type, &element_count));
-  if (loom_pass_has_error_diagnostics(state->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(state->pass)) {
+    return iree_ok_status();
+  }
   uint8_t rank = loom_type_rank(state->vector_type);
   int64_t* indices = NULL;
   if (rank > 0) {
@@ -649,7 +653,9 @@ static iree_status_t loom_vector_to_scalar_lower_static_memory_store(
     loom_builder_set_before(&state->rewriter->builder, state->op);
     IREE_RETURN_IF_ERROR(
         loom_vector_to_scalar_emit_prepared_store_lane(state, &lane));
-    if (ordinal == 0) first_store = state->op->prev_op;
+    if (ordinal == 0) {
+      first_store = state->op->prev_op;
+    }
   }
   return iree_ok_status();
 }
@@ -739,7 +745,9 @@ static iree_status_t loom_vector_to_scalar_fragment_store_loop_bounds(
 static bool loom_vector_to_scalar_fragment_store_source_is_supported(
     loom_vector_to_scalar_state_t* state, loom_value_id_t value) {
   loom_type_t type = loom_module_value_type(state->rewriter->module, value);
-  if (!loom_type_is_vector(type)) return true;
+  if (!loom_type_is_vector(type)) {
+    return true;
+  }
 
   loom_op_t* def_op =
       loom_vector_to_scalar_value_def_op(state->rewriter->module, value);
@@ -789,7 +797,9 @@ static bool loom_vector_to_scalar_fragment_store_source_is_supported_root(
 static uint32_t loom_vector_to_scalar_fragment_store_source_rejection_bits(
     loom_vector_to_scalar_state_t* state, loom_value_id_t value) {
   loom_type_t type = loom_module_value_type(state->rewriter->module, value);
-  if (!loom_type_is_vector(type)) return LOOM_CONTRACT_REJECTION_NONE;
+  if (!loom_type_is_vector(type)) {
+    return LOOM_CONTRACT_REJECTION_NONE;
+  }
 
   loom_op_t* def_op =
       loom_vector_to_scalar_value_def_op(state->rewriter->module, value);
@@ -830,7 +840,9 @@ static uint32_t loom_vector_to_scalar_fragment_store_source_rejection_bits(
       uint32_t bits =
           loom_vector_to_scalar_fragment_store_source_rejection_bits(
               state, operands[i]);
-      if (bits != LOOM_CONTRACT_REJECTION_NONE) return bits;
+      if (bits != LOOM_CONTRACT_REJECTION_NONE) {
+        return bits;
+      }
     }
     return LOOM_CONTRACT_REJECTION_NONE;
   }
@@ -1006,7 +1018,9 @@ static iree_status_t loom_vector_to_scalar_lower_static_store_compress(
   uint16_t element_count = 0;
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_static_element_count(
       state, state->vector_type, &element_count));
-  if (loom_pass_has_error_diagnostics(state->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(state->pass)) {
+    return iree_ok_status();
+  }
   for (uint16_t ordinal = 0; ordinal < element_count; ++ordinal) {
     int64_t index = (int64_t)ordinal;
     loom_vector_to_scalar_index_list_t index_list = {
@@ -1183,7 +1197,9 @@ static iree_status_t loom_vector_to_scalar_lower_static_atomic_reduce(
   uint16_t element_count = 0;
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_static_element_count(
       state, state->vector_type, &element_count));
-  if (loom_pass_has_error_diagnostics(state->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(state->pass)) {
+    return iree_ok_status();
+  }
   uint8_t rank = loom_type_rank(state->vector_type);
   int64_t* indices = NULL;
   if (rank > 0) {
@@ -1404,7 +1420,9 @@ static iree_status_t loom_vector_to_scalar_lower_static_atomic_rmw(
   uint16_t element_count = 0;
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_static_element_count(
       state, state->vector_type, &element_count));
-  if (loom_pass_has_error_diagnostics(state->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(state->pass)) {
+    return iree_ok_status();
+  }
   loom_value_id_t* elements = NULL;
   if (element_count > 0) {
     IREE_RETURN_IF_ERROR(
@@ -1574,7 +1592,9 @@ static iree_status_t loom_vector_to_scalar_lower_static_atomic_cmpxchg(
   uint16_t element_count = 0;
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_static_element_count(
       state, state->vector_type, &element_count));
-  if (loom_pass_has_error_diagnostics(state->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(state->pass)) {
+    return iree_ok_status();
+  }
   loom_value_id_t* elements = NULL;
   if (element_count > 0) {
     IREE_RETURN_IF_ERROR(

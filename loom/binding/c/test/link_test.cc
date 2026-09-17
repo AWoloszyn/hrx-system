@@ -507,16 +507,22 @@ RequestPtr CreateModuleRequest(loomc_context_t* context,
                                const char* root_name) {
   const loom_module_t* internal_module = loomc_module_const_loom_module(module);
   EXPECT_NE(internal_module, nullptr);
-  if (internal_module == nullptr) return RequestPtr();
+  if (internal_module == nullptr) {
+    return RequestPtr();
+  }
 
   const loom_string_id_t root_name_id = loom_module_lookup_string(
       internal_module, iree_make_cstring_view(root_name));
   EXPECT_NE(root_name_id, LOOM_STRING_ID_INVALID);
-  if (root_name_id == LOOM_STRING_ID_INVALID) return RequestPtr();
+  if (root_name_id == LOOM_STRING_ID_INVALID) {
+    return RequestPtr();
+  }
   const loom_symbol_id_t module_symbol_id =
       loom_module_find_symbol(internal_module, root_name_id);
   EXPECT_NE(module_symbol_id, LOOM_SYMBOL_ID_INVALID);
-  if (module_symbol_id == LOOM_SYMBOL_ID_INVALID) return RequestPtr();
+  if (module_symbol_id == LOOM_SYMBOL_ID_INVALID) {
+    return RequestPtr();
+  }
 
   loom_symbol_id_t wire_symbol_ordinal = LOOM_SYMBOL_ID_INVALID;
   const loomc_module_symbol_projection_t projection = {

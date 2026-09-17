@@ -20,7 +20,9 @@
 
 static bool loom_scf_lookup_key_matches_selector_facts(
     loom_value_facts_t selector_facts, int64_t key) {
-  if (loom_value_facts_is_float(selector_facts)) return true;
+  if (loom_value_facts_is_float(selector_facts)) {
+    return true;
+  }
   if (key < selector_facts.range_lo || key > selector_facts.range_hi) {
     return false;
   }
@@ -31,8 +33,12 @@ static bool loom_scf_lookup_key_matches_selector_facts(
 static bool loom_scf_lookup_key_is_explicit(loom_attribute_t case_keys,
                                             int64_t key) {
   for (uint16_t i = 0; i < case_keys.count; ++i) {
-    if (case_keys.i64_array[i] == key) return true;
-    if (case_keys.i64_array[i] > key) return false;
+    if (case_keys.i64_array[i] == key) {
+      return true;
+    }
+    if (case_keys.i64_array[i] > key) {
+      return false;
+    }
   }
   return false;
 }
@@ -65,7 +71,9 @@ static bool loom_scf_select_arms_are_proven_equal(
 
 static bool loom_scf_lookup_default_row_may_match(
     loom_value_facts_t selector_facts, loom_attribute_t case_keys) {
-  if (loom_value_facts_is_float(selector_facts)) return true;
+  if (loom_value_facts_is_float(selector_facts)) {
+    return true;
+  }
   if (loom_value_facts_is_exact(selector_facts)) {
     return !loom_scf_lookup_key_is_explicit(case_keys, selector_facts.range_lo);
   }
@@ -83,7 +91,9 @@ static bool loom_scf_lookup_default_row_may_match(
                                                     candidate)) {
       continue;
     }
-    if (!loom_scf_lookup_key_is_explicit(case_keys, candidate)) return true;
+    if (!loom_scf_lookup_key_is_explicit(case_keys, candidate)) {
+      return true;
+    }
   }
   return false;
 }

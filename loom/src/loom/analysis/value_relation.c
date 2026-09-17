@@ -56,7 +56,9 @@ static bool loom_value_relation_next_tied_result(
     loom_value_relation_iterator_t* iterator,
     loom_value_relation_t* out_relation) {
   const loom_op_t* op = iterator->op;
-  if (iterator->outer_index >= op->tied_result_count) return false;
+  if (iterator->outer_index >= op->tied_result_count) {
+    return false;
+  }
   const loom_tied_result_t tied =
       loom_op_tied_results(op)[iterator->outer_index++];
   IREE_ASSERT(tied.operand_index < op->operand_count &&
@@ -78,7 +80,9 @@ static bool loom_value_relation_next_fact_identity(
   const loom_op_t* op = iterator->op;
   IREE_ASSERT_EQ(op->operand_count, op->result_count,
                  "verified fact identity fields must have equal arity");
-  if (iterator->outer_index >= op->result_count) return false;
+  if (iterator->outer_index >= op->result_count) {
+    return false;
+  }
   const uint16_t index = iterator->outer_index++;
   return loom_value_relation_emit(
       loom_op_const_operands(op)[index], loom_op_const_results(op)[index],
@@ -196,7 +200,9 @@ static bool loom_value_relation_next_loop_entry(
       .vtable = iterator->vtable->loop_like,
   };
   const loom_value_slice_t iter_args = loom_loop_like_iter_args(loop);
-  if (iterator->outer_index >= iter_args.count) return false;
+  if (iterator->outer_index >= iter_args.count) {
+    return false;
+  }
   IREE_ASSERT_EQ(iter_args.count, op->result_count,
                  "verified loop state must match result arity");
   loom_region_t* entry_region = loom_loop_like_condition_region(loop);
@@ -235,7 +241,9 @@ static bool loom_value_relation_next_loop_bypass(
   const loom_value_slice_t iter_args = loom_loop_like_iter_args(loop);
   IREE_ASSERT_EQ(iter_args.count, op->result_count,
                  "verified counted-loop state must match result arity");
-  if (iterator->outer_index >= iter_args.count) return false;
+  if (iterator->outer_index >= iter_args.count) {
+    return false;
+  }
   const uint16_t index = iterator->outer_index++;
   const iree_host_size_t operand_index =
       (iree_host_size_t)(iter_args.values - loom_op_const_operands(op)) + index;
@@ -297,7 +305,9 @@ static bool loom_value_relation_next_loop_terminator(
                 "verified loop condition region must have one block");
     IREE_ASSERT_EQ(op->operand_count, (uint16_t)(state_count + 1),
                    "verified loop condition must forward every state value");
-    if (iterator->outer_index >= state_count) return false;
+    if (iterator->outer_index >= state_count) {
+      return false;
+    }
     source_operand_index = (uint16_t)(iterator->outer_index + 1);
     destinations[0] = loom_block_arg_id(body_block, iterator->outer_index);
     destinations[1] = loom_op_const_results(parent_op)[iterator->outer_index];
@@ -305,7 +315,9 @@ static bool loom_value_relation_next_loop_terminator(
   } else if (condition != NULL) {
     IREE_ASSERT_EQ(op->operand_count, state_count,
                    "verified loop body yield must match carried state");
-    if (iterator->outer_index >= state_count) return false;
+    if (iterator->outer_index >= state_count) {
+      return false;
+    }
     const loom_block_t* condition_block =
         loom_region_const_entry_block(condition);
     IREE_ASSERT_EQ(condition_block->arg_count, state_count,
@@ -315,7 +327,9 @@ static bool loom_value_relation_next_loop_terminator(
   } else {
     IREE_ASSERT_EQ(op->operand_count, state_count,
                    "verified counted-loop yield must match carried state");
-    if (iterator->outer_index >= state_count) return false;
+    if (iterator->outer_index >= state_count) {
+      return false;
+    }
     destinations[0] = loom_block_arg_id(
         body_block, (uint16_t)(body_arg_offset + iterator->outer_index));
     destinations[1] = loom_op_const_results(parent_op)[iterator->outer_index];
@@ -340,7 +354,9 @@ static bool loom_value_relation_next_region_terminator(
   loom_op_t* parent_op = op->parent_op;
   IREE_ASSERT_EQ(op->operand_count, parent_op->result_count,
                  "verified region yield must match parent results");
-  if (iterator->outer_index >= op->operand_count) return false;
+  if (iterator->outer_index >= op->operand_count) {
+    return false;
+  }
   const uint16_t index = iterator->outer_index++;
   return loom_value_relation_emit(loom_op_const_operands(op)[index],
                                   loom_op_const_results(parent_op)[index],
@@ -495,7 +511,9 @@ bool loom_value_relation_iterator_next(loom_value_relation_iterator_t* iterator,
       case LOOM_VALUE_RELATION_PHASE_END:
         break;
     }
-    if (found) return true;
+    if (found) {
+      return true;
+    }
     loom_value_relation_finish_phase(iterator);
   }
   return false;

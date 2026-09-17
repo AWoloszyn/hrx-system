@@ -102,7 +102,9 @@ static inline iree_host_size_t iree_mpsc_queue_free_space(uint32_t capacity,
                                                           int64_t reserve_pos,
                                                           int64_t read_pos) {
   int64_t used = reserve_pos - read_pos;
-  if (IREE_UNLIKELY(used < 0 || used > (int64_t)capacity)) return 0;
+  if (IREE_UNLIKELY(used < 0 || used > (int64_t)capacity)) {
+    return 0;
+  }
   return (iree_host_size_t)((int64_t)capacity - used);
 }
 
@@ -348,7 +350,9 @@ bool iree_mpsc_queue_write(iree_mpsc_queue_t* queue, const void* data,
                            iree_host_size_t length) {
   iree_mpsc_queue_reservation_t reservation;
   void* payload = iree_mpsc_queue_begin_write(queue, length, &reservation);
-  if (!payload) return false;
+  if (!payload) {
+    return false;
+  }
   memcpy(payload, data, length);
   iree_mpsc_queue_commit_write(queue, reservation);
   return true;

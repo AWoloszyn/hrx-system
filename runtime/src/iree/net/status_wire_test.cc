@@ -84,7 +84,9 @@ static void ExpectInvalid(const std::vector<uint8_t>& wire) {
 
 static std::string FormatStatus(const iree_status_t status) {
   iree_host_size_t length = 0;
-  if (!iree_status_format(status, 0, nullptr, &length)) return {};
+  if (!iree_status_format(status, 0, nullptr, &length)) {
+    return {};
+  }
   std::vector<char> buffer(length + 1);
   if (!iree_status_format(status, buffer.size(), buffer.data(), &length)) {
     return {};

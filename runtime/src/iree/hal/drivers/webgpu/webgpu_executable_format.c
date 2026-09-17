@@ -181,6 +181,8 @@ iree_status_t iree_hal_webgpu_executable_format_parse(
     iree_hal_webgpu_executable_export_t export;
     status = iree_hal_webgpu_executable_format_read_export(&format, i, &export);
   }
-  if (iree_status_is_ok(status)) *out_format = format;
+  if (iree_status_is_ok(status)) {
+    *out_format = format;
+  }
   return status;
 }

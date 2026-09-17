@@ -329,7 +329,9 @@ class TcpConnectionTest : public ::testing::Test {
   }
 
   void PollUntil(const std::function<bool()>& condition) {
-    while (!condition()) Poll();
+    while (!condition()) {
+      Poll();
+    }
   }
 
   void CreateReceivePool(iree_host_size_t buffer_size,
@@ -431,10 +433,14 @@ class TcpConnectionTest : public ::testing::Test {
         connection, {EndpointReady, &ready_result});
     const iree_status_code_t status_code = iree_status_code(status);
     IREE_EXPECT_OK(status);
-    if (status_code != IREE_STATUS_OK) return {};
+    if (status_code != IREE_STATUS_OK) {
+      return {};
+    }
     PollUntil([&] { return ready_result.callback_count == 1; });
     EXPECT_EQ(ready_result.status_code, IREE_STATUS_OK);
-    if (out_ready_result) *out_ready_result = ready_result;
+    if (out_ready_result) {
+      *out_ready_result = ready_result;
+    }
     return ready_result.endpoint;
   }
 
@@ -466,7 +472,9 @@ class TcpConnectionTest : public ::testing::Test {
 
   void DeactivateAndRelease(iree_net_connection_t** connection_ptr) {
     iree_net_connection_t* connection = *connection_ptr;
-    if (!connection) return;
+    if (!connection) {
+      return;
+    }
     ConnectionDeactivateResult result;
     iree_net_connection_deactivate(connection,
                                    {ConnectionDeactivated, &result});
@@ -730,7 +738,9 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
   }
   blocking_allocator_.Release();
   submit_thread.join();
-  if (deactivate_status_code != IREE_STATUS_OK) return;
+  if (deactivate_status_code != IREE_STATUS_OK) {
+    return;
+  }
 
   EXPECT_EQ(submit_status, IREE_STATUS_OK);
   PollUntil([&] {
@@ -783,7 +793,9 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationRejectsPreparingReservation) {
   }
   blocking_allocator_.Release();
   begin_thread.join();
-  if (deactivate_status_code != IREE_STATUS_OK) return;
+  if (deactivate_status_code != IREE_STATUS_OK) {
+    return;
+  }
 
   EXPECT_EQ(begin_status, IREE_STATUS_FAILED_PRECONDITION);
   EXPECT_EQ(reservation_data, nullptr);

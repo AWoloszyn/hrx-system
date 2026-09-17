@@ -47,7 +47,9 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (g_decoder == NULL || size < 2) return 0;
+  if (g_decoder == NULL || size < 2) {
+    return 0;
+  }
 
   iree_host_size_t pos = 0;
 
@@ -57,8 +59,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Byte 0: Number of tokens.
   iree_host_size_t token_count = data[pos++];
-  if (token_count > kMaxTokens) token_count = kMaxTokens;
-  if (token_count == 0) return 0;
+  if (token_count > kMaxTokens) {
+    token_count = kMaxTokens;
+  }
+  if (token_count == 0) {
+    return 0;
+  }
 
   // Parse tokens: [len:1][text:len]...
   iree_string_view_t tokens[kMaxTokens];
@@ -66,8 +72,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   for (iree_host_size_t i = 0; i < token_count && pos < size; ++i) {
     iree_host_size_t length = data[pos++];
-    if (length > kMaxTokenLength) length = kMaxTokenLength;
-    if (pos + length > size) length = size - pos;
+    if (length > kMaxTokenLength) {
+      length = kMaxTokenLength;
+    }
+    if (pos + length > size) {
+      length = size - pos;
+    }
 
     tokens[actual_token_count] = iree_make_string_view(
         reinterpret_cast<const char*>(data + pos), length);
@@ -75,7 +85,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     ++actual_token_count;
   }
 
-  if (actual_token_count == 0) return 0;
+  if (actual_token_count == 0) {
+    return 0;
+  }
 
   //===--------------------------------------------------------------------===//
   // Phase 2: Allocate state and output buffer
@@ -179,7 +191,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         iree_status_ignore(status);
         break;
       }
-      if (final_written == 0) break;
+      if (final_written == 0) {
+        break;
+      }
     }
 
     iree_tokenizer_decoder_state_deinitialize(state);

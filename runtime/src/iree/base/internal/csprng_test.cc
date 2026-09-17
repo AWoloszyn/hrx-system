@@ -23,7 +23,9 @@ TEST(CSPRNG, FillSmallBuffer) {
   // A correctly functioning CSPRNG should produce non-zero bytes.
   int non_zero_count = 0;
   for (size_t i = 0; i < sizeof(buffer); ++i) {
-    if (buffer[i] != 0) ++non_zero_count;
+    if (buffer[i] != 0) {
+      ++non_zero_count;
+    }
   }
   EXPECT_GT(non_zero_count, 0)
       << "CSPRNG returned all zeros, which is extremely unlikely";
@@ -41,7 +43,9 @@ TEST(CSPRNG, FillLargeBuffer) {
   // Check that at least some bytes are non-zero.
   int non_zero_count = 0;
   for (size_t i = 0; i < kSize; ++i) {
-    if (buffer[i] != 0) ++non_zero_count;
+    if (buffer[i] != 0) {
+      ++non_zero_count;
+    }
   }
   EXPECT_GT(non_zero_count, 0)
       << "CSPRNG returned all zeros, which is extremely unlikely";

@@ -138,7 +138,9 @@ static void loom_consumption_cfg_search_push(
   while (position != 0) {
     const iree_host_size_t parent = (position - 1) / 2;
     const uint16_t parent_block = query->block_heap[parent];
-    if (graph->blocks[parent_block].component >= component) break;
+    if (graph->blocks[parent_block].component >= component) {
+      break;
+    }
     query->block_heap[position] = parent_block;
     position = parent;
   }
@@ -207,7 +209,9 @@ static bool loom_consumption_search_cfg_reachability(
       break;
     }
     const uint16_t block_index = loom_consumption_cfg_search_pop(region_query);
-    if (graph->blocks[block_index].block == query->recreation_block) continue;
+    if (graph->blocks[block_index].block == query->recreation_block) {
+      continue;
+    }
     loom_consumption_bitset_set(region_query->reachable_bits, word_count,
                                 block_index);
     const loom_cfg_block_index_span_t successors =
@@ -216,7 +220,9 @@ static bool loom_consumption_search_cfg_reachability(
       loom_consumption_cfg_search_push(region_query, successors.values[i],
                                        word_count);
     }
-    if (block_index == target_index) return true;
+    if (block_index == target_index) {
+      return true;
+    }
   }
   return false;
 }
@@ -279,7 +285,9 @@ iree_status_t loom_consumption_use_after_query_prepare(
   const loom_cfg_graph_t* cfg_graph = NULL;
   IREE_RETURN_IF_ERROR(
       loom_consumption_region_query_cfg_graph(region_query, &cfg_graph));
-  if (cfg_graph->malformed) return iree_ok_status();
+  if (cfg_graph->malformed) {
+    return iree_ok_status();
+  }
   if (region_query->liveness != NULL) {
     const loom_liveness_analysis_t* liveness = region_query->liveness;
     const loom_liveness_segment_range_t segments =
@@ -330,7 +338,9 @@ bool loom_consumption_use_after_query_contains(
   if (!loom_cfg_graph_block_is_reachable(graph, (uint16_t)block_index)) {
     return false;
   }
-  if (anchor_block == query->recreation_block) return false;
+  if (anchor_block == query->recreation_block) {
+    return false;
+  }
 
   const iree_host_size_t consuming_index =
       loom_cfg_graph_block_index(graph, consuming_block);
@@ -340,7 +350,9 @@ bool loom_consumption_use_after_query_contains(
     return loom_consumption_search_cfg_reachability(query,
                                                     (uint16_t)block_index);
   }
-  if (anchor_info->component > consuming_info->component) return false;
+  if (anchor_info->component > consuming_info->component) {
+    return false;
+  }
   const iree_host_size_t cut_index =
       loom_cfg_graph_block_index(graph, query->recreation_block);
   // Blocks in one component reach each other without leaving the component.
@@ -367,7 +379,9 @@ bool loom_consumption_use_after_query_contains(
   if (block_index != consuming_index &&
       path_root->preorder <= anchor_info->preorder &&
       anchor_info->preorder < path_root->preorder_end) {
-    if (cut_index == IREE_HOST_SIZE_MAX) return true;
+    if (cut_index == IREE_HOST_SIZE_MAX) {
+      return true;
+    }
     const loom_cfg_block_info_t* cut_info = &graph->blocks[cut_index];
     if (cut_info->preorder <= path_root->preorder ||
         cut_info->preorder > anchor_info->preorder ||

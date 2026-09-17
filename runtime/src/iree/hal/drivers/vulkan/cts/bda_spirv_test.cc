@@ -139,7 +139,9 @@ class BdaSpirvTest : public CtsTestBase<> {
 
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
 
     dispatch_queue_ =
         QueueForCommandCategories(IREE_HAL_COMMAND_CATEGORY_DISPATCH);

@@ -265,8 +265,12 @@ class TransportTest : public ::testing::Test {
     iree_net_transport_factory_release(factory_);
     ReleaseReceivePool(&client_receive_pool_);
     ReleaseReceivePool(&server_receive_pool_);
-    if (owns_client_proactor_) iree_async_proactor_release(client_proactor_);
-    if (owns_server_proactor_) iree_async_proactor_release(server_proactor_);
+    if (owns_client_proactor_) {
+      iree_async_proactor_release(client_proactor_);
+    }
+    if (owns_server_proactor_) {
+      iree_async_proactor_release(server_proactor_);
+    }
   }
 
   void Poll(iree_async_proactor_t* proactor, PollSide side) {
@@ -291,7 +295,9 @@ class TransportTest : public ::testing::Test {
 
   void PollUntil(iree_async_proactor_t* proactor, PollSide side,
                  const std::function<bool()>& condition) {
-    while (!condition()) Poll(proactor, side);
+    while (!condition()) {
+      Poll(proactor, side);
+    }
   }
 
   void CreateListener() {
@@ -319,7 +325,9 @@ class TransportTest : public ::testing::Test {
   }
 
   void DrainPendingConnection() {
-    if (!connect_state_.submitted) return;
+    if (!connect_state_.submitted) {
+      return;
+    }
     if (connect_state_.callback_count == 0) {
       PollUntil(client_proactor_, kClientPolling,
                 [&] { return connect_state_.callback_count == 1; });
@@ -380,14 +388,18 @@ class TransportTest : public ::testing::Test {
                                            iree_async_proactor_t* proactor,
                                            PollSide side) {
     EndpointReadyState* state = SubmitOpenEndpoint(connection, side);
-    if (!state) return {};
+    if (!state) {
+      return {};
+    }
     PollUntil(proactor, side, [&] { return state->callback_count == 1; });
     EXPECT_EQ(state->status_code, IREE_STATUS_OK);
     return state->endpoint;
   }
 
   void StopAndFreeListener() {
-    if (!listener_) return;
+    if (!listener_) {
+      return;
+    }
     if (!stop_state_.submitted) {
       IREE_ASSERT_OK(iree_net_listener_stop(listener_, stop_state_.callback()));
       stop_state_.submitted = true;
@@ -402,7 +414,9 @@ class TransportTest : public ::testing::Test {
 
   void DeactivateAndRelease(iree_net_connection_t*& connection,
                             iree_async_proactor_t* proactor, PollSide side) {
-    if (!connection) return;
+    if (!connection) {
+      return;
+    }
     DeactivateState state;
     state.current_poll_side = &current_poll_side_;
     state.expected_poll_side = side;

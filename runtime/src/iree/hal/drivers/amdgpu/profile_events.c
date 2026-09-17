@@ -28,7 +28,9 @@ static void iree_hal_amdgpu_profile_event_stream_deinitialize(
 static iree_status_t iree_hal_amdgpu_profile_event_stream_ensure_storage(
     iree_hal_amdgpu_profile_event_stream_t* stream, iree_host_size_t event_size,
     iree_host_size_t event_capacity, iree_allocator_t host_allocator) {
-  if (stream->ring.records) return iree_ok_status();
+  if (stream->ring.records) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, event_capacity);
 
@@ -74,7 +76,9 @@ static iree_status_t iree_hal_amdgpu_profile_event_stream_write(
     iree_hal_profile_sink_t* sink, iree_hal_profile_chunk_metadata_t metadata,
     iree_allocator_t host_allocator) {
   (void)host_allocator;
-  if (!sink || !stream->ring.records) return iree_ok_status();
+  if (!sink || !stream->ring.records) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_profile_event_ring_snapshot_t snapshot;
@@ -114,7 +118,9 @@ void iree_hal_amdgpu_profile_event_streams_initialize(
 void iree_hal_amdgpu_profile_event_streams_deinitialize(
     iree_hal_amdgpu_profile_event_streams_t* streams,
     iree_allocator_t host_allocator) {
-  if (!streams) return;
+  if (!streams) {
+    return;
+  }
   iree_hal_amdgpu_profile_event_stream_deinitialize(&streams->memory.stream,
                                                     host_allocator);
   streams->memory.next_allocation_id = 0;
@@ -176,7 +182,9 @@ bool iree_hal_amdgpu_profile_event_streams_record_memory_event(
     const iree_hal_profile_memory_event_t* event) {
   bool recorded = false;
   iree_hal_amdgpu_profile_event_stream_t* stream = &streams->memory.stream;
-  if (!stream->ring.records) return false;
+  if (!stream->ring.records) {
+    return false;
+  }
   iree_slim_mutex_lock(&stream->mutex);
   const bool session_matches =
       session_id == 0 || active_session_id == session_id;
@@ -207,7 +215,9 @@ void iree_hal_amdgpu_profile_event_streams_record_queue_event(
     iree_hal_amdgpu_profile_event_streams_t* streams,
     const iree_hal_profile_queue_event_t* event) {
   iree_hal_amdgpu_profile_event_stream_t* stream = &streams->queue.stream;
-  if (!stream->ring.records) return;
+  if (!stream->ring.records) {
+    return;
+  }
   iree_slim_mutex_lock(&stream->mutex);
   uint64_t event_position = 0;
   uint64_t event_id = 0;

@@ -39,7 +39,9 @@ static void process_with_chunk_size(iree_tokenizer_normalizer_t* normalizer,
   }
 
   void* state_buffer = malloc(state_size);
-  if (!state_buffer) return;
+  if (!state_buffer) {
+    return;
+  }
 
   iree_tokenizer_normalizer_state_t* state = NULL;
   iree_status_t status = iree_tokenizer_normalizer_state_initialize(
@@ -75,7 +77,9 @@ static void process_with_chunk_size(iree_tokenizer_normalizer_t* normalizer,
         reinterpret_cast<const char*>(data + offset), this_chunk);
 
     // Advance output pointer to accumulate normalized text.
-    if (total_written >= output_capacity) break;
+    if (total_written >= output_capacity) {
+      break;
+    }
     iree_mutable_string_view_t output_view = iree_make_mutable_string_view(
         output + total_written, output_capacity - total_written);
 

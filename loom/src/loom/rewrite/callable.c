@@ -119,7 +119,9 @@ static bool loom_callable_op_is_inside_region(const loom_op_t* op,
   for (const loom_op_t* current = op; current; current = current->parent_op) {
     const loom_region_t* parent_region =
         current->parent_block ? current->parent_block->parent_region : NULL;
-    if (parent_region == region) return true;
+    if (parent_region == region) {
+      return true;
+    }
   }
   return false;
 }
@@ -168,11 +170,17 @@ static iree_status_t loom_callable_validate_single_block_body(
 
 bool loom_callable_body_is_linear(const loom_module_t* module,
                                   loom_func_like_t callee) {
-  if (!loom_func_like_isa(callee)) return false;
+  if (!loom_func_like_isa(callee)) {
+    return false;
+  }
   loom_region_t* body = loom_func_like_body(callee);
-  if (!body || body->block_count != 1) return false;
+  if (!body || body->block_count != 1) {
+    return false;
+  }
   const loom_block_t* entry_block = loom_region_const_entry_block(body);
-  if (!entry_block || entry_block->op_count == 0) return false;
+  if (!entry_block || entry_block->op_count == 0) {
+    return false;
+  }
   const loom_op_t* terminator = loom_block_const_last_op(entry_block);
   const loom_op_vtable_t* callee_vtable = loom_op_vtable(module, callee.op);
   const loom_region_descriptor_t* body_descriptor =
@@ -202,7 +210,9 @@ bool loom_callable_call_site_allows_cfg_splice(const loom_module_t* module,
   loom_region_t* const* parent_regions = loom_op_regions(parent_op);
   for (uint8_t region_index = 0; region_index < parent_op->region_count;
        ++region_index) {
-    if (parent_regions[region_index] != caller_region) continue;
+    if (parent_regions[region_index] != caller_region) {
+      continue;
+    }
     const loom_region_descriptor_t* descriptor =
         loom_op_vtable_region_descriptor(parent_vtable, region_index);
     return descriptor != NULL &&
@@ -442,7 +452,9 @@ static iree_status_t loom_callable_preserve_call_result_names(
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "call result and replacement must be valid");
     }
-    if (replacement < value_checkpoint) continue;
+    if (replacement < value_checkpoint) {
+      continue;
+    }
     if ((iree_host_size_t)replacement >= rewriter->module->values.count) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "inline replacement value %%%u is out of range",
@@ -559,7 +571,9 @@ static iree_status_t loom_callable_collect_return_projections(
     const loom_block_t* block =
         loom_region_const_block(body->region, block_index);
     const loom_op_t* terminator = loom_block_const_last_op(block);
-    if (terminator->kind != body->return_op_kind) continue;
+    if (terminator->kind != body->return_op_kind) {
+      continue;
+    }
     if (return_index >= body->return_count) {
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "callee return projection count changed");
@@ -742,7 +756,9 @@ static iree_status_t loom_callable_inline_cfg_call(
     loom_op_t* next_op = tail_op->next_op;
     status = loom_rewriter_move_to_block_end(
         rewriter, tail_op, continuation_block, caller_parent_op);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     tail_op = next_op;
   }
   for (uint16_t i = 0; i < body->return_count && iree_status_is_ok(status);
@@ -821,7 +837,9 @@ static iree_status_t loom_callable_collect_return_ops(
        ++block_index) {
     loom_op_t* terminator =
         loom_region_block(body->region, block_index)->last_op;
-    if (terminator->kind != body->return_op_kind) continue;
+    if (terminator->kind != body->return_op_kind) {
+      continue;
+    }
     if (return_index >= body->return_count) {
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "callee return count changed before move");

@@ -137,7 +137,9 @@ static iree_status_t loom_scc_allocate_state(const loom_scc_graph_t* graph,
                                              loom_scc_state_t* state) {
   memset(state, 0, sizeof(*state));
   state->graph = graph;
-  if (graph->node_count == 0) return iree_ok_status();
+  if (graph->node_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, graph->node_count,
                                                  sizeof(*state->indexes),

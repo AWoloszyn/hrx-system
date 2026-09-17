@@ -163,7 +163,9 @@ IREE_API_EXPORT iree_status_t iree_async_address_format(
       iree_host_size_t max_path = sizeof(addr->sun_path);
       iree_host_size_t stored =
           address->length > path_offset ? address->length - path_offset : 0;
-      if (stored > max_path) stored = max_path;
+      if (stored > max_path) {
+        stored = max_path;
+      }
       if (stored > 0 && addr->sun_path[stored - 1] == '\0') {
         stored -= 1;
       }

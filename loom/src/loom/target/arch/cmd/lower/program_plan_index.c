@@ -12,7 +12,9 @@
 
 static bool loom_cmd_program_plan_has_source_kernels(
     const loom_link_plan_materialization_t* materialization) {
-  if (materialization->target_kernel_configurations.count == 0) return false;
+  if (materialization->target_kernel_configurations.count == 0) {
+    return false;
+  }
   IREE_ASSERT_EQ(materialization->target_kernel_configurations.count,
                  materialization->target_source_definitions.count);
   for (iree_host_size_t i = 0;

@@ -342,7 +342,9 @@ static iree_status_t loom_check_low_emit_find_value_in_region(
       IREE_RETURN_IF_ERROR(loom_check_low_emit_consider_fixed_value_match(
           module, loom_block_arg_id(block, arg_index), value_name, found,
           ambiguous, out_value_id, out_ambiguous_value_id));
-      if (*ambiguous) return iree_ok_status();
+      if (*ambiguous) {
+        return iree_ok_status();
+      }
     }
     const loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
@@ -352,7 +354,9 @@ static iree_status_t loom_check_low_emit_find_value_in_region(
         IREE_RETURN_IF_ERROR(loom_check_low_emit_consider_fixed_value_match(
             module, results[result_index], value_name, found, ambiguous,
             out_value_id, out_ambiguous_value_id));
-        if (*ambiguous) return iree_ok_status();
+        if (*ambiguous) {
+          return iree_ok_status();
+        }
       }
       loom_region_t** regions = loom_op_regions(op);
       for (uint8_t region_index = 0; region_index < op->region_count;
@@ -360,7 +364,9 @@ static iree_status_t loom_check_low_emit_find_value_in_region(
         IREE_RETURN_IF_ERROR(loom_check_low_emit_find_value_in_region(
             module, regions[region_index], value_name, found, ambiguous,
             out_value_id, out_ambiguous_value_id));
-        if (*ambiguous) return iree_ok_status();
+        if (*ambiguous) {
+          return iree_ok_status();
+        }
       }
     }
   }

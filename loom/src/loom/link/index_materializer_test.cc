@@ -230,7 +230,9 @@ class LinkIndexMaterializerTest : public ::testing::Test {
       iree_string_view_t name) {
     const loom_link_module_index_provider_t* provider =
         loom_link_module_index_provider_at(index, provider_ordinal);
-    if (!provider) return nullptr;
+    if (!provider) {
+      return nullptr;
+    }
     for (iree_host_size_t module_offset = 0;
          module_offset < provider->module_count; ++module_offset) {
       const loom_link_module_index_module_t* module =
@@ -241,7 +243,9 @@ class LinkIndexMaterializerTest : public ::testing::Test {
         const loom_link_module_index_symbol_t* symbol =
             loom_link_module_index_symbol_at(
                 index, module->symbol_start_ordinal + symbol_offset);
-        if (iree_string_view_equal(symbol->name, name)) return symbol;
+        if (iree_string_view_equal(symbol->name, name)) {
+          return symbol;
+        }
       }
     }
     return nullptr;
@@ -249,7 +253,9 @@ class LinkIndexMaterializerTest : public ::testing::Test {
 
   std::string OptionalString(const loom_module_t* module,
                              loom_string_id_t string_id) {
-    if (string_id == LOOM_STRING_ID_INVALID) return {};
+    if (string_id == LOOM_STRING_ID_INVALID) {
+      return {};
+    }
     const iree_string_view_t value = module->strings.entries[string_id];
     return std::string(value.data, value.size);
   }

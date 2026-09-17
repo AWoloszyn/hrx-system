@@ -1930,9 +1930,13 @@ TEST(JsonDepthTest, DeeplyNestedArrays) {
   // Build a deeply nested array: [[[[...]]]]
   // Default depth limit is 128, so 130 levels should fail.
   std::string deep_json;
-  for (int i = 0; i < 130; ++i) deep_json += "[";
+  for (int i = 0; i < 130; ++i) {
+    deep_json += "[";
+  }
   deep_json += "1";
-  for (int i = 0; i < 130; ++i) deep_json += "]";
+  for (int i = 0; i < 130; ++i) {
+    deep_json += "]";
+  }
 
   iree_string_view_t str =
       iree_make_string_view(deep_json.data(), deep_json.size());
@@ -1944,9 +1948,13 @@ TEST(JsonDepthTest, DeeplyNestedArrays) {
 TEST(JsonDepthTest, DeeplyNestedObjects) {
   // Build deeply nested objects: {"a":{"a":{"a":...}}}
   std::string deep_json;
-  for (int i = 0; i < 130; ++i) deep_json += "{\"a\":";
+  for (int i = 0; i < 130; ++i) {
+    deep_json += "{\"a\":";
+  }
   deep_json += "1";
-  for (int i = 0; i < 130; ++i) deep_json += "}";
+  for (int i = 0; i < 130; ++i) {
+    deep_json += "}";
+  }
 
   iree_string_view_t str =
       iree_make_string_view(deep_json.data(), deep_json.size());
@@ -1976,9 +1984,13 @@ TEST(JsonDepthTest, MixedNestedStructures) {
 TEST(JsonDepthTest, AcceptableDepth) {
   // 50 levels of nesting should be fine (well under 128 limit).
   std::string json;
-  for (int i = 0; i < 50; ++i) json += "[";
+  for (int i = 0; i < 50; ++i) {
+    json += "[";
+  }
   json += "1";
-  for (int i = 0; i < 50; ++i) json += "]";
+  for (int i = 0; i < 50; ++i) {
+    json += "]";
+  }
 
   iree_string_view_t str = iree_make_string_view(json.data(), json.size());
   iree_string_view_t value;

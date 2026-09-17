@@ -69,11 +69,17 @@ struct loomc_task_queue_t {
 static loomc_task_t* loomc_task_queue_pop_ready_locked(
     loomc_task_queue_t* queue) {
   loomc_task_t* task = queue->ready.head;
-  if (task == NULL) return NULL;
+  if (task == NULL) {
+    return NULL;
+  }
   queue->ready.head = task->next;
   task->next = NULL;
-  if (queue->ready.head == NULL) queue->ready.tail = NULL;
-  if (--queue->ready.count == 0) queue->ready.scheduled_capacity = 0;
+  if (queue->ready.head == NULL) {
+    queue->ready.tail = NULL;
+  }
+  if (--queue->ready.count == 0) {
+    queue->ready.scheduled_capacity = 0;
+  }
   return task;
 }
 
@@ -197,7 +203,9 @@ loomc_status_t loomc_task_queue_allocate(const loomc_task_pool_t* pool,
   iree_status_t status = iree_allocator_malloc_aligned(
       iree_allocator, sizeof(*queue), iree_alignof(loomc_task_queue_t),
       /*offset=*/0, (void**)&queue);
-  if (!iree_status_is_ok(status)) return loomc_status_from_iree(status);
+  if (!iree_status_is_ok(status)) {
+    return loomc_status_from_iree(status);
+  }
   memset(queue, 0, sizeof(*queue));
   queue->allocator = iree_allocator;
   queue->executor = iree_task_executor_from_loomc_task_pool(pool);
@@ -255,7 +263,9 @@ loomc_status_t loomc_task_queue_await_shutdown(loomc_task_queue_t* queue) {
 }
 
 void loomc_task_queue_free(loomc_task_queue_t* queue) {
-  if (queue == NULL) return;
+  if (queue == NULL) {
+    return;
+  }
   loomc_task_queue_request_shutdown(queue);
   loomc_task_queue_await_release(queue);
   iree_task_executor_release(queue->executor);

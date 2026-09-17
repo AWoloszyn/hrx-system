@@ -124,7 +124,9 @@ static void loom_low_allocation_edge_copy_record_segment(
           .unit_count = unit_count,
       };
 
-  if (kind == LOOM_LOW_ALLOCATION_COPY_COALESCED) return;
+  if (kind == LOOM_LOW_ALLOCATION_COPY_COALESCED) {
+    return;
+  }
   loom_low_move_t* raw_moves =
       loom_low_allocation_move_plan_raw_moves(context->move_plan);
   for (uint32_t i = 0; i < unit_count; ++i) {

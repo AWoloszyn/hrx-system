@@ -180,7 +180,9 @@ static iree_status_t iree_hal_task_device_acquire_dynamic_queue_slot(
        i < IREE_HAL_TASK_DEVICE_QUEUE_SLOT_COUNT; ++i) {
     const iree_host_size_t word_index = i / 64u;
     const uint64_t bit = UINT64_C(1) << (i % 64u);
-    if (device->dynamic_queue_slots.live_bits[word_index] & bit) continue;
+    if (device->dynamic_queue_slots.live_bits[word_index] & bit) {
+      continue;
+    }
     if (device->dynamic_queue_slots.incarnations[i] >=
         IREE_ASYNC_QUEUE_INCARNATION_MAX) {
       continue;
@@ -459,7 +461,9 @@ iree_status_t iree_hal_task_device_create(
           iree_task_executor_node_id(queue_executors[i]);
       status = iree_async_proactor_pool_get_for_node(device->proactor_pool,
                                                      node_id, &queue_proactor);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
 
       const iree_hal_task_queue_create_params_t queue_create_params = {
           .identifier = device->identifier,
@@ -476,7 +480,9 @@ iree_status_t iree_hal_task_device_create(
       };
       status = iree_hal_task_queue_initialize(&queue_create_params,
                                               &device->queues[i]);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       ++device->queue_count;
     }
   }
@@ -612,7 +618,9 @@ static iree_hal_queue_t* iree_hal_task_device_queue(
     iree_hal_queue_family_ordinal_t family_ordinal,
     iree_hal_queue_ordinal_t queue_ordinal) {
   iree_hal_task_device_t* device = iree_hal_task_device_cast(base_device);
-  if (family_ordinal != 0 || queue_ordinal >= device->queue_count) return NULL;
+  if (family_ordinal != 0 || queue_ordinal >= device->queue_count) {
+    return NULL;
+  }
   return &device->queues[queue_ordinal].base;
 }
 
@@ -907,7 +915,9 @@ static iree_status_t iree_hal_task_device_profiling_begin(
   iree_status_t status = iree_hal_task_profile_recorder_create(
       &recorder_options, options, device->host_allocator, &recorder);
   iree_allocator_free(device->host_allocator, queue_records);
-  if (!iree_status_is_ok(status) || !recorder) return status;
+  if (!iree_status_is_ok(status) || !recorder) {
+    return status;
+  }
 
   iree_atomic_store(&device->next_profile_submission_id, 1,
                     iree_memory_order_relaxed);
@@ -932,7 +942,9 @@ static iree_status_t iree_hal_task_device_profiling_end(
     iree_hal_device_t* base_device) {
   iree_hal_task_device_t* device = iree_hal_task_device_cast(base_device);
   iree_hal_task_profile_recorder_t* recorder = device->profile_recorder;
-  if (!recorder) return iree_ok_status();
+  if (!recorder) {
+    return iree_ok_status();
+  }
 
   const iree_hal_task_profile_queue_scope_t empty_scope =
       iree_hal_task_profile_queue_scope_default();

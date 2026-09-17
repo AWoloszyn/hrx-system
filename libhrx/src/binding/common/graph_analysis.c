@@ -135,7 +135,9 @@ typedef struct iree_hal_streaming_graph_prepare_result_t {
 static uint32_t iree_hal_streaming_graph_node_map_lookup(
     const uint32_t* node_index_map, iree_host_size_t node_index_map_count,
     const iree_hal_streaming_graph_node_t* node) {
-  if (!node || node->node_index >= node_index_map_count) return UINT32_MAX;
+  if (!node || node->node_index >= node_index_map_count) {
+    return UINT32_MAX;
+  }
   return node_index_map[node->node_index];
 }
 
@@ -340,7 +342,9 @@ static iree_status_t iree_hal_streaming_graph_topological_sort(
     // This requires finding reverse edges (who depends on current).
     // First check embedded dependencies.
     for (uint32_t i = 0; i < node_count; ++i) {
-      if (i == current) continue;
+      if (i == current) {
+        continue;
+      }
       iree_hal_streaming_graph_node_t* node = nodes[i].node;
       for (uint32_t j = 0; j < node->dependency_count; ++j) {
         if (node->dependencies[j] == nodes[current].node) {
@@ -565,7 +569,9 @@ static iree_uint32x2_t iree_hal_streaming_graph_partition_with_streams(
           } else {
             // Not enough nodes - use stream 0.
             assigned_stream = 0;
-            if (active_streams == 0) active_streams = 1;
+            if (active_streams == 0) {
+              active_streams = 1;
+            }
           }
         } else if (use_workstreams &&
                    iree_math_count_ones_u32(connected_streams) == 1) {
@@ -595,7 +601,9 @@ static iree_uint32x2_t iree_hal_streaming_graph_partition_with_streams(
           } else {
             // Single dependency or first node - use stream 0.
             assigned_stream = 0;
-            if (active_streams == 0) active_streams = 1;
+            if (active_streams == 0) {
+              active_streams = 1;
+            }
           }
         }
 

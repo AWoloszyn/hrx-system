@@ -214,7 +214,9 @@ iree_status_t iree_hal_amdgpu_pm4_command_buffer_resident_pool_create(
 
 void iree_hal_amdgpu_pm4_command_buffer_resident_pool_trim(
     iree_hal_amdgpu_pm4_command_buffer_resident_pool_t* resident_pool) {
-  if (!resident_pool) return;
+  if (!resident_pool) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_slim_mutex_lock(&resident_pool->mutex);
@@ -246,7 +248,9 @@ void iree_hal_amdgpu_pm4_command_buffer_resident_pool_trim(
 
 void iree_hal_amdgpu_pm4_command_buffer_resident_pool_destroy(
     iree_hal_amdgpu_pm4_command_buffer_resident_pool_t* resident_pool) {
-  if (!resident_pool) return;
+  if (!resident_pool) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   IREE_ASSERT(resident_pool->outstanding_count == 0,
@@ -378,7 +382,9 @@ static void iree_hal_amdgpu_pm4_command_buffer_resident_pool_release(
     iree_hal_amdgpu_pm4_command_buffer_resident_pool_t* resident_pool,
     iree_hal_amdgpu_pm4_command_buffer_resident_allocation_t* allocation) {
   IREE_ASSERT_ARGUMENT(resident_pool);
-  if (!allocation) return;
+  if (!allocation) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, allocation->capacity);
 
@@ -489,7 +495,9 @@ static void iree_hal_amdgpu_pm4_command_buffer_resident_pool_release_staging(
     iree_hal_amdgpu_pm4_command_buffer_resident_pool_t* resident_pool,
     iree_hal_amdgpu_pm4_command_buffer_resident_allocation_t* allocation) {
   IREE_ASSERT_ARGUMENT(resident_pool);
-  if (!allocation) return;
+  if (!allocation) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, allocation->capacity);
 
@@ -641,7 +649,9 @@ static bool iree_hal_amdgpu_pm4_command_buffer_retains_profile_metadata(
 
 static void iree_hal_amdgpu_pm4_command_buffer_host_staging_reset(
     iree_hal_amdgpu_pm4_command_buffer_t* command_buffer) {
-  if (!command_buffer->host_staging_allocation) return;
+  if (!command_buffer->host_staging_allocation) {
+    return;
+  }
   iree_hal_amdgpu_pm4_command_buffer_resident_pool_release_staging(
       command_buffer->resident_pool, command_buffer->host_staging_allocation);
   command_buffer->host_staging_allocation = NULL;
@@ -829,7 +839,9 @@ static iree_status_t iree_hal_amdgpu_pm4_retained_resource_table_reserve(
   };
   for (iree_host_size_t i = 0; i < table->capacity; ++i) {
     iree_hal_resource_t* resource = table->resources[i];
-    if (!resource) continue;
+    if (!resource) {
+      continue;
+    }
     bool found = false;
     const iree_host_size_t slot =
         iree_hal_amdgpu_pm4_retained_resource_table_find_slot(&new_table,
@@ -1193,7 +1205,9 @@ static iree_status_t
 iree_hal_amdgpu_pm4_command_buffer_copy_materialized_image_sync(
     iree_hal_amdgpu_pm4_command_buffer_t* command_buffer, void* target,
     const void* source, iree_host_size_t byte_length) {
-  if (byte_length == 0) return iree_ok_status();
+  if (byte_length == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_hsa_memory_copy(IREE_LIBHSA(command_buffer->libhsa),
                                             target, source, byte_length));
   command_buffer->publish_stats.resident_copy_bytes += byte_length;
@@ -1207,7 +1221,9 @@ iree_hal_amdgpu_pm4_command_buffer_launch_materialized_image_async(
     hsa_signal_t* out_completion_signal) {
   IREE_ASSERT_ARGUMENT(out_completion_signal);
   *out_completion_signal = iree_hsa_signal_null();
-  if (byte_length == 0) return iree_ok_status();
+  if (byte_length == 0) {
+    return iree_ok_status();
+  }
 
   hsa_signal_t completion_signal = {0};
   iree_status_t status = iree_hal_amdgpu_host_signal_pool_acquire(
@@ -1427,7 +1443,9 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_resolve_buffer_ref(
 static iree_status_t iree_hal_amdgpu_pm4_command_buffer_retain_resource_once(
     iree_hal_amdgpu_pm4_command_buffer_t* command_buffer,
     iree_hal_resource_t* resource) {
-  if (!resource) return iree_ok_status();
+  if (!resource) {
+    return iree_ok_status();
+  }
   iree_hal_amdgpu_pm4_retained_resource_table_t* retained_resources =
       &command_buffer->retained_resources;
   if (iree_hal_amdgpu_pm4_retained_resource_table_contains(retained_resources,
@@ -1452,7 +1470,9 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_retain_dispatch(
     iree_hal_buffer_ref_list_t bindings) {
   IREE_RETURN_IF_ERROR(
       iree_hal_amdgpu_pm4_command_buffer_ensure_resource_set(command_buffer));
-  if (!command_buffer->resource_set) return iree_ok_status();
+  if (!command_buffer->resource_set) {
+    return iree_ok_status();
+  }
 
   if (command_buffer->last_retained_executable != executable) {
     IREE_RETURN_IF_ERROR(
@@ -1698,8 +1718,9 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_materialize_program_set(
 static iree_status_t
 iree_hal_amdgpu_pm4_command_buffer_register_profile_operations(
     iree_hal_amdgpu_pm4_command_buffer_t* command_buffer) {
-  if (command_buffer->recording.record_command_count == 0)
+  if (command_buffer->recording.record_command_count == 0) {
     return iree_ok_status();
+  }
 
   iree_host_size_t byte_length = 0;
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
@@ -2509,7 +2530,9 @@ static iree_status_t iree_hal_amdgpu_pm4_command_buffer_execution_barrier(
 static iree_status_t
 iree_hal_amdgpu_pm4_command_buffer_ensure_atomic_binding_requirements(
     iree_hal_amdgpu_pm4_command_buffer_t* command_buffer) {
-  if (command_buffer->atomic_binding_requirements) return iree_ok_status();
+  if (command_buffer->atomic_binding_requirements) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(command_buffer->base.binding_capacity == 0)) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,

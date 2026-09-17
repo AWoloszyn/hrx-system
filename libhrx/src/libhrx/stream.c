@@ -11,7 +11,9 @@
 
 // Create a fresh one-shot command buffer for recording.
 static hrx_status_t hrx_stream_begin_cb(hrx_stream_t stream) {
-  if (stream->pending_cb) return hrx_ok_status();
+  if (stream->pending_cb) {
+    return hrx_ok_status();
+  }
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
@@ -77,14 +79,18 @@ hrx_status_t hrx_stream_create(hrx_device_t device, uint32_t flags,
 }
 
 void hrx_stream_retain(hrx_stream_t stream) {
-  if (!stream) return;
+  if (!stream) {
+    return;
+  }
   hrx_device_retain(stream->device);
   hrx_semaphore_retain(stream->semaphore);
   iree_atomic_ref_count_inc(&stream->ref_count);
 }
 
 void hrx_stream_release(hrx_stream_t stream) {
-  if (!stream) return;
+  if (!stream) {
+    return;
+  }
   hrx_device_t device = stream->device;
   hrx_semaphore_t semaphore = stream->semaphore;
   if (iree_atomic_ref_count_dec(&stream->ref_count) == 1) {
@@ -162,7 +168,9 @@ hrx_status_t hrx_stream_synchronize(hrx_stream_t stream) {
 
   // Flush any pending work first.
   hrx_status_t status = hrx_stream_flush(stream);
-  if (!hrx_status_is_ok(status)) HRX_RETURN_AND_END_ZONE(z0, status);
+  if (!hrx_status_is_ok(status)) {
+    HRX_RETURN_AND_END_ZONE(z0, status);
+  }
 
   HRX_RETURN_AND_END_ZONE(z0, hrx_stream_wait(stream));
 }
@@ -174,7 +182,9 @@ hrx_status_t hrx_stream_wait(hrx_stream_t stream) {
         z0, hrx_make_status(HRX_STATUS_INVALID_ARGUMENT, "stream is NULL"));
   }
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, stream->timepoint);
-  if (stream->timepoint == 0) HRX_RETURN_AND_END_ZONE(z0, hrx_ok_status());
+  if (stream->timepoint == 0) {
+    HRX_RETURN_AND_END_ZONE(z0, hrx_ok_status());
+  }
   HRX_RETURN_AND_END_ZONE(
       z0, hrx_semaphore_wait(stream->semaphore, stream->timepoint, UINT64_MAX));
 }
@@ -190,7 +200,9 @@ hrx_status_t hrx_stream_query(hrx_stream_t stream, bool* complete) {
   }
   uint64_t current = 0;
   hrx_status_t status = hrx_semaphore_query(stream->semaphore, &current);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
   *complete = (current >= stream->timepoint);
   return hrx_ok_status();
 }
@@ -249,7 +261,9 @@ hrx_status_t hrx_stream_wait_on(hrx_stream_t stream,
 
   // Flush current pending work with a barrier that waits on the given point.
   hrx_status_t status = hrx_stream_flush(stream);
-  if (!hrx_status_is_ok(status)) HRX_RETURN_AND_END_ZONE(z0, status);
+  if (!hrx_status_is_ok(status)) {
+    HRX_RETURN_AND_END_ZONE(z0, status);
+  }
 
   // Insert a queue barrier that waits on the external semaphore
   // and signals our next timepoint.
@@ -296,7 +310,9 @@ hrx_status_t hrx_stream_fill_buffer(hrx_stream_t stream, hrx_buffer_t buffer,
   }
 
   hrx_status_t status = hrx_stream_begin_cb(stream);
-  if (!hrx_status_is_ok(status)) HRX_RETURN_AND_END_ZONE(z0, status);
+  if (!hrx_status_is_ok(status)) {
+    HRX_RETURN_AND_END_ZONE(z0, status);
+  }
 
   iree_hal_buffer_ref_t target_ref = iree_hal_make_buffer_ref(
       buffer->hal_buffer, (iree_device_size_t)offset, (iree_device_size_t)size);
@@ -327,7 +343,9 @@ hrx_status_t hrx_stream_copy_buffer(hrx_stream_t stream, hrx_buffer_t src,
   }
 
   hrx_status_t status = hrx_stream_begin_cb(stream);
-  if (!hrx_status_is_ok(status)) HRX_RETURN_AND_END_ZONE(z0, status);
+  if (!hrx_status_is_ok(status)) {
+    HRX_RETURN_AND_END_ZONE(z0, status);
+  }
 
   iree_hal_buffer_ref_t source_ref =
       iree_hal_make_buffer_ref(src->hal_buffer, (iree_device_size_t)src_offset,
@@ -363,7 +381,9 @@ hrx_status_t hrx_stream_update_buffer(hrx_stream_t stream,
   }
 
   hrx_status_t status = hrx_stream_begin_cb(stream);
-  if (!hrx_status_is_ok(status)) HRX_RETURN_AND_END_ZONE(z0, status);
+  if (!hrx_status_is_ok(status)) {
+    HRX_RETURN_AND_END_ZONE(z0, status);
+  }
 
   iree_hal_buffer_ref_t target_ref =
       iree_hal_make_buffer_ref(dst->hal_buffer, (iree_device_size_t)dst_offset,
@@ -405,10 +425,14 @@ hrx_status_t hrx_stream_dispatch(hrx_stream_t stream,
 
   iree_hal_dispatch_flags_t hal_flags = IREE_HAL_DISPATCH_FLAG_NONE;
   hrx_status_t status = hrx_iree_dispatch_flags_from_hrx(flags, &hal_flags);
-  if (!hrx_status_is_ok(status)) HRX_RETURN_AND_END_ZONE(z0, status);
+  if (!hrx_status_is_ok(status)) {
+    HRX_RETURN_AND_END_ZONE(z0, status);
+  }
 
   status = hrx_stream_begin_cb(stream);
-  if (!hrx_status_is_ok(status)) HRX_RETURN_AND_END_ZONE(z0, status);
+  if (!hrx_status_is_ok(status)) {
+    HRX_RETURN_AND_END_ZONE(z0, status);
+  }
 
   iree_hal_buffer_ref_t* hal_bindings = NULL;
   if (binding_count > 0) {
@@ -479,7 +503,9 @@ hrx_status_t hrx_stream_execution_barrier(hrx_stream_t stream) {
   }
 
   hrx_status_t status = hrx_stream_begin_cb(stream);
-  if (!hrx_status_is_ok(status)) HRX_RETURN_AND_END_ZONE(z0, status);
+  if (!hrx_status_is_ok(status)) {
+    HRX_RETURN_AND_END_ZONE(z0, status);
+  }
 
   iree_hal_memory_barrier_t memory_barrier = {
       .source_scope = IREE_HAL_MEMORY_ACCESS_ALL,

@@ -550,7 +550,9 @@ static inline bool iree_tokenizer_bpe_emit(
     iree_tokenizer_bpe_output_cursor_t* cursor,
     iree_tokenizer_token_id_t token_id, uint32_t start_byte,
     uint32_t end_byte) {
-  if (cursor->remaining == 0) return false;
+  if (cursor->remaining == 0) {
+    return false;
+  }
   *cursor->ptr++ = token_id;
   if (cursor->offset_ptr) {
     cursor->offset_ptr->start = cursor->segment_base_offset + start_byte;
@@ -568,8 +570,9 @@ static inline bool iree_tokenizer_bpe_emit_and_track(
     iree_tokenizer_bpe_output_cursor_t* cursor,
     iree_tokenizer_token_id_t token_id, uint32_t start_byte,
     uint32_t end_byte) {
-  if (!iree_tokenizer_bpe_emit(cursor, token_id, start_byte, end_byte))
+  if (!iree_tokenizer_bpe_emit(cursor, token_id, start_byte, end_byte)) {
     return false;
+  }
   state->last_emitted_token_id = token_id;
   return true;
 }

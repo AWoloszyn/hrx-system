@@ -433,7 +433,9 @@ TEST(ExecutorProcessTest, ConcurrentScheduleFromMultipleThreads) {
       }
     });
   }
-  for (auto& t : threads) t.join();
+  for (auto& t : threads) {
+    t.join();
+  }
 
   for (int i = 0; i < kTotalProcesses; ++i) {
     contexts[i].WaitUntil([&, i] { return contexts[i].completed.load(); });
@@ -541,7 +543,9 @@ TEST(ExecutorProcessTest, ConcurrentSleepWakeFromMultipleThreads) {
       completed_count.fetch_add(1, std::memory_order_relaxed);
     });
   }
-  for (auto& t : threads) t.join();
+  for (auto& t : threads) {
+    t.join();
+  }
 
   EXPECT_EQ(completed_count.load(), kThreadCount);
   iree_task_executor_release(executor);
@@ -734,7 +738,9 @@ static iree_status_t repeated_compute_wake_drain(
   while (true) {
     int32_t pending_work =
         context->pending_work.load(std::memory_order_acquire);
-    if (pending_work <= 0) break;
+    if (pending_work <= 0) {
+      break;
+    }
     if (context->pending_work.compare_exchange_weak(
             pending_work, pending_work - 1, std::memory_order_acq_rel,
             std::memory_order_acquire)) {

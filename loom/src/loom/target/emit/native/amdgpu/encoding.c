@@ -1611,11 +1611,15 @@ static iree_status_t loom_amdgpu_encode_branch_offset(
 static iree_status_t loom_amdgpu_encode_branch_groups_before_packet(
     loom_amdgpu_encode_state_t* state, iree_host_size_t packet_index) {
   loom_amdgpu_encode_branch_emission_t* emission = &state->branches.emission;
-  if (emission->layout == NULL) return iree_ok_status();
+  if (emission->layout == NULL) {
+    return iree_ok_status();
+  }
   while (emission->next_group_index < emission->layout->group_count) {
     const loom_amdgpu_branch_layout_group_t* group =
         &emission->layout->groups[emission->next_group_index];
-    if (group->packet_index != packet_index) break;
+    if (group->packet_index != packet_index) {
+      break;
+    }
     IREE_RETURN_IF_ERROR(
         loom_amdgpu_encode_sopp_simm16(state, state->inputs.target->sopp.branch,
                                        (uint16_t)group->island_count));
@@ -2060,7 +2064,9 @@ loom_amdgpu_query_branch_measurement_requirements(
   for (uint32_t block_index = 0; block_index < schedule->block_count;
        ++block_index) {
     const loom_low_schedule_block_t* block = &schedule->blocks[block_index];
-    if (block->scheduled_node_count == 0) continue;
+    if (block->scheduled_node_count == 0) {
+      continue;
+    }
     const loom_low_packet_view_t packet = loom_low_packet_at_block_ordinal(
         schedule, block_index, block->scheduled_node_count - 1u);
     const loom_op_t* op = packet.node->op;
@@ -2076,7 +2082,9 @@ loom_amdgpu_query_branch_measurement_requirements(
       }
       continue;
     }
-    if (!loom_low_cond_br_isa(op)) continue;
+    if (!loom_low_cond_br_isa(op)) {
+      continue;
+    }
     const loom_block_t* true_target = loom_low_cond_br_true_dest(op);
     const loom_block_t* false_target = loom_low_cond_br_false_dest(op);
     const uint32_t true_target_index =

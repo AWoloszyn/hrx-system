@@ -57,7 +57,9 @@ struct AcceptState {
                        iree_net_connection_t* connection) {
     auto* self = static_cast<AcceptState*>(user_data);
     EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
-    if (self->sequence) self->last_sequence = ++*self->sequence;
+    if (self->sequence) {
+      self->last_sequence = ++*self->sequence;
+    }
     self->status_codes.push_back(iree_status_code(status));
     self->connections.push_back(connection);
     iree_status_free(status);
@@ -78,7 +80,9 @@ struct StopState {
   static void OnStopped(void* user_data) {
     auto* self = static_cast<StopState*>(user_data);
     EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
-    if (self->sequence) self->completed_sequence = ++*self->sequence;
+    if (self->sequence) {
+      self->completed_sequence = ++*self->sequence;
+    }
     self->completed = true;
   }
 
@@ -162,7 +166,9 @@ class LoopbackFactoryTest : public ::testing::Test {
 
   void PollUntil(iree_async_proactor_t* proactor, PollSide side,
                  const std::function<bool()>& condition) {
-    while (!condition()) Poll(proactor, side);
+    while (!condition()) {
+      Poll(proactor, side);
+    }
   }
 
   void CreateListener(iree_string_view_t name, AcceptState* accept_state) {
@@ -174,7 +180,9 @@ class LoopbackFactoryTest : public ::testing::Test {
   }
 
   void StopAndFreeListener() {
-    if (!listener_) return;
+    if (!listener_) {
+      return;
+    }
     StopState stop_state;
     stop_state.current_poll_side = &current_poll_side_;
     stop_state.expected_poll_side = kServerPolling;
@@ -187,7 +195,9 @@ class LoopbackFactoryTest : public ::testing::Test {
 
   void DeactivateAndRelease(iree_net_connection_t*& connection,
                             iree_async_proactor_t* proactor, PollSide side) {
-    if (!connection) return;
+    if (!connection) {
+      return;
+    }
     DeactivateState deactivate_state;
     deactivate_state.current_poll_side = &current_poll_side_;
     deactivate_state.expected_poll_side = side;

@@ -72,7 +72,9 @@ bool iree_hal_webgpu_semaphore_has_submitted_signal(
     uint64_t minimum_value) {
   iree_hal_webgpu_semaphore_t* webgpu_semaphore =
       iree_hal_webgpu_semaphore_cast(semaphore);
-  if (webgpu_semaphore->submitted_signal_axis != axis) return false;
+  if (webgpu_semaphore->submitted_signal_axis != axis) {
+    return false;
+  }
   uint64_t submitted_value = (uint64_t)iree_atomic_load(
       &webgpu_semaphore->submitted_signal_value, iree_memory_order_acquire);
   return submitted_value >= minimum_value;

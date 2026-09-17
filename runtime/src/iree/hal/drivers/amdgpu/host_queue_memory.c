@@ -14,7 +14,9 @@
 
 static void iree_hal_amdgpu_host_queue_populate_memory_event_pool_stats(
     iree_hal_pool_t* pool, iree_hal_profile_memory_event_t* event) {
-  if (!pool) return;
+  if (!pool) {
+    return;
+  }
   iree_hal_pool_stats_t stats;
   iree_hal_pool_query_stats(pool, &stats);
   event->flags |= IREE_HAL_PROFILE_MEMORY_EVENT_FLAG_POOL_STATS;
@@ -90,7 +92,9 @@ static iree_device_size_t iree_hal_amdgpu_alloca_transaction_total_length(
   iree_device_size_t total_length = 0;
   for (iree_host_size_t i = 0; i < transaction->request_count; ++i) {
     const iree_device_size_t length = transaction->requests[i].allocation_size;
-    if (length > UINT64_MAX - total_length) return UINT64_MAX;
+    if (length > UINT64_MAX - total_length) {
+      return UINT64_MAX;
+    }
     total_length += length;
   }
   return total_length;
@@ -102,7 +106,9 @@ static iree_device_size_t iree_hal_amdgpu_dealloca_transaction_total_length(
   for (iree_host_size_t i = 0; i < transaction->buffer_count; ++i) {
     const iree_device_size_t length =
         iree_hal_buffer_byte_length(transaction->buffers[i]);
-    if (length > UINT64_MAX - total_length) return UINT64_MAX;
+    if (length > UINT64_MAX - total_length) {
+      return UINT64_MAX;
+    }
     total_length += length;
   }
   return total_length;
@@ -146,7 +152,9 @@ static void iree_hal_amdgpu_host_queue_commit_transient_buffers(
     iree_hal_amdgpu_reclaim_entry_t* entry, void* user_data,
     const iree_status_t status) {
   (void)user_data;
-  if (!iree_status_is_ok(status)) return;
+  if (!iree_status_is_ok(status)) {
+    return;
+  }
   for (uint16_t i = entry->signal_semaphore_count; i < entry->count; ++i) {
     iree_hal_amdgpu_transient_buffer_commit(
         (iree_hal_buffer_t*)entry->resources[i]);
@@ -157,7 +165,9 @@ static void iree_hal_amdgpu_host_queue_decommit_transient_buffers(
     iree_hal_amdgpu_reclaim_entry_t* entry, void* user_data,
     const iree_status_t status) {
   (void)user_data;
-  if (!iree_status_is_ok(status)) return;
+  if (!iree_status_is_ok(status)) {
+    return;
+  }
   for (uint16_t i = entry->signal_semaphore_count; i < entry->count; ++i) {
     iree_hal_amdgpu_transient_buffer_decommit(
         (iree_hal_buffer_t*)entry->resources[i]);
@@ -212,7 +222,9 @@ static void iree_hal_amdgpu_host_queue_apply_pool_optimal_memory_type(
 static bool iree_hal_amdgpu_pool_supports_queue_families(
     iree_hal_queue_family_affinity_t supported_affinity,
     iree_hal_queue_family_affinity_t requested_affinity) {
-  if (iree_hal_queue_family_affinity_is_any(supported_affinity)) return true;
+  if (iree_hal_queue_family_affinity_is_any(supported_affinity)) {
+    return true;
+  }
   return !iree_hal_queue_family_affinity_is_any(requested_affinity) &&
          iree_all_bits_set(supported_affinity, requested_affinity);
 }
@@ -273,7 +285,9 @@ iree_status_t iree_hal_amdgpu_host_queue_prepare_alloca_buffers(
     out_canonical_requests[prepared_count] = requests[prepared_count];
     status = iree_hal_amdgpu_host_queue_validate_alloca_request(
         &capabilities, prepared_count, &out_canonical_requests[prepared_count]);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     const iree_hal_buffer_placement_t placement = {
         .device = queue->logical_device,
@@ -482,7 +496,9 @@ iree_status_t iree_hal_amdgpu_host_queue_materialize_alloca_transaction(
 void iree_hal_amdgpu_host_queue_release_alloca_transaction(
     iree_hal_pool_t* allocation_pool,
     iree_hal_amdgpu_alloca_transaction_t* transaction) {
-  if (!transaction) return;
+  if (!transaction) {
+    return;
+  }
   if (transaction->backing_buffers_held) {
     for (iree_host_size_t i = 0; i < transaction->request_count; ++i) {
       iree_hal_buffer_release(transaction->backing_buffers[i]);
@@ -622,7 +638,9 @@ iree_status_t iree_hal_amdgpu_host_queue_submit_dealloca(
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_host_queue_try_begin_barrier_submission(
       queue, resolution, signal_semaphore_list, transaction->buffer_count,
       &profile_event_info, out_ready, &submission));
-  if (!*out_ready) return iree_ok_status();
+  if (!*out_ready) {
+    return iree_ok_status();
+  }
 
   for (iree_host_size_t i = 0; i < transaction->buffer_count; ++i) {
     iree_hal_pool_t* source_pool = NULL;

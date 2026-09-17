@@ -328,12 +328,16 @@ static inline void iree_net_carrier_deinitialize(iree_net_carrier_t* carrier) {
 }
 
 static inline void iree_net_carrier_retain(iree_net_carrier_t* carrier) {
-  if (!carrier) return;
+  if (!carrier) {
+    return;
+  }
   iree_atomic_ref_count_inc(&carrier->ref_count);
 }
 
 static inline void iree_net_carrier_release(iree_net_carrier_t* carrier) {
-  if (!carrier) return;
+  if (!carrier) {
+    return;
+  }
   if (iree_atomic_ref_count_dec(&carrier->ref_count) == 1) {
     carrier->vtable->destroy(carrier);
   }
@@ -435,7 +439,9 @@ static inline bool iree_net_carrier_report_terminal_error(
     iree_net_carrier_t* carrier, iree_status_t status) {
   IREE_ASSERT(!iree_status_is_ok(status),
               "terminal carrier error must have a non-OK status");
-  if (iree_status_is_ok(status)) return false;
+  if (iree_status_is_ok(status)) {
+    return false;
+  }
 
   intptr_t expected_status = 0;
   intptr_t terminal_status = (intptr_t)status;

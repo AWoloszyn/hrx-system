@@ -94,7 +94,9 @@ static iree_status_t iree_hal_replay_recorder_executable_build_function_map(
         IREE_STATUS_OUT_OF_RANGE,
         "replay recording function count exceeds dispatch ordinal range");
   }
-  if (function_count == 0) return iree_ok_status();
+  if (function_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t function_map_size = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(
@@ -522,7 +524,9 @@ static iree_status_t iree_hal_replay_recorder_capture_executable_metadata(
        ++i) {
     const iree_host_size_t function_parameter_count =
         function_infos[i].parameter_count;
-    if (function_parameter_count == 0) continue;
+    if (function_parameter_count == 0) {
+      continue;
+    }
     status = iree_hal_executable_function_parameters(
         executable, iree_hal_executable_function_from_index((uint32_t)i),
         function_parameter_count, parameters + parameter_index);

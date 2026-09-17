@@ -183,7 +183,9 @@ static iree_status_t loom_parse_format_keyword_clause_is_present(
     bool* out_present) {
   IREE_RETURN_IF_ERROR(loom_parse_format_keyword_is_present(
       parser, keyword_element, out_present));
-  if (!*out_present) return iree_ok_status();
+  if (!*out_present) {
+    return iree_ok_status();
+  }
 
   loom_tokenizer_t lookahead = parser->tokenizer;
   (void)loom_tokenizer_next(&lookahead);
@@ -489,7 +491,9 @@ static iree_status_t loom_parse_format_scoped_enum_ref(
     IREE_RETURN_IF_ERROR(loom_parser_try_emit_unknown_low_packet_diagnostic(
         parser, parser->low_repr.descriptor_set, key_token,
         &diagnostic_emitted));
-    if (diagnostic_emitted) return iree_ok_status();
+    if (diagnostic_emitted) {
+      return iree_ok_status();
+    }
     return loom_parser_emit_low_asm_error(
         parser, key_token,
         IREE_SV(
@@ -558,7 +562,9 @@ static iree_status_t loom_parse_format_template_param(
   loom_attribute_t attr = {0};
   uint32_t attr_errors_before = parser->error_count;
   IREE_RETURN_IF_ERROR(loom_parse_attr_value(parser, descriptor, &attr));
-  if (parser->error_count > attr_errors_before) return iree_ok_status();
+  if (parser->error_count > attr_errors_before) {
+    return iree_ok_status();
+  }
   if (!loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_RANGLE)) {
     loom_token_t peek = loom_tokenizer_peek(&parser->tokenizer);
     return loom_parser_emit_unexpected_token(parser, peek, IREE_SV("'>'"));
@@ -581,7 +587,9 @@ static iree_status_t loom_parse_format_attr_params(
   uint32_t attr_errors_before = parser->error_count;
   IREE_RETURN_IF_ERROR(loom_parse_parameterized_attr_parameters(
       parser, descriptor->reference.parameterized_attr_kind, &attr));
-  if (parser->error_count > attr_errors_before) return iree_ok_status();
+  if (parser->error_count > attr_errors_before) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_parsed_op_set_attribute(
       parsed, &parser->parser_arena, element->field_index, attr));
   return loom_parse_format_add_field_span(parser, parsed,
@@ -604,7 +612,9 @@ static iree_status_t loom_parse_format_template_param_flags(
   loom_attribute_t attr = {0};
   uint32_t attr_errors_before = parser->error_count;
   IREE_RETURN_IF_ERROR(loom_parse_attr_value(parser, descriptor, &attr));
-  if (parser->error_count > attr_errors_before) return iree_ok_status();
+  if (parser->error_count > attr_errors_before) {
+    return iree_ok_status();
+  }
   if (loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_COMMA)) {
     IREE_RETURN_IF_ERROR(loom_parse_format_instance_flag_list(
         parser, vtable, &parsed->instance_flags));
@@ -970,7 +980,9 @@ iree_status_t loom_parser_walk_format(loom_parser_t* parser,
         loom_attribute_t attr = {0};
         uint32_t attr_errors_before = parser->error_count;
         IREE_RETURN_IF_ERROR(loom_parse_attr_value(parser, descriptor, &attr));
-        if (parser->error_count > attr_errors_before) return iree_ok_status();
+        if (parser->error_count > attr_errors_before) {
+          return iree_ok_status();
+        }
         IREE_RETURN_IF_ERROR(loom_parsed_op_set_attribute(
             parsed, &parser->parser_arena, element->field_index, attr));
         IREE_RETURN_IF_ERROR(loom_parse_format_add_field_span(
@@ -984,7 +996,9 @@ iree_status_t loom_parser_walk_format(loom_parser_t* parser,
         loom_attribute_t attr = {0};
         uint32_t attr_errors_before = parser->error_count;
         IREE_RETURN_IF_ERROR(loom_parse_symbol_ref_attr(parser, &attr));
-        if (parser->error_count > attr_errors_before) return iree_ok_status();
+        if (parser->error_count > attr_errors_before) {
+          return iree_ok_status();
+        }
         IREE_RETURN_IF_ERROR(loom_parsed_op_set_attribute(
             parsed, &parser->parser_arena, element->field_index, attr));
         IREE_RETURN_IF_ERROR(loom_parsed_op_add_field_span(
@@ -1255,10 +1269,14 @@ iree_status_t loom_parser_walk_format(loom_parser_t* parser,
     // Bail out of the format walk if any element emitted a parse error.
     // The diagnostic is already emitted — the caller (loom_parse_op)
     // handles recovery.
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     // Pop definition scope after the last child element has been processed.
     IREE_RETURN_IF_ERROR(loom_parser_definition_scope_pop_if_needed(parser, i));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
   }
   return iree_ok_status();
 }

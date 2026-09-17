@@ -154,7 +154,9 @@ static iree_status_t loom_llvmir_emit_declare_i32_zero_arg_intrinsic(
     loom_llvmir_emit_function_state_t* state, iree_string_view_t name,
     loom_llvmir_function_t** out_function) {
   *out_function = loom_llvmir_module_find_function(state->llvmir_module, name);
-  if (*out_function != NULL) return iree_ok_status();
+  if (*out_function != NULL) {
+    return iree_ok_status();
+  }
 
   loom_llvmir_type_id_t i32_type = LOOM_LLVMIR_TYPE_ID_INVALID;
   IREE_RETURN_IF_ERROR(
@@ -288,7 +290,9 @@ static iree_status_t loom_llvmir_emit_kernel_query(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   loom_llvmir_value_id_t llvmir_result = LOOM_LLVMIR_VALUE_ID_INVALID;
   switch (info->kind) {
@@ -352,7 +356,9 @@ static iree_status_t loom_llvmir_emit_kernel_query(
       break;
     }
   }
-  if (llvmir_result == LOOM_LLVMIR_VALUE_ID_INVALID) return iree_ok_status();
+  if (llvmir_result == LOOM_LLVMIR_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
   loom_llvmir_emit_define_value(state, result_value, llvmir_result);
   return iree_ok_status();
 }

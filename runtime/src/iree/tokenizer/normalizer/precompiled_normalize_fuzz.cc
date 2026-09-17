@@ -63,7 +63,9 @@ static std::vector<uint8_t> BuildCharsmap(
   uint32_t next_leaf_slot = 512;
 
   for (const auto& [key, replacement] : mappings) {
-    if (key.empty()) continue;
+    if (key.empty()) {
+      continue;
+    }
 
     uint32_t pos = ROOT_OFFSET;
 
@@ -169,7 +171,9 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (g_normalizer == NULL || size < 2) return 0;
+  if (g_normalizer == NULL || size < 2) {
+    return 0;
+  }
 
   // First byte controls test mode and chunk sizing.
   uint8_t mode = data[0];
@@ -222,7 +226,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       size_t chunk_base =
           (chunk_index < size) ? (data[chunk_index % size] & 0x1F) : 8;
       size_t chunk_size = chunk_base + 1;  // 1-32 bytes.
-      if (chunk_size > size - offset) chunk_size = size - offset;
+      if (chunk_size > size - offset) {
+        chunk_size = size - offset;
+      }
 
       iree_string_view_t chunk =
           iree_make_string_view(input.data + offset, chunk_size);

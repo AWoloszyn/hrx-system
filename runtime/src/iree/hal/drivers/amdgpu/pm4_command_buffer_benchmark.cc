@@ -86,7 +86,9 @@ struct SubmittedCompletion {
 
 bool HandleStatus(benchmark::State& state, iree_status_t status,
                   const char* message) {
-  if (iree_status_is_ok(status)) return true;
+  if (iree_status_is_ok(status)) {
+    return true;
+  }
   iree_status_fprint(stderr, status);
   iree_status_free(status);
   state.SkipWithError(message);
@@ -111,8 +113,12 @@ bool IsPm4Path(CommandBufferPath path) {
 
 int64_t NextDispatchGroupSize(int64_t dispatch_index, int64_t operation_count,
                               int64_t overlap_percent) {
-  if (overlap_percent == 0) return 1;
-  if (overlap_percent != 20) return 1;
+  if (overlap_percent == 0) {
+    return 1;
+  }
+  if (overlap_percent != 20) {
+    return 1;
+  }
   const int64_t pattern_position = dispatch_index % 25;
   int64_t group_size = 1;
   if (pattern_position == 0) {
@@ -182,7 +188,9 @@ struct DeviceBundle {
 class Pm4CommandBufferBenchmark : public benchmark::Fixture {
  public:
   static void InitializeOnce() {
-    if (initialized_) return;
+    if (initialized_) {
+      return;
+    }
     initialized_ = true;
 
     iree_status_t status = iree_hal_amdgpu_libhsa_initialize(
@@ -313,8 +321,12 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
   }
 
   static iree_status_t BeginPm4FinalizeTimingProfile() {
-    if (!FLAG_pm4_collect_finalize_timings) return iree_ok_status();
-    if (pm4_finalize_timing_profile_active_) return iree_ok_status();
+    if (!FLAG_pm4_collect_finalize_timings) {
+      return iree_ok_status();
+    }
+    if (pm4_finalize_timing_profile_active_) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(iree_hal_amdgpu_benchmark_discard_profile_sink_create(
         host_allocator_, &pm4_finalize_timing_profile_sink_));
     iree_hal_device_profiling_options_t options = {0};
@@ -366,7 +378,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
       }
       const iree_const_byte_span_t executable_data =
           target.data_fn(IREE_SV("pm4_command_buffer_benchmark_testdata.bin"));
-      if (iree_const_byte_span_is_empty(executable_data)) continue;
+      if (iree_const_byte_span_is_empty(executable_data)) {
+        continue;
+      }
       found_executable_data = true;
 
       iree_hal_executable_target_selection_result_t target_result;
@@ -593,7 +607,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
           sizeof(iree_hal_amdgpu_command_buffer_binding_source_t);
       const uint64_t used_bytes = block->header_length + block->command_length +
                                   binding_source_length + block->rodata_length;
-      if (block->aql_packet_count > 0) ++payload_block_count;
+      if (block->aql_packet_count > 0) {
+        ++payload_block_count;
+      }
       total_aql_packet_count += block->aql_packet_count;
       total_block_bytes += block->block_length;
       total_used_bytes += used_bytes;
@@ -758,7 +774,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
   }
 
   void RunRecordFinalize(benchmark::State& state, CommandBufferPath path) {
-    if (state.skipped()) return;
+    if (state.skipped()) {
+      return;
+    }
     BenchmarkSpec spec = {
         /*operation_count=*/state.range(0),
         /*binding_table_count=*/state.range(1),
@@ -785,7 +803,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
   }
 
   void RunRecordOnly(benchmark::State& state, CommandBufferPath path) {
-    if (state.skipped()) return;
+    if (state.skipped()) {
+      return;
+    }
     BenchmarkSpec spec = {
         /*operation_count=*/state.range(0),
         /*binding_table_count=*/state.range(1),
@@ -817,7 +837,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
   }
 
   void RunFinalizeOnly(benchmark::State& state, CommandBufferPath path) {
-    if (state.skipped()) return;
+    if (state.skipped()) {
+      return;
+    }
     BenchmarkSpec spec = {
         /*operation_count=*/state.range(0),
         /*binding_table_count=*/state.range(1),
@@ -852,7 +874,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
   }
 
   void RunSubmitOnly(benchmark::State& state, CommandBufferPath path) {
-    if (state.skipped()) return;
+    if (state.skipped()) {
+      return;
+    }
     BenchmarkSpec spec = {
         /*operation_count=*/state.range(0),
         /*binding_table_count=*/state.range(1),
@@ -885,7 +909,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
   }
 
   void RunSubmitWait(benchmark::State& state, CommandBufferPath path) {
-    if (state.skipped()) return;
+    if (state.skipped()) {
+      return;
+    }
     BenchmarkSpec spec = {
         /*operation_count=*/state.range(0),
         /*binding_table_count=*/state.range(1),
@@ -916,7 +942,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
   }
 
   void RunEndToEnd(benchmark::State& state, CommandBufferPath path) {
-    if (state.skipped()) return;
+    if (state.skipped()) {
+      return;
+    }
     BenchmarkSpec spec = {
         /*operation_count=*/state.range(0),
         /*binding_table_count=*/state.range(1),
@@ -1205,7 +1233,9 @@ int main(int argc, char** argv) {
                                IREE_FLAGS_PARSE_MODE_CONTINUE_AFTER_HELP,
                            &argc, &argv);
   benchmark::Initialize(&argc, argv);
-  if (benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+  if (benchmark::ReportUnrecognizedArguments(argc, argv)) {
+    return 1;
+  }
   benchmark::RunSpecifiedBenchmarks();
   benchmark::Shutdown();
   Pm4CommandBufferBenchmark::DeinitializeOnce();

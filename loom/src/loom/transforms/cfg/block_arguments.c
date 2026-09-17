@@ -12,7 +12,9 @@ bool loom_cfg_block_arguments_can_replace(
     const loom_module_t* module, const loom_dominance_info_t* dominance,
     const loom_block_t* block, loom_value_slice_t replacements,
     const loom_op_t* before_op) {
-  if (replacements.count != block->arg_count) return false;
+  if (replacements.count != block->arg_count) {
+    return false;
+  }
   const loom_type_value_remap_t remap = {
       .source_values = block->arg_ids,
       .target_values = replacements.values,

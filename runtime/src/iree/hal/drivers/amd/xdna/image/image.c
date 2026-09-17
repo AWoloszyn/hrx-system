@@ -60,7 +60,9 @@ iree_status_t iree_hal_amd_xdna_image_create(
 }
 
 void iree_hal_amd_xdna_image_destroy(iree_hal_amd_xdna_image_t* image) {
-  if (image == NULL) return;
+  if (image == NULL) {
+    return;
+  }
   const iree_allocator_t host_allocator = image->host_allocator;
   iree_hal_amd_xdna_image_validation_destroy(image->validation);
   iree_hal_amd_xdna_image_programs_destroy(image->programs);

@@ -40,12 +40,18 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (g_tokenizer == NULL || size < 4) return 0;
+  if (g_tokenizer == NULL || size < 4) {
+    return 0;
+  }
 
   // Interpret fuzz data as a sequence of token IDs.
   iree_host_size_t token_count = size / sizeof(int32_t);
-  if (token_count == 0) return 0;
-  if (token_count > 4096) token_count = 4096;  // Limit to avoid OOM.
+  if (token_count == 0) {
+    return 0;
+  }
+  if (token_count > 4096) {
+    token_count = 4096;  // Limit to avoid OOM.
+  }
 
   const int32_t* token_ids = reinterpret_cast<const int32_t*>(data);
   iree_tokenizer_token_id_list_t tokens =
@@ -115,8 +121,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       iree_host_size_t offset = 0;
       while (offset < token_count) {
         iree_host_size_t chunk_count = ((offset % 4) + 1) * 2;
-        if (chunk_count > token_count - offset)
+        if (chunk_count > token_count - offset) {
           chunk_count = token_count - offset;
+        }
 
         iree_tokenizer_token_id_list_t chunk =
             iree_tokenizer_make_token_id_list(token_ids + offset, chunk_count);

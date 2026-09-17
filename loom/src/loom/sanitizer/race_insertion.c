@@ -100,7 +100,9 @@ iree_status_t loom_sanitizer_insert_race_observations_create(
     for (uint16_t i = 0; i < pass->decoded_options->option_count; ++i) {
       const loom_pass_decoded_option_t* option =
           &pass->decoded_options->options[i];
-      if (!option->present) continue;
+      if (!option->present) {
+        continue;
+      }
       if (iree_string_view_equal(option->schema->name, IREE_SV("checks"))) {
         IREE_RETURN_IF_ERROR(loom_sanitizer_checks_parse(
             option->string_value,
@@ -151,9 +153,13 @@ static bool loom_sanitizer_i64_arrays_equal(loom_attribute_t lhs,
 
 static bool loom_sanitizer_value_slices_equal(loom_value_slice_t lhs,
                                               loom_value_slice_t rhs) {
-  if (lhs.count != rhs.count) return false;
+  if (lhs.count != rhs.count) {
+    return false;
+  }
   for (uint16_t i = 0; i < lhs.count; ++i) {
-    if (lhs.values[i] != rhs.values[i]) return false;
+    if (lhs.values[i] != rhs.values[i]) {
+      return false;
+    }
   }
   return true;
 }
@@ -274,7 +280,9 @@ static iree_status_t loom_sanitizer_materialize_dynamic_lane_index(
     loom_value_id_t base_index, int64_t lane_offset,
     loom_location_id_t location, loom_value_id_t* out_index) {
   *out_index = base_index;
-  if (lane_offset == 0) return iree_ok_status();
+  if (lane_offset == 0) {
+    return iree_ok_status();
+  }
 
   const loom_type_t index_type = loom_module_value_type(module, base_index);
   loom_op_t* offset_op = NULL;
@@ -496,10 +504,14 @@ static iree_status_t loom_sanitizer_try_instrument_race_access_op(
   bool handled = false;
   IREE_RETURN_IF_ERROR(loom_sanitizer_try_instrument_vector_race_access_op(
       pass, module, rewriter, op, &handled));
-  if (handled) return iree_ok_status();
+  if (handled) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_sanitizer_reject_unsupported_vector_race_access_op(
       pass, module, rewriter, op, &handled));
-  if (handled) return iree_ok_status();
+  if (handled) {
+    return iree_ok_status();
+  }
 
   loom_sanitizer_race_access_kind_t kind = 0;
   loom_value_id_t view = LOOM_VALUE_ID_INVALID;
@@ -572,7 +584,9 @@ static iree_status_t loom_sanitizer_try_instrument_race_access_op(
 static iree_status_t loom_sanitizer_try_instrument_race_sync_op(
     loom_pass_t* pass, loom_module_t* module, loom_rewriter_t* rewriter,
     loom_op_t* op) {
-  if (!loom_kernel_barrier_isa(op)) return iree_ok_status();
+  if (!loom_kernel_barrier_isa(op)) {
+    return iree_ok_status();
+  }
   const loom_value_fact_memory_space_t memory_space =
       loom_kernel_barrier_memory_space(op);
   const loom_atomic_ordering_t ordering = loom_kernel_barrier_ordering(op);
@@ -617,9 +631,13 @@ static iree_status_t loom_sanitizer_try_instrument_race_sync_op(
 
 iree_status_t loom_sanitizer_insert_race_observations_run(
     loom_pass_t* pass, loom_module_t* module, loom_func_like_t function) {
-  if (!loom_sanitizer_race_check_enabled(pass)) return iree_ok_status();
+  if (!loom_sanitizer_race_check_enabled(pass)) {
+    return iree_ok_status();
+  }
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(
@@ -636,12 +654,20 @@ iree_status_t loom_sanitizer_insert_race_observations_run(
   }
   while (iree_status_is_ok(status) && !loom_pass_has_error_diagnostics(pass)) {
     loom_op_t* op = loom_rewriter_pop(&rewriter);
-    if (!op) break;
-    if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) continue;
+    if (!op) {
+      break;
+    }
+    if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
+      continue;
+    }
     status = loom_sanitizer_try_instrument_race_access_op(pass, module,
                                                           &rewriter, op);
-    if (!iree_status_is_ok(status)) continue;
-    if (loom_pass_has_error_diagnostics(pass)) continue;
+    if (!iree_status_is_ok(status)) {
+      continue;
+    }
+    if (loom_pass_has_error_diagnostics(pass)) {
+      continue;
+    }
     status =
         loom_sanitizer_try_instrument_race_sync_op(pass, module, &rewriter, op);
   }

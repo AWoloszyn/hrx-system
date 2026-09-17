@@ -41,7 +41,9 @@ static void loom_link_bytecode_template_attribute_cursor(
 static const loom_bytecode_symbol_attribute_metadata_t*
 loom_link_bytecode_template_retained_attribute(
     const loom_bytecode_symbol_metadata_t* symbol, uint8_t ordinal_plus_one) {
-  if (ordinal_plus_one == 0) return NULL;
+  if (ordinal_plus_one == 0) {
+    return NULL;
+  }
   IREE_ASSERT(ordinal_plus_one <= symbol->attribute_count);
   return &symbol->attributes[ordinal_plus_one - 1];
 }
@@ -194,7 +196,9 @@ static iree_status_t loom_link_bytecode_template_decode_conditions(
   const loom_bytecode_symbol_attribute_metadata_t* attribute =
       loom_link_bytecode_template_retained_attribute(
           symbol, symbol->template_requires_attribute_ordinal_plus_one);
-  if (attribute == NULL) return iree_ok_status();
+  if (attribute == NULL) {
+    return iree_ok_status();
+  }
   IREE_ASSERT(attribute->attribute_index == function->requires_attr_index);
   IREE_ASSERT(attribute->kind == LOOM_BYTECODE_ATTR_PARAMETERIZED_ARRAY);
 
@@ -236,7 +240,9 @@ static iree_status_t loom_link_bytecode_template_target_symbol_ordinal(
   const loom_bytecode_symbol_attribute_metadata_t* attribute =
       loom_link_bytecode_template_retained_attribute(
           symbol, symbol->template_target_attribute_ordinal_plus_one);
-  if (attribute == NULL) return iree_ok_status();
+  if (attribute == NULL) {
+    return iree_ok_status();
+  }
   IREE_ASSERT(attribute->attribute_index == function->target_attr_index);
   IREE_ASSERT(attribute->kind == LOOM_BYTECODE_ATTR_SYMBOL);
   loom_bytecode_cursor_t cursor;
@@ -244,7 +250,9 @@ static iree_status_t loom_link_bytecode_template_target_symbol_ordinal(
   uint64_t source_name_ordinal = 0;
   IREE_RETURN_IF_ERROR(loom_uvarint_decode(&cursor, &source_name_ordinal));
   IREE_ASSERT(loom_bytecode_cursor_is_empty(&cursor));
-  if (source_name_ordinal == 0) return iree_ok_status();
+  if (source_name_ordinal == 0) {
+    return iree_ok_status();
+  }
   const bool found = loom_bytecode_module_metadata_lookup_symbol_ordinal(
       reader->metadata, (uint32_t)source_name_ordinal, out_symbol_ordinal);
   IREE_ASSERT(found);
@@ -261,7 +269,9 @@ static bool loom_link_bytecode_template_target_is_projected(
 
 static iree_status_t loom_link_bytecode_template_prepare_target_cache(
     loom_link_bytecode_template_contract_reader_t* reader) {
-  if (reader->targets.projected_words != NULL) return iree_ok_status();
+  if (reader->targets.projected_words != NULL) {
+    return iree_ok_status();
+  }
   const iree_host_size_t symbol_count = reader->metadata->symbol_count;
   const iree_host_size_t word_count = (symbol_count + 63) / 64;
   if (symbol_count != 0) {

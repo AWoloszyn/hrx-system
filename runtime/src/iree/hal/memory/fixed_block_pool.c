@@ -167,7 +167,9 @@ static bool iree_hal_fixed_block_pool_frontier_is_satisfied(
       return true;
     }
   }
-  if (!pool->epoch_query.fn) return false;
+  if (!pool->epoch_query.fn) {
+    return false;
+  }
 
   iree_host_size_t requester_index = 0;
   for (uint8_t i = 0; i < death_frontier->entry_count; ++i) {
@@ -544,7 +546,9 @@ static iree_status_t iree_hal_fixed_block_pool_acquire_one_reservation(
       }
       break;
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     const bool frontier_is_satisfied =
         iree_hal_fixed_block_pool_frontier_is_satisfied(
@@ -694,7 +698,9 @@ static iree_status_t iree_hal_fixed_block_pool_acquire_reservations(
         base_pool, &requests[acquired_count], requester_frontier, flags,
         &elements[acquired_count].reservation, &elements[acquired_count].info,
         &item_result);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     switch (item_result) {
       case IREE_HAL_POOL_ACQUIRE_OK:
         if (transaction_result == IREE_HAL_POOL_ACQUIRE_OK_FRESH) {
@@ -864,7 +870,9 @@ static iree_status_t iree_hal_fixed_block_pool_materialize_reservations(
     }
     status =
         iree_allocator_malloc(pool->host_allocator, state_size, (void**)&state);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     memset(state, 0, state_size);
     state->pool = base_pool;
     state->host_allocator = pool->host_allocator;
@@ -878,7 +886,9 @@ static iree_status_t iree_hal_fixed_block_pool_materialize_reservations(
     status = iree_allocator_malloc_array(
         pool->host_allocator, reservation_count, sizeof(*staged_buffers),
         (void**)&staged_buffers);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     staged_buffers_allocated = true;
     memset(staged_buffers, 0, reservation_count * sizeof(*staged_buffers));
   }
@@ -900,10 +910,14 @@ static iree_status_t iree_hal_fixed_block_pool_materialize_reservations(
         reservations[materialized_count].offset,
         reservations[materialized_count].byte_length,
         requests[materialized_count].params, release_callback, staged_buffer);
-    if (iree_status_is_ok(status)) ++materialized_count;
+    if (iree_status_is_ok(status)) {
+      ++materialized_count;
+    }
   }
   if (iree_status_is_ok(status)) {
-    if (state) state->ownership_committed = true;
+    if (state) {
+      state->ownership_committed = true;
+    }
     for (iree_host_size_t i = 0; i < reservation_count; ++i) {
       out_buffers[i] = state ? state->elements[i].buffer : staged_buffers[i];
     }

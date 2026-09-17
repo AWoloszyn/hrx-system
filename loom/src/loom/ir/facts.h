@@ -636,7 +636,9 @@ static inline bool loom_value_facts_as_non_negative_i64_maximum(
 static inline bool loom_value_facts_as_exact_bool(loom_value_facts_t facts,
                                                   bool* out_value) {
   int64_t value = 0;
-  if (!loom_value_facts_as_exact_i64(facts, &value)) return false;
+  if (!loom_value_facts_as_exact_i64(facts, &value)) {
+    return false;
+  }
   *out_value = value != 0;
   return true;
 }

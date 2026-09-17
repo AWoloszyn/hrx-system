@@ -193,13 +193,21 @@ static iree_status_t iree_tokenizer_huggingface_added_tokens_parse_visitor(
   // Build flags.
   iree_tokenizer_huggingface_added_token_flags_t flags =
       IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_NONE;
-  if (single_word)
+  if (single_word) {
     flags |= IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_SINGLE_WORD;
-  if (lstrip) flags |= IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_LSTRIP;
-  if (rstrip) flags |= IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_RSTRIP;
-  if (normalized)
+  }
+  if (lstrip) {
+    flags |= IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_LSTRIP;
+  }
+  if (rstrip) {
+    flags |= IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_RSTRIP;
+  }
+  if (normalized) {
     flags |= IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_NORMALIZED;
-  if (special) flags |= IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_SPECIAL;
+  }
+  if (special) {
+    flags |= IREE_TOKENIZER_HUGGINGFACE_ADDED_TOKEN_FLAG_SPECIAL;
+  }
   token->flags = flags;
 
   // Parse required content field.
@@ -279,7 +287,9 @@ static iree_status_t iree_tokenizer_huggingface_added_tokens_parse_visitor(
 
 void iree_tokenizer_huggingface_added_tokens_free(
     iree_tokenizer_huggingface_added_tokens_t* tokens) {
-  if (!tokens || tokens->count == 0) return;
+  if (!tokens || tokens->count == 0) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t allocator = tokens->allocator;
   iree_allocator_free(allocator, (void*)tokens->tokens);

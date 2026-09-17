@@ -58,7 +58,9 @@ static iree_status_t loom_vm_select_op(void* user_data,
                                        const loom_op_t* source_op,
                                        loom_low_lower_plan_t* out_plan) {
   *out_plan = loom_low_lower_plan_empty();
-  if (!loom_global_load_isa(source_op)) return iree_ok_status();
+  if (!loom_global_load_isa(source_op)) {
+    return iree_ok_status();
+  }
   const loom_module_t* module = loom_low_lower_context_module(context);
   const loom_symbol_ref_t symbol = loom_global_load_global(source_op);
   const loom_op_t* definition =

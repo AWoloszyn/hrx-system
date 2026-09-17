@@ -67,7 +67,9 @@ IREE_API_EXPORT iree_status_t iree_wait_source_delay_resolve(
 
   // Check if delay has already passed.
   if (iree_time_now() >= delay_deadline_ns) {
-    if (callback) callback(user_data, iree_ok_status());
+    if (callback) {
+      callback(user_data, iree_ok_status());
+    }
     return iree_ok_status();
   }
 

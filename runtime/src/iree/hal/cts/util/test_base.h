@@ -77,7 +77,9 @@ class Ref {
   Ref() = default;
   explicit Ref(T* ptr) : ptr_(ptr) {}
   ~Ref() {
-    if (ptr_) HalTraits<T>::release(ptr_);
+    if (ptr_) {
+      HalTraits<T>::release(ptr_);
+    }
   }
 
   Ref(Ref&& other) noexcept : ptr_(other.ptr_) { other.ptr_ = nullptr; }
@@ -107,7 +109,9 @@ class Ref {
 
   // Releases the current object and takes ownership of |p|.
   void reset(T* p = nullptr) {
-    if (ptr_) HalTraits<T>::release(ptr_);
+    if (ptr_) {
+      HalTraits<T>::release(ptr_);
+    }
     ptr_ = p;
   }
 
@@ -479,7 +483,9 @@ class CtsTestBase : public BaseType {
   // the file is not found.
   iree_const_byte_span_t executable_data(iree_string_view_t file_name) const {
     ExecutableDataFn data_fn = this->GetParam().executable_data;
-    if (!data_fn) return iree_const_byte_span_empty();
+    if (!data_fn) {
+      return iree_const_byte_span_empty();
+    }
     return data_fn(file_name);
   }
 

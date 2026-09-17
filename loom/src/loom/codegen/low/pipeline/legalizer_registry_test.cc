@@ -33,7 +33,9 @@ static const loom_target_legalizer_entry_t* LookupOnlyEntry(
   const loom_target_legalizer_op_entry_t op_entry =
       loom_target_legalizer_registry_lookup_kind(registry, op_kind);
   EXPECT_EQ(op_entry.entry_count, 1u);
-  if (op_entry.entry_count != 1) return nullptr;
+  if (op_entry.entry_count != 1) {
+    return nullptr;
+  }
   return &registry->entries[op_entry.entry_start];
 }
 

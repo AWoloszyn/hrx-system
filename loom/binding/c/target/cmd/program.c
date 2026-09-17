@@ -617,7 +617,9 @@ loomc_status_t loomc_cmd_program_product_build_request(
       context, workspace, request, options, allocator, &target_specialization));
 
   const loomc_cmd_program_request_options_t default_options = {0};
-  if (options == NULL) options = &default_options;
+  if (options == NULL) {
+    options = &default_options;
+  }
 
   loomc_result_t* result = NULL;
   LOOMC_RETURN_IF_ERROR(

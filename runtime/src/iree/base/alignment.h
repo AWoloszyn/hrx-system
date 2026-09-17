@@ -120,7 +120,9 @@ static inline bool iree_host_ptr_has_alignment(const void* ptr,
 // Saturates to maximum representable value on overflow.
 static inline iree_host_size_t iree_host_size_next_power_of_two(
     iree_host_size_t value) {
-  if (value <= 1) return 1;
+  if (value <= 1) {
+    return 1;
+  }
   // Check for overflow: max representable power-of-two is SIZE_MAX/2 + 1.
   // Any value larger than that cannot have a next power-of-two in this type.
   if (value > ((~(iree_host_size_t)0) >> 1) + 1) {
@@ -168,7 +170,9 @@ static inline bool iree_device_size_has_alignment(
 // Saturates to maximum representable value on overflow.
 static inline iree_device_size_t iree_device_size_next_power_of_two(
     iree_device_size_t value) {
-  if (value <= 1) return 1;
+  if (value <= 1) {
+    return 1;
+  }
   // Check for overflow: max representable power-of-two is SIZE_MAX/2 + 1.
   // Any value larger than that cannot have a next power-of-two in this type.
   if (value > ((~(iree_device_size_t)0) >> 1) + 1) {
@@ -256,7 +260,9 @@ static inline iree_device_size_t iree_device_size_floor_div(
 //  gcd(3, 5) = 1
 static inline iree_device_size_t iree_device_size_gcd(iree_device_size_t a,
                                                       iree_device_size_t b) {
-  if (b == 0) return a;
+  if (b == 0) {
+    return a;
+  }
   return iree_device_size_gcd(b, a % b);
 }
 

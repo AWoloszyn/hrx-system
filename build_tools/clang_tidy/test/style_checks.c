@@ -28,7 +28,9 @@
 #endif  // IREE_ASSERT_EQ
 
 int iree_clang_tidy_style_direct_goto(int flag) {
-  if (flag) goto cleanup;
+  if (flag) {
+    goto cleanup;
+  }
   return 0;
 cleanup:
   return 1;
@@ -129,10 +131,13 @@ void iree_clang_tidy_style_extra_cleanup(void);
 typedef void (*iree_clang_tidy_style_release_fn_t)(
     iree_clang_tidy_style_resource_t* resource);
 
+// Exercises fixes for an unbraced release guard.
+// clang-format off
 void iree_clang_tidy_style_guarded_release(
     iree_clang_tidy_style_resource_t* resource) {
   if (resource) iree_clang_tidy_style_resource_release(resource);
 }
+// clang-format on
 
 void iree_clang_tidy_style_guarded_release_with_clear(
     iree_clang_tidy_style_resource_t* resource) {

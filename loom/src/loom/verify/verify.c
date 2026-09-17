@@ -139,12 +139,16 @@ loom_verify_command_effect_scope(loom_verify_state_t* state,
                                  const loom_op_t* op,
                                  const loom_op_vtable_t* vtable,
                                  loom_trait_flags_t traits) {
-  if (!state->region_scope.command_effects_only) return;
+  if (!state->region_scope.command_effects_only) {
+    return;
+  }
   if (!loom_traits_may_read(traits) && !loom_traits_may_write(traits) &&
       !loom_traits_are_convergent(traits)) {
     return;
   }
-  if (iree_any_bit_set(vtable->traits, LOOM_TRAIT_COMMAND_EFFECT)) return;
+  if (iree_any_bit_set(vtable->traits, LOOM_TRAIT_COMMAND_EFFECT)) {
+    return;
+  }
   loom_verify_emit_non_command_effect(state, op, vtable);
 }
 
@@ -357,7 +361,9 @@ static iree_status_t loom_verify_region(
         if (terminator_op) {
           status = loom_verify_emit_op_after_terminator(state, current, vtable,
                                                         terminator_op);
-          if (!iree_status_is_ok(status)) break;
+          if (!iree_status_is_ok(status)) {
+            break;
+          }
         } else if (vtable &&
                    iree_any_bit_set(vtable->traits, LOOM_TRAIT_TERMINATOR)) {
           terminator_op = current;
@@ -567,7 +573,9 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
   // inherit enclosing definitions, including this op's results defined above.
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
-    if (loom_verify_at_error_limit(state)) break;
+    if (loom_verify_at_error_limit(state)) {
+      break;
+    }
     const loom_region_descriptor_t* descriptor =
         loom_op_vtable_region_descriptor(vtable, i);
     loom_verify_region_contract_t contract = {
@@ -604,13 +612,21 @@ bool loom_source_table_resolve(void* user_data, const loom_module_t* module,
                                loom_source_range_t* out_range) {
   loom_source_table_resolver_t* table =
       (loom_source_table_resolver_t*)user_data;
-  if (!table || table->count == 0) return false;
-  if (location == LOOM_LOCATION_UNKNOWN) return false;
+  if (!table || table->count == 0) {
+    return false;
+  }
+  if (location == LOOM_LOCATION_UNKNOWN) {
+    return false;
+  }
 
   // Look up the location entry from the module's location table.
-  if ((iree_host_size_t)location >= module->locations.count) return false;
+  if ((iree_host_size_t)location >= module->locations.count) {
+    return false;
+  }
   const loom_location_entry_t* entry = &module->locations.entries[location];
-  if (entry->kind != LOOM_LOCATION_FILE) return false;
+  if (entry->kind != LOOM_LOCATION_FILE) {
+    return false;
+  }
 
   // Find the matching source buffer by source_id.
   const loom_source_entry_t* source_entry = NULL;
@@ -620,7 +636,9 @@ bool loom_source_table_resolve(void* user_data, const loom_module_t* module,
       break;
     }
   }
-  if (!source_entry) return false;
+  if (!source_entry) {
+    return false;
+  }
 
   // Compute byte offsets from line/column into the source buffer.
   iree_host_size_t start_offset = loom_verify_source_byte_offset(
@@ -732,7 +750,9 @@ static iree_status_t loom_verify_keyed_module_records(
        iree_status_is_ok(status) && i < plan.record_count; ++i) {
     const loom_module_record_t* previous = &plan.records[i - 1];
     const loom_module_record_t* current = &plan.records[i];
-    if (!loom_module_record_identity_equal(previous, current)) continue;
+    if (!loom_module_record_identity_equal(previous, current)) {
+      continue;
+    }
     loom_diagnostic_param_t params[] = {
         loom_param_string(loom_op_vtable_name(current->vtable)),
         loom_param_string(current->key),

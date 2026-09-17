@@ -39,14 +39,18 @@ static void iree_tokenizer_regex_nfa_state_set_add(
 
 static bool iree_tokenizer_regex_nfa_state_set_contains(
     const iree_tokenizer_regex_nfa_state_set_t* set, uint32_t state_id) {
-  if (state_id >= set->nfa_state_count) return false;
+  if (state_id >= set->nfa_state_count) {
+    return false;
+  }
   return (set->bits[state_id / 64] & (1ULL << (state_id % 64))) != 0;
 }
 
 static bool iree_tokenizer_regex_nfa_state_set_is_empty(
     const iree_tokenizer_regex_nfa_state_set_t* set) {
   for (uint32_t i = 0; i < set->capacity; ++i) {
-    if (set->bits[i] != 0) return false;
+    if (set->bits[i] != 0) {
+      return false;
+    }
   }
   return true;
 }
@@ -54,7 +58,9 @@ static bool iree_tokenizer_regex_nfa_state_set_is_empty(
 static bool iree_tokenizer_regex_nfa_state_set_equals(
     const iree_tokenizer_regex_nfa_state_set_t* a,
     const iree_tokenizer_regex_nfa_state_set_t* b) {
-  if (a->capacity != b->capacity) return false;
+  if (a->capacity != b->capacity) {
+    return false;
+  }
   return memcmp(a->bits, b->bits, a->capacity * sizeof(uint64_t)) == 0;
 }
 
@@ -88,7 +94,9 @@ static bool iree_tokenizer_regex_nfa_state_set_has_consuming(
     const iree_tokenizer_regex_nfa_t* nfa,
     const iree_tokenizer_regex_nfa_state_set_t* set) {
   for (uint32_t i = 0; i < nfa->state_count; ++i) {
-    if (!iree_tokenizer_regex_nfa_state_set_contains(set, i)) continue;
+    if (!iree_tokenizer_regex_nfa_state_set_contains(set, i)) {
+      continue;
+    }
     const iree_tokenizer_regex_nfa_state_t* state = nfa->states[i];
     if (state->type == IREE_TOKENIZER_UTIL_REGEX_NFA_MATCH_BYTE ||
         state->type == IREE_TOKENIZER_UTIL_REGEX_NFA_MATCH_CLASS) {
@@ -139,7 +147,9 @@ static void iree_tokenizer_regex_epsilon_closure_single_with_anchors(
     iree_tokenizer_regex_epsilon_work_item_t* worklist,
     iree_tokenizer_regex_nfa_state_set_t* out_set,
     iree_tokenizer_regex_anchor_info_t* anchor_info) {
-  if (!initial_state) return;
+  if (!initial_state) {
+    return;
+  }
 
   // Initialize worklist with the starting state.
   iree_host_size_t worklist_head = 0;
@@ -155,7 +165,9 @@ static void iree_tokenizer_regex_epsilon_closure_single_with_anchors(
     const iree_tokenizer_regex_nfa_state_t* state = item.state;
     bool through_end_anchor = item.through_end_anchor;
 
-    if (!state) continue;
+    if (!state) {
+      continue;
+    }
     if (iree_tokenizer_regex_nfa_state_set_contains(out_set, state->id)) {
       continue;
     }
@@ -256,7 +268,9 @@ static void iree_tokenizer_regex_epsilon_closure_single_ignoring_end_anchor(
     const iree_tokenizer_regex_nfa_t* nfa,
     const iree_tokenizer_regex_nfa_state_t* initial_state, bool at_start,
     uint32_t* worklist, iree_tokenizer_regex_nfa_state_set_t* out_set) {
-  if (!initial_state) return;
+  if (!initial_state) {
+    return;
+  }
 
   // Initialize worklist with the starting state.
   iree_host_size_t worklist_head = 0;
@@ -266,10 +280,14 @@ static void iree_tokenizer_regex_epsilon_closure_single_ignoring_end_anchor(
   while (worklist_head < worklist_tail) {
     // Pop next state ID from worklist.
     uint32_t state_id = worklist[worklist_head++];
-    if (state_id >= nfa->state_count) continue;
+    if (state_id >= nfa->state_count) {
+      continue;
+    }
 
     const iree_tokenizer_regex_nfa_state_t* state = nfa->states[state_id];
-    if (!state) continue;
+    if (!state) {
+      continue;
+    }
     if (iree_tokenizer_regex_nfa_state_set_contains(out_set, state->id)) {
       continue;
     }
@@ -325,9 +343,13 @@ static void iree_tokenizer_regex_compute_end_anchor_accepts(
     iree_tokenizer_regex_nfa_state_set_t* end_anchor_accepts) {
   iree_tokenizer_regex_nfa_state_set_clear(end_anchor_accepts);
   for (uint32_t i = 0; i < nfa->state_count; ++i) {
-    if (!iree_tokenizer_regex_nfa_state_set_contains(full_closure, i)) continue;
+    if (!iree_tokenizer_regex_nfa_state_set_contains(full_closure, i)) {
+      continue;
+    }
     const iree_tokenizer_regex_nfa_state_t* state = nfa->states[i];
-    if (state->type != IREE_TOKENIZER_UTIL_REGEX_NFA_ACCEPT) continue;
+    if (state->type != IREE_TOKENIZER_UTIL_REGEX_NFA_ACCEPT) {
+      continue;
+    }
     // Accept is in full closure. Is it also reachable without ANCHOR_END?
     if (!iree_tokenizer_regex_nfa_state_set_contains(unanchored_closure, i)) {
       // Only reachable via anchored path - requires end anchor.
@@ -349,7 +371,9 @@ static void iree_tokenizer_regex_nfa_move(
   iree_tokenizer_regex_nfa_state_set_clear(out_set);
 
   for (uint32_t i = 0; i < nfa->state_count; ++i) {
-    if (!iree_tokenizer_regex_nfa_state_set_contains(state_set, i)) continue;
+    if (!iree_tokenizer_regex_nfa_state_set_contains(state_set, i)) {
+      continue;
+    }
 
     const iree_tokenizer_regex_nfa_state_t* state = nfa->states[i];
     switch (state->type) {
@@ -608,7 +632,9 @@ static iree_status_t iree_tokenizer_regex_compute_branch_reachability(
           break;
       }
 
-      if (reachable[i] != old) changed = true;
+      if (reachable[i] != old) {
+        changed = true;
+      }
     }
   }
 
@@ -627,7 +653,9 @@ static void iree_tokenizer_regex_compute_branch_masks(
   dfa_state->accepting_branches = 0;
 
   for (uint32_t i = 0; i < nfa->state_count; ++i) {
-    if (!iree_tokenizer_regex_nfa_state_set_contains(nfa_states, i)) continue;
+    if (!iree_tokenizer_regex_nfa_state_set_contains(nfa_states, i)) {
+      continue;
+    }
 
     // This NFA state contributes its reachable branches to alive_branches.
     dfa_state->alive_branches |= nfa_reachable_branches[i];
@@ -673,7 +701,9 @@ static iree_status_t iree_tokenizer_regex_extract_lookahead(
   uint8_t first_lookahead_data = 0;
 
   for (uint32_t i = 0; i < nfa->state_count; ++i) {
-    if (!iree_tokenizer_regex_nfa_state_set_contains(nfa_states, i)) continue;
+    if (!iree_tokenizer_regex_nfa_state_set_contains(nfa_states, i)) {
+      continue;
+    }
 
     const iree_tokenizer_regex_nfa_state_t* state = nfa->states[i];
     if (state->type == IREE_TOKENIZER_UTIL_REGEX_NFA_ACCEPT) {
@@ -765,13 +795,17 @@ static void iree_tokenizer_regex_extract_end_anchor(
     const iree_tokenizer_regex_nfa_state_set_t* nfa_states,
     const iree_tokenizer_regex_nfa_state_set_t* end_anchor_accepts,
     iree_tokenizer_regex_dfa_state_t* dfa_state) {
-  if (!dfa_state->is_accepting) return;
+  if (!dfa_state->is_accepting) {
+    return;
+  }
 
   bool found_accept_without_end_anchor = false;
   bool found_accept_with_end_anchor = false;
 
   for (uint32_t i = 0; i < nfa->state_count; ++i) {
-    if (!iree_tokenizer_regex_nfa_state_set_contains(nfa_states, i)) continue;
+    if (!iree_tokenizer_regex_nfa_state_set_contains(nfa_states, i)) {
+      continue;
+    }
 
     const iree_tokenizer_regex_nfa_state_t* state = nfa->states[i];
     if (state->type == IREE_TOKENIZER_UTIL_REGEX_NFA_ACCEPT) {
@@ -988,11 +1022,17 @@ iree_status_t iree_tokenizer_regex_dfa_build(
     for (int byte = 0; byte < 256; ++byte) {
       // Skip continuation bytes (0x8C-0xBF) that aren't pseudo-bytes.
       // These can't appear as standalone input.
-      if (byte >= 0x80 + IREE_TOKENIZER_UTIL_REGEX_PSEUDO_COUNT && byte <= 0xBF)
+      if (byte >= 0x80 + IREE_TOKENIZER_UTIL_REGEX_PSEUDO_COUNT &&
+          byte <= 0xBF) {
         continue;
+      }
       // Also skip invalid lead bytes (0xC0, 0xC1, 0xF5-0xFF).
-      if (byte == 0xC0 || byte == 0xC1) continue;
-      if (byte >= 0xF5) continue;
+      if (byte == 0xC0 || byte == 0xC1) {
+        continue;
+      }
+      if (byte >= 0xF5) {
+        continue;
+      }
 
       // Compute move(current_nfa_states, byte).
       iree_tokenizer_regex_nfa_move(nfa, &current_dfa_state->nfa_states,
@@ -1077,13 +1117,17 @@ iree_status_t iree_tokenizer_regex_dfa_build(
     // DFA state and record the range transition.
     for (uint32_t i = 0; i < nfa->state_count; ++i) {
       if (!iree_tokenizer_regex_nfa_state_set_contains(
-              &current_dfa_state->nfa_states, i))
+              &current_dfa_state->nfa_states, i)) {
         continue;
+      }
 
       const iree_tokenizer_regex_nfa_state_t* nfa_state = nfa->states[i];
-      if (nfa_state->type != IREE_TOKENIZER_UTIL_REGEX_NFA_MATCH_CLASS)
+      if (nfa_state->type != IREE_TOKENIZER_UTIL_REGEX_NFA_MATCH_CLASS) {
         continue;
-      if (nfa_state->data.match_class.range_count == 0) continue;
+      }
+      if (nfa_state->data.match_class.range_count == 0) {
+        continue;
+      }
 
       // This NFA state has exact ranges. Compute the target DFA state.
       // The target is the epsilon closure of the match_class.out state.

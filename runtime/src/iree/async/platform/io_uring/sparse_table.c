@@ -41,7 +41,9 @@ iree_status_t iree_io_uring_sparse_table_allocate(
 
 void iree_io_uring_sparse_table_free(iree_io_uring_sparse_table_t* table,
                                      iree_allocator_t allocator) {
-  if (!table) return;
+  if (!table) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_slim_mutex_deinitialize(&table->mutex);
   iree_allocator_free(allocator, table);
@@ -50,7 +52,9 @@ void iree_io_uring_sparse_table_free(iree_io_uring_sparse_table_t* table,
 
 int32_t iree_io_uring_sparse_table_acquire(iree_io_uring_sparse_table_t* table,
                                            uint16_t count) {
-  if (count == 0) return -1;
+  if (count == 0) {
+    return -1;
+  }
   iree_slim_mutex_lock(&table->mutex);
   iree_host_size_t start =
       iree_bitmap_find_first_unset_span(table->bitmap, 0, count);

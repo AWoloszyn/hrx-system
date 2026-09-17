@@ -239,7 +239,9 @@ static bool iree_hal_amd_xdna_aie2p_npu2_query_register_mask(
        ++i) {
     const iree_hal_amd_xdna_aie2p_npu2_register_pattern_t* pattern =
         &iree_hal_amd_xdna_aie2p_npu2_register_patterns[i];
-    if ((pattern->tile_kinds & tile_kind) == 0) continue;
+    if ((pattern->tile_kinds & tile_kind) == 0) {
+      continue;
+    }
     for (uint16_t first = 0; first < pattern->first_count; ++first) {
       for (uint16_t second = 0; second < pattern->second_count; ++second) {
         const uint32_t pattern_offset = pattern->base_offset +
@@ -338,7 +340,9 @@ static bool iree_hal_amd_xdna_aie2p_npu2_range_contains(uint32_t base,
                                                         uint32_t* out_offset) {
   const uint64_t end = (uint64_t)address + byte_length;
   const uint64_t range_end = (uint64_t)base + capacity;
-  if (address < base || end > range_end) return false;
+  if (address < base || end > range_end) {
+    return false;
+  }
   *out_offset = address - base;
   return true;
 }

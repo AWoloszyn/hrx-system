@@ -46,8 +46,12 @@ static iree_host_size_t parse_token(const uint8_t* data, iree_host_size_t size,
     return 0;
   }
   iree_host_size_t length = data[0];
-  if (length > max_length) length = max_length;
-  if (length > size - 1) length = size - 1;
+  if (length > max_length) {
+    length = max_length;
+  }
+  if (length > size - 1) {
+    length = size - 1;
+  }
   *out_token =
       iree_make_string_view(reinterpret_cast<const char*>(data + 1), length);
   return 1 + length;
@@ -57,7 +61,9 @@ static iree_host_size_t parse_token(const uint8_t* data, iree_host_size_t size,
 // enough data.
 static iree_host_size_t parse_u16(const uint8_t* data, iree_host_size_t size,
                                   uint16_t* out_value) {
-  if (size < 2) return 0;
+  if (size < 2) {
+    return 0;
+  }
   *out_value = (uint16_t)data[0] | ((uint16_t)data[1] << 8);
   return 2;
 }
@@ -65,7 +71,9 @@ static iree_host_size_t parse_u16(const uint8_t* data, iree_host_size_t size,
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // Need at least: flags (1) + token_count (1) + merge_count (1) + input_len
   // (2)
-  if (size < 5) return 0;
+  if (size < 5) {
+    return 0;
+  }
 
   iree_host_size_t pos = 0;
 
@@ -78,19 +86,29 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Byte 1: Token count.
   iree_host_size_t token_count = data[pos++];
-  if (token_count > kMaxTokens) token_count = kMaxTokens;
-  if (token_count == 0) return 0;  // Need at least one token.
+  if (token_count > kMaxTokens) {
+    token_count = kMaxTokens;
+  }
+  if (token_count == 0) {
+    return 0;  // Need at least one token.
+  }
 
   // Byte 2: Merge count.
   iree_host_size_t merge_count = data[pos++];
-  if (merge_count > kMaxMerges) merge_count = kMaxMerges;
+  if (merge_count > kMaxMerges) {
+    merge_count = kMaxMerges;
+  }
 
   // Bytes 3-4: Input text length.
   uint16_t input_length = 0;
   iree_host_size_t consumed = parse_u16(data + pos, size - pos, &input_length);
-  if (consumed == 0) return 0;
+  if (consumed == 0) {
+    return 0;
+  }
   pos += consumed;
-  if (input_length > kMaxInputLength) input_length = kMaxInputLength;
+  if (input_length > kMaxInputLength) {
+    input_length = kMaxInputLength;
+  }
 
   //===--------------------------------------------------------------------===//
   // Phase 2: Build vocabulary from fuzzed tokens
@@ -110,11 +128,15 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     iree_string_view_t token_text;
     consumed =
         parse_token(data + pos, size - pos, kMaxTokenLength, &token_text);
-    if (consumed == 0) break;
+    if (consumed == 0) {
+      break;
+    }
     pos += consumed;
 
     // Empty tokens are invalid, skip them.
-    if (token_text.size == 0) continue;
+    if (token_text.size == 0) {
+      continue;
+    }
 
     status = iree_tokenizer_vocab_builder_add_token(
         builder, token_text, 0.0f, IREE_TOKENIZER_TOKEN_ATTR_NONE);
@@ -181,7 +203,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Get remaining bytes as input text (up to input_length).
   iree_host_size_t available_input = size - pos;
-  if (available_input > input_length) available_input = input_length;
+  if (available_input > input_length) {
+    available_input = input_length;
+  }
   const char* input_data = reinterpret_cast<const char*>(data + pos);
 
   // Allocate state storage.
@@ -367,7 +391,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         iree_status_ignore(status);
         break;
       }
-      if (final_count == 0) break;
+      if (final_count == 0) {
+        break;
+      }
     }
   } else {
     iree_status_ignore(status);

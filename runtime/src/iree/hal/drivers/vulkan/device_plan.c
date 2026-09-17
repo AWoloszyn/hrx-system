@@ -74,7 +74,9 @@ static uint32_t iree_hal_vulkan_select_compute_queue_family(
     }
     const bool has_graphics =
         iree_any_bit_set(queue_family->queueFlags, VK_QUEUE_GRAPHICS_BIT);
-    if (!prefer_dedicated || !has_graphics) return i;
+    if (!prefer_dedicated || !has_graphics) {
+      return i;
+    }
     if (candidate_family_index == IREE_HAL_VULKAN_QUEUE_FAMILY_INVALID) {
       candidate_family_index = i;
     }
@@ -99,7 +101,9 @@ static uint32_t iree_hal_vulkan_select_transfer_queue_family(
         iree_any_bit_set(queue_family->queueFlags, VK_QUEUE_GRAPHICS_BIT);
     const bool has_compute =
         iree_any_bit_set(queue_family->queueFlags, VK_QUEUE_COMPUTE_BIT);
-    if (!has_graphics && !has_compute) return i;
+    if (!has_graphics && !has_compute) {
+      return i;
+    }
     if (i == compute_family_index) {
       same_family_index = i;
       continue;
@@ -364,7 +368,9 @@ static iree_status_t iree_hal_vulkan_device_plan_assign_queue_coordinate(
   for (iree_host_size_t i = 0; i < queue_inventory->family_count; ++i) {
     const iree_hal_vulkan_queue_family_plan_t* family =
         &queue_inventory->families[i];
-    if (family->native_family_index != selection->family_index) continue;
+    if (family->native_family_index != selection->family_index) {
+      continue;
+    }
     for (uint32_t j = 0; j < family->queue_count; ++j) {
       if (queue_inventory->queue_indices[family->queue_offset + j] !=
           selection->queue_index) {
@@ -1267,7 +1273,9 @@ static uint64_t iree_hal_vulkan_queue_mask_for_count(uint32_t queue_count) {
 
 static uint32_t iree_hal_vulkan_first_queue_index(uint64_t queue_indices) {
   for (uint32_t i = 0; i < 64; ++i) {
-    if (iree_any_bit_set(queue_indices, 1ull << i)) return i;
+    if (iree_any_bit_set(queue_indices, 1ull << i)) {
+      return i;
+    }
   }
   return 0;
 }
@@ -1370,7 +1378,9 @@ static iree_status_t iree_hal_vulkan_select_external_queue_assignment(
 static void iree_hal_vulkan_merge_external_queue_set(
     const iree_hal_vulkan_queue_set_t* queue_set, uint32_t* family_indices,
     uint64_t* family_queue_masks, iree_host_size_t* family_count) {
-  if (!queue_set->queue_indices) return;
+  if (!queue_set->queue_indices) {
+    return;
+  }
   iree_host_size_t insert_index = 0;
   while (insert_index < *family_count &&
          family_indices[insert_index] < queue_set->queue_family_index) {

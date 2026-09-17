@@ -28,7 +28,9 @@ static bool loom_type_refinement_has_element_or_role(loom_type_t type) {
 
 static void loom_type_refinement_merge_result(
     loom_type_refinement_result_t next, loom_type_refinement_result_t* result) {
-  if (*result == LOOM_TYPE_REFINEMENT_CONFLICT) return;
+  if (*result == LOOM_TYPE_REFINEMENT_CONFLICT) {
+    return;
+  }
   if (next == LOOM_TYPE_REFINEMENT_CONFLICT ||
       next == LOOM_TYPE_REFINEMENT_NARROWED) {
     *result = next;
@@ -80,8 +82,12 @@ static iree_status_t loom_type_refinement_rebuild_dimensions(
   }
 
   uint8_t flags = 0;
-  if (rank <= 2) flags |= LOOM_TYPE_FLAG_INLINE_DIMS;
-  if (all_static) flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+  if (rank <= 2) {
+    flags |= LOOM_TYPE_FLAG_INLINE_DIMS;
+  }
+  if (all_static) {
+    flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+  }
 
   loom_type_t refined = current_type;
   refined.header =
@@ -189,7 +195,9 @@ iree_status_t loom_type_refine_shape_with_dims(
       loom_type_refinement_prepare_outputs(current_type, out_type, out_result));
 
   if (!loom_type_refinement_has_dimensions(current_type)) {
-    if (candidate_rank == 0) return iree_ok_status();
+    if (candidate_rank == 0) {
+      return iree_ok_status();
+    }
     *out_result = LOOM_TYPE_REFINEMENT_CONFLICT;
     return iree_ok_status();
   }

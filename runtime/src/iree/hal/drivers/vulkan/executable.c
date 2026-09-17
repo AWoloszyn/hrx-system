@@ -22,7 +22,9 @@ static iree_status_t iree_hal_vulkan_create_specialization_info(
     VkSpecializationMapEntry** out_map_entries) {
   memset(out_info, 0, sizeof(*out_info));
   *out_map_entries = NULL;
-  if (load_params->constant_count == 0) return iree_ok_status();
+  if (load_params->constant_count == 0) {
+    return iree_ok_status();
+  }
   if (!load_params->constants) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "executable declares %" PRIhsz
@@ -87,7 +89,9 @@ static iree_status_t iree_hal_vulkan_initialize_pipeline_bda_metadata(
       metadata->constant_push_constant_offset;
   out_pipeline->bda.binding_count_known = metadata->binding_count_known;
 
-  if (metadata->binding_requirement_count == 0) return iree_ok_status();
+  if (metadata->binding_requirement_count == 0) {
+    return iree_ok_status();
+  }
   out_pipeline->bda.binding_requirement_count =
       metadata->binding_requirement_count;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
@@ -377,7 +381,9 @@ static iree_status_t iree_hal_vulkan_create_bda_executable(
     pipeline->layout = executable->pipeline_layout;
     status = iree_hal_vulkan_initialize_pipeline_bda_metadata(
         &bda_metadata, host_allocator, pipeline);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     memcpy(pipeline->workgroup_size, entry_points[i].workgroup_size,
            sizeof(pipeline->workgroup_size));
 

@@ -20,7 +20,9 @@ static void iree_hal_amdgpu_aql_atomic_record_dependency(
     iree_hal_amdgpu_aql_program_builder_t* builder,
     iree_hal_execution_stage_t stage_mask, iree_hal_atomic_flags_t atomic_flags,
     iree_hal_atomic_flags_t ordering_flag) {
-  if (stage_mask == 0) return;
+  if (stage_mask == 0) {
+    return;
+  }
   const iree_hsa_fence_scope_t handoff_scope =
       iree_hal_amdgpu_barrier_resolve_atomic_handoff_scope(
           stage_mask, atomic_flags, ordering_flag);

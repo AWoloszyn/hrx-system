@@ -100,7 +100,9 @@ loomc_status_t loomc_request_index_overlay_initialize(
 
 void loomc_request_index_overlay_deinitialize(
     loomc_request_index_overlay_t* overlay) {
-  if (overlay == NULL) return;
+  if (overlay == NULL) {
+    return;
+  }
   loom_link_module_index_free(overlay->module_index);
   *overlay = (loomc_request_index_overlay_t){0};
 }

@@ -123,7 +123,9 @@ static bool iree_tokenizer_regex_parser_add_child(
     iree_tokenizer_regex_parser_t* parser,
     iree_tokenizer_regex_ast_node_t* parent,
     iree_tokenizer_regex_ast_node_t* child) {
-  if (!child) return false;
+  if (!child) {
+    return false;
+  }
 
   iree_host_size_t count = parent->data.compound.child_count;
   iree_host_size_t capacity = parent->data.compound.child_capacity;
@@ -190,7 +192,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
       iree_tokenizer_regex_ast_node_t* node =
           iree_tokenizer_regex_parser_node_allocate(
               parser, IREE_TOKENIZER_UTIL_REGEX_AST_LITERAL, tok->position);
-      if (!node) return NULL;
+      if (!node) {
+        return NULL;
+      }
       node->data.literal = tok->value.literal;
       iree_tokenizer_regex_parser_advance(parser);
       return node;
@@ -225,7 +229,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
       iree_tokenizer_regex_ast_node_t* node =
           iree_tokenizer_regex_parser_node_allocate(
               parser, IREE_TOKENIZER_UTIL_REGEX_AST_CHAR_CLASS, tok->position);
-      if (!node) return NULL;
+      if (!node) {
+        return NULL;
+      }
       memcpy(node->data.char_class.bitmap, tok->value.char_class.bitmap, 32);
       node->data.char_class.pseudo_mask = tok->value.char_class.pseudo_mask;
       node->data.char_class.negated = tok->value.char_class.negated;
@@ -240,7 +246,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
       iree_tokenizer_regex_ast_node_t* node =
           iree_tokenizer_regex_parser_node_allocate(
               parser, IREE_TOKENIZER_UTIL_REGEX_AST_SHORTHAND, tok->position);
-      if (!node) return NULL;
+      if (!node) {
+        return NULL;
+      }
       node->data.shorthand = (uint8_t)tok->value.shorthand;
       iree_tokenizer_regex_parser_advance(parser);
       return node;
@@ -251,7 +259,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
           iree_tokenizer_regex_parser_node_allocate(
               parser, IREE_TOKENIZER_UTIL_REGEX_AST_UNICODE_PROP,
               tok->position);
-      if (!node) return NULL;
+      if (!node) {
+        return NULL;
+      }
       node->data.unicode_pseudo_byte = tok->value.unicode_pseudo_byte;
       iree_tokenizer_regex_parser_advance(parser);
       return node;
@@ -273,7 +283,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
       iree_tokenizer_regex_ast_node_t* inner =
           iree_tokenizer_regex_parser_parse_alternation(parser);
       --parser->depth;
-      if (!inner) return NULL;
+      if (!inner) {
+        return NULL;
+      }
       if (!iree_tokenizer_regex_parser_match(
               parser, IREE_TOKENIZER_UTIL_REGEX_TOKEN_RPAREN)) {
         iree_tokenizer_regex_parser_set_error(parser, position,
@@ -285,7 +297,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
       iree_tokenizer_regex_ast_node_t* node =
           iree_tokenizer_regex_parser_node_allocate(
               parser, IREE_TOKENIZER_UTIL_REGEX_AST_GROUP, position);
-      if (!node) return NULL;
+      if (!node) {
+        return NULL;
+      }
       node->data.group_child = inner;
       return node;
     }
@@ -307,7 +321,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
           iree_tokenizer_regex_parser_parse_alternation(parser);
       parser->case_insensitive = prev_case_insensitive;
       --parser->depth;
-      if (!inner) return NULL;
+      if (!inner) {
+        return NULL;
+      }
       if (!iree_tokenizer_regex_parser_match(
               parser, IREE_TOKENIZER_UTIL_REGEX_TOKEN_RPAREN)) {
         iree_tokenizer_regex_parser_set_error(parser, position,
@@ -317,7 +333,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
       iree_tokenizer_regex_ast_node_t* node =
           iree_tokenizer_regex_parser_node_allocate(
               parser, IREE_TOKENIZER_UTIL_REGEX_AST_GROUP, position);
-      if (!node) return NULL;
+      if (!node) {
+        return NULL;
+      }
       node->data.group_child = inner;
       node->case_insensitive = true;  // Mark the group itself.
       return node;
@@ -347,7 +365,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
           return NULL;
       }
 
-      if (!la_child) return NULL;
+      if (!la_child) {
+        return NULL;
+      }
       if (!iree_tokenizer_regex_parser_match(
               parser, IREE_TOKENIZER_UTIL_REGEX_TOKEN_RPAREN)) {
         iree_tokenizer_regex_parser_set_error(
@@ -358,7 +378,9 @@ static iree_tokenizer_regex_ast_node_t* iree_tokenizer_regex_parser_parse_atom(
       iree_tokenizer_regex_ast_node_t* node =
           iree_tokenizer_regex_parser_node_allocate(
               parser, IREE_TOKENIZER_UTIL_REGEX_AST_NEG_LOOKAHEAD, position);
-      if (!node) return NULL;
+      if (!node) {
+        return NULL;
+      }
       node->data.lookahead_child = la_child;
       return node;
     }
@@ -385,7 +407,9 @@ iree_tokenizer_regex_parser_parse_quantified(
     iree_tokenizer_regex_parser_t* parser) {
   iree_tokenizer_regex_ast_node_t* atom =
       iree_tokenizer_regex_parser_parse_atom(parser);
-  if (!atom) return NULL;
+  if (!atom) {
+    return NULL;
+  }
 
   const iree_tokenizer_regex_token_t* tok =
       iree_tokenizer_regex_parser_peek(parser);
@@ -450,7 +474,9 @@ iree_tokenizer_regex_parser_parse_quantified(
       iree_tokenizer_regex_parser_node_allocate(
           parser, IREE_TOKENIZER_UTIL_REGEX_AST_QUANTIFIER,
           atom->source_position);
-  if (!node) return NULL;
+  if (!node) {
+    return NULL;
+  }
   node->data.quantifier.child = atom;
   node->data.quantifier.min = min;
   node->data.quantifier.max = max;
@@ -492,7 +518,9 @@ iree_tokenizer_regex_parser_parse_concat(
     iree_tokenizer_regex_ast_node_t* item =
         iree_tokenizer_regex_parser_parse_quantified(parser);
     if (!item) {
-      if (!iree_status_is_ok(parser->status)) return NULL;
+      if (!iree_status_is_ok(parser->status)) {
+        return NULL;
+      }
       break;
     }
 
@@ -500,16 +528,22 @@ iree_tokenizer_regex_parser_parse_concat(
     if (!concat) {
       concat = iree_tokenizer_regex_parser_node_allocate(
           parser, IREE_TOKENIZER_UTIL_REGEX_AST_CONCAT, first->source_position);
-      if (!concat) return NULL;
-      if (!iree_tokenizer_regex_parser_add_child(parser, concat, first))
+      if (!concat) {
         return NULL;
+      }
+      if (!iree_tokenizer_regex_parser_add_child(parser, concat, first)) {
+        return NULL;
+      }
     }
-    if (!iree_tokenizer_regex_parser_add_child(parser, concat, item))
+    if (!iree_tokenizer_regex_parser_add_child(parser, concat, item)) {
       return NULL;
+    }
   }
 
   // Return first directly if no additional items were parsed.
-  if (!concat) return first;
+  if (!concat) {
+    return first;
+  }
 
   // Validate: lookahead can only appear at the end of a concatenation.
   // Mid-pattern lookahead would be silently ignored by the NFA builder.
@@ -550,7 +584,9 @@ iree_tokenizer_regex_parser_parse_alternation(
     iree_tokenizer_regex_parser_t* parser) {
   iree_tokenizer_regex_ast_node_t* first =
       iree_tokenizer_regex_parser_parse_concat(parser);
-  if (!first) return NULL;
+  if (!first) {
+    return NULL;
+  }
 
   if (!iree_tokenizer_regex_parser_check(
           parser, IREE_TOKENIZER_UTIL_REGEX_TOKEN_PIPE)) {
@@ -563,24 +599,33 @@ iree_tokenizer_regex_parser_parse_alternation(
       iree_tokenizer_regex_parser_node_allocate(
           parser, IREE_TOKENIZER_UTIL_REGEX_AST_ALTERNATION,
           first->source_position);
-  if (!alt) return NULL;
+  if (!alt) {
+    return NULL;
+  }
 
-  if (!iree_tokenizer_regex_parser_add_child(parser, alt, first)) return NULL;
+  if (!iree_tokenizer_regex_parser_add_child(parser, alt, first)) {
+    return NULL;
+  }
 
   while (iree_tokenizer_regex_parser_match(
       parser, IREE_TOKENIZER_UTIL_REGEX_TOKEN_PIPE)) {
     iree_tokenizer_regex_ast_node_t* branch =
         iree_tokenizer_regex_parser_parse_concat(parser);
     if (!branch) {
-      if (!iree_status_is_ok(parser->status)) return NULL;
+      if (!iree_status_is_ok(parser->status)) {
+        return NULL;
+      }
       // Empty branch is valid.
       branch = iree_tokenizer_regex_parser_node_allocate(
           parser, IREE_TOKENIZER_UTIL_REGEX_AST_EMPTY,
           iree_tokenizer_regex_lexer_position(&parser->lexer));
-      if (!branch) return NULL;
+      if (!branch) {
+        return NULL;
+      }
     }
-    if (!iree_tokenizer_regex_parser_add_child(parser, alt, branch))
+    if (!iree_tokenizer_regex_parser_add_child(parser, alt, branch)) {
       return NULL;
+    }
   }
 
   return alt;

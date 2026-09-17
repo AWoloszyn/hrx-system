@@ -308,7 +308,9 @@ inline void ExpectError(const CapturedDiagnostic& diagnostic,
 inline std::string GetStringParam(const CapturedDiagnostic& diagnostic,
                                   iree_host_size_t param_index) {
   EXPECT_LT(param_index, diagnostic.params.size());
-  if (param_index >= diagnostic.params.size()) return "";
+  if (param_index >= diagnostic.params.size()) {
+    return "";
+  }
   EXPECT_EQ(diagnostic.params[param_index].kind, LOOM_PARAM_STRING);
   return std::string(diagnostic.params[param_index].string.data,
                      diagnostic.params[param_index].string.size);

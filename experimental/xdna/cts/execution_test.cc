@@ -241,8 +241,9 @@ class XdnaExecutionTest
         capabilities.structure_size = sizeof(capabilities);
         const amdf_status_t status =
             QueryMemoryProfile(ordinal, &profile, &capabilities);
-        if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+        if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
           continue;
+        }
         ASSERT_EQ(status, AMDF_STATUS_OK);
         available_roles |= profile.roles;
       }
@@ -268,7 +269,9 @@ class XdnaExecutionTest
       if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_IMPORT) {
         ASSERT_NO_FATAL_FAILURE(
             ImportMemory(profile_ordinal, &binding.storage));
-        if (IsSkipped()) return;
+        if (IsSkipped()) {
+          return;
+        }
       } else {
         amdf_memory_create_info_t create = {};
         create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
@@ -389,7 +392,9 @@ class XdnaExecutionTest
     RequireDirectHostTransport(
         profile, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
                      AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET);
-    if (IsSkipped()) return;
+    if (IsSkipped()) {
+      return;
+    }
     const auto source_flags =
         AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE;
     const uint32_t source_ordinal = FindMemoryProfileOrdinal(
@@ -402,7 +407,9 @@ class XdnaExecutionTest
     RequireDirectHostTransport(
         profile, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
                      AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET);
-    if (IsSkipped()) return;
+    if (IsSkipped()) {
+      return;
+    }
     const uint64_t source_offset =
         profile.allocation.native_byte_length_granularity + kBindingByteLength;
     amdf_memory_create_info_t create = {};
@@ -667,7 +674,9 @@ class XdnaExecutionTest
 
 TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
   ASSERT_NO_FATAL_FAILURE(CreateBindings());
-  if (IsSkipped()) return;
+  if (IsSkipped()) {
+    return;
+  }
   ASSERT_NO_FATAL_FAILURE(PrepareExecution(prepared_bindings_, &first_));
   // Prepared commands own the executable through native completion and
   // teardown.
@@ -697,7 +706,9 @@ TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
 
 TEST_P(XdnaExecutionTest, SharesDataAcrossIndependentContextLifetimes) {
   ASSERT_NO_FATAL_FAILURE(CreateBindings());
-  if (IsSkipped()) return;
+  if (IsSkipped()) {
+    return;
+  }
   ASSERT_NO_FATAL_FAILURE(PrepareExecution(prepared_bindings_, &first_));
   // A: (lhs, rhs) -> intermediate; B: (intermediate, rhs) -> lhs.
   const PreparedBindings consumer_bindings = {
@@ -811,7 +822,9 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
         AMDF_STATUS_OK);
     amdf_endpoint_t* gpu_endpoint = nullptr;
     for (const auto& summary : endpoints) {
-      if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) continue;
+      if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) {
+        continue;
+      }
       amdf_endpoint_t* endpoint = nullptr;
       ASSERT_EQ(GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint),
                 AMDF_STATUS_OK);
@@ -848,7 +861,9 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
           break;
         }
       }
-      if (gpu_endpoint) break;
+      if (gpu_endpoint) {
+        break;
+      }
     }
     if (!gpu_endpoint) {
       GTEST_SKIP() << "GPU PM4 publication with GCR is not advertised";
@@ -902,9 +917,12 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
       const auto status = api_->memory_scope_query_device_profile(
           system_scope_, ordinal, access_count, accesses, &profile,
           capabilities.data());
-      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
-      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) {
+        break;
+      }
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
         continue;
+      }
       ASSERT_EQ(status, AMDF_STATUS_OK);
       if ((profile.roles & role) != 0 &&
           (profile.roles & AMDF_MEMORY_PROFILE_ROLE_HOST_MAP) != 0 &&
@@ -1146,13 +1164,17 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
       const size_t count = ((words[i] >> 16) & 0x3fff) + 2;
       const size_t tail =
           capacity - (published_index_ + publication.size()) % capacity;
-      if (tail < count || tail == count + 1) append_padding(tail);
+      if (tail < count || tail == count + 1) {
+        append_padding(tail);
+      }
       publication.insert(publication.end(), words.begin() + i,
                          words.begin() + i + count);
       i += count;
     }
     size_t padding = 8 - publication.size() % 8;
-    if (padding == 1) padding += 8;
+    if (padding == 1) {
+      padding += 8;
+    }
     append_padding(padding);
     // All prior batches have retired. The publication still reserves the
     // native PM4 empty/full discriminator by remaining smaller than the ring.
@@ -1220,7 +1242,9 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
 
 TEST_P(XdnaPoolVisibilityTest, ReplaysQualifiedGpuXdnaGpuTransitions) {
   ASSERT_NO_FATAL_FAILURE(CreatePool());
-  if (IsSkipped()) return;
+  if (IsSkipped()) {
+    return;
+  }
   ASSERT_NO_FATAL_FAILURE(CreateGpuQueue());
   ASSERT_NO_FATAL_FAILURE(PrepareExecution(prepared_bindings_, &first_));
   std::vector<uint32_t> ingress;

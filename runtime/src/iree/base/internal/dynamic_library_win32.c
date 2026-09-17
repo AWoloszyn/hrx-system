@@ -227,7 +227,9 @@ iree_status_t iree_dynamic_library_load_from_files(
   iree_host_size_t i = 0;
   for (i = 0; i < search_path_count; ++i) {
     module = LoadLibraryA(search_paths[i]);
-    if (module) break;
+    if (module) {
+      break;
+    }
   }
   if (!module) {
     IREE_TRACE_ZONE_END(z0);

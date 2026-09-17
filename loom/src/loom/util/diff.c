@@ -33,15 +33,21 @@ static iree_status_t loom_diff_split_lines(iree_string_view_t source,
   *out_lines = NULL;
   *out_count = 0;
 
-  if (source.size == 0) return iree_ok_status();
+  if (source.size == 0) {
+    return iree_ok_status();
+  }
 
   // Count lines first.
   iree_host_size_t count = 0;
   for (iree_host_size_t i = 0; i < source.size; ++i) {
-    if (source.data[i] == '\n') ++count;
+    if (source.data[i] == '\n') {
+      ++count;
+    }
   }
   // If the source does not end with '\n', there is a final partial line.
-  if (source.data[source.size - 1] != '\n') ++count;
+  if (source.data[source.size - 1] != '\n') {
+    ++count;
+  }
 
   loom_diff_source_line_t* lines = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
@@ -283,7 +289,9 @@ static void loom_diff_build_hunks(const loom_diff_edit_t* edits,
       last_change = i;
     } else if (in_hunk && (i - last_change) > 2 * context_lines) {
       iree_host_size_t hunk_end = last_change + context_lines + 1;
-      if (hunk_end > edit_count) hunk_end = edit_count;
+      if (hunk_end > edit_count) {
+        hunk_end = edit_count;
+      }
       loom_diff_append_hunk(edits, hunk_start, hunk_end, expected_lines,
                             actual_lines, result);
       in_hunk = false;
@@ -292,7 +300,9 @@ static void loom_diff_build_hunks(const loom_diff_edit_t* edits,
 
   if (in_hunk) {
     iree_host_size_t hunk_end = last_change + context_lines + 1;
-    if (hunk_end > edit_count) hunk_end = edit_count;
+    if (hunk_end > edit_count) {
+      hunk_end = edit_count;
+    }
     loom_diff_append_hunk(edits, hunk_start, hunk_end, expected_lines,
                           actual_lines, result);
   }
@@ -329,7 +339,9 @@ iree_status_t loom_diff_compute(iree_string_view_t expected,
   memset(out_result, 0, sizeof(*out_result));
 
   // Fast path: identical inputs produce no diff.
-  if (iree_string_view_equal(expected, actual)) return iree_ok_status();
+  if (iree_string_view_equal(expected, actual)) {
+    return iree_ok_status();
+  }
 
   // Split into lines.
   loom_diff_source_line_t* expected_lines = NULL;
@@ -393,7 +405,9 @@ iree_status_t loom_diff_compute(iree_string_view_t expected,
 
 iree_status_t loom_diff_format_result(const loom_diff_result_t* result,
                                       iree_string_builder_t* builder) {
-  if (result->hunk_count == 0) return iree_ok_status();
+  if (result->hunk_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(builder,
                                                           "--- expected\n"

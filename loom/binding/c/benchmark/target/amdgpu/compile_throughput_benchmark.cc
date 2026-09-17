@@ -500,12 +500,16 @@ kernel.def export("cluster_async_disjoint") @cluster_async_disjoint() {
 
   source << "  %group = kernel.async.group ";
   for (iree_host_size_t i = 0; i < transfer_count; ++i) {
-    if (i != 0) source << ", ";
+    if (i != 0) {
+      source << ", ";
+    }
     source << "%copy" << i;
   }
   source << " : ";
   for (iree_host_size_t i = 0; i < transfer_count; ++i) {
-    if (i != 0) source << ", ";
+    if (i != 0) {
+      source << ", ";
+    }
     source << "kernel.async.token";
   }
   source << R"( -> kernel.async.group

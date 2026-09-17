@@ -98,7 +98,9 @@ iree_hal_amdgpu_agent_target_find_compatible_isa(
 static inline const iree_hal_amdgpu_agent_isa_target_t*
 iree_hal_amdgpu_agent_target_isa_at(
     const iree_hal_amdgpu_agent_target_t* target, iree_host_size_t ordinal) {
-  if (ordinal >= target->isa_count) return NULL;
+  if (ordinal >= target->isa_count) {
+    return NULL;
+  }
   return ordinal == 0 ? &target->primary_isa
                       : &target->additional_isas[ordinal - 1];
 }

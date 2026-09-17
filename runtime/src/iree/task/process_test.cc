@@ -519,7 +519,9 @@ TEST(ProcessTest, ConcurrentWake) {
       }
     });
   }
-  for (auto& t : threads) t.join();
+  for (auto& t : threads) {
+    t.join();
+  }
 
   // Exactly one thread should have activated the process.
   EXPECT_EQ(iree_atomic_load(&activation_count, iree_memory_order_relaxed), 1);
@@ -542,7 +544,9 @@ TEST(ProcessTest, ConcurrentErrorReporting) {
           iree_make_status(IREE_STATUS_INTERNAL, "error from thread %d", i));
     });
   }
-  for (auto& t : threads) t.join();
+  for (auto& t : threads) {
+    t.join();
+  }
 
   EXPECT_TRUE(iree_task_process_has_error(&process));
   EXPECT_TRUE(iree_task_process_is_terminal(&process));

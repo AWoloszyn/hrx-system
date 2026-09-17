@@ -20,7 +20,9 @@ namespace {
 static iree_status_t InitializePassStatistics(loom_pass_t* pass,
                                               iree_arena_allocator_t* arena) {
   const loom_pass_statistic_layout_t* layout = pass->info->statistic_layout;
-  if (!layout) return iree_ok_status();
+  if (!layout) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate(arena, layout->storage_size,
                                            (void**)&pass->statistic_storage));
   memset(pass->statistic_storage, 0, layout->storage_size);

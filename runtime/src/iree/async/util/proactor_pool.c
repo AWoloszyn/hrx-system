@@ -154,7 +154,9 @@ static void iree_async_proactor_pool_destroy(iree_async_proactor_pool_t* pool) {
   // entries detach and perform their own teardown on final release.
   for (iree_host_size_t i = 0; i < pool->count; ++i) {
     iree_async_proactor_pool_entry_t* entry = pool->slots[i].entry;
-    if (!entry) continue;
+    if (!entry) {
+      continue;
+    }
     if (iree_async_proactor_pool_entry_release_claim(entry)) {
       iree_async_proactor_pool_entry_request_stop(entry);
     } else {
@@ -166,7 +168,9 @@ static void iree_async_proactor_pool_destroy(iree_async_proactor_pool_t* pool) {
   // destroyed without serializing their stop latency.
   for (iree_host_size_t i = 0; i < pool->count; ++i) {
     iree_async_proactor_pool_entry_t* entry = pool->slots[i].entry;
-    if (!entry) continue;
+    if (!entry) {
+      continue;
+    }
     iree_async_proactor_pool_entry_destroy(entry);
     pool->slots[i].entry = NULL;
   }
@@ -246,7 +250,9 @@ iree_host_size_t iree_async_proactor_pool_count(
 static iree_status_t iree_async_proactor_pool_ensure_entry_locked(
     iree_async_proactor_pool_t* pool, iree_host_size_t index) {
   iree_async_proactor_pool_slot_t* slot = &pool->slots[index];
-  if (slot->entry) return iree_ok_status();
+  if (slot->entry) {
+    return iree_ok_status();
+  }
 
   iree_async_proactor_pool_entry_t* entry = NULL;
   IREE_RETURN_IF_ERROR(
@@ -339,7 +345,9 @@ iree_status_t iree_async_proactor_pool_get(
 uint32_t iree_async_proactor_pool_node_id(
     const iree_async_proactor_pool_t* pool, iree_host_size_t index) {
   IREE_ASSERT_ARGUMENT(pool);
-  if (IREE_UNLIKELY(index >= pool->count)) return UINT32_MAX;
+  if (IREE_UNLIKELY(index >= pool->count)) {
+    return UINT32_MAX;
+  }
   return pool->slots[index].node_id;
 }
 
@@ -348,7 +356,9 @@ uint32_t iree_async_proactor_pool_node_id(
 static iree_host_size_t iree_async_proactor_pool_find_node_index(
     const iree_async_proactor_pool_t* pool, uint32_t node_id) {
   for (iree_host_size_t i = 0; i < pool->count; ++i) {
-    if (pool->slots[i].node_id == node_id) return i;
+    if (pool->slots[i].node_id == node_id) {
+      return i;
+    }
   }
   return 0;
 }

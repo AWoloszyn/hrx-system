@@ -120,7 +120,9 @@ class LivenessTest : public ::testing::Test {
   static bool ContainsValue(const loom_value_id_t* values,
                             iree_host_size_t count, loom_value_id_t value) {
     for (iree_host_size_t i = 0; i < count; ++i) {
-      if (values[i] == value) return true;
+      if (values[i] == value) {
+        return true;
+      }
     }
     return false;
   }

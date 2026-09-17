@@ -20,8 +20,12 @@ static bool iree_hal_amdgpu_host_queue_profiles_command_buffer_dispatches(
 static bool
 iree_hal_amdgpu_host_queue_should_profile_all_command_buffer_dispatches(
     const iree_hal_amdgpu_host_queue_t* queue, uint64_t command_buffer_id) {
-  if (command_buffer_id == 0) return false;
-  if (!queue->profiling.hsa_queue_timestamps_enabled) return false;
+  if (command_buffer_id == 0) {
+    return false;
+  }
+  if (!queue->profiling.hsa_queue_timestamps_enabled) {
+    return false;
+  }
 
   iree_hal_amdgpu_logical_device_t* logical_device =
       (iree_hal_amdgpu_logical_device_t*)queue->logical_device;
@@ -48,8 +52,12 @@ static bool
 iree_hal_amdgpu_host_queue_should_profile_command_buffer_dispatch_summary(
     const iree_hal_amdgpu_host_queue_t* queue, uint64_t command_buffer_id,
     const iree_hal_amdgpu_aql_command_buffer_dispatch_summary_t* summary) {
-  if (command_buffer_id == 0) return false;
-  if (!queue->profiling.hsa_queue_timestamps_enabled) return false;
+  if (command_buffer_id == 0) {
+    return false;
+  }
+  if (!queue->profiling.hsa_queue_timestamps_enabled) {
+    return false;
+  }
   const uint32_t physical_device_ordinal = queue->device_ordinal <= UINT32_MAX
                                                ? (uint32_t)queue->device_ordinal
                                                : UINT32_MAX;
@@ -75,8 +83,12 @@ iree_hal_amdgpu_host_queue_select_command_buffer_profile_dispatches(
       (iree_hal_amdgpu_aql_block_processor_profile_dispatch_list_t){0};
   const uint64_t command_buffer_id =
       iree_hal_amdgpu_aql_command_buffer_profile_id(command_buffer);
-  if (command_buffer_id == 0) return iree_ok_status();
-  if (!queue->profiling.hsa_queue_timestamps_enabled) return iree_ok_status();
+  if (command_buffer_id == 0) {
+    return iree_ok_status();
+  }
+  if (!queue->profiling.hsa_queue_timestamps_enabled) {
+    return iree_ok_status();
+  }
   if (!iree_hal_amdgpu_host_queue_profiles_command_buffer_dispatches(queue)) {
     return iree_ok_status();
   }
@@ -94,7 +106,9 @@ iree_hal_amdgpu_host_queue_select_command_buffer_profile_dispatches(
         "retained dispatch summary count mismatch: expected %u but got %u",
         block->dispatch_count, summary_count);
   }
-  if (summary_count == 0) return iree_ok_status();
+  if (summary_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t dispatch_storage_size = 0;
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(

@@ -345,16 +345,22 @@ static loom_module_t* ParseModule(EncodingBenchmarkFixture& fixture,
 
 static loom_func_like_t GetOnlyFunction(loom_module_t* module) {
   loom_block_t* module_block = loom_module_block(module);
-  if (module_block->op_count != 1) return (loom_func_like_t){0};
+  if (module_block->op_count != 1) {
+    return (loom_func_like_t){0};
+  }
   loom_op_t* op = loom_block_op(module_block, 0);
-  if (!loom_func_def_isa(op)) return (loom_func_like_t){0};
+  if (!loom_func_def_isa(op)) {
+    return (loom_func_like_t){0};
+  }
   return loom_func_like_cast(module, op);
 }
 
 static bool IsExpectedVectorEncodingUseModule(loom_module_t* module,
                                               int64_t pair_count) {
   loom_func_like_t function = GetOnlyFunction(module);
-  if (!function.op) return false;
+  if (!function.op) {
+    return false;
+  }
   loom_block_t* body = loom_region_entry_block(loom_func_like_body(function));
   if (!body || body->op_count != (iree_host_size_t)(pair_count * 2 + 2)) {
     return false;
@@ -1028,7 +1034,9 @@ BENCHMARK(BM_ComputeDynamicEncodingFacts)->Apply(ScaledEncodingCounts);
 static bool QueryVerifiedHadamardTransforms(loom_module_t* module,
                                             int64_t definition_count) {
   loom_func_like_t function = GetOnlyFunction(module);
-  if (!function.op) return false;
+  if (!function.op) {
+    return false;
+  }
   loom_block_t* body = loom_region_entry_block(loom_func_like_body(function));
   if (!body || body->op_count != (iree_host_size_t)definition_count + 1) {
     return false;
@@ -1036,8 +1044,12 @@ static bool QueryVerifiedHadamardTransforms(loom_module_t* module,
   int64_t query_count = 0;
   loom_op_t* op = nullptr;
   loom_block_for_each_op(body, op) {
-    if (loom_func_return_isa(op)) break;
-    if (!loom_encoding_define_isa(op)) return false;
+    if (loom_func_return_isa(op)) {
+      break;
+    }
+    if (!loom_encoding_define_isa(op)) {
+      return false;
+    }
     loom_encoding_hadamard_descriptor_t descriptor;
     if (!loom_encoding_hadamard_try_read_verified_descriptor(
             module, loom_encoding_define_result(op), &descriptor) ||
@@ -1082,9 +1094,13 @@ BENCHMARK(BM_QueryVerifiedEncodingHadamardTransforms)
 static bool IsCanonicalDynamicEncodingQueryBranchModule(loom_module_t* module,
                                                         int64_t branch_count) {
   loom_func_like_t function = GetOnlyFunction(module);
-  if (!function.op) return false;
+  if (!function.op) {
+    return false;
+  }
   loom_block_t* body = loom_region_entry_block(loom_func_like_body(function));
-  if (!body) return false;
+  if (!body) {
+    return false;
+  }
 
   int64_t outer_query_count = 0;
   int64_t branch_count_seen = 0;
@@ -1094,10 +1110,14 @@ static bool IsCanonicalDynamicEncodingQueryBranchModule(loom_module_t* module,
       ++outer_query_count;
       continue;
     }
-    if (!loom_scf_if_isa(op)) continue;
+    if (!loom_scf_if_isa(op)) {
+      continue;
+    }
     ++branch_count_seen;
     loom_block_t* branch = loom_region_entry_block(loom_scf_if_then_region(op));
-    if (!branch) return false;
+    if (!branch) {
+      return false;
+    }
     loom_op_t* branch_op = nullptr;
     loom_block_for_each_op(branch, branch_op) {
       if (loom_encoding_isa_isa(branch_op) ||

@@ -432,7 +432,9 @@ static iree_status_t loom_link_index_reserve_names(
 static const loom_link_module_index_name_map_entry_t*
 loom_link_index_lookup_local_name_entry(const loom_link_module_index_t* index,
                                         iree_string_view_t name) {
-  if (index->names.capacity == 0) return NULL;
+  if (index->names.capacity == 0) {
+    return NULL;
+  }
   name = loom_link_normalize_symbol_name(name);
   const iree_host_size_t slot = loom_link_index_name_map_slot(
       index->names.values, index->names.capacity, name);
@@ -446,7 +448,9 @@ loom_link_index_lookup_local_name_entry(const loom_link_module_index_t* index,
 static loom_link_module_index_name_map_entry_t*
 loom_link_index_lookup_local_name_entry_mutable(loom_link_module_index_t* index,
                                                 iree_string_view_t name) {
-  if (index->names.capacity == 0) return NULL;
+  if (index->names.capacity == 0) {
+    return NULL;
+  }
   name = loom_link_normalize_symbol_name(name);
   const iree_host_size_t slot = loom_link_index_name_map_slot(
       index->names.values, index->names.capacity, name);
@@ -892,9 +896,13 @@ loom_link_classify_bytecode_symbol_facets(
 
 static bool loom_link_materialized_symbol_has_visibility_attr(
     const loom_module_t* module, const loom_symbol_t* symbol) {
-  if (!symbol->defining_op) return false;
+  if (!symbol->defining_op) {
+    return false;
+  }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, symbol->defining_op);
-  if (!vtable || !vtable->attr_descriptors) return false;
+  if (!vtable || !vtable->attr_descriptors) {
+    return false;
+  }
   const loom_attribute_t* attrs = loom_op_const_attrs(symbol->defining_op);
   for (uint8_t i = 0; i < vtable->attribute_count; ++i) {
     const loom_attr_descriptor_t* descriptor = &vtable->attr_descriptors[i];
@@ -1425,7 +1433,9 @@ iree_status_t loom_link_module_index_allocate_overlay(
 }
 
 void loom_link_module_index_free(loom_link_module_index_t* index) {
-  if (!index) return;
+  if (!index) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < index->modules.count; ++i) {
     if (index->modules.values[i].owns_materialized_module) {
       loom_module_free(
@@ -1725,7 +1735,9 @@ const loom_link_module_index_module_t* loom_link_module_index_symbol_module(
 
 const loom_link_module_index_symbol_t* loom_link_module_index_lookup_global(
     const loom_link_module_index_t* index, iree_string_view_t name) {
-  if (!index) return NULL;
+  if (!index) {
+    return NULL;
+  }
   const loom_link_module_index_symbol_t* base_symbol =
       index->base.index != NULL
           ? loom_link_module_index_lookup_global(index->base.index, name)
@@ -1738,8 +1750,12 @@ const loom_link_module_index_symbol_t* loom_link_module_index_lookup_global(
           ? loom_link_module_index_symbol_at(index,
                                              local_entry->first_global_ordinal)
           : NULL;
-  if (base_symbol == NULL) return local_symbol;
-  if (local_symbol == NULL) return base_symbol;
+  if (base_symbol == NULL) {
+    return local_symbol;
+  }
+  if (local_symbol == NULL) {
+    return base_symbol;
+  }
   return loom_link_index_symbol_canonically_precedes(
              index, local_symbol->ordinal, base_symbol->ordinal)
              ? local_symbol
@@ -1748,11 +1764,15 @@ const loom_link_module_index_symbol_t* loom_link_module_index_lookup_global(
 
 const loom_link_module_index_symbol_t* loom_link_module_index_lookup_name(
     const loom_link_module_index_t* index, iree_string_view_t name) {
-  if (!index) return NULL;
+  if (!index) {
+    return NULL;
+  }
   if (index->base.index != NULL) {
     const loom_link_module_index_symbol_t* base_symbol =
         loom_link_module_index_lookup_name(index->base.index, name);
-    if (base_symbol != NULL) return base_symbol;
+    if (base_symbol != NULL) {
+      return base_symbol;
+    }
   }
   const loom_link_module_index_name_map_entry_t* local_entry =
       loom_link_index_lookup_local_name_entry(index, name);
@@ -1771,7 +1791,9 @@ const loom_link_module_index_symbol_t* loom_link_module_index_next_same_name(
   if (symbol->ordinal < index->base.symbol_count) {
     const loom_link_module_index_symbol_t* base_next =
         loom_link_module_index_next_same_name(index->base.index, symbol);
-    if (base_next != NULL) return base_next;
+    if (base_next != NULL) {
+      return base_next;
+    }
     const loom_link_module_index_name_map_entry_t* local_entry =
         loom_link_index_lookup_local_name_entry(index, symbol->name);
     return local_entry != NULL ? loom_link_module_index_symbol_at(
@@ -1795,14 +1817,18 @@ loom_link_module_index_next_global_duplicate(
   }
   const loom_link_module_index_symbol_t* first =
       loom_link_module_index_lookup_global(index, symbol->name);
-  if (!first) return NULL;
+  if (!first) {
+    return NULL;
+  }
 
   // Walk forward from the current symbol. Reaching the canonical first symbol
   // after wrapping completes the cycle.
   const loom_link_module_index_symbol_t* candidate =
       loom_link_module_index_next_same_name(index, symbol);
   while (candidate) {
-    if (candidate == first) return NULL;
+    if (candidate == first) {
+      return NULL;
+    }
     if (candidate->identity == LOOM_LINK_SYMBOL_IDENTITY_GLOBAL) {
       return candidate;
     }
@@ -1823,7 +1849,9 @@ loom_link_module_index_next_global_duplicate(
 const loom_link_module_index_symbol_t* loom_link_module_index_lookup_private(
     const loom_link_module_index_t* index,
     const loom_link_module_index_module_t* module, iree_string_view_t name) {
-  if (!index || !module) return NULL;
+  if (!index || !module) {
+    return NULL;
+  }
   name = loom_link_normalize_symbol_name(name);
   const loom_link_module_index_symbol_t* symbol =
       loom_link_module_index_lookup_name(index, name);

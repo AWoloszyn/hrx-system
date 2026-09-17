@@ -54,7 +54,9 @@ iree_hal_amdgpu_executable_global_resolver_try_query_variable(
     hsa_executable_symbol_t symbol, uint64_t* out_address, bool* out_found,
     iree_device_size_t* out_byte_length) {
   *out_found = false;
-  if (out_address) *out_address = 0;
+  if (out_address) {
+    *out_address = 0;
+  }
   *out_byte_length = 0;
 
   hsa_symbol_kind_t symbol_kind = HSA_SYMBOL_KIND_KERNEL;
@@ -111,7 +113,9 @@ static iree_status_t iree_hal_amdgpu_executable_global_resolver_try_verify(
   IREE_RETURN_IF_ERROR(
       iree_hal_amdgpu_executable_global_resolver_try_get_symbol_by_name(
           resolver, name, out_found, &symbol));
-  if (!*out_found) return iree_ok_status();
+  if (!*out_found) {
+    return iree_ok_status();
+  }
 
   return iree_hal_amdgpu_executable_global_resolver_try_query_variable(
       resolver, symbol, /*out_address=*/NULL, out_found, out_byte_length);

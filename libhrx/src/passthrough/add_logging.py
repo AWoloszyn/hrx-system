@@ -51,25 +51,35 @@ static pthread_mutex_t g_pt_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_pt_log_initialized = 0;
 
 static void pt_log_init(void) {
-  if (g_pt_log_initialized) return;
+  if (g_pt_log_initialized) {
+    return;
+  }
   g_pt_log_initialized = 1;
 
   const char* log_path = getenv("HIP_LOG_FILE");
   if (log_path && *log_path) {
     // Open in append mode so we don't clobber interceptor logs
     g_pt_log_file = fopen(log_path, "a");
-    if (!g_pt_log_file) g_pt_log_file = stderr;
+    if (!g_pt_log_file) {
+      g_pt_log_file = stderr;
+    }
   } else {
     g_pt_log_file = stderr;
   }
 
   const char* level_str = getenv("HIP_LOG_LEVEL");
-  if (level_str) g_pt_log_level = atoi(level_str);
+  if (level_str) {
+    g_pt_log_level = atoi(level_str);
+  }
 }
 
 static void pt_log(int level, const char* fmt, ...) {
-  if (!g_pt_log_initialized) pt_log_init();
-  if (level > g_pt_log_level || !g_pt_log_file) return;
+  if (!g_pt_log_initialized) {
+    pt_log_init();
+  }
+  if (level > g_pt_log_level || !g_pt_log_file) {
+    return;
+  }
 
   pthread_mutex_lock(&g_pt_log_mutex);
   struct timespec ts;

@@ -162,15 +162,27 @@ iree_status_t PackVMovB32Sdwa(const loom_amdgpu_encoding_table_t* table,
 
 TEST(AmdgpuEncodingTest, DecodesExactlyArchitecturalDppControls) {
   bool expected[0x200] = {};
-  for (uint16_t value = 0x000; value <= 0x0FF; ++value) expected[value] = true;
-  for (uint16_t value = 0x101; value <= 0x10F; ++value) expected[value] = true;
-  for (uint16_t value = 0x111; value <= 0x11F; ++value) expected[value] = true;
-  for (uint16_t value = 0x121; value <= 0x12F; ++value) expected[value] = true;
+  for (uint16_t value = 0x000; value <= 0x0FF; ++value) {
+    expected[value] = true;
+  }
+  for (uint16_t value = 0x101; value <= 0x10F; ++value) {
+    expected[value] = true;
+  }
+  for (uint16_t value = 0x111; value <= 0x11F; ++value) {
+    expected[value] = true;
+  }
+  for (uint16_t value = 0x121; value <= 0x12F; ++value) {
+    expected[value] = true;
+  }
   for (uint16_t value = 0x130; value <= 0x13C; value += 4) {
     expected[value] = true;
   }
-  for (uint16_t value = 0x140; value <= 0x143; ++value) expected[value] = true;
-  for (uint16_t value = 0x150; value <= 0x16F; ++value) expected[value] = true;
+  for (uint16_t value = 0x140; value <= 0x143; ++value) {
+    expected[value] = true;
+  }
+  for (uint16_t value = 0x150; value <= 0x16F; ++value) {
+    expected[value] = true;
+  }
 
   for (uint16_t value = 0; value < IREE_ARRAYSIZE(expected); ++value) {
     loom_amdgpu_dpp_control_decoding_t decoding = {};
@@ -252,7 +264,9 @@ TEST(AmdgpuEncodingTest, PacksRdnaVop3UnusedSourcesAsInlineZero) {
     const loom_amdgpu_encoding_table_t* table =
         loom_amdgpu_encoding_table_for_descriptor_set_ordinal(
             descriptor_set_ordinal);
-    if (table == nullptr) continue;
+    if (table == nullptr) {
+      continue;
+    }
     tested_table = true;
     loom_amdgpu_encoding_packet_t packet = {};
     IREE_ASSERT_OK(loom_amdgpu_encoding_pack(
@@ -263,7 +277,9 @@ TEST(AmdgpuEncodingTest, PacksRdnaVop3UnusedSourcesAsInlineZero) {
     EXPECT_EQ(packet.words[0], UINT32_C(0xd72c0000));
     EXPECT_EQ(packet.words[1], UINT32_C(0x02020501));
   }
-  if (!tested_table) GTEST_SKIP() << "No RDNA encoding table selected";
+  if (!tested_table) {
+    GTEST_SKIP() << "No RDNA encoding table selected";
+  }
 }
 
 TEST(AmdgpuEncodingTest, Vop2U32VgprUsesInlineSourceForSmallU32) {
@@ -308,7 +324,9 @@ TEST(AmdgpuEncodingTest, SelectedTablesMatchDescriptorSetFacts) {
        ordinal < loom_amdgpu_target_info_descriptor_set_count(); ++ordinal) {
     const loom_amdgpu_encoding_table_t* table =
         loom_amdgpu_encoding_table_for_descriptor_set_ordinal(ordinal);
-    if (table == nullptr) continue;
+    if (table == nullptr) {
+      continue;
+    }
     const loom_amdgpu_descriptor_set_info_t* descriptor_set =
         loom_amdgpu_target_info_descriptor_set_at(ordinal);
     ASSERT_NE(descriptor_set, nullptr);

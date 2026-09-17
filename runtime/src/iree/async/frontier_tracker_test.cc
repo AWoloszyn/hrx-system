@@ -721,7 +721,9 @@ TEST(ConcurrencyTest, RegisterWhileAdvancingAndQuerying) {
     }
   } while (remaining.load(std::memory_order_acquire) != 0);
 
-  for (auto& thread : threads) thread.join();
+  for (auto& thread : threads) {
+    thread.join();
+  }
   for (int i = 0; i < kRegistrationCount; ++i) {
     EXPECT_TRUE(
         iree_async_frontier_tracker_query_epoch(fixture.tracker(), Axis(i), 1));
@@ -747,7 +749,9 @@ TEST(ConcurrencyTest, ConcurrentDuplicateRegistration) {
     });
   }
   start.store(true, std::memory_order_release);
-  for (auto& thread : threads) thread.join();
+  for (auto& thread : threads) {
+    thread.join();
+  }
 
   int successful_registrations = 0;
   for (iree_status_code_t result : results) {

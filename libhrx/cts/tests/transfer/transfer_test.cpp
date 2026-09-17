@@ -12,9 +12,15 @@ namespace {
 
 struct StreamTransferResources {
   ~StreamTransferResources() {
-    if (stream) hrx().stream_release(stream);
-    if (target_buffer) hrx().buffer_release(target_buffer);
-    if (source_buffer) hrx().buffer_release(source_buffer);
+    if (stream) {
+      hrx().stream_release(stream);
+    }
+    if (target_buffer) {
+      hrx().buffer_release(target_buffer);
+    }
+    if (source_buffer) {
+      hrx().buffer_release(source_buffer);
+    }
   }
 
   hrx_stream_t stream = nullptr;
@@ -88,7 +94,9 @@ TEST_CASE_METHOD(HrxTestFixture, "synchronous h2d then d2h roundtrip",
 
   // Write pattern.
   uint32_t pattern[256];
-  for (int i = 0; i < 256; i++) pattern[i] = (uint32_t)i * 0x01010101;
+  for (int i = 0; i < 256; i++) {
+    pattern[i] = (uint32_t)i * 0x01010101;
+  }
 
   REQUIRE_OK(hrx().synchronous_h2d(device_, pattern, buf, 0, sizeof(pattern)));
 

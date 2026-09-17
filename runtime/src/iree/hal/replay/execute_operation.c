@@ -17,7 +17,9 @@
 static iree_status_t iree_hal_replay_executor_allocate_array(
     iree_hal_replay_executor_t* executor, iree_host_size_t element_count,
     iree_host_size_t element_size, void** out_ptr) {
-  if (element_count == 0) return iree_ok_status();
+  if (element_count == 0) {
+    return iree_ok_status();
+  }
   iree_host_size_t allocation_size = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(element_count, element_size,
                                                 &allocation_size))) {
@@ -341,7 +343,9 @@ static iree_status_t iree_hal_replay_executor_scope_event(
 
   iree_hal_replay_scope_event_callback_t callback =
       executor->options->scope_event_callback;
-  if (!callback.fn) return iree_ok_status();
+  if (!callback.fn) {
+    return iree_ok_status();
+  }
 
   iree_hal_replay_scope_event_t event = {
       .sequence_ordinal = record->header.sequence_ordinal,
@@ -442,7 +446,9 @@ static iree_status_t iree_hal_replay_executor_queue_transfer(
   if (iree_status_is_ok(status) && operations_size != 0) {
     status = iree_allocator_malloc(executor->host_allocator, operations_size,
                                    (void**)&operations);
-    if (iree_status_is_ok(status)) memset(operations, 0, operations_size);
+    if (iree_status_is_ok(status)) {
+      memset(operations, 0, operations_size);
+    }
   }
   const iree_host_size_t upload_data_length =
       has_upload_data ? data.data_length : 0;
@@ -482,7 +488,9 @@ static iree_status_t iree_hal_replay_executor_queue_transfer(
     switch (operation_payload.type) {
       case IREE_HAL_REPLAY_QUEUE_TRANSFER_OPERATION_TYPE_FILL:
         operation->type = IREE_HAL_TRANSFER_OPERATION_TYPE_FILL;
-        if (operation_payload.target_ref.length == 0) break;
+        if (operation_payload.target_ref.length == 0) {
+          break;
+        }
         status = iree_hal_replay_executor_make_direct_transfer_buffer_ref(
             executor, &operation_payload.target_ref, &target_ref);
         if (iree_status_is_ok(status)) {
@@ -500,7 +508,9 @@ static iree_status_t iree_hal_replay_executor_queue_transfer(
         break;
       case IREE_HAL_REPLAY_QUEUE_TRANSFER_OPERATION_TYPE_UPDATE:
         operation->type = IREE_HAL_TRANSFER_OPERATION_TYPE_UPDATE;
-        if (operation_payload.target_ref.length == 0) break;
+        if (operation_payload.target_ref.length == 0) {
+          break;
+        }
         status = iree_hal_replay_executor_make_direct_transfer_buffer_ref(
             executor, &operation_payload.target_ref, &target_ref);
         if (iree_status_is_ok(status)) {
@@ -517,7 +527,9 @@ static iree_status_t iree_hal_replay_executor_queue_transfer(
         break;
       case IREE_HAL_REPLAY_QUEUE_TRANSFER_OPERATION_TYPE_COPY:
         operation->type = IREE_HAL_TRANSFER_OPERATION_TYPE_COPY;
-        if (operation_payload.source_ref.length == 0) break;
+        if (operation_payload.source_ref.length == 0) {
+          break;
+        }
         status = iree_hal_replay_executor_make_direct_transfer_buffer_ref(
             executor, &operation_payload.source_ref, &source_ref);
         if (iree_status_is_ok(status)) {
@@ -535,7 +547,9 @@ static iree_status_t iree_hal_replay_executor_queue_transfer(
         break;
       case IREE_HAL_REPLAY_QUEUE_TRANSFER_OPERATION_TYPE_UPLOAD:
         operation->type = IREE_HAL_TRANSFER_OPERATION_TYPE_UPLOAD;
-        if (operation_payload.target_ref.length == 0) break;
+        if (operation_payload.target_ref.length == 0) {
+          break;
+        }
         status = iree_hal_replay_executor_make_direct_transfer_buffer_ref(
             executor, &operation_payload.target_ref, &target_ref);
         if (iree_status_is_ok(status)) {
@@ -551,7 +565,9 @@ static iree_status_t iree_hal_replay_executor_queue_transfer(
         break;
       case IREE_HAL_REPLAY_QUEUE_TRANSFER_OPERATION_TYPE_DOWNLOAD:
         operation->type = IREE_HAL_TRANSFER_OPERATION_TYPE_DOWNLOAD;
-        if (operation_payload.source_ref.length == 0) break;
+        if (operation_payload.source_ref.length == 0) {
+          break;
+        }
         status = iree_hal_replay_executor_make_direct_transfer_buffer_ref(
             executor, &operation_payload.source_ref, &source_ref);
         if (iree_status_is_ok(status)) {
@@ -904,7 +920,9 @@ static iree_status_t iree_hal_replay_executor_queue_dealloca(
     status = iree_hal_replay_executor_lookup(executor, buffer_ids[i],
                                              IREE_HAL_REPLAY_OBJECT_TYPE_BUFFER,
                                              &buffer_entry);
-    if (iree_status_is_ok(status)) buffers[i] = buffer_entry->value.buffer;
+    if (iree_status_is_ok(status)) {
+      buffers[i] = buffer_entry->value.buffer;
+    }
     for (iree_host_size_t j = 0; j < i && iree_status_is_ok(status); ++j) {
       if (IREE_UNLIKELY(buffer_ids[j] == buffer_ids[i])) {
         status = iree_make_status(

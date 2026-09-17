@@ -85,7 +85,9 @@ IREE_API_EXPORT iree_status_t iree_vm_process_create(
     iree_status_t status = iree_vm_process_create_start(
         program, invocation, arguments, (iree_vm_invocation_wake_callback_t){0},
         host_allocator, &outcome);
-    if (iree_status_is_ok(status)) *out_process = outcome.process;
+    if (iree_status_is_ok(status)) {
+      *out_process = outcome.process;
+    }
     return status;
   }
 
@@ -104,6 +106,8 @@ IREE_API_EXPORT iree_status_t iree_vm_process_create(
     status = iree_vm_process_create_resume(invocation, &outcome);
   }
   iree_vm_sync_wait_deinitialize(&wait);
-  if (iree_status_is_ok(status)) *out_process = outcome.process;
+  if (iree_status_is_ok(status)) {
+    *out_process = outcome.process;
+  }
   return status;
 }

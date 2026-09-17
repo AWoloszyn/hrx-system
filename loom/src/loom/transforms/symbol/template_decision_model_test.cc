@@ -91,7 +91,9 @@ ReferenceResult EvaluateReference(
       }
       continue;
     }
-    if (feasibility != LOOM_TEMPLATE_PROVIDER_MATCH) continue;
+    if (feasibility != LOOM_TEMPLATE_PROVIDER_MATCH) {
+      continue;
+    }
     if (!has_match || priority > best_match_priority) {
       has_match = true;
       best_match_priority = priority;
@@ -113,7 +115,9 @@ ReferenceResult EvaluateReference(
     if (policy == LOOM_DECISION_PROGRAM_DEFER_UNRESOLVED) {
       for (uint32_t i = 0; i < providers.count; ++i) {
         const auto feasibility = classifications[i].feasibility;
-        if (feasibility == LOOM_TEMPLATE_PROVIDER_REJECT) continue;
+        if (feasibility == LOOM_TEMPLATE_PROVIDER_REJECT) {
+          continue;
+        }
         if (has_match && feasibility == LOOM_TEMPLATE_PROVIDER_MATCH &&
             providers.providers[i].priority != best_match_priority) {
           continue;

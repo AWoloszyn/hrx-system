@@ -242,7 +242,9 @@ static bool loom_low_allocation_try_packet_at_program_point(
   }
   if (lower < liveness->block_count) {
     const loom_liveness_block_info_t* block_info = &liveness->blocks[lower];
-    if (program_point < block_info->start_point) return false;
+    if (program_point < block_info->start_point) {
+      return false;
+    }
     const uint32_t scheduled_ordinal = program_point - block_info->start_point;
     if (scheduled_ordinal >= schedule->blocks[lower].scheduled_node_count) {
       return false;
@@ -289,7 +291,9 @@ static bool loom_low_allocation_try_packet_for_node(
     iree_host_size_t* out_packet_index, uint32_t* out_block_index,
     uint32_t* out_scheduled_ordinal, uint32_t* out_program_point) {
   const loom_low_schedule_table_t* schedule = state->lease_table->schedule;
-  if (node_index >= schedule->node_count) return false;
+  if (node_index >= schedule->node_count) {
+    return false;
+  }
   const loom_low_schedule_node_t* node = &schedule->nodes[node_index];
   const uint32_t block_index = node->block_index;
   if (block_index >= schedule->block_count ||
@@ -323,7 +327,9 @@ static bool loom_low_allocation_try_candidate_definition_node(
     const loom_liveness_analysis_t* liveness,
     const loom_low_allocation_assignment_t* candidate,
     uint32_t* out_node_index) {
-  if (state->defining_node_indices_by_value_ordinal == NULL) return false;
+  if (state->defining_node_indices_by_value_ordinal == NULL) {
+    return false;
+  }
   loom_value_ordinal_t value_ordinal = LOOM_VALUE_ORDINAL_INVALID;
   if (!loom_low_allocation_value_ordinal_for_liveness_value(
           state->value_domain, liveness, candidate->value_id, &value_ordinal)) {
@@ -331,7 +337,9 @@ static bool loom_low_allocation_try_candidate_definition_node(
   }
   const uint32_t node_index =
       state->defining_node_indices_by_value_ordinal[value_ordinal];
-  if (node_index == UINT32_MAX) return false;
+  if (node_index == UINT32_MAX) {
+    return false;
+  }
   *out_node_index = node_index;
   return true;
 }
@@ -500,7 +508,9 @@ loom_low_allocation_storage_lease_distinct_unit_capacity(
   iree_host_size_t capacity = 0;
   for (iree_host_size_t i = 0; i < descriptor_set->reg_class_count; ++i) {
     const loom_low_reg_class_t* reg_class = &descriptor_set->reg_classes[i];
-    if (reg_class->allocatable_count == 0) return lease_unit_capacity;
+    if (reg_class->allocatable_count == 0) {
+      return lease_unit_capacity;
+    }
     const uint32_t class_capacity = (uint32_t)reg_class->allocatable_count +
                                     reg_class->fixed_location_count;
     if (class_capacity >= lease_unit_capacity - capacity) {
@@ -573,7 +583,9 @@ iree_status_t loom_low_allocation_storage_lease_state_initialize(
   }
   const loom_low_schedule_table_t* schedule = lease_table->schedule;
   for (iree_host_size_t i = 0; i < schedule->node_count; ++i) {
-    if (i > UINT32_MAX) break;
+    if (i > UINT32_MAX) {
+      break;
+    }
     const uint32_t node_index = (uint32_t)i;
     const loom_low_schedule_node_t* node = &schedule->nodes[node_index];
     const loom_value_ordinal_t* result_ordinals =

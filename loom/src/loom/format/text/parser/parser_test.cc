@@ -186,12 +186,16 @@ class ParserTest : public ::testing::Test {
   std::string RoundTrip(const char* source, loom_text_print_flags_t flags =
                                                 LOOM_TEXT_PRINT_DEFAULT) {
     loom_module_t* module1 = ParseOk(source);
-    if (!module1) return "";
+    if (!module1) {
+      return "";
+    }
     std::string text1 = PrintModule(module1, flags);
     loom_module_free(module1);
 
     loom_module_t* module2 = ParseOk(text1.c_str());
-    if (!module2) return "";
+    if (!module2) {
+      return "";
+    }
     std::string text2 = PrintModule(module2, flags);
     loom_module_free(module2);
 
@@ -208,19 +212,25 @@ class ParserTest : public ::testing::Test {
 };
 
 static loom_op_t* GetFirstFunctionOp(const loom_module_t* module) {
-  if (!module || module->symbols.count == 0) return nullptr;
+  if (!module || module->symbols.count == 0) {
+    return nullptr;
+  }
   return module->symbols.entries[0].defining_op;
 }
 
 static loom_block_t* GetEntryBlock(loom_region_t* region) {
-  if (!region || region->block_count == 0) return nullptr;
+  if (!region || region->block_count == 0) {
+    return nullptr;
+  }
   return loom_region_entry_block(region);
 }
 
 static void AppendRepeatedScalarTypeList(std::string* text,
                                          iree_host_size_t count) {
   for (iree_host_size_t i = 0; i < count; ++i) {
-    if (i > 0) text->append(", ");
+    if (i > 0) {
+      text->append(", ");
+    }
     text->append("i32");
   }
 }
@@ -243,7 +253,9 @@ static std::string BuildWideTestFuncSource(iree_host_size_t arg_count,
   text.reserve((arg_count + result_count) * 16 + 128);
   text.append("test.func @wide(");
   for (iree_host_size_t i = 0; i < arg_count; ++i) {
-    if (i > 0) text.append(", ");
+    if (i > 0) {
+      text.append(", ");
+    }
     text.append("%arg");
     text.append(std::to_string(i));
     text.append(" : i32");
@@ -251,9 +263,13 @@ static std::string BuildWideTestFuncSource(iree_host_size_t arg_count,
   text.append(") -> (");
   AppendRepeatedScalarTypeList(&text, result_count);
   text.append(") {\n  test.yield");
-  if (result_count > 0) text.push_back(' ');
+  if (result_count > 0) {
+    text.push_back(' ');
+  }
   for (iree_host_size_t i = 0; i < result_count; ++i) {
-    if (i > 0) text.append(", ");
+    if (i > 0) {
+      text.append(", ");
+    }
     text.append("%arg");
     text.append(std::to_string(i));
   }
@@ -827,7 +843,9 @@ TEST_F(ParserTest, HexadecimalFloatConstantsRoundTripCanonically) {
   }
 
   loom_module_t* module = ParseOk(text.c_str());
-  if (!module) return;
+  if (!module) {
+    return;
+  }
   loom_block_t* body = loom_module_block(module);
   ASSERT_NE(body, nullptr);
   ASSERT_EQ(body->op_count, 11u);
@@ -1488,7 +1506,9 @@ TEST_F(ParserTest, AttrDictEmptyArrayPayloadIsCanonical) {
   loom_module_t* module = ParseOk(
       "%c = test.constant 0 : f32\n"
       "%s = test.attrs %c {shape = []} : f32\n");
-  if (!module) return;
+  if (!module) {
+    return;
+  }
 
   loom_block_t* body = loom_module_block(module);
   ASSERT_NE(body, nullptr);
@@ -1518,13 +1538,17 @@ TEST_F(ParserTest, AttrDictArrayPayloadMayExceedInlineParserCapacity) {
       "%c = test.constant 0 : f32\n"
       "%s = test.attrs %c {shape = [";
   for (int64_t i = 0; i < 40; ++i) {
-    if (i > 0) source += ", ";
+    if (i > 0) {
+      source += ", ";
+    }
     source += std::to_string(i);
   }
   source += "]} : f32\n";
 
   loom_module_t* module = ParseOk(source.c_str());
-  if (!module) return;
+  if (!module) {
+    return;
+  }
 
   loom_block_t* body = loom_module_block(module);
   ASSERT_NE(body, nullptr);
@@ -1572,7 +1596,9 @@ TEST_F(ParserTest, OperandDictUnsortedKeysRoundTripInCanonicalOrder) {
       << "operand dictionary keys should print in canonical order: " << text;
 
   loom_module_t* module = ParseOk(text.c_str());
-  if (!module) return;
+  if (!module) {
+    return;
+  }
   loom_block_t* body = loom_module_block(module);
   ASSERT_NE(body, nullptr);
   ASSERT_GE(body->op_count, 4u);
@@ -1599,7 +1625,9 @@ TEST_F(ParserTest, EmptyPredicateListPayloadRoundTripsExplicitly) {
   loom_module_t* module = ParseOk(
       "%x = test.constant 0 : index\n"
       "%y = test.assume %x [] : index\n");
-  if (!module) return;
+  if (!module) {
+    return;
+  }
 
   loom_block_t* body = loom_module_block(module);
   ASSERT_NE(body, nullptr);
@@ -1698,7 +1726,9 @@ TEST_F(ParserTest, SegmentedOperandsRoundTrip) {
       "%rhs = test.constant 4 : i32\n"
       "%result = test.segmented %root base %guard values %lhs0, %lhs1 "
       "expected %rhs : i32 -> i32\n");
-  if (!module) return;
+  if (!module) {
+    return;
+  }
 
   std::string text = PrintModule(module);
   EXPECT_NE(text.find("test.segmented %root base %guard values %lhs0, %lhs1 "
@@ -1735,7 +1765,9 @@ TEST_F(ParserTest, SegmentedOperandsAbsentOptionalAndEmptySpanRoundTrip) {
       "%rhs1 = test.constant 2 : i32\n"
       "%result = test.segmented %root values expected %rhs0, %rhs1 : i32 -> "
       "i32\n");
-  if (!module) return;
+  if (!module) {
+    return;
+  }
 
   std::string text = PrintModule(module);
   EXPECT_NE(text.find("test.segmented %root values expected %rhs0, %rhs1 : "
@@ -1770,7 +1802,9 @@ TEST_F(ParserTest, FuncDefResultTiedToEntryArg) {
       "test.func @identity(%x: f32) -> (%x as f32) {\n"
       "  test.yield %x : f32\n"
       "}\n");
-  if (!module) return;
+  if (!module) {
+    return;
+  }
 
   std::string text = PrintModule(module);
   EXPECT_NE(text.find("-> (%x as f32)"), std::string::npos)
@@ -1796,7 +1830,9 @@ TEST_F(ParserTest, FuncDefResultTiedToEntryArg) {
 TEST_F(ParserTest, FuncDeclResultTiedToArgOperand) {
   loom_module_t* module =
       ParseOk("test.decl @identity(%x: f32) -> (%x as f32)\n");
-  if (!module) return;
+  if (!module) {
+    return;
+  }
 
   std::string text = PrintModule(module);
   EXPECT_NE(text.find("test.decl @identity(%x: f32) -> (%x as f32)"),
@@ -2338,7 +2374,9 @@ TEST_F(ParserTest, IndexListMayExceedInlineParserCapacity) {
       "%target: tensor<1xf32>) -> (tensor<1xf32>) {\n"
       "  %result = test.update %source, %target[";
   for (int64_t i = 0; i < 40; ++i) {
-    if (i > 0) source += ", ";
+    if (i > 0) {
+      source += ", ";
+    }
     source += std::to_string(i);
   }
   source +=
@@ -2347,7 +2385,9 @@ TEST_F(ParserTest, IndexListMayExceedInlineParserCapacity) {
       "}\n";
 
   loom_module_t* module = ParseOk(source.c_str());
-  if (!module) return;
+  if (!module) {
+    return;
+  }
 
   loom_op_t* func_op = GetFirstFunctionOp(module);
   ASSERT_NE(func_op, nullptr);

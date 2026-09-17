@@ -87,7 +87,9 @@ static iree_status_t loom_buffer_meet_reference_extension(
       lhs_reference.origin, rhs_reference.origin);
   loom_value_facts_meet(&lhs_extent, &rhs_extent,
                         &reference.maximum_byte_extent);
-  if (reference.minimum_alignment == 0) reference.minimum_alignment = 1;
+  if (reference.minimum_alignment == 0) {
+    reference.minimum_alignment = 1;
+  }
   return loom_value_facts_make_buffer_reference(&target->context, reference,
                                                 inout_facts);
 }

@@ -164,7 +164,9 @@ static const iree_hal_queue_family_t* iree_hal_replay_device_queue_family(
     iree_hal_device_t* base_device,
     iree_hal_queue_family_ordinal_t family_ordinal) {
   iree_hal_replay_device_t* device = iree_hal_replay_device_cast(base_device);
-  if (family_ordinal >= device->queue_family_count) return NULL;
+  if (family_ordinal >= device->queue_family_count) {
+    return NULL;
+  }
   return &device->queue_families[family_ordinal].base;
 }
 
@@ -173,10 +175,14 @@ static iree_hal_queue_t* iree_hal_replay_device_queue(
     iree_hal_queue_family_ordinal_t family_ordinal,
     iree_hal_queue_ordinal_t queue_ordinal) {
   iree_hal_replay_device_t* device = iree_hal_replay_device_cast(base_device);
-  if (family_ordinal >= device->queue_family_count) return NULL;
+  if (family_ordinal >= device->queue_family_count) {
+    return NULL;
+  }
   const iree_hal_replay_queue_family_t* family =
       &device->queue_families[family_ordinal];
-  if (queue_ordinal >= family->queue_count) return NULL;
+  if (queue_ordinal >= family->queue_count) {
+    return NULL;
+  }
   return &device->queues[family->queue_offset + queue_ordinal].base;
 }
 

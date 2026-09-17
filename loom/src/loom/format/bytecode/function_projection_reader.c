@@ -78,7 +78,9 @@ iree_status_t loom_bytecode_function_projection_reader_allocate(
 
 void loom_bytecode_function_projection_reader_free(
     loom_bytecode_function_projection_reader_t* reader) {
-  if (reader == NULL) return;
+  if (reader == NULL) {
+    return;
+  }
   const iree_allocator_t allocator = reader->allocator;
   loom_bytecode_selected_table_materializer_deinitialize(&reader->tables);
   iree_arena_deinitialize(&reader->arena);

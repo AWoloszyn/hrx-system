@@ -137,7 +137,9 @@ static iree_status_t loom_test_file_format_annotate_failure(
       (int)filename.size, filename.data);
   for (iree_host_size_t i = 0;
        iree_status_is_ok(detail_status) && i < collector->count; ++i) {
-    if (collector->diagnostics[i].matched) continue;
+    if (collector->diagnostics[i].matched) {
+      continue;
+    }
     detail_status = iree_string_builder_append_cstring(&detail, "\n");
     if (iree_status_is_ok(detail_status)) {
       detail_status = iree_string_builder_append_string(

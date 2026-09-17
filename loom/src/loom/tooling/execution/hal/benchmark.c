@@ -173,9 +173,13 @@ static iree_status_t loom_run_hal_benchmark_options_validate(
 
 static bool loom_run_hal_benchmark_options_request_explicit_profile_counters(
     const loom_run_hal_benchmark_options_t* options) {
-  if (!options->profile_counter_sets) return false;
+  if (!options->profile_counter_sets) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < options->profile_counter_set_count; ++i) {
-    if (options->profile_counter_sets[i].counter_name_count != 0) return true;
+    if (options->profile_counter_sets[i].counter_name_count != 0) {
+      return true;
+    }
   }
   return false;
 }

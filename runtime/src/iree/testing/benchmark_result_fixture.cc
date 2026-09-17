@@ -10,7 +10,9 @@
 namespace {
 
 void BM_Success(benchmark::State& state) {
-  for (auto _ : state) benchmark::DoNotOptimize(state.iterations());
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(state.iterations());
+  }
 }
 BENCHMARK(BM_Success);
 

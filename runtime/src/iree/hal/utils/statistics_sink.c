@@ -122,11 +122,15 @@ static bool iree_hal_profile_statistics_index_find(
     const iree_hal_profile_statistics_index_t* index, uint64_t hash,
     iree_hal_profile_statistics_index_match_fn_t match, const void* user_data,
     iree_host_size_t* out_value) {
-  if (index->capacity == 0) return false;
+  if (index->capacity == 0) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < index->capacity; ++i) {
     const iree_hal_profile_statistics_index_entry_t* entry =
         &index->entries[iree_hal_profile_statistics_index_slot(index, hash, i)];
-    if (entry->value_plus_one == 0) return false;
+    if (entry->value_plus_one == 0) {
+      return false;
+    }
     if (entry->hash == hash && match(user_data, entry->value_plus_one - 1)) {
       *out_value = entry->value_plus_one - 1;
       return true;
@@ -154,7 +158,9 @@ static void iree_hal_profile_statistics_index_insert_existing(
 static iree_status_t iree_hal_profile_statistics_index_reserve(
     iree_hal_profile_statistics_index_t* index, iree_allocator_t host_allocator,
     iree_host_size_t minimum_count) {
-  if (minimum_count <= index->capacity / 2) return iree_ok_status();
+  if (minimum_count <= index->capacity / 2) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t new_capacity = index->capacity ? index->capacity : 16;
   while (minimum_count > new_capacity / 2) {
@@ -405,7 +411,9 @@ static iree_status_t iree_hal_profile_statistics_sink_ensure_device(
     iree_hal_profile_statistics_device_t** out_device) {
   *out_device = iree_hal_profile_statistics_sink_find_device_mutable(
       sink, physical_device_ordinal);
-  if (*out_device) return iree_ok_status();
+  if (*out_device) {
+    return iree_ok_status();
+  }
 
   if (sink->device_count + 1 > sink->device_capacity) {
     IREE_RETURN_IF_ERROR(iree_allocator_grow_array(
@@ -477,8 +485,12 @@ static bool iree_hal_profile_statistics_scale_device_ticks_to_ns(
                                        device->timestamp_frequency_hz,
                                        out_duration_ns);
   }
-  if (!device || device->clock_sample_count < 2) return false;
-  if (device->invalid_clock_alignment_sample_count != 0) return false;
+  if (!device || device->clock_sample_count < 2) {
+    return false;
+  }
+  if (device->invalid_clock_alignment_sample_count != 0) {
+    return false;
+  }
 
   const iree_hal_profile_clock_correlation_record_t* first =
       &device->first_clock_sample;
@@ -508,7 +520,9 @@ static bool iree_hal_profile_statistics_scale_device_ticks_to_ns(
       return false;
     }
   }
-  if (last_time_ns <= first_time_ns) return false;
+  if (last_time_ns <= first_time_ns) {
+    return false;
+  }
 
   return iree_math_round_mul_div_u64(
       duration_ticks, (uint64_t)(last_time_ns - first_time_ns),
@@ -517,7 +531,9 @@ static bool iree_hal_profile_statistics_scale_device_ticks_to_ns(
 
 static bool iree_hal_profile_statistics_add_u64(uint64_t* value,
                                                 uint64_t delta) {
-  if (delta > UINT64_MAX - *value) return false;
+  if (delta > UINT64_MAX - *value) {
+    return false;
+  }
   *value += delta;
   return true;
 }
@@ -525,7 +541,9 @@ static bool iree_hal_profile_statistics_add_u64(uint64_t* value,
 static iree_status_t iree_hal_profile_statistics_sink_add_dropped_records(
     iree_hal_profile_statistics_sink_t* sink,
     const iree_hal_profile_chunk_metadata_t* metadata) {
-  if (metadata->dropped_record_count == 0) return iree_ok_status();
+  if (metadata->dropped_record_count == 0) {
+    return iree_ok_status();
+  }
   if (!iree_hal_profile_statistics_add_u64(&sink->dropped_record_count,
                                            metadata->dropped_record_count)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -1302,7 +1320,9 @@ static void iree_hal_profile_statistics_fprint_row_timing(
 static void iree_hal_profile_statistics_fprint_tile_totals(
     const iree_hal_profile_statistics_print_context_t* context,
     const iree_hal_profile_statistics_row_t* row) {
-  if (row->tile_count == 0) return;
+  if (row->tile_count == 0) {
+    return;
+  }
   fprintf(context->file, " tiles=%" PRIu64 " tile_sum=", row->tile_count);
   iree_hal_profile_statistics_fprint_scaled_duration(context->file,
                                                      row->tile_duration_sum_ns);
@@ -1424,7 +1444,9 @@ IREE_API_EXPORT iree_status_t iree_hal_profile_statistics_sink_fprint(
   if (dropped_record_count != 0) {
     fprintf(file, "  dropped_records=%" PRIu64 "\n", dropped_record_count);
   }
-  if (row_count == 0) return iree_ok_status();
+  if (row_count == 0) {
+    return iree_ok_status();
+  }
   fprintf(file, "  dispatch_function_total=");
   iree_hal_profile_statistics_fprint_scaled_duration(
       file, context.dispatch_function_duration_ns);

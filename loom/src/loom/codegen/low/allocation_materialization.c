@@ -390,7 +390,9 @@ static iree_status_t loom_low_allocation_snapshot_reload_uses(
   loom_value_t* value = loom_module_value(module, value_id);
   *out_uses = NULL;
   *out_use_count = 0;
-  if (value->use_count == 0) return iree_ok_status();
+  if (value->use_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, value->use_count, sizeof(**out_uses), (void**)out_uses));
@@ -552,7 +554,9 @@ static iree_status_t loom_low_allocation_prepare_slice_reloads(
     loom_low_materialized_traffic_t* out_reload_traffic) {
   *out_reload_plan = (loom_low_slice_reload_plan_t){0};
   *out_reload_traffic = (loom_low_materialized_traffic_t){0};
-  if (use_count == 0) return iree_ok_status();
+  if (use_count == 0) {
+    return iree_ok_status();
+  }
   if (assignment->unit_count <= 1 ||
       plan->byte_size % assignment->unit_count != 0) {
     return iree_ok_status();
@@ -599,7 +603,9 @@ static iree_status_t loom_low_allocation_prepare_slice_reloads(
     ++groups[group_index].slice_count;
     groups[group_index].narrow_reload_bytes += unit_byte_size;
   }
-  if (!groups) return iree_ok_status();
+  if (!groups) {
+    return iree_ok_status();
+  }
 
   loom_low_materialized_traffic_t reload_traffic = {0};
   for (uint32_t i = 0; i < group_count; ++i) {
@@ -607,7 +613,9 @@ static iree_status_t loom_low_allocation_prepare_slice_reloads(
     group->use_full_reload =
         loom_low_allocation_spill_plan_use_full_slice_reload(
             group->slice_count, group->narrow_reload_bytes, plan->byte_size);
-    if (!group->use_full_reload) continue;
+    if (!group->use_full_reload) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_low_allocation_insert_full_slice_reload(
         module, plan, storage_value_id, group));
     ++reload_traffic.count;
@@ -830,9 +838,13 @@ iree_status_t loom_low_allocation_materialize_spills(
     loom_low_allocation_materialization_result_t* out_result) {
   loom_module_t* module = table->module;
   loom_low_allocation_materialization_result_t result = {0};
-  if (out_result) *out_result = result;
+  if (out_result) {
+    *out_result = result;
+  }
 
-  if (table->spill_plan_count == 0) return iree_ok_status();
+  if (table->spill_plan_count == 0) {
+    return iree_ok_status();
+  }
 
   const bool emit_spill_diagnostics =
       options && options->emit_spill_diagnostics;
@@ -848,7 +860,9 @@ iree_status_t loom_low_allocation_materialize_spills(
       options->max_spill_plan_count < spill_plan_count) {
     spill_plan_count = options->max_spill_plan_count;
   }
-  if (spill_plan_count == 0) return iree_ok_status();
+  if (spill_plan_count == 0) {
+    return iree_ok_status();
+  }
   if (spill_plan_count > UINT32_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "materialized storage count overflow");
@@ -858,7 +872,9 @@ iree_status_t loom_low_allocation_materialize_spills(
       loom_low_allocation_validate_supported_spill_storage_spaces(
           table, spill_plan_count, options, &result));
   if (result.error_count != 0) {
-    if (out_result) *out_result = result;
+    if (out_result) {
+      *out_result = result;
+    }
     return iree_ok_status();
   }
 
@@ -910,6 +926,8 @@ iree_status_t loom_low_allocation_materialize_spills(
   result.materialized_spills = materialized_spills;
   result.materialized_spill_count =
       record_materialized_spills ? spill_plan_count : 0;
-  if (out_result) *out_result = result;
+  if (out_result) {
+    *out_result = result;
+  }
   return iree_ok_status();
 }

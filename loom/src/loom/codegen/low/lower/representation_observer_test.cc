@@ -434,7 +434,9 @@ TEST_F(LowLowerRepresentationObserverTest,
   EXPECT_EQ(source_function_boundary_count_, 1u);
   ASSERT_EQ(captured_value_count_, 6u);
   for (const CapturedValue& captured : captured_values_) {
-    if (captured.source_value_id == LOOM_VALUE_ID_INVALID) continue;
+    if (captured.source_value_id == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     EXPECT_EQ(captured.representation, kRepresentationSecond);
   }
   EXPECT_GT(relation_counts_[LOOM_VALUE_RELATION_TIED_RESULT], 0u);
@@ -512,7 +514,9 @@ TEST_F(LowLowerRepresentationObserverTest, SelectPayloadsShareRepresentation) {
   ASSERT_TRUE(capture_called_);
   ASSERT_EQ(captured_value_count_, 3u);
   for (const CapturedValue& captured : captured_values_) {
-    if (captured.source_value_id == LOOM_VALUE_ID_INVALID) continue;
+    if (captured.source_value_id == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     EXPECT_EQ(captured.representation, kRepresentationSecond);
   }
   EXPECT_EQ(relation_counts_[LOOM_VALUE_RELATION_SELECT_PAYLOAD], 2u);
@@ -572,7 +576,9 @@ TEST_F(LowLowerRepresentationObserverTest,
   ASSERT_TRUE(capture_called_);
   ASSERT_EQ(captured_value_count_, 3u);
   for (const CapturedValue& captured : captured_values_) {
-    if (captured.source_value_id == LOOM_VALUE_ID_INVALID) continue;
+    if (captured.source_value_id == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     EXPECT_EQ(captured.representation, kRepresentationSecond);
   }
   EXPECT_GT(relation_counts_[LOOM_VALUE_RELATION_REGION_RESULT], 0u);
@@ -623,7 +629,9 @@ TEST_F(LowLowerRepresentationObserverTest,
   ASSERT_TRUE(capture_called_);
   ASSERT_EQ(captured_value_count_, 3u);
   for (const CapturedValue& captured : captured_values_) {
-    if (captured.source_value_id == LOOM_VALUE_ID_INVALID) continue;
+    if (captured.source_value_id == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     EXPECT_EQ(captured.representation, kRepresentationSecond);
   }
   EXPECT_GT(relation_counts_[LOOM_VALUE_RELATION_CFG_ARGUMENT], 0u);

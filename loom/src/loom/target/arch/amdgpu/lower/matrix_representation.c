@@ -47,12 +47,16 @@ static bool loom_amdgpu_matrix_representation_matches_fragment(
     loom_amdgpu_matrix_result_representation_id_t representation_id) {
   const loom_amdgpu_matrix_result_representation_t* representation =
       loom_amdgpu_matrix_result_representation_at(representation_id);
-  if (representation == NULL || fact_table == NULL) return false;
+  if (representation == NULL || fact_table == NULL) {
+    return false;
+  }
   const loom_amdgpu_matrix_fragment_layout_t* layout =
       loom_amdgpu_matrix_fragment_layout_for_kind(
           (loom_amdgpu_matrix_fragment_layout_kind_t)
               representation->fragment_layout_kind);
-  if (layout == NULL) return false;
+  if (layout == NULL) {
+    return false;
+  }
   const loom_matrix_fragment_role_layout_t* role_layout =
       loom_matrix_fragment_role_layout(layout,
                                        LOOM_CONTRACT_OPERAND_ROLE_RESULT);

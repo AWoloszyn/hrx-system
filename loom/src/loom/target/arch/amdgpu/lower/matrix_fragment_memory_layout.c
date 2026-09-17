@@ -28,7 +28,9 @@ static bool loom_amdgpu_fragment_memory_add_scaled_stride(
     uint32_t factor, uint32_t byte_stride, uint32_t* inout_byte_stride) {
   const uint64_t result =
       (uint64_t)*inout_byte_stride + (uint64_t)factor * byte_stride;
-  if (result > UINT32_MAX) return false;
+  if (result > UINT32_MAX) {
+    return false;
+  }
   *inout_byte_stride = (uint32_t)result;
   return true;
 }
@@ -107,7 +109,9 @@ static uint16_t loom_amdgpu_fragment_memory_primary_lane_divisor(
   for (uint8_t i = 0; i < address_layout->lane_term_count; ++i) {
     const loom_amdgpu_fragment_memory_lane_term_t* term =
         &address_layout->lane_terms[i];
-    if (term->divisor == 1 && term->modulus > 1) return term->modulus;
+    if (term->divisor == 1 && term->modulus > 1) {
+      return term->modulus;
+    }
   }
   for (uint8_t view_axis = 0; view_axis < view_rank; ++view_axis) {
     const loom_amdgpu_fragment_memory_runtime_axis_t* axis =
@@ -139,7 +143,9 @@ static uint32_t loom_amdgpu_fragment_memory_linear_lane_byte_stride(
         &address_layout->lane_terms[0];
     return term->divisor == 1 && term->modulus == 0 ? term->byte_stride : 0;
   }
-  if (address_layout->lane_term_count != 2) return 0;
+  if (address_layout->lane_term_count != 2) {
+    return 0;
+  }
 
   const loom_amdgpu_fragment_memory_lane_term_t* low_term = NULL;
   const loom_amdgpu_fragment_memory_lane_term_t* high_term = NULL;
@@ -267,7 +273,9 @@ bool loom_amdgpu_fragment_memory_compile_address_layout(
       const loom_matrix_fragment_axis_t axis = (loom_matrix_fragment_axis_t)i;
       const uint8_t view_axis = loom_amdgpu_matrix_fragment_role_view_axis(
           role, view_rank, representation_flags, axis);
-      if (view_axis == UINT8_MAX) continue;
+      if (view_axis == UINT8_MAX) {
+        continue;
+      }
       const loom_low_source_memory_axis_byte_stride_t* axis_stride =
           &axis_byte_strides[view_axis];
       const loom_matrix_fragment_coordinate_dimension_t dimension =
@@ -445,7 +453,9 @@ bool loom_amdgpu_fragment_memory_address_range_fits_u32(
     const uint64_t maximum_coordinate = maximum_lane_coordinate +
                                         maximum_register_coordinate +
                                         maximum_packed_element_coordinate;
-    if (maximum_coordinate == 0) continue;
+    if (maximum_coordinate == 0) {
+      continue;
+    }
     if (maximum_coordinate > INT64_MAX) {
       return loom_amdgpu_fragment_memory_layout_reject(
           IREE_SV("fragment_memory.address_range"), out_constraint_key);

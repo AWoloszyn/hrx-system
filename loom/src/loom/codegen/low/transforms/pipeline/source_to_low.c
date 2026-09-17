@@ -342,7 +342,9 @@ iree_status_t loom_low_source_to_low_run(loom_pass_t* pass,
        ++i) {
     const loom_low_source_selection_t* selection =
         &target_function_list.values[i];
-    if (!loom_low_func_def_isa(selection->func.op)) continue;
+    if (!loom_low_func_def_isa(selection->func.op)) {
+      continue;
+    }
     bool projection_valid = false;
     bool projection_changed = false;
     status = loom_low_project_function_representation(
@@ -429,7 +431,9 @@ iree_status_t loom_low_source_to_low_run(loom_pass_t* pass,
         loom_pass_value_fact_scope_function_for_target(selection->func,
                                                        selection->target_facts),
         &fact_table);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     const loom_low_lower_options_t lower_options = {
         .target_ref = selection->target_ref,
         .target_facts = selection->target_facts,

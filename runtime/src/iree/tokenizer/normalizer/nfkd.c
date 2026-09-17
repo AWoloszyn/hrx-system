@@ -123,7 +123,9 @@ static void iree_tokenizer_normalizer_nfkd_state_deinitialize(
 // Unlike NFC, we do not compose — just order the combining marks.
 static void iree_tokenizer_nfkd_order_sequence(
     iree_tokenizer_normalizer_nfkd_state_t* state) {
-  if (state->sequence_count <= 1) return;
+  if (state->sequence_count <= 1) {
+    return;
+  }
 
   // Canonical ordering: insertion sort combining marks by CCC.
   // Stable: marks with equal CCC preserve their relative order.
@@ -170,7 +172,9 @@ static iree_host_size_t iree_tokenizer_nfkd_emit_codepoint(
   IREE_ASSERT(encoded_length > 0,
               "invalid codepoint U+%04X in NFKD emit (internal bug)",
               codepoint);
-  if (encoded_length <= 0) return 0;
+  if (encoded_length <= 0) {
+    return 0;
+  }
 
   if ((iree_host_size_t)encoded_length <= output_capacity) {
     iree_unicode_utf8_encode(codepoint, (char*)output);
@@ -203,7 +207,9 @@ static iree_host_size_t iree_tokenizer_nfkd_emit_sequence(
     ++state->emit_position;
 
     // If we have pending_utf8 that couldn't be fully written, stop.
-    if (state->pending_utf8_count > state->pending_utf8_position) break;
+    if (state->pending_utf8_count > state->pending_utf8_position) {
+      break;
+    }
   }
 
   // If fully emitted, reset the sequence.
@@ -220,7 +226,9 @@ static iree_host_size_t iree_tokenizer_nfkd_emit_sequence(
 static iree_host_size_t iree_tokenizer_nfkd_flush_and_emit(
     iree_tokenizer_normalizer_nfkd_state_t* state, uint8_t* output,
     iree_host_size_t output_capacity) {
-  if (state->sequence_count == 0) return 0;
+  if (state->sequence_count == 0) {
+    return 0;
+  }
   iree_tokenizer_nfkd_order_sequence(state);
   state->emit_position = 0;
   return iree_tokenizer_nfkd_emit_sequence(state, output, output_capacity);
@@ -380,13 +388,17 @@ static iree_status_t iree_tokenizer_normalizer_nfkd_state_process(
       }
       ++state->decomposed_position;
     }
-    if (drain_stalled) break;
+    if (drain_stalled) {
+      break;
+    }
     // Clear the buffer once fully consumed.
     state->decomposed_count = 0;
     state->decomposed_position = 0;
 
     // No more input to process.
-    if (in_ptr >= in_end) break;
+    if (in_ptr >= in_end) {
+      break;
+    }
 
     // ASCII fast path: when no combining sequence is pending, emit ASCII bytes
     // directly. We buffer the last ASCII byte before a non-ASCII byte (or end
@@ -403,9 +415,12 @@ static iree_status_t iree_tokenizer_normalizer_nfkd_state_process(
         *out_ptr++ = *in_ptr++;
       }
       if (in_ptr >= in_end ||
-          (state->sequence_count == 0 && out_ptr >= out_end))
+          (state->sequence_count == 0 && out_ptr >= out_end)) {
         break;
-      if (state->sequence_count > 0 && in_ptr >= in_end) break;
+      }
+      if (state->sequence_count > 0 && in_ptr >= in_end) {
+        break;
+      }
     }
 
     // Output full - stop processing.

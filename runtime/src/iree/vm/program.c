@@ -239,14 +239,20 @@ static int iree_vm_program_compare_u32(uint32_t lhs, uint32_t rhs) {
 
 static int iree_vm_program_compare_ref_types(iree_vm_ref_type_t lhs,
                                              iree_vm_ref_type_t rhs) {
-  if (lhs == rhs) return 0;
+  if (lhs == rhs) {
+    return 0;
+  }
   const iree_vm_ref_type_key_t lhs_key = iree_vm_ref_type_key(lhs);
   const iree_vm_ref_type_key_t rhs_key = iree_vm_ref_type_key(rhs);
   int comparison =
       iree_string_view_compare(lhs_key.namespace_name, rhs_key.namespace_name);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   comparison = iree_string_view_compare(lhs_key.type_name, rhs_key.type_name);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   return (uintptr_t)lhs < (uintptr_t)rhs ? -1 : 1;
 }
 
@@ -256,7 +262,9 @@ static int iree_vm_program_compare_signature_type(
     const iree_vm_linked_module_t* rhs_module,
     iree_vm_module_signature_type_t rhs) {
   int comparison = iree_vm_program_compare_u32(lhs.kind, rhs.kind);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   if (lhs.kind == IREE_VM_MODULE_SIGNATURE_TYPE_KIND_REF) {
     return iree_vm_program_compare_ref_types(
         lhs_module->module->descriptor->ref_types.data[lhs.type_ordinal],
@@ -272,7 +280,9 @@ static int iree_vm_program_compare_signature_type(
     comparison = iree_vm_program_compare_u32(
         iree_vm_program_callable_token(lhs_mapping),
         iree_vm_program_callable_token(rhs_mapping));
-    if (comparison != 0) return comparison;
+    if (comparison != 0) {
+      return comparison;
+    }
     return iree_vm_program_compare_u32(
         iree_vm_program_callable_may_yield(lhs_mapping),
         iree_vm_program_callable_may_yield(rhs_mapping));
@@ -287,11 +297,15 @@ static int iree_vm_program_compare_signature_sides(
     iree_vm_module_signature_side_t rhs) {
   int comparison =
       iree_vm_program_compare_u32((uint32_t)lhs.count, (uint32_t)rhs.count);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   for (iree_host_size_t i = 0; i < lhs.count; ++i) {
     comparison = iree_vm_program_compare_signature_type(
         program, lhs_module, lhs.data[i], rhs_module, rhs.data[i]);
-    if (comparison != 0) return comparison;
+    if (comparison != 0) {
+      return comparison;
+    }
   }
   return 0;
 }
@@ -315,7 +329,9 @@ static int iree_vm_program_compare_callable_types(
     const iree_vm_module_callable_type_declaration_t* rhs) {
   int comparison =
       iree_vm_program_compare_u32(lhs->nesting_depth, rhs->nesting_depth);
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   comparison = iree_vm_program_compare_signatures(
       program, lhs_module, lhs->signature, rhs_module, rhs->signature);
   return comparison != 0 ? comparison
@@ -354,7 +370,9 @@ static void iree_vm_program_link_callable_types(
         next_type = candidate;
       }
     }
-    if (next_module_ordinal == IREE_HOST_SIZE_MAX) break;
+    if (next_module_ordinal == IREE_HOST_SIZE_MAX) {
+      break;
+    }
 
     const iree_vm_linked_module_t* next_module =
         &program->linked_modules[next_module_ordinal];
@@ -590,7 +608,9 @@ static iree_status_t iree_vm_program_select_initializer(
       break;
     }
   }
-  if (!found) return iree_ok_status();
+  if (!found) {
+    return iree_ok_status();
+  }
 
   const uint32_t mapping =
       program->callable_mappings[executable->callable_base +

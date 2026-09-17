@@ -14,10 +14,14 @@ static const loom_encoding_t* loom_encoding_hadamard_try_find_definition(
     return NULL;
   }
   const loom_value_t* value = loom_module_value(module, value_id);
-  if (loom_value_is_block_arg(value)) return NULL;
+  if (loom_value_is_block_arg(value)) {
+    return NULL;
+  }
 
   const loom_op_t* define_op = loom_value_def_op(value);
-  if (!define_op || !loom_encoding_define_isa(define_op)) return NULL;
+  if (!define_op || !loom_encoding_define_isa(define_op)) {
+    return NULL;
+  }
   const loom_encoding_define_param_view_t params =
       loom_encoding_define_param_view(module, define_op);
   if (!params.spec ||
@@ -38,7 +42,9 @@ bool loom_encoding_hadamard_try_read_verified_descriptor(
     loom_encoding_hadamard_descriptor_t* out_descriptor) {
   const loom_encoding_t* encoding =
       loom_encoding_hadamard_try_find_definition(module, value_id);
-  if (!encoding) return false;
+  if (!encoding) {
+    return false;
+  }
 
   const loom_named_attr_t*
       parameters[LOOM_ENCODING_TRANSFORM_HADAMARD_PARAMETER_COUNT_];

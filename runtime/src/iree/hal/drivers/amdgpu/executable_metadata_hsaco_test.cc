@@ -70,7 +70,9 @@ static iree_string_view_t ViewFromCodeObjectData(
   iree_host_size_t offset = 0;
   while (offset < data_length) {
     iree_host_size_t end = offset;
-    while (end < data_length && data[end] != 0) ++end;
+    while (end < data_length && data[end] != 0) {
+      ++end;
+    }
     if (end - offset == value_length &&
         memcmp(data + offset, value, value_length) == 0) {
       return iree_make_string_view((const char*)data + offset, value_length);
@@ -85,8 +87,12 @@ static bool StringViewBelongsToCodeObjectData(
     iree_const_byte_span_t code_object_data, iree_string_view_t view) {
   const uintptr_t code_object_begin = (uintptr_t)code_object_data.data;
   const uintptr_t view_begin = (uintptr_t)view.data;
-  if (iree_string_view_is_empty(view)) return true;
-  if (!view.data || view_begin < code_object_begin) return false;
+  if (iree_string_view_is_empty(view)) {
+    return true;
+  }
+  if (!view.data || view_begin < code_object_begin) {
+    return false;
+  }
   const uintptr_t view_offset = view_begin - code_object_begin;
   return view_offset <= code_object_data.data_length &&
          view.size <= code_object_data.data_length - view_offset;

@@ -313,7 +313,9 @@ static void iree_hal_tlsf_pool_note_reuse_candidate(iree_hal_tlsf_pool_t* pool,
                                                     uint16_t slab_index)
     IREE_THREAD_ANNOTATION_ATTRIBUTE(requires_capability(&pool->mutex)) {
   for (uint8_t i = 0; i < pool->reuse_candidate_slab_count; ++i) {
-    if (pool->reuse_candidate_slab_indices[i] == slab_index) return;
+    if (pool->reuse_candidate_slab_indices[i] == slab_index) {
+      return;
+    }
   }
   if (pool->reuse_candidate_slab_count <
       IREE_HAL_TLSF_POOL_REUSE_CANDIDATE_CAPACITY) {
@@ -339,7 +341,9 @@ static iree_status_t iree_hal_tlsf_pool_acquire_release_node(
     iree_status_t status = iree_allocator_malloc(
         pool->host_allocator, pool->release_node_size, (void**)&node);
     IREE_TRACE_ZONE_END(z0);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
   }
   node->next = NULL;
   node->slab = NULL;
@@ -356,7 +360,9 @@ static iree_status_t iree_hal_tlsf_pool_acquire_release_node(
 static void iree_hal_tlsf_pool_recycle_release_node(
     iree_hal_tlsf_pool_t* pool, iree_hal_tlsf_pool_release_node_t* node)
     IREE_THREAD_ANNOTATION_ATTRIBUTE(requires_capability(&pool->mutex)) {
-  if (!node) return;
+  if (!node) {
+    return;
+  }
   node->next = pool->release_node_free_head;
   pool->release_node_free_head = node;
 }
@@ -493,7 +499,9 @@ static bool iree_hal_tlsf_pool_frontier_is_satisfied(
       return true;
     }
   }
-  if (!pool->epoch_query.fn) return false;
+  if (!pool->epoch_query.fn) {
+    return false;
+  }
 
   iree_host_size_t requester_index = 0;
   for (uint8_t i = 0; i < death_frontier->entry_count; ++i) {
@@ -529,7 +537,9 @@ static void iree_hal_tlsf_pool_restore_rejected_blocks(
 static iree_status_t iree_hal_tlsf_pool_ensure_rejected_capacity(
     iree_hal_tlsf_pool_t* pool, iree_host_size_t capacity)
     IREE_THREAD_ANNOTATION_ATTRIBUTE(requires_capability(&pool->mutex)) {
-  if (pool->rejected_block_capacity >= capacity) return iree_ok_status();
+  if (pool->rejected_block_capacity >= capacity) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_allocator_grow_array(
       pool->host_allocator, capacity, sizeof(*pool->rejected_block_indices),
       &pool->rejected_block_capacity, (void**)&pool->rejected_block_indices));
@@ -615,7 +625,9 @@ static iree_status_t iree_hal_tlsf_pool_append_slab(iree_hal_tlsf_pool_t* pool,
 static void iree_hal_tlsf_pool_deinitialize_slabs(iree_hal_tlsf_pool_t* pool) {
   for (uint32_t i = 0; i < pool->slab_count; ++i) {
     iree_hal_tlsf_pool_slab_t* slab = pool->slabs[i];
-    if (!slab) continue;
+    if (!slab) {
+      continue;
+    }
     if (slab->tlsf.block_storage) {
       iree_hal_memory_tlsf_deinitialize(&slab->tlsf);
     }
@@ -1124,7 +1136,9 @@ static iree_status_t iree_hal_tlsf_pool_acquire_reservations(
           pool, &requests[acquired_count], requester_frontier, flags,
           &elements[acquired_count].reservation, &elements[acquired_count].info,
           &item_result);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       switch (item_result) {
         case IREE_HAL_POOL_ACQUIRE_OK:
           if (transaction_result == IREE_HAL_POOL_ACQUIRE_OK_FRESH) {
@@ -1315,7 +1329,9 @@ static iree_status_t iree_hal_tlsf_pool_materialize_reservations(
     }
     status =
         iree_allocator_malloc(pool->host_allocator, state_size, (void**)&state);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     memset(state, 0, state_size);
     state->pool = base_pool;
     state->host_allocator = pool->host_allocator;
@@ -1329,7 +1345,9 @@ static iree_status_t iree_hal_tlsf_pool_materialize_reservations(
     status = iree_allocator_malloc_array(
         pool->host_allocator, reservation_count, sizeof(*staged_buffers),
         (void**)&staged_buffers);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     staged_buffers_allocated = true;
     memset(staged_buffers, 0, reservation_count * sizeof(*staged_buffers));
   }
@@ -1355,11 +1373,15 @@ static iree_status_t iree_hal_tlsf_pool_materialize_reservations(
         pool->slab_provider, slab, reservations[materialized_count].offset,
         reservations[materialized_count].byte_length,
         requests[materialized_count].params, release_callback, staged_buffer);
-    if (iree_status_is_ok(status)) ++materialized_count;
+    if (iree_status_is_ok(status)) {
+      ++materialized_count;
+    }
   }
 
   if (iree_status_is_ok(status)) {
-    if (state) state->ownership_committed = true;
+    if (state) {
+      state->ownership_committed = true;
+    }
     for (iree_host_size_t i = 0; i < reservation_count; ++i) {
       out_buffers[i] = state ? state->elements[i].buffer : staged_buffers[i];
     }

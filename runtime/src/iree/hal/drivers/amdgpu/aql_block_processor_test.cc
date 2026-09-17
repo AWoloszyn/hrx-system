@@ -388,7 +388,9 @@ static CooperativeDispatchBlock MakeCooperativeDispatchBlock(
       sizeof(block), command_length, /*command_count=*/2, aql_packet_count,
       kernarg_block_count * sizeof(iree_hal_amdgpu_kernarg_block_t),
       &block.header);
-  if (uses_gws) block.header.initial_barrier_packet_count = 1;
+  if (uses_gws) {
+    block.header.initial_barrier_packet_count = 1;
+  }
 
   block.dispatch_command.header.opcode =
       IREE_HAL_AMDGPU_COMMAND_BUFFER_OPCODE_DISPATCH;
@@ -570,10 +572,14 @@ static PacketHeaderSummary SummarizePacketHeaders(
   PacketHeaderSummary summary = {};
   for (uint32_t i = 0; i < packet_count; ++i) {
     const uint16_t header = packet_headers[i];
-    if (summary.counts.total == 0) summary.headers.first = header;
+    if (summary.counts.total == 0) {
+      summary.headers.first = header;
+    }
     summary.headers.last = header;
     ++summary.counts.total;
-    if (AqlHeaderHasBarrier(header)) ++summary.counts.barrier;
+    if (AqlHeaderHasBarrier(header)) {
+      ++summary.counts.barrier;
+    }
     if (AqlHeaderAcquireScope(header) == IREE_HSA_FENCE_SCOPE_SYSTEM) {
       ++summary.counts.system_acquire;
     }

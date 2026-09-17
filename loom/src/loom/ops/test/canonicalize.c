@@ -58,7 +58,9 @@ iree_status_t loom_test_counter_canonicalize(loom_op_t* op,
         IREE_STATUS_INTERNAL,
         "test.counter canonicalize error sentinel (value=%" PRId64 ")", value);
   }
-  if (value == 0) return iree_ok_status();
+  if (value == 0) {
+    return iree_ok_status();
+  }
 
   // Replace with a new counter op whose value is decremented by 1.
   loom_value_id_t old_result = loom_test_counter_result(op);

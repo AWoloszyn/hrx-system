@@ -97,7 +97,9 @@ iree_io_stdio_file_open(iree_string_view_t path, const char* mode,
         mode_wide[i] = (wchar_t)mode[i];
       }
       file = _wfopen(win32_path, mode_wide);
-      if (file == NULL) open_error = errno;
+      if (file == NULL) {
+        open_error = errno;
+      }
     }
   }
   iree_allocator_free(host_allocator, win32_path);
@@ -108,7 +110,9 @@ iree_io_stdio_file_open(iree_string_view_t path, const char* mode,
   if (iree_status_is_ok(status)) {
     iree_string_view_to_cstring(path, path_cstring, path.size + 1);
     file = fopen(path_cstring, mode);
-    if (file == NULL) open_error = errno;
+    if (file == NULL) {
+      open_error = errno;
+    }
   }
   iree_allocator_free(host_allocator, path_cstring);
 #endif  // IREE_PLATFORM_WINDOWS
@@ -334,7 +338,9 @@ static iree_io_stream_pos_t iree_io_stdio_stream_offset(
   IREE_ASSERT_ARGUMENT(base_stream);
   iree_io_stdio_stream_t* stream = iree_io_stdio_stream_cast(base_stream);
   int64_t pos = iree_ftell(stream->handle);
-  if (pos == -1) return 0;
+  if (pos == -1) {
+    return 0;
+  }
   return (iree_io_stream_pos_t)pos;
 }
 
@@ -345,17 +351,25 @@ static iree_io_stream_pos_t iree_io_stdio_stream_length(
 
   // Capture original offset so we can return to it.
   int64_t origin = iree_ftell(stream->handle);
-  if (origin == -1) return 0;
+  if (origin == -1) {
+    return 0;
+  }
 
   // Seek to the end of the file.
-  if (iree_fseek(stream->handle, 0, SEEK_END) != 0) return 0;
+  if (iree_fseek(stream->handle, 0, SEEK_END) != 0) {
+    return 0;
+  }
 
   // Query the position, telling us the total file length in bytes.
   int64_t length = iree_ftell(stream->handle);
-  if (length == -1) return 0;
+  if (length == -1) {
+    return 0;
+  }
 
   // Seek back to the file origin.
-  if (iree_fseek(stream->handle, origin, SEEK_SET) != 0) return 0;
+  if (iree_fseek(stream->handle, origin, SEEK_SET) != 0) {
+    return 0;
+  }
 
   return (iree_io_stream_pos_t)length;
 }
@@ -401,7 +415,9 @@ static iree_status_t iree_io_stdio_stream_read(
     void* buffer, iree_host_size_t* out_buffer_length) {
   IREE_ASSERT_ARGUMENT(base_stream);
   IREE_ASSERT_ARGUMENT(buffer);
-  if (out_buffer_length) *out_buffer_length = 0;
+  if (out_buffer_length) {
+    *out_buffer_length = 0;
+  }
   iree_io_stdio_stream_t* stream = iree_io_stdio_stream_cast(base_stream);
   IREE_TRACE_ZONE_BEGIN(z0);
 

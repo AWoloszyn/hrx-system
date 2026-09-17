@@ -93,7 +93,9 @@ static void iree_hal_resource_set_release_blocks(iree_hal_resource_set_t* set) {
             : (void*)chunk);
     block->next = block_head;
     block_head = block;
-    if (!block_tail) block_tail = block;
+    if (!block_tail) {
+      block_tail = block;
+    }
 
     chunk = next_chunk;
   }
@@ -105,7 +107,9 @@ static void iree_hal_resource_set_release_blocks(iree_hal_resource_set_t* set) {
 }
 
 IREE_API_EXPORT void iree_hal_resource_set_free(iree_hal_resource_set_t* set) {
-  if (!set) return;
+  if (!set) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
 #if defined(IREE_SANITIZER_ADDRESS)
@@ -134,7 +138,9 @@ IREE_API_EXPORT void iree_hal_resource_set_free(iree_hal_resource_set_t* set) {
 
 IREE_API_EXPORT void iree_hal_resource_set_freeze(
     iree_hal_resource_set_t* set) {
-  if (!set) return;
+  if (!set) {
+    return;
+  }
 #if defined(IREE_SANITIZER_ADDRESS)
   // Poison all chunks until the resource set is freed.
   iree_hal_resource_set_chunk_t* chunk = set->chunk_head;
@@ -261,11 +267,15 @@ static iree_status_t iree_hal_resource_set_insert_retain(
 //   https://github.com/simd-everywhere/simde/blob/master/simde/arm/neon/ceq.h#L591
 static iree_status_t iree_hal_resource_set_insert_1(
     iree_hal_resource_set_t* set, iree_hal_resource_t* resource) {
-  if (set->mru[0] == resource) return iree_ok_status();
+  if (set->mru[0] == resource) {
+    return iree_ok_status();
+  }
 
   // Scan and hope for a hit.
   for (iree_host_size_t i = 1; i < IREE_ARRAYSIZE(set->mru); ++i) {
-    if (set->mru[i] != resource) continue;
+    if (set->mru[i] != resource) {
+      continue;
+    }
     // Hit - keep the list sorted by most->least recently used.
     // We shift the MRU down to make room at index 0 and store the
     // resource there.
@@ -290,7 +300,9 @@ static iree_status_t iree_hal_resource_set_insert_1(
 IREE_API_EXPORT iree_status_t
 iree_hal_resource_set_insert(iree_hal_resource_set_t* set,
                              iree_host_size_t count, const void* resources) {
-  if (!set) return iree_ok_status();
+  if (!set) {
+    return iree_ok_status();
+  }
   iree_hal_resource_t* const* resource_ptrs =
       (iree_hal_resource_t* const*)resources;
   for (iree_host_size_t i = 0; i < count; ++i) {
@@ -305,7 +317,9 @@ iree_hal_resource_set_insert(iree_hal_resource_set_t* set,
 IREE_API_EXPORT iree_status_t iree_hal_resource_set_insert_strided(
     iree_hal_resource_set_t* set, iree_host_size_t count, const void* elements,
     iree_host_size_t offset, iree_host_size_t stride) {
-  if (!set) return iree_ok_status();
+  if (!set) {
+    return iree_ok_status();
+  }
   // For now we process one at a time. We should have a stride that lets us
   // amortize the cost of doing the MRU update and insertion allocation by
   // say slicing off 4/8/16/32 resources at a time etc. Today each miss that

@@ -60,7 +60,9 @@ void loom_amdgpu_target_identity_initialize_with_features(
     const bool negative =
         word_index < feature_word_count &&
         iree_any_bit_set(feature_words[feature_word_count + word_index], bit);
-    if (!positive && !negative) continue;
+    if (!positive && !negative) {
+      continue;
+    }
     IREE_ASSERT(!(positive && negative));
     loom_amdgpu_target_feature_state_t* state =
         loom_amdgpu_amdhsa_feature_state_select(&out_identity->amdhsa_features,
@@ -253,7 +255,9 @@ static iree_status_t loom_amdgpu_target_facts_select_execution(
     const loom_target_facts_t* source, iree_arena_allocator_t* arena,
     const loom_target_facts_t** out_facts) {
   *out_facts = source;
-  if (source->storage.snapshot.subgroup_size != 0) return iree_ok_status();
+  if (source->storage.snapshot.subgroup_size != 0) {
+    return iree_ok_status();
+  }
   loom_target_facts_t* selected = NULL;
   IREE_RETURN_IF_ERROR(
       loom_target_facts_builder_clone(source, arena, &selected));

@@ -44,10 +44,14 @@ void* iree_hal_profile_event_ring_record_at(
 iree_host_size_t iree_hal_profile_event_ring_available_capacity(
     const iree_hal_profile_event_ring_t* ring) {
   IREE_ASSERT_ARGUMENT(ring);
-  if (!ring->records || ring->capacity == 0) return 0;
+  if (!ring->records || ring->capacity == 0) {
+    return 0;
+  }
 
   const uint64_t occupied_count = ring->write_position - ring->read_position;
-  if (occupied_count >= ring->capacity) return 0;
+  if (occupied_count >= ring->capacity) {
+    return 0;
+  }
   return ring->capacity - (iree_host_size_t)occupied_count;
 }
 
@@ -59,7 +63,9 @@ bool iree_hal_profile_event_ring_try_append(iree_hal_profile_event_ring_t* ring,
   IREE_ASSERT_ARGUMENT(out_event_id);
   *out_position = 0;
   *out_event_id = 0;
-  if (!ring->records || ring->capacity == 0) return false;
+  if (!ring->records || ring->capacity == 0) {
+    return false;
+  }
 
   const uint64_t read_position = ring->read_position;
   const uint64_t write_position = ring->write_position;
@@ -81,14 +87,18 @@ iree_status_t iree_hal_profile_event_ring_snapshot(
   IREE_ASSERT_ARGUMENT(ring);
   IREE_ASSERT_ARGUMENT(out_snapshot);
   memset(out_snapshot, 0, sizeof(*out_snapshot));
-  if (!ring->records || ring->capacity == 0) return iree_ok_status();
+  if (!ring->records || ring->capacity == 0) {
+    return iree_ok_status();
+  }
 
   out_snapshot->read_position = ring->read_position;
   out_snapshot->record_count =
       (iree_host_size_t)(ring->write_position - ring->read_position);
   out_snapshot->dropped_record_count = ring->dropped_record_count;
   IREE_ASSERT_LE(out_snapshot->record_count, ring->capacity);
-  if (out_snapshot->record_count == 0) return iree_ok_status();
+  if (out_snapshot->record_count == 0) {
+    return iree_ok_status();
+  }
 
   const iree_host_size_t first_record_index =
       (iree_host_size_t)(ring->read_position & ring->mask);

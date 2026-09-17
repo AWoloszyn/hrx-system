@@ -13,7 +13,9 @@
 static loom_type_t loom_config_symbol_type(const loom_module_t* module,
                                            const loom_symbol_t* symbol) {
   loom_type_t none = {0};
-  if (!symbol || !symbol->defining_op) return none;
+  if (!symbol || !symbol->defining_op) {
+    return none;
+  }
   if (loom_config_decl_isa(symbol->defining_op)) {
     return loom_module_value_type(module,
                                   loom_config_decl_type(symbol->defining_op));
@@ -142,7 +144,9 @@ static iree_status_t loom_config_verify_value(const loom_module_t* module,
     }
     const loom_encoding_t* encoding =
         loom_module_encoding(module, loom_attr_as_encoding_id(value));
-    if (!encoding) return iree_ok_status();
+    if (!encoding) {
+      return iree_ok_status();
+    }
     const loom_encoding_role_t config_role =
         loom_type_encoding_role(config_type);
     const loom_encoding_role_t value_role =

@@ -53,9 +53,12 @@ void iree_coordinated_test_register_config(
 static const iree_coordinated_test_config_t*
 iree_coordinated_test_resolve_config(
     const iree_coordinated_test_config_t* config) {
-  if (config) return config;
-  if (iree_coordinated_test_global_config)
+  if (config) {
+    return config;
+  }
+  if (iree_coordinated_test_global_config) {
     return iree_coordinated_test_global_config;
+  }
   fprintf(stderr,
           "FATAL: iree_coordinated_test_dispatch_if_child called with "
           "config=NULL and no globally registered config.\n"
@@ -128,7 +131,9 @@ static char* iree_coordinated_test_get_self_path(const char* argv0) {
   iree_host_size_t buffer_size = 256;
   while (buffer_size <= 65536) {
     char* buffer = (char*)malloc(buffer_size);
-    if (!buffer) break;
+    if (!buffer) {
+      break;
+    }
     ssize_t length = readlink("/proc/self/exe", buffer, buffer_size);
     if (length < 0) {
       free(buffer);
@@ -176,7 +181,9 @@ static char* iree_coordinated_test_get_self_path(const char* argv0) {
   DWORD buffer_size = 256;
   while (buffer_size <= 65536) {
     char* buffer = (char*)malloc(buffer_size);
-    if (!buffer) break;
+    if (!buffer) {
+      break;
+    }
     DWORD length = GetModuleFileNameA(NULL, buffer, buffer_size);
     if (length == 0) {
       free(buffer);
@@ -223,8 +230,12 @@ typedef enum iree_test_process_wait_result_e {
 
 #if !defined(IREE_PLATFORM_WINDOWS)
 static int iree_coordinated_test_process_exit_code(int status) {
-  if (WIFEXITED(status)) return WEXITSTATUS(status);
-  if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+  if (WIFEXITED(status)) {
+    return WEXITSTATUS(status);
+  }
+  if (WIFSIGNALED(status)) {
+    return 128 + WTERMSIG(status);
+  }
   return 1;
 }
 #endif  // !IREE_PLATFORM_WINDOWS
@@ -235,8 +246,12 @@ static iree_test_process_wait_result_t iree_coordinated_test_process_try_wait(
     iree_test_process_t* process, int* out_exit_code) {
 #if defined(IREE_PLATFORM_WINDOWS)
   DWORD wait_result = WaitForSingleObject(process->handle, 0);
-  if (wait_result == WAIT_TIMEOUT) return IREE_TEST_PROCESS_WAIT_PENDING;
-  if (wait_result != WAIT_OBJECT_0) return IREE_TEST_PROCESS_WAIT_FAILED;
+  if (wait_result == WAIT_TIMEOUT) {
+    return IREE_TEST_PROCESS_WAIT_PENDING;
+  }
+  if (wait_result != WAIT_OBJECT_0) {
+    return IREE_TEST_PROCESS_WAIT_FAILED;
+  }
   DWORD exit_code = 1;
   if (!GetExitCodeProcess(process->handle, &exit_code)) {
     return IREE_TEST_PROCESS_WAIT_FAILED;
@@ -249,8 +264,12 @@ static iree_test_process_wait_result_t iree_coordinated_test_process_try_wait(
   do {
     result = waitpid(process->pid, &status, WNOHANG);
   } while (result < 0 && errno == EINTR);
-  if (result == 0) return IREE_TEST_PROCESS_WAIT_PENDING;
-  if (result < 0) return IREE_TEST_PROCESS_WAIT_FAILED;
+  if (result == 0) {
+    return IREE_TEST_PROCESS_WAIT_PENDING;
+  }
+  if (result < 0) {
+    return IREE_TEST_PROCESS_WAIT_FAILED;
+  }
   *out_exit_code = iree_coordinated_test_process_exit_code(status);
   return IREE_TEST_PROCESS_WAIT_COMPLETED;
 #endif
@@ -268,9 +287,13 @@ static bool iree_coordinated_test_process_spawn(const char* const* argv,
   char command_line[32768];
   iree_host_size_t position = 0;
   for (int i = 0; argv[i]; ++i) {
-    if (i > 0) command_line[position++] = ' ';
+    if (i > 0) {
+      command_line[position++] = ' ';
+    }
     bool needs_quotes = strchr(argv[i], ' ') != NULL;
-    if (needs_quotes) command_line[position++] = '"';
+    if (needs_quotes) {
+      command_line[position++] = '"';
+    }
     iree_host_size_t arg_length = strlen(argv[i]);
     if (position + arg_length + 4 > sizeof(command_line)) {
       IREE_TRACE_ZONE_END(z0);
@@ -278,7 +301,9 @@ static bool iree_coordinated_test_process_spawn(const char* const* argv,
     }
     memcpy(command_line + position, argv[i], arg_length);
     position += arg_length;
-    if (needs_quotes) command_line[position++] = '"';
+    if (needs_quotes) {
+      command_line[position++] = '"';
+    }
   }
   command_line[position] = '\0';
 
@@ -376,12 +401,18 @@ static void iree_coordinated_test_process_close(iree_test_process_t* process) {
 // falls back to platform default.
 static const char* iree_coordinated_test_get_temp_parent(void) {
   const char* dir = getenv("TEST_TMPDIR");
-  if (dir && dir[0]) return dir;
+  if (dir && dir[0]) {
+    return dir;
+  }
   dir = getenv("TMPDIR");
-  if (dir && dir[0]) return dir;
+  if (dir && dir[0]) {
+    return dir;
+  }
 #if defined(IREE_PLATFORM_WINDOWS)
   dir = getenv("TEMP");
-  if (dir && dir[0]) return dir;
+  if (dir && dir[0]) {
+    return dir;
+  }
   return "C:\\Temp";
 #else
   return "/tmp";
@@ -446,8 +477,9 @@ static void iree_coordinated_test_remove_temp_dir(const char* path) {
   if (find_handle != INVALID_HANDLE_VALUE) {
     do {
       if (strcmp(find_data.cFileName, ".") == 0 ||
-          strcmp(find_data.cFileName, "..") == 0)
+          strcmp(find_data.cFileName, "..") == 0) {
         continue;
+      }
       char child_path[MAX_PATH];
       iree_snprintf(child_path, sizeof(child_path), "%s\\%s", path,
                     find_data.cFileName);
@@ -466,8 +498,9 @@ static void iree_coordinated_test_remove_temp_dir(const char* path) {
   if (dir) {
     struct dirent* entry;
     while ((entry = readdir(dir)) != NULL) {
-      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
         continue;
+      }
       char child_path[512];
       iree_snprintf(child_path, sizeof(child_path), "%s/%s", path,
                     entry->d_name);
@@ -495,7 +528,9 @@ void iree_coordinated_test_signal_ready(const char* temp_directory) {
   char ready_path[512];
   iree_snprintf(ready_path, sizeof(ready_path), "%s/.ready", temp_directory);
   FILE* file = fopen(ready_path, "w");
-  if (file) fclose(file);
+  if (file) {
+    fclose(file);
+  }
   IREE_TRACE_ZONE_END(z0);
 }
 
@@ -503,12 +538,16 @@ void iree_coordinated_test_signal_ready(const char* temp_directory) {
 static bool iree_coordinated_test_take_ready_file(const char* ready_path) {
 #if defined(IREE_PLATFORM_WINDOWS)
   DWORD attributes = GetFileAttributesA(ready_path);
-  if (attributes == INVALID_FILE_ATTRIBUTES) return false;
+  if (attributes == INVALID_FILE_ATTRIBUTES) {
+    return false;
+  }
   DeleteFileA(ready_path);
   return true;
 #else
   struct stat st;
-  if (stat(ready_path, &st) != 0) return false;
+  if (stat(ready_path, &st) != 0) {
+    return false;
+  }
   unlink(ready_path);
   return true;
 #endif
@@ -539,7 +578,9 @@ static bool iree_coordinated_test_wait_ready(const char* temp_directory,
       found = iree_coordinated_test_take_ready_file(ready_path);
       break;
     }
-    if (wait_result == IREE_TEST_PROCESS_WAIT_FAILED) break;
+    if (wait_result == IREE_TEST_PROCESS_WAIT_FAILED) {
+      break;
+    }
 
 #if defined(IREE_PLATFORM_WINDOWS)
     Sleep(1);
@@ -561,7 +602,9 @@ int iree_coordinated_test_dispatch_if_child(
   const char* role_name = NULL;
   const char* temp_directory = NULL;
   iree_coordinated_test_scan_flags(&argc, argv, &role_name, &temp_directory);
-  if (!role_name) return -1;  // Not a child.
+  if (!role_name) {
+    return -1;  // Not a child.
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_TEXT(z0, role_name);
@@ -696,7 +739,9 @@ int iree_coordinated_test_run(int argc, char** argv,
   // Wait for all spawned children to exit.
   if (result == 0) {
     for (iree_host_size_t i = 0; i < config->role_count; ++i) {
-      if (!spawned[i] || completed[i]) continue;
+      if (!spawned[i] || completed[i]) {
+        continue;
+      }
       if (iree_coordinated_test_process_wait(&processes[i], &exit_codes[i])) {
         completed[i] = true;
       } else {
@@ -758,6 +803,8 @@ int iree_coordinated_test_main(int argc, char** argv,
                                const iree_coordinated_test_config_t* config) {
   int child_result =
       iree_coordinated_test_dispatch_if_child(argc, argv, config);
-  if (child_result >= 0) return child_result;
+  if (child_result >= 0) {
+    return child_result;
+  }
   return iree_coordinated_test_run(argc, argv, config);
 }

@@ -498,7 +498,9 @@ class MessagePoolTest : public CtsTestBase<> {
  protected:
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (!proactor_) return;
+    if (!proactor_) {
+      return;
+    }
 
     iree_async_proactor_options_t options =
         iree_async_proactor_options_default();

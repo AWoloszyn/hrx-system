@@ -78,7 +78,9 @@ static iree_status_t loom_config_value_facts(loom_fact_context_t* context,
 }
 
 static bool loom_config_predicate_facts_support_type(loom_type_t type) {
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   loom_scalar_type_t scalar_type = loom_type_element_type(type);
   return scalar_type == LOOM_SCALAR_TYPE_INDEX ||
          scalar_type == LOOM_SCALAR_TYPE_OFFSET ||

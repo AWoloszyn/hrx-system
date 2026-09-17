@@ -366,10 +366,14 @@ iree_status_t iree_tokenizer_bpe_build_backtrack_tables(
     }
     iree_tokenizer_token_attr_t attrs =
         iree_tokenizer_vocab_token_attrs(vocab, (int32_t)token_id);
-    if (attrs & IREE_TOKENIZER_TOKEN_ATTR_SPECIAL) continue;  // Skip special.
+    if (attrs & IREE_TOKENIZER_TOKEN_ATTR_SPECIAL) {
+      continue;  // Skip special.
+    }
     iree_string_view_t text =
         iree_tokenizer_vocab_token_text(vocab, (int32_t)token_id);
-    if (text.size <= 1) continue;  // Single-byte tokens always matchable.
+    if (text.size <= 1) {
+      continue;  // Single-byte tokens always matchable.
+    }
 
     // Check if any byte of this token lacks a single-byte token.
     // If so, this token must be directly matchable (no BPE decomposition).
@@ -391,7 +395,9 @@ iree_status_t iree_tokenizer_bpe_build_backtrack_tables(
   for (iree_host_size_t token_id = 0; token_id < vocab_capacity; ++token_id) {
     iree_string_view_t text =
         iree_tokenizer_vocab_token_text(vocab, (int32_t)token_id);
-    if (text.size <= 1) continue;  // Single-byte tokens have no proper prefix.
+    if (text.size <= 1) {
+      continue;  // Single-byte tokens have no proper prefix.
+    }
 
     iree_tokenizer_trie_cursor_t cursor;
     iree_tokenizer_trie_cursor_reset(&cursor, model->trie);

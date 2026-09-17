@@ -63,7 +63,9 @@ static void StoreU64LE(std::vector<uint8_t>* output, size_t offset,
 }
 
 static void AppendAligned4Padding(std::vector<uint8_t>* output) {
-  while ((output->size() & 3) != 0) output->push_back(0);
+  while ((output->size() & 3) != 0) {
+    output->push_back(0);
+  }
 }
 
 static void AppendMsgPackMap(std::vector<uint8_t>* output, uint32_t count) {
@@ -423,7 +425,9 @@ static std::vector<uint8_t> BuildElfWithMetadata(
 }
 
 static void AlignVector(std::vector<uint8_t>* output, size_t alignment) {
-  while ((output->size() % alignment) != 0) output->push_back(0);
+  while ((output->size() % alignment) != 0) {
+    output->push_back(0);
+  }
 }
 
 static void AppendElf64Symbol(std::vector<uint8_t>* output,

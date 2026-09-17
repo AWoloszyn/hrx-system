@@ -122,7 +122,9 @@ iree_host_size_t iree_tokenizer_regex_lexer_position(
 // Peeks at the current character without advancing.
 static inline char iree_tokenizer_regex_lexer_peek_char(
     const iree_tokenizer_regex_lexer_t* lexer) {
-  if (lexer->position >= lexer->input.size) return '\0';
+  if (lexer->position >= lexer->input.size) {
+    return '\0';
+  }
   return lexer->input.data[lexer->position];
 }
 
@@ -130,7 +132,9 @@ static inline char iree_tokenizer_regex_lexer_peek_char(
 static inline char iree_tokenizer_regex_lexer_peek_char_at(
     const iree_tokenizer_regex_lexer_t* lexer, iree_host_size_t offset) {
   iree_host_size_t position = lexer->position + offset;
-  if (position >= lexer->input.size) return '\0';
+  if (position >= lexer->input.size) {
+    return '\0';
+  }
   return lexer->input.data[position];
 }
 
@@ -177,9 +181,15 @@ static void iree_tokenizer_regex_lexer_set_literal(
 
 // Converts a hex character to its numeric value (0-15), or -1 if invalid.
 static inline int iree_tokenizer_regex_hex_digit_value(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
   return -1;
 }
 
@@ -191,7 +201,9 @@ static int iree_tokenizer_regex_lexer_parse_hex_digits(
   for (int i = 0; i < count; i++) {
     char c = iree_tokenizer_regex_lexer_peek_char(lexer);
     int digit = iree_tokenizer_regex_hex_digit_value(c);
-    if (digit < 0) return -1;
+    if (digit < 0) {
+      return -1;
+    }
     value = (value << 4) | digit;
     iree_tokenizer_regex_lexer_advance_char(lexer);
   }
@@ -446,26 +458,42 @@ static void iree_tokenizer_regex_bitmap_add_shorthand(
   switch (shorthand) {
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_d:
       // [0-9]
-      for (int c = '0'; c <= '9'; ++c) BITMAP_SET(bitmap, c);
+      for (int c = '0'; c <= '9'; ++c) {
+        BITMAP_SET(bitmap, c);
+      }
       break;
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_D:
       // [^0-9] - set all except digits
       memset(bitmap, 0xFF, 32);
-      for (int c = '0'; c <= '9'; ++c) bitmap[c >> 3] &= ~(1u << (c & 7));
+      for (int c = '0'; c <= '9'; ++c) {
+        bitmap[c >> 3] &= ~(1u << (c & 7));
+      }
       break;
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_w:
       // [a-zA-Z0-9_]
-      for (int c = 'a'; c <= 'z'; ++c) BITMAP_SET(bitmap, c);
-      for (int c = 'A'; c <= 'Z'; ++c) BITMAP_SET(bitmap, c);
-      for (int c = '0'; c <= '9'; ++c) BITMAP_SET(bitmap, c);
+      for (int c = 'a'; c <= 'z'; ++c) {
+        BITMAP_SET(bitmap, c);
+      }
+      for (int c = 'A'; c <= 'Z'; ++c) {
+        BITMAP_SET(bitmap, c);
+      }
+      for (int c = '0'; c <= '9'; ++c) {
+        BITMAP_SET(bitmap, c);
+      }
       BITMAP_SET(bitmap, '_');
       break;
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_W:
       // [^a-zA-Z0-9_]
       memset(bitmap, 0xFF, 32);
-      for (int c = 'a'; c <= 'z'; ++c) bitmap[c >> 3] &= ~(1u << (c & 7));
-      for (int c = 'A'; c <= 'Z'; ++c) bitmap[c >> 3] &= ~(1u << (c & 7));
-      for (int c = '0'; c <= '9'; ++c) bitmap[c >> 3] &= ~(1u << (c & 7));
+      for (int c = 'a'; c <= 'z'; ++c) {
+        bitmap[c >> 3] &= ~(1u << (c & 7));
+      }
+      for (int c = 'A'; c <= 'Z'; ++c) {
+        bitmap[c >> 3] &= ~(1u << (c & 7));
+      }
+      for (int c = '0'; c <= '9'; ++c) {
+        bitmap[c >> 3] &= ~(1u << (c & 7));
+      }
       bitmap['_' >> 3] &= ~(1u << ('_' & 7));
       break;
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_s:

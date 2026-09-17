@@ -92,7 +92,9 @@ static inline void iree_vm_bytecode_frame_copy_direct_values(
     source += 2;
     count -= 2;
   }
-  if (count != 0) *target = *source;
+  if (count != 0) {
+    *target = *source;
+  }
 }
 
 // Initializes the exact register, local, and call-scratch banks for entry.

@@ -20,6 +20,8 @@ void iree_tokenizer_decoder_initialize(
 }
 
 void iree_tokenizer_decoder_free(iree_tokenizer_decoder_t* decoder) {
-  if (!decoder) return;
+  if (!decoder) {
+    return;
+  }
   decoder->vtable->destroy(decoder);
 }

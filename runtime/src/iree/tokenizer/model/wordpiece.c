@@ -106,10 +106,18 @@ iree_tokenizer_wordpiece_state_pending_tokens(
 // Returns 1 for invalid lead bytes (treats as single-byte character).
 static inline iree_host_size_t iree_tokenizer_wordpiece_utf8_char_length(
     uint8_t byte) {
-  if (byte < 0x80) return 1;
-  if ((byte & 0xE0) == 0xC0) return 2;
-  if ((byte & 0xF0) == 0xE0) return 3;
-  if ((byte & 0xF8) == 0xF0) return 4;
+  if (byte < 0x80) {
+    return 1;
+  }
+  if ((byte & 0xE0) == 0xC0) {
+    return 2;
+  }
+  if ((byte & 0xF0) == 0xE0) {
+    return 3;
+  }
+  if ((byte & 0xF8) == 0xF0) {
+    return 4;
+  }
   return 1;  // Invalid lead byte, treat as single byte.
 }
 
@@ -193,7 +201,9 @@ static iree_host_size_t iree_tokenizer_wordpiece_tokenize_segment(
       iree_tokenizer_wordpiece_state_pending_tokens(state, model);
 
   // Empty segments produce no tokens.
-  if (segment_length == 0) return 0;
+  if (segment_length == 0) {
+    return 0;
+  }
 
   // Check character count limit.
   iree_host_size_t char_count =
@@ -503,7 +513,9 @@ static iree_status_t iree_tokenizer_wordpiece_state_finalize(
 
   iree_host_size_t token_count = 0;
   while (state->pending_emit_index < state->pending_count) {
-    if (token_count >= output.capacity) break;
+    if (token_count >= output.capacity) {
+      break;
+    }
     iree_tokenizer_wordpiece_pending_token_t* pending =
         iree_tokenizer_wordpiece_state_pending_tokens(state, model);
     iree_tokenizer_wordpiece_pending_token_t* token =

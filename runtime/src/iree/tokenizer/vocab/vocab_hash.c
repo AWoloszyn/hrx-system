@@ -115,8 +115,12 @@ static iree_host_size_t iree_tokenizer_vocab_hash_slot_count(
     iree_host_size_t token_count, uint8_t load_percent) {
   // Clamp load_percent to valid range.
   // Maximum 90% to guarantee at least 10% empty slots for linear probing.
-  if (load_percent == 0) load_percent = 1;
-  if (load_percent > 90) load_percent = 90;
+  if (load_percent == 0) {
+    load_percent = 1;
+  }
+  if (load_percent > 90) {
+    load_percent = 90;
+  }
 
   // slot_count = ceil(token_count * 100 / load_percent), rounded to power of 2.
   // Use 64-bit arithmetic to prevent overflow for large vocabs.
@@ -257,7 +261,9 @@ iree_status_t iree_tokenizer_vocab_hash_build(
 }
 
 void iree_tokenizer_vocab_hash_free(iree_tokenizer_vocab_hash_t* hash) {
-  if (!hash) return;
+  if (!hash) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t allocator = hash->allocator;
   iree_tokenizer_vocab_hash_deinitialize(hash);
@@ -271,7 +277,9 @@ void iree_tokenizer_vocab_hash_free(iree_tokenizer_vocab_hash_t* hash) {
 
 int32_t iree_tokenizer_vocab_hash_lookup(
     const iree_tokenizer_vocab_hash_t* hash, iree_string_view_t text) {
-  if (!hash || !hash->tokens) return -1;
+  if (!hash || !hash->tokens) {
+    return -1;
+  }
 
   uint32_t h = iree_tokenizer_hash(text);
   iree_host_size_t slot_index = h & hash->slot_mask;

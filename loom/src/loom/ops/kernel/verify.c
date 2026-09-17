@@ -274,7 +274,9 @@ static iree_status_t loom_kernel_emit_result_constraint(
 
 static iree_string_view_t loom_kernel_value_name(const loom_module_t* module,
                                                  loom_value_id_t value_id) {
-  if (value_id >= module->values.count) return IREE_SV("<invalid>");
+  if (value_id >= module->values.count) {
+    return IREE_SV("<invalid>");
+  }
   loom_string_id_t name_id = loom_module_value(module, value_id)->name_id;
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
@@ -284,9 +286,13 @@ static iree_string_view_t loom_kernel_value_name(const loom_module_t* module,
 
 static iree_string_view_t loom_kernel_op_name(const loom_module_t* module,
                                               const loom_op_t* op) {
-  if (!op) return IREE_SV("<null>");
+  if (!op) {
+    return IREE_SV("<null>");
+  }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
-  if (!vtable) return IREE_SV("<unknown>");
+  if (!vtable) {
+    return IREE_SV("<unknown>");
+  }
   return loom_op_vtable_name(vtable);
 }
 
@@ -530,12 +536,16 @@ static bool loom_kernel_try_get_block_arg_memory_space(
     loom_value_fact_memory_space_t* out_memory_space) {
   const loom_block_t* block = loom_value_def_block(value);
   const loom_region_t* region = block ? block->parent_region : NULL;
-  if (!region) return false;
+  if (!region) {
+    return false;
+  }
   for (const loom_op_t* parent_op = use_op ? use_op->parent_op : NULL;
        parent_op != NULL; parent_op = parent_op->parent_op) {
     loom_region_t* const* regions = loom_op_regions(parent_op);
     for (uint8_t i = 0; i < parent_op->region_count; ++i) {
-      if (regions[i] != region) continue;
+      if (regions[i] != region) {
+        continue;
+      }
       const loom_op_vtable_t* vtable = loom_op_vtable(module, parent_op);
       const loom_region_descriptor_t* descriptor =
           loom_op_vtable_region_descriptor(vtable, i);
@@ -555,14 +565,18 @@ static bool loom_kernel_try_get_local_buffer_memory_space(
     loom_value_id_t buffer_id,
     loom_value_fact_memory_space_t* out_memory_space) {
   for (uint8_t depth = 0; depth < 32; ++depth) {
-    if (buffer_id >= module->values.count) return false;
+    if (buffer_id >= module->values.count) {
+      return false;
+    }
     const loom_value_t* value = loom_module_value(module, buffer_id);
     if (loom_value_is_block_arg(value)) {
       return loom_kernel_try_get_block_arg_memory_space(module, use_op, value,
                                                         out_memory_space);
     }
     const loom_op_t* defining_op = loom_value_def_op(value);
-    if (!defining_op) return false;
+    if (!defining_op) {
+      return false;
+    }
     if (loom_buffer_alloca_isa(defining_op)) {
       *out_memory_space = loom_buffer_alloca_memory_space(defining_op);
       return true;
@@ -588,11 +602,17 @@ static bool loom_kernel_try_get_local_view_memory_space(
     const loom_module_t* module, const loom_op_t* use_op,
     loom_value_id_t view_id, loom_value_fact_memory_space_t* out_memory_space) {
   for (uint8_t depth = 0; depth < 32; ++depth) {
-    if (view_id >= module->values.count) return false;
+    if (view_id >= module->values.count) {
+      return false;
+    }
     const loom_value_t* value = loom_module_value(module, view_id);
-    if (loom_value_is_block_arg(value)) return false;
+    if (loom_value_is_block_arg(value)) {
+      return false;
+    }
     const loom_op_t* defining_op = loom_value_def_op(value);
-    if (!defining_op) return false;
+    if (!defining_op) {
+      return false;
+    }
 
     if (loom_buffer_view_isa(defining_op)) {
       return loom_kernel_try_get_local_buffer_memory_space(
@@ -646,7 +666,9 @@ static bool loom_kernel_memory_space_is_workgroup(
 static bool loom_kernel_type_static_element_byte_count(
     loom_type_t type, int64_t* out_byte_count) {
   int32_t bit_count = loom_scalar_type_bitwidth(loom_type_element_type(type));
-  if (bit_count <= 0 || (bit_count % 8) != 0) return false;
+  if (bit_count <= 0 || (bit_count % 8) != 0) {
+    return false;
+  }
   *out_byte_count = bit_count / 8;
   return true;
 }
@@ -663,7 +685,9 @@ static bool loom_kernel_type_static_byte_count_from_axis(
     return false;
   }
   for (uint8_t axis = first_axis; axis < loom_type_rank(type); ++axis) {
-    if (loom_type_dim_is_dynamic_at(type, axis)) return false;
+    if (loom_type_dim_is_dynamic_at(type, axis)) {
+      return false;
+    }
     int64_t dimension_size = loom_type_dim_static_size_at(type, axis);
     if (dimension_size < 0 ||
         !iree_checked_mul_i64(byte_count, dimension_size, &byte_count)) {
@@ -705,7 +729,9 @@ static iree_status_t loom_kernel_verify_same_static_byte_count(
   IREE_RETURN_IF_ERROR(loom_kernel_verify_static_byte_count(
       module, emitter, op, IREE_SV("dest"), dest_id, &dest_byte_count));
 
-  if (source_byte_count == dest_byte_count) return iree_ok_status();
+  if (source_byte_count == dest_byte_count) {
+    return iree_ok_status();
+  }
   loom_type_t dest_type = loom_module_value_type(module, dest_id);
   return loom_kernel_emit_operand_constraint(
       emitter, op, IREE_SV("dest"), dest_type,
@@ -798,7 +824,9 @@ static iree_status_t loom_kernel_verify_async_cache_policy(
       loom_cache_policy_validate(cache_scope, cache_temporal,
                                  is_store ? LOOM_CACHE_POLICY_ACCESS_STORE
                                           : LOOM_CACHE_POLICY_ACCESS_LOAD);
-  if (error == LOOM_CACHE_POLICY_ERROR_NONE) return iree_ok_status();
+  if (error == LOOM_CACHE_POLICY_ERROR_NONE) {
+    return iree_ok_status();
+  }
   iree_string_view_t attr_name = loom_cache_policy_error_attr_name(error);
   int64_t actual_value =
       iree_string_view_equal(attr_name, IREE_SV("cache_scope"))
@@ -812,7 +840,9 @@ static iree_status_t loom_kernel_verify_async_cache_policy(
 static iree_status_t loom_kernel_verify_copy_token_group_use(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t token_id) {
-  if (token_id >= module->values.count) return iree_ok_status();
+  if (token_id >= module->values.count) {
+    return iree_ok_status();
+  }
   const loom_value_t* token = loom_module_value(module, token_id);
   if (token->use_count != 1) {
     return loom_kernel_emit_value_use_count_constraint(
@@ -822,7 +852,9 @@ static iree_status_t loom_kernel_verify_copy_token_group_use(
 
   const loom_use_t use = loom_value_uses(token)[0];
   const loom_op_t* user_op = loom_use_user_op(use);
-  if (loom_kernel_async_group_isa(user_op)) return iree_ok_status();
+  if (loom_kernel_async_group_isa(user_op)) {
+    return iree_ok_status();
+  }
   return loom_kernel_emit_value_user_constraint(
       module, emitter, op, token_id, user_op,
       IREE_SV("kernel.async.group token operand"));
@@ -831,7 +863,9 @@ static iree_status_t loom_kernel_verify_copy_token_group_use(
 static iree_status_t loom_kernel_verify_token_defined_by_copy(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t token_id) {
-  if (token_id >= module->values.count) return iree_ok_status();
+  if (token_id >= module->values.count) {
+    return iree_ok_status();
+  }
   const loom_value_t* token = loom_module_value(module, token_id);
   const loom_op_t* defining_op =
       loom_value_is_block_arg(token) ? NULL : loom_value_def_op(token);
@@ -854,9 +888,13 @@ static iree_status_t loom_kernel_verify_token_defined_by_copy(
 static iree_status_t loom_kernel_verify_group_has_uses(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t group_id) {
-  if (group_id >= module->values.count) return iree_ok_status();
+  if (group_id >= module->values.count) {
+    return iree_ok_status();
+  }
   const loom_value_t* group = loom_module_value(module, group_id);
-  if (group->use_count != 0) return iree_ok_status();
+  if (group->use_count != 0) {
+    return iree_ok_status();
+  }
   return loom_kernel_emit_value_use_count_constraint(
       module, emitter, op, group_id, 0,
       IREE_SV("at least one wait or carried group use"));
@@ -865,9 +903,13 @@ static iree_status_t loom_kernel_verify_group_has_uses(
 static iree_status_t loom_kernel_verify_group_origin_if_local(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t group_id) {
-  if (group_id >= module->values.count) return iree_ok_status();
+  if (group_id >= module->values.count) {
+    return iree_ok_status();
+  }
   const loom_value_t* group = loom_module_value(module, group_id);
-  if (loom_value_is_block_arg(group)) return iree_ok_status();
+  if (loom_value_is_block_arg(group)) {
+    return iree_ok_status();
+  }
   const loom_op_t* defining_op = loom_value_def_op(group);
   // Template applications are selected and inlined before whole-function async
   // lifetime verification. Runtime calls remain unsupported ownership
@@ -909,7 +951,9 @@ static iree_status_t loom_kernel_verify_gather_destination(
         emitter, op, IREE_SV("dest"), dest_type,
         IREE_SV("view with static byte-addressable trailing lane footprint"));
   }
-  if (source_byte_count <= dest_lane_byte_count) return iree_ok_status();
+  if (source_byte_count <= dest_lane_byte_count) {
+    return iree_ok_status();
+  }
   return loom_kernel_emit_operand_constraint(
       emitter, op, IREE_SV("dest"), dest_type,
       IREE_SV("trailing lane byte footprint at least source footprint"));
@@ -1151,7 +1195,9 @@ static iree_status_t loom_kernel_barrier_control_target_facts(
 
 static iree_status_t loom_kernel_barrier_control_verifier_initialize(
     loom_kernel_barrier_control_verifier_t* verifier) {
-  if (verifier->fact_table.arena) return iree_ok_status();
+  if (verifier->fact_table.arena) {
+    return iree_ok_status();
+  }
 
   const loom_target_facts_t* target_facts = NULL;
   IREE_RETURN_IF_ERROR(
@@ -1189,7 +1235,9 @@ static iree_status_t loom_kernel_verify_barrier_controls(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter) {
   loom_func_like_t function = loom_func_like_const_cast(module, op);
-  if (!loom_func_like_isa(function)) return iree_ok_status();
+  if (!loom_func_like_isa(function)) {
+    return iree_ok_status();
+  }
 
   iree_arena_allocator_t arena;
   iree_arena_initialize(module->arena.block_pool, &arena);

@@ -21,7 +21,9 @@ class ExecutableTest : public CtsTestBase<> {
  protected:
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
 
     dispatch_queue_ =
         QueueForCommandCategories(IREE_HAL_COMMAND_CATEGORY_DISPATCH);
@@ -175,7 +177,9 @@ TEST_P(ExecutableTest, LookupGlobalByName) {
   iree_hal_executable_global_t global = iree_hal_executable_global_invalid();
   IREE_ASSERT_OK(iree_hal_executable_try_lookup_global_by_name(
       executable_, IREE_SV("executable_test_global"), &found, &global));
-  if (!found) GTEST_SKIP() << "executable testdata has no globals";
+  if (!found) {
+    GTEST_SKIP() << "executable testdata has no globals";
+  }
   ASSERT_TRUE(iree_hal_executable_global_is_valid(global));
 
   iree_hal_executable_global_info_t info;
@@ -210,7 +214,9 @@ TEST_P(ExecutableTest, GlobalBufferVisibleToDispatch) {
   iree_hal_executable_global_t global = iree_hal_executable_global_invalid();
   IREE_ASSERT_OK(iree_hal_executable_try_lookup_global_by_name(
       executable_, IREE_SV("executable_test_global"), &found, &global));
-  if (!found) GTEST_SKIP() << "executable testdata has no globals";
+  if (!found) {
+    GTEST_SKIP() << "executable testdata has no globals";
+  }
 
   iree_hal_buffer_t* global_buffer = nullptr;
   IREE_ASSERT_OK(

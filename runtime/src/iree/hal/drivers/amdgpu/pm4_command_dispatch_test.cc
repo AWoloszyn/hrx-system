@@ -190,7 +190,9 @@ class PM4CommandDispatchTest : public ::testing::Test {
          i + IREE_HAL_AMDGPU_PM4_DISPATCH_INDIRECT_MEC_DWORD_COUNT <=
          program->dword_count;
          ++i) {
-      if (program->dwords[i] == header) return &program->dwords[i];
+      if (program->dwords[i] == header) {
+        return &program->dwords[i];
+      }
     }
     return NULL;
   }
@@ -204,7 +206,9 @@ class PM4CommandDispatchTest : public ::testing::Test {
          i + IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GFX10_DWORD_COUNT <=
          program->dword_count;
          ++i) {
-      if (program->dwords[i] == header) return &program->dwords[i];
+      if (program->dwords[i] == header) {
+        return &program->dwords[i];
+      }
     }
     return NULL;
   }

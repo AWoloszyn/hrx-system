@@ -47,8 +47,12 @@ static iree_host_size_t parse_token(const uint8_t* data, iree_host_size_t size,
     return 0;
   }
   iree_host_size_t length = data[0];
-  if (length > max_length) length = max_length;
-  if (length > size - 1) length = size - 1;
+  if (length > max_length) {
+    length = max_length;
+  }
+  if (length > size - 1) {
+    length = size - 1;
+  }
   *out_token =
       iree_make_string_view(reinterpret_cast<const char*>(data + 1), length);
   return 1 + length;
@@ -57,7 +61,9 @@ static iree_host_size_t parse_token(const uint8_t* data, iree_host_size_t size,
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // Need at least: prefix_len (1) + max_chars (1) + token_count (1) +
   //                unk_index (1) + input_len (1) = 5 bytes
-  if (size < 5) return 0;
+  if (size < 5) {
+    return 0;
+  }
 
   iree_host_size_t position = 0;
 
@@ -70,15 +76,21 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Byte 1: max_input_chars_per_word (1-200, 0 treated as 1).
   iree_host_size_t max_input_chars_per_word = data[position++];
-  if (max_input_chars_per_word == 0) max_input_chars_per_word = 1;
+  if (max_input_chars_per_word == 0) {
+    max_input_chars_per_word = 1;
+  }
   if (max_input_chars_per_word > kMaxInputCharsPerWord) {
     max_input_chars_per_word = kMaxInputCharsPerWord;
   }
 
   // Byte 2: Token count (need at least 1 for UNK).
   iree_host_size_t token_count = data[position++];
-  if (token_count > kMaxTokens) token_count = kMaxTokens;
-  if (token_count == 0) return 0;
+  if (token_count > kMaxTokens) {
+    token_count = kMaxTokens;
+  }
+  if (token_count == 0) {
+    return 0;
+  }
 
   // Byte 3: UNK token index within vocab.
   uint8_t unk_index_byte = data[position++];
@@ -86,7 +98,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Byte 4: Input text length.
   iree_host_size_t input_length = data[position++];
-  if (input_length > kMaxInputLength) input_length = kMaxInputLength;
+  if (input_length > kMaxInputLength) {
+    input_length = kMaxInputLength;
+  }
 
   //===--------------------------------------------------------------------===//
   // Phase 2: Parse continuation prefix
@@ -124,11 +138,15 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     iree_string_view_t token_text;
     iree_host_size_t consumed = parse_token(data + position, size - position,
                                             kMaxTokenLength, &token_text);
-    if (consumed == 0) break;
+    if (consumed == 0) {
+      break;
+    }
     position += consumed;
 
     // Empty tokens are invalid, skip them.
-    if (token_text.size == 0) continue;
+    if (token_text.size == 0) {
+      continue;
+    }
 
     status = iree_tokenizer_vocab_builder_add_token(
         builder, token_text, 0.0f, IREE_TOKENIZER_TOKEN_ATTR_NONE);
@@ -184,7 +202,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Get remaining bytes as input text (up to input_length).
   iree_host_size_t available_input = size - position;
-  if (available_input > input_length) available_input = input_length;
+  if (available_input > input_length) {
+    available_input = input_length;
+  }
   const char* input_data = reinterpret_cast<const char*>(data + position);
 
   // Allocate state storage.
@@ -328,7 +348,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         iree_status_ignore(status);
         break;
       }
-      if (final_count == 0) break;
+      if (final_count == 0) {
+        break;
+      }
     }
   } else {
     iree_status_ignore(status);

@@ -172,7 +172,9 @@ iree_hal_amdgpu_atomic_memory_cell_flags_t
 iree_hal_amdgpu_atomic_memory_select_device_cells(
     const iree_hal_amdgpu_atomic_memory_source_masks_t* source_masks,
     iree_hal_amdgpu_gpu_agent_mask_t device_mask) {
-  if (!device_mask) return IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE;
+  if (!device_mask) {
+    return IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE;
+  }
 
   iree_hal_amdgpu_atomic_memory_cell_flags_t cell_flags =
       IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE;

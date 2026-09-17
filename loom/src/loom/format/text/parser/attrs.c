@@ -313,7 +313,9 @@ static iree_status_t loom_parse_symbol_collection_attr(
           &parser->parser_arena, count, count + 1, sizeof(*tokens),
           &token_capacity, (void**)&tokens));
     }
-    if (is_set) tokens[count] = loom_tokenizer_peek(&parser->tokenizer);
+    if (is_set) {
+      tokens[count] = loom_tokenizer_peek(&parser->tokenizer);
+    }
     loom_attribute_t value = loom_attr_absent();
     IREE_RETURN_IF_ERROR(loom_parse_symbol_ref_attr(parser, &value));
     values[count++] = loom_attr_as_symbol(value);
@@ -337,7 +339,9 @@ static iree_status_t loom_parse_symbol_collection_attr(
       loom_token_t duplicate_token = loom_token_none();
       bool found_first = false;
       for (iree_host_size_t i = 0; i < count; ++i) {
-        if (!iree_string_view_equal(tokens[i].text, duplicate_name)) continue;
+        if (!iree_string_view_equal(tokens[i].text, duplicate_name)) {
+          continue;
+        }
         if (!found_first) {
           first_token = tokens[i];
           found_first = true;
@@ -370,9 +374,15 @@ static iree_status_t loom_parse_symbol_collection_attr(
 }
 
 static int8_t loom_parse_hex_nibble(uint8_t c) {
-  if (c >= '0' && c <= '9') return (int8_t)(c - '0');
-  if (c >= 'a' && c <= 'f') return (int8_t)(10 + c - 'a');
-  if (c >= 'A' && c <= 'F') return (int8_t)(10 + c - 'A');
+  if (c >= '0' && c <= '9') {
+    return (int8_t)(c - '0');
+  }
+  if (c >= 'a' && c <= 'f') {
+    return (int8_t)(10 + c - 'a');
+  }
+  if (c >= 'A' && c <= 'F') {
+    return (int8_t)(10 + c - 'A');
+  }
   return -1;
 }
 
@@ -529,7 +539,9 @@ static iree_status_t loom_parse_parameterized_attr_parameters_impl(
     IREE_RETURN_IF_ERROR(loom_parse_attr_value_at_depth(
         parser, parameter_descriptor, (uint16_t)(nesting_depth + 1), type_mode,
         &parameter_slots[parameter_index]));
-    if (parser->error_count > errors_before) return iree_ok_status();
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
     ++parsed_parameter_count;
   }
 
@@ -647,7 +659,9 @@ static iree_status_t loom_parse_parameterized_attr_array(
     IREE_RETURN_IF_ERROR(loom_parse_parameterized_attr(
         parser, expected_family_kind, (uint16_t)(nesting_depth + 1), type_mode,
         &attributes[count]));
-    if (parser->error_count > element_errors_before) return iree_ok_status();
+    if (parser->error_count > element_errors_before) {
+      return iree_ok_status();
+    }
     ++count;
   }
   LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_RBRACKET, NULL);

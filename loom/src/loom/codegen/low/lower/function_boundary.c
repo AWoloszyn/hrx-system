@@ -167,7 +167,9 @@ static const loom_op_t* loom_low_lower_first_return(
        ++block_index) {
     loom_block_t* block = loom_region_block(source_body, block_index);
     const loom_op_t* terminator = block->last_op;
-    if (loom_func_return_isa(terminator)) return terminator;
+    if (loom_func_return_isa(terminator)) {
+      return terminator;
+    }
   }
   return NULL;
 }
@@ -279,7 +281,9 @@ static iree_status_t loom_low_lower_attach_remapped_predicates(
   uint16_t predicate_count = 0;
   const loom_predicate_t* source_predicates =
       loom_func_like_predicates(context->source_function, &predicate_count);
-  if (predicate_count == 0) return iree_ok_status();
+  if (predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   const loom_func_like_t low_function =
       loom_func_like_cast(context->module, context->low_func_op);
@@ -462,7 +466,9 @@ iree_status_t loom_low_lower_function_boundary_remap_predicates(
   uint16_t predicate_count = 0;
   const loom_predicate_t* source_predicates =
       loom_func_like_predicates(context->source_function, &predicate_count);
-  if (predicate_count == 0) return iree_ok_status();
+  if (predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_ir_remap_t remap;
   IREE_RETURN_IF_ERROR(loom_ir_remap_initialize(
@@ -470,7 +476,9 @@ iree_status_t loom_low_lower_function_boundary_remap_predicates(
       /*options=*/NULL, &remap));
   for (uint16_t i = 0; i < predicate_count; ++i) {
     for (uint8_t j = 0; j < source_predicates[i].arg_count; ++j) {
-      if (source_predicates[i].arg_tags[j] != LOOM_PRED_ARG_VALUE) continue;
+      if (source_predicates[i].arg_tags[j] != LOOM_PRED_ARG_VALUE) {
+        continue;
+      }
       loom_value_id_t source_value =
           (loom_value_id_t)source_predicates[i].args[j];
       loom_value_id_t low_value = LOOM_VALUE_ID_INVALID;
@@ -611,7 +619,9 @@ static iree_status_t loom_low_lower_remap_decl_predicates(
     loom_low_lower_context_t* context) {
   uint16_t predicate_count = 0;
   (void)loom_func_like_predicates(context->source_function, &predicate_count);
-  if (predicate_count == 0) return iree_ok_status();
+  if (predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   const loom_func_like_t low_function =
       loom_func_like_cast(context->module, context->low_func_op);

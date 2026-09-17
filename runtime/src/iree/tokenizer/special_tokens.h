@@ -272,7 +272,9 @@ iree_tokenizer_special_tokens_match(
 static inline iree_host_size_t iree_tokenizer_special_tokens_safe_prefix_length(
     const iree_tokenizer_special_tokens_t* special_tokens,
     iree_string_view_t input) {
-  if (special_tokens->count == 0) return input.size;
+  if (special_tokens->count == 0) {
+    return input.size;
+  }
 
   // Fast path: single bucket means all special tokens share the same first
   // byte. Use memchr which is SIMD-optimized (16-32 bytes per instruction).
@@ -364,7 +366,9 @@ static inline void iree_tokenizer_special_tokens_encode_state_update_prev_byte(
 // Used for lstrip/rstrip/single_word checks.
 static inline bool iree_tokenizer_is_word_boundary_byte(uint8_t byte) {
   // ASCII whitespace: space, tab, newline, carriage return, form feed, vtab.
-  if (byte <= 0x20) return true;  // Control chars and space.
+  if (byte <= 0x20) {
+    return true;  // Control chars and space.
+  }
   // Common ASCII punctuation that serves as word boundaries.
   // Note: This is intentionally simple - HuggingFace uses regex \w which is
   // locale-dependent. We use a conservative ASCII-only definition.

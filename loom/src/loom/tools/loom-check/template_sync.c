@@ -302,7 +302,9 @@ static loom_check_template_sync_target_overlay_t
 loom_check_template_sync_collect_case_overlay(
     const loom_check_template_sync_case_t* record) {
   loom_check_template_sync_target_overlay_t overlay = {0};
-  if (record == NULL) return overlay;
+  if (record == NULL) {
+    return overlay;
+  }
 
   const loom_test_case_t* test_case = record->test_case;
   overlay.source_record = record;
@@ -431,7 +433,9 @@ static iree_status_t loom_check_template_sync_extract_case_metadata(
       status = loom_check_template_sync_copy_string(
           arena, module->strings.entries[symbol->name_id],
           &symbol_record->name);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       symbol_record->definition_flags = symbol->definition->flags;
       const loom_location_entry_t* location =
           &module->locations.entries[symbol->defining_op->location];
@@ -638,7 +642,9 @@ static iree_status_t loom_check_template_sync_append_target_annotations(
 static bool loom_check_template_sync_overlay_defines_symbol(
     const loom_check_template_sync_target_overlay_t* overlay,
     iree_string_view_t symbol_name) {
-  if (overlay == NULL || overlay->source_record == NULL) return false;
+  if (overlay == NULL || overlay->source_record == NULL) {
+    return false;
+  }
   uint16_t case_definition_start_line = 0;
   for (iree_host_size_t i = 0; i < overlay->symbol_count; ++i) {
     const loom_check_template_sync_symbol_t* symbol = &overlay->symbols[i];
@@ -647,7 +653,9 @@ static bool loom_check_template_sync_overlay_defines_symbol(
       break;
     }
   }
-  if (case_definition_start_line == 0) return false;
+  if (case_definition_start_line == 0) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < overlay->symbol_count; ++i) {
     const loom_check_template_sync_symbol_t* symbol = &overlay->symbols[i];
     if (!iree_string_view_equal(symbol->name, symbol_name) ||

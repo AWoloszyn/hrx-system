@@ -61,7 +61,9 @@ static iree_status_t loom_branch_sink_region_stack_initialize(
 static iree_status_t loom_branch_sink_region_stack_push(
     iree_arena_allocator_t* arena, loom_branch_sink_region_stack_t* stack,
     loom_region_t* region) {
-  if (!region || region->block_count == 0) return iree_ok_status();
+  if (!region || region->block_count == 0) {
+    return iree_ok_status();
+  }
   if (stack->count >= stack->capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         arena, stack->count, stack->count + 1, sizeof(loom_region_t*),
@@ -99,10 +101,14 @@ typedef struct loom_branch_sink_context_t {
 
 static uint8_t loom_branch_sink_direct_region_index(
     loom_region_branch_t branch, const loom_region_t* region) {
-  if (!region) return LOOM_BRANCH_SINK_REGION_INDEX_NONE;
+  if (!region) {
+    return LOOM_BRANCH_SINK_REGION_INDEX_NONE;
+  }
   loom_region_t** regions = loom_op_regions(branch.op);
   for (uint8_t i = 0; i < branch.op->region_count; ++i) {
-    if (regions[i] == region) return i;
+    if (regions[i] == region) {
+      return i;
+    }
   }
   return LOOM_BRANCH_SINK_REGION_INDEX_NONE;
 }
@@ -110,7 +116,9 @@ static uint8_t loom_branch_sink_direct_region_index(
 static uint8_t loom_branch_sink_op_region_index(loom_region_branch_t branch,
                                                 const loom_op_t* op) {
   for (const loom_op_t* current = op; current; current = current->parent_op) {
-    if (current->parent_op != branch.op) continue;
+    if (current->parent_op != branch.op) {
+      continue;
+    }
     return loom_branch_sink_direct_region_index(
         branch,
         current->parent_block ? current->parent_block->parent_region : NULL);
@@ -120,7 +128,9 @@ static uint8_t loom_branch_sink_op_region_index(loom_region_branch_t branch,
 
 static uint8_t loom_branch_sink_block_arg_region_index(
     loom_region_branch_t branch, const loom_block_t* block) {
-  if (!block) return LOOM_BRANCH_SINK_REGION_INDEX_NONE;
+  if (!block) {
+    return LOOM_BRANCH_SINK_REGION_INDEX_NONE;
+  }
   uint8_t direct_region_index =
       loom_branch_sink_direct_region_index(branch, block->parent_region);
   if (direct_region_index != LOOM_BRANCH_SINK_REGION_INDEX_NONE) {
@@ -135,7 +145,9 @@ static uint8_t loom_branch_sink_block_arg_region_index(
 static bool loom_branch_sink_merge_region_index(uint8_t region_index,
                                                 uint8_t* target_region_index,
                                                 bool* has_use) {
-  if (region_index == LOOM_BRANCH_SINK_REGION_INDEX_NONE) return false;
+  if (region_index == LOOM_BRANCH_SINK_REGION_INDEX_NONE) {
+    return false;
+  }
   if (!*has_use) {
     *has_use = true;
     *target_region_index = region_index;
@@ -166,7 +178,9 @@ static bool loom_branch_sink_value_uses_target_one_region(
       loom_module_value_first_incoming_type_use(module, value_id);
   while (use_id != LOOM_TYPE_USE_ID_INVALID) {
     const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (type_use->user_value_id >= module->values.count) return false;
+    if (type_use->user_value_id >= module->values.count) {
+      return false;
+    }
 
     const loom_value_t* user_value =
         loom_module_value(module, type_use->user_value_id);
@@ -201,7 +215,9 @@ static bool loom_branch_sink_results_target_one_region(
       return false;
     }
   }
-  if (!has_use) return false;
+  if (!has_use) {
+    return false;
+  }
   *out_region_index = region_index;
   return true;
 }
@@ -217,7 +233,9 @@ static bool loom_branch_sink_value_uses_only_op(const loom_module_t* module,
   const loom_value_t* value = loom_module_value(module, value_id);
   const loom_use_t* uses = loom_value_uses(value);
   for (uint32_t i = 0; i < value->use_count; ++i) {
-    if (loom_use_user_op(uses[i]) != target_op) return false;
+    if (loom_use_user_op(uses[i]) != target_op) {
+      return false;
+    }
     *has_use = true;
   }
 
@@ -225,12 +243,18 @@ static bool loom_branch_sink_value_uses_only_op(const loom_module_t* module,
       loom_module_value_first_incoming_type_use(module, value_id);
   while (use_id != LOOM_TYPE_USE_ID_INVALID) {
     const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (type_use->user_value_id >= module->values.count) return false;
+    if (type_use->user_value_id >= module->values.count) {
+      return false;
+    }
 
     const loom_value_t* user_value =
         loom_module_value(module, type_use->user_value_id);
-    if (loom_value_is_block_arg(user_value)) return false;
-    if (loom_value_def_op(user_value) != target_op) return false;
+    if (loom_value_is_block_arg(user_value)) {
+      return false;
+    }
+    if (loom_value_def_op(user_value) != target_op) {
+      return false;
+    }
     *has_use = true;
 
     use_id = type_use->next_incoming_use_id;
@@ -279,9 +303,13 @@ static iree_status_t loom_branch_sink_push_child_regions(
 
 static loom_op_t* loom_branch_sink_region_insertion_op(
     loom_region_branch_t branch, uint8_t region_index) {
-  if (region_index >= branch.op->region_count) return NULL;
+  if (region_index >= branch.op->region_count) {
+    return NULL;
+  }
   loom_region_t* region = loom_op_regions(branch.op)[region_index];
-  if (!region || region->block_count == 0) return NULL;
+  if (!region || region->block_count == 0) {
+    return NULL;
+  }
   loom_block_t* entry_block = loom_region_entry_block(region);
   return entry_block ? entry_block->first_op : NULL;
 }
@@ -311,7 +339,9 @@ static iree_status_t loom_branch_sink_try_selector(
   bool can_relocate = false;
   IREE_RETURN_IF_ERROR(loom_motion_subtree_can_relocate_before(
       &context->motion, candidate_op, branch_op, &can_relocate));
-  if (!can_relocate) return iree_ok_status();
+  if (!can_relocate) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(
       loom_rewriter_move_before(context->rewriter, candidate_op, branch_op));
@@ -325,7 +355,9 @@ static iree_status_t loom_branch_sink_try_candidate(
     loom_branch_sink_context_t* context, loom_region_branch_t branch,
     loom_op_t* candidate_op, bool* out_sunk) {
   *out_sunk = false;
-  if (candidate_op->result_count == 0) return iree_ok_status();
+  if (candidate_op->result_count == 0) {
+    return iree_ok_status();
+  }
 
   uint8_t target_region_index = LOOM_BRANCH_SINK_REGION_INDEX_NONE;
   if (!loom_branch_sink_results_target_one_region(
@@ -335,12 +367,16 @@ static iree_status_t loom_branch_sink_try_candidate(
 
   loom_op_t* insertion_op =
       loom_branch_sink_region_insertion_op(branch, target_region_index);
-  if (!insertion_op) return iree_ok_status();
+  if (!insertion_op) {
+    return iree_ok_status();
+  }
 
   bool can_relocate = false;
   IREE_RETURN_IF_ERROR(loom_motion_subtree_can_relocate_before(
       &context->motion, candidate_op, insertion_op, &can_relocate));
-  if (!can_relocate) return iree_ok_status();
+  if (!can_relocate) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(
       loom_rewriter_move_before(context->rewriter, candidate_op, insertion_op));
@@ -365,7 +401,9 @@ static iree_status_t loom_branch_sink_process_branch(
     bool sunk = false;
     IREE_RETURN_IF_ERROR(
         loom_branch_sink_try_candidate(context, branch, candidate_op, &sunk));
-    if (!sunk) break;
+    if (!sunk) {
+      break;
+    }
     *out_changed = true;
     candidate_op = previous_op;
   }
@@ -387,7 +425,9 @@ static iree_status_t loom_branch_sink_process_function_once(
     loom_branch_sink_context_t* context, loom_func_like_t function,
     bool* out_changed) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   context->region_stack.count = 0;
   IREE_RETURN_IF_ERROR(loom_branch_sink_region_stack_push(
@@ -396,7 +436,9 @@ static iree_status_t loom_branch_sink_process_function_once(
   while (true) {
     loom_region_t* region =
         loom_branch_sink_region_stack_pop(&context->region_stack);
-    if (!region) break;
+    if (!region) {
+      break;
+    }
 
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
@@ -430,7 +472,9 @@ static iree_status_t loom_branch_sink_process_function_once(
 iree_status_t loom_branch_sink_run(loom_pass_t* pass, loom_module_t* module,
                                    loom_func_like_t function) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(

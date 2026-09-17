@@ -227,7 +227,9 @@ static loom_encoding_match_result_t loom_encoding_match_exclusive_fact(
     uint64_t actual, uint64_t required, bool known_absent,
     bool schema_complete) {
   if (required == 0) {
-    if (actual != 0) return LOOM_ENCODING_MATCH_RESULT_FALSE;
+    if (actual != 0) {
+      return LOOM_ENCODING_MATCH_RESULT_FALSE;
+    }
     return known_absent || schema_complete ? LOOM_ENCODING_MATCH_RESULT_TRUE
                                            : LOOM_ENCODING_MATCH_RESULT_UNKNOWN;
   }
@@ -235,7 +237,9 @@ static loom_encoding_match_result_t loom_encoding_match_exclusive_fact(
     return known_absent ? LOOM_ENCODING_MATCH_RESULT_FALSE
                         : LOOM_ENCODING_MATCH_RESULT_UNKNOWN;
   }
-  if ((actual & required) == 0) return LOOM_ENCODING_MATCH_RESULT_FALSE;
+  if ((actual & required) == 0) {
+    return LOOM_ENCODING_MATCH_RESULT_FALSE;
+  }
   return actual == required ? LOOM_ENCODING_MATCH_RESULT_TRUE
                             : LOOM_ENCODING_MATCH_RESULT_UNKNOWN;
 }

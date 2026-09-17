@@ -275,7 +275,9 @@ iree_status_t loom_amdgpu_sanitizer_tsan_config_symbol(
 static iree_status_t loom_amdgpu_sanitizer_ensure_site_collection(
     loom_low_lower_context_t* context,
     loom_amdgpu_sanitizer_lower_state_t* state) {
-  if (state->has_site_collection) return iree_ok_status();
+  if (state->has_site_collection) {
+    return iree_ok_status();
+  }
 
   loom_amdgpu_sanitizer_module_state_t* module_state = NULL;
   IREE_RETURN_IF_ERROR(
@@ -364,7 +366,9 @@ static iree_status_t loom_amdgpu_sanitizer_flatten_site_rows(
   *out_collection = (loom_sanitizer_site_collection_t){0};
   const iree_host_size_t row_count = module_state->site_row_count;
   out_collection->row_count = row_count;
-  if (row_count == 0) return iree_ok_status();
+  if (row_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       scratch_arena, row_count, sizeof(*out_collection->rows),
@@ -429,7 +433,9 @@ iree_status_t loom_amdgpu_sanitizer_site_id_for_op(
   IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_lower_state(context, &state));
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_sanitizer_ensure_site_collection(context, state));
-  if (!state->has_site_collection) return iree_ok_status();
+  if (!state->has_site_collection) {
+    return iree_ok_status();
+  }
 
   for (iree_host_size_t i = state->next_site_row_index;
        i < state->site_collection.row_count; ++i) {
@@ -529,7 +535,9 @@ static bool loom_amdgpu_sanitizer_access_byte_range(
       if (extent <= 0) {
         return false;
       }
-      if (extent == 1) continue;
+      if (extent == 1) {
+        continue;
+      }
       if (range_axis != UINT8_MAX) {
         return false;
       }

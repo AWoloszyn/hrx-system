@@ -61,7 +61,9 @@ iree_status_t iree_hal_amdgpu_device_clock_source_initialize(
 
 void iree_hal_amdgpu_device_clock_source_deinitialize(
     iree_hal_amdgpu_device_clock_source_t* source) {
-  if (!source) return;
+  if (!source) {
+    return;
+  }
   if (source->type == IREE_HAL_AMDGPU_DEVICE_CLOCK_SOURCE_TYPE_LINUX_KFD) {
     iree_hal_amdgpu_kfd_close((int)source->platform_handle);
   }

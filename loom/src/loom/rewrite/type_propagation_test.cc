@@ -98,7 +98,9 @@ class TypePropagationTest : public ::testing::Test {
           loom_type_propagator_apply_op(propagator, &rewriter, op, out_changed);
     }
     loom_type_propagator_deinitialize(propagator);
-    if (rewriter_initialized) loom_rewriter_deinitialize(&rewriter);
+    if (rewriter_initialized) {
+      loom_rewriter_deinitialize(&rewriter);
+    }
     iree_arena_deinitialize(&pass_arena);
     return status;
   }
@@ -131,7 +133,9 @@ class TypePropagationTest : public ::testing::Test {
           loom_type_propagator_may_apply_op(propagator, &rewriter, op, vtable);
     }
     loom_type_propagator_deinitialize(propagator);
-    if (rewriter_initialized) loom_rewriter_deinitialize(&rewriter);
+    if (rewriter_initialized) {
+      loom_rewriter_deinitialize(&rewriter);
+    }
     iree_arena_deinitialize(&pass_arena);
     return status;
   }

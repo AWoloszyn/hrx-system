@@ -301,7 +301,9 @@ static inline bool loom_value_fact_table_has_entry(
 static inline bool loom_value_fact_table_try_lookup(
     const loom_value_fact_table_t* table, loom_value_id_t value_id,
     loom_value_facts_t* out_facts) {
-  if (!loom_value_fact_table_has_entry(table, value_id)) return false;
+  if (!loom_value_fact_table_has_entry(table, value_id)) {
+    return false;
+  }
   *out_facts = table->entries[value_id];
   return true;
 }

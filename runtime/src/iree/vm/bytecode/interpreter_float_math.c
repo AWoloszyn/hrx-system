@@ -40,14 +40,18 @@ static uint64_t iree_vm_bytecode_float_math_f64_to_bits(double value) {
 
 static uint32_t iree_vm_bytecode_float_math_sign_f32(uint32_t source_bits) {
   const uint32_t magnitude = source_bits & UINT32_C(0x7FFFFFFF);
-  if (magnitude == 0 || magnitude > UINT32_C(0x7F800000)) return 0;
+  if (magnitude == 0 || magnitude > UINT32_C(0x7F800000)) {
+    return 0;
+  }
   return (source_bits & UINT32_C(0x80000000)) ? UINT32_C(0xBF800000)
                                               : UINT32_C(0x3F800000);
 }
 
 static uint64_t iree_vm_bytecode_float_math_sign_f64(uint64_t source_bits) {
   const uint64_t magnitude = source_bits & UINT64_C(0x7FFFFFFFFFFFFFFF);
-  if (magnitude == 0 || magnitude > UINT64_C(0x7FF0000000000000)) return 0;
+  if (magnitude == 0 || magnitude > UINT64_C(0x7FF0000000000000)) {
+    return 0;
+  }
   return (source_bits & UINT64_C(0x8000000000000000))
              ? UINT64_C(0xBFF0000000000000)
              : UINT64_C(0x3FF0000000000000);

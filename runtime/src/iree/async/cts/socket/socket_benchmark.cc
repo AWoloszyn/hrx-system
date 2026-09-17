@@ -316,7 +316,9 @@ static LoopbackContext* CreateLoopbackContext(
 
 // Destroys a loopback context.
 static void DestroyLoopbackContext(LoopbackContext* ctx) {
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
   iree_async_socket_release(ctx->server);
   iree_async_socket_release(ctx->client);
   iree_async_socket_release(ctx->listener);
@@ -333,7 +335,9 @@ static void DestroyLoopbackContext(LoopbackContext* ctx) {
 static void BM_Roundtrip(::benchmark::State& state,
                          const ProactorFactory& factory, size_t message_size) {
   auto* ctx = CreateLoopbackContext(factory, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Allocate buffers.
   std::vector<uint8_t> send_buffer(message_size, 0xAB);
@@ -388,7 +392,9 @@ static void BM_Roundtrip(::benchmark::State& state,
 static void BM_Throughput(::benchmark::State& state,
                           const ProactorFactory& factory, size_t buffer_size) {
   auto* ctx = CreateLoopbackContext(factory, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   std::vector<uint8_t> send_buffer(buffer_size, 0xCD);
   std::vector<uint8_t> recv_buffer(buffer_size);
@@ -548,7 +554,9 @@ static void BM_ThroughputZC(::benchmark::State& state,
     client_options = IREE_ASYNC_SOCKET_OPTION_ZERO_COPY;
   }
   auto* ctx = CreateLoopbackContext(factory, state, client_options);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Resources for Fixed mode (registered buffers).
   iree_async_slab_t* slab = nullptr;

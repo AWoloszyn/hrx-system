@@ -230,14 +230,20 @@ class BlockProcessorTest : public ::testing::TestWithParam<uint32_t> {
                         iree_host_size_t binding_table_length,
                         uint64_t* out_total_tiles_executed = nullptr,
                         int32_t* out_initial_wake_budget = nullptr) {
-    if (out_total_tiles_executed) *out_total_tiles_executed = 0;
-    if (out_initial_wake_budget) *out_initial_wake_budget = 1;
+    if (out_total_tiles_executed) {
+      *out_total_tiles_executed = 0;
+    }
+    if (out_initial_wake_budget) {
+      *out_initial_wake_budget = 1;
+    }
 
     iree_hal_cmd_block_processor_context_t* context = NULL;
     IREE_RETURN_IF_ERROR(iree_hal_cmd_block_processor_context_allocate(
         recording, binding_table, binding_table_length, worker_count(),
         iree_allocator_system(), &context));
-    if (!context) return iree_ok_status();
+    if (!context) {
+      return iree_ok_status();
+    }
     if (out_initial_wake_budget) {
       *out_initial_wake_budget =
           iree_hal_cmd_block_processor_context_wake_budget(context);

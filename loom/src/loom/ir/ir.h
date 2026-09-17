@@ -1985,7 +1985,9 @@ static inline bool loom_region_has_hints(const loom_region_t* region) {
 static inline bool loom_op_regions_have_read_effects(const loom_op_t* op) {
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
-    if (loom_region_has_read_effects(regions[i])) return true;
+    if (loom_region_has_read_effects(regions[i])) {
+      return true;
+    }
   }
   return false;
 }
@@ -1994,7 +1996,9 @@ static inline bool loom_op_regions_have_read_effects(const loom_op_t* op) {
 static inline bool loom_op_regions_have_write_effects(const loom_op_t* op) {
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
-    if (loom_region_has_write_effects(regions[i])) return true;
+    if (loom_region_has_write_effects(regions[i])) {
+      return true;
+    }
   }
   return false;
 }
@@ -2004,7 +2008,9 @@ static inline bool loom_op_regions_have_convergent_effects(
     const loom_op_t* op) {
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
-    if (loom_region_has_convergent_effects(regions[i])) return true;
+    if (loom_region_has_convergent_effects(regions[i])) {
+      return true;
+    }
   }
   return false;
 }

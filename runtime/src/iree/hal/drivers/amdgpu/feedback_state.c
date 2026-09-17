@@ -429,7 +429,9 @@ static iree_status_t iree_hal_amdgpu_feedback_state_handle_packet(
 
 static void iree_hal_amdgpu_feedback_state_report_error(
     iree_hal_amdgpu_feedback_state_t* state, iree_status_t status) {
-  if (iree_status_is_ok(status)) return;
+  if (iree_status_is_ok(status)) {
+    return;
+  }
   if (state->error_handler) {
     state->error_handler(state->error_handler_user_data, status);
   } else {
@@ -458,7 +460,9 @@ static iree_status_t iree_hal_amdgpu_feedback_state_drain_device_locked(
 void iree_hal_amdgpu_feedback_state_drain_physical_device(
     iree_hal_amdgpu_feedback_state_t* state,
     iree_host_size_t physical_device_ordinal) {
-  if (!iree_hal_amdgpu_feedback_state_is_enabled(state)) return;
+  if (!iree_hal_amdgpu_feedback_state_is_enabled(state)) {
+    return;
+  }
   if (IREE_UNLIKELY(physical_device_ordinal >= state->device_state_count)) {
     iree_status_t status =
         iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -713,7 +717,9 @@ iree_status_t iree_hal_amdgpu_feedback_state_initialize(
 
 void iree_hal_amdgpu_feedback_state_deinitialize(
     iree_hal_amdgpu_feedback_state_t* state) {
-  if (!state || !state->libhsa) return;
+  if (!state || !state->libhsa) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   for (iree_host_size_t i = 0; i < state->device_state_count; ++i) {

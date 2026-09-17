@@ -24,7 +24,9 @@ iree_hal_amdgpu_asan_report_access(
     iree_hal_amdgpu_asan_access_kind_t access_kind, uint64_t fault_address,
     uint64_t access_size, uint64_t site_id, uint64_t shadow_address,
     uint64_t shadow_value) {
-  if (!feedback_config) return false;
+  if (!feedback_config) {
+    return false;
+  }
 
   iree_hal_amdgpu_feedback_config_t feedback_config_snapshot;
   feedback_config_snapshot.record_length = feedback_config->record_length;

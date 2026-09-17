@@ -322,7 +322,9 @@ static inline bool loom_module_has_active_type_uses(
 // when the value is out of range or has no incoming type uses.
 static inline loom_type_use_id_t loom_module_value_first_incoming_type_use(
     const loom_module_t* module, loom_value_id_t value_id) {
-  if (value_id >= module->values.count) return LOOM_TYPE_USE_ID_INVALID;
+  if (value_id >= module->values.count) {
+    return LOOM_TYPE_USE_ID_INVALID;
+  }
   return loom_value_table_const_type_use_heads(&module->values, value_id)
       ->first_incoming_use_id;
 }
@@ -331,7 +333,9 @@ static inline loom_type_use_id_t loom_module_value_first_incoming_type_use(
 // when the value is out of range or its type has no SSA references.
 static inline loom_type_use_id_t loom_module_value_first_outgoing_type_use(
     const loom_module_t* module, loom_value_id_t value_id) {
-  if (value_id >= module->values.count) return LOOM_TYPE_USE_ID_INVALID;
+  if (value_id >= module->values.count) {
+    return LOOM_TYPE_USE_ID_INVALID;
+  }
   return loom_value_table_const_type_use_heads(&module->values, value_id)
       ->first_outgoing_use_id;
 }
@@ -458,7 +462,9 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
 // Returns the encoding at a 1-based index, or NULL if out of range.
 static inline const loom_encoding_t* loom_module_encoding(
     const loom_module_t* module, uint16_t encoding_id) {
-  if (encoding_id == 0 || encoding_id > module->encodings.count) return NULL;
+  if (encoding_id == 0 || encoding_id > module->encodings.count) {
+    return NULL;
+  }
   return &module->encodings.entries[encoding_id - 1];
 }
 

@@ -254,7 +254,9 @@ static uint8_t loom_bytecode_reader_symbol_root_region_count(
     iree_host_size_t symbol_index) {
   const uint32_t defining_op_ordinal =
       reader->view.symbols.defining_op_ordinals[symbol_index];
-  if (defining_op_ordinal == UINT32_MAX) return 0;
+  if (defining_op_ordinal == UINT32_MAX) {
+    return 0;
+  }
   IREE_ASSERT_LT(defining_op_ordinal, reader->view.ops.count);
   return reader->view.ops.values[defining_op_ordinal]->region_count;
 }

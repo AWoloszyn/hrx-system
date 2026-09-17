@@ -18,7 +18,9 @@ static inline bool iree_vm_ref_is_borrowed(iree_vm_ref_t ref) {
 static inline iree_vm_ref_t iree_vm_ref_make(void* object,
                                              iree_vm_ref_type_t type,
                                              uintptr_t state) {
-  if (!object) return iree_vm_ref_null();
+  if (!object) {
+    return iree_vm_ref_null();
+  }
   iree_vm_ref_t ref = {
       object,
       (uintptr_t)type | state,
@@ -51,7 +53,9 @@ IREE_API_EXPORT void iree_vm_ref_object_retain(void* object) {
 
 IREE_API_EXPORT void iree_vm_ref_object_release(void* object,
                                                 iree_vm_ref_type_t type) {
-  if (!object) return;
+  if (!object) {
+    return;
+  }
   iree_vm_ref_object_t* ref_object = iree_vm_ref_object_cast(object);
   if (iree_atomic_ref_count_dec(&ref_object->ref_count) == 1 && type->destroy) {
     type->destroy(object);
@@ -70,7 +74,9 @@ iree_vm_ref_from_ptr_borrowed(void* ptr, iree_vm_ref_type_t type) {
 
 IREE_API_EXPORT iree_vm_ref_t
 iree_vm_ref_from_ptr_retained(void* ptr, iree_vm_ref_type_t type) {
-  if (ptr) iree_vm_ref_object_retain(ptr);
+  if (ptr) {
+    iree_vm_ref_object_retain(ptr);
+  }
   return iree_vm_ref_make(ptr, type, IREE_VM_REF_STATE_OWNED);
 }
 
@@ -82,7 +88,9 @@ iree_vm_ref_from_ptr_move(void** inout_ptr, iree_vm_ref_type_t type) {
 }
 
 IREE_API_EXPORT iree_vm_ref_t iree_vm_ref_retain(iree_vm_ref_t ref) {
-  if (!ref.object) return iree_vm_ref_null();
+  if (!ref.object) {
+    return iree_vm_ref_null();
+  }
   iree_vm_ref_object_retain(ref.object);
   return iree_vm_ref_make(ref.object, iree_vm_ref_type(ref),
                           IREE_VM_REF_STATE_OWNED);
@@ -124,7 +132,9 @@ IREE_API_EXPORT iree_status_t iree_vm_ptr_from_ref_retained(
                             "out_ptr is required");
   }
   IREE_RETURN_IF_ERROR(iree_vm_ref_check_type(ref, expected_type));
-  if (ref.object) iree_vm_ref_object_retain(ref.object);
+  if (ref.object) {
+    iree_vm_ref_object_retain(ref.object);
+  }
   *out_ptr = ref.object;
   return iree_ok_status();
 }

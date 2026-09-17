@@ -29,12 +29,16 @@ class DispatchIndirectParametersTest : public CtsTestBase<> {
 
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
 
     LoadExecutableOrSkipUnsupported(
         "command_buffer_dispatch_multi_workgroup_test.bin",
         &workgroup_id_executable_);
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
     LoadExecutableOrSkipUnsupported(
         "command_buffer_dispatch_indirect_parameters_test.bin",
         &parameter_producer_executable_);

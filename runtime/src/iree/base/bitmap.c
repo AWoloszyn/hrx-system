@@ -58,7 +58,9 @@
 bool iree_bitmap_any_set(iree_bitmap_t bitmap) {
   iree_host_size_t i = 0;
   for (i = 0; i < bitmap.bit_count / IREE_BITMAP_BITS_PER_WORD; ++i) {
-    if (bitmap.words[i]) return true;
+    if (bitmap.words[i]) {
+      return true;
+    }
   }
   if (bitmap.bit_count % IREE_BITMAP_BITS_PER_WORD) {
     if (bitmap.words[i] & _BIT_SUFFIX_WORD_MASK(bitmap.bit_count)) {
@@ -100,7 +102,9 @@ void iree_bitmap_set(iree_bitmap_t bitmap, iree_host_size_t bit_index) {
 
 void iree_bitmap_set_span(iree_bitmap_t bitmap, iree_host_size_t bit_index,
                           iree_host_size_t bit_length) {
-  if (bit_length == 0) return;
+  if (bit_length == 0) {
+    return;
+  }
   const iree_host_size_t bit_end = bit_index + bit_length;
 
   // Set from the start of the span to the last full word.
@@ -139,7 +143,9 @@ void iree_bitmap_reset(iree_bitmap_t bitmap, iree_host_size_t bit_index) {
 
 void iree_bitmap_reset_span(iree_bitmap_t bitmap, iree_host_size_t bit_index,
                             iree_host_size_t bit_length) {
-  if (bit_length == 0) return;
+  if (bit_length == 0) {
+    return;
+  }
   const iree_host_size_t bit_end = bit_index + bit_length;
 
   // Reset from the start of the span to the last full word.
@@ -173,7 +179,9 @@ void iree_bitmap_reset_all(iree_bitmap_t bitmap) {
 static iree_host_size_t iree_bitmap_find_next_set_bit(
     const uint64_t* words, iree_host_size_t bit_count,
     iree_host_size_t bit_offset) {
-  if (IREE_UNLIKELY(bit_offset >= bit_count)) return bit_count;
+  if (IREE_UNLIKELY(bit_offset >= bit_count)) {
+    return bit_count;
+  }
   const uint64_t word_mask = _BIT_PREFIX_WORD_MASK(bit_offset);
   iree_host_size_t word_index = _BIT_OFFSET_TO_WORD_INDEX(bit_offset);
   uint64_t word = 0;
@@ -196,7 +204,9 @@ iree_host_size_t iree_bitmap_find_first_set(iree_bitmap_t bitmap,
 static iree_host_size_t iree_bitmap_find_next_unset_bit(
     const uint64_t* words, iree_host_size_t bit_count,
     iree_host_size_t bit_offset) {
-  if (IREE_UNLIKELY(bit_offset >= bit_count)) return bit_count;
+  if (IREE_UNLIKELY(bit_offset >= bit_count)) {
+    return bit_count;
+  }
   const uint64_t word_mask = _BIT_PREFIX_WORD_MASK(bit_offset);
   iree_host_size_t word_index = _BIT_OFFSET_TO_WORD_INDEX(bit_offset);
   uint64_t word = 0;
@@ -225,7 +235,9 @@ iree_host_size_t iree_bitmap_find_first_unset_span(
     bit_index = iree_bitmap_find_next_unset_bit(bitmap.words, bitmap.bit_count,
                                                 bit_offset);
     const iree_host_size_t bit_end = bit_index + bit_length;
-    if (bit_end > bitmap.bit_count) return bitmap.bit_count;
+    if (bit_end > bitmap.bit_count) {
+      return bitmap.bit_count;
+    }
     const iree_host_size_t next_index =
         iree_bitmap_find_next_set_bit(bitmap.words, bit_end, bit_index);
     if (next_index < bit_end) {

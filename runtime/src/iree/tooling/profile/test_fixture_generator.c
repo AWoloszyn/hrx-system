@@ -79,7 +79,9 @@ static iree_status_t write_smoke_profile(iree_string_view_t path,
   iree_status_t status = iree_hal_profile_file_sink_create(
       file_handle, iree_allocator_system(), &sink);
   iree_io_file_handle_release(file_handle);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   iree_hal_profile_chunk_metadata_t session_metadata =
       iree_hal_profile_chunk_metadata_default();

@@ -197,7 +197,9 @@ TEST(Compile, ExcessiveAlternationBranchesFails) {
   // The NFA has a limit of 255 branches because branch_index is uint8_t.
   std::string pattern;
   for (int i = 0; i < 256; ++i) {
-    if (i > 0) pattern += "|";
+    if (i > 0) {
+      pattern += "|";
+    }
     pattern += "a" + std::to_string(i);
   }
 
@@ -210,7 +212,9 @@ TEST(Compile, MaxAlternationBranchesSucceeds) {
   // Build a pattern with exactly 255 alternation branches - should succeed.
   std::string pattern;
   for (int i = 0; i < 255; ++i) {
-    if (i > 0) pattern += "|";
+    if (i > 0) {
+      pattern += "|";
+    }
     pattern += "a" + std::to_string(i);
   }
 
@@ -661,7 +665,9 @@ TEST(Parse, NullOutAstReturnsError) {
 // Helper to check if a state is in the end_anchor_bitmap.
 bool IsInEndAnchorBitmap(const iree_tokenizer_regex_dfa_t* dfa,
                          uint16_t state_id) {
-  if (!dfa->end_anchor_bitmap) return false;
+  if (!dfa->end_anchor_bitmap) {
+    return false;
+  }
   return (dfa->end_anchor_bitmap[state_id / 64] & (1ULL << (state_id % 64))) !=
          0;
 }

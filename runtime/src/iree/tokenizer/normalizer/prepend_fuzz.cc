@@ -30,10 +30,14 @@ static void process_with_chunk_size(iree_tokenizer_normalizer_t* normalizer,
                                     size_t chunk_size) {
   iree_host_size_t state_size =
       iree_tokenizer_normalizer_state_size(normalizer);
-  if (state_size == 0 || state_size > 64 * 1024) return;
+  if (state_size == 0 || state_size > 64 * 1024) {
+    return;
+  }
 
   void* state_buffer = malloc(state_size);
-  if (!state_buffer) return;
+  if (!state_buffer) {
+    return;
+  }
 
   iree_tokenizer_normalizer_state_t* state = NULL;
   iree_status_t status = iree_tokenizer_normalizer_state_initialize(
@@ -46,7 +50,9 @@ static void process_with_chunk_size(iree_tokenizer_normalizer_t* normalizer,
 
   // Prepend adds bytes, so output can be larger than input.
   size_t output_capacity = size + 32;
-  if (output_capacity > 64 * 1024) output_capacity = 64 * 1024;
+  if (output_capacity > 64 * 1024) {
+    output_capacity = 64 * 1024;
+  }
   char* output = (char*)malloc(output_capacity);
   if (!output) {
     iree_tokenizer_normalizer_state_deinitialize(state);
@@ -64,7 +70,9 @@ static void process_with_chunk_size(iree_tokenizer_normalizer_t* normalizer,
     iree_string_view_t input_chunk = iree_make_string_view(
         reinterpret_cast<const char*>(data + offset), this_chunk);
 
-    if (total_written >= output_capacity) break;
+    if (total_written >= output_capacity) {
+      break;
+    }
     iree_mutable_string_view_t output_view = iree_make_mutable_string_view(
         output + total_written, output_capacity - total_written);
 
@@ -82,8 +90,12 @@ static void process_with_chunk_size(iree_tokenizer_normalizer_t* normalizer,
     total_written += written;
 
     if (consumed == 0) {
-      if (written == 0) break;
-      if (++stall_count > 16) break;
+      if (written == 0) {
+        break;
+      }
+      if (++stall_count > 16) {
+        break;
+      }
     } else {
       stall_count = 0;
     }
@@ -106,12 +118,18 @@ static void process_with_chunk_size(iree_tokenizer_normalizer_t* normalizer,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 2) return 0;
-  if (size > 16 * 1024) size = 16 * 1024;
+  if (size < 2) {
+    return 0;
+  }
+  if (size > 16 * 1024) {
+    size = 16 * 1024;
+  }
 
   // Use first byte to determine prepend string length (1-8).
   size_t prepend_len = (data[0] % 8) + 1;
-  if (prepend_len > size - 1) prepend_len = size - 1;
+  if (prepend_len > size - 1) {
+    prepend_len = size - 1;
+  }
 
   iree_string_view_t prepend_string = iree_make_string_view(
       reinterpret_cast<const char*>(data + 1), prepend_len);

@@ -92,7 +92,9 @@ class TrieBuilder {
     uint32_t next_free = 512;  // Next free slot for leaves and intermediate
 
     for (const auto& [key, replacement] : mappings_) {
-      if (key.empty()) continue;
+      if (key.empty()) {
+        continue;
+      }
 
       uint32_t pos =
           ROOT_BASE;  // Current base position (after XOR with offset)
@@ -131,7 +133,9 @@ class TrieBuilder {
     // Convert sparse map to dense vector.
     uint32_t max_index = 0;
     for (const auto& [idx, _] : trie_entries) {
-      if (idx > max_index) max_index = idx;
+      if (idx > max_index) {
+        max_index = idx;
+      }
     }
     std::vector<uint32_t> trie(max_index + 1, 0);
     for (const auto& [idx, value] : trie_entries) {

@@ -87,13 +87,16 @@ static iree_status_t loom_vm_return_temporary(
   bool occupied[256] = {false};
   for (iree_host_size_t i = 0; i < move_count; ++i) {
     if (moves[i].source.descriptor_reg_class_id !=
-        storage_class->descriptor_reg_class_id)
+        storage_class->descriptor_reg_class_id) {
       continue;
+    }
     occupied[moves[i].source.location] = true;
     occupied[moves[i].destination.location] = true;
   }
   uint32_t location = state->result_count;
-  while (occupied[location]) ++location;
+  while (occupied[location]) {
+    ++location;
+  }
   *out_temporary = *storage_class;
   out_temporary->location = location;
   state->register_count = iree_max(state->register_count, location + 1);
@@ -197,7 +200,9 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_return(
 static uint64_t loom_vm_function_immediate(
     const loom_low_emission_frame_t* frame,
     const loom_low_immediate_t* immediate, loom_attribute_t value) {
-  if (value.kind != LOOM_ATTR_STRING) return (uint64_t)value.i64;
+  if (value.kind != LOOM_ATTR_STRING) {
+    return (uint64_t)value.i64;
+  }
   // Verified Low permits either an integer ordinal or a named enum token.
   // Compiler lowering emits ordinals; authored assembly can use either form.
   const loom_low_descriptor_set_t* descriptors = frame->target.descriptor_set;
@@ -563,7 +568,9 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_call(
        i < iree_min(16, values->argument_count) && iree_status_is_ok(status);
        ++i) {
     const uint8_t source = values->arguments[i];
-    if (source == i) continue;
+    if (source == i) {
+      continue;
+    }
     if (source < prefix_count) {
       status = loom_vm_function_transfer_stack(
           stream, byte_offset + source * sizeof(uint64_t), i, 1, false);
@@ -586,7 +593,9 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_call(
        i < iree_min(16, refs->argument_count) && iree_status_is_ok(status);
        ++i) {
     const uint8_t source = refs->arguments[i];
-    if (source == i) continue;
+    if (source == i) {
+      continue;
+    }
     if (source < ref_prefix_count) {
       status = loom_vm_function_transfer_refs(
           stream, IREE_VM_BYTECODE_OPCODE_REF_STACK_LOAD_RETAIN,
@@ -731,11 +740,15 @@ static iree_status_t loom_vm_function_arguments(
     const bool is_ref =
         signature->fields[i].kind_u16 == IREE_VM_BYTECODE_SIGNATURE_KIND_REF;
     const uint16_t ordinal = ordinals_by_bank[is_ref]++;
-    if (ordinal < 16) continue;
+    if (ordinal < 16) {
+      continue;
+    }
     const loom_low_allocation_assignment_t* assignment =
         loom_low_allocation_assignment_for_value_ordinal(&frame->allocation, i,
                                                          NULL);
-    if (!assignment) continue;
+    if (!assignment) {
+      continue;
+    }
     const iree_vm_bytecode_value_abi_argument_load_t instruction = {
         .opcode = is_ref ? IREE_VM_BYTECODE_OPCODE_REF_ABI_ARGUMENT_LOAD_MOVE
                          : IREE_VM_BYTECODE_OPCODE_VALUE_ABI_ARGUMENT_LOAD,
@@ -765,7 +778,9 @@ iree_status_t loom_vm_function_emit(
         signature->fields[i].kind_u16 == IREE_VM_BYTECODE_SIGNATURE_KIND_REF
             ? ref_ordinal++
             : value_ordinal++;
-    if (ordinal >= 16) continue;
+    if (ordinal >= 16) {
+      continue;
+    }
     fixed_values[fixed_count++] = (loom_low_allocation_fixed_value_t){
         .value_id = arguments[i],
         .location_kind = LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER,

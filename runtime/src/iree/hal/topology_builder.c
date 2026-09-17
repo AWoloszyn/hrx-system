@@ -30,7 +30,9 @@ static iree_status_t iree_hal_topology_storage_layout_append_array(
   IREE_ASSERT_ARGUMENT(inout_total_size);
   IREE_ASSERT_ARGUMENT(out_offset);
   *out_offset = 0;
-  if (!count) return iree_ok_status();
+  if (!count) {
+    return iree_ok_status();
+  }
   *inout_total_size = iree_host_align(*inout_total_size, alignment);
   if (IREE_UNLIKELY(count >
                     (IREE_HOST_SIZE_MAX - *inout_total_size) / element_size)) {
@@ -167,7 +169,9 @@ static bool iree_hal_physical_device_spec_try_get_numa_node(
                          IREE_HAL_PHYSICAL_DEVICE_IDENTITY_FLAG_NUMA_NODE)) {
     return false;
   }
-  if (physical_device->identity.numa.node_id > UINT8_MAX) return false;
+  if (physical_device->identity.numa.node_id > UINT8_MAX) {
+    return false;
+  }
   *out_numa_node = (uint8_t)physical_device->identity.numa.node_id;
   return true;
 }
@@ -179,7 +183,9 @@ static bool iree_hal_topology_device_spec_try_get_representative_numa_node(
   IREE_ASSERT_ARGUMENT(out_representative_numa_node);
   const iree_hal_device_identity_spec_t* identity =
       iree_hal_device_spec_identity(device_spec);
-  if (!identity->physical_device_count) return false;
+  if (!identity->physical_device_count) {
+    return false;
+  }
 
   uint8_t representative_numa_node = 0;
   if (!iree_hal_physical_device_spec_try_get_numa_node(
@@ -243,7 +249,9 @@ static bool iree_hal_topology_physical_device_sets_match_by_uuid(
           iree_hal_uuid_equal(source_physical->identity.uuid,
                               destination_physical->identity.uuid);
     }
-    if (!found_match) return false;
+    if (!found_match) {
+      return false;
+    }
   }
   return true;
 }
@@ -299,7 +307,9 @@ static uint8_t iree_hal_topology_numa_distance_between_device_specs(
           destination_spec, &destination_numa_node)) {
     return 0;
   }
-  if (source_numa_node == destination_numa_node) return 0;
+  if (source_numa_node == destination_numa_node) {
+    return 0;
+  }
 
   uint8_t slit_distance = 0;
   if (iree_hal_platform_try_query_numa_distance(
@@ -629,7 +639,9 @@ static iree_status_t iree_hal_topology_builder_create_spec_nodes_and_links(
 
   if (iree_status_is_ok(status)) {
     memset(nodes, 0, node_count * sizeof(*nodes));
-    if (links) memset(links, 0, link_count * sizeof(*links));
+    if (links) {
+      memset(links, 0, link_count * sizeof(*links));
+    }
 
     iree_host_size_t node_index = 0;
     for (iree_host_size_t i = 0; i < numa_node_count; ++i) {

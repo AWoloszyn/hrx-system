@@ -471,7 +471,9 @@ static void iree_hal_amdgpu_topology_costs_from_link_class(
 
 static uint8_t iree_hal_amdgpu_topology_scale_hsa_numa_distance(
     uint32_t hsa_numa_distance) {
-  if (hsa_numa_distance == 0) return 0;
+  if (hsa_numa_distance == 0) {
+    return 0;
+  }
   uint32_t scaled = hsa_numa_distance > 10 ? (hsa_numa_distance - 10) / 2 : 0;
   return (uint8_t)iree_min(scaled, 15u);
 }

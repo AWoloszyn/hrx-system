@@ -81,7 +81,9 @@ static inline void loom_bytecode_cursor_initialize(
 // Returns the number of bytes remaining from the current position.
 static inline iree_host_size_t loom_bytecode_cursor_remaining(
     const loom_bytecode_cursor_t* cursor) {
-  if (IREE_UNLIKELY(cursor->position > cursor->length)) return 0;
+  if (IREE_UNLIKELY(cursor->position > cursor->length)) {
+    return 0;
+  }
   return cursor->length - cursor->position;
 }
 
@@ -253,7 +255,9 @@ static inline iree_status_t loom_uvarint_encode(uint64_t value,
   do {
     uint8_t byte = (uint8_t)(value & 0x7F);
     value >>= 7;
-    if (value != 0) byte |= 0x80;
+    if (value != 0) {
+      byte |= 0x80;
+    }
     buffer.data[i++] = byte;
   } while (value != 0);
   *out_length = i;

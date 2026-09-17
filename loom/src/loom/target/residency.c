@@ -19,7 +19,9 @@ uint64_t loom_target_residency_round_resource_units(uint64_t units,
                                            : (units + round_mask) & ~round_mask;
   }
   const uint64_t remainder = units % granularity;
-  if (remainder == 0) return units;
+  if (remainder == 0) {
+    return units;
+  }
   const uint64_t delta = granularity - remainder;
   return units > UINT64_MAX - delta ? UINT64_MAX : units + delta;
 }
@@ -122,7 +124,9 @@ static iree_status_t loom_target_residency_validate_cliff_chain(
     const loom_target_residency_cliff_t* cliffs, iree_host_size_t cliff_count,
     uint16_t expected_resource_id, uint32_t initial_tier,
     iree_string_view_t resource_name) {
-  if (cliff_count == 0) return iree_ok_status();
+  if (cliff_count == 0) {
+    return iree_ok_status();
+  }
   if (cliffs == NULL) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -343,7 +347,9 @@ static iree_status_t loom_target_residency_validate_derived_resources(
         IREE_STATUS_INVALID_ARGUMENT,
         "residency derived-resource reverse index is only partially present");
   }
-  if (!has_member_indices) return iree_ok_status();
+  if (!has_member_indices) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t expected_index_start = 0;
   for (uint16_t direct_resource_id = 0;

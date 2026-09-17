@@ -43,7 +43,9 @@ void iree_async_posix_completion_pool_deinitialize(
 iree_async_posix_completion_t* iree_async_posix_completion_pool_acquire(
     iree_async_posix_completion_pool_t* pool) {
   iree_atomic_slist_entry_t* entry = iree_atomic_slist_pop(&pool->free_list);
-  if (!entry) return NULL;
+  if (!entry) {
+    return NULL;
+  }
 
   iree_async_posix_completion_t* completion =
       iree_containerof(entry, iree_async_posix_completion_t, slist_entry);

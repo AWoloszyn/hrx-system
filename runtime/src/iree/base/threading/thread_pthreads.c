@@ -274,7 +274,9 @@ iree_thread_override_t* iree_thread_priority_class_override_begin(
 }
 
 void iree_thread_override_end(iree_thread_override_t* override) {
-  if (!override) return;
+  if (!override) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_thread_override_remove_self(override);
   IREE_TRACE_ZONE_END(z0);

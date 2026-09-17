@@ -107,13 +107,23 @@ class SharedNotificationTest : public CtsTestBase<> {
   // Destroys the shared state: closes platform primitives.
   void DestroySharedState(SharedState* state) {
 #if defined(IREE_PLATFORM_WINDOWS)
-    if (state->signal_event) CloseHandle(state->signal_event);
-    if (state->wake_event) CloseHandle(state->wake_event);
+    if (state->signal_event) {
+      CloseHandle(state->signal_event);
+    }
+    if (state->wake_event) {
+      CloseHandle(state->wake_event);
+    }
 #elif defined(IREE_PLATFORM_LINUX)
-    if (state->eventfd >= 0) close(state->eventfd);
+    if (state->eventfd >= 0) {
+      close(state->eventfd);
+    }
 #else
-    if (state->pipe_fds[0] >= 0) close(state->pipe_fds[0]);
-    if (state->pipe_fds[1] >= 0) close(state->pipe_fds[1]);
+    if (state->pipe_fds[0] >= 0) {
+      close(state->pipe_fds[0]);
+    }
+    if (state->pipe_fds[1] >= 0) {
+      close(state->pipe_fds[1]);
+    }
 #endif
   }
 

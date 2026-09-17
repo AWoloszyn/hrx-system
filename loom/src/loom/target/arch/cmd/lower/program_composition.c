@@ -71,7 +71,9 @@ static iree_status_t loom_cmd_program_composition_reject_cycles(
   *out_valid = false;
   for (iree_host_size_t i = 0; i < sccs->count; ++i) {
     const loom_scc_t* component = &sccs->values[i];
-    if (!component->is_cycle) continue;
+    if (!component->is_cycle) {
+      continue;
+    }
     IREE_ASSERT_GT(component->node_count, 0u);
     const loom_symbol_id_t symbol_id = component->nodes[0];
     const iree_string_view_t symbol_name =
@@ -129,7 +131,9 @@ static iree_status_t loom_cmd_program_composition_erase_helpers(
     const loom_scc_t* component = &components->values[i];
     for (iree_host_size_t j = 0; j < component->node_count; ++j) {
       const loom_symbol_id_t symbol_id = component->nodes[j];
-      if (root_symbols[symbol_id]) continue;
+      if (root_symbols[symbol_id]) {
+        continue;
+      }
       loom_op_t* defining_op =
           composition->module->symbols.entries[symbol_id].defining_op;
       if (defining_op != NULL) {
@@ -192,7 +196,9 @@ iree_status_t loom_cmd_program_composition_flatten(
   bool valid = false;
   IREE_RETURN_IF_ERROR(
       loom_cmd_program_composition_reject_cycles(&composition, &sccs, &valid));
-  if (!valid) return iree_ok_status();
+  if (!valid) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter = {0};
   IREE_RETURN_IF_ERROR(loom_rewriter_initialize(&rewriter, module, arena));
@@ -207,6 +213,8 @@ iree_status_t loom_cmd_program_composition_flatten(
                                                         root_symbols);
   }
   loom_rewriter_deinitialize(&rewriter);
-  if (iree_status_is_ok(status)) *out_valid = true;
+  if (iree_status_is_ok(status)) {
+    *out_valid = true;
+  }
   return status;
 }

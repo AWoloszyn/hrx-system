@@ -64,7 +64,9 @@ static iree_status_t loom_branch_fusion_region_stack_initialize(
 static iree_status_t loom_branch_fusion_region_stack_push(
     iree_arena_allocator_t* arena, loom_branch_fusion_region_stack_t* stack,
     loom_region_t* region) {
-  if (!region || region->block_count == 0) return iree_ok_status();
+  if (!region || region->block_count == 0) {
+    return iree_ok_status();
+  }
   if (stack->count >= stack->capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         arena, stack->count, stack->count + 1, sizeof(loom_region_t*),
@@ -124,7 +126,9 @@ typedef struct loom_branch_fusion_context_t {
 
 static iree_status_t loom_branch_fusion_prepare_availability(
     loom_branch_fusion_context_t* context) {
-  if (context->availability.initialized) return iree_ok_status();
+  if (context->availability.initialized) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_availability_analysis_initialize_region(
       context->module, context->availability.scope, context->pass->arena,
       &context->availability.analysis));
@@ -139,12 +143,20 @@ static iree_status_t loom_branch_fusion_prepare_availability(
 static bool loom_branch_fusion_read_if_info(
     const loom_module_t* module, loom_op_t* op,
     loom_branch_fusion_info_t* out_info) {
-  if (!loom_scf_if_isa(op)) return false;
-  if (op->tied_result_count != 0) return false;
-  if (op->region_count != LOOM_BRANCH_FUSION_IF_REGION_COUNT) return false;
+  if (!loom_scf_if_isa(op)) {
+    return false;
+  }
+  if (op->tied_result_count != 0) {
+    return false;
+  }
+  if (op->region_count != LOOM_BRANCH_FUSION_IF_REGION_COUNT) {
+    return false;
+  }
 
   loom_region_branch_t branch = loom_region_branch_cast(module, op);
-  if (!loom_region_branch_isa(branch)) return false;
+  if (!loom_region_branch_isa(branch)) {
+    return false;
+  }
 
   loom_value_id_t selector = loom_region_branch_selector(branch);
   if (selector == LOOM_VALUE_ID_INVALID || selector >= module->values.count) {
@@ -156,12 +168,20 @@ static bool loom_branch_fusion_read_if_info(
   loom_op_t* terminators[LOOM_BRANCH_FUSION_IF_REGION_COUNT] = {0};
   for (uint8_t i = 0; i < LOOM_BRANCH_FUSION_IF_REGION_COUNT; ++i) {
     loom_region_t* region = loom_region_branch_region(module, branch, i);
-    if (!region || region->block_count != 1) return false;
+    if (!region || region->block_count != 1) {
+      return false;
+    }
     blocks[i] = loom_region_entry_block(region);
-    if (!blocks[i]) return false;
+    if (!blocks[i]) {
+      return false;
+    }
     terminators[i] = loom_region_branch_region_terminator(module, branch, i);
-    if (!terminators[i]) return false;
-    if (terminators[i]->operand_count != results.count) return false;
+    if (!terminators[i]) {
+      return false;
+    }
+    if (terminators[i]->operand_count != results.count) {
+      return false;
+    }
   }
 
   *out_info = (loom_branch_fusion_info_t){
@@ -178,8 +198,12 @@ static bool loom_branch_fusion_read_if_info(
 static bool loom_branch_fusion_candidate_is_legal(
     const loom_branch_fusion_info_t* first,
     const loom_branch_fusion_info_t* second) {
-  if (first->op->kind != second->op->kind) return false;
-  if (first->selector != second->selector) return false;
+  if (first->op->kind != second->op->kind) {
+    return false;
+  }
+  if (first->selector != second->selector) {
+    return false;
+  }
   uint32_t combined_count =
       (uint32_t)first->results.count + (uint32_t)second->results.count;
   return combined_count <= UINT16_MAX;
@@ -197,7 +221,9 @@ static iree_status_t loom_branch_fusion_concat_placeholder_types(
       (uint32_t)first->results.count + (uint32_t)second->results.count;
   *out_count = (uint16_t)combined_count;
   *out_result_types = NULL;
-  if (combined_count == 0) return iree_ok_status();
+  if (combined_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, combined_count, sizeof(loom_type_t), (void**)out_result_types));
@@ -280,7 +306,9 @@ static iree_status_t loom_branch_fusion_build_placeholder_values(
     iree_arena_allocator_t* arena, loom_value_id_t selector,
     uint16_t result_count, loom_value_id_t** out_values) {
   *out_values = NULL;
-  if (result_count == 0) return iree_ok_status();
+  if (result_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, result_count, sizeof(loom_value_id_t), (void**)out_values));
   for (uint16_t i = 0; i < result_count; ++i) {
@@ -322,7 +350,9 @@ static bool loom_branch_fusion_op_has_result_name(const loom_module_t* module,
         results[i] >= module->values.count) {
       continue;
     }
-    if (loom_module_value(module, results[i])->name_id == name_id) return true;
+    if (loom_module_value(module, results[i])->name_id == name_id) {
+      return true;
+    }
   }
   return false;
 }
@@ -330,10 +360,14 @@ static bool loom_branch_fusion_op_has_result_name(const loom_module_t* module,
 static bool loom_branch_fusion_block_prefix_has_result_name(
     const loom_module_t* module, const loom_block_t* block,
     const loom_op_t* before_op, loom_string_id_t name_id) {
-  if (name_id == LOOM_STRING_ID_INVALID) return false;
+  if (name_id == LOOM_STRING_ID_INVALID) {
+    return false;
+  }
   const loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
-    if (op == before_op) break;
+    if (op == before_op) {
+      break;
+    }
     if (loom_branch_fusion_op_has_result_name(module, op, name_id)) {
       return true;
     }
@@ -346,7 +380,9 @@ static iree_status_t loom_branch_fusion_clear_conflicting_result_names(
     loom_block_t* target_block, loom_op_t* before_op) {
   loom_op_t* op = NULL;
   loom_block_for_each_op(source_block, op) {
-    if (loom_scf_yield_isa(op)) continue;
+    if (loom_scf_yield_isa(op)) {
+      continue;
+    }
     loom_value_id_t* results = loom_op_results(op);
     for (uint16_t i = 0; i < op->result_count; ++i) {
       if (results[i] == LOOM_VALUE_ID_INVALID ||
@@ -602,7 +638,9 @@ static iree_status_t loom_branch_fusion_process_function_once(
     loom_branch_fusion_context_t* context, loom_func_like_t function,
     bool* out_changed) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   context->region_stack.count = 0;
   IREE_RETURN_IF_ERROR(loom_branch_fusion_region_stack_push(
@@ -611,7 +649,9 @@ static iree_status_t loom_branch_fusion_process_function_once(
   while (true) {
     loom_region_t* region =
         loom_branch_fusion_region_stack_pop(&context->region_stack);
-    if (!region) break;
+    if (!region) {
+      break;
+    }
 
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
@@ -625,7 +665,9 @@ static iree_status_t loom_branch_fusion_process_function_once(
 
 iree_status_t loom_branch_fusion_run(loom_pass_t* pass, loom_module_t* module,
                                      loom_func_like_t function) {
-  if (!loom_func_like_body(function)) return iree_ok_status();
+  if (!loom_func_like_body(function)) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(

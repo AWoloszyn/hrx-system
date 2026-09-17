@@ -144,7 +144,9 @@ iree_status_t ReadArtifactPrefix(const loomc_artifact_t* artifact,
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "artifact is empty or truncated");
   }
-  if (prefix.data_length == 0) return iree_ok_status();
+  if (prefix.data_length == 0) {
+    return iree_ok_status();
+  }
   loomc_byte_span_t contiguous_span = loomc_byte_span_empty();
   if (loomc_byte_sequence_try_get_contiguous_span(artifact->contents,
                                                   &contiguous_span)) {
