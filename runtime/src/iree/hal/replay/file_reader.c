@@ -45,6 +45,11 @@ iree_hal_replay_file_parse_header(iree_const_byte_span_t file_contents,
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "unsupported IREE HAL replay file version");
   }
+  if (IREE_UNLIKELY(header.version_minor >
+                    IREE_HAL_REPLAY_FILE_VERSION_MINOR)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "unsupported IREE HAL replay file version");
+  }
   if (IREE_UNLIKELY(header.header_length < sizeof(header))) {
     return iree_make_status(IREE_STATUS_DATA_LOSS,
                             "replay file header length is too small");

@@ -166,6 +166,7 @@ iree_hal_replay_dump_file(iree_const_byte_span_t file_contents,
   iree_hal_replay_dump_context_t context = {
       .write_callback = write_callback,
       .host_allocator = host_allocator,
+      .file_version_minor = file_header.version_minor,
   };
   iree_string_builder_t builder;
   iree_string_builder_initialize(host_allocator, &builder);

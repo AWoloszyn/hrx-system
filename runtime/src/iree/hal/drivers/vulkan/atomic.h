@@ -62,6 +62,9 @@ typedef struct iree_hal_vulkan_atomic_params_t {
   // Width of the target value.
   iree_hal_atomic_width_t width;
 
+  // Status contract for final target-address failures.
+  iree_hal_atomic_target_error_mode_t target_error_mode;
+
   // Built-in shader operation selector.
   iree_hal_vulkan_atomic_operation_t operation;
 } iree_hal_vulkan_atomic_params_t;
@@ -130,12 +133,15 @@ VkAccessFlags2 iree_hal_vulkan_atomic_access_mask(
 
 // Validates that |target_address| is naturally aligned for |width|.
 iree_status_t iree_hal_vulkan_atomic_validate_target_address(
-    VkDeviceAddress target_address, iree_hal_atomic_width_t width);
+    VkDeviceAddress target_address, iree_hal_atomic_width_t width,
+    iree_hal_atomic_target_error_mode_t target_error_mode);
 
 // Resolves one retained HAL buffer target to a final naturally aligned BDA.
 iree_status_t iree_hal_vulkan_atomic_resolve_target_address(
     iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
-    iree_hal_atomic_width_t width, VkDeviceAddress* out_target_address);
+    iree_hal_atomic_width_t width,
+    iree_hal_atomic_target_error_mode_t target_error_mode,
+    VkDeviceAddress* out_target_address);
 
 // Records one validated built-in atomic operation.
 //

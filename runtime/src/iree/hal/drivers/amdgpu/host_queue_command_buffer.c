@@ -311,7 +311,7 @@ iree_hal_amdgpu_host_queue_validate_pm4_atomic_binding_requirements(
     iree_hal_buffer_binding_table_t binding_table,
     const uint64_t* binding_ptrs) {
   uint32_t requirement_count = 0;
-  const iree_hal_amdgpu_atomic_memory_cell_flags_t* requirements =
+  const iree_hal_amdgpu_pm4_atomic_binding_requirements_t* requirements =
       iree_hal_amdgpu_pm4_command_buffer_atomic_binding_requirements(
           command_buffer, &requirement_count);
   if (requirement_count == 0) {
@@ -326,7 +326,10 @@ iree_hal_amdgpu_host_queue_validate_pm4_atomic_binding_requirements(
   iree_status_t status = iree_ok_status();
   for (uint32_t i = 0; i < requirement_count && iree_status_is_ok(status);
        ++i) {
-    if (requirements[i] == IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE) {
+    if (requirements[i].default_error_cells ==
+            IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE &&
+        requirements[i].incompatible_error_cells ==
+            IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE) {
       continue;
     }
     if (IREE_UNLIKELY(!binding_table.bindings[i].buffer)) {
@@ -337,9 +340,25 @@ iree_hal_amdgpu_host_queue_validate_pm4_atomic_binding_requirements(
     }
     iree_hal_buffer_t* allocated_buffer =
         iree_hal_buffer_allocated_buffer(binding_table.bindings[i].buffer);
-    status = iree_hal_amdgpu_atomic_memory_validate_required_cells(
-        iree_hal_amdgpu_buffer_atomic_memory_cells(allocated_buffer),
-        (const void*)(uintptr_t)binding_ptrs[i], requirements[i]);
+    const iree_hal_amdgpu_atomic_memory_cell_flags_t available_cells =
+        iree_hal_amdgpu_buffer_atomic_memory_cells(allocated_buffer);
+    const void* target_pointer = (const void*)(uintptr_t)binding_ptrs[i];
+    if (requirements[i].default_error_cells !=
+        IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE) {
+      status = iree_hal_amdgpu_atomic_memory_validate_required_cells(
+          available_cells, target_pointer, requirements[i].default_error_cells,
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT);
+    }
+    // Preserve the established status when a binding serves both default and
+    // opt-in operations by validating its default-classified cells first.
+    if (iree_status_is_ok(status) &&
+        requirements[i].incompatible_error_cells !=
+            IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE) {
+      status = iree_hal_amdgpu_atomic_memory_validate_required_cells(
+          available_cells, target_pointer,
+          requirements[i].incompatible_error_cells,
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE);
+    }
     if (!iree_status_is_ok(status)) {
       status = iree_status_annotate_f(status, "binding_table[%u]", i);
     }

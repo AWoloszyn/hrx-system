@@ -155,6 +155,16 @@ static iree_status_t iree_hal_command_buffer_validate_binding_requirements(
         "(absolute_offset=%" PRIdsz ", min_byte_alignment=%" PRIhsz ")",
         absolute_binding_offset, requirements.min_byte_alignment);
   }
+  if (requirements.incompatible_min_byte_alignment &&
+      (absolute_binding_offset %
+       requirements.incompatible_min_byte_alignment) != 0) {
+    return iree_make_status(
+        IREE_STATUS_INCOMPATIBLE,
+        "resolved atomic target address does not match the opt-in "
+        "required alignment "
+        "(absolute_offset=%" PRIdsz ", min_byte_alignment=%" PRIhsz ")",
+        absolute_binding_offset, requirements.incompatible_min_byte_alignment);
+  }
 
   return iree_ok_status();
 }
@@ -205,6 +215,14 @@ static iree_status_t iree_hal_command_buffer_validate_buffer_requirements(
             ? iree_device_size_lcm(table_requirements->min_byte_alignment,
                                    requirements.min_byte_alignment)
             : requirements.min_byte_alignment;
+  }
+  if (requirements.incompatible_min_byte_alignment) {
+    table_requirements->incompatible_min_byte_alignment =
+        table_requirements->incompatible_min_byte_alignment
+            ? iree_device_size_lcm(
+                  table_requirements->incompatible_min_byte_alignment,
+                  requirements.incompatible_min_byte_alignment)
+            : requirements.incompatible_min_byte_alignment;
   }
 
   return iree_ok_status();
@@ -297,6 +315,7 @@ static iree_status_t iree_hal_command_buffer_atomic_target_validation(
     iree_hal_command_buffer_t* command_buffer,
     iree_hal_command_buffer_validation_state_t* validation_state,
     iree_hal_buffer_ref_t target_ref, iree_hal_atomic_width_t width,
+    iree_hal_atomic_target_error_mode_t target_error_mode,
     iree_hal_buffer_usage_t usage, iree_hal_memory_access_t access) {
   IREE_RETURN_IF_ERROR(iree_hal_command_buffer_validate_categories(
       command_buffer, validation_state, IREE_HAL_COMMAND_CATEGORY_ATOMIC));
@@ -314,7 +333,11 @@ static iree_status_t iree_hal_command_buffer_atomic_target_validation(
                             "atomic target range overflows device size");
   }
   if (IREE_UNLIKELY((target_ref.offset % byte_count) != 0)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+    const iree_status_code_t status_code =
+        target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+            ? IREE_STATUS_INCOMPATIBLE
+            : IREE_STATUS_INVALID_ARGUMENT;
+    return iree_make_status(status_code,
                             "atomic target offset is not naturally aligned "
                             "(offset=%" PRIdsz ", alignment=%" PRIdsz ")",
                             target_ref.offset, byte_count);
@@ -322,8 +345,12 @@ static iree_status_t iree_hal_command_buffer_atomic_target_validation(
   if (target_ref.buffer &&
       IREE_UNLIKELY(
           (iree_hal_buffer_byte_offset(target_ref.buffer) % byte_count) != 0)) {
+    const iree_status_code_t status_code =
+        target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+            ? IREE_STATUS_INCOMPATIBLE
+            : IREE_STATUS_INVALID_ARGUMENT;
     return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
+        status_code,
         "atomic target buffer base is not naturally aligned "
         "(buffer_offset=%" PRIdsz ", alignment=%" PRIdsz ")",
         iree_hal_buffer_byte_offset(target_ref.buffer), byte_count);
@@ -338,7 +365,14 @@ static iree_status_t iree_hal_command_buffer_atomic_target_validation(
       .access = access,
       .type = IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
       .max_byte_offset = target_ref.offset + byte_count,
-      .min_byte_alignment = byte_count,
+      .min_byte_alignment =
+          target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT
+              ? byte_count
+              : 0,
+      .incompatible_min_byte_alignment =
+          target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+              ? byte_count
+              : 0,
   };
   return iree_hal_command_buffer_validate_buffer_requirements(
       command_buffer, validation_state, target_ref, target_requirements);
@@ -353,7 +387,8 @@ iree_status_t iree_hal_command_buffer_atomic_wait_validation(
   IREE_RETURN_IF_ERROR(iree_hal_atomic_wait_params_validate(params));
   return iree_hal_command_buffer_atomic_target_validation(
       command_buffer, validation_state, target_ref, params.width,
-      IREE_HAL_BUFFER_USAGE_STORAGE_READ, IREE_HAL_MEMORY_ACCESS_READ);
+      params.target_error_mode, IREE_HAL_BUFFER_USAGE_STORAGE_READ,
+      IREE_HAL_MEMORY_ACCESS_READ);
 }
 
 iree_status_t iree_hal_command_buffer_atomic_store_validation(
@@ -365,7 +400,8 @@ iree_status_t iree_hal_command_buffer_atomic_store_validation(
   IREE_RETURN_IF_ERROR(iree_hal_atomic_store_params_validate(params));
   return iree_hal_command_buffer_atomic_target_validation(
       command_buffer, validation_state, target_ref, params.width,
-      IREE_HAL_BUFFER_USAGE_STORAGE_WRITE, IREE_HAL_MEMORY_ACCESS_WRITE);
+      params.target_error_mode, IREE_HAL_BUFFER_USAGE_STORAGE_WRITE,
+      IREE_HAL_MEMORY_ACCESS_WRITE);
 }
 
 iree_status_t iree_hal_command_buffer_atomic_rmw_validation(
@@ -377,7 +413,7 @@ iree_status_t iree_hal_command_buffer_atomic_rmw_validation(
   IREE_RETURN_IF_ERROR(iree_hal_atomic_rmw_params_validate(params));
   return iree_hal_command_buffer_atomic_target_validation(
       command_buffer, validation_state, target_ref, params.width,
-      IREE_HAL_BUFFER_USAGE_STORAGE,
+      params.target_error_mode, IREE_HAL_BUFFER_USAGE_STORAGE,
       IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE);
 }
 

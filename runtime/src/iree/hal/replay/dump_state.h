@@ -20,6 +20,8 @@ typedef struct iree_hal_replay_dump_context_t {
   iree_hal_replay_dump_write_callback_t write_callback;
   // Host allocator used for temporary line construction.
   iree_allocator_t host_allocator;
+  // Minor version parsed from the replay file header.
+  uint16_t file_version_minor;
 } iree_hal_replay_dump_context_t;
 
 // Aggregate properties discovered by the file summary scan.

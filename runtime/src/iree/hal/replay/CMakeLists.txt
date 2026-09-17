@@ -35,6 +35,33 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    atomic_params
+  HDRS
+    "atomic_params.h"
+  SRCS
+    "atomic_params.c"
+  DEPS
+    ::format
+    iree::base
+    iree::hal
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    format_x86_32_compile_test
+  SRCS
+    "format_x86_32_compile_test.c"
+  DEPS
+    ::format
+    iree::base
+    iree::hal
+  TESTONLY
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     file_writer
   HDRS
     "file_writer.h"
@@ -89,6 +116,7 @@ iree_cc_library(
     "dump_text.c"
     "dump_text.h"
   DEPS
+    ::atomic_params
     ::digest
     ::file_reader
     ::format
@@ -113,6 +141,7 @@ iree_cc_library(
     "execute_vmm.c"
     "execute_vmm.h"
   DEPS
+    ::atomic_params
     ::digest
     ::file_reader
     ::format
@@ -164,6 +193,7 @@ iree_cc_test(
     "dump_test.cc"
   DEPS
     ::dump
+    ::file_reader
     ::file_writer
     iree::base
     iree::hal
@@ -222,12 +252,14 @@ iree_cc_test(
   DEPS
     ::execute
     ::file_reader
+    ::file_writer
     iree::async
     iree::async::util::proactor_pool
     iree::base
     iree::hal
     iree::hal::drivers::task::registration
     iree::hal::memory::passthrough_pool
+    iree::io::file_handle
     iree::testing::gtest
     iree::testing::gtest_main
 )

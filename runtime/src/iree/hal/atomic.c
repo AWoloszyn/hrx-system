@@ -55,6 +55,18 @@ static iree_status_t iree_hal_atomic_validate_flags(
   return iree_ok_status();
 }
 
+static iree_status_t iree_hal_atomic_validate_target_error_mode(
+    iree_hal_atomic_target_error_mode_t mode) {
+  switch (mode) {
+    case IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT:
+    case IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE:
+      return iree_ok_status();
+    default:
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "unsupported atomic target error mode: %u", mode);
+  }
+}
+
 IREE_API_EXPORT iree_status_t
 iree_hal_atomic_wait_params_validate(iree_hal_atomic_wait_params_t params) {
   IREE_RETURN_IF_ERROR(iree_hal_atomic_validate_width_and_value(
@@ -63,6 +75,8 @@ iree_hal_atomic_wait_params_validate(iree_hal_atomic_wait_params_t params) {
       params.width, params.mask, "wait mask"));
   IREE_RETURN_IF_ERROR(iree_hal_atomic_validate_flags(
       params.flags, IREE_HAL_ATOMIC_FLAGS_KNOWN));
+  IREE_RETURN_IF_ERROR(
+      iree_hal_atomic_validate_target_error_mode(params.target_error_mode));
   switch (params.condition) {
     case IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL:
     case IREE_HAL_ATOMIC_WAIT_CONDITION_NOT_EQUAL:
@@ -86,8 +100,9 @@ iree_hal_atomic_store_params_validate(iree_hal_atomic_store_params_t params) {
       params.width, params.value, "store value"));
   IREE_RETURN_IF_ERROR(iree_hal_atomic_validate_flags(
       params.flags, IREE_HAL_ATOMIC_FLAGS_KNOWN));
-  if (IREE_UNLIKELY(params.reserved[0] != 0 || params.reserved[1] != 0 ||
-                    params.reserved[2] != 0)) {
+  IREE_RETURN_IF_ERROR(
+      iree_hal_atomic_validate_target_error_mode(params.target_error_mode));
+  if (IREE_UNLIKELY(params.reserved[0] != 0 || params.reserved[1] != 0)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "atomic store reserved fields must be zero");
   }
@@ -100,6 +115,8 @@ iree_hal_atomic_rmw_params_validate(iree_hal_atomic_rmw_params_t params) {
       params.width, params.operand, "read-modify-write operand"));
   IREE_RETURN_IF_ERROR(iree_hal_atomic_validate_flags(
       params.flags, IREE_HAL_ATOMIC_FLAGS_KNOWN));
+  IREE_RETURN_IF_ERROR(
+      iree_hal_atomic_validate_target_error_mode(params.target_error_mode));
   switch (params.operation) {
     case IREE_HAL_ATOMIC_RMW_OPERATION_ADD:
     case IREE_HAL_ATOMIC_RMW_OPERATION_SUBTRACT:

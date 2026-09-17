@@ -190,9 +190,16 @@ iree_hal_amdgpu_pm4_command_buffer_profile_operations(
 uint32_t iree_hal_amdgpu_pm4_command_buffer_operation_count(
     iree_hal_command_buffer_t* command_buffer);
 
+// Atomic memory cells required by dynamic targets in one binding slot, split
+// by their requested target-validation status classification.
+typedef struct iree_hal_amdgpu_pm4_atomic_binding_requirements_t {
+  iree_hal_amdgpu_atomic_memory_cell_flags_t default_error_cells;
+  iree_hal_amdgpu_atomic_memory_cell_flags_t incompatible_error_cells;
+} iree_hal_amdgpu_pm4_atomic_binding_requirements_t;
+
 // Returns per-binding atomic memory cells required at queue submission.
 // |out_count| is zero when the command buffer has no dynamic atomic targets.
-const iree_hal_amdgpu_atomic_memory_cell_flags_t*
+const iree_hal_amdgpu_pm4_atomic_binding_requirements_t*
 iree_hal_amdgpu_pm4_command_buffer_atomic_binding_requirements(
     iree_hal_command_buffer_t* command_buffer, uint32_t* out_count);
 

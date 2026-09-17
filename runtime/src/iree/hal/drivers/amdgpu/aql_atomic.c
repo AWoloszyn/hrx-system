@@ -55,6 +55,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_record_wait(
   atomic_wait->atomic_flags = params.flags;
   atomic_wait->width = params.width;
   atomic_wait->condition = params.condition;
+  atomic_wait->target_error_mode = params.target_error_mode;
 
   iree_hal_amdgpu_aql_atomic_record_dependency(
       builder, target_stage_mask, params.flags, IREE_HAL_ATOMIC_FLAG_ACQUIRE);
@@ -84,6 +85,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_record_store(
   atomic_store->value = params.value;
   atomic_store->atomic_flags = params.flags;
   atomic_store->width = params.width;
+  atomic_store->target_error_mode = params.target_error_mode;
 
   iree_hal_amdgpu_aql_atomic_record_dependency(
       builder, target_stage_mask, params.flags, IREE_HAL_ATOMIC_FLAG_NONE);
@@ -114,6 +116,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_record_rmw(
   atomic_rmw->atomic_flags = params.flags;
   atomic_rmw->width = params.width;
   atomic_rmw->operation = params.operation;
+  atomic_rmw->target_error_mode = params.target_error_mode;
 
   iree_hal_amdgpu_aql_atomic_record_dependency(
       builder, target_stage_mask, params.flags, IREE_HAL_ATOMIC_FLAG_ACQUIRE);
@@ -131,6 +134,8 @@ typedef struct iree_hal_amdgpu_aql_atomic_target_params_t {
   iree_hal_atomic_width_t width;
   // Ordering and coherence-domain flags.
   iree_hal_atomic_flags_t flags;
+  // Target-validation status classification.
+  iree_hal_atomic_target_error_mode_t target_error_mode;
   // Buffer usage required by the operation.
   iree_hal_buffer_usage_t required_usage;
   // Buffer access required by the operation.
@@ -157,7 +162,8 @@ static iree_status_t iree_hal_amdgpu_aql_atomic_resolve_target(
       iree_hal_amdgpu_buffer_atomic_memory_cells(
           iree_hal_buffer_allocated_buffer(resolved_ref.buffer));
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_atomic_memory_validate_target(
-      available_cells, target_pointer, params.width, params.flags));
+      available_cells, target_pointer, params.width, params.flags,
+      params.target_error_mode));
 
   *out_target_pointer = target_pointer;
   return iree_ok_status();
@@ -178,6 +184,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_emplace_command(
           .target = &atomic_wait->target,
           .width = atomic_wait->width,
           .flags = atomic_wait->atomic_flags,
+          .target_error_mode = atomic_wait->target_error_mode,
           .required_usage = IREE_HAL_BUFFER_USAGE_STORAGE_READ,
           .required_access = IREE_HAL_MEMORY_ACCESS_READ,
       };
@@ -192,6 +199,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_emplace_command(
               .flags = atomic_wait->atomic_flags,
               .width = atomic_wait->width,
               .condition = atomic_wait->condition,
+              .target_error_mode = atomic_wait->target_error_mode,
           },
           kernarg_ptr);
       return iree_ok_status();
@@ -205,6 +213,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_emplace_command(
           .target = &atomic_store->target,
           .width = atomic_store->width,
           .flags = atomic_store->atomic_flags,
+          .target_error_mode = atomic_store->target_error_mode,
           .required_usage = IREE_HAL_BUFFER_USAGE_STORAGE_WRITE,
           .required_access = IREE_HAL_MEMORY_ACCESS_WRITE,
       };
@@ -217,6 +226,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_emplace_command(
               .value = atomic_store->value,
               .flags = atomic_store->atomic_flags,
               .width = atomic_store->width,
+              .target_error_mode = atomic_store->target_error_mode,
           },
           kernarg_ptr);
       return iree_ok_status();
@@ -228,6 +238,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_emplace_command(
           .target = &atomic_rmw->target,
           .width = atomic_rmw->width,
           .flags = atomic_rmw->atomic_flags,
+          .target_error_mode = atomic_rmw->target_error_mode,
           .required_usage = IREE_HAL_BUFFER_USAGE_STORAGE,
           .required_access =
               IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE,
@@ -242,6 +253,7 @@ iree_status_t iree_hal_amdgpu_aql_atomic_emplace_command(
               .flags = atomic_rmw->atomic_flags,
               .width = atomic_rmw->width,
               .operation = atomic_rmw->operation,
+              .target_error_mode = atomic_rmw->target_error_mode,
           },
           kernarg_ptr);
       return iree_ok_status();

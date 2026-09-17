@@ -122,19 +122,24 @@ iree_hal_amdgpu_atomic_memory_required_cell(
 // Validates that |target_pointer| is naturally aligned and |available_cells|
 // contains the width/scope cell selected by |width| and |atomic_flags|. Returns
 // IREE_STATUS_INCOMPATIBLE when the resolved target cannot satisfy either
-// requirement.
+// requirement for both supported |target_error_mode| values. Unsupported modes
+// and malformed widths return IREE_STATUS_INVALID_ARGUMENT.
 iree_status_t iree_hal_amdgpu_atomic_memory_validate_target(
     iree_hal_amdgpu_atomic_memory_cell_flags_t available_cells,
     const void* target_pointer, iree_hal_atomic_width_t width,
-    iree_hal_atomic_flags_t atomic_flags);
+    iree_hal_atomic_flags_t atomic_flags,
+    iree_hal_atomic_target_error_mode_t target_error_mode);
 
 // Validates one resolved target against an accumulated set of required cells.
 // The target must satisfy the strictest natural alignment in |required_cells|.
-// Returns IREE_STATUS_INCOMPATIBLE for target-specific mismatches.
+// Alignment and missing-cell mismatches return IREE_STATUS_INCOMPATIBLE for
+// both supported |target_error_mode| values. Unsupported modes and malformed
+// cell requirements return IREE_STATUS_INVALID_ARGUMENT.
 iree_status_t iree_hal_amdgpu_atomic_memory_validate_required_cells(
     iree_hal_amdgpu_atomic_memory_cell_flags_t available_cells,
     const void* target_pointer,
-    iree_hal_amdgpu_atomic_memory_cell_flags_t required_cells);
+    iree_hal_amdgpu_atomic_memory_cell_flags_t required_cells,
+    iree_hal_atomic_target_error_mode_t target_error_mode);
 
 // Expands compact memory cells into the public all-operations capability
 // matrix.

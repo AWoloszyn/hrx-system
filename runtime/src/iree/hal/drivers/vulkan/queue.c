@@ -9794,7 +9794,8 @@ static iree_status_t iree_hal_vulkan_queue_record_atomic_native(
   VkDeviceAddress target_address = 0;
   IREE_RETURN_IF_ERROR(iree_hal_vulkan_atomic_resolve_target_address(
       submission->atomic.target_buffer, submission->atomic.target_offset,
-      submission->atomic.params.width, &target_address));
+      submission->atomic.params.width,
+      submission->atomic.params.target_error_mode, &target_address));
   IREE_RETURN_IF_ERROR(
       iree_hal_vulkan_queue_allocate_native_command_buffer_under_lock(
           queue, submission));

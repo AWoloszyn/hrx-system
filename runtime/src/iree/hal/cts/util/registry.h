@@ -211,6 +211,9 @@ struct BackendInfo {
   // Family-owned artifact compatibility selector.
   ExecutableTargetSelectorFn executable_target_selector =
       SelectExactExecutableTarget;
+  // Status produced by DEFAULT mode for final atomic target incompatibility.
+  iree_status_code_t default_atomic_target_error_code =
+      IREE_STATUS_FAILED_PRECONDITION;
 };
 
 // Returns the stable cache key for driver/device resources owned by |info|.

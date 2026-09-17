@@ -783,39 +783,87 @@ TEST_P(BlockProcessorTest, AtomicCommandsExecuteOnce) {
   iree_hal_cmd_block_builder_deinitialize(&builder);
 }
 
-TEST_P(BlockProcessorTest, AtomicCommandRejectsMisalignedTarget) {
-  alignas(uint64_t) uint8_t storage[sizeof(uint64_t) + 1] = {0};
-  iree_hal_cmd_binding_entry_t table[] = {
-      {storage + 1, sizeof(uint64_t)},
+TEST_P(BlockProcessorTest,
+       AtomicCommandsClassifyMisalignedTargetByRequestedMode) {
+  enum class AtomicKind { kWait, kStore, kRmw };
+  const AtomicKind kinds[] = {AtomicKind::kWait, AtomicKind::kStore,
+                              AtomicKind::kRmw};
+  const iree_hal_atomic_target_error_mode_t modes[] = {
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
   };
 
-  iree_hal_cmd_block_builder_t builder;
-  iree_hal_cmd_block_builder_initialize(&block_pool_, &builder);
-  IREE_ASSERT_OK(iree_hal_cmd_block_builder_begin(&builder));
+  for (iree_hal_atomic_target_error_mode_t mode : modes) {
+    for (AtomicKind kind : kinds) {
+      alignas(uint64_t) uint8_t storage[sizeof(uint64_t) + 1] = {0};
+      iree_hal_cmd_binding_entry_t table[] = {
+          {storage + 1, sizeof(uint64_t)},
+      };
 
-  const iree_hal_atomic_store_params_t store_params = {
-      /*.value=*/10,
-      /*.flags=*/IREE_HAL_ATOMIC_FLAG_RELEASE,
-      /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
-  };
-  iree_hal_cmd_fixup_t* fixups = NULL;
-  iree_hal_cmd_build_token_t token;
-  IREE_ASSERT_OK(
-      iree_hal_cmd_build_atomic_store(&builder, store_params, &fixups, &token));
-  fixups[0].host_ptr = NULL;
-  fixups[0].offset = 0;
-  fixups[0].length = sizeof(uint64_t);
-  fixups[0].slot = 0;
-  fixups[0].flags = IREE_HAL_CMD_FIXUP_FLAG_NONE;
+      iree_hal_cmd_block_builder_t builder;
+      iree_hal_cmd_block_builder_initialize(&block_pool_, &builder);
+      IREE_ASSERT_OK(iree_hal_cmd_block_builder_begin(&builder));
+      iree_hal_cmd_fixup_t* fixups = NULL;
+      iree_hal_cmd_build_token_t token;
+      switch (kind) {
+        case AtomicKind::kWait: {
+          const iree_hal_atomic_wait_params_t params = {
+              /*.value=*/0,
+              /*.mask=*/UINT64_MAX,
+              /*.flags=*/IREE_HAL_ATOMIC_FLAG_ACQUIRE,
+              /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
+              /*.condition=*/IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL,
+              /*.target_error_mode=*/mode,
+          };
+          IREE_ASSERT_OK(iree_hal_cmd_build_atomic_wait(&builder, params,
+                                                        &fixups, &token));
+          break;
+        }
+        case AtomicKind::kStore: {
+          const iree_hal_atomic_store_params_t params = {
+              /*.value=*/10,
+              /*.flags=*/IREE_HAL_ATOMIC_FLAG_RELEASE,
+              /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
+              /*.target_error_mode=*/mode,
+          };
+          IREE_ASSERT_OK(iree_hal_cmd_build_atomic_store(&builder, params,
+                                                         &fixups, &token));
+          break;
+        }
+        case AtomicKind::kRmw: {
+          const iree_hal_atomic_rmw_params_t params = {
+              /*.operand=*/1,
+              /*.flags=*/IREE_HAL_ATOMIC_FLAG_ACQUIRE |
+                  IREE_HAL_ATOMIC_FLAG_RELEASE,
+              /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
+              /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_ADD,
+              /*.target_error_mode=*/mode,
+          };
+          IREE_ASSERT_OK(
+              iree_hal_cmd_build_atomic_rmw(&builder, params, &fixups, &token));
+          break;
+        }
+      }
+      fixups[0].host_ptr = NULL;
+      fixups[0].offset = 0;
+      fixups[0].length = sizeof(uint64_t);
+      fixups[0].slot = 0;
+      fixups[0].flags = IREE_HAL_CMD_FIXUP_FLAG_NONE;
 
-  iree_hal_cmd_block_recording_t recording;
-  IREE_ASSERT_OK(iree_hal_cmd_block_builder_end(&builder, &recording));
+      iree_hal_cmd_block_recording_t recording;
+      IREE_ASSERT_OK(iree_hal_cmd_block_builder_end(&builder, &recording));
+      const iree_status_code_t expected_status =
+          mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+              ? IREE_STATUS_INCOMPATIBLE
+              : IREE_STATUS_FAILED_PRECONDITION;
+      IREE_EXPECT_STATUS_IS(expected_status,
+                            execute(&recording, table, IREE_ARRAYSIZE(table)));
+      for (uint8_t byte : storage) EXPECT_EQ(0, byte);
 
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
-                        execute(&recording, table, IREE_ARRAYSIZE(table)));
-
-  iree_hal_cmd_block_recording_release(&recording);
-  iree_hal_cmd_block_builder_deinitialize(&builder);
+      iree_hal_cmd_block_recording_release(&recording);
+      iree_hal_cmd_block_builder_deinitialize(&builder);
+    }
+  }
 }
 
 TEST_P(BlockProcessorTest, BarrierOrdering) {

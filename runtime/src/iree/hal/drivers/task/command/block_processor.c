@@ -1235,13 +1235,16 @@ static uint32_t iree_hal_cmd_execute_update(const iree_hal_cmd_update_t* update,
 
 static iree_status_t iree_hal_cmd_resolve_atomic_target(
     void** binding_ptrs, uint16_t target_binding, iree_hal_atomic_width_t width,
-    void** out_target) {
+    iree_hal_atomic_target_error_mode_t target_error_mode, void** out_target) {
   void* target = binding_ptrs[target_binding];
   const iree_device_size_t byte_count = iree_hal_atomic_width_byte_count(width);
   if (IREE_UNLIKELY(((uintptr_t)target % byte_count) != 0)) {
+    const iree_status_code_t status_code =
+        target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+            ? IREE_STATUS_INCOMPATIBLE
+            : IREE_STATUS_FAILED_PRECONDITION;
     return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "resolved atomic target address is not naturally aligned");
+        status_code, "resolved atomic target address is not naturally aligned");
   }
   *out_target = target;
   return iree_ok_status();
@@ -1257,7 +1260,8 @@ static iree_status_t iree_hal_cmd_execute_atomic_wait(
   }
   void* target = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_cmd_resolve_atomic_target(
-      binding_ptrs, command->target_binding, command->params.width, &target));
+      binding_ptrs, command->target_binding, command->params.width,
+      command->params.target_error_mode, &target));
   iree_hal_task_atomic_wait(target, command->params);
   *out_tiles_completed = 1;
   return iree_ok_status();
@@ -1273,7 +1277,8 @@ static iree_status_t iree_hal_cmd_execute_atomic_store(
   }
   void* target = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_cmd_resolve_atomic_target(
-      binding_ptrs, command->target_binding, command->params.width, &target));
+      binding_ptrs, command->target_binding, command->params.width,
+      command->params.target_error_mode, &target));
   iree_hal_task_atomic_store(target, command->params);
   *out_tiles_completed = 1;
   return iree_ok_status();
@@ -1289,7 +1294,8 @@ static iree_status_t iree_hal_cmd_execute_atomic_rmw(
   }
   void* target = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_cmd_resolve_atomic_target(
-      binding_ptrs, command->target_binding, command->params.width, &target));
+      binding_ptrs, command->target_binding, command->params.width,
+      command->params.target_error_mode, &target));
   iree_hal_task_atomic_rmw(target, command->params);
   *out_tiles_completed = 1;
   return iree_ok_status();

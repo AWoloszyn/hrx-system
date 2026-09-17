@@ -22,8 +22,13 @@ extern "C" {
 // Major version of the IREE HAL replay file format.
 #define IREE_HAL_REPLAY_FILE_VERSION_MAJOR 8u
 
-// Minor version of the IREE HAL replay file format.
-#define IREE_HAL_REPLAY_FILE_VERSION_MINOR 2u
+// Minor version of the IREE HAL replay file format. Version 7.3 consumes one
+// required-zero byte in each atomic parameter payload for target error mode.
+// Valid 7.2 payloads therefore decode as the default target error mode.
+#define IREE_HAL_REPLAY_FILE_VERSION_MINOR 3u
+
+// Minor version that first assigns atomic target-error mode payload bytes.
+#define IREE_HAL_REPLAY_ATOMIC_TARGET_ERROR_MODE_VERSION_MINOR 3u
 
 // Session-local object identifier used by replay records.
 typedef uint64_t iree_hal_replay_object_id_t;
@@ -793,6 +798,16 @@ typedef struct iree_hal_replay_queue_transfer_operation_payload_t {
 static_assert(sizeof(iree_hal_replay_queue_transfer_operation_payload_t) == 96,
               "queue transfer replay operation must be 96 bytes");
 
+// Language-level object alignment. On SysV i386 Clang's __alignof__ reports
+// the preferred alignment of uint64_t (8) instead of its ABI alignment (4).
+#if defined(__cplusplus)
+#define IREE_HAL_REPLAY_NATURAL_ALIGNOF(x) alignof(x)
+#elif defined(IREE_COMPILER_MSVC)
+#define IREE_HAL_REPLAY_NATURAL_ALIGNOF(x) __alignof(x)
+#else
+#define IREE_HAL_REPLAY_NATURAL_ALIGNOF(x) _Alignof(x)
+#endif
+
 // Serialized parameters for an atomic wait operation.
 typedef struct iree_hal_replay_atomic_wait_params_payload_t {
   // Value compared against the loaded target value after masking.
@@ -805,11 +820,20 @@ typedef struct iree_hal_replay_atomic_wait_params_payload_t {
   uint8_t width;
   // Atomic wait comparison condition.
   uint8_t condition;
+  // Target-validation status classification. Zero preserves 7.2 recordings.
+  uint8_t target_error_mode;
   // Reserved for future atomic wait metadata; must be zero.
-  uint16_t reserved0;
+  uint8_t reserved0;
 } iree_hal_replay_atomic_wait_params_payload_t;
 static_assert(sizeof(iree_hal_replay_atomic_wait_params_payload_t) == 24,
               "atomic wait replay parameters must be 24 bytes");
+static_assert(IREE_HAL_REPLAY_NATURAL_ALIGNOF(
+                  iree_hal_replay_atomic_wait_params_payload_t) ==
+                  IREE_HAL_REPLAY_NATURAL_ALIGNOF(uint64_t),
+              "atomic wait replay parameter alignment must remain stable");
+static_assert(offsetof(iree_hal_replay_atomic_wait_params_payload_t,
+                       target_error_mode) == 22,
+              "atomic wait target error mode must consume reserved storage");
 
 // Serialized parameters for an atomic store operation.
 typedef struct iree_hal_replay_atomic_store_params_payload_t {
@@ -819,11 +843,20 @@ typedef struct iree_hal_replay_atomic_store_params_payload_t {
   uint32_t flags;
   // Atomic value width.
   uint8_t width;
+  // Target-validation status classification. Zero preserves 7.2 recordings.
+  uint8_t target_error_mode;
   // Reserved for future atomic store metadata; must be zero.
-  uint8_t reserved0[3];
+  uint8_t reserved0[2];
 } iree_hal_replay_atomic_store_params_payload_t;
 static_assert(sizeof(iree_hal_replay_atomic_store_params_payload_t) == 16,
               "atomic store replay parameters must be 16 bytes");
+static_assert(IREE_HAL_REPLAY_NATURAL_ALIGNOF(
+                  iree_hal_replay_atomic_store_params_payload_t) ==
+                  IREE_HAL_REPLAY_NATURAL_ALIGNOF(uint64_t),
+              "atomic store replay parameter alignment must remain stable");
+static_assert(offsetof(iree_hal_replay_atomic_store_params_payload_t,
+                       target_error_mode) == 13,
+              "atomic store target error mode must consume reserved storage");
 
 // Serialized parameters for an atomic read-modify-write operation.
 typedef struct iree_hal_replay_atomic_rmw_params_payload_t {
@@ -835,11 +868,22 @@ typedef struct iree_hal_replay_atomic_rmw_params_payload_t {
   uint8_t width;
   // Atomic read-modify-write operation.
   uint8_t operation;
+  // Target-validation status classification. Zero preserves 7.2 recordings.
+  uint8_t target_error_mode;
   // Reserved for future atomic read-modify-write metadata; must be zero.
-  uint16_t reserved0;
+  uint8_t reserved0;
 } iree_hal_replay_atomic_rmw_params_payload_t;
 static_assert(sizeof(iree_hal_replay_atomic_rmw_params_payload_t) == 16,
               "atomic RMW replay parameters must be 16 bytes");
+static_assert(IREE_HAL_REPLAY_NATURAL_ALIGNOF(
+                  iree_hal_replay_atomic_rmw_params_payload_t) ==
+                  IREE_HAL_REPLAY_NATURAL_ALIGNOF(uint64_t),
+              "atomic RMW replay parameter alignment must remain stable");
+static_assert(offsetof(iree_hal_replay_atomic_rmw_params_payload_t,
+                       target_error_mode) == 14,
+              "atomic RMW target error mode must consume reserved storage");
+
+#undef IREE_HAL_REPLAY_NATURAL_ALIGNOF
 
 // Payload describing one captured memory barrier.
 typedef struct iree_hal_replay_memory_barrier_payload_t {

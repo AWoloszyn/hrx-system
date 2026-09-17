@@ -151,6 +151,8 @@ typedef struct iree_hal_replay_plan_record_t {
 struct iree_hal_replay_plan_t {
   // Original replay file bytes borrowed by this plan.
   iree_const_byte_span_t file_contents;
+  // Minor version parsed from the replay file header.
+  uint16_t file_version_minor;
   // Host allocator used for the plan allocations.
   iree_allocator_t host_allocator;
   // Dense session-local object table capacity required during execution.
@@ -986,6 +988,7 @@ IREE_API_EXPORT iree_status_t iree_hal_replay_plan_create(
       iree_allocator_malloc(host_allocator, sizeof(*plan), (void**)&plan));
   memset(plan, 0, sizeof(*plan));
   plan->file_contents = valid_contents;
+  plan->file_version_minor = file_header.version_minor;
   plan->host_allocator = host_allocator;
   plan->object_capacity = (iree_host_size_t)max_object_id + 1;
   plan->record_count = record_count;
@@ -1341,8 +1344,8 @@ IREE_API_EXPORT iree_status_t iree_hal_replay_plan_execute(
 
   iree_hal_replay_executor_t executor;
   IREE_RETURN_IF_ERROR(iree_hal_replay_executor_initialize(
-      &executor, plan->file_contents, plan->object_capacity, device_group,
-      options, host_allocator));
+      &executor, plan->file_contents, plan->file_version_minor,
+      plan->object_capacity, device_group, options, host_allocator));
 
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;

@@ -189,6 +189,7 @@ iree_hal_vulkan_atomic_params_t iree_hal_vulkan_atomic_params_from_wait(
       .mask = params.mask,
       .flags = params.flags,
       .width = params.width,
+      .target_error_mode = params.target_error_mode,
       .operation = operation,
   };
 }
@@ -199,6 +200,7 @@ iree_hal_vulkan_atomic_params_t iree_hal_vulkan_atomic_params_from_store(
       .value = params.value,
       .flags = params.flags,
       .width = params.width,
+      .target_error_mode = params.target_error_mode,
       .operation = IREE_HAL_VULKAN_ATOMIC_OPERATION_STORE,
   };
 }
@@ -228,6 +230,7 @@ iree_hal_vulkan_atomic_params_t iree_hal_vulkan_atomic_params_from_rmw(
       .value = params.operand,
       .flags = params.flags,
       .width = params.width,
+      .target_error_mode = params.target_error_mode,
       .operation = operation,
   };
 }
@@ -281,13 +284,31 @@ VkAccessFlags2 iree_hal_vulkan_atomic_access_mask(
 
 iree_status_t iree_hal_vulkan_atomic_resolve_target_address(
     iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
-    iree_hal_atomic_width_t width, VkDeviceAddress* out_target_address) {
+    iree_hal_atomic_width_t width,
+    iree_hal_atomic_target_error_mode_t target_error_mode,
+    VkDeviceAddress* out_target_address) {
   *out_target_address = 0;
   VkDeviceAddress buffer_address = 0;
-  IREE_RETURN_IF_ERROR(
-      iree_hal_vulkan_buffer_device_address(target_buffer, &buffer_address));
+  iree_status_t address_status =
+      iree_hal_vulkan_buffer_device_address(target_buffer, &buffer_address);
+  if (!iree_status_is_ok(address_status)) {
+    // FAILED_PRECONDITION here means the target has no usable Vulkan
+    // backing/device address. Overflow and all other resolver failures retain
+    // their established non-target status.
+    if (target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE &&
+        iree_status_code(address_status) == IREE_STATUS_FAILED_PRECONDITION) {
+      iree_status_free(address_status);
+      return iree_make_status(IREE_STATUS_INCOMPATIBLE,
+                              "Vulkan atomic target has no device address");
+    }
+    return address_status;
+  }
   if (buffer_address == 0) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+    const iree_status_code_t status_code =
+        target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+            ? IREE_STATUS_INCOMPATIBLE
+            : IREE_STATUS_FAILED_PRECONDITION;
+    return iree_make_status(status_code,
                             "Vulkan atomic target has no device address");
   }
   if (target_offset > UINT64_MAX - buffer_address) {
@@ -295,21 +316,26 @@ iree_status_t iree_hal_vulkan_atomic_resolve_target_address(
                             "Vulkan atomic target device address overflows");
   }
   const VkDeviceAddress target_address = buffer_address + target_offset;
-  IREE_RETURN_IF_ERROR(
-      iree_hal_vulkan_atomic_validate_target_address(target_address, width));
+  IREE_RETURN_IF_ERROR(iree_hal_vulkan_atomic_validate_target_address(
+      target_address, width, target_error_mode));
   *out_target_address = target_address;
   return iree_ok_status();
 }
 
 iree_status_t iree_hal_vulkan_atomic_validate_target_address(
-    VkDeviceAddress target_address, iree_hal_atomic_width_t width) {
+    VkDeviceAddress target_address, iree_hal_atomic_width_t width,
+    iree_hal_atomic_target_error_mode_t target_error_mode) {
   const iree_device_size_t alignment = iree_hal_atomic_width_byte_count(width);
   if (alignment == 0) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "invalid Vulkan atomic width %u", width);
   }
   if ((target_address & (alignment - 1)) != 0) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+    const iree_status_code_t status_code =
+        target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+            ? IREE_STATUS_INCOMPATIBLE
+            : IREE_STATUS_FAILED_PRECONDITION;
+    return iree_make_status(status_code,
                             "Vulkan atomic target device address 0x%" PRIx64
                             " does not satisfy %" PRIdsz "-byte alignment",
                             (uint64_t)target_address, alignment);

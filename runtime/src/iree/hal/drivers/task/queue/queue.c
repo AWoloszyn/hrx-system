@@ -2565,8 +2565,9 @@ static void iree_hal_task_queue_execute_recording_inline(
 
 static iree_status_t iree_hal_task_queue_map_atomic_target(
     iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
-    iree_hal_atomic_width_t width, iree_hal_memory_access_t access,
-    iree_hal_buffer_mapping_t* out_mapping) {
+    iree_hal_atomic_width_t width,
+    iree_hal_atomic_target_error_mode_t target_error_mode,
+    iree_hal_memory_access_t access, iree_hal_buffer_mapping_t* out_mapping) {
   const iree_device_size_t byte_count = iree_hal_atomic_width_byte_count(width);
   IREE_RETURN_IF_ERROR(iree_hal_buffer_map_range(
       target_buffer, IREE_HAL_MAPPING_MODE_SCOPED, access, target_offset,
@@ -2574,9 +2575,12 @@ static iree_status_t iree_hal_task_queue_map_atomic_target(
   if (IREE_UNLIKELY(!iree_host_size_has_alignment(
           (iree_host_size_t)(uintptr_t)out_mapping->contents.data,
           (iree_host_size_t)byte_count))) {
+    const iree_status_code_t status_code =
+        target_error_mode == IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE
+            ? IREE_STATUS_INCOMPATIBLE
+            : IREE_STATUS_FAILED_PRECONDITION;
     return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "mapped atomic target address is not naturally aligned");
+        status_code, "mapped atomic target address is not naturally aligned");
   }
   return iree_ok_status();
 }
@@ -2587,6 +2591,7 @@ static iree_status_t iree_hal_task_queue_drain_atomic_wait(
   iree_status_t status = iree_hal_task_queue_map_atomic_target(
       operation->atomic_wait.target_buffer,
       operation->atomic_wait.target_offset, operation->atomic_wait.params.width,
+      operation->atomic_wait.params.target_error_mode,
       IREE_HAL_MEMORY_ACCESS_READ, &mapping);
   if (iree_status_is_ok(status)) {
     iree_hal_task_atomic_wait(mapping.contents.data,
@@ -2608,8 +2613,9 @@ static iree_status_t iree_hal_task_queue_drain_atomic_store(
   iree_status_t status = iree_hal_task_queue_map_atomic_target(
       operation->atomic_store.target_buffer,
       operation->atomic_store.target_offset,
-      operation->atomic_store.params.width, IREE_HAL_MEMORY_ACCESS_WRITE,
-      &mapping);
+      operation->atomic_store.params.width,
+      operation->atomic_store.params.target_error_mode,
+      IREE_HAL_MEMORY_ACCESS_WRITE, &mapping);
   if (iree_status_is_ok(status)) {
     iree_hal_task_atomic_store(mapping.contents.data,
                                operation->atomic_store.params);
@@ -2630,6 +2636,7 @@ static iree_status_t iree_hal_task_queue_drain_atomic_rmw(
   iree_status_t status = iree_hal_task_queue_map_atomic_target(
       operation->atomic_rmw.target_buffer, operation->atomic_rmw.target_offset,
       operation->atomic_rmw.params.width,
+      operation->atomic_rmw.params.target_error_mode,
       IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE, &mapping);
   if (iree_status_is_ok(status)) {
     iree_hal_task_atomic_rmw(mapping.contents.data,
