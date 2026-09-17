@@ -226,41 +226,51 @@ chosen order changes register pressure.
 
 ### Compose independently scheduled helpers
 
-A motif can keep its own load/compute phases while other instances interleave.
-[`low.schedule.begin`](../reference/dialects/low/ops/schedule-begin.md) opens a
-scope, [`low.schedule.phase`](../reference/dialects/low/ops/schedule-phase.md)
-orders its current phase before its next phase, and
-[`low.schedule.end`](../reference/dialects/low/ops/schedule-end.md) closes it.
-This helper keeps its multiply ahead of its second load:
+A motif author can give a Low helper `schedule(phased)` and use
+[`low.schedule.phase`](../reference/dialects/low/ops/schedule-phase.md) to begin
+each subsequent phase. The first phase starts at function entry. Every
+invocation owns its phase order, while instructions within a phase and work
+from independent invocations remain free to interleave. This helper keeps its
+multiply ahead of its second load:
 
 ```loom
 amdgpu.target<gfx11-generic> @schedule_target
 
-low.func.def target<amdgpu.gfx11.generic.core>(@schedule_target) @scale_pair(%byte_offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %weight: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  low.schedule.begin
+low.func.def schedule(phased) target<amdgpu.gfx11.generic.core>(@schedule_target) @scale_pair(%byte_offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %weight: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
   %first = global_load_b32_saddr %byte_offset, %base
   low.schedule.phase
   %scaled = v_mul_f32 %first, %weight
   low.schedule.phase
   %second = global_load_b32_saddr %byte_offset, %base {offset = 4}
   %result = v_add_f32 %scaled, %second
-  low.schedule.end
   return %result
 }
 ```
 
-Two `low.invoke @scale_pair(...)` calls create two independent scopes. Each
-instance preserves `first load → multiply → second load`, while the compiler
-can issue another instance's load during the first instance's computation.
-Inlining and full or partial unrolling preserve distinct scope identities;
-no global group number or shared schedule configuration is needed.
+Values keep their ordinary SSA scope: `%first` and `%scaled` remain available
+after their phase boundaries without block arguments or region results. The
+function owns the schedule boundary and closes it on every return.
 
-A nested scope belongs to its parent's current phase. Empty phases are valid.
-Controls appear directly in Low function or kernel body blocks and may span
-CFG edges introduced by inlining. Every reachable join and loop backedge must
-agree on the active nesting; function exits close all scopes. Source loops and
-conditionals can invoke scoped Low helpers. Controls written directly inside
-nested Low structured regions are rejected.
+The caller uses ordinary `low.invoke @scale_pair(...)` calls. Two calls create
+two independent scopes: each preserves `first load → multiply → second load`,
+while the compiler can issue another instance's load during the first
+instance's computation. Inlining and full or partial unrolling preserve this
+independence. The motif author chooses the separators; `scf.for pipeline(...)`
+does not assign native phases automatically.
+
+Expanded Low represents each inlined invocation with
+[`low.schedule.begin`](../reference/dialects/low/ops/schedule-begin.md) and
+[`low.schedule.end`](../reference/dialects/low/ops/schedule-end.md). These controls
+also support explicitly authored subscopes. A nested scope belongs to its
+parent's current phase, and empty phases are valid. Every reachable join and
+loop backedge must agree on explicit nesting, and every exit must close it.
+An explicit end cannot close the implicit function scope.
+
+`schedule(phased)` also applies to directly authored Low kernels. Phase
+separators appear in Low function or kernel body blocks; the enclosing scope
+may span CFG edges introduced by inlining. Source loops and conditionals can
+invoke phased Low helpers. Controls written directly inside nested Low
+structured regions are rejected.
 
 Scopes order surviving emitted instructions and emit no runtime instruction.
 They do not wait for loads, synchronize lanes, or publish memory. Full fences
