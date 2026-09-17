@@ -1,0 +1,134 @@
+// Library materialization preserves requirements that become provable when
+// an ordinary helper or enclosing template is instantiated by its caller.
+template.decl @scale(%width: i32, %value: i32) -> (i32)
+
+template.decl @wrapper(%width: i32, %value: i32) -> (i32)
+
+template.def<@scale> @seven_times(%width: i32, %value: i32) -> (i32) where [eq(%width, 7)] {
+  %result = scalar.muli %width, %value : i32
+  template.return %result : i32
+}
+
+template.def<@wrapper> @forward(%width: i32, %value: i32) -> (i32) {
+  %result = template.call @seven_times(%width, %value) : (i32, i32) -> (i32)
+  template.return %result : i32
+}
+
+func.def inline @ordinary_wrapper(%width: i32, %value: i32) -> (i32) {
+  %result = template.call @forward(%width, %value) : (i32, i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def public @shared_nested(%value: i32) -> (i32) {
+  %required_width = scalar.constant 7 : i32
+  %increment = scalar.constant 1 : i32
+  %next = scalar.addi %value, %increment : i32
+  %first = func.call @ordinary_wrapper(%required_width, %value) : (i32, i32) -> (i32)
+  %second = func.call @ordinary_wrapper(%required_width, %next) : (i32, i32) -> (i32)
+  %result = scalar.addi %first, %second : i32
+  func.return %result : i32
+}
+
+check.case @shared_nested_instances {
+  %positive = check.literal value(3) : i32
+  %negative = check.literal value(-3) : i32
+  %positive_result = func.call @shared_nested(%positive) : (i32) -> (i32)
+  %negative_result = func.call @shared_nested(%negative) : (i32) -> (i32)
+  %positive_expected = check.literal value(49) : i32
+  %negative_expected = check.literal value(-35) : i32
+  check.expect.equal actual(%positive_result) expected(%positive_expected) : i32
+  check.expect.equal actual(%negative_result) expected(%negative_expected) : i32
+  check.return
+}
+
+// A specialized candidate in a reusable body must survive alongside its
+// fallback until caller substitution supplies the discriminating value.
+template.def<@scale> priority(-1) @unscaled(%width: i32, %value: i32) -> (i32) {
+  template.return %value : i32
+}
+
+func.def inline @ranked_wrapper(%width: i32, %value: i32) -> (i32) {
+  %result = template.apply<@scale>(%width, %value) : (i32, i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def public @ranked(%value: i32) -> (i32) {
+  %required_width = scalar.constant 7 : i32
+  %result = func.call @ranked_wrapper(%required_width, %value) : (i32, i32) -> (i32)
+  func.return %result : i32
+}
+
+check.case @specialized_library_candidate {
+  %value = check.literal value(3) : i32
+  %result = func.call @ranked(%value) : (i32) -> (i32)
+  %expected = check.literal value(21) : i32
+  check.expect.equal actual(%result) expected(%expected) : i32
+  check.return
+}
+
+// Applicability errors belong to final specialization. An unreachable family
+// application does not require an implementation at library materialization.
+template.decl @unavailable(%value: i32) -> (i32)
+
+func.def public @dead_application(%value: i32) -> (i32) {
+  %never = scalar.constant false : i1
+  %result = scf.if %never -> (i32) {
+    %invalid = template.apply<@unavailable>(%value) : (i32) -> (i32)
+    scf.yield %invalid : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+check.case @dead_library_obligation {
+  %value = check.literal value(13) : i32
+  %result = func.call @dead_application(%value) : (i32) -> (i32)
+  check.expect.equal actual(%result) expected(%value) : i32
+  check.return
+}
+
+// An invalid exact call may also disappear before final specialization.
+func.def public @dead_exact(%value: i32) -> (i32) {
+  %never = scalar.constant false : i1
+  %result = scf.if %never -> (i32) {
+    %outside_contract = scalar.constant 8 : i32
+    %invalid = template.call @seven_times(%outside_contract, %value) : (i32, i32) -> (i32)
+    scf.yield %invalid : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+check.case @dead_exact_library_obligation {
+  %value = check.literal value(13) : i32
+  %result = func.call @dead_exact(%value) : (i32) -> (i32)
+  check.expect.equal actual(%result) expected(%value) : i32
+  check.return
+}
+
+// Unselected provider bodies do not participate in applicability decisions.
+template.decl @choice(%value: i32) -> (i32)
+
+template.def<@choice> priority(1) @unused_choice(%value: i32) -> (i32) {
+  %outside_contract = scalar.constant 8 : i32
+  %invalid = template.call @seven_times(%outside_contract, %value) : (i32, i32) -> (i32)
+  template.return %invalid : i32
+}
+
+template.def<@choice> priority(2) @selected_choice(%value: i32) -> (i32) {
+  template.return %value : i32
+}
+
+func.def public @choose(%value: i32) -> (i32) {
+  %result = template.apply<@choice>(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+check.case @unselected_library_obligation {
+  %value = check.literal value(3) : i32
+  %result = func.call @choose(%value) : (i32) -> (i32)
+  check.expect.equal actual(%result) expected(%value) : i32
+  check.return
+}

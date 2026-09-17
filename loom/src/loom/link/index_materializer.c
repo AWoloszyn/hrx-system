@@ -101,20 +101,11 @@ static void loom_link_index_apply_provider_roots(
   options->template_provider_roots.values = roots->ordinals.values;
 }
 
-static loom_template_selection_mode_t loom_link_index_selection_mode(
-    const loom_link_plan_options_t* options) {
-  return options->unresolved_policy == LOOM_LINK_PLAN_UNRESOLVED_ALLOW
-             ? LOOM_TEMPLATE_SELECTION_MODE_EARLY
-             : LOOM_TEMPLATE_SELECTION_MODE_FINAL;
-}
-
 static iree_status_t loom_link_index_query_candidates(
     const loom_link_module_index_t* index,
     loom_link_template_candidate_loader_t* candidate_loader,
     const loom_link_plan_t* plan,
     loom_link_plan_materialization_t* materialization,
-    const loom_link_index_provider_roots_t* roots,
-    const loom_link_plan_options_t* options,
     iree_arena_block_pool_t* block_pool, iree_arena_allocator_t* arena,
     loom_template_selection_query_result_t* out_result) {
   loom_template_provider_slice_t external_candidates =
@@ -150,7 +141,9 @@ static iree_status_t loom_link_index_query_candidates(
     }
   }
   const loom_template_selection_query_options_t query_options = {
-      .mode = loom_link_index_selection_mode(options),
+      // A closed symbol universe is not a closed specialization context.
+      // Retain viable providers until caller facts can resolve their choice.
+      .mode = LOOM_TEMPLATE_SELECTION_MODE_EARLY,
       .catalog = &catalog,
       .origin_count = loom_link_module_index_symbol_count(index),
       .root_symbol_ids =
@@ -239,8 +232,8 @@ static iree_status_t loom_link_index_materialize_link(
     loom_template_selection_query_result_t query = {0};
     if (iree_status_is_ok(status)) {
       status = loom_link_index_query_candidates(
-          index, candidate_loader, plan, &analysis, &provider_roots,
-          plan_options, environment->block_pool, &query_arena, &query);
+          index, candidate_loader, plan, &analysis, environment->block_pool,
+          &query_arena, &query);
     }
     const bool changed =
         iree_status_is_ok(status) &&

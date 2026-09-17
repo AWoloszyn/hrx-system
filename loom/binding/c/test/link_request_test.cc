@@ -16,6 +16,7 @@
 #include "loom/binding/c/src/product.h"
 #include "loom/format/bytecode/format.h"
 #include "loom/ir/module.h"
+#include "loom/link/testdata/template_selection_testdata.h"
 #include "loomc/compile.h"
 #include "loomc/link.h"
 #include "loomc/module.h"
@@ -104,6 +105,19 @@ SourcePtr CreateSource(loomc_source_format_t format, const char* identifier,
 SourcePtr CreateTextSource(const char* identifier, const char* contents) {
   return CreateSource(LOOMC_SOURCE_FORMAT_TEXT, identifier, contents,
                       strlen(contents));
+}
+
+SourcePtr CreateTemplateSource(const char* filename) {
+  const iree_file_toc_t* files = loom_link_template_selection_testdata_create();
+  for (iree_host_size_t i = 0; i < loom_link_template_selection_testdata_size();
+       ++i) {
+    if (strcmp(files[i].name, filename) == 0) {
+      return CreateSource(LOOMC_SOURCE_FORMAT_TEXT, filename, files[i].data,
+                          files[i].size);
+    }
+  }
+  ADD_FAILURE() << "Missing template selection fixture: " << filename;
+  return SourcePtr();
 }
 
 ModulePtr DeserializeModule(loomc_context_t* context,
@@ -506,6 +520,48 @@ func.def public @caller(%x: i32) -> (i32) {
   EXPECT_THAT(text, ::testing::HasSubstr("func.def @identity"));
   EXPECT_THAT(text, ::testing::Not(::testing::HasSubstr("public @identity")));
   EXPECT_THAT(text, ::testing::Not(::testing::HasSubstr("@unused_library")));
+}
+
+TEST_F(LinkRequestTest, OwnsProvidersNeededAfterCallerSpecialization) {
+  SourcePtr library_source = CreateTemplateSource("providers.loom");
+  ASSERT_NE(library_source, nullptr);
+  LinkIndexPtr library_index = CreateIndex(context_.get(), library_source.get(),
+                                           LOOMC_LINK_PROVIDER_ROLE_LIBRARY);
+  SourcePtr input_source = CreateTemplateSource("root.loom");
+  ASSERT_NE(input_source, nullptr);
+  ModulePtr input_module =
+      DeserializeModule(context_.get(), workspace_.get(), input_source.get());
+  RequestPtr input_request =
+      CreateRequest(context_.get(), input_module.get(), {"entry"});
+  ASSERT_NE(input_request, nullptr);
+
+  const loomc_link_request_options_t options = {
+      /*.type=*/LOOMC_STRUCTURE_TYPE_LINK_REQUEST_OPTIONS,
+      /*.structure_size=*/sizeof(options),
+      /*.next=*/nullptr,
+      /*.library_index=*/library_index.get(),
+  };
+  ResultPtr result;
+  RequestPtr output_request =
+      LinkRequest(input_request.get(), &options, &result);
+  ExpectSucceededResult(result.get());
+  ASSERT_NE(output_request, nullptr);
+
+  input_request.reset();
+  input_module.reset();
+  input_source.reset();
+  library_index.reset();
+  library_source.reset();
+  workspace_.reset();
+  workspace_ = CreateWorkspace();
+  EXPECT_EQ(ResolveRequestRootNames(context_.get(), output_request.get()),
+            (std::vector<std::string>{"entry"}));
+  const std::string text = SerializeRequestToText(output_request.get());
+  EXPECT_THAT(text, ::testing::HasSubstr("@required_provider"));
+  EXPECT_THAT(text, ::testing::HasSubstr("@specialized"));
+  EXPECT_THAT(text, ::testing::HasSubstr("@fallback"));
+  EXPECT_THAT(text, ::testing::HasSubstr("func.def inline @choose"));
+  EXPECT_THAT(text, ::testing::Not(::testing::HasSubstr("@unused")));
 }
 
 TEST_F(LinkRequestTest, RepeatedLinksProduceIdenticalRequests) {

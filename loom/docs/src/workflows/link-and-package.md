@@ -100,10 +100,11 @@ loom-link model.loom \
   --output=elementwise-transform.loom
 ```
 
-This produces a closed program for the facts known at the link boundary. In a
-targetless link it selects the portable provider and discards the unresolved
-wave32 alternative. A deployment-product link can make its target facts
-available before provider selection:
+This closes ordinary symbol dependencies without forcing template choices that
+need later caller or target facts. A targetless link retains both a portable
+provider and a still-viable wave32 alternative; compilation selects between
+them after its target is known. Providers already proved impossible are omitted.
+A deployment-product link can supply target facts early to reduce that set:
 
 ```shell
 loom-link model.loom \
@@ -119,10 +120,11 @@ loom-link model.loom \
 The profile uses `family:selector` syntax. It specializes every reachable
 kernel entry in each selective-link analysis module, allowing target
 requirements to prune providers before their bodies enter the output. The
-result is still ordinary standalone Loom bytecode, now closed for that target
-profile. Use the same selector when emitting the device artifact. Omitting the
-profile remains the correct path for portable libraries, partial links, and
-JIT boundaries that will receive target facts later.
+result is still ordinary standalone Loom bytecode, with those target facts
+bound. Choices that also need later caller values remain open. Use the same
+selector when emitting the device artifact. Omitting the profile remains the
+correct path for portable libraries, partial links, and JIT boundaries that
+will receive target facts later.
 
 The [source-to-artifacts
 walkthrough](../getting-started/source-to-artifacts.md#follow-one-composition-to-low)
@@ -278,6 +280,11 @@ declares the family with `template.decl`; each explicitly supplied library may
 repeat that declaration and contribute implementations. Specialization selects
 an eligible implementation from that explicit universe. Source path and library
 order never stand in for matching rules.
+An application with unknown requirements remains available for later
+specialization. Even a family with no applicable implementation is diagnosed
+only if its application survives to final compilation; unreachable code can
+disappear before then. This differs from an ordinary call to a missing symbol,
+which fails a closed link.
 
 ## Choose the output for the next boundary
 

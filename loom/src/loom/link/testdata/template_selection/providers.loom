@@ -1,0 +1,26 @@
+template.decl @required(%width: i32, %value: i32) -> (i32)
+
+template.decl @ranked(%width: i32, %value: i32) -> (i32)
+
+template.def<@required> @required_provider(%width: i32, %value: i32) -> (i32) where [eq(%width, 7)] {
+  template.return %value : i32
+}
+
+template.def<@ranked> priority(10) @specialized(%width: i32, %value: i32) -> (i32) where [eq(%width, 7)] {
+  %result = scalar.muli %width, %value : i32
+  template.return %result : i32
+}
+
+template.def<@ranked> priority(1) @fallback(%width: i32, %value: i32) -> (i32) {
+  template.return %value : i32
+}
+
+func.def public inline @choose(%width: i32, %value: i32) -> (i32) {
+  %checked = template.apply<@required>(%width, %value) : (i32, i32) -> (i32)
+  %result = template.apply<@ranked>(%width, %checked) : (i32, i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def public @unused(%value: i32) -> (i32) {
+  func.return %value : i32
+}

@@ -103,8 +103,9 @@ typedef enum loomc_link_flag_bits_e {
   /// Select exported INPUT-provider symbols as roots and compute their closure.
   LOOMC_LINK_FLAG_INCLUDE_INPUT_EXPORTS = 1u << 0,
 
-  /// Preserve reachable unresolved references for a later link or
-  /// specialization step.
+  /// Preserve reachable unresolved symbol references for a later link.
+  /// Template applicability remains open to later specialization independently
+  /// of this flag.
   LOOMC_LINK_FLAG_ALLOW_UNRESOLVED_SYMBOLS = 1u << 1,
 
   /// Strip symbols used only by test or benchmark tooling.
@@ -140,6 +141,9 @@ typedef enum loomc_link_mode_e {
 /// Config options materialize on the linked output for this invocation; frozen
 /// indexes and reusable input/library modules are never mutated by link-time
 /// specialization.
+/// Template choices that depend on unavailable caller or target facts retain
+/// their viable providers until compilation. A closed library universe does
+/// not require template applicability to be resolved at the link boundary.
 typedef struct loomc_link_options_t {
   /// Structure type. Must be `LOOMC_STRUCTURE_TYPE_LINK_OPTIONS` when nonzero.
   loomc_structure_type_t type;
@@ -282,6 +286,9 @@ loomc_link_module(loomc_linker_t* linker, loomc_workspace_t* workspace,
 /// The returned request owns standalone bytecode and does not retain
 /// `input_request`, `options->library_index`, or `workspace`. It remains valid
 /// after those objects are released or trimmed.
+/// This bytecode includes viable template providers whose applicability still
+/// depends on later caller specialization; sealing does not finalize their
+/// choice.
 ///
 /// @thread_safety
 /// Calls using the same linker and frozen library index may run concurrently

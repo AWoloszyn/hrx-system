@@ -18,7 +18,7 @@ extern "C" {
 
 // Owned output of one index materialization.
 typedef struct loom_link_index_materialization_t {
-  // Stable final plan including every selected template provider.
+  // Stable plan including template providers needed by later specialization.
   loom_link_plan_t* plan;
   // Standalone linked product and its exact index projections.
   loom_link_plan_materialization_t product;
@@ -30,16 +30,16 @@ typedef struct loom_link_index_materialization_t {
 void loom_link_index_materialization_deinitialize(
     loom_link_index_materialization_t* materialization);
 
-// Plans, specializes, and materializes one provider-backed index.
-//
+// Plans and materializes one provider-backed index for later specialization.
 // Merge plans materialize directly. Link plans repeatedly materialize
 // ordinary reachability, evaluate headers for providers in reachable template
-// families, and add each exact selected provider as an ordinary root. Nested
-// applications therefore enter the next ordinary closure, while duplicate
-// transitive providers are selected once by index ordinal. When unresolved
-// symbols are allowed, the stable partial module preserves unresolved imports
-// and template applications for a later link. Root retention and outward
-// linkage come exclusively from |plan_options|.
+// families, and retain providers whose choice still depends on caller facts.
+// Proven choices retain only the selected provider. Nested applications enter
+// the next ordinary closure; providers are retained once by index ordinal.
+// Template applicability remains open to later specialization regardless of
+// unresolved-symbol policy. That policy governs missing symbol definitions,
+// not unknown provider predicates. Root retention and outward linkage come
+// exclusively from |plan_options|.
 iree_status_t loom_link_index_materialize(
     const loom_link_module_index_t* index,
     const loom_link_plan_options_t* plan_options,

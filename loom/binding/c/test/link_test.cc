@@ -1181,8 +1181,8 @@ TEST(LinkTest, TargetSpecializationParticipatesInProviderSelection) {
   ASSERT_NE(portable_internal, nullptr);
   VerifyModule(portable_internal);
   EXPECT_TRUE(ModuleHasSymbol(portable_internal, "fallback_provider"));
-  EXPECT_FALSE(ModuleHasSymbol(portable_internal, "profile_provider"));
-  EXPECT_FALSE(ModuleHasSymbol(portable_internal, "incompatible_provider"));
+  EXPECT_TRUE(ModuleHasSymbol(portable_internal, "profile_provider"));
+  EXPECT_TRUE(ModuleHasSymbol(portable_internal, "incompatible_provider"));
 
   const loomc_target_specialization_t specialization = {
       /*.function_symbol=*/loomc_make_cstring_view("entry"),

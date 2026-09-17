@@ -54,13 +54,13 @@
             "contains": {
               "unordered": [
                 "kernel.def retain export(\"scale_i32_buffer\") @scale_i32_buffer",
-                "template.def<@authoring.link.scale_i32> priority(1) @scale_i32_fallback"
+                "template.def<@authoring.link.scale_i32> priority(1) @scale_i32_fallback",
+                "@scale_i32_gfx1100",
+                "@scale_i32_gfx1200"
               ]
             },
             "not_contains": [
               "check.case",
-              "@scale_i32_gfx1100",
-              "@scale_i32_gfx1200",
               "@unused_provider"
             ]
           }
@@ -68,7 +68,7 @@
       ]
     },
     {
-      "name": "compiles merged bytecode for selected amdgpu target",
+      "name": "compiles linked bytecode after receiving target facts",
       "steps": [
         {
           "name": "encode-providers",
@@ -95,8 +95,8 @@
             "tool": "loom-link",
             "args": [
               "{srcdir}/root.loom",
-              "providers.loom",
-              "--mode=merge",
+              "--library=providers.loom",
+              "--root=@scale_i32_buffer",
               "--strip-check",
               "--to=bc",
               "--output={tmp}/linked.loombc"

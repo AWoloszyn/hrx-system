@@ -166,6 +166,7 @@ loom_cc_test(
         "//loom/binding/c:loomc",
         "//loom/src/loom/format/bytecode:format",
         "//loom/src/loom/ir",
+        "//loom/src/loom/link/testdata:template_selection",
         "//runtime/src/iree/base:core_headers",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
