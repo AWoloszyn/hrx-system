@@ -651,7 +651,9 @@ TEST_F(ConditionFactsTest, PartialBooleanTruthPreservesUnknownOutcomes) {
             &condition_query_, &fact_table_, &condition_facts_, conditions[i],
             &proven_condition, &proven));
         EXPECT_EQ(proven, expected_proven[i]);
-        if (proven) EXPECT_EQ(proven_condition, assumed_truth);
+        if (proven) {
+          EXPECT_EQ(proven_condition, assumed_truth);
+        }
       }
     }
   }
