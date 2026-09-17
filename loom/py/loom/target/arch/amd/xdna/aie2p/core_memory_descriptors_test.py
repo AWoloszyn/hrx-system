@@ -198,6 +198,78 @@ def test_fifo_load_descriptors_preserve_fifo_state_and_recurrence() -> None:
             }
 
 
+def test_fifo_seeks_retain_tuple_and_dimension_ownership() -> None:
+    descriptors = {row.key: row for row in AIE2P_CORE_DESCRIPTOR_SET.descriptors}
+    shapes = (
+        *(
+            f"{element}x{512 // bits}"
+            for element, bits in AIE2P_VECTOR_MEMORY_ELEMENT_TYPES
+        ),
+        "bfp16ebs16",
+        "bfp16ebs8",
+    )
+    keys = (
+        *(f"load.{lane}.{shape}.fifo.pop" for lane in ("a", "b") for shape in shapes),
+        "store.fifo.flush.512",
+        "store.fifo.flush.convert.512",
+    )
+    for key in keys:
+        base = descriptors[f"amd.xdna.aie2p.{key}"]
+        for addressing in ("postincrement.register", "2d", "3d"):
+            descriptor = descriptors[f"{base.key}.{addressing}"]
+            operands = {operand.field_name: operand for operand in descriptor.operands}
+            names = tuple(operands)
+            ties = {
+                (names[tie.lhs_operand_index], names[tie.rhs_operand_index])
+                for tie in descriptor.constraints
+                if tie.kind is ConstraintKind.TIED
+            }
+            position = "pos" if key.startswith("load.") else "avail"
+            expected = {
+                ("ptr_out", "ptr"),
+                ("fifo_reg_out", "fifo_reg"),
+                (f"{position}_out", position),
+            }
+            if addressing in ("2d", "3d"):
+                count = "dc" if addressing == "2d" else "dcl"
+                expected.add((count, "mod"))
+                register_class = "aie2p.ed" if addressing == "2d" else "aie2p.eds"
+                assert operands[count].reg_alts == operands["mod"].reg_alts
+                assert operands[count].reg_alts[0].reg_class == register_class
+                assert operands[count].register_part == f"{register_class}.counts"
+                assert operands["mod"].register_part == f"{register_class}.state"
+                assert operands[count].encoding_field_id == 0
+                assert OperandFlag.STORAGE_CONTINUATION not in operands["mod"].flags
+                assert "dch" not in operands
+            assert ties == expected
+            assert descriptor.effects == base.effects
+            assert descriptor.schedule_alternatives == tuple(
+                f"{alternate}.{addressing}" for alternate in base.schedule_alternatives
+            )
+            for name in ("ptr", "fifo_reg", position):
+                assert operands[name].reg_alts == next(
+                    operand.reg_alts
+                    for operand in base.operands
+                    if operand.field_name == name
+                )
+            assert {
+                frozenset((names[tie.lhs_operand_index], names[tie.rhs_operand_index]))
+                for tie in descriptor.constraints
+                if tie.kind is ConstraintKind.SAME_REGISTER_ORDINAL
+            } == (
+                {
+                    frozenset(pair)
+                    for pair in (
+                        ("ptr", "fifo_reg"),
+                        ("ptr", "pos"),
+                        ("fifo_reg", "pos"),
+                    )
+                }
+                if key.startswith("load.")
+                else set()
+            )
+
+
 def test_fifo_stores_preserve_the_fixed_tuple_and_overflow_state() -> None:
     descriptors = {
         descriptor.key: descriptor

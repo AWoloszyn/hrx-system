@@ -8,6 +8,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
+from loom.target.arch.amd.xdna.aie2p.core_address_descriptors import _dimension_update
 from loom.target.arch.amd.xdna.aie2p.core_descriptor_spec import _DescriptorSpec
 from loom.target.low_descriptors import RegisterPart
 
@@ -25,6 +28,33 @@ FIFO_REGISTER_PARTS = tuple(
     for register_class, _, _ in _FIFO_STORAGE_CLASSES
     for ordinal, half in enumerate(("low", "high"))
 )
+
+
+def _fifo_address_variants(
+    spec: _DescriptorSpec, operation: str
+) -> tuple[_DescriptorSpec, ...]:
+    """Preserves the FIFO tuple while updating its owning dimension state."""
+
+    result = [spec]
+    for suffix, native_suffix, mnemonic_suffix, dimension in (
+        (".postincrement.register", f"fifo_1d_{operation}", ".post.modifier", 0),
+        (".2d", "2D", ".2d", 2),
+        (".3d", "3D", ".3d", 3),
+    ):
+        form = spec.form_name.removesuffix(f"normal_{operation}") + native_suffix
+        variant = replace(
+            spec,
+            form_name=form,
+            key=spec.key + suffix,
+            semantic_tag=spec.semantic_tag + suffix,
+            itinerary=f"II_{form}",
+            asm_mnemonic=spec.asm_mnemonic + mnemonic_suffix,
+            schedule_alternatives=tuple(
+                key + suffix for key in spec.schedule_alternatives
+            ),
+        )
+        result.append(_dimension_update(variant, dimension) if dimension else variant)
+    return tuple(result)
 
 
 def _fifo_load_descriptor_specs(
@@ -57,8 +87,8 @@ def _fifo_load_descriptor_specs(
         pop_keys = {
             lane: f"{_TARGET_KEY}.load.{lane}.{shape}.fifo.pop" for lane in ("a", "b")
         }
-        result.extend(
-            _DescriptorSpec(
+        for lane in ("a", "b"):
+            spec = _DescriptorSpec(
                 f"VLD{lane.upper()}_POP_{width_bits}_normal_pop",
                 pop_keys[lane],
                 f"memory.load.fifo.pop.{shape}",
@@ -68,8 +98,7 @@ def _fifo_load_descriptor_specs(
                 schedule_alternatives=(pop_keys["b"],) if lane == "a" else (),
                 memory_width_bits=512,
             )
-            for lane in ("a", "b")
-        )
+            result.extend(_fifo_address_variants(spec, "pop"))
     return tuple(result)
 
 
@@ -78,7 +107,7 @@ def _fifo_store_descriptor_specs(
 ) -> tuple[_DescriptorSpec, ...]:
     """Selects state-preserving streaming stores and their final partial flush."""
 
-    result = [
+    flushes = (
         _DescriptorSpec(
             "VST_FLUSH_512_normal_flush",
             f"{_TARGET_KEY}.store.fifo.flush.512",
@@ -95,6 +124,11 @@ def _fifo_store_descriptor_specs(
             asm_mnemonic="vst.flush.convert.512",
             memory_width_bits=512,
         ),
+    )
+    result = [
+        variant
+        for flush in flushes
+        for variant in _fifo_address_variants(flush, "flush")
     ]
     for element_type, element_bits in element_types:
         shape = f"{element_type}x{512 // element_bits}"

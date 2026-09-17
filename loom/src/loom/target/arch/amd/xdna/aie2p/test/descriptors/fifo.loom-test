@@ -161,3 +161,61 @@ low.func.def target<amd.xdna.aie2p.core>(@target) @incomplete_store_fifo(%input:
   vst.store-fifo.high512 %low, %output, 0
   return
 }
+
+// ====
+
+// A seek returns the entire owning dimension aggregate, preserving the fields
+// needed by later pops even when the first data result is unused.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @fifo_seeks(%pointer: reg<aie2p.eps>, %fifo: reg<aie2p.eldfiforeg>, %position: reg<aie2p.erf2>, %modifier: reg<aie2p.em>, %plane: reg<aie2p.ed>, %volume: reg<aie2p.eds>) -> (reg<aie2p.mexa>, reg<aie2p.eps>, reg<aie2p.eldfiforeg>, reg<aie2p.erf2>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %unused0, %pointer0, %fifo0, %position0 = vlda.pop.512.i32x16.post.modifier %pointer, %fifo, %position, %modifier
+  %unused1, %pointer1, %fifo1, %position1, %plane1 = vldb.pop.bfp16ebs8.2d %pointer0, %fifo0, %position0, %plane
+  %plane_count = mov.2d.count-to-scalar %plane1
+  %data, %pointer2, %fifo2, %position2, %volume1 = vlda.pop.bfp16ebs16.3d %pointer1, %fifo1, %position1, %volume
+  %inner_count = mov.3d.inner.count-to-scalar %volume1
+  %outer_count = mov.3d.outer.count-to-scalar %volume1
+  return %data, %pointer2, %fifo2, %position2, %plane_count, %inner_count, %outer_count
+}
+
+// ====
+
+// Both flush families update their fixed FIFO tuple and dimension ownership.
+// Memory effects keep all six writes when their final tuple is unused.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @flush_seeks(%fifo: reg<aie2p.mstfifo>, %pointer: reg<aie2p.mpfs>, %position: reg<aie2p.mr26_fifo_st>, %modifier: reg<aie2p.em>, %plane: reg<aie2p.ed>, %volume: reg<aie2p.eds>) -> (reg<aie2p.er>, reg<aie2p.er>) asm {
+  %fifo0, %pointer0, %position0 = vst.flush.512.post.modifier %fifo, %pointer, %position, %modifier
+  %fifo1, %pointer1, %position1, %plane1 = vst.flush.512.2d %fifo0, %pointer0, %position0, %plane
+  %fifo2, %pointer2, %position2, %volume1 = vst.flush.512.3d %fifo1, %pointer1, %position1, %volume
+  %fifo3, %pointer3, %position3 = vst.flush.convert.512.post.modifier %fifo2, %pointer2, %position2, %modifier
+  %fifo4, %pointer4, %position4, %plane2 = vst.flush.convert.512.2d %fifo3, %pointer3, %position3, %plane1
+  %fifo5, %pointer5, %position5, %volume2 = vst.flush.convert.512.3d %fifo4, %pointer4, %position4, %volume1
+  %inner_count = mov.3d.inner.count-to-scalar %volume2
+  %outer_count = mov.3d.outer.count-to-scalar %volume2
+  return %inner_count, %outer_count
+}
+
+// ====
+
+// Native count outputs consume the old aggregate even when the payload dies.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @consumed_fifo_dimension(%pointer: reg<aie2p.eps>, %fifo: reg<aie2p.eldfiforeg>, %position: reg<aie2p.erf2>, %dimension: reg<aie2p.eds>) asm {
+  %unused, %next_pointer, %next_fifo, %next_position, %next_dimension = vldb.pop.512.i16x32.3d %pointer, %fifo, %position, %dimension
+  // ERROR@+1: DOMINANCE/002
+  %stale = mov.3d.outer.count-to-scalar %dimension
+  return
+}
+
+// ====
+
+// A seek needs fully defined dimension and FIFO state independently.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @incomplete_fifo_dimension(%pointer: reg<aie2p.eps>, %fifo: reg<aie2p.eldfiforeg>, %position: reg<aie2p.erf2>) asm {
+  %count = mova.2d.count 0
+  // ERROR@+1: DOMINANCE/011 {op_name="amd.xdna.aie2p.load.a.bfp16ebs16.fifo.pop.2d", field_name="mod"}
+  %unused, %next_pointer, %next_fifo, %next_position, %next_dimension = vlda.pop.bfp16ebs16.2d %pointer, %fifo, %position, %count
+  return
+}
