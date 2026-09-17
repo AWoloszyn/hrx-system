@@ -26,6 +26,9 @@ struct FakeQueueState {
   NTSTATUS wait_status = STATUS_SUCCESS;
   // Progress published concurrently with a failed wait registration.
   uint64_t progress_on_wait_error = 0;
+  // Explicit fence value published by a successful native wait, or zero to
+  // publish its requested point.
+  uint64_t progress_on_wait_success = 0;
   // Values assigned to actual native submission attempts.
   std::vector<uint64_t> submitted_values;
   // Number of native wait registration attempts.
@@ -90,7 +93,9 @@ FakeWaitFromCpu(const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU* wait) {
   EXPECT_EQ(wait->hDevice, 0x10u);
   EXPECT_EQ(wait->ObjectCount, 1u);
   if (current_state->wait_status == STATUS_SUCCESS) {
-    current_state->progress = wait->FenceValueArray[0];
+    current_state->progress = current_state->progress_on_wait_success != 0
+                                  ? current_state->progress_on_wait_success
+                                  : wait->FenceValueArray[0];
     EXPECT_TRUE(SetEvent(wait->hAsyncEvent));
   } else {
     current_state->progress = current_state->progress_on_wait_error;
@@ -242,6 +247,43 @@ TEST_F(WindowsGpuKernelQueueTest, TimeoutDoesNotRetireOrFailAcceptedWork) {
             AMDF_STATUS_OK);
   EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
             AMDF_STATUS_OK);
+}
+
+TEST_F(WindowsGpuKernelQueueTest, ResetFenceDoesNotCompleteAcceptedWork) {
+  uint64_t submission = 0;
+  ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
+  state_.progress = UINT64_MAX;
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_progress(queue_), 0u);
+  const auto lost = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_terminal_status(queue_), lost);
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
+            lost);
+  uint64_t rejected_submission = 77;
+  EXPECT_EQ(Submit(&rejected_submission), lost);
+  EXPECT_EQ(rejected_submission, 77u);
+  EXPECT_EQ(state_.submitted_values.size(), 1u);
+  EXPECT_EQ(state_.wait_count, 0u);
+  EXPECT_EQ(state_.diagnostic_count, 0u);
+}
+
+TEST_F(WindowsGpuKernelQueueTest, ResetDuringWaitDoesNotCompleteAcceptedWork) {
+  uint64_t submission = 0;
+  ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
+  state_.progress_on_wait_success = UINT64_MAX;
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  const auto lost = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
+            lost);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_progress(queue_), 0u);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_terminal_status(queue_), lost);
+  EXPECT_EQ(state_.submitted_values.size(), 1u);
+  EXPECT_EQ(state_.wait_count, 1u);
+  EXPECT_EQ(state_.diagnostic_count, 0u);
 }
 
 }  // namespace

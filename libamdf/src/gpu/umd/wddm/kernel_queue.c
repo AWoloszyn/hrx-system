@@ -109,7 +109,8 @@ amdf_status_t amdf_gpu_umd_kernel_queue_submit(
   if (queue->native == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
   }
-  if (queue->last_native_submission == UINT64_MAX) {
+  // UINT64_MAX is reserved for the monitored fence's reset indication.
+  if (queue->last_native_submission >= UINT64_MAX - 1) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   if (command_buffer_address == 0 || command_buffer_byte_length == 0 ||
@@ -147,9 +148,8 @@ uint64_t amdf_gpu_umd_kernel_queue_query_progress(
   if (queue->native == NULL) {
     return queue->last_native_submission;
   }
-  const uint64_t progress = *queue->progress_fence_pointer;
-  MemoryBarrier();
-  return progress;
+  return amdf_kmt_device_status_query_fence_progress(
+      &queue->device->status, queue->progress_fence_pointer);
 }
 
 amdf_status_t amdf_gpu_umd_kernel_queue_wait(
@@ -162,8 +162,12 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
   }
   amdf_wait_budget_t remaining;
   while (amdf_gpu_umd_kernel_queue_query_progress(queue) < native_submission) {
-    const amdf_status_t status =
-        amdf_wait_deadline_query_remaining(deadline, &remaining);
+    amdf_status_t status =
+        amdf_gpu_umd_kernel_queue_query_terminal_status(queue);
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
+    status = amdf_wait_deadline_query_remaining(deadline, &remaining);
     if (!amdf_status_is_ok(status)) {
       return status;
     }
@@ -175,12 +179,13 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
   // A finite waiter never blocks acquiring the reusable event behind an
   // infinite native wait. Contention consumes the same original deadline.
   for (;;) {
-    if (amdf_gpu_umd_kernel_queue_query_progress(queue) >= native_submission) {
-      MemoryBarrier();
-      return AMDF_STATUS_OK;
+    const uint64_t progress = amdf_gpu_umd_kernel_queue_query_progress(queue);
+    amdf_status_t status =
+        amdf_gpu_umd_kernel_queue_query_terminal_status(queue);
+    if (!amdf_status_is_ok(status) || progress >= native_submission) {
+      return status;
     }
-    const amdf_status_t status =
-        amdf_wait_deadline_query_remaining(deadline, &remaining);
+    status = amdf_wait_deadline_query_remaining(deadline, &remaining);
     if (!amdf_status_is_ok(status)) {
       return status;
     }
@@ -195,6 +200,10 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
   amdf_status_t status = AMDF_STATUS_OK;
   while (amdf_status_is_ok(status) &&
          amdf_gpu_umd_kernel_queue_query_progress(queue) < native_submission) {
+    status = amdf_gpu_umd_kernel_queue_query_terminal_status(queue);
+    if (!amdf_status_is_ok(status)) {
+      break;
+    }
     status = amdf_wait_deadline_query_remaining(deadline, &remaining);
     if (!amdf_status_is_ok(status)) {
       break;
@@ -251,7 +260,7 @@ amdf_status_t amdf_gpu_umd_kernel_queue_wait(
   }
   ReleaseSRWLockExclusive(&queue->wait_lock);
   if (amdf_status_is_ok(status)) {
-    MemoryBarrier();
+    status = amdf_gpu_umd_kernel_queue_query_terminal_status(queue);
   }
   return status;
 }
