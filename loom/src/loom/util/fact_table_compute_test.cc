@@ -104,9 +104,11 @@ TEST_F(FactTableComputeTest, IdentityCloneUndefineAndScopeReuse) {
   const loom_value_id_t result = loom_op_const_results(alias)[0];
   loom_value_fact_table_t clone = {};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&clone, &arena_, 0));
-  IREE_ASSERT_OK(
-      loom_value_fact_table_clone_defined_facts(&clone, &table_, module_));
+  IREE_ASSERT_OK(loom_value_fact_table_clone_values(
+      &clone, {&table_, &result, 1}, module_));
   EXPECT_EQ(loom_value_fact_table_query_identity(&clone, result), inputs_[0]);
+  EXPECT_FALSE(loom_value_fact_table_has_entry(&clone, inputs_[0]));
+  EXPECT_FALSE(loom_value_fact_table_has_entry(&clone, inputs_[1]));
   loom_value_fact_table_undefine(&table_, result);
   EXPECT_EQ(loom_value_fact_table_query_identity(&table_, result), result);
   bool changed = false;

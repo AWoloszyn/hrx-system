@@ -426,13 +426,24 @@ bool loom_value_fact_table_query_contextual_query_origin(
 loom_value_id_t loom_value_fact_table_query_identity(
     const loom_value_fact_table_t* table, loom_value_id_t value_id);
 
-// Clones all defined source entries and their identities into |target|, using
-// the same module-local value IDs. When |module| is provided,
+// Borrowed subset of a fact table. The table and value IDs must remain valid
+// while the view is consumed. Value IDs are unique and may name unset entries.
+typedef struct loom_value_fact_table_view_t {
+  // Source table owning the facts and their extension payloads.
+  const loom_value_fact_table_t* table;
+  // Module-local value IDs selected by the producer of this scope.
+  const loom_value_id_t* value_ids;
+  // Number of entries in value_ids.
+  iree_host_size_t value_count;
+} loom_value_fact_table_view_t;
+
+// Clones the defined entries selected by |source|, with their identities and
+// origins, into |target| using the same value IDs. When |module| is provided,
 // extension payloads use the type-owned domain implied by each value ID.
 // Undefined entries remain unset in |target| so normal block-argument and op
 // fact seeding can fill them.
-iree_status_t loom_value_fact_table_clone_defined_facts(
-    loom_value_fact_table_t* target, const loom_value_fact_table_t* source,
+iree_status_t loom_value_fact_table_clone_values(
+    loom_value_fact_table_t* target, loom_value_fact_table_view_t source,
     const loom_module_t* module);
 
 // Propagates SSA identities and retained materialization and contextual origins

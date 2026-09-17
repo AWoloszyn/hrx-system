@@ -687,12 +687,26 @@ TEST_F(CanonicalizeTest, DriverAcceptsSeedFacts) {
   IREE_ASSERT_OK(loom_test_use_build(&builder_, &addi_result, 1,
                                      LOOM_LOCATION_UNKNOWN, &use));
 
+  loom_builder_t module_builder;
+  loom_builder_initialize(module_, &module_->arena, loom_module_block(module_),
+                          &module_builder);
+  loom_symbol_ref_t other_callee = {};
+  IREE_ASSERT_OK(add_symbol(IREE_SV("other"), &other_callee));
+  loom_op_t* other_op = nullptr;
+  IREE_ASSERT_OK(loom_test_split_func_build(&module_builder, 0, 0, 0,
+                                            other_callee, &i32, 1,
+                                            LOOM_LOCATION_UNKNOWN, &other_op));
+  const loom_value_id_t other_arg = loom_block_arg_id(
+      loom_region_entry_block(loom_test_split_func_config(other_op)), 0);
+
   iree_arena_allocator_t seed_arena;
   iree_arena_initialize(&block_pool_, &seed_arena);
   loom_value_fact_table_t seed_facts;
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&seed_facts, &seed_arena, 8));
   IREE_ASSERT_OK(loom_value_fact_table_define(&seed_facts, arg,
                                               loom_value_facts_exact_i64(40)));
+  IREE_ASSERT_OK(loom_value_fact_table_define(&seed_facts, other_arg,
+                                              loom_value_facts_exact_i64(99)));
 
   iree_arena_allocator_t pass_arena;
   iree_arena_initialize(&block_pool_, &pass_arena);
@@ -706,7 +720,7 @@ TEST_F(CanonicalizeTest, DriverAcceptsSeedFacts) {
       /*.max_iterations=*/{},
       /*.flags=*/0,
       /*.target_facts=*/NULL,
-      /*.seed_facts=*/&seed_facts,
+      /*.seed_facts=*/{&seed_facts, &arg, 1},
   };
   IREE_ASSERT_OK(loom_canonicalizer_run_function(&canonicalizer, func_like_,
                                                  &options, &result));
@@ -717,6 +731,7 @@ TEST_F(CanonicalizeTest, DriverAcceptsSeedFacts) {
   const loom_value_fact_table_t* final_facts =
       loom_canonicalizer_fact_table(&canonicalizer);
   ASSERT_NE(final_facts, nullptr);
+  EXPECT_FALSE(loom_value_fact_table_has_entry(final_facts, other_arg));
   EXPECT_TRUE(loom_value_facts_is_exact(
       loom_value_fact_table_lookup(final_facts, arg)));
   loom_value_facts_t addi_facts =
@@ -793,7 +808,7 @@ TEST_F(CanonicalizeTest, DriverPreservesExplicitTargetFactsAcrossSideRegions) {
       /*.max_iterations=*/{},
       /*.flags=*/0,
       /*.target_facts=*/&target_facts,
-      /*.seed_facts=*/&seed_facts,
+      /*.seed_facts=*/{&seed_facts, nullptr, 0},
   };
   IREE_ASSERT_OK(loom_canonicalizer_run_function(&canonicalizer, split_func,
                                                  &options, &result));
@@ -864,7 +879,7 @@ TEST_F(CanonicalizeTest, RegionDriverAcceptsSeedFacts) {
       /*.max_iterations=*/{},
       /*.flags=*/0,
       /*.target_facts=*/NULL,
-      /*.seed_facts=*/&seed_facts,
+      /*.seed_facts=*/{&seed_facts, &config_arg, 1},
   };
   IREE_ASSERT_OK(loom_canonicalizer_run_region(
       &canonicalizer, split_func, config, split_op, &options, &result));

@@ -84,8 +84,9 @@ typedef struct loom_refine_boundaries_graph_t {
   // Module being refined.
   loom_module_t* module;
 
-  // Owns walker stacks. Nested successor walks preserve live caller frames
-  // through stack-ordered arena checkpoints.
+  // Reusable scratch for graph walks and per-function boundary application.
+  // Nested successor walks preserve live caller frames through stack-ordered
+  // arena checkpoints.
   iree_arena_allocator_t* walk_arena;
 
   // Dense function nodes.

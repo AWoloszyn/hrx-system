@@ -42,11 +42,12 @@ typedef struct loom_canonicalizer_options_t {
   // Optional immutable target facts used by target-sensitive fact inference.
   const loom_target_facts_t* target_facts;
 
-  // Optional seed facts cloned into the prepared fact table before the
-  // initial function analysis. Extension payloads are re-interned, so the seed
-  // table may come from a different fact context. The target scope is supplied
-  // independently by target_facts.
-  const loom_value_fact_table_t* seed_facts;
+  // Optional function/region-local seeds cloned before the initial analysis.
+  // The caller selects values in this scope; other entries in the source table
+  // are not imported. Extension payloads are re-interned, so the seeds may come
+  // from a different fact context. The view is borrowed for the run; target
+  // scope is supplied independently by target_facts.
+  loom_value_fact_table_view_t seed_facts;
 } loom_canonicalizer_options_t;
 
 // Summary of one canonicalizer function run.
