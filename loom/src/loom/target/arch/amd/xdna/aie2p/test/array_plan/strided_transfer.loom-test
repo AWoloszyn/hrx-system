@@ -73,10 +73,11 @@ route channel=1 tile=(0,2) kind=switch source=dma[0] destination=south[0]
 route channel=1 tile=(0,1) kind=switch source=north[0] destination=south[0]
 route channel=1 tile=(0,0) kind=switch source=north[0] destination=south[2]
 route channel=1 tile=(0,0) kind=shim-mux source=north[2] destination=dma[0]
+completion-route index=0 shim=(0,0) source=0 destination=2 packet=0 arbiter=0 master-select=0 rule-slot=0
 binding-patch ordinal=0 channel=0 shim=(0,0) direction=memory-to-stream dma-channel=0 partition=0/1 offset=256 span=32 transfer=48 repeat=2
 binding-dimension channel=0 index=0 step=1 wrap=4
 binding-dimension channel=0 index=1 step=2 wrap=0
-binding-patch ordinal=1 channel=1 shim=(0,0) direction=stream-to-memory dma-channel=0 partition=0/1 offset=0 span=96 transfer=96 repeat=1
+binding-patch ordinal=1 channel=1 shim=(0,0) direction=stream-to-memory dma-channel=0 partition=0/1 offset=0 span=96 transfer=96 repeat=1 completion-route=0
 
 array-program records=39 writes=21 masked-writes=13 block-writes=4 tile-loads=1 waits=0
 array-block record=26 address=0x0021d000 words=[0x00000004,0x00000000,0x00000000,0x00000000,0x00000000,0x0e043fe0]
@@ -88,7 +89,7 @@ control-program records=6 writes=2 masked-writes=1 block-writes=2 tile-loads=0 w
 control-block record=0 address=0x0001d000 words=[0x0000000c,0x00000000,0x00000000,0x00400000,0xc0000001,0x02000000,0x00000000,0x02000000]
 control-write record=1 address=0x0001d214 value=0x00010000
 control-block record=2 address=0x0001d020 words=[0x00000018,0x00000000,0x00000000,0x00000000,0xc0000000,0x02000000,0x00000000,0x02000000]
-control-mask-write record=3 address=0x0001d200 mask=0x00001f00 value=0x00000f00
+control-mask-write record=3 address=0x0001d200 mask=0x00001f00 value=0x00000000
 control-write record=4 address=0x0001d204 value=0x80000001
 control-wait record=5 tile=(0,0) direction=stream-to-memory dma-channel=0 columns=1 rows=1
 control-relocation index=0 record=0 word=1 binding=0 addend=256 alignment=4

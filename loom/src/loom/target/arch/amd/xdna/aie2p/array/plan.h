@@ -296,6 +296,26 @@ typedef struct loom_aie2p_array_route_plan_t {
   uint8_t destination_channel;
 } loom_aie2p_array_route_plan_t;
 
+// Packet resources owned by the completion endpoint on one used shim.
+// Both egress DMA engines on the shim share this exact-match route. Circuit
+// data routes use separate stream ports and do not consume packet resources.
+typedef struct loom_aie2p_array_completion_route_t {
+  // Shim owning the completion endpoint and its packet resources.
+  loom_xdna_tile_coordinate_t coordinate;
+  // Physical TileControl slave port ordinal.
+  uint8_t source_ordinal;
+  // Physical firmware-facing master port ordinal.
+  uint8_t destination_ordinal;
+  // Selected exact-match packet identity, also written to each DMA controller.
+  uint8_t packet_id;
+  // Packet arbiter assigned to the destination master port.
+  uint8_t arbiter;
+  // Master-select group within the selected arbiter.
+  uint8_t master_select;
+  // Packet matching rule within the source slave port.
+  uint8_t rule_slot;
+} loom_aie2p_array_completion_route_t;
+
 enum {
   // AIE2P shim DMA buffer descriptors expose three address dimensions.
   LOOM_AIE2P_ARRAY_BINDING_DMA_DIMENSION_COUNT = 3,
@@ -322,6 +342,8 @@ typedef struct loom_aie2p_array_binding_plan_t {
   uint32_t partition_lane;
   // External tile partition count, or one when direct.
   uint32_t partition_lane_count;
+  // Exact completion route row, or UINT32_MAX for an ingress binding.
+  uint32_t completion_route_index;
   // Byte offset added to the runtime binding base address.
   uint64_t binding_byte_offset;
   // Physical byte span reachable from binding_byte_offset.
@@ -399,6 +421,10 @@ typedef struct loom_aie2p_array_plan_t {
   const loom_aie2p_array_route_plan_t* routes;
   // Number of stream route connections.
   iree_host_size_t route_count;
+  // Completion packet resources, once per shim with an egress binding.
+  const loom_aie2p_array_completion_route_t* completion_routes;
+  // Number of completion routes.
+  iree_host_size_t completion_route_count;
   // External binding patch records.
   const loom_aie2p_array_binding_plan_t* binding_plans;
   // Number of external binding patch records.

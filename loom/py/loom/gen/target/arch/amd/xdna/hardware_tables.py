@@ -170,10 +170,6 @@ def emit_array_facts() -> str:
     ]
     lines = [
         *_header(),
-        "static const uint8_t kLoomXdnaNpu2ControllerIds[] = {",
-        "    " + ", ".join(str(value) for value in family.controller_ids) + ",",
-        "};",
-        "",
         "static const loom_xdna_address_window_t kLoomXdnaNpu2AddressWindows[] = {",
         *window_lines,
         "};",
@@ -200,7 +196,6 @@ def emit_array_facts() -> str:
         f"    .row_shift = {family.row_shift},",
         f"    .address_generation_granularity_bits = {family.address_generation_granularity_bits},",
         f"    .provenance_bits = UINT32_C(0x{int(family.provenance):08x}),",
-        "    .controller_ids = kLoomXdnaNpu2ControllerIds,",
         "    .address_windows = kLoomXdnaNpu2AddressWindows,",
         f"    .address_window_count = {len(window_lines)},",
         "    .tiles = kLoomXdnaNpu2TileFacts,",

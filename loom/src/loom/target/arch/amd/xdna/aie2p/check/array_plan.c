@@ -398,6 +398,18 @@ static iree_status_t loom_aie2p_array_plan_check_format(
         loom_aie2p_array_plan_check_port_name(route->destination_port),
         route->destination_channel));
   }
+  for (iree_host_size_t i = 0; i < plan->completion_route_count; ++i) {
+    const loom_aie2p_array_completion_route_t* route =
+        &plan->completion_routes[i];
+    IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+        builder,
+        "completion-route index=%" PRIhsz
+        " shim=(%u,%u) source=%u destination=%u packet=%u arbiter=%u"
+        " master-select=%u rule-slot=%u\n",
+        i, route->coordinate.column, route->coordinate.row,
+        route->source_ordinal, route->destination_ordinal, route->packet_id,
+        route->arbiter, route->master_select, route->rule_slot));
+  }
   for (iree_host_size_t i = 0; i < plan->binding_plan_count; ++i) {
     const loom_aie2p_array_binding_plan_t* binding = &plan->binding_plans[i];
     const loom_aie2p_array_dma_plan_t* dma =
@@ -407,7 +419,7 @@ static iree_status_t loom_aie2p_array_plan_check_format(
         "binding-patch ordinal=%" PRIu32 " channel=%" PRIu32
         " shim=(%u,%u) direction=%s dma-channel=%u partition=%" PRIu32
         "/%" PRIu32 " offset=%" PRIu64 " span=%" PRIu64 " transfer=%" PRIu32
-        " repeat=%u\n",
+        " repeat=%u",
         plan->bindings[binding->binding_index].ordinal, binding->channel_index,
         dma->coordinate.column, dma->coordinate.row,
         loom_aie2p_array_plan_check_dma_direction_name(dma->direction),
@@ -415,6 +427,12 @@ static iree_status_t loom_aie2p_array_plan_check_format(
         binding->partition_lane_count, binding->binding_byte_offset,
         binding->binding_span_byte_length, binding->transfer_byte_length,
         binding->task_repeat_count));
+    if (binding->completion_route_index != UINT32_MAX) {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+          builder, " completion-route=%" PRIu32,
+          binding->completion_route_index));
+    }
+    IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(builder, "\n"));
     for (uint8_t j = 0; j < binding->dma_dimension_count; ++j) {
       const loom_aie2p_array_binding_dma_dimension_t* dimension =
           &binding->dma_dimensions[j];

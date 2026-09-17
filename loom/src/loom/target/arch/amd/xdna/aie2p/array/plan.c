@@ -53,7 +53,13 @@ typedef struct loom_aie2p_array_entity_t {
 
 typedef struct loom_aie2p_array_tile_state_t {
   const loom_xdna_tile_facts_t* facts;
-  uint32_t* bank_cursors;
+  // Memory allocation and shim packet allocation occupy disjoint tile kinds.
+  union {
+    // Next free byte in each local-memory bank on compute and memory tiles.
+    uint32_t* bank_cursors;
+    // Retained route on a shim, or UINT32_MAX before its first egress binding.
+    uint32_t completion_route_index;
+  } allocation;
   uint16_t next_buffer_descriptor;
   uint8_t next_memory_to_stream_channel;
   uint8_t next_stream_to_memory_channel;
@@ -102,6 +108,8 @@ typedef struct loom_aie2p_array_plan_builder_t {
   loom_aie2p_array_lock_plan_t* locks;
   loom_aie2p_array_dma_plan_t* dma_channels;
   loom_aie2p_array_binding_plan_t* binding_plans;
+  // Retained completion resources sharing the binding-plan allocation.
+  loom_aie2p_array_completion_route_t* completion_routes;
   loom_aie2p_array_route_builder_t route_builder;
 
   iree_host_size_t group_cursor;
@@ -776,12 +784,12 @@ static bool loom_aie2p_array_try_allocate_storage_in_bank(
     uint32_t alignment, uint32_t* out_owner_offset) {
   const uint32_t bank_capacity =
       state->facts->memory.local_capacity / state->facts->memory.bank_count;
-  uint64_t cursor = state->bank_cursors[bank];
+  uint64_t cursor = state->allocation.bank_cursors[bank];
   if (!iree_checked_align_u64(cursor, alignment, &cursor) ||
       cursor + byte_length > bank_capacity) {
     return false;
   }
-  state->bank_cursors[bank] = (uint32_t)(cursor + byte_length);
+  state->allocation.bank_cursors[bank] = (uint32_t)(cursor + byte_length);
   *out_owner_offset = bank * bank_capacity + (uint32_t)cursor;
   return true;
 }
@@ -890,9 +898,10 @@ static bool loom_aie2p_array_can_allocate_ring_storage(
     const loom_aie2p_array_pending_endpoint_t* pending_endpoint) {
   const uint8_t bank_count = state->facts->memory.bank_count;
   uint32_t bank_cursors[UINT8_MAX + 1u];
-  memcpy(bank_cursors, state->bank_cursors, bank_count * sizeof(*bank_cursors));
+  memcpy(bank_cursors, state->allocation.bank_cursors,
+         bank_count * sizeof(*bank_cursors));
   loom_aie2p_array_tile_state_t probe = *state;
-  probe.bank_cursors = bank_cursors;
+  probe.allocation.bank_cursors = bank_cursors;
   if (pending_endpoint != NULL &&
       pending_endpoint->coordinate.column == coordinate.column &&
       pending_endpoint->coordinate.row == coordinate.row) {
@@ -1335,6 +1344,44 @@ static iree_status_t loom_aie2p_array_plan_channel_slots(
   return iree_ok_status();
 }
 
+static uint32_t loom_aie2p_array_plan_completion_route(
+    loom_aie2p_array_plan_builder_t* builder,
+    loom_xdna_tile_coordinate_t coordinate) {
+  loom_aie2p_array_tile_state_t* state =
+      loom_aie2p_array_tile_state(builder, coordinate);
+  if (state->allocation.completion_route_index != UINT32_MAX) {
+    return state->allocation.completion_route_index;
+  }
+
+  const loom_xdna_stream_port_range_t* source = NULL;
+  const loom_xdna_stream_port_range_t* destination = NULL;
+  IREE_CHECK_OK(loom_xdna_array_stream_port_range(
+      builder->family, LOOM_XDNA_TILE_KIND_SHIM_NOC,
+      LOOM_XDNA_STREAM_DIRECTION_SLAVE, LOOM_XDNA_STREAM_PORT_TILE_CONTROL,
+      &source));
+  IREE_CHECK_OK(loom_xdna_array_stream_port_range(
+      builder->family, LOOM_XDNA_TILE_KIND_SHIM_NOC,
+      LOOM_XDNA_STREAM_DIRECTION_MASTER, LOOM_XDNA_STREAM_PORT_SOUTH,
+      &destination));
+
+  // TileControl0 -> South0 is the native completion endpoint. It is the only
+  // packet demand on this shim; circuit DMA routes occupy different ports.
+  // Assign the first packet identity, rule and arbiter/master-select tuple
+  // from its unused packet resources and retain them for every egress DMA.
+  const uint32_t index = (uint32_t)builder->plan->completion_route_count++;
+  builder->completion_routes[index] = (loom_aie2p_array_completion_route_t){
+      .coordinate = coordinate,
+      .source_ordinal = source->ordinal,
+      .destination_ordinal = destination->ordinal,
+      .packet_id = 0,
+      .arbiter = 0,
+      .master_select = 0,
+      .rule_slot = 0,
+  };
+  state->allocation.completion_route_index = index;
+  return index;
+}
+
 static iree_status_t loom_aie2p_array_plan_external_channel(
     loom_aie2p_array_plan_builder_t* builder, uint32_t channel_index,
     const loom_aie2p_array_endpoint_t* sender,
@@ -1427,6 +1474,10 @@ static iree_status_t loom_aie2p_array_plan_external_channel(
         .dma_index = shim_dma_index,
         .partition_lane = binding_endpoint->partition_lane,
         .partition_lane_count = binding_endpoint->partition_lane_count,
+        .completion_route_index = ingress
+                                      ? UINT32_MAX
+                                      : loom_aie2p_array_plan_completion_route(
+                                            builder, shim_dma->coordinate),
     };
     const loom_xdna_tile_facts_t* shim_tile = NULL;
     IREE_RETURN_IF_ERROR(loom_xdna_array_tile_facts(
@@ -1609,8 +1660,13 @@ static iree_status_t loom_aie2p_array_initialize_tile_states(
       (void**)&bank_cursors));
   memset(bank_cursors, 0, bank_cursor_count * sizeof(*bank_cursors));
   for (iree_host_size_t i = 0; i < tile_count; ++i) {
-    builder->tile_states[i].bank_cursors = bank_cursors;
-    bank_cursors += builder->tile_states[i].facts->memory.bank_count;
+    loom_aie2p_array_tile_state_t* state = &builder->tile_states[i];
+    if (state->facts->kind == LOOM_XDNA_TILE_KIND_SHIM_NOC) {
+      state->allocation.completion_route_index = UINT32_MAX;
+    } else {
+      state->allocation.bank_cursors = bank_cursors;
+      bank_cursors += state->facts->memory.bank_count;
+    }
   }
 
   uint8_t* next_channels = NULL;
@@ -1733,7 +1789,16 @@ static iree_status_t loom_aie2p_array_allocate_physical_plan(
       (void**)&builder->route_builder.routes));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
       builder->arena, builder->plan->binding_plan_count,
-      sizeof(*builder->binding_plans), (void**)&builder->binding_plans));
+      sizeof(*builder->binding_plans) + sizeof(*builder->completion_routes),
+      (void**)&builder->binding_plans));
+  // At most one completion route is needed per external binding. The trailing
+  // rows share the binding allocation and require no additional alignment.
+  if (builder->plan->binding_plan_count != 0) {
+    builder->completion_routes =
+        (loom_aie2p_array_completion_route_t*)(builder->binding_plans +
+                                               builder->plan
+                                                   ->binding_plan_count);
+  }
 
   builder->plan->worker_plans = builder->worker_plans;
   builder->plan->worker_storage = builder->worker_storage;
@@ -1744,6 +1809,7 @@ static iree_status_t loom_aie2p_array_allocate_physical_plan(
   builder->plan->dma_channels = builder->dma_channels;
   builder->plan->routes = builder->route_builder.routes;
   builder->plan->binding_plans = builder->binding_plans;
+  builder->plan->completion_routes = builder->completion_routes;
   return loom_aie2p_array_initialize_tile_states(builder);
 }
 

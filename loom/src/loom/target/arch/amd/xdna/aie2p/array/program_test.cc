@@ -283,7 +283,22 @@ TEST(Aie2pArrayProgramTest, KeepsDmaServiceCoreReset) {
   iree_arena_block_pool_deinitialize(&block_pool);
 }
 
-TEST(Aie2pArrayProgramTest, RoutesShimCompletionTokensToFirmware) {
+struct CompletionRouteCase {
+  // Planner-selected packet resources on the shim.
+  loom_aie2p_array_completion_route_t route;
+  // Encoded master enable, packet mode, arbiter and master-select mask.
+  uint32_t master_value;
+  // Physical address of the selected packet matching rule.
+  uint32_t rule_address;
+  // Encoded exact-match packet rule.
+  uint32_t rule_value;
+};
+
+class Aie2pCompletionRouteTest
+    : public ::testing::TestWithParam<CompletionRouteCase> {};
+
+TEST_P(Aie2pCompletionRouteTest, EmitsSelectedPacketResources) {
+  const CompletionRouteCase& selected = GetParam();
   const loom_aie2p_array_binding_t binding = {
       /*.value_id=*/0,
       /*.ordinal=*/0,
@@ -295,6 +310,7 @@ TEST(Aie2pArrayProgramTest, RoutesShimCompletionTokensToFirmware) {
       /*.dma_index=*/0,
       /*.partition_lane=*/0,
       /*.partition_lane_count=*/1,
+      /*.completion_route_index=*/0,
       /*.binding_byte_offset=*/0,
       /*.binding_span_byte_length=*/64,
       /*.transfer_byte_length=*/64,
@@ -318,6 +334,8 @@ TEST(Aie2pArrayProgramTest, RoutesShimCompletionTokensToFirmware) {
   plan.dma_channel_count = 1;
   plan.binding_plans = &binding_plan;
   plan.binding_plan_count = 1;
+  plan.completion_routes = &selected.route;
+  plan.completion_route_count = 1;
 
   iree_arena_block_pool_t block_pool;
   iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
@@ -332,17 +350,45 @@ TEST(Aie2pArrayProgramTest, RoutesShimCompletionTokensToFirmware) {
   const loom_aie2p_program_register_write32_t* slave =
       FindRegisterWrite(program, 0x0003F100);
   const loom_aie2p_program_register_write32_t* slot =
-      FindRegisterWrite(program, 0x0003F200);
+      FindRegisterWrite(program, selected.rule_address);
   ASSERT_NE(master, nullptr);
   ASSERT_NE(slave, nullptr);
   ASSERT_NE(slot, nullptr);
-  EXPECT_EQ(master->value, 0xC0000045u);
+  EXPECT_EQ(master->value, selected.master_value);
   EXPECT_EQ(slave->value, 0xC0000000u);
-  EXPECT_EQ(slot->value, 0x0F1F0135u);
+  EXPECT_EQ(slot->value, selected.rule_value);
+  ASSERT_EQ(program.control_record_count, 4u);
+  ExpectRegisterMaskWrite(program.control_records[1], 0x0001D200, 0x00001F00,
+                          static_cast<uint32_t>(selected.route.packet_id) << 8);
 
   iree_arena_deinitialize(&arena);
   iree_arena_block_pool_deinitialize(&block_pool);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    SelectedResources, Aie2pCompletionRouteTest,
+    ::testing::Values(
+        CompletionRouteCase{
+            /*.route=*/{/*coordinate=*/{0, 0}, /*source_ordinal=*/0,
+                        /*destination_ordinal=*/2, /*packet_id=*/0,
+                        /*arbiter=*/0, /*master_select=*/0, /*rule_slot=*/0},
+            /*.master_value=*/0xC0000008,
+            /*.rule_address=*/0x0003F200,
+            /*.rule_value=*/0x001F0100},
+        CompletionRouteCase{
+            /*.route=*/{/*coordinate=*/{0, 0}, /*source_ordinal=*/0,
+                        /*destination_ordinal=*/2, /*packet_id=*/12,
+                        /*arbiter=*/2, /*master_select=*/1, /*rule_slot=*/1},
+            /*.master_value=*/0xC0000012,
+            /*.rule_address=*/0x0003F204,
+            /*.rule_value=*/0x0C1F0112},
+        CompletionRouteCase{
+            /*.route=*/{/*coordinate=*/{0, 0}, /*source_ordinal=*/0,
+                        /*destination_ordinal=*/2, /*packet_id=*/15,
+                        /*arbiter=*/5, /*master_select=*/3, /*rule_slot=*/3},
+            /*.master_value=*/0xC0000045,
+            /*.rule_address=*/0x0003F20C,
+            /*.rule_value=*/0x0F1F0135}));
 
 }  // namespace
 }  // namespace loom
