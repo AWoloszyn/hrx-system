@@ -378,7 +378,7 @@ typedef struct loom_low_schedule_build_state_t {
   iree_host_size_t hazard_state_capacity;
   // Current block being scheduled.
   uint32_t current_block_index;
-  // Current issue cycle within the block being scheduled.
+  // Current estimated issue cycle in the block, excluding compile-time ops.
   uint32_t current_issue_cycle;
   // Pending visible descriptor node that can start a target pair.
   uint32_t pending_pair_affinity_node;

@@ -1208,7 +1208,6 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
         range_end);
     uint32_t scheduled_in_range = 0;
     while (scheduled_in_block < block_record->node_count) {
-      state->current_issue_cycle = scheduled_in_block;
       const uint32_t ready_candidate_count =
           loom_low_schedule_ready_frontier_count(&ready_policy.frontier);
       if (ready_candidate_count == 0) {
@@ -1225,7 +1224,6 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
 
       state->nodes[chosen_node].scheduled_ordinal = scheduled_in_block++;
       ++scheduled_in_range;
-      state->current_issue_cycle = state->nodes[chosen_node].scheduled_ordinal;
       state->scheduled_node_indices[state->scheduled_node_count] = chosen_node;
       state->scheduled_ops[state->scheduled_node_count] =
           state->nodes[chosen_node].op;
@@ -1316,6 +1314,12 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
           loom_low_schedule_insert_ready_node(state, &pressure_state,
                                               &ready_policy, consumer_node);
         }
+      }
+      // Compile-time controls remain visible in the schedule, but cannot hide
+      // latency or satisfy an instruction-distance hazard by occupying a slot.
+      if (!loom_traits_are_compile_time_only(
+              state->nodes[chosen_node].traits)) {
+        ++state->current_issue_cycle;
       }
       if (scheduled_in_range == range_end - range_start) {
         range_start = range_end;
