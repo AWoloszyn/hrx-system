@@ -91,10 +91,11 @@ typedef uint32_t iree_net_carrier_capabilities_t;
 // Completion callback for one accepted send operation.
 //
 // An OK return from iree_net_carrier_send() guarantees exactly one callback.
-// It marks the point where every buffer referenced by the send may be reused.
-// |status| reports the terminal result and transfers to the callback, which
-// must propagate or release it. |bytes_transferred| is the number of payload
-// bytes accepted by the transport before completion.
+// The callback runs on the carrier's owning proactor thread and may race with
+// the accepting call's return. It marks the point where every buffer referenced
+// by the send may be reused. |status| reports the terminal result and transfers
+// to the callback, which must propagate or release it. |bytes_transferred| is
+// the number of payload bytes accepted by the transport before completion.
 typedef void(IREE_API_PTR* iree_net_send_completion_fn_t)(
     void* user_data, iree_status_t status, iree_host_size_t bytes_transferred);
 

@@ -71,6 +71,14 @@ struct AsyncOperationResult {
   bool completed = false;
 };
 
+struct CarrierDeactivateResult {
+  // Fixture completion flag set by the callback.
+  bool* deactivated = nullptr;
+
+  // Number of delivered deactivation callbacks.
+  int callback_count = 0;
+};
+
 struct SendResult {
   // Shared callback-order record.
   std::vector<int>* completion_order = nullptr;
@@ -208,6 +216,12 @@ static void SendCompleted(void* user_data, iree_status_t status,
 
 static void CarrierDeactivated(void* user_data) {
   *static_cast<bool*>(user_data) = true;
+}
+
+static void CarrierDeactivationCounted(void* user_data) {
+  auto* result = static_cast<CarrierDeactivateResult*>(user_data);
+  ++result->callback_count;
+  *result->deactivated = true;
 }
 
 static iree_status_t QueueSendsAndFail(void* user_data, iree_async_span_t data,
@@ -830,8 +844,12 @@ TEST_F(TcpCarrierTest, DeactivationInvalidatesDirectReservation) {
   IREE_ASSERT_OK(iree_net_carrier_begin_send(
       client_carrier_, 128, &reservation_ptr, &reservation_handle));
   ASSERT_NE(reservation_ptr, nullptr);
-  BeginDeactivation(client_carrier_, &client_deactivated_);
+  CarrierDeactivateResult deactivate_result;
+  deactivate_result.deactivated = &client_deactivated_;
+  iree_net_carrier_deactivate(client_carrier_, CarrierDeactivationCounted,
+                              &deactivate_result);
   PollUntil([&] { return client_deactivated_; });
+  EXPECT_EQ(deactivate_result.callback_count, 1);
 
   SendResult result;
   IREE_EXPECT_STATUS_IS(

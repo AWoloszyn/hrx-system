@@ -14,12 +14,17 @@
 
 typedef struct iree_net_tcp_carrier_t iree_net_tcp_carrier_t;
 
+// Send-slot ownership transitions are serialized by the carrier mutex. A
+// submitted or cancelling slot belongs to the kernel; a completing slot belongs
+// to the owning proactor callback.
 typedef enum iree_net_tcp_send_slot_state_e {
   IREE_NET_TCP_SEND_SLOT_STATE_FREE = 0,
   IREE_NET_TCP_SEND_SLOT_STATE_RESERVED = 1,
   IREE_NET_TCP_SEND_SLOT_STATE_QUEUED = 2,
   IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED = 3,
-  IREE_NET_TCP_SEND_SLOT_STATE_DETACHED = 4,
+  IREE_NET_TCP_SEND_SLOT_STATE_CANCELLING = 4,
+  IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING = 5,
+  IREE_NET_TCP_SEND_SLOT_STATE_DETACHED = 6,
 } iree_net_tcp_send_slot_state_t;
 
 // One bounded logical send or direct-write reservation.
@@ -67,7 +72,9 @@ typedef struct iree_net_tcp_send_slot_t {
 typedef enum iree_net_tcp_receive_state_e {
   IREE_NET_TCP_RECEIVE_STATE_RETIRED = 0,
   IREE_NET_TCP_RECEIVE_STATE_SUBMITTED = 1,
-  IREE_NET_TCP_RECEIVE_STATE_PAUSED = 2,
+  IREE_NET_TCP_RECEIVE_STATE_CANCELLING = 2,
+  IREE_NET_TCP_RECEIVE_STATE_COMPLETING = 3,
+  IREE_NET_TCP_RECEIVE_STATE_PAUSED = 4,
 } iree_net_tcp_receive_state_t;
 
 typedef enum iree_net_tcp_receive_lease_state_e {
@@ -78,6 +85,8 @@ typedef enum iree_net_tcp_receive_lease_state_e {
 
 typedef enum iree_net_tcp_carrier_flag_bits_e {
   IREE_NET_TCP_CARRIER_FLAG_NONE = 0u,
+
+  // One send lane is submitted or owned by its completion callback.
   IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE = 1u << 0,
   IREE_NET_TCP_CARRIER_FLAG_SEND_SHUTDOWN_INITIATED = 1u << 1,
   IREE_NET_TCP_CARRIER_FLAG_SOCKET_WRITE_SHUTDOWN_ISSUED = 1u << 2,
@@ -95,18 +104,6 @@ typedef struct iree_net_tcp_receive_lease_context_t {
   // Current wrapper ownership state.
   iree_atomic_int32_t state;
 } iree_net_tcp_receive_lease_context_t;
-
-// Work detached while publishing a terminal transport failure.
-typedef struct iree_net_tcp_failure_work_t {
-  // Queued committed sends to retire.
-  iree_net_tcp_send_slot_t* detached_sends;
-
-  // Status code reported to detached committed sends.
-  iree_status_code_t status_code;
-
-  // True when failure retired a receive paused outside the proactor.
-  bool retire_paused_receive;
-} iree_net_tcp_failure_work_t;
 
 struct iree_net_tcp_carrier_t {
   // Base carrier; must be first for upcasting.
@@ -145,8 +142,8 @@ struct iree_net_tcp_carrier_t {
   // Single receive operation reused for the carrier lifetime.
   iree_async_socket_recv_pool_operation_t receive_operation;
 
-  // SUBMITTED, PAUSED, or RETIRED receive ownership.
-  iree_atomic_int32_t receive_state;
+  // Mutex-protected receive operation ownership state.
+  iree_net_tcp_receive_state_t receive_state;
 
   // Incremented after every wrapped receive buffer is recycled.
   iree_atomic_int32_t returned_buffer_epoch;
@@ -276,6 +273,19 @@ static iree_net_tcp_send_slot_t* iree_net_tcp_claim_send_dispatch_locked(
   return iree_net_tcp_pop_send_locked(carrier);
 }
 
+static iree_net_tcp_send_slot_t* iree_net_tcp_find_submitted_send_locked(
+    iree_net_tcp_carrier_t* carrier) {
+  iree_net_tcp_send_slot_t* submitted_slot = NULL;
+  for (uint32_t i = 0; i < carrier->send_slot_count; ++i) {
+    iree_net_tcp_send_slot_t* slot = &carrier->send_slots[i];
+    if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED) continue;
+    IREE_ASSERT(!submitted_slot,
+                "TCP carrier submitted multiple socket sends concurrently");
+    submitted_slot = slot;
+  }
+  return submitted_slot;
+}
+
 static void iree_net_tcp_send_slot_release_resources(
     iree_net_tcp_carrier_t* carrier, iree_net_tcp_send_slot_t* slot) {
   if (slot->regions_retained) {
@@ -317,12 +327,12 @@ static iree_net_tcp_send_slot_t* iree_net_tcp_detach_send_queue_locked(
   return head;
 }
 
-static iree_net_tcp_send_slot_t* iree_net_tcp_detach_pending_sends_locked(
+// Detaches caller-synchronized reservations during explicit deactivation.
+// Asynchronous failure leaves writable reservation storage with its caller.
+static iree_net_tcp_send_slot_t* iree_net_tcp_detach_reservations_locked(
     iree_net_tcp_carrier_t* carrier) {
+  iree_net_tcp_send_slot_t* head = NULL;
   iree_net_tcp_send_slot_t* tail = NULL;
-  iree_net_tcp_send_slot_t* head =
-      iree_net_tcp_detach_send_queue_locked(carrier, &tail);
-
   for (uint32_t i = 0; i < carrier->send_slot_count; ++i) {
     iree_net_tcp_send_slot_t* slot = &carrier->send_slots[i];
     if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_RESERVED) continue;
@@ -337,6 +347,43 @@ static iree_net_tcp_send_slot_t* iree_net_tcp_detach_pending_sends_locked(
     tail = slot;
   }
   return head;
+}
+
+static iree_status_t iree_net_tcp_cancel_operation_locked(
+    iree_net_tcp_carrier_t* carrier, iree_async_operation_t* operation) {
+  iree_status_t status =
+      iree_async_proactor_cancel(carrier->proactor, operation);
+  if (iree_status_is_not_found(status)) {
+    iree_status_free(status);
+    return iree_ok_status();
+  }
+  return status;
+}
+
+static iree_status_t iree_net_tcp_request_receive_cancellation_locked(
+    iree_net_tcp_carrier_t* carrier) {
+  if (carrier->receive_state != IREE_NET_TCP_RECEIVE_STATE_SUBMITTED) {
+    return iree_ok_status();
+  }
+  iree_status_t status = iree_net_tcp_cancel_operation_locked(
+      carrier, &carrier->receive_operation.base);
+  if (iree_status_is_ok(status)) {
+    carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_CANCELLING;
+  }
+  return status;
+}
+
+static iree_status_t iree_net_tcp_request_send_cancellation_locked(
+    iree_net_tcp_carrier_t* carrier) {
+  iree_net_tcp_send_slot_t* submitted_slot =
+      iree_net_tcp_find_submitted_send_locked(carrier);
+  if (!submitted_slot) return iree_ok_status();
+  iree_status_t status = iree_net_tcp_cancel_operation_locked(
+      carrier, &submitted_slot->operation.base);
+  if (iree_status_is_ok(status)) {
+    submitted_slot->state = IREE_NET_TCP_SEND_SLOT_STATE_CANCELLING;
+  }
+  return status;
 }
 
 static bool iree_net_tcp_claim_write_shutdown_locked(
@@ -381,49 +428,55 @@ static void iree_net_tcp_complete_detached_sends(
   }
 }
 
-static iree_net_tcp_failure_work_t iree_net_tcp_begin_failure(
-    iree_net_tcp_carrier_t* carrier, iree_status_t status) {
+static void iree_net_tcp_reject_detached_send(iree_net_tcp_carrier_t* carrier,
+                                              iree_net_tcp_send_slot_t* slot) {
+  IREE_ASSERT(slot->state == IREE_NET_TCP_SEND_SLOT_STATE_DETACHED);
+  iree_net_tcp_send_slot_release_resources(carrier, slot);
+  iree_slim_mutex_lock(&carrier->mutex);
+  iree_net_tcp_recycle_send_slot_locked(carrier, slot);
+  iree_slim_mutex_unlock(&carrier->mutex);
+  iree_net_tcp_carrier_retire_pending_operation(carrier);
+}
+
+// Publishes terminal failure and retires a paused receive as its final carrier
+// access. Callers retain a separate operation or lifetime reference.
+static void iree_net_tcp_publish_failure(iree_net_tcp_carrier_t* carrier,
+                                         iree_status_t status) {
   IREE_ASSERT(!iree_status_is_ok(status));
-  iree_net_tcp_failure_work_t work = {0};
+  iree_status_t receive_cancel_status = iree_ok_status();
+  iree_status_t send_cancel_status = iree_ok_status();
+  bool retire_paused_receive = false;
 
   iree_slim_mutex_lock(&carrier->mutex);
   carrier->flags |= IREE_NET_TCP_CARRIER_FLAG_SEND_SHUTDOWN_INITIATED |
                     IREE_NET_TCP_CARRIER_FLAG_SOCKET_WRITE_SHUTDOWN_ISSUED;
-  // A transport failure is not synchronized with callers writing reserved
-  // storage. Only committed sends can transfer to terminal completion here.
-  work.detached_sends =
-      iree_net_tcp_detach_send_queue_locked(carrier, /*out_tail=*/NULL);
+  // Accepted sends stay on their single dispatch lane so only its proactor
+  // callback can deliver their terminal completions.
+  if (carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_PAUSED) {
+    carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
+    retire_paused_receive = true;
+  } else {
+    receive_cancel_status =
+        iree_net_tcp_request_receive_cancellation_locked(carrier);
+  }
+  send_cancel_status = iree_net_tcp_request_send_cancellation_locked(carrier);
   iree_slim_mutex_unlock(&carrier->mutex);
 
-  int32_t expected_receive_state = IREE_NET_TCP_RECEIVE_STATE_PAUSED;
-  work.retire_paused_receive = iree_atomic_compare_exchange_strong(
-      &carrier->receive_state, &expected_receive_state,
-      IREE_NET_TCP_RECEIVE_STATE_RETIRED, iree_memory_order_acq_rel,
-      iree_memory_order_acquire);
-
+  status = iree_status_join(status, receive_cancel_status);
+  status = iree_status_join(status, send_cancel_status);
   status = iree_status_join(
       status, iree_async_socket_shutdown(carrier->socket,
                                          IREE_ASYNC_SOCKET_SHUTDOWN_BOTH));
-  work.status_code = iree_status_code(status);
   iree_net_carrier_report_terminal_error(&carrier->base, status);
-  return work;
-}
-
-static void iree_net_tcp_finish_failure(iree_net_tcp_carrier_t* carrier,
-                                        iree_net_tcp_failure_work_t work) {
-  if (work.retire_paused_receive) {
+  if (retire_paused_receive) {
     iree_net_tcp_carrier_retire_pending_operation(carrier);
   }
-  iree_net_tcp_complete_detached_sends(carrier, work.detached_sends,
-                                       work.status_code);
 }
 
 static void iree_net_tcp_fail_without_operation(iree_net_tcp_carrier_t* carrier,
                                                 iree_status_t status) {
   iree_net_carrier_retain(&carrier->base);
-  iree_net_tcp_failure_work_t work =
-      iree_net_tcp_begin_failure(carrier, status);
-  iree_net_tcp_finish_failure(carrier, work);
+  iree_net_tcp_publish_failure(carrier, status);
   iree_net_carrier_release(&carrier->base);
 }
 
@@ -465,12 +518,18 @@ static void iree_net_tcp_socket_send_completed(
     iree_async_completion_flags_t flags) {
   iree_net_tcp_carrier_t* carrier = (iree_net_tcp_carrier_t*)user_data;
   iree_net_tcp_send_slot_t* slot = (iree_net_tcp_send_slot_t*)operation;
-  iree_net_tcp_process_send_result(carrier, slot, status,
-                                   slot->operation.bytes_sent, flags);
+  iree_slim_mutex_lock(&carrier->mutex);
+  IREE_ASSERT(slot->state == IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED ||
+                  slot->state == IREE_NET_TCP_SEND_SLOT_STATE_CANCELLING,
+              "TCP send completed from state %d", (int)slot->state);
+  slot->state = IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING;
+  const iree_host_size_t bytes_sent = slot->operation.bytes_sent;
+  iree_slim_mutex_unlock(&carrier->mutex);
+  iree_net_tcp_process_send_result(carrier, slot, status, bytes_sent, flags);
 }
 
-static void iree_net_tcp_submit_send_slot(iree_net_tcp_carrier_t* carrier,
-                                          iree_net_tcp_send_slot_t* slot) {
+static iree_status_t iree_net_tcp_submit_send_slot_locked(
+    iree_net_tcp_carrier_t* carrier, iree_net_tcp_send_slot_t* slot) {
   IREE_ASSERT(slot->state == IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED);
   IREE_ASSERT(slot->first_span < slot->span_count);
   iree_async_operation_zero(&slot->operation.base, sizeof(slot->operation));
@@ -482,13 +541,24 @@ static void iree_net_tcp_submit_send_slot(iree_net_tcp_carrier_t* carrier,
   slot->operation.buffers = iree_async_span_list_make(
       &slot->spans[slot->first_span], slot->span_count - slot->first_span);
   slot->operation.send_flags = IREE_ASYNC_SOCKET_SEND_FLAG_NONE;
+  return iree_async_proactor_submit_one(carrier->proactor,
+                                        &slot->operation.base);
+}
 
-  iree_status_t status =
-      iree_async_proactor_submit_one(carrier->proactor, &slot->operation.base);
+static iree_status_t iree_net_tcp_start_send_dispatch_locked(
+    iree_net_tcp_carrier_t* carrier,
+    iree_net_tcp_send_slot_t** out_rejected_slot) {
+  *out_rejected_slot = NULL;
+  iree_net_tcp_send_slot_t* slot =
+      iree_net_tcp_claim_send_dispatch_locked(carrier);
+  if (!slot) return iree_ok_status();
+  iree_status_t status = iree_net_tcp_submit_send_slot_locked(carrier, slot);
   if (!iree_status_is_ok(status)) {
-    iree_net_tcp_process_send_result(carrier, slot, status, 0,
-                                     IREE_ASYNC_COMPLETION_FLAG_NONE);
+    slot->state = IREE_NET_TCP_SEND_SLOT_STATE_DETACHED;
+    carrier->flags &= ~IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE;
+    *out_rejected_slot = slot;
   }
+  return status;
 }
 
 static void iree_net_tcp_process_send_result(
@@ -518,15 +588,36 @@ static void iree_net_tcp_process_send_result(
 
   if (iree_status_is_ok(status) &&
       slot->bytes_transferred < slot->total_length) {
+    bool resubmitted = false;
+    iree_status_t submit_status = iree_ok_status();
+    iree_slim_mutex_lock(&carrier->mutex);
     if (iree_net_carrier_state(&carrier->base) ==
             IREE_NET_CARRIER_STATE_ACTIVE &&
         !iree_net_carrier_has_terminal_error(&carrier->base)) {
+      slot->state = IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED;
+      submit_status = iree_net_tcp_submit_send_slot_locked(carrier, slot);
+      if (iree_status_is_ok(submit_status)) {
+        resubmitted = true;
+      } else {
+        slot->state = IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING;
+      }
+    }
+    iree_slim_mutex_unlock(&carrier->mutex);
+    if (resubmitted) {
       iree_status_free(status);
-      iree_net_tcp_submit_send_slot(carrier, slot);
       return;
     }
-    status = iree_make_status(IREE_STATUS_CANCELLED,
-                              "TCP send interrupted by carrier deactivation");
+    iree_status_free(status);
+    if (!iree_status_is_ok(submit_status)) {
+      status = submit_status;
+    } else {
+      status = iree_net_carrier_clone_terminal_error(&carrier->base);
+      if (iree_status_is_ok(status)) {
+        status =
+            iree_make_status(IREE_STATUS_CANCELLED,
+                             "TCP send interrupted by carrier deactivation");
+      }
+    }
   }
 
   const iree_net_send_completion_callback_t completion_callback =
@@ -542,62 +633,120 @@ static void iree_net_tcp_process_send_result(
   }
   iree_slim_mutex_unlock(&carrier->mutex);
 
-  iree_net_tcp_failure_work_t failure_work = {0};
-  if (!send_succeeded) {
-    failure_work =
-        iree_net_tcp_begin_failure(carrier, iree_status_clone(status));
+  if (!send_succeeded &&
+      iree_net_carrier_state(&carrier->base) == IREE_NET_CARRIER_STATE_ACTIVE &&
+      !iree_net_carrier_has_terminal_error(&carrier->base)) {
+    iree_net_tcp_publish_failure(carrier, iree_status_clone(status));
   }
 
   completion_callback.fn(completion_callback.user_data, status,
                          total_bytes_transferred);
 
   iree_net_tcp_send_slot_t* next_slot = NULL;
+  iree_net_tcp_send_slot_t* detached_sends = NULL;
+  iree_status_t next_submit_status = iree_ok_status();
   bool issue_write_shutdown = false;
-  if (send_succeeded) {
-    iree_slim_mutex_lock(&carrier->mutex);
-    if (iree_net_carrier_state(&carrier->base) ==
-            IREE_NET_CARRIER_STATE_ACTIVE &&
-        !iree_net_carrier_has_terminal_error(&carrier->base)) {
-      next_slot = iree_net_tcp_pop_send_locked(carrier);
+  iree_slim_mutex_lock(&carrier->mutex);
+  if (send_succeeded &&
+      iree_net_carrier_state(&carrier->base) == IREE_NET_CARRIER_STATE_ACTIVE &&
+      !iree_net_carrier_has_terminal_error(&carrier->base)) {
+    next_slot = iree_net_tcp_pop_send_locked(carrier);
+    if (next_slot) {
+      next_submit_status =
+          iree_net_tcp_submit_send_slot_locked(carrier, next_slot);
+      if (!iree_status_is_ok(next_submit_status)) {
+        next_slot->state = IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING;
+      }
     }
-    if (!next_slot) {
-      carrier->flags &= ~IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE;
-    }
-    issue_write_shutdown = iree_net_tcp_claim_write_shutdown_locked(carrier);
-    iree_slim_mutex_unlock(&carrier->mutex);
   } else {
-    iree_slim_mutex_lock(&carrier->mutex);
-    carrier->flags &= ~IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE;
-    iree_slim_mutex_unlock(&carrier->mutex);
-    iree_net_tcp_finish_failure(carrier, failure_work);
+    detached_sends =
+        iree_net_tcp_detach_send_queue_locked(carrier, /*out_tail=*/NULL);
   }
+  if (!next_slot) {
+    carrier->flags &= ~IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE;
+  }
+  issue_write_shutdown = iree_net_tcp_claim_write_shutdown_locked(carrier);
+  iree_slim_mutex_unlock(&carrier->mutex);
 
-  if (next_slot) iree_net_tcp_submit_send_slot(carrier, next_slot);
+  if (detached_sends) {
+    iree_status_t terminal_status =
+        iree_net_carrier_clone_terminal_error(&carrier->base);
+    const iree_status_code_t status_code =
+        iree_status_is_ok(terminal_status) ? IREE_STATUS_CANCELLED
+                                           : iree_status_code(terminal_status);
+    iree_status_free(terminal_status);
+    iree_net_tcp_complete_detached_sends(carrier, detached_sends, status_code);
+  }
+  if (next_slot && !iree_status_is_ok(next_submit_status)) {
+    iree_net_tcp_process_send_result(carrier, next_slot, next_submit_status, 0,
+                                     IREE_ASYNC_COMPLETION_FLAG_NONE);
+  }
   if (issue_write_shutdown) {
     iree_net_tcp_issue_deferred_write_shutdown(carrier);
   }
   iree_net_tcp_carrier_retire_pending_operation(carrier);
 }
 
-static iree_status_t iree_net_tcp_try_submit_receive(
-    iree_net_tcp_carrier_t* carrier);
-static void iree_net_tcp_submit_receive(iree_net_tcp_carrier_t* carrier);
+static void iree_net_tcp_socket_receive_completed(
+    void* user_data, iree_async_operation_t* operation, iree_status_t status,
+    iree_async_completion_flags_t flags);
+
+static iree_status_t iree_net_tcp_submit_receive_locked(
+    iree_net_tcp_carrier_t* carrier) {
+  iree_async_socket_recv_pool_operation_t* operation =
+      &carrier->receive_operation;
+  iree_async_operation_zero(&operation->base, sizeof(*operation));
+  iree_async_operation_initialize(
+      &operation->base, IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL,
+      IREE_ASYNC_OPERATION_FLAG_NONE, iree_net_tcp_socket_receive_completed,
+      carrier);
+  operation->socket = carrier->socket;
+  operation->pool = carrier->receive_pool;
+  return iree_async_proactor_submit_one(carrier->proactor, &operation->base);
+}
+
+static iree_status_t iree_net_tcp_continue_receive_locked(
+    iree_net_tcp_carrier_t* carrier, bool* out_retire_receive) {
+  *out_retire_receive = false;
+  if (iree_net_carrier_state(&carrier->base) == IREE_NET_CARRIER_STATE_ACTIVE &&
+      !iree_net_carrier_has_terminal_error(&carrier->base)) {
+    carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_SUBMITTED;
+    iree_status_t status = iree_net_tcp_submit_receive_locked(carrier);
+    if (iree_status_is_ok(status)) return status;
+    carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
+    *out_retire_receive = true;
+    return status;
+  }
+  carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
+  *out_retire_receive = true;
+  return iree_ok_status();
+}
+
+// Finishes a receive transition and must be the caller's final carrier access
+// when |retire_receive| is true.
+static void iree_net_tcp_finish_receive_transition(
+    iree_net_tcp_carrier_t* carrier, iree_status_t status,
+    bool retire_receive) {
+  if (!iree_status_is_ok(status)) {
+    iree_net_tcp_publish_failure(carrier, status);
+  }
+  if (retire_receive) {
+    iree_net_tcp_carrier_retire_pending_operation(carrier);
+  }
+}
 
 static void iree_net_tcp_resume_paused_receive(
     iree_net_tcp_carrier_t* carrier) {
-  if (iree_net_carrier_state(&carrier->base) != IREE_NET_CARRIER_STATE_ACTIVE ||
-      iree_net_carrier_has_terminal_error(&carrier->base)) {
-    return;
+  iree_status_t submit_status = iree_ok_status();
+  bool retire_receive = false;
+  iree_slim_mutex_lock(&carrier->mutex);
+  if (carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_PAUSED) {
+    submit_status =
+        iree_net_tcp_continue_receive_locked(carrier, &retire_receive);
   }
-
-  int32_t expected_state = IREE_NET_TCP_RECEIVE_STATE_PAUSED;
-  if (!iree_atomic_compare_exchange_strong(
-          &carrier->receive_state, &expected_state,
-          IREE_NET_TCP_RECEIVE_STATE_SUBMITTED, iree_memory_order_acq_rel,
-          iree_memory_order_acquire)) {
-    return;
-  }
-  iree_net_tcp_submit_receive(carrier);
+  iree_slim_mutex_unlock(&carrier->mutex);
+  iree_net_tcp_finish_receive_transition(carrier, submit_status,
+                                         retire_receive);
 }
 
 static void iree_net_tcp_receive_lease_recycle(void* user_data,
@@ -670,52 +819,34 @@ static void iree_net_tcp_retain_moved_receive_lease(
   }
 }
 
-// Publishes PAUSED and closes the lease-return lost-wakeup race. A temporary
-// operation hold keeps deactivation from completing while PAUSED is visible
-// but this callback is still deciding whether to resume or retire the receive.
-// Retiring that hold must be the caller's final carrier access.
+// Publishes PAUSED while closing the lease-return lost-wakeup race.
 static void iree_net_tcp_pause_receive(iree_net_tcp_carrier_t* carrier,
                                        int32_t observed_return_epoch) {
-  iree_atomic_fetch_add(&carrier->base.pending_operations, 1,
-                        iree_memory_order_acq_rel);
-  int32_t expected_state = IREE_NET_TCP_RECEIVE_STATE_SUBMITTED;
-  bool paused = iree_atomic_compare_exchange_strong(
-      &carrier->receive_state, &expected_state,
-      IREE_NET_TCP_RECEIVE_STATE_PAUSED, iree_memory_order_acq_rel,
-      iree_memory_order_acquire);
-  IREE_ASSERT(paused, "TCP receive paused from state %d", expected_state);
-  if (!paused) {
-    iree_net_tcp_carrier_retire_pending_operation(carrier);
-    return;
-  }
-
+  iree_status_t status = iree_ok_status();
+  bool retire_receive = false;
+  iree_slim_mutex_lock(&carrier->mutex);
+  IREE_ASSERT(carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_COMPLETING,
+              "TCP receive paused from state %d", (int)carrier->receive_state);
+  carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_PAUSED;
+  const int32_t current_return_epoch = iree_atomic_load(
+      &carrier->returned_buffer_epoch, iree_memory_order_acquire);
   if (iree_net_carrier_state(&carrier->base) != IREE_NET_CARRIER_STATE_ACTIVE ||
-      iree_net_carrier_has_terminal_error(&carrier->base)) {
-    expected_state = IREE_NET_TCP_RECEIVE_STATE_PAUSED;
-    if (iree_atomic_compare_exchange_strong(
-            &carrier->receive_state, &expected_state,
-            IREE_NET_TCP_RECEIVE_STATE_RETIRED, iree_memory_order_acq_rel,
-            iree_memory_order_acquire)) {
-      iree_net_tcp_carrier_retire_pending_operation(carrier);
-    }
-  } else {
-    const int32_t current_return_epoch = iree_atomic_load(
-        &carrier->returned_buffer_epoch, iree_memory_order_acquire);
-    if (current_return_epoch != observed_return_epoch) {
-      iree_net_tcp_resume_paused_receive(carrier);
-    }
+      iree_net_carrier_has_terminal_error(&carrier->base) ||
+      current_return_epoch != observed_return_epoch) {
+    status = iree_net_tcp_continue_receive_locked(carrier, &retire_receive);
   }
-  iree_net_tcp_carrier_retire_pending_operation(carrier);
+  iree_slim_mutex_unlock(&carrier->mutex);
+  iree_net_tcp_finish_receive_transition(carrier, status, retire_receive);
 }
 
-static void iree_net_tcp_retire_submitted_receive(
+static void iree_net_tcp_retire_completing_receive(
     iree_net_tcp_carrier_t* carrier) {
-  int32_t old_state = iree_atomic_exchange(&carrier->receive_state,
-                                           IREE_NET_TCP_RECEIVE_STATE_RETIRED,
-                                           iree_memory_order_acq_rel);
-  if (old_state != IREE_NET_TCP_RECEIVE_STATE_RETIRED) {
-    iree_net_tcp_carrier_retire_pending_operation(carrier);
-  }
+  iree_slim_mutex_lock(&carrier->mutex);
+  IREE_ASSERT(carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_COMPLETING,
+              "TCP receive retired from state %d", (int)carrier->receive_state);
+  carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
+  iree_slim_mutex_unlock(&carrier->mutex);
+  iree_net_tcp_carrier_retire_pending_operation(carrier);
 }
 
 static void iree_net_tcp_socket_receive_completed(
@@ -725,10 +856,18 @@ static void iree_net_tcp_socket_receive_completed(
   iree_async_socket_recv_pool_operation_t* receive_operation =
       (iree_async_socket_recv_pool_operation_t*)operation;
 
+  iree_slim_mutex_lock(&carrier->mutex);
+  IREE_ASSERT(
+      carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_SUBMITTED ||
+          carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_CANCELLING,
+      "TCP receive completed from state %d", (int)carrier->receive_state);
+  carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_COMPLETING;
+  iree_slim_mutex_unlock(&carrier->mutex);
+
   if (iree_net_carrier_state(&carrier->base) != IREE_NET_CARRIER_STATE_ACTIVE) {
     iree_status_free(status);
     iree_async_buffer_lease_release(&receive_operation->lease);
-    iree_net_tcp_retire_submitted_receive(carrier);
+    iree_net_tcp_retire_completing_receive(carrier);
     return;
   }
 
@@ -739,10 +878,8 @@ static void iree_net_tcp_socket_receive_completed(
   }
   if (!iree_status_is_ok(status)) {
     iree_async_buffer_lease_release(&receive_operation->lease);
-    iree_net_tcp_failure_work_t work =
-        iree_net_tcp_begin_failure(carrier, status);
-    iree_net_tcp_finish_failure(carrier, work);
-    iree_net_tcp_retire_submitted_receive(carrier);
+    iree_net_tcp_publish_failure(carrier, status);
+    iree_net_tcp_retire_completing_receive(carrier);
     return;
   }
   iree_status_free(status);
@@ -752,11 +889,9 @@ static void iree_net_tcp_socket_receive_completed(
     iree_status_t handler_status = carrier->base.handlers.on_receive(
         carrier->base.handlers.user_data, iree_async_span_empty(), NULL);
     if (!iree_status_is_ok(handler_status)) {
-      iree_net_tcp_failure_work_t work =
-          iree_net_tcp_begin_failure(carrier, handler_status);
-      iree_net_tcp_finish_failure(carrier, work);
+      iree_net_tcp_publish_failure(carrier, handler_status);
     }
-    iree_net_tcp_retire_submitted_receive(carrier);
+    iree_net_tcp_retire_completing_receive(carrier);
     return;
   }
 
@@ -775,16 +910,8 @@ static void iree_net_tcp_socket_receive_completed(
   iree_async_buffer_lease_release(&receive_operation->lease);
 
   if (!iree_status_is_ok(handler_status)) {
-    iree_net_tcp_failure_work_t work =
-        iree_net_tcp_begin_failure(carrier, handler_status);
-    iree_net_tcp_finish_failure(carrier, work);
-    iree_net_tcp_retire_submitted_receive(carrier);
-    return;
-  }
-
-  if (iree_net_carrier_state(&carrier->base) != IREE_NET_CARRIER_STATE_ACTIVE ||
-      iree_net_carrier_has_terminal_error(&carrier->base)) {
-    iree_net_tcp_retire_submitted_receive(carrier);
+    iree_net_tcp_publish_failure(carrier, handler_status);
+    iree_net_tcp_retire_completing_receive(carrier);
     return;
   }
 
@@ -798,32 +925,16 @@ static void iree_net_tcp_socket_receive_completed(
     return;
   }
 
-  iree_net_tcp_submit_receive(carrier);
-}
-
-static iree_status_t iree_net_tcp_try_submit_receive(
-    iree_net_tcp_carrier_t* carrier) {
-  iree_async_socket_recv_pool_operation_t* operation =
-      &carrier->receive_operation;
-  iree_async_operation_zero(&operation->base, sizeof(*operation));
-  iree_async_operation_initialize(
-      &operation->base, IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL,
-      IREE_ASYNC_OPERATION_FLAG_NONE, iree_net_tcp_socket_receive_completed,
-      carrier);
-  operation->socket = carrier->socket;
-  operation->pool = carrier->receive_pool;
-
-  return iree_async_proactor_submit_one(carrier->proactor, &operation->base);
-}
-
-static void iree_net_tcp_submit_receive(iree_net_tcp_carrier_t* carrier) {
-  iree_status_t status = iree_net_tcp_try_submit_receive(carrier);
-  if (!iree_status_is_ok(status)) {
-    iree_net_tcp_failure_work_t work =
-        iree_net_tcp_begin_failure(carrier, status);
-    iree_net_tcp_finish_failure(carrier, work);
-    iree_net_tcp_retire_submitted_receive(carrier);
-  }
+  iree_status_t submit_status = iree_ok_status();
+  bool retire_receive = false;
+  iree_slim_mutex_lock(&carrier->mutex);
+  IREE_ASSERT(carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_COMPLETING,
+              "TCP receive resumed from state %d", (int)carrier->receive_state);
+  submit_status =
+      iree_net_tcp_continue_receive_locked(carrier, &retire_receive);
+  iree_slim_mutex_unlock(&carrier->mutex);
+  iree_net_tcp_finish_receive_transition(carrier, submit_status,
+                                         retire_receive);
 }
 
 static void iree_net_tcp_carrier_destroy(iree_net_carrier_t* base_carrier) {
@@ -850,27 +961,28 @@ static void iree_net_tcp_carrier_destroy(iree_net_carrier_t* base_carrier) {
 static iree_status_t iree_net_tcp_carrier_activate(
     iree_net_carrier_t* base_carrier) {
   iree_net_tcp_carrier_t* carrier = iree_net_tcp_carrier_cast(base_carrier);
+  iree_status_t status = iree_ok_status();
+  iree_slim_mutex_lock(&carrier->mutex);
   if (!iree_net_carrier_try_transition_state(base_carrier,
                                              IREE_NET_CARRIER_STATE_CREATED,
                                              IREE_NET_CARRIER_STATE_ACTIVE)) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "TCP carrier is not in CREATED state");
+    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "TCP carrier is not in CREATED state");
+  } else {
+    carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_SUBMITTED;
+    iree_atomic_fetch_add(&base_carrier->pending_operations, 1,
+                          iree_memory_order_acq_rel);
+    status = iree_net_tcp_submit_receive_locked(carrier);
   }
-
-  iree_atomic_store(&carrier->receive_state,
-                    IREE_NET_TCP_RECEIVE_STATE_SUBMITTED,
-                    iree_memory_order_release);
-  iree_atomic_fetch_add(&base_carrier->pending_operations, 1,
-                        iree_memory_order_acq_rel);
-  iree_status_t status = iree_net_tcp_try_submit_receive(carrier);
   if (!iree_status_is_ok(status)) {
-    iree_atomic_store(&carrier->receive_state,
-                      IREE_NET_TCP_RECEIVE_STATE_RETIRED,
-                      iree_memory_order_release);
-    bool was_final = iree_net_carrier_retire_pending_operation(base_carrier);
-    IREE_ASSERT(was_final, "failed TCP activation left pending operations");
-    iree_net_carrier_set_state(base_carrier, IREE_NET_CARRIER_STATE_CREATED);
+    if (carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_SUBMITTED) {
+      carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
+      bool was_final = iree_net_carrier_retire_pending_operation(base_carrier);
+      IREE_ASSERT(was_final, "failed TCP activation left pending operations");
+      iree_net_carrier_set_state(base_carrier, IREE_NET_CARRIER_STATE_CREATED);
+    }
   }
+  iree_slim_mutex_unlock(&carrier->mutex);
   return status;
 }
 
@@ -878,7 +990,8 @@ static void iree_net_tcp_carrier_deactivate(
     iree_net_carrier_t* base_carrier,
     iree_net_carrier_deactivate_callback_fn_t callback, void* user_data) {
   iree_net_tcp_carrier_t* carrier = iree_net_tcp_carrier_cast(base_carrier);
-  iree_net_tcp_send_slot_t* detached_sends = NULL;
+  iree_net_tcp_send_slot_t* detached_reservations = NULL;
+  iree_status_t cleanup_status = iree_ok_status();
   bool retire_paused_receive = false;
   bool shutdown_socket = false;
   bool valid_request = false;
@@ -889,17 +1002,23 @@ static void iree_net_tcp_carrier_deactivate(
       state == IREE_NET_CARRIER_STATE_ACTIVE) {
     valid_request = true;
     shutdown_socket = state == IREE_NET_CARRIER_STATE_ACTIVE;
+    iree_atomic_fetch_add(&base_carrier->pending_operations, 1,
+                          iree_memory_order_acq_rel);
     carrier->deactivate_callback.fn = callback;
     carrier->deactivate_callback.user_data = user_data;
     carrier->flags |= IREE_NET_TCP_CARRIER_FLAG_SEND_SHUTDOWN_INITIATED |
                       IREE_NET_TCP_CARRIER_FLAG_SOCKET_WRITE_SHUTDOWN_ISSUED;
     iree_net_carrier_set_state(base_carrier, IREE_NET_CARRIER_STATE_DRAINING);
-    detached_sends = iree_net_tcp_detach_pending_sends_locked(carrier);
-    int32_t expected_receive_state = IREE_NET_TCP_RECEIVE_STATE_PAUSED;
-    retire_paused_receive = iree_atomic_compare_exchange_strong(
-        &carrier->receive_state, &expected_receive_state,
-        IREE_NET_TCP_RECEIVE_STATE_RETIRED, iree_memory_order_acq_rel,
-        iree_memory_order_acquire);
+    detached_reservations = iree_net_tcp_detach_reservations_locked(carrier);
+    if (carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_PAUSED) {
+      carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
+      retire_paused_receive = true;
+    } else {
+      cleanup_status =
+          iree_net_tcp_request_receive_cancellation_locked(carrier);
+    }
+    cleanup_status = iree_status_join(
+        cleanup_status, iree_net_tcp_request_send_cancellation_locked(carrier));
   }
   iree_slim_mutex_unlock(&carrier->mutex);
 
@@ -907,26 +1026,21 @@ static void iree_net_tcp_carrier_deactivate(
   if (!valid_request) return;
 
   if (shutdown_socket) {
-    iree_status_t status = iree_async_socket_shutdown(
-        carrier->socket, IREE_ASYNC_SOCKET_SHUTDOWN_BOTH);
-    if (!iree_status_is_ok(status)) {
-      iree_net_carrier_report_terminal_error(base_carrier, status);
-    }
+    cleanup_status = iree_status_join(
+        cleanup_status, iree_async_socket_shutdown(
+                            carrier->socket, IREE_ASYNC_SOCKET_SHUTDOWN_BOTH));
   }
-
-  if (detached_sends) {
-    if (retire_paused_receive) {
-      iree_net_tcp_carrier_retire_pending_operation(carrier);
-    }
-    iree_net_tcp_complete_detached_sends(carrier, detached_sends,
+  if (!iree_status_is_ok(cleanup_status)) {
+    iree_net_carrier_report_terminal_error(base_carrier, cleanup_status);
+  }
+  if (detached_reservations) {
+    iree_net_tcp_complete_detached_sends(carrier, detached_reservations,
                                          IREE_STATUS_CANCELLED);
-    return;
   }
   if (retire_paused_receive) {
     iree_net_tcp_carrier_retire_pending_operation(carrier);
-    return;
   }
-  iree_net_tcp_carrier_maybe_complete_deactivation(carrier);
+  iree_net_tcp_carrier_retire_pending_operation(carrier);
 }
 
 static iree_net_carrier_send_budget_t iree_net_tcp_carrier_query_send_budget(
@@ -984,7 +1098,7 @@ static iree_status_t iree_net_tcp_carrier_send(
   }
 
   iree_net_tcp_send_slot_t* slot = NULL;
-  iree_net_tcp_send_slot_t* dispatch_slot = NULL;
+  iree_net_tcp_send_slot_t* rejected_slot = NULL;
   iree_status_t status = iree_ok_status();
   iree_slim_mutex_lock(&carrier->mutex);
   status = iree_net_tcp_check_send_admission_locked(carrier, &slot);
@@ -1006,11 +1120,13 @@ static iree_status_t iree_net_tcp_carrier_send(
     iree_atomic_fetch_add(&base_carrier->pending_operations, 1,
                           iree_memory_order_acq_rel);
     iree_net_tcp_enqueue_send_locked(carrier, slot);
-    dispatch_slot = iree_net_tcp_claim_send_dispatch_locked(carrier);
+    status = iree_net_tcp_start_send_dispatch_locked(carrier, &rejected_slot);
   }
   iree_slim_mutex_unlock(&carrier->mutex);
 
-  if (dispatch_slot) iree_net_tcp_submit_send_slot(carrier, dispatch_slot);
+  if (rejected_slot) {
+    iree_net_tcp_reject_detached_send(carrier, rejected_slot);
+  }
   return status;
 }
 
@@ -1076,7 +1192,7 @@ static iree_status_t iree_net_tcp_carrier_commit_send(
     iree_net_carrier_t* base_carrier, iree_net_carrier_send_handle_t handle,
     iree_net_send_completion_callback_t callback) {
   iree_net_tcp_carrier_t* carrier = iree_net_tcp_carrier_cast(base_carrier);
-  iree_net_tcp_send_slot_t* dispatch_slot = NULL;
+  iree_net_tcp_send_slot_t* rejected_slot = NULL;
   iree_status_t status = iree_ok_status();
   iree_slim_mutex_lock(&carrier->mutex);
   iree_net_tcp_send_slot_t* slot =
@@ -1089,11 +1205,13 @@ static iree_status_t iree_net_tcp_carrier_commit_send(
     slot->completion_callback = callback;
     slot->state = IREE_NET_TCP_SEND_SLOT_STATE_QUEUED;
     iree_net_tcp_enqueue_send_locked(carrier, slot);
-    dispatch_slot = iree_net_tcp_claim_send_dispatch_locked(carrier);
+    status = iree_net_tcp_start_send_dispatch_locked(carrier, &rejected_slot);
   }
   iree_slim_mutex_unlock(&carrier->mutex);
 
-  if (dispatch_slot) iree_net_tcp_submit_send_slot(carrier, dispatch_slot);
+  if (rejected_slot) {
+    iree_net_tcp_reject_detached_send(carrier, rejected_slot);
+  }
   return status;
 }
 
@@ -1255,8 +1373,7 @@ IREE_API_EXPORT iree_status_t iree_net_tcp_carrier_create(
       (iree_net_tcp_receive_lease_context_t*)((uint8_t*)carrier +
                                               receive_contexts_offset);
   carrier->receive_lease_context_count = receive_buffer_count;
-  iree_atomic_store(&carrier->receive_state, IREE_NET_TCP_RECEIVE_STATE_RETIRED,
-                    iree_memory_order_relaxed);
+  carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
   iree_atomic_store(&carrier->returned_buffer_epoch, 0,
                     iree_memory_order_relaxed);
   iree_atomic_store(&carrier->retained_receive_lease_count, 0,

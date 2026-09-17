@@ -1060,5 +1060,52 @@ TEST_F(TcpConnectionTest, ConnectionDrainCancelsPendingEndpointReady) {
   client_connection_ = nullptr;
 }
 
+TEST_F(TcpConnectionTest, DeactivationKeepsSendCallbacksOnOwningProactor) {
+  CreateConnectionPair();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(client_endpoint, CreateMessageResult());
+  ActivateEndpoint(server_endpoint, CreateMessageResult());
+
+  OperationResult activation_barrier;
+  iree_async_nop_operation_t barrier = {};
+  iree_async_operation_initialize(&barrier.base, IREE_ASYNC_OPERATION_TYPE_NOP,
+                                  IREE_ASYNC_OPERATION_FLAG_NONE,
+                                  OperationCompleted, &activation_barrier);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &barrier.base));
+  PollUntil([&] { return activation_barrier.completed; });
+
+  uint8_t payload = 42;
+  iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
+  SendResult first_result;
+  first_result.is_polling = &is_polling_;
+  SendResult second_result;
+  second_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(
+      client_endpoint, iree_async_span_list_make(&span, 1), &first_result));
+  IREE_ASSERT_OK(SendMessage(
+      client_endpoint, iree_async_span_list_make(&span, 1), &second_result));
+  EXPECT_EQ(first_result.callback_count, 0);
+  EXPECT_EQ(second_result.callback_count, 0);
+
+  ConnectionDeactivateResult deactivate_result;
+  std::thread producer([&] {
+    iree_net_connection_deactivate(client_connection_,
+                                   {ConnectionDeactivated, &deactivate_result});
+  });
+  producer.join();
+  EXPECT_EQ(first_result.callback_count, 0);
+  EXPECT_EQ(second_result.callback_count, 0);
+
+  PollUntil([&] { return deactivate_result.completed; });
+  EXPECT_EQ(first_result.callback_count, 1);
+  EXPECT_EQ(second_result.callback_count, 1);
+  EXPECT_EQ(second_result.status_code, IREE_STATUS_CANCELLED);
+  iree_net_connection_release(client_connection_);
+  client_connection_ = nullptr;
+}
+
 }  // namespace
 }  // namespace iree
