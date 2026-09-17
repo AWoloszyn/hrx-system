@@ -196,15 +196,6 @@ static const loom_aie2p_math_form_t kAie2pMathForms[] = {
     },
     {
         .math_op = LOOM_TARGET_MATH_OP_MULF,
-        .element_type = LOOM_SCALAR_TYPE_BF16,
-        .lane_domain = LOOM_TARGET_MATH_LANE_DOMAIN_VECTOR,
-        .minimum_lane_count = 32,
-        .maximum_lane_count = 32,
-        .shape_constraint_key = IREE_SVL("math.shape.vector_bf16x32"),
-        .form_constraint_key = IREE_SVL("math.op.native_vector_bf16x32"),
-    },
-    {
-        .math_op = LOOM_TARGET_MATH_OP_MULF,
         .element_type = LOOM_SCALAR_TYPE_F16,
         .lane_domain = LOOM_TARGET_MATH_LANE_DOMAIN_SCALAR,
         .minimum_lane_count = 1,

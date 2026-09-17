@@ -19,7 +19,6 @@ from loom.target.arch.amd.xdna.aie2p.contracts.conversion import (
     emit_f32_to_f16,
 )
 from loom.target.arch.amd.xdna.aie2p.contracts.data_path import (
-    BF16_CONVERSION_ROUNDING,
     vector_data_path_control,
 )
 from loom.target.arch.amd.xdna.aie2p.contracts.f32 import emit_f32_multiply
@@ -119,50 +118,6 @@ def _constant_emit(
         result_types={"dst": DescriptorResultType()},
         immediates={"i": value},
         form=DescriptorEmitForm.CONST,
-    )
-
-
-def _vector_multiply_bf16x32_rule() -> DescriptorRule:
-    config_constant = _descriptor("amd.xdna.aie2p.constant.i32.mova")
-    multiply = _descriptor("amd.xdna.aie2p.multiply.bf16x32.configured")
-    set_rounding = _descriptor("amd.xdna.aie2p.state.rounding.immediate")
-    convert = _descriptor("amd.xdna.aie2p.convert.f32x32.to.bf16x32")
-    return DescriptorRule(
-        source_op=vector.vector_mulf,
-        descriptor=convert,
-        guards=_typed_guards(("lhs", "rhs", "result"), _BF16X32_VECTOR),
-        emit=(
-            _constant_emit(
-                config_constant,
-                ValueRef.temporary("multiply_control"),
-                _BF16_ELEMENTWISE_MULTIPLY_CONTROL,
-            ),
-            _op_emit(
-                multiply,
-                operands={
-                    "s1": ValueRef.operand("lhs"),
-                    "s2": ValueRef.operand("rhs"),
-                    "acc": ValueRef.temporary("multiply_control"),
-                },
-                results={"dst": ValueRef.temporary("wide_product")},
-                result_types={"dst": DescriptorResultType()},
-            ),
-            EmitRegisterSlice(
-                source=ValueRef.temporary("wide_product"),
-                result=ValueRef.temporary("product"),
-                unit_count=2,
-            ),
-            EmitDescriptorOp(
-                descriptor=set_rounding,
-                immediates={"i": BF16_CONVERSION_ROUNDING},
-                form=DescriptorEmitForm.OP,
-            ),
-            _op_emit(
-                convert,
-                operands={"src": ValueRef.temporary("product")},
-                results={"dst": ValueRef.result("result")},
-            ),
-        ),
     )
 
 
@@ -727,7 +682,6 @@ AIE2P_BF16_MATRIX_RULES = (_matrix_multiply_bf16bf16_m8n8k1_rule(),)
 
 AIE2P_FLOATING_RULES = (
     _scalar_multiply_f16_rule(),
-    _vector_multiply_bf16x32_rule(),
     _float_matrix_accumulator_zero_rule(),
     _float_matrix_accumulator_add_rule(),
     *(
