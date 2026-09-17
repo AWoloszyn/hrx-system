@@ -49,7 +49,10 @@ enum {
   LOOM_OP_LOW_SCF_WHILE = LOOM_OP_KIND(LOOM_DIALECT_LOW, 25),
   LOOM_OP_LOW_SCHEDULE_FENCE = LOOM_OP_KIND(LOOM_DIALECT_LOW, 26),
   LOOM_OP_LOW_ASSUME = LOOM_OP_KIND(LOOM_DIALECT_LOW, 27),
-  LOOM_OP_LOW_COUNT_ = 28,
+  LOOM_OP_LOW_SCHEDULE_BEGIN = LOOM_OP_KIND(LOOM_DIALECT_LOW, 28),
+  LOOM_OP_LOW_SCHEDULE_STEP = LOOM_OP_KIND(LOOM_DIALECT_LOW, 29),
+  LOOM_OP_LOW_SCHEDULE_END = LOOM_OP_KIND(LOOM_DIALECT_LOW, 30),
+  LOOM_OP_LOW_COUNT_ = 31,
 };
 
 // Function visibility. Absent (0) means private (module-internal).
@@ -850,6 +853,39 @@ iree_status_t loom_low_assume_facts(
     const loom_module_t* module, const loom_op_t* op,
     const loom_value_facts_t* operand_facts,
     loom_value_facts_t* result_facts);
+
+// LOOM_OP_LOW_SCHEDULE_BEGIN: Begins an independently interleavable native scheduling scope. low.schedule.step orders all surviving instructions in the current phase before the next phase of this scope, without waiting for their completion. Nested scopes belong to their parent's current phase. Each cloned begin creates a distinct scope. Scope nesting must agree at control-flow joins and balance at function exits. Controls appear directly in Low executable body blocks; scopes may span CFG edges.
+// low.schedule.begin
+LOOM_DEFINE_ISA(loom_low_schedule_begin_isa, LOOM_OP_LOW_SCHEDULE_BEGIN)
+iree_status_t loom_low_schedule_begin_build(
+    loom_builder_t* builder,
+    loom_location_id_t location,
+    loom_op_t** out_op);
+iree_status_t loom_low_schedule_control_verify(
+    const loom_module_t* module, const loom_op_t* op,
+    iree_diagnostic_emitter_t emitter);
+
+// LOOM_OP_LOW_SCHEDULE_STEP: Ends the current phase and begins the next phase of the innermost native scheduling scope. Independent scopes may interleave. Empty phases are valid. This orders emitted instructions and has no runtime completion, memory visibility, or synchronization effect.
+// low.schedule.step
+LOOM_DEFINE_ISA(loom_low_schedule_step_isa, LOOM_OP_LOW_SCHEDULE_STEP)
+iree_status_t loom_low_schedule_step_build(
+    loom_builder_t* builder,
+    loom_location_id_t location,
+    loom_op_t** out_op);
+iree_status_t loom_low_schedule_control_verify(
+    const loom_module_t* module, const loom_op_t* op,
+    iree_diagnostic_emitter_t emitter);
+
+// LOOM_OP_LOW_SCHEDULE_END: Ends the innermost native scheduling scope and resumes its parent phase. Scope controls emit no instructions. Targets that delegate native instruction ordering to another compiler reject this contract.
+// low.schedule.end
+LOOM_DEFINE_ISA(loom_low_schedule_end_isa, LOOM_OP_LOW_SCHEDULE_END)
+iree_status_t loom_low_schedule_end_build(
+    loom_builder_t* builder,
+    loom_location_id_t location,
+    loom_op_t** out_op);
+iree_status_t loom_low_schedule_control_verify(
+    const loom_module_t* module, const loom_op_t* op,
+    iree_diagnostic_emitter_t emitter);
 
 // Returns the vtable array for the low dialect.
 const loom_op_vtable_t* const* loom_low_dialect_vtables(

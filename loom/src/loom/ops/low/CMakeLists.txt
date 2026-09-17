@@ -18,6 +18,7 @@ loom_generated_cc_library(
     "canonicalize.c"
     "facts.c"
     "kernel.c"
+    "schedule_scope.c"
     "verify.c"
   GENERATED_SRC_FLAGS
     "--builders"
@@ -28,9 +29,12 @@ loom_generated_cc_library(
   HDRS
     "kernel.h"
     "ops.h"
+    "schedule_scope.h"
   ARGS
     "--dialect=low"
   DEPS
+    iree::base
+    iree::base::internal::arena
     loom::error::emitter
     loom::error::error_defs
     loom::ir
@@ -43,6 +47,7 @@ loom_generated_cc_library(
     loom::rewrite::rewriter
     loom::target::registers
     loom::target::types
+    loom::util::cfg_graph
     loom::util::fact_table
     loom::util::predicate_facts
     loom::util::stable_id

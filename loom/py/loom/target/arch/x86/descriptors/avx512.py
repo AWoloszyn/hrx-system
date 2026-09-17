@@ -106,6 +106,7 @@ X86_AVX512_CORE_DESCRIPTOR_SET = DescriptorSet(
     c_table_prefix="X86Avx512Core",
     c_enum_prefix="X86_AVX512_CORE",
     generator_version=1,
+    supports_native_scheduling=True,
     reg_classes=(
         RegClass(
             _REG_GPR32,

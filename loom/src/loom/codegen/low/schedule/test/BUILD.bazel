@@ -18,5 +18,6 @@ loom_check_test_suite(
         "memory_frontier.loom-test",
         "schedule.loom-test",
         "schedule_locked.loom-test",
+        "schedule_scopes.loom-test",
     ],
 )

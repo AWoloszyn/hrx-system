@@ -1105,6 +1105,9 @@ typedef struct loom_low_descriptor_set_t {
   uint32_t abi_version;
   // Generator or hand-authored schema version.
   uint32_t generator_version;
+  // Representation contract supports native instruction-order constraints.
+  // Its emitters consume the shared schedule without downstream reordering.
+  bool supports_native_scheduling;
   // Durable descriptor-set identity derived from the descriptor-set key.
   uint64_t stable_id;
   // Durable target-family identity derived from the target-family key, or NONE.

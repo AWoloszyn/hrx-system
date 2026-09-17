@@ -177,7 +177,7 @@ static iree_status_t loom_low_schedule_append_dependency(
       state->arena);
 }
 
-static iree_status_t loom_low_schedule_add_dependency(
+iree_status_t loom_low_schedule_add_dependency(
     loom_low_schedule_build_state_t* state, uint32_t producer_node,
     uint32_t consumer_node, loom_low_schedule_dependency_kind_t kind,
     uint32_t operand_index) {
@@ -1279,7 +1279,13 @@ iree_status_t loom_low_schedule_fill_nodes(
       if (loom_low_move_isa(op)) {
         node->flags |= LOOM_LOW_SCHEDULE_NODE_FLAG_SOURCE_ORDER_BOUNDARY;
       }
-      if (iree_any_bit_set(node->traits, LOOM_TRAIT_HINT)) {
+      const loom_low_schedule_control_kind_t control_kind =
+          loom_low_schedule_control_kind(op);
+      if (control_kind != LOOM_LOW_SCHEDULE_CONTROL_NONE) {
+        IREE_RETURN_IF_ERROR(loom_low_schedule_scope_builder_append(
+            &state->scope_builder, op, control_kind, block_index,
+            next_node_index, state->arena));
+      } else if (iree_any_bit_set(node->traits, LOOM_TRAIT_HINT)) {
         node->flags |= LOOM_LOW_SCHEDULE_NODE_FLAG_SOURCE_ORDER_BOUNDARY;
       }
       if (loom_low_return_isa(op)) {

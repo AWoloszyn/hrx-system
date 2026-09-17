@@ -1,0 +1,122 @@
+// RUN: emit source-low output=low
+
+// Two independent two-tile motifs retain local issue order while overlapping
+// their global reads. Distinct expected sums expose dropped or repeated tiles.
+
+amdgpu.target<gfx11-generic> @paired_scope_target {subgroup_size = 32}
+
+low.func.def target<amdgpu.gfx11.generic.core>(@paired_scope_target) @paired_scope_tile(%workitem_id: reg<amdgpu.vgpr>, %lhs_view: reg<amdgpu.sgpr x2>, %rhs_view: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x8>) asm {
+  low.schedule.begin
+  %lane = v_and_b32_src0_inline %workitem_id, 15
+  %byte_offset = v_lshlrev_b32_src0_inline %lane, 6
+  %lhs0_low = global_load_b128_saddr %byte_offset, %lhs_view
+  %lhs0_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 16}
+  %lhs0 = concat(%lhs0_low, %lhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs0_low = global_load_b128_saddr %byte_offset, %rhs_view
+  %rhs0_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 16}
+  %rhs0 = concat(%rhs0_low, %rhs0_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %zero = v_mov_b32 0
+  %zero_acc = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
+  %zero_acc_copy = copy %zero_acc : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  low.schedule.step
+  %partial = v_wmma_f32_16x16x16_bf16 %lhs0, %rhs0, %zero_acc_copy
+  low.schedule.step
+  %lhs1_low = global_load_b128_saddr %byte_offset, %lhs_view {offset = 32}
+  %lhs1_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 48}
+  %lhs1 = concat(%lhs1_low, %lhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs1_low = global_load_b128_saddr %byte_offset, %rhs_view {offset = 32}
+  %rhs1_high = global_load_b128_saddr %byte_offset, %rhs_view {offset = 48}
+  %rhs1 = concat(%rhs1_low, %rhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %partial_copy = copy %partial : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %result = v_wmma_f32_16x16x16_bf16 %lhs1, %rhs1, %partial_copy
+  low.schedule.end
+  return %result
+}
+
+kernel.def target(@paired_scope_target) @paired_scope() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%a_lhs: buffer, %a_rhs: buffer, %b_lhs: buffer, %b_rhs: buffer, %a_output: buffer, %b_output: buffer) {
+  %workitem = kernel.workitem.id<x> : index
+  %workitem_i32 = index.cast %workitem : index to i32
+  %lane = vector.splat %workitem_i32 : vector<1xi32>
+  %a_result = low.invoke @paired_scope_tile(%lane, %a_lhs, %a_rhs) : (vector<1xi32>, buffer, buffer) -> (vector<8xf32>)
+  %b_result = low.invoke @paired_scope_tile(%lane, %b_lhs, %b_rhs) : (vector<1xi32>, buffer, buffer) -> (vector<8xf32>)
+  %base_offset = index.constant 0 : offset
+  %width = index.constant 8 : index
+  %position = index.mul %workitem, %width : index
+  %a_aligned = buffer.assume.alignment %a_output {minimum_alignment = 16} : buffer
+  %b_aligned = buffer.assume.alignment %b_output {minimum_alignment = 16} : buffer
+  %a_view = buffer.view %a_aligned[%base_offset] : buffer -> view<256xf32>
+  %b_view = buffer.view %b_aligned[%base_offset] : buffer -> view<256xf32>
+  vector.store %a_result, %a_view[%position] : vector<8xf32>, view<256xf32>
+  vector.store %b_result, %b_view[%position] : vector<8xf32>, view<256xf32>
+  kernel.return
+}
+
+// ----
+low.kernel.def target<amdgpu.gfx11.generic.core>(@paired_scope_target) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @paired_scope() asm {
+  %lane$46 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
+  %a_lhs = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %a_rhs = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %b_lhs = resource<hal_binding> {index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %b_rhs = resource<hal_binding> {index = 3, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %a_view = resource<hal_binding> {index = 4, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %b_view = resource<hal_binding> {index = 5, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  low.schedule.begin
+  %lane$63 = v_and_b32_src0_inline %lane$46, 15
+  %byte_offset = v_lshlrev_b32_src0_inline %lane$63, 6
+  %lhs0_low$65 = global_load_b128_saddr %byte_offset, %a_lhs
+  %lhs0_high$66 = global_load_b128_saddr %byte_offset, %a_lhs {offset = 16}
+  %lhs0$67 = concat(%lhs0_low$65, %lhs0_high$66) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs0_low$68 = global_load_b128_saddr %byte_offset, %a_rhs
+  %rhs0_high$69 = global_load_b128_saddr %byte_offset, %a_rhs {offset = 16}
+  %rhs0$70 = concat(%rhs0_low$68, %rhs0_high$69) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %zero = v_mov_b32 0
+  %zero_acc$72 = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
+  %zero_acc_copy$73 = copy %zero_acc$72 : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  low.schedule.step
+  %partial$74 = v_wmma_f32_16x16x16_bf16 %lhs0$67, %rhs0$70, %zero_acc_copy$73
+  low.schedule.step
+  %lhs1_low$75 = global_load_b128_saddr %byte_offset, %a_lhs {offset = 32}
+  %lhs1_high$76 = global_load_b128_saddr %byte_offset, %a_lhs {offset = 48}
+  %lhs1$77 = concat(%lhs1_low$75, %lhs1_high$76) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs1_low$78 = global_load_b128_saddr %byte_offset, %a_rhs {offset = 32}
+  %rhs1_high$79 = global_load_b128_saddr %byte_offset, %a_rhs {offset = 48}
+  %rhs1$80 = concat(%rhs1_low$78, %rhs1_high$79) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %partial_copy$81 = copy %partial$74 : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %result$82 = v_wmma_f32_16x16x16_bf16 %lhs1$77, %rhs1$80, %partial_copy$81
+  low.schedule.end
+  low.schedule.begin
+  %lhs0_low$6 = global_load_b128_saddr %byte_offset, %b_lhs
+  %lhs0_high$7 = global_load_b128_saddr %byte_offset, %b_lhs {offset = 16}
+  %lhs0$8 = concat(%lhs0_low$6, %lhs0_high$7) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs0_low$9 = global_load_b128_saddr %byte_offset, %b_rhs
+  %rhs0_high$10 = global_load_b128_saddr %byte_offset, %b_rhs {offset = 16}
+  %rhs0$11 = concat(%rhs0_low$9, %rhs0_high$10) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %zero_acc$13 = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
+  %zero_acc_copy$14 = copy %zero_acc$13 : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  low.schedule.step
+  %partial$15 = v_wmma_f32_16x16x16_bf16 %lhs0$8, %rhs0$11, %zero_acc_copy$14
+  low.schedule.step
+  %lhs1_low$16 = global_load_b128_saddr %byte_offset, %b_lhs {offset = 32}
+  %lhs1_high$17 = global_load_b128_saddr %byte_offset, %b_lhs {offset = 48}
+  %lhs1$18 = concat(%lhs1_low$16, %lhs1_high$17) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %rhs1_low$19 = global_load_b128_saddr %byte_offset, %b_rhs {offset = 32}
+  %rhs1_high$20 = global_load_b128_saddr %byte_offset, %b_rhs {offset = 48}
+  %rhs1$21 = concat(%rhs1_low$19, %rhs1_high$20) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %partial_copy$22 = copy %partial$15 : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
+  %result$23 = v_wmma_f32_16x16x16_bf16 %lhs1$18, %rhs1$21, %partial_copy$22
+  low.schedule.end
+  %55 = slice %result$82[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x4>
+  %56 = v_lshlrev_b32_src0_inline %lane$46, 5
+  global_store_b128_saddr %56, %55, %a_view
+  %57 = slice %result$82[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x4>
+  global_store_b128_saddr %56, %57, %a_view {offset = 16}
+  %59 = slice %result$23[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x4>
+  global_store_b128_saddr %56, %59, %b_view
+  %61 = slice %result$23[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x4>
+  global_store_b128_saddr %56, %61, %b_view {offset = 16}
+  return
+}

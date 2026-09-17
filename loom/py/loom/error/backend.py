@@ -1181,6 +1181,22 @@ ERR_BACKEND_046 = ErrorDef(
     ),
 )
 
+# ERR_BACKEND_047: Representation cannot enforce native scheduling scopes.
+ERR_BACKEND_047 = ErrorDef(
+    domain=ErrorDomain.BACKEND,
+    code=47,
+    severity=Severity.ERROR,
+    summary="Representation cannot enforce native scheduling scopes.",
+    message=(
+        "'{op_name}' requires native instruction ordering, which representation "
+        "'{representation}' cannot enforce"
+    ),
+    params=(
+        ErrorParam("op_name", ParamKind.STRING),
+        ErrorParam("representation", ParamKind.STRING),
+    ),
+)
+
 ALL_BACKEND_ERRORS: tuple[ErrorDef, ...] = (
     ERR_BACKEND_003,
     ERR_BACKEND_005,
@@ -1222,4 +1238,5 @@ ALL_BACKEND_ERRORS: tuple[ErrorDef, ...] = (
     ERR_BACKEND_044,
     ERR_BACKEND_045,
     ERR_BACKEND_046,
+    ERR_BACKEND_047,
 )

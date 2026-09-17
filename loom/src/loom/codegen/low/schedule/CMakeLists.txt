@@ -89,6 +89,8 @@ loom_cc_library(
     "ready_policy.c"
     "ready_policy.h"
     "run.c"
+    "scopes.c"
+    "scopes.h"
     "storage_relation_index.c"
     "storage_relation_index.h"
     "target_pressure.c"

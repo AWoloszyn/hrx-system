@@ -655,6 +655,7 @@ class DescriptorSet:
     default_category: DescriptorCategory | None = None
     requires_explicit_asm_surface: bool = False
     supported_target_contract_keys: tuple[str, ...] = ()
+    supports_native_scheduling: bool = False
 
     def __post_init__(self) -> None:
         canonical_target_contract_keys = tuple(

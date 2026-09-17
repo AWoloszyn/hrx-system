@@ -20,6 +20,7 @@ iree_execution_test_suite(
     "loom-compile-report=loom::py::loom::tools::loom-compile-report"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/complete_authoring_module.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/schedule_scopes.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/gfx1250_configured_fragment_bank.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/selected_root_amdgpu.loom"
   LABELS

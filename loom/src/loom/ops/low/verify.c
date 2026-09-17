@@ -12,6 +12,7 @@
 #include "loom/ir/module.h"
 #include "loom/ops/function_contract_verify.h"
 #include "loom/ops/low/ops.h"
+#include "loom/ops/low/schedule_scope.h"
 #include "loom/ops/successor_verify.h"
 #include "loom/target/registers.h"
 #include "loom/util/stable_id.h"
@@ -1242,9 +1243,10 @@ static iree_status_t loom_low_verify_resource_op(
   return iree_ok_status();
 }
 
-static iree_status_t loom_low_verify_function_preamble(
+static iree_status_t loom_low_verify_function_preamble_body(
     const loom_module_t* module, const loom_op_t* function_op,
-    iree_diagnostic_emitter_t emitter) {
+    iree_diagnostic_emitter_t emitter, iree_arena_allocator_t* arena,
+    loom_low_schedule_scope_builder_t* scope_builder) {
   loom_region_t* body = NULL;
   if (loom_low_func_def_isa(function_op)) {
     body = loom_low_func_def_body(function_op);
@@ -1257,8 +1259,16 @@ static iree_status_t loom_low_verify_function_preamble(
 
   const loom_block_t* entry_block = loom_region_const_entry_block(body);
   bool preamble_open = true;
+  uint32_t node_index = 0;
   const loom_op_t* nested_op = NULL;
   loom_block_for_each_op(entry_block, nested_op) {
+    const loom_low_schedule_control_kind_t control_kind =
+        loom_low_schedule_control_kind(nested_op);
+    if (control_kind != LOOM_LOW_SCHEDULE_CONTROL_NONE) {
+      IREE_RETURN_IF_ERROR(loom_low_schedule_scope_builder_append(
+          scope_builder, nested_op, control_kind, 0, node_index, arena));
+    }
+    ++node_index;
     if (loom_low_live_in_isa(nested_op) || loom_low_resource_isa(nested_op)) {
       if (!preamble_open) {
         return loom_low_emit_order_error(module, nested_op, IREE_SV("before"),
@@ -1274,6 +1284,14 @@ static iree_status_t loom_low_verify_function_preamble(
        ++block_index) {
     const loom_block_t* block = loom_region_const_block(body, block_index);
     loom_block_for_each_op(block, nested_op) {
+      const loom_low_schedule_control_kind_t control_kind =
+          loom_low_schedule_control_kind(nested_op);
+      if (control_kind != LOOM_LOW_SCHEDULE_CONTROL_NONE) {
+        IREE_RETURN_IF_ERROR(loom_low_schedule_scope_builder_append(
+            scope_builder, nested_op, control_kind, block_index, node_index,
+            arena));
+      }
+      ++node_index;
       if (!loom_low_live_in_isa(nested_op) &&
           !loom_low_resource_isa(nested_op)) {
         continue;
@@ -1284,6 +1302,30 @@ static iree_status_t loom_low_verify_function_preamble(
     }
   }
   return iree_ok_status();
+}
+
+static iree_status_t loom_low_verify_function_preamble(
+    const loom_module_t* module, const loom_op_t* function_op,
+    iree_diagnostic_emitter_t emitter) {
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(module->arena.block_pool, &arena);
+  loom_low_schedule_scope_builder_t scope_builder = {0};
+  iree_status_t status = loom_low_verify_function_preamble_body(
+      module, function_op, emitter, &arena, &scope_builder);
+  if (iree_status_is_ok(status) && scope_builder.control_count != 0) {
+    const loom_region_t* body = loom_low_func_def_isa(function_op)
+                                    ? loom_low_func_def_body(function_op)
+                                    : loom_low_kernel_def_body(function_op);
+    loom_cfg_graph_t graph;
+    status = loom_cfg_graph_build(module, body, &arena, &graph);
+    if (iree_status_is_ok(status) && !graph.malformed) {
+      loom_low_schedule_scopes_t scopes;
+      status = loom_low_schedule_scope_builder_finish(&scope_builder, &graph,
+                                                      emitter, &arena, &scopes);
+    }
+  }
+  iree_arena_deinitialize(&arena);
+  return status;
 }
 
 static iree_status_t loom_low_verify_kernel_returns(
@@ -1649,6 +1691,17 @@ iree_status_t loom_low_scf_while_verify(const loom_module_t* module,
                                         iree_diagnostic_emitter_t emitter) {
   return loom_low_verify_nested_under_low_entry(
       module, op, IREE_SV("low executable"), emitter, NULL);
+}
+
+iree_status_t loom_low_schedule_control_verify(
+    const loom_module_t* module, const loom_op_t* op,
+    iree_diagnostic_emitter_t emitter) {
+  if (op->parent_op != NULL && loom_low_executable_def_isa(op->parent_op)) {
+    return iree_ok_status();
+  }
+  return loom_low_emit_block_placement_error(
+      module, op, IREE_SV("a low executable body block"),
+      IREE_SV("a nested or non-low region"), emitter);
 }
 
 iree_status_t loom_low_func_def_verify(const loom_module_t* module,

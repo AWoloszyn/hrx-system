@@ -413,13 +413,14 @@ void loom_target_compile_report_record_artifact_size(
 void loom_target_compile_report_record_schedule(
     loom_target_compile_report_t* report, uint64_t node_count,
     uint64_t scheduled_node_count, uint64_t dependency_count,
-    uint64_t resource_use_count, uint64_t hazard_gap_count,
-    uint64_t model_summary_count, uint64_t pressure_summary_count,
-    uint64_t peak_live_units) {
+    uint64_t scope_count, uint64_t resource_use_count,
+    uint64_t hazard_gap_count, uint64_t model_summary_count,
+    uint64_t pressure_summary_count, uint64_t peak_live_units) {
   report->detail_flags |= LOOM_TARGET_COMPILE_REPORT_DETAIL_SCHEDULE;
   report->schedule_node_count = node_count;
   report->scheduled_node_count = scheduled_node_count;
   report->schedule_dependency_count = dependency_count;
+  report->schedule_scope_count = scope_count;
   report->schedule_resource_use_count = resource_use_count;
   report->schedule_hazard_gap_count = hazard_gap_count;
   report->schedule_model_summary_count = model_summary_count;
@@ -1040,6 +1041,7 @@ static void loom_target_compile_report_merge_entry_summary(
     report->schedule_node_count = entry_report->schedule_node_count;
     report->scheduled_node_count = entry_report->scheduled_node_count;
     report->schedule_dependency_count = entry_report->schedule_dependency_count;
+    report->schedule_scope_count = entry_report->schedule_scope_count;
     report->schedule_resource_use_count =
         entry_report->schedule_resource_use_count;
     report->schedule_hazard_gap_count = entry_report->schedule_hazard_gap_count;
@@ -1135,6 +1137,7 @@ static void loom_target_compile_report_merge_entry_summary(
   report->schedule_node_count += entry_report->schedule_node_count;
   report->scheduled_node_count += entry_report->scheduled_node_count;
   report->schedule_dependency_count += entry_report->schedule_dependency_count;
+  report->schedule_scope_count += entry_report->schedule_scope_count;
   report->schedule_resource_use_count +=
       entry_report->schedule_resource_use_count;
   report->schedule_hazard_gap_count += entry_report->schedule_hazard_gap_count;
@@ -1275,6 +1278,7 @@ loom_target_compile_report_entry_from_report(
       .schedule_node_count = entry_report->schedule_node_count,
       .scheduled_node_count = entry_report->scheduled_node_count,
       .schedule_dependency_count = entry_report->schedule_dependency_count,
+      .schedule_scope_count = entry_report->schedule_scope_count,
       .schedule_resource_use_count = entry_report->schedule_resource_use_count,
       .schedule_hazard_gap_count = entry_report->schedule_hazard_gap_count,
       .schedule_model_summary_count =

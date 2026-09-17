@@ -787,6 +787,7 @@ X86_SCALAR_DESCRIPTOR_SET = DescriptorSet(
     c_table_prefix="X86ScalarCore",
     c_enum_prefix="X86_SCALAR_CORE",
     generator_version=1,
+    supports_native_scheduling=True,
     reg_classes=(
         RegClass(
             _REG_GPR32,

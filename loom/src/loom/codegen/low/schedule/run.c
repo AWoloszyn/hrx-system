@@ -19,6 +19,7 @@
 #include "loom/codegen/low/schedule/pressure.h"
 #include "loom/codegen/low/schedule/ready_frontier.h"
 #include "loom/codegen/low/schedule/ready_policy.h"
+#include "loom/codegen/low/schedule/scopes.h"
 #include "loom/codegen/low/storage_relation.h"
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
@@ -1476,12 +1477,15 @@ iree_status_t loom_low_schedule_function(
   if (iree_status_is_ok(status)) {
     status = loom_low_schedule_build_dependencies(&state);
   }
-  if (iree_status_is_ok(status) && needs_liveness) {
+  if (iree_status_is_ok(status)) {
+    status = loom_low_schedule_build_scope_dependencies(&state);
+  }
+  if (iree_status_is_ok(status) && state.error_count == 0 && needs_liveness) {
     status = loom_liveness_analyze_local_value_domain_with_cfg_graph(
         &model->value_domain, &model->cfg_graph, loom_liveness_order_empty(),
         arena, &liveness);
   }
-  if (iree_status_is_ok(status)) {
+  if (iree_status_is_ok(status) && state.error_count == 0) {
     status = loom_low_schedule_run_list_scheduler(&state, node_count);
   }
   if (iree_status_is_ok(status) && state.error_count == 0) {
@@ -1538,6 +1542,7 @@ iree_status_t loom_low_schedule_function(
         .loop_forest = model->loop_forest,
         .nodes = state.nodes,
         .node_count = node_count,
+        .scopes = state.scopes,
         .call_node_indices = state.call_node_indices,
         .call_node_count = state.call_node_count,
         .dependency_group_count = state.dependency_index.group_count,

@@ -67,7 +67,7 @@ TEST(CompileReportFormatTest, FormatsCoreReport) {
   loom_target_compile_report_record_artifact_size(&report, 128);
   loom_target_compile_report_record_schedule(
       &report, /*node_count=*/5, /*scheduled_node_count=*/5,
-      /*dependency_count=*/4, /*resource_use_count=*/2,
+      /*dependency_count=*/4, /*scope_count=*/2, /*resource_use_count=*/2,
       /*hazard_gap_count=*/1, /*model_summary_count=*/1,
       /*pressure_summary_count=*/2, /*peak_live_units=*/96);
 
@@ -227,6 +227,7 @@ TEST(CompileReportFormatTest, FormatsCoreReport) {
   ExpectObjectUint64Equals(root, IREE_SV("artifact_size"), 128);
   const iree_string_view_t schedule = LookupObject(root, IREE_SV("schedule"));
   ExpectObjectUint64Equals(schedule, IREE_SV("node_count"), 5);
+  ExpectObjectUint64Equals(schedule, IREE_SV("scope_count"), 2);
   ExpectObjectUint64Equals(schedule, IREE_SV("resource_use_count"), 2);
   const iree_string_view_t workload_json =
       LookupObject(root, IREE_SV("workload"));
@@ -616,7 +617,7 @@ TEST(CompileReportFormatTest, FormatsEntryReportsAndTargetCapabilities) {
   entry.target_config_name = IREE_SVL("test_o0");
   loom_target_compile_report_record_schedule(
       &entry, /*node_count=*/5, /*scheduled_node_count=*/5,
-      /*dependency_count=*/4, /*resource_use_count=*/2,
+      /*dependency_count=*/4, /*scope_count=*/2, /*resource_use_count=*/2,
       /*hazard_gap_count=*/1, /*model_summary_count=*/1,
       /*pressure_summary_count=*/2, /*peak_live_units=*/96);
   loom_target_compile_report_record_allocation_materialization(
@@ -678,6 +679,7 @@ TEST(CompileReportFormatTest, FormatsEntryReportsAndTargetCapabilities) {
       LookupArrayElement(LookupObject(entries, IREE_SV("rows")), /*index=*/0);
   ExpectObjectValueEquals(entry_row, IREE_SV("function"),
                           IREE_SV("branchy_export"));
+  ExpectObjectUint64Equals(entry_row, IREE_SV("schedule_scope_count"), 2);
   ExpectObjectUint64Equals(entry_row, IREE_SV("schedule_resource_use_count"),
                            2);
   ExpectObjectUint64Equals(

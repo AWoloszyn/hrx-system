@@ -340,6 +340,7 @@ X86_AVX2_DESCRIPTOR_SET = DescriptorSet(
     c_table_prefix="X86Avx2Core",
     c_enum_prefix="X86_AVX2_CORE",
     generator_version=1,
+    supports_native_scheduling=True,
     reg_classes=(
         *X86_SCALAR_DESCRIPTOR_SET.reg_classes,
         RegClass(

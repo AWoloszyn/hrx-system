@@ -403,6 +403,11 @@ static iree_status_t loom_target_compile_report_format_summary(
         report->schedule_hazard_gap_count, report->schedule_model_summary_count,
         report->register_pressure_summary_count,
         report->register_pressure_peak_live_units));
+    if (report->schedule_scope_count != 0) {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+          builder, "COMPILE-REPORT: schedule scopes=%" PRIu64 "\n",
+          report->schedule_scope_count));
+    }
   }
 
   if (iree_any_bit_set(report->detail_flags,

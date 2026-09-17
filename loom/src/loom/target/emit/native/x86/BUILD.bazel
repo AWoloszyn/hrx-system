@@ -65,5 +65,6 @@ loom_check_test_suite(
     srcs = [
         "test/assembly.loom-test",
         "test/copies.loom-test",
+        "test/schedule_scopes.loom-test",
     ],
 )

@@ -17,6 +17,7 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/low/ops.h"
+#include "loom/ops/low/schedule_scope.h"
 #include "loom/target/function_version.h"
 #include "loom/target/registers.h"
 #include "loom/util/walk.h"
@@ -1980,6 +1981,19 @@ static iree_status_t loom_low_verify_walk_op(void* user_data, loom_op_t* op,
     IREE_RETURN_IF_ERROR(
         loom_low_verify_structural_register_parts(function_state, op));
     if (loom_traits_are_compile_time_only(op->traits)) {
+      if (loom_low_schedule_control_kind(op) !=
+              LOOM_LOW_SCHEDULE_CONTROL_NONE &&
+          !function_state->target->descriptor_set->supports_native_scheduling) {
+        const loom_diagnostic_param_t params[] = {
+            loom_param_string(loom_op_name(module, op)),
+            loom_param_string(loom_low_descriptor_set_string(
+                function_state->target->descriptor_set,
+                function_state->target->descriptor_set->key_string_offset)),
+        };
+        return loom_low_verify_emit(function_state->state, op,
+                                    LOOM_ERR_BACKEND_047, params,
+                                    IREE_ARRAYSIZE(params), NULL, 0);
+      }
       return iree_ok_status();
     }
     IREE_RETURN_IF_ERROR(

@@ -1640,6 +1640,60 @@ low_schedule_fence = Op(
     examples=["low.schedule.fence"],
 )
 
+# ============================================================================
+# Per-instance native scheduling scopes
+# ============================================================================
+
+low_schedule_begin = Op(
+    "low.schedule.begin",
+    group=low_ops,
+    phase=OpPhase.EXECUTABLE,
+    doc=(
+        "Begins an independently interleavable native scheduling scope. "
+        "low.schedule.step orders all surviving instructions in the current "
+        "phase before the next phase of this scope, without waiting for their "
+        "completion. Nested scopes belong to their parent's current phase. "
+        "Each cloned begin creates a distinct scope. Scope nesting must agree "
+        "at control-flow joins and balance at function exits. Controls appear "
+        "directly in Low executable body blocks; scopes may span CFG edges."
+    ),
+    verify="loom_low_schedule_control_verify",
+    traits=[HINT],
+    format=[],
+    examples=["low.schedule.begin"],
+)
+
+low_schedule_step = Op(
+    "low.schedule.step",
+    group=low_ops,
+    phase=OpPhase.EXECUTABLE,
+    doc=(
+        "Ends the current phase and begins the next phase of the innermost "
+        "native scheduling scope. Independent scopes may interleave. Empty "
+        "phases are valid. This orders emitted instructions and has no "
+        "runtime completion, memory visibility, or synchronization effect."
+    ),
+    verify="loom_low_schedule_control_verify",
+    traits=[HINT],
+    format=[],
+    examples=["low.schedule.step"],
+)
+
+low_schedule_end = Op(
+    "low.schedule.end",
+    group=low_ops,
+    phase=OpPhase.EXECUTABLE,
+    doc=(
+        "Ends the innermost native scheduling scope and resumes its parent "
+        "phase. Scope controls emit no instructions. Targets that delegate "
+        "native instruction ordering to another compiler reject this contract."
+    ),
+    verify="loom_low_schedule_control_verify",
+    traits=[HINT],
+    format=[],
+    examples=["low.schedule.end"],
+)
+
 ALL_LOW_OPS: tuple[Op, ...] = (
     low_func_def,
     low_kernel_def,
@@ -1669,4 +1723,7 @@ ALL_LOW_OPS: tuple[Op, ...] = (
     low_scf_while,
     low_schedule_fence,
     low_assume,
+    low_schedule_begin,
+    low_schedule_step,
+    low_schedule_end,
 )

@@ -34,6 +34,7 @@ iree_execution_test_suite(
         "complete_authoring_module.loom",
         "gfx1250_configured_fragment_bank.loom",
         "selected_root_amdgpu.loom",
+        "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/schedule_scopes.loom",
     ],
     manifests = ["loom-compile-amdgpu.test.json"],
     tags = ["hostonly"],

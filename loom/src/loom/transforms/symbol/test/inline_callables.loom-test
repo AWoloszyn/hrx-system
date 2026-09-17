@@ -876,3 +876,53 @@ func.def public @consume_loop_wrapper(%value: i32) -> (i32) {
   }
   func.return %result : i32
 }
+
+// ====
+// RUN: pass inline-callables
+
+// A uniquely called wrapper can transfer before its CFG child is flattened.
+// The scope crosses those inserted blocks and remains balanced at both exits.
+test.target<low_core> @scope_target
+
+low.func.def inline target<test.low.core>(@scope_target) @choose(%condition: reg<test.i32>, %value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.cond_br %condition, ^left, ^right : reg<test.i32>
+^left:
+  %sum = test.add.i32 %value, %value
+  return %sum
+^right:
+  return %value
+}
+
+low.func.def inline target<test.low.core>(@scope_target) @scoped_wrapper(%condition: reg<test.i32>, %value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.schedule.begin
+  %chosen = low.func.call @choose(%condition, %value) : (reg<test.i32>, reg<test.i32>) -> (reg<test.i32>)
+  low.schedule.step
+  %sum = test.add.i32 %chosen, %value
+  low.schedule.end
+  return %sum
+}
+
+low.func.def public target<test.low.core>(@scope_target) @scoped_entry(%condition: reg<test.i32>, %value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = low.func.call @scoped_wrapper(%condition, %value) : (reg<test.i32>, reg<test.i32>) -> (reg<test.i32>)
+  return %result
+}
+
+// ----
+test.target<low_core> @scope_target
+
+low.func.def public target<test.low.core>(@scope_target) @scoped_entry(%condition$9: reg<test.i32>, %value$10: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.schedule.begin
+  low.br ^_bb1(%condition$9: reg<test.i32>, %value$10: reg<test.i32>)
+^_bb1(%condition$0: reg<test.i32>, %value$1: reg<test.i32>):
+  low.cond_br %condition$0, ^_bb2, ^_bb3 : reg<test.i32>
+^_bb2:
+  %sum$3 = test.add.i32 %value$1, %value$1
+  low.br ^_bb4(%sum$3: reg<test.i32>)
+^_bb3:
+  low.br ^_bb4(%value$1: reg<test.i32>)
+^_bb4(%chosen: reg<test.i32>):
+  low.schedule.step
+  %sum$8 = test.add.i32 %chosen, %value$10
+  low.schedule.end
+  return %sum$8
+}

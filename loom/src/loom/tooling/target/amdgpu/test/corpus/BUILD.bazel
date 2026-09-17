@@ -14,6 +14,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["gfx11/schedule_scopes.loom"])
+
 _EXECUTION_TAGS = [
     "iree-run-requirement=runtime.resource.amd_gpu",
     "requires-gpu-amd",

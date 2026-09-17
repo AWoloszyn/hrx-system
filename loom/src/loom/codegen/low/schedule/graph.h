@@ -15,6 +15,13 @@
 extern "C" {
 #endif
 
+// Appends an ordering edge, omitting self edges and consecutive duplicates.
+// Allocation and representational capacity failures are returned as status.
+iree_status_t loom_low_schedule_add_dependency(
+    loom_low_schedule_build_state_t* state, uint32_t producer_node,
+    uint32_t consumer_node, loom_low_schedule_dependency_kind_t kind,
+    uint32_t operand_index);
+
 iree_status_t loom_low_schedule_fill_nodes(
     loom_low_schedule_build_state_t* state);
 

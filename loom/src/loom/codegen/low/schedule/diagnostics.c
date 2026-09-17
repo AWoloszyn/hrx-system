@@ -54,6 +54,8 @@ static iree_string_view_t loom_low_schedule_dependency_kind_name(
       return IREE_SV("effect");
     case LOOM_LOW_SCHEDULE_DEPENDENCY_STATE:
       return IREE_SV("state");
+    case LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER:
+      return IREE_SV("order");
     case LOOM_LOW_SCHEDULE_DEPENDENCY_STORAGE:
       return IREE_SV("storage");
     default:

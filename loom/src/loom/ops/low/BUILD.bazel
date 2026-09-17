@@ -40,11 +40,13 @@ loom_generated_cc_library(
         "canonicalize.c",
         "facts.c",
         "kernel.c",
+        "schedule_scope.c",
         "verify.c",
     ],
     hdrs = [
         "kernel.h",
         "ops.h",
+        "schedule_scope.h",
     ],
     args = ["--dialect=low"],
     generated_src_flags = [
@@ -70,9 +72,12 @@ loom_generated_cc_library(
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/target:registers",
         "//loom/src/loom/target:types",
+        "//loom/src/loom/util:cfg_graph",
         "//loom/src/loom/util:fact_table",
         "//loom/src/loom/util:predicate_facts",
         "//loom/src/loom/util:stable_id",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
     ],
 )
 
