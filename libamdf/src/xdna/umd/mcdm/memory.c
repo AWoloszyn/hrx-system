@@ -29,7 +29,9 @@ struct amdf_xdna_umd_memory_t {
   D3DKMT_HANDLE resource;
   // KMT physical allocation attached to the XDNA device.
   D3DKMT_HANDLE allocation;
-  // Provider-owned host base used by the standard allocation.
+  // VirtualAlloc reservation owned by CREATE, NULL for caller registration.
+  void* host_reservation;
+  // Host base borrowed by the native allocation while it remains live.
   void* host_pointer;
   // Physical allocation length in bytes.
   uint64_t byte_length;
@@ -87,13 +89,14 @@ static amdf_status_t amdf_windows_xdna_memory_release_native(
     memory->allocation = 0;
     memory->device_address = 0;
   }
-  if (memory->host_pointer != NULL) {
-    if (!VirtualFree(memory->host_pointer, 0, MEM_RELEASE)) {
+  if (memory->host_reservation != NULL) {
+    if (!VirtualFree(memory->host_reservation, 0, MEM_RELEASE)) {
       return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
     }
-    memory->host_pointer = NULL;
-    memory->byte_length = 0;
+    memory->host_reservation = NULL;
   }
+  memory->host_pointer = NULL;
+  memory->byte_length = 0;
   return AMDF_STATUS_OK;
 }
 
@@ -408,10 +411,15 @@ amdf_status_t amdf_xdna_umd_memory_prepare(
   memory->device = device;
   *memory_state = memory;
   memory->byte_length = byte_length;
-  memory->host_pointer = VirtualAlloc(NULL, (SIZE_T)byte_length,
-                                      MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  if (memory->host_pointer == NULL) {
-    status = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
+  if ((profile->roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER) != 0) {
+    memory->host_pointer = create_info->registered_host_pointer;
+  } else {
+    memory->host_reservation = VirtualAlloc(
+        NULL, (SIZE_T)byte_length, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    memory->host_pointer = memory->host_reservation;
+    if (memory->host_reservation == NULL) {
+      status = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
+    }
   }
   if (amdf_status_is_ok(status)) {
     status = amdf_windows_xdna_memory_create_allocation(memory);

@@ -162,6 +162,11 @@ class XdnaExecutionTest
       iree_hal_buffer_release(binding.buffer);
       binding.buffer = nullptr;
       ASSERT_NO_FATAL_FAILURE(DestroyMemory(&binding.storage));
+      if (binding.caller_storage.pointer) {
+        std::memset(binding.caller_storage.pointer, 0x3C,
+                    kBindingStorageByteLength);
+      }
+      ASSERT_NO_FATAL_FAILURE(DestroyMemory(&binding.caller_storage));
     }
     if (external_memory_.type != AMDF_EXTERNAL_MEMORY_TYPE_NONE) {
       api_->external_memory_release(&external_memory_);
@@ -186,6 +191,34 @@ class XdnaExecutionTest
     ASSERT_EQ(api_->host_mapping_query_info(memory->mapping, &info),
               AMDF_STATUS_OK);
     memory->pointer = static_cast<uint8_t*>(info.pointer);
+  }
+
+  void PrepareRegistration(const amdf_memory_profile_t& profile,
+                           MappedMemory* caller_storage,
+                           amdf_memory_create_info_t* create) {
+    const auto& registration = profile.registration;
+    const uint64_t granularity = registration.byte_length_granularity;
+    create->byte_length =
+        ((create->byte_length + granularity - 1) / granularity) * granularity;
+    create->minimum_alignment = registration.minimum_alignment;
+    amdf_memory_create_info_t host = {};
+    host.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+    host.structure_size = sizeof(host);
+    host.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+    host.byte_length = create->byte_length;
+    host.minimum_alignment = registration.registered_host_pointer_alignment;
+    ASSERT_EQ(
+        api_->memory_create(system_scope_, &host, &caller_storage->memory),
+        AMDF_STATUS_OK);
+    ASSERT_NO_FATAL_FAILURE(MapMemory(host.byte_length, caller_storage));
+    amdf_host_mapping_info_t mapping = {};
+    mapping.type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
+    mapping.structure_size = sizeof(mapping);
+    ASSERT_EQ(api_->host_mapping_query_info(caller_storage->mapping, &mapping),
+              AMDF_STATUS_OK);
+    ASSERT_EQ(mapping.cacheability, registration.registered_host_cacheability);
+    create->registered_host_pointer = mapping.pointer;
+    create->registered_host_cacheability = mapping.cacheability;
   }
 
   void CreateBindings() {
@@ -222,6 +255,14 @@ class XdnaExecutionTest
         FindMemoryProfileOrdinal(GetParam() | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
                                  AMDF_MEMORY_FLAG_HOST_VISIBLE);
     ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+    amdf_memory_profile_t profile = {};
+    profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+    profile.structure_size = sizeof(profile);
+    amdf_memory_access_capabilities_t capabilities = {};
+    capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+    capabilities.structure_size = sizeof(capabilities);
+    ASSERT_EQ(QueryMemoryProfile(profile_ordinal, &profile, &capabilities),
+              AMDF_STATUS_OK);
     for (size_t i = 0; i < bindings_.size(); ++i) {
       auto& binding = bindings_[i];
       if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_IMPORT) {
@@ -238,11 +279,8 @@ class XdnaExecutionTest
         create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
         create.byte_length = kBindingStorageByteLength;
         if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
-          create.registered_host_pointer =
-              binding.caller_storage.data() + kBindingByteLength;
-          create.registered_host_cacheability =
-              AMDF_HOST_CACHEABILITY_WRITE_BACK;
-          create.minimum_alignment = kBindingByteLength;
+          ASSERT_NO_FATAL_FAILURE(
+              PrepareRegistration(profile, &binding.caller_storage, &create));
         }
         ASSERT_EQ(api_->memory_create(system_scope_, &create,
                                       &binding.storage.memory),
@@ -607,11 +645,8 @@ class XdnaExecutionTest
   amdf_external_memory_t external_memory_ = {};
   // Native and HAL owners for the three canonical bindings.
   struct Binding {
-    // Optional caller-owned backing. Registration begins inside this array
-    // and remains live until the native memory handle is destroyed.
-    alignas(kBindingByteLength)
-        std::array<uint8_t, kBindingByteLength +
-                                kBindingStorageByteLength> caller_storage = {};
+    // Independent CPU-only page owner, released after native registration.
+    MappedMemory caller_storage;
     // Native memory and its explicit host view.
     MappedMemory storage;
     // HAL wrapper borrowing storage until preparation has been destroyed.
@@ -653,9 +688,7 @@ TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
     ASSERT_NO_FATAL_FAILURE(WriteBinding(1, expected[1]));
     ASSERT_NO_FATAL_FAILURE(WriteBinding(2, poisoned));
     const auto* command =
-        iteration == 0
-            ? iree_hal_amd_xdna_prepared_command_initialization(first_.prepared)
-            : iree_hal_amd_xdna_prepared_command_execution(first_.prepared);
+        iree_hal_amd_xdna_prepared_command_initialization(first_.prepared);
     ASSERT_NO_FATAL_FAILURE(RunExecution(first_, command));
     ASSERT_NO_FATAL_FAILURE(VerifyBindings(expected));
     ASSERT_NO_FATAL_FAILURE(VerifyInstructions(first_));
@@ -742,7 +775,7 @@ TEST_P(XdnaExecutionTest, SharesDataAcrossIndependentContextLifetimes) {
     ASSERT_NO_FATAL_FAILURE(WriteBinding(1, expected[1]));
     ASSERT_NO_FATAL_FAILURE(RunExecution(
         second_,
-        iree_hal_amd_xdna_prepared_command_execution(second_.prepared)));
+        iree_hal_amd_xdna_prepared_command_initialization(second_.prepared)));
     ASSERT_NO_FATAL_FAILURE(VerifyBindings(expected));
     ASSERT_NO_FATAL_FAILURE(VerifyInstructions(second_));
   }
@@ -793,16 +826,24 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
         ASSERT_EQ(
             api_->endpoint_query_queue_family_info(endpoint, ordinal, &family),
             AMDF_STATUS_OK);
-        if (family.command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4 &&
-            family.format_version == AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 &&
-            (family.format_features &
-             AMDF_GPU_PM4_FORMAT_FEATURE_ACQUIRE_MEM_GCR) != 0 &&
+        const bool user_publication =
             (family.publication_modes & AMDF_QUEUE_PUBLICATION_MODE_USER) !=
                 0 &&
             (family.user_queue_capabilities &
              AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER) != 0 &&
-            family.maximum_ring_byte_length >= kRingByteLength) {
+            family.maximum_ring_byte_length >= kRingByteLength;
+        const bool kernel_publication =
+            (family.publication_modes & AMDF_QUEUE_PUBLICATION_MODE_KERNEL) !=
+            0;
+        if (family.command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4 &&
+            family.format_version == AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 &&
+            (family.format_features &
+             AMDF_GPU_PM4_FORMAT_FEATURE_ACQUIRE_MEM_GCR) != 0 &&
+            (user_publication || kernel_publication)) {
           gpu_family_ = family;
+          gpu_publication_mode_ = user_publication
+                                      ? AMDF_QUEUE_PUBLICATION_MODE_USER
+                                      : AMDF_QUEUE_PUBLICATION_MODE_KERNEL;
           gpu_endpoint = endpoint;
           break;
         }
@@ -810,7 +851,7 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
       if (gpu_endpoint) break;
     }
     if (!gpu_endpoint) {
-      GTEST_SKIP() << "GPU PM4 user publication with GCR is not advertised";
+      GTEST_SKIP() << "GPU PM4 publication with GCR is not advertised";
     }
     ASSERT_EQ(GetCtsDeviceCache().GetGpuDevice(gpu_endpoint, &gpu_device_),
               AMDF_STATUS_OK);
@@ -835,6 +876,11 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
       ASSERT_EQ(api_->user_queue_destroy(gpu_queue_), AMDF_STATUS_OK);
       gpu_queue_ = nullptr;
     }
+    if (gpu_kernel_queue_) {
+      ASSERT_EQ(api_->kernel_queue_destroy(gpu_kernel_queue_), AMDF_STATUS_OK);
+      gpu_kernel_queue_ = nullptr;
+    }
+    ASSERT_NO_FATAL_FAILURE(DestroyMemory(&gpu_commands_));
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&staging_));
     XdnaExecutionTest::TearDown();
   }
@@ -873,9 +919,9 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
     amdf_memory_profile_t profile = {};
     ASSERT_NO_FATAL_FAILURE(FindProfile(
         pool_accesses_.size(), pool_accesses_.data(), GetParam(), &profile));
-    if (profile.ordinal == AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN &&
-        GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
-      GTEST_SKIP() << "joint host registration is not advertised";
+    if (profile.ordinal == AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN) {
+      GTEST_SKIP() << "joint memory role " << GetParam()
+                   << " is not advertised";
     }
     ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
     std::array<amdf_memory_profile_site_t, 3> sites = {};
@@ -935,8 +981,8 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
       create.minimum_alignment = kBindingByteLength;
       create.registered_host_cacheability = query.registered_host_cacheability;
       if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
-        create.registered_host_pointer =
-            registered_pages_[ordinal].data() + kBindingByteLength;
+        ASSERT_NO_FATAL_FAILURE(PrepareRegistration(
+            profile, &bindings_[ordinal].caller_storage, &create));
       }
       ASSERT_EQ(api_->memory_create(system_scope_, &create, &storage.memory),
                 AMDF_STATUS_OK);
@@ -974,6 +1020,28 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
         api_->memory_query_address(staging_.memory, 0, AMDF_MEMORY_ADDRESS_GPU,
                                    &staging_address_),
         AMDF_STATUS_OK);
+    if (gpu_publication_mode_ == AMDF_QUEUE_PUBLICATION_MODE_KERNEL) {
+      amdf_gpu_kernel_queue_create_info_t queue = {};
+      queue.type = AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_CREATE_INFO;
+      queue.structure_size = sizeof(queue);
+      queue.queue_family_ordinal = gpu_family_.ordinal;
+      ASSERT_EQ(gpu_api_->kernel_queue_create(gpu_device_, &queue,
+                                              &gpu_kernel_queue_),
+                AMDF_STATUS_OK);
+      auto command_access = pool_accesses_[1];
+      command_access.requirements.access |= AMDF_MEMORY_ACCESS_EXECUTE;
+      ASSERT_NO_FATAL_FAILURE(FindProfile(
+          1, &command_access, AMDF_MEMORY_PROFILE_ROLE_CREATE, &profile));
+      ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+      create.memory_profile_ordinal = profile.ordinal;
+      create.accesses = &command_access;
+      create.byte_length = kRingByteLength;
+      ASSERT_EQ(
+          api_->memory_create(system_scope_, &create, &gpu_commands_.memory),
+          AMDF_STATUS_OK);
+      ASSERT_NO_FATAL_FAILURE(MapMemory(create.byte_length, &gpu_commands_));
+      return;
+    }
     amdf_gpu_user_queue_create_info_t queue = {};
     queue.type = AMDF_STRUCTURE_TYPE_GPU_USER_QUEUE_CREATE_INFO;
     queue.structure_size = sizeof(queue);
@@ -1027,6 +1095,31 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
   }
 
   void RunGpu(std::vector<uint32_t> words, uint32_t completion_value) {
+    if (gpu_kernel_queue_) {
+      const size_t byte_length = words.size() * sizeof(uint32_t);
+      ASSERT_LE(byte_length, kRingByteLength);
+      std::memcpy(gpu_commands_.pointer, words.data(), byte_length);
+      ASSERT_EQ(api_->host_mapping_cache_control(
+                    gpu_commands_.mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0,
+                    byte_length),
+                AMDF_STATUS_OK);
+      amdf_gpu_kernel_command_t command = {};
+      command.memory = gpu_commands_.memory;
+      command.byte_length = byte_length;
+      amdf_gpu_kernel_queue_submission_info_t submit = {};
+      submit.type = AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_SUBMISSION_INFO;
+      submit.structure_size = sizeof(submit);
+      submit.command_count = 1;
+      submit.commands = &command;
+      uint64_t submission = 0;
+      ASSERT_EQ(gpu_api_->kernel_queue_submit(gpu_kernel_queue_, &submit,
+                                              &submission),
+                AMDF_STATUS_OK);
+      ASSERT_EQ(api_->kernel_queue_wait(gpu_kernel_queue_, submission,
+                                        AMDF_TIMEOUT_INFINITE, 0),
+                AMDF_STATUS_OK);
+      return;
+    }
     auto* completion = reinterpret_cast<volatile uint32_t*>(
         staging_.pointer + kCompletionByteOffset);
     ASSERT_NE(*completion, completion_value);
@@ -1097,14 +1190,14 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
   amdf_device_t* gpu_device_ = nullptr;
   // Exact PM4 family used by qualification and publication.
   amdf_queue_family_info_t gpu_family_ = {};
+  // Publication strategy selected from the complete family capabilities.
+  amdf_queue_publication_modes_t gpu_publication_mode_ = 0;
   // Complete pool contract, ordered XDNA then GPU.
   std::array<amdf_memory_device_access_t, 2> pool_accesses_ = {};
   // GPU release selected before any backing exists.
   amdf_cache_transition_t gpu_release_ = {};
   // GPU acquire selected before any backing exists.
   amdf_cache_transition_t gpu_acquire_ = {};
-  // Independent pages prevent native registration ranges from overlapping.
-  alignas(4096) std::array<std::array<uint8_t, 4096>, 3> registered_pages_ = {};
   // Cold GPU addresses corresponding to the three XDNA bindings.
   std::array<uint64_t, 3> gpu_addresses_ = {};
   // GPU-only host staging, readback and a separate completion cache line.
@@ -1113,6 +1206,10 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
   uint64_t staging_address_ = 0;
   // Case-owned GPU queue, destroyed before any reachable backing.
   amdf_user_queue_t* gpu_queue_ = nullptr;
+  // Native kernel publication when the family has no user producer.
+  amdf_kernel_queue_t* gpu_kernel_queue_ = nullptr;
+  // Caller-owned command storage, changed only after its submission retires.
+  MappedMemory gpu_commands_;
   // Host producer mapping, destroyed before the queue.
   amdf_user_queue_mapping_t* gpu_mapping_ = nullptr;
   // Cold publication operands for the host producer.
@@ -1160,10 +1257,10 @@ TEST_P(XdnaPoolVisibilityTest, ReplaysQualifiedGpuXdnaGpuTransitions) {
                                                0, kStagingByteLength),
               AMDF_STATUS_OK);
     ASSERT_NO_FATAL_FAILURE(RunGpu(ingress, iteration * 2 + 1));
+    // Independent time-sliced commands establish their own tile state. The
+    // immutable combined range needs no repeated preparation or relocation.
     const auto* command =
-        iteration == 0
-            ? iree_hal_amd_xdna_prepared_command_initialization(first_.prepared)
-            : iree_hal_amd_xdna_prepared_command_execution(first_.prepared);
+        iree_hal_amd_xdna_prepared_command_initialization(first_.prepared);
     ASSERT_NO_FATAL_FAILURE(RunExecution(first_, command));
     ASSERT_NO_FATAL_FAILURE(RunGpu(egress, iteration * 2 + 2));
     // The CPU has not touched or maintained the shared payload since setup.
