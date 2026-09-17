@@ -96,8 +96,8 @@ typedef struct iree_net_tcp_send_state_t {
   // Stable transport header retained through asynchronous completion.
   uint8_t header[IREE_NET_TCP_FRAME_HEADER_SIZE];
 
-  // Connection-owned copied prefix or complete staged frame.
-  uint8_t* staging_buffer;
+  // Optional allocation for an oversized prefix or complete staged frame.
+  uint8_t* owned_buffer;
 } iree_net_tcp_send_state_t;
 
 struct iree_net_tcp_endpoint_t {
@@ -203,6 +203,18 @@ struct iree_net_tcp_connection_t {
 
   // Preallocated framing and reservation state records.
   iree_net_tcp_send_state_t* send_states;
+
+  // Per-send-state storage for copied prefixes on the allocation-free path.
+  struct {
+    // Maximum prefix bytes retained in each slice.
+    iree_host_size_t capacity;
+
+    // Cache-line-isolated byte stride between slices.
+    iree_host_size_t stride;
+
+    // Cache-line-aligned storage indexed by send-state index.
+    uint8_t* data;
+  } copied_prefix_slab;
 
   // Number of preallocated pending-frame records.
   uint32_t pending_frame_count;
@@ -314,6 +326,13 @@ static iree_host_size_t iree_net_tcp_message_length(
   return message_length;
 }
 
+static uint8_t* iree_net_tcp_send_state_prefix_storage(
+    const iree_net_tcp_connection_t* connection,
+    const iree_net_tcp_send_state_t* send_state) {
+  return connection->copied_prefix_slab.data +
+         send_state->index * connection->copied_prefix_slab.stride;
+}
+
 //===----------------------------------------------------------------------===//
 // Bounded state pools
 //===----------------------------------------------------------------------===//
@@ -344,7 +363,7 @@ static void iree_net_tcp_release_send_state_locked(
   send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_FREE;
   send_state->payload_length = 0;
   send_state->completion_callback = (iree_net_send_completion_callback_t){0};
-  send_state->staging_buffer = NULL;
+  send_state->owned_buffer = NULL;
   send_state->next_free = connection->free_send_state_head;
   connection->free_send_state_head = send_state->index;
   ++connection->free_send_state_count;
@@ -354,9 +373,9 @@ static uint8_t* iree_net_tcp_consume_send_reservation_locked(
     iree_net_tcp_connection_t* connection,
     iree_net_tcp_send_state_t* send_state) {
   IREE_ASSERT(send_state->phase == IREE_NET_TCP_SEND_STATE_PHASE_RESERVED);
-  uint8_t* staging_buffer = send_state->staging_buffer;
+  uint8_t* owned_buffer = send_state->owned_buffer;
   iree_net_tcp_release_send_state_locked(connection, send_state);
-  return staging_buffer;
+  return owned_buffer;
 }
 
 static iree_net_tcp_send_state_t* iree_net_tcp_lookup_send_reservation_locked(
@@ -598,11 +617,11 @@ static void iree_net_tcp_endpoint_send_complete(
   const iree_host_size_t payload_length = send_state->payload_length;
   iree_net_send_completion_callback_t completion_callback =
       send_state->completion_callback;
-  uint8_t* staging_buffer = send_state->staging_buffer;
+  uint8_t* owned_buffer = send_state->owned_buffer;
   iree_net_tcp_release_send_state_locked(connection, send_state);
   iree_slim_mutex_unlock(&connection->mutex);
 
-  iree_allocator_free(connection->base.host_allocator, staging_buffer);
+  iree_allocator_free(connection->base.host_allocator, owned_buffer);
   IREE_ASSERT(!iree_status_is_ok(status) ||
                   wire_bytes_transferred ==
                       payload_length + IREE_NET_TCP_FRAME_HEADER_SIZE,
@@ -754,7 +773,7 @@ static void iree_net_tcp_abort_endpoint_reservations(
     iree_net_tcp_endpoint_t* endpoint) {
   iree_net_tcp_connection_t* connection = endpoint->connection;
   while (true) {
-    uint8_t* staging_buffer = NULL;
+    uint8_t* owned_buffer = NULL;
     bool reservation_found = false;
     bool more_reservations = false;
     iree_slim_mutex_lock(&connection->mutex);
@@ -763,8 +782,8 @@ static void iree_net_tcp_abort_endpoint_reservations(
       if (send_state->endpoint == endpoint &&
           send_state->phase == IREE_NET_TCP_SEND_STATE_PHASE_RESERVED) {
         reservation_found = true;
-        staging_buffer = iree_net_tcp_consume_send_reservation_locked(
-            connection, send_state);
+        owned_buffer = iree_net_tcp_consume_send_reservation_locked(connection,
+                                                                    send_state);
         for (uint32_t j = i + 1; j < connection->send_state_count; ++j) {
           const iree_net_tcp_send_state_t* remaining_state =
               &connection->send_states[j];
@@ -782,7 +801,7 @@ static void iree_net_tcp_abort_endpoint_reservations(
     if (!reservation_found) {
       break;
     }
-    iree_allocator_free(connection->base.host_allocator, staging_buffer);
+    iree_allocator_free(connection->base.host_allocator, owned_buffer);
     iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
     if (!more_reservations) {
       break;
@@ -888,10 +907,10 @@ static void iree_net_tcp_endpoint_reject_send_state(
   iree_net_tcp_endpoint_t* endpoint = send_state->endpoint;
   iree_net_tcp_connection_t* connection = endpoint->connection;
   iree_slim_mutex_lock(&connection->mutex);
-  uint8_t* staging_buffer = send_state->staging_buffer;
+  uint8_t* owned_buffer = send_state->owned_buffer;
   iree_net_tcp_release_send_state_locked(connection, send_state);
   iree_slim_mutex_unlock(&connection->mutex);
-  iree_allocator_free(connection->base.host_allocator, staging_buffer);
+  iree_allocator_free(connection->base.host_allocator, owned_buffer);
   iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
 }
 
@@ -922,14 +941,20 @@ static iree_status_t iree_net_tcp_endpoint_send(
       IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS >= framing_span_count &&
       params->data.count <=
           IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS - framing_span_count;
-  if (fits_scatter_gather) {
-    if (has_copied_prefix) {
+  uint8_t* copied_prefix_data = NULL;
+  if (fits_scatter_gather && has_copied_prefix) {
+    if (params->copied_prefix.data_length <=
+        connection->copied_prefix_slab.capacity) {
+      copied_prefix_data =
+          iree_net_tcp_send_state_prefix_storage(connection, send_state);
+    } else {
       status = iree_allocator_malloc_uninitialized(
           connection->base.host_allocator, params->copied_prefix.data_length,
-          (void**)&send_state->staging_buffer);
+          (void**)&send_state->owned_buffer);
+      copied_prefix_data = send_state->owned_buffer;
     }
-    if (iree_status_is_ok(status) && has_copied_prefix) {
-      memcpy(send_state->staging_buffer, params->copied_prefix.data,
+    if (iree_status_is_ok(status)) {
+      memcpy(copied_prefix_data, params->copied_prefix.data,
              params->copied_prefix.data_length);
     }
   }
@@ -940,7 +965,7 @@ static iree_status_t iree_net_tcp_endpoint_send(
         send_state->header, IREE_NET_TCP_FRAME_HEADER_SIZE);
     if (has_copied_prefix) {
       wire_spans[wire_span_count++] = iree_async_span_from_ptr(
-          send_state->staging_buffer, params->copied_prefix.data_length);
+          copied_prefix_data, params->copied_prefix.data_length);
     }
     if (params->data.count > 0) {
       memcpy(&wire_spans[wire_span_count], params->data.values,
@@ -966,13 +991,13 @@ static iree_status_t iree_net_tcp_endpoint_send(
     if (iree_status_is_ok(status)) {
       status = iree_allocator_malloc_uninitialized(
           connection->base.host_allocator, frame_size,
-          (void**)&send_state->staging_buffer);
+          (void**)&send_state->owned_buffer);
     }
     if (iree_status_is_ok(status)) {
-      memcpy(send_state->staging_buffer, send_state->header,
+      memcpy(send_state->owned_buffer, send_state->header,
              IREE_NET_TCP_FRAME_HEADER_SIZE);
       uint8_t* target =
-          send_state->staging_buffer + IREE_NET_TCP_FRAME_HEADER_SIZE;
+          send_state->owned_buffer + IREE_NET_TCP_FRAME_HEADER_SIZE;
       if (has_copied_prefix) {
         memcpy(target, params->copied_prefix.data,
                params->copied_prefix.data_length);
@@ -988,7 +1013,7 @@ static iree_status_t iree_net_tcp_endpoint_send(
     }
     if (iree_status_is_ok(status)) {
       iree_async_span_t wire_span =
-          iree_async_span_from_ptr(send_state->staging_buffer, frame_size);
+          iree_async_span_from_ptr(send_state->owned_buffer, frame_size);
       send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_IN_FLIGHT;
       iree_net_message_endpoint_send_params_t wire_params = {
           .data = iree_async_span_list_make(&wire_span, 1),
@@ -1098,9 +1123,9 @@ static iree_status_t iree_net_tcp_endpoint_begin_send(
       IREE_ASSERT(send_state->phase == IREE_NET_TCP_SEND_STATE_PHASE_PREPARING);
       send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_RESERVED;
       send_state->payload_length = size;
-      send_state->staging_buffer = frame_data;
+      send_state->owned_buffer = frame_data;
       frame_data = NULL;
-      *out_ptr = send_state->staging_buffer + IREE_NET_TCP_FRAME_HEADER_SIZE;
+      *out_ptr = send_state->owned_buffer + IREE_NET_TCP_FRAME_HEADER_SIZE;
       *out_handle =
           ((uint64_t)send_state->generation << 32) | send_state->index;
     } else {
@@ -1122,7 +1147,7 @@ static iree_status_t iree_net_tcp_endpoint_commit_send(
   iree_net_tcp_connection_t* connection = endpoint->connection;
   iree_net_tcp_send_state_t* send_state = NULL;
   iree_async_span_t wire_span = iree_async_span_empty();
-  uint8_t* rejected_staging_buffer = NULL;
+  uint8_t* rejected_owned_buffer = NULL;
   iree_slim_mutex_lock(&connection->mutex);
   send_state =
       iree_net_tcp_lookup_send_reservation_locked(connection, endpoint, handle);
@@ -1134,20 +1159,19 @@ static iree_status_t iree_net_tcp_endpoint_commit_send(
                               "TCP send reservation is no longer valid");
   } else if (!iree_status_is_ok(connection->terminal_status)) {
     status = iree_status_clone(connection->terminal_status);
-    rejected_staging_buffer =
+    rejected_owned_buffer =
         iree_net_tcp_consume_send_reservation_locked(connection, send_state);
   } else {
     send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_IN_FLIGHT;
     send_state->completion_callback = completion_callback;
     wire_span = iree_async_span_from_ptr(
-        send_state->staging_buffer,
+        send_state->owned_buffer,
         send_state->payload_length + IREE_NET_TCP_FRAME_HEADER_SIZE);
   }
   iree_slim_mutex_unlock(&connection->mutex);
 
-  if (rejected_staging_buffer) {
-    iree_allocator_free(connection->base.host_allocator,
-                        rejected_staging_buffer);
+  if (rejected_owned_buffer) {
+    iree_allocator_free(connection->base.host_allocator, rejected_owned_buffer);
     iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
   } else if (iree_status_is_ok(status)) {
     iree_net_message_endpoint_send_params_t wire_params = {
@@ -1171,18 +1195,18 @@ static void iree_net_tcp_endpoint_abort_send(
     void* self, iree_net_carrier_send_handle_t handle) {
   iree_net_tcp_endpoint_t* endpoint = (iree_net_tcp_endpoint_t*)self;
   iree_net_tcp_connection_t* connection = endpoint->connection;
-  uint8_t* staging_buffer = NULL;
+  uint8_t* owned_buffer = NULL;
   iree_slim_mutex_lock(&connection->mutex);
   iree_net_tcp_send_state_t* send_state =
       iree_net_tcp_lookup_send_reservation_locked(connection, endpoint, handle);
   IREE_ASSERT(send_state, "TCP send reservation is no longer valid");
   if (send_state) {
-    staging_buffer =
+    owned_buffer =
         iree_net_tcp_consume_send_reservation_locked(connection, send_state);
   }
   iree_slim_mutex_unlock(&connection->mutex);
   if (send_state) {
-    iree_allocator_free(connection->base.host_allocator, staging_buffer);
+    iree_allocator_free(connection->base.host_allocator, owned_buffer);
     iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
   }
 }
@@ -1324,7 +1348,11 @@ static void iree_net_tcp_connection_destroy(
   iree_net_framing_adapter_free(connection->framing_adapter);
   iree_async_proactor_release(connection->proactor);
   iree_slim_mutex_deinitialize(&connection->mutex);
-  iree_allocator_free(host_allocator, connection);
+  if (connection->copied_prefix_slab.data) {
+    iree_allocator_free_aligned(host_allocator, connection);
+  } else {
+    iree_allocator_free(host_allocator, connection);
+  }
 }
 
 static void iree_net_tcp_connection_deactivate(
@@ -1421,9 +1449,23 @@ static const iree_net_connection_vtable_t iree_net_tcp_connection_vtable = {
 // Public API
 //===----------------------------------------------------------------------===//
 
+typedef struct iree_net_tcp_connection_layout_t {
+  // Number of connection-wide pending-frame records.
+  iree_host_size_t pending_frame_count;
+
+  // Effective per-send copied-prefix capacity after frame-limit clamping.
+  iree_host_size_t copied_prefix_capacity;
+
+  // Cache-line-isolated byte stride between copied-prefix slices.
+  iree_host_size_t copied_prefix_stride;
+
+  // Total copied-prefix slab bytes across all send states.
+  iree_host_size_t copied_prefix_slab_size;
+} iree_net_tcp_connection_layout_t;
+
 static iree_status_t iree_net_tcp_connection_options_validate_impl(
     const iree_net_tcp_connection_options_t* options,
-    iree_host_size_t* out_pending_frame_count) {
+    iree_net_tcp_connection_layout_t* out_layout) {
   if (!options) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "TCP connection options are required");
@@ -1461,16 +1503,42 @@ static iree_status_t iree_net_tcp_connection_options_validate_impl(
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "TCP pending-frame record count exceeds 32 bits");
   }
-  if (out_pending_frame_count) {
-    *out_pending_frame_count = pending_frame_count;
+
+  iree_host_size_t copied_prefix_capacity = 0;
+  iree_host_size_t copied_prefix_stride = 0;
+  iree_host_size_t copied_prefix_slab_size = 0;
+  if (options->copied_prefix_capacity > 0) {
+    const iree_host_size_t max_payload_size =
+        (iree_host_size_t)options->max_frame_size -
+        IREE_NET_TCP_FRAME_HEADER_SIZE;
+    copied_prefix_capacity = iree_min(
+        (iree_host_size_t)options->copied_prefix_capacity, max_payload_size);
+    if (!iree_host_size_checked_align(
+            copied_prefix_capacity, iree_hardware_destructive_interference_size,
+            &copied_prefix_stride) ||
+        !iree_host_size_checked_mul(
+            options->carrier_options.max_send_operations, copied_prefix_stride,
+            &copied_prefix_slab_size)) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "TCP copied-prefix slab size overflow");
+    }
+  }
+
+  if (out_layout) {
+    *out_layout = (iree_net_tcp_connection_layout_t){
+        .pending_frame_count = pending_frame_count,
+        .copied_prefix_capacity = copied_prefix_capacity,
+        .copied_prefix_stride = copied_prefix_stride,
+        .copied_prefix_slab_size = copied_prefix_slab_size,
+    };
   }
   return iree_ok_status();
 }
 
 iree_status_t iree_net_tcp_connection_options_validate(
     const iree_net_tcp_connection_options_t* options) {
-  return iree_net_tcp_connection_options_validate_impl(
-      options, /*out_pending_frame_count=*/NULL);
+  return iree_net_tcp_connection_options_validate_impl(options,
+                                                       /*out_layout=*/NULL);
 }
 
 iree_status_t iree_net_tcp_connection_create(
@@ -1490,13 +1558,14 @@ iree_status_t iree_net_tcp_connection_create(
   if (!options) {
     options = &default_options;
   }
-  iree_host_size_t pending_frame_count = 0;
-  IREE_RETURN_IF_ERROR(iree_net_tcp_connection_options_validate_impl(
-      options, &pending_frame_count));
+  iree_net_tcp_connection_layout_t layout = {0};
+  IREE_RETURN_IF_ERROR(
+      iree_net_tcp_connection_options_validate_impl(options, &layout));
 
   iree_host_size_t endpoint_offset = 0;
   iree_host_size_t send_state_offset = 0;
   iree_host_size_t pending_frame_offset = 0;
+  iree_host_size_t copied_prefix_slab_offset = 0;
   iree_host_size_t allocation_size = 0;
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       sizeof(iree_net_tcp_connection_t), &allocation_size,
@@ -1508,13 +1577,21 @@ iree_status_t iree_net_tcp_connection_create(
                                 iree_alignof(iree_net_tcp_send_state_t),
                                 &send_state_offset),
       IREE_STRUCT_ARRAY_FIELD_ALIGNED(
-          pending_frame_count, 1, iree_net_tcp_pending_frame_t,
-          iree_alignof(iree_net_tcp_pending_frame_t), &pending_frame_offset)));
+          layout.pending_frame_count, 1, iree_net_tcp_pending_frame_t,
+          iree_alignof(iree_net_tcp_pending_frame_t), &pending_frame_offset),
+      IREE_STRUCT_FIELD(layout.copied_prefix_slab_size, uint8_t,
+                        &copied_prefix_slab_offset)));
 
   iree_net_tcp_connection_t* connection = NULL;
-  IREE_RETURN_IF_ERROR(iree_allocator_malloc(host_allocator, allocation_size,
-                                             (void**)&connection));
-  memset(connection, 0, allocation_size);
+  if (layout.copied_prefix_slab_size > 0) {
+    IREE_RETURN_IF_ERROR(iree_allocator_malloc_aligned(
+        host_allocator, allocation_size,
+        iree_hardware_destructive_interference_size, copied_prefix_slab_offset,
+        (void**)&connection));
+  } else {
+    IREE_RETURN_IF_ERROR(iree_allocator_malloc(host_allocator, allocation_size,
+                                               (void**)&connection));
+  }
   iree_net_connection_initialize(&iree_net_tcp_connection_vtable,
                                  host_allocator, options->max_endpoint_count,
                                  &connection->base);
@@ -1535,7 +1612,13 @@ iree_status_t iree_net_tcp_connection_create(
   connection->free_send_state_head = 0;
   connection->send_states =
       (iree_net_tcp_send_state_t*)((uint8_t*)connection + send_state_offset);
-  connection->pending_frame_count = (uint32_t)pending_frame_count;
+  connection->copied_prefix_slab.capacity = layout.copied_prefix_capacity;
+  connection->copied_prefix_slab.stride = layout.copied_prefix_stride;
+  if (layout.copied_prefix_slab_size > 0) {
+    connection->copied_prefix_slab.data =
+        (uint8_t*)connection + copied_prefix_slab_offset;
+  }
+  connection->pending_frame_count = (uint32_t)layout.pending_frame_count;
   connection->free_pending_frame_count = connection->pending_frame_count;
   connection->free_pending_frame_head = 0;
   connection->pending_frames =

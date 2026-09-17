@@ -30,6 +30,9 @@ extern "C" {
 // Default number of frames retained for one endpoint before local activation.
 #define IREE_NET_TCP_DEFAULT_MAX_PENDING_FRAMES_PER_ENDPOINT 8u
 
+// Default copied-prefix bytes retained per admitted send without allocation.
+#define IREE_NET_TCP_DEFAULT_COPIED_PREFIX_CAPACITY (4u * 1024u)
+
 // Options controlling TCP connection framing and bounded resources.
 typedef struct iree_net_tcp_connection_options_t {
   // Number of ordinal message endpoints preallocated by the connection.
@@ -40,6 +43,11 @@ typedef struct iree_net_tcp_connection_options_t {
 
   // Maximum frames retained per endpoint before local activation.
   uint32_t max_pending_frames_per_endpoint;
+
+  // Copied-prefix bytes retained per admitted send without allocation.
+  // Zero disables preallocated storage without limiting accepted messages;
+  // sends with larger prefixes allocate exact completion-scoped storage.
+  uint32_t copied_prefix_capacity;
 
   // Admission limits for the shared raw TCP carrier.
   iree_net_tcp_carrier_options_t carrier_options;
@@ -53,6 +61,7 @@ iree_net_tcp_connection_options_default(void) {
   options.max_frame_size = IREE_NET_TCP_DEFAULT_MAX_FRAME_SIZE;
   options.max_pending_frames_per_endpoint =
       IREE_NET_TCP_DEFAULT_MAX_PENDING_FRAMES_PER_ENDPOINT;
+  options.copied_prefix_capacity = IREE_NET_TCP_DEFAULT_COPIED_PREFIX_CAPACITY;
   options.carrier_options = iree_net_tcp_carrier_options_default();
   return options;
 }

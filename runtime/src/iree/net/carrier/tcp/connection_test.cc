@@ -6,6 +6,7 @@
 
 #include "iree/net/carrier/tcp/connection.h"
 
+#include <algorithm>
 #include <array>
 #include <condition_variable>
 #include <cstring>
@@ -157,8 +158,14 @@ struct BlockingAllocator {
   // True when the gated operation returned without entering the gate.
   bool attempt_completed = false;
 
+  // True when the next allocation command should fail.
+  bool fail_next_allocation = false;
+
   // Number of allocation commands observed by this wrapper.
   iree_host_size_t allocation_count = 0;
+
+  // Number of allocation commands deliberately failed by this wrapper.
+  iree_host_size_t failed_allocation_count = 0;
 
   // Number of free commands observed by this wrapper.
   iree_host_size_t free_count = 0;
@@ -185,6 +192,11 @@ struct BlockingAllocator {
     condition.notify_all();
   }
 
+  void FailNextAllocation() {
+    std::lock_guard<std::mutex> lock(mutex);
+    fail_next_allocation = true;
+  }
+
   void Release() {
     std::lock_guard<std::mutex> lock(mutex);
     released = true;
@@ -198,7 +210,7 @@ struct BlockingAllocator {
 
   iree_host_size_t OutstandingAllocationCount() {
     std::lock_guard<std::mutex> lock(mutex);
-    return allocation_count - free_count;
+    return allocation_count - failed_allocation_count - free_count;
   }
 
   static iree_status_t Control(void* self, iree_allocator_command_t command,
@@ -207,10 +219,16 @@ struct BlockingAllocator {
     const bool is_allocation = command == IREE_ALLOCATOR_COMMAND_MALLOC ||
                                command == IREE_ALLOCATOR_COMMAND_CALLOC;
     const bool is_free = command == IREE_ALLOCATOR_COMMAND_FREE;
+    bool fail_allocation = false;
     if (is_allocation || is_free) {
       std::unique_lock<std::mutex> lock(allocator->mutex);
       if (is_allocation) {
         ++allocator->allocation_count;
+        if (allocator->fail_next_allocation) {
+          allocator->fail_next_allocation = false;
+          ++allocator->failed_allocation_count;
+          fail_allocation = true;
+        }
       } else {
         ++allocator->free_count;
       }
@@ -223,6 +241,11 @@ struct BlockingAllocator {
         allocator->condition.notify_all();
         allocator->condition.wait(lock, [&] { return allocator->released; });
       }
+    }
+    if (fail_allocation) {
+      *inout_ptr = nullptr;
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "injected allocation failure");
     }
     iree_allocator_t system_allocator = iree_allocator_system();
     return system_allocator.ctl(system_allocator.self, command, params,
@@ -528,8 +551,111 @@ TEST(TcpConnectionOptionsTest, Defaults) {
   EXPECT_EQ(options.max_frame_size, IREE_NET_TCP_DEFAULT_MAX_FRAME_SIZE);
   EXPECT_EQ(options.max_pending_frames_per_endpoint,
             IREE_NET_TCP_DEFAULT_MAX_PENDING_FRAMES_PER_ENDPOINT);
+  EXPECT_EQ(options.copied_prefix_capacity,
+            IREE_NET_TCP_DEFAULT_COPIED_PREFIX_CAPACITY);
   EXPECT_EQ(options.carrier_options.max_send_operations,
             IREE_NET_TCP_DEFAULT_MAX_SEND_OPERATIONS);
+}
+
+TEST_F(TcpConnectionTest, CopiedPrefixSlabAvoidsSendTimeAllocation) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.copied_prefix_capacity = 16;
+  options.carrier_options.max_send_operations = 1;
+  CreateConnectionPair(options, options,
+                       /*receive_buffer_size=*/4096,
+                       /*receive_buffer_count=*/4,
+                       blocking_allocator_.allocator());
+
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(client_endpoint, CreateMessageResult());
+  MessageResult* server_messages = CreateMessageResult();
+  ActivateEndpoint(server_endpoint, server_messages);
+
+  std::string prefix(16, 'p');
+  const std::string expected = prefix;
+  SendResult send_result;
+  send_result.is_polling = &is_polling_;
+  const iree_host_size_t allocation_count_before =
+      blocking_allocator_.AllocationCount();
+  const iree_host_size_t outstanding_count_before =
+      blocking_allocator_.OutstandingAllocationCount();
+  IREE_ASSERT_OK(
+      SendMessage(client_endpoint, iree_async_span_list_empty(), &send_result,
+                  iree_make_const_byte_span(prefix.data(), prefix.size())));
+  EXPECT_EQ(blocking_allocator_.AllocationCount(), allocation_count_before);
+  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(),
+            outstanding_count_before);
+  std::fill(prefix.begin(), prefix.end(), 'x');
+
+  PollUntil([&] {
+    return send_result.callback_count == 1 &&
+           server_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(send_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(send_result.bytes_transferred, expected.size());
+  EXPECT_EQ(server_messages->messages[0], expected);
+  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(),
+            outstanding_count_before);
+}
+
+TEST_F(TcpConnectionTest, CopiedPrefixOverflowRestoresFailedAdmission) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.copied_prefix_capacity = 0;
+  options.carrier_options.max_send_operations = 1;
+  CreateConnectionPair(options, options,
+                       /*receive_buffer_size=*/4096,
+                       /*receive_buffer_count=*/4,
+                       blocking_allocator_.allocator());
+
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(client_endpoint, CreateMessageResult());
+  MessageResult* server_messages = CreateMessageResult();
+  ActivateEndpoint(server_endpoint, server_messages);
+
+  std::string prefix(17, 'p');
+  const std::string expected = prefix;
+  const iree_host_size_t outstanding_count_before =
+      blocking_allocator_.OutstandingAllocationCount();
+  blocking_allocator_.FailNextAllocation();
+  SendResult rejected_result;
+  rejected_result.is_polling = &is_polling_;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      SendMessage(client_endpoint, iree_async_span_list_empty(),
+                  &rejected_result,
+                  iree_make_const_byte_span(prefix.data(), prefix.size())));
+  EXPECT_EQ(rejected_result.callback_count, 0);
+  EXPECT_EQ(iree_net_message_endpoint_query_send_budget(client_endpoint).slots,
+            1u);
+  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(),
+            outstanding_count_before);
+
+  SendResult send_result;
+  send_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(
+      SendMessage(client_endpoint, iree_async_span_list_empty(), &send_result,
+                  iree_make_const_byte_span(prefix.data(), prefix.size())));
+  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(),
+            outstanding_count_before + 1);
+  std::fill(prefix.begin(), prefix.end(), 'x');
+
+  PollUntil([&] {
+    return send_result.callback_count == 1 &&
+           server_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(send_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(send_result.bytes_transferred, expected.size());
+  EXPECT_EQ(server_messages->messages[0], expected);
+  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(),
+            outstanding_count_before);
 }
 
 TEST_F(TcpConnectionTest, RoutesOrdinalsAndHandlesScatterOverflow) {
