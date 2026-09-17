@@ -80,21 +80,19 @@ static bool loom_low_schedule_candidate_defers_storage_setup(
          !iree_any_bit_set(score->flags, actionable_flags);
 }
 
-// Defers operand-free materializations while recovering identified pressure.
-// Closing an opened consumer chain before another leaf can preserve the
-// pressure reduction from allocation repair. Without pressure risk,
-// rematerializability alone cannot outweigh pair affinity or stall costs.
+// Defers operand-free materializations while completing a packing transaction.
+// Ordinary pressure relief already compares live growth and allocation debt:
+// suppressing every leaf there can postpone an operand needed to close a live
+// consumer chain while unrelated work grows pressure instead.
 static bool loom_low_schedule_candidate_defers_rematerializable_leaf(
     loom_low_schedule_candidate_compare_mode_t compare_mode,
     const loom_low_schedule_candidate_score_t* score) {
-  if (compare_mode == LOOM_LOW_SCHEDULE_CANDIDATE_COMPARE_DEFAULT) {
+  if (compare_mode != LOOM_LOW_SCHEDULE_CANDIDATE_COMPARE_PACKING_COMPLETION) {
     return false;
   }
   const uint16_t actionable_flags =
       LOOM_LOW_SCHEDULE_CANDIDATE_FLAG_ADVANCES_STORAGE |
-      (compare_mode == LOOM_LOW_SCHEDULE_CANDIDATE_COMPARE_PACKING_COMPLETION
-           ? LOOM_LOW_SCHEDULE_CANDIDATE_FLAG_EXACT_PACKING_COMPLETION
-           : 0);
+      LOOM_LOW_SCHEDULE_CANDIDATE_FLAG_EXACT_PACKING_COMPLETION;
   return score->produced_live_value_count != 0 &&
          score->killed_live_units == 0 &&
          iree_any_bit_set(

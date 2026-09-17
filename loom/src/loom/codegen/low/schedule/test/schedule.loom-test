@@ -541,6 +541,25 @@ low.func.def target<test.low.core>(@test_target) @resource_stall_preserves_uncon
 }
 
 // ====
+// RUN: emit low-schedule-json @resource_stall_materializes_operand_before_pressure_growth strategy=resource-stall diagnostics=candidates test.i32=10 output=none
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @resource_stall_materializes_operand_before_pressure_growth(%pointer: reg<test.ptr>, %lhs: reg<test.i32>, %rhs: reg<test.i32>, %padding: reg<test.i32 x4>) -> (reg<test.i32 x4>, reg<test.i32 x4>, reg<test.i32>) asm {
+  // Issuing the load first leaves no headroom for the scalar chain's operand.
+  // Materializing that operand allows both scalar inputs to die before the
+  // load result opens, keeping the ten-unit budget instead of peaking at eleven.
+  %loaded = test.load.v4i32 %pointer
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="0", chosen_packet="test.const.i32", rejected_packet="test.load.v4i32"}
+  %constant = test.const.i32 1
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="1", chosen_packet="test.add.i32", rejected_packet="test.load.v4i32"}
+  %intermediate = test.add.i32 %lhs, %constant
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="2", chosen_packet="test.add.i32", rejected_packet="test.load.v4i32"}
+  %result = test.add.i32 %intermediate, %rhs
+  return %loaded, %padding, %result
+}
+
+// ====
 // RUN: emit low-schedule-json @resource_stall_prefers_actionable_rematerialization strategy=resource-stall diagnostics=candidates output=none
 
 test.target<low_core> @test_target
@@ -1563,26 +1582,26 @@ low.func.def target<test.low.core>(@test_target) @register_packing_avoids_fragme
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @register_packing_materializes_active_completion(%source0: reg<test.i32>, %source1: reg<test.i32>, %source2: reg<test.i32>) -> (reg<test.i32>, reg<test.i32>, reg<test.i32>) asm {
-  // Two independent narrow values fill the aggregate packing resource. The
-  // otherwise-deferred configuration for the first transaction must then
-  // become actionable before the third transaction opens.
+  // The fence establishes two live narrow values in the packing resource.
+  // Their configuration leaves must complete an active transaction before
+  // the third transaction opens, even though those leaves grow scalar pressure.
   // REMARK@+1: BACKEND/015 {scheduled_ordinal="0", chosen_packet="test.packing.create", rejected_packet="test.packing.create"}
   %narrow0 = test.packing.create %source0
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="2", chosen_packet="test.const.i32", rejected_packet="test.const.i32"}
-  %config0 = test.const.i32 0
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="3", chosen_packet="test.packing.configured.expand", rejected_packet="test.const.i32"}
-  %lhs_wide0, %rhs_wide0 = test.packing.configured.expand %narrow0, %config0
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="4", chosen_packet="test.packing.retire", rejected_packet="test.packing.create"}
-  %result0 = test.packing.retire %lhs_wide0, %rhs_wide0
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="1", chosen_packet="test.packing.create", rejected_packet="test.packing.create"}
   %narrow1 = test.packing.create %source1
+  low.schedule.fence
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="3", chosen_packet="test.const.i32", rejected_packet="test.const.i32"}
+  %config0 = test.const.i32 0
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="4", chosen_packet="test.packing.configured.expand", rejected_packet="test.const.i32"}
+  %lhs_wide0, %rhs_wide0 = test.packing.configured.expand %narrow0, %config0
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="5", chosen_packet="test.packing.retire", rejected_packet="test.const.i32"}
+  %result0 = test.packing.retire %lhs_wide0, %rhs_wide0
   // REMARK@+1: BACKEND/015 {scheduled_ordinal="6", chosen_packet="test.const.i32", rejected_packet="test.const.i32"}
   %config1 = test.const.i32 1
   // REMARK@+1: BACKEND/015 {scheduled_ordinal="7", chosen_packet="test.packing.configured.expand", rejected_packet="test.const.i32"}
   %lhs_wide1, %rhs_wide1 = test.packing.configured.expand %narrow1, %config1
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="8", chosen_packet="test.packing.retire", rejected_packet="test.const.i32"}
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="8", chosen_packet="test.packing.retire", rejected_packet="test.packing.create"}
   %result1 = test.packing.retire %lhs_wide1, %rhs_wide1
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="5", chosen_packet="test.packing.create", rejected_packet="test.const.i32"}
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="9", chosen_packet="test.packing.create", rejected_packet="test.const.i32"}
   %narrow2 = test.packing.create %source2
   %config2 = test.const.i32 2
   %lhs_wide2, %rhs_wide2 = test.packing.configured.expand %narrow2, %config2
