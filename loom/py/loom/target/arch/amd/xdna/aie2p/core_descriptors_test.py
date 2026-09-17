@@ -694,6 +694,64 @@ def test_fused_cascade_arithmetic_preserves_accumulator_and_selector_state() -> 
                 assert states == expected
 
 
+def test_cascade_matrix_preserves_native_operand_ownership() -> None:
+    descriptors = {row.key: row for row in AIE2P_CORE_DESCRIPTOR_SET.descriptors}
+    classes = {row.name: row for row in AIE2P_CORE_DESCRIPTOR_SET.reg_classes}
+    for kind, shapes in (
+        ("integer", ("x-x", "x-y", "y-x", "y-y")),
+        ("bf16", ("x-x", "y-y")),
+        ("bfp", ("ex-ex", "ex-ey")),
+    ):
+        for shape in shapes:
+            for operation in ("add-accumulate", "add-subtract-product"):
+                key = f"matrix.{operation}.{kind}.{shape}.configured"
+                base = descriptors[f"amd.xdna.aie2p.{key}"]
+                base_operands = {
+                    operand.field_name: operand for operand in base.operands
+                }
+                for increment in (False, True):
+                    suffix = ".increment" if increment else ""
+                    descriptor = descriptors[f"amd.xdna.aie2p.cascade.{key}{suffix}"]
+                    operands = {
+                        operand.field_name: operand for operand in descriptor.operands
+                    }
+                    assert "acc2" not in operands
+                    for name in ("dst", "acc1", "s1", "s2", "acc"):
+                        assert operands[name] == base_operands[name]
+                    names = tuple(operands)
+                    ties = {
+                        (names[tie.lhs_operand_index], names[tie.rhs_operand_index])
+                        for tie in descriptor.constraints
+                        if tie.kind is ConstraintKind.TIED
+                    }
+                    assert ties == (
+                        {("dst", "acc1"), ("r_out", "r")}
+                        if increment
+                        else {("dst", "acc1")}
+                    )
+                    selector = operands["r" if increment else "c"]
+                    assert selector.role is OperandRole.OPERAND
+                    assert classes[
+                        selector.reg_alts[0].reg_class
+                    ].physical_registers == ("r31",)
+                    if increment:
+                        assert operands["r_out"].role is OperandRole.RESULT
+                        assert operands["r_out"].reg_alts == selector.reg_alts
+                    assert DescriptorFlag.SIDE_EFFECTING in descriptor.flags
+                    assert DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags
+                    assert [effect.kind for effect in descriptor.effects] == [
+                        EffectKind.BARRIER
+                    ]
+                    state = operands["implicit_use_crscden"]
+                    assert state.flags == (OperandFlag.IMPLICIT, OperandFlag.STATE_READ)
+                    assert classes[state.reg_alts[0].reg_class].physical_registers == (
+                        "crSCDEn",
+                    )
+                    for name, operand in base_operands.items():
+                        if OperandFlag.IMPLICIT in operand.flags:
+                            assert operands[name] == operand
+
+
 def test_bundle_resources_exactly_model_every_extendable_physical_slot_set() -> None:
     descriptor_set = AIE2P_CORE_DESCRIPTOR_SET
     resources = {resource.name: resource for resource in descriptor_set.resources}

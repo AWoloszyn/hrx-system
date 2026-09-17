@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from loom.target.arch.amd.xdna.aie2p.core_descriptor_spec import _DescriptorSpec
 from loom.target.low_descriptors import Effect, EffectKind
 
@@ -178,4 +180,35 @@ def _cascade_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
                         effects=(Effect(EffectKind.BARRIER),),
                     )
                 )
+    return tuple(result)
+
+
+def _cascade_matrix_descriptor_specs(
+    matrix_specs: tuple[_DescriptorSpec, ...],
+) -> tuple[_DescriptorSpec, ...]:
+    """Replaces the second matrix accumulator with a selected cascade item."""
+
+    result = []
+    for spec in matrix_specs:
+        if "_add_reg_" not in spec.form_name:
+            continue
+        for increment in (False, True):
+            suffix = ".increment" if increment else ""
+            form = spec.form_name.replace(
+                "_add_reg_", "_add_scd_incr_" if increment else "_add_scd_"
+            )
+            result.append(
+                replace(
+                    spec,
+                    form_name=form,
+                    itinerary=f"II_{form}",
+                    key=spec.key.replace(".matrix.", ".cascade.matrix.") + suffix,
+                    semantic_tag="cascade." + spec.semantic_tag + suffix,
+                    storage_overrides=tuple(
+                        entry for entry in spec.storage_overrides if entry[0] != "acc2"
+                    ),
+                    asm_mnemonic=f"{spec.asm_mnemonic}.scd{suffix}",
+                    effects=(*spec.effects, Effect(EffectKind.BARRIER)),
+                )
+            )
     return tuple(result)

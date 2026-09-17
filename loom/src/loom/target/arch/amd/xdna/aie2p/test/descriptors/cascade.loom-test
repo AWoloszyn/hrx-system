@@ -108,3 +108,131 @@ low.func.def target<amd.xdna.aie2p.core> @floating_partial_sums(%resident: reg<a
   %following = vmov.scd
   return %fourth, %final_position, %following
 }
+
+// ====
+
+// A matrix consumes its working accumulator; an explicit copy keeps the source
+// live. The unused final result retains its stream effect and r31 update.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @integer_x_x_cascade(%left: reg<aie2p.vec256 x2>, %right: reg<aie2p.vec256 x2>, %resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %working = copy %resident : reg<aie2p.mbms x4> -> reg<aie2p.mbms x4>
+  %first = maddmac.integer.x-x.scd %working, %position, %left, %right, %configuration
+  %second = maddmsc.integer.x-x.scd %first, %position, %left, %right, %configuration
+  %third, %next_position = maddmac.integer.x-x.scd.increment %second, %position, %left, %right, %configuration
+  %discarded, %final_position = maddmsc.integer.x-x.scd.increment %third, %next_position, %left, %right, %configuration
+  return %resident, %final_position
+}
+
+// ====
+
+// A matrix consumes its working accumulator; an explicit copy keeps the source
+// live. The unused final result retains its stream effect and r31 update.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @integer_x_y_cascade(%left: reg<aie2p.vec256 x2>, %right: reg<aie2p.vec256 x4>, %resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %working = copy %resident : reg<aie2p.mbms x4> -> reg<aie2p.mbms x4>
+  %first = maddmac.integer.x-y.scd %working, %position, %left, %right, %configuration
+  %second = maddmsc.integer.x-y.scd %first, %position, %left, %right, %configuration
+  %third, %next_position = maddmac.integer.x-y.scd.increment %second, %position, %left, %right, %configuration
+  %discarded, %final_position = maddmsc.integer.x-y.scd.increment %third, %next_position, %left, %right, %configuration
+  return %resident, %final_position
+}
+
+// ====
+
+// A matrix consumes its working accumulator; an explicit copy keeps the source
+// live. The unused final result retains its stream effect and r31 update.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @integer_y_x_cascade(%left: reg<aie2p.vec256 x4>, %right: reg<aie2p.vec256 x2>, %resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %working = copy %resident : reg<aie2p.mbms x4> -> reg<aie2p.mbms x4>
+  %first = maddmac.integer.y-x.scd %working, %position, %left, %right, %configuration
+  %second = maddmsc.integer.y-x.scd %first, %position, %left, %right, %configuration
+  %third, %next_position = maddmac.integer.y-x.scd.increment %second, %position, %left, %right, %configuration
+  %discarded, %final_position = maddmsc.integer.y-x.scd.increment %third, %next_position, %left, %right, %configuration
+  return %resident, %final_position
+}
+
+// ====
+
+// A matrix consumes its working accumulator; an explicit copy keeps the source
+// live. The unused final result retains its stream effect and r31 update.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @integer_y_y_cascade(%left: reg<aie2p.vec256 x4>, %right: reg<aie2p.vec256 x4>, %resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %working = copy %resident : reg<aie2p.mbms x4> -> reg<aie2p.mbms x4>
+  %first = maddmac.integer.y-y.scd %working, %position, %left, %right, %configuration
+  %second = maddmsc.integer.y-y.scd %first, %position, %left, %right, %configuration
+  %third, %next_position = maddmac.integer.y-y.scd.increment %second, %position, %left, %right, %configuration
+  %discarded, %final_position = maddmsc.integer.y-y.scd.increment %third, %next_position, %left, %right, %configuration
+  return %resident, %final_position
+}
+
+// ====
+
+// A matrix consumes its working accumulator; an explicit copy keeps the source
+// live. The unused final result retains its stream effect and r31 update.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @bf16_x_x_cascade(%left: reg<aie2p.vec256 x2>, %right: reg<aie2p.vec256 x2>, %resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %working = copy %resident : reg<aie2p.mbms x4> -> reg<aie2p.mbms x4>
+  %first = maddmac.bf16.x-x.scd %working, %position, %left, %right, %configuration
+  %second = maddmsc.bf16.x-x.scd %first, %position, %left, %right, %configuration
+  %third, %next_position = maddmac.bf16.x-x.scd.increment %second, %position, %left, %right, %configuration
+  %discarded, %final_position = maddmsc.bf16.x-x.scd.increment %third, %next_position, %left, %right, %configuration
+  return %resident, %final_position
+}
+
+// ====
+
+// A matrix consumes its working accumulator; an explicit copy keeps the source
+// live. The unused final result retains its stream effect and r31 update.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @bf16_y_y_cascade(%left: reg<aie2p.vec256 x4>, %right: reg<aie2p.vec256 x4>, %resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %working = copy %resident : reg<aie2p.mbms x4> -> reg<aie2p.mbms x4>
+  %first = maddmac.bf16.y-y.scd %working, %position, %left, %right, %configuration
+  %second = maddmsc.bf16.y-y.scd %first, %position, %left, %right, %configuration
+  %third, %next_position = maddmac.bf16.y-y.scd.increment %second, %position, %left, %right, %configuration
+  %discarded, %final_position = maddmsc.bf16.y-y.scd.increment %third, %next_position, %left, %right, %configuration
+  return %resident, %final_position
+}
+
+// ====
+
+// A matrix consumes its working accumulator; an explicit copy keeps the source
+// live. The unused final result retains its stream effect and r31 update.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @bfp_ex_ex_cascade(%left: reg<aie2p.mexa>, %right: reg<aie2p.mexa>, %resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %working = copy %resident : reg<aie2p.mbms x4> -> reg<aie2p.mbms x4>
+  %first = maddmac.bfp.ex-ex.scd %working, %position, %left, %right, %configuration
+  %second = maddmsc.bfp.ex-ex.scd %first, %position, %left, %right, %configuration
+  %third, %next_position = maddmac.bfp.ex-ex.scd.increment %second, %position, %left, %right, %configuration
+  %discarded, %final_position = maddmsc.bfp.ex-ex.scd.increment %third, %next_position, %left, %right, %configuration
+  return %resident, %final_position
+}
+
+// ====
+
+// A matrix consumes its working accumulator; an explicit copy keeps the source
+// live. The unused final result retains its stream effect and r31 update.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @bfp_ex_ey_cascade(%left: reg<aie2p.mexa>, %right: reg<aie2p.mexa x2>, %resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %working = copy %resident : reg<aie2p.mbms x4> -> reg<aie2p.mbms x4>
+  %first = maddmac.bfp.ex-ey.scd %working, %position, %left, %right, %configuration
+  %second = maddmsc.bfp.ex-ey.scd %first, %position, %left, %right, %configuration
+  %third, %next_position = maddmac.bfp.ex-ey.scd.increment %second, %position, %left, %right, %configuration
+  %discarded, %final_position = maddmsc.bfp.ex-ey.scd.increment %third, %next_position, %left, %right, %configuration
+  return %resident, %final_position
+}

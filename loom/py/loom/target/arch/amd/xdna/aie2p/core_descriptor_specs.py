@@ -35,6 +35,7 @@ from loom.target.arch.amd.xdna.aie2p.core_fifo_descriptors import (
 from loom.target.arch.amd.xdna.aie2p.core_machine_data import CORE_MACHINE_TABLE
 from loom.target.arch.amd.xdna.aie2p.core_stream_descriptors import (
     _cascade_descriptor_specs,
+    _cascade_matrix_descriptor_specs,
     _scalar_stream_descriptor_specs,
 )
 from loom.target.low_descriptors import (
@@ -741,6 +742,12 @@ def _scalar_nonlinear_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
     )
 
 
+_DENSE_MATRIX_DESCRIPTOR_SPECS = (
+    *_dense_integer_matrix_descriptor_specs(),
+    *_dense_floating_matrix_descriptor_specs(),
+)
+
+
 _BASE_DESCRIPTOR_SPECS = (
     *_address_descriptor_specs(),
     _DescriptorSpec(
@@ -1164,8 +1171,7 @@ _BASE_DESCRIPTOR_SPECS = (
         asm_mnemonic="acc.clear.f32x64",
     ),
     *_integer_matrix_descriptor_specs(),
-    *_dense_integer_matrix_descriptor_specs(),
-    *_dense_floating_matrix_descriptor_specs(),
+    *_DENSE_MATRIX_DESCRIPTOR_SPECS,
     *(
         _DescriptorSpec(
             native,
@@ -1854,6 +1860,7 @@ _DESCRIPTOR_SPECS = (
     *_with_ordered_memory_variants(_BASE_DESCRIPTOR_SPECS),
     *_scalar_stream_descriptor_specs(),
     *_cascade_descriptor_specs(),
+    *_cascade_matrix_descriptor_specs(_DENSE_MATRIX_DESCRIPTOR_SPECS),
     _DescriptorSpec(
         "MOV_alu_mv_mv_mv_scl",
         f"{_TARGET_KEY}.read.core.id",
