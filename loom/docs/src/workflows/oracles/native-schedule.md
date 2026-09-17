@@ -102,6 +102,13 @@ an unconstrained version needs its own behavior and performance comparison.
 Range fences offer intermediate control when only some ordering boundaries
 matter.
 
+[`schedule(phased)` with `low.schedule.phase`](../../guide/functions-and-control.md#compose-independently-scheduled-helpers)
+lets a motif retain a load/compute/load order while independent invocations
+interleave. Values keep their ordinary SSA visibility across phases. This is
+useful when the recovered schedule requires some instruction order and the
+maintained helper needs to compose with other work. Phase separators constrain
+instruction order without waiting for memory operations or synchronizing lanes.
+
 After each raised boundary, compare both behavior and compiler evidence. A
 changed result identifies a semantic divergence. A passing result with a
 different native program may be a valid alternative schedule; instruction
