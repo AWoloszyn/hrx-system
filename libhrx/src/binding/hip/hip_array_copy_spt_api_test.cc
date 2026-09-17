@@ -655,7 +655,10 @@ TEST_F(HipArrayCopySptApiTest, RelaxedCaptureEndSerializesWithAsyncCopies) {
 class TestNotification {
  public:
   void Post() {
-    posted_.store(true, std::memory_order_release);
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      posted_.store(true, std::memory_order_release);
+    }
     condition_.notify_all();
   }
 

@@ -186,11 +186,18 @@ iree_cc_test(
     libhrx_defs
 )
 
+set(_memory_test_platform_linkopts "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=hrx_buffer_table_insert_reserved")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_command_buffer_execution_barrier")
+endif()
 iree_cc_test(
   NAME
     memory_test
   SRCS
     "memory_test.cc"
+  LINKOPTS
+    ${_memory_test_platform_linkopts}
   DEPS
     ::common
     iree::base
