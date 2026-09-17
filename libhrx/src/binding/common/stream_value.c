@@ -69,7 +69,9 @@ static void iree_hal_streaming_value_flush_timer_callback(
 // stream mutex held after the write batch has been recorded.
 static iree_status_t iree_hal_streaming_schedule_value_flush_locked(
     iree_hal_streaming_stream_t* stream) {
-  if (stream->value_flush_timer) return iree_ok_status();
+  if (stream->value_flush_timer) {
+    return iree_ok_status();
+  }
 
   hrx_shared_state_t* shared_state = hrx_get_shared_state();
   if (IREE_UNLIKELY(!shared_state || !shared_state->proactor_pool)) {
@@ -243,7 +245,9 @@ static void iree_hal_streaming_insert_value_wait_lane_locked(
           : &context->pending_value_wait_lanes;
   lane->prev = NULL;
   lane->next = *list_head;
-  if (*list_head) (*list_head)->prev = lane;
+  if (*list_head) {
+    (*list_head)->prev = lane;
+  }
   *list_head = lane;
   lane->list_state = list_state;
   if (list_state == IREE_HAL_STREAMING_VALUE_WAIT_LANE_LIST_STATE_IDLE) {
@@ -268,7 +272,9 @@ static void iree_hal_streaming_remove_value_wait_lane_locked(
                 "value-wait lane head must be context-owned");
     *list_head = lane->next;
   }
-  if (lane->next) lane->next->prev = lane->prev;
+  if (lane->next) {
+    lane->next->prev = lane->prev;
+  }
   if (lane->list_state == IREE_HAL_STREAMING_VALUE_WAIT_LANE_LIST_STATE_IDLE) {
     IREE_ASSERT(context->idle_value_wait_lane_count > 0,
                 "idle value-wait lane count underflow");
@@ -343,7 +349,9 @@ static void iree_hal_streaming_detach_terminal_value_wait_submission_locked(
                 "value-wait live record count underflow");
     --context->live_value_wait_submission_count;
   }
-  if (lane->submission_count != 0) return;
+  if (lane->submission_count != 0) {
+    return;
+  }
 
   IREE_ASSERT(!lane->submission_head && !lane->submission_tail,
               "empty value-wait lane must not retain record links");
@@ -362,12 +370,16 @@ static void iree_hal_streaming_detach_terminal_value_wait_submission_locked(
                 "value-wait retained failure count underflow");
     context->live_value_wait_submission_count -= lane->retired_failure_count;
     lane->next = *out_failed_lanes;
-    if (lane->next) lane->next->prev = lane;
+    if (lane->next) {
+      lane->next->prev = lane;
+    }
     lane->prev = NULL;
     *out_failed_lanes = lane;
   } else {
     lane->next = *out_completed_lanes;
-    if (lane->next) lane->next->prev = lane;
+    if (lane->next) {
+      lane->next->prev = lane;
+    }
     lane->prev = NULL;
     *out_completed_lanes = lane;
   }
@@ -437,7 +449,9 @@ static void iree_hal_streaming_retire_value_wait_state(
           context, lane, IREE_HAL_STREAMING_VALUE_WAIT_LANE_LIST_STATE_IDLE);
     } else {
       lane->next = discarded_lanes;
-      if (discarded_lanes) discarded_lanes->prev = lane;
+      if (discarded_lanes) {
+        discarded_lanes->prev = lane;
+      }
       discarded_lanes = lane;
     }
   }
@@ -513,7 +527,9 @@ static void iree_hal_streaming_value_wait_observer_callback(
   // sticky failure and rejects. If the append wins, its accepted record is
   // published before this callback can make the lane destroy-only. Rejected
   // records own no lane and must not dereference one that its caller may free.
-  if (!was_rejected) iree_slim_mutex_lock(&lane->submission_mutex);
+  if (!was_rejected) {
+    iree_slim_mutex_lock(&lane->submission_mutex);
+  }
 
   iree_hal_streaming_value_wait_submission_t* reclaimed_submissions = NULL;
   iree_hal_streaming_value_wait_lane_t* completed_lanes = NULL;
@@ -571,7 +587,9 @@ static void iree_hal_streaming_value_wait_observer_callback(
     // callback cannot remain PREPARED here.
   }
   iree_slim_mutex_unlock(&context->value_wait_lane_mutex);
-  if (!was_rejected) iree_slim_mutex_unlock(&lane->submission_mutex);
+  if (!was_rejected) {
+    iree_slim_mutex_unlock(&lane->submission_mutex);
+  }
 
   iree_hal_streaming_retire_value_wait_state(context, reclaimed_submissions,
                                              completed_lanes, failed_lanes);
@@ -625,15 +643,16 @@ static iree_status_t iree_hal_streaming_acquire_value_wait_lane(
     }
   }
   iree_slim_mutex_unlock(&context->value_wait_lane_mutex);
-  if (*out_lane) return iree_ok_status();
+  if (*out_lane) {
+    return iree_ok_status();
+  }
 
   iree_hal_queue_params_t params;
   iree_hal_queue_params_initialize(&params);
   params.priority = priority;
   params.execution_resources = execution_resources;
   iree_hal_queue_t* queue = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_hal_device_acquire_queue(context->device, family, &params, &queue));
+  IREE_RETURN_IF_ERROR(iree_hal_queue_acquire(family, &params, &queue));
   if (IREE_UNLIKELY(queue == excluded_queue)) {
     iree_hal_queue_release(queue);
     return iree_make_status(
@@ -769,7 +788,9 @@ bool iree_hal_streaming_value_wait_lane_accepts_submission(
 void iree_hal_streaming_release_value_wait_lane(
     iree_hal_streaming_context_t* context,
     iree_hal_streaming_value_wait_lane_t* lane) {
-  if (!lane) return;
+  if (!lane) {
+    return;
+  }
   bool destroy_lane = false;
   iree_slim_mutex_lock(&context->value_wait_lane_mutex);
   IREE_ASSERT(
@@ -837,7 +858,9 @@ void iree_hal_streaming_publish_pending_value_wait_lane(
     context->peak_value_wait_submission_count =
         context->live_value_wait_submission_count;
   }
-  if (submission->has_failed) lane->has_failed_submission = true;
+  if (submission->has_failed) {
+    lane->has_failed_submission = true;
+  }
   lane->restore_pending = false;
   iree_hal_streaming_insert_value_wait_lane_locked(
       context, lane, IREE_HAL_STREAMING_VALUE_WAIT_LANE_LIST_STATE_PENDING);
@@ -847,7 +870,9 @@ void iree_hal_streaming_publish_pending_value_wait_lane(
 void iree_hal_streaming_reject_value_wait_submission(
     iree_hal_streaming_context_t* context,
     iree_hal_streaming_value_wait_submission_t* submission) {
-  if (!submission) return;
+  if (!submission) {
+    return;
+  }
   bool observer_active = false;
   iree_slim_mutex_lock(&context->value_wait_lane_mutex);
   IREE_ASSERT(submission->state ==
@@ -1066,18 +1091,17 @@ iree_status_t iree_hal_streaming_command_buffer_append_value_operations(
 }
 
 static iree_status_t iree_hal_streaming_record_value_operations(
-    iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
+    const iree_hal_queue_family_t* queue_family,
     iree_host_size_t operation_count,
     const iree_hal_streaming_value_operation_t* operations,
     iree_hal_command_buffer_t** out_command_buffer) {
-  IREE_ASSERT_ARGUMENT(device);
   IREE_ASSERT_ARGUMENT(queue_family);
   IREE_ASSERT_ARGUMENT(out_command_buffer);
   *out_command_buffer = NULL;
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
-      device, queue_family, IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+      queue_family, IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
       IREE_HAL_COMMAND_CATEGORY_ATOMIC, /*binding_capacity=*/0,
       &command_buffer);
   if (iree_status_is_ok(status)) {
@@ -1134,7 +1158,7 @@ static iree_status_t iree_hal_streaming_record_write_batch_locked(
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
-      stream->context->device, iree_hal_queue_family(stream->queue),
+      iree_hal_queue_family(stream->queue),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
       IREE_HAL_COMMAND_CATEGORY_TRANSFER | IREE_HAL_COMMAND_CATEGORY_DISPATCH |
           IREE_HAL_COMMAND_CATEGORY_ATOMIC,
@@ -1250,7 +1274,9 @@ iree_status_t iree_hal_streaming_queue_value_operations(
 
   const bool contains_wait = iree_hal_streaming_value_operations_contain_wait(
       operation_count, operations);
-  if (contains_wait) iree_slim_mutex_lock(&stream->value_wait_mutex);
+  if (contains_wait) {
+    iree_slim_mutex_lock(&stream->value_wait_mutex);
+  }
   iree_hal_streaming_context_t* context = NULL;
   iree_hal_queue_t* operation_queue = NULL;
   iree_hal_queue_t* excluded_wait_queue = NULL;
@@ -1314,14 +1340,16 @@ iree_status_t iree_hal_streaming_queue_value_operations(
     status = iree_hal_streaming_acquire_value_wait_lane(
         context, wait_family, wait_priority, wait_execution_resources,
         excluded_wait_queue, stream->stream_id, &wait_lane);
-    if (iree_status_is_ok(status)) operation_queue = wait_lane->queue;
+    if (iree_status_is_ok(status)) {
+      operation_queue = wait_lane->queue;
+    }
   }
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   if (iree_status_is_ok(status) && contains_wait && operation_count > 1) {
     status = iree_hal_streaming_record_value_operations(
-        context->device, iree_hal_queue_family(operation_queue),
-        operation_count, operations, &command_buffer);
+        iree_hal_queue_family(operation_queue), operation_count, operations,
+        &command_buffer);
   }
 
   if (iree_status_is_ok(status) && contains_wait) {
@@ -1384,7 +1412,9 @@ iree_status_t iree_hal_streaming_queue_value_operations(
   iree_hal_streaming_release_value_wait_lane(context, wait_lane);
   iree_hal_queue_release(excluded_wait_queue);
   iree_hal_streaming_context_release(context);
-  if (contains_wait) iree_slim_mutex_unlock(&stream->value_wait_mutex);
+  if (contains_wait) {
+    iree_slim_mutex_unlock(&stream->value_wait_mutex);
+  }
   IREE_TRACE_ZONE_END(z0);
   return status;
 }

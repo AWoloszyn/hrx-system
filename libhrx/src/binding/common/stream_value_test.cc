@@ -241,7 +241,9 @@ static void PauseFinalObserverFinish(void* user_data) {
   auto* state = static_cast<ObserverFinishState*>(user_data);
   const bool acquired =
       iree_slim_mutex_try_lock(&state->context->value_wait_lane_mutex);
-  if (acquired) iree_slim_mutex_unlock(&state->context->value_wait_lane_mutex);
+  if (acquired) {
+    iree_slim_mutex_unlock(&state->context->value_wait_lane_mutex);
+  }
   state->mutex_was_held.store(!acquired, std::memory_order_release);
   iree_atomic_store(&state->phase, OBSERVER_FINISH_PHASE_PAUSED,
                     iree_memory_order_release);
@@ -280,9 +282,10 @@ class StreamValueWaitObserverTest : public ::testing::Test {
     iree_hal_queue_params_t queue_params;
     iree_hal_queue_params_initialize(&queue_params);
     iree_hal_queue_t* queue = nullptr;
-    IREE_EXPECT_OK(
-        iree_hal_device_acquire_queue(device_, family, &queue_params, &queue));
-    if (!queue) return nullptr;
+    IREE_EXPECT_OK(iree_hal_queue_acquire(family, &queue_params, &queue));
+    if (!queue) {
+      return nullptr;
+    }
     iree_hal_streaming_value_wait_lane_t* lane = nullptr;
     IREE_EXPECT_OK(iree_allocator_malloc(context_.host_allocator, sizeof(*lane),
                                          (void**)&lane));
@@ -310,7 +313,9 @@ class StreamValueWaitObserverTest : public ::testing::Test {
       ASSERT_EQ(lane, context_.pending_value_wait_lanes);
       context_.pending_value_wait_lanes = lane->next;
     }
-    if (lane->next) lane->next->prev = lane->prev;
+    if (lane->next) {
+      lane->next->prev = lane->prev;
+    }
     lane->next = nullptr;
     lane->prev = nullptr;
     lane->list_state = IREE_HAL_STREAMING_VALUE_WAIT_LANE_LIST_STATE_NONE;
@@ -361,7 +366,9 @@ TEST_F(StreamValueWaitObserverTest,
   std::deque<iree_hal_semaphore_t*> completions;
 
   for (int32_t i = 0; i < kDepth; ++i) {
-    if (i != 0) DetachPendingLane(lane);
+    if (i != 0) {
+      DetachPendingLane(lane);
+    }
     iree_hal_streaming_value_wait_submission_t* submission = nullptr;
     iree_hal_semaphore_t* completion = nullptr;
     PrepareSubmission(lane, &submission, &completion);
@@ -653,8 +660,7 @@ TEST(StreamValueWaitLaneTest,
   const iree_hal_queue_family_t* family = iree_hal_queue_family(foreign_queue);
   iree_hal_queue_params_t queue_params;
   iree_hal_queue_params_initialize(&queue_params);
-  IREE_ASSERT_OK(iree_hal_device_acquire_queue(device, family, &queue_params,
-                                               &wait_queue));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(family, &queue_params, &wait_queue));
   ASSERT_NE(foreign_queue, wait_queue);
 
   const iree_hal_buffer_params_t buffer_params = {
