@@ -47,7 +47,7 @@ static amdf_status_t amdf_external_memory_validate(
         return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
       }
       break;
-    case AMDF_EXTERNAL_MEMORY_TYPE_NT_HANDLE:
+    case AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE:
       if (value->payload.native_handle == NULL ||
           amdf_external_memory_provenance_is_valid(&value->provenance)) {
         return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);

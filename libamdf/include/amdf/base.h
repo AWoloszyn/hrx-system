@@ -101,6 +101,8 @@ enum amdf_status_domain_e {
   AMDF_STATUS_DOMAIN_ERRNO = 3,
   /// Windows Win32 error values returned by `GetLastError`.
   AMDF_STATUS_DOMAIN_WIN32 = 4,
+  /// Failed Windows COM/DXGI/D3D HRESULT values.
+  AMDF_STATUS_DOMAIN_HRESULT = 5,
 };
 
 /// Portable status code used with `AMDF_STATUS_DOMAIN_API`.

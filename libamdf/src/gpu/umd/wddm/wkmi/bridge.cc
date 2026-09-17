@@ -24,6 +24,7 @@
 #include "libamdf/src/gpu/umd/wddm/wkmi/allocation.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/bridge_allocator.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/kernel_queue.h"
+#include "libamdf/src/gpu/umd/wddm/wkmi/shared_buffer.h"
 #include "wkmi.h"
 
 namespace {
@@ -129,9 +130,9 @@ GpuAdapterClose(amdf_wkmi_bridge_gpu_adapter_t* adapter,
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
 }
 
-const amdf_wkmi_bridge_api_t kBridgeApiV2 = {
+const amdf_wkmi_bridge_api_t kBridgeApiV3 = {
     sizeof(amdf_wkmi_bridge_api_t),
-    AMDF_WKMI_BRIDGE_ABI_VERSION_2,
+    AMDF_WKMI_BRIDGE_ABI_VERSION_3,
     GpuAdapterOpen,
     GpuAdapterClose,
     amdf::wkmi_bridge::GpuAllocationQueryLayout,
@@ -139,6 +140,7 @@ const amdf_wkmi_bridge_api_t kBridgeApiV2 = {
     amdf::wkmi_bridge::GpuKernelQueueCreate,
     amdf::wkmi_bridge::GpuKernelQueueSubmit,
     amdf::wkmi_bridge::GpuKernelQueueDestroy,
+    amdf::wkmi_bridge::GpuBufferPrepareImport,
 };
 
 }  // namespace
@@ -149,10 +151,10 @@ amdf_wkmi_bridge_query_api(uint32_t minimum_version, uint32_t maximum_version,
   if (out_api == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_2 ||
-      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_2) {
+  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_3 ||
+      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_3) {
     return AMDF_WKMI_BRIDGE_RESULT_VERSION_MISMATCH;
   }
-  *out_api = &kBridgeApiV2;
+  *out_api = &kBridgeApiV3;
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
 }

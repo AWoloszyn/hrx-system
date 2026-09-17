@@ -15,6 +15,7 @@ def amdf_cts_test_suite(
         name,
         srcs,
         deps,
+        linkopts = None,
         tags = None,
         resource_group = None,
         target_compatible_with = None,
@@ -25,6 +26,7 @@ def amdf_cts_test_suite(
       name: Aggregate test-suite target name.
       srcs: Sources for one independently selectable conformance corpus.
       deps: Public API and test-helper dependencies of the corpus.
+      linkopts: Native libraries required by the foreign API under test.
       tags: Additional tags applied to every generated test target.
       resource_group: Shared native resource used by the test invocations.
       target_compatible_with: Constraints required by every test mode.
@@ -45,6 +47,7 @@ def amdf_cts_test_suite(
         testonly = True,
         srcs = srcs,
         deps = deps,
+        linkopts = linkopts,
         alwayslink = True,
         target_compatible_with = target_compatible_with,
     )

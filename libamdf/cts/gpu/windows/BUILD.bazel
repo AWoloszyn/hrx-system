@@ -25,3 +25,21 @@ amdf_cts_test_suite(
         "//third_party:google_test",
     ],
 )
+
+amdf_cts_test_suite(
+    name = "memory_interop",
+    srcs = ["memory_interop_test.cc"],
+    linkopts = [
+        "d3d12.lib",
+        "dxgi.lib",
+    ],
+    target_compatible_with = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//libamdf/cts/gpu:gpu_device_fixture",
+        "//third_party:google_test",
+    ],
+)

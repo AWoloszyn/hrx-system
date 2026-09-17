@@ -204,6 +204,76 @@ An interior range is explicit and needs no search for an original allocation
 base. Libamdf needs no object for every tensor, argument block, or executable
 subrange.
 
+## Windows foreign buffers
+
+Windows GPU local-memory scopes expose an IMPORT profile for
+`AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE`. Selecting that profile with the full
+live consumer set fixes both admission and same-format re-export before any
+native preparation. The accepted resource is a shared, same-adapter committed
+D3D12 buffer in a DEFAULT heap, with one uncompressed linear native allocation.
+Heap handles, textures, fences, cross-adapter resources, legacy KMT shares and
+Vulkan opaque handles have different contracts and are rejected. Existing
+libamdf allocation profiles do not acquire exportability retroactively.
+
+The producer creates its buffer with `D3D12_HEAP_FLAG_SHARED` and obtains an NT
+handle with `ID3D12Device::CreateSharedHandle`. After completing foreign work
+and returning the resource to COMMON, it supplies the exact logical range:
+
+```c
+amdf_external_memory_t external = {
+    .type = AMDF_EXTERNAL_MEMORY_TYPE_D3D12_RESOURCE,
+    .payload.native_handle = shared_resource_handle,
+    .source_byte_offset = slab_byte_offset,
+    .byte_length = allocation_byte_length,
+    .release = release_owned_windows_handle,
+};
+amdf_memory_device_access_t access = {
+    .device = gpu,
+    .requirements = {
+        .access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+        .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+    },
+};
+amdf_memory_import_info_t import_info = {
+    .type = AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO,
+    .structure_size = sizeof(import_info),
+    .memory_profile_ordinal = import_profile.ordinal,
+    .access_count = 1,
+    .accesses = &access,
+    .required_flags = AMDF_MEMORY_FLAG_SHAREABLE,
+};
+amdf_status_t status = api->memory_import(local_scope, &import_info,
+                                          &external, &memory);
+```
+
+Here `import_profile` is the local scope's queried IMPORT/EXPORT profile and
+`release_owned_windows_handle` closes the owned handle. On success, `external`
+is empty and its callback has run; the memory owns independent native
+references. Failure leaves `external` and the output memory slot unchanged.
+The native provider validates the typed D3D12 resource and its logical width,
+queries the driver's allocation extent, and establishes GPU mapping and
+residency during import. These costs occur once during cold construction;
+subsequent address queries read the prepared access array.
+
+The logical range can start at any buffer byte. Returned GPU addresses identify
+that logical byte zero. `native_allocation_byte_length` can exceed the buffer's
+width, but padding outside the buffer is not importable storage. Re-export with
+D3D12_RESOURCE returns an independent same-access NT handle naming the whole
+resource, together with the exact accumulated logical offset and length.
+The handle can outlive the libamdf memory object and be opened with
+`ID3D12Device::OpenSharedHandle`. It does not keep a separately managed slab
+suballocation live. The caller preserves that allocation until every user has
+retired and releases each exported transport explicitly.
+
+The prepared GPU queue contract supplies global release-to-system and
+acquire-from-system cache operations. The interop caller also supplies D3D12
+resource transitions and completion edges. A native cache operation does not
+replace a foreign API's ownership transition, and import/export perform neither
+synchronization nor data copies. Prospective queries use the same import type,
+consumer requirements and queue family as actual memory queries. Physical
+identity remains unknown when the native interface cannot establish it; equal
+handle values or caller-provided identity words are not alias evidence.
+
 ## Addresses and their consumers
 
 An address is meaningful to a particular consumer in a particular address domain:

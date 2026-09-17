@@ -66,6 +66,8 @@ static const char* iree_hal_amd_status_domain_string(
       return "ERRNO";
     case AMDF_STATUS_DOMAIN_WIN32:
       return "WIN32";
+    case AMDF_STATUS_DOMAIN_HRESULT:
+      return "HRESULT";
     default:
       return "UNKNOWN";
   }

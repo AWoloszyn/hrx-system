@@ -32,6 +32,8 @@ struct amdf_gpu_umd_memory_t {
   amdf_gpu_umd_device_t* device;
   // KMT resource grouping the native allocations, or zero when ungrouped.
   D3DKMT_HANDLE resource;
+  // Independent same-access NT reference used for exact-format re-export.
+  HANDLE shared_handle;
   // Capacity of trailing `allocation_handles` storage.
   uint32_t allocation_capacity;
   // Number of live native handles in `allocation_handles`.
@@ -451,6 +453,13 @@ static amdf_status_t amdf_windows_gpu_memory_release_native(
   if (amdf_status_is_ok(status)) {
     status = amdf_windows_gpu_memory_free_device_address(memory);
   }
+  if (amdf_status_is_ok(status) && memory->shared_handle != NULL) {
+    if (CloseHandle(memory->shared_handle)) {
+      memory->shared_handle = NULL;
+    } else {
+      status = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
+    }
+  }
   if (amdf_status_is_ok(status)) {
     status = amdf_windows_gpu_memory_free_host_storage(memory);
   }
@@ -491,7 +500,7 @@ static amdf_memory_host_description_t amdf_gpu_umd_memory_describe_host(
 amdf_status_t amdf_gpu_umd_device_query_memory_profile(
     amdf_gpu_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_native_profile_t* out_profile) {
-  if (memory_profile_ordinal > 2 ||
+  if (memory_profile_ordinal > 3 ||
       !amdf_kmt_api_supports_gpu_memory(device->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
@@ -511,22 +520,106 @@ amdf_status_t amdf_gpu_umd_memory_prepare_import(
     const amdf_external_memory_t* external_memory,
     amdf_gpu_umd_memory_t** memory_state,
     amdf_gpu_umd_memory_result_t* out_result) {
-  (void)device;
-  (void)profile;
-  (void)import_info;
-  (void)external_memory;
-  (void)memory_state;
-  (void)out_result;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  amdf_gpu_umd_memory_t* memory = NULL;
+  amdf_status_t status = amdf_calloc_with_trailing(
+      device->host_allocator,
+      offsetof(amdf_gpu_umd_memory_t, allocation_handles),
+      sizeof(D3DKMT_HANDLE), amdf_alignof(amdf_gpu_umd_memory_t),
+      (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
+  memory->device = device;
+  memory->allocation_capacity = 1;
+  memory->flags = profile->guaranteed_flags;
+  memory->device_access = import_info->device_access;
+  *memory_state = memory;
+  if (!DuplicateHandle(GetCurrentProcess(),
+                       external_memory->payload.native_handle,
+                       GetCurrentProcess(), &memory->shared_handle, 0, FALSE,
+                       DUPLICATE_SAME_ACCESS)) {
+    return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
+  }
+  const amdf_wkmi_bridge_gpu_buffer_import_info_t native_import = {
+      .device_handle = device->device,
+      .adapter_luid = device->adapter_luid,
+      .shared_handle = memory->shared_handle,
+  };
+  uint64_t buffer_byte_length = 0;
+  status = amdf_gpu_wddm_wkmi_adapter_prepare_buffer_import(
+      &device->wkmi_adapter, &native_import, &memory->resource,
+      &memory->allocation_handles[0], &memory->byte_length,
+      &buffer_byte_length);
+  memory->allocation_count = memory->allocation_handles[0] != 0 ? 1 : 0;
+  memory->maximum_native_allocation_byte_length = memory->byte_length;
+  if (amdf_status_is_ok(status) &&
+      (external_memory->source_byte_offset > buffer_byte_length ||
+       external_memory->byte_length >
+           buffer_byte_length - external_memory->source_byte_offset ||
+       memory->byte_length > profile->import.maximum_byte_length)) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  const uint64_t alignment =
+      import_info->minimum_alignment > AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY
+          ? import_info->minimum_alignment
+          : AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY;
+  const amdf_windows_gpu_memory_plan_t plan = {
+      .byte_length = memory->byte_length,
+      .alignment = alignment,
+  };
+  if (amdf_status_is_ok(status)) {
+    status = amdf_windows_gpu_memory_reserve_device_address(
+        &plan, profile->device_address.maximum_address, memory);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_windows_gpu_memory_map_device_address(memory);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_windows_gpu_memory_make_resident(memory);
+  }
+  if (amdf_status_is_ok(status)) {
+    const uint64_t source_offset = external_memory->source_byte_offset;
+    const uint64_t offset_alignment =
+        source_offset == 0 ? alignment
+                           : source_offset & (UINT64_C(0) - source_offset);
+    const amdf_gpu_umd_memory_result_t result = {
+        .flags = memory->flags,
+        .source_byte_offset = source_offset,
+        .byte_length = external_memory->byte_length,
+        .alignment =
+            offset_alignment < alignment ? offset_alignment : alignment,
+        .native_allocation_byte_length = memory->byte_length,
+        .native_allocation_granularity = AMDF_WINDOWS_GPU_PAGE_SIZE,
+        .device_address = memory->device_address + source_offset,
+    };
+    *out_result = result;
+  }
+  return status;
+}
+
+static void AMDF_CALL amdf_windows_gpu_memory_release_handle(
+    void* user_data, amdf_external_memory_type_t type,
+    amdf_external_memory_payload_t payload) {
+  (void)user_data;
+  (void)type;
+  const BOOL closed = CloseHandle(payload.native_handle);
+  amdf_assert(closed && "owned external memory handle must remain valid");
+  (void)closed;
 }
 
 amdf_status_t amdf_gpu_umd_memory_export(
     amdf_gpu_umd_memory_t* memory, const amdf_memory_export_info_t* export_info,
     amdf_external_memory_t* out_value) {
-  (void)memory;
   (void)export_info;
-  (void)out_value;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  HANDLE exported = NULL;
+  if (!DuplicateHandle(GetCurrentProcess(), memory->shared_handle,
+                       GetCurrentProcess(), &exported, 0, FALSE,
+                       DUPLICATE_SAME_ACCESS)) {
+    return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
+  }
+  *out_value = (amdf_external_memory_t){
+      .payload.native_handle = exported,
+      .release = amdf_windows_gpu_memory_release_handle,
+  };
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_gpu_umd_memory_prepare(

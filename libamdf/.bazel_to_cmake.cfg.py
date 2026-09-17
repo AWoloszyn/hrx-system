@@ -159,6 +159,7 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         name,
         srcs,
         deps,
+        linkopts=None,
         tags=None,
         resource_group=None,
         visibility=None,
@@ -175,6 +176,7 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             testonly=True,
             srcs=srcs,
             deps=deps,
+            linkopts=linkopts,
             alwayslink=True,
             **kwargs,
         )

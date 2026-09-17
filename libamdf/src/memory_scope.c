@@ -15,6 +15,21 @@
 #include "libamdf/src/instance.h"
 #include "libamdf/src/structure.h"
 
+static uint32_t amdf_memory_scope_profile_count(
+    const amdf_memory_scope_t* scope) {
+  return scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM  ? 3
+         : scope->kind == AMDF_MEMORY_SCOPE_KIND_LOCAL ? 2
+                                                       : 1;
+}
+
+static amdf_memory_profile_roles_t amdf_memory_scope_profile_role(
+    const amdf_memory_scope_t* scope, uint32_t ordinal) {
+  if (ordinal == 0) return AMDF_MEMORY_PROFILE_ROLE_CREATE;
+  return scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM && ordinal == 1
+             ? AMDF_MEMORY_PROFILE_ROLE_REGISTER
+             : AMDF_MEMORY_PROFILE_ROLE_IMPORT;
+}
+
 amdf_instance_t* amdf_memory_scope_instance(const amdf_memory_scope_t* scope) {
   if (scope->kind == AMDF_MEMORY_SCOPE_KIND_PRIVATE) {
     return scope->owner.private_storage.device->provider_instance;
@@ -84,8 +99,7 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_info(
       .structure_size = out_info->structure_size,
       .next = out_info->next,
       .kind = scope->kind,
-      .memory_profile_count =
-          scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM ? 3 : 1,
+      .memory_profile_count = amdf_memory_scope_profile_count(scope),
   };
   if (scope->kind == AMDF_MEMORY_SCOPE_KIND_LOCAL) {
     info.physical_endpoint_id =
@@ -342,8 +356,8 @@ static void amdf_memory_scope_set_backing_profile(
 // other consumers obtain independent references to the same caller pages.
 // This is metadata selection only; no resource is acquired.
 static amdf_status_t amdf_memory_scope_select_acquisition(
-    const amdf_memory_access_query_t* query, amdf_memory_class_t memory_class,
-    amdf_memory_profile_roles_t role,
+    amdf_memory_scope_t* scope, const amdf_memory_access_query_t* query,
+    amdf_memory_class_t memory_class, amdf_memory_profile_roles_t role,
     const amdf_external_memory_support_t* transport,
     amdf_memory_scope_plan_t* plan, bool* out_found) {
   bool found = true;
@@ -351,6 +365,16 @@ static amdf_status_t amdf_memory_scope_select_acquisition(
   amdf_status_t status = AMDF_STATUS_OK;
   for (uint32_t i = 0; amdf_status_is_ok(status) && found && i < query->count;
        ++i) {
+    // Local import admits consumers on the scope's physical endpoint. Peer
+    // allocation/import protocols require a separate native reach contract.
+    if (scope->kind == AMDF_MEMORY_SCOPE_KIND_LOCAL &&
+        !amdf_endpoint_id_is_equal(
+            &amdf_endpoint_get_cached_info(query->accesses[i].device->endpoint)
+                 ->id,
+            &amdf_endpoint_get_cached_info(scope->owner.endpoint)->id)) {
+      found = false;
+      continue;
+    }
     status = amdf_memory_access_find_profile(query, i, memory_class, role,
                                              transport, NULL,
                                              &plan->native_profiles[i], &found);
@@ -603,8 +627,7 @@ amdf_status_t amdf_memory_scope_plan_initialize(
     const amdf_memory_access_query_t* query,
     const amdf_external_memory_t* external_memory,
     amdf_memory_scope_plan_t* out_plan) {
-  if (profile_ordinal >=
-      (scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM ? 3u : 1u)) {
+  if (profile_ordinal >= amdf_memory_scope_profile_count(scope)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
   amdf_status_t status = amdf_memory_access_query_validate(scope, query);
@@ -640,9 +663,7 @@ amdf_status_t amdf_memory_scope_plan_initialize(
       scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM ? AMDF_MEMORY_CLASS_SYSTEM
                                                    : AMDF_MEMORY_CLASS_LOCAL;
   const amdf_memory_profile_roles_t role =
-      profile_ordinal == 0   ? AMDF_MEMORY_PROFILE_ROLE_CREATE
-      : profile_ordinal == 1 ? AMDF_MEMORY_PROFILE_ROLE_REGISTER
-                             : AMDF_MEMORY_PROFILE_ROLE_IMPORT;
+      amdf_memory_scope_profile_role(scope, profile_ordinal);
   plan.acquisition_role = role;
   bool found = true;
   if (scope->kind == AMDF_MEMORY_SCOPE_KIND_PRIVATE) {
@@ -669,8 +690,8 @@ amdf_status_t amdf_memory_scope_plan_initialize(
                           : external_memory->provenance,
     };
     status = amdf_memory_scope_select_acquisition(
-        query, memory_class, role, external_memory == NULL ? NULL : &transport,
-        &plan, &found);
+        scope, query, memory_class, role,
+        external_memory == NULL ? NULL : &transport, &plan, &found);
   }
   if (amdf_status_is_ok(status) && !found) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
@@ -907,8 +928,9 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_pair_info(
   status = amdf_structure_validate_output(
       out_info, AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO, sizeof(*out_info));
   if (!amdf_status_is_ok(status)) return status;
-  const bool imported = scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM &&
-                        query->memory_profile_ordinal == 2;
+  const bool imported =
+      amdf_memory_scope_profile_role(scope, query->memory_profile_ordinal) ==
+      AMDF_MEMORY_PROFILE_ROLE_IMPORT;
   const bool opaque =
       query->external_memory_type == AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD ||
       query->external_memory_type == AMDF_EXTERNAL_MEMORY_TYPE_DEVICE_ADDRESS;

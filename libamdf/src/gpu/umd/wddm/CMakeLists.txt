@@ -117,6 +117,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::allocator
     libamdf::src::platform::windows::endpoint
+    libamdf::src::platform::windows::endpoint_properties
   PUBLIC
 )
 endif()

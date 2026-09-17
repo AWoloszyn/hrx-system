@@ -27,8 +27,11 @@ extern "C" {
 // First version carrying the instance allocator across the DLL boundary.
 #define AMDF_WKMI_BRIDGE_ABI_VERSION_2 2u
 
+// First version providing typed shared-buffer preparation.
+#define AMDF_WKMI_BRIDGE_ABI_VERSION_3 3u
+
 // Most recent private bridge ABI version described by this header.
-#define AMDF_WKMI_BRIDGE_ABI_VERSION_LATEST AMDF_WKMI_BRIDGE_ABI_VERSION_2
+#define AMDF_WKMI_BRIDGE_ABI_VERSION_LATEST AMDF_WKMI_BRIDGE_ABI_VERSION_3
 
 // Result of one bridge operation.
 typedef uint32_t amdf_wkmi_bridge_result_t;
@@ -200,7 +203,19 @@ _Static_assert(sizeof(amdf_wkmi_bridge_gpu_kernel_queue_info_t) == 40,
                "WKMI queue info ABI must remain stable");
 #endif
 
-// Immutable entry-point table for private bridge ABI version 2.
+// Native input for a same-adapter committed D3D12 buffer import.
+typedef struct amdf_wkmi_bridge_gpu_buffer_import_info_t {
+  // Live logical KMT device that receives the imported allocation.
+  uint32_t device_handle;
+  // Reserved for compatible growth and always zero.
+  uint32_t reserved;
+  // Exact DXGI adapter LUID, low word first.
+  uint64_t adapter_luid;
+  // Borrowed owning NT handle for the complete committed resource.
+  void* shared_handle;
+} amdf_wkmi_bridge_gpu_buffer_import_info_t;
+
+// Immutable entry-point table for private bridge ABI version 3.
 typedef struct amdf_wkmi_bridge_api_t {
   // Size in bytes of this table version.
   uint32_t structure_size;
@@ -275,13 +290,25 @@ typedef struct amdf_wkmi_bridge_api_t {
   amdf_wkmi_bridge_result_t(AMDF_WKMI_BRIDGE_CALL* gpu_kernel_queue_destroy)(
       amdf_wkmi_bridge_gpu_kernel_queue_t* queue, uint32_t* out_native_status);
 
+  // Prepares one typed native resource in initially zero slots of a live owner.
+  // Native acquisition updates both slots before any later fallible work; the
+  // owner destroys retained progress even on failure. Geometry outputs are
+  // published only on success. The input handle is borrowed and never closed.
+  // This operation reports portable libamdf statuses, preserving HRESULT,
+  // Win32 and NTSTATUS failures without conflating their numeric codes.
+  amdf_status_t(AMDF_WKMI_BRIDGE_CALL* gpu_buffer_prepare_import)(
+      amdf_wkmi_bridge_gpu_adapter_t* adapter,
+      const amdf_wkmi_bridge_gpu_buffer_import_info_t* import_info,
+      uint32_t* resource_handle, uint32_t* allocation_handle,
+      uint64_t* out_native_byte_length, uint64_t* out_buffer_byte_length);
+
 } amdf_wkmi_bridge_api_t;
 
 #ifdef __cplusplus
-static_assert(sizeof(amdf_wkmi_bridge_api_t) == 64,
+static_assert(sizeof(amdf_wkmi_bridge_api_t) == 72,
               "WKMI entry-point table ABI must remain stable");
 #else
-_Static_assert(sizeof(amdf_wkmi_bridge_api_t) == 64,
+_Static_assert(sizeof(amdf_wkmi_bridge_api_t) == 72,
                "WKMI entry-point table ABI must remain stable");
 #endif
 
