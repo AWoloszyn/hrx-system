@@ -28,6 +28,42 @@ namespace iree::async::cts {
 // test cleanup.
 class MultishotTest : public SocketTestBase<> {};
 
+struct CancelAcceptFromCallbackState {
+  iree_async_proactor_t* proactor = nullptr;
+  iree_async_socket_t* accepted_socket = nullptr;
+  iree_status_code_t intermediate_status_code = IREE_STATUS_UNKNOWN;
+  iree_status_code_t cancel_status_code = IREE_STATUS_UNKNOWN;
+  iree_status_code_t final_status_code = IREE_STATUS_UNKNOWN;
+  int intermediate_count = 0;
+  int final_count = 0;
+
+  static void Callback(void* user_data, iree_async_operation_t* operation,
+                       iree_status_t status,
+                       iree_async_completion_flags_t flags) {
+    auto* self = static_cast<CancelAcceptFromCallbackState*>(user_data);
+    if (iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE)) {
+      ++self->intermediate_count;
+      self->intermediate_status_code = iree_status_code(status);
+      auto* accept_operation =
+          reinterpret_cast<iree_async_socket_accept_operation_t*>(operation);
+      self->accepted_socket = accept_operation->accepted_socket;
+      accept_operation->accepted_socket = nullptr;
+      if (self->intermediate_count == 1) {
+        iree_status_t cancel_status =
+            iree_async_proactor_cancel(self->proactor, operation);
+        self->cancel_status_code = iree_status_code(cancel_status);
+        iree_status_free(cancel_status);
+      }
+    } else {
+      ++self->final_count;
+      self->final_status_code = iree_status_code(status);
+    }
+    iree_status_free(status);
+  }
+
+  bool is_complete() const { return final_count > 0; }
+};
+
 // Multishot accept: submit once, accept multiple connections.
 // This test creates a listener with multishot accept, then makes multiple
 // connections. Each connection should produce a completion with
@@ -131,6 +167,53 @@ TEST_P(MultishotTest, MultishotAccept_MultipleConnections) {
   EXPECT_TRUE(accept_log.final_received)
       << "Multishot accept should have terminated after cancel";
 
+  iree_async_socket_release(listener);
+}
+
+// Cancellation from an intermediate callback must suppress emulated re-arm.
+TEST_P(MultishotTest, MultishotAccept_CancelFromCallback) {
+  if (!iree_any_bit_set(capabilities_,
+                        IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT)) {
+    GTEST_SKIP() << "backend lacks multishot capability";
+  }
+
+  iree_async_address_t listen_address;
+  iree_async_socket_t* listener = CreateListener(&listen_address);
+
+  iree_async_socket_accept_operation_t accept_operation;
+  CancelAcceptFromCallbackState accept_state;
+  accept_state.proactor = proactor_;
+  InitMultishotAcceptOperation(&accept_operation, listener,
+                               CancelAcceptFromCallbackState::Callback,
+                               &accept_state);
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &accept_operation.base));
+
+  iree_async_socket_t* client = nullptr;
+  IREE_ASSERT_OK(iree_async_socket_create(proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
+                                          IREE_ASYNC_SOCKET_OPTION_NO_DELAY,
+                                          &client));
+  iree_async_socket_connect_operation_t connect_operation;
+  CompletionTracker connect_tracker;
+  InitConnectOperation(&connect_operation, client, listen_address,
+                       CompletionTracker::Callback, &connect_tracker);
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &connect_operation.base));
+
+  while (connect_tracker.call_count == 0 || !accept_state.is_complete()) {
+    PollUntil(/*min_completions=*/1);
+  }
+
+  IREE_EXPECT_OK(connect_tracker.ConsumeStatus());
+  EXPECT_EQ(accept_state.intermediate_count, 1);
+  EXPECT_EQ(accept_state.intermediate_status_code, IREE_STATUS_OK);
+  EXPECT_EQ(accept_state.cancel_status_code, IREE_STATUS_OK);
+  EXPECT_EQ(accept_state.final_count, 1);
+  EXPECT_EQ(accept_state.final_status_code, IREE_STATUS_CANCELLED);
+  ASSERT_NE(accept_state.accepted_socket, nullptr);
+
+  iree_async_socket_release(accept_state.accepted_socket);
+  iree_async_socket_release(client);
   iree_async_socket_release(listener);
 }
 
