@@ -64,7 +64,7 @@ static bool loom_amdgpu_vector_transform_describe(
     return false;
   }
 
-  iree_host_size_t lane_count = 0;
+  uint64_t lane_count = 0;
   if (!loom_type_static_element_count(source_type, &lane_count) ||
       lane_count == 0 || lane_count > LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES) {
     return false;

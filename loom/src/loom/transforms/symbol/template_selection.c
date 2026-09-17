@@ -6,6 +6,7 @@
 
 #include "loom/transforms/symbol/template_selection.h"
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -1567,7 +1568,8 @@ iree_status_t loom_template_selection_query(
   if (options->mode == LOOM_TEMPLATE_SELECTION_MODE_FINAL &&
       statistics.unresolved_sites > 0) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "%zu reachable template applications remain "
+                            "%" PRId64
+                            " reachable template applications remain "
                             "unresolved",
                             statistics.unresolved_sites);
   }
