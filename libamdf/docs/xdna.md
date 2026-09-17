@@ -17,10 +17,19 @@ Both use `memory_create`, explicit host mappings, and cached address queries.
 
 The HAL writes and publishes its instruction ranges once. Each native queue
 submission identifies `{memory, access_ordinal, byte_offset, byte_length}`.
-libamdf borrows that range through retirement and supplies only the mandatory
-native transport packet. It neither copies the instruction stream nor patches
-application arguments. A cold initialization range and a reusable execution
-range can occupy the same allocation without additional driver objects.
+The caller keeps that range live through retirement; libamdf supplies only the
+mandatory native transport packet. It neither copies the instruction stream nor
+patches application arguments. The same prepared range can be submitted repeatedly
+without additional driver objects or host-side instruction regeneration.
+
+Time-sliced contexts do not reserve application tile state between submissions.
+A context switch may reset tile registers, lock credits, or local memory while
+the context and its host instruction allocation remain valid. Each independent
+command establishes the state it needs. Its initialization and execution bytes
+can be prepared together once and reused unchanged. A control-only range that
+depends on a previous command's array configuration requires a separately
+established native state-retention contract; context identity, fixed placement,
+and successful prior completion do not provide that contract.
 
 Ordinary data buffers have no per-submission BO list. Allocation establishes
 their native mappings and residency. The caller maintains visibility, ordering,
@@ -121,7 +130,8 @@ unretired submission per queue. The publication call performs no allocation,
 instruction parsing, relocation, argument resolution, native submission retry,
 sleep or host wait.
 The queue preallocates its mandatory native packet storage. Multiple contexts
-can independently own backing for different resident programs or queues.
+can independently own instruction backing and queues. Those backing lifetimes
+are distinct from residency of application state in the physical tiles.
 
 The returned submission number identifies accepted work. The caller performs
 checked retirement with

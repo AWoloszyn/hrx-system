@@ -82,7 +82,11 @@ enum amdf_xdna_scheduling_mode_bits_e {
   AMDF_XDNA_SCHEDULING_MODE_EXCLUSIVE = 1u << 0,
   /// Contexts can execute concurrently on disjoint spatial placements.
   AMDF_XDNA_SCHEDULING_MODE_SPATIAL = 1u << 1,
-  /// Contexts can time-share one physical placement.
+  /// Contexts can time-share one physical placement. Context lifetime does not
+  /// reserve tile state between submissions: another context may use the array
+  /// and native scheduling may reset its registers, locks, or local memories.
+  /// Each independent submission establishes the application state it needs.
+  /// Host instruction backing remains valid for its explicit memory lifetime.
   AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED = 1u << 2,
 };
 
