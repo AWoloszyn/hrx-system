@@ -161,7 +161,8 @@ static iree_status_t loom_low_allocation_fragmentation_repair_eliminates_spills(
   if (iree_status_is_ok(status)) {
     status = loom_low_allocation_storage_lease_state_initialize(
         &state->options->storage_leases, state->module, state->function_op,
-        value_domain, &state->liveness, &scratch_arena,
+        value_domain, &state->liveness,
+        state->unit_liveness.storage_segments.entries, &scratch_arena,
         &scratch_storage_leases);
   }
 
@@ -290,7 +291,7 @@ iree_status_t loom_low_allocate_function(
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status = loom_low_allocation_unit_liveness_propagate_storage_relations(
-        &state.unit_liveness, &state.liveness, &state.placement);
+        &state.unit_liveness, &state.liveness, &state.placement, arena);
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status = loom_low_allocation_target_constraints_resolve_fixed_values(
@@ -303,7 +304,9 @@ iree_status_t loom_low_allocate_function(
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status = loom_low_allocation_storage_lease_state_initialize(
         &options->storage_leases, model->module, model->function_op,
-        value_domain, &state.liveness, arena, &state.storage_leases);
+        value_domain, &state.liveness,
+        state.unit_liveness.storage_segments.entries, arena,
+        &state.storage_leases);
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     const loom_low_allocation_interval_assignment_context_t
@@ -329,7 +332,9 @@ iree_status_t loom_low_allocate_function(
           (loom_low_allocation_interval_assignment_result_t){0};
       status = loom_low_allocation_storage_lease_state_initialize(
           &options->storage_leases, model->module, model->function_op,
-          value_domain, &state.liveness, arena, &state.storage_leases);
+          value_domain, &state.liveness,
+          state.unit_liveness.storage_segments.entries, arena,
+          &state.storage_leases);
       if (iree_status_is_ok(status)) {
         const loom_low_allocation_interval_assignment_context_t
             interval_assignment_context =
@@ -401,6 +406,7 @@ iree_status_t loom_low_allocate_function(
         .function_op = model->function_op,
         .target = state.target,
         .liveness = state.liveness,
+        .storage_segments = state.unit_liveness.storage_segments.entries,
         .placement = state.placement,
         .fixed_values = state.target_constraints.fixed_values,
         .fixed_value_count = state.target_constraints.fixed_value_count,
