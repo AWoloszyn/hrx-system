@@ -560,6 +560,9 @@ class XdnaExecutionTest
     queue_create.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO;
     queue_create.structure_size = sizeof(queue_create);
     queue_create.queue_family_ordinal = queue_family_ordinal_;
+    // RunExecution retires each command before submitting the next. Reserve
+    // only its one live slot; pipelined capacity is covered by the queue CTS.
+    queue_create.maximum_pending_submission_count = 1;
     ASSERT_EQ(xdna_api_->kernel_queue_create(execution->context, &queue_create,
                                              &execution->queue),
               AMDF_STATUS_OK);

@@ -125,24 +125,33 @@ amdf_status_t publish_instructions(
 }
 ```
 
-NPU4, NPU5 and NPU6 queues admit one instruction range per submission and one
-unretired submission per queue. The publication call performs no allocation,
-instruction parsing, relocation, argument resolution, native submission retry,
-sleep or host wait.
-The queue preallocates its mandatory native packet storage. Multiple contexts
-can independently own instruction backing and queues. Those backing lifetimes
-are distinct from residency of application state in the physical tiles.
+Queues admit one instruction range per submission and a configurable number of
+unretired submissions. Set `maximum_pending_submission_count` at queue creation;
+zero selects the default of 4096, and `kernel_queue_query_info` reports the
+effective capacity. The publication call performs no allocation, instruction
+parsing, relocation, argument resolution, native submission retry, sleep or host
+wait.
 
-The returned submission number identifies accepted work. The caller performs
-checked retirement with
+The queue preallocates native packet and result storage for the complete window.
+Completed slots are reclaimed when submission reaches that bound, without an
+intermediate host wait. If all slots remain occupied, submission returns `BUSY`
+and leaves the output unchanged. Native resource exhaustion can reject a command
+before the configured bound. Multiple contexts can independently own instruction
+backing and queues. Those backing lifetimes are distinct from residency of
+application state in the physical tiles.
+
+The returned increasing, opaque submission number identifies accepted work.
+Several commands can be published before waiting for the last accepted point;
+that wait covers the queue's accepted prefix. The caller performs checked
+retirement with
 `kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0)`, or uses a
 zero-time wait to refresh without blocking. Retirement includes native
 completion and command-result inspection.
 `kernel_queue_query_status` is a read-only snapshot of retirement already
-established by synchronization; it does not advance retirement, even if the
-hardware has finished. A timeout or wait error is not cancellation and does not
-by itself permit instruction storage reuse. The status query reports established
-retirement separately from sticky terminal failure.
+established by synchronization or capacity reclamation; it does not advance
+retirement, even if the hardware has finished. A timeout or wait error is not
+cancellation and does not by itself permit instruction storage reuse. The status
+query reports established retirement separately from sticky terminal failure.
 
 The [canonical ELF consumer](../../experimental/xdna/cts/execution_test.cc)
 shows the complete flow, including target selection, image loading, relocation,
