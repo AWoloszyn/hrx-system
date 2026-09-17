@@ -75,3 +75,20 @@ sizes with fixed policy depth. Time per input/output operation and doubling
 ratios help distinguish repeated analysis from deliberate IR growth. The
 `Smoke` registrations qualify the transform and native/report paths in CI;
 wall-clock timing thresholds are kept out of correctness tests.
+
+## Unroll scaling
+
+`synthetic/unroll_recurrence.loom` feeds three AMDGPU benchmark families:
+`BM_ScfUnrollFenced` and `BM_ScfUnrollFree` vary the number of materialized
+iterations in a carried arithmetic recurrence. `BM_ScfUnrollNestedReads` varies
+the length of two distinct input rows reduced through nested loops. The outer
+scheduled loop first clones two structured units, then their inner linear
+loops expand. This provides a nested-control counterpart to the flat recurrence
+and distinguishes its IR growth from repeated candidate scanning.
+
+`benchmark.unroll_count` is an experiment control. The source/prepared-Low
+sweeps cover 8 through 1,024 copies or reads, and native emission uses a subset
+of those sizes. `SourceLowSmoke` runs the smallest source case in CI. All phases
+clone the parsed source and apply the exact configuration inside the timed
+compilation; target setup and source parsing stay outside timing. The existing
+IR-size and workspace counters describe the resulting expansion.

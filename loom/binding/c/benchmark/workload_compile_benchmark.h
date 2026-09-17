@@ -8,6 +8,7 @@
 #define LOOMC_BENCHMARK_WORKLOAD_COMPILE_BENCHMARK_H_
 
 #include <cstdint>
+#include <initializer_list>
 
 #include "iree/base/api.h"
 #include "loom/binding/c/benchmark/compile_throughput_benchmark.h"
@@ -81,10 +82,14 @@ void RegisterAttentionCompileBenchmarks(const WorkloadCompileTarget& target,
 
 // Registers one input-size compiler-scaling workload for a target
 // implementation. The workload name identifies the shared functional contract
-// implemented by every registered target.
+// implemented by every registered target. The nonempty size lists select the
+// source/prepared-Low and native-emission sweeps, respectively; the first
+// source size also supplies the smoke case.
 void RegisterInputScalingCompileBenchmarks(
     const WorkloadCompileTarget& target, const char* workload_name,
-    InputScalingCompileWorkload workload);
+    InputScalingCompileWorkload workload,
+    std::initializer_list<int64_t> input_sizes,
+    std::initializer_list<int64_t> emission_sizes);
 
 // Registers clone, pipeline transformation and native compile/emit benchmarks
 // over a named segmented reduction. Setup expands benchmark.loop_count live

@@ -281,7 +281,8 @@ const EmbeddedSource kI32MemoryChainSource = FindEmbeddedSource(
           /*.function_symbol=*/"ffn_gate_up_quadratic_f32",
           /*.artifact_identifier=*/"ffn_gate_up_benchmark.spv",
           /*.input_size_config_symbol=*/"ffn_gate_up.input_size",
-      });
+      },
+      {1024, 2048, 4096, 8192, 16384, 32768}, {1024, 4096, 16384});
   return true;
 }();
 
