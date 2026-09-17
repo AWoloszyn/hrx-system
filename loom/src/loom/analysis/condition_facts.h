@@ -159,7 +159,10 @@ void loom_condition_edge_refinement_set_reset(
 // producers additionally expose relations over their operands. |fact_table|
 // may be NULL to query without ambient value facts. |out_complete| is false
 // when caller-owned output storage was too small; returned relations remain a
-// conservative subset in that case.
+// conservative subset in that case. Completeness describes storage coverage,
+// not logical equivalence: satisfying the derived consequences does not prove
+// the originating condition. Use loom_condition_fact_set_proves_condition to
+// evaluate a condition under known facts.
 iree_status_t loom_condition_facts_query(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
     loom_value_id_t condition_value, bool assumed_truth,
@@ -220,11 +223,12 @@ bool loom_condition_integer_relation_implies(
     const loom_condition_integer_relation_t* known,
     const loom_condition_integer_relation_t* queried, bool* out_result);
 
-// Attempts to evaluate |queried| from one of the edge-local relations in
-// |facts|. Exact scalar values in |fact_table| participate in operand
-// identity, so a relation against an SSA constant can prove the equivalent
-// relation against a literal. Returns true when the relation is proven either
-// true or false and writes that result to |out_result|.
+// Attempts to evaluate |queried| from the conjunction of edge-local relations
+// in |facts| over the same operands. Exact scalar values in |fact_table|
+// participate in operand identity, so a relation against an SSA constant can
+// prove the equivalent relation against a literal. Returns true when the
+// relation is proven either true or false and writes that result to
+// |out_result|. Contradictory relations leave the result unknown.
 bool loom_condition_fact_set_proves_integer_relation(
     const loom_condition_fact_set_t* facts,
     const loom_value_fact_table_t* fact_table,

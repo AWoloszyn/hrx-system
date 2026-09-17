@@ -469,117 +469,24 @@ static iree_status_t loom_cfg_simplify_remove_unreachable_blocks(
 // Path-sensitive branch facts
 //===----------------------------------------------------------------------===//
 
-static bool loom_cfg_simplify_entry_relation_proves(
-    const loom_cfg_block_entry_condition_facts_t* facts,
-    const loom_condition_integer_relation_t* queried_relation,
-    bool* out_result) {
-  bool found_relation = false;
-  bool proven_result = false;
-  for (iree_host_size_t i = 0; i < facts->integer_relation_count; ++i) {
-    bool relation_result = false;
-    if (!loom_condition_integer_relation_implies(
-            &facts->integer_relations[i], queried_relation, &relation_result)) {
-      continue;
-    }
-    if (!found_relation) {
-      found_relation = true;
-      proven_result = relation_result;
-      continue;
-    }
-    if (proven_result != relation_result) {
-      return false;
-    }
-  }
-
-  if (!found_relation) {
-    return false;
-  }
-  *out_result = proven_result;
-  return true;
-}
-
-static void loom_cfg_simplify_entry_facts_prove_condition_fact_set(
-    const loom_cfg_block_entry_condition_facts_t* facts,
-    const loom_condition_fact_set_t* queried_facts, bool* out_proven,
-    bool* out_contradicted) {
-  *out_proven = false;
-  *out_contradicted = false;
-  if (queried_facts->integer_relation_count == 0) {
-    return;
-  }
-
-  *out_proven = true;
-  for (iree_host_size_t i = 0; i < queried_facts->integer_relation_count; ++i) {
-    bool relation_result = false;
-    if (!loom_cfg_simplify_entry_relation_proves(
-            facts, &queried_facts->integer_relations[i], &relation_result)) {
-      *out_proven = false;
-      continue;
-    }
-    if (!relation_result) {
-      *out_proven = false;
-      *out_contradicted = true;
-      return;
-    }
-  }
-}
-
 static iree_status_t loom_cfg_simplify_entry_facts_prove_bool(
     loom_cfg_simplify_state_t* state,
     const loom_cfg_block_entry_condition_facts_t* facts,
     loom_value_id_t condition, bool* out_value, bool* out_proven) {
-  *out_value = false;
-  *out_proven = false;
   if (facts->condition_known && facts->condition == condition) {
     *out_value = facts->condition_value;
     *out_proven = true;
     return iree_ok_status();
   }
 
-  loom_condition_integer_relation_t
-      true_relation_storage[LOOM_CFG_CONDITION_FACT_RELATION_CAPACITY];
-  loom_condition_fact_set_t true_facts;
-  loom_condition_fact_set_initialize(true_relation_storage,
-                                     IREE_ARRAYSIZE(true_relation_storage),
-                                     &true_facts);
-  bool true_facts_complete = false;
-  IREE_RETURN_IF_ERROR(loom_condition_facts_query(
-      &state->condition_query, state->fact_table, condition, true, &true_facts,
-      &true_facts_complete));
-
-  loom_condition_integer_relation_t
-      false_relation_storage[LOOM_CFG_CONDITION_FACT_RELATION_CAPACITY];
-  loom_condition_fact_set_t false_facts;
-  loom_condition_fact_set_initialize(false_relation_storage,
-                                     IREE_ARRAYSIZE(false_relation_storage),
-                                     &false_facts);
-  bool false_facts_complete = false;
-  IREE_RETURN_IF_ERROR(loom_condition_facts_query(
-      &state->condition_query, state->fact_table, condition, false,
-      &false_facts, &false_facts_complete));
-
-  bool true_proven = false;
-  bool true_contradicted = false;
-  if (true_facts_complete) {
-    loom_cfg_simplify_entry_facts_prove_condition_fact_set(
-        facts, &true_facts, &true_proven, &true_contradicted);
-  }
-
-  bool false_proven = false;
-  bool false_contradicted = false;
-  if (false_facts_complete) {
-    loom_cfg_simplify_entry_facts_prove_condition_fact_set(
-        facts, &false_facts, &false_proven, &false_contradicted);
-  }
-
-  bool proves_true = true_proven || false_contradicted;
-  bool proves_false = false_proven || true_contradicted;
-  if (proves_true == proves_false) {
-    return iree_ok_status();
-  }
-  *out_value = proves_true;
-  *out_proven = true;
-  return iree_ok_status();
+  const loom_condition_fact_set_t condition_facts = {
+      .integer_relations =
+          (loom_condition_integer_relation_t*)facts->integer_relations,
+      .integer_relation_count = facts->integer_relation_count,
+  };
+  return loom_condition_fact_set_proves_condition(
+      &state->condition_query, state->fact_table, &condition_facts, condition,
+      out_value, out_proven);
 }
 
 static iree_status_t loom_cfg_simplify_fold_path_sensitive_cond_br(
@@ -825,6 +732,7 @@ static bool loom_cfg_simplify_can_replace_with_constant(
   }
   loom_trait_flags_t traits = loom_op_effective_traits(state->module, op);
   return iree_all_bits_set(traits, LOOM_TRAIT_PURE) &&
+         !iree_any_bit_set(traits, LOOM_TRAIT_CONSTANT_LIKE) &&
          !loom_traits_are_convergent(traits) && op->successor_count == 0 &&
          op->region_count == 0;
 }

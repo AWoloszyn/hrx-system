@@ -1,0 +1,155 @@
+// RUN: pass cfg-simplify
+
+func.def @and_with_unproven_disjunction(%left: i1, %right: i1, %gate: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.ori %left, %right : i1
+  %selected = scalar.andi %inner, %gate : i1
+  cfg.cond_br %gate, ^check, ^no
+^check:
+  cfg.cond_br %selected, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ====
+
+func.def @or_with_unproven_conjunction(%left: i1, %right: i1, %gate: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.andi %left, %right : i1
+  %selected = scalar.ori %inner, %gate : i1
+  cfg.cond_br %gate, ^yes, ^check
+^check:
+  cfg.cond_br %selected, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ====
+
+func.def @and_with_unproven_parity(%left: i1, %right: i1, %gate: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.xori %left, %right : i1
+  %selected = scalar.andi %inner, %gate : i1
+  cfg.cond_br %gate, ^check, ^no
+^check:
+  cfg.cond_br %selected, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ====
+
+func.def @or_with_unproven_parity(%left: i1, %right: i1, %gate: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.xori %left, %right : i1
+  %selected = scalar.ori %inner, %gate : i1
+  cfg.cond_br %gate, ^yes, ^check
+^check:
+  cfg.cond_br %selected, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ====
+
+func.def @false_operand_proves_conjunction(%left: i1, %right: i1, %gate: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.ori %left, %right : i1
+  %selected = scalar.andi %inner, %gate : i1
+  cfg.cond_br %gate, ^yes, ^check
+^check:
+  cfg.cond_br %selected, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ----
+func.def @false_operand_proves_conjunction(%left: i1, %right: i1, %gate: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.ori %left, %right : i1
+  %selected = scalar.andi %inner, %gate : i1
+  cfg.cond_br %gate, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ====
+
+func.def @true_operand_proves_disjunction(%left: i1, %right: i1, %gate: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.andi %left, %right : i1
+  %selected = scalar.ori %inner, %gate : i1
+  cfg.cond_br %gate, ^check, ^no
+^check:
+  cfg.cond_br %selected, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ----
+func.def @true_operand_proves_disjunction(%left: i1, %right: i1, %gate: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.andi %left, %right : i1
+  %selected = scalar.ori %inner, %gate : i1
+  cfg.cond_br %gate, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ====
+
+func.def @threads_only_sufficient_incoming_facts(%left: i1, %right: i1, %gate: i1, %pick: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.ori %left, %right : i1
+  %selected = scalar.andi %inner, %gate : i1
+  cfg.cond_br %pick, ^left_path, ^right_path
+^left_path:
+  test.use %yes : i32
+  cfg.cond_br %gate, ^check, ^no
+^right_path:
+  test.use %no : i32
+  cfg.cond_br %gate, ^yes, ^check
+^check:
+  cfg.cond_br %selected, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ----
+func.def @threads_only_sufficient_incoming_facts(%left: i1, %right: i1, %gate: i1, %pick: i1, %yes: i32, %no: i32) -> (i32) {
+  %inner = scalar.ori %left, %right : i1
+  %selected = scalar.andi %inner, %gate : i1
+  cfg.cond_br %pick, ^left_path, ^right_path
+^left_path:
+  test.use %yes : i32
+  cfg.cond_br %gate, ^check, ^no
+^right_path:
+  test.use %no : i32
+  cfg.cond_br %gate, ^yes, ^no
+^check:
+  cfg.cond_br %selected, ^yes, ^no
+^yes:
+  func.return %yes : i32
+^no:
+  func.return %no : i32
+}
+
+// ====
+
+func.def @preserves_constant_materialization(%gate: i1, %other: i1) -> (i1) {
+  cfg.cond_br %gate, ^known, ^unknown
+^known:
+  %constant = scalar.constant true : i1
+  func.return %constant : i1
+^unknown:
+  func.return %other : i1
+}

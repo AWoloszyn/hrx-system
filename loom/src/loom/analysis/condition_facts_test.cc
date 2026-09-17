@@ -659,6 +659,136 @@ TEST_F(ConditionFactsTest, PartialBooleanTruthPreservesUnknownOutcomes) {
   }
 }
 
+static bool EvaluateBooleanOperation(int operation, bool left, bool right) {
+  switch (operation) {
+    case 0:
+      return left && right;
+    case 1:
+      return left || right;
+    case 2:
+      return left != right;
+    default:
+      ADD_FAILURE() << "Invalid Boolean operation";
+      return false;
+  }
+}
+
+TEST_F(ConditionFactsTest, NestedBooleanProofMatchesAllCompletions) {
+  const loom_value_id_t inputs[] = {
+      DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1)),
+      DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1)),
+      DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1)),
+  };
+  const loom_value_id_t inner_conditions[] = {
+      loom_scalar_andi_result(BuildBoolAnd(inputs[0], inputs[1])),
+      loom_scalar_ori_result(BuildBoolOr(inputs[0], inputs[1])),
+      loom_scalar_xori_result(BuildBoolXor(inputs[0], inputs[1])),
+  };
+  for (int inner = 0; inner < 3; ++inner) {
+    for (bool gate_first : {false, true}) {
+      const loom_value_id_t left =
+          gate_first ? inputs[2] : inner_conditions[inner];
+      const loom_value_id_t right =
+          gate_first ? inner_conditions[inner] : inputs[2];
+      const loom_value_id_t conditions[] = {
+          loom_scalar_andi_result(BuildBoolAnd(left, right)),
+          loom_scalar_ori_result(BuildBoolOr(left, right)),
+          loom_scalar_xori_result(BuildBoolXor(left, right)),
+      };
+      // Each input is unknown, false or true. Enumerate concrete completions
+      // independently of the proof's short-circuit evaluation.
+      for (int assignment = 0; assignment < 27; ++assignment) {
+        int states[3];
+        int remaining = assignment;
+        loom_condition_fact_set_reset(&condition_facts_);
+        for (int i = 0; i < 3; ++i) {
+          states[i] = remaining % 3;
+          remaining /= 3;
+          if (states[i] == 0) {
+            continue;
+          }
+          condition_facts_
+              .integer_relations[condition_facts_.integer_relation_count++] = {
+              LOOM_SYMBOLIC_INTEGER_RELATION_EQ,
+              {LOOM_CONDITION_INTEGER_OPERAND_VALUE, inputs[i], 0},
+              {LOOM_CONDITION_INTEGER_OPERAND_CONSTANT, LOOM_VALUE_ID_INVALID,
+               states[i] - 1},
+          };
+        }
+        for (int outer = 0; outer < 3; ++outer) {
+          SCOPED_TRACE(::testing::Message()
+                       << "inner=" << inner << ", outer=" << outer
+                       << ", gate_first=" << gate_first
+                       << ", assignment=" << assignment);
+          unsigned outcomes = 0;
+          for (unsigned concrete = 0; concrete < 8; ++concrete) {
+            bool compatible = true;
+            for (int i = 0; i < 3; ++i) {
+              if (states[i] != 0 &&
+                  ((concrete >> i) & 1) != unsigned(states[i] - 1)) {
+                compatible = false;
+              }
+            }
+            if (!compatible) {
+              continue;
+            }
+            const bool child = EvaluateBooleanOperation(
+                inner, (concrete & 1) != 0, (concrete & 2) != 0);
+            const bool gate = (concrete & 4) != 0;
+            const bool value = EvaluateBooleanOperation(
+                outer, gate_first ? gate : child, gate_first ? child : gate);
+            outcomes |= value ? 2u : 1u;
+          }
+          bool value = false;
+          bool proven = false;
+          IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+              &condition_query_, &fact_table_, &condition_facts_,
+              conditions[outer], &value, &proven));
+          EXPECT_EQ(proven, outcomes != 3u);
+          if (proven) {
+            EXPECT_EQ(value ? 2u : 1u, outcomes);
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(ConditionFactsTest, DynamicRelationsProveComparisonConditions) {
+  const loom_value_id_t left = DefineIndexValue();
+  const loom_value_id_t right = DefineIndexValue();
+  const loom_value_id_t scalar_left = DefineI32Value();
+  const loom_value_id_t scalar_right = DefineI32Value();
+  const loom_value_id_t conditions[] = {
+      loom_index_cmp_result(
+          BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, left, right)),
+      loom_index_cmp_result(
+          BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SGE, left, right)),
+      loom_scalar_cmpi_result(BuildScalarI32Compare(
+          LOOM_SCALAR_CMPI_PREDICATE_SLT, scalar_left, scalar_right)),
+      loom_scalar_cmpi_result(BuildScalarI32Compare(
+          LOOM_SCALAR_CMPI_PREDICATE_SGE, scalar_left, scalar_right)),
+  };
+  for (int i = 0; i < 2; ++i) {
+    condition_facts_.integer_relations[i] = {
+        LOOM_SYMBOLIC_INTEGER_RELATION_GT,
+        {LOOM_CONDITION_INTEGER_OPERAND_VALUE, i == 0 ? right : scalar_right,
+         0},
+        {LOOM_CONDITION_INTEGER_OPERAND_VALUE, i == 0 ? left : scalar_left, 0},
+    };
+  }
+  condition_facts_.integer_relation_count = 2;
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(conditions); ++i) {
+    bool value = false;
+    bool proven = false;
+    IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+        &condition_query_, &fact_table_, &condition_facts_, conditions[i],
+        &value, &proven));
+    EXPECT_TRUE(proven);
+    EXPECT_EQ(value, (i % 2) == 0);
+  }
+}
+
 static bool EvaluateRelation(loom_symbolic_integer_relation_t relation,
                              int64_t left, int64_t right) {
   switch (relation) {
@@ -677,6 +807,54 @@ static bool EvaluateRelation(loom_symbolic_integer_relation_t relation,
   }
   ADD_FAILURE() << "Invalid relation";
   return false;
+}
+
+TEST_F(ConditionFactsTest, RelationProofMatchesConjunctionTruthTable) {
+  const loom_symbolic_integer_relation_t relations[] = {
+      LOOM_SYMBOLIC_INTEGER_RELATION_EQ, LOOM_SYMBOLIC_INTEGER_RELATION_NE,
+      LOOM_SYMBOLIC_INTEGER_RELATION_LT, LOOM_SYMBOLIC_INTEGER_RELATION_LE,
+      LOOM_SYMBOLIC_INTEGER_RELATION_GT, LOOM_SYMBOLIC_INTEGER_RELATION_GE,
+  };
+  const loom_condition_integer_operand_t left = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  const loom_condition_integer_operand_t right = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  condition_facts_.integer_relation_count = 2;
+  for (auto queried : relations) {
+    for (auto first : relations) {
+      for (auto second : relations) {
+        for (unsigned swaps = 0; swaps < 4; ++swaps) {
+          SCOPED_TRACE(::testing::Message()
+                       << "queried=" << queried << ", first=" << first
+                       << ", second=" << second << ", swaps=" << swaps);
+          const loom_condition_integer_relation_t query = {queried, left,
+                                                           right};
+          condition_facts_.integer_relations[0] = {
+              first, (swaps & 1) ? right : left, (swaps & 1) ? left : right};
+          condition_facts_.integer_relations[1] = {
+              second, (swaps & 2) ? right : left, (swaps & 2) ? left : right};
+          unsigned outcomes = 0;
+          for (int64_t a : {-1, 0, 1}) {
+            for (int64_t b : {-1, 0, 1}) {
+              if (EvaluateRelation(first, (swaps & 1) ? b : a,
+                                   (swaps & 1) ? a : b) &&
+                  EvaluateRelation(second, (swaps & 2) ? b : a,
+                                   (swaps & 2) ? a : b)) {
+                outcomes |= EvaluateRelation(queried, a, b) ? 2u : 1u;
+              }
+            }
+          }
+          bool value = false;
+          const bool proven = loom_condition_fact_set_proves_integer_relation(
+              &condition_facts_, &fact_table_, &query, &value);
+          EXPECT_EQ(proven, outcomes == 1u || outcomes == 2u);
+          if (proven) {
+            EXPECT_EQ(value ? 2u : 1u, outcomes);
+          }
+        }
+      }
+    }
+  }
 }
 
 TEST_F(ConditionFactsTest, RelationMeetMatchesConjunctionTruthTable) {

@@ -467,8 +467,9 @@ iree_status_t loom_low_schedule_format_json(
     IREE_RETURN_IF_ERROR(loom_json_array_begin(&stream, &controls));
     for (iree_host_size_t i = 0; i < table->scopes.control_count; ++i) {
       const loom_low_schedule_control_t* control = &table->scopes.controls[i];
-      if (control->scope_before == LOOM_LOW_SCHEDULE_SCOPE_UNREACHABLE)
+      if (control->scope_before == LOOM_LOW_SCHEDULE_SCOPE_UNREACHABLE) {
         continue;
+      }
       IREE_RETURN_IF_ERROR(loom_json_array_begin_element(&controls));
       loom_json_object_writer_t control_object;
       IREE_RETURN_IF_ERROR(loom_json_object_begin(&stream, &control_object));
