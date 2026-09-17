@@ -71,3 +71,13 @@ iree_c_embed_data(
     h_file_output = "synthetic_pipeline_smoke.h",
     identifier = "loomc_benchmark_synthetic_pipeline_smoke",
 )
+
+iree_c_embed_data(
+    name = "synthetic_unroll_smoke",
+    testonly = True,
+    srcs = ["synthetic/unroll_recurrence.loom"],
+    c_file_output = "synthetic_unroll_smoke.c",
+    flatten = True,
+    h_file_output = "synthetic_unroll_smoke.h",
+    identifier = "loomc_benchmark_synthetic_unroll_smoke",
+)

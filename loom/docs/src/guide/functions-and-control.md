@@ -177,7 +177,8 @@ The fence emits no instruction and performs no memory wait. The multiply still
 needs `%current`, so the compiler inserts any required operand-readiness wait;
 the fence itself does not require `%future` to complete.
 [`scf.schedule.fence`](../reference/dialects/scf/ops/schedule-fence.md) supplies
-the corresponding boundary in source IR.
+the corresponding boundary in source IR and composes with
+[scheduled unrolling](#preserve-source-order-through-unrolling).
 
 `schedule(locked)` on a Low function or kernel preserves authored order within
 each block under every scheduling strategy. Here the second load stays after
@@ -354,6 +355,41 @@ Unrolling preserves the program's data and completion dependencies.
 The [loop-tuning walkthrough](../workflows/tune-loop-schedules.md) combines
 these controls in checked row-sum and packed-dot examples, including serial
 controls, configuration sweeps, and compiler evidence.
+
+### Preserve source order through unrolling
+
+Source fences compose with full and partial unrolling, including `interleaved`
+and `recurrence` schedules. This boundary keeps a carried add ahead of an
+independent ID-table lookup and its dependent payload. Here `%begin` is zero,
+`%step` is one, `%end` is in `[0, 8]`, and the ID table contains indices in
+`[0, 7]`:
+
+```loom
+%result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll(%factor) schedule(recurrence) {
+  %consumed = scalar.addf %sum, %bias : f32
+  scf.schedule.fence
+  %id = view.load %ids[%row] : view<8xi32> -> i32
+  %position = index.cast %id : i32 to index
+  %bounded = index.assume %position [range(%position, 0, 7)] : index
+  %payload = view.load %payloads[%bounded] : view<8xf32> -> f32
+  %next = scalar.addf %consumed, %payload : f32
+  scf.yield %next : f32
+}
+```
+
+`%factor` can be supplied by the surrounding template or computed from target
+properties, just like an unfenced loop's unroll factor. Each materialized
+iteration retains the boundary, and its unfenced ranges remain available for
+scheduling. A fence inside an inlined helper participates in the caller's
+source order. A fence inside a nested `scf.if` or `scf.for` retains that region's
+scope when the enclosing operation is cloned as a unit.
+
+The [checked dependent-lookup example](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/tooling/target/amdgpu/test/amdgpu_unroll_fences.loom)
+composes two helpers and exercises empty, short, full, and remainder tiles.
+A loop requesting `pipeline(%depth)` with depth greater than one rejects
+authored fences: the read-ahead transform supports ordinary loads and pure
+operations, and cannot carry an explicit source-range constraint through its
+producer/consumer partition.
 
 ## Pipeline reads ahead of ordered computation
 

@@ -86,6 +86,12 @@ loom_test(
 )
 
 loom_test(
+    name = "unroll_fences_access_test",
+    srcs = ["amdgpu_unroll_fences.loom"],
+    execution_profile = AMDGPU_ACCESS_PROFILE,
+)
+
+loom_test(
     name = "indirection_access_test",
     srcs = [
         "//loom/src/loom/test/corpus/checked_benchmarks:moe_routed_combine_loop_f32.loom",

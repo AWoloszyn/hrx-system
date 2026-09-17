@@ -1,0 +1,714 @@
+// RUN: pass unroll-scf-for
+
+// A fence constrains pure operations even when the body has no memory effects.
+func.def @pure_interleaved(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(interleaved) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @pure_interleaved(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %consumed = scalar.addf %initial, %bias : f32
+  scf.schedule.fence
+  %produced = scalar.mulf %bias, %bias : f32
+  %next = scalar.addf %consumed, %produced : f32
+  %consumed_1 = scalar.addf %next, %bias : f32
+  scf.schedule.fence
+  %produced_1 = scalar.mulf %bias, %bias : f32
+  %next_1 = scalar.addf %consumed_1, %produced_1 : f32
+  func.return %next_1 : f32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// Recurrence lookahead cannot issue the independent producer across an authored fence.
+func.def @pure_recurrence(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(recurrence) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @pure_recurrence(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  scf.schedule.fence
+  %consumed = scalar.addf %initial, %bias : f32
+  scf.schedule.fence
+  %produced = scalar.mulf %bias, %bias : f32
+  %next = scalar.addf %consumed, %produced : f32
+  scf.schedule.fence
+  %consumed_1 = scalar.addf %next, %bias : f32
+  scf.schedule.fence
+  %produced_1 = scalar.mulf %bias, %bias : f32
+  %next_1 = scalar.addf %consumed_1, %produced_1 : f32
+  func.return %next_1 : f32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// Without a fence, the independent producer can still run ahead of the carried consumer.
+func.def @free_interleaved(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(interleaved) {
+    %consumed = scalar.addf %sum, %bias : f32
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @free_interleaved(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %consumed = scalar.addf %initial, %bias : f32
+  %produced = scalar.mulf %bias, %bias : f32
+  %produced_1 = scalar.mulf %bias, %bias : f32
+  %next = scalar.addf %consumed, %produced : f32
+  %consumed_1 = scalar.addf %next, %bias : f32
+  %next_1 = scalar.addf %consumed_1, %produced_1 : f32
+  func.return %next_1 : f32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// Leading, adjacent, and trailing boundaries preserve empty ranges across iterations.
+func.def @multiple_boundaries(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(interleaved) {
+    scf.schedule.fence
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.schedule.fence
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @multiple_boundaries(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  scf.schedule.fence
+  %consumed = scalar.addf %initial, %bias : f32
+  scf.schedule.fence
+  scf.schedule.fence
+  %produced = scalar.mulf %bias, %bias : f32
+  %next = scalar.addf %consumed, %produced : f32
+  scf.schedule.fence
+  scf.schedule.fence
+  %consumed_1 = scalar.addf %next, %bias : f32
+  scf.schedule.fence
+  scf.schedule.fence
+  %produced_1 = scalar.mulf %bias, %bias : f32
+  %next_1 = scalar.addf %consumed_1, %produced_1 : f32
+  scf.schedule.fence
+  func.return %next_1 : f32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// A partial recurrence tile and its scalar remainder both preserve the authored boundary.
+func.def @partial_recurrence(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 5 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll(%factor) schedule(recurrence) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @partial_recurrence(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 5 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %13 = index.constant 2 : index
+  %14 = index.constant 4 : index
+  %17 = scf.for %row = [%begin to %14 step %13](%sum = %initial : f32) -> (f32) {
+    scf.schedule.fence
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.schedule.fence
+    %consumed_1 = scalar.addf %next, %bias : f32
+    scf.schedule.fence
+    %produced_1 = scalar.mulf %bias, %bias : f32
+    %next_1 = scalar.addf %consumed_1, %produced_1 : f32
+    scf.yield %next_1 : f32
+  }
+  %result = scf.for %row = [%14 to %end step %step](%sum = %17 : f32) -> (f32) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// Single and empty loops retain the fence only for iterations that execute.
+func.def @single_iteration(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 1 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(recurrence) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+func.def @empty_loop(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 0 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(interleaved) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @single_iteration(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 1 : index
+  %step = index.constant 1 : index
+  %consumed = scalar.addf %initial, %bias : f32
+  scf.schedule.fence
+  %produced = scalar.mulf %bias, %bias : f32
+  %next = scalar.addf %consumed, %produced : f32
+  func.return %next : f32
+}
+
+func.def @empty_loop(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 0 : index
+  %step = index.constant 1 : index
+  func.return %initial : f32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// A next-iteration producer can overlap the preceding iteration's consumer
+// within the same unfenced range. Only the authored boundaries constrain it.
+func.def @shared_iteration_range(%input: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %input : i32) -> (i32) unroll schedule(recurrence) {
+    %head = scalar.muli %input, %input : i32
+    scf.schedule.fence
+    %tail = scalar.addi %sum, %head : i32
+    scf.yield %tail : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @shared_iteration_range(%input: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %head = scalar.muli %input, %input : i32
+  scf.schedule.fence
+  %head_1 = scalar.muli %input, %input : i32
+  scf.schedule.fence
+  %tail = scalar.addi %input, %head : i32
+  scf.schedule.fence
+  scf.schedule.fence
+  %tail_1 = scalar.addi %tail, %head_1 : i32
+  func.return %tail_1 : i32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// An outer boundary orders a whole structured unit, including its captured carried value.
+func.def @outer_fence(%input: i32, %bias: i32, %enabled: i1, %limit: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %input : i32) -> (i32) unroll schedule(recurrence) {
+    %consumed = scalar.addi %sum, %bias : i32
+    scf.schedule.fence
+    %produced = scf.if %enabled -> (i32) {
+      %nested = scf.for %column = [%begin to %limit step %step](%value = %bias : i32) -> (i32) {
+        %next = scalar.addi %value, %bias : i32
+        scf.schedule.fence
+        scf.yield %next : i32
+      }
+      scf.yield %nested : i32
+    } else {
+      scf.yield %bias : i32
+    }
+    %next = scalar.addi %consumed, %produced : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @outer_fence(%input: i32, %bias: i32, %enabled: i1, %limit: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  scf.schedule.fence
+  %consumed = scalar.addi %input, %bias : i32
+  scf.schedule.fence
+  %produced = scf.if %enabled -> (i32) {
+    %nested = scf.for %column = [%begin to %limit step %step](%value = %bias : i32) -> (i32) {
+      %next = scalar.addi %value, %bias : i32
+      scf.schedule.fence
+      scf.yield %next : i32
+    }
+    scf.yield %nested : i32
+  } else {
+    scf.yield %bias : i32
+  }
+  %next = scalar.addi %consumed, %produced : i32
+  scf.schedule.fence
+  %consumed_1 = scalar.addi %next, %bias : i32
+  scf.schedule.fence
+  %produced_1 = scf.if %enabled -> (i32) {
+    %nested = scf.for %column = [%begin to %limit step %step](%value = %bias : i32) -> (i32) {
+      %next = scalar.addi %value, %bias : i32
+      scf.schedule.fence
+      scf.yield %next : i32
+    }
+    scf.yield %nested : i32
+  } else {
+    scf.yield %bias : i32
+  }
+  %next_1 = scalar.addi %consumed_1, %produced_1 : i32
+  func.return %next_1 : i32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// A fence inside a nested region stays within that region when the unit is cloned.
+// It does not become an outer boundary that serializes independent structured producers.
+func.def @nested_scope(%input: i32, %enabled: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %input : i32) -> (i32) unroll schedule(recurrence) {
+    %consumed = scalar.addi %sum, %input : i32
+    %produced = scf.if %enabled -> (i32) {
+      %value = scalar.muli %input, %input : i32
+      scf.schedule.fence
+      scf.yield %value : i32
+    } else {
+      scf.yield %input : i32
+    }
+    %next = scalar.addi %consumed, %produced : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @nested_scope(%input: i32, %enabled: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %produced = scf.if %enabled -> (i32) {
+    %value = scalar.muli %input, %input : i32
+    scf.schedule.fence
+    scf.yield %value : i32
+  } else {
+    scf.yield %input : i32
+  }
+  %produced_1 = scf.if %enabled -> (i32) {
+    %value = scalar.muli %input, %input : i32
+    scf.schedule.fence
+    scf.yield %value : i32
+  } else {
+    scf.yield %input : i32
+  }
+  scf.schedule.fence
+  %consumed = scalar.addi %input, %input : i32
+  %next = scalar.addi %consumed, %produced : i32
+  scf.schedule.fence
+  %consumed_1 = scalar.addi %next, %input : i32
+  %next_1 = scalar.addi %consumed_1, %produced_1 : i32
+  func.return %next_1 : i32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// Compiler fences do not consume rows in the bounded runtime-effect conflict matrix.
+func.def @many_boundaries(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(interleaved) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @many_boundaries(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %consumed = scalar.addf %initial, %bias : f32
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  %produced = scalar.mulf %bias, %bias : f32
+  %next = scalar.addf %consumed, %produced : f32
+  %consumed_1 = scalar.addf %next, %bias : f32
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  scf.schedule.fence
+  %produced_1 = scalar.mulf %bias, %bias : f32
+  %next_1 = scalar.addf %consumed_1, %produced_1 : f32
+  func.return %next_1 : f32
+}
+
+// ====
+
+// RUN: pass unroll-scf-for
+
+// A carried consumer precedes the table read and its dependent payload under recurrence unrolling.
+func.def @consume_then_lookup(%ids: view<8xi32>, %payloads: view<8xf32>, %initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(recurrence) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %id = view.load %ids[%row] : view<8xi32> -> i32
+    %index = index.cast %id : i32 to index
+    %payload = view.load %payloads[%index] : view<8xf32> -> f32
+    %next = scalar.addf %consumed, %payload : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @consume_then_lookup(%ids: view<8xi32>, %payloads: view<8xf32>, %initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %row_0 = index.constant 0 : index
+  %row_1 = index.constant 1 : index
+  scf.schedule.fence
+  %consumed = scalar.addf %initial, %bias : f32
+  scf.schedule.fence
+  %id = view.load %ids[%row_0] : view<8xi32> -> i32
+  %index = index.cast %id : i32 to index
+  %payload = view.load %payloads[%index] : view<8xf32> -> f32
+  %next = scalar.addf %consumed, %payload : f32
+  scf.schedule.fence
+  %consumed_1 = scalar.addf %next, %bias : f32
+  scf.schedule.fence
+  %id_1 = view.load %ids[%row_1] : view<8xi32> -> i32
+  %index_1 = index.cast %id_1 : i32 to index
+  %payload_1 = view.load %payloads[%index_1] : view<8xf32> -> f32
+  %next_1 = scalar.addf %consumed_1, %payload_1 : f32
+  func.return %next_1 : f32
+}
+
+// ====
+
+// RUN: pass inline-callables,unroll-scf-for
+
+// Inlining exposes the helper boundary to the same body analysis used for directly authored fences.
+func.def inline @fenced_producer(%bias: f32) -> (f32) {
+  scf.schedule.fence
+  %value = scalar.mulf %bias, %bias : f32
+  func.return %value : f32
+}
+
+func.def @inline_composition(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll schedule(recurrence) {
+    %consumed = scalar.addf %sum, %bias : f32
+    %produced = func.call @fenced_producer(%bias) : (f32) -> (f32)
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @inline_composition(%initial: f32, %bias: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  scf.schedule.fence
+  %consumed = scalar.addf %initial, %bias : f32
+  scf.schedule.fence
+  %value = scalar.mulf %bias, %bias : f32
+  %next = scalar.addf %consumed, %value : f32
+  scf.schedule.fence
+  %consumed_1 = scalar.addf %next, %bias : f32
+  scf.schedule.fence
+  %value_1 = scalar.mulf %bias, %bias : f32
+  %next_1 = scalar.addf %consumed_1, %value_1 : f32
+  func.return %next_1 : f32
+}

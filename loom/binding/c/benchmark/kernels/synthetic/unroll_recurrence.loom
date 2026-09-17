@@ -1,0 +1,77 @@
+// The benchmark sweeps materialized iteration count. A carried consumer blocks
+// later copies while independent arithmetic exercises interleaved lookahead.
+// The paired kernels isolate source fencing from ordinary SSA dependencies.
+config.decl @benchmark.unroll_count : %value: index where [range(%value, 1, 1024)]
+
+kernel.def @unroll_fenced() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output_buffer: buffer, %initial: f32, %bias: f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %count = config.get @benchmark.unroll_count : index
+  %result = scf.for %row = [%begin to %count step %step](%sum = %initial : f32) -> (f32) unroll schedule(interleaved) {
+    %consumed = scalar.addf %sum, %bias : f32
+    scf.schedule.fence
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output_buffer {minimum_alignment = 4} : buffer
+  %output = buffer.view %aligned[%base] : buffer -> view<1xf32>
+  view.store %result, %output[0] : f32, view<1xf32>
+  kernel.return
+}
+
+kernel.def @unroll_free() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output_buffer: buffer, %initial: f32, %bias: f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %count = config.get @benchmark.unroll_count : index
+  %result = scf.for %row = [%begin to %count step %step](%sum = %initial : f32) -> (f32) unroll schedule(interleaved) {
+    %consumed = scalar.addf %sum, %bias : f32
+    %produced = scalar.mulf %bias, %bias : f32
+    %next = scalar.addf %consumed, %produced : f32
+    scf.yield %next : f32
+  }
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output_buffer {minimum_alignment = 4} : buffer
+  %output = buffer.view %aligned[%base] : buffer -> view<1xf32>
+  view.store %result, %output[0] : f32, view<1xf32>
+  kernel.return
+}
+
+// The outer scheduled loop clones two structured units before their inner
+// linear loops expand. Distinct input rows keep values from being reused across
+// the outer recurrence and expose compiler cost for nested read-heavy bodies.
+kernel.def @unroll_read_body() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input_buffer: buffer, %output_buffer: buffer, %initial: f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %outer_count = index.constant 2 : index
+  %row_stride = index.constant 1024 : index
+  %count = config.get @benchmark.unroll_count : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %input_buffer {minimum_alignment = 4} : buffer
+  %input = buffer.view %aligned[%base] : buffer -> view<2048xf32>
+  %result = scf.for %row = [%begin to %outer_count step %step](%sum = %initial : f32) -> (f32) unroll schedule(interleaved) {
+    %row_base = index.mul %row, %row_stride : index
+    %partial = scf.for %column = [%begin to %count step %step](%accumulator = %sum : f32) -> (f32) unroll {
+      %position = index.add %row_base, %column : index
+      %value = view.load %input[%position] : view<2048xf32> -> f32
+      %next = scalar.addf %accumulator, %value : f32
+      scf.schedule.fence
+      scf.yield %next : f32
+    }
+    scf.yield %partial : f32
+  }
+  %output_aligned = buffer.assume.alignment %output_buffer {minimum_alignment = 4} : buffer
+  %output = buffer.view %output_aligned[%base] : buffer -> view<1xf32>
+  view.store %result, %output[0] : f32, view<1xf32>
+  kernel.return
+}

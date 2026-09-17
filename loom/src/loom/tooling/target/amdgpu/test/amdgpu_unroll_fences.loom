@@ -1,0 +1,145 @@
+// Dependent lookup composed through two source helpers. Runtime bounds cover
+// empty, short, complete, and remainder tiles under recurrence unrolling.
+func.def inline @load_payload(%ids: view<8xi32>, %payloads: view<8xf32>, %row: index) -> (f32) {
+  scf.schedule.fence
+  %id = view.load %ids[%row] : view<8xi32> -> i32
+  %index = index.cast %id : i32 to index
+  %bounded = index.assume %index [range(%index, 0, 7)] : index
+  %payload = view.load %payloads[%bounded] : view<8xf32> -> f32
+  func.return %payload : f32
+}
+
+func.def inline @consume_and_lookup(%ids: view<8xi32>, %payloads: view<8xf32>, %row: index, %sum: f32, %bias: f32) -> (f32) {
+  %consumed = scalar.addf %sum, %bias : f32
+  %payload = func.call @load_payload(%ids, %payloads, %row) : (view<8xi32>, view<8xf32>, index) -> (f32)
+  %next = scalar.addf %consumed, %payload : f32
+  func.return %next : f32
+}
+
+kernel.def @dependent_lookup() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%ids_buffer: buffer, %payloads_buffer: buffer, %output_buffer: buffer, %initial: f32, %bias: f32, %count: index) {
+  %base = index.constant 0 : offset
+  %ids_aligned = buffer.assume.alignment %ids_buffer {minimum_alignment = 4} : buffer
+  %payloads_aligned = buffer.assume.alignment %payloads_buffer {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output_buffer {minimum_alignment = 4} : buffer
+  %ids_storage, %payloads_storage, %output_storage = buffer.assume.noalias %ids_aligned, %payloads_aligned, %output_aligned : buffer, buffer, buffer
+  %ids = buffer.view %ids_storage[%base] : buffer -> view<8xi32>
+  %payloads = buffer.view %payloads_storage[%base] : buffer -> view<8xf32>
+  %output = buffer.view %output_storage[%base] : buffer -> view<1xf32>
+  %begin = index.constant 0 : index
+  %end = index.assume %count [range(%count, 0, 8)] : index
+  %factor = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %row = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll(%factor) schedule(recurrence) {
+    %next = func.call @consume_and_lookup(%ids, %payloads, %row, %sum, %bias) : (view<8xi32>, view<8xf32>, index, f32, f32) -> (f32)
+    scf.yield %next : f32
+  }
+  view.store %result, %output[0] : f32, view<1xf32>
+  kernel.return
+}
+
+check.case public @descending_0 {
+  %ids = check.generate.iota offset(7) step(-1) : tensor<8xi32>
+  %payloads = check.generate.iota offset(1.0) step(1.0) : tensor<8xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %initial = check.literal value(3.0) : f32
+  %bias = check.literal value(2.0) : f32
+  %count = check.literal value(0) : index
+  %expected = check.generate.fill value(3.0) : tensor<1xf32>
+  kernel.launch @dependent_lookup(%ids, %payloads, %output, %initial, %bias, %count) : (tensor<8xi32>, tensor<8xf32>, tensor<1xf32>, f32, f32, index)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+check.case public @descending_1 {
+  %ids = check.generate.iota offset(7) step(-1) : tensor<8xi32>
+  %payloads = check.generate.iota offset(1.0) step(1.0) : tensor<8xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %initial = check.literal value(3.0) : f32
+  %bias = check.literal value(2.0) : f32
+  %count = check.literal value(1) : index
+  %expected = check.generate.fill value(13.0) : tensor<1xf32>
+  kernel.launch @dependent_lookup(%ids, %payloads, %output, %initial, %bias, %count) : (tensor<8xi32>, tensor<8xf32>, tensor<1xf32>, f32, f32, index)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+check.case public @descending_2 {
+  %ids = check.generate.iota offset(7) step(-1) : tensor<8xi32>
+  %payloads = check.generate.iota offset(1.0) step(1.0) : tensor<8xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %initial = check.literal value(3.0) : f32
+  %bias = check.literal value(2.0) : f32
+  %count = check.literal value(2) : index
+  %expected = check.generate.fill value(22.0) : tensor<1xf32>
+  kernel.launch @dependent_lookup(%ids, %payloads, %output, %initial, %bias, %count) : (tensor<8xi32>, tensor<8xf32>, tensor<1xf32>, f32, f32, index)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+check.case public @descending_3 {
+  %ids = check.generate.iota offset(7) step(-1) : tensor<8xi32>
+  %payloads = check.generate.iota offset(1.0) step(1.0) : tensor<8xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %initial = check.literal value(3.0) : f32
+  %bias = check.literal value(2.0) : f32
+  %count = check.literal value(3) : index
+  %expected = check.generate.fill value(30.0) : tensor<1xf32>
+  kernel.launch @dependent_lookup(%ids, %payloads, %output, %initial, %bias, %count) : (tensor<8xi32>, tensor<8xf32>, tensor<1xf32>, f32, f32, index)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+check.case public @descending_4 {
+  %ids = check.generate.iota offset(7) step(-1) : tensor<8xi32>
+  %payloads = check.generate.iota offset(1.0) step(1.0) : tensor<8xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %initial = check.literal value(3.0) : f32
+  %bias = check.literal value(2.0) : f32
+  %count = check.literal value(4) : index
+  %expected = check.generate.fill value(37.0) : tensor<1xf32>
+  kernel.launch @dependent_lookup(%ids, %payloads, %output, %initial, %bias, %count) : (tensor<8xi32>, tensor<8xf32>, tensor<1xf32>, f32, f32, index)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+check.case public @descending_7 {
+  %ids = check.generate.iota offset(7) step(-1) : tensor<8xi32>
+  %payloads = check.generate.iota offset(1.0) step(1.0) : tensor<8xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %initial = check.literal value(3.0) : f32
+  %bias = check.literal value(2.0) : f32
+  %count = check.literal value(7) : index
+  %expected = check.generate.fill value(52.0) : tensor<1xf32>
+  kernel.launch @dependent_lookup(%ids, %payloads, %output, %initial, %bias, %count) : (tensor<8xi32>, tensor<8xf32>, tensor<1xf32>, f32, f32, index)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+check.case public @descending_8 {
+  %ids = check.generate.iota offset(7) step(-1) : tensor<8xi32>
+  %payloads = check.generate.iota offset(1.0) step(1.0) : tensor<8xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %initial = check.literal value(3.0) : f32
+  %bias = check.literal value(2.0) : f32
+  %count = check.literal value(8) : index
+  %expected = check.generate.fill value(55.0) : tensor<1xf32>
+  kernel.launch @dependent_lookup(%ids, %payloads, %output, %initial, %bias, %count) : (tensor<8xi32>, tensor<8xf32>, tensor<1xf32>, f32, f32, index)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+check.case public @duplicate_ids {
+  %ids = check.generate.fill value(2) : tensor<8xi32>
+  %payloads = check.generate.iota offset(1.0) step(1.0) : tensor<8xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %initial = check.literal value(3.0) : f32
+  %bias = check.literal value(2.0) : f32
+  %count = check.literal value(7) : index
+  %expected = check.generate.fill value(38.0) : tensor<1xf32>
+  kernel.launch @dependent_lookup(%ids, %payloads, %output, %initial, %bias, %count) : (tensor<8xi32>, tensor<8xf32>, tensor<1xf32>, f32, f32, index)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}

@@ -91,4 +91,20 @@ iree_c_embed_data(
   PUBLIC
 )
 
+iree_c_embed_data(
+  NAME
+    synthetic_unroll_smoke
+  SRCS
+    "synthetic/unroll_recurrence.loom"
+  C_FILE_OUTPUT
+    "synthetic_unroll_smoke.c"
+  H_FILE_OUTPUT
+    "synthetic_unroll_smoke.h"
+  IDENTIFIER
+    "loomc_benchmark_synthetic_unroll_smoke"
+  TESTONLY
+  FLATTEN
+  PUBLIC
+)
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

@@ -647,7 +647,7 @@ class InputScalingCompileScenario final : public TargetCompileScenario {
   // Compiler boundary measured by each timed invocation.
   InputScalingCompilePhase phase_;
 
-  // Contraction width controlling the target implementation's input shape.
+  // Exact configured size controlling the target implementation's input shape.
   iree_host_size_t input_size_ = 0;
 
   // Target profile and emitter used for target-dependent phases.
@@ -922,7 +922,9 @@ void RegisterAttentionCompileBenchmarks(const WorkloadCompileTarget& target,
 
 void RegisterInputScalingCompileBenchmarks(
     const WorkloadCompileTarget& target, const char* workload_name,
-    InputScalingCompileWorkload workload) {
+    InputScalingCompileWorkload workload,
+    std::initializer_list<int64_t> input_sizes,
+    std::initializer_list<int64_t> emission_sizes) {
   auto register_phase = [&](InputScalingCompilePhase phase,
                             const char* phase_name,
                             std::initializer_list<int64_t> input_sizes) {
@@ -945,13 +947,13 @@ void RegisterInputScalingCompileBenchmarks(
   };
 
   register_phase(InputScalingCompilePhase::kSourceLow, "SourceLowSmoke",
-                 {1024});
+                 {*input_sizes.begin()});
   register_phase(InputScalingCompilePhase::kSourceLow, "SourceLow",
-                 {1024, 2048, 4096, 8192, 16384, 32768});
+                 input_sizes);
   register_phase(InputScalingCompilePhase::kPreparedLow, "PreparedLow",
-                 {1024, 2048, 4096, 8192, 16384, 32768});
+                 input_sizes);
   register_phase(InputScalingCompilePhase::kCompileAndEmit, "CompileAndEmit",
-                 {1024, 4096, 16384});
+                 emission_sizes);
 }
 
 void RegisterPipelineCompileBenchmarks(const WorkloadCompileTarget& target,

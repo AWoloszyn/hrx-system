@@ -22,6 +22,7 @@
 #include "loom/binding/c/benchmark/kernels/ffn_routed_gate_up_smoke.h"
 #include "loom/binding/c/benchmark/kernels/synthetic_i32_chain_smoke.h"
 #include "loom/binding/c/benchmark/kernels/synthetic_pipeline_smoke.h"
+#include "loom/binding/c/benchmark/kernels/synthetic_unroll_smoke.h"
 #include "loom/binding/c/benchmark/workload_compile_benchmark.h"
 #include "loomc/target/amdgpu.h"
 
@@ -271,6 +272,42 @@ const EmbeddedSource kI32MemoryChainSource = FindEmbeddedSource(
           /*.function_symbol=*/"segmented_guarded_read_ahead",
           /*.artifact_identifier=*/"guarded_pipeline_benchmark.hsaco",
       });
+  RegisterInputScalingCompileBenchmarks(
+      kAmdgpuWorkloadTarget, "ScfUnrollFenced",
+      {
+          /*.source=*/FindEmbeddedSource(
+              loomc_benchmark_synthetic_unroll_smoke_create(),
+              loomc_benchmark_synthetic_unroll_smoke_size(),
+              "unroll_recurrence.loom"),
+          /*.function_symbol=*/"unroll_fenced",
+          /*.artifact_identifier=*/"unroll_fenced.hsaco",
+          /*.input_size_config_symbol=*/"benchmark.unroll_count",
+      },
+      {8, 16, 32, 64, 128, 256, 512, 1024}, {8, 32, 128, 512, 1024});
+  RegisterInputScalingCompileBenchmarks(
+      kAmdgpuWorkloadTarget, "ScfUnrollNestedReads",
+      {
+          /*.source=*/FindEmbeddedSource(
+              loomc_benchmark_synthetic_unroll_smoke_create(),
+              loomc_benchmark_synthetic_unroll_smoke_size(),
+              "unroll_recurrence.loom"),
+          /*.function_symbol=*/"unroll_read_body",
+          /*.artifact_identifier=*/"unroll_read_body.hsaco",
+          /*.input_size_config_symbol=*/"benchmark.unroll_count",
+      },
+      {8, 16, 32, 64, 128, 256, 512, 1024}, {8, 32, 128, 512, 1024});
+  RegisterInputScalingCompileBenchmarks(
+      kAmdgpuWorkloadTarget, "ScfUnrollFree",
+      {
+          /*.source=*/FindEmbeddedSource(
+              loomc_benchmark_synthetic_unroll_smoke_create(),
+              loomc_benchmark_synthetic_unroll_smoke_size(),
+              "unroll_recurrence.loom"),
+          /*.function_symbol=*/"unroll_free",
+          /*.artifact_identifier=*/"unroll_free.hsaco",
+          /*.input_size_config_symbol=*/"benchmark.unroll_count",
+      },
+      {8, 16, 32, 64, 128, 256, 512, 1024}, {8, 32, 128, 512, 1024});
   RegisterAttentionCompileBenchmarks(
       kAmdgpuWorkloadTarget,
       {
@@ -285,7 +322,8 @@ const EmbeddedSource kI32MemoryChainSource = FindEmbeddedSource(
           /*.function_symbol=*/"ffn_routed_gate_up_swiglu_q4k_q8",
           /*.artifact_identifier=*/"ffn_routed_gate_up_benchmark.hsaco",
           /*.input_size_config_symbol=*/"ffn_routed_gate_up.input_size",
-      });
+      },
+      {1024, 2048, 4096, 8192, 16384, 32768}, {1024, 4096, 16384});
   RegisterInputScalingCompileBenchmarks(
       kAmdgpuWorkloadTarget, "FfnGateUpQuadraticF32",
       {
@@ -293,7 +331,8 @@ const EmbeddedSource kI32MemoryChainSource = FindEmbeddedSource(
           /*.function_symbol=*/"ffn_gate_up_quadratic_f32",
           /*.artifact_identifier=*/"ffn_gate_up_benchmark.hsaco",
           /*.input_size_config_symbol=*/"ffn_gate_up.input_size",
-      });
+      },
+      {1024, 2048, 4096, 8192, 16384, 32768}, {1024, 4096, 16384});
   return true;
 }();
 
