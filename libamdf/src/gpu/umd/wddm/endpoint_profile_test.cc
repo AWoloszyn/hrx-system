@@ -150,7 +150,6 @@ class WindowsGpuEndpointProfileTest : public ::testing::Test {
     instance_.kmt.wait_from_cpu = UnexpectedMemoryOperation;
     instance_.kmt.reserve_gpu_virtual_address = UnexpectedMemoryOperation;
     instance_.kmt.free_gpu_virtual_address = UnexpectedMemoryOperation;
-    instance_.kmt.evict = UnexpectedMemoryOperation;
     instance_.kmt.invalidate_cache = UnexpectedMemoryOperation;
   }
 

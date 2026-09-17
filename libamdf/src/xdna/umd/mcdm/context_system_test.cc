@@ -53,7 +53,6 @@ AMDF_OBSERVE_KMT_CALL(create_context_virtual, D3DKMTCreateContextVirtual,
 AMDF_OBSERVE_KMT_CALL(destroy_context, D3DKMTDestroyContext,
                       const D3DKMT_DESTROYCONTEXT*)
 AMDF_OBSERVE_KMT_CALL(unlock, D3DKMTUnlock2, const D3DKMT_UNLOCK2*)
-AMDF_OBSERVE_KMT_CALL(evict, D3DKMTEvict, D3DKMT_EVICT*)
 AMDF_OBSERVE_KMT_CALL(free_gpu_virtual_address, D3DKMTFreeGpuVirtualAddress,
                       const D3DKMT_FREEGPUVIRTUALADDRESS*)
 AMDF_OBSERVE_KMT_CALL(destroy_allocation, D3DKMTDestroyAllocation2,
@@ -152,7 +151,6 @@ TEST_F(WindowsXdnaContextSystemTest, CreatesAndReleasesNativeContext) {
   AMDF_INSTALL_KMT_OBSERVER(create_context_virtual, D3DKMTCreateContextVirtual)
   AMDF_INSTALL_KMT_OBSERVER(destroy_context, D3DKMTDestroyContext)
   AMDF_INSTALL_KMT_OBSERVER(unlock, D3DKMTUnlock2)
-  AMDF_INSTALL_KMT_OBSERVER(evict, D3DKMTEvict)
   AMDF_INSTALL_KMT_OBSERVER(free_gpu_virtual_address,
                             D3DKMTFreeGpuVirtualAddress)
   AMDF_INSTALL_KMT_OBSERVER(destroy_allocation, D3DKMTDestroyAllocation2)

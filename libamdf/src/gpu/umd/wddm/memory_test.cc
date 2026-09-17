@@ -28,8 +28,6 @@ enum class Operation {
   kMap,
   kWait,
   kMakeResident,
-  kUnmap,
-  kEvict,
   kDestroyAllocation,
   kFreeAddress,
 };
@@ -59,14 +57,16 @@ struct FakeMemoryState {
   // Address returned by the native mapping request, including unexpected
   // output.
   uint64_t mapped_device_address = UINT64_C(0x100000);
+  // Number of native mapping requests issued for allocation chunks.
+  uint32_t map_request_count = 0;
+  // Mapping request rejected before acceptance, or UINT32_MAX for none.
+  uint32_t failing_map_ordinal = UINT32_MAX;
   // Next fence value assigned to an accepted paging operation.
   uint64_t next_paging_fence = 1;
   // Fence whose CPU wait should fail, or zero for none.
   uint64_t failing_wait_target = 0;
   // Number of matching CPU waits rejected before observation succeeds.
   uint32_t wait_failures_remaining = 0;
-  // Number of page-table removal requests accepted by the fake.
-  uint32_t unmap_count = 0;
   // Monitored paging progress exposed to production code.
   volatile uint64_t paging_fence = 0;
   // Native result injected after shared-resource acquisition.
@@ -116,7 +116,7 @@ amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL FakeCreateAllocation(
   EXPECT_EQ(allocation_handle_capacity, state->allocation_count);
   out_allocation_handles[0] = state->allocation_handle;
   for (uint32_t i = 1; i < state->allocation_count; ++i) {
-    out_allocation_handles[i] = 0x20;
+    out_allocation_handles[i] = 0x20 + i;
   }
   *out_resource_handle = state->resource_handle;
   *out_allocation_count = state->allocation_count;
@@ -160,21 +160,21 @@ FakeReserveGpuVirtualAddress(D3DDDI_RESERVEGPUVIRTUALADDRESS* reserve) {
 }
 
 NTSTATUS APIENTRY FakeMapGpuVirtualAddress(D3DDDI_MAPGPUVIRTUALADDRESS* map) {
-  if (map->Protection.NoAccess != 0) {
-    current_state->operations.push_back(Operation::kUnmap);
-    ++current_state->unmap_count;
-    EXPECT_EQ(map->BaseAddress, current_state->mapped_device_address);
-    EXPECT_EQ(map->hAllocation, 0u);
-  } else {
-    current_state->operations.push_back(Operation::kMap);
-    EXPECT_EQ(map->BaseAddress, UINT64_C(0x100000));
-    EXPECT_EQ(map->hAllocation, 0x20u);
-    EXPECT_EQ(map->Protection.Write, current_state->expected_write);
-    EXPECT_EQ(map->Protection.Execute, current_state->expected_execute);
-    map->VirtualAddress = current_state->mapped_device_address;
-  }
+  current_state->operations.push_back(Operation::kMap);
+  const uint32_t ordinal = current_state->map_request_count++;
+  const uint64_t chunk_byte_length = 65536 / current_state->allocation_count;
+  const uint64_t byte_offset = ordinal * chunk_byte_length;
+  EXPECT_EQ(map->Protection.NoAccess, 0u);
+  EXPECT_EQ(map->BaseAddress, UINT64_C(0x100000) + byte_offset);
+  EXPECT_EQ(map->hAllocation, 0x20u + ordinal);
+  EXPECT_EQ(map->Protection.Write, current_state->expected_write);
+  EXPECT_EQ(map->Protection.Execute, current_state->expected_execute);
   EXPECT_EQ(map->hPagingQueue, 0x30u);
-  EXPECT_EQ(map->SizeInPages, 16u);
+  EXPECT_EQ(map->SizeInPages, chunk_byte_length / 4096);
+  if (ordinal == current_state->failing_map_ordinal) {
+    return kStatusNoMemory;
+  }
+  map->VirtualAddress = current_state->mapped_device_address + byte_offset;
   map->PagingFenceValue = current_state->next_paging_fence++;
   return kStatusPending;
 }
@@ -182,8 +182,10 @@ NTSTATUS APIENTRY FakeMapGpuVirtualAddress(D3DDDI_MAPGPUVIRTUALADDRESS* map) {
 NTSTATUS APIENTRY FakeMakeResident(D3DDDI_MAKERESIDENT* resident) {
   current_state->operations.push_back(Operation::kMakeResident);
   EXPECT_EQ(resident->hPagingQueue, 0x30u);
-  EXPECT_EQ(resident->NumAllocations, 1u);
-  EXPECT_EQ(resident->AllocationList[0], 0x20u);
+  EXPECT_EQ(resident->NumAllocations, current_state->allocation_count);
+  for (uint32_t i = 0; i < resident->NumAllocations; ++i) {
+    EXPECT_EQ(resident->AllocationList[i], 0x20u + i);
+  }
   EXPECT_EQ(resident->Flags.CantTrimFurther, 1u);
   resident->PagingFenceValue = current_state->next_paging_fence++;
   return kStatusPending;
@@ -206,14 +208,6 @@ FakeWaitFromCpu(const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU* wait) {
   return 0;
 }
 
-NTSTATUS APIENTRY FakeEvict(D3DKMT_EVICT* evict) {
-  current_state->operations.push_back(Operation::kEvict);
-  EXPECT_EQ(evict->hDevice, 0x10u);
-  EXPECT_EQ(evict->NumAllocations, 1u);
-  EXPECT_EQ(evict->AllocationList[0], 0x20u);
-  return 0;
-}
-
 NTSTATUS APIENTRY
 FakeDestroyAllocation(const D3DKMT_DESTROYALLOCATION2* destroy) {
   current_state->operations.push_back(Operation::kDestroyAllocation);
@@ -223,8 +217,12 @@ FakeDestroyAllocation(const D3DKMT_DESTROYALLOCATION2* destroy) {
     EXPECT_EQ(destroy->AllocationCount, 0u);
     EXPECT_EQ(destroy->phAllocationList, nullptr);
   } else {
-    EXPECT_EQ(destroy->AllocationCount, 1u);
-    EXPECT_EQ(destroy->phAllocationList[0], 0x20u);
+    const uint32_t first_valid = current_state->allocation_handle == 0 ? 1 : 0;
+    EXPECT_EQ(destroy->AllocationCount,
+              current_state->allocation_count - first_valid);
+    for (uint32_t i = 0; i < destroy->AllocationCount; ++i) {
+      EXPECT_EQ(destroy->phAllocationList[i], 0x20u + first_valid + i);
+    }
   }
   EXPECT_EQ(destroy->Flags.AssumeNotInUse, 1u);
   EXPECT_EQ(destroy->Flags.SynchronousDestroy,
@@ -259,7 +257,6 @@ class WindowsGpuMemoryTest : public ::testing::Test {
     kmt_.free_gpu_virtual_address = FakeFreeGpuVirtualAddress;
     kmt_.map_gpu_virtual_address = FakeMapGpuVirtualAddress;
     kmt_.make_resident = FakeMakeResident;
-    kmt_.evict = FakeEvict;
     kmt_.invalidate_cache = FakeUnexpectedInvalidateCache;
     kmt_.wait_from_cpu = FakeWaitFromCpu;
     device_.host_allocator = amdf_allocator_system();
@@ -308,8 +305,7 @@ class WindowsGpuMemoryTest : public ::testing::Test {
   amdf_memory_native_profile_t profile_ = {};
 };
 
-TEST_F(WindowsGpuMemoryTest,
-       DestroyRetriesAcceptedUnmapWithoutSubmittingItAgain) {
+TEST_F(WindowsGpuMemoryTest, DestroyReclaimsMappingAndResidencyDirectly) {
   amdf_gpu_umd_memory_t* memory = nullptr;
   amdf_gpu_umd_memory_result_t result = {};
   ASSERT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
@@ -317,30 +313,14 @@ TEST_F(WindowsGpuMemoryTest,
             AMDF_STATUS_OK);
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(result.device_address, UINT64_C(0x100000));
-  EXPECT_EQ(state_.operations,
-            (std::vector<Operation>{
-                Operation::kQueryLayout, Operation::kReserveAddress,
-                Operation::kCreateAllocation, Operation::kMap, Operation::kWait,
-                Operation::kMakeResident, Operation::kWait}));
-
-  state_.failing_wait_target = 3;
-  state_.wait_failures_remaining = 1;
-  EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory),
-            amdf_kmt_make_status(kStatusNoMemory));
-  EXPECT_EQ(state_.unmap_count, 1u);
-  ASSERT_GE(state_.operations.size(), 2u);
-  EXPECT_EQ(state_.operations[state_.operations.size() - 2], Operation::kUnmap);
-  EXPECT_EQ(state_.operations.back(), Operation::kWait);
-
   EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
-  EXPECT_EQ(state_.unmap_count, 1u);
-  EXPECT_EQ(state_.wait_targets, (std::vector<uint64_t>{1, 2, 3, 3}));
+  EXPECT_EQ(state_.metadata_free_count, 1u);
+  EXPECT_EQ(state_.wait_targets, (std::vector<uint64_t>{1, 2}));
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{
                 Operation::kQueryLayout, Operation::kReserveAddress,
                 Operation::kCreateAllocation, Operation::kMap, Operation::kWait,
-                Operation::kMakeResident, Operation::kWait, Operation::kUnmap,
-                Operation::kWait, Operation::kWait, Operation::kEvict,
+                Operation::kMakeResident, Operation::kWait,
                 Operation::kDestroyAllocation, Operation::kFreeAddress}));
 }
 
@@ -473,7 +453,7 @@ TEST_F(WindowsGpuMemoryTest, MalformedUngroupedAllocationReleasesValidHandles) {
                 Operation::kFreeAddress}));
 }
 
-TEST_F(WindowsGpuMemoryTest, UnexpectedMappingRemainsWithConstructingOwner) {
+TEST_F(WindowsGpuMemoryTest, DestroyReclaimsUnexpectedMapping) {
   state_.mapped_device_address = UINT64_C(0x200000);
   state_.failing_wait_target = 1;
   state_.wait_failures_remaining = 1;
@@ -491,19 +471,36 @@ TEST_F(WindowsGpuMemoryTest, UnexpectedMappingRemainsWithConstructingOwner) {
                 Operation::kQueryLayout, Operation::kReserveAddress,
                 Operation::kCreateAllocation, Operation::kMap}));
   EXPECT_EQ(state_.metadata_free_count, 0u);
-  const amdf_status_t release_status = amdf_gpu_umd_memory_destroy(memory);
-  EXPECT_EQ(release_status, amdf_kmt_make_status(kStatusNoMemory));
-  if (!amdf_status_is_ok(release_status)) {
-    amdf_gpu_umd_memory_abandon(memory);
-  }
+  EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
   EXPECT_EQ(state_.metadata_free_count, 1u);
-  EXPECT_EQ(
-      state_.operations,
-      (std::vector<Operation>{
-          Operation::kQueryLayout, Operation::kReserveAddress,
-          Operation::kCreateAllocation, Operation::kMap, Operation::kWait}));
-  EXPECT_EQ(state_.wait_targets, (std::vector<uint64_t>{1}));
-  EXPECT_EQ(state_.unmap_count, 0u);
+  EXPECT_EQ(state_.operations,
+            (std::vector<Operation>{
+                Operation::kQueryLayout, Operation::kReserveAddress,
+                Operation::kCreateAllocation, Operation::kMap,
+                Operation::kDestroyAllocation, Operation::kFreeAddress}));
+  EXPECT_TRUE(state_.wait_targets.empty());
+}
+
+TEST_F(WindowsGpuMemoryTest, DestroyReclaimsEveryChunkAfterPartialMapping) {
+  state_.allocation_count = 2;
+  state_.failing_map_ordinal = 1;
+  amdf_gpu_umd_memory_t* memory = nullptr;
+  amdf_gpu_umd_memory_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  const auto original_result = result;
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
+                                        &create_info_, &memory, &result),
+            amdf_kmt_make_status(kStatusNoMemory));
+  ASSERT_NE(memory, nullptr);
+  EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
+  EXPECT_EQ(state_.operations,
+            (std::vector<Operation>{
+                Operation::kQueryLayout, Operation::kReserveAddress,
+                Operation::kCreateAllocation, Operation::kMap, Operation::kMap,
+                Operation::kDestroyAllocation, Operation::kFreeAddress}));
+  EXPECT_TRUE(state_.wait_targets.empty());
 }
 
 TEST_F(WindowsGpuMemoryTest, ProfileUsesCapturedGpuMmuCapabilities) {
@@ -662,10 +659,8 @@ TEST_P(WindowsGpuImportFailureTest, RetainsProgressForOrderedRollback) {
               (std::vector<Operation>{Operation::kImport,
                                       Operation::kDestroyAllocation}));
   } else {
-    const auto unmap = std::find(state_.operations.begin(),
-                                 state_.operations.end(), Operation::kUnmap);
-    ASSERT_NE(unmap, state_.operations.end());
-    EXPECT_LT(unmap, destroy);
+    EXPECT_EQ(state_.operations[state_.operations.size() - 2],
+              Operation::kDestroyAllocation);
     EXPECT_EQ(state_.operations.back(), Operation::kFreeAddress);
   }
 }
