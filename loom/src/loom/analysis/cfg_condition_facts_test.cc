@@ -6,6 +6,8 @@
 
 #include "loom/analysis/cfg_condition_facts.h"
 
+#include <initializer_list>
+
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -88,10 +90,11 @@ class CfgConditionFactsTest : public ::testing::Test {
     builder_.ip.parent_op = func_op_;
   }
 
-  loom_value_id_t AddBlockArg(loom_block_t* block) {
+  loom_value_id_t AddBlockArg(
+      loom_block_t* block, loom_scalar_type_t type = LOOM_SCALAR_TYPE_INDEX) {
     loom_value_id_t value_id = LOOM_VALUE_ID_INVALID;
-    IREE_CHECK_OK(loom_module_define_value(
-        module_, loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), &value_id));
+    IREE_CHECK_OK(
+        loom_module_define_value(module_, loom_type_scalar(type), &value_id));
     IREE_CHECK_OK(loom_block_add_arg(module_, block, value_id));
     return value_id;
   }
@@ -116,9 +119,11 @@ class CfgConditionFactsTest : public ::testing::Test {
     return loom_index_cmp_result(op);
   }
 
-  void BuildBranch(loom_block_t* dest) {
+  void BuildBranch(loom_block_t* dest,
+                   std::initializer_list<loom_value_id_t> arguments = {}) {
     loom_op_t* op = nullptr;
-    IREE_ASSERT_OK(loom_cfg_br_build(&builder_, dest, nullptr, 0,
+    IREE_ASSERT_OK(loom_cfg_br_build(&builder_, dest, arguments.begin(),
+                                     (uint16_t)arguments.size(),
                                      LOOM_LOCATION_UNKNOWN, &op));
   }
 
@@ -215,6 +220,142 @@ TEST_F(CfgConditionFactsTest, PropagatesNestedBranchRelationsToTailBlock) {
   EXPECT_TRUE(HasRelation(tail_facts, LOOM_SYMBOLIC_INTEGER_RELATION_GE, pair,
                           half_dims));
 }
+
+enum class LoopArgumentTransfer { kReplace, kSelfForward, kSwap, kDominating };
+
+class CfgConditionFactsLoopTest
+    : public CfgConditionFactsTest,
+      public ::testing::WithParamInterface<LoopArgumentTransfer> {};
+
+TEST_P(CfgConditionFactsLoopTest, TranslatesBackedgeValuesBeforeMeetingFacts) {
+  const auto transfer = GetParam();
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* guarded = AppendBlock();
+  loom_block_t* seed = AppendBlock();
+  loom_block_t* header = AppendBlock();
+  loom_block_t* checked = AppendBlock();
+  loom_block_t* latch = AppendBlock();
+  loom_block_t* exit = AppendBlock();
+
+  SetBlock(entry);
+  const auto initial = AddBlockArg(entry);
+  const auto replacement = AddBlockArg(entry);
+  const auto bound = AddBlockArg(entry);
+  const auto initial_condition = AddBlockArg(entry, LOOM_SCALAR_TYPE_I1);
+  const auto replacement_condition = AddBlockArg(entry, LOOM_SCALAR_TYPE_I1);
+  BuildConditionalBranch(
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, initial, bound), guarded,
+      exit);
+  SetBlock(guarded);
+  BuildConditionalBranch(initial_condition, seed, exit);
+  SetBlock(seed);
+  BuildBranch(header,
+              {initial, replacement, initial_condition, replacement_condition});
+
+  SetBlock(header);
+  const auto carried = AddBlockArg(header);
+  const auto other = AddBlockArg(header);
+  const auto condition = AddBlockArg(header, LOOM_SCALAR_TYPE_I1);
+  const auto other_condition = AddBlockArg(header, LOOM_SCALAR_TYPE_I1);
+  const auto tested_value =
+      transfer == LoopArgumentTransfer::kDominating ? initial : carried;
+  const auto tested_condition = transfer == LoopArgumentTransfer::kDominating
+                                    ? initial_condition
+                                    : condition;
+  BuildConditionalBranch(
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, tested_value, bound),
+      checked, exit);
+  SetBlock(checked);
+  BuildConditionalBranch(tested_condition, latch, exit);
+  SetBlock(latch);
+  switch (transfer) {
+    case LoopArgumentTransfer::kReplace:
+    case LoopArgumentTransfer::kDominating:
+      BuildBranch(header,
+                  {replacement, other, replacement_condition, other_condition});
+      break;
+    case LoopArgumentTransfer::kSelfForward:
+      BuildBranch(header, {carried, other, condition, other_condition});
+      break;
+    case LoopArgumentTransfer::kSwap:
+      BuildBranch(header, {other, carried, other_condition, condition});
+      break;
+  }
+  SetBlock(exit);
+  loom_op_t* terminator = nullptr;
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_cfg_graph_t graph = {0};
+  IREE_ASSERT_OK(
+      loom_cfg_graph_build(module_, body_, &analysis_arena_, &graph));
+  const auto header_index =
+      (uint16_t)loom_cfg_graph_block_index(&graph, header);
+  const auto latch_index = (uint16_t)loom_cfg_graph_block_index(&graph, latch);
+  loom_dominance_info_t dominance = {0};
+  IREE_ASSERT_OK(
+      loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
+  loom_cfg_condition_fact_table_t table = {0};
+  IREE_ASSERT_OK(loom_cfg_condition_fact_table_compute(
+      module_, &graph, &fact_table_, &dominance, &analysis_arena_, &table));
+  ASSERT_EQ(table.block_count, graph.block_count);
+
+  loom_condition_query_t query;
+  loom_condition_query_initialize(module_, nullptr, &analysis_arena_, &query);
+  loom_condition_integer_relation_t
+      storage[LOOM_CFG_CONDITION_FACT_RELATION_CAPACITY];
+  loom_cfg_block_entry_condition_facts_t edge = {0};
+  IREE_ASSERT_OK(loom_cfg_condition_facts_compute_predecessor_edge(
+      &query, &fact_table_, &dominance, header, latch->last_op, latch_index,
+      table.block_facts, storage, IREE_ARRAYSIZE(storage), &edge));
+
+  // Each trip binds fresh header arguments. Only the outgoing payload can
+  // transfer a fact about the previous trip's argument to the next one.
+  if (transfer == LoopArgumentTransfer::kReplace) {
+    EXPECT_FALSE(edge.condition_known);
+    EXPECT_FALSE(
+        HasRelation(&edge, LOOM_SYMBOLIC_INTEGER_RELATION_LT, carried, bound));
+  } else {
+    const auto expected_value =
+        transfer == LoopArgumentTransfer::kSwap ? other : tested_value;
+    const auto expected_condition = transfer == LoopArgumentTransfer::kSwap
+                                        ? other_condition
+                                        : tested_condition;
+    EXPECT_TRUE(edge.condition_known);
+    EXPECT_EQ(edge.condition, expected_condition);
+    EXPECT_TRUE(edge.condition_value);
+    EXPECT_TRUE(HasRelation(&edge, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+                            expected_value, bound));
+  }
+  if (transfer != LoopArgumentTransfer::kSelfForward) {
+    const auto* header_facts =
+        loom_cfg_condition_fact_table_block(&table, header_index);
+    ASSERT_NE(header_facts, nullptr);
+    EXPECT_FALSE(HasRelation(header_facts, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+                             carried, bound));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Backedge, CfgConditionFactsLoopTest,
+    ::testing::Values(LoopArgumentTransfer::kReplace,
+                      LoopArgumentTransfer::kSelfForward,
+                      LoopArgumentTransfer::kSwap,
+                      LoopArgumentTransfer::kDominating),
+    [](const ::testing::TestParamInfo<LoopArgumentTransfer>& parameter) {
+      switch (parameter.param) {
+        case LoopArgumentTransfer::kReplace:
+          return "Replacement";
+        case LoopArgumentTransfer::kSelfForward:
+          return "SelfForwarding";
+        case LoopArgumentTransfer::kSwap:
+          return "ArgumentExchange";
+        case LoopArgumentTransfer::kDominating:
+          return "DominatingValues";
+      }
+      return "Invalid";
+    });
 
 }  // namespace
 }  // namespace loom

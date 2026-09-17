@@ -49,7 +49,9 @@ typedef struct loom_cfg_condition_fact_table_t {
 } loom_cfg_condition_fact_table_t;
 
 // Computes the facts implied at the entry of |block| along one predecessor
-// edge.
+// edge, after the incoming payload binds the block arguments. Facts about a
+// previous execution's arguments survive only through explicit forwarding in
+// that payload, including self-forwarding and argument permutations.
 //
 // |current_facts| may be NULL, or it may point at a block-indexed fact table
 // from a previous fixed-point iteration. |relation_storage| is caller-owned
