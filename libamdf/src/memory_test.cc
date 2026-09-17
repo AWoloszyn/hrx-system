@@ -541,7 +541,7 @@ TEST_F(MemoryExternalTest, ImportProfileRejectionPrecedesLeafMutation) {
   EXPECT_EQ(release_state.count, 1u);
 }
 
-TEST_F(MemoryExternalTest, ImportedReferenceSurvivesFailedPublishedDestroy) {
+TEST_F(MemoryExternalTest, PublishedDestroyConsumesMetadataOnNativeFailure) {
   FakeDevice device;
   InitializeFakeDevice(53, &instance_, &device);
   ReleaseState release_state = {};
@@ -568,15 +568,8 @@ TEST_F(MemoryExternalTest, ImportedReferenceSurvivesFailedPublishedDestroy) {
   native_memory->destroy_status = release_failure;
   EXPECT_EQ(amdf_memory_destroy(memory), release_failure);
   EXPECT_EQ(release_state.count, 1u);
-  amdf_memory_info_t memory_info = {};
-  memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
-  memory_info.structure_size = sizeof(memory_info);
-  ASSERT_EQ(amdf_memory_query_info(memory, &memory_info), AMDF_STATUS_OK);
-  EXPECT_EQ(memory_info.byte_length, 4096u);
-  native_memory->destroy_status = AMDF_STATUS_OK;
-
-  ASSERT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
-  EXPECT_EQ(release_state.count, 1u);
+  EXPECT_EQ(device.destroy_call_count, 1u);
+  EXPECT_EQ(device.abandon_call_count, 1u);
   EXPECT_EQ(release_state.type, AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
   EXPECT_EQ(release_state.payload.file_descriptor, 101);
 }

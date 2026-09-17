@@ -69,14 +69,10 @@ static amdf_status_t amdf_gpu_host_mapping_cache_control(
       base_mapping->info.memory_byte_offset + byte_offset, byte_length);
 }
 
-static amdf_status_t amdf_gpu_host_mapping_destroy_native(
+static void amdf_gpu_host_mapping_destroy_native(
     amdf_host_mapping_t* base_mapping) {
   amdf_gpu_host_mapping_t* mapping = (amdf_gpu_host_mapping_t*)base_mapping;
-  const amdf_status_t status = amdf_gpu_umd_host_mapping_destroy(mapping->umd);
-  if (amdf_status_is_ok(status)) {
-    mapping->umd = NULL;
-  }
-  return status;
+  amdf_gpu_umd_host_mapping_destroy(mapping->umd);
 }
 
 static const amdf_host_mapping_vtable_t amdf_gpu_host_mapping_vtable = {

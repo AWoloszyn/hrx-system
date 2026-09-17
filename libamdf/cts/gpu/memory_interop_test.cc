@@ -179,8 +179,8 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     }
     if (access.memory != nullptr) {
       const amdf_status_t status = api_->memory_destroy(access.memory);
-      if (!amdf_status_is_ok(status)) return status;
       access.memory = nullptr;
+      if (!amdf_status_is_ok(status)) return status;
     }
     return AMDF_STATUS_OK;
   }

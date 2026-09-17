@@ -56,7 +56,8 @@ amdf_status_t AMDF_CALL amdf_memory_map(amdf_memory_t* memory,
                                         const amdf_memory_map_info_t* map_info,
                                         amdf_host_mapping_t** out_mapping);
 
-// Destroys memory with no remaining children.
+// Consumes memory after caller-proved last use and host-view destruction,
+// including when native release fails.
 amdf_status_t AMDF_CALL amdf_memory_destroy(amdf_memory_t* memory);
 
 #ifdef __cplusplus

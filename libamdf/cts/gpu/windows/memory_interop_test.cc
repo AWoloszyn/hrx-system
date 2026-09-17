@@ -17,6 +17,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "libamdf/cts/gpu/gpu_device_fixture.h"
@@ -124,8 +125,8 @@ class D3D12MemoryInteropTest : public GpuDeviceFixture {
 
   void DestroyImportedStorage() {
     if (imported_memory_ != nullptr) {
-      ASSERT_EQ(api_->memory_destroy(imported_memory_), AMDF_STATUS_OK);
-      imported_memory_ = nullptr;
+      ASSERT_EQ(api_->memory_destroy(std::exchange(imported_memory_, nullptr)),
+                AMDF_STATUS_OK);
     }
   }
 
@@ -143,8 +144,8 @@ class D3D12MemoryInteropTest : public GpuDeviceFixture {
       command_mapping_ = nullptr;
     }
     if (command_memory_ != nullptr) {
-      ASSERT_EQ(api_->memory_destroy(command_memory_), AMDF_STATUS_OK);
-      command_memory_ = nullptr;
+      ASSERT_EQ(api_->memory_destroy(std::exchange(command_memory_, nullptr)),
+                AMDF_STATUS_OK);
     }
     ASSERT_NO_FATAL_FAILURE(DestroyImportedStorage());
     if (shared_ != nullptr) {

@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include "amdf/amdf.h"
 #include "amdf/gpu.h"
@@ -355,8 +356,8 @@ TEST_F(Pm4KernelQueueTest, ExecutesMaterializedCopyData) {
 
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_destroy(queue_)));
   queue_ = nullptr;
 }
@@ -425,8 +426,8 @@ TEST_F(SdmaKernelQueueTest, ExecutesMaterializedSdmaCopy) {
   mapping_ = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_destroy(queue_)));
   queue_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
 }
 
 TEST_F(Pm4KernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
@@ -494,10 +495,10 @@ TEST_F(Pm4KernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
   mapping_ = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_destroy(queue_)));
   queue_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(local_memory_)));
-  local_memory_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(amdf_status_is_ok(
+      api_->memory_destroy(std::exchange(local_memory_, nullptr))));
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
 }
 
 TEST_F(Pm4KernelQueueTest, ExecutesDeviceLocalCommandStream) {
@@ -597,10 +598,10 @@ TEST_F(Pm4KernelQueueTest, ExecutesDeviceLocalCommandStream) {
   mapping_ = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_destroy(queue_)));
   queue_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(local_memory_)));
-  local_memory_ = nullptr;
-  ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));
-  memory_ = nullptr;
+  ASSERT_TRUE(amdf_status_is_ok(
+      api_->memory_destroy(std::exchange(local_memory_, nullptr))));
+  ASSERT_TRUE(
+      amdf_status_is_ok(api_->memory_destroy(std::exchange(memory_, nullptr))));
 }
 
 }  // namespace

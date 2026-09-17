@@ -18,8 +18,8 @@ typedef struct amdf_host_mapping_vtable_t {
   amdf_status_t (*cache_control)(amdf_host_mapping_t* mapping,
                                  amdf_host_cache_operation_t operation,
                                  uint64_t byte_offset, uint64_t byte_length);
-  // Releases the exact native state owned by a mapping implementation.
-  amdf_status_t (*destroy_native)(amdf_host_mapping_t* mapping);
+  // Releases the lightweight native view. The memory owns OS mappings.
+  void (*destroy_native)(amdf_host_mapping_t* mapping);
 } amdf_host_mapping_vtable_t;
 
 struct amdf_host_mapping_t {

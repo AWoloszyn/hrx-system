@@ -37,7 +37,7 @@ typedef struct amdf_memory_vtable_t {
   // Releases the exact native state owned by a memory implementation.
   amdf_status_t (*destroy_native)(amdf_memory_t* memory,
                                   uint32_t access_ordinal);
-  // Discards unpublished native metadata without native calls. Any surviving
+  // Discards native metadata without native calls. Any surviving
   // native resources retain their dependent backing after terminal failure.
   void (*abandon_native)(amdf_memory_t* memory, uint32_t access_ordinal);
 } amdf_memory_vtable_t;
@@ -45,7 +45,7 @@ typedef struct amdf_memory_vtable_t {
 // Immutable consumer facts, indexed directly by the caller's access ordinal.
 typedef struct amdf_memory_access_state_t {
   // Device borrowed without retention or lifetime tracking. The caller keeps
-  // it live through successful native memory teardown.
+  // it live through final memory release.
   amdf_device_t* device;
   // Complete consumer properties established before publication.
   amdf_memory_access_info_t info;
@@ -88,12 +88,10 @@ amdf_status_t amdf_memory_resource_allocate(amdf_allocator_t host_allocator,
                                             uint32_t access_count,
                                             amdf_memory_t** out_memory);
 
-// Releases consumers before backing, preserving failed native state.
-amdf_status_t amdf_memory_release_native(amdf_memory_t* memory);
-
-// Attempts unpublished rollback once, then consumes the host metadata even on
-// terminal native failure. Dependent native backing remains unrecycled.
-amdf_status_t amdf_memory_discard(amdf_memory_t* memory);
+// Releases consumers before backing and consumes all library metadata once.
+// Native failure leaves required backing unreclaimed and returns the error;
+// neither published final release nor construction rollback has a retry owner.
+amdf_status_t amdf_memory_resource_destroy(amdf_memory_t* memory);
 
 #ifdef __cplusplus
 }  // extern "C"

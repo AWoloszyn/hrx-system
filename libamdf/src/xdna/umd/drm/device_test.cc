@@ -113,7 +113,7 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
     std::cout << "Release host views and memory" << std::endl;
     for (auto* value : mappings) {
       if (value) {
-        EXPECT_EQ(amdf_xdna_umd_host_mapping_destroy(value), AMDF_STATUS_OK);
+        amdf_xdna_umd_host_mapping_destroy(value);
       }
     }
     if (imported_memory) {
@@ -286,7 +286,7 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
                 mappings[0], AMDF_HOST_CACHE_OPERATION_FLUSH, 0,
                 map_info.byte_length),
             AMDF_STATUS_OK);
-  ASSERT_EQ(amdf_xdna_umd_host_mapping_destroy(mappings[0]), AMDF_STATUS_OK);
+  amdf_xdna_umd_host_mapping_destroy(mappings[0]);
   mappings[0] = nullptr;
   std::cout << "First view destroyed; attachment remains mapped" << std::endl;
   struct amdxdna_drm_get_bo_info native_info = {};

@@ -517,8 +517,10 @@ typedef struct amdf_memory_create_info_t {
   /// space, or zero for provider policy.
   uint64_t minimum_alignment;
   /// Borrowed host base for a REGISTER profile, otherwise `NULL`. The caller
-  /// keeps this address range backed by the same live pages until
-  /// `memory_destroy` succeeds. Registration does not take ownership.
+  /// keeps this address range backed by the same live pages through
+  /// `memory_destroy`. A failed native detach can leave registrations live;
+  /// that error does not authorize recycling the source. Registration does
+  /// not take ownership.
   void* registered_host_pointer;
   /// Caller-ordered consumers, consumed during the call and not retained.
   /// Devices must be unique and belong to the scope's instance. NULL at zero
@@ -787,7 +789,7 @@ typedef struct amdf_host_mapping_info_t {
   amdf_memory_map_flags_t flags;
   /// Host cache behavior of the mapped pages.
   amdf_host_cacheability_t cacheability;
-  /// First mapped byte borrowed until `host_mapping_destroy` succeeds.
+  /// First mapped byte borrowed until `host_mapping_destroy` is called.
   void* pointer;
   /// Byte offset of `pointer` within the logical memory attachment.
   uint64_t memory_byte_offset;

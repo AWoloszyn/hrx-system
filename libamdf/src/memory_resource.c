@@ -45,7 +45,7 @@ amdf_status_t amdf_memory_resource_allocate(amdf_allocator_t host_allocator,
 // Consumer releases are independent and each is attempted once. Backing is
 // released only after every native consumer is gone, so failed unmapping cannot
 // turn a retained native reference into access to recycled host storage.
-amdf_status_t amdf_memory_release_native(amdf_memory_t* memory) {
+static amdf_status_t amdf_memory_release_native(amdf_memory_t* memory) {
   amdf_status_t status = AMDF_STATUS_OK;
   for (uint32_t i = memory->info.access_count; i != 0; --i) {
     const uint32_t ordinal = i - 1;
@@ -65,10 +65,10 @@ amdf_status_t amdf_memory_release_native(amdf_memory_t* memory) {
   return status;
 }
 
-// Failed construction owns local rollback, never a deferred cleanup obligation.
-// Terminal native failure leaves required backing in place and discards only
-// the unpublished metadata. No later object retries those native operations.
-amdf_status_t amdf_memory_discard(amdf_memory_t* memory) {
+// Terminal release never creates a deferred cleanup obligation. A native
+// failure leaves required backing in place and discards library metadata;
+// no later object retries those native operations.
+amdf_status_t amdf_memory_resource_destroy(amdf_memory_t* memory) {
   const amdf_status_t status = amdf_memory_release_native(memory);
   const uint32_t count =
       memory->info.access_count == 0 ? 1 : memory->info.access_count;

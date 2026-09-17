@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include "amdf/amdf.h"
 #include "gtest/gtest.h"
@@ -19,33 +20,23 @@ namespace {
 class XdnaLinuxMemoryTest : public XdnaDeviceFixture {
  protected:
   void TearDown() override {
-    bool caller_pages_may_release = true;
     for (size_t i = 3; i > 0; --i) {
       const size_t ordinal = i - 1;
       if (mappings_[ordinal] != nullptr) {
-        const amdf_status_t status =
-            api_->host_mapping_destroy(mappings_[ordinal]);
-        EXPECT_EQ(status, AMDF_STATUS_OK);
-        if (amdf_status_is_ok(status)) {
-          mappings_[ordinal] = nullptr;
-        } else {
-          caller_pages_may_release = false;
-        }
+        EXPECT_EQ(api_->host_mapping_destroy(
+                      std::exchange(mappings_[ordinal], nullptr)),
+                  AMDF_STATUS_OK);
       }
-      if (memories_[ordinal] != nullptr && mappings_[ordinal] == nullptr) {
-        const amdf_status_t status = api_->memory_destroy(memories_[ordinal]);
-        EXPECT_EQ(status, AMDF_STATUS_OK);
-        if (amdf_status_is_ok(status)) {
-          memories_[ordinal] = nullptr;
-        } else {
-          caller_pages_may_release = false;
-        }
+      if (memories_[ordinal] != nullptr) {
+        EXPECT_EQ(
+            api_->memory_destroy(std::exchange(memories_[ordinal], nullptr)),
+            AMDF_STATUS_OK);
       }
     }
     for (amdf_external_memory_t& external_memory : external_memories_) {
       api_->external_memory_release(&external_memory);
     }
-    if (caller_pages_ != nullptr && caller_pages_may_release) {
+    if (!HasFailure() && caller_pages_ != nullptr) {
       EXPECT_EQ(munmap(caller_pages_, caller_byte_length_), 0);
       caller_pages_ = nullptr;
     }
@@ -265,8 +256,8 @@ TEST_F(XdnaLinuxMemoryTest,
 
   ASSERT_EQ(api_->host_mapping_destroy(mappings_[0]), AMDF_STATUS_OK);
   mappings_[0] = nullptr;
-  ASSERT_EQ(api_->memory_destroy(memories_[0]), AMDF_STATUS_OK);
-  memories_[0] = nullptr;
+  ASSERT_EQ(api_->memory_destroy(std::exchange(memories_[0], nullptr)),
+            AMDF_STATUS_OK);
   EXPECT_EQ(static_cast<const uint8_t*>(mapping_infos_[1].pointer)[0], 0xC3);
   EXPECT_EQ(static_cast<const uint8_t*>(
                 mapping_infos_[1].pointer)[create_info.byte_length - 1],
@@ -274,8 +265,8 @@ TEST_F(XdnaLinuxMemoryTest,
 
   ASSERT_EQ(api_->host_mapping_destroy(mappings_[1]), AMDF_STATUS_OK);
   mappings_[1] = nullptr;
-  ASSERT_EQ(api_->memory_destroy(memories_[1]), AMDF_STATUS_OK);
-  memories_[1] = nullptr;
+  ASSERT_EQ(api_->memory_destroy(std::exchange(memories_[1], nullptr)),
+            AMDF_STATUS_OK);
   std::memset(caller_pages_, 0x3C, caller_byte_length_);
   EXPECT_EQ(caller_pages_[caller_byte_length_ - 1], 0x3C);
 }
@@ -423,8 +414,8 @@ TEST_F(XdnaLinuxMemoryTest,
 
   ASSERT_EQ(api_->host_mapping_destroy(mappings_[0]), AMDF_STATUS_OK);
   mappings_[0] = nullptr;
-  ASSERT_EQ(api_->memory_destroy(memories_[0]), AMDF_STATUS_OK);
-  memories_[0] = nullptr;
+  ASSERT_EQ(api_->memory_destroy(std::exchange(memories_[0], nullptr)),
+            AMDF_STATUS_OK);
 
   second_import_bytes[1] = 0x6C;
   ASSERT_EQ(api_->host_mapping_cache_control(mappings_[2],

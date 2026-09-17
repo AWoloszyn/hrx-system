@@ -209,10 +209,12 @@ typedef struct amdf_api_t {
   /// No device is implicitly activated and no access is deferred to first use.
   ///
   /// Registered pages remain caller-owned and backed by the same live pages
-  /// through successful memory release. If they came from a host mapping, that
-  /// mapping and its backing must also remain live. Construction performs no
-  /// command inspection, queue submission or device-wide synchronization.
-  /// Failure leaves out_memory unchanged and creates no public cleanup owner.
+  /// through memory release. A native release failure can leave registrations
+  /// live and does not permit recycling those pages. If they came from a host
+  /// mapping, that mapping and its backing obey the same requirement.
+  /// Construction performs no command inspection, queue submission or
+  /// device-wide synchronization. Failure leaves out_memory unchanged and
+  /// creates no public cleanup owner.
   amdf_status_t(AMDF_CALL* memory_create)(
       amdf_memory_scope_t* scope, const amdf_memory_create_info_t* create_info,
       amdf_memory_t** out_memory);
@@ -311,7 +313,7 @@ typedef struct amdf_api_t {
 
   /// Copies immutable properties of one live host mapping.
   ///
-  /// The copied pointer is borrowed until `host_mapping_destroy` succeeds. Its
+  /// The copied pointer is borrowed until `host_mapping_destroy` is called. Its
   /// flush and invalidate recipes describe available CPU cache operations,
   /// not requirements relative to one attached device. A device's
   /// HOST_COHERENT access can make those operations unnecessary for that
@@ -345,11 +347,10 @@ typedef struct amdf_api_t {
 
   /// Destroys one mapping after all host access to its pointer has stopped.
   ///
-  /// The caller must have exclusive access. Success consumes the mapping;
-  /// failure leaves it with the caller for another destruction attempt and
-  /// preserves its lifetime dependency on the memory. Failure does not
-  /// authorize renewed access through the mapped pointer. No execution wait
-  /// or cache transition is implied.
+  /// The caller must have exclusive access. A valid mapping is consumed and
+  /// returns OK; NULL returns INVALID_ARGUMENT. The view borrows the memory's
+  /// persistent native mapping, whose unmapping occurs at memory destruction.
+  /// No execution wait or cache transition is implied.
   amdf_status_t(AMDF_CALL* host_mapping_destroy)(amdf_host_mapping_t* mapping);
 
   /// Destroys memory after all host mappings and future device uses are gone.
@@ -360,12 +361,17 @@ typedef struct amdf_api_t {
   /// diagnoses premature destruction. Violating them is undefined behavior.
   /// Destruction performs no execution wait or cache transition, but may wait
   /// for native unmapping or paging cleanup.
-  /// Success consumes the memory. Native teardown may release some accesses
-  /// before failing; failure leaves the object with the caller for another
-  /// destruction attempt and does not restore its former mappings or addresses.
-  /// The caller keeps all borrowed scopes, devices and registered source pages
-  /// live until destruction succeeds. Failure neither transfers those lifetime
-  /// obligations nor authorizes backing reuse or premature parent destruction.
+  /// The memory object is consumed even when native release fails. The first
+  /// native error is returned; neither this handle nor its addresses may be
+  /// used again. Each independent consumer receives one release attempt, and
+  /// backing is released only after every consumer succeeds. A failure can leak
+  /// native resources and required backing, without a retained library object
+  /// or later cleanup attempt. Borrowed scopes and devices must outlive this
+  /// call; their destruction does not guarantee reclamation of native residue.
+  /// Registered source storage remains caller-owned. Failed native detach does
+  /// not authorize recycling it: the caller must leave that storage unreclaimed
+  /// through the remaining native lifetime. Failure is observable resource
+  /// loss, not a retryable memory handle or successful source release.
   amdf_status_t(AMDF_CALL* memory_destroy)(amdf_memory_t* memory);
 
   /// Copies immutable properties cached when `queue` was created.

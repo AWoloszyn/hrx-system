@@ -117,11 +117,12 @@ amdf_status_t amdf_xdna_umd_memory_describe_site(
     const amdf_memory_site_query_t* query,
     amdf_memory_site_description_t* out_description);
 
-// Releases partial or complete native state and its metadata. Failure retains
-// the remaining state with the caller and may leave its backing referenced.
+// Releases partial or complete native state and its metadata. Failure leaves
+// partial state for the common owner to abandon after preserving required
+// backing; this is not a surviving public memory handle.
 amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory);
 
-// Consumes unpublished metadata without attempting any native operation.
+// Consumes remaining metadata without attempting any native operation.
 // After terminal cleanup failure, native resources and dependent backing leak;
 // the caller preserves any separately owned backing those resources can reach.
 void amdf_xdna_umd_memory_abandon(amdf_xdna_umd_memory_t* memory);
@@ -140,9 +141,8 @@ amdf_status_t amdf_xdna_umd_host_mapping_cache_control(
     amdf_host_cache_operation_t operation, uint64_t byte_offset,
     uint64_t byte_length);
 
-// Releases one explicit host mapping.
-amdf_status_t amdf_xdna_umd_host_mapping_destroy(
-    amdf_xdna_umd_host_mapping_t* mapping);
+// Releases a lightweight host view; its memory owns the native mapping.
+void amdf_xdna_umd_host_mapping_destroy(amdf_xdna_umd_host_mapping_t* mapping);
 
 #ifdef __cplusplus
 }  // extern "C"

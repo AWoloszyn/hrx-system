@@ -493,14 +493,29 @@ progress differs from a terminal release failure. An error alone does not
 establish that retaining an object and retrying later is safe or useful, and
 reporting failure does not imply that a native resource has been released.
 
-If construction rollback encounters a terminal native release failure, it
-reports that cleanup error and frees its unpublished bookkeeping. Unreleased
-native resources and any library-owned backing or address reservation they
-still depend on are leaked, not transferred to a retry list. A driver failure
+Final memory release consumes the library object even when native teardown
+fails. Construction rollback follows the same single-attempt rule. Both report
+the native error and free their bookkeeping. Unreleased native resources and
+any library-owned backing or address reservation they still depend on are
+leaked, not transferred to a retry list. A driver failure
 cannot be repaired by retaining more libamdf objects. Native residue is left to
 native teardown; leaked host reservations can remain until process exit. The
 native lifetime policy describes supported reclamation boundaries, not a
 guarantee of reclamation when the native release operation itself fails.
+
+Host mappings are lightweight views of their memory's persistent native mapping.
+Destroying a valid view consumes its metadata and succeeds; actual native unmap
+belongs to final memory release. Neither views nor queue commands register a
+memory-use count, and premature memory release is undefined behavior.
+
+Registered source storage remains caller-owned. A failed native detach does not
+prove the source may be recycled, even though its libamdf handle was consumed.
+A caller releases its source storage only after successful native teardown; on
+failure it reports the error and leaves that storage unreclaimed through the
+remaining native lifetime. That can require process exit. There is no surviving
+memory handle to retry and no library object that will perform later cleanup.
+An independent imported or exported transport reference has its own native
+lifetime; a failed import release does not invalidate other owners' references.
 
 Normal execution teardown differs from physical loss. Destroying a GPU queue
 need not invalidate shared system memory. Losing the GPU holding an HBM

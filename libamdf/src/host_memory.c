@@ -20,11 +20,10 @@ static amdf_status_t amdf_host_memory_mapping_cache_control(
       mapping->info.cache_line_size);
 }
 
-static amdf_status_t amdf_host_memory_mapping_destroy_native(
+static void amdf_host_memory_mapping_destroy_native(
     amdf_host_mapping_t* mapping) {
   // CPU views borrow the persistent backing range without another native map.
   (void)mapping;
-  return AMDF_STATUS_OK;
 }
 
 static const amdf_host_mapping_vtable_t amdf_host_memory_mapping_vtable = {
