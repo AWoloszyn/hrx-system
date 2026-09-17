@@ -256,9 +256,24 @@ iree_cc_library(
   SRCS
     "sequence_emulation.c"
   DEPS
+    ::operation_completion
     iree::async
     iree::base
   PUBLIC
+)
+
+iree_cc_test(
+  NAME
+    sequence_emulation_test
+  SRCS
+    "sequence_emulation_test.cc"
+  DEPS
+    ::operation_pool
+    ::sequence_emulation
+    iree::async
+    iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 iree_cc_library(

@@ -141,9 +141,10 @@ static inline void iree_async_sequence_emulator_initialize(
 // Zero-step sequences complete immediately: the base callback fires with OK
 // before this function returns.
 //
-// Returns OK if step 0 was submitted successfully, or the submission error
-// if it failed (in which case the sequence's base callback fires with that
-// error before this function returns).
+// Returns OK if step 0 was submitted successfully. If submission fails, the
+// first step is restored to its caller-owned state, no callback fires, and the
+// submission error is returned. A backend that has already admitted the
+// sequence must convert that error to a poll-thread terminal completion.
 iree_status_t iree_async_sequence_emulation_begin(
     iree_async_sequence_emulator_t* emulator,
     iree_async_sequence_operation_t* sequence);

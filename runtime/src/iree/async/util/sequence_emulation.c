@@ -6,6 +6,8 @@
 
 #include "iree/async/util/sequence_emulation.h"
 
+#include "iree/async/util/operation_completion.h"
+
 //===----------------------------------------------------------------------===//
 // LINK path (step_fn == NULL)
 //===----------------------------------------------------------------------===//
@@ -85,8 +87,8 @@ static void iree_async_sequence_link_trampoline(
       // the sequence (or a predecessor in the linked chain) was cancelled.
       final_status = status;
     }
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 final_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_operation_complete(&sequence->base, final_status,
+                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
   } else {
     // More step completions are pending. The intermediate status has either
     // been stored above or is fully represented by the eventual aggregate.
@@ -110,9 +112,8 @@ iree_status_t iree_async_sequence_submit_as_linked(
 
   // Zero-step edge case: complete immediately.
   if (sequence->step_count == 0) {
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 iree_ok_status(),
-                                 IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_operation_complete(&sequence->base, iree_ok_status(),
+                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
     return iree_ok_status();
   }
 
@@ -218,9 +219,8 @@ iree_status_t iree_async_sequence_emulation_begin(
 
   // Zero-step edge case: complete immediately.
   if (sequence->step_count == 0) {
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 iree_ok_status(),
-                                 IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_operation_complete(&sequence->base, iree_ok_status(),
+                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
     return iree_ok_status();
   }
 
@@ -229,18 +229,21 @@ iree_status_t iree_async_sequence_emulation_begin(
   iree_async_operation_clear_internal_flags(&sequence->base);
   sequence->internal.emulator = emulator;
 
-  // Submit step 0.
+  // Submit step 0. Preserve caller state until admission succeeds so a
+  // synchronous failure leaves both the sequence and its first step reusable.
+  iree_async_operation_t* first_step = sequence->steps[0];
+  iree_async_completion_fn_t saved_completion_fn = first_step->completion_fn;
+  void* saved_user_data = first_step->user_data;
+  iree_async_operation_flags_t saved_flags = first_step->flags;
   iree_status_t status =
       iree_async_sequence_emulation_submit_step(emulator, sequence);
   if (!iree_status_is_ok(status)) {
-    // Step 0 submission failed. Fire base callback with the error and return
-    // OK: the callback has consumed the operation (the caller must not double-
-    // handle via both the callback and the return value).
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 status, IREE_ASYNC_COMPLETION_FLAG_NONE);
-    return iree_ok_status();
+    first_step->completion_fn = saved_completion_fn;
+    first_step->user_data = saved_user_data;
+    first_step->flags = saved_flags;
+    sequence->internal.emulator = NULL;
   }
-  return iree_ok_status();
+  return status;
 }
 
 void iree_async_sequence_emulation_step_completed(
@@ -248,8 +251,8 @@ void iree_async_sequence_emulation_step_completed(
     iree_async_sequence_operation_t* sequence, iree_status_t step_status) {
   // Step failure: abort immediately.
   if (!iree_status_is_ok(step_status)) {
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 step_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_operation_complete(&sequence->base, step_status,
+                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
     return;
   }
 
@@ -260,9 +263,9 @@ void iree_async_sequence_emulation_step_completed(
   if (iree_any_bit_set(
           iree_async_operation_load_internal_flags(&sequence->base),
           IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED)) {
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 iree_status_from_code(IREE_STATUS_CANCELLED),
-                                 IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_operation_complete(&sequence->base,
+                                  iree_status_from_code(IREE_STATUS_CANCELLED),
+                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
     return;
   }
 
@@ -280,18 +283,16 @@ void iree_async_sequence_emulation_step_completed(
         sequence->step_fn(sequence->base.user_data, completed_step, next_step);
     if (!iree_status_is_ok(step_fn_status)) {
       // step_fn vetoed continuation. Abort with its error.
-      sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                   step_fn_status,
-                                   IREE_ASYNC_COMPLETION_FLAG_NONE);
+      iree_async_operation_complete(&sequence->base, step_fn_status,
+                                    IREE_ASYNC_COMPLETION_FLAG_NONE);
       return;
     }
   }
 
   // All steps complete?
   if (sequence->current_step == sequence->step_count) {
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 iree_ok_status(),
-                                 IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_operation_complete(&sequence->base, iree_ok_status(),
+                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
     return;
   }
 
@@ -301,9 +302,9 @@ void iree_async_sequence_emulation_step_completed(
   if (iree_any_bit_set(
           iree_async_operation_load_internal_flags(&sequence->base),
           IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED)) {
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 iree_status_from_code(IREE_STATUS_CANCELLED),
-                                 IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_operation_complete(&sequence->base,
+                                  iree_status_from_code(IREE_STATUS_CANCELLED),
+                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
     return;
   }
 
@@ -312,9 +313,8 @@ void iree_async_sequence_emulation_step_completed(
       iree_async_sequence_emulation_submit_step(emulator, sequence);
   if (!iree_status_is_ok(submit_status)) {
     // Next step submission failed. Abort with the submission error.
-    sequence->base.completion_fn(sequence->base.user_data, &sequence->base,
-                                 submit_status,
-                                 IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_operation_complete(&sequence->base, submit_status,
+                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
   }
 }
 
