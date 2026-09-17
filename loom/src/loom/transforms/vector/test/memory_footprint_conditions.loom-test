@@ -100,3 +100,96 @@ func.def @partial_guard_relations_stay_in_selected_scope(%storage: buffer, %base
   test.use %joined : vector<1xi32>
   func.return
 }
+
+// ====
+
+// A weaker fact before an equality cannot weaken the incoming edge.
+func.def @join_weak_then_equal(%storage: buffer, %base: offset, %raw: index, %path: i1) {
+  %c0 = index.constant 0 : index
+  %origin = index.assume %raw [range(%raw, -1, 1)] : index
+  %view = buffer.view %storage[%base] : buffer -> view<1xi32>
+  %equal = index.cmp eq, %origin, %c0 : index
+  %nonnegative = index.cmp sge, %origin, %c0 : index
+  %combined = scalar.andi %nonnegative, %equal : i1
+  cfg.cond_br %path, ^left, ^right
+^left:
+  cfg.cond_br %equal, ^join, ^exit
+^right:
+  cfg.cond_br %combined, ^join, ^exit
+^join:
+  %loaded = vector.load %view[%origin] : view<1xi32> -> vector<1xi32>
+  test.use %loaded : vector<1xi32>
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// Two inequalities on an incoming edge jointly preserve an equality.
+func.def @join_complementary(%storage: buffer, %base: offset, %raw: index, %path: i1) {
+  %c0 = index.constant 0 : index
+  %origin = index.assume %raw [range(%raw, -1, 1)] : index
+  %view = buffer.view %storage[%base] : buffer -> view<1xi32>
+  %equal = index.cmp eq, %origin, %c0 : index
+  %nonnegative = index.cmp sge, %origin, %c0 : index
+  %nonpositive = index.cmp sle, %origin, %c0 : index
+  %combined = scalar.andi %nonnegative, %nonpositive : i1
+  cfg.cond_br %path, ^left, ^right
+^left:
+  cfg.cond_br %equal, ^join, ^exit
+^right:
+  cfg.cond_br %combined, ^join, ^exit
+^join:
+  %loaded = vector.load %view[%origin] : view<1xi32> -> vector<1xi32>
+  test.use %loaded : vector<1xi32>
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// Reordering an equality and its weaker consequence preserves the same join.
+func.def @join_equal_then_weak(%storage: buffer, %base: offset, %raw: index, %path: i1) {
+  %c0 = index.constant 0 : index
+  %origin = index.assume %raw [range(%raw, -1, 1)] : index
+  %view = buffer.view %storage[%base] : buffer -> view<1xi32>
+  %equal = index.cmp eq, %origin, %c0 : index
+  %nonnegative = index.cmp sge, %origin, %c0 : index
+  %combined = scalar.andi %equal, %nonnegative : i1
+  cfg.cond_br %path, ^left, ^right
+^left:
+  cfg.cond_br %equal, ^join, ^exit
+^right:
+  cfg.cond_br %combined, ^join, ^exit
+^join:
+  %loaded = vector.load %view[%origin] : view<1xi32> -> vector<1xi32>
+  test.use %loaded : vector<1xi32>
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// A genuinely weaker incoming edge cannot establish the other edge's equality.
+func.def @join_weaker_edge_does_not_establish_equality(%storage: buffer, %base: offset, %raw: index, %path: i1) {
+  %c0 = index.constant 0 : index
+  %origin = index.assume %raw [range(%raw, -1, 1)] : index
+  %view = buffer.view %storage[%base] : buffer -> view<1xi32>
+  %equal = index.cmp eq, %origin, %c0 : index
+  %nonnegative = index.cmp sge, %origin, %c0 : index
+  cfg.cond_br %path, ^left, ^right
+^left:
+  cfg.cond_br %equal, ^join, ^exit
+^right:
+  cfg.cond_br %nonnegative, ^join, ^exit
+^join:
+  // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1", view_bound="1", required_origin_upper_bound="0"}
+  %loaded = vector.load %view[%origin] : view<1xi32> -> vector<1xi32>
+  test.use %loaded : vector<1xi32>
+  cfg.br ^exit
+^exit:
+  func.return
+}

@@ -235,10 +235,14 @@ bool loom_condition_integer_relations_equivalent(
     const loom_condition_integer_relation_t* left,
     const loom_condition_integer_relation_t* right);
 
-// Computes the strongest common relation preserved by both |left| and |right|.
+// Computes the strongest common relation preserved by |left| and the
+// conjunction of |right_count| relations in |right|. Combines all relations
+// over the same operands, including swapped operands. Returns false when no
+// common constraint remains; unrelated operand pairs impose no constraint.
 bool loom_condition_integer_relation_meet(
     const loom_condition_integer_relation_t* left,
     const loom_condition_integer_relation_t* right,
+    iree_host_size_t right_count,
     loom_condition_integer_relation_t* out_relation);
 
 // Attempts to prove that |condition_value| is exact after applying edge-local

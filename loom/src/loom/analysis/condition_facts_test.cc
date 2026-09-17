@@ -657,6 +657,108 @@ TEST_F(ConditionFactsTest, PartialBooleanTruthPreservesUnknownOutcomes) {
   }
 }
 
+static bool EvaluateRelation(loom_symbolic_integer_relation_t relation,
+                             int64_t left, int64_t right) {
+  switch (relation) {
+    case LOOM_SYMBOLIC_INTEGER_RELATION_EQ:
+      return left == right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_NE:
+      return left != right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_LT:
+      return left < right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_LE:
+      return left <= right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_GT:
+      return left > right;
+    case LOOM_SYMBOLIC_INTEGER_RELATION_GE:
+      return left >= right;
+  }
+  ADD_FAILURE() << "Invalid relation";
+  return false;
+}
+
+TEST_F(ConditionFactsTest, RelationMeetMatchesConjunctionTruthTable) {
+  const loom_symbolic_integer_relation_t relations[] = {
+      LOOM_SYMBOLIC_INTEGER_RELATION_EQ, LOOM_SYMBOLIC_INTEGER_RELATION_NE,
+      LOOM_SYMBOLIC_INTEGER_RELATION_LT, LOOM_SYMBOLIC_INTEGER_RELATION_LE,
+      LOOM_SYMBOLIC_INTEGER_RELATION_GT, LOOM_SYMBOLIC_INTEGER_RELATION_GE,
+  };
+  const loom_condition_integer_operand_t left_operand = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  const loom_condition_integer_operand_t right_operand = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  for (auto left : relations) {
+    for (auto first : relations) {
+      for (auto second : relations) {
+        for (uint32_t swaps = 0; swaps < 4; ++swaps) {
+          SCOPED_TRACE(::testing::Message()
+                       << "left=" << left << ", first=" << first
+                       << ", second=" << second << ", swaps=" << swaps);
+          const loom_condition_integer_relation_t left_relation = {
+              left, left_operand, right_operand};
+          const loom_condition_integer_relation_t right_relations[] = {
+              {first, (swaps & 1) ? right_operand : left_operand,
+               (swaps & 1) ? left_operand : right_operand},
+              {second, (swaps & 2) ? right_operand : left_operand,
+               (swaps & 2) ? left_operand : right_operand},
+          };
+          loom_condition_integer_relation_t common = {};
+          bool found = loom_condition_integer_relation_meet(
+              &left_relation, right_relations, IREE_ARRAYSIZE(right_relations),
+              &common);
+          bool all_outcomes_allowed = true;
+          for (int64_t a : {-1, 0, 1}) {
+            for (int64_t b : {-1, 0, 1}) {
+              const bool expected =
+                  EvaluateRelation(left, a, b) ||
+                  (EvaluateRelation(first, (swaps & 1) ? b : a,
+                                    (swaps & 1) ? a : b) &&
+                   EvaluateRelation(second, (swaps & 2) ? b : a,
+                                    (swaps & 2) ? a : b));
+              all_outcomes_allowed &= expected;
+              if (found) {
+                EXPECT_EQ(EvaluateRelation(common.relation, a, b), expected);
+              }
+            }
+          }
+          EXPECT_EQ(found, !all_outcomes_allowed);
+          if (found) {
+            EXPECT_TRUE(loom_condition_integer_operands_equal(common.left,
+                                                              left_operand));
+            EXPECT_TRUE(loom_condition_integer_operands_equal(common.right,
+                                                              right_operand));
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(ConditionFactsTest, RelationMeetIgnoresUnmatchedOperandPairs) {
+  const loom_condition_integer_operand_t value = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  const loom_condition_integer_operand_t other_value = {
+      LOOM_CONDITION_INTEGER_OPERAND_VALUE, DefineIndexValue(), 0};
+  const loom_condition_integer_operand_t zero = {
+      LOOM_CONDITION_INTEGER_OPERAND_CONSTANT, LOOM_VALUE_ID_INVALID, 0};
+  const loom_condition_integer_operand_t one = {
+      LOOM_CONDITION_INTEGER_OPERAND_CONSTANT, LOOM_VALUE_ID_INVALID, 1};
+  const loom_condition_integer_relation_t left = {
+      LOOM_SYMBOLIC_INTEGER_RELATION_EQ, value, zero};
+  const loom_condition_integer_relation_t right[] = {
+      {LOOM_SYMBOLIC_INTEGER_RELATION_NE, other_value, zero},
+      {LOOM_SYMBOLIC_INTEGER_RELATION_NE, value, one},
+      {LOOM_SYMBOLIC_INTEGER_RELATION_EQ, zero, value},
+  };
+  loom_condition_integer_relation_t common = {};
+  EXPECT_FALSE(
+      loom_condition_integer_relation_meet(&left, nullptr, 0, &common));
+  EXPECT_FALSE(loom_condition_integer_relation_meet(&left, right, 2, &common));
+  ASSERT_TRUE(loom_condition_integer_relation_meet(
+      &left, right, IREE_ARRAYSIZE(right), &common));
+  EXPECT_TRUE(loom_condition_integer_relations_equivalent(&left, &common));
+}
+
 TEST_F(ConditionFactsTest, RelationCapacityOverflowIsIncomplete) {
   loom_value_id_t induction = DefineIndexValue();
   loom_value_id_t upper_bound = DefineIndexValue();

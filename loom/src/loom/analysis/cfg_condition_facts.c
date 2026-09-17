@@ -59,18 +59,11 @@ static iree_host_size_t loom_cfg_condition_intersect_relations(
   for (iree_host_size_t existing_index = 0;
        existing_index < inout_relation_count; ++existing_index) {
     loom_condition_integer_relation_t common_relation = {0};
-    bool found_common_relation = false;
-    for (iree_host_size_t edge_index = 0; edge_index < edge_relation_count;
-         ++edge_index) {
-      if (!loom_condition_integer_relation_meet(
-              &inout_relations[existing_index], &edge_relations[edge_index],
-              &common_relation)) {
-        continue;
-      }
-      found_common_relation = true;
-      break;
+    if (!loom_condition_integer_relation_meet(
+            &inout_relations[existing_index], edge_relations,
+            edge_relation_count, &common_relation)) {
+      continue;
     }
-    if (!found_common_relation) continue;
     inout_relations[new_relation_count++] = common_relation;
   }
   return new_relation_count;

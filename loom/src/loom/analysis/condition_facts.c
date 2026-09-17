@@ -1184,21 +1184,43 @@ bool loom_condition_integer_relations_equivalent(
 bool loom_condition_integer_relation_meet(
     const loom_condition_integer_relation_t* left,
     const loom_condition_integer_relation_t* right,
+    iree_host_size_t right_count,
     loom_condition_integer_relation_t* out_relation) {
-  bool implication_result = false;
-  if (loom_condition_integer_relation_implies(right, left,
-                                              &implication_result) &&
-      implication_result) {
-    *out_relation = *left;
-    return true;
+  // Bits represent the possible less/equal/greater comparison outcomes.
+  // Conjunction within one edge intersects outcomes; a CFG join unions them.
+  static const uint8_t relation_outcomes[] = {
+      [LOOM_SYMBOLIC_INTEGER_RELATION_EQ] = 2,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_NE] = 5,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_LT] = 1,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_LE] = 3,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_GT] = 4,
+      [LOOM_SYMBOLIC_INTEGER_RELATION_GE] = 6,
+  };
+  static const loom_symbolic_integer_relation_t outcomes_relation[] = {
+      [1] = LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+      [2] = LOOM_SYMBOLIC_INTEGER_RELATION_EQ,
+      [3] = LOOM_SYMBOLIC_INTEGER_RELATION_LE,
+      [4] = LOOM_SYMBOLIC_INTEGER_RELATION_GT,
+      [5] = LOOM_SYMBOLIC_INTEGER_RELATION_NE,
+      [6] = LOOM_SYMBOLIC_INTEGER_RELATION_GE,
+  };
+  uint8_t right_outcomes = 7;
+  for (iree_host_size_t i = 0; i < right_count; ++i) {
+    loom_symbolic_integer_relation_t relation = right[i].relation;
+    if (loom_condition_integer_operands_equal(left->left, right[i].left) &&
+        loom_condition_integer_operands_equal(left->right, right[i].right)) {
+      right_outcomes &= relation_outcomes[relation];
+    } else if (loom_condition_integer_operands_equal(left->left,
+                                                     right[i].right) &&
+               loom_condition_integer_operands_equal(left->right,
+                                                     right[i].left)) {
+      relation = loom_symbolic_integer_relation_swap(relation);
+      right_outcomes &= relation_outcomes[relation];
+    }
   }
-
-  if (loom_condition_integer_relation_implies(left, right,
-                                              &implication_result) &&
-      implication_result) {
-    *out_relation = *right;
-    return true;
-  }
-
-  return false;
+  uint8_t common_outcomes = relation_outcomes[left->relation] | right_outcomes;
+  if (common_outcomes == 7) return false;
+  *out_relation = *left;
+  out_relation->relation = outcomes_relation[common_outcomes];
+  return true;
 }
