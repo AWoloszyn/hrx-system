@@ -324,7 +324,7 @@ static iree_status_t loom_low_verify_emit_immediate_kind_mismatch(
                               params, IREE_ARRAYSIZE(params), NULL, 0);
 }
 
-static iree_status_t loom_low_verify_emit_immediate_range_mismatch(
+static iree_status_t loom_low_verify_emit_immediate_constraint_mismatch(
     loom_low_function_verify_state_t* function_state, const loom_op_t* op,
     iree_string_view_t immediate_name, uint16_t attrs_attr_index,
     int64_t actual_value, iree_string_view_t expected_range) {
@@ -526,6 +526,51 @@ static iree_status_t loom_low_verify_format_unsigned_range(
   return iree_ok_status();
 }
 
+static iree_status_t loom_low_verify_format_value_multiple(
+    loom_low_function_verify_state_t* function_state, uint64_t value_step,
+    iree_string_view_t* out_constraint) {
+  char scratch[64];
+  int length = iree_snprintf(scratch, sizeof(scratch), "a multiple of %" PRIu64,
+                             value_step);
+  if (length < 0 || (iree_host_size_t)length >= sizeof(scratch)) {
+    IREE_ASSERT_UNREACHABLE("failed to format immediate value multiple");
+    IREE_BUILTIN_UNREACHABLE();
+  }
+  char* storage = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(&function_state->state->arena,
+                                           (iree_host_size_t)length,
+                                           (void**)&storage));
+  memcpy(storage, scratch, (iree_host_size_t)length);
+  *out_constraint = iree_make_string_view(storage, (iree_host_size_t)length);
+  return iree_ok_status();
+}
+
+static bool loom_low_verify_signed_value_is_multiple(int64_t value,
+                                                     uint64_t multiple) {
+  const uint64_t magnitude =
+      value < 0 ? (uint64_t)(-(value + 1)) + 1 : (uint64_t)value;
+  return magnitude % multiple == 0;
+}
+
+static iree_status_t loom_low_verify_immediate_value_step(
+    loom_low_function_verify_state_t* function_state, const loom_op_t* op,
+    iree_string_view_t immediate_name, uint16_t attrs_attr_index, int64_t value,
+    uint64_t value_step, bool use_unsigned_value) {
+  const bool is_multiple =
+      use_unsigned_value
+          ? (uint64_t)value % value_step == 0
+          : loom_low_verify_signed_value_is_multiple(value, value_step);
+  if (is_multiple) {
+    return iree_ok_status();
+  }
+  iree_string_view_t expected_constraint = iree_string_view_empty();
+  IREE_RETURN_IF_ERROR(loom_low_verify_format_value_multiple(
+      function_state, value_step, &expected_constraint));
+  return loom_low_verify_emit_immediate_constraint_mismatch(
+      function_state, op, immediate_name, attrs_attr_index, value,
+      expected_constraint);
+}
+
 static iree_status_t loom_low_verify_format_i64(
     loom_low_function_verify_state_t* function_state, int64_t value,
     iree_string_view_t* out_value) {
@@ -606,35 +651,41 @@ static iree_status_t loom_low_verify_i64_immediate_range(
                                   ? INT64_MAX
                                   : (int64_t)immediate->unsigned_max;
       if (value >= immediate->signed_min && value <= maximum) {
-        return iree_ok_status();
+        return loom_low_verify_immediate_value_step(
+            function_state, op, immediate_name, attrs_attr_index, value,
+            immediate->value_step, /*use_unsigned_value=*/false);
       }
       iree_string_view_t expected_range = iree_string_view_empty();
       IREE_RETURN_IF_ERROR(loom_low_verify_format_signed_range(
           function_state, immediate->signed_min, maximum, &expected_range));
-      return loom_low_verify_emit_immediate_range_mismatch(
+      return loom_low_verify_emit_immediate_constraint_mismatch(
           function_state, op, immediate_name, attrs_attr_index, value,
           expected_range);
     }
     case LOOM_LOW_IMMEDIATE_KIND_UNSIGNED: {
       // I64 attributes carry the bits of full-width unsigned immediates.
       if ((uint64_t)value <= immediate->unsigned_max) {
-        return iree_ok_status();
+        return loom_low_verify_immediate_value_step(
+            function_state, op, immediate_name, attrs_attr_index, value,
+            immediate->value_step, /*use_unsigned_value=*/true);
       }
       iree_string_view_t expected_range = iree_string_view_empty();
       IREE_RETURN_IF_ERROR(loom_low_verify_format_unsigned_range(
           function_state, immediate->unsigned_max, &expected_range));
-      return loom_low_verify_emit_immediate_range_mismatch(
+      return loom_low_verify_emit_immediate_constraint_mismatch(
           function_state, op, immediate_name, attrs_attr_index, value,
           expected_range);
     }
     case LOOM_LOW_IMMEDIATE_KIND_ORDINAL: {
       if (value >= 0 && (uint64_t)value <= immediate->unsigned_max) {
-        return iree_ok_status();
+        return loom_low_verify_immediate_value_step(
+            function_state, op, immediate_name, attrs_attr_index, value,
+            immediate->value_step, /*use_unsigned_value=*/true);
       }
       iree_string_view_t expected_range = iree_string_view_empty();
       IREE_RETURN_IF_ERROR(loom_low_verify_format_unsigned_range(
           function_state, immediate->unsigned_max, &expected_range));
-      return loom_low_verify_emit_immediate_range_mismatch(
+      return loom_low_verify_emit_immediate_constraint_mismatch(
           function_state, op, immediate_name, attrs_attr_index, value,
           expected_range);
     }
@@ -2138,6 +2189,22 @@ iree_status_t loom_low_verify_module(const loom_module_t* module,
   IREE_ASSERT_ARGUMENT(scratch);
   IREE_ASSERT_ARGUMENT(out_result);
   *out_result = (loom_low_verify_result_t){0};
+  // Begin the module walk without allocating or clearing value-sized scratch
+  // for source-only modules. Continue from the first Low function once found.
+  const loom_op_t* first_low_function =
+      module->body && module->body->block_count > 0
+          ? loom_region_entry_block(module->body)->first_op
+          : NULL;
+  while (first_low_function != NULL &&
+         !loom_low_func_def_isa(first_low_function) &&
+         !loom_low_kernel_def_isa(first_low_function) &&
+         !loom_low_func_decl_isa(first_low_function)) {
+    first_low_function = first_low_function->next_op;
+  }
+  if (first_low_function == NULL) {
+    return iree_ok_status();
+  }
+
   IREE_ASSERT(scratch->value_scratch != NULL);
   IREE_ASSERT_EQ(scratch->value_scratch->value_table, &module->values);
   loom_low_verify_state_t state = {
@@ -2161,11 +2228,9 @@ iree_status_t loom_low_verify_module(const loom_module_t* module,
   if (iree_status_is_ok(status)) {
     status = loom_low_verify_begin_module_providers(&state);
   }
-  if (iree_status_is_ok(status) && module->body &&
-      module->body->block_count > 0) {
-    loom_block_t* entry_block = loom_region_entry_block(module->body);
-    const loom_op_t* op = NULL;
-    loom_block_for_each_op(entry_block, op) {
+  if (iree_status_is_ok(status)) {
+    for (const loom_op_t* op = first_low_function; op != NULL;
+         op = op->next_op) {
       if (!loom_low_func_def_isa(op) && !loom_low_kernel_def_isa(op) &&
           !loom_low_func_decl_isa(op)) {
         continue;

@@ -60,9 +60,18 @@ enum loom_symbol_interface_bits_e {
   LOOM_SYMBOL_INTERFACE_TEMPLATE_PROVIDER = 1u << 11,
   // Symbol defines or declares an executable kernel entry ABI.
   LOOM_SYMBOL_INTERFACE_KERNEL_ENTRY = 1u << 12,
+  // Function-like symbol defines or declares a persistent pipeline program.
+  LOOM_SYMBOL_INTERFACE_PIPELINE = 1u << 13,
   // All symbol interface bits understood by this compiler version.
-  LOOM_SYMBOL_INTERFACE_FLAG_MASK = (1u << 13) - 1,
+  LOOM_SYMBOL_INTERFACE_FLAG_MASK = (1u << 14) - 1,
 };
+
+// Compact operation-local product classification for durable symbol roots.
+// Enum-backed carriers occupy [0, UINT8_MAX]. The wider representation leaves
+// one sentinel for symbol definitions that have no product-carrier contract.
+typedef uint16_t loom_symbol_product_carrier_t;
+#define LOOM_SYMBOL_PRODUCT_CARRIER_UNCLASSIFIED \
+  ((loom_symbol_product_carrier_t)UINT16_MAX)
 
 enum loom_symbol_reference_role_e {
   // Zero/default: the reference contributes to reachability and link closure.

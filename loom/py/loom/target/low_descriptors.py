@@ -110,6 +110,7 @@ class RegClassFlag(CEnum):
     PHYSICAL = "LOOM_LOW_REG_CLASS_FLAG_PHYSICAL"
     REFERENCE = "LOOM_LOW_REG_CLASS_FLAG_REFERENCE"
     UNSPILLABLE = "LOOM_LOW_REG_CLASS_FLAG_UNSPILLABLE"
+    EXPLICIT_PHYSICAL_REGISTERS = "LOOM_LOW_REG_CLASS_FLAG_EXPLICIT_PHYSICAL_REGISTERS"
 
 
 class SpillSlotSpace(CEnum):
@@ -184,6 +185,7 @@ class ConstraintKind(CEnum):
     EARLY_CLOBBER = "LOOM_LOW_CONSTRAINT_KIND_EARLY_CLOBBER"
     REMATERIALIZABLE = "LOOM_LOW_CONSTRAINT_KIND_REMATERIALIZABLE"
     FOLDABLE = "LOOM_LOW_CONSTRAINT_KIND_FOLDABLE"
+    SAME_REGISTER_ORDINAL = "LOOM_LOW_CONSTRAINT_KIND_SAME_REGISTER_ORDINAL"
 
 
 class LatencyKind(CEnum):
@@ -206,6 +208,11 @@ class ScheduleClassFlag(CEnum):
     CONTROL = "LOOM_LOW_SCHEDULE_CLASS_FLAG_CONTROL"
 
 
+class IssueUseKind(CEnum):
+    REQUIRED = "LOOM_LOW_ISSUE_USE_KIND_REQUIRED"
+    RESERVED = "LOOM_LOW_ISSUE_USE_KIND_RESERVED"
+
+
 class ResourceKind(CEnum):
     SCALAR_ALU = "LOOM_LOW_RESOURCE_KIND_SCALAR_ALU"
     VECTOR_ALU = "LOOM_LOW_RESOURCE_KIND_VECTOR_ALU"
@@ -214,6 +221,7 @@ class ResourceKind(CEnum):
     STORE = "LOOM_LOW_RESOURCE_KIND_STORE"
     CONTROL = "LOOM_LOW_RESOURCE_KIND_CONTROL"
     ADDRESS = "LOOM_LOW_RESOURCE_KIND_ADDRESS"
+    PIPELINE = "LOOM_LOW_RESOURCE_KIND_PIPELINE"
 
 
 class ResourceFlag(CEnum):
@@ -234,6 +242,23 @@ class HazardReferenceKind(CEnum):
     TARGET = "LOOM_LOW_HAZARD_REFERENCE_KIND_TARGET"
 
 
+@dataclass(frozen=True, slots=True)
+class TimingEvent:
+    """Named target event used to measure dependency separation."""
+
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class EventSeparation:
+    """Minimum issue separation between a producer and consumer event."""
+
+    producer_event: str
+    consumer_event: str
+    minimum_issue_separation_cycles: int
+    model_quality: ModelQuality
+
+
 class DescriptorFlag(CEnum):
     SIDE_EFFECTING = "LOOM_LOW_DESCRIPTOR_FLAG_SIDE_EFFECTING"
     TERMINATOR = "LOOM_LOW_DESCRIPTOR_FLAG_TERMINATOR"
@@ -242,6 +267,8 @@ class DescriptorFlag(CEnum):
     BARRIER = "LOOM_LOW_DESCRIPTOR_FLAG_BARRIER"
     EARLY_CLOBBER = "LOOM_LOW_DESCRIPTOR_FLAG_EARLY_CLOBBER"
     VARIADIC_OPERANDS = "LOOM_LOW_DESCRIPTOR_FLAG_VARIADIC_OPERANDS"
+    ALLOCATION_MOVE = "LOOM_LOW_DESCRIPTOR_FLAG_ALLOCATION_MOVE"
+    UNIQUE_IDENTITY = "LOOM_LOW_DESCRIPTOR_FLAG_UNIQUE_IDENTITY"
 
 
 class DescriptorOpKind(CEnum):
@@ -354,6 +381,52 @@ class RegClass:
     alias_set_id: int = 0
     spill_class: str | None = None
     full_register_part_mask: int = 1
+    physical_registers: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RegisterPackingResourceMember:
+    """Register-class contribution to one shared packing resource.
+
+    Live register units are rounded up to |register_unit_count| groups, then
+    each group consumes |resource_unit_count| units of the resource. Multiple
+    members let a target describe register classes with different allocation
+    granularities that compete for the same physical packing capacity.
+    """
+
+    register_class: str
+    register_unit_count: int = 1
+    resource_unit_count: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class RegisterPackingResource:
+    """Instantaneous shared physical capacity used during Low scheduling."""
+
+    name: str
+    capacity: int
+    members: tuple[RegisterPackingResourceMember, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PhysicalRegister:
+    name: str
+    atomic_units: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PhysicalRegisterView:
+    """Ordered logical-unit view of an aggregate physical register.
+
+    Atomic units describe storage aliasing and are intentionally unordered
+    semantically. A view separately names the physical register implementing
+    each logical unit so structural slices and concats preserve target-defined
+    subregister order.
+    """
+
+    physical_register: str
+    reg_class: str
+    units: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,10 +453,13 @@ class Operand:
     addressable_unit_count: int = 0
     address_state_slot: int = 0
     encoding_field_id: int = 0
+    encoding_adapter_id: int = 0
     data_format_id: int = 0
     register_part: str | None = None
     read_stage: int = 0
     ready_stage: int = 0
+    read_event: str | None = None
+    write_event: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,6 +475,7 @@ class Immediate:
     kind: ImmediateKind
     flags: tuple[ImmediateFlag, ...] = ()
     bit_width: int = 0
+    value_step: int = 1
     encoding_field_id: int = 0
     encoding_slices: tuple[ImmediateEncodingSlice, ...] = ()
     enum_domain: str | None = None
@@ -487,6 +564,8 @@ class Effect:
     flags: tuple[EffectFlag, ...] = ()
     counter_id: int = 0
     width_bits: int = 0
+    producer_event: str | None = None
+    consumer_event: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -563,6 +642,7 @@ class IssueUse:
     cycles: int
     units: int
     stage: int = 0
+    kind: IssueUseKind = IssueUseKind.REQUIRED
 
 
 @dataclass(frozen=True, slots=True)
@@ -599,6 +679,7 @@ class ScheduleClass:
     model_quality: ModelQuality
     latency_cycles: int = 0
     schedule_distance_cycles: int = 0
+    minimum_issue_separation_cycles: int = 1
     issue_uses: tuple[IssueUse, ...] = ()
     hazards: tuple[Hazard, ...] = ()
     flags: tuple[ScheduleClassFlag, ...] = ()
@@ -614,6 +695,7 @@ class Descriptor:
     operands: tuple[Operand, ...]
     schedule_class: str
     op_kind: DescriptorOpKind = DescriptorOpKind.OP
+    schedule_alternatives: tuple[str, ...] = ()
     immediates: tuple[Immediate, ...] = ()
     encoding_field_values: tuple[EncodingFieldValue, ...] = ()
     asm_forms: tuple[AsmForm, ...] = ()
@@ -649,7 +731,12 @@ class DescriptorSet:
     schedule_classes: tuple[ScheduleClass, ...]
     descriptors: tuple[Descriptor, ...]
     descriptor_set_ordinal: int | None = None
+    physical_registers: tuple[PhysicalRegister, ...] = ()
+    physical_register_views: tuple[PhysicalRegisterView, ...] = ()
+    register_packing_resources: tuple[RegisterPackingResource, ...] = ()
     register_parts: tuple[RegisterPart, ...] = ()
+    timing_events: tuple[TimingEvent, ...] = ()
+    event_separations: tuple[EventSeparation, ...] = ()
     enum_domains: tuple[EnumDomain, ...] = ()
     categories: tuple[DescriptorCategory, ...] = ()
     default_category: DescriptorCategory | None = None

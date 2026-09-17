@@ -38,9 +38,10 @@ static iree_status_t loom_low_schedule_add_order_dependency(
   if (producer == LOOM_LOW_SCHEDULE_NODE_NONE) {
     return iree_ok_status();
   }
-  return loom_low_schedule_add_dependency(state, producer, consumer,
-                                          LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER,
-                                          UINT32_MAX);
+  return loom_low_schedule_add_dependency(
+      state, producer, consumer, LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER,
+      LOOM_LOW_ID_NONE, loom_low_schedule_dependency_endpoint_none(),
+      loom_low_schedule_dependency_endpoint_none());
 }
 
 static iree_status_t loom_low_schedule_phase_add_member(
@@ -90,8 +91,9 @@ iree_status_t loom_low_schedule_build_scope_dependencies(
   loom_low_schedule_phase_frontier_t* frontiers = NULL;
   const iree_host_size_t frontier_count =
       state->scopes.control_count + 1 + (state->scopes.function_scope != 0);
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      state->arena, frontier_count, sizeof(*frontiers), (void**)&frontiers));
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate_array(state->scratch_arena, frontier_count,
+                                sizeof(*frontiers), (void**)&frontiers));
   for (iree_host_size_t i = 0; i < frontier_count; ++i) {
     frontiers[i].block_index = UINT32_MAX;
   }
@@ -99,8 +101,9 @@ iree_status_t loom_low_schedule_build_scope_dependencies(
   const loom_low_schedule_block_t* last_block =
       &state->blocks[state->body->block_count - 1];
   const uint32_t node_count = last_block->node_start + last_block->node_count;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      state->arena, node_count, sizeof(*next_members), (void**)&next_members));
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate_array(state->scratch_arena, node_count,
+                                sizeof(*next_members), (void**)&next_members));
 
   uint32_t control_index = 0;
   iree_status_t status = iree_ok_status();

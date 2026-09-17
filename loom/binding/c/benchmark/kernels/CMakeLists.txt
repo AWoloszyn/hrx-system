@@ -29,6 +29,8 @@ iree_c_embed_data(
   NAME
     ffn_gate_up_smoke
   SRCS
+    "ffn/gate_up_quadratic_bf16_amdgpu.loom"
+    "ffn/gate_up_quadratic_bf16_xdna.loom"
     "ffn/gate_up_quadratic_f32_amdgpu.loom"
     "ffn/gate_up_quadratic_f32_spirv.loom"
   C_FILE_OUTPUT

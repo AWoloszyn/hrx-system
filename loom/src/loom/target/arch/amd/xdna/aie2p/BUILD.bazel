@@ -1,0 +1,740 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load(
+    "//loom/build_tools/bazel:build_defs.bzl",
+    "loom_cc_binary",
+    "loom_cc_library",
+    "loom_cc_test",
+    "loom_generated_file_family",
+)
+load(
+    "//loom/build_tools/bazel:loom_check.bzl",
+    "loom_check_test_suite",
+)
+
+package(
+    default_visibility = ["//visibility:private"],
+    features = ["layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+loom_generated_file_family(
+    name = "target_tables_gen",
+    generator = "//loom/py/loom/gen/target/arch/amd/xdna/aie2p:encoding_tables",
+    output_flags = [
+        "--array-descriptor-source-output",
+        "--array-descriptor-header-output",
+        "--descriptor-source-output",
+        "--descriptor-header-output",
+        "--encoding-output",
+        "--machine-output",
+        "--register-output",
+    ],
+    outputs = [
+        "descriptors/array_descriptors.c",
+        "descriptors/array_descriptors.h",
+        "descriptors/core_descriptors.c",
+        "descriptors/core_descriptors.h",
+        "encoding/encoding_tables.inl",
+        "machine/machine_tables.inl",
+        "descriptors/register_tables.inl",
+    ],
+)
+
+loom_cc_library(
+    name = "target_facts",
+    srcs = ["facts.c"],
+    hdrs = ["facts.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//loom/src/loom/target:facts",
+        "//loom/src/loom/target/arch/amd/xdna:device_profile",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "target_profile",
+    srcs = ["profile.c"],
+    hdrs = ["profile.h"],
+    textual_hdrs = [
+        "//loom/src/loom/target/arch/amd/xdna:device/aie2p_profile_tables.inl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":target_facts",
+        ":target_records",
+        "//loom/src/loom/target:profile",
+        "//loom/src/loom/target/arch/amd/xdna:array_facts",
+        "//loom/src/loom/target/arch/amd/xdna:device_profile",
+        "//loom/src/loom/target/arch/amd/xdna/aie2p/ops",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "array_descriptors",
+    srcs = [":descriptors/array_descriptors.c"],
+    hdrs = [":descriptors/array_descriptors.h"],
+    deps = ["//loom/src/loom/codegen/low:descriptors"],
+)
+
+loom_cc_library(
+    name = "encoding",
+    srcs = ["encoding/encoding.c"],
+    hdrs = ["encoding/encoding.h"],
+    textual_hdrs = [":encoding/encoding_tables.inl"],
+    visibility = ["//visibility:public"],
+    deps = ["//runtime/src/iree/base"],
+)
+
+loom_cc_library(
+    name = "machine",
+    srcs = ["machine/machine.c"],
+    hdrs = ["machine/machine.h"],
+    textual_hdrs = [":machine/machine_tables.inl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+    ],
+)
+
+loom_cc_library(
+    name = "core_descriptors",
+    srcs = [":descriptors/core_descriptors.c"],
+    hdrs = [":descriptors/core_descriptors.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//loom/src/loom/codegen/low:descriptors"],
+)
+
+loom_cc_library(
+    name = "descriptor_encoding",
+    srcs = ["descriptors/encoding.c"],
+    hdrs = ["descriptors/encoding.h"],
+    textual_hdrs = [":descriptors/register_tables.inl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":encoding",
+        ":machine",
+        "//loom/src/loom/codegen/low:descriptors",
+        "//loom/src/loom/codegen/low/allocation:assignment",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+    ],
+)
+
+loom_cc_library(
+    name = "legalization",
+    srcs = ["legalization.c"],
+    hdrs = ["legalization.h"],
+    deps = [
+        ":core_descriptors",
+        "//loom/src/loom/ops/vector",
+        "//loom/src/loom/target:legalization",
+        "//loom/src/loom/transforms/vector:packet_legalization",
+        "//loom/src/loom/transforms/vector:target_legalization",
+        "//loom/src/loom/transforms/vector:to_scalar",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "low_registry",
+    srcs = ["descriptors/low_registry.c"],
+    hdrs = ["descriptors/low_registry.h"],
+    visibility = ["//loom/src/loom/tooling/target/amd/xdna:__pkg__"],
+    deps = [
+        ":array_descriptors",
+        ":core_descriptors",
+        "//loom/src/loom/codegen/low/schedule",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/target:low_descriptor_registry",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "low_verify",
+    srcs = ["low_verify.c"],
+    hdrs = ["low_verify.h"],
+    deps = [
+        ":array_descriptors",
+        "//loom/src/loom/codegen/low:diagnostics",
+        "//loom/src/loom/codegen/low:packet",
+        "//loom/src/loom/codegen/low:verify",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/target:projection",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "math_policy",
+    srcs = ["math_policy.c"],
+    hdrs = ["math_policy.h"],
+    deps = [
+        "//loom/src/loom/target:math_policy",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "array_plan",
+    srcs = [
+        "array/binding.c",
+        "array/binding.h",
+        "array/plan.c",
+        "array/route.c",
+        "array/route.h",
+        "array/topology.c",
+        "array/topology.h",
+    ],
+    hdrs = ["array/plan.h"],
+    deps = [
+        ":array_descriptors",
+        "//loom/src/loom/analysis:scc",
+        "//loom/src/loom/codegen/low:function_requirements",
+        "//loom/src/loom/codegen/low:packet",
+        "//loom/src/loom/codegen/low:storage_layout",
+        "//loom/src/loom/codegen/low:target_binding",
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ir:facts",
+        "//loom/src/loom/ops:combining",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/encoding",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/target/arch/amd/xdna:array_facts",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "array_program",
+    srcs = ["array/program.c"],
+    hdrs = ["array/program.h"],
+    deps = [
+        ":array_plan",
+        "//loom/src/loom/target/arch/amd/xdna:array_facts",
+        "//loom/src/loom/target/arch/amd/xdna:array_registers",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "array_resident",
+    srcs = ["array/resident.c"],
+    hdrs = ["array/resident.h"],
+    deps = [
+        ":array_plan",
+        ":core_descriptors",
+        "//loom/src/loom/codegen/low:builder",
+        "//loom/src/loom/codegen/low:function",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/rewrite:materialize",
+        "//loom/src/loom/rewrite:remap",
+        "//loom/src/loom/target/arch/amd/xdna:array_facts",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "target_records",
+    srcs = ["records/target_records.c"],
+    hdrs = ["records/target_records.h"],
+    visibility = [
+        "//loom/src/loom/target/arch/amd/xdna/aie2p:__subpackages__",
+        "//loom/src/loom/tooling/target/amd/xdna:__pkg__",
+    ],
+    deps = [
+        "//loom/src/loom/target:types",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "lower",
+    srcs = [
+        "lower/encode.c",
+        "lower/matrix.c",
+        "lower/registry.c",
+        "lower/storage.c",
+    ],
+    hdrs = [
+        "lower/encode.h",
+        "lower/lower.h",
+        "lower/matrix.h",
+        "lower/storage.h",
+    ],
+    textual_hdrs = ["//loom/src/loom/target/arch/amd/xdna/aie2p/contracts:core_index.inl"],
+    deps = [
+        ":core_descriptors",
+        "//loom/src/loom/analysis:contract_vector",
+        "//loom/src/loom/codegen/low/lower",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ir:facts",
+        "//loom/src/loom/ops/buffer",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/ops/vector",
+        "//loom/src/loom/target/arch/amd/xdna/aie2p/contracts:core",
+        "//loom/src/loom/target/arch/amd/xdna/aie2p/contracts:core_lower_rules",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "provider",
+    srcs = ["provider.c"],
+    hdrs = ["provider.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":legalization",
+        ":low_registry",
+        ":low_verify",
+        ":lower",
+        ":math_policy",
+        ":pipeline_pass",
+        ":target_facts",
+        ":target_profile",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/pass:builder",
+        "//loom/src/loom/target:provider",
+        "//loom/src/loom/target/arch/amd/xdna/aie2p/ops",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "pipeline_lower",
+    srcs = [
+        "pipeline/composition.c",
+        "pipeline/lower.c",
+    ],
+    hdrs = [
+        "pipeline/composition.h",
+        "pipeline/lower.h",
+    ],
+    deps = [
+        ":array_descriptors",
+        ":array_plan",
+        "//loom/src/loom/analysis:pipeline_firing",
+        "//loom/src/loom/analysis:pipeline_plan",
+        "//loom/src/loom/codegen/low:builder",
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/buffer",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/ops/pipeline",
+        "//loom/src/loom/rewrite:callable",
+        "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/target/arch/amd/xdna:array_facts",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "pipeline_pass",
+    srcs = ["pipeline/pass.c"],
+    hdrs = ["pipeline/pass.h"],
+    deps = [
+        ":pipeline_lower",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/pipeline",
+        "//loom/src/loom/pass:registry",
+        "//loom/src/loom/pass:types",
+        "//loom/src/loom/pass:value_facts",
+        "//loom/src/loom/target:function_version",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "check_provider",
+    testonly = True,
+    srcs = [
+        "check/array_plan.c",
+        "check/leaf.c",
+        "check/provider.c",
+    ],
+    hdrs = [
+        "check/array_plan.h",
+        "check/leaf.h",
+        "check/provider.h",
+    ],
+    deps = [
+        ":array_plan",
+        ":array_program",
+        ":array_resident",
+        ":leaf_compile",
+        ":machine",
+        ":provider",
+        "//loom/src/loom/codegen/low:diagnostics",
+        "//loom/src/loom/codegen/low:function_requirements",
+        "//loom/src/loom/codegen/low:storage_layout",
+        "//loom/src/loom/codegen/low:text_asm",
+        "//loom/src/loom/format/text:printer",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/tools/loom-check:execute",
+        "//loom/src/loom/tools/loom-check:provider",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_binary(
+    name = "loom-check",
+    testonly = True,
+    srcs = ["check/loom-check.c"],
+    deps = [
+        ":check_provider",
+        "//loom/src/loom/tools/loom-check:provider",
+        "//loom/src/loom/tools/loom-check:test_provider",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_check_test_suite(
+    name = "loom_check_file_test",
+    srcs = [
+        "test/array_plan/bank_spans.loom-test",
+        "test/array_plan/composed_folds.loom-test",
+        "test/array_plan/dma_service.loom-test",
+        "test/array_plan/endpoint_storage.loom-test",
+        "test/array_plan/multicast.loom-test",
+        "test/array_plan/packed_record.loom-test",
+        "test/array_plan/pipeline_views.loom-test",
+        "test/array_plan/record_contracts.loom-test",
+        "test/array_plan/ring_wrap.loom-test",
+        "test/array_plan/split_k.loom-test",
+        "test/array_plan/strided_transfer.loom-test",
+        "test/array_plan/temporal_fold.loom-test",
+        "test/array_plan/worker_cycles.loom-test",
+        "test/descriptors/bf16_comparison.loom-test",
+        "test/descriptors/bfp_move.loom-test",
+        "test/descriptors/cascade.loom-test",
+        "test/descriptors/core_observation.loom-test",
+        "test/descriptors/dimensions.loom-test",
+        "test/descriptors/fifo.loom-test",
+        "test/descriptors/floating_matrix.loom-test",
+        "test/descriptors/fused_vector_memory.loom-test",
+        "test/descriptors/implicit_clobbers.loom-test",
+        "test/descriptors/integer_comparison.loom-test",
+        "test/descriptors/integer_matrix.loom-test",
+        "test/descriptors/integer_narrowing.loom-test",
+        "test/descriptors/integer_reduction.loom-test",
+        "test/descriptors/lookup_memory.loom-test",
+        "test/descriptors/memory_immediates.loom-test",
+        "test/descriptors/postincrement.loom-test",
+        "test/descriptors/scalar_carry.loom-test",
+        "test/descriptors/scalar_nonlinear.loom-test",
+        "test/descriptors/scalar_stream.loom-test",
+        "test/leaf_allocation.loom-test",
+        "test/leaf_interfaces.loom-test",
+        "test/leaf_schedule.loom-test",
+        "test/module_contracts.loom-test",
+        "test/pipeline_composition.loom-test",
+        "test/pipeline_ports.loom-test",
+        "test/pipeline_reduce.loom-test",
+        "test/source_low/function_storage.loom-test",
+        "test/source_low/fused_packet_memory.loom-test",
+        "test/source_low/index_conversion.loom-test",
+        "test/source_low/lookup_table.loom-test",
+        "test/source_low/matrix_bfp.loom-test",
+        "test/source_low/matrix_multiply.loom-test",
+        "test/source_low/matrix_store.loom-test",
+        "test/source_low/memory_scalar_addressing.loom-test",
+        "test/source_low/numeric_conversion_f16.loom-test",
+        "test/source_low/numeric_conversion_float8.loom-test",
+        "test/source_low/numeric_conversion_wide.loom-test",
+        "test/source_low/numeric_f32.loom-test",
+        "test/source_low/numeric_index.loom-test",
+        "test/source_low/numeric_index_conversion.loom-test",
+        "test/source_low/numeric_minmax.loom-test",
+        "test/source_low/numeric_nonlinear.loom-test",
+        "test/source_low/numeric_reduce.loom-test",
+        "test/source_low/numeric_scalar_f32.loom-test",
+        "test/source_low/numeric_scalar_i32.loom-test",
+        "test/source_low/numeric_scalar_i64.loom-test",
+        "test/source_low/packed_bitfield.loom-test",
+        "test/source_low/packed_bitpack.loom-test",
+        "test/source_low/packed_dot_integer.loom-test",
+        "test/source_low/packed_i8_arithmetic.loom-test",
+        "test/source_low/packed_integer_arithmetic.loom-test",
+        "test/source_low/vector_bitcast.loom-test",
+        "test/source_low/vector_dot_interleave.loom-test",
+        "test/source_low/vector_mask_select.loom-test",
+        "test/source_low/vector_memory.loom-test",
+        "test/source_low/vector_predicate.loom-test",
+        "test/source_low/vector_slice.loom-test",
+        "test/source_low/vector_structural.loom-test",
+    ],
+    data = [
+        "//loom/src/loom/test/corpus/source_low:lookup_table.loom-test",
+        "//loom/src/loom/test/corpus/source_low:matrix_multiply.loom-test",
+        "//loom/src/loom/test/corpus/source_low:memory_scalar_addressing.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_conversion_float8.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_conversion_wide.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_index.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_index_conversion.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_minmax.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_nonlinear.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_reduce.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_scalar_f32.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_scalar_i32.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_scalar_i64.loom-test",
+        "//loom/src/loom/test/corpus/source_low:packed_bitfield.loom-test",
+        "//loom/src/loom/test/corpus/source_low:packed_bitpack.loom-test",
+        "//loom/src/loom/test/corpus/source_low:packed_dot_integer.loom-test",
+        "//loom/src/loom/test/corpus/source_low:packed_i8_arithmetic.loom-test",
+        "//loom/src/loom/test/corpus/source_low:packed_integer_arithmetic.loom-test",
+        "//loom/src/loom/test/corpus/source_low:vector_bitcast.loom-test",
+        "//loom/src/loom/test/corpus/source_low:vector_mask_select.loom-test",
+        "//loom/src/loom/test/corpus/source_low:vector_slice.loom-test",
+    ],
+    runner = ":loom-check",
+    test_name_prefix_to_strip = "test/source_low/",
+)
+
+loom_cc_library(
+    name = "bundle_plan",
+    srcs = ["emit/bundle_plan.c"],
+    hdrs = ["emit/bundle_plan.h"],
+    deps = [
+        ":core_descriptors",
+        ":descriptor_encoding",
+        ":encoding",
+        ":machine",
+        "//loom/src/loom/codegen/low:frame",
+        "//loom/src/loom/codegen/low:packet",
+        "//loom/src/loom/codegen/low:storage_layout",
+        "//loom/src/loom/codegen/low/schedule:physical_issue",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/low",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "relocation",
+    srcs = ["emit/relocation.c"],
+    hdrs = ["emit/relocation.h"],
+    deps = [
+        ":core_descriptors",
+        ":encoding",
+        ":machine",
+        "//loom/src/loom/target/emit/native:contribution",
+        "//loom/src/loom/target/emit/native:object",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "leaf_object",
+    srcs = ["emit/leaf_object.c"],
+    hdrs = ["emit/leaf_object.h"],
+    deps = [
+        ":bundle_plan",
+        ":core_descriptors",
+        ":encoding",
+        ":relocation",
+        "//loom/src/loom/codegen/low:diagnostics",
+        "//loom/src/loom/codegen/low:packet",
+        "//loom/src/loom/codegen/low:storage_layout",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/target/emit/native:object",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/schemas:xdna_executable",
+    ],
+)
+
+loom_cc_library(
+    name = "leaf_compile",
+    srcs = ["emit/leaf_compile.c"],
+    hdrs = ["emit/leaf_compile.h"],
+    deps = [
+        ":bundle_plan",
+        ":leaf_object",
+        ":low_registry",
+        "//loom/src/loom/analysis:symbol_facts",
+        "//loom/src/loom/codegen/low:descriptors",
+        "//loom/src/loom/codegen/low:frame",
+        "//loom/src/loom/codegen/low/allocation:target_constraints",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/target/reporting:low",
+        "//loom/src/loom/target/reporting:report",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "tile_link",
+    srcs = ["emit/tile_link.c"],
+    hdrs = ["emit/tile_link.h"],
+    deps = [
+        ":leaf_object",
+        ":relocation",
+        "//loom/src/loom/target/emit/native:contribution",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "xdna_product",
+    srcs = ["emit/xdna_product.c"],
+    hdrs = ["emit/xdna_product.h"],
+    deps = [
+        ":array_program",
+        ":tile_link",
+        "//loom/src/loom/target/arch/amd/xdna:device_profile",
+        "//loom/src/loom/target/emit/native:elf",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/io:stream",
+        "//runtime/src/iree/schemas:xdna_executable",
+    ],
+)
+
+loom_cc_library(
+    name = "artifact",
+    srcs = [
+        "emit/array_report.c",
+        "emit/array_report.h",
+        "emit/artifact.c",
+    ],
+    hdrs = ["emit/artifact.h"],
+    visibility = [
+        "//loom/binding/c/target/amd/xdna:__pkg__",
+        "//loom/src/loom/tooling/target/amd/xdna:__pkg__",
+    ],
+    deps = [
+        ":array_plan",
+        ":array_program",
+        ":array_resident",
+        ":leaf_compile",
+        ":target_facts",
+        ":tile_link",
+        ":xdna_product",
+        "//loom/src/loom/codegen/low:descriptors",
+        "//loom/src/loom/codegen/low:diagnostics",
+        "//loom/src/loom/codegen/low:function_requirements",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ir:facts",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/encoding",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/target:function_version",
+        "//loom/src/loom/target:provider",
+        "//loom/src/loom/target/arch/amd/xdna:device_profile",
+        "//loom/src/loom/target/reporting:low",
+        "//loom/src/loom/target/reporting:report",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/io:stream",
+    ],
+)
+
+loom_cc_test(
+    name = "provider_test",
+    srcs = ["provider_test.cc"],
+    deps = [
+        ":provider",
+        "//loom/src/loom/target:provider",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "array_program_test",
+    srcs = ["array/program_test.cc"],
+    deps = [
+        ":array_program",
+        "//loom/src/loom/codegen/low:function_requirements",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "encoding_test",
+    srcs = ["encoding/encoding_test.cc"],
+    deps = [
+        ":encoding",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "machine_test",
+    srcs = ["machine/machine_test.cc"],
+    deps = [
+        ":encoding",
+        ":machine",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "descriptor_encoding_test",
+    srcs = ["descriptors/encoding_test.cc"],
+    deps = [
+        ":core_descriptors",
+        ":descriptor_encoding",
+        ":encoding",
+        ":machine",
+        "//loom/src/loom/codegen/low:descriptors",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "tile_link_test",
+    srcs = ["emit/tile_link_test.cc"],
+    deps = [
+        ":encoding",
+        ":relocation",
+        ":tile_link",
+        "//loom/src/loom/target/emit/native:object",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)

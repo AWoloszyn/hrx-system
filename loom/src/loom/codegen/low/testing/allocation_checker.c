@@ -440,31 +440,8 @@ static bool loom_low_allocation_checker_relation_satisfied(
           source, relation->source_unit_offset, relation->unit_count)) {
     return false;
   }
-  const bool classes_share =
-      result->location_kind == source->location_kind &&
-      loom_low_reg_class_storage_key(checker->descriptor_set,
-                                     result->descriptor_reg_class_id) ==
-          loom_low_reg_class_storage_key(checker->descriptor_set,
-                                         source->descriptor_reg_class_id);
-  const uint64_t result_begin =
-      (uint64_t)result->location_base + relation->result_unit_offset;
-  const uint64_t source_begin =
-      (uint64_t)source->location_base + relation->source_unit_offset;
-  switch (relation->kind) {
-    case LOOM_LOW_PLACEMENT_RELATION_SAME_STORAGE:
-    case LOOM_LOW_PLACEMENT_RELATION_SUBRANGE:
-    case LOOM_LOW_PLACEMENT_RELATION_CONTIGUOUS_PART:
-      return classes_share && result_begin == source_begin;
-    case LOOM_LOW_PLACEMENT_RELATION_DIFFERENT_MASKED_LOCATION:
-      return classes_share && relation->location_mask != 0 &&
-             ((result_begin ^ source_begin) & relation->location_mask) != 0;
-    case LOOM_LOW_PLACEMENT_RELATION_DISJOINT_STORAGE:
-      return !classes_share ||
-             result_begin + relation->unit_count <= source_begin ||
-             source_begin + relation->unit_count <= result_begin;
-    default:
-      return false;
-  }
+  return loom_low_allocation_storage_placement_relation_satisfied(
+      checker->descriptor_set, relation, result, source);
 }
 
 // Hard aliases name one storage unit even when its SSA owner changes. Keep
@@ -510,22 +487,17 @@ static void loom_low_allocation_checker_constraints(
   for (iree_host_size_t i = 0; i < allocation->reserved_range_count; ++i) {
     const loom_low_allocation_resolved_reserved_range_t* reserved =
         &allocation->reserved_ranges[i];
-    const uint64_t reserved_end =
-        (uint64_t)reserved->location_base + reserved->location_count;
+    const loom_low_allocation_assignment_t reserved_assignment = {
+        .descriptor_reg_class_id = reserved->descriptor_reg_class_id,
+        .location_kind = reserved->location_kind,
+        .location_base = reserved->location_base,
+        .location_count = reserved->location_count,
+    };
     for (iree_host_size_t j = 0; j < allocation->assignment_count; ++j) {
       const loom_low_allocation_assignment_t* assignment =
           &allocation->assignments[j];
-      if (assignment->location_kind != reserved->location_kind ||
-          loom_low_reg_class_storage_key(checker->descriptor_set,
-                                         assignment->descriptor_reg_class_id) !=
-              loom_low_reg_class_storage_key(
-                  checker->descriptor_set, reserved->descriptor_reg_class_id)) {
-        continue;
-      }
-      const uint64_t assignment_end =
-          (uint64_t)assignment->location_base + assignment->location_count;
-      if (assignment->location_base < reserved_end &&
-          reserved->location_base < assignment_end) {
+      if (loom_low_allocation_storage_assignment_ranges_overlap(
+              checker->descriptor_set, assignment, &reserved_assignment)) {
         loom_low_allocation_checker_record(
             checker, LOOM_LOW_ALLOCATION_CHECK_VIOLATION_RESERVED_LOCATION,
             (uint32_t)i, (uint32_t)j, assignment->value_id,
@@ -582,21 +554,17 @@ static void loom_low_allocation_checker_constraints(
 }
 
 static bool loom_low_allocation_checker_segments_overlap(
-    const loom_liveness_analysis_t* liveness,
+    const loom_liveness_segment_t* segments,
     loom_liveness_segment_range_t lhs_range,
     loom_liveness_segment_range_t rhs_range, uint32_t overlap_begin,
     uint32_t overlap_end) {
-  if ((uint64_t)lhs_range.start + lhs_range.count > liveness->segment_count ||
-      (uint64_t)rhs_range.start + rhs_range.count > liveness->segment_count) {
-    return true;
-  }
-  // Missing semantic segments make that unit contiguous, not its peer. Both
+  // Missing storage segments make that unit contiguous, not its peer. Both
   // sparse lists are clipped to the actual overlapping per-unit storage span.
   const loom_liveness_segment_t contiguous = {overlap_begin, overlap_end};
   const loom_liveness_segment_t* lhs_segments =
-      lhs_range.count ? &liveness->segments[lhs_range.start] : &contiguous;
+      lhs_range.count ? &segments[lhs_range.start] : &contiguous;
   const loom_liveness_segment_t* rhs_segments =
-      rhs_range.count ? &liveness->segments[rhs_range.start] : &contiguous;
+      rhs_range.count ? &segments[rhs_range.start] : &contiguous;
   const uint32_t lhs_count = iree_max(lhs_range.count, 1u);
   const uint32_t rhs_count = iree_max(rhs_range.count, 1u);
   uint32_t lhs_index = 0;
@@ -656,8 +624,9 @@ static bool loom_low_allocation_checker_unit_lifetimes_overlap(
       .end_point = iree_min(lhs_end, rhs_end),
   };
   return loom_low_allocation_checker_segments_overlap(
-      &allocation->liveness, lhs->liveness_segments, rhs->liveness_segments,
-      iree_max(lhs_start, rhs_start), iree_min(lhs_end, rhs_end));
+      allocation->storage_segments, lhs->liveness_segments,
+      rhs->liveness_segments, iree_max(lhs_start, rhs_start),
+      iree_min(lhs_end, rhs_end));
 }
 
 static uint32_t loom_low_allocation_checker_content_root(uint32_t* parents,
@@ -842,9 +811,48 @@ static void loom_low_allocation_checker_storage_conflicts(
     if (lhs->location_count == 0) {
       continue;
     }
+    const bool lhs_is_explicit =
+        loom_low_allocation_storage_assignment_uses_explicit_physical_register(
+            checker->descriptor_set, lhs);
     const uint64_t lhs_end = (uint64_t)lhs->location_base + lhs->location_count;
     for (iree_host_size_t j = i + 1; j < allocation->assignment_count; ++j) {
       const loom_low_allocation_assignment_t* rhs = &allocation->assignments[j];
+      const bool rhs_is_explicit =
+          loom_low_allocation_storage_assignment_uses_explicit_physical_register(
+              checker->descriptor_set, rhs);
+      if (lhs_is_explicit || rhs_is_explicit) {
+        if (!lhs_is_explicit || !rhs_is_explicit ||
+            !loom_low_allocation_storage_assignment_ranges_overlap(
+                checker->descriptor_set, lhs, rhs)) {
+          continue;
+        }
+        bool conflict = false;
+        for (uint32_t lhs_unit = 0; lhs_unit < lhs->location_count && !conflict;
+             ++lhs_unit) {
+          for (uint32_t rhs_unit = 0; rhs_unit < rhs->location_count;
+               ++rhs_unit) {
+            loom_liveness_segment_t overlap;
+            if (!loom_low_allocation_storage_assignment_subranges_overlap(
+                    checker->descriptor_set, lhs, lhs_unit, rhs, rhs_unit,
+                    /*unit_count=*/1) ||
+                !loom_low_allocation_checker_unit_lifetimes_overlap(
+                    allocation, lhs, lhs_unit, rhs, rhs_unit, &overlap) ||
+                loom_low_allocation_checker_unit_alias_is_authorized(
+                    checker, lhs, lhs_unit, rhs, rhs_unit, overlap)) {
+              continue;
+            }
+            conflict = true;
+            break;
+          }
+        }
+        if (conflict) {
+          loom_low_allocation_checker_record(
+              checker, LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT,
+              (uint32_t)i, (uint32_t)j, lhs->value_id, rhs->value_id,
+              iree_max(lhs->start_point, rhs->start_point));
+        }
+        continue;
+      }
       if (lhs->location_kind != rhs->location_kind ||
           loom_low_allocation_checker_storage_key(checker, lhs) !=
               loom_low_allocation_checker_storage_key(checker, rhs) ||
@@ -881,16 +889,8 @@ static bool loom_low_allocation_checker_units_overlap(
     const loom_low_allocation_checker_t* checker,
     const loom_low_allocation_assignment_t* lhs,
     const loom_low_allocation_assignment_t* rhs) {
-  if (!loom_low_allocation_assignment_is_register_like(lhs) ||
-      !loom_low_allocation_assignment_is_register_like(rhs) ||
-      lhs->location_kind != rhs->location_kind ||
-      loom_low_allocation_checker_storage_key(checker, lhs) !=
-          loom_low_allocation_checker_storage_key(checker, rhs)) {
-    return false;
-  }
-  const uint64_t lhs_end = (uint64_t)lhs->location_base + lhs->location_count;
-  const uint64_t rhs_end = (uint64_t)rhs->location_base + rhs->location_count;
-  return lhs->location_base < rhs_end && rhs->location_base < lhs_end;
+  return loom_low_allocation_storage_assignment_ranges_overlap(
+      checker->descriptor_set, lhs, rhs);
 }
 
 static void loom_low_allocation_checker_early_clobbers(
@@ -1046,10 +1046,14 @@ static void loom_low_allocation_checker_storage_leases(
                                              lease->descriptor_reg_class_id)) {
         continue;
       }
-      const uint64_t candidate_end =
-          (uint64_t)candidate->location_base + candidate->location_count;
-      if (candidate->location_base < lease_end &&
-          lease->location_base < candidate_end) {
+      const loom_low_allocation_assignment_t lease_assignment = {
+          .descriptor_reg_class_id = lease->descriptor_reg_class_id,
+          .location_kind = lease->location_kind,
+          .location_base = lease->location_base,
+          .location_count = lease->location_count,
+      };
+      if (loom_low_allocation_storage_assignment_ranges_overlap(
+              checker->descriptor_set, candidate, &lease_assignment)) {
         loom_low_allocation_checker_record(
             checker, LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_LEASE,
             (uint32_t)i, (uint32_t)j, lease->value_id, candidate->value_id,

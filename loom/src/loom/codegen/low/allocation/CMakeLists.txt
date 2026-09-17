@@ -11,6 +11,36 @@ iree_add_all_subdirs()
 
 loom_cc_library(
   NAME
+    active_capacity
+  HDRS
+    "active_capacity.h"
+  SRCS
+    "active_capacity.c"
+  DEPS
+    ::live_range
+    ::unit_liveness
+    iree::base
+    iree::base::internal::arena
+    loom::analysis::liveness
+    loom::codegen::low::descriptors
+    loom::codegen::low::placement
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    active_capacity_test
+  SRCS
+    "active_capacity_test.cc"
+  DEPS
+    ::active_capacity
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_library(
+  NAME
     active_set
   HDRS
     "active_set.h"
@@ -50,6 +80,7 @@ loom_cc_library(
   DEPS
     ::assignment
     ::live_range
+    ::storage
     ::unit_liveness
     iree::base
     iree::base::internal::arena
@@ -126,6 +157,8 @@ loom_cc_library(
     ::assignment
     ::assignment_map
     ::live_range
+    ::physical_domains
+    ::scalar_packing
     ::spill_plan
     ::spill_traffic
     ::storage
@@ -177,6 +210,30 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    concat_reservation
+  HDRS
+    "concat_reservation.h"
+  SRCS
+    "concat_reservation.c"
+  DEPS
+    ::assignment
+    ::assignment_map
+    ::live_range
+    ::search
+    ::storage
+    ::target_constraints
+    ::unit_liveness
+    iree::base
+    loom::analysis::liveness
+    loom::codegen::low::descriptors
+    loom::codegen::low::placement
+    loom::ir
+    loom::target::residency
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     coalescing
   HDRS
     "coalescing.h"
@@ -185,6 +242,7 @@ loom_cc_library(
   DEPS
     ::assignment
     ::assignment_map
+    ::concat_reservation
     ::edge_alias
     ::live_range
     ::search
@@ -366,6 +424,7 @@ loom_cc_test(
     iree::base
     iree::testing::gtest
     iree::testing::gtest_main
+    loom::target::test::descriptors
 )
 
 loom_cc_library(
@@ -446,6 +505,7 @@ loom_cc_library(
     loom::codegen::low::descriptors
     loom::ir
     loom::target::registers
+    loom::util::adaptive_sort
   PUBLIC
 )
 
@@ -497,6 +557,55 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    physical_domains
+  HDRS
+    "physical_domains.h"
+  SRCS
+    "physical_domains.c"
+  DEPS
+    ::live_range
+    ::unit_liveness
+    iree::base
+    iree::base::internal
+    iree::base::internal::arena
+    loom::analysis::liveness
+    loom::codegen::low::descriptors
+    loom::codegen::low::placement
+    loom::util::adaptive_sort
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    scalar_packing
+  HDRS
+    "scalar_packing.h"
+  SRCS
+    "scalar_packing.c"
+  DEPS
+    ::interval_order
+    ::live_range
+    iree::base
+    iree::base::internal::arena
+    loom::analysis::liveness
+    loom::codegen::low::descriptors
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    scalar_packing_test
+  SRCS
+    "scalar_packing_test.cc"
+  DEPS
+    ::scalar_packing
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_library(
+  NAME
     loop_edge_relocation
   HDRS
     "loop_edge_relocation.h"
@@ -544,12 +653,15 @@ loom_cc_library(
   SRCS
     "interval_assignment.c"
   DEPS
+    ::active_capacity
     ::active_set
     ::assignment
     ::assignment_map
     ::coalescing
     ::interval_order
     ::live_range
+    ::physical_domains
+    ::scalar_packing
     ::search
     ::spill_plan
     ::spill_traffic
@@ -605,7 +717,9 @@ loom_cc_library(
   SRCS
     "unit_liveness.c"
   DEPS
+    ::assignment
     ::live_range
+    ::storage
     iree::base
     iree::base::internal::arena
     loom::analysis::liveness
@@ -614,6 +728,7 @@ loom_cc_library(
     loom::codegen::low::target_binding
     loom::ir
     loom::ops::low
+    loom::util::adaptive_sort
   PUBLIC
 )
 
@@ -648,12 +763,14 @@ loom_cc_library(
     loom::codegen::low::descriptors
     loom::codegen::low::diagnostics
     loom::codegen::low::function
+    loom::codegen::low::placement
     loom::codegen::low::target_binding
     loom::error::emitter
     loom::error::error_defs
     loom::ir
     loom::ops::low
     loom::target::registers
+    loom::util::adaptive_sort
   PUBLIC
 )
 
@@ -668,6 +785,7 @@ loom_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     loom::error::error_defs
+    loom::ir
     loom::ops::test
     loom::target::facts_builder
     loom::target::test::descriptors
@@ -762,8 +880,28 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     loom::codegen::low::descriptors
+    loom::codegen::low::schedule
     loom::ir
   PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    move_plan_test
+  SRCS
+    "move_plan_test.cc"
+  DEPS
+    ::move_plan
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::codegen::low::frame
+    loom::codegen::low::text_asm
+    loom::format::text::parser
+    loom::ir
+    loom::ops::low
+    loom::target::test::low_registry
+    loom::testing::module_ptr
 )
 
 loom_cc_library(

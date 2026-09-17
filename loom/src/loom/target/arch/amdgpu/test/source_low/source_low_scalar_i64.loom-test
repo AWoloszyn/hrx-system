@@ -334,9 +334,9 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_
   %8 = slice %lhs[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %9 = slice %rhs[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %10 = slice %rhs[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %11 = s_add_u32 %7, %9
-  %12 = s_addc_u32 %8, %10
-  %result = concat(%11, %12) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %11, %12 = s_add_co_u32 %7, %9
+  %13, %14 = s_addc_u32 %8, %10, %12
+  %result = concat(%11, %13) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   return %result
 }
 
@@ -379,4 +379,27 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_
   %7 = slice %rhs[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %result = s_lshl_b64 %lhs, %7
   return %result
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @scalar_f64_constant_select_bitcast(%condition: i1, %fallback: f64) -> (i64) {
+  %constant = scalar.constant -1.1000000000000001 : f64
+  %selected = scf.select %condition, %constant, %fallback : f64
+  %bits = scalar.bitcast %selected : f64 to i64
+  func.return %bits : i64
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_f64_constant_select_bitcast(%condition: reg<amdgpu.sgpr x2>, %fallback: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %9 = v_mov_b32 2576980378
+  %10 = v_mov_b32 3220281753
+  %13 = slice %fallback[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %14 = v_cndmask_b32 %13, %9, %condition
+  %16 = slice %fallback[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %17 = v_cndmask_b32 %16, %10, %condition
+  %bits = concat(%14, %17) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  return %bits
 }

@@ -476,7 +476,7 @@ iree_status_t loom_vector_to_scalar_build_single_bit_extract(
       state, LOOM_OP_SCALAR_ANDI, shifted_lane, one_mask, lane_type, out_bit);
 }
 
-static iree_status_t loom_vector_to_scalar_extract_lane(
+iree_status_t loom_vector_to_scalar_build_terminal_extract(
     loom_vector_to_scalar_state_t* state, loom_value_id_t vector_value,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {
   loom_type_t vector_type =
@@ -819,7 +819,10 @@ bool loom_vector_to_scalar_can_materialize_def_lane(
 static bool loom_vector_to_scalar_read_can_rematerialize_through(
     const loom_module_t* module, const loom_op_t* read_op,
     const loom_op_t* consumer_op, const loom_op_t* source_predecessor_op) {
+  // Lane expansion may interleave reads with the consumer's own effects.
+  // A writing consumer must use the original input snapshot throughout.
   if (!loom_motion_op_is_ordinary_load(module, read_op) || !consumer_op ||
+      !loom_motion_read_can_cross_op(module, consumer_op) ||
       read_op->parent_block != consumer_op->parent_block ||
       !source_predecessor_op ||
       source_predecessor_op->parent_block != consumer_op->parent_block ||
@@ -1163,5 +1166,6 @@ iree_status_t loom_vector_to_scalar_materialize_lane(
   if (materialized) {
     return iree_ok_status();
   }
-  return loom_vector_to_scalar_extract_lane(state, value, indices, out_lane);
+  return loom_vector_to_scalar_build_terminal_extract(state, value, indices,
+                                                      out_lane);
 }

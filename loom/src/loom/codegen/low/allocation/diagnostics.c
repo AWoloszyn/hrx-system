@@ -11,6 +11,32 @@
 #include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
 
+static iree_status_t loom_low_allocation_emit_failure(
+    const loom_low_allocation_table_t* table,
+    iree_diagnostic_emitter_t emitter) {
+  const loom_low_allocation_failure_t* failure = &table->failure;
+  loom_diagnostic_param_t params[] = {
+      loom_param_string(loom_low_diagnostic_target_key(&table->target)),
+      loom_param_string(loom_low_diagnostic_export_name(&table->target)),
+      loom_param_string(loom_low_diagnostic_config_key(&table->target)),
+      loom_param_string(
+          loom_low_diagnostic_function_name(table->module, table->function_op)),
+      loom_param_string(loom_low_diagnostic_value_class_name(
+          table->target.descriptor_set, failure->value_class)),
+      loom_param_u32(failure->budget_units),
+      loom_param_u32(failure->peak_live_units),
+      loom_param_string(failure->failure_code),
+  };
+  const loom_diagnostic_emission_t emission = {
+      .module = table->module,
+      .op = failure->op,
+      .error = LOOM_ERR_BACKEND_005,
+      .params = params,
+      .param_count = IREE_ARRAYSIZE(params),
+  };
+  return iree_diagnostic_emit(emitter, &emission);
+}
+
 static iree_status_t loom_low_allocation_emit_predicted_spills(
     const loom_low_allocation_table_t* table,
     iree_diagnostic_emitter_t emitter) {
@@ -133,6 +159,8 @@ static iree_string_view_t loom_low_allocation_placement_cause_name(
       return IREE_SV("low.scf.condition");
     case LOOM_LOW_PLACEMENT_CAUSE_SCHEDULE_PAIR_AFFINITY:
       return IREE_SV("schedule-pair-affinity");
+    case LOOM_LOW_PLACEMENT_CAUSE_DESCRIPTOR_CONSTRAINT:
+      return IREE_SV("descriptor-constraint");
     default:
       return IREE_SV("unknown");
   }
@@ -151,6 +179,8 @@ static iree_string_view_t loom_low_allocation_placement_relation_kind_name(
       return IREE_SV("different-masked-location");
     case LOOM_LOW_PLACEMENT_RELATION_DISJOINT_STORAGE:
       return IREE_SV("disjoint-storage");
+    case LOOM_LOW_PLACEMENT_RELATION_SAME_REGISTER_ORDINAL:
+      return IREE_SV("same-register-ordinal");
     default:
       return IREE_SV("unknown");
   }
@@ -194,6 +224,13 @@ static iree_string_view_t loom_low_allocation_placement_decision_reason_key(
           result_assignment, relation->result_unit_offset,
           relation->unit_count)) {
     return IREE_SV("relation-exceeds-assignment");
+  }
+  if (relation->kind == LOOM_LOW_PLACEMENT_RELATION_SAME_REGISTER_ORDINAL) {
+    *out_accepted = loom_low_allocation_storage_placement_relation_satisfied(
+        table->target.descriptor_set, relation, result_assignment,
+        source_assignment);
+    return *out_accepted ? IREE_SV("assigned-register-ordinals-match")
+                         : IREE_SV("assigned-register-ordinals-differ");
   }
   if (relation->kind == LOOM_LOW_PLACEMENT_RELATION_DIFFERENT_MASKED_LOCATION) {
     if (!loom_low_allocation_storage_assignment_classes_share(
@@ -308,7 +345,14 @@ iree_status_t loom_low_allocation_diagnostics_emit(
     const loom_low_allocation_table_t* table,
     loom_low_allocation_diagnostic_flags_t flags,
     iree_diagnostic_emitter_t emitter) {
-  IREE_ASSERT_ARGUMENT(table);
+  if (emitter.fn == NULL) {
+    return iree_ok_status();
+  }
+  if (table->error_count != 0) {
+    return loom_low_allocation_failure_is_present(&table->failure)
+               ? loom_low_allocation_emit_failure(table, emitter)
+               : iree_ok_status();
+  }
   if (iree_any_bit_set(flags,
                        LOOM_LOW_ALLOCATION_DIAGNOSTIC_PREDICTED_SPILLS)) {
     IREE_RETURN_IF_ERROR(

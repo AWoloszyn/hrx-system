@@ -820,6 +820,9 @@ typedef struct loom_symbol_definition_descriptor_t {
   uint8_t visibility_attr_index_plus_one;
   // Attribute index plus one for the optional retain marker, or 0 if absent.
   uint8_t retain_attr_index_plus_one;
+  // Attribute index plus one for an enum product carrier, or 0 if this symbol
+  // definition has no product-carrier contract.
+  uint8_t product_carrier_attr_index_plus_one;
   // Result index plus one for a typed-value contract, or 0 if absent.
   uint8_t value_contract_result_index_plus_one;
   // Attribute index plus one for an exact contract value, or 0 if absent.
@@ -884,6 +887,30 @@ static inline uint8_t loom_symbol_definition_visibility_attr_index(
 static inline bool loom_symbol_definition_has_value_contract(
     const loom_symbol_definition_descriptor_t* descriptor) {
   return descriptor && descriptor->value_contract_result_index_plus_one != 0;
+}
+
+static inline uint8_t loom_symbol_definition_product_carrier_attr_index(
+    const loom_symbol_definition_descriptor_t* descriptor) {
+  return descriptor && descriptor->product_carrier_attr_index_plus_one
+             ? descriptor->product_carrier_attr_index_plus_one - 1
+             : LOOM_ATTR_INDEX_NONE;
+}
+
+// Projects the product carrier of one symbol-defining operation without
+// inspecting its body. An absent optional carrier attribute is enum value 0.
+static inline loom_symbol_product_carrier_t
+loom_symbol_definition_product_carrier(
+    const loom_symbol_definition_descriptor_t* descriptor,
+    const loom_op_t* defining_op) {
+  const uint8_t attr_index =
+      loom_symbol_definition_product_carrier_attr_index(descriptor);
+  if (defining_op == NULL || attr_index == LOOM_ATTR_INDEX_NONE) {
+    return LOOM_SYMBOL_PRODUCT_CARRIER_UNCLASSIFIED;
+  }
+  const loom_attribute_t carrier_attr =
+      loom_op_const_attrs(defining_op)[attr_index];
+  return loom_attr_is_absent(carrier_attr) ? 0
+                                           : loom_attr_as_enum(carrier_attr);
 }
 
 static inline uint8_t loom_symbol_definition_value_contract_result_index(
@@ -1450,6 +1477,22 @@ bool loom_region_branch_region_yield_only_operands(
 //===----------------------------------------------------------------------===//
 // MemoryAccess interface
 //===----------------------------------------------------------------------===//
+
+// Per-instance execution-semantics modifiers for memory-access operations.
+enum loom_memory_access_flag_bits_e {
+  // Requires every dynamic access to execute as an independently observable
+  // operation and preserves its order relative to other volatile accesses. A
+  // target may decompose one logical access into multiple physical accesses.
+  // This does not provide atomicity, synchronization, or a cache-coherence
+  // guarantee.
+  LOOM_MEMORY_ACCESS_FLAG_VOLATILE = 1u << 0,
+};
+typedef uint8_t loom_memory_access_flags_t;
+
+// Derives effective traits for a memory-access operation from its instance
+// flags. Volatile accesses carry ObservableEffect in addition to their static
+// read or write effects.
+loom_trait_flags_t loom_memory_access_effective_traits(const loom_op_t* op);
 
 // Returns true if |access| refers to a valid memory-access op. All accessor
 // helpers below tolerate a NULL op vtable and return safe defaults.

@@ -14,6 +14,7 @@ from loom.dialect.index import ALL_INDEX_OPS
 from loom.dialect.index import defs as index
 from loom.dialect.scalar import ALL_SCALAR_OPS
 from loom.dialect.scalar import arithmetic as scalar_arithmetic
+from loom.dialect.scalar import bitwise as scalar_bitwise
 from loom.dialect.scalar import conversion as scalar_conversion
 from loom.dialect.vector import ALL_VECTOR_OPS
 from loom.dialect.vector import defs as vector
@@ -27,6 +28,9 @@ from loom.target.contracts import (
     DirectDescriptorCase,
     DirectTypePatterns,
     EmitDescriptorOp,
+    EmitRegisterConcat,
+    EmitRegisterCopy,
+    EmitRegisterSlice,
     Guard,
     GuardDiagnostic,
     PredicateDescriptorCase,
@@ -36,6 +40,7 @@ from loom.target.contracts import (
     SourceMemoryConstraint,
     SourceMemoryDynamicIndexSource,
     SourceMemoryOperation,
+    SourceNode,
     TypePattern,
     ValueAliasRule,
     ValueRef,
@@ -48,15 +53,20 @@ from loom.target.low_descriptors import Descriptor
 from loom.target.test.descriptors import (
     TEST_LOW_ADD_F32_DESCRIPTOR,
     TEST_LOW_ADD_I32_DESCRIPTOR,
+    TEST_LOW_ADD_I32_PHYS_RHS_DESCRIPTOR,
+    TEST_LOW_ADD_MUL_I32_DESCRIPTOR,
     TEST_LOW_CMP_EQ_I32_DESCRIPTOR,
     TEST_LOW_CONST_I32_DESCRIPTOR,
     TEST_LOW_CORE_DESCRIPTOR_SET,
     TEST_LOW_DOT4I_S8S8_DESCRIPTOR,
     TEST_LOW_FROM_ELEMENTS_V4I32_DESCRIPTOR,
+    TEST_LOW_LOAD_INDEX_ORDERED_V4I32_DESCRIPTOR,
     TEST_LOW_LOAD_INDEX_V4F32_DESCRIPTOR,
     TEST_LOW_LOAD_INDEX_V4I32_DESCRIPTOR,
+    TEST_LOW_LOAD_ORDERED_V4I32_DESCRIPTOR,
     TEST_LOW_LOAD_V4F32_DESCRIPTOR,
     TEST_LOW_LOAD_V4I32_DESCRIPTOR,
+    TEST_LOW_MUL_ADD_I32_DESCRIPTOR,
     TEST_LOW_MUL_F32_DESCRIPTOR,
     TEST_LOW_MUL_I32_DESCRIPTOR,
     TEST_LOW_SELECT_I32_DESCRIPTOR,
@@ -139,6 +149,7 @@ _INDEX = Scalar("index")
 _OFFSET = Scalar("offset")
 _V4I1 = Vector("i1", lanes=4)
 _V16I8 = Vector("i8", lanes=16)
+_V2I32 = Vector("i32", lanes=2)
 _V4I32 = Vector("i32", lanes=4)
 _V4F32 = Vector("f32", lanes=4)
 
@@ -243,6 +254,7 @@ def _vector_load_rule(
     result_type: TypePattern,
     *,
     dynamic: bool,
+    volatile: bool = False,
 ) -> DescriptorRule:
     operands = {"address": ValueRef.operand("view")}
     if dynamic:
@@ -251,6 +263,11 @@ def _vector_load_rule(
         source_op=vector.vector_load,
         descriptor=descriptor,
         guards=(
+            *(
+                (Guard.instance_flags_has_all("memory_flags", "volatile"),)
+                if volatile
+                else ()
+            ),
             Guard.operand_segment_count("indices", 1 if dynamic else 0),
             Guard.value_type("result", result_type),
         ),
@@ -328,6 +345,75 @@ TEST_LOW_CORE_CONTRACT_FRAGMENT = ContractFragment(
                 ),
             ),
         ),
+        DescriptorRule(
+            source_op=scalar_arithmetic.scalar_addi,
+            descriptor=TEST_LOW_ADD_MUL_I32_DESCRIPTOR,
+            source_nodes=(
+                SourceNode.adjacent_unique_user(
+                    "product",
+                    source_op=scalar_arithmetic.scalar_muli,
+                    parent_result=ValueRef.result("result"),
+                    node_operand=ValueRef.operand("lhs"),
+                    guards=(
+                        Guard.value_type("rhs", _I32),
+                        Guard.value_type("result", _I32),
+                    ),
+                ),
+            ),
+            guards=(
+                Guard.value_type("lhs", _I32),
+                Guard.value_type("rhs", _I32),
+                Guard.value_type("result", _I32),
+            ),
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=TEST_LOW_ADD_MUL_I32_DESCRIPTOR,
+                    operands={
+                        "add_lhs": ValueRef.operand("lhs"),
+                        "add_rhs": ValueRef.operand("rhs"),
+                        "factor": ValueRef.operand("rhs", source_node="product"),
+                    },
+                    results={"dst": ValueRef.result("result", source_node="product")},
+                ),
+            ),
+            priority=1,
+            report_key="test.fused.add_mul.i32",
+        ),
+        DescriptorRule(
+            source_op=scalar_arithmetic.scalar_addi,
+            descriptor=TEST_LOW_MUL_ADD_I32_DESCRIPTOR,
+            source_nodes=(
+                SourceNode.adjacent_definition(
+                    "product",
+                    source_op=scalar_arithmetic.scalar_muli,
+                    parent_operand=ValueRef.operand("lhs"),
+                    node_result=ValueRef.result("result"),
+                    guards=(
+                        Guard.value_type("lhs", _I32),
+                        Guard.value_type("rhs", _I32),
+                        Guard.value_type("result", _I32),
+                    ),
+                ),
+            ),
+            guards=(
+                Guard.value_type("lhs", _I32),
+                Guard.value_type("rhs", _I32),
+                Guard.value_type("result", _I32),
+            ),
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=TEST_LOW_MUL_ADD_I32_DESCRIPTOR,
+                    operands={
+                        "multiplicand": ValueRef.operand("lhs", source_node="product"),
+                        "multiplier": ValueRef.operand("rhs", source_node="product"),
+                        "addend": ValueRef.operand("rhs"),
+                    },
+                    results={"dst": ValueRef.result("result")},
+                ),
+            ),
+            priority=1,
+            report_key="test.fused.mul_add.i32",
+        ),
         _binary_rule(
             scalar_arithmetic.scalar_addi,
             TEST_LOW_ADD_I32_DESCRIPTOR,
@@ -357,6 +443,19 @@ TEST_LOW_CORE_CONTRACT_FRAGMENT = ContractFragment(
             TEST_LOW_MUL_F32_DESCRIPTOR,
             _F32,
             semantic_tag="float.mul.f32",
+        ),
+        DescriptorRule(
+            source_op=scalar_conversion.scalar_bitcast,
+            guards=(
+                Guard.value_type("input", _I32),
+                Guard.value_type("result", _F32),
+            ),
+            emit=(
+                EmitRegisterCopy(
+                    source=ValueRef.operand("input"),
+                    result=ValueRef.result("result"),
+                ),
+            ),
         ),
         _select_rule(
             vector.vector_select,
@@ -391,17 +490,74 @@ TEST_LOW_CORE_CONTRACT_FRAGMENT = ContractFragment(
             _V4F32,
             semantic_tag="float.mul.f32",
         ),
-        _binary_rule(
-            vector.vector_addi,
-            TEST_LOW_ADD_I32_DESCRIPTOR,
-            _V4I32,
-            semantic_tag="integer.add.i32",
+        DescriptorRule(
+            source_op=vector.vector_addi,
+            descriptor=TEST_LOW_ADD_I32_PHYS_RHS_DESCRIPTOR,
+            guards=(
+                Guard.value_type("lhs", _V4I32),
+                Guard.value_type("rhs", _V4I32),
+                Guard.value_type("result", _V4I32),
+            ),
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=TEST_LOW_ADD_I32_PHYS_RHS_DESCRIPTOR,
+                    operands={
+                        "lhs": ValueRef.operand("lhs"),
+                        "rhs": ValueRef.operand("rhs"),
+                    },
+                    results={"dst": ValueRef.result("result")},
+                    copy_operands=("rhs",),
+                ),
+            ),
+        ),
+        DescriptorRule(
+            source_op=vector.vector_muli,
+            descriptor=TEST_LOW_MUL_I32_DESCRIPTOR,
+            guards=(
+                Guard.value_type("lhs", _V2I32),
+                Guard.value_type("rhs", _V2I32),
+                Guard.value_type("result", _V2I32),
+            ),
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                    results={"dst": ValueRef.temporary("zero")},
+                    result_types={"dst": _I32},
+                    immediates={"i32_value": 0},
+                    form=DescriptorEmitForm.CONST,
+                ),
+                EmitDescriptorOp(
+                    descriptor=TEST_LOW_MUL_I32_DESCRIPTOR,
+                    operands={
+                        "lhs": ValueRef.operand("lhs"),
+                        "rhs": ValueRef.operand("rhs"),
+                    },
+                    results={"dst": ValueRef.temporary("product")},
+                    result_types={"dst": ValueRef.result("result")},
+                    form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+                ),
+                EmitDescriptorOp(
+                    descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                    operands={
+                        "lhs": ValueRef.temporary("product"),
+                        "rhs": ValueRef.temporary("zero"),
+                    },
+                    results={"dst": ValueRef.result("result")},
+                    form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+                ),
+            ),
         ),
         _binary_rule(
             vector.vector_muli,
             TEST_LOW_MUL_I32_DESCRIPTOR,
             _V4I32,
             semantic_tag="integer.mul.i32",
+        ),
+        _vector_load_rule(
+            TEST_LOW_LOAD_ORDERED_V4I32_DESCRIPTOR,
+            _V4I32,
+            dynamic=False,
+            volatile=True,
         ),
         _vector_load_rule(
             TEST_LOW_LOAD_V4I32_DESCRIPTOR,
@@ -412,6 +568,12 @@ TEST_LOW_CORE_CONTRACT_FRAGMENT = ContractFragment(
             TEST_LOW_LOAD_V4F32_DESCRIPTOR,
             _V4F32,
             dynamic=False,
+        ),
+        _vector_load_rule(
+            TEST_LOW_LOAD_INDEX_ORDERED_V4I32_DESCRIPTOR,
+            _V4I32,
+            dynamic=True,
+            volatile=True,
         ),
         _vector_load_rule(
             TEST_LOW_LOAD_INDEX_V4I32_DESCRIPTOR,
@@ -462,6 +624,67 @@ TEST_LOW_CORE_CONTRACT_FRAGMENT = ContractFragment(
         _const_i32_rule(scalar_conversion.scalar_constant, _I32),
         _const_i32_rule(index.index_constant, _INDEX),
         _const_i32_rule(index.index_constant, _OFFSET),
+        DescriptorRule(
+            source_op=scalar_bitwise.scalar_bitfield_extracts,
+            descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+            guards=(
+                Guard.value_type("source", _I32),
+                Guard.value_type("result", _I32),
+            ),
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                    results={"dst": ValueRef.result("result")},
+                    immediates={
+                        "i32_value": AttrProject.i64_attr_minus_literal(
+                            "width",
+                            literal=32,
+                        )
+                    },
+                    form=DescriptorEmitForm.CONST,
+                ),
+            ),
+        ),
+        DescriptorRule(
+            source_op=vector.vector_from_elements,
+            guards=(
+                Guard.operand_segment_count("elements", 2),
+                Guard.value_type("result", _V2I32),
+            ),
+            emit=(
+                EmitRegisterConcat(
+                    sources=(
+                        ValueRef.operand("elements", element=0),
+                        ValueRef.operand("elements", element=1),
+                    ),
+                    result=ValueRef.result("result"),
+                ),
+            ),
+        ),
+        *(
+            DescriptorRule(
+                source_op=vector.vector_extract,
+                guards=(
+                    Guard.i64_array_count("static_indices", 1),
+                    Guard.i64_array_element_range(
+                        "static_indices",
+                        0,
+                        unit_offset,
+                        unit_offset,
+                    ),
+                    Guard.value_type("source", _V2I32),
+                    Guard.value_type("result", _I32),
+                ),
+                emit=(
+                    EmitRegisterSlice(
+                        source=ValueRef.operand("source"),
+                        result=ValueRef.result("result"),
+                        unit_offset=unit_offset,
+                    ),
+                ),
+            )
+            for unit_offset in range(2)
+        ),
         DescriptorRule(
             source_op=vector.vector_extract,
             descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
@@ -593,7 +816,7 @@ TEST_LOW_CORE_CONTRACT_FRAGMENT = ContractFragment(
         ),
         DescriptorRule(
             source_op=index.index_madd,
-            descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+            descriptor=TEST_LOW_ADD_I32_PHYS_RHS_DESCRIPTOR,
             guards=(
                 Guard.value_type("a", _INDEX),
                 Guard.value_type("b", _INDEX),
@@ -602,7 +825,7 @@ TEST_LOW_CORE_CONTRACT_FRAGMENT = ContractFragment(
             ),
             emit=(
                 EmitDescriptorOp(
-                    descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                    descriptor=TEST_LOW_MUL_I32_DESCRIPTOR,
                     operands={
                         "lhs": ValueRef.operand("a"),
                         "rhs": ValueRef.operand("b"),
@@ -611,7 +834,7 @@ TEST_LOW_CORE_CONTRACT_FRAGMENT = ContractFragment(
                     result_types={"dst": ValueRef.result("result")},
                 ),
                 EmitDescriptorOp(
-                    descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                    descriptor=TEST_LOW_ADD_I32_PHYS_RHS_DESCRIPTOR,
                     operands={
                         "lhs": ValueRef.temporary("product"),
                         "rhs": ValueRef.operand("c"),

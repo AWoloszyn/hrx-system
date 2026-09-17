@@ -56,6 +56,13 @@ static uint64_t loom_low_descriptor_bit_mask(uint16_t bit_count) {
   return (UINT64_C(1) << bit_count) - 1;
 }
 
+static bool loom_low_signed_value_is_multiple(int64_t value,
+                                              uint64_t multiple) {
+  const uint64_t magnitude =
+      value < 0 ? (uint64_t)(-(value + 1)) + 1 : (uint64_t)value;
+  return magnitude % multiple == 0;
+}
+
 static iree_status_t loom_low_descriptor_set_string_impl(
     const loom_low_descriptor_set_t* descriptor_set,
     loom_bstring_table_offset_t string_offset, bool allow_none,
@@ -218,6 +225,24 @@ static iree_status_t loom_low_verify_tables_present(
   IREE_RETURN_IF_ERROR(loom_low_verify_pointer_for_count(
       descriptor_set->reg_classes, descriptor_set->reg_class_count,
       "reg_classes"));
+  IREE_RETURN_IF_ERROR(loom_low_verify_pointer_for_count(
+      descriptor_set->physical_registers,
+      descriptor_set->physical_register_count, "physical_registers"));
+  IREE_RETURN_IF_ERROR(loom_low_verify_pointer_for_count(
+      descriptor_set->physical_register_candidate_ids,
+      descriptor_set->physical_register_candidate_count,
+      "physical_register_candidate_ids"));
+  IREE_RETURN_IF_ERROR(loom_low_verify_pointer_for_count(
+      descriptor_set->physical_register_atomic_units,
+      descriptor_set->physical_register_atomic_unit_count,
+      "physical_register_atomic_units"));
+  IREE_RETURN_IF_ERROR(loom_low_verify_pointer_for_count(
+      descriptor_set->physical_register_views,
+      descriptor_set->physical_register_view_count, "physical_register_views"));
+  IREE_RETURN_IF_ERROR(loom_low_verify_pointer_for_count(
+      descriptor_set->physical_register_view_unit_candidate_ordinals,
+      descriptor_set->physical_register_view_unit_candidate_ordinal_count,
+      "physical_register_view_unit_candidate_ordinals"));
   IREE_RETURN_IF_ERROR(loom_low_verify_pointer_for_count(
       descriptor_set->register_parts, descriptor_set->register_part_count,
       "register_parts"));
@@ -1093,6 +1118,11 @@ static iree_status_t loom_low_verify_descriptor_constraints(
         }
         break;
       }
+      case LOOM_LOW_CONSTRAINT_KIND_SAME_REGISTER_ORDINAL: {
+        IREE_RETURN_IF_ERROR(loom_low_verify_binary_constraint(
+            constraint, "same-register-ordinal"));
+        break;
+      }
       case LOOM_LOW_CONSTRAINT_KIND_EARLY_CLOBBER:
         if (constraint->rhs_operand_index != LOOM_LOW_ID_NONE ||
             lhs->role != LOOM_LOW_OPERAND_ROLE_RESULT) {
@@ -1458,6 +1488,7 @@ static bool loom_low_constraint_kind_is_valid(loom_low_constraint_kind_t kind) {
     case LOOM_LOW_CONSTRAINT_KIND_EARLY_CLOBBER:
     case LOOM_LOW_CONSTRAINT_KIND_REMATERIALIZABLE:
     case LOOM_LOW_CONSTRAINT_KIND_FOLDABLE:
+    case LOOM_LOW_CONSTRAINT_KIND_SAME_REGISTER_ORDINAL:
       return true;
     default:
       return false;
@@ -1496,6 +1527,7 @@ static bool loom_low_resource_kind_is_valid(loom_low_resource_kind_t kind) {
     case LOOM_LOW_RESOURCE_KIND_STORE:
     case LOOM_LOW_RESOURCE_KIND_CONTROL:
     case LOOM_LOW_RESOURCE_KIND_ADDRESS:
+    case LOOM_LOW_RESOURCE_KIND_PIPELINE:
       return true;
     default:
       return false;
@@ -2185,7 +2217,9 @@ static iree_status_t loom_low_verify_descriptor(
           LOOM_LOW_DESCRIPTOR_FLAG_DEAD_REMOVABLE |
           LOOM_LOW_DESCRIPTOR_FLAG_PSEUDO | LOOM_LOW_DESCRIPTOR_FLAG_BARRIER |
           LOOM_LOW_DESCRIPTOR_FLAG_EARLY_CLOBBER |
-          LOOM_LOW_DESCRIPTOR_FLAG_VARIADIC_OPERANDS,
+          LOOM_LOW_DESCRIPTOR_FLAG_VARIADIC_OPERANDS |
+          LOOM_LOW_DESCRIPTOR_FLAG_ALLOCATION_MOVE |
+          LOOM_LOW_DESCRIPTOR_FLAG_UNIQUE_IDENTITY,
       "descriptor", descriptor_index));
   iree_string_view_t descriptor_key = iree_string_view_empty();
   IREE_RETURN_IF_ERROR(loom_low_verify_non_empty_required_string(
@@ -2475,6 +2509,18 @@ static iree_status_t loom_low_verify_immediate(
                             " has unsupported bit width %" PRIu16,
                             immediate_index, immediate->bit_width);
   }
+  if (immediate->value_step == 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low immediate %" PRIu32 " has zero value step",
+                            immediate_index);
+  }
+  if (immediate->kind == LOOM_LOW_IMMEDIATE_KIND_ENUM &&
+      immediate->value_step != 1) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low enum immediate %" PRIu32
+                            " has non-unit value step %" PRIu64,
+                            immediate_index, immediate->value_step);
+  }
   IREE_RETURN_IF_ERROR(loom_low_verify_span(
       immediate->encoding_slice_start, immediate->encoding_slice_count,
       descriptor_set->immediate_encoding_slice_count,
@@ -2601,6 +2647,25 @@ static iree_status_t loom_low_verify_immediate(
     default:
       break;
   }
+  if (immediate->kind == LOOM_LOW_IMMEDIATE_KIND_SIGNED) {
+    if (!loom_low_signed_value_is_multiple(immediate->default_value,
+                                           immediate->value_step)) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "low signed immediate %" PRIu32 " default value %" PRId64
+          " is not a multiple of %" PRIu64,
+          immediate_index, immediate->default_value, immediate->value_step);
+    }
+  } else if (immediate->kind == LOOM_LOW_IMMEDIATE_KIND_UNSIGNED ||
+             immediate->kind == LOOM_LOW_IMMEDIATE_KIND_ORDINAL) {
+    if ((uint64_t)immediate->default_value % immediate->value_step != 0) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "low immediate %" PRIu32 " default value %" PRId64
+                              " is not a multiple of %" PRIu64,
+                              immediate_index, immediate->default_value,
+                              immediate->value_step);
+    }
+  }
   return iree_ok_status();
 }
 
@@ -2671,7 +2736,8 @@ static iree_status_t loom_low_verify_reg_class(
       reg_class->flags,
       LOOM_LOW_REG_CLASS_FLAG_VIRTUAL_ONLY | LOOM_LOW_REG_CLASS_FLAG_PHYSICAL |
           LOOM_LOW_REG_CLASS_FLAG_REFERENCE |
-          LOOM_LOW_REG_CLASS_FLAG_UNSPILLABLE,
+          LOOM_LOW_REG_CLASS_FLAG_UNSPILLABLE |
+          LOOM_LOW_REG_CLASS_FLAG_EXPLICIT_PHYSICAL_REGISTERS,
       "register class", reg_class_index));
   IREE_RETURN_IF_ERROR(loom_low_verify_required_string(
       descriptor_set, reg_class->name_string_offset, "reg_class.name"));
@@ -2698,6 +2764,8 @@ static iree_status_t loom_low_verify_reg_class(
       iree_all_bits_set(reg_class->flags, LOOM_LOW_REG_CLASS_FLAG_VIRTUAL_ONLY);
   const bool is_physical =
       iree_all_bits_set(reg_class->flags, LOOM_LOW_REG_CLASS_FLAG_PHYSICAL);
+  const bool uses_explicit_physical_registers = iree_all_bits_set(
+      reg_class->flags, LOOM_LOW_REG_CLASS_FLAG_EXPLICIT_PHYSICAL_REGISTERS);
   if (is_virtual_only == is_physical) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -2722,6 +2790,47 @@ static iree_status_t loom_low_verify_reg_class(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "low physical register class %" PRIu32
                             " has zero allocatable count",
+                            reg_class_index);
+  }
+  if (uses_explicit_physical_registers && !is_physical) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "low register class %" PRIu32
+        " uses explicit physical registers without the physical flag",
+        reg_class_index);
+  }
+  if (uses_explicit_physical_registers &&
+      (reg_class->fixed_location_base != 0 ||
+       reg_class->fixed_location_count != 0 || reg_class->alias_set_id != 0)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low explicit physical register class %" PRIu32
+                            " has a linear fixed-location or alias contract",
+                            reg_class_index);
+  }
+  if (uses_explicit_physical_registers) {
+    IREE_RETURN_IF_ERROR(
+        loom_low_verify_span(reg_class->physical_register_candidate_start,
+                             reg_class->allocatable_count,
+                             descriptor_set->physical_register_candidate_count,
+                             "physical_register_candidate_ids"));
+    for (uint16_t i = 0; i < reg_class->allocatable_count; ++i) {
+      const uint16_t physical_register_id =
+          descriptor_set->physical_register_candidate_ids
+              [reg_class->physical_register_candidate_start + i];
+      if (physical_register_id >= descriptor_set->physical_register_count) {
+        return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                                "low register class %" PRIu32
+                                " candidate %" PRIu16
+                                " references physical register %" PRIu16
+                                " but only %" PRIu32 " registers exist",
+                                reg_class_index, i, physical_register_id,
+                                descriptor_set->physical_register_count);
+      }
+    }
+  } else if (reg_class->physical_register_candidate_start != 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low linear register class %" PRIu32
+                            " has a physical-register candidate start",
                             reg_class_index);
   }
   if (reg_class->fixed_location_count == 0 &&
@@ -2758,6 +2867,78 @@ static iree_status_t loom_low_verify_reg_class(
                             " but only %" PRIu32 " classes exist",
                             reg_class_index, reg_class->spill_class_id,
                             descriptor_set->reg_class_count);
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t loom_low_verify_physical_register(
+    const loom_low_descriptor_set_t* descriptor_set,
+    uint32_t physical_register_index) {
+  const loom_low_physical_register_t* physical_register =
+      &descriptor_set->physical_registers[physical_register_index];
+  IREE_RETURN_IF_ERROR(loom_low_verify_required_string(
+      descriptor_set, physical_register->name_string_offset,
+      "physical_register.name"));
+  if (physical_register->atomic_unit_count == 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low physical register %" PRIu32
+                            " has no atomic units",
+                            physical_register_index);
+  }
+  return loom_low_verify_span(
+      physical_register->atomic_unit_start,
+      physical_register->atomic_unit_count,
+      descriptor_set->physical_register_atomic_unit_count,
+      "physical_register_atomic_units");
+}
+
+static iree_status_t loom_low_verify_physical_register_view(
+    const loom_low_descriptor_set_t* descriptor_set,
+    uint32_t physical_register_view_index) {
+  const loom_low_physical_register_view_t* view =
+      &descriptor_set->physical_register_views[physical_register_view_index];
+  if (view->physical_register_id >= descriptor_set->physical_register_count) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "low physical register view %" PRIu32
+                            " references physical register %" PRIu16
+                            " but only %" PRIu32 " registers exist",
+                            physical_register_view_index,
+                            view->physical_register_id,
+                            descriptor_set->physical_register_count);
+  }
+  if (view->reg_class_id >= descriptor_set->reg_class_count) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "low physical register view %" PRIu32
+                            " references register class %" PRIu16
+                            " but only %" PRIu32 " classes exist",
+                            physical_register_view_index, view->reg_class_id,
+                            descriptor_set->reg_class_count);
+  }
+  if (view->unit_count < 2) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low physical register view %" PRIu32
+                            " has fewer than two units",
+                            physical_register_view_index);
+  }
+  IREE_RETURN_IF_ERROR(loom_low_verify_span(
+      view->unit_candidate_ordinal_start, view->unit_count,
+      descriptor_set->physical_register_view_unit_candidate_ordinal_count,
+      "physical_register_view_unit_candidate_ordinals"));
+  const loom_low_reg_class_t* reg_class =
+      &descriptor_set->reg_classes[view->reg_class_id];
+  for (uint16_t i = 0; i < view->unit_count; ++i) {
+    const uint16_t candidate_ordinal =
+        descriptor_set->physical_register_view_unit_candidate_ordinals
+            [view->unit_candidate_ordinal_start + i];
+    if (candidate_ordinal >= reg_class->allocatable_count) {
+      return iree_make_status(
+          IREE_STATUS_OUT_OF_RANGE,
+          "low physical register view %" PRIu32 " unit %" PRIu16
+          " references candidate ordinal %" PRIu16 " but class %" PRIu16
+          " has only %" PRIu16 " candidates",
+          physical_register_view_index, i, candidate_ordinal,
+          view->reg_class_id, reg_class->allocatable_count);
+    }
   }
   return iree_ok_status();
 }
@@ -2917,6 +3098,12 @@ static iree_status_t loom_low_verify_issue_use(
                             "low issue-use %" PRIu32
                             " consumes zero resource units",
                             issue_use_index);
+  }
+  if (issue_use->kind != LOOM_LOW_ISSUE_USE_KIND_REQUIRED &&
+      issue_use->kind != LOOM_LOW_ISSUE_USE_KIND_RESERVED) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low issue-use %" PRIu32 " has invalid kind %u",
+                            issue_use_index, (unsigned)issue_use->kind);
   }
   const loom_low_resource_t* resource =
       &descriptor_set->resources[issue_use->resource_id];
@@ -3157,6 +3344,13 @@ iree_status_t loom_low_descriptor_set_verify(
   }
   for (uint32_t i = 0; i < descriptor_set->reg_class_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_low_verify_reg_class(descriptor_set, i));
+  }
+  for (uint32_t i = 0; i < descriptor_set->physical_register_count; ++i) {
+    IREE_RETURN_IF_ERROR(loom_low_verify_physical_register(descriptor_set, i));
+  }
+  for (uint32_t i = 0; i < descriptor_set->physical_register_view_count; ++i) {
+    IREE_RETURN_IF_ERROR(
+        loom_low_verify_physical_register_view(descriptor_set, i));
   }
   for (uint32_t i = 0; i < descriptor_set->register_part_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_low_verify_register_part(descriptor_set, i));

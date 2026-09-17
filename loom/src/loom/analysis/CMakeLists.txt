@@ -435,6 +435,68 @@ loom_cc_test(
 
 loom_cc_library(
   NAME
+    pipeline_plan
+  HDRS
+    "pipeline_plan.h"
+  SRCS
+    "pipeline_plan.c"
+  DEPS
+    ::type_refinement
+    iree::base
+    iree::base::internal
+    iree::base::internal::arena
+    loom::ir
+    loom::ir::facts
+    loom::ops::buffer
+    loom::ops::combining
+    loom::ops::encoding
+    loom::ops::group
+    loom::ops::op_defs
+    loom::ops::pipeline
+    loom::ops::type_registry
+    loom::util::fact_table
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    pipeline_plan_test
+  SRCS
+    "pipeline_plan_test.cc"
+  DEPS
+    ::pipeline_firing
+    ::pipeline_plan
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::format::text::parser
+    loom::ir
+    loom::ops::encoding
+    loom::ops::pipeline
+    loom::testing::context
+    loom::testing::module_ptr
+    loom::util::fact_table
+)
+
+loom_cc_library(
+  NAME
+    pipeline_firing
+  HDRS
+    "pipeline_firing.h"
+  SRCS
+    "pipeline_firing.c"
+  DEPS
+    ::pipeline_plan
+    iree::base
+    iree::base::internal::arena
+    loom::error::emitter
+    loom::error::error_defs
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     vector_memory_footprint
   HDRS
     "memory_root_bounds.h"
@@ -976,6 +1038,7 @@ loom_cc_library(
     iree::base::internal::arena
     loom::ir
     loom::ir::type_refinement
+    loom::ops::encoding
     loom::util::fact_table
   PUBLIC
 )

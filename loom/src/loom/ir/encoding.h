@@ -255,6 +255,107 @@ typedef struct loom_encoding_record_geometry_t {
   uint16_t required_alignment;
 } loom_encoding_record_geometry_t;
 
+// Semantic role of one logical field reconstructed from record storage.
+enum loom_encoding_record_field_role_e {
+  // Encoded numeric values consumed by vector decode or fragment operations.
+  // Exactly one payload field covers every logical record element.
+  LOOM_ENCODING_RECORD_FIELD_PAYLOAD = 0,
+  // Multiplicative scale values, ordered from global to local by level. All
+  // levels applying to one logical element are multiplied with its payload.
+  LOOM_ENCODING_RECORD_FIELD_SCALE = 1,
+  // Affine minimum values, ordered from global to local by level. All levels
+  // applying to one logical element are multiplied and subtracted from its
+  // scaled payload.
+  LOOM_ENCODING_RECORD_FIELD_MINIMUM = 2,
+  // Precomputed sum correction associated with an encoded payload group.
+  LOOM_ENCODING_RECORD_FIELD_SUM_CORRECTION = 3,
+};
+typedef uint8_t loom_encoding_record_field_role_t;
+
+// One rectangular bit projection from record storage into a logical field.
+// Record bits use little-endian byte numbering: bit zero is the least
+// significant bit of byte zero. Each successive field element advances by
+// |record_bit_stride| and receives |bit_count| consecutive source bits.
+typedef struct loom_encoding_record_mapping_t {
+  // Bit offset of the first projected value from the record start.
+  uint32_t record_bit_offset;
+
+  // Source bit stride between successive projected field elements.
+  uint16_t record_bit_stride;
+
+  // First logical field element populated by this mapping.
+  uint16_t field_element_offset;
+
+  // Number of consecutive logical field elements populated.
+  uint16_t element_count;
+
+  // Destination bit offset within each logical field element.
+  uint8_t field_bit_offset;
+
+  // Number of consecutive bits populated in each logical field element.
+  uint8_t bit_count;
+} loom_encoding_record_mapping_t;
+
+static_assert(sizeof(loom_encoding_record_mapping_t) == 12,
+              "encoding record mappings must remain compact");
+
+// Generated descriptor for one complete logical field projected from a fixed
+// record. Fields with the same role use contiguous hierarchy levels, where
+// level zero is the outermost/global value and larger levels are more local.
+// A field element applies to one uniform consecutive group of record elements;
+// |element_count| always divides the record logical element count.
+typedef struct loom_encoding_record_field_t {
+  // Number of logical elements in the reconstructed field.
+  uint16_t element_count;
+
+  // Index of the first field mapping in the record mapping table.
+  uint8_t first_mapping_index;
+
+  // Number of contiguous mapping rows owned by this field.
+  uint8_t mapping_count;
+
+  // Semantic interpretation of the reconstructed field.
+  loom_encoding_record_field_role_t role;
+
+  // Zero-based scale or affine hierarchy level.
+  uint8_t hierarchy_level;
+
+  // Corresponding generated loom_encoding_numeric_format_t value.
+  uint8_t numeric_format;
+
+  // Number of reconstructed bits in each logical field element.
+  uint8_t element_bit_count;
+} loom_encoding_record_field_t;
+
+static_assert(sizeof(loom_encoding_record_field_t) == 8,
+              "encoding record fields must remain compact");
+
+// Exact generated layout of one fixed physical record. Field and mapping
+// arrays have process lifetime and are never copied into modules.
+typedef struct loom_encoding_record_layout_t {
+  // Family-wide physical record geometry.
+  loom_encoding_record_geometry_t geometry;
+
+  // Number of logical field descriptors in |fields|.
+  uint8_t field_count;
+
+  // Generated logical field descriptors, or NULL when only geometry is known.
+  const loom_encoding_record_field_t* fields;
+
+  // Generated bit projection rows, or NULL when only geometry is known.
+  const loom_encoding_record_mapping_t* mappings;
+} loom_encoding_record_layout_t;
+
+// Returns the field element applying to |logical_element_index|. Generated
+// record definitions guarantee uniform groups and valid indices, so compiler
+// consumers need no defensive validation around this projection.
+static inline uint16_t loom_encoding_record_field_element_index(
+    const loom_encoding_record_layout_t* layout,
+    const loom_encoding_record_field_t* field, uint16_t logical_element_index) {
+  return logical_element_index /
+         (layout->geometry.logical_element_count / field->element_count);
+}
+
 // Dense bitset of family-declared auxiliary operand keys.
 typedef uint64_t loom_encoding_auxiliary_key_flags_t;
 
@@ -277,8 +378,8 @@ typedef struct loom_encoding_family_fixed_metadata_t {
   // Auxiliary operand keys required to interpret the encoded payload.
   loom_encoding_auxiliary_key_flags_t required_auxiliary_keys;
 
-  // Exact family-wide record geometry, or all zeroes when parameterized.
-  loom_encoding_record_geometry_t record;
+  // Exact family-wide record layout, or all zeroes when parameterized.
+  loom_encoding_record_layout_t record;
 } loom_encoding_family_fixed_metadata_t;
 
 // Flags describing how a canonical encoding alias contributes a parameter.

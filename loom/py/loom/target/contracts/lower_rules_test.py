@@ -19,9 +19,11 @@ from loom.dialect.vector import ALL_VECTOR_OPS
 from loom.dialect.vector import defs as vector
 from loom.dsl import Op
 from loom.target.contracts import (
+    LOWER_EMIT_FLAG_BIND_RESULTS_TO_REFS,
     LOWER_EMIT_FLAG_RESULT_DESCRIPTOR_TYPE,
     LOWER_RULE_FLAG_CONTRACT_ONLY,
     LOWER_RULE_FLAG_ORDINAL_VALUE_ALIAS,
+    LOWER_RULE_PRIMARY_EMIT_NONE,
     AttrProject,
     ContractFragment,
     DescriptorEmitForm,
@@ -29,6 +31,9 @@ from loom.target.contracts import (
     DescriptorRule,
     DirectDescriptorCase,
     EmitDescriptorOp,
+    EmitRegisterConcat,
+    EmitRegisterCopy,
+    EmitRegisterSlice,
     Guard,
     GuardDiagnostic,
     GuardKind,
@@ -47,6 +52,8 @@ from loom.target.contracts import (
     SourceMemoryOperation,
     SourceMemoryProject,
     SourceMemoryRootKind,
+    SourceNode,
+    SourceNodeRelation,
     SourceOpProject,
     SourceValueKind,
     TypePattern,
@@ -73,6 +80,25 @@ from loom.target.test.descriptors import (
 )
 
 
+def test_memory_flags_do_not_shift_cache_policy_guard_indices() -> None:
+    table = ContractFragment(
+        name="test.memory-cache-attributes",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            RecipeRule(
+                source_op=vector.vector_load,
+                guards=(
+                    Guard.attr_kind("cache_scope", "enum"),
+                    Guard.attr_kind("cache_temporal", "enum"),
+                    Guard.enum_attr_equals("cache_scope", "device"),
+                ),
+            )
+        ],
+    )
+    compiled = compile_lower_rule_set(table, dialect_ops={"vector": ALL_VECTOR_OPS})
+    assert [guard.attr_index for guard in compiled.guards] == [0, 1, 0]
+
+
 def _add_f32_flags_descriptor_set():
     descriptor = replace(
         TEST_LOW_ADD_F32_DESCRIPTOR,
@@ -90,6 +116,260 @@ def _add_f32_flags_descriptor_set():
         TEST_LOW_CORE_DESCRIPTOR_SET,
         descriptors=(*TEST_LOW_CORE_DESCRIPTOR_SET.descriptors, descriptor),
     )
+
+
+def test_compile_structural_register_emits() -> None:
+    i32 = Scalar("i32")
+    v2i32 = Vector("i32", lanes=2)
+    fragment = ContractFragment(
+        name="test.structural-register-emits",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=(
+            DescriptorRule(
+                source_op=vector.vector_from_elements,
+                guards=(
+                    Guard.operand_segment_count("elements", 2),
+                    Guard.value_type("result", v2i32),
+                ),
+                emit=(
+                    EmitRegisterConcat(
+                        sources=(
+                            ValueRef.operand("elements", element=0),
+                            ValueRef.operand("elements", element=1),
+                        ),
+                        result=ValueRef.result("result"),
+                    ),
+                ),
+            ),
+            DescriptorRule(
+                source_op=vector.vector_extract,
+                guards=(
+                    Guard.i64_array_count("static_indices", 1),
+                    Guard.i64_array_element_range("static_indices", 0, 1, 1),
+                    Guard.value_type("source", v2i32),
+                    Guard.value_type("result", i32),
+                ),
+                emit=(
+                    EmitRegisterSlice(
+                        source=ValueRef.operand("source"),
+                        result=ValueRef.temporary("element"),
+                        unit_offset=1,
+                        unit_count=1,
+                    ),
+                    EmitRegisterSlice(
+                        source=ValueRef.temporary("element"),
+                        result=ValueRef.result("result"),
+                    ),
+                ),
+            ),
+            DescriptorRule(
+                source_op=scalar_conversion.scalar_bitcast,
+                guards=(
+                    Guard.value_type("input", i32),
+                    Guard.value_type("result", Scalar("f32")),
+                ),
+                emit=(
+                    EmitRegisterCopy(
+                        source=ValueRef.operand("input"),
+                        result=ValueRef.result("result"),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    compiled = compile_lower_rule_set(
+        fragment,
+        dialect_ops={
+            "scalar": ALL_SCALAR_OPS,
+            "vector": ALL_VECTOR_OPS,
+        },
+    )
+
+    assert all(emit.descriptor is None for emit in compiled.emits)
+    assert all(
+        rule.primary_emit_ordinal == LOWER_RULE_PRIMARY_EMIT_NONE
+        for rule in compiled.rules
+    )
+    rules_by_source_op = {rule.source_op: rule for rule in compiled.rules}
+
+    concat_emit = compiled.emits[
+        rules_by_source_op[vector.vector_from_elements].emit_start
+    ]
+    assert concat_emit.kind is LowerEmitKind.REGISTER_CONCAT
+    assert concat_emit.operand_ref_count == 2
+
+    extract_rule = rules_by_source_op[vector.vector_extract]
+    slice_emits = compiled.emits[
+        extract_rule.emit_start : extract_rule.emit_start + extract_rule.emit_count
+    ]
+    assert tuple(emit.kind for emit in slice_emits) == (
+        LowerEmitKind.REGISTER_SLICE,
+        LowerEmitKind.REGISTER_SLICE,
+    )
+    assert slice_emits[0].operand_ref_count == 1
+    assert slice_emits[0].structural_offset == 1
+    assert slice_emits[0].structural_unit_count == 1
+    assert slice_emits[0].flags == 0
+    typed_slice_result = compiled.value_refs[slice_emits[0].result_bind_ref_start]
+    assert typed_slice_result.kind is SourceValueKind.TEMPORARY
+    assert slice_emits[1].operand_ref_count == 1
+    assert slice_emits[1].structural_offset == 0
+
+    copy_emit = compiled.emits[
+        rules_by_source_op[scalar_conversion.scalar_bitcast].emit_start
+    ]
+    assert copy_emit.kind is LowerEmitKind.REGISTER_COPY
+    assert copy_emit.operand_ref_count == 1
+    assert copy_emit.result_ref_count == 1
+
+
+def test_compile_variadic_result_element_refs() -> None:
+    fragment = ContractFragment(
+        name="test.variadic-result-elements",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=(
+            DescriptorRule(
+                source_op=vector.vector_deinterleave,
+                emit=(
+                    EmitRegisterCopy(
+                        source=ValueRef.operand("source"),
+                        result=ValueRef.result("results", element=0),
+                    ),
+                    EmitRegisterCopy(
+                        source=ValueRef.operand("source"),
+                        result=ValueRef.result("results", element=1),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    compiled = compile_lower_rule_set(
+        fragment,
+        dialect_ops={"vector": ALL_VECTOR_OPS},
+    )
+
+    result_refs = tuple(
+        compiled.value_refs[emit.result_bind_ref_start] for emit in compiled.emits
+    )
+    assert tuple(ref.kind for ref in result_refs) == (
+        SourceValueKind.RESULT,
+        SourceValueKind.RESULT,
+    )
+    assert tuple(ref.index for ref in result_refs) == (0, 0)
+    assert tuple(ref.element_index for ref in result_refs) == (0, 1)
+
+
+def test_compile_forward_related_source_node() -> None:
+    fragment = ContractFragment(
+        name="test.forward-related-source-node",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=(
+            DescriptorRule(
+                source_op=scalar_arithmetic.scalar_addi,
+                descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                source_nodes=(
+                    SourceNode.adjacent_unique_user(
+                        "consumer",
+                        source_op=scalar_arithmetic.scalar_muli,
+                        parent_result=ValueRef.result("result"),
+                        node_operand=ValueRef.operand("lhs"),
+                        guards=(Guard.value_type("result", Scalar("i32")),),
+                    ),
+                ),
+                guards=(Guard.value_type("lhs", Scalar("i32")),),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                        operands={
+                            "lhs": ValueRef.operand("lhs"),
+                            "rhs": ValueRef.operand("rhs", source_node="consumer"),
+                        },
+                        results={
+                            "dst": ValueRef.result("result", source_node="consumer")
+                        },
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    compiled = compile_lower_rule_set(fragment, dialect_ops={"scalar": ALL_SCALAR_OPS})
+
+    assert len(compiled.rules) == 1
+    assert compiled.rules[0].source_node_start == 0
+    assert compiled.rules[0].source_node_count == 1
+    assert len(compiled.source_nodes) == 1
+    source_node = compiled.source_nodes[0]
+    assert source_node.relation is SourceNodeRelation.ADJACENT_UNIQUE_USER
+    assert source_node.source_op is scalar_arithmetic.scalar_muli
+    assert source_node.parent_node_index == 0
+    assert source_node.guard_count == 1
+    parent_ref = compiled.value_refs[source_node.parent_value_ref_index]
+    node_ref = compiled.value_refs[source_node.node_value_ref_index]
+    assert parent_ref.kind is SourceValueKind.RESULT
+    assert parent_ref.source_node_index == 0
+    assert node_ref.kind is SourceValueKind.OPERAND
+    assert node_ref.source_node_index == 1
+    node_guard = compiled.guards[source_node.guard_start]
+    assert compiled.value_refs[node_guard.value_ref_index].source_node_index == 0
+    emit = compiled.emits[0]
+    emit_refs = compiled.value_refs[
+        emit.operand_ref_start : emit.operand_ref_start + emit.operand_ref_count
+    ]
+    assert tuple(ref.source_node_index for ref in emit_refs) == (0, 1)
+    result_ref_index = (
+        emit.result_bind_ref_start
+        if emit.flags & LOWER_EMIT_FLAG_BIND_RESULTS_TO_REFS
+        else emit.result_ref_start
+    )
+    result_ref = compiled.value_refs[result_ref_index]
+    assert result_ref.source_node_index == 1
+
+
+def test_compile_backward_related_source_node() -> None:
+    fragment = ContractFragment(
+        name="test.backward-related-source-node",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=(
+            DescriptorRule(
+                source_op=scalar_arithmetic.scalar_muli,
+                descriptor=TEST_LOW_MUL_I32_DESCRIPTOR,
+                source_nodes=(
+                    SourceNode.adjacent_definition(
+                        "producer",
+                        source_op=scalar_arithmetic.scalar_addi,
+                        parent_operand=ValueRef.operand("lhs"),
+                        node_result=ValueRef.result("result"),
+                    ),
+                ),
+                guards=(Guard.value_type("result", Scalar("i32")),),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_MUL_I32_DESCRIPTOR,
+                        operands={
+                            "lhs": ValueRef.operand("lhs", source_node="producer"),
+                            "rhs": ValueRef.operand("rhs"),
+                        },
+                        results={"dst": ValueRef.result("result")},
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    compiled = compile_lower_rule_set(fragment, dialect_ops={"scalar": ALL_SCALAR_OPS})
+
+    source_node = compiled.source_nodes[0]
+    assert source_node.relation is SourceNodeRelation.ADJACENT_DEFINITION
+    assert source_node.parent_node_index == 0
+    parent_ref = compiled.value_refs[source_node.parent_value_ref_index]
+    node_ref = compiled.value_refs[source_node.node_value_ref_index]
+    assert parent_ref.kind is SourceValueKind.OPERAND
+    assert parent_ref.source_node_index == 0
+    assert node_ref.kind is SourceValueKind.RESULT
+    assert node_ref.source_node_index == 1
 
 
 def _expect_value_error(callable_obj: Callable[[], object], message: str) -> None:
@@ -267,6 +547,54 @@ def test_compile_lower_rule_set_compiles_direct_scalar_rule() -> None:
     assert compiled.emits[0].result_ref_count == 1
 
 
+def test_compile_lower_rule_set_groups_ops_and_orders_rules_by_priority() -> None:
+    table = ContractFragment(
+        name="test.priority",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=(
+            _binary_rule(
+                source_op=scalar_arithmetic.scalar_addi,
+                type_pattern=Scalar("i32"),
+            ),
+            replace(
+                _binary_rule(
+                    source_op=scalar_arithmetic.scalar_addi,
+                    type_pattern=Scalar("i32"),
+                ),
+                priority=2,
+            ),
+            _binary_rule(
+                source_op=scalar_arithmetic.scalar_muli,
+                type_pattern=Scalar("i32"),
+            ),
+            replace(
+                _binary_rule(
+                    source_op=scalar_arithmetic.scalar_addi,
+                    type_pattern=Scalar("i32"),
+                ),
+                priority=2,
+            ),
+        ),
+    )
+
+    compiled = compile_lower_rule_set(
+        table,
+        dialect_ops={"scalar": ALL_SCALAR_OPS},
+    )
+
+    addi_spans = [
+        span
+        for span in compiled.spans
+        if span.source_op is scalar_arithmetic.scalar_addi
+    ]
+    assert len(addi_spans) == 1
+    addi_span = addi_spans[0]
+    assert addi_span.rule_count == 3
+    assert compiled.authored_case_indices[
+        addi_span.rule_start : addi_span.rule_start + addi_span.rule_count
+    ] == (1, 3, 0)
+
+
 def test_compile_lower_rule_set_interns_exact_rule_programs() -> None:
     table = ContractFragment(
         name="test.scalar",
@@ -409,7 +737,62 @@ def test_compile_lower_rule_set_compiles_per_lane_sequence_emit() -> None:
     )
 
 
-def test_descriptor_rule_rejects_mixed_per_lane_sequence_emit() -> None:
+def test_compile_lower_rule_set_compiles_setup_before_per_lane_sequence() -> None:
+    table = ContractFragment(
+        name="test.vector",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            DescriptorRule(
+                source_op=vector.vector_addi,
+                descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                guards=(
+                    Guard.value_type("lhs", Vector("i32", lanes=4)),
+                    Guard.value_type("rhs", Vector("i32", lanes=4)),
+                    Guard.value_type("result", Vector("i32", lanes=4)),
+                ),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                        results={"dst": ValueRef.temporary("bias")},
+                        result_types={"dst": Scalar("i32")},
+                        immediates={"i32_value": 7},
+                        form=DescriptorEmitForm.CONST,
+                    ),
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                        operands={
+                            "lhs": ValueRef.operand("lhs"),
+                            "rhs": ValueRef.temporary("bias"),
+                        },
+                        results={"dst": ValueRef.temporary("partial")},
+                        result_types={"dst": ValueRef.result("result")},
+                        form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+                    ),
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                        operands={
+                            "lhs": ValueRef.temporary("partial"),
+                            "rhs": ValueRef.operand("rhs"),
+                        },
+                        results={"dst": ValueRef.result("result")},
+                        form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+                    ),
+                ),
+            )
+        ],
+    )
+
+    compiled = compile_lower_rule_set(table, dialect_ops={"vector": ALL_VECTOR_OPS})
+
+    assert compiled.rules[0].primary_emit_ordinal == 1
+    assert tuple(emit.kind for emit in compiled.emits) == (
+        LowerEmitKind.DESCRIPTOR_CONST,
+        LowerEmitKind.DESCRIPTOR_OP_PER_LANE_SEQUENCE,
+        LowerEmitKind.DESCRIPTOR_OP_PER_LANE_SEQUENCE,
+    )
+
+
+def test_descriptor_rule_rejects_noncontiguous_per_lane_sequence_emit() -> None:
     _expect_value_error(
         lambda: DescriptorRule(
             source_op=vector.vector_addi,
@@ -436,7 +819,7 @@ def test_descriptor_rule_rejects_mixed_per_lane_sequence_emit() -> None:
                 ),
             ),
         ).validate(TEST_LOW_CORE_DESCRIPTOR_SET),
-        "per-lane-sequence emit programs cannot mix emission forms",
+        "per-lane-sequence emits must form the final contiguous emit-program tail",
     )
 
 
@@ -640,6 +1023,77 @@ def test_compile_lower_rule_set_offsets_variadic_operand_elements() -> None:
     assert tuple(value_ref.element_index for value_ref in value_refs) == (0, 1, 2, 3)
 
 
+def test_compile_lower_rule_set_orders_variadic_arity_before_value_guards() -> None:
+    table = ContractFragment(
+        name="test.variadic-guard-order",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            RecipeRule(
+                source_op=vector.vector_extract,
+                guards=(
+                    Guard.value_type("source", Vector("i32")),
+                    Guard.value_type("indices", Scalar("index")),
+                    Guard.operand_segment_count("indices", 1),
+                ),
+            )
+        ],
+    )
+
+    compiled = compile_lower_rule_set(table, dialect_ops={"vector": ALL_VECTOR_OPS})
+
+    assert tuple(guard.kind for guard in compiled.guards) == (
+        GuardKind.VALUE_TYPE,
+        GuardKind.OPERAND_SEGMENT_COUNT,
+        GuardKind.VALUE_TYPE,
+    )
+
+
+def test_compile_lower_rule_set_rejects_unguarded_variadic_operand_ref() -> None:
+    table = ContractFragment(
+        name="test.unguarded-variadic-ref",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            RecipeRule(
+                source_op=vector.vector_extract,
+                guards=(Guard.value_type("indices", Scalar("index")),),
+            )
+        ],
+    )
+
+    _expect_value_error(
+        lambda: compile_lower_rule_set(
+            table,
+            dialect_ops={"vector": ALL_VECTOR_OPS},
+        ),
+        "vector.extract: variadic operand reference 'indices[0]' needs an "
+        "operand_segment_count guard",
+    )
+
+
+def test_compile_lower_rule_set_rejects_variadic_ref_beyond_guarded_count() -> None:
+    table = ContractFragment(
+        name="test.out-of-range-variadic-ref",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            ValueAliasRule(
+                source_op=vector.vector_concat,
+                source=ValueRef.operand("inputs", element=1),
+                result=ValueRef.result("result"),
+                guards=(Guard.operand_segment_count("inputs", 1),),
+            )
+        ],
+    )
+
+    _expect_value_error(
+        lambda: compile_lower_rule_set(
+            table,
+            dialect_ops={"vector": ALL_VECTOR_OPS},
+        ),
+        "vector.concat: variadic operand reference 'inputs[1]' exceeds guarded "
+        "segment count 1",
+    )
+
+
 def test_compile_lower_rule_set_compiles_source_memory_dynamic_term_operand() -> None:
     table = ContractFragment(
         name="test.source-memory-term",
@@ -778,6 +1232,54 @@ def test_source_memory_constraint_rejects_dynamic_view_base_preservation() -> No
             preserve_source_index=True,
         ),
         "source-index preservation requires zero dynamic view-base terms",
+    )
+
+
+def test_source_memory_constraint_accepts_any_dynamic_stride_value_terms() -> None:
+    constraint = SourceMemoryConstraint(
+        operation=SourceMemoryOperation.LOAD,
+        memory_spaces=("global",),
+        element_byte_count=4,
+        vector_lane_count=1,
+        vector_lane_byte_stride=4,
+        static_byte_offset=0,
+        dynamic_term_count=None,
+        dynamic_term_count_minimum=1,
+        allow_dynamic_stride_values=True,
+    )
+
+    assert constraint.dynamic_term_count is None
+    assert constraint.dynamic_term_count_minimum == 1
+    assert constraint.allow_dynamic_stride_values
+
+
+def test_source_memory_constraint_accepts_any_cache_policy() -> None:
+    constraint = SourceMemoryConstraint(
+        operation=SourceMemoryOperation.LOAD,
+        memory_spaces=("global",),
+        element_byte_count=4,
+        vector_lane_count=1,
+        vector_lane_byte_stride=4,
+        static_byte_offset=0,
+        cache_policy_build_flags=None,
+    )
+
+    assert constraint.cache_policy_build_flags is None
+
+
+def test_source_memory_constraint_rejects_stride_values_without_dynamic_terms() -> None:
+    _expect_value_error(
+        lambda: SourceMemoryConstraint(
+            operation=SourceMemoryOperation.LOAD,
+            memory_spaces=("global",),
+            element_byte_count=4,
+            vector_lane_count=1,
+            vector_lane_byte_stride=4,
+            static_byte_offset=0,
+            dynamic_term_count=None,
+            allow_dynamic_stride_values=True,
+        ),
+        "dynamic source memory stride values require at least one dynamic term",
     )
 
 
@@ -1027,6 +1529,7 @@ def test_compile_lower_rule_set_compiles_source_memory_static_offset_projects() 
         TEST_LOW_LOAD_INDEX_V4I32_DESCRIPTOR,
         key="test.load.index.v4i32.offsets",
         immediates=(
+            Immediate("offset_plus", ImmediateKind.SIGNED, bit_width=32),
             Immediate("offset_quotient", ImmediateKind.SIGNED, bit_width=32),
             Immediate("offset_remainder", ImmediateKind.SIGNED, bit_width=32),
         ),
@@ -1055,6 +1558,9 @@ def test_compile_lower_rule_set_compiles_source_memory_static_offset_projects() 
                         },
                         results={"dst": ValueRef.result("result")},
                         immediates={
+                            "offset_plus": SourceMemoryProject.static_byte_offset_plus(
+                                64
+                            ),
                             "offset_quotient": (
                                 SourceMemoryProject.static_byte_offset_quotient(4)
                             ),
@@ -1084,12 +1590,33 @@ def test_compile_lower_rule_set_compiles_source_memory_static_offset_projects() 
     compiled = compile_lower_rule_set(table, dialect_ops={"vector": ALL_VECTOR_OPS})
 
     assert tuple(attr_copy.kind for attr_copy in compiled.attr_copies) == (
+        LowerAttrCopyKind.SOURCE_MEMORY_STATIC_BYTE_OFFSET_PLUS_LITERAL,
         LowerAttrCopyKind.SOURCE_MEMORY_STATIC_BYTE_OFFSET_QUOTIENT,
         LowerAttrCopyKind.SOURCE_MEMORY_STATIC_BYTE_OFFSET_REMAINDER,
     )
     assert tuple(attr_copy.literal_i64 for attr_copy in compiled.attr_copies) == (
+        64,
         4,
         4,
+    )
+
+    source_emit = table.cases[0].emit[0]
+    assert isinstance(source_emit, EmitDescriptorOp)
+    assert source_emit.source_memory is not None
+    overflowing_emit = replace(
+        source_emit,
+        source_memory=replace(
+            source_emit.source_memory,
+            static_byte_offset_minimum=-(2**63),
+            static_byte_offset_maximum=(2**63) - 1,
+        ),
+    )
+    _expect_value_error(
+        lambda: replace(
+            table,
+            cases=(replace(table.cases[0], emit=(overflowing_emit,)),),
+        ),
+        "static byte offset range plus 64 must fit in signed i64",
     )
 
 
@@ -1108,6 +1635,34 @@ def test_compile_lower_rule_set_rejects_descriptor_rule_without_emit() -> None:
     _expect_value_error(
         lambda: compile_lower_rule_set(table, dialect_ops={"scalar": ALL_SCALAR_OPS}),
         "scalar.addi: descriptor-rule contracts must author their emit",
+    )
+
+
+def test_compile_lower_rule_set_rejects_primary_descriptor_not_emitted() -> None:
+    table = ContractFragment(
+        name="test.primary-not-emitted",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            DescriptorRule(
+                source_op=scalar_arithmetic.scalar_addi,
+                descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_MUL_I32_DESCRIPTOR,
+                        operands={
+                            "lhs": ValueRef.operand("lhs"),
+                            "rhs": ValueRef.operand("rhs"),
+                        },
+                        results={"dst": ValueRef.result("result")},
+                    ),
+                ),
+            )
+        ],
+    )
+
+    _expect_value_error(
+        lambda: compile_lower_rule_set(table, dialect_ops={"scalar": ALL_SCALAR_OPS}),
+        "scalar.addi: primary descriptor 'test.add.i32' is not emitted by the rule",
     )
 
 
@@ -1304,6 +1859,7 @@ def test_compile_lower_rule_set_compiles_i64_bit_mask_attr_projection() -> None:
             Immediate("clear", ImmediateKind.UNSIGNED, bit_width=32),
             Immediate("shift", ImmediateKind.UNSIGNED, bit_width=8),
             Immediate("align", ImmediateKind.UNSIGNED, bit_width=8),
+            Immediate("reverse_shift", ImmediateKind.SIGNED, bit_width=8),
         ),
     )
     descriptor_set = replace(
@@ -1341,6 +1897,10 @@ def test_compile_lower_rule_set_compiles_i64_bit_mask_attr_projection() -> None:
                                 other_source_attr="width",
                                 literal=32,
                             ),
+                            "reverse_shift": AttrProject.i64_attr_minus_literal(
+                                "width",
+                                literal=32,
+                            ),
                         },
                     ),
                 ),
@@ -1350,8 +1910,8 @@ def test_compile_lower_rule_set_compiles_i64_bit_mask_attr_projection() -> None:
 
     compiled = compile_lower_rule_set(table, dialect_ops={"scalar": ALL_SCALAR_OPS})
 
-    assert len(compiled.attr_copies) == 5
-    low, target, clear, shift, align = compiled.attr_copies
+    assert len(compiled.attr_copies) == 6
+    low, target, clear, shift, align, reverse_shift = compiled.attr_copies
     assert low.kind == LowerAttrCopyKind.I64_LOW_BIT_MASK
     assert low.source_attr_index == 1
     assert target.kind == LowerAttrCopyKind.I64_SHIFTED_LOW_BIT_MASK
@@ -1367,6 +1927,9 @@ def test_compile_lower_rule_set_compiles_i64_bit_mask_attr_projection() -> None:
     assert align.source_attr_index == 0
     assert align.other_source_attr_index == 1
     assert align.literal_i64 == 32
+    assert reverse_shift.kind == LowerAttrCopyKind.I64_ATTR_MINUS_LITERAL
+    assert reverse_shift.source_attr_index == 1
+    assert reverse_shift.literal_i64 == 32
 
     _expect_value_error(
         lambda: ContractFragment(
@@ -1390,6 +1953,51 @@ def test_compile_lower_rule_set_compiles_i64_bit_mask_attr_projection() -> None:
             ],
         ),
         "descriptor immediate 'i32_value' must be an unsigned immediate",
+    )
+
+
+def test_compile_lower_rule_set_compiles_i64_array_element_offset_projection() -> None:
+    table = ContractFragment(
+        name="test.array-element-offset",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=(
+            DescriptorRule(
+                source_op=vector.vector_extract,
+                descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                guards=(
+                    Guard.value_type("source", Vector("i32", lanes=32)),
+                    Guard.value_type("result", Scalar("i32")),
+                    Guard.i64_array_element_range("static_indices", 0, 16, 31),
+                ),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                        results={"dst": ValueRef.result("result")},
+                        immediates={
+                            "i32_value": AttrProject.i64_array_element_plus_literal(
+                                "static_indices", element=0, literal=-16
+                            )
+                        },
+                        form=DescriptorEmitForm.CONST,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    compiled = compile_lower_rule_set(table, dialect_ops={"vector": ALL_VECTOR_OPS})
+
+    attr_copy = compiled.attr_copies[0]
+    assert attr_copy.kind == LowerAttrCopyKind.I64_ARRAY_ELEMENT_PLUS_LITERAL
+    assert attr_copy.source_attr_index == 0
+    assert attr_copy.source_element_index == 0
+    assert attr_copy.literal_i64 == -16
+
+    _expect_value_error(
+        lambda: AttrProject.i64_array_element_plus_literal(
+            "static_indices", element=0, literal=2**63
+        ),
+        "literal must fit signed i64",
     )
 
 
@@ -1773,6 +2381,172 @@ def test_compile_lower_rule_set_compiles_value_fact_immediate_emit() -> None:
     assert len(compiled.attr_copies) == 1
     assert compiled.attr_copies[0].kind == LowerAttrCopyKind.VALUE_I32_AS_U32_BITS
     value_ref = compiled.value_refs[compiled.attr_copies[0].value_ref_index]
+    assert value_ref.index == 0
+
+
+def test_compile_lower_rule_set_compiles_exact_i64_i32_word() -> None:
+    table = ContractFragment(
+        name="test.value-i64-word-immediate",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            DescriptorRule(
+                source_op=scalar_arithmetic.scalar_addi,
+                descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                guards=(Guard.value_type("result", Scalar("i32")),),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                        results={"dst": ValueRef.result("result")},
+                        immediates={
+                            "i32_value": ValueProject.exact_i64_i32_word(
+                                "lhs", word_index=1
+                            ),
+                        },
+                    ),
+                ),
+            )
+        ],
+    )
+
+    compiled = compile_lower_rule_set(table, dialect_ops={"scalar": ALL_SCALAR_OPS})
+
+    assert len(compiled.attr_copies) == 1
+    attr_copy = compiled.attr_copies[0]
+    assert attr_copy.kind == LowerAttrCopyKind.VALUE_EXACT_I64_I32_WORD
+    assert attr_copy.source_element_index == 1
+    value_ref = compiled.value_refs[attr_copy.value_ref_index]
+    assert value_ref.index == 0
+
+
+def test_exact_i64_i32_word_rejects_non_word_projection() -> None:
+    _expect_value_error(
+        lambda: ValueProject.exact_i64_i32_word("lhs", word_index=2),
+        "word index must be zero or one",
+    )
+    _expect_value_error(
+        lambda: replace(
+            ValueProject.exact_i64_i32_word("lhs", word_index=0),
+            target_bit_offset=1,
+        ),
+        "projection must not use target bit offset",
+    )
+
+
+def test_exact_i64_i32_word_requires_signed_i32_immediate() -> None:
+    unsigned_descriptor = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR,
+        immediates=(
+            Immediate(
+                "i32_value",
+                ImmediateKind.UNSIGNED,
+                bit_width=32,
+                unsigned_max=(2**32) - 1,
+            ),
+        ),
+    )
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=tuple(
+            unsigned_descriptor
+            if descriptor == TEST_LOW_CONST_I32_DESCRIPTOR
+            else descriptor
+            for descriptor in TEST_LOW_CORE_DESCRIPTOR_SET.descriptors
+        ),
+    )
+
+    def compile_unsigned_immediate() -> None:
+        table = ContractFragment(
+            name="test.value-i64-word-unsigned-immediate",
+            descriptor_set=descriptor_set,
+            cases=[
+                DescriptorRule(
+                    source_op=scalar_arithmetic.scalar_addi,
+                    descriptor=unsigned_descriptor,
+                    guards=(Guard.value_type("result", Scalar("i32")),),
+                    emit=(
+                        EmitDescriptorOp(
+                            descriptor=unsigned_descriptor,
+                            results={"dst": ValueRef.result("result")},
+                            immediates={
+                                "i32_value": ValueProject.exact_i64_i32_word(
+                                    "lhs", word_index=0
+                                ),
+                            },
+                        ),
+                    ),
+                )
+            ],
+        )
+        compile_lower_rule_set(table, dialect_ops={"scalar": ALL_SCALAR_OPS})
+
+    _expect_value_error(
+        compile_unsigned_immediate,
+        "must be a signed 32-bit immediate",
+    )
+
+
+def test_compile_lower_rule_set_compiles_f64_i32_word() -> None:
+    table = ContractFragment(
+        name="test.value-f64-word-immediate",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            DescriptorRule(
+                source_op=scalar_arithmetic.scalar_addf,
+                descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                guards=(Guard.value_type("result", Scalar("f32")),),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                        results={"dst": ValueRef.result("result")},
+                        immediates={
+                            "i32_value": ValueProject.float_as_f64_i32_word(
+                                "lhs", word_index=1
+                            ),
+                        },
+                    ),
+                ),
+            )
+        ],
+    )
+
+    compiled = compile_lower_rule_set(table, dialect_ops={"scalar": ALL_SCALAR_OPS})
+
+    assert len(compiled.attr_copies) == 1
+    attr_copy = compiled.attr_copies[0]
+    assert attr_copy.kind == LowerAttrCopyKind.VALUE_FLOAT_AS_F64_I32_WORD
+    assert attr_copy.source_element_index == 1
+    value_ref = compiled.value_refs[attr_copy.value_ref_index]
+    assert value_ref.index == 0
+
+
+def test_compile_lower_rule_set_compiles_f32_i32() -> None:
+    table = ContractFragment(
+        name="test.value-f32-i32-immediate",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            DescriptorRule(
+                source_op=scalar_arithmetic.scalar_addf,
+                descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                guards=(Guard.value_type("result", Scalar("f32")),),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                        results={"dst": ValueRef.result("result")},
+                        immediates={
+                            "i32_value": ValueProject.float_as_f32_i32("lhs"),
+                        },
+                    ),
+                ),
+            )
+        ],
+    )
+
+    compiled = compile_lower_rule_set(table, dialect_ops={"scalar": ALL_SCALAR_OPS})
+
+    assert len(compiled.attr_copies) == 1
+    attr_copy = compiled.attr_copies[0]
+    assert attr_copy.kind == LowerAttrCopyKind.VALUE_FLOAT_AS_F32_I32
+    value_ref = compiled.value_refs[attr_copy.value_ref_index]
     assert value_ref.index == 0
 
 

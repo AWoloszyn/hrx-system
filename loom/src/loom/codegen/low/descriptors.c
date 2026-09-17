@@ -20,6 +20,154 @@ static iree_string_view_t loom_low_descriptor_set_string_view(
       loom_bstring_table_get(&descriptor_set->string_table, string_offset));
 }
 
+iree_string_view_t loom_low_descriptor_set_timing_event_name(
+    const loom_low_descriptor_set_t* descriptor_set, uint16_t timing_event_id) {
+  if (timing_event_id == LOOM_LOW_TIMING_EVENT_NONE) {
+    return iree_string_view_empty();
+  }
+  IREE_ASSERT_LT(timing_event_id, descriptor_set->timing_event_count);
+  return loom_low_descriptor_set_string_view(
+      descriptor_set,
+      descriptor_set->timing_events[timing_event_id].name_string_offset);
+}
+
+const loom_low_event_separation_t*
+loom_low_descriptor_set_lookup_event_separation(
+    const loom_low_descriptor_set_t* descriptor_set, uint16_t producer_event_id,
+    uint16_t consumer_event_id) {
+  if (producer_event_id == LOOM_LOW_TIMING_EVENT_NONE ||
+      consumer_event_id == LOOM_LOW_TIMING_EVENT_NONE) {
+    return NULL;
+  }
+  IREE_ASSERT_LT(producer_event_id, descriptor_set->timing_event_count);
+  IREE_ASSERT_LT(consumer_event_id, descriptor_set->timing_event_count);
+  uint32_t begin = 0;
+  uint32_t end = descriptor_set->event_separation_count;
+  while (begin < end) {
+    const uint32_t middle = begin + (end - begin) / 2;
+    const loom_low_event_separation_t* candidate =
+        &descriptor_set->event_separations[middle];
+    if (candidate->producer_event_id < producer_event_id ||
+        (candidate->producer_event_id == producer_event_id &&
+         candidate->consumer_event_id < consumer_event_id)) {
+      begin = middle + 1;
+    } else {
+      end = middle;
+    }
+  }
+  if (begin == descriptor_set->event_separation_count) {
+    return NULL;
+  }
+  const loom_low_event_separation_t* candidate =
+      &descriptor_set->event_separations[begin];
+  return candidate->producer_event_id == producer_event_id &&
+                 candidate->consumer_event_id == consumer_event_id
+             ? candidate
+             : NULL;
+}
+
+const loom_low_physical_register_t*
+loom_low_descriptor_set_physical_register_at(
+    const loom_low_descriptor_set_t* descriptor_set,
+    uint32_t physical_register_id) {
+  if (descriptor_set == NULL ||
+      physical_register_id >= descriptor_set->physical_register_count) {
+    return NULL;
+  }
+  return &descriptor_set->physical_registers[physical_register_id];
+}
+
+uint16_t loom_low_descriptor_set_physical_register_candidate(
+    const loom_low_descriptor_set_t* descriptor_set, uint16_t reg_class_id,
+    uint16_t candidate_ordinal) {
+  const loom_low_reg_class_t* reg_class =
+      &descriptor_set->reg_classes[reg_class_id];
+  return descriptor_set->physical_register_candidate_ids
+      [reg_class->physical_register_candidate_start + candidate_ordinal];
+}
+
+bool loom_low_descriptor_set_find_physical_register_candidate(
+    const loom_low_descriptor_set_t* descriptor_set, uint16_t reg_class_id,
+    uint32_t physical_register_id, uint16_t* out_candidate_ordinal) {
+  if (descriptor_set == NULL ||
+      reg_class_id >= descriptor_set->reg_class_count) {
+    return false;
+  }
+  const loom_low_reg_class_t* reg_class =
+      &descriptor_set->reg_classes[reg_class_id];
+  const uint32_t register_offset =
+      physical_register_id - reg_class->candidate_lookup.register_base;
+  if (register_offset >= reg_class->candidate_lookup.register_count) {
+    return false;
+  }
+  const uint16_t candidate_ordinal =
+      descriptor_set->physical_register_candidate_ordinals
+          [reg_class->candidate_lookup.ordinal_start + register_offset];
+  if (candidate_ordinal == UINT16_MAX) {
+    return false;
+  }
+  if (out_candidate_ordinal) {
+    *out_candidate_ordinal = candidate_ordinal;
+  }
+  return true;
+}
+
+const uint16_t* loom_low_descriptor_set_physical_register_atomic_units(
+    const loom_low_descriptor_set_t* descriptor_set,
+    uint32_t physical_register_id, uint16_t* out_atomic_unit_count) {
+  if (out_atomic_unit_count) {
+    *out_atomic_unit_count = 0;
+  }
+  const loom_low_physical_register_t* physical_register =
+      loom_low_descriptor_set_physical_register_at(descriptor_set,
+                                                   physical_register_id);
+  if (physical_register == NULL) {
+    return NULL;
+  }
+  if (out_atomic_unit_count) {
+    *out_atomic_unit_count = physical_register->atomic_unit_count;
+  }
+  return descriptor_set->physical_register_atomic_units +
+         physical_register->atomic_unit_start;
+}
+
+const loom_low_physical_register_view_t*
+loom_low_descriptor_set_find_physical_register_view(
+    const loom_low_descriptor_set_t* descriptor_set, uint16_t reg_class_id,
+    uint32_t physical_register_id, uint32_t unit_count) {
+  if (descriptor_set == NULL ||
+      physical_register_id >= descriptor_set->physical_register_count) {
+    return NULL;
+  }
+  const loom_low_physical_register_t* physical_register =
+      &descriptor_set->physical_registers[physical_register_id];
+  const uint32_t class_offset =
+      (uint32_t)reg_class_id - physical_register->view_lookup.class_base;
+  if (class_offset >= physical_register->view_lookup.class_count) {
+    return NULL;
+  }
+  const uint32_t view_ordinal =
+      descriptor_set->physical_register_view_ordinals
+          [physical_register->view_lookup.ordinal_start + class_offset];
+  if (view_ordinal == UINT32_MAX) {
+    return NULL;
+  }
+  const loom_low_physical_register_view_t* view =
+      &descriptor_set->physical_register_views[view_ordinal];
+  return view->unit_count == unit_count ? view : NULL;
+}
+
+const uint16_t*
+loom_low_descriptor_set_physical_register_view_unit_candidate_ordinals(
+    const loom_low_descriptor_set_t* descriptor_set,
+    const loom_low_physical_register_view_t* view) {
+  if (descriptor_set == NULL || view == NULL) {
+    return NULL;
+  }
+  return descriptor_set->physical_register_view_unit_candidate_ordinals +
+         view->unit_candidate_ordinal_start;
+}
+
 uint64_t loom_low_descriptor_stable_id_from_key(iree_string_view_t key) {
   return loom_stable_id_from_string(key);
 }

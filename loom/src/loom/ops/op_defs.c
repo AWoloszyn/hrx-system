@@ -412,6 +412,9 @@ bool loom_op_is_trivially_dead(const loom_module_t* module,
   if (loom_traits_are_convergent(traits)) {
     return false;
   }
+  if (loom_traits_have_observable_effects(traits)) {
+    return false;
+  }
   if (loom_traits_may_write(traits)) {
     return false;
   }
@@ -419,6 +422,9 @@ bool loom_op_is_trivially_dead(const loom_module_t* module,
     return false;
   }
   if (loom_op_regions_have_convergent_effects(op)) {
+    return false;
+  }
+  if (loom_op_regions_have_observable_effects(op)) {
     return false;
   }
   if (loom_op_regions_have_hints(op)) {
@@ -1323,6 +1329,14 @@ iree_status_t loom_region_branch_build_region_terminator(
 //===----------------------------------------------------------------------===//
 // MemoryAccess interface
 //===----------------------------------------------------------------------===//
+
+loom_trait_flags_t loom_memory_access_effective_traits(const loom_op_t* op) {
+  loom_trait_flags_t traits = op->traits & ~LOOM_TRAIT_OBSERVABLE_EFFECT;
+  if (iree_any_bit_set(op->instance_flags, LOOM_MEMORY_ACCESS_FLAG_VOLATILE)) {
+    traits |= LOOM_TRAIT_OBSERVABLE_EFFECT;
+  }
+  return traits;
+}
 
 loom_memory_access_t loom_memory_access_cast(const loom_module_t* module,
                                              const loom_op_t* op) {
@@ -3372,6 +3386,7 @@ static void loom_region_reset_summaries(loom_region_t* region) {
   region->read_effect_count = 0;
   region->write_effect_count = 0;
   region->convergent_effect_count = 0;
+  region->observable_effect_count = 0;
   region->hint_source_count = 0;
   loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {

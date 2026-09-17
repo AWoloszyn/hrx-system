@@ -120,6 +120,18 @@ def _load_command_generation() -> DialectGeneration:
     return DialectGeneration(command_ops, list(ALL_COMMAND_OPS), None)
 
 
+def _load_group_generation() -> DialectGeneration:
+    from loom.dialect.group import ALL_GROUP_OPS, group_ops
+
+    return DialectGeneration(group_ops, list(ALL_GROUP_OPS), None)
+
+
+def _load_pipeline_generation() -> DialectGeneration:
+    from loom.dialect.pipeline import ALL_PIPELINE_OPS, pipeline_ops
+
+    return DialectGeneration(pipeline_ops, list(ALL_PIPELINE_OPS), None)
+
+
 def _load_buffer_generation() -> DialectGeneration:
     from loom.dialect.buffer import ALL_BUFFER_OPS, buffer_ops
 
@@ -207,6 +219,12 @@ def _load_amdgpu_generation() -> DialectGeneration:
     return DialectGeneration(amdgpu_ops, list(ALL_AMDGPU_OPS), None)
 
 
+def _load_aie2p_generation() -> DialectGeneration:
+    from loom.target.arch.amd.xdna.aie2p.dialect import ALL_AIE2P_OPS, aie2p_ops
+
+    return DialectGeneration(aie2p_ops, list(ALL_AIE2P_OPS), None)
+
+
 def _load_x86_generation() -> DialectGeneration:
     from loom.target.arch.x86.dialect import ALL_X86_OPS, x86_ops
 
@@ -242,6 +260,8 @@ _DIALECT_GENERATION_LOADERS: tuple[tuple[str, DialectGenerationLoader], ...] = (
     ("cfg", _load_cfg_generation),
     ("check", _load_check_generation),
     ("command", _load_command_generation),
+    ("group", _load_group_generation),
+    ("pipeline", _load_pipeline_generation),
     ("buffer", _load_buffer_generation),
     ("view", _load_view_generation),
     ("vector", _load_vector_generation),
@@ -255,6 +275,7 @@ _DIALECT_GENERATION_LOADERS: tuple[tuple[str, DialectGenerationLoader], ...] = (
     ("config", _load_config_generation),
     ("sanitizer", _load_sanitizer_generation),
     ("amdgpu", _load_amdgpu_generation),
+    ("aie2p", _load_aie2p_generation),
     ("x86", _load_x86_generation),
     ("spirv", _load_spirv_generation),
     ("wasm", _load_wasm_generation),
@@ -269,13 +290,17 @@ def dialect_names() -> tuple[str, ...]:
 
 def _load_core_types() -> list[Any]:
     from loom.builtin_types import ALL_BUILTIN_TYPES
+    from loom.dialect.group import ALL_GROUP_TYPES
     from loom.dialect.hal import ALL_HAL_TYPES
     from loom.dialect.kernel import ALL_KERNEL_TYPES
+    from loom.dialect.pipeline import ALL_PIPELINE_TYPES
 
     return [
         *ALL_BUILTIN_TYPES,
+        *ALL_GROUP_TYPES,
         *ALL_HAL_TYPES,
         *ALL_KERNEL_TYPES,
+        *ALL_PIPELINE_TYPES,
     ]
 
 

@@ -396,7 +396,6 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_op_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_op_results, 0)
 LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_op_descriptor, 0)
 LOOM_DEFINE_ATTR_DICT(loom_low_op_attrs, 1)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_low_op_memory_access, 2)
 
 // LOOM_OP_LOW_CONST: Descriptor-backed constant or immediate materialization into a register.
 // %c0 = low.const<amdgpu.s_mov_b32> {imm = 0} : reg<amdgpu.sgpr x1>
@@ -410,7 +409,7 @@ iree_status_t loom_low_const_facts(
     const loom_value_facts_t* operand_facts,
     loom_value_facts_t* result_facts);
 
-// LOOM_OP_LOW_COPY: Explicit virtual-register copy used by lowering and allocation. Each copy produces a fresh virtual-register identity.
+// LOOM_OP_LOW_COPY: Explicit virtual-register copy used by lowering and allocation. Each copy produces a fresh virtual-register identity and may constrain the result to a different target register class with the same unit count and semantic value type.
 // %copy = low.copy %value : reg<amdgpu.vgpr x1> -> reg<amdgpu.vgpr x1>
 LOOM_DEFINE_ISA(loom_low_copy_isa, LOOM_OP_LOW_COPY)
 LOOM_DEFINE_OPERAND(loom_low_copy_source, 0)

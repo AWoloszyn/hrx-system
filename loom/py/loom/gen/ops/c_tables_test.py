@@ -88,6 +88,9 @@ from loom.dsl import (
     EncodingOperandSummaryDef,
     EncodingParam,
     EncodingRecordDef,
+    EncodingRecordFieldDef,
+    EncodingRecordFieldRole,
+    EncodingRecordMappingDef,
     EnumCase,
     EnumDef,
     FuncLikeInterface,
@@ -223,13 +226,23 @@ def test_load_dialect_generation_calls_only_requested_loader() -> None:
 
 def test_checked_in_file_set_separates_public_artifacts_from_build_outputs() -> None:
     dialect = Dialect("artifact_test", dialect_id=0x7D)
+    build_generated_dialect = Dialect(
+        "build_generated_test",
+        dialect_id=0x7C,
+        checked_in_headers=False,
+    )
     model = c_table_model.GenerationModel(
         dialects=[
             c_table_model.DialectGeneration(
                 dialect=dialect,
                 ops=[],
                 table_shards=None,
-            )
+            ),
+            c_table_model.DialectGeneration(
+                dialect=build_generated_dialect,
+                ops=[],
+                table_shards=None,
+            ),
         ],
         types=[],
     )
@@ -237,6 +250,7 @@ def test_checked_in_file_set_separates_public_artifacts_from_build_outputs() -> 
     generated_file_set = checked_in_file_set(model)
 
     assert "loom/src/loom/ops/artifact_test/ops.h" in generated_file_set.output_paths
+    assert "loom/src/loom/ops/build_generated_test/ops.h" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/op_registry.h" in generated_file_set.output_paths
     assert "loom/src/loom/ir/scalar_type_table.inc" in generated_file_set.output_paths
     assert "loom/src/loom/ops/artifact_test/builders.c" in generated_file_set.obsolete_paths
@@ -609,6 +623,15 @@ def test_generate_encoding_family_metadata() -> None:
             logical_element_count=256,
             storage_byte_count=144,
             required_alignment=16,
+            fields=[
+                EncodingRecordFieldDef(
+                    EncodingRecordFieldRole.PAYLOAD,
+                    EnumCase("u4", 17),
+                    4,
+                    256,
+                    [EncodingRecordMappingDef(128, 4, 0, 256, 0, 4)],
+                )
+            ],
         ),
         fixed_operand_summary=EncodingOperandSummaryDef(
             element_format=0x10000,
@@ -689,6 +712,19 @@ def test_generate_encoding_family_metadata() -> None:
     assert ".logical_element_count = 256" in tables_c
     assert ".storage_byte_count = 144" in tables_c
     assert ".required_alignment = 16" in tables_c
+    assert "static const loom_encoding_record_mapping_t loom_encoding_operand_record_mappings[]" in tables_c
+    assert ".record_bit_offset = UINT32_C(128)" in tables_c
+    assert ".record_bit_stride = 4" in tables_c
+    assert ".element_count = 256" in tables_c
+    assert ".bit_count = 4" in tables_c
+    assert "static const loom_encoding_record_field_t loom_encoding_operand_record_fields[]" in tables_c
+    assert ".mapping_count = 1" in tables_c
+    assert ".role = LOOM_ENCODING_RECORD_FIELD_PAYLOAD" in tables_c
+    assert ".numeric_format = 17" in tables_c
+    assert ".element_bit_count = 4" in tables_c
+    assert ".field_count = IREE_ARRAYSIZE(loom_encoding_operand_record_fields)" in tables_c
+    assert ".fields = loom_encoding_operand_record_fields" in tables_c
+    assert ".mappings = loom_encoding_operand_record_mappings" in tables_c
     assert ".fixed_metadata = &loom_encoding_operand_fixed_metadata" in tables_c
 
 
@@ -1341,6 +1377,32 @@ def test_generate_tables_emits_generic_symbol_visibility() -> None:
     assert ".visibility_attr_index_plus_one = 2," in tables_c
 
 
+def test_generate_tables_emits_symbol_product_carrier() -> None:
+    scope = EnumDef(
+        "Scope",
+        [EnumCase("kernel", 1), EnumCase("command", 2)],
+    )
+    op = Op(
+        "test.pipeline",
+        group=Dialect("test"),
+        traits=[SYMBOL_DEFINE],
+        attrs=[
+            AttrDef("callee", ATTR_TYPE_SYMBOL),
+            AttrDef("scope", ATTR_TYPE_ENUM, enum_def=scope, optional=True),
+        ],
+        symbol_def=SymbolDefinition(
+            field="callee",
+            name="pipeline",
+            interfaces=["record"],
+            product_carrier="scope",
+        ),
+    )
+
+    tables_c = generate_tables_c("test", 0x01, [op])
+
+    assert ".product_carrier_attr_index_plus_one = 2," in tables_c
+
+
 def test_generate_tables_inherits_func_like_symbol_visibility() -> None:
     visibility = EnumDef("Visibility", [EnumCase("public", 1)])
     op = Op(
@@ -1448,6 +1510,27 @@ def test_generate_command_program_symbol_interface() -> None:
     tables_c = generate_tables_c("test", 0, [op])
 
     assert (".interfaces = LOOM_SYMBOL_INTERFACE_FUNC_LIKE | LOOM_SYMBOL_INTERFACE_COMMAND_PROGRAM,") in tables_c
+
+
+def test_generate_pipeline_symbol_interface() -> None:
+    op = Op(
+        "test.pipeline",
+        group=Dialect("test"),
+        traits=[SYMBOL_DEFINE],
+        attrs=[AttrDef("callee", ATTR_TYPE_SYMBOL)],
+        symbol_def=SymbolDefinition(
+            field="callee",
+            name="pipeline",
+            interfaces=["func_like", "pipeline"],
+        ),
+        regions=[RegionDef("body")],
+        interfaces=[FuncLikeInterface(callee="callee", body="body")],
+        format=[SymbolRef("callee"), FuncArgs("args"), Region("body")],
+    )
+
+    tables_c = generate_tables_c("test", 0, [op])
+
+    assert (".interfaces = LOOM_SYMBOL_INTERFACE_FUNC_LIKE | LOOM_SYMBOL_INTERFACE_PIPELINE,") in tables_c
 
 
 def test_generate_body_signature_partition() -> None:

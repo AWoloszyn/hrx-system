@@ -355,32 +355,11 @@ loom_cc_test(
 )
 
 loom_cc_library(
-    name = "vector_packet_legalization",
-    srcs = ["vector_packet_legalization.c"],
-    hdrs = ["vector_packet_legalization.h"],
-    deps = [
-        ":target_info_defs",
-        "//loom/src/loom/analysis:view_regions",
-        "//loom/src/loom/codegen/low:descriptors",
-        "//loom/src/loom/ir",
-        "//loom/src/loom/ops/buffer",
-        "//loom/src/loom/ops/index",
-        "//loom/src/loom/ops/scf",
-        "//loom/src/loom/ops/vector",
-        "//loom/src/loom/rewrite:rewriter",
-        "//loom/src/loom/target:legalization",
-        "//loom/src/loom/target/arch/amdgpu/lower:kinds",
-        "//runtime/src/iree/base",
-    ],
-)
-
-loom_cc_library(
     name = "legalization",
     srcs = ["legalization.c"],
     hdrs = ["legalization.h"],
     deps = [
         ":facts",
-        ":vector_packet_legalization",
         "//loom/src/loom/analysis:symbolic_expr",
         "//loom/src/loom/codegen/low:descriptors",
         "//loom/src/loom/ir",
@@ -398,6 +377,7 @@ loom_cc_library(
         "//loom/src/loom/target/arch/amdgpu/lower:kinds",
         "//loom/src/loom/target/arch/amdgpu/matrix:contract",
         "//loom/src/loom/target/arch/amdgpu/refs:target_refs",
+        "//loom/src/loom/transforms/vector:packet_legalization",
         "//loom/src/loom/transforms/vector:to_scalar",
         "//loom/src/loom/transforms/view:target_legalization",
         "//runtime/src/iree/base",
@@ -573,6 +553,8 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:ml_attention.loom-test",
         "//loom/src/loom/test/corpus/source_low:ml_contraction.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_conversion.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_conversion_float8.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_conversion_wide.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_f32_memory.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_i32_memory.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_minmax.loom-test",

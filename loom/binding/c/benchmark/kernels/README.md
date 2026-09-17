@@ -26,9 +26,40 @@ package rather than another entry in this one.
 
 The embedded-data targets contain source text only and carry no target-library
 dependencies. Target benchmark binaries select the clusters they consume and
-remain guarded by their production target capabilities. Disabling AMDGPU or
-SPIR-V therefore removes that backend benchmark without coupling the common
-runner or the other backend to unavailable target code.
+remain guarded by their production target capabilities. Disabling AMDGPU,
+SPIR-V, or XDNA therefore removes that backend benchmark without coupling the
+common runner or the other backends to unavailable target code.
+
+## Comparable FFN compilation
+
+`BM_FfnGateUpQuadraticBF16` compiles the same one-output gate/up operation on
+AMDGPU and XDNA at K=512, 1,024, and 4,096. Inputs are one K-element BF16
+activation row and two K-element BF16 weight rows, ordered gate then up. Each
+projection uses 16 F32 partial sums, accumulating two ordered products per lane
+per 32-element chunk, followed by an ordered scalar reduction. The projections
+are rounded to BF16 before the epilogue:
+
+```text
+gate * (0.5 + 0.25 * gate) * up
+```
+
+Each epilogue operation rounds to BF16; the single F32 output exactly represents
+the resulting BF16 value. This is the quadratic gate used by the F32 benchmark
+family, not SwiGLU. The BF16 family has one output rather than the F32 family's
+runtime token/channel grid. Comparisons within a family have matching shapes.
+
+The target sources share their arithmetic body. AMDGPU supplies a one-workitem
+kernel; XDNA supplies a streamed worker and array entry. Both retain their loops
+and use a 64-byte private buffer for partial-sum reduction. This is a compiler
+workload, not a claim that either source is an optimized device implementation.
+XDNA emission includes tile code, transport configuration, binding records, and
+native invocation commands in a complete `.xdna` image.
+
+`SourceLow`, `PreparedLow`, and `CompileAndEmit` clone and specialize a parsed
+module inside the timed region. Target/context setup and parsing occur before
+timing; the workspace is warmed and reused. `CompileAndEmit` includes native
+emission and artifact release, with reports disabled. The same harness and
+operation/size counters apply to both targets.
 
 ## Pipeline scaling
 

@@ -1435,6 +1435,179 @@ ERR_TARGET_078 = ErrorDef(
     ),
 )
 
+# ERR_TARGET_079: Symbolic descriptor reference uses the wrong representation.
+ERR_TARGET_079 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=79,
+    severity=Severity.ERROR,
+    summary="Symbolic descriptor reference uses the wrong representation.",
+    message=(
+        "low function '@{function_name}' descriptor '{descriptor_key}' field "
+        "'{immediate_name}' must reference a function using representation "
+        "'{expected_contract}', but '@{symbol_name}' uses "
+        "'{actual_contract}'"
+    ),
+    params=(
+        ErrorParam("function_name", ParamKind.STRING),
+        ErrorParam("descriptor_key", ParamKind.STRING),
+        ErrorParam("immediate_name", ParamKind.STRING),
+        ErrorParam("symbol_name", ParamKind.STRING),
+        ErrorParam("actual_contract", ParamKind.STRING),
+        ErrorParam("expected_contract", ParamKind.STRING),
+    ),
+    fix_hint=(
+        "Reference a function with the representation required by the descriptor field."
+    ),
+)
+
+# ERR_TARGET_080: Function storage byte length has no finite positive bound.
+ERR_TARGET_080 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=80,
+    severity=Severity.ERROR,
+    summary="Function storage byte length has no finite positive bound.",
+    message=(
+        "target '{target_key}' export '{export_name}' config '{config_key}' "
+        "rejected '{op_name}' in '@{function_name}': {storage_space} function "
+        "storage byte length '{byte_length_value}' must have a finite positive "
+        "compile-time maximum"
+    ),
+    params=(
+        *_TARGET_CONTEXT_PARAMS,
+        ErrorParam("storage_space", ParamKind.STRING),
+        ErrorParam("byte_length_value", ParamKind.STRING),
+    ),
+    fix_hint=(
+        "Constrain '{byte_length_value}' with a finite positive range or "
+        "specialize it before target-low lowering."
+    ),
+)
+
+# ERR_TARGET_081: Target lowering loses volatile memory semantics.
+ERR_TARGET_081 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=81,
+    severity=Severity.ERROR,
+    summary="Target lowering loses volatile memory semantics.",
+    message=(
+        "target '{target_key}' export '{export_name}' config '{config_key}' "
+        "selected a lowering for volatile memory operation '{op_name}' in "
+        "'@{function_name}' that has no ordered source-memory descriptor"
+    ),
+    params=_TARGET_CONTEXT_PARAMS,
+    fix_hint=(
+        "Select a source-memory descriptor carrying an ordered read or write "
+        "effect for the volatile operation."
+    ),
+)
+
+# ERR_TARGET_082: Target device profile is unavailable.
+ERR_TARGET_082 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=82,
+    severity=Severity.ERROR,
+    summary="Target device profile is unavailable.",
+    message="target device profile '{profile}' is unavailable to this target family",
+    params=(ErrorParam("profile", ParamKind.STRING),),
+    fix_hint="Select a device profile provided by this target family.",
+)
+
+# ERR_TARGET_083: Array worker fold has an empty record sequence.
+ERR_TARGET_083 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=83,
+    severity=Severity.ERROR,
+    summary="Array worker fold has an empty record sequence.",
+    message=("array worker fold requires a positive record count; got {record_count}"),
+    params=(ErrorParam("record_count", ParamKind.U32),),
+    fix_hint="Provide a non-empty record sequence for the worker fold.",
+)
+
+# ERR_TARGET_084: AIE2P worker requires a frame-completion phase.
+ERR_TARGET_084 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=84,
+    severity=Severity.ERROR,
+    summary="AIE2P worker requires a frame-completion phase.",
+    message=(
+        "AIE2P pipeline group {group} has frame-completion stages that "
+        "require a phased worker program"
+    ),
+    params=(ErrorParam("group", ParamKind.U32),),
+    fix_hint="Place completion stages in a separate group.",
+)
+
+# ERR_TARGET_085: AIE2P worker outputs require different firing phases.
+ERR_TARGET_085 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=85,
+    severity=Severity.ERROR,
+    summary="AIE2P worker outputs require different firing phases.",
+    message=(
+        "AIE2P pipeline group {group} requires compatible folds on every "
+        "boundary output; mixed cadences require a phased worker program"
+    ),
+    params=(ErrorParam("group", ParamKind.U32),),
+    fix_hint="Place recordwise and folded outputs in separate groups.",
+)
+
+# ERR_TARGET_086: AIE2P internal buffered flow requires a ring state machine.
+ERR_TARGET_086 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=86,
+    severity=Severity.ERROR,
+    summary="AIE2P internal buffered flow requires a ring state machine.",
+    message=(
+        "AIE2P pipeline group {group} flow {flow} has capacity {capacity}; "
+        "buffered same-group flow requires a composite ring state machine"
+    ),
+    params=(
+        ErrorParam("group", ParamKind.U32),
+        ErrorParam("flow", ParamKind.U32),
+        ErrorParam("capacity", ParamKind.U32),
+    ),
+    fix_hint="Place the buffered flow producer and consumer in separate groups.",
+)
+
+# ERR_TARGET_087: AIE2P worker channel cycle requires interleaved phases.
+ERR_TARGET_087 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=87,
+    severity=Severity.ERROR,
+    summary="AIE2P worker channel cycle requires interleaved phases.",
+    message=(
+        "AIE2P worker {worker} (group {group} lane {lane}) participates in a "
+        "channel cycle but waits for all inputs before publishing any output"
+    ),
+    params=(
+        ErrorParam("worker", ParamKind.U32),
+        ErrorParam("group", ParamKind.U32),
+        ErrorParam("lane", ParamKind.U32),
+    ),
+    fix_hint="Place the stages in groups whose worker dependencies are acyclic.",
+)
+
+# ERR_TARGET_088: AIE2P channel has no available compute endpoint.
+ERR_TARGET_088 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=88,
+    severity=Severity.ERROR,
+    summary="AIE2P channel has no available compute endpoint.",
+    message=(
+        "AIE2P channel {channel} needs {capacity} records of {record_bytes} bytes, "
+        "DMA descriptors and locks on a compute tile visible to worker "
+        "({column}, {row}); no candidate has all requested resources"
+    ),
+    params=(
+        ErrorParam("channel", ParamKind.U32),
+        ErrorParam("column", ParamKind.U32),
+        ErrorParam("row", ParamKind.U32),
+        ErrorParam("capacity", ParamKind.U32),
+        ErrorParam("record_bytes", ParamKind.U32),
+    ),
+    fix_hint="Reduce the channel capacity or record size, or change worker placement.",
+)
+
 ALL_TARGET_ERRORS = (
     ERR_TARGET_001,
     ERR_TARGET_002,
@@ -1504,4 +1677,14 @@ ALL_TARGET_ERRORS = (
     ERR_TARGET_075,
     ERR_TARGET_076,
     ERR_TARGET_078,
+    ERR_TARGET_079,
+    ERR_TARGET_080,
+    ERR_TARGET_081,
+    ERR_TARGET_082,
+    ERR_TARGET_083,
+    ERR_TARGET_084,
+    ERR_TARGET_085,
+    ERR_TARGET_086,
+    ERR_TARGET_087,
+    ERR_TARGET_088,
 )

@@ -17,8 +17,6 @@
 namespace loom {
 namespace {
 
-constexpr loom_liveness_analysis_t kEmptyLiveness = {};
-
 class LowAllocationSearchTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -166,7 +164,8 @@ loom_low_placement_relation_t LocationRelation(
 uint32_t FindFreeLocationWithPlacement(
     loom_module_t* module, iree_arena_allocator_t* arena,
     loom_value_id_t candidate_value, loom_value_id_t counterpart_value,
-    uint32_t max_units, const loom_low_placement_relation_t* relation) {
+    uint32_t max_units, const loom_low_placement_relation_t* relation,
+    const loom_low_descriptor_set_t* physical_descriptor_set = nullptr) {
   loom_module_value_ordinal_scratch_acquire(module);
   loom_module_value_ordinal_scratch_set(module, candidate_value,
                                         /*ordinal=*/0);
@@ -209,7 +208,8 @@ uint32_t FindFreeLocationWithPlacement(
   const loom_low_reg_class_t reg_class =
       RegClass(max_units, LOOM_LOW_REG_CLASS_FLAG_PHYSICAL);
   const loom_low_descriptor_set_t descriptor_set =
-      DescriptorSet(&reg_class, descriptor_set_id);
+      physical_descriptor_set ? *physical_descriptor_set
+                              : DescriptorSet(&reg_class, descriptor_set_id);
   const loom_low_resolved_target_t target = ResolvedTarget(&descriptor_set);
   uint32_t max_assigned_location_end_by_reg_class[] = {1};
   loom_low_allocation_target_constraints_t target_constraints = {};
@@ -217,9 +217,15 @@ uint32_t FindFreeLocationWithPlacement(
   target_constraints.max_assigned_location_end_by_reg_class =
       max_assigned_location_end_by_reg_class;
 
+  const uint32_t counterpart_base =
+      physical_descriptor_set
+          ? loom_low_descriptor_set_physical_register_candidate(
+                physical_descriptor_set, 0, 0)
+          : 0;
   const loom_low_allocation_assignment_t assignments[] = {
       Assignment(counterpart_value, /*start=*/0, /*end=*/1, value_class,
-                 /*location_base=*/0, /*location_count=*/1,
+                 counterpart_base,
+                 /*location_count=*/1,
                  /*unit_point_start=*/1),
   };
   const uint32_t assignment_indices_by_value_ordinal[] = {UINT32_MAX, 0};
@@ -233,7 +239,7 @@ uint32_t FindFreeLocationWithPlacement(
 
   loom_low_allocation_active_set_t active_set = {};
   IREE_CHECK_OK(loom_low_allocation_active_set_initialize(
-      &kEmptyLiveness, /*assignment_capacity=*/1, max_units, arena,
+      /*assignment_capacity=*/1, /*program_point_count=*/9, max_units, arena,
       &active_set));
   loom_low_allocation_storage_lease_state_t storage_leases = {};
 
@@ -353,8 +359,8 @@ uint32_t FindFreeLocationWithStorageLease(
 
   loom_low_allocation_active_set_t active_set = {};
   IREE_CHECK_OK(loom_low_allocation_active_set_initialize(
-      &kEmptyLiveness, /*assignment_capacity=*/1, /*unit_capacity=*/8, arena,
-      &active_set));
+      /*assignment_capacity=*/1,
+      /*program_point_count=*/5, /*unit_capacity=*/8, arena, &active_set));
 
   loom_low_schedule_block_t schedule_blocks[] = {{}};
   schedule_blocks[0].scheduled_node_start = 0;
@@ -457,8 +463,67 @@ TEST_F(LowAllocationSearchTest, PreservesFirstFitWithoutPlacementPreference) {
   loom_module_free(module);
 }
 
+TEST_F(LowAllocationSearchTest, ExplicitCandidateOrderAndSoftPreference) {
+  loom_module_t* module = AllocateModule();
+  const loom_value_id_t candidate_value = DefineValue(module);
+  const loom_value_id_t counterpart_value = DefineValue(module);
+  loom_low_reg_class_t reg_class =
+      RegClass(4, LOOM_LOW_REG_CLASS_FLAG_PHYSICAL |
+                      LOOM_LOW_REG_CLASS_FLAG_EXPLICIT_PHYSICAL_REGISTERS);
+  const loom_low_physical_register_t registers[] = {
+      {0, 0, 1, 0}, {0, 1, 1, 0}, {0, 2, 1, 0}, {0, 3, 1, 0}};
+  const uint16_t atomic_units[] = {0, 1, 2, 3};
+  reg_class.candidate_lookup.register_count = 4;
+  const uint16_t candidate_ordinals[] = {2, 3, 0, 1};
+  const uint16_t candidates[] = {2, 3, 0, 1};
+  uint16_t allocation_ordinals[] = {0, 1, 2, 3};
+  loom_low_descriptor_set_t descriptor_set = DescriptorSet(&reg_class, 5);
+  descriptor_set.physical_registers = registers;
+  descriptor_set.physical_register_count = IREE_ARRAYSIZE(registers);
+  descriptor_set.physical_register_atomic_units = atomic_units;
+  descriptor_set.physical_register_atomic_unit_count =
+      IREE_ARRAYSIZE(atomic_units);
+  descriptor_set.physical_register_candidate_ordinals = candidate_ordinals;
+  descriptor_set.physical_register_candidate_ordinal_count =
+      IREE_ARRAYSIZE(candidate_ordinals);
+  descriptor_set.physical_register_candidate_ids = candidates;
+  descriptor_set.physical_register_allocation_ordinals = allocation_ordinals;
+  descriptor_set.physical_register_candidate_count = IREE_ARRAYSIZE(candidates);
+
+  EXPECT_EQ(FindFreeLocationWithPlacement(
+                module, &arena_, candidate_value, counterpart_value,
+                /*max_units=*/4, /*relation=*/nullptr, &descriptor_set),
+            2u);
+  const loom_low_placement_relation_t relation = LocationRelation(
+      /*result_ordinal=*/0, /*source_ordinal=*/1,
+      LOOM_LOW_PLACEMENT_RELATION_DISJOINT_STORAGE, /*location_mask=*/0);
+  // The first candidate is legal but has a penalty; the next candidate has
+  // disjoint storage from the counterpart. A one-unit budget excludes it.
+  EXPECT_EQ(FindFreeLocationWithPlacement(
+                module, &arena_, candidate_value, counterpart_value,
+                /*max_units=*/4, &relation, &descriptor_set),
+            3u);
+  EXPECT_EQ(FindFreeLocationWithPlacement(
+                module, &arena_, candidate_value, counterpart_value,
+                /*max_units=*/1, &relation, &descriptor_set),
+            2u);
+  // Packing order can prefer a higher semantic ordinal, but it cannot admit
+  // that candidate into a smaller authored operand/budget window.
+  allocation_ordinals[0] = 1;
+  allocation_ordinals[1] = 0;
+  EXPECT_EQ(FindFreeLocationWithPlacement(
+                module, &arena_, candidate_value, counterpart_value,
+                /*max_units=*/4, /*relation=*/nullptr, &descriptor_set),
+            3u);
+  EXPECT_EQ(FindFreeLocationWithPlacement(
+                module, &arena_, candidate_value, counterpart_value,
+                /*max_units=*/1, /*relation=*/nullptr, &descriptor_set),
+            2u);
+  loom_module_free(module);
+}
+
 TEST_F(LowAllocationSearchTest,
-       FragmentationRepairPacksScalarBelowWidePressureFrontier) {
+       PlannedScalarPackingPreservesWidePressureFrontier) {
   loom_module_t* module = AllocateModule();
   const loom_value_id_t scalar_value = DefineValue(module);
   const loom_value_id_t wide_value = DefineValue(module);
@@ -536,8 +601,8 @@ TEST_F(LowAllocationSearchTest,
 
   loom_low_allocation_active_set_t active_set = {};
   IREE_ASSERT_OK(loom_low_allocation_active_set_initialize(
-      &liveness, /*assignment_capacity=*/3, /*unit_capacity=*/6, &arena_,
-      &active_set));
+      /*assignment_capacity=*/3,
+      /*program_point_count=*/11, /*unit_capacity=*/6, &arena_, &active_set));
   loom_low_allocation_storage_lease_state_t storage_leases = {};
   loom_low_allocation_search_context_t context = {};
   context.module = module;
@@ -549,13 +614,17 @@ TEST_F(LowAllocationSearchTest,
   context.active_set = &active_set;
   context.storage_leases = &storage_leases;
 
-  // Ordinary first-fit retains the lowest legal location.
+  // Without packing preferences the lowest legal location is authoritative.
   uint32_t location_base = UINT32_MAX;
   EXPECT_TRUE(loom_low_allocation_search_find_free_location(
       &context, &intervals[0], Capacity(/*max_units=*/8), &location_base));
   EXPECT_EQ(location_base, 0u);
 
-  context.strategy = LOOM_LOW_ALLOCATION_SEARCH_STRATEGY_FRAGMENTATION_REPAIR;
+  loom_low_allocation_interval_order_t order = {};
+  IREE_ASSERT_OK(
+      loom_low_allocation_interval_order_build(&liveness, &arena_, &order));
+  IREE_ASSERT_OK(loom_low_allocation_scalar_packing_build(
+      &descriptor_set, &liveness, &order, &arena_, &context.scalar_packing));
   location_base = UINT32_MAX;
   EXPECT_TRUE(loom_low_allocation_search_find_free_location(
       &context, &intervals[0], Capacity(/*max_units=*/8), &location_base));
@@ -766,8 +835,8 @@ TEST_F(LowAllocationSearchTest, FindsFreeLocationAfterActiveAndReservedRanges) {
 
   loom_low_allocation_active_set_t active_set = {};
   IREE_ASSERT_OK(loom_low_allocation_active_set_initialize(
-      &kEmptyLiveness, /*assignment_capacity=*/1, /*unit_capacity=*/8, &arena_,
-      &active_set));
+      /*assignment_capacity=*/1,
+      /*program_point_count=*/13, /*unit_capacity=*/8, &arena_, &active_set));
   loom_low_allocation_active_set_insert(
       &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
       /*assignment_index=*/0);
@@ -865,8 +934,8 @@ TEST_F(LowAllocationSearchTest,
 
   loom_low_allocation_active_set_t active_set = {};
   IREE_ASSERT_OK(loom_low_allocation_active_set_initialize(
-      &kEmptyLiveness, /*assignment_capacity=*/1, /*unit_capacity=*/8, &arena_,
-      &active_set));
+      /*assignment_capacity=*/1,
+      /*program_point_count=*/17, /*unit_capacity=*/8, &arena_, &active_set));
   loom_low_allocation_active_set_insert(
       &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
       /*assignment_index=*/0);
@@ -1028,8 +1097,8 @@ TEST_F(LowAllocationSearchTest, SelectsLowerTrafficActiveSpillVictimSetTie) {
 
   loom_low_allocation_active_set_t active_set = {};
   IREE_ASSERT_OK(loom_low_allocation_active_set_initialize(
-      &kEmptyLiveness, /*assignment_capacity=*/2, /*unit_capacity=*/4, &arena_,
-      &active_set));
+      /*assignment_capacity=*/2,
+      /*program_point_count=*/25, /*unit_capacity=*/4, &arena_, &active_set));
   loom_low_allocation_active_set_insert(
       &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
       /*assignment_index=*/0);
@@ -1166,8 +1235,8 @@ TEST_F(LowAllocationSearchTest, SelectsLowerTrafficOverFewerVictims) {
 
   loom_low_allocation_active_set_t active_set = {};
   IREE_ASSERT_OK(loom_low_allocation_active_set_initialize(
-      &kEmptyLiveness, /*assignment_capacity=*/3, /*unit_capacity=*/4, &arena_,
-      &active_set));
+      /*assignment_capacity=*/3,
+      /*program_point_count=*/33, /*unit_capacity=*/4, &arena_, &active_set));
   loom_low_allocation_active_set_insert(
       &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
       /*assignment_index=*/0);

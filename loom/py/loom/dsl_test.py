@@ -73,6 +73,7 @@ from loom.dsl import (
     MEMORY_FENCE,
     MODULE_SCOPE,
     NON_DETERMINISTIC,
+    OBSERVABLE_EFFECT,
     OFFSET,
     POISON,
     POOL,
@@ -114,6 +115,9 @@ from loom.dsl import (
     EncodingOperandSummaryDef,
     EncodingParam,
     EncodingRecordDef,
+    EncodingRecordFieldDef,
+    EncodingRecordFieldRole,
+    EncodingRecordMappingDef,
     EnumCase,
     EnumDef,
     FreshResult,
@@ -815,9 +819,157 @@ class TestEncodingFamilyDef:
 
 
 class TestEncodingRecordDef:
+    def test_accepts_split_bitplane_field(self) -> None:
+        field = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.PAYLOAD,
+            EnumCase("u5", 15),
+            5,
+            2,
+            [
+                EncodingRecordMappingDef(0, 8, 0, 2, 0, 4),
+                EncodingRecordMappingDef(4, 8, 0, 2, 4, 1),
+            ],
+        )
+        record = EncodingRecordDef(2, 2, fields=[field])
+
+        assert record.fields == (field,)
+
     def test_rejects_non_power_of_two_alignment(self) -> None:
         with _raises(ValueError, match="must be a power of two"):
             EncodingRecordDef(16, 8, required_alignment=3)
+
+    def test_rejects_unrepresentable_scale_hierarchy(self) -> None:
+        with _raises(ValueError, match="exceeds the eight-key auxiliary"):
+            EncodingRecordFieldDef(
+                EncodingRecordFieldRole.SCALE,
+                EnumCase("f16", 3),
+                16,
+                1,
+                [EncodingRecordMappingDef(0, 16, 0, 1, 0, 16)],
+                hierarchy_level=8,
+            )
+
+    def test_rejects_incomplete_field_mapping(self) -> None:
+        with _raises(ValueError, match="do not cover every logical field bit"):
+            EncodingRecordFieldDef(
+                EncodingRecordFieldRole.PAYLOAD,
+                EnumCase("u5", 15),
+                5,
+                2,
+                [EncodingRecordMappingDef(0, 8, 0, 2, 0, 4)],
+            )
+
+    def test_rejects_overlapping_field_mapping(self) -> None:
+        with _raises(ValueError, match="overlap in the logical field"):
+            EncodingRecordFieldDef(
+                EncodingRecordFieldRole.PAYLOAD,
+                EnumCase("u4", 17),
+                4,
+                2,
+                [
+                    EncodingRecordMappingDef(0, 8, 0, 2, 0, 4),
+                    EncodingRecordMappingDef(4, 8, 0, 2, 2, 2),
+                ],
+            )
+
+    def test_rejects_mapping_outside_record(self) -> None:
+        field = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.PAYLOAD,
+            EnumCase("u4", 17),
+            4,
+            2,
+            [EncodingRecordMappingDef(8, 8, 0, 2, 0, 4)],
+        )
+        with _raises(ValueError, match="exceeds physical record storage"):
+            EncodingRecordDef(2, 2, fields=[field])
+
+    def test_rejects_physical_mapping_overlap(self) -> None:
+        payload = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.PAYLOAD,
+            EnumCase("u8", 11),
+            8,
+            1,
+            [EncodingRecordMappingDef(0, 8, 0, 1, 0, 8)],
+        )
+        scale = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.SCALE,
+            EnumCase("u8", 11),
+            8,
+            1,
+            [EncodingRecordMappingDef(0, 8, 0, 1, 0, 8)],
+        )
+        with _raises(ValueError, match="overlap in physical record storage"):
+            EncodingRecordDef(1, 1, fields=[payload, scale])
+
+    def test_rejects_duplicate_field_level(self) -> None:
+        field = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.SCALE,
+            EnumCase("f16", 4),
+            16,
+            1,
+            [EncodingRecordMappingDef(0, 16, 0, 1, 0, 16)],
+        )
+        with _raises(ValueError, match="duplicate field role and hierarchy level"):
+            EncodingRecordDef(1, 4, fields=[field, field])
+
+    def test_rejects_record_fields_without_one_payload(self) -> None:
+        scale = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.SCALE,
+            EnumCase("f16", 4),
+            16,
+            1,
+            [EncodingRecordMappingDef(0, 16, 0, 1, 0, 16)],
+        )
+        with _raises(ValueError, match="exactly one payload field"):
+            EncodingRecordDef(1, 2, fields=[scale])
+
+    def test_rejects_partial_payload_field(self) -> None:
+        payload = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.PAYLOAD,
+            EnumCase("u4", 17),
+            4,
+            2,
+            [EncodingRecordMappingDef(0, 4, 0, 2, 0, 4)],
+        )
+        with _raises(ValueError, match="must cover every logical element"):
+            EncodingRecordDef(4, 1, fields=[payload])
+
+    def test_rejects_nonuniform_field_groups(self) -> None:
+        payload = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.PAYLOAD,
+            EnumCase("u4", 17),
+            4,
+            6,
+            [EncodingRecordMappingDef(0, 4, 0, 6, 0, 4)],
+        )
+        scale = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.SCALE,
+            EnumCase("u4", 17),
+            4,
+            4,
+            [EncodingRecordMappingDef(24, 4, 0, 4, 0, 4)],
+        )
+        with _raises(ValueError, match="must divide the logical element count"):
+            EncodingRecordDef(6, 5, fields=[payload, scale])
+
+    def test_rejects_sparse_field_hierarchy(self) -> None:
+        payload = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.PAYLOAD,
+            EnumCase("u4", 17),
+            4,
+            2,
+            [EncodingRecordMappingDef(0, 4, 0, 2, 0, 4)],
+        )
+        scale = EncodingRecordFieldDef(
+            EncodingRecordFieldRole.SCALE,
+            EnumCase("u4", 17),
+            4,
+            1,
+            [EncodingRecordMappingDef(8, 4, 0, 1, 0, 4)],
+            hierarchy_level=1,
+        )
+        with _raises(ValueError, match="hierarchy levels must be contiguous"):
+            EncodingRecordDef(2, 2, fields=[payload, scale])
 
 
 class TestEncodingOperandSummaryDef:
@@ -991,6 +1143,7 @@ class TestTraits:
             ELEMENTWISE,
             DECOMPOSABLE,
             CONVERGENT,
+            OBSERVABLE_EFFECT,
             SAFE_TO_SPECULATE,
             REFINABLE_RESULT_TYPE_REFS,
         ]
@@ -2731,6 +2884,10 @@ class TestEffects:
         op = Op("test.command", traits=[UNKNOWN_EFFECTS, COMMAND_EFFECT])
         assert not op.is_pure
 
+    def test_command_effect_classifies_observable_effect(self) -> None:
+        op = Op("test.command", traits=[OBSERVABLE_EFFECT, COMMAND_EFFECT])
+        assert not op.is_pure
+
     def test_command_effect_requires_observable_effects(self) -> None:
         with _raises(ValueError, match="COMMAND_EFFECT requires"):
             Op("test.bad", traits=[COMMAND_EFFECT])
@@ -2845,6 +3002,22 @@ class TestEffects:
     def test_hint_with_convergent_raises(self) -> None:
         with _raises(ValueError, match="HINT.*CONVERGENT"):
             Op("test.bad", traits=[HINT, CONVERGENT])
+
+    def test_observable_effect_not_pure(self) -> None:
+        op = Op("test.observe", traits=[OBSERVABLE_EFFECT])
+        assert not op.is_pure
+
+    def test_observable_effect_with_pure_raises(self) -> None:
+        with _raises(ValueError, match="PURE.*OBSERVABLE_EFFECT"):
+            Op("test.bad", traits=[PURE, OBSERVABLE_EFFECT])
+
+    def test_observable_effect_with_hint_raises(self) -> None:
+        with _raises(ValueError, match="HINT.*OBSERVABLE_EFFECT"):
+            Op("test.bad", traits=[HINT, OBSERVABLE_EFFECT])
+
+    def test_observable_effect_with_safe_to_speculate_raises(self) -> None:
+        with _raises(ValueError, match="SAFE_TO_SPECULATE.*OBSERVABLE_EFFECT"):
+            Op("test.bad", traits=[SAFE_TO_SPECULATE, OBSERVABLE_EFFECT])
 
     def test_compile_time_only_can_refine_values(self) -> None:
         op = Op(
@@ -3236,12 +3409,55 @@ class TestSymbolReference:
 
 
 class TestSymbolKernelContract:
+    def test_product_carrier_requires_declared_enum_attr(self) -> None:
+        with _raises(ValueError, match="does not name an attr"):
+            Op(
+                "test.pipeline",
+                traits=[SYMBOL_DEFINE],
+                attrs=[AttrDef("callee", ATTR_TYPE_SYMBOL)],
+                symbol_def=SymbolDefinition(
+                    field="callee",
+                    name="pipeline",
+                    interfaces=["func_like", "pipeline"],
+                    product_carrier="scope",
+                ),
+                regions=[RegionDef("body")],
+                interfaces=[FuncLikeInterface(callee="callee", body="body")],
+                format=[FuncArgs("args"), Region("body")],
+            )
+        with _raises(ValueError, match="must be an enum attr"):
+            Op(
+                "test.pipeline",
+                traits=[SYMBOL_DEFINE],
+                attrs=[
+                    AttrDef("callee", ATTR_TYPE_SYMBOL),
+                    AttrDef("scope", "i64"),
+                ],
+                symbol_def=SymbolDefinition(
+                    field="callee",
+                    name="pipeline",
+                    interfaces=["func_like", "pipeline"],
+                    product_carrier="scope",
+                ),
+                regions=[RegionDef("body")],
+                interfaces=[FuncLikeInterface(callee="callee", body="body")],
+                format=[FuncArgs("args"), Region("body")],
+            )
+
     def test_callable_interface_requires_func_like_interface(self) -> None:
         with _raises(ValueError, match="requires the func_like interface"):
             SymbolDefinition(
                 field="callee",
                 name="function",
                 interfaces=["callable"],
+            )
+
+    def test_pipeline_interface_requires_func_like_interface(self) -> None:
+        with _raises(ValueError, match="requires the func_like interface"):
+            SymbolDefinition(
+                field="callee",
+                name="pipeline",
+                interfaces=["pipeline"],
             )
 
     def test_func_like_requires_one_signature_representation(self) -> None:

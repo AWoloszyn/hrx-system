@@ -38,7 +38,6 @@ loom_low_move_location_t Location(
         LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER) {
   loom_low_move_location_t unit_location = {};
   unit_location.location_kind = location_kind;
-  unit_location.value_class = ValueClass(reg_class_id);
   unit_location.descriptor_reg_class_id = reg_class_id;
   unit_location.location = location;
   return unit_location;
@@ -61,15 +60,16 @@ loom_low_descriptor_set_t DescriptorSet(const loom_low_reg_class_t* reg_classes,
 TEST(LowAllocationUnitLocationTest, MapsAssignmentUnitLocations) {
   const loom_low_allocation_assignment_t assignment =
       Assignment(/*reg_class_id=*/3);
+  const loom_low_reg_class_t reg_classes[4] = {};
+  const loom_low_descriptor_set_t descriptor_set =
+      DescriptorSet(reg_classes, IREE_ARRAYSIZE(reg_classes));
 
   const loom_low_move_location_t unit_location =
-      loom_low_allocation_assignment_unit_location(&assignment,
+      loom_low_allocation_assignment_unit_location(&descriptor_set, &assignment,
                                                    /*unit_index=*/1);
 
   EXPECT_EQ(unit_location.location_kind,
             LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER);
-  EXPECT_TRUE(loom_liveness_value_class_equal(unit_location.value_class,
-                                              assignment.value_class));
   EXPECT_EQ(unit_location.descriptor_reg_class_id, 3);
   EXPECT_EQ(unit_location.location, 8u);
 }
@@ -153,6 +153,89 @@ TEST(LowAllocationUnitLocationTest, DetectsLiveUnitAtPoint) {
   EXPECT_FALSE(loom_low_allocation_unit_location_is_live_at_point(
       &descriptor_set, &assignment, /*assignment_count=*/1, &unit_liveness,
       &outside_unit, /*point=*/4));
+}
+
+TEST(LowAllocationUnitLocationTest, WideScratchOverlapsEveryNarrowUnit) {
+  // The pair is two independently live narrow units but one wide register.
+  // Its first narrow unit can be dead while the second is still occupied.
+  loom_low_reg_class_t reg_classes[2] = {};
+  for (auto& reg_class : reg_classes) {
+    reg_class.flags = LOOM_LOW_REG_CLASS_FLAG_PHYSICAL |
+                      LOOM_LOW_REG_CLASS_FLAG_EXPLICIT_PHYSICAL_REGISTERS;
+  }
+  reg_classes[0].allocatable_count = 2;
+  reg_classes[1].allocatable_count = 1;
+  reg_classes[1].physical_register_candidate_start = 2;
+  reg_classes[0].candidate_lookup.register_count = 2;
+  reg_classes[1].candidate_lookup.ordinal_start = 2;
+  reg_classes[1].candidate_lookup.register_base = 2;
+  reg_classes[1].candidate_lookup.register_count = 1;
+  const uint16_t candidate_ordinals[] = {0, 1, 0};
+  const uint16_t candidates[] = {0, 1, 2};
+  const uint16_t allocation_ordinals[] = {0, 1, 0};
+  const uint16_t atomic_units[] = {0, 1, 0, 1};
+  const loom_low_physical_register_t registers[] = {
+      {/*.name_string_offset=*/0, /*.atomic_unit_start=*/0,
+       /*.atomic_unit_count=*/1},
+      {/*.name_string_offset=*/0, /*.atomic_unit_start=*/1,
+       /*.atomic_unit_count=*/1},
+      {/*.name_string_offset=*/0,
+       /*.atomic_unit_start=*/2,
+       /*.atomic_unit_count=*/2,
+       /*.reserved=*/0,
+       /*.view_lookup=*/
+       {/*.ordinal_start=*/0, /*.class_base=*/0,
+        /*.class_count=*/1}},
+  };
+  const uint32_t view_ordinals[] = {0};
+  const uint16_t view_units[] = {0, 1};
+  const loom_low_physical_register_view_t views[] = {
+      {/*.physical_register_id=*/2, /*.reg_class_id=*/0,
+       /*.unit_candidate_ordinal_start=*/0, /*.unit_count=*/2},
+  };
+  loom_low_descriptor_set_t descriptor_set =
+      DescriptorSet(reg_classes, IREE_ARRAYSIZE(reg_classes));
+  descriptor_set.physical_registers = registers;
+  descriptor_set.physical_register_count = IREE_ARRAYSIZE(registers);
+  descriptor_set.physical_register_candidate_ordinals = candidate_ordinals;
+  descriptor_set.physical_register_candidate_ordinal_count =
+      IREE_ARRAYSIZE(candidate_ordinals);
+  descriptor_set.physical_register_candidate_ids = candidates;
+  descriptor_set.physical_register_candidate_count = IREE_ARRAYSIZE(candidates);
+  descriptor_set.physical_register_allocation_ordinals = allocation_ordinals;
+  descriptor_set.physical_register_atomic_units = atomic_units;
+  descriptor_set.physical_register_atomic_unit_count =
+      IREE_ARRAYSIZE(atomic_units);
+  descriptor_set.physical_register_view_ordinals = view_ordinals;
+  descriptor_set.physical_register_view_ordinal_count =
+      IREE_ARRAYSIZE(view_ordinals);
+  descriptor_set.physical_register_views = views;
+  descriptor_set.physical_register_view_count = IREE_ARRAYSIZE(views);
+  descriptor_set.physical_register_view_unit_candidate_ordinals = view_units;
+  descriptor_set.physical_register_view_unit_candidate_ordinal_count =
+      IREE_ARRAYSIZE(view_units);
+
+  loom_low_allocation_assignment_t assignment = Assignment(/*reg_class_id=*/0);
+  assignment.location_base = 2;
+  assignment.location_count = 2;
+  assignment.unit_count = 2;
+  assignment.flags = LOOM_LOW_ALLOCATION_ASSIGNMENT_FLAG_REFINED_UNIT_STARTS;
+  uint32_t unit_start_points[] = {2, 6};
+  uint32_t unit_end_points[] = {5, 9};
+  loom_low_allocation_unit_liveness_t unit_liveness = {};
+  unit_liveness.start_points = unit_start_points;
+  unit_liveness.end_points = unit_end_points;
+  unit_liveness.point_count = IREE_ARRAYSIZE(unit_end_points);
+  const loom_low_move_location_t wide =
+      Location(/*reg_class_id=*/1, /*location=*/2);
+
+  for (uint32_t point = 0; point < 11; ++point) {
+    SCOPED_TRACE(point);
+    EXPECT_EQ(loom_low_allocation_unit_location_is_live_at_point(
+                  &descriptor_set, &assignment, /*assignment_count=*/1,
+                  &unit_liveness, &wide, point),
+              (point >= 2 && point < 5) || (point >= 6 && point < 9));
+  }
 }
 
 }  // namespace

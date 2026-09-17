@@ -179,11 +179,12 @@ static bool loom_low_lower_rule_source_memory_dynamic_offset_matches(
 
 static bool loom_low_lower_rule_source_memory_address_input_matches(
     const loom_low_lower_rule_match_context_t* match_context,
-    const loom_low_lower_source_memory_t* source_memory,
+    const loom_low_lower_source_memory_address_materializer_t*
+        address_materializer,
     loom_value_id_t source_value_id) {
   const loom_type_t source_type =
       loom_module_value_type(match_context->module, source_value_id);
-  if (source_memory->address_coordinate_type ==
+  if (address_materializer->coordinate_type ==
       LOOM_LOW_LOWER_SOURCE_MEMORY_ADDRESS_COORDINATE_INDEX) {
     if (!loom_type_equal(source_type,
                          loom_type_scalar(LOOM_SCALAR_TYPE_INDEX))) {
@@ -192,10 +193,10 @@ static bool loom_low_lower_rule_source_memory_address_input_matches(
     const loom_value_facts_t facts = loom_value_fact_table_lookup(
         match_context->fact_table, source_value_id);
     return !loom_value_facts_is_float(facts) &&
-           facts.range_lo >= source_memory->address_coordinate_minimum &&
-           facts.range_hi <= source_memory->address_coordinate_maximum;
+           facts.range_lo >= address_materializer->coordinate_minimum &&
+           facts.range_hi <= address_materializer->coordinate_maximum;
   }
-  IREE_ASSERT_EQ(source_memory->address_coordinate_type,
+  IREE_ASSERT_EQ(address_materializer->coordinate_type,
                  LOOM_LOW_LOWER_SOURCE_MEMORY_ADDRESS_COORDINATE_OFFSET);
   if (loom_type_equal(source_type, loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET))) {
     return true;
@@ -231,34 +232,45 @@ static bool loom_low_lower_rule_emit_materializes_source_memory_address(
   return false;
 }
 
+static bool loom_low_lower_rule_source_memory_reject(
+    uint16_t diagnostic_index, uint16_t* out_diagnostic_index) {
+  if (out_diagnostic_index != NULL) {
+    *out_diagnostic_index = diagnostic_index;
+  }
+  return false;
+}
+
 static bool loom_low_lower_rule_source_memory_address_matches(
     const loom_low_lower_rule_match_context_t* match_context,
     const loom_low_lower_rule_set_t* rule_set,
     const loom_low_lower_emit_t* emit,
     const loom_low_lower_source_memory_t* source_memory,
+    const loom_low_lower_source_memory_diagnostics_t* diagnostics,
     const loom_low_source_memory_access_plan_t* access,
     uint16_t* out_diagnostic_index) {
   if (!loom_low_lower_rule_emit_materializes_source_memory_address(rule_set,
                                                                    emit)) {
     return true;
   }
-  if (out_diagnostic_index != NULL) {
-    *out_diagnostic_index = source_memory->address_diagnostic_index;
-  }
+  const loom_low_lower_source_memory_address_materializer_t*
+      address_materializer =
+          loom_low_lower_rule_set_source_memory_address_materializer(
+              rule_set, source_memory);
 
   const int64_t coordinate_unit_byte_count =
-      source_memory->address_coordinate_unit_byte_count;
+      address_materializer->coordinate_unit_byte_count;
   int64_t minimum_byte_offset = 0;
   int64_t maximum_byte_offset = 0;
   if (coordinate_unit_byte_count <= 0 ||
-      !iree_checked_mul_i64(source_memory->address_coordinate_minimum,
+      !iree_checked_mul_i64(address_materializer->coordinate_minimum,
                             coordinate_unit_byte_count, &minimum_byte_offset) ||
-      !iree_checked_mul_i64(source_memory->address_coordinate_maximum,
+      !iree_checked_mul_i64(address_materializer->coordinate_maximum,
                             coordinate_unit_byte_count, &maximum_byte_offset) ||
       access->static_byte_offset % coordinate_unit_byte_count != 0 ||
       access->static_byte_offset < minimum_byte_offset ||
       access->static_byte_offset > maximum_byte_offset) {
-    return false;
+    return loom_low_lower_rule_source_memory_reject(
+        diagnostics->address_diagnostic_index, out_diagnostic_index);
   }
 
   const loom_value_facts_t complete_byte_facts =
@@ -266,19 +278,21 @@ static bool loom_low_lower_rule_source_memory_address_matches(
                                                   access->static_byte_offset);
   if (!loom_low_lower_rule_source_memory_address_facts_fit_byte_range(
           complete_byte_facts, minimum_byte_offset, maximum_byte_offset)) {
-    return false;
+    return loom_low_lower_rule_source_memory_reject(
+        diagnostics->address_diagnostic_index, out_diagnostic_index);
   }
 
-  if (source_memory->address_base_kind ==
+  if (address_materializer->base_kind ==
           LOOM_LOW_LOWER_SOURCE_MEMORY_ADDRESS_BASE_VIEW &&
       loom_low_source_memory_access_base_view_value_id(access) ==
           LOOM_VALUE_ID_INVALID) {
-    return false;
+    return loom_low_lower_rule_source_memory_reject(
+        diagnostics->address_diagnostic_index, out_diagnostic_index);
   }
 
   uint8_t first_canonical_term = 0;
   if (coordinate_unit_byte_count == 1 &&
-      source_memory->address_coordinate_type ==
+      address_materializer->coordinate_type ==
           LOOM_LOW_LOWER_SOURCE_MEMORY_ADDRESS_COORDINATE_OFFSET &&
       access->dynamic_view_base_term_count != 0 &&
       access->dynamic_view_base_value_id != LOOM_VALUE_ID_INVALID) {
@@ -286,7 +300,8 @@ static bool loom_low_lower_rule_source_memory_address_matches(
         match_context->module, access->dynamic_view_base_value_id);
     if (!loom_type_equal(view_base_type,
                          loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET))) {
-      return false;
+      return loom_low_lower_rule_source_memory_reject(
+          diagnostics->address_diagnostic_index, out_diagnostic_index);
     }
     first_canonical_term = access->dynamic_view_base_term_count;
   }
@@ -298,15 +313,17 @@ static bool loom_low_lower_rule_source_memory_address_matches(
         !loom_low_lower_rule_source_memory_address_facts_fit_byte_range(
             term->byte_facts, minimum_byte_offset, maximum_byte_offset) ||
         !loom_low_lower_rule_source_memory_address_input_matches(
-            match_context, source_memory, term->index)) {
-      return false;
+            match_context, address_materializer, term->index)) {
+      return loom_low_lower_rule_source_memory_reject(
+          diagnostics->address_diagnostic_index, out_diagnostic_index);
     }
     for (uint8_t stride_ordinal = 0; stride_ordinal < term->stride_value_count;
          ++stride_ordinal) {
       if (!loom_low_lower_rule_source_memory_address_input_matches(
-              match_context, source_memory,
+              match_context, address_materializer,
               term->stride_values[stride_ordinal])) {
-        return false;
+        return loom_low_lower_rule_source_memory_reject(
+            diagnostics->address_diagnostic_index, out_diagnostic_index);
       }
     }
   }
@@ -316,13 +333,12 @@ static bool loom_low_lower_rule_source_memory_address_matches(
 bool loom_low_lower_rule_source_memory_matches(
     const loom_low_lower_rule_match_context_t* match_context,
     const loom_low_lower_source_memory_t* source_memory,
+    const loom_low_lower_source_memory_diagnostics_t* diagnostics,
     const loom_low_source_memory_access_plan_t* access,
     uint16_t* out_diagnostic_index) {
-  if (out_diagnostic_index != NULL) {
-    *out_diagnostic_index = source_memory->diagnostic_index;
-  }
   if (access == NULL) {
-    return false;
+    return loom_low_lower_rule_source_memory_reject(
+        diagnostics->constraint_diagnostic_index, out_diagnostic_index);
   }
   if (access->operation_kind != source_memory->operation_kind ||
       access->root_value_id == LOOM_VALUE_ID_INVALID ||
@@ -339,8 +355,10 @@ bool loom_low_lower_rule_source_memory_matches(
       access->static_byte_offset > source_memory->static_byte_offset_maximum ||
       (source_memory->minimum_alignment != 0 &&
        access->minimum_alignment < source_memory->minimum_alignment) ||
-      access->cache_policy.build_flags !=
-          source_memory->cache_policy_build_flags ||
+      (!iree_any_bit_set(source_memory->flags,
+                         LOOM_LOW_LOWER_SOURCE_MEMORY_FLAG_CACHE_POLICY_ANY) &&
+       access->cache_policy.build_flags !=
+           source_memory->cache_policy_build_flags) ||
       (iree_any_bit_set(
            source_memory->flags,
            LOOM_LOW_LOWER_SOURCE_MEMORY_FLAG_PRESERVE_SOURCE_INDEX) &&
@@ -351,21 +369,18 @@ bool loom_low_lower_rule_source_memory_matches(
            source_memory->dynamic_view_base_term_count) ||
       !loom_low_lower_rule_source_memory_dynamic_terms_match(source_memory,
                                                              access)) {
-    return false;
+    return loom_low_lower_rule_source_memory_reject(
+        diagnostics->constraint_diagnostic_index, out_diagnostic_index);
   }
   if (!loom_low_lower_rule_source_memory_address_layout_matches(source_memory,
                                                                 access)) {
-    if (out_diagnostic_index != NULL) {
-      *out_diagnostic_index = source_memory->address_layout_diagnostic_index;
-    }
-    return false;
+    return loom_low_lower_rule_source_memory_reject(
+        diagnostics->address_layout_diagnostic_index, out_diagnostic_index);
   }
   if (!loom_low_lower_rule_source_memory_dynamic_offset_matches(source_memory,
                                                                 access)) {
-    if (out_diagnostic_index != NULL) {
-      *out_diagnostic_index = source_memory->dynamic_offset_diagnostic_index;
-    }
-    return false;
+    return loom_low_lower_rule_source_memory_reject(
+        diagnostics->dynamic_offset_diagnostic_index, out_diagnostic_index);
   }
   return true;
 }
@@ -386,8 +401,9 @@ loom_low_lower_rule_source_memory_emits_match(
   const loom_low_source_memory_access_plan_t* source_memory_access = NULL;
   bool all_constraints_compatible = true;
   for (uint16_t i = 0; i < rule->emit_count; ++i) {
-    const uint16_t emit_index = (uint16_t)(rule->emit_start + i);
-    const loom_low_lower_emit_t* emit = &rule_set->emits[emit_index];
+    const uint16_t emit_ref_index = (uint16_t)(rule->action.emit_start + i);
+    const loom_low_lower_emit_t* emit =
+        loom_low_lower_rule_set_emit_at(rule_set, emit_ref_index);
     if (emit->source_memory_ordinal == 0) {
       continue;
     }
@@ -401,14 +417,17 @@ loom_low_lower_rule_source_memory_emits_match(
         (uint16_t)(emit->source_memory_ordinal - 1);
     const loom_low_lower_source_memory_t* source_memory =
         &rule_set->source_memories[source_memory_index];
-    uint16_t diagnostic_index = source_memory->diagnostic_index;
-    if (!loom_low_lower_rule_source_memory_matches(match_context, source_memory,
-                                                   source_memory_access,
-                                                   &diagnostic_index)) {
+    const loom_low_lower_source_memory_diagnostics_t* diagnostics =
+        loom_low_lower_rule_set_source_memory_diagnostics(rule_set,
+                                                          source_memory);
+    uint16_t diagnostic_index = LOOM_LOW_LOWER_DIAGNOSTIC_NONE;
+    if (!loom_low_lower_rule_source_memory_matches(
+            match_context, source_memory, diagnostics, source_memory_access,
+            &diagnostic_index)) {
       all_constraints_compatible = false;
       match.all_emits_match = false;
     } else if (!loom_low_lower_rule_source_memory_address_matches(
-                   match_context, rule_set, emit, source_memory,
+                   match_context, rule_set, emit, source_memory, diagnostics,
                    source_memory_access, &diagnostic_index)) {
       match.all_emits_match = false;
     }

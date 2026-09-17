@@ -1,0 +1,147 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/bazel:python.bzl", "iree_py_library", "iree_py_test")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+iree_py_library(
+    name = "contracts",
+    srcs = [
+        "__init__.py",
+        "conversion.py",
+        "core.py",
+        "core_contract.py",
+        "data_path.py",
+        "f32.py",
+        "f32_compare.py",
+        "floating.py",
+        "i64.py",
+        "index_conversion.py",
+        "memory.py",
+        "nonlinear.py",
+        "packed_dot.py",
+        "packet_conversion.py",
+        "packet_memory.py",
+        "reduction.py",
+        "scalar_program.py",
+        "structural.py",
+    ],
+    visibility = ["//loom/py/loom/gen/target/contracts:__pkg__"],
+    deps = [
+        "//loom/py/loom:core",
+        "//loom/py/loom/dialect/buffer",
+        "//loom/py/loom/dialect/index",
+        "//loom/py/loom/dialect/scalar",
+        "//loom/py/loom/dialect/scf",
+        "//loom/py/loom/dialect/vector",
+        "//loom/py/loom/dialect/view",
+        "//loom/py/loom/target/arch/amd/xdna/aie2p:descriptors",
+        "//loom/py/loom/target/contracts",
+    ],
+)
+
+iree_py_test(
+    name = "conversion_test",
+    size = "small",
+    srcs = [
+        "conversion_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.target.arch.amd.xdna.aie2p.contracts.conversion_test"],
+    main = "pytest_style_runner.py",
+    deps = [
+        ":contracts",
+        "//loom/py/loom/dialect/scalar",
+        "//loom/py/loom/dialect/vector",
+        "//loom/py/loom/target/contracts",
+    ],
+)
+
+iree_py_test(
+    name = "f32_test",
+    size = "small",
+    srcs = [
+        "f32_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.target.arch.amd.xdna.aie2p.contracts.f32_test"],
+    main = "pytest_style_runner.py",
+    deps = [
+        ":contracts",
+        "//loom/py/loom/dialect/scalar",
+        "//loom/py/loom/target/contracts",
+    ],
+)
+
+iree_py_test(
+    name = "core_test",
+    size = "small",
+    srcs = [
+        "core_test.py",
+        "i64_test.py",
+        "nonlinear_test.py",
+        "structural_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = [
+        "loom.target.arch.amd.xdna.aie2p.contracts.core_test",
+        "loom.target.arch.amd.xdna.aie2p.contracts.i64_test",
+        "loom.target.arch.amd.xdna.aie2p.contracts.nonlinear_test",
+        "loom.target.arch.amd.xdna.aie2p.contracts.structural_test",
+    ],
+    main = "pytest_style_runner.py",
+    deps = [
+        ":contracts",
+        "//loom/py/loom/dialect/buffer",
+        "//loom/py/loom/dialect/index",
+        "//loom/py/loom/dialect/scalar",
+        "//loom/py/loom/dialect/scf",
+        "//loom/py/loom/dialect/vector",
+        "//loom/py/loom/dialect/view",
+        "//loom/py/loom/target/contracts",
+    ],
+)
+
+iree_py_test(
+    name = "index_conversion_test",
+    size = "small",
+    srcs = [
+        "index_conversion_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.target.arch.amd.xdna.aie2p.contracts.index_conversion_test"],
+    main = "pytest_style_runner.py",
+    deps = [
+        ":contracts",
+        "//loom/py/loom/dialect/index",
+        "//loom/py/loom/target/contracts",
+    ],
+)
+
+iree_py_test(
+    name = "memory_test",
+    size = "small",
+    srcs = [
+        "memory_test.py",
+        "packet_memory_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = [
+        "loom.target.arch.amd.xdna.aie2p.contracts.memory_test",
+        "loom.target.arch.amd.xdna.aie2p.contracts.packet_memory_test",
+    ],
+    main = "pytest_style_runner.py",
+    deps = [
+        ":contracts",
+        "//loom/py/loom/dialect/vector",
+        "//loom/py/loom/dialect/view",
+        "//loom/py/loom/target/contracts",
+    ],
+)

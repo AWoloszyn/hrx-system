@@ -49,6 +49,13 @@ static bool loom_test_low_is_vector_4xi32(loom_type_t type) {
          loom_type_dim_static_size_at(type, 0) == 4;
 }
 
+static bool loom_test_low_is_vector_2xi32(loom_type_t type) {
+  return loom_type_is_vector(type) && loom_type_rank(type) == 1 &&
+         loom_type_is_all_static(type) &&
+         loom_type_element_type(type) == LOOM_SCALAR_TYPE_I32 &&
+         loom_type_dim_static_size_at(type, 0) == 2;
+}
+
 static bool loom_test_low_is_vector_4xf32(loom_type_t type) {
   return loom_type_is_vector(type) && loom_type_rank(type) == 1 &&
          loom_type_is_all_static(type) &&
@@ -101,6 +108,10 @@ iree_status_t loom_test_low_lower_map_type(void* user_data,
   if (loom_test_low_is_vector_4xi32(source_type)) {
     return loom_test_low_make_register_type(
         context, TEST_LOW_CORE_REG_CLASS_ID_TEST_I32, 4, out_low_type);
+  }
+  if (loom_test_low_is_vector_2xi32(source_type)) {
+    return loom_test_low_make_register_type(
+        context, TEST_LOW_CORE_REG_CLASS_ID_TEST_I32, 2, out_low_type);
   }
   if (loom_test_low_is_vector_4xf32(source_type)) {
     return loom_test_low_make_register_type(
@@ -212,7 +223,7 @@ static iree_status_t loom_test_low_matrix_options(
               .atom_bits = LOOM_CONTRACT_FRAGMENT_SUBGROUP_LANE,
               .subgroup_size = 2,
           },
-      .capability_class = LOOM_CONTRACT_CAPABILITY_CLASS_GPU_MATRIX,
+      .capability_class = LOOM_CONTRACT_CAPABILITY_CLASS_MATRIX,
       .policy = LOOM_LOWERING_POLICY_TARGET_PRIMITIVE_REQUIRED,
   };
   return iree_ok_status();

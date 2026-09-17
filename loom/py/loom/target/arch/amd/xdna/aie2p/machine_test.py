@@ -1,0 +1,167 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+from __future__ import annotations
+
+import pytest
+
+from loom.target.arch.amd.xdna.aie.machine import (
+    decode_immediate,
+    encode_immediate,
+    validate_machine_table,
+)
+from loom.target.arch.amd.xdna.aie2p.core_encoding_data import CORE_ENCODING_TABLE
+from loom.target.arch.amd.xdna.aie2p.core_machine_data import CORE_MACHINE_TABLE
+
+
+def test_core_machine_table_is_structurally_complete() -> None:
+    validate_machine_table(CORE_MACHINE_TABLE, CORE_ENCODING_TABLE)
+
+
+def test_atomic_units_preserve_subregister_aliasing() -> None:
+    registers = {
+        register.name: register for register in CORE_MACHINE_TABLE.physical_registers
+    }
+    x0 = registers["x0"]
+    assert x0.subregisters == ("wl0", "wh0")
+    assert x0.subregister_indices == ("sub_256_lo", "sub_256_hi")
+    assert set(x0.atomic_units) == (
+        set(registers["wl0"].atomic_units) | set(registers["wh0"].atomic_units)
+    )
+
+
+def test_register_adapter_is_operand_local() -> None:
+    adapters = {
+        adapter.name: adapter for adapter in CORE_MACHINE_TABLE.register_adapters
+    }
+    destination_values = dict(adapters["OP_mAguDst"].register_encodings)
+    source_values = dict(adapters["OP_mAguSrc"].register_encodings)
+
+    assert destination_values["p1"] == 12
+    assert source_values["p1"] == 18
+
+
+def test_q_register_adapters_repair_source_encoder_aliasing() -> None:
+    adapters = {
+        adapter.name: adapter for adapter in CORE_MACHINE_TABLE.register_adapters
+    }
+    source_values = {"q0": 0, "q1": 3, "q2": 4, "q3": 7}
+    architectural_values = {"q0": 0, "q1": 1, "q2": 2, "q3": 3}
+    for name in ("OP_mQQsa", "OP_mQQsm", "OP_mQQss"):
+        assert dict(adapters[name].register_encodings) == source_values
+        assert dict(adapters[name].effective_register_encodings) == architectural_values
+
+
+def test_el_subregister_adapters_are_derived_from_owned_register_facts() -> None:
+    registers = {
+        register.name: register for register in CORE_MACHINE_TABLE.physical_registers
+    }
+    classes = {
+        register_class.name: register_class
+        for register_class in CORE_MACHINE_TABLE.register_classes
+    }
+    adapters = {
+        adapter.name: adapter for adapter in CORE_MACHINE_TABLE.register_adapters
+    }
+    lda_values = dict(adapters["OP_mLdaCg"].effective_register_encodings)
+    low_values = dict(adapters["LOOM_eL_low32"].effective_register_encodings)
+    high_values = dict(adapters["LOOM_eL_high32"].effective_register_encodings)
+    lda_high_values = dict(
+        adapters["LOOM_eL_high32_OP_mLdaCg"].effective_register_encodings
+    )
+
+    assert classes["eLPredicate"].candidates == tuple(
+        f"l{index}" for index in range(8, 16)
+    )
+    assert tuple(low_values) == classes["eLPredicate"].candidates
+    assert tuple(high_values) == classes["eLPredicate"].candidates
+    assert tuple(lda_high_values) == classes["eLPredicate"].candidates
+    for register_name in classes["eLPredicate"].candidates:
+        register = registers[register_name]
+        low_register, high_register = register.subregisters
+        assert register.subregister_indices == ("sub_l_even", "sub_l_odd")
+        assert low_values[register_name] == registers[low_register].hardware_encoding
+        assert high_values[register_name] == registers[high_register].hardware_encoding
+        assert lda_high_values[register_name] == lda_values[high_register]
+
+
+def test_vector_storage_adapters_are_derived_from_owned_register_facts() -> None:
+    registers = {
+        register.name: register for register in CORE_MACHINE_TABLE.physical_registers
+    }
+    classes = {
+        register_class.name: register_class
+        for register_class in CORE_MACHINE_TABLE.register_classes
+    }
+    adapters = {
+        adapter.name: adapter for adapter in CORE_MACHINE_TABLE.register_adapters
+    }
+
+    for native_name in ("OP_mWa", "OP_mWb", "OP_mWs"):
+        native_values = dict(adapters[native_name].effective_register_encodings)
+        projected_values = dict(
+            adapters[f"LOOM_eWL_{native_name}"].effective_register_encodings
+        )
+        assert tuple(projected_values) == classes["eWL"].candidates
+        assert all(
+            projected_values[register_name] == native_values[register_name]
+            for register_name in classes["eWL"].candidates
+        )
+
+    xm_values = dict(adapters["OP_mXm"].effective_register_encodings)
+    ewl_as_x = dict(adapters["LOOM_eWL_OP_mXm"].effective_register_encodings)
+    assert tuple(ewl_as_x) == classes["eWL"].candidates
+    for register_name in classes["eWL"].candidates:
+        x_register = next(
+            register
+            for register in registers.values()
+            if register.name in classes["mXm"].candidates
+            and register.subregisters[0] == register_name
+        )
+        assert ewl_as_x[register_name] == xm_values[x_register.name]
+
+    for native_name, derived_name, register_class_name in (
+        ("OP_mMvBMXDst", "LOOM_mXm_OP_mMvBMXDst", "mXm"),
+        ("OP_mMvBMXSrc", "LOOM_mXm_OP_mMvBMXSrc", "mXm"),
+        ("OP_mMvBMXDst", "LOOM_mBMs_OP_mMvBMXDst", "mBMs"),
+        ("OP_mMvBMXSrc", "LOOM_mBMs_OP_mMvBMXSrc", "mBMs"),
+    ):
+        native_values = dict(adapters[native_name].effective_register_encodings)
+        derived_values = dict(adapters[derived_name].effective_register_encodings)
+        assert tuple(derived_values) == classes[register_class_name].candidates
+        assert all(
+            derived_values[register_name] == native_values[register_name]
+            for register_name in classes[register_class_name].candidates
+        )
+
+
+def test_all_immediate_domains_round_trip_boundaries() -> None:
+    for immediate in CORE_MACHINE_TABLE.immediates:
+        fixed_zero_bits = immediate.step.bit_length() - 1
+        if immediate.is_negative:
+            minimum = -(1 << (immediate.encoded_width_bits + fixed_zero_bits))
+            maximum = -immediate.step
+        elif immediate.is_signed:
+            semantic_bits = immediate.encoded_width_bits + fixed_zero_bits
+            minimum = -(1 << (semantic_bits - 1))
+            maximum = (1 << (semantic_bits - 1)) - immediate.step
+        else:
+            minimum = 0
+            maximum = (
+                1 << (immediate.encoded_width_bits + fixed_zero_bits)
+            ) - immediate.step
+        for value in (minimum, maximum):
+            assert (
+                decode_immediate(immediate, encode_immediate(immediate, value)) == value
+            )
+
+
+def test_negative_immediate_rejects_zero() -> None:
+    immediate = next(
+        row for row in CORE_MACHINE_TABLE.immediates if row.name == "c12n_step4"
+    )
+    with pytest.raises(ValueError, match="outside"):
+        encode_immediate(immediate, 0)

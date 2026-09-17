@@ -145,6 +145,8 @@ iree_string_view_t loom_low_constraint_kind_name(
       return IREE_SV("rematerializable");
     case LOOM_LOW_CONSTRAINT_KIND_FOLDABLE:
       return IREE_SV("foldable");
+    case LOOM_LOW_CONSTRAINT_KIND_SAME_REGISTER_ORDINAL:
+      return IREE_SV("same_register_ordinal");
     default:
       return IREE_SV("unknown");
   }
@@ -179,6 +181,18 @@ iree_string_view_t loom_low_model_quality_name(
   }
 }
 
+iree_string_view_t loom_low_issue_use_kind_name(
+    loom_low_issue_use_kind_t kind) {
+  switch (kind) {
+    case LOOM_LOW_ISSUE_USE_KIND_REQUIRED:
+      return IREE_SV("required");
+    case LOOM_LOW_ISSUE_USE_KIND_RESERVED:
+      return IREE_SV("reserved");
+    default:
+      return IREE_SV("unknown");
+  }
+}
+
 iree_string_view_t loom_low_resource_kind_name(loom_low_resource_kind_t kind) {
   switch (kind) {
     case LOOM_LOW_RESOURCE_KIND_SCALAR_ALU:
@@ -195,6 +209,8 @@ iree_string_view_t loom_low_resource_kind_name(loom_low_resource_kind_t kind) {
       return IREE_SV("control");
     case LOOM_LOW_RESOURCE_KIND_ADDRESS:
       return IREE_SV("address");
+    case LOOM_LOW_RESOURCE_KIND_PIPELINE:
+      return IREE_SV("pipeline");
     default:
       return IREE_SV("unknown");
   }

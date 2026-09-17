@@ -43,6 +43,9 @@ typedef struct loom_native_section_contribution_t {
   // Contribution bytes. The referenced storage must stay live for the duration
   // of assembly; the assembled output copies bytes into the caller's arena.
   iree_const_byte_span_t contents;
+  // Logical zero-filled byte length for SHT_NOBITS contributions. This must be
+  // zero for every content-backed contribution.
+  uint64_t zero_fill_length;
 } loom_native_section_contribution_t;
 
 // Resolved position of one input contribution inside the assembled sections.
@@ -55,9 +58,8 @@ typedef struct loom_native_section_contribution_layout_t {
 
 // Output of assembling section contributions into ELF section payloads.
 typedef struct loom_native_section_contribution_assembly_t {
-  // Arena-backed ELF section descriptors suitable for
-  // loom_native_elf64le_file_t.
-  loom_native_elf64le_section_t* sections;
+  // Arena-backed class-neutral ELF section descriptors.
+  loom_native_elf_section_t* sections;
   // Number of entries in |sections|.
   iree_host_size_t section_count;
   // Arena-backed per-input contribution placement rows.
@@ -71,8 +73,9 @@ typedef struct loom_native_section_contribution_assembly_t {
 // Contributions with the same section name are concatenated in input order,
 // honoring each contribution's alignment and zero-filling padding. Matching
 // section names must have matching type, flags, entry size, link, and info
-// fields. The resulting section alignment is the maximum contribution alignment
-// observed for that section.
+// fields. SHT_NOBITS contributions advance logical section size without
+// allocating or copying payload bytes. The resulting section alignment is the
+// maximum contribution alignment observed for that section.
 //
 // All returned arrays, section names, and section payloads are allocated from
 // |arena| and remain valid until the arena is reset or deinitialized. On

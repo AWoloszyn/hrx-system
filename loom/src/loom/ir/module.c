@@ -428,8 +428,10 @@ static void loom_region_adjust_summary_count(uint32_t* count, int32_t delta) {
 static void loom_region_adjust_summary_counts(loom_region_t* region,
                                               int32_t read_delta,
                                               int32_t write_delta,
-                                              int32_t convergent_delta) {
-  if (read_delta == 0 && write_delta == 0 && convergent_delta == 0) {
+                                              int32_t convergent_delta,
+                                              int32_t observable_delta) {
+  if (read_delta == 0 && write_delta == 0 && convergent_delta == 0 &&
+      observable_delta == 0) {
     return;
   }
   if (read_delta != 0) {
@@ -442,12 +444,17 @@ static void loom_region_adjust_summary_counts(loom_region_t* region,
     loom_region_adjust_summary_count(&region->convergent_effect_count,
                                      convergent_delta);
   }
+  if (observable_delta != 0) {
+    loom_region_adjust_summary_count(&region->observable_effect_count,
+                                     observable_delta);
+  }
 }
 
 static void loom_module_adjust_op_ancestor_summary_counts(
     loom_op_t* op, int32_t read_delta, int32_t write_delta,
-    int32_t convergent_delta) {
-  if (read_delta == 0 && write_delta == 0 && convergent_delta == 0) {
+    int32_t convergent_delta, int32_t observable_delta) {
+  if (read_delta == 0 && write_delta == 0 && convergent_delta == 0 &&
+      observable_delta == 0) {
     return;
   }
   loom_region_t* region =
@@ -455,7 +462,7 @@ static void loom_module_adjust_op_ancestor_summary_counts(
   loom_op_t* parent_op = op->parent_op;
   while (region) {
     loom_region_adjust_summary_counts(region, read_delta, write_delta,
-                                      convergent_delta);
+                                      convergent_delta, observable_delta);
     if (!parent_op) {
       break;
     }
@@ -502,10 +509,10 @@ static void loom_module_adjust_op_direct_summaries(loom_module_t* module,
   int32_t read_delta = loom_traits_may_read(traits) ? direction : 0;
   int32_t write_delta = loom_traits_may_write(traits) ? direction : 0;
   int32_t convergent_delta = loom_traits_are_convergent(traits) ? direction : 0;
-  if (read_delta != 0 || write_delta != 0 || convergent_delta != 0) {
-    loom_module_adjust_op_ancestor_summary_counts(op, read_delta, write_delta,
-                                                  convergent_delta);
-  }
+  int32_t observable_delta =
+      loom_traits_have_observable_effects(traits) ? direction : 0;
+  loom_module_adjust_op_ancestor_summary_counts(
+      op, read_delta, write_delta, convergent_delta, observable_delta);
   if (iree_any_bit_set(traits, LOOM_TRAIT_HINT)) {
     loom_module_adjust_op_hint_sources(op, direction);
   }
@@ -557,12 +564,16 @@ void loom_module_update_op_direct_summaries(loom_module_t* module,
   int32_t old_read = loom_traits_may_read(old_traits) ? 1 : 0;
   int32_t old_write = loom_traits_may_write(old_traits) ? 1 : 0;
   int32_t old_convergent = loom_traits_are_convergent(old_traits) ? 1 : 0;
+  int32_t old_observable =
+      loom_traits_have_observable_effects(old_traits) ? 1 : 0;
   int32_t new_read = loom_traits_may_read(new_traits) ? 1 : 0;
   int32_t new_write = loom_traits_may_write(new_traits) ? 1 : 0;
   int32_t new_convergent = loom_traits_are_convergent(new_traits) ? 1 : 0;
+  int32_t new_observable =
+      loom_traits_have_observable_effects(new_traits) ? 1 : 0;
   loom_module_adjust_op_ancestor_summary_counts(
       op, new_read - old_read, new_write - old_write,
-      new_convergent - old_convergent);
+      new_convergent - old_convergent, new_observable - old_observable);
   if (iree_any_bit_set(old_traits ^ new_traits, LOOM_TRAIT_HINT)) {
     loom_module_adjust_op_hint_sources(
         op, iree_any_bit_set(new_traits, LOOM_TRAIT_HINT) ? 1 : -1);
@@ -2519,22 +2530,13 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
         module->strings.count, (unsigned)(LOOM_STRING_ID_INVALID - 1));
   }
 
-  // Ensure the string table has capacity before inserting into the
-  // intern hash table. This guarantees the entry slot exists if the
-  // hash table insert succeeds.
+  // Reserve both tables before preparing the new string. The duplicate probe
+  // established uniqueness, so publishing its index requires no equality check
+  // or fallible work after the string row is populated.
   IREE_RETURN_IF_ERROR(
       loom_string_table_ensure_capacity(&module->arena, &module->strings));
-
-  uint32_t new_index = (uint32_t)module->strings.count;
-  uint32_t result_index = 0;
-  IREE_RETURN_IF_ERROR(loom_intern_table_find_or_insert(
-      &module->arena, &module->string_intern, hash, new_index,
-      loom_string_equal_fn, &equal_context, &result_index));
-
-  if (result_index != new_index) {
-    *out_string_id = (loom_string_id_t)result_index;
-    return iree_ok_status();
-  }
+  IREE_RETURN_IF_ERROR(
+      loom_intern_table_reserve_insert(&module->arena, &module->string_intern));
 
   // New entry: arena-allocate a copy of the string data.
   char* copy = NULL;
@@ -2543,8 +2545,10 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
         iree_arena_allocate(&module->arena, string.size, (void**)&copy));
     memcpy(copy, string.data, string.size);
   }
+  const uint32_t new_index = (uint32_t)module->strings.count;
   module->strings.entries[new_index] = iree_make_string_view(copy, string.size);
   module->strings.count++;
+  loom_intern_table_insert_unique(&module->string_intern, hash, new_index);
 
   *out_string_id = (loom_string_id_t)new_index;
   return iree_ok_status();

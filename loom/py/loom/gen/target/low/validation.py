@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import pairwise, permutations
 
 from loom.target.low_descriptors import (
@@ -28,13 +28,18 @@ from loom.target.low_descriptors import (
     Immediate,
     ImmediateFlag,
     ImmediateKind,
+    IssueUseKind,
     Operand,
     OperandAddressMapKind,
     OperandFlag,
     OperandRole,
+    PhysicalRegister,
+    PhysicalRegisterView,
     RegClass,
     RegClassFlag,
+    RegisterPackingResource,
     RegisterPart,
+    Resource,
     StorageLeaseAttachment,
     StorageLeaseFlag,
 )
@@ -52,8 +57,8 @@ class _PhysicalDescriptorLimits:
     aggregate_resource_capacity: int = 2304
     # Maximum number of physical operand rows in one descriptor.
     maximum_physical_binding_count: int = 15
-    # Maximum number of untied components competing for one namespace.
-    maximum_resource_component_count: int = 8
+    # Maximum untied components admitted to one linear bank's order proof.
+    maximum_linear_resource_component_count: int = 8
     # Maximum pairings of complete pre- and post-phase spatial orders.
     maximum_phase_order_pair_count: int = 1440
     # Maximum allocation-unit width of one physical operand.
@@ -108,9 +113,89 @@ class _PhysicalBaseDomain:
 
 
 def _physical_resource_key(register_class: RegClass) -> str:
+    if RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS in register_class.flags:
+        return "explicit-physical-registers"
     if register_class.alias_set_id:
         return f"alias:{register_class.alias_set_id}"
     return f"class:{register_class.name}"
+
+
+def _register_class_allocatable_count(register_class: RegClass) -> int:
+    if RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS in register_class.flags:
+        return len(register_class.physical_registers)
+    return register_class.allocatable_count
+
+
+def _explicit_components_admit_placement(
+    descriptor: Descriptor,
+    component_rows: Sequence[Sequence[tuple[int, Operand, tuple[RegClass, ...]]]],
+    physical_registers: dict[str, PhysicalRegister],
+    physical_register_views: Sequence[PhysicalRegisterView],
+    early_clobber_results: frozenset[int],
+) -> bool:
+    aggregate_domains: dict[tuple[str, int], set[str]] = {}
+    for view in physical_register_views:
+        aggregate_domains.setdefault((view.reg_class, len(view.units)), set()).add(view.physical_register)
+    component_domains: list[tuple[str, ...]] = []
+    component_phases: list[tuple[bool, bool]] = []
+    for rows in component_rows:
+        domain: set[str] | None = None
+        reads_pre = False
+        writes_post = False
+        for operand_index, operand, physical_classes in rows:
+            explicit_classes = tuple(register_class for register_class in physical_classes if RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS in register_class.flags)
+            if not explicit_classes:
+                continue
+            if len(explicit_classes) != len(physical_classes):
+                raise ValueError(f"descriptor '{descriptor.key}' operand '{operand.field_name}' mixes linear and explicit physical register classes")
+            if operand.address_map_kind is not OperandAddressMapKind.DIRECT:
+                raise ValueError(f"descriptor '{descriptor.key}' operand '{operand.field_name}' uses explicit physical registers with a non-direct address map")
+            operand_domain: set[str] = set()
+            for register_class in explicit_classes:
+                if operand.unit_count == 1:
+                    operand_domain.update(register_class.physical_registers)
+                else:
+                    operand_domain.update(aggregate_domains.get((register_class.name, operand.unit_count), ()))
+            domain = operand_domain if domain is None else domain & operand_domain
+            operand_reads_pre, operand_writes_post = _operand_phase_accesses(
+                operand,
+                is_early_clobber=operand_index in early_clobber_results,
+            )
+            reads_pre |= operand_reads_pre
+            writes_post |= operand_writes_post
+        if domain is None:
+            continue
+        if not domain:
+            return False
+        component_domains.append(tuple(sorted(domain)))
+        component_phases.append((reads_pre, writes_post))
+
+    assigned_units: list[frozenset[int]] = []
+    assigned_phases: list[tuple[bool, bool]] = []
+
+    def assign(component_index: int) -> bool:
+        if component_index == len(component_domains):
+            return True
+        reads_pre, writes_post = component_phases[component_index]
+        for physical_register_name in component_domains[component_index]:
+            atomic_units = frozenset(physical_registers[physical_register_name].atomic_units)
+            if any(
+                atomic_units & existing_units and ((reads_pre and existing_reads_pre) or (writes_post and existing_writes_post))
+                for existing_units, (
+                    existing_reads_pre,
+                    existing_writes_post,
+                ) in zip(assigned_units, assigned_phases, strict=True)
+            ):
+                continue
+            assigned_units.append(atomic_units)
+            assigned_phases.append((reads_pre, writes_post))
+            if assign(component_index + 1):
+                return True
+            assigned_phases.pop()
+            assigned_units.pop()
+        return False
+
+    return assign(0)
 
 
 def _operand_physical_register_classes(
@@ -269,6 +354,97 @@ def _validate_physical_metric(
     raise ValueError(f"{description} physical {metric_name} {value} exceeds generation bound {limit}")
 
 
+def _validate_same_register_ordinal_components(
+    descriptor: Descriptor,
+    register_classes: Mapping[str, RegClass],
+    physical_registers: Mapping[str, PhysicalRegister],
+) -> None:
+    """Proves descriptor-local co-indexed physical-register tuples."""
+
+    adjacency: dict[int, set[int]] = {}
+    edges: set[tuple[int, int]] = set()
+    for constraint in descriptor.constraints:
+        if constraint.kind is not ConstraintKind.SAME_REGISTER_ORDINAL:
+            continue
+        assert constraint.rhs_operand_index is not None
+        edge = tuple(sorted((constraint.lhs_operand_index, constraint.rhs_operand_index)))
+        if edge in edges:
+            raise ValueError(f"descriptor '{descriptor.key}' repeats same-register-ordinal constraint for operand rows {edge[0]} and {edge[1]}")
+        edges.add(edge)
+        adjacency.setdefault(edge[0], set()).add(edge[1])
+        adjacency.setdefault(edge[1], set()).add(edge[0])
+
+    remaining = set(adjacency)
+    while remaining:
+        root = min(remaining)
+        stack = [root]
+        component: set[int] = set()
+        while stack:
+            operand_index = stack.pop()
+            if operand_index in component:
+                continue
+            component.add(operand_index)
+            stack.extend(adjacency[operand_index] - component)
+        remaining.difference_update(component)
+
+        ordered_component = tuple(sorted(component))
+        expected_edge_count = len(ordered_component) * (len(ordered_component) - 1) // 2
+        component_edge_count = sum(1 for lhs_index, rhs_index in edges if lhs_index in component and rhs_index in component)
+        if component_edge_count != expected_edge_count:
+            operand_names = ", ".join(descriptor.operands[index].field_name for index in ordered_component)
+            raise ValueError(f"descriptor '{descriptor.key}' same-register-ordinal component [{operand_names}] must constrain every operand pair")
+
+        component_classes: list[RegClass] = []
+        for operand_index in ordered_component:
+            operand = descriptor.operands[operand_index]
+            description = f"descriptor '{descriptor.key}' same-register-ordinal operand '{operand.field_name}'"
+            if operand.unit_count != 1:
+                raise ValueError(f"{description} must occupy exactly one allocation unit")
+            if len(operand.reg_alts) != 1 or operand.reg_alts[0].reg_class is None:
+                raise ValueError(f"{description} must name exactly one register class")
+            register_class = register_classes[operand.reg_alts[0].reg_class]
+            required_flags = {
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.UNSPILLABLE,
+                RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+            }
+            missing_flags = required_flags.difference(register_class.flags)
+            if missing_flags:
+                names = ", ".join(sorted(flag.name.lower() for flag in missing_flags))
+                raise ValueError(f"{description} register class '{register_class.name}' is missing required flag(s): {names}")
+            component_classes.append(register_class)
+
+        candidate_counts = {len(register_class.physical_registers) for register_class in component_classes}
+        if len(candidate_counts) != 1:
+            operand_names = ", ".join(descriptor.operands[index].field_name for index in ordered_component)
+            raise ValueError(f"descriptor '{descriptor.key}' same-register-ordinal component [{operand_names}] register classes have different candidate counts")
+
+        candidate_count = next(iter(candidate_counts))
+        seen_tuple_storage: set[tuple[int, ...]] = set()
+        aggregate_storage = {physical_register.atomic_units for physical_register in physical_registers.values()}
+        for candidate_ordinal in range(candidate_count):
+            tuple_atomic_units: list[int] = []
+            occupied_atomic_units: set[int] = set()
+            tuple_names: list[str] = []
+            for register_class in component_classes:
+                physical_register_name = register_class.physical_registers[candidate_ordinal]
+                tuple_names.append(physical_register_name)
+                physical_register = physical_registers[physical_register_name]
+                overlap = occupied_atomic_units.intersection(physical_register.atomic_units)
+                if overlap:
+                    raise ValueError(f"descriptor '{descriptor.key}' same-register-ordinal candidate {candidate_ordinal} tuple [{', '.join(tuple_names)}] overlaps atomic storage unit {min(overlap)}")
+                occupied_atomic_units.update(physical_register.atomic_units)
+                tuple_atomic_units.extend(physical_register.atomic_units)
+            tuple_storage = tuple(sorted(tuple_atomic_units))
+            if tuple_storage not in aggregate_storage:
+                raise ValueError(
+                    f"descriptor '{descriptor.key}' same-register-ordinal candidate {candidate_ordinal} tuple [{', '.join(tuple_names)}] does not form a declared aggregate physical register"
+                )
+            if tuple_storage in seen_tuple_storage:
+                raise ValueError(f"descriptor '{descriptor.key}' same-register-ordinal candidate {candidate_ordinal} repeats an earlier aggregate physical register")
+            seen_tuple_storage.add(tuple_storage)
+
+
 def validate_physical_descriptor_set(
     descriptor_set: DescriptorSet,
 ) -> None:
@@ -279,13 +455,18 @@ def validate_physical_descriptor_set(
     """
 
     register_classes = {register_class.name: register_class for register_class in descriptor_set.reg_classes}
+    physical_registers = {physical_register.name: physical_register for physical_register in descriptor_set.physical_registers}
     physical_register_classes = tuple(register_class for register_class in descriptor_set.reg_classes if RegClassFlag.PHYSICAL in register_class.flags)
     resources: dict[str, int] = {}
     for register_class in physical_register_classes:
-        if register_class.allocatable_count == 0:
+        allocatable_count = _register_class_allocatable_count(register_class)
+        if allocatable_count == 0:
             raise ValueError(f"descriptor set '{descriptor_set.key}' physical register class '{register_class.name}' has zero allocation capacity")
         resource_key = _physical_resource_key(register_class)
-        resources.setdefault(resource_key, register_class.allocatable_count)
+        if resource_key == "explicit-physical-registers":
+            resources.setdefault(resource_key, len(physical_registers))
+        else:
+            resources.setdefault(resource_key, allocatable_count)
 
     limits = _PHYSICAL_DESCRIPTOR_LIMITS
     maximum_resource_capacity = max(resources.values(), default=0)
@@ -317,6 +498,11 @@ def validate_physical_descriptor_set(
             for alternative in operand.reg_alts:
                 if alternative.reg_class is not None and alternative.reg_class not in register_classes:
                     raise ValueError(f"descriptor '{descriptor.key}' operand '{operand.field_name}' references unknown register class '{alternative.reg_class}'")
+        _validate_same_register_ordinal_components(
+            descriptor,
+            register_classes,
+            physical_registers,
+        )
         early_clobber_results = frozenset(constraint.lhs_operand_index for constraint in descriptor.constraints if constraint.kind is ConstraintKind.EARLY_CLOBBER)
         tied_operand_roots = _descriptor_tied_operand_roots(descriptor)
 
@@ -327,6 +513,11 @@ def validate_physical_descriptor_set(
                 continue
             if operand.role is OperandRole.IMPLICIT and OperandFlag.STATE_READ not in operand.flags and OperandFlag.STATE_WRITE not in operand.flags:
                 raise ValueError(f"descriptor set '{descriptor_set.key}' descriptor '{descriptor.key}' physical implicit operand '{operand.field_name}' has no state read or write phase")
+            if operand.role is OperandRole.IMPLICIT and OperandFlag.STATE_WRITE in operand.flags:
+                register_class = physical_classes[0]
+                location_count = len(register_class.physical_registers) or register_class.allocatable_count
+                if location_count != 1 or operand.unit_count != 1:
+                    raise ValueError(f"descriptor '{descriptor.key}' implicit physical write '{operand.field_name}' must name one fixed register")
             _validate_physical_metric(
                 descriptor_set.key,
                 f"operand '{operand.field_name}' unit count",
@@ -364,7 +555,8 @@ def validate_physical_descriptor_set(
                     )
 
         components: list[_PhysicalComponent] = []
-        for component_rows in rows_by_component.values():
+        ordered_component_rows = list(rows_by_component.values())
+        for component_rows in ordered_component_rows:
             legal_resource_keys: set[str] | None = None
             pre_width = 0
             post_width = 0
@@ -401,6 +593,16 @@ def validate_physical_descriptor_set(
             limits.maximum_physical_binding_count,
             descriptor_key=descriptor.key,
         )
+        if any(
+            RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS in register_class.flags for _, _, physical_classes in physical_rows for register_class in physical_classes
+        ) and not _explicit_components_admit_placement(
+            descriptor,
+            ordered_component_rows,
+            physical_registers,
+            descriptor_set.physical_register_views,
+            early_clobber_results,
+        ):
+            raise ValueError(f"descriptor set '{descriptor_set.key}' descriptor '{descriptor.key}' explicit physical register components do not admit a legal pre/post placement")
         # Register-class alternatives are selected by the types in low IR, not
         # by this proof. Every independent component that accepts a resource can
         # therefore select it in the same packet and must fit simultaneously.
@@ -408,11 +610,15 @@ def validate_physical_descriptor_set(
             resource_components = [component for component in components if resource_key in component.resource_keys]
             if not resource_components:
                 continue
+            # Exact physical domains were proved against their atomic storage
+            # above. They are not interchangeable positions in a linear bank.
+            if resource_key == "explicit-physical-registers":
+                continue
             _validate_physical_metric(
                 descriptor_set.key,
                 f"resource '{resource_key}' component count",
                 len(resource_components),
-                limits.maximum_resource_component_count,
+                limits.maximum_linear_resource_component_count,
                 descriptor_key=descriptor.key,
             )
             pre_component_count = sum(component.pre_width != 0 for component in resource_components)
@@ -457,6 +663,11 @@ def validate_u32(value: int, description: str) -> None:
         raise ValueError(f"{description} does not fit u32")
 
 
+def validate_i32(value: int, description: str) -> None:
+    if value < -(1 << 31) or value > (1 << 31) - 1:
+        raise ValueError(f"{description} does not fit i32")
+
+
 def validate_u16_table_count(count: int, description: str) -> None:
     if count > 0xFFFF:
         raise ValueError(f"{description} count does not fit a u16-indexed table")
@@ -472,14 +683,237 @@ def validate_i64(value: int, description: str) -> None:
         raise ValueError(f"{description} does not fit i64")
 
 
+def _validate_timing_event_name(name: str, description: str) -> None:
+    if not name:
+        raise ValueError(f"{description} must not be empty")
+    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
+    if any(char not in allowed for char in name):
+        raise ValueError(f"{description} {name!r} must contain only lowercase letters, digits, '.', '_', or '-'")
+
+
+def validate_schedule_model(descriptor_set: DescriptorSet) -> None:
+    """Validates target scheduling facts before they are emitted to C."""
+
+    resources: dict[str, Resource] = {}
+    contention_group_capacities: dict[int, int] = {}
+    for resource in descriptor_set.resources:
+        description = f"descriptor set '{descriptor_set.key}' resource '{resource.name}'"
+        if resource.name in resources:
+            raise ValueError(f"{description} is duplicated")
+        _validate_timing_event_name(resource.name, f"{description} name")
+        validate_u16(resource.capacity_per_cycle, f"{description} capacity")
+        if resource.capacity_per_cycle == 0:
+            raise ValueError(f"{description} has zero per-cycle capacity")
+        validate_u16(
+            resource.contention_group_id,
+            f"{description} contention group ID",
+        )
+        if resource.contention_group_id != 0:
+            group_capacity = contention_group_capacities.setdefault(resource.contention_group_id, resource.capacity_per_cycle)
+            if group_capacity != resource.capacity_per_cycle:
+                raise ValueError(f"{description} capacity {resource.capacity_per_cycle} does not match contention group {resource.contention_group_id} capacity {group_capacity}")
+        resources[resource.name] = resource
+
+    timing_event_names: set[str] = set()
+    for timing_event in descriptor_set.timing_events:
+        description = f"descriptor set '{descriptor_set.key}' timing event '{timing_event.name}'"
+        _validate_timing_event_name(timing_event.name, f"{description} name")
+        if timing_event.name in timing_event_names:
+            raise ValueError(f"{description} is duplicated")
+        timing_event_names.add(timing_event.name)
+    validate_u16_table_count(
+        len(timing_event_names),
+        f"descriptor set '{descriptor_set.key}' timing event",
+    )
+
+    separation_pairs: set[tuple[str, str]] = set()
+    for separation in descriptor_set.event_separations:
+        description = f"descriptor set '{descriptor_set.key}' event separation '{separation.producer_event}' -> '{separation.consumer_event}'"
+        if separation.producer_event not in timing_event_names:
+            raise ValueError(f"{description} references an unknown producer event")
+        if separation.consumer_event not in timing_event_names:
+            raise ValueError(f"{description} references an unknown consumer event")
+        pair = (separation.producer_event, separation.consumer_event)
+        if pair in separation_pairs:
+            raise ValueError(f"{description} is duplicated")
+        separation_pairs.add(pair)
+        validate_i32(
+            separation.minimum_issue_separation_cycles,
+            f"{description} minimum issue separation",
+        )
+
+    schedule_class_names: set[str] = set()
+    for schedule_class in descriptor_set.schedule_classes:
+        description = f"descriptor set '{descriptor_set.key}' schedule class '{schedule_class.name}'"
+        if schedule_class.name in schedule_class_names:
+            raise ValueError(f"{description} is duplicated")
+        schedule_class_names.add(schedule_class.name)
+        validate_u16(schedule_class.latency_cycles, f"{description} latency")
+        validate_u16(
+            schedule_class.schedule_distance_cycles,
+            f"{description} schedule distance",
+        )
+        validate_i32(
+            schedule_class.minimum_issue_separation_cycles,
+            f"{description} minimum issue separation",
+        )
+
+        required_units: dict[tuple[str, int], int] = {}
+        reserved_units: dict[tuple[str, int], int] = {}
+        for issue_use in schedule_class.issue_uses:
+            if not isinstance(issue_use.kind, IssueUseKind):
+                raise ValueError(f"{description} has invalid issue-use kind {issue_use.kind!r}")
+            resource = resources.get(issue_use.resource)
+            if resource is None:
+                raise ValueError(f"{description} references unknown resource '{issue_use.resource}'")
+            validate_u16(issue_use.cycles, f"{description} issue-use cycles")
+            validate_u16(issue_use.units, f"{description} issue-use units")
+            validate_u16(issue_use.stage, f"{description} issue-use stage")
+            if issue_use.cycles == 0:
+                raise ValueError(f"{description} has a zero-cycle issue use")
+            if issue_use.units == 0:
+                raise ValueError(f"{description} has a zero-unit issue use")
+            if issue_use.units > resource.capacity_per_cycle:
+                raise ValueError(f"{description} consumes {issue_use.units} units of resource '{resource.name}' with capacity {resource.capacity_per_cycle}")
+            calendar_key = f"group:{resource.contention_group_id}" if resource.contention_group_id != 0 else f"resource:{resource.name}"
+            for cycle in range(issue_use.stage, issue_use.stage + issue_use.cycles):
+                key = (calendar_key, cycle)
+                if issue_use.kind == IssueUseKind.REQUIRED:
+                    required_units[key] = required_units.get(key, 0) + issue_use.units
+                else:
+                    reserved_units[key] = max(reserved_units.get(key, 0), issue_use.units)
+                units = required_units.get(key, 0) + reserved_units.get(key, 0)
+                if units > resource.capacity_per_cycle:
+                    raise ValueError(f"{description} consumes {units} units from {calendar_key} at relative cycle {cycle}, exceeding capacity {resource.capacity_per_cycle}")
+
+    for descriptor in descriptor_set.descriptors:
+        for operand in descriptor.operands:
+            for access_name, timing_event_name in (
+                ("read", operand.read_event),
+                ("write", operand.write_event),
+            ):
+                if timing_event_name is not None and timing_event_name not in timing_event_names:
+                    raise ValueError(f"descriptor '{descriptor.key}' operand '{operand.field_name}' {access_name} references unknown timing event '{timing_event_name}'")
+        for effect_index, effect in enumerate(descriptor.effects):
+            for endpoint_name, timing_event_name in (
+                ("producer", effect.producer_event),
+                ("consumer", effect.consumer_event),
+            ):
+                if timing_event_name is not None and timing_event_name not in timing_event_names:
+                    raise ValueError(f"descriptor '{descriptor.key}' effect {effect_index} {endpoint_name} references unknown timing event '{timing_event_name}'")
+
+
+def _schedule_alternative_semantics(descriptor: Descriptor) -> Descriptor:
+    """Projects a descriptor to facts that must survive physical selection."""
+
+    return replace(
+        descriptor,
+        key="",
+        mnemonic=None,
+        schedule_class="",
+        schedule_alternatives=(),
+        operands=tuple(
+            replace(
+                operand,
+                encoding_field_id=0,
+                encoding_adapter_id=0,
+            )
+            for operand in descriptor.operands
+        ),
+        immediates=tuple(
+            replace(
+                immediate,
+                encoding_field_id=0,
+                encoding_slices=(),
+                encoding_id=0,
+            )
+            for immediate in descriptor.immediates
+        ),
+        encoding_field_values=(),
+        asm_forms=(),
+        asm_surface=DescriptorAsmSurface.AUTHORABLE,
+        asm_surface_reason="",
+        encoding_format_id=0,
+        encoding_id=0,
+    )
+
+
+def validate_schedule_alternatives(descriptor_set: DescriptorSet) -> None:
+    """Proves schedule alternatives preserve every pre-scheduling contract."""
+
+    descriptors = {descriptor.key: descriptor for descriptor in descriptor_set.descriptors}
+    schedule_classes = {schedule_class.name: schedule_class for schedule_class in descriptor_set.schedule_classes}
+    alternative_count = 0
+    for source in descriptor_set.descriptors:
+        if not source.schedule_alternatives:
+            continue
+        if len(source.schedule_alternatives) != len(set(source.schedule_alternatives)):
+            raise ValueError(f"descriptor '{source.key}' schedule alternatives must be unique")
+        if source.schedule_class is None:
+            raise ValueError(f"descriptor '{source.key}' has no schedule class")
+        source_schedule_class = schedule_classes.get(source.schedule_class)
+        if source_schedule_class is None:
+            raise ValueError(f"descriptor '{source.key}' references unknown schedule class '{source.schedule_class}'")
+        source_schedule_semantics = replace(
+            source_schedule_class,
+            name="",
+            issue_uses=(),
+            hazards=(),
+        )
+        source_semantics = _schedule_alternative_semantics(source)
+        for alternative_key in source.schedule_alternatives:
+            alternative_count += 1
+            if alternative_key == source.key:
+                raise ValueError(f"descriptor '{source.key}' names itself as a schedule alternative")
+            alternative = descriptors.get(alternative_key)
+            if alternative is None:
+                raise ValueError(f"descriptor '{source.key}' references unknown schedule alternative '{alternative_key}'")
+            if _schedule_alternative_semantics(alternative) != source_semantics:
+                raise ValueError(f"descriptor '{source.key}' schedule alternative '{alternative_key}' changes semantic, allocation, or timing facts")
+            if alternative.schedule_class is None:
+                raise ValueError(f"descriptor '{alternative.key}' has no schedule class")
+            alternative_schedule_class = schedule_classes.get(alternative.schedule_class)
+            if alternative_schedule_class is None:
+                raise ValueError(f"descriptor '{alternative.key}' references unknown schedule class '{alternative.schedule_class}'")
+            alternative_schedule_semantics = replace(
+                alternative_schedule_class,
+                name="",
+                issue_uses=(),
+                hazards=(),
+            )
+            if alternative_schedule_semantics != source_schedule_semantics:
+                raise ValueError(f"descriptor '{source.key}' schedule alternative '{alternative_key}' changes latency, pressure, or instruction-class facts")
+    validate_u32(
+        alternative_count,
+        f"descriptor set '{descriptor_set.key}' schedule alternative count",
+    )
+
+
 def validate_register_classes(
     descriptor_set_key: str,
     register_classes: Sequence[RegClass],
+    physical_registers: Sequence[PhysicalRegister] = (),
+    physical_register_views: Sequence[PhysicalRegisterView] = (),
     *,
     alias_set_count: int | None = None,
 ) -> None:
-    """Validates classes in a new or already established alias namespace."""
+    """Validates register classes and their shared storage namespaces."""
+    physical_registers_by_name: dict[str, PhysicalRegister] = {}
+    for physical_register in physical_registers:
+        description = f"descriptor set '{descriptor_set_key}' physical register '{physical_register.name}'"
+        if physical_register.name in physical_registers_by_name:
+            raise ValueError(f"{description} is duplicated")
+        if not physical_register.atomic_units:
+            raise ValueError(f"{description} has no atomic storage units")
+        validate_u16(len(physical_register.atomic_units), f"{description} atomic storage unit count")
+        if physical_register.atomic_units != tuple(sorted(set(physical_register.atomic_units))):
+            raise ValueError(f"{description} atomic storage units must be sorted and unique")
+        for atomic_unit in physical_register.atomic_units:
+            validate_u16(atomic_unit, f"{description} atomic storage unit")
+        physical_registers_by_name[physical_register.name] = physical_register
+
     alias_sets: dict[int, list[RegClass]] = {}
+    register_classes_by_name: dict[str, RegClass] = {}
     for register_class in register_classes:
         description = f"descriptor set '{descriptor_set_key}' register class '{register_class.name}'"
         if register_class.alloc_unit_bits <= 0:
@@ -508,6 +942,36 @@ def validate_register_classes(
             register_class.alias_set_id,
             f"{description} alias-set ID",
         )
+        uses_explicit_physical_registers = RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS in register_class.flags
+        if uses_explicit_physical_registers:
+            if RegClassFlag.PHYSICAL not in register_class.flags:
+                raise ValueError(f"{description} uses explicit physical registers without the physical flag")
+            if register_class.allocatable_count != 0:
+                raise ValueError(f"{description} repeats an allocatable count for its explicit physical register list")
+            if not register_class.physical_registers:
+                raise ValueError(f"{description} has an empty explicit physical register list")
+            if register_class.physical_registers != tuple(dict.fromkeys(register_class.physical_registers)):
+                raise ValueError(f"{description} explicit physical registers must be unique")
+            unknown_physical_registers = tuple(name for name in register_class.physical_registers if name not in physical_registers_by_name)
+            if unknown_physical_registers:
+                raise ValueError(f"{description} references unknown physical registers: " + ", ".join(unknown_physical_registers))
+            candidate_atomic_unit_counts = {len(physical_registers_by_name[name].atomic_units) for name in register_class.physical_registers}
+            if len(candidate_atomic_unit_counts) != 1:
+                raise ValueError(f"{description} explicit physical register candidates must occupy the same number of atomic storage units")
+            occupied_atomic_units: dict[int, str] = {}
+            for physical_register_name in register_class.physical_registers:
+                physical_register = physical_registers_by_name[physical_register_name]
+                for atomic_unit in physical_register.atomic_units:
+                    overlapping_register = occupied_atomic_units.get(atomic_unit)
+                    if overlapping_register is not None:
+                        raise ValueError(f"{description} candidates '{overlapping_register}' and '{physical_register_name}' overlap atomic storage unit {atomic_unit}")
+                    occupied_atomic_units[atomic_unit] = physical_register_name
+            if register_class.fixed_location_base != 0 or register_class.fixed_location_count != 0:
+                raise ValueError(f"{description} mixes explicit physical registers with a linear fixed-location window")
+            if register_class.alias_set_id != 0:
+                raise ValueError(f"{description} mixes explicit physical registers with a linear alias set")
+        elif register_class.physical_registers:
+            raise ValueError(f"{description} lists physical registers without the explicit physical register flag")
         if RegClassFlag.PHYSICAL in register_class.flags and RegClassFlag.VIRTUAL_ONLY in register_class.flags:
             raise ValueError(f"{description} cannot be both physical and virtual-only")
         if register_class.allocatable_count != 0 and RegClassFlag.VIRTUAL_ONLY in register_class.flags:
@@ -523,6 +987,37 @@ def validate_register_classes(
             raise ValueError(f"{description} fixed-location range overlaps its allocatable locations")
         if register_class.alias_set_id != 0:
             alias_sets.setdefault(register_class.alias_set_id, []).append(register_class)
+        register_classes_by_name[register_class.name] = register_class
+
+    seen_view_keys: set[tuple[str, str]] = set()
+    for view in physical_register_views:
+        description = f"descriptor set '{descriptor_set_key}' physical register view '{view.physical_register}' as '{view.reg_class}'"
+        view_key = (view.physical_register, view.reg_class)
+        if view_key in seen_view_keys:
+            raise ValueError(f"{description} is duplicated")
+        seen_view_keys.add(view_key)
+        physical_register = physical_registers_by_name.get(view.physical_register)
+        if physical_register is None:
+            raise ValueError(f"{description} references unknown aggregate physical register")
+        register_class = register_classes_by_name.get(view.reg_class)
+        if register_class is None:
+            raise ValueError(f"{description} references unknown register class")
+        if RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS not in register_class.flags:
+            raise ValueError(f"{description} references a register class without explicit physical registers")
+        if len(view.units) < 2:
+            raise ValueError(f"{description} must contain at least two units")
+        validate_u16(len(view.units), f"{description} unit count")
+        if view.units != tuple(dict.fromkeys(view.units)):
+            raise ValueError(f"{description} units must be unique")
+        unknown_units = tuple(unit for unit in view.units if unit not in physical_registers_by_name)
+        if unknown_units:
+            raise ValueError(f"{description} references unknown physical registers: " + ", ".join(unknown_units))
+        non_candidates = tuple(unit for unit in view.units if unit not in register_class.physical_registers)
+        if non_candidates:
+            raise ValueError(f"{description} units are not candidates of the register class: " + ", ".join(non_candidates))
+        view_atomic_units = tuple(sorted(atomic_unit for unit in view.units for atomic_unit in physical_registers_by_name[unit].atomic_units))
+        if view_atomic_units != physical_register.atomic_units:
+            raise ValueError(f"{description} units do not exactly cover aggregate atomic storage")
 
     alias_set_ids = sorted(alias_sets)
     expected_alias_set_ids = list(range(1, len(alias_set_ids) + 1))
@@ -544,6 +1039,116 @@ def validate_register_classes(
                 raise ValueError(f"descriptor set '{descriptor_set_key}' alias set {alias_set_id} classes '{reference.name}' and '{member.name}' have different allocatable counts")
             if (member.fixed_location_base, member.fixed_location_count) != (reference.fixed_location_base, reference.fixed_location_count):
                 raise ValueError(f"descriptor set '{descriptor_set_key}' alias set {alias_set_id} classes '{reference.name}' and '{member.name}' have different fixed-location ranges")
+
+
+def validate_register_packing_resources(
+    descriptor_set_key: str,
+    register_classes: Sequence[RegClass],
+    resources: Sequence[RegisterPackingResource],
+) -> None:
+    """Validates instantaneous shared register-packing capacities."""
+
+    register_classes_by_name = {register_class.name: register_class for register_class in register_classes}
+    resource_names: set[str] = set()
+    total_member_count = 0
+    for resource in resources:
+        description = f"descriptor set '{descriptor_set_key}' register packing resource '{resource.name}'"
+        if resource.name in resource_names:
+            raise ValueError(f"{description} is duplicated")
+        resource_names.add(resource.name)
+        _validate_timing_event_name(resource.name, f"{description} name")
+        validate_u32(resource.capacity, f"{description} capacity")
+        if resource.capacity == 0:
+            raise ValueError(f"{description} has zero capacity")
+        if not resource.members:
+            raise ValueError(f"{description} has no register-class members")
+        validate_u16_table_count(len(resource.members), f"{description} member")
+        total_member_count += len(resource.members)
+
+        member_register_classes: set[str] = set()
+        for member in resource.members:
+            member_description = f"{description} member '{member.register_class}'"
+            if member.register_class in member_register_classes:
+                raise ValueError(f"{member_description} is duplicated")
+            member_register_classes.add(member.register_class)
+            register_class = register_classes_by_name.get(member.register_class)
+            if register_class is None:
+                raise ValueError(f"{member_description} references an unknown register class")
+            if RegClassFlag.PHYSICAL not in register_class.flags:
+                raise ValueError(f"{member_description} references a non-physical register class")
+            validate_u16(
+                member.register_unit_count,
+                f"{member_description} register unit count",
+            )
+            if member.register_unit_count == 0:
+                raise ValueError(f"{member_description} has zero register units per group")
+            validate_u16(
+                member.resource_unit_count,
+                f"{member_description} resource unit count",
+            )
+            if member.resource_unit_count == 0:
+                raise ValueError(f"{member_description} has zero resource units per group")
+            if member.resource_unit_count > resource.capacity:
+                raise ValueError(f"{member_description} consumes {member.resource_unit_count} units from capacity {resource.capacity}")
+
+    validate_u16_table_count(
+        len(resources),
+        f"descriptor set '{descriptor_set_key}' register packing resource",
+    )
+    validate_u16_table_count(
+        total_member_count,
+        f"descriptor set '{descriptor_set_key}' register packing resource member",
+    )
+
+
+def derive_canonical_physical_register_views(
+    register_classes: Sequence[RegClass],
+    physical_registers: Sequence[PhysicalRegister],
+    explicit_views: Sequence[PhysicalRegisterView],
+) -> tuple[PhysicalRegisterView, ...]:
+    """Completes explicit views with provable canonical aggregate layouts.
+
+    A canonical aggregate is the exact union of a contiguous, naturally
+    aligned run of candidates in one explicit register class. Candidate order
+    then defines logical unit order without assigning semantics to atomic-unit
+    IDs. Targets provide an explicit view for every noncanonical layout.
+    """
+
+    physical_registers_by_name = {physical_register.name: physical_register for physical_register in physical_registers}
+    views = list(explicit_views)
+    view_keys = {(view.physical_register, view.reg_class) for view in explicit_views}
+    for register_class in register_classes:
+        if RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS not in register_class.flags:
+            continue
+        candidates = tuple(physical_registers_by_name[name] for name in register_class.physical_registers)
+        candidate_atomic_unit_count = len(candidates[0].atomic_units)
+        for aggregate in physical_registers:
+            view_key = (aggregate.name, register_class.name)
+            if view_key in view_keys or aggregate.name in register_class.physical_registers:
+                continue
+            aggregate_atomic_unit_count = len(aggregate.atomic_units)
+            if aggregate_atomic_unit_count % candidate_atomic_unit_count != 0:
+                continue
+            unit_count = aggregate_atomic_unit_count // candidate_atomic_unit_count
+            if unit_count < 2 or unit_count > len(candidates):
+                continue
+            for start in range(len(candidates) - unit_count + 1):
+                if start % unit_count != 0:
+                    continue
+                units = candidates[start : start + unit_count]
+                covered_atomic_units = tuple(sorted(atomic_unit for unit in units for atomic_unit in unit.atomic_units))
+                if covered_atomic_units != aggregate.atomic_units:
+                    continue
+                views.append(
+                    PhysicalRegisterView(
+                        physical_register=aggregate.name,
+                        reg_class=register_class.name,
+                        units=tuple(unit.name for unit in units),
+                    )
+                )
+                view_keys.add(view_key)
+                break
+    return tuple(views)
 
 
 def _descriptor_asm_surface_description(
@@ -679,6 +1284,12 @@ def validate_descriptor_operands(descriptor: Descriptor) -> DescriptorOperandLay
             operand.address_state_slot,
             f"descriptor '{descriptor.key}' operand '{operand.field_name}' address state slot",
         )
+        validate_u16(
+            operand.encoding_adapter_id,
+            f"descriptor '{descriptor.key}' operand '{operand.field_name}' encoding adapter ID",
+        )
+        if operand.encoding_adapter_id != 0 and operand.encoding_field_id == 0:
+            raise ValueError(f"descriptor '{descriptor.key}' operand '{operand.field_name}' has an encoding adapter without an encoding field")
         is_packet_value = operand_role_is_packet_input(operand.role)
         has_addressable_assignment = is_result or is_packet_value
         if operand.address_map_kind is OperandAddressMapKind.DIRECT:
@@ -778,6 +1389,53 @@ def validate_descriptor_op_kind(descriptor: Descriptor, result_count: int) -> No
             raise ValueError(f"descriptor '{descriptor.key}' low.const asm form '{mnemonic}' must expose exactly one result and no operands")
 
 
+def validate_allocation_move_descriptor(
+    descriptor: Descriptor,
+    result_count: int,
+    register_classes: Mapping[str, RegClass],
+) -> None:
+    """Validates a descriptor promised as an allocator repair move."""
+
+    if DescriptorFlag.ALLOCATION_MOVE not in descriptor.flags:
+        return
+    description = f"descriptor '{descriptor.key}' allocation move"
+    if descriptor.op_kind is not DescriptorOpKind.OP:
+        raise ValueError(f"{description} must use low.op")
+    if result_count != 1 or len(descriptor.operands) != 2:
+        raise ValueError(f"{description} must declare exactly one result and one operand")
+    destination, source = descriptor.operands
+    if source.role is not OperandRole.OPERAND:
+        raise ValueError(f"{description} source must be an ordinary operand")
+    if destination.unit_count != 1 or source.unit_count != 1:
+        raise ValueError(f"{description} must copy exactly one allocation unit")
+    if len(destination.reg_alts) != 1 or len(source.reg_alts) != 1:
+        raise ValueError(f"{description} operands must each name one register class")
+    destination_class_name = destination.reg_alts[0].reg_class
+    source_class_name = source.reg_alts[0].reg_class
+    if destination_class_name is None or source_class_name is None:
+        raise ValueError(f"{description} cannot use literal register alternatives")
+    destination_class = register_classes[destination_class_name]
+    source_class = register_classes[source_class_name]
+    if destination_class.alloc_unit_bits != source_class.alloc_unit_bits:
+        raise ValueError(f"{description} changes allocation-unit width from {source_class.alloc_unit_bits} to {destination_class.alloc_unit_bits} bits")
+    if destination.register_part is not None or source.register_part is not None:
+        raise ValueError(f"{description} cannot address register parts")
+    if destination.encoding_field_id == 0 or source.encoding_field_id == 0:
+        raise ValueError(f"{description} must encode both physical registers")
+    if descriptor.immediates:
+        raise ValueError(f"{description} cannot require immediates")
+    if descriptor.effects:
+        raise ValueError(f"{description} cannot carry effects")
+    if descriptor.constraints:
+        raise ValueError(f"{description} cannot carry operand constraints")
+    if descriptor.storage_leases:
+        raise ValueError(f"{description} cannot carry storage leases")
+    if descriptor.operand_forms:
+        raise ValueError(f"{description} cannot carry operand forms")
+    if DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags:
+        raise ValueError(f"{description} must be dead-removable")
+
+
 def descriptor_operand_source_value_indices(
     descriptor: Descriptor,
     result_count: int,
@@ -831,6 +1489,7 @@ def _validate_rematerializable_result(
     forbidden_flags = {
         DescriptorFlag.SIDE_EFFECTING,
         DescriptorFlag.TERMINATOR,
+        DescriptorFlag.UNIQUE_IDENTITY,
     }.intersection(descriptor.flags)
     if forbidden_flags:
         names = ", ".join(sorted(flag.name.lower() for flag in forbidden_flags))
@@ -893,6 +1552,17 @@ def validate_descriptor_constraints(
             rhs = descriptor.operands[rhs_operand_index]
             if lhs.role is not OperandRole.OPERAND or rhs.role is not OperandRole.OPERAND:
                 raise ValueError(f"descriptor '{descriptor.key}' commutable constraint requires two operand rows")
+        elif constraint.kind is ConstraintKind.SAME_REGISTER_ORDINAL:
+            rhs_operand_index = _validate_binary_constraint(
+                descriptor,
+                constraint_index,
+                "same-register-ordinal",
+                lhs_operand_index,
+                rhs_operand_index,
+            )
+            rhs = descriptor.operands[rhs_operand_index]
+            if (lhs.role is not OperandRole.RESULT and not operand_role_is_packet_input(lhs.role)) or (rhs.role is not OperandRole.RESULT and not operand_role_is_packet_input(rhs.role)):
+                raise ValueError(f"descriptor '{descriptor.key}' same-register-ordinal constraint requires two result or packet operand rows")
         elif constraint.kind in (
             ConstraintKind.EARLY_CLOBBER,
             ConstraintKind.REMATERIALIZABLE,
@@ -1004,6 +1674,9 @@ def validate_immediate_default(descriptor: Descriptor, immediate: Immediate, enu
             domain = enum_domains[immediate.enum_domain]
             if all(value.value != immediate.default_value for value in domain.values):
                 raise ValueError(f"descriptor '{descriptor.key}' immediate '{immediate.field_name}' default value is not in enum domain '{domain.name}'")
+            return
+    if immediate.default_value % immediate.value_step:
+        raise ValueError(f"descriptor '{descriptor.key}' immediate '{immediate.field_name}' default value is not a multiple of {immediate.value_step}")
 
 
 def asm_form_mnemonic(descriptor: Descriptor, asm_form: AsmForm) -> str:

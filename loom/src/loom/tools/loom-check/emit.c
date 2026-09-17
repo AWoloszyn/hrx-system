@@ -1197,7 +1197,6 @@ static iree_status_t loom_check_emit_build_low_allocation_table(
       .fixed_values = fixed_values,
       .fixed_value_count = fixed_value_count,
       .emitter = emitter,
-      .diagnostic_flags = diagnostic_flags,
   };
   loom_low_function_model_t model = {0};
   iree_status_t status = loom_low_function_model_initialize(
@@ -1207,6 +1206,10 @@ static iree_status_t loom_check_emit_build_low_allocation_table(
   if (iree_status_is_ok(status)) {
     status =
         loom_low_allocate_function(&model, &options, analysis_arena, out_table);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_low_allocation_diagnostics_emit(out_table, diagnostic_flags,
+                                                  emitter);
   }
   if (iree_status_is_ok(status)) {
     *out_built = true;
@@ -1512,13 +1515,6 @@ iree_status_t loom_check_prepare_source_low_module(
       .source_resolver = source_resolver,
       .max_errors = 20,
   };
-  loom_verify_result_t verify_result = {0};
-  IREE_RETURN_IF_ERROR(loom_target_entry_verify_module(module, &entry_options,
-                                                       20, &verify_result));
-  if (verify_result.error_count != 0) {
-    return iree_ok_status();
-  }
-
   if (environment->target_environment == NULL) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "source-low emit requires a target environment");
@@ -1548,6 +1544,7 @@ iree_status_t loom_check_prepare_source_low_module(
       module, &compile_options, block_pool, &pipeline_result);
   if (iree_status_is_ok(status) && pipeline_result.pass.error_count == 0 &&
       !loom_check_diagnostic_collector_has_error(diagnostic_collector)) {
+    loom_verify_result_t verify_result = {0};
     status = loom_target_entry_verify_module(module, &entry_options, 20,
                                              &verify_result);
     if (iree_status_is_ok(status) && verify_result.error_count == 0) {

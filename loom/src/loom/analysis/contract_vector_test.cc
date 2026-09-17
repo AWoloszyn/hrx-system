@@ -171,7 +171,7 @@ class ContractVectorTest : public ::testing::Test {
             /*.result_lane_count=*/{},
             /*.subgroup_size=*/64,
         },
-        /*.capability_class=*/LOOM_CONTRACT_CAPABILITY_CLASS_GPU_MATRIX,
+        /*.capability_class=*/LOOM_CONTRACT_CAPABILITY_CLASS_MATRIX,
         /*.policy=*/LOOM_LOWERING_POLICY_TARGET_PRIMITIVE_REQUIRED,
     };
   }
@@ -331,8 +331,7 @@ func.def @dense_mma(%lhs_data: vector<8xf16>, %rhs_data: vector<8xf16>, %init_da
           LOOM_CONTRACT_CAPABILITY_ACCUMULATOR_MODIFIER));
   EXPECT_EQ(loom_contract_request_required_capability_flags(&request), 0u);
   EXPECT_EQ(request.arithmetic, LOOM_CONTRACT_ARITHMETIC_MIXED_DOT);
-  EXPECT_EQ(request.capability_class,
-            LOOM_CONTRACT_CAPABILITY_CLASS_GPU_MATRIX);
+  EXPECT_EQ(request.capability_class, LOOM_CONTRACT_CAPABILITY_CLASS_MATRIX);
   EXPECT_EQ(request.fragment.atom_bits, LOOM_CONTRACT_FRAGMENT_SUBGROUP_LANE);
   EXPECT_EQ(request.fragment.subgroup_size, 64);
   loom_pass_value_fact_owner_deinitialize(&value_facts);
@@ -638,6 +637,69 @@ func.def @encoded_mma(%lhs_data: vector<6xi32>, %rhs_data: vector<6xi32>, %init_
               .auxiliary_value_refs[LOOM_CONTRACT_AUXILIARY_OPERAND_KEY_SCALE]),
       rhs_fragment.auxiliary.values[LOOM_ENCODING_AUXILIARY_KEY_SCALE]);
   EXPECT_EQ(request.shape.k, 128);
+  loom_pass_value_fact_owner_deinitialize(&value_facts);
+}
+
+TEST_F(ContractVectorTest, PreservesFixedRecordSourceAcrossFragmentLoad) {
+  static const char kSource[] = R"(
+func.def @fixed_record_mma(%lhs_view: view<1x176xi8, #ggml.q5_k>, %rhs_data: vector<64xi8>, %init_data: vector<64xi32>) -> (vector<64xi32>) {
+  %m = index.constant 8 : index
+  %n = index.constant 8 : index
+  %k = index.constant 8 : index
+  %lhs = vector.fragment.load<lhs> %lhs_view[0, 0] shape [%m, %k] : view<1x176xi8, #ggml.q5_k> -> vector<64xi8>
+  %rhs = vector.fragment<rhs> %rhs_data shape [%k, %n] : vector<64xi8>
+  %init = vector.fragment<init> %init_data shape [%m, %n] : vector<64xi32>
+  %result = vector.mma %lhs, %rhs, %init : vector<64xi8>, vector<64xi8>, vector<64xi32>
+  func.return %result : vector<64xi32>
+}
+)";
+
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(ParseAndVerify(kSource, &module));
+  ModulePtr module_ptr(module);
+
+  loom_pass_value_fact_owner_t value_facts = {};
+  loom_pass_value_fact_owner_initialize(module->arena.block_pool, &value_facts);
+  loom_value_fact_table_t* fact_table = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &value_facts, module_ptr.get(),
+      loom_pass_value_fact_scope_function(FirstFunction(module_ptr.get())),
+      &fact_table));
+
+  const loom_op_t* op = FirstVectorMmaOp(module_ptr.get());
+  ASSERT_NE(op, nullptr);
+  const loom_contract_vector_mma_options_t options = {
+      /*.fragment_projection=*/
+      LOOM_CONTRACT_VECTOR_MMA_FRAGMENT_PROJECTION_EXPLICIT,
+      /*.k_group_size=*/8,
+      /*.fragment=*/
+      {
+          /*.atom_bits=*/LOOM_CONTRACT_FRAGMENT_INTERNAL,
+          /*.vector_bit_width=*/0,
+          /*.source_lane_count=*/64,
+          /*.result_lane_count=*/64,
+          /*.subgroup_size=*/0,
+      },
+      /*.capability_class=*/LOOM_CONTRACT_CAPABILITY_CLASS_MATRIX,
+      /*.policy=*/LOOM_LOWERING_POLICY_TARGET_PRIMITIVE_REQUIRED,
+  };
+  loom_contract_request_t request = {};
+  loom_contract_diagnostic_t diagnostic = {};
+  ASSERT_TRUE(loom_contract_request_from_vector_mma_op(
+      module_ptr.get(), fact_table, op, &options, &request, &diagnostic));
+  EXPECT_EQ(diagnostic.rejection_bits, LOOM_CONTRACT_REJECTION_NONE);
+  EXPECT_EQ(request.lhs.numeric_type, LOOM_CONTRACT_NUMERIC_U8);
+  EXPECT_NE(request.lhs.encoded.source_schema.static_spec_encoding_id, 0);
+  EXPECT_EQ(request.lhs.encoded.source_schema.encoded_operand.element_format,
+            LOOM_VALUE_FACT_NUMERIC_FORMAT_U5);
+  EXPECT_EQ(request.lhs.encoded.target_schema.static_spec_encoding_id, 0);
+  EXPECT_EQ(request.lhs.encoded.target_schema.encoded_operand.element_format,
+            LOOM_VALUE_FACT_NUMERIC_FORMAT_U8);
+  EXPECT_EQ(request.lhs.encoded.target_schema.encoded_operand.payload_packing,
+            LOOM_VALUE_FACT_PAYLOAD_PACKING_TARGET_FRAGMENT);
+  EXPECT_EQ(request.lhs.payload_register_count, 16);
+  EXPECT_EQ(request.lhs.payload_element_count, 64);
+  EXPECT_EQ(request.lhs.encoded.required_auxiliary_operands, 0u);
   loom_pass_value_fact_owner_deinitialize(&value_facts);
 }
 

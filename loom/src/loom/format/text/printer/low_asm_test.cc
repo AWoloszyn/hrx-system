@@ -292,10 +292,13 @@ TEST_F(LowAsmPrinterTest, PrintsZeroImmediateConstAndOperandlessOp) {
 
 TEST_F(LowAsmPrinterTest, PrintsStructuralIntrinsics) {
   const char* source =
-      "low.func.def target<test.low.core> @structural() -> "
+      "low.func.def target<test.low.core> @structural("
+      "%extent: reg<test.i32>) -> "
       "(reg<test.i32>) asm {\n"
       "  %binding = resource<hal_binding> {index = 0, source_type = "
       "hal.buffer} : reg<test.ptr>\n"
+      "  %dynamic = resource<hal_binding> extent(%extent) {index = 1, "
+      "source_type = hal.buffer} : reg<test.ptr>\n"
       "  %arg0 = live_in<test.arg0> {} : reg<test.i32>\n"
       "  %pair = concat(%arg0, %arg0) : (reg<test.i32>, reg<test.i32>) -> "
       "reg<test.i32 x2>\n"
@@ -426,6 +429,40 @@ TEST_F(LowAsmPrinterTest, RejectsMissingPrintEnvironment) {
   loom_module_free(module);
 }
 
+TEST_F(LowAsmPrinterTest, RequiredLowAsmAllowsCanonicalSpillReload) {
+  const char* source =
+      "test.target<low_core> @test_target\n"
+      "\n"
+      "low.func.def target<test.low.core>(@test_target) "
+      "@spill(%value: reg<test.i32>) -> (reg<test.i32>) {\n"
+      "  %slot = low.storage.reserve "
+      "{byte_alignment = 4, byte_length = 4} : low.storage<private>\n"
+      "  low.spill %value, %slot : reg<test.i32>, low.storage<private>\n"
+      "  %reloaded = low.reload %slot : low.storage<private> -> "
+      "reg<test.i32>\n"
+      "  low.return %reloaded : reg<test.i32>\n"
+      "}\n";
+  const char* expected =
+      "test.target<low_core> @test_target\n"
+      "\n"
+      "low.func.def target<test.low.core>(@test_target) "
+      "@spill(%value: reg<test.i32>) -> (reg<test.i32>) asm {\n"
+      "  %slot = storage {byte_alignment = 4, byte_length = 4} : "
+      "low.storage<private>\n"
+      "  low.spill %value, %slot : reg<test.i32>, "
+      "low.storage<private>\n"
+      "  %reloaded = low.reload %slot : low.storage<private> -> "
+      "reg<test.i32>\n"
+      "  return %reloaded\n"
+      "}\n";
+  loom_module_t* module = ParseOk(source);
+  ASSERT_NE(module, nullptr);
+  EXPECT_EQ(PrintModule(module, LOOM_TEXT_PRINT_DEFAULT |
+                                    LOOM_TEXT_PRINT_REQUIRE_LOW_ASM),
+            expected);
+  loom_module_free(module);
+}
+
 TEST_F(LowAsmPrinterTest,
        PreferredLowAsmFallsBackWhenPacketDescriptionRejectsOperation) {
   const char* source =
@@ -457,9 +494,7 @@ TEST_F(LowAsmPrinterTest, RequiredLowAsmUsesFunctionRepresentationContract) {
       "low.func.def target<test.low.core>(@test_target) "
       "@add(%lhs: reg<test.i32>, "
       "%rhs: reg<test.i32>) -> (reg<test.i32>) asm {\n"
-      "  %sum = low.op<test.add.i32>(%lhs, %rhs) "
-      "memory_access([0, 3, 7, -1, 35, 64, 0, 16, 0, 0, 0, 0, 0]) : "
-      "(reg<test.i32>, reg<test.i32>) -> reg<test.i32>\n"
+      "  %sum = test.add.i32 %lhs, %rhs\n"
       "  return %sum\n"
       "}\n";
   loom_module_t* module = ParseOk(source);
@@ -469,6 +504,5 @@ TEST_F(LowAsmPrinterTest, RequiredLowAsmUsesFunctionRepresentationContract) {
             source);
   loom_module_free(module);
 }
-
 }  // namespace
 }  // namespace loom

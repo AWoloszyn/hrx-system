@@ -461,17 +461,13 @@ static bool loom_vector_fragment_fact_set_shape(
   return true;
 }
 
-static bool loom_vector_fragment_facts_match_except_role(
+static bool loom_vector_fragment_facts_match_contract_except_value_flags(
     loom_vector_fragment_fact_t lhs, loom_vector_fragment_fact_t rhs) {
-  lhs.role_flags = 0;
-  rhs.role_flags = 0;
-  return loom_vector_fragment_fact_equal(lhs, rhs);
-}
-
-static bool loom_vector_fragment_facts_match_contract_except_native_storage(
-    loom_vector_fragment_fact_t lhs, loom_vector_fragment_fact_t rhs) {
-  lhs.flags &= ~LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE;
-  rhs.flags &= ~LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE;
+  const loom_vector_fragment_fact_flags_t value_flags =
+      LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE |
+      LOOM_VECTOR_FRAGMENT_FACT_FLAG_ALL_ZERO;
+  lhs.flags &= ~value_flags;
+  rhs.flags &= ~value_flags;
   return loom_vector_fragment_fact_equal(lhs, rhs);
 }
 
@@ -481,8 +477,8 @@ static bool loom_vector_fragment_facts_have_compatible_native_storage(
     return false;
   }
   target.role_flags = source.role_flags;
-  return loom_vector_fragment_facts_match_contract_except_native_storage(
-      target, source);
+  return loom_vector_fragment_facts_match_contract_except_value_flags(target,
+                                                                      source);
 }
 
 static iree_status_t loom_vector_clone_equal_extension(
@@ -498,17 +494,14 @@ static iree_status_t loom_vector_clone_equal_extension(
 static iree_status_t loom_vector_make_accumulator_join_fragment(
     loom_fact_context_t* context, loom_vector_fragment_fact_t lhs,
     loom_vector_fragment_fact_t rhs, loom_value_facts_t* inout_facts) {
-  bool has_native_storage =
-      iree_all_bits_set(lhs.flags,
-                        LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE) &&
-      iree_all_bits_set(rhs.flags,
-                        LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE);
+  const loom_vector_fragment_fact_flags_t value_flags =
+      LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE |
+      LOOM_VECTOR_FRAGMENT_FACT_FLAG_ALL_ZERO;
+  const loom_vector_fragment_fact_flags_t common_flags =
+      lhs.flags & rhs.flags & value_flags;
   lhs.role_flags = LOOM_VECTOR_FRAGMENT_ROLE_FLAG_INIT |
                    LOOM_VECTOR_FRAGMENT_ROLE_FLAG_RESULT;
-  lhs.flags &= ~LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE;
-  if (has_native_storage) {
-    lhs.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE;
-  }
+  lhs.flags = (lhs.flags & ~value_flags) | common_flags;
 
   loom_value_facts_t fragment_facts = loom_value_facts_unknown();
   IREE_RETURN_IF_ERROR(loom_vector_fragment_fact_make_value_facts(
@@ -891,6 +884,93 @@ static bool loom_vector_fragment_load_preserves_target_fragment_storage_schema(
          (uint64_t)operand.payload_register_count * 32ull;
 }
 
+static loom_value_fact_numeric_format_flags_t
+loom_vector_fragment_load_prepared_integer_format(
+    loom_value_fact_numeric_format_flags_t source_format,
+    int32_t result_element_bit_count) {
+  const bool is_unsigned =
+      loom_numeric_format_uses_unsigned_integer_semantics(source_format);
+  switch (result_element_bit_count) {
+    case 8:
+      return is_unsigned ? LOOM_VALUE_FACT_NUMERIC_FORMAT_U8
+                         : LOOM_VALUE_FACT_NUMERIC_FORMAT_I8;
+    case 16:
+      return is_unsigned ? LOOM_VALUE_FACT_NUMERIC_FORMAT_U16
+                         : LOOM_VALUE_FACT_NUMERIC_FORMAT_I16;
+    case 32:
+      return is_unsigned ? LOOM_VALUE_FACT_NUMERIC_FORMAT_U32
+                         : LOOM_VALUE_FACT_NUMERIC_FORMAT_I32;
+    default:
+      return LOOM_VALUE_FACT_NUMERIC_FORMAT_NONE;
+  }
+}
+
+static bool loom_vector_fragment_load_prepare_fixed_record_schema(
+    const loom_module_t* module, const loom_op_t* op,
+    loom_value_fact_storage_schema_t source_schema,
+    loom_value_fact_encoded_operand_schema_t* out_schema) {
+  *out_schema = (loom_value_fact_encoded_operand_schema_t){0};
+  const loom_encoding_record_layout_t* record_layout = NULL;
+  if (source_schema.static_spec_encoding_id == 0 ||
+      !loom_encoding_query_static_record_layout(
+          module, source_schema.static_spec_encoding_id, &record_layout)) {
+    return false;
+  }
+
+  const loom_numeric_format_info_t* source_format = NULL;
+  if (!loom_numeric_format_info(source_schema.encoded_operand.element_format,
+                                &source_format)) {
+    return false;
+  }
+  const loom_type_t result_type =
+      loom_module_value_type(module, loom_vector_fragment_load_result(op));
+  if (!loom_type_is_vector(result_type) ||
+      !loom_type_is_all_static(result_type)) {
+    return false;
+  }
+  uint64_t result_element_count = 0;
+  if (!loom_type_static_element_count(result_type, &result_element_count) ||
+      result_element_count == 0 || result_element_count > UINT16_MAX) {
+    return false;
+  }
+  const loom_scalar_type_t result_element_type =
+      loom_type_element_type(result_type);
+  const int32_t result_element_bit_count =
+      loom_scalar_type_bitwidth(result_element_type);
+  if (result_element_bit_count < source_format->storage_bit_count ||
+      result_element_bit_count <= 0 ||
+      result_element_count > UINT32_MAX / (uint32_t)result_element_bit_count) {
+    return false;
+  }
+  const uint32_t result_bit_count =
+      (uint32_t)result_element_count * (uint32_t)result_element_bit_count;
+  if (result_bit_count % 32u != 0 || result_bit_count / 32u > UINT16_MAX) {
+    return false;
+  }
+
+  loom_value_fact_numeric_format_flags_t result_format =
+      loom_numeric_format_from_scalar_type(result_element_type);
+  if (source_format->kind == LOOM_NUMERIC_FORMAT_KIND_SIGNED_INTEGER ||
+      source_format->kind == LOOM_NUMERIC_FORMAT_KIND_UNSIGNED_INTEGER ||
+      source_format->kind ==
+          LOOM_NUMERIC_FORMAT_KIND_QUANTIZED_SIGNED_INTEGER ||
+      source_format->kind == LOOM_NUMERIC_FORMAT_KIND_CODEBOOK_INDEX) {
+    result_format = loom_vector_fragment_load_prepared_integer_format(
+        source_schema.encoded_operand.element_format, result_element_bit_count);
+  }
+  if (result_format == LOOM_VALUE_FACT_NUMERIC_FORMAT_NONE) {
+    return false;
+  }
+
+  *out_schema = (loom_value_fact_encoded_operand_schema_t){
+      .element_format = result_format,
+      .payload_packing = LOOM_VALUE_FACT_PAYLOAD_PACKING_TARGET_FRAGMENT,
+      .payload_register_count = (uint16_t)(result_bit_count / 32u),
+      .payload_element_count = (uint16_t)result_element_count,
+  };
+  return true;
+}
+
 iree_status_t loom_vector_fragment_facts(
     loom_fact_context_t* context, const loom_module_t* module,
     const loom_op_t* op, const loom_value_facts_t* operand_facts,
@@ -927,7 +1007,8 @@ iree_status_t loom_vector_fragment_facts(
   }
 
   if (parameters.has_schema) {
-    fact.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_SCHEMA;
+    fact.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_SCHEMA |
+                  LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_SCHEMA_VALUE;
     fact.schema_value_id = parameters.schema_value_id;
 
     loom_value_fact_storage_schema_t storage_schema = {0};
@@ -951,8 +1032,17 @@ iree_status_t loom_vector_fragment_facts(
   }
 
   loom_vector_fragment_fact_t data_fragment;
-  if (loom_vector_fragment_fact_query_value_facts(context, operand_facts[0],
-                                                  &data_fragment) &&
+  const bool has_data_fragment = loom_vector_fragment_fact_query_value_facts(
+      context, operand_facts[0], &data_fragment);
+  loom_value_facts_t element_facts;
+  if (loom_value_facts_query_all_equal_element(context, operand_facts[0],
+                                               &element_facts) &&
+      loom_value_facts_is_exact(element_facts) && element_facts.range_lo == 0) {
+    fact.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_ALL_ZERO;
+  } else if (has_data_fragment) {
+    fact.flags |= data_fragment.flags & LOOM_VECTOR_FRAGMENT_FACT_FLAG_ALL_ZERO;
+  }
+  if (has_data_fragment &&
       iree_all_bits_set(data_fragment.flags,
                         LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE) &&
       loom_vector_fragment_facts_have_compatible_native_storage(
@@ -1032,15 +1122,25 @@ iree_status_t loom_vector_fragment_load_facts(
           context, module, loom_module_value_type(module, view_value_id),
           &storage_schema) &&
       !loom_value_fact_encoded_operand_schema_is_unknown(
-          storage_schema.encoded_operand) &&
-      (loom_vector_fragment_load_preserves_view_element_type(module, op) ||
-       loom_vector_fragment_load_preserves_target_fragment_storage_schema(
-           module, op, storage_schema))) {
-    fact.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_SCHEMA;
-    fact.encoded_operand = storage_schema.encoded_operand;
-    if (storage_schema.static_spec_encoding_id != 0) {
-      fact.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_STATIC_SCHEMA;
-      fact.static_schema_encoding_id = storage_schema.static_spec_encoding_id;
+          storage_schema.encoded_operand)) {
+    loom_value_fact_encoded_operand_schema_t prepared_schema = {0};
+    if (loom_vector_fragment_load_prepare_fixed_record_schema(
+            module, op, storage_schema, &prepared_schema)) {
+      fact.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_SCHEMA |
+                    LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_SOURCE_STATIC_SCHEMA;
+      fact.source_static_schema_encoding_id =
+          storage_schema.static_spec_encoding_id;
+      fact.encoded_operand = prepared_schema;
+    } else if (
+        loom_vector_fragment_load_preserves_view_element_type(module, op) ||
+        loom_vector_fragment_load_preserves_target_fragment_storage_schema(
+            module, op, storage_schema)) {
+      fact.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_SCHEMA;
+      fact.encoded_operand = storage_schema.encoded_operand;
+      if (storage_schema.static_spec_encoding_id != 0) {
+        fact.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_STATIC_SCHEMA;
+        fact.static_schema_encoding_id = storage_schema.static_spec_encoding_id;
+      }
     }
   }
   IREE_RETURN_IF_ERROR(loom_vector_fragment_fact_make_value_facts(
@@ -1070,6 +1170,20 @@ iree_status_t loom_vector_load_facts(loom_fact_context_t* context,
   }
   return loom_value_facts_make_uniform_element(context, element_facts,
                                                &result_facts[0]);
+}
+
+iree_status_t loom_vector_encode_facts(loom_fact_context_t* context,
+                                       const loom_module_t* module,
+                                       const loom_op_t* op,
+                                       const loom_value_facts_t* operand_facts,
+                                       loom_value_facts_t* result_facts) {
+  (void)context;
+  (void)module;
+  (void)op;
+  // The schema interprets the produced bits. Retaining it on the payload lets
+  // type mapping consume that interpretation without finding the encode op.
+  result_facts[0] = operand_facts[1];
+  return iree_ok_status();
 }
 
 iree_status_t loom_vector_decode_facts(loom_fact_context_t* context,
@@ -3194,17 +3308,38 @@ iree_status_t loom_vector_extf_facts(loom_fact_context_t* context,
       context, module, loom_vector_extf_result(op), loom_vector_extf_input(op));
 }
 
+static void loom_vector_float_truncate_transfer(loom_scalar_type_t result_type,
+                                                const loom_value_facts_t* input,
+                                                const void* user_data,
+                                                loom_value_facts_t* out) {
+  const loom_scalar_type_t source_type = *(const loom_scalar_type_t*)user_data;
+  double value = 0.0;
+  if (loom_value_facts_is_nan(*input)) {
+    *out = loom_value_facts_known_nan();
+  } else if (!loom_value_facts_as_exact_float(source_type, *input, &value)) {
+    *out = loom_value_facts_unknown();
+  } else if (source_type == LOOM_SCALAR_TYPE_F64 &&
+             result_type != LOOM_SCALAR_TYPE_F32 &&
+             value != (double)(float)value) {
+    // Narrow-format helpers round through F32. A non-representable F64 value
+    // can double-round across a destination midpoint, so it is not foldable.
+    *out = loom_value_facts_unknown();
+  } else {
+    *out = loom_value_facts_exact_float(result_type, value);
+  }
+  loom_value_facts_propagate_unary_distribution(*input, out);
+}
+
 iree_status_t loom_vector_fptrunc_facts(loom_fact_context_t* context,
                                         const loom_module_t* module,
                                         const loom_op_t* op,
                                         const loom_value_facts_t* operand_facts,
                                         loom_value_facts_t* result_facts) {
-  bool fragment_handled = false;
-  IREE_RETURN_IF_ERROR(loom_vector_try_preserve_lanewise_fragment_facts(
-      context, operand_facts, 1, result_facts, &fragment_handled));
-  if (!fragment_handled) {
-    IREE_RETURN_IF_ERROR(loom_vector_make_unknown_facts(result_facts));
-  }
+  const loom_scalar_type_t source_type = loom_type_element_type(
+      loom_module_value_type(module, loom_vector_fptrunc_input(op)));
+  IREE_RETURN_IF_ERROR(loom_vector_float_unary_summary_facts(
+      context, loom_vector_result_element_type(module, op), operand_facts,
+      result_facts, loom_vector_float_truncate_transfer, &source_type));
   return loom_vector_try_define_same_lane_origin(context, module,
                                                  loom_vector_fptrunc_result(op),
                                                  loom_vector_fptrunc_input(op));
@@ -4582,6 +4717,7 @@ iree_status_t loom_vector_mma_facts(loom_fact_context_t* context,
   init_fragment.role_flags = LOOM_VECTOR_FRAGMENT_ROLE_FLAG_INIT |
                              LOOM_VECTOR_FRAGMENT_ROLE_FLAG_RESULT;
   init_fragment.flags |= LOOM_VECTOR_FRAGMENT_FACT_FLAG_HAS_NATIVE_STORAGE;
+  init_fragment.flags &= ~LOOM_VECTOR_FRAGMENT_FACT_FLAG_ALL_ZERO;
   return loom_vector_fragment_fact_make_value_facts(context, init_fragment,
                                                     &result_facts[0]);
 }

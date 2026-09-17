@@ -9,12 +9,72 @@
 #include <string.h>
 
 #include "loom/codegen/low/storage_relation.h"
+#include "loom/codegen/low/target_binding.h"
+
+// Composes source -> intermediate and intermediate -> result placement over
+// the units covered by both relations. The returned relation maps the first
+// source directly into the second result while retaining the second
+// relation's placement semantics.
+bool loom_low_placement_relation_compose(
+    const loom_low_placement_relation_t* source_to_intermediate,
+    const loom_low_placement_relation_t* intermediate_to_result,
+    loom_low_placement_relation_t* out_relation) {
+  if (source_to_intermediate->result_ordinal !=
+      intermediate_to_result->source_ordinal) {
+    return false;
+  }
+  const uint32_t overlap_offset =
+      iree_max(source_to_intermediate->result_unit_offset,
+               intermediate_to_result->source_unit_offset);
+  const uint64_t source_to_intermediate_end =
+      (uint64_t)source_to_intermediate->result_unit_offset +
+      source_to_intermediate->unit_count;
+  const uint64_t intermediate_to_result_end =
+      (uint64_t)intermediate_to_result->source_unit_offset +
+      intermediate_to_result->unit_count;
+  const uint64_t overlap_end =
+      iree_min(source_to_intermediate_end, intermediate_to_result_end);
+  if (overlap_offset >= overlap_end) {
+    return false;
+  }
+  const uint32_t overlap_count = (uint32_t)(overlap_end - overlap_offset);
+  *out_relation = *intermediate_to_result;
+  out_relation->source_ordinal = source_to_intermediate->source_ordinal;
+  out_relation->source_unit_offset =
+      source_to_intermediate->source_unit_offset +
+      (overlap_offset - source_to_intermediate->result_unit_offset);
+  out_relation->result_unit_offset =
+      intermediate_to_result->result_unit_offset +
+      (overlap_offset - intermediate_to_result->source_unit_offset);
+  out_relation->unit_count = overlap_count;
+  return true;
+}
+
+bool loom_low_placement_relation_compose_tied_concat_source(
+    const loom_low_placement_relation_t* tied_relation,
+    const loom_low_placement_relation_t* concat_relation,
+    loom_low_placement_relation_t* out_relation) {
+  // Carries a concat source slice backward through an exact tied-result alias
+  // so the operand can reserve the eventual aligned aggregate.
+  if (tied_relation->cause != LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT ||
+      concat_relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT ||
+      !iree_all_bits_set(
+          tied_relation->flags,
+          LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD |
+              LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE)) {
+    return false;
+  }
+  return loom_low_placement_relation_compose(tied_relation, concat_relation,
+                                             out_relation);
+}
 
 typedef struct loom_low_placement_build_state_t {
   // Module containing the analyzed low region.
   loom_module_t* module;
   // Low function body region being analyzed.
   const loom_region_t* region;
+  // Descriptor set defining target packet constraints.
+  const loom_low_descriptor_set_t* descriptor_set;
   // Acquired local value domain for |region|.
   const loom_local_value_domain_t* value_domain;
   // Liveness analysis over |value_domain|.
@@ -41,6 +101,8 @@ typedef struct loom_low_placement_build_state_t {
   uint32_t relation_count;
   // Number of collected concrete-location relations.
   iree_host_size_t location_relation_count;
+  // Number of collected hard concrete-location relations.
+  uint32_t hard_location_relation_count;
   // Number of low.copy/move/slice/concat operations that may require packet
   // moves.
   uint32_t packet_move_group_count;
@@ -50,6 +112,8 @@ typedef struct loom_low_placement_build_state_t {
   uint32_t edge_copy_group_count;
   // Total units covered by low.br relations.
   iree_host_size_t branch_unit_count;
+  // Maximum raw move units contributed by one operation during collection.
+  iree_host_size_t max_move_group_unit_count;
   // Number of relation records appended after range prefixing.
   iree_host_size_t appended_relation_count;
   // Number of source relation indices appended after range prefixing.
@@ -146,8 +210,13 @@ static iree_status_t loom_low_placement_collect_relation(
         LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE;
   }
   if (relation->kind == LOOM_LOW_PLACEMENT_RELATION_DIFFERENT_MASKED_LOCATION ||
-      relation->kind == LOOM_LOW_PLACEMENT_RELATION_DISJOINT_STORAGE) {
+      relation->kind == LOOM_LOW_PLACEMENT_RELATION_DISJOINT_STORAGE ||
+      relation->kind == LOOM_LOW_PLACEMENT_RELATION_SAME_REGISTER_ORDINAL) {
     ++state->location_relation_count;
+    if (iree_any_bit_set(relation->flags,
+                         LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD)) {
+      ++state->hard_location_relation_count;
+    }
   }
   ++result_range->count;
   ++source_range->count;
@@ -308,8 +377,18 @@ static void loom_low_placement_assert_storage_relation_units(
               "verified low storage source range must fit liveness units");
 }
 
+static loom_value_id_t loom_low_placement_descriptor_operand_value_id(
+    const loom_op_t* op, const loom_low_operand_t* descriptor_operand) {
+  if (descriptor_operand->role == LOOM_LOW_OPERAND_ROLE_RESULT) {
+    return loom_op_const_results(op)[descriptor_operand->source_value_index];
+  }
+  return loom_op_const_operands(op)[descriptor_operand->source_value_index];
+}
+
 static iree_status_t loom_low_placement_collect_op_relations(
     loom_low_placement_build_state_t* state, const loom_op_t* op) {
+  const iree_host_size_t move_unit_start =
+      state->packet_move_unit_count + state->branch_unit_count;
   loom_low_placement_move_group_flags_t move_group_flags = 0;
   loom_low_storage_relation_iterator_t iterator;
   loom_low_storage_relation_iterator_initialize(state->module, op, &iterator);
@@ -338,6 +417,54 @@ static iree_status_t loom_low_placement_collect_op_relations(
             storage_relation.unit_count),
         .flags = loom_low_placement_flags_from_storage_relation(
             storage_relation.flags),
+        .priority = 1,
+    };
+    IREE_RETURN_IF_ERROR(
+        loom_low_placement_collect_relation(state, &placement_relation));
+  }
+
+  const iree_host_size_t move_unit_count = state->packet_move_unit_count +
+                                           state->branch_unit_count -
+                                           move_unit_start;
+  state->max_move_group_unit_count =
+      iree_max(state->max_move_group_unit_count, move_unit_count);
+
+  loom_low_descriptor_packet_t packet;
+  loom_low_descriptor_packet_initialize(state->descriptor_set, op, &packet);
+  if (packet.descriptor == NULL) {
+    return iree_ok_status();
+  }
+  const loom_low_descriptor_t* descriptor = packet.descriptor;
+  const loom_low_operand_t* descriptor_operands =
+      &state->descriptor_set->operands[descriptor->operand_start];
+  for (uint16_t i = 0; i < descriptor->constraint_count; ++i) {
+    const loom_low_constraint_t* constraint =
+        &state->descriptor_set
+             ->constraints[descriptor->constraint_start + (uint32_t)i];
+    if (constraint->kind != LOOM_LOW_CONSTRAINT_KIND_SAME_REGISTER_ORDINAL) {
+      continue;
+    }
+    const loom_value_id_t result_value_id =
+        loom_low_placement_descriptor_operand_value_id(
+            op, &descriptor_operands[constraint->lhs_operand_index]);
+    const loom_value_id_t source_value_id =
+        loom_low_placement_descriptor_operand_value_id(
+            op, &descriptor_operands[constraint->rhs_operand_index]);
+    if (result_value_id == source_value_id) {
+      continue;
+    }
+    const loom_low_placement_relation_t placement_relation = {
+        .op = op,
+        .result_ordinal =
+            loom_low_placement_value_ordinal(state, result_value_id),
+        .source_ordinal =
+            loom_low_placement_value_ordinal(state, source_value_id),
+        .result_unit_offset = 0,
+        .source_unit_offset = 0,
+        .unit_count = 1,
+        .kind = LOOM_LOW_PLACEMENT_RELATION_SAME_REGISTER_ORDINAL,
+        .cause = LOOM_LOW_PLACEMENT_CAUSE_DESCRIPTOR_CONSTRAINT,
+        .flags = LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD,
         .priority = 1,
     };
     IREE_RETURN_IF_ERROR(
@@ -621,10 +748,12 @@ static iree_status_t loom_low_placement_build(
       .relations = state->relations,
       .relation_count = relation_count,
       .location_relation_count = state->location_relation_count,
+      .hard_location_relation_count = state->hard_location_relation_count,
       .packet_move_group_count = state->packet_move_group_count,
       .packet_move_unit_count = state->packet_move_unit_count,
       .edge_copy_group_count = state->edge_copy_group_count,
       .branch_unit_count = state->branch_unit_count,
+      .max_move_group_unit_count = state->max_move_group_unit_count,
       .ranges_by_result_ordinal = state->ranges_by_result_ordinal,
       .relation_indices_by_source_ordinal =
           state->relation_indices_by_source_ordinal,
@@ -635,6 +764,7 @@ static iree_status_t loom_low_placement_build(
 
 iree_status_t loom_low_placement_analyze_region(
     loom_module_t* module, const loom_region_t* region,
+    const loom_low_descriptor_set_t* descriptor_set,
     const loom_local_value_domain_t* value_domain,
     const loom_liveness_analysis_t* liveness,
     loom_low_placement_pair_use_list_t pair_uses, iree_arena_allocator_t* arena,
@@ -651,6 +781,7 @@ iree_status_t loom_low_placement_analyze_region(
   loom_low_placement_build_state_t state = {
       .module = module,
       .region = region,
+      .descriptor_set = descriptor_set,
       .value_domain = value_domain,
       .liveness = liveness,
       .pair_uses = pair_uses,

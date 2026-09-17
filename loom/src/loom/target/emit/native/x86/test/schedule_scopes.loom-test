@@ -31,9 +31,9 @@ low.func.def target<x86.avx512.core>(@target) @paired(%a: reg<x86.gpr64>, %b: re
   vpaddd zmm1, zmm1, zmm1
   vmovdqu32 zmm3, [rsi + 64]
   vpaddd zmm0, zmm0, zmm2
+  vpaddd zmm1, zmm1, zmm3
   vmovdqu32 [rdx], zmm0
-  vpaddd zmm0, zmm1, zmm3
-  vmovdqu32 [rdx + 64], zmm0
+  vmovdqu32 [rdx + 64], zmm1
   ret
 
 // ====
@@ -112,9 +112,9 @@ low.func.def target<x86.avx512.core>(@target) @paired(%a: reg<x86.gpr64>, %b: re
   vmovdqu32 zmm1, [rsi]
   vpaddd zmm1, zmm1, zmm1
   vmovdqu32 zmm2, [rsi + 64]
+  vpaddd zmm1, zmm1, zmm2
   vmovdqu32 [rdx], zmm0
-  vpaddd zmm0, zmm1, zmm2
-  vmovdqu32 [rdx + 64], zmm0
+  vmovdqu32 [rdx + 64], zmm1
   ret
 
 // ====

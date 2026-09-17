@@ -161,7 +161,8 @@ static iree_status_t loom_low_allocation_fragmentation_repair_eliminates_spills(
   if (iree_status_is_ok(status)) {
     status = loom_low_allocation_storage_lease_state_initialize(
         &state->options->storage_leases, state->module, state->function_op,
-        value_domain, &state->liveness, &scratch_arena,
+        value_domain, &state->liveness,
+        state->unit_liveness.storage_segments.entries, &scratch_arena,
         &scratch_storage_leases);
   }
 
@@ -182,6 +183,52 @@ static iree_status_t loom_low_allocation_fragmentation_repair_eliminates_spills(
                              scratch_result.spill_plan_count == 0;
   }
 
+  iree_arena_deinitialize(&scratch_arena);
+  return status;
+}
+
+// Structural moves consume final assignments. Their permutation index and
+// sequencing workspace are private to this construction; only completed move
+// rows and scratch-write indices survive in the allocation result.
+static iree_status_t loom_low_allocation_build_moves(
+    loom_low_allocation_build_state_t* state) {
+  if (state->placement.packet_move_group_count == 0 &&
+      state->placement.edge_copy_group_count == 0) {
+    return iree_ok_status();
+  }
+  iree_arena_allocator_t scratch_arena;
+  iree_arena_initialize(state->arena->block_pool, &scratch_arena);
+  const loom_low_allocation_move_plan_context_t move_plan_context = {
+      .descriptor_set = state->target.descriptor_set,
+      .target_constraints = &state->target_constraints,
+      .unit_liveness = &state->unit_liveness,
+      .assignment_map = state->interval_assignment.assignment_map,
+      .schedule = state->options->schedule,
+  };
+  const iree_host_size_t move_input_capacity =
+      state->placement.branch_unit_count +
+      state->placement.packet_move_unit_count;
+  const iree_host_size_t raw_group_capacity =
+      state->placement.max_move_group_unit_count;
+  iree_status_t status = loom_low_allocation_move_plan_initialize(
+      &move_plan_context, move_input_capacity, raw_group_capacity, state->arena,
+      &scratch_arena, &state->move_plan);
+  if (iree_status_is_ok(status)) {
+    const loom_low_allocation_edge_copy_context_t edge_copy_context = {
+        .placement = &state->placement,
+        .move_plan = &state->move_plan,
+    };
+    status = loom_low_allocation_edge_copy_plan_build(
+        &edge_copy_context, state->arena, &state->edge_copy_plan);
+  }
+  if (iree_status_is_ok(status) && state->target_constraints.error_count == 0) {
+    const loom_low_allocation_packet_move_context_t packet_move_context = {
+        .placement = &state->placement,
+        .move_plan = &state->move_plan,
+    };
+    status = loom_low_allocation_packet_move_plan_build(
+        &packet_move_context, state->arena, &state->packet_move_plan);
+  }
   iree_arena_deinitialize(&scratch_arena);
   return status;
 }
@@ -234,8 +281,8 @@ iree_status_t loom_low_allocate_function(
         options->schedule != NULL ? options->schedule->placement_pair_uses
                                   : loom_low_placement_pair_use_list_empty();
     status = loom_low_placement_analyze_region(
-        model->module, state.body, value_domain, &state.liveness,
-        placement_pair_uses, arena, &state.placement);
+        model->module, state.body, state.target.descriptor_set, value_domain,
+        &state.liveness, placement_pair_uses, arena, &state.placement);
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status = loom_low_allocation_unit_liveness_initialize(
@@ -244,7 +291,7 @@ iree_status_t loom_low_allocate_function(
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status = loom_low_allocation_unit_liveness_propagate_storage_relations(
-        &state.unit_liveness, &state.liveness, &state.placement);
+        &state.unit_liveness, &state.liveness, &state.placement, arena);
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status = loom_low_allocation_target_constraints_resolve_fixed_values(
@@ -257,7 +304,9 @@ iree_status_t loom_low_allocate_function(
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status = loom_low_allocation_storage_lease_state_initialize(
         &options->storage_leases, model->module, model->function_op,
-        value_domain, &state.liveness, arena, &state.storage_leases);
+        value_domain, &state.liveness,
+        state.unit_liveness.storage_segments.entries, arena,
+        &state.storage_leases);
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     const loom_low_allocation_interval_assignment_context_t
@@ -283,7 +332,9 @@ iree_status_t loom_low_allocate_function(
           (loom_low_allocation_interval_assignment_result_t){0};
       status = loom_low_allocation_storage_lease_state_initialize(
           &options->storage_leases, model->module, model->function_op,
-          value_domain, &state.liveness, arena, &state.storage_leases);
+          value_domain, &state.liveness,
+          state.unit_liveness.storage_segments.entries, arena,
+          &state.storage_leases);
       if (iree_status_is_ok(status)) {
         const loom_low_allocation_interval_assignment_context_t
             interval_assignment_context =
@@ -345,39 +396,7 @@ iree_status_t loom_low_allocate_function(
   // against registers that repair will release.
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0 &&
       assignment_is_final) {
-    const loom_low_allocation_move_plan_context_t move_plan_context = {
-        .descriptor_set = state.target.descriptor_set,
-        .target_constraints = &state.target_constraints,
-        .unit_liveness = &state.unit_liveness,
-        .assignment_map = state.interval_assignment.assignment_map,
-    };
-    const iree_host_size_t move_input_capacity =
-        state.placement.branch_unit_count +
-        state.placement.packet_move_unit_count;
-    const iree_host_size_t raw_group_capacity =
-        iree_max(state.placement.branch_unit_count,
-                 state.placement.packet_move_unit_count);
-    status = loom_low_allocation_move_plan_initialize(
-        &move_plan_context, arena, move_input_capacity, raw_group_capacity,
-        &state.move_plan);
-  }
-  if (iree_status_is_ok(status) && state.target_constraints.error_count == 0 &&
-      assignment_is_final) {
-    const loom_low_allocation_edge_copy_context_t edge_copy_context = {
-        .placement = &state.placement,
-        .move_plan = &state.move_plan,
-    };
-    status = loom_low_allocation_edge_copy_plan_build(&edge_copy_context, arena,
-                                                      &state.edge_copy_plan);
-  }
-  if (iree_status_is_ok(status) && state.target_constraints.error_count == 0 &&
-      assignment_is_final) {
-    const loom_low_allocation_packet_move_context_t packet_move_context = {
-        .placement = &state.placement,
-        .move_plan = &state.move_plan,
-    };
-    status = loom_low_allocation_packet_move_plan_build(
-        &packet_move_context, arena, &state.packet_move_plan);
+    status = loom_low_allocation_build_moves(&state);
   }
 
   loom_low_allocation_table_t table = {0};
@@ -387,6 +406,7 @@ iree_status_t loom_low_allocate_function(
         .function_op = model->function_op,
         .target = state.target,
         .liveness = state.liveness,
+        .storage_segments = state.unit_liveness.storage_segments.entries,
         .placement = state.placement,
         .fixed_values = state.target_constraints.fixed_values,
         .fixed_value_count = state.target_constraints.fixed_value_count,
@@ -410,7 +430,7 @@ iree_status_t loom_low_allocate_function(
         .spill_plan_count = state.interval_assignment.spill_plan_count,
         .remarks = state.interval_assignment.remarks,
         .remark_count = state.interval_assignment.remark_count,
-        .failure = state.interval_assignment.failure,
+        .failure = state.target_constraints.failure,
         .copy_decisions = state.copy_decision_plan.decisions,
         .copy_decision_count = state.copy_decision_plan.decision_count,
         .edge_copies = state.edge_copy_plan.copies,
@@ -436,10 +456,6 @@ iree_status_t loom_low_allocate_function(
         .reserved_range_count = state.target_constraints.reserved_range_count,
         .cfg_graph = model->cfg_graph,
     };
-  }
-  if (iree_status_is_ok(status) && table.error_count == 0) {
-    status = loom_low_allocation_diagnostics_emit(
-        &table, options->diagnostic_flags, options->emitter);
   }
   if (iree_status_is_ok(status)) {
     *out_table = table;

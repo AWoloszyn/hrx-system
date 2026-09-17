@@ -15,7 +15,9 @@ loom_check_test_suite(
   SRCS
     "allocation.loom-test"
     "allocation_aliases.loom-test"
+    "allocation_concat.loom-test"
     "allocation_fragmentation.loom-test"
+    "allocation_physical_domains.loom-test"
     "allocation_preferences.loom-test"
     "allocation_reachability.loom-test"
     "hazard_plan.loom-test"

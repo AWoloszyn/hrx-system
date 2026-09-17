@@ -207,6 +207,18 @@ def _symbol_retain_attr_index(op: Op) -> int | None:
     return retain_attr_index
 
 
+def _symbol_product_carrier_attr_index(op: Op) -> int | None:
+    """Returns the product-carrier attribute index for a symbol op."""
+
+    if op.symbol_def is None or op.symbol_def.product_carrier is None:
+        return None
+    carrier_attr_index = c_queries.resolve_attr_index(op, op.symbol_def.product_carrier, "symbol_def.product_carrier")
+    carrier_attr = c_queries.non_flags_attrs(op)[carrier_attr_index]
+    if carrier_attr.attr_type != ATTR_TYPE_ENUM:
+        raise ValueError(f"Op {op.name!r}: symbol_def.product_carrier {op.symbol_def.product_carrier!r} must name an enum attr")
+    return carrier_attr_index
+
+
 def _symbol_visibility_attr_index(op: Op) -> int | None:
     """Returns the generic visibility attribute index for a symbol op."""
 
@@ -460,6 +472,50 @@ def _emit_encoding_auxiliary_key_descriptors(
     lines.append("")
 
 
+def _emit_encoding_record_tables(lines: list[str], family: EncodingFamilyDef, prefix: str) -> tuple[str, str] | None:
+    """Emits compact logical field and bit projection tables for a record."""
+    record = family.fixed_record
+    if record is None or not record.fields:
+        return None
+
+    mapping_table_name = f"{prefix}_record_mappings"
+    lines.append(f"static const loom_encoding_record_mapping_t {mapping_table_name}[] = {{")
+    for field in record.fields:
+        for mapping in field.mappings:
+            lines.append("    {")
+            lines.append(f"        .record_bit_offset = UINT32_C({mapping.record_bit_offset}),")
+            lines.append(f"        .record_bit_stride = {mapping.record_bit_stride},")
+            if mapping.field_element_offset:
+                lines.append(f"        .field_element_offset = {mapping.field_element_offset},")
+            lines.append(f"        .element_count = {mapping.element_count},")
+            if mapping.field_bit_offset:
+                lines.append(f"        .field_bit_offset = {mapping.field_bit_offset},")
+            lines.append(f"        .bit_count = {mapping.bit_count},")
+            lines.append("    },")
+    lines.append("};")
+    lines.append("")
+
+    field_table_name = f"{prefix}_record_fields"
+    lines.append(f"static const loom_encoding_record_field_t {field_table_name}[] = {{")
+    first_mapping_index = 0
+    for field in record.fields:
+        lines.append("    {")
+        lines.append(f"        .element_count = {field.element_count},")
+        if first_mapping_index:
+            lines.append(f"        .first_mapping_index = {first_mapping_index},")
+        lines.append(f"        .mapping_count = {len(field.mappings)},")
+        lines.append(f"        .role = {field.role.c_name},")
+        if field.hierarchy_level:
+            lines.append(f"        .hierarchy_level = {field.hierarchy_level},")
+        lines.append(f"        .numeric_format = {field.numeric_format.value},")
+        lines.append(f"        .element_bit_count = {field.element_bit_count},")
+        lines.append("    },")
+        first_mapping_index += len(field.mappings)
+    lines.append("};")
+    lines.append("")
+    return field_table_name, mapping_table_name
+
+
 def _emit_encoding_family_fixed_metadata(lines: list[str], family: EncodingFamilyDef, prefix: str) -> str | None:
     """Emits family-wide constant encoding metadata when present."""
     summary = family.fixed_operand_summary
@@ -467,6 +523,7 @@ def _emit_encoding_family_fixed_metadata(lines: list[str], family: EncodingFamil
     if summary is None and record is None and not family.required_auxiliary_keys:
         return None
 
+    record_tables = _emit_encoding_record_tables(lines, family, prefix)
     table_name = f"{prefix}_fixed_metadata"
     lines.append(f"static const loom_encoding_family_fixed_metadata_t {table_name} = {{")
     if summary is not None:
@@ -519,9 +576,16 @@ def _emit_encoding_family_fixed_metadata(lines: list[str], family: EncodingFamil
         lines.append(f"    .required_auxiliary_keys = UINT64_C(0x{required_key_bits:x}),")
     if record is not None:
         lines.append("    .record = {")
-        lines.append(f"        .logical_element_count = {record.logical_element_count},")
-        lines.append(f"        .storage_byte_count = {record.storage_byte_count},")
-        lines.append(f"        .required_alignment = {record.required_alignment},")
+        lines.append("        .geometry = {")
+        lines.append(f"            .logical_element_count = {record.logical_element_count},")
+        lines.append(f"            .storage_byte_count = {record.storage_byte_count},")
+        lines.append(f"            .required_alignment = {record.required_alignment},")
+        lines.append("        },")
+        if record_tables is not None:
+            field_table_name, mapping_table_name = record_tables
+            lines.append(f"        .field_count = IREE_ARRAYSIZE({field_table_name}),")
+            lines.append(f"        .fields = {field_table_name},")
+            lines.append(f"        .mappings = {mapping_table_name},")
         lines.append("    },")
     lines.append("};")
     lines.append("")
@@ -961,6 +1025,7 @@ def generate_tables_c(
             attr_index = c_queries.resolve_attr_index(op, op.symbol_def.field, "symbol_def")
             visibility_attr_index = _symbol_visibility_attr_index(op)
             retain_attr_index = _symbol_retain_attr_index(op)
+            product_carrier_attr_index = _symbol_product_carrier_attr_index(op)
             value_contract_indices = _symbol_value_contract_indices(op)
             kernel_contract_indices = _symbol_kernel_contract_indices(op)
             flags = c_symbols.symbol_interface_flags(op.symbol_def.interfaces)
@@ -973,6 +1038,8 @@ def generate_tables_c(
                 lines.append(f"    .visibility_attr_index_plus_one = {visibility_attr_index + 1},")
             if retain_attr_index is not None:
                 lines.append(f"    .retain_attr_index_plus_one = {retain_attr_index + 1},")
+            if product_carrier_attr_index is not None:
+                lines.append(f"    .product_carrier_attr_index_plus_one = {product_carrier_attr_index + 1},")
             definition_flags: list[str] = []
             if op.symbol_def.is_declaration:
                 definition_flags.append("LOOM_SYMBOL_DEFINITION_FLAG_DECLARATION")

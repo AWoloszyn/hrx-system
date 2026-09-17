@@ -526,6 +526,10 @@ loom_module(
             ),
             "LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND IREE_HAL_DRIVER_VULKAN",
         )
+        self.assertEqual(
+            functions._convert_select_condition("//loom/config/target:xdna_artifacts"),
+            "LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA",
+        )
         with self.assertRaises(NotImplementedError):
             functions.select(
                 {
@@ -1201,6 +1205,24 @@ PACKAGE_POLICIES = [
             converter.body,
         )
         self.assertIn('"iree::third_party::spirv_dis"', converter.body)
+
+    def test_execution_test_suite_maps_size_to_timeout(self):
+        converter = SimpleNamespace(body="")
+        functions = bazel_to_cmake_converter.BuildFileFunctions(
+            converter=converter,
+            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
+            build_dir="/repo/pkg",
+            repo_root="/repo",
+        )
+
+        functions.iree_execution_test_suite(
+            name="execution_test",
+            manifests=["test.json"],
+            tools={"runner": "//tools:runner"},
+            size="small",
+        )
+
+        self.assertIn("  TIMEOUT\n    60\n", converter.body)
 
     def test_execution_test_suite_preserves_glob_data(self):
         repo_root = Path(__file__).resolve().parents[2]

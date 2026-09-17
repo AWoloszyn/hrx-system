@@ -24,6 +24,7 @@ from loom.target.low_descriptors import (
     OperandAddressMapKind,
     OperandFlag,
     OperandRole,
+    PhysicalRegister,
     RegClass,
     RegClassAlt,
     RegClassFlag,
@@ -86,9 +87,91 @@ def _descriptor_set(
     return replace(
         TEST_LOW_CORE_DESCRIPTOR_SET,
         reg_classes=(TEST_LOW_CORE_DESCRIPTOR_SET.reg_classes if register_classes is None else register_classes),
+        physical_register_views=(),
+        register_packing_resources=(),
         register_parts=(),
         descriptors=descriptors,
     )
+
+
+def _coindexed_register_classes(
+    partner_candidates: tuple[str, str] = ("test.r2", "test.r3"),
+) -> tuple[RegClass, RegClass]:
+    flags = (
+        RegClassFlag.PHYSICAL,
+        RegClassFlag.UNSPILLABLE,
+        RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+    )
+    return (
+        RegClass(
+            "tuple.primary",
+            32,
+            SpillSlotSpace.PRIVATE,
+            flags=flags,
+            physical_registers=("test.r0", "test.r1"),
+        ),
+        RegClass(
+            "tuple.partner",
+            32,
+            SpillSlotSpace.PRIVATE,
+            flags=flags,
+            physical_registers=partner_candidates,
+        ),
+    )
+
+
+def test_physical_descriptor_set_accepts_same_register_ordinal_tuple() -> None:
+    register_classes = _coindexed_register_classes()
+    descriptor = _descriptor(
+        "test.coindexed",
+        (
+            _physical_operand("primary", OperandRole.RESULT, "tuple.primary"),
+            _physical_operand("partner", OperandRole.RESULT, "tuple.partner"),
+        ),
+        constraints=(Constraint(ConstraintKind.SAME_REGISTER_ORDINAL, 0, 1),),
+    )
+
+    validation.validate_physical_descriptor_set(_descriptor_set(descriptor, register_classes=register_classes))
+
+
+def test_physical_descriptor_set_rejects_unproven_register_ordinal_tuple() -> None:
+    register_classes = _coindexed_register_classes(partner_candidates=("test.r3", "test.r2"))
+    descriptor = _descriptor(
+        "test.coindexed",
+        (
+            _physical_operand("primary", OperandRole.RESULT, "tuple.primary"),
+            _physical_operand("partner", OperandRole.RESULT, "tuple.partner"),
+        ),
+        constraints=(Constraint(ConstraintKind.SAME_REGISTER_ORDINAL, 0, 1),),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor 'test.coindexed' same-register-ordinal candidate 0 tuple [test.r0, test.r3] does not form a declared aggregate physical register"),
+    ):
+        validation.validate_physical_descriptor_set(_descriptor_set(descriptor, register_classes=register_classes))
+
+
+def test_physical_descriptor_set_requires_register_ordinal_clique() -> None:
+    register_classes = _coindexed_register_classes()
+    descriptor = _descriptor(
+        "test.coindexed",
+        (
+            _physical_operand("first", OperandRole.RESULT, "tuple.primary"),
+            _physical_operand("second", OperandRole.RESULT, "tuple.partner"),
+            _physical_operand("third", OperandRole.RESULT, "tuple.primary"),
+        ),
+        constraints=(
+            Constraint(ConstraintKind.SAME_REGISTER_ORDINAL, 0, 1),
+            Constraint(ConstraintKind.SAME_REGISTER_ORDINAL, 1, 2),
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor 'test.coindexed' same-register-ordinal component [first, second, third] must constrain every operand pair"),
+    ):
+        validation.validate_physical_descriptor_set(_descriptor_set(descriptor, register_classes=register_classes))
 
 
 def test_physical_base_domain_matches_enumerated_contract() -> None:
@@ -310,6 +393,31 @@ def test_physical_descriptor_set_rejects_implicit_row_without_phase() -> None:
         match=re.escape("descriptor set 'test.low.core' descriptor 'test.bad.implicit' physical implicit operand 'state' has no state read or write phase"),
     ):
         compiler.compile_descriptor_set(_descriptor_set(descriptor))
+
+
+@pytest.mark.parametrize(("location_count", "unit_count"), [(2, 1), (1, 2)])
+def test_implicit_physical_write_requires_fixed_storage(location_count: int, unit_count: int) -> None:
+    register_class = RegClass(
+        "test.state",
+        32,
+        SpillSlotSpace.PRIVATE,
+        flags=(RegClassFlag.PHYSICAL, RegClassFlag.UNSPILLABLE),
+        allocatable_count=location_count,
+    )
+    descriptor = _descriptor(
+        "test.implicit.write",
+        (
+            _physical_operand(
+                "state",
+                OperandRole.IMPLICIT,
+                register_class.name,
+                flags=(OperandFlag.IMPLICIT, OperandFlag.STATE_WRITE),
+                unit_count=unit_count,
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="implicit physical write 'state' must name one fixed register"):
+        compiler.compile_descriptor_set(_descriptor_set(descriptor, register_classes=(register_class,)))
 
 
 def test_physical_descriptor_set_accepts_native_implicit_packet_operand() -> None:
@@ -679,6 +787,44 @@ def test_physical_descriptor_set_rejects_phase_order_work_overflow() -> None:
         match=r"phase-order pair count 14400 exceeds generation bound 1440",
     ):
         compiler.compile_descriptor_set(_descriptor_set(descriptor))
+
+
+@pytest.mark.parametrize("overlap", [False, True])
+@pytest.mark.parametrize("component_count", [5, 9, 15, 16])
+def test_explicit_state_placement_uses_atomic_storage(component_count: int, overlap: bool) -> None:
+    # Independently fixed read/write states need no spatial-order search.
+    # Distinct register names can still alias the same physical storage.
+    register_classes = tuple(
+        RegClass(
+            f"state{index}",
+            32,
+            SpillSlotSpace.PRIVATE,
+            flags=(RegClassFlag.PHYSICAL, RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS),
+            physical_registers=(f"fixed{index}",),
+        )
+        for index in range(component_count)
+    )
+    operands = tuple(
+        _physical_operand(
+            f"state{index}",
+            OperandRole.IMPLICIT,
+            register_class.name,
+            flags=(OperandFlag.IMPLICIT, OperandFlag.STATE_READ, OperandFlag.STATE_WRITE),
+        )
+        for index, register_class in enumerate(register_classes)
+    )
+    descriptor_set = replace(
+        _descriptor_set(_descriptor("test.fixed.states", operands), register_classes=register_classes),
+        physical_registers=tuple(PhysicalRegister(f"fixed{index}", (0 if overlap and index == component_count - 1 else index,)) for index in range(component_count)),
+    )
+    if component_count == 16:
+        with pytest.raises(ValueError, match="binding count 16 exceeds generation bound 15"):
+            validation.validate_physical_descriptor_set(descriptor_set)
+    elif overlap:
+        with pytest.raises(ValueError, match="explicit physical register components do not admit a legal pre/post placement"):
+            validation.validate_physical_descriptor_set(descriptor_set)
+    else:
+        validation.validate_physical_descriptor_set(descriptor_set)
 
 
 def test_physical_descriptor_set_accepts_phase_order_work_envelope() -> None:

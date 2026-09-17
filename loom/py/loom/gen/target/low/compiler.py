@@ -22,6 +22,12 @@ from loom.gen.target.low.compiled import (
     CompiledNativeAsmValue,
     CompiledOperandForm,
     CompiledOperandFormMatch,
+    CompiledPhysicalRegisterCandidateLookup,
+    CompiledPhysicalRegisterView,
+    CompiledPhysicalRegisterViewLookup,
+    CompiledRegisterPackingResource,
+    CompiledRegisterPackingResourceMember,
+    CompiledResourceCalendar,
     DescriptorAllowlist,
     append_interned_sequence,
 )
@@ -51,7 +57,9 @@ from loom.target.low_descriptors import (
     OperandForm,
     OperandFormImmediateAction,
     OperandRole,
+    PhysicalRegisterView,
     PressureDelta,
+    RegClass,
     RegClassAltFlag,
     Resource,
     ResourceKind,
@@ -86,6 +94,36 @@ class _CompiledImmediateRow:
     encoding_slice_start: int
     # Resolved enum-domain identifier, or None for non-enum immediates.
     enum_domain_id: int | None
+
+
+def _physical_register_packing_order(reg_class: RegClass, views: Sequence[PhysicalRegisterView]) -> list[int]:
+    """Groups candidates by containing views without changing semantic ordinals.
+
+    Larger views group the bank first, then smaller views group their pieces.
+    For nested register views this visits siblings before opening another
+    aggregate. Overlapping non-nested views use the first containing group at
+    each width as a deterministic preference, not a legality restriction.
+    """
+
+    ordinals = {name: index for index, name in enumerate(reg_class.physical_registers)}
+    groups_by_width: dict[int, list[tuple[int, ...]]] = {}
+    for view in views:
+        if view.reg_class == reg_class.name and len(view.units) > 1:
+            groups_by_width.setdefault(len(view.units), []).append(tuple(sorted(ordinals[unit] for unit in view.units)))
+    group_keys: list[dict[int, int]] = []
+    for width in sorted(groups_by_width, reverse=True):
+        keys: dict[int, int] = {}
+        for group_index, group in enumerate(sorted(set(groups_by_width[width]))):
+            for ordinal in group:
+                keys.setdefault(ordinal, group_index)
+        group_keys.append(keys)
+    return sorted(
+        range(len(ordinals)),
+        key=lambda ordinal: (
+            *(keys.get(ordinal, len(ordinals) + ordinal) for keys in group_keys),
+            ordinal,
+        ),
+    )
 
 
 _SEMANTIC_INSTRUCTION_CLASSES = (
@@ -284,6 +322,47 @@ def derive_minimum_issue_cycles(
     return minimum_issue_cycles
 
 
+def _compile_resource_calendars(
+    resources: Sequence[Resource],
+    schedule_classes: Sequence[ScheduleClass],
+) -> tuple[list[CompiledResourceCalendar], int]:
+    """Sizes fixed occupancy rings from validated target issue-use horizons."""
+
+    groups = {resource.name: resource.contention_group_id or -index - 1 for index, resource in enumerate(resources)}
+    horizons: dict[int, int] = dict.fromkeys(groups.values(), 0)
+    for schedule_class in schedule_classes:
+        for issue_use in schedule_class.issue_uses:
+            group = groups[issue_use.resource]
+            horizons[group] = max(horizons[group], issue_use.stage + issue_use.cycles)
+    calendars: dict[int, CompiledResourceCalendar] = {}
+    slot_count = 0
+    for group, horizon in horizons.items():
+        length = 1 << (horizon - 1).bit_length() if horizon else 0
+        calendars[group] = CompiledResourceCalendar(slot_start=slot_count, slot_mask=max(length - 1, 0))
+        slot_count += length
+    validation.validate_u32(slot_count, "resource calendar slot count")
+    return [calendars[groups[resource.name]] for resource in resources], slot_count
+
+
+def validate_schedule_alternative_instruction_classes(
+    descriptors: Sequence[Descriptor],
+    instruction_classes: Sequence[tuple[InstructionClass, ...]],
+) -> None:
+    instruction_classes_by_key = {
+        descriptor.key: classes
+        for descriptor, classes in zip(
+            descriptors,
+            instruction_classes,
+            strict=True,
+        )
+    }
+    for descriptor in descriptors:
+        source_classes = instruction_classes_by_key[descriptor.key]
+        for alternative_key in descriptor.schedule_alternatives:
+            if instruction_classes_by_key[alternative_key] != source_classes:
+                raise ValueError(f"descriptor '{descriptor.key}' schedule alternative '{alternative_key}' changes derived instruction classes")
+
+
 def derive_descriptor_projections(
     descriptor: Descriptor,
     operand_layout: validation.DescriptorOperandLayout,
@@ -404,6 +483,11 @@ def _select_descriptors(spec: DescriptorSet, allowlist: DescriptorAllowlist | No
     while changed:
         changed = False
         for descriptor in tuple(selected.values()):
+            for alternative_key in descriptor.schedule_alternatives:
+                alternative = key_map[alternative_key]
+                if alternative.key not in selected:
+                    selected[alternative.key] = alternative
+                    changed = True
             for operand_form in descriptor.operand_forms:
                 replacement = key_map.get(operand_form.replacement_descriptor)
                 if replacement is None:
@@ -931,7 +1015,27 @@ def compile_descriptor_set(
     if spec.generator_version == 0:
         raise ValueError(f"descriptor set '{spec.key}' has zero generator version")
     reg_class_inputs = _dedupe_by_name(spec.reg_classes, lambda item: item.name)
-    validation.validate_register_classes(spec.key, tuple(reg_class_inputs.values()))
+    physical_register_inputs = _dedupe_by_name(spec.physical_registers, lambda item: item.name)
+    validation.validate_register_classes(
+        spec.key,
+        tuple(reg_class_inputs.values()),
+        tuple(physical_register_inputs.values()),
+        spec.physical_register_views,
+    )
+    validation.validate_register_packing_resources(
+        spec.key,
+        tuple(reg_class_inputs.values()),
+        spec.register_packing_resources,
+    )
+    physical_register_views = validation.derive_canonical_physical_register_views(
+        tuple(reg_class_inputs.values()),
+        tuple(physical_register_inputs.values()),
+        spec.physical_register_views,
+    )
+    if physical_register_views != spec.physical_register_views:
+        spec = replace(spec, physical_register_views=physical_register_views)
+    validation.validate_schedule_model(spec)
+    validation.validate_schedule_alternatives(spec)
     register_part_inputs = _dedupe_by_name(spec.register_parts, lambda item: item.name)
     resource_inputs = _dedupe_by_name(spec.resources, lambda item: item.name)
     schedule_inputs = _dedupe_by_name(spec.schedule_classes, lambda item: item.name)
@@ -952,6 +1056,11 @@ def compile_descriptor_set(
         )
         rematerializable_results_by_descriptor[descriptor.key] = validation.validate_descriptor_constraints(descriptor)
         validation.validate_descriptor_op_kind(descriptor, result_count)
+        validation.validate_allocation_move_descriptor(
+            descriptor,
+            result_count,
+            reg_class_inputs,
+        )
         validation.validate_descriptor_storage_continuations(
             descriptor,
             register_part_inputs,
@@ -981,6 +1090,7 @@ def compile_descriptor_set(
     used_register_part_names: set[str] = set()
     used_resource_names: set[str] = set()
     used_schedule_names = set(required_schedule_class_names)
+    used_timing_event_names: set[str] = set()
     unknown_required_schedule_names = sorted(used_schedule_names - schedule_inputs.keys())
     if unknown_required_schedule_names:
         raise ValueError(f"descriptor set '{spec.key}' requires unknown schedule classes: {', '.join(unknown_required_schedule_names)}")
@@ -1003,6 +1113,12 @@ def compile_descriptor_set(
             raise ValueError(f"descriptor '{descriptor.key}' references unknown schedule class '{descriptor.schedule_class}'")
         used_schedule_names.add(descriptor.schedule_class)
         for immediate in descriptor.immediates:
+            validation.validate_u64(
+                immediate.value_step,
+                f"descriptor '{descriptor.key}' immediate '{immediate.field_name}' value step",
+            )
+            if immediate.value_step == 0:
+                raise ValueError(f"descriptor '{descriptor.key}' immediate '{immediate.field_name}' has zero value step")
             validation.validate_u16(
                 immediate.encoding_field_id,
                 f"descriptor '{descriptor.key}' immediate '{immediate.field_name}' encoding field id",
@@ -1013,6 +1129,8 @@ def compile_descriptor_set(
             )
             validation.validate_immediate_encoding(descriptor, immediate)
             if immediate.kind is ImmediateKind.ENUM:
+                if immediate.value_step != 1:
+                    raise ValueError(f"descriptor '{descriptor.key}' enum immediate '{immediate.field_name}' has non-unit value step {immediate.value_step}")
                 if immediate.enum_domain is None:
                     raise ValueError(f"descriptor '{descriptor.key}' enum immediate '{immediate.field_name}' has no enum domain")
                 if immediate.enum_domain not in enum_domain_inputs:
@@ -1051,6 +1169,15 @@ def compile_descriptor_set(
                     )
                 used_register_part_names.add(operand.register_part)
                 used_reg_class_names.add(register_part.reg_class)
+            if operand.read_event is not None:
+                used_timing_event_names.add(operand.read_event)
+            if operand.write_event is not None:
+                used_timing_event_names.add(operand.write_event)
+        for effect in descriptor.effects:
+            if effect.producer_event is not None:
+                used_timing_event_names.add(effect.producer_event)
+            if effect.consumer_event is not None:
+                used_timing_event_names.add(effect.consumer_event)
         seen_fixed_encoding_fields: set[int] = set()
         for field_value in descriptor.encoding_field_values:
             validation.validate_u16(
@@ -1115,6 +1242,10 @@ def compile_descriptor_set(
         )
         for descriptor in selected_descriptors
     ]
+    validate_schedule_alternative_instruction_classes(
+        selected_descriptors,
+        instruction_classes,
+    )
 
     changed = True
     while changed:
@@ -1135,17 +1266,32 @@ def compile_descriptor_set(
             raise ValueError(f"register part '{part_name}' mask 0x{register_part.mask:x} exceeds full mask 0x{reg_class.full_register_part_mask:x} for register class '{reg_class.name}'")
 
     reg_classes = [reg_class for reg_class in spec.reg_classes if reg_class.name in used_reg_class_names]
+    physical_registers = list(spec.physical_registers)
     register_parts = [part for part in spec.register_parts if part.name in used_register_part_names]
     resources = [resource for resource in spec.resources if resource.name in used_resource_names]
     schedule_classes = [schedule_class for schedule_class in spec.schedule_classes if schedule_class.name in used_schedule_names]
+    timing_events = [timing_event for timing_event in spec.timing_events if timing_event.name in used_timing_event_names]
     enum_domains = [domain for domain in spec.enum_domains if domain.name in used_enum_domain_names]
 
     validation.validate_u16_table_count(len(reg_classes), f"descriptor set '{spec.key}' register class")
+    validation.validate_u16_table_count(
+        len(physical_registers),
+        f"descriptor set '{spec.key}' physical register",
+    )
     validation.validate_u16_table_count(len(register_parts), f"descriptor set '{spec.key}' register part")
     reg_class_ids = {reg_class.name: i for i, reg_class in enumerate(reg_classes)}
+    physical_register_ids = {physical_register.name: i for i, physical_register in enumerate(physical_registers)}
     register_part_ids = {part.name: i for i, part in enumerate(register_parts)}
     resource_ids = {resource.name: i for i, resource in enumerate(resources)}
     schedule_class_ids = {schedule_class.name: i for i, schedule_class in enumerate(schedule_classes)}
+    timing_event_ids = {timing_event.name: i for i, timing_event in enumerate(timing_events)}
+    event_separations = sorted(
+        (separation for separation in spec.event_separations if separation.producer_event in timing_event_ids and separation.consumer_event in timing_event_ids),
+        key=lambda separation: (
+            timing_event_ids[separation.producer_event],
+            timing_event_ids[separation.consumer_event],
+        ),
+    )
     enum_domain_ids = {domain.name: i for i, domain in enumerate(enum_domains)}
 
     string_pool = CStringPool(spec.c_enum_prefix)
@@ -1157,12 +1303,21 @@ def compile_descriptor_set(
         string_pool.intern("feature_key", spec.feature_key)
     for reg_class in reg_classes:
         string_pool.intern(f"reg_{reg_class.name}", reg_class.name)
+    for physical_register in physical_registers:
+        string_pool.intern(
+            f"physical_register_{physical_register.name}",
+            physical_register.name,
+        )
+    for resource in spec.register_packing_resources:
+        string_pool.intern(f"register_packing_resource_{resource.name}", resource.name)
     for part in register_parts:
         string_pool.intern(f"register_part_{part.name}", part.name)
     for resource in resources:
         string_pool.intern(f"resource_{resource.name}", resource.name)
     for schedule_class in schedule_classes:
         string_pool.intern(f"schedule_{schedule_class.name}", schedule_class.name)
+    for timing_event in timing_events:
+        string_pool.intern(f"timing_event_{timing_event.name}", timing_event.name)
     for enum_domain in enum_domains:
         string_pool.intern(f"enum_domain_{enum_domain.name}", enum_domain.name)
         for enum_value in validation.validate_enum_domain(enum_domain):
@@ -1239,6 +1394,116 @@ def compile_descriptor_set(
     descriptor_rows: list[dict[str, int]] = []
     schedule_rows: list[dict[str, int]] = []
     enum_domain_rows: list[dict[str, int]] = []
+
+    physical_register_atomic_units: list[int] = []
+    physical_register_atomic_unit_starts: list[int] = []
+    for physical_register in physical_registers:
+        physical_register_atomic_unit_starts.append(len(physical_register_atomic_units))
+        physical_register_atomic_units.extend(physical_register.atomic_units)
+
+    physical_register_candidate_ids: list[int] = []
+    physical_register_candidate_starts: list[int] = []
+    physical_register_candidate_ordinals: list[int] = []
+    physical_register_candidate_lookups: list[CompiledPhysicalRegisterCandidateLookup] = []
+    physical_register_allocation_ordinals: list[int] = []
+    physical_register_packing_ranks: dict[str, dict[str, int]] = {}
+    for reg_class in reg_classes:
+        physical_register_candidate_starts.append(len(physical_register_candidate_ids))
+        candidate_ids = [physical_register_ids[name] for name in reg_class.physical_registers]
+        physical_register_candidate_ids.extend(candidate_ids)
+        register_base = min(candidate_ids, default=0)
+        register_count = max(candidate_ids, default=-1) - register_base + 1
+        physical_register_candidate_lookups.append(
+            CompiledPhysicalRegisterCandidateLookup(
+                ordinal_start=len(physical_register_candidate_ordinals),
+                register_base=register_base,
+                register_count=register_count,
+            )
+        )
+        candidate_ordinals = [0xFFFF] * register_count
+        for ordinal, physical_register_id in enumerate(candidate_ids):
+            candidate_ordinals[physical_register_id - register_base] = ordinal
+        physical_register_candidate_ordinals.extend(candidate_ordinals)
+        order = _physical_register_packing_order(reg_class, spec.physical_register_views)
+        physical_register_allocation_ordinals.extend(order)
+        physical_register_packing_ranks[reg_class.name] = {reg_class.physical_registers[ordinal]: rank for rank, ordinal in enumerate(order)}
+
+    validation.validate_u32(
+        len(physical_register_candidate_ordinals),
+        f"descriptor set '{spec.key}' reverse candidate count",
+    )
+
+    physical_register_views: list[CompiledPhysicalRegisterView] = []
+    physical_register_view_unit_candidate_ordinals: list[int] = []
+    selected_physical_register_views = sorted(
+        (view for view in spec.physical_register_views if view.reg_class in reg_class_ids),
+        key=lambda view: (
+            physical_register_ids[view.physical_register],
+            reg_class_ids[view.reg_class],
+        ),
+    )
+    view_ordinals_by_register: list[dict[int, int]] = [{} for _ in physical_registers]
+    for view in selected_physical_register_views:
+        view_ordinals_by_register[physical_register_ids[view.physical_register]][reg_class_ids[view.reg_class]] = len(physical_register_views)
+        reg_class = reg_class_inputs[view.reg_class]
+        candidate_ordinals = {physical_register: ordinal for ordinal, physical_register in enumerate(reg_class.physical_registers)}
+        unit_candidate_ordinal_start = len(physical_register_view_unit_candidate_ordinals)
+        physical_register_view_unit_candidate_ordinals.extend(candidate_ordinals[unit] for unit in view.units)
+        physical_register_views.append(
+            CompiledPhysicalRegisterView(
+                physical_register_id=physical_register_ids[view.physical_register],
+                reg_class_id=reg_class_ids[view.reg_class],
+                unit_candidate_ordinal_start=unit_candidate_ordinal_start,
+                unit_count=len(view.units),
+                packing_rank=min(physical_register_packing_ranks[view.reg_class][unit] for unit in view.units),
+            )
+        )
+    validation.validate_u32(
+        len(physical_register_views),
+        f"descriptor set '{spec.key}' physical register view count",
+    )
+    validation.validate_u32(
+        len(physical_register_view_unit_candidate_ordinals),
+        f"descriptor set '{spec.key}' physical register view unit count",
+    )
+
+    physical_register_view_ordinals: list[int] = []
+    physical_register_view_lookups: list[CompiledPhysicalRegisterViewLookup] = []
+    for view_ordinals in view_ordinals_by_register:
+        class_base = min(view_ordinals, default=0)
+        class_count = max(view_ordinals, default=-1) - class_base + 1
+        physical_register_view_lookups.append(
+            CompiledPhysicalRegisterViewLookup(
+                ordinal_start=len(physical_register_view_ordinals),
+                class_base=class_base,
+                class_count=class_count,
+            )
+        )
+        physical_register_view_ordinals.extend(view_ordinals.get(class_id, 0xFFFFFFFF) for class_id in range(class_base, class_base + class_count))
+    validation.validate_u32(
+        len(physical_register_view_ordinals),
+        f"descriptor set '{spec.key}' physical register view lookup count",
+    )
+
+    register_packing_resources: list[CompiledRegisterPackingResource] = []
+    register_packing_resource_members: list[CompiledRegisterPackingResourceMember] = []
+    for resource in spec.register_packing_resources:
+        member_start = len(register_packing_resource_members)
+        register_packing_resource_members.extend(
+            CompiledRegisterPackingResourceMember(
+                reg_class_id=reg_class_ids[member.register_class],
+                register_unit_count=member.register_unit_count,
+                resource_unit_count=member.resource_unit_count,
+            )
+            for member in resource.members
+        )
+        register_packing_resources.append(
+            CompiledRegisterPackingResource(
+                source=resource,
+                member_start=member_start,
+                member_count=len(resource.members),
+            )
+        )
 
     for schedule_class in schedule_classes:
         issue_use_start = len(issue_uses)
@@ -1418,6 +1683,9 @@ def compile_descriptor_set(
         validation.validate_u16_table_count(len(rows), f"descriptor set '{spec.key}' {table_name}")
 
     descriptor_refs = sorted((descriptor.key, i) for i, descriptor in enumerate(selected_descriptors))
+    schedule_alternative_rows = [
+        (source_ordinal, descriptor_ordinals[alternative_key]) for source_ordinal, descriptor in enumerate(source_descriptors) for alternative_key in descriptor.schedule_alternatives
+    ]
     seen_stable_ids: dict[int, str] = {}
     for descriptor in selected_descriptors:
         stable_id = descriptor_stable_id(descriptor.key)
@@ -1426,20 +1694,40 @@ def compile_descriptor_set(
             raise ValueError(f"descriptor '{descriptor.key}' stable ID collides with '{previous_key}'")
         seen_stable_ids[stable_id] = descriptor.key
 
+    resource_calendars, resource_calendar_slot_count = _compile_resource_calendars(resources, schedule_classes)
     return CompiledDescriptorSet(
         spec=spec,
         source_descriptors=source_descriptors,
         descriptors=selected_descriptors,
         instruction_classes=instruction_classes,
         reg_classes=reg_classes,
+        physical_registers=physical_registers,
+        physical_register_candidate_ids=physical_register_candidate_ids,
+        physical_register_allocation_ordinals=physical_register_allocation_ordinals,
+        physical_register_candidate_starts=physical_register_candidate_starts,
+        physical_register_candidate_ordinals=physical_register_candidate_ordinals,
+        physical_register_candidate_lookups=physical_register_candidate_lookups,
+        physical_register_atomic_units=physical_register_atomic_units,
+        physical_register_atomic_unit_starts=physical_register_atomic_unit_starts,
+        physical_register_views=physical_register_views,
+        physical_register_view_ordinals=physical_register_view_ordinals,
+        physical_register_view_lookups=physical_register_view_lookups,
+        physical_register_view_unit_candidate_ordinals=physical_register_view_unit_candidate_ordinals,
+        register_packing_resources=register_packing_resources,
+        register_packing_resource_members=register_packing_resource_members,
         register_parts=register_parts,
         resources=resources,
+        resource_calendars=resource_calendars,
+        resource_calendar_slot_count=resource_calendar_slot_count,
         schedule_classes=schedule_classes,
+        timing_events=timing_events,
+        event_separations=event_separations,
         enum_domains=enum_domains,
         reg_class_ids=reg_class_ids,
         register_part_ids=register_part_ids,
         resource_ids=resource_ids,
         schedule_class_ids=schedule_class_ids,
+        timing_event_ids=timing_event_ids,
         enum_domain_ids=enum_domain_ids,
         string_pool=string_pool,
         reg_class_alts=reg_class_alts,
@@ -1466,6 +1754,7 @@ def compile_descriptor_set(
         operand_form_operand_indices=operand_form_operand_indices,
         descriptor_rows=descriptor_rows,
         descriptor_refs=descriptor_refs,
+        schedule_alternative_rows=schedule_alternative_rows,
         canonical_asm_form_ordinals=canonical_asm_form_ordinals,
         asm_forms=asm_forms,
         asm_table_storage=asm_table_storage,

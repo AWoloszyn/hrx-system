@@ -147,6 +147,7 @@ __all__ = [
     "ISOLATED_FROM_ABOVE",
     "NON_DETERMINISTIC",
     "UNKNOWN_EFFECTS",
+    "OBSERVABLE_EFFECT",
     "MEMORY_FENCE",
     "CONVERGENT",
     "HINT",
@@ -254,6 +255,9 @@ __all__ = [
     "EncodingOperandSummaryDef",
     "EncodingFamilyDef",
     "EncodingFamilyRole",
+    "EncodingRecordFieldDef",
+    "EncodingRecordFieldRole",
+    "EncodingRecordMappingDef",
     "EncodingRecordDef",
     "ParameterizedAttrDef",
     # Legacy text-format migration declarations.
@@ -600,6 +604,7 @@ _VALID_SYMBOL_INTERFACES = frozenset(
         "kernel",
         "kernel_entry",
         "command_program",
+        "pipeline",
     }
 )
 
@@ -731,6 +736,10 @@ class SymbolDefinition:
         their FuncLike interface when this is absent.
     retain: Optional enum attribute that marks symbols which ordinary symbol
         DCE must preserve even when unreachable.
+    product_carrier: Optional enum attribute that classifies the product
+        boundary of a polymorphic durable root. The absent value is the enum's
+        zero carrier; symbol definitions without this contract remain
+        unclassified.
     flags: Generic roles that affect symbol processing independent of the
         defining dialect.
     value_contract: Optional typed-value contract described by generated field
@@ -745,6 +754,7 @@ class SymbolDefinition:
     fact_domain: str | None = None
     visibility: str | None = None
     retain: str | None = None
+    product_carrier: str | None = None
     flags: tuple[SymbolDefinitionFlag, ...] = ()
     value_contract: SymbolValueContract | None = None
     kernel_contract: SymbolKernelContract | None = None
@@ -759,6 +769,7 @@ class SymbolDefinition:
         fact_domain: str | None = None,
         visibility: str | None = None,
         retain: str | None = None,
+        product_carrier: str | None = None,
         flags: list[SymbolDefinitionFlag] | tuple[SymbolDefinitionFlag, ...] = (),
         value_contract: SymbolValueContract | None = None,
         kernel_contract: SymbolKernelContract | None = None,
@@ -773,6 +784,8 @@ class SymbolDefinition:
             raise ValueError("SymbolDefinition: visibility must be non-empty")
         if retain is not None and not retain:
             raise ValueError("SymbolDefinition: retain must be non-empty")
+        if product_carrier is not None and not product_carrier:
+            raise ValueError("SymbolDefinition: product_carrier must be non-empty")
         if not frozen_interfaces:
             raise ValueError("SymbolDefinition: interfaces must be non-empty")
         for interface in frozen_interfaces:
@@ -819,6 +832,11 @@ class SymbolDefinition:
                 f"SymbolDefinition '{name}': the command_program interface "
                 "requires the func_like interface for its launch ABI"
             )
+        if "pipeline" in frozen_interfaces and "func_like" not in frozen_interfaces:
+            raise ValueError(
+                f"SymbolDefinition '{name}': the pipeline interface requires "
+                "the func_like interface for its launch ABI"
+            )
         object.__setattr__(self, "field", field)
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "interfaces", frozen_interfaces)
@@ -826,6 +844,7 @@ class SymbolDefinition:
         object.__setattr__(self, "fact_domain", fact_domain)
         object.__setattr__(self, "visibility", visibility)
         object.__setattr__(self, "retain", retain)
+        object.__setattr__(self, "product_carrier", product_carrier)
         object.__setattr__(self, "flags", frozen_flags)
         object.__setattr__(self, "value_contract", value_contract)
         object.__setattr__(self, "kernel_contract", kernel_contract)
@@ -1196,6 +1215,10 @@ NON_DETERMINISTIC = Trait("NonDeterministic")
 # Effects depend on runtime state (e.g., func.call depends on the callee).
 # Passes treat this conservatively as both READS_MEMORY and WRITES_MEMORY.
 UNKNOWN_EFFECTS = Trait("UnknownEffects")
+# Each dynamic execution is externally observable independently of its SSA
+# results. Optimizers preserve its execution count and control predicate. This
+# does not imply memory access, ordering, non-determinism, or convergence.
+OBSERVABLE_EFFECT = Trait("ObservableEffect")
 # Op represents an explicit command-program effect such as dispatch or schedule
 # composition. The op must independently declare its exact or unknown effects;
 # this trait classifies those effects instead of replacing them.
@@ -3069,6 +3092,7 @@ class Dialect:
     default_category: OpCategory | None = None
     c_path: str | None = None
     register_by_default: bool = True
+    checked_in_headers: bool = True
 
     def __init__(
         self,
@@ -3082,6 +3106,7 @@ class Dialect:
         default_category: OpCategory | None = None,
         c_path: str | None = None,
         register_by_default: bool = True,
+        checked_in_headers: bool = True,
     ) -> None:
         frozen_categories = tuple(categories)
         if default_category is not None and default_category not in frozen_categories:
@@ -3098,6 +3123,7 @@ class Dialect:
         object.__setattr__(self, "default_category", default_category)
         object.__setattr__(self, "c_path", c_path)
         object.__setattr__(self, "register_by_default", register_by_default)
+        object.__setattr__(self, "checked_in_headers", checked_in_headers)
 
 
 _DESCRIPTOR_PARAMETER_TYPES = frozenset(
@@ -3288,13 +3314,165 @@ class EncodingFamilyRole(Enum):
         return str(self.value)
 
 
+@unique
+class EncodingRecordFieldRole(Enum):
+    """Semantic role of one logical field projected from a fixed record."""
+
+    PAYLOAD = "LOOM_ENCODING_RECORD_FIELD_PAYLOAD"
+    SCALE = "LOOM_ENCODING_RECORD_FIELD_SCALE"
+    MINIMUM = "LOOM_ENCODING_RECORD_FIELD_MINIMUM"
+    SUM_CORRECTION = "LOOM_ENCODING_RECORD_FIELD_SUM_CORRECTION"
+
+    @property
+    def c_name(self) -> str:
+        return str(self.value)
+
+
+@dataclass(frozen=True, slots=True)
+class EncodingRecordMappingDef:
+    """Rectangular bit projection from record storage into a logical field."""
+
+    record_bit_offset: int
+    record_bit_stride: int
+    field_element_offset: int
+    element_count: int
+    field_bit_offset: int
+    bit_count: int
+
+    def __post_init__(self) -> None:
+        limits = (
+            ("record_bit_offset", self.record_bit_offset, 0, 0xFFFFFFFF),
+            ("record_bit_stride", self.record_bit_stride, 1, 0xFFFF),
+            ("field_element_offset", self.field_element_offset, 0, 0xFFFF),
+            ("element_count", self.element_count, 1, 0xFFFF),
+            ("field_bit_offset", self.field_bit_offset, 0, 0xFF),
+            ("bit_count", self.bit_count, 1, 0xFF),
+        )
+        for field_name, value, minimum, maximum in limits:
+            if type(value) is not int or not minimum <= value <= maximum:
+                raise ValueError(
+                    f"EncodingRecordMappingDef: {field_name} must be an "
+                    f"integer in [{minimum}, {maximum}], got {value!r}"
+                )
+
+
+@dataclass(frozen=True, slots=True)
+class EncodingRecordFieldDef:
+    """One semantic field reconstructed from a fixed physical record."""
+
+    role: EncodingRecordFieldRole
+    hierarchy_level: int
+    numeric_format: EnumCase
+    element_bit_count: int
+    element_count: int
+    mappings: tuple[EncodingRecordMappingDef, ...]
+
+    def __init__(
+        self,
+        role: EncodingRecordFieldRole,
+        numeric_format: EnumCase,
+        element_bit_count: int,
+        element_count: int,
+        mappings: list[EncodingRecordMappingDef] | tuple[EncodingRecordMappingDef, ...],
+        *,
+        hierarchy_level: int = 0,
+    ) -> None:
+        if not isinstance(role, EncodingRecordFieldRole):
+            raise ValueError(
+                "EncodingRecordFieldDef: role must be an EncodingRecordFieldRole"
+            )
+        if not isinstance(numeric_format, EnumCase):
+            raise ValueError(
+                "EncodingRecordFieldDef: numeric_format must be an EnumCase"
+            )
+        if type(hierarchy_level) is not int or not 0 <= hierarchy_level <= 0xFF:
+            raise ValueError(
+                "EncodingRecordFieldDef: hierarchy_level must be an integer "
+                f"in [0, 255], got {hierarchy_level!r}"
+            )
+        if role is EncodingRecordFieldRole.SCALE and hierarchy_level >= 8:
+            raise ValueError(
+                "EncodingRecordFieldDef: scale hierarchy level exceeds the "
+                "eight-key auxiliary scale vocabulary"
+            )
+        for field_name, value, maximum in (
+            ("element_bit_count", element_bit_count, 0xFF),
+            ("element_count", element_count, 0xFFFF),
+        ):
+            if type(value) is not int or not 1 <= value <= maximum:
+                raise ValueError(
+                    f"EncodingRecordFieldDef: {field_name} must be an integer "
+                    f"in [1, {maximum}], got {value!r}"
+                )
+        if not 0 <= numeric_format.value <= 0xFF:
+            raise ValueError(
+                "EncodingRecordFieldDef: numeric format ordinal must fit in uint8_t"
+            )
+
+        frozen_mappings = tuple(mappings)
+        if not frozen_mappings:
+            raise ValueError(
+                "EncodingRecordFieldDef: mappings must contain at least one row"
+            )
+        if len(frozen_mappings) > 0xFF:
+            raise ValueError(
+                "EncodingRecordFieldDef: mapping count exceeds the uint8_t limit"
+            )
+        coverage = [0] * element_count
+        expected_mask = (1 << element_bit_count) - 1
+        for mapping in frozen_mappings:
+            if not isinstance(mapping, EncodingRecordMappingDef):
+                raise ValueError(
+                    "EncodingRecordFieldDef: mappings must contain "
+                    "EncodingRecordMappingDef values"
+                )
+            element_end = mapping.field_element_offset + mapping.element_count
+            if element_end > element_count:
+                raise ValueError(
+                    "EncodingRecordFieldDef: mapping exceeds the logical field "
+                    "element count"
+                )
+            bit_end = mapping.field_bit_offset + mapping.bit_count
+            if bit_end > element_bit_count:
+                raise ValueError(
+                    "EncodingRecordFieldDef: mapping exceeds the logical field "
+                    "element width"
+                )
+            mapping_mask = ((1 << mapping.bit_count) - 1) << mapping.field_bit_offset
+            for element_index in range(mapping.field_element_offset, element_end):
+                if coverage[element_index] & mapping_mask:
+                    raise ValueError(
+                        "EncodingRecordFieldDef: mappings overlap in the logical field"
+                    )
+                coverage[element_index] |= mapping_mask
+        if any(element_mask != expected_mask for element_mask in coverage):
+            raise ValueError(
+                "EncodingRecordFieldDef: mappings do not cover every logical field bit"
+            )
+
+        object.__setattr__(self, "role", role)
+        object.__setattr__(self, "hierarchy_level", hierarchy_level)
+        object.__setattr__(self, "numeric_format", numeric_format)
+        object.__setattr__(self, "element_bit_count", element_bit_count)
+        object.__setattr__(self, "element_count", element_count)
+        object.__setattr__(self, "mappings", frozen_mappings)
+
+
 @dataclass(frozen=True, slots=True)
 class EncodingRecordDef:
-    """Exact physical geometry for one fixed encoding record."""
+    """Exact physical and numerical layout for one fixed encoding record.
+
+    Every field element applies to one uniform consecutive group of logical
+    record elements. The payload code is multiplied by every applicable SCALE
+    hierarchy level, then the product of every applicable MINIMUM hierarchy
+    level is subtracted. Numeric formats define code interpretation, including
+    offset-binary quantized integers.
+    """
 
     logical_element_count: int
     storage_byte_count: int
     required_alignment: int = 1
+    fields: tuple[EncodingRecordFieldDef, ...] = ()
 
     def __post_init__(self) -> None:
         for field_name, value in (
@@ -3311,6 +3489,90 @@ class EncodingRecordDef:
             raise ValueError(
                 "EncodingRecordDef: required_alignment must be a power of two"
             )
+        fields = tuple(self.fields)
+        object.__setattr__(self, "fields", fields)
+        if len(fields) > 0xFF:
+            raise ValueError("EncodingRecordDef: field count exceeds the uint8_t limit")
+        mapping_count = sum(len(field.mappings) for field in fields)
+        if mapping_count > 0xFF:
+            raise ValueError(
+                "EncodingRecordDef: mapping count exceeds the uint8_t limit"
+            )
+
+        record_bit_count = self.storage_byte_count * 8
+        field_keys: set[tuple[EncodingRecordFieldRole, int]] = set()
+        mapped_record_bits: set[int] = set()
+        for field in fields:
+            if not isinstance(field, EncodingRecordFieldDef):
+                raise ValueError(
+                    "EncodingRecordDef: fields must contain "
+                    "EncodingRecordFieldDef values"
+                )
+            field_key = (field.role, field.hierarchy_level)
+            if field_key in field_keys:
+                raise ValueError(
+                    "EncodingRecordDef: duplicate field role and hierarchy level"
+                )
+            field_keys.add(field_key)
+            for mapping in field.mappings:
+                last_source_bit = (
+                    mapping.record_bit_offset
+                    + (mapping.element_count - 1) * mapping.record_bit_stride
+                    + mapping.bit_count
+                    - 1
+                )
+                if last_source_bit >= record_bit_count:
+                    raise ValueError(
+                        "EncodingRecordDef: mapping exceeds physical record storage"
+                    )
+                for element_index in range(mapping.element_count):
+                    source_bit = (
+                        mapping.record_bit_offset
+                        + element_index * mapping.record_bit_stride
+                    )
+                    for bit_index in range(mapping.bit_count):
+                        record_bit = source_bit + bit_index
+                        if record_bit in mapped_record_bits:
+                            raise ValueError(
+                                "EncodingRecordDef: mappings overlap in physical "
+                                "record storage"
+                            )
+                        mapped_record_bits.add(record_bit)
+
+        if not fields:
+            return
+
+        payload_fields = [
+            field for field in fields if field.role is EncodingRecordFieldRole.PAYLOAD
+        ]
+        if len(payload_fields) != 1:
+            raise ValueError("EncodingRecordDef: exactly one payload field is required")
+        payload_field = payload_fields[0]
+        if payload_field.hierarchy_level != 0:
+            raise ValueError(
+                "EncodingRecordDef: payload field must use hierarchy level zero"
+            )
+        if payload_field.element_count != self.logical_element_count:
+            raise ValueError(
+                "EncodingRecordDef: payload field must cover every logical element"
+            )
+
+        for field in fields:
+            if self.logical_element_count % field.element_count:
+                raise ValueError(
+                    "EncodingRecordDef: field element count must divide the "
+                    "logical element count"
+                )
+
+        for role in EncodingRecordFieldRole:
+            hierarchy_levels = sorted(
+                field.hierarchy_level for field in fields if field.role is role
+            )
+            if hierarchy_levels != list(range(len(hierarchy_levels))):
+                raise ValueError(
+                    "EncodingRecordDef: field hierarchy levels must be contiguous "
+                    "from zero"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -4910,7 +5172,13 @@ def _validate_no_effect_conflicts(
     """Validate trait-only ops for effect-related conflicts."""
     trait_names = {t.name for t in traits}
     if "CommandEffect" in trait_names and not trait_names.intersection(
-        {"UnknownEffects", "MemoryFence", "NonDeterministic", "Convergent"}
+        {
+            "UnknownEffects",
+            "ObservableEffect",
+            "MemoryFence",
+            "NonDeterministic",
+            "Convergent",
+        }
     ):
         raise ValueError(
             f"Op '{op_name}': COMMAND_EFFECT requires explicit or unknown "
@@ -4925,6 +5193,7 @@ def _validate_no_effect_conflicts(
             )
         runtime_traits = {
             "UnknownEffects",
+            "ObservableEffect",
             "MemoryFence",
             "NonDeterministic",
             "Convergent",
@@ -4946,6 +5215,11 @@ def _validate_no_effect_conflicts(
             f"Op '{op_name}': declares both PURE and UNKNOWN_EFFECTS. "
             f"A pure op has no effects."
         )
+    if "Pure" in trait_names and "ObservableEffect" in trait_names:
+        raise ValueError(
+            f"Op '{op_name}': declares both PURE and OBSERVABLE_EFFECT. "
+            f"An independently observable execution is not pure."
+        )
     if "Pure" in trait_names and "MemoryFence" in trait_names:
         raise ValueError(
             f"Op '{op_name}': declares both PURE and MEMORY_FENCE. "
@@ -4966,6 +5240,11 @@ def _validate_no_effect_conflicts(
         raise ValueError(
             f"Op '{op_name}': declares both HINT and UNKNOWN_EFFECTS. "
             f"Hints are not semantic effects."
+        )
+    if "Hint" in trait_names and "ObservableEffect" in trait_names:
+        raise ValueError(
+            f"Op '{op_name}': declares both HINT and OBSERVABLE_EFFECT. "
+            f"Observable execution is semantic, not a compiler hint."
         )
     if "Hint" in trait_names and "MemoryFence" in trait_names:
         raise ValueError(
@@ -4992,6 +5271,12 @@ def _validate_no_effect_conflicts(
         raise ValueError(
             f"Op '{op_name}': declares both SAFE_TO_SPECULATE and UNKNOWN_EFFECTS. "
             f"Unknown effects cannot be executed on additional control paths."
+        )
+    if "SafeToSpeculate" in trait_names and "ObservableEffect" in trait_names:
+        raise ValueError(
+            f"Op '{op_name}': declares both SAFE_TO_SPECULATE and "
+            f"OBSERVABLE_EFFECT. Speculation must not add externally "
+            f"observable executions."
         )
     if "SafeToSpeculate" in trait_names and "MemoryFence" in trait_names:
         raise ValueError(
@@ -5821,6 +6106,25 @@ class Op:
                         f"Op '{name}': symbol_def retain '{symbol_def.retain}' "
                         "must be an enum attr"
                     )
+            if symbol_def.product_carrier is not None:
+                product_carrier_attr = next(
+                    (
+                        attr
+                        for attr in frozen_attrs
+                        if attr.name == symbol_def.product_carrier
+                    ),
+                    None,
+                )
+                if product_carrier_attr is None:
+                    raise ValueError(
+                        f"Op '{name}': symbol_def product_carrier "
+                        f"'{symbol_def.product_carrier}' does not name an attr"
+                    )
+                if product_carrier_attr.attr_type != ATTR_TYPE_ENUM:
+                    raise ValueError(
+                        f"Op '{name}': symbol_def product_carrier "
+                        f"'{symbol_def.product_carrier}' must be an enum attr"
+                    )
         func_like = next(
             (
                 interface
@@ -6064,8 +6368,8 @@ class Op:
 
         An op is pure if it explicitly declares traits=[PURE], or if it
         has no effects, no ownership effects, no ALLOCATES results, and no HINT,
-        NON_DETERMINISTIC, UNKNOWN_EFFECTS, MEMORY_FENCE, or UNIQUE_IDENTITY
-        traits.
+        NON_DETERMINISTIC, UNKNOWN_EFFECTS, OBSERVABLE_EFFECT, MEMORY_FENCE, or
+        UNIQUE_IDENTITY traits.
         """
         if self.has_trait("Pure"):
             return True
@@ -6082,6 +6386,7 @@ class Op:
         if (
             self.has_trait("NonDeterministic")
             or self.has_trait("UnknownEffects")
+            or self.has_trait("ObservableEffect")
             or self.has_trait("MemoryFence")
         ):
             return False

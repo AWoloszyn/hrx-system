@@ -15,7 +15,6 @@
 #include "loom/analysis/liveness.h"
 #include "loom/codegen/low/allocation/assignment.h"
 #include "loom/codegen/low/allocation/assignment_map.h"
-#include "loom/codegen/low/allocation/search.h"
 #include "loom/codegen/low/allocation/storage_lease.h"
 #include "loom/codegen/low/allocation/table.h"
 #include "loom/codegen/low/allocation/target_constraints.h"
@@ -31,6 +30,15 @@ extern "C" {
 
 struct loom_target_residency_model_t;
 struct loom_low_schedule_table_t;
+
+// Concrete-location ordering used for one whole-function assignment attempt.
+typedef enum loom_low_allocation_search_strategy_e {
+  // Searches legal locations from low to high.
+  LOOM_LOW_ALLOCATION_SEARCH_STRATEGY_FIRST_FIT = 0,
+  // Separates overlapping scalar and wide intervals across the feasible
+  // liveness-pressure frontier to repair first-fit fragmentation.
+  LOOM_LOW_ALLOCATION_SEARCH_STRATEGY_FRAGMENTATION_REPAIR = 1,
+} loom_low_allocation_search_strategy_t;
 
 typedef struct loom_low_allocation_interval_assignment_context_t {
   // Module containing the allocated low function.
@@ -77,22 +85,23 @@ typedef struct loom_low_allocation_interval_assignment_result_t {
   uint32_t* assignment_indices_by_value_ordinal;
   // Lookup table over assignments and liveness-local value ordinals.
   loom_low_allocation_assignment_map_t assignment_map;
-  // Spill materialization plan records in assignment order.
+  // Spill materialization plan records in spill-decision order. Null when no
+  // assignment spills; otherwise sized to |spill_count|.
   loom_low_allocation_spill_plan_t* spill_plans;
   // Number of initialized spill materialization plan records.
   iree_host_size_t spill_plan_count;
-  // Allocation remark records in assignment order.
+  // Allocation remark records in spill-decision order. Null when no assignment
+  // spills; otherwise sized to |spill_count|.
   loom_low_allocation_remark_t* remarks;
   // Number of initialized allocation remark records.
   iree_host_size_t remark_count;
-  // Terminal hard-allocation failure, when one was emitted.
-  loom_low_allocation_failure_t failure;
   // Number of assignments whose location kind is SPILL_SLOT.
   iree_host_size_t spill_count;
 } loom_low_allocation_interval_assignment_result_t;
 
 // Assigns concrete locations for allocatable intervals in |context| and writes
-// arena-owned assignment, spill-plan, remark, and lookup table state.
+// arena-owned assignment, spill-plan, remark, and lookup table state. Working
+// indexes and decision storage are released before returning.
 iree_status_t loom_low_allocation_interval_assignment_build(
     const loom_low_allocation_interval_assignment_context_t* context,
     loom_low_allocation_interval_assignment_result_t* out_result);

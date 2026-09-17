@@ -362,19 +362,27 @@ def _register_class_row_lines(
     reg_classes: Sequence[RegClass | None],
 ) -> list[list[str]]:
     pool = compiled.string_pool
+    physical_register_widths = {register.name: len(register.atomic_units) for register in compiled.physical_registers}
     return [
         [
             f".name_string_offset = {pool.ref(f'reg_{reg_class.name}')},",
             f".target_bank_id = {reg_class.target_bank_id},",
             f".flags = {c_spelling.flag_expr(reg_class.flags)},",
             f".alloc_unit_bits = {reg_class.alloc_unit_bits},",
-            f".allocatable_count = {reg_class.allocatable_count},",
+            f".allocatable_count = {len(reg_class.physical_registers) if reg_class.physical_registers else reg_class.allocatable_count},",
             f".fixed_location_base = {reg_class.fixed_location_base},",
             f".fixed_location_count = {reg_class.fixed_location_count},",
+            f".physical_register_candidate_start = {compiled.physical_register_candidate_starts[compiled.reg_class_ids[reg_class.name]] if reg_class.physical_registers else 0},",
+            ".candidate_lookup = {",
+            f"  .ordinal_start = {compiled.physical_register_candidate_lookups[compiled.reg_class_ids[reg_class.name]].ordinal_start},",
+            f"  .register_base = {compiled.physical_register_candidate_lookups[compiled.reg_class_ids[reg_class.name]].register_base},",
+            f"  .register_count = {compiled.physical_register_candidate_lookups[compiled.reg_class_ids[reg_class.name]].register_count},",
+            "},",
             f".alias_set_id = {reg_class.alias_set_id},",
             ".spill_class_id = " + ("LOOM_LOW_REG_CLASS_NONE" if reg_class.spill_class is None else str(compiled.reg_class_ids[reg_class.spill_class])) + ",",
             f".full_register_part_mask = {c_spelling.hex_u32_literal(reg_class.full_register_part_mask)},",
             f".spill_slot_space = {reg_class.spill_slot_space.c_name},",
+            f".physical_atomic_unit_count = {physical_register_widths[reg_class.physical_registers[0]] if reg_class.physical_registers else 0},",
         ]
         if reg_class is not None
         else [
@@ -434,6 +442,108 @@ def emit_source_for_views(
     }
     _emit_array(
         lines,
+        "loom_low_physical_register_t",
+        spec.c_table_prefix,
+        "PhysicalRegisters",
+        [
+            [
+                ".name_string_offset = " + pool.ref(f"physical_register_{physical_register.name}") + ",",
+                ".atomic_unit_start = " + str(compiled.physical_register_atomic_unit_starts[i]) + ",",
+                f".atomic_unit_count = {len(physical_register.atomic_units)},",
+                ".reserved = 0,",
+                ".view_lookup = {",
+                f"  .ordinal_start = {compiled.physical_register_view_lookups[i].ordinal_start},",
+                f"  .class_base = {compiled.physical_register_view_lookups[i].class_base},",
+                f"  .class_count = {compiled.physical_register_view_lookups[i].class_count},",
+                "},",
+            ]
+            for i, physical_register in enumerate(compiled.physical_registers)
+        ],
+    )
+    _emit_array(
+        lines,
+        "loom_low_register_packing_resource_t",
+        spec.c_table_prefix,
+        "RegisterPackingResources",
+        [
+            [
+                ".name_string_offset = " + pool.ref(f"register_packing_resource_{resource.source.name}") + ",",
+                f".capacity = {resource.source.capacity},",
+                f".member_start = {resource.member_start},",
+                f".member_count = {resource.member_count},",
+            ]
+            for resource in compiled.register_packing_resources
+        ],
+    )
+    _emit_array(
+        lines,
+        "loom_low_register_packing_resource_member_t",
+        spec.c_table_prefix,
+        "RegisterPackingResourceMembers",
+        [
+            [
+                f".reg_class_id = {member.reg_class_id},",
+                f".register_unit_count = {member.register_unit_count},",
+                f".resource_unit_count = {member.resource_unit_count},",
+                ".reserved = 0,",
+            ]
+            for member in compiled.register_packing_resource_members
+        ],
+    )
+    c_arrays.append_value_array(
+        lines,
+        "uint16_t",
+        f"k{spec.c_table_prefix}PhysicalRegisterCandidates",
+        [str(value) for value in compiled.physical_register_candidate_ids],
+    )
+    c_arrays.append_value_array(
+        lines,
+        "uint16_t",
+        f"k{spec.c_table_prefix}PhysicalRegisterCandidateOrdinals",
+        [str(value) for value in compiled.physical_register_candidate_ordinals],
+    )
+    c_arrays.append_value_array(
+        lines,
+        "uint16_t",
+        f"k{spec.c_table_prefix}PhysicalRegisterAllocationOrdinals",
+        [str(value) for value in compiled.physical_register_allocation_ordinals],
+    )
+    c_arrays.append_value_array(
+        lines,
+        "uint16_t",
+        f"k{spec.c_table_prefix}PhysicalRegisterAtomicUnits",
+        [str(value) for value in compiled.physical_register_atomic_units],
+    )
+    c_arrays.append_value_array(
+        lines,
+        "uint32_t",
+        f"k{spec.c_table_prefix}PhysicalRegisterViewOrdinals",
+        ["UINT32_MAX" if value == 0xFFFFFFFF else str(value) for value in compiled.physical_register_view_ordinals],
+    )
+    _emit_array(
+        lines,
+        "loom_low_physical_register_view_t",
+        spec.c_table_prefix,
+        "PhysicalRegisterViews",
+        [
+            [
+                f".physical_register_id = {view.physical_register_id},",
+                f".reg_class_id = {view.reg_class_id},",
+                ".unit_candidate_ordinal_start = " + str(view.unit_candidate_ordinal_start) + ",",
+                f".unit_count = {view.unit_count},",
+                f".packing_rank = {view.packing_rank},",
+            ]
+            for view in compiled.physical_register_views
+        ],
+    )
+    c_arrays.append_value_array(
+        lines,
+        "uint16_t",
+        f"k{spec.c_table_prefix}PhysicalRegisterViewUnitCandidateOrdinals",
+        [str(value) for value in compiled.physical_register_view_unit_candidate_ordinals],
+    )
+    _emit_array(
+        lines,
         "loom_low_register_part_t",
         spec.c_table_prefix,
         "RegisterParts",
@@ -471,7 +581,7 @@ def emit_source_for_views(
                 ".source_value_index = " + ("LOOM_LOW_ID_NONE" if compiled.operand_source_value_indices[i] is None else str(compiled.operand_source_value_indices[i])) + ",",
                 f".role = {operand.role.c_name},",
                 f".source_binding = {operand_source_binding(operand.field_name, operand.role).c_name},",
-                ".reserved0 = 0,",
+                f".encoding_adapter_id = {operand.encoding_adapter_id},",
                 f".flags = {_operand_flag_expr(operand, compiled.operand_rematerializable[i])},",
                 f".reg_class_alt_start = {compiled.operand_alt_starts[i]},",
                 f".reg_class_alt_count = {len(operand.reg_alts)},",
@@ -484,6 +594,8 @@ def emit_source_for_views(
                 f".register_part_id = {_register_part_id_expr(compiled, operand.register_part)},",
                 f".read_stage = {operand.read_stage},",
                 f".ready_stage = {operand.ready_stage},",
+                ".read_event_id = " + ("LOOM_LOW_TIMING_EVENT_NONE" if operand.read_event is None else str(compiled.timing_event_ids[operand.read_event])) + ",",
+                ".write_event_id = " + ("LOOM_LOW_TIMING_EVENT_NONE" if operand.write_event is None else str(compiled.timing_event_ids[operand.write_event])) + ",",
             ]
             for i, operand in enumerate(compiled.operands)
         ],
@@ -500,6 +612,7 @@ def emit_source_for_views(
                 f".kind = {immediate.kind.c_name},",
                 f".flags = {c_spelling.flag_expr(immediate.flags)},",
                 f".bit_width = {immediate.bit_width},",
+                f".value_step = {c_spelling.u64_literal(immediate.value_step)},",
                 f".encoding_field_id = {immediate.encoding_field_id},",
                 f".encoding_slice_count = {len(immediate.encoding_slices)},",
                 ".enum_domain_id = " + ("LOOM_LOW_ENUM_DOMAIN_NONE" if compiled.immediate_enum_domain_ids[i] is None else str(compiled.immediate_enum_domain_ids[i])) + ",",
@@ -566,6 +679,8 @@ def emit_source_for_views(
                 f".flags = {c_spelling.flag_expr(effect.flags)},",
                 f".counter_id = {effect.counter_id},",
                 f".width_bits = {effect.width_bits},",
+                ".producer_event_id = " + ("LOOM_LOW_TIMING_EVENT_NONE" if effect.producer_event is None else str(compiled.timing_event_ids[effect.producer_event])) + ",",
+                ".consumer_event_id = " + ("LOOM_LOW_TIMING_EVENT_NONE" if effect.consumer_event is None else str(compiled.timing_event_ids[effect.consumer_event])) + ",",
             ]
             for effect in compiled.effects
         ],
@@ -592,6 +707,45 @@ def emit_source_for_views(
         "StorageLeases",
         _storage_lease_row_lines(compiled),
     )
+    event_separation_ranges = {}
+    for index, separation in enumerate(compiled.event_separations):
+        if separation.minimum_issue_separation_cycles <= 0:
+            continue
+        start, count, maximum = event_separation_ranges.get(separation.producer_event, (index, 0, 0))
+        event_separation_ranges[separation.producer_event] = (start, index - start + 1, max(maximum, separation.minimum_issue_separation_cycles))
+    timing_event_rows = []
+    for timing_event in compiled.timing_events:
+        start, count, maximum = event_separation_ranges.get(timing_event.name, (0, 0, 0))
+        timing_event_rows.append(
+            [
+                f".name_string_offset = {pool.ref(f'timing_event_{timing_event.name}')},",
+                f".separation_start = {start},",
+                f".separation_count = {count},",
+                f".maximum_issue_separation_cycles = {maximum},",
+            ]
+        )
+    _emit_array(
+        lines,
+        "loom_low_timing_event_t",
+        spec.c_table_prefix,
+        "TimingEvents",
+        timing_event_rows,
+    )
+    _emit_array(
+        lines,
+        "loom_low_event_separation_t",
+        spec.c_table_prefix,
+        "EventSeparations",
+        [
+            [
+                f".producer_event_id = {compiled.timing_event_ids[separation.producer_event]},",
+                f".consumer_event_id = {compiled.timing_event_ids[separation.consumer_event]},",
+                f".minimum_issue_separation_cycles = {separation.minimum_issue_separation_cycles},",
+                f".model_quality = {separation.model_quality.c_name},",
+            ]
+            for separation in compiled.event_separations
+        ],
+    )
     _emit_array(
         lines,
         "loom_low_resource_t",
@@ -604,8 +758,12 @@ def emit_source_for_views(
                 f".flags = {c_spelling.flag_expr(resource.flags)},",
                 f".kind = {resource.kind.c_name},",
                 f".contention_group_id = {resource.contention_group_id},",
+                ".calendar = {",
+                f"    .slot_start = {calendar.slot_start},",
+                f"    .slot_mask = {calendar.slot_mask},",
+                "},",
             ]
-            for resource in compiled.resources
+            for resource, calendar in zip(compiled.resources, compiled.resource_calendars, strict=True)
         ],
     )
     _emit_array(
@@ -619,6 +777,7 @@ def emit_source_for_views(
                 f".cycles = {issue_use.cycles},",
                 f".units = {issue_use.units},",
                 f".stage = {issue_use.stage},",
+                f".kind = {issue_use.kind.c_name},",
             ]
             for issue_use in compiled.issue_uses
         ],
@@ -664,6 +823,7 @@ def emit_source_for_views(
                 f".name_string_offset = {pool.ref(f'schedule_{schedule_class.name}')},",
                 f".latency_cycles = {schedule_class.latency_cycles},",
                 f".schedule_distance_cycles = {schedule_class.schedule_distance_cycles},",
+                f".minimum_issue_separation_cycles = {schedule_class.minimum_issue_separation_cycles},",
                 f".latency_kind = {schedule_class.latency_kind.c_name},",
                 f".issue_use_start = {compiled.schedule_rows[i]['issue_use_start']},",
                 f".issue_use_count = {compiled.schedule_rows[i]['issue_use_count']},",
@@ -745,9 +905,21 @@ def emit_source_for_views(
             compiled.canonical_asm_form_ordinals,
         ),
     )
+    storage_schedule_alternative_table_symbol = view_array_emitter.append_struct_array(
+        "loom_low_schedule_alternative_t",
+        f"k{spec.c_table_prefix}ScheduleAlternatives",
+        [
+            [
+                f".source_descriptor_ordinal = {source_ordinal},",
+                f".alternative_descriptor_ordinal = {alternative_ordinal},",
+            ]
+            for source_ordinal, alternative_ordinal in compiled.schedule_alternative_rows
+        ],
+    )
     descriptor_table_symbols: dict[str, str] = {}
     descriptor_view_table_symbols: dict[str, str] = {}
     operand_form_table_symbols: dict[str, str] = {}
+    schedule_alternative_table_symbols: dict[str, str] = {}
     for view in views:
         view_key = view.spec.key
         if view.uses_storage_descriptor_tables:
@@ -782,6 +954,20 @@ def emit_source_for_views(
                 "loom_low_operand_form_t",
                 f"k{view.spec.c_table_prefix}OperandForms",
                 _operand_form_row_lines(view.operand_forms),
+            )
+        if view.uses_storage_schedule_alternative_tables:
+            schedule_alternative_table_symbols[view_key] = storage_schedule_alternative_table_symbol
+        else:
+            schedule_alternative_table_symbols[view_key] = view_array_emitter.append_struct_array(
+                "loom_low_schedule_alternative_t",
+                f"k{view.spec.c_table_prefix}ScheduleAlternatives",
+                [
+                    [
+                        f".source_descriptor_ordinal = {source_ordinal},",
+                        f".alternative_descriptor_ordinal = {alternative_ordinal},",
+                    ]
+                    for source_ordinal, alternative_ordinal in view.schedule_alternative_rows
+                ],
             )
     descriptor_ref_table_symbols: dict[str, str] = {}
     for view in views:
@@ -879,9 +1065,20 @@ def emit_source_for_views(
         "constraints": "constraint_count",
         "storage_leases": "storage_lease_count",
         "reg_classes": "reg_class_count",
+        "physical_registers": "physical_register_count",
+        "physical_register_candidate_ids": "physical_register_candidate_count",
+        "physical_register_candidate_ordinals": "physical_register_candidate_ordinal_count",
+        "physical_register_atomic_units": "physical_register_atomic_unit_count",
+        "physical_register_views": "physical_register_view_count",
+        "physical_register_view_ordinals": "physical_register_view_ordinal_count",
+        "physical_register_view_unit_candidate_ordinals": "physical_register_view_unit_candidate_ordinal_count",
+        "register_packing_resources": "register_packing_resource_count",
+        "register_packing_resource_members": "register_packing_resource_member_count",
         "register_parts": "register_part_count",
         "reg_class_alts": "reg_class_alt_count",
         "schedule_classes": "schedule_class_count",
+        "timing_events": "timing_event_count",
+        "event_separations": "event_separation_count",
         "issue_uses": "issue_use_count",
         "resources": "resource_count",
         "hazards": "hazard_count",
@@ -915,6 +1112,7 @@ def emit_source_for_views(
         descriptor_ref_table_symbol = descriptor_ref_table_symbols[view_spec.key]
         asm_form_table_symbol = asm_form_table_symbols[view_spec.key]
         operand_form_table_symbol = operand_form_table_symbols[view_spec.key]
+        schedule_alternative_table_symbol = schedule_alternative_table_symbols[view_spec.key]
         view_lines = [
             f"static const loom_low_descriptor_set_t k{view_spec.c_table_prefix}Set = {{",
             "    .abi_version = LOOM_LOW_DESCRIPTOR_SET_ABI_VERSION,",
@@ -942,9 +1140,16 @@ def emit_source_for_views(
             f"    .descriptors = {descriptor_table_symbol},",
             f"    .descriptor_views = {descriptor_view_table_symbol},",
             f"    .descriptor_count = {view.descriptor_count},",
+            f"    .resource_calendar_slot_count = {compiled.resource_calendar_slot_count},",
+            f"    .physical_register_unit_count = {max(compiled.physical_register_atomic_units, default=-1) + 1},",
+            f"    .maximum_descriptor_operand_count = {max((len(descriptor.operands) for descriptor in compiled.descriptors), default=0)},",
             f"    .descriptor_refs = {descriptor_ref_table_symbol},",
             f"    .descriptor_ref_count = IREE_ARRAYSIZE({descriptor_ref_table_symbol}),",
         ]
+
+        if view.schedule_alternative_rows:
+            view_lines.append(f"    .schedule_alternatives = {schedule_alternative_table_symbol},")
+            view_lines.append(f"    .schedule_alternative_count = {len(view.schedule_alternative_rows)},")
 
         append_optional_table("operands", "Operands", compiled.operands, view_lines)
         append_optional_table("immediates", "Immediates", compiled.immediates, view_lines)
@@ -963,9 +1168,62 @@ def emit_source_for_views(
             register_class_table_symbol = register_class_table_symbols[view_spec.key]
             view_lines.append(f"    .reg_classes = {register_class_table_symbol},")
             view_lines.append(f"    .reg_class_count = IREE_ARRAYSIZE({register_class_table_symbol}),")
+        append_optional_table("physical_registers", "PhysicalRegisters", compiled.physical_registers, view_lines)
+        append_optional_table(
+            "physical_register_candidate_ids",
+            "PhysicalRegisterCandidates",
+            compiled.physical_register_candidate_ids,
+            view_lines,
+        )
+        if compiled.physical_register_allocation_ordinals:
+            view_lines.append(f"    .physical_register_allocation_ordinals = k{spec.c_table_prefix}PhysicalRegisterAllocationOrdinals,")
+        append_optional_table(
+            "physical_register_candidate_ordinals",
+            "PhysicalRegisterCandidateOrdinals",
+            compiled.physical_register_candidate_ordinals,
+            view_lines,
+        )
+        append_optional_table(
+            "physical_register_atomic_units",
+            "PhysicalRegisterAtomicUnits",
+            compiled.physical_register_atomic_units,
+            view_lines,
+        )
+        append_optional_table(
+            "physical_register_view_ordinals",
+            "PhysicalRegisterViewOrdinals",
+            compiled.physical_register_view_ordinals,
+            view_lines,
+        )
+        append_optional_table(
+            "physical_register_views",
+            "PhysicalRegisterViews",
+            compiled.physical_register_views,
+            view_lines,
+        )
+        append_optional_table(
+            "physical_register_view_unit_candidate_ordinals",
+            "PhysicalRegisterViewUnitCandidateOrdinals",
+            compiled.physical_register_view_unit_candidate_ordinals,
+            view_lines,
+        )
+        append_optional_table(
+            "register_packing_resources",
+            "RegisterPackingResources",
+            compiled.register_packing_resources,
+            view_lines,
+        )
+        append_optional_table(
+            "register_packing_resource_members",
+            "RegisterPackingResourceMembers",
+            compiled.register_packing_resource_members,
+            view_lines,
+        )
         append_optional_table("register_parts", "RegisterParts", compiled.register_parts, view_lines)
         append_optional_table("reg_class_alts", "RegClassAlts", compiled.reg_class_alts, view_lines)
         append_optional_table("schedule_classes", "ScheduleClasses", compiled.schedule_classes, view_lines)
+        append_optional_table("timing_events", "TimingEvents", compiled.timing_events, view_lines)
+        append_optional_table("event_separations", "EventSeparations", compiled.event_separations, view_lines)
         append_optional_table("issue_uses", "IssueUses", compiled.issue_uses, view_lines)
         append_optional_table("resources", "Resources", compiled.resources, view_lines)
         append_optional_table("hazards", "Hazards", compiled.hazards, view_lines)
@@ -1048,6 +1306,7 @@ def emit_source(compiled: CompiledDescriptorSet) -> str:
                 instruction_classes=tuple(compiled.instruction_classes),
                 descriptor_ordinals=tuple(range(len(compiled.descriptors))),
                 descriptor_refs=compiled.descriptor_refs,
+                schedule_alternative_rows=compiled.schedule_alternative_rows,
                 descriptor_rows=compiled.descriptor_rows,
                 canonical_asm_form_ordinals=compiled.canonical_asm_form_ordinals,
                 asm_forms=compiled.asm_forms,
@@ -1056,6 +1315,7 @@ def emit_source(compiled: CompiledDescriptorSet) -> str:
                 uses_storage_descriptor_view_tables=True,
                 uses_storage_asm_form_tables=True,
                 uses_storage_operand_form_tables=True,
+                uses_storage_schedule_alternative_tables=True,
             )
         ],
     )

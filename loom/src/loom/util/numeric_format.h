@@ -67,6 +67,10 @@ typedef uint64_t loom_value_fact_numeric_format_bits_t;
 #define LOOM_VALUE_FACT_NUMERIC_FORMAT_QUANT_I8 (UINT64_C(1) << 37)
 #define LOOM_VALUE_FACT_NUMERIC_FORMAT_QUANT_I6 (UINT64_C(1) << 38)
 #define LOOM_VALUE_FACT_NUMERIC_FORMAT_QUANT_I4 (UINT64_C(1) << 39)
+// Blocks of eight signed 8-bit mantissas sharing one unsigned 8-bit exponent.
+// Each finite value is mantissa * 2^(exponent - 133); exponent 255 denotes NaN.
+// Exponents are payload data, with storage order selected by the schema.
+#define LOOM_VALUE_FACT_NUMERIC_FORMAT_BFP16EBS8 (UINT64_C(1) << 40)
 #define LOOM_VALUE_FACT_NUMERIC_FORMAT_ALL                                    \
   (LOOM_VALUE_FACT_NUMERIC_FORMAT_F64 | LOOM_VALUE_FACT_NUMERIC_FORMAT_F32 |  \
    LOOM_VALUE_FACT_NUMERIC_FORMAT_TF32 | LOOM_VALUE_FACT_NUMERIC_FORMAT_F16 | \
@@ -96,11 +100,12 @@ typedef uint64_t loom_value_fact_numeric_format_bits_t;
    LOOM_VALUE_FACT_NUMERIC_FORMAT_CODEBOOK_INDEX |                            \
    LOOM_VALUE_FACT_NUMERIC_FORMAT_QUANT_I8 |                                  \
    LOOM_VALUE_FACT_NUMERIC_FORMAT_QUANT_I6 |                                  \
-   LOOM_VALUE_FACT_NUMERIC_FORMAT_QUANT_I4)
+   LOOM_VALUE_FACT_NUMERIC_FORMAT_QUANT_I4 |                                  \
+   LOOM_VALUE_FACT_NUMERIC_FORMAT_BFP16EBS8)
 
 typedef uint64_t loom_value_fact_numeric_format_flags_t;
 
-typedef enum loom_numeric_format_kind_e {
+enum loom_numeric_format_kind_e {
   // Unknown or uninitialized numeric format.
   LOOM_NUMERIC_FORMAT_KIND_UNKNOWN = 0,
   // Signed integer payload.
@@ -117,9 +122,13 @@ typedef enum loom_numeric_format_kind_e {
   LOOM_NUMERIC_FORMAT_KIND_TERNARY = 6,
   // Sign-only payload.
   LOOM_NUMERIC_FORMAT_KIND_SIGN_BIT = 7,
-} loom_numeric_format_kind_t;
+  // Signed mantissas with an exponent shared by a fixed-size block. Finite
+  // block values can exceed the range of a directly represented scalar type.
+  LOOM_NUMERIC_FORMAT_KIND_BLOCK_FLOAT = 8,
+};
+typedef uint8_t loom_numeric_format_kind_t;
 
-typedef enum loom_numeric_float_family_e {
+enum loom_numeric_float_family_e {
   // Not a floating-point format.
   LOOM_NUMERIC_FLOAT_FAMILY_NONE = 0,
   // IEEE-like binary floating-point format.
@@ -138,9 +147,10 @@ typedef enum loom_numeric_float_family_e {
   LOOM_NUMERIC_FLOAT_FAMILY_BF6 = 7,
   // FP4-style floating-point format.
   LOOM_NUMERIC_FLOAT_FAMILY_FP4 = 8,
-} loom_numeric_float_family_t;
+};
+typedef uint8_t loom_numeric_float_family_t;
 
-typedef enum loom_numeric_format_flag_bits_e {
+enum loom_numeric_format_flag_bits_e {
   // The format encodes a sign bit.
   LOOM_NUMERIC_FORMAT_FLAG_SIGNED = 1u << 0,
   // The format has at least one NaN encoding.
@@ -154,10 +164,14 @@ typedef enum loom_numeric_format_flag_bits_e {
   // Matrix/packed-dot contracts need payload format selector facts for this
   // encoded element format.
   LOOM_NUMERIC_FORMAT_FLAG_ENCODED_PAYLOAD_SELECTOR = 1u << 5,
-} loom_numeric_format_flag_bits_t;
+  // Stored integer bits are an unsigned code centered by
+  // |integer_decode_bias| instead of a two's-complement value.
+  LOOM_NUMERIC_FORMAT_FLAG_OFFSET_BINARY = 1u << 6,
+};
+typedef uint8_t loom_numeric_format_flag_bits_t;
 
 // Bitset of loom_numeric_format_flag_bits_t values.
-typedef uint32_t loom_numeric_format_flags_t;
+typedef uint8_t loom_numeric_format_flags_t;
 
 typedef struct loom_numeric_format_info_t {
   // Single-bit numeric-format fact represented by this row.
@@ -166,10 +180,10 @@ typedef struct loom_numeric_format_info_t {
   // Broad semantic payload category.
   loom_numeric_format_kind_t kind;
 
-  // Floating-point family, or NONE for non-floating-point formats.
+  // Scalar floating-point family, or NONE for other numeric representations.
   loom_numeric_float_family_t float_family;
 
-  // Encoded payload bit count.
+  // Per-element encoded payload bit count, excluding shared block fields.
   uint8_t storage_bit_count;
 
   // Encoded exponent bit count for floating-point formats.
@@ -180,6 +194,10 @@ typedef struct loom_numeric_format_info_t {
 
   // Direct Loom scalar carrier, or LOOM_SCALAR_TYPE_NONE when none exists.
   loom_scalar_type_t direct_scalar_type;
+
+  // Integer constant added to an unsigned stored code before arithmetic.
+  // Only OFFSET_BINARY formats have a nonzero bias.
+  int8_t integer_decode_bias;
 
   // Special-value and contract behavior flags.
   loom_numeric_format_flags_t flags;

@@ -130,7 +130,6 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_return(
                                                          ordinals[i], NULL);
     const loom_low_move_location_t source = {
         .location_kind = LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER,
-        .value_class = assignment->value_class,
         .descriptor_reg_class_id = assignment->descriptor_reg_class_id,
         .location = assignment->location_base,
     };
@@ -457,7 +456,7 @@ static iree_status_t loom_vm_function_prepare_calls(
     max_results = iree_max(max_results, node->result_count);
   }
   if (packet_bytes > UINT16_MAX ||
-      frame->schedule.storage_layout.space_sizes.stack_bytes >
+      frame->schedule.requirements.storage_layout.space_sizes.stack_bytes >
           UINT16_MAX - packet_bytes) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "VM local storage exceeds 65535 bytes");
@@ -534,7 +533,7 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_call(
   const uint16_t ref_base = (uint16_t)scratch->ref_base;
   const uint32_t byte_offset = iree_host_align(
       scratch->local_base +
-          frame->schedule.storage_layout.space_sizes.stack_bytes,
+          frame->schedule.requirements.storage_layout.space_sizes.stack_bytes,
       sizeof(uint64_t));
   const uint32_t local_byte_length =
       byte_offset + prefix_count * sizeof(uint64_t);
@@ -690,9 +689,9 @@ static iree_status_t loom_vm_function_storage(
   const uint64_t relative_offset = is_store ? loom_low_spill_offset(node->op)
                                             : loom_low_reload_offset(node->op);
   loom_low_storage_layout_reference_t reference;
-  loom_low_storage_layout_lookup_reference(&frame->schedule.storage_layout,
-                                           frame->module, storage_value,
-                                           &reference);
+  loom_low_storage_layout_lookup_reference(
+      &frame->schedule.requirements.storage_layout, frame->module,
+      storage_value, &reference);
   const loom_value_ordinal_t value_ordinal =
       (is_store ? loom_low_schedule_node_const_operand_ordinals(node)
                 : loom_low_schedule_node_const_result_ordinals(node))[0];
@@ -810,7 +809,7 @@ iree_status_t loom_vm_function_emit(
       request->module, function.op, &options, &spill_options,
       request->scratch_arena, &frame));
   const loom_low_storage_layout_space_sizes_t local_storage =
-      frame.schedule.storage_layout.space_sizes;
+      frame.schedule.requirements.storage_layout.space_sizes;
   if (local_storage.scratch_bytes || local_storage.private_bytes ||
       local_storage.workgroup_bytes) {
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,

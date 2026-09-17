@@ -282,6 +282,19 @@ low.func.def target<test.low.core>(@test_target) @edge_copy_tail_enters_cycle(%s
 
 // ====
 
+// RUN: emit low-allocation-json @edge_cycle_without_scratch test.phys=2 fixed=%lhs:physical_register:0:1 fixed=%rhs:physical_register:1:1 fixed=%dst_lhs:physical_register:1:1 fixed=%dst_rhs:physical_register:0:1 output=none
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @edge_cycle_without_scratch(%lhs: reg<test.phys>, %rhs: reg<test.phys>) -> (reg<test.phys>, reg<test.phys>) asm {
+  // ERROR@+1: BACKEND/005 {function_name="edge_cycle_without_scratch", value_class="test.phys", budget="2", peak="1", failure_code="parallel-move-no-scratch-unit"}
+  low.br ^join(%lhs: reg<test.phys>, %rhs: reg<test.phys>)
+^join(%dst_lhs: reg<test.phys>, %dst_rhs: reg<test.phys>):
+  return %dst_lhs, %dst_rhs
+}
+
+// ====
+
 // RUN: emit low-allocation-json @structural_physical_span_rebased_at_capacity fixed=%wide:physical_register:20:12 fixed=%tail:physical_register:0:1
 
 test.target<low_core> @test_target
@@ -293,6 +306,64 @@ low.func.def target<test.low.core>(@test_target) @structural_physical_span_rebas
 
 // ----
 {"format":"loom.low.allocation.v0","function":"structural_physical_span_rebased_at_capacity","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":3,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":0,"name":"wide","type":"reg<test.phys x12>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.phys"},"start_point":0,"end_point":1,"unit_count":12,"location":{"kind":"physical_register","base":20,"count":12}},{"index":1,"value":{"id":1,"name":"tail","type":"reg<test.phys>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.phys"},"start_point":0,"end_point":1,"unit_count":1,"location":{"kind":"physical_register","base":0,"count":1}},{"index":2,"value":{"id":3,"name":"packed","type":"reg<test.phys x13>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.phys"},"start_point":1,"end_point":2,"unit_count":13,"location":{"kind":"physical_register","base":0,"count":13}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// RUN: emit low-allocation-json @explicit_physical_aggregate_views
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @explicit_physical_aggregate_views(%wide: reg<test.explicit32 x2>) -> (reg<test.explicit32 x2>) asm {
+  %low = slice %wide[0] : reg<test.explicit32 x2> -> reg<test.explicit32>
+  %high = slice %wide[1] : reg<test.explicit32 x2> -> reg<test.explicit32>
+  %packed = concat(%low, %high) : (reg<test.explicit32>, reg<test.explicit32>) -> reg<test.explicit32 x2>
+  return %packed
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"explicit_physical_aggregate_views","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":4,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":0,"name":"wide","type":"reg<test.explicit32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":0,"end_point":2,"unit_count":2,"location":{"kind":"physical_register","base":4,"count":2}},{"index":1,"value":{"id":4,"name":"packed","type":"reg<test.explicit32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":3,"end_point":4,"unit_count":2,"location":{"kind":"physical_register","base":4,"count":2}},{"index":2,"value":{"id":2,"name":"low","type":"reg<test.explicit32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":1,"end_point":3,"unit_count":1,"location":{"kind":"physical_register","base":0,"count":1}},{"index":3,"value":{"id":3,"name":"high","type":"reg<test.explicit32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":2,"end_point":3,"unit_count":1,"location":{"kind":"physical_register","base":2,"count":1}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// RUN: emit low-allocation-json @same_register_ordinal_selects_matching_tuple fixed=%primary:physical_register:1:1
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @same_register_ordinal_selects_matching_tuple() -> (reg<test.packed.narrow>, reg<test.coindexed.partner>) asm {
+  %primary, %partner = test.coindexed.results
+  return %primary, %partner
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"same_register_ordinal_selects_matching_tuple","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":2,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":2,"name":"primary","type":"reg<test.packed.narrow>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.packed.narrow"},"start_point":1,"end_point":2,"unit_count":1,"location":{"kind":"physical_register","base":1,"count":1}},{"index":1,"value":{"id":3,"name":"partner","type":"reg<test.coindexed.partner>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.coindexed.partner"},"start_point":1,"end_point":2,"unit_count":1,"location":{"kind":"physical_register","base":3,"count":1}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// RUN: emit low-allocation-json @singleton_physical_class_reserves_future_interval
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @singleton_physical_class_reserves_future_interval(%flexible: reg<test.explicit32>, %condition: reg<test.i32>) -> (reg<test.explicit32>, reg<test.fixed.r0>) asm {
+  %fixed = copy %condition : reg<test.i32> -> reg<test.fixed.r0>
+  return %flexible, %fixed
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"singleton_physical_class_reserves_future_interval","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":3,"remark_count":0,"copy_decision_count":1,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":1,"assignments":[{"index":0,"value":{"id":1,"name":"condition","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":1,"unit_count":1,"location":{"kind":"target_id","base":0,"count":1}},{"index":1,"value":{"id":0,"name":"flexible","type":"reg<test.explicit32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":0,"end_point":2,"unit_count":1,"location":{"kind":"physical_register","base":2,"count":1}},{"index":2,"value":{"id":4,"name":"fixed","type":"reg<test.fixed.r0>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.fixed.r0"},"start_point":1,"end_point":2,"unit_count":1,"location":{"kind":"physical_register","base":0,"count":1}}],"spill_plans":[],"copy_decisions":[{"index":0,"kind":"materialized","source_value":{"id":1,"name":"condition","type":"reg<test.i32>"},"result_value":{"id":4,"name":"fixed","type":"reg<test.fixed.r0>"},"source_assignment":0,"result_assignment":2}],"remarks":[]}
+
+// ====
+
+// RUN: emit low-allocation-json @overlapping_singleton_physical_values
+
+test.target<low_core> @test_target
+
+// ERROR@+1: BACKEND/005 {function_name="overlapping_singleton_physical_values", value_class="test.fixed.r0", budget="1", peak="2", failure_code="unspillable-register-exhausted"}
+low.func.def target<test.low.core>(@test_target) @overlapping_singleton_physical_values(%lhs: reg<test.fixed.r0>, %rhs: reg<test.fixed.r0>) -> (reg<test.fixed.r0>, reg<test.fixed.r0>) asm {
+  return %lhs, %rhs
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"overlapping_singleton_physical_values","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":0,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[],"spill_plans":[],"copy_decisions":[],"remarks":[],"failure":{"code":"unspillable-register-exhausted","blocking_kind":"location-constraint","value":{"id":0,"name":"lhs","type":"reg<test.fixed.r0>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.fixed.r0"},"start_point":0,"end_point":1,"required_units":1,"budget_units":1,"peak_live_units":2,"location":{"kind":"physical_register","base":0,"count":1},"conflict":null}}
 
 // ====
 
@@ -483,6 +554,20 @@ low.func.def target<test.low.core>(@test_target) @unspillable_interval_exceeds_b
 
 // ====
 
+// RUN: emit low-allocation-json @explicit_register_view_unavailable
+
+test.target<low_core> @test_target
+
+// ERROR@+1: BACKEND/005 {function_name="explicit_register_view_unavailable", value_class="test.explicit32", budget="4", peak="3", failure_code="unspillable-register-exhausted"}
+low.func.def target<test.low.core>(@test_target) @explicit_register_view_unavailable(%wide: reg<test.explicit32 x3>) -> (reg<test.explicit32 x3>) asm {
+  return %wide
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"explicit_register_view_unavailable","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":0,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[],"spill_plans":[],"copy_decisions":[],"remarks":[],"failure":{"code":"unspillable-register-exhausted","blocking_kind":"no-assignable-location","value":{"id":0,"name":"wide","type":"reg<test.explicit32 x3>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":0,"end_point":1,"required_units":3,"budget_units":4,"peak_live_units":3,"location":{"kind":"physical_register","base":null,"count":0},"conflict":null}}
+
+// ====
+
 // RUN: emit low-allocation-json @unspillable_active_conflict_reports_failure test.special=1
 
 test.target<low_core> @test_target
@@ -494,6 +579,38 @@ low.func.def target<test.low.core>(@test_target) @unspillable_active_conflict_re
 
 // ----
 {"format":"loom.low.allocation.v0","function":"unspillable_active_conflict_reports_failure","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":1,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":0,"name":"leader","type":"reg<test.special>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.special"},"start_point":0,"end_point":1,"unit_count":1,"location":{"kind":"physical_register","base":0,"count":1}}],"spill_plans":[],"copy_decisions":[],"remarks":[],"failure":{"code":"unspillable-register-exhausted","blocking_kind":"active-assignment","value":{"id":1,"name":"blocked","type":"reg<test.special>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.special"},"start_point":0,"end_point":1,"required_units":1,"budget_units":1,"peak_live_units":2,"location":{"kind":"physical_register","base":0,"count":1},"conflict":{"assignment":0,"value":{"id":0,"name":"leader","type":"reg<test.special>"},"start_point":0,"end_point":1,"location":{"kind":"physical_register","base":0,"count":1}}}}
+
+// ====
+
+// RUN: emit low-allocation @unspillable_evicts_spillable_physical_blocker
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @unspillable_evicts_spillable_physical_blocker(%block0: reg<test.spillable.explicit32>, %block1: reg<test.spillable.explicit32>, %block2: reg<test.spillable.explicit32>, %block3: reg<test.spillable.explicit32>, %condition: reg<test.i32>) -> (reg<test.explicit32>, reg<test.i32>) asm {
+  %protected = copy %condition : reg<test.i32> -> reg<test.explicit32>
+  %use0 = copy %block0 : reg<test.spillable.explicit32> -> reg<test.i32>
+  %use1 = copy %block1 : reg<test.spillable.explicit32> -> reg<test.i32>
+  %use2 = copy %block2 : reg<test.spillable.explicit32> -> reg<test.i32>
+  %use3 = copy %block3 : reg<test.spillable.explicit32> -> reg<test.i32>
+  %sum01 = test.add.i32 %use0, %use1
+  %sum23 = test.add.i32 %use2, %use3
+  %sum = test.add.i32 %sum01, %sum23
+  return %protected, %sum
+}
+
+// ----
+low-allocation @unspillable_evicts_spillable_physical_blocker
+target: test_target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 13
+remarks: 1
+spills: 1
+copies: coalesced=0 materialized=5
+classes:
+  test.i32: assignments=8 units=8 target_ids=4 physical=0 spill_slots=0 unassigned=0
+  test.explicit32: assignments=1 units=1 target_ids=0 physical=4 spill_slots=0 unassigned=0
+  test.spillable.explicit32: assignments=4 units=4 target_ids=0 physical=3 spill_slots=1 unassigned=0
 
 // ====
 
@@ -913,3 +1030,67 @@ low.func.def target<test.low.core>(@test_target) @tied_concat_loop_edge_preserve
 low.func.def target<test.low.core> @contract_only_capacity_error(%value: reg<test.phys>) -> (reg<test.phys>) asm {
   return %value
 }
+
+// ====
+
+// RUN: emit low-allocation-json @explicit_physical_noncanonical_slice
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @explicit_physical_noncanonical_slice(%wide: reg<test.explicit32 x2>) -> (reg<test.explicit32>) asm {
+  %high = slice %wide[1] : reg<test.explicit32 x2> -> reg<test.explicit32>
+  return %high
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"explicit_physical_noncanonical_slice","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":2,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":0,"name":"wide","type":"reg<test.explicit32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":0,"end_point":1,"unit_count":2,"location":{"kind":"physical_register","base":4,"count":2}},{"index":1,"value":{"id":2,"name":"high","type":"reg<test.explicit32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":1,"end_point":2,"unit_count":1,"location":{"kind":"physical_register","base":2,"count":1}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// RUN: emit low-allocation-json @loop_swaps_physical_tuples
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @loop_swaps_physical_tuples(%condition: reg<test.i32>, %first: reg<test.explicit32 x2>, %second: reg<test.explicit32 x2>) -> (reg<test.explicit32 x2>, reg<test.explicit32 x2>) asm {
+  low.br ^loop(%first: reg<test.explicit32 x2>, %second: reg<test.explicit32 x2>)
+^loop(%lhs: reg<test.explicit32 x2>, %rhs: reg<test.explicit32 x2>):
+  low.cond_br %condition, ^body, ^exit : reg<test.i32>
+^body:
+  // ERROR@+1: BACKEND/005 {function_name="loop_swaps_physical_tuples", value_class="test.explicit32", budget="4", peak="1", failure_code="parallel-move-no-scratch-unit"}
+  low.br ^loop(%rhs: reg<test.explicit32 x2>, %lhs: reg<test.explicit32 x2>)
+^exit:
+  return %lhs, %rhs
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"loop_swaps_physical_tuples","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":5,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":1,"name":"first","type":"reg<test.explicit32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":0,"end_point":1,"unit_count":2,"location":{"kind":"physical_register","base":4,"count":2}},{"index":1,"value":{"id":2,"name":"second","type":"reg<test.explicit32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":0,"end_point":1,"unit_count":2,"location":{"kind":"physical_register","base":5,"count":2}},{"index":2,"value":{"id":0,"name":"condition","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":6,"unit_count":1,"location":{"kind":"target_id","base":0,"count":1}},{"index":3,"value":{"id":5,"name":"lhs","type":"reg<test.explicit32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":2,"end_point":7,"unit_count":2,"location":{"kind":"physical_register","base":4,"count":2}},{"index":4,"value":{"id":6,"name":"rhs","type":"reg<test.explicit32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":2,"end_point":7,"unit_count":2,"location":{"kind":"physical_register","base":5,"count":2}}],"spill_plans":[],"copy_decisions":[],"remarks":[],"failure":{"code":"parallel-move-no-scratch-unit","blocking_kind":"unknown","value":null,"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.explicit32"},"start_point":null,"end_point":null,"required_units":1,"budget_units":4,"peak_live_units":1,"location":{"kind":"unassigned","base":null,"count":0},"conflict":null}}
+
+// ====
+
+// RUN: emit low-allocation-json @sparse_tied_join fixed=%state:target_id:0:1 fixed=%joined:target_id:0:1 fixed=%condition:target_id:1:1
+
+// Mutually exclusive refill and exit results reserve the original state
+// without occupying the joined body. Both state generations use one location.
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @sparse_tied_join(%condition: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^loop(%seed: reg<test.i32>)
+^loop(%state: reg<test.i32>):
+  low.cond_br %condition, ^check, ^exit : reg<test.i32>
+^check:
+  low.cond_br %condition, ^ready, ^refill : reg<test.i32>
+^ready:
+  low.br ^available(%state: reg<test.i32>)
+^refill:
+  %refilled = test.tied.any %state
+  low.br ^available(%refilled: reg<test.i32>)
+^available(%joined: reg<test.i32>):
+  %next = test.tied.any %joined
+  low.br ^loop(%next: reg<test.i32>)
+^exit:
+  %final = test.tied.any %state
+  return %final
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"sparse_tied_join","target":"test_target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":7,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":1,"name":"seed","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":1,"unit_count":1,"location":{"kind":"target_id","base":0,"count":1}},{"index":1,"value":{"id":0,"name":"condition","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":14,"unit_count":1,"location":{"kind":"target_id","base":1,"count":1}},{"index":2,"value":{"id":3,"name":"state","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":16,"unit_count":1,"location":{"kind":"target_id","base":0,"count":1}},{"index":3,"value":{"id":4,"name":"refilled","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":9,"end_point":10,"unit_count":1,"location":{"kind":"target_id","base":0,"count":1}},{"index":4,"value":{"id":5,"name":"joined","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":11,"end_point":13,"unit_count":1,"location":{"kind":"target_id","base":0,"count":1}},{"index":5,"value":{"id":6,"name":"next","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":12,"end_point":13,"unit_count":1,"location":{"kind":"target_id","base":0,"count":1}},{"index":6,"value":{"id":7,"name":"final","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":15,"end_point":16,"unit_count":1,"location":{"kind":"target_id","base":0,"count":1}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}

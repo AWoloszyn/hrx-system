@@ -116,7 +116,8 @@ typedef enum loom_encoding_numeric_format_e {
   LOOM_ENCODING_NUMERIC_FORMAT_QUANT_I8 = 38,
   LOOM_ENCODING_NUMERIC_FORMAT_QUANT_I6 = 39,
   LOOM_ENCODING_NUMERIC_FORMAT_QUANT_I4 = 40,
-  LOOM_ENCODING_NUMERIC_FORMAT_COUNT_ = 41,
+  LOOM_ENCODING_NUMERIC_FORMAT_BFP16EBS8 = 41,
+  LOOM_ENCODING_NUMERIC_FORMAT_COUNT_ = 42,
 } loom_encoding_numeric_format_t;
 
 // Physical payload bit and field layout.
@@ -298,6 +299,7 @@ extern const loom_encoding_family_descriptor_t loom_encoding_layout_strided_fami
 extern const loom_encoding_family_descriptor_t loom_encoding_ggml_q4_0_family_descriptor;
 extern const loom_encoding_family_descriptor_t loom_encoding_ggml_q8_0_family_descriptor;
 extern const loom_encoding_family_descriptor_t loom_encoding_ggml_q4_k_family_descriptor;
+extern const loom_encoding_family_descriptor_t loom_encoding_ggml_q5_k_family_descriptor;
 extern const loom_encoding_family_descriptor_t loom_encoding_ggml_q6_k_family_descriptor;
 extern const loom_encoding_family_descriptor_t loom_encoding_ggml_q8_1_x4_family_descriptor;
 extern const loom_encoding_family_descriptor_t loom_encoding_operand_family_descriptor;

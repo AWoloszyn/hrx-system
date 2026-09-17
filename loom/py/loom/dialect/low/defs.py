@@ -29,7 +29,6 @@ from loom.assembly import (
     BindingList,
     BlockArgs,
     BlockRef,
-    Clause,
     FormatElement,
     FuncArgs,
     KeyRef,
@@ -1089,12 +1088,6 @@ low_op = Op(
     attrs=[
         AttrDef("descriptor", "scoped_enum"),
         AttrDef("attrs", "dict", optional=True),
-        AttrDef(
-            "memory_access",
-            "i64_array",
-            optional=True,
-            doc=("Versioned source-derived memory access summary retained for final scheduling."),
-        ),
     ],
     results=[Result("results", REGISTER, variadic=True)],
     traits=[UNKNOWN_EFFECTS],
@@ -1106,10 +1099,6 @@ low_op = Op(
         Refs("operands"),
         RPAREN,
         AttrDict("attrs"),
-        OptionalGroup(
-            [Clause("memory_access", Attr("memory_access"))],
-            anchor="memory_access",
-        ),
         COLON,
         LPAREN,
         TypesOf("operands"),
@@ -1188,7 +1177,12 @@ low_copy = Op(
     "low.copy",
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
-    doc=("Explicit virtual-register copy used by lowering and allocation. Each copy produces a fresh virtual-register identity."),
+    doc=(
+        "Explicit virtual-register copy used by lowering and allocation. Each "
+        "copy produces a fresh virtual-register identity and may constrain the "
+        "result to a different target register class with the same unit count "
+        "and semantic value type."
+    ),
     operands=[Operand("source", REGISTER)],
     attrs=[
         AttrDef(
@@ -1200,9 +1194,6 @@ low_copy = Op(
         ),
     ],
     results=[Result("result", REGISTER, allocates=True)],
-    constraints=[
-        SameRegisterClass("source", "result"),
-    ],
     traits=[STORAGE_RELATION],
     verify="loom_low_copy_verify",
     facts="loom_low_copy_facts",

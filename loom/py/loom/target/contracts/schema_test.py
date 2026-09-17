@@ -19,10 +19,14 @@ from loom.target.contracts import (
     ContractFragment,
     DescriptorRule,
     EmitDescriptorOp,
+    EmitRegisterConcat,
+    EmitRegisterCopy,
+    EmitRegisterSlice,
     Guard,
     OrdinalValueAliasRule,
     RecipeRule,
     Scalar,
+    SourceNode,
     ValueAliasRule,
     ValueElideRule,
     ValueRef,
@@ -42,6 +46,36 @@ from loom.target.test.descriptors import (
     TEST_LOW_FROM_ELEMENTS_V4I32_DESCRIPTOR,
     TEST_LOW_SHUFFLE_BYTES_DESCRIPTOR,
 )
+
+
+def _forward_source_node(*, name: str = "consumer", parent: str = "") -> SourceNode:
+    return SourceNode.adjacent_unique_user(
+        name,
+        source_op=scalar_arithmetic.scalar_muli,
+        parent_result=ValueRef.result("result"),
+        node_operand=ValueRef.operand("lhs"),
+        parent=parent,
+        guards=(Guard.value_type("result", Scalar("i32")),),
+    )
+
+
+def _fused_scalar_rule(*, source_nodes: tuple[SourceNode, ...]) -> DescriptorRule:
+    return DescriptorRule(
+        source_op=scalar_arithmetic.scalar_addi,
+        descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+        source_nodes=source_nodes,
+        guards=(Guard.value_type("result", Scalar("i32")),),
+        emit=(
+            EmitDescriptorOp(
+                descriptor=TEST_LOW_ADD_I32_DESCRIPTOR,
+                operands={
+                    "lhs": ValueRef.operand("lhs"),
+                    "rhs": ValueRef.operand("rhs", source_node="consumer"),
+                },
+                results={"dst": ValueRef.result("result", source_node="consumer")},
+            ),
+        ),
+    )
 
 
 def test_target_diagnostic_records_canonical_context_prefix() -> None:
@@ -78,6 +112,107 @@ def test_contract_fragment_requires_explicit_public_header() -> None:
         match=r"contract fragment 'test-low\.binary' requires public_header",
     ):
         contract_fragment_public_header(table)
+
+
+def test_descriptor_rule_validates_related_source_nodes() -> None:
+    ContractFragment(
+        name="test-low.fused-source-nodes",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=(_fused_scalar_rule(source_nodes=(_forward_source_node(),)),),
+    )
+
+
+def test_descriptor_rule_rejects_unknown_source_node_parent() -> None:
+    with pytest.raises(ValueError, match="references unknown parent 'missing'"):
+        ContractFragment(
+            name="test-low.fused-source-nodes",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(
+                _fused_scalar_rule(
+                    source_nodes=(_forward_source_node(parent="missing"),)
+                ),
+            ),
+        )
+
+
+def test_descriptor_rule_rejects_duplicate_source_node_name() -> None:
+    with pytest.raises(
+        ValueError, match="duplicate descriptor-rule source node 'consumer'"
+    ):
+        ContractFragment(
+            name="test-low.fused-source-nodes",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(
+                _fused_scalar_rule(
+                    source_nodes=(_forward_source_node(), _forward_source_node())
+                ),
+            ),
+        )
+
+
+def test_descriptor_rule_rejects_non_pure_source_node() -> None:
+    source_node = replace(_forward_source_node(), source_op=vector.vector_load)
+    with pytest.raises(ValueError, match="must be pure and regionless"):
+        ContractFragment(
+            name="test-low.fused-source-nodes",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(_fused_scalar_rule(source_nodes=(source_node,)),),
+        )
+
+
+def test_descriptor_rule_rejects_wrong_source_node_connection_kind() -> None:
+    source_node = replace(_forward_source_node(), parent_value=ValueRef.operand("lhs"))
+    with pytest.raises(ValueError, match="parent connection must be a result"):
+        ContractFragment(
+            name="test-low.fused-source-nodes",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(_fused_scalar_rule(source_nodes=(source_node,)),),
+        )
+
+
+def test_descriptor_rule_rejects_unknown_emit_source_node() -> None:
+    rule = _fused_scalar_rule(source_nodes=(_forward_source_node(),))
+    emit = replace(
+        rule.emit[0],
+        operands={
+            "lhs": ValueRef.operand("lhs"),
+            "rhs": ValueRef.operand("rhs", source_node="missing"),
+        },
+    )
+    with pytest.raises(ValueError, match="references unknown source node 'missing'"):
+        ContractFragment(
+            name="test-low.fused-source-nodes",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(replace(rule, emit=(emit,)),),
+        )
+
+
+def test_descriptor_rule_rejects_unbound_related_result() -> None:
+    rule = _fused_scalar_rule(source_nodes=(_forward_source_node(),))
+    emit = replace(
+        rule.emit[0],
+        results={"dst": ValueRef.result("result")},
+    )
+    with pytest.raises(
+        ValueError, match="result 'result' is neither internal nor bound"
+    ):
+        ContractFragment(
+            name="test-low.fused-source-nodes",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(replace(rule, emit=(emit,)),),
+        )
+
+
+def test_descriptor_rule_rejects_too_many_source_nodes() -> None:
+    source_nodes = tuple(
+        replace(_forward_source_node(), name=f"consumer{index}") for index in range(8)
+    )
+    with pytest.raises(ValueError, match="support at most 8 source nodes"):
+        ContractFragment(
+            name="test-low.fused-source-nodes",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(_fused_scalar_rule(source_nodes=source_nodes),),
+        )
 
 
 def test_vector_lane_range_requires_ordered_bounds() -> None:
@@ -124,6 +259,77 @@ def test_alias_rule_validates_source_and_result() -> None:
     )
 
     assert table.cases[0].source_op == vector.vector_fragment
+
+
+def test_structural_register_emits_validate_program_shape() -> None:
+    with pytest.raises(ValueError, match="register concat needs at least one source"):
+        EmitRegisterConcat(
+            sources=(),
+            result=ValueRef.result("result"),
+        )
+    with pytest.raises(ValueError, match="register slice unit offset must fit u16"):
+        EmitRegisterSlice(
+            source=ValueRef.operand("source"),
+            result=ValueRef.result("result"),
+            unit_offset=0x10000,
+        )
+    with pytest.raises(ValueError, match="register slice unit count must be"):
+        EmitRegisterSlice(
+            source=ValueRef.operand("source"),
+            result=ValueRef.result("result"),
+            unit_count=0,
+        )
+    with pytest.raises(ValueError, match="cannot specify both unit count"):
+        EmitRegisterSlice(
+            source=ValueRef.operand("source"),
+            result=ValueRef.temporary("element"),
+            unit_count=1,
+            result_type=Scalar("i32"),
+        )
+    with pytest.raises(ValueError, match="only valid for temporary results"):
+        EmitRegisterSlice(
+            source=ValueRef.operand("source"),
+            result=ValueRef.result("result"),
+            unit_count=1,
+        )
+    with pytest.raises(
+        ValueError,
+        match="temporary 'pair' needs an explicit result type binding",
+    ):
+        ContractFragment(
+            name="register.structural.invalid",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(
+                DescriptorRule(
+                    source_op=vector.vector_from_elements,
+                    emit=(
+                        EmitRegisterConcat(
+                            sources=(ValueRef.operand("elements"),),
+                            result=ValueRef.temporary("pair"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    with pytest.raises(
+        ValueError,
+        match="temporary 'copy' needs an explicit result type binding",
+    ):
+        ContractFragment(
+            name="register.copy.invalid",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(
+                DescriptorRule(
+                    source_op=scalar_analysis.scalar_assume,
+                    emit=(
+                        EmitRegisterCopy(
+                            source=ValueRef.operand("values"),
+                            result=ValueRef.temporary("copy"),
+                        ),
+                    ),
+                ),
+            ),
+        )
 
 
 def test_ordinal_alias_rule_validates_variadic_identity_fields() -> None:
@@ -674,6 +880,26 @@ def test_descriptor_rule_rejects_negative_variadic_operand_element() -> None:
                     ],
                 )
             ],
+        )
+
+
+def test_result_ref_rejects_element_on_fixed_result() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"scalar.addi: test result result field 'result' is not variadic",
+    ):
+        ValueRef.result("result", element=1).validate(
+            scalar_arithmetic.scalar_addi, "test result"
+        )
+
+
+def test_result_ref_rejects_negative_variadic_element() -> None:
+    with pytest.raises(
+        ValueError,
+        match=(r"vector.deinterleave: test result result element must be non-negative"),
+    ):
+        ValueRef.result("results", element=-1).validate(
+            vector.vector_deinterleave, "test result"
         )
 
 

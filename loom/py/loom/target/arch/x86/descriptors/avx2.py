@@ -393,6 +393,7 @@ X86_AVX2_DESCRIPTOR_SET = DescriptorSet(
             _SCHEDULE_VECTOR_FMA_F32_XMM,
             latency_kind=LatencyKind.ESTIMATE,
             latency_cycles=4,
+            minimum_issue_separation_cycles=4,
             issue_uses=(
                 IssueUse(_RESOURCE_VECTOR, cycles=1, units=_vector_lane_units(128)),
             ),
@@ -402,6 +403,7 @@ X86_AVX2_DESCRIPTOR_SET = DescriptorSet(
             _SCHEDULE_MEMORY_LOAD_XMM,
             latency_kind=LatencyKind.VARIABLE,
             latency_cycles=4,
+            minimum_issue_separation_cycles=4,
             issue_uses=(
                 IssueUse(_RESOURCE_ADDRESS, cycles=1, units=1),
                 IssueUse(_RESOURCE_LOAD, cycles=1, units=_vector_lane_units(128)),
@@ -424,6 +426,7 @@ X86_AVX2_DESCRIPTOR_SET = DescriptorSet(
             _SCHEDULE_MEMORY_LOAD_YMM,
             latency_kind=LatencyKind.VARIABLE,
             latency_cycles=4,
+            minimum_issue_separation_cycles=4,
             issue_uses=(
                 IssueUse(_RESOURCE_ADDRESS, cycles=1, units=1),
                 IssueUse(_RESOURCE_LOAD, cycles=1, units=_vector_lane_units(256)),

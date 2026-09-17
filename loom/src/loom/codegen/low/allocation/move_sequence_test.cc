@@ -12,19 +12,9 @@
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
-#include "loom/codegen/low/allocation/storage.h"
 
 namespace loom {
 namespace {
-
-loom_liveness_value_class_t ValueClass(uint16_t register_class_id) {
-  return loom_liveness_value_class_t{
-      /*.type_kind=*/LOOM_TYPE_REGISTER,
-      /*.element_type=*/{},
-      /*.register_descriptor_set_stable_id=*/{},
-      /*.register_class_id=*/register_class_id,
-  };
-}
 
 const loom_low_descriptor_set_t* IndependentDescriptorSet() {
   static const loom_low_reg_class_t kRegClasses[3] = {};
@@ -47,6 +37,8 @@ const loom_low_descriptor_set_t* AliasDescriptorSet() {
           /*.allocatable_count=*/{},
           /*.fixed_location_base=*/{},
           /*.fixed_location_count=*/{},
+          /*.physical_register_candidate_start=*/{},
+          /*.candidate_lookup=*/{},
           /*.alias_set_id=*/1,
       },
       {
@@ -57,6 +49,8 @@ const loom_low_descriptor_set_t* AliasDescriptorSet() {
           /*.allocatable_count=*/{},
           /*.fixed_location_base=*/{},
           /*.fixed_location_count=*/{},
+          /*.physical_register_candidate_start=*/{},
+          /*.candidate_lookup=*/{},
           /*.alias_set_id=*/1,
       },
       {},
@@ -73,7 +67,6 @@ loom_low_move_location_t Location(uint32_t ordinal,
                                   uint16_t register_class_id = 0) {
   return loom_low_move_location_t{
       /*.location_kind=*/LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER,
-      /*.value_class=*/ValueClass(register_class_id),
       /*.descriptor_reg_class_id=*/register_class_id,
       /*.location=*/ordinal,
   };
@@ -124,8 +117,9 @@ class TestArena {
 };
 
 struct TemporaryResolver {
-  const loom_low_descriptor_set_t* descriptor_set = nullptr;
+  // Candidate scratch units supplied by the owning allocation.
   const loom_low_move_location_t* locations = nullptr;
+  // Number of candidate scratch units.
   iree_host_size_t count = 0;
 };
 
@@ -142,11 +136,8 @@ iree_status_t ResolveTemporary(void* user_data,
   for (iree_host_size_t i = 0; i < resolver->count; ++i) {
     const loom_low_move_location_t* location = &resolver->locations[i];
     if (location->location_kind == storage_class->location_kind &&
-        loom_low_allocation_storage_reg_classes_share(
-            resolver->descriptor_set, location->descriptor_reg_class_id,
-            storage_class->descriptor_reg_class_id) &&
-        loom_liveness_value_class_equal(location->value_class,
-                                        storage_class->value_class)) {
+        location->descriptor_reg_class_id ==
+            storage_class->descriptor_reg_class_id) {
       *out_temporary = *location;
       *out_resolved = true;
       break;
@@ -169,7 +160,6 @@ std::vector<std::string> ResolveMoves(
     scratch.moves[i] = input_moves[i];
   }
   TemporaryResolver resolver = {
-      descriptor_set,
       temporaries,
       temporary_count,
   };
@@ -281,6 +271,98 @@ TEST(LowMoveSequenceTest, UsesMatchingTemporaryForMixedClassCycles) {
                            IREE_ARRAYSIZE(temporaries)),
               ::testing::ElementsAre("0:9<-0", "0:0<-1", "0:1<-9", "1:11<-4",
                                      "1:4<-5", "1:5<-11"));
+  // Aliased classes still require their own encoding-compatible scratch
+  // locations; sharing storage alone does not make their move forms equal.
+  EXPECT_THAT(ResolveMoves(moves, IREE_ARRAYSIZE(moves), temporaries,
+                           IREE_ARRAYSIZE(temporaries), AliasDescriptorSet()),
+              ::testing::ElementsAre("0:9<-0", "0:0<-1", "0:1<-9", "1:11<-4",
+                                     "1:4<-5", "1:5<-11"));
+}
+
+TEST(LowMoveSequenceTest, ReusesBoundedSolverStorageAcrossIncreasingGroups) {
+  TestArena arena;
+  constexpr uint32_t kCapacity = 128;
+  loom_low_move_sequence_scratch_t scratch = {};
+  IREE_ASSERT_OK(loom_low_move_sequence_scratch_initialize(
+      arena.arena(), kCapacity, &scratch));
+  loom_low_move_sequence_options_t options = {};
+  options.descriptor_set = IndependentDescriptorSet();
+  loom_low_move_t output[kCapacity] = {};
+  iree_host_size_t storage_bytes = arena.arena()->used_allocation_size;
+  for (uint32_t count = 0; count <= kCapacity; ++count) {
+    SCOPED_TRACE(count);
+    for (uint32_t i = 0; i < count; ++i) {
+      scratch.moves[i] = Move(kCapacity + i, i);
+    }
+    iree_host_size_t output_count = 0;
+    bool complete = false;
+    IREE_ASSERT_OK(loom_low_move_sequence_resolve(&scratch, count, &options,
+                                                  kCapacity, output,
+                                                  &output_count, &complete));
+    ASSERT_TRUE(complete);
+    ASSERT_EQ(output_count, count);
+    for (uint32_t i = 0; i < count; ++i) {
+      EXPECT_EQ(output[i].destination.location, kCapacity + i);
+      EXPECT_EQ(output[i].source.location, i);
+    }
+    if (count < 2) {
+      EXPECT_EQ(scratch.nodes, nullptr);
+    }
+    if (count == 2) {
+      storage_bytes = arena.arena()->used_allocation_size;
+    }
+    EXPECT_EQ(arena.arena()->used_allocation_size, storage_bytes);
+    EXPECT_EQ(scratch.temporaries, nullptr);
+  }
+}
+
+TEST(LowMoveSequenceTest, ReusesBoundedCycleStorageAcrossClassesAndGroups) {
+  TestArena arena;
+  constexpr uint32_t kCapacity = 128;
+  loom_low_move_sequence_scratch_t scratch = {};
+  IREE_ASSERT_OK(loom_low_move_sequence_scratch_initialize(
+      arena.arena(), kCapacity, &scratch));
+  const loom_low_move_location_t temporaries[] = {
+      Location(kCapacity, 0), Location(kCapacity, 1), Location(kCapacity, 2)};
+  TemporaryResolver resolver = {temporaries, IREE_ARRAYSIZE(temporaries)};
+  loom_low_move_sequence_options_t options = {};
+  options.descriptor_set = IndependentDescriptorSet();
+  options.resolve_temporary = {ResolveTemporary, &resolver};
+  loom_low_move_t output[kCapacity + kCapacity / 2] = {};
+  iree_host_size_t storage_bytes = 0;
+  for (uint32_t count = 2; count <= kCapacity; count += 2) {
+    SCOPED_TRACE(count);
+    for (uint32_t i = 0; i < count; ++i) {
+      scratch.moves[i] = Move(i, i ^ 1u, (i / 2) % 3);
+    }
+    iree_host_size_t output_count = 0;
+    bool complete = false;
+    IREE_ASSERT_OK(loom_low_move_sequence_resolve(
+        &scratch, count, &options, IREE_ARRAYSIZE(output), output,
+        &output_count, &complete));
+    ASSERT_TRUE(complete);
+    ASSERT_EQ(output_count, count + count / 2);
+    uint32_t values[3][kCapacity + 1];
+    for (uint32_t class_id = 0; class_id < 3; ++class_id) {
+      for (uint32_t i = 0; i <= kCapacity; ++i) {
+        values[class_id][i] = class_id * (kCapacity + 1) + i;
+      }
+    }
+    for (iree_host_size_t i = 0; i < output_count; ++i) {
+      const auto& move = output[i];
+      values[move.destination.descriptor_reg_class_id][move.destination
+                                                           .location] =
+          values[move.source.descriptor_reg_class_id][move.source.location];
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+      const uint32_t class_id = (i / 2) % 3;
+      EXPECT_EQ(values[class_id][i], class_id * (kCapacity + 1) + (i ^ 1u));
+    }
+    if (count == 2) {
+      storage_bytes = arena.arena()->used_allocation_size;
+    }
+    EXPECT_EQ(arena.arena()->used_allocation_size, storage_bytes);
+  }
 }
 
 }  // namespace

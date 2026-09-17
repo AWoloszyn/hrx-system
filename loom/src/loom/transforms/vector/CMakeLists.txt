@@ -138,7 +138,28 @@ loom_cc_library(
     loom::pass::types
     loom::pass::value_facts
     loom::rewrite::rewriter
+    loom::target::function_version
     loom::util::numeric_format
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    packet_legalization
+  HDRS
+    "packet_legalization.h"
+  SRCS
+    "packet_legalization.c"
+  DEPS
+    iree::base
+    loom::analysis::view_regions
+    loom::ir
+    loom::ops::buffer
+    loom::ops::index
+    loom::ops::scf
+    loom::ops::vector
+    loom::rewrite::rewriter
+    loom::target::legalization
   PUBLIC
 )
 

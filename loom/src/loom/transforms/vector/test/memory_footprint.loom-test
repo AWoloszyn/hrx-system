@@ -520,6 +520,44 @@ func.def @sparse_rhs_fragment_load_uses_compact_physical_extent(%buffer: buffer,
 
 // ====
 
+func.def @fixed_record_lhs_fragment_load_uses_record_extent(%buffer: buffer, %base: offset) {
+  %m = index.constant 2 : index
+  %k = index.constant 256 : index
+  %view = buffer.view %buffer[%base] : buffer -> view<2x176xi8, #encoding.storage<layout=#encoding.layout.dense, schema=#ggml.q5_k>>
+  %loaded = vector.fragment.load<lhs> %view[0, 0] shape [%m, %k] : view<2x176xi8, #encoding.storage<layout=#encoding.layout.dense, schema=#ggml.q5_k>> -> vector<64xi8>
+  test.use %loaded : vector<64xi8>
+  func.return
+}
+
+// ====
+
+func.def @fixed_record_lhs_fragment_load_rejects_physical_tail(%buffer: buffer, %base: offset) {
+  %m = index.constant 2 : index
+  %k = index.constant 256 : index
+  %view = buffer.view %buffer[%base] : buffer -> view<2x175xi8, #encoding.storage<layout=#encoding.layout.dense, schema=#ggml.q5_k>>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.fragment.load", view_axis="1", vector_axis="1", vector_extent="176", view_bound="175", required_origin_upper_bound="-1", constraint_key="vector_footprint.full_vector_upper_bound"}
+  %loaded = vector.fragment.load<lhs> %view[0, 0] shape [%m, %k] : view<2x175xi8, #encoding.storage<layout=#encoding.layout.dense, schema=#ggml.q5_k>> -> vector<64xi8>
+  test.use %loaded : vector<64xi8>
+  func.return
+}
+
+// ====
+
+func.def @fixed_record_fragment_load_rejects_storage_root_overflow() {
+  %byte_length = index.constant 351 : offset
+  %base = index.constant 0 : offset
+  %m = index.constant 2 : index
+  %k = index.constant 256 : index
+  %scratch = buffer.alloca<workgroup> align(16) %byte_length : buffer
+  %view = buffer.view %scratch[%base] : buffer -> view<2x176xi8, #encoding.storage<layout=#encoding.layout.dense, schema=#ggml.q5_k>>
+  // ERROR@+1: SUBRANGE/026 {op_name="vector.fragment.load", maximum_access_byte_end="352", root_byte_extent="351"}
+  %loaded = vector.fragment.load<lhs> %view[0, 0] shape [%m, %k] : view<2x176xi8, #encoding.storage<layout=#encoding.layout.dense, schema=#ggml.q5_k>> -> vector<64xi8>
+  test.use %loaded : vector<64xi8>
+  func.return
+}
+
+// ====
+
 func.def @fragment_store_in_bounds(%buffer: buffer, %base: offset, %value: vector<8xf32>) {
   %layout = encoding.layout.dense : encoding<layout>
   %m = index.constant 16 : index
@@ -954,9 +992,8 @@ func.def @guarded_loaded_i32_precast_index_proves_unit_axis(%ids: buffer, %paylo
 
 // ----
 func.def @guarded_loaded_i32_precast_index_proves_unit_axis(%ids: buffer, %payload: buffer, %base: offset, %row_count: i32) {
-  %layout = encoding.layout.dense : encoding<layout>
-  %id_view = buffer.view %ids[%base] : buffer -> view<1xi32, %layout>
-  %row = view.load %id_view[0] : view<1xi32, %layout> -> i32
+  %id_view = buffer.view %ids[%base] : buffer -> view<1xi32>
+  %row = view.load %id_view[0] : view<1xi32> -> i32
   %row_idx = index.cast %row : i32 to index
   %row_count_idx = index.cast %row_count : i32 to index
   %minimum_row = scalar.constant 0 : i32
@@ -965,8 +1002,8 @@ func.def @guarded_loaded_i32_precast_index_proves_unit_axis(%ids: buffer, %paylo
   %guard = scalar.andi %nonnegative, %below : i1
   scf.if %guard {
     %16 = index.assume %row_idx [ge(%row_idx, 0), lt(%row_idx, %row_count)] : index
-    %payload_view = buffer.view %payload[%base] : buffer -> view<[%row_count_idx]x4xf32, %layout>
-    %loaded = vector.load %payload_view[%16, 0] : view<[%row_count_idx]x4xf32, %layout> -> vector<4xf32>
+    %payload_view = buffer.view %payload[%base] : buffer -> view<[%row_count_idx]x4xf32>
+    %loaded = vector.load %payload_view[%16, 0] : view<[%row_count_idx]x4xf32> -> vector<4xf32>
     test.use %loaded : vector<4xf32>
   } else {
   }
@@ -994,7 +1031,6 @@ func.def @guarded_i64_precast_index_proves_store_unit_axis(%payload: buffer, %ba
 
 // ----
 func.def @guarded_i64_precast_index_proves_store_unit_axis(%payload: buffer, %base: offset, %row: i64, %row_count: i64, %value: vector<4xf32>) {
-  %layout = encoding.layout.dense : encoding<layout>
   %row_idx = index.cast %row : i64 to index
   %row_count_idx = index.cast %row_count : i64 to index
   %minimum_row = scalar.constant 0 : i64
@@ -1003,8 +1039,8 @@ func.def @guarded_i64_precast_index_proves_store_unit_axis(%payload: buffer, %ba
   %guard = scalar.andi %nonnegative, %below : i1
   scf.if %guard {
     %13 = index.assume %row_idx [ge(%row_idx, 0), lt(%row_idx, %row_count)] : index
-    %payload_view = buffer.view %payload[%base] : buffer -> view<[%row_count_idx]x4xf32, %layout>
-    vector.store %value, %payload_view[%13, 0] : vector<4xf32>, view<[%row_count_idx]x4xf32, %layout>
+    %payload_view = buffer.view %payload[%base] : buffer -> view<[%row_count_idx]x4xf32>
+    vector.store %value, %payload_view[%13, 0] : vector<4xf32>, view<[%row_count_idx]x4xf32>
   } else {
   }
   func.return

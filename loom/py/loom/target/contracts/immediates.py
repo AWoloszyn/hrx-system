@@ -8,8 +8,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from enum import Enum, unique
 from typing import Self
 
@@ -17,6 +17,9 @@ from loom.dsl import ATTR_TYPE_ENUM, ATTR_TYPE_I64, ATTR_TYPE_I64_ARRAY, Op
 from loom.target.contracts.descriptors import _require_immediate
 from loom.target.contracts.source import _require_attr, _require_value
 from loom.target.low_descriptors import Descriptor, ImmediateKind
+
+_I64_MIN = -(2**63)
+_I64_MAX = 2**63 - 1
 
 
 @unique
@@ -27,6 +30,7 @@ class AttrProjectKind(Enum):
     ENUM_ORDINAL = "enum_ordinal"
     I64_LOG2 = "i64_log2"
     I64_ARRAY_ELEMENT = "i64_array_element"
+    I64_ARRAY_ELEMENT_PLUS_LITERAL = "i64_array_element_plus_literal"
     I64_ARRAY_PACK_ELEMENTS = "i64_array_pack_elements"
     ATTRS_PACK_CONSECUTIVE = "attrs_pack_consecutive"
     I64_LOW_BIT_MASK = "i64_low_bit_mask"
@@ -34,6 +38,7 @@ class AttrProjectKind(Enum):
     I64_SHIFTED_LOW_BIT_CLEAR_MASK = "i64_shifted_low_bit_clear_mask"
     I64_LITERAL_MINUS_ATTR = "i64_literal_minus_attr"
     I64_LITERAL_MINUS_ATTRS = "i64_literal_minus_attrs"
+    I64_ATTR_MINUS_LITERAL = "i64_attr_minus_literal"
     EXPAND_LANE_I64_ARRAY_TO_BYTE_LANES = "expand_lane_i64_array_to_byte_lanes"
 
 
@@ -42,6 +47,7 @@ class ValueProjectKind(Enum):
     """Projection from source value facts to descriptor immediates."""
 
     EXACT_I64 = "exact_i64"
+    EXACT_I64_I32_WORD = "exact_i64_i32_word"
     EXACT_I64_NEGATE = "exact_i64_negate"
     EXACT_I64_LOG2 = "exact_i64_log2"
     EXACT_I64_MINUS_ONE = "exact_i64_minus_one"
@@ -49,6 +55,19 @@ class ValueProjectKind(Enum):
     U32_DIVISOR_MAGIC_SHIFT = "u32_divisor_magic_shift"
     I32_AS_U32_BITS = "i32_as_u32_bits"
     FLOAT_BITS = "float_bits"
+    FLOAT_AS_F32_I32 = "float_as_f32_i32"
+    FLOAT_AS_F64_I32_WORD = "float_as_f64_i32_word"
+
+
+_I32_WORD_VALUE_PROJECT_KINDS = (
+    ValueProjectKind.EXACT_I64_I32_WORD,
+    ValueProjectKind.FLOAT_AS_F64_I32_WORD,
+)
+
+_SIGNED_I32_VALUE_PROJECT_KINDS = (
+    *_I32_WORD_VALUE_PROJECT_KINDS,
+    ValueProjectKind.FLOAT_AS_F32_I32,
+)
 
 
 @unique
@@ -56,6 +75,7 @@ class SourceMemoryProjectKind(Enum):
     """Projection from a selected source-memory access to descriptor immediates."""
 
     STATIC_BYTE_OFFSET = "static_byte_offset"
+    STATIC_BYTE_OFFSET_PLUS_LITERAL = "static_byte_offset_plus_literal"
     STATIC_BYTE_OFFSET_QUOTIENT = "static_byte_offset_quotient"
     STATIC_BYTE_OFFSET_REMAINDER = "static_byte_offset_remainder"
     DYNAMIC_BYTE_STRIDE = "dynamic_byte_stride"
@@ -110,6 +130,21 @@ class AttrProject:
             source_attr=source_attr,
             element=element,
             target_bit_offset=target_bit_offset,
+        )
+
+    @classmethod
+    def i64_array_element_plus_literal(
+        cls,
+        source_attr: str,
+        *,
+        element: int,
+        literal: int,
+    ) -> Self:
+        return cls(
+            kind=AttrProjectKind.I64_ARRAY_ELEMENT_PLUS_LITERAL,
+            source_attr=source_attr,
+            element=element,
+            literal_i64=literal,
         )
 
     @classmethod
@@ -198,6 +233,14 @@ class AttrProject:
         )
 
     @classmethod
+    def i64_attr_minus_literal(cls, source_attr: str, *, literal: int) -> Self:
+        return cls(
+            kind=AttrProjectKind.I64_ATTR_MINUS_LITERAL,
+            source_attr=source_attr,
+            literal_i64=literal,
+        )
+
+    @classmethod
     def expand_lane_i64_array_to_byte_lanes(
         cls,
         *,
@@ -234,11 +277,15 @@ class AttrProject:
                 f"{self.kind.value} projection must not name another source attr"
             )
         literal_kinds = (
+            AttrProjectKind.I64_ARRAY_ELEMENT_PLUS_LITERAL,
             AttrProjectKind.I64_LITERAL_MINUS_ATTR,
             AttrProjectKind.I64_LITERAL_MINUS_ATTRS,
+            AttrProjectKind.I64_ATTR_MINUS_LITERAL,
         )
         if self.kind not in literal_kinds and self.literal_i64 != 0:
             raise ValueError(f"{self.kind.value} projection must not name a literal")
+        if self.kind in literal_kinds and not _I64_MIN <= self.literal_i64 <= _I64_MAX:
+            raise ValueError(f"{self.kind.value} literal must fit signed i64")
         if self.element is not None and self.element < 0:
             raise ValueError(f"{self.kind.value} element must be non-negative")
         if self.count is not None and self.count <= 0:
@@ -356,11 +403,12 @@ class AttrProject:
                 require_unsigned_immediate=True,
             )
             return
-        literal_minus_kinds = (
+        i64_arithmetic_kinds = (
             AttrProjectKind.I64_LITERAL_MINUS_ATTR,
             AttrProjectKind.I64_LITERAL_MINUS_ATTRS,
+            AttrProjectKind.I64_ATTR_MINUS_LITERAL,
         )
-        if self.kind in literal_minus_kinds:
+        if self.kind in i64_arithmetic_kinds:
             self._validate_i64_attr_projection(
                 source_op,
                 descriptor,
@@ -373,7 +421,10 @@ class AttrProject:
                 f"{source_op.name}: {subject} source attr '{self.source_attr}' "
                 "must be an i64_array attr"
             )
-        if self.kind == AttrProjectKind.I64_ARRAY_ELEMENT:
+        if self.kind in (
+            AttrProjectKind.I64_ARRAY_ELEMENT,
+            AttrProjectKind.I64_ARRAY_ELEMENT_PLUS_LITERAL,
+        ):
             if bound_immediate_name is None:
                 raise ValueError(
                     f"{source_op.name}: {subject} must bind one descriptor immediate"
@@ -487,7 +538,16 @@ class ValueProject:
 
     kind: ValueProjectKind
     source_value: str
+    source_node: str = ""
     target_bit_offset: int = 0
+    word_index: int = 0
+
+    def in_source_node(self, source_node: str) -> Self:
+        """Returns this projection scoped to a named descriptor-rule node."""
+
+        if not source_node:
+            raise ValueError("value projection source node must be non-empty")
+        return replace(self, source_node=source_node)
 
     @classmethod
     def exact_i64(cls, source_value: str, *, target_bit_offset: int = 0) -> Self:
@@ -495,6 +555,15 @@ class ValueProject:
             kind=ValueProjectKind.EXACT_I64,
             source_value=source_value,
             target_bit_offset=target_bit_offset,
+        )
+
+    @classmethod
+    def exact_i64_i32_word(cls, source_value: str, *, word_index: int) -> Self:
+        """Projects one signed i32 word from an exact i64 bit pattern."""
+        return cls(
+            kind=ValueProjectKind.EXACT_I64_I32_WORD,
+            source_value=source_value,
+            word_index=word_index,
         )
 
     @classmethod
@@ -564,6 +633,23 @@ class ValueProject:
             target_bit_offset=target_bit_offset,
         )
 
+    @classmethod
+    def float_as_f32_i32(cls, source_value: str) -> Self:
+        """Projects exact f32 bits reinterpreted as a signed i32."""
+        return cls(
+            kind=ValueProjectKind.FLOAT_AS_F32_I32,
+            source_value=source_value,
+        )
+
+    @classmethod
+    def float_as_f64_i32_word(cls, source_value: str, *, word_index: int) -> Self:
+        """Projects one signed i32 word from an exact f64 bit pattern."""
+        return cls(
+            kind=ValueProjectKind.FLOAT_AS_F64_I32_WORD,
+            source_value=source_value,
+            word_index=word_index,
+        )
+
     def __post_init__(self) -> None:
         if not self.source_value:
             raise ValueError(f"{self.kind.value} projection requires a source value")
@@ -571,20 +657,48 @@ class ValueProject:
             raise ValueError(
                 f"{self.kind.value} target bit offset must be non-negative"
             )
+        if self.kind in _I32_WORD_VALUE_PROJECT_KINDS:
+            if self.word_index not in (0, 1):
+                raise ValueError(f"{self.kind.value} word index must be zero or one")
+            if self.target_bit_offset != 0:
+                raise ValueError(
+                    f"{self.kind.value} projection must not use target bit offset"
+                )
+        elif self.word_index != 0:
+            raise ValueError(f"{self.kind.value} projection must not name an i32 word")
 
     def validate(
         self,
         source_op: Op,
         descriptor: Descriptor,
         bound_immediate_name: str | None,
+        *,
+        source_ops: Mapping[str, Op] | None = None,
     ) -> None:
         subject = f"immediate projection {self.kind.value}"
-        _require_value(source_op, self.source_value, subject)
+        referenced_op = source_op
+        if self.source_node:
+            referenced_op = (
+                source_ops.get(self.source_node) if source_ops is not None else None
+            )
+            if referenced_op is None:
+                raise ValueError(
+                    f"{source_op.name}: {subject} references unknown source node "
+                    f"'{self.source_node}'"
+                )
+        _require_value(referenced_op, self.source_value, subject)
         if bound_immediate_name is None:
             raise ValueError(
                 f"{source_op.name}: {subject} must bind one descriptor immediate"
             )
-        _require_immediate(descriptor, bound_immediate_name, subject)
+        immediate = _require_immediate(descriptor, bound_immediate_name, subject)
+        if self.kind in _SIGNED_I32_VALUE_PROJECT_KINDS and (
+            immediate.kind != ImmediateKind.SIGNED or immediate.bit_width != 32
+        ):
+            raise ValueError(
+                f"{source_op.name}: {subject} descriptor immediate "
+                f"'{bound_immediate_name}' must be a signed 32-bit immediate"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -594,10 +708,18 @@ class SourceMemoryProject:
     kind: SourceMemoryProjectKind
     dynamic_term_index: int = 0
     divisor: int = 1
+    literal_i64: int = 0
 
     @classmethod
     def static_byte_offset(cls) -> Self:
         return cls(kind=SourceMemoryProjectKind.STATIC_BYTE_OFFSET)
+
+    @classmethod
+    def static_byte_offset_plus(cls, literal: int) -> Self:
+        return cls(
+            kind=SourceMemoryProjectKind.STATIC_BYTE_OFFSET_PLUS_LITERAL,
+            literal_i64=literal,
+        )
 
     @classmethod
     def static_byte_offset_quotient(cls, divisor: int) -> Self:
@@ -629,6 +751,7 @@ class SourceMemoryProject:
             self.kind
             in (
                 SourceMemoryProjectKind.STATIC_BYTE_OFFSET,
+                SourceMemoryProjectKind.STATIC_BYTE_OFFSET_PLUS_LITERAL,
                 SourceMemoryProjectKind.STATIC_BYTE_OFFSET_QUOTIENT,
                 SourceMemoryProjectKind.STATIC_BYTE_OFFSET_REMAINDER,
             )
@@ -646,6 +769,13 @@ class SourceMemoryProject:
             and self.divisor != 1
         ):
             raise ValueError(f"{self.kind.value} projection must not set divisor")
+        if not _I64_MIN <= self.literal_i64 <= _I64_MAX:
+            raise ValueError(f"{self.kind.value} literal must fit in signed i64")
+        if (
+            self.kind != SourceMemoryProjectKind.STATIC_BYTE_OFFSET_PLUS_LITERAL
+            and self.literal_i64 != 0
+        ):
+            raise ValueError(f"{self.kind.value} projection must not set a literal")
 
     def validate(
         self,

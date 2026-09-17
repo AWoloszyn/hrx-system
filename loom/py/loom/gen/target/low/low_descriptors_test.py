@@ -38,6 +38,7 @@ from loom.target.low_descriptors import (
     EncodingFieldValue,
     EnumDomain,
     EnumValue,
+    EventSeparation,
     Hazard,
     HazardKind,
     Immediate,
@@ -46,6 +47,8 @@ from loom.target.low_descriptors import (
     ImmediateKind,
     InstructionClass,
     IssueUse,
+    IssueUseKind,
+    ModelQuality,
     NativeAsmValue,
     NativeAsmValueKind,
     OperandAddressMapKind,
@@ -55,9 +58,13 @@ from loom.target.low_descriptors import (
     OperandFormMatchKind,
     OperandRole,
     OperandSourceBinding,
+    PhysicalRegister,
+    PhysicalRegisterView,
     RegClassAlt,
     RegClassAltFlag,
     RegClassFlag,
+    RegisterPackingResource,
+    RegisterPackingResourceMember,
     StorageLease,
     StorageLeaseAttachment,
     StorageLeaseFlag,
@@ -68,6 +75,7 @@ from loom.target.low_descriptors import (
 )
 from loom.target.test.descriptors import (
     TEST_LOW_ADD_I32_DESCRIPTOR,
+    TEST_LOW_ADD_PHYS_DESCRIPTOR,
     TEST_LOW_BARRIER_DESCRIPTOR,
     TEST_LOW_COND_BR_I32_DESCRIPTOR,
     TEST_LOW_CONST_I32_DESCRIPTOR,
@@ -79,6 +87,47 @@ from loom.target.test.descriptors import (
     TEST_LOW_WRITE_HIGH16_I32_DESCRIPTOR,
     TEST_LOW_WRITE_LOW16_I32_DESCRIPTOR,
 )
+
+
+def _explicit_physical_descriptor_set():
+    physical_registers = (
+        PhysicalRegister("test.r0", (0, 1)),
+        PhysicalRegister("test.r1", (2, 3)),
+        PhysicalRegister("test.r2", (4, 5)),
+        PhysicalRegister("test.pair", (0, 1, 4, 5)),
+    )
+    register_classes = tuple(
+        replace(
+            register_class,
+            flags=(
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+            ),
+            allocatable_count=0,
+            fixed_location_base=0,
+            fixed_location_count=0,
+            physical_registers=("test.r2", "test.r0"),
+        )
+        if register_class.name == "test.phys"
+        else register_class
+        for register_class in TEST_LOW_CORE_DESCRIPTOR_SET.reg_classes
+        if register_class.name
+        not in (
+            "test.explicit32",
+            "test.spillable.explicit32",
+            "test.packed.narrow",
+            "test.packed.wide",
+            "test.coindexed.partner",
+        )
+    )
+    return replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        physical_registers=physical_registers,
+        physical_register_views=(PhysicalRegisterView("test.pair", "test.phys", ("test.r2", "test.r0")),),
+        register_packing_resources=(),
+        reg_classes=register_classes,
+        descriptors=(TEST_LOW_ADD_PHYS_DESCRIPTOR,),
+    )
 
 
 def _compiled_slice(
@@ -574,6 +623,253 @@ def test_compiler_rejects_register_alias_set_fixed_location_mismatch() -> None:
         compiler.compile_descriptor_set(descriptor_set)
 
 
+def test_compiler_emits_explicit_physical_register_candidates() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+
+    compiled = compiler.compile_descriptor_set(descriptor_set)
+    generated = generate_descriptor_set(descriptor_set)
+
+    physical_class_index = next(index for index, register_class in enumerate(compiled.reg_classes) if register_class.name == "test.phys")
+    candidate_start = compiled.physical_register_candidate_starts[physical_class_index]
+    candidate_count = len(compiled.reg_classes[physical_class_index].physical_registers)
+    assert compiled.physical_register_candidate_ids[candidate_start : candidate_start + candidate_count] == [2, 0]
+    lookup = compiled.physical_register_candidate_lookups[physical_class_index]
+    assert lookup.register_base == 0
+    assert lookup.register_count == 3
+    assert compiled.physical_register_candidate_ordinals[lookup.ordinal_start : lookup.ordinal_start + lookup.register_count] == [1, 0xFFFF, 0]
+    assert compiled.physical_register_atomic_units == [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        0,
+        1,
+        4,
+        5,
+    ]
+    assert ".allocatable_count = 2," in generated.source
+    physical_class_source = generated.source.split(f".name_string_offset = {compiled.string_pool.ref('reg_test.phys')},", 1)[1].split("\n  }", 1)[0]
+    # The pair occupies four atoms but is not a candidate of this class.
+    assert ".physical_atomic_unit_count = 2," in physical_class_source
+    linear_class_source = generated.source.split(f".name_string_offset = {compiled.string_pool.ref('reg_test.i32')},", 1)[1].split("\n  }", 1)[0]
+    assert ".physical_atomic_unit_count = 0," in linear_class_source
+    assert "kTestLowCorePhysicalRegisterCandidates" in generated.source
+    assert "kTestLowCorePhysicalRegisterAtomicUnits" in generated.source
+
+
+def test_compiler_derives_ordered_physical_register_views() -> None:
+    compiled = compiler.compile_descriptor_set(TEST_LOW_CORE_DESCRIPTOR_SET)
+    register_ids = {physical_register.name: index for index, physical_register in enumerate(compiled.physical_registers)}
+    explicit_class_id = compiled.reg_class_ids["test.explicit32"]
+
+    l0_view = next(view for view in compiled.physical_register_views if view.physical_register_id == register_ids["test.l0"] and view.reg_class_id == explicit_class_id)
+    l0_ordinals = compiled.physical_register_view_unit_candidate_ordinals[l0_view.unit_candidate_ordinal_start : l0_view.unit_candidate_ordinal_start + l0_view.unit_count]
+
+    assert l0_ordinals == [0, 2]
+    assert compiled.physical_registers[0].atomic_units == (1,)
+    assert compiled.physical_registers[1].atomic_units == (0,)
+
+
+def test_compiler_emits_register_packing_resources() -> None:
+    compiled = compiler.compile_descriptor_set(TEST_LOW_CORE_DESCRIPTOR_SET)
+
+    assert len(compiled.register_packing_resources) == 1
+    resource = compiled.register_packing_resources[0]
+    assert resource.source.name == "test.pair_slots"
+    assert resource.source.capacity == 2
+    assert resource.member_start == 0
+    assert resource.member_count == 2
+    assert [compiled.reg_classes[member.reg_class_id].name for member in compiled.register_packing_resource_members] == ["test.packed.narrow", "test.packed.wide"]
+    assert [(member.register_unit_count, member.resource_unit_count) for member in compiled.register_packing_resource_members] == [(1, 1), (2, 1)]
+
+    generated = generate_descriptor_set(TEST_LOW_CORE_DESCRIPTOR_SET)
+    assert "kTestLowCoreRegisterPackingResources" in generated.source
+    assert "kTestLowCoreRegisterPackingResourceMembers" in generated.source
+    assert ".register_packing_resource_count = IREE_ARRAYSIZE(" in generated.source
+
+
+def test_compiler_rejects_invalid_register_packing_resources() -> None:
+    resource = TEST_LOW_CORE_DESCRIPTOR_SET.register_packing_resources[0]
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' register packing resource 'test.pair_slots' has zero capacity"),
+    ):
+        compiler.compile_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                register_packing_resources=(replace(resource, capacity=0),),
+            )
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' register packing resource 'test.pair_slots' member 'test.i32' references a non-physical register class"),
+    ):
+        compiler.compile_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                register_packing_resources=(
+                    RegisterPackingResource(
+                        name=resource.name,
+                        capacity=resource.capacity,
+                        members=(RegisterPackingResourceMember("test.i32"),),
+                    ),
+                ),
+            )
+        )
+
+
+def test_compiler_rejects_unknown_explicit_physical_register() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    register_classes = tuple(replace(register_class, physical_registers=("test.missing",)) if register_class.name == "test.phys" else register_class for register_class in descriptor_set.reg_classes)
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' register class 'test.phys' references unknown physical registers: test.missing"),
+    ):
+        compiler.compile_descriptor_set(replace(descriptor_set, reg_classes=register_classes))
+
+
+def test_compiler_rejects_overlapping_candidates_in_one_class() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    overlapping_registers = (
+        PhysicalRegister("test.r0", (0, 1)),
+        PhysicalRegister("test.r1", (1, 2)),
+    )
+    register_classes = tuple(
+        replace(
+            register_class,
+            physical_registers=("test.r0", "test.r1"),
+        )
+        if register_class.name == "test.phys"
+        else register_class
+        for register_class in descriptor_set.reg_classes
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' register class 'test.phys' candidates 'test.r0' and 'test.r1' overlap atomic storage unit 1"),
+    ):
+        compiler.compile_descriptor_set(
+            replace(
+                descriptor_set,
+                physical_registers=overlapping_registers,
+                reg_classes=register_classes,
+            )
+        )
+
+
+def test_compiler_rejects_mixed_width_explicit_register_candidates() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    physical_registers = (
+        PhysicalRegister("test.r0", (0,)),
+        *descriptor_set.physical_registers[1:],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' register class 'test.phys' explicit physical register candidates must occupy the same number of atomic storage units"),
+    ):
+        compiler.compile_descriptor_set(replace(descriptor_set, physical_registers=physical_registers))
+
+
+def test_compiler_rejects_oversized_physical_register_width() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    physical_registers = (
+        PhysicalRegister("test.r0", tuple(range(0x10000))),
+        *descriptor_set.physical_registers[1:],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' physical register 'test.r0' atomic storage unit count does not fit u16"),
+    ):
+        compiler.compile_descriptor_set(replace(descriptor_set, physical_registers=physical_registers))
+
+
+def test_compiler_rejects_noncanonical_physical_register_units() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    physical_registers = (
+        PhysicalRegister("test.r0", (1, 0)),
+        *descriptor_set.physical_registers[1:],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' physical register 'test.r0' atomic storage units must be sorted and unique"),
+    ):
+        compiler.compile_descriptor_set(replace(descriptor_set, physical_registers=physical_registers))
+
+
+def test_compiler_rejects_duplicate_physical_register_view() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    duplicate_view = descriptor_set.physical_register_views[0]
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' physical register view 'test.pair' as 'test.phys' is duplicated"),
+    ):
+        compiler.compile_descriptor_set(
+            replace(
+                descriptor_set,
+                physical_register_views=(duplicate_view, duplicate_view),
+            )
+        )
+
+
+def test_compiler_rejects_physical_register_view_non_candidate_unit() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    view = replace(
+        descriptor_set.physical_register_views[0],
+        units=("test.r2", "test.r1"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' physical register view 'test.pair' as 'test.phys' units are not candidates of the register class: test.r1"),
+    ):
+        compiler.compile_descriptor_set(replace(descriptor_set, physical_register_views=(view,)))
+
+
+def test_compiler_rejects_inexact_physical_register_view_storage() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    physical_registers = (
+        *descriptor_set.physical_registers[:-1],
+        PhysicalRegister("test.pair", (0, 1, 2, 4, 5)),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' physical register view 'test.pair' as 'test.phys' units do not exactly cover aggregate atomic storage"),
+    ):
+        compiler.compile_descriptor_set(replace(descriptor_set, physical_registers=physical_registers))
+
+
+def test_compiler_emits_ordered_multiunit_explicit_register_view() -> None:
+    descriptor_set = _explicit_physical_descriptor_set()
+    descriptor = replace(
+        TEST_LOW_ADD_PHYS_DESCRIPTOR,
+        operands=(
+            replace(TEST_LOW_ADD_PHYS_DESCRIPTOR.operands[0], unit_count=2),
+            *TEST_LOW_ADD_PHYS_DESCRIPTOR.operands[1:],
+        ),
+    )
+
+    compiled = compiler.compile_descriptor_set(replace(descriptor_set, descriptors=(descriptor,)))
+    generated = generate_descriptor_set(replace(descriptor_set, descriptors=(descriptor,)))
+
+    assert len(compiled.physical_register_views) == 1
+    view = compiled.physical_register_views[0]
+    assert view.physical_register_id == 3
+    assert view.reg_class_id == compiled.reg_class_ids["test.phys"]
+    assert view.unit_count == 2
+    assert compiled.physical_register_view_unit_candidate_ordinals == [0, 1]
+    assert "kTestLowCorePhysicalRegisterViews" in generated.source
+    assert "kTestLowCorePhysicalRegisterViewUnitCandidateOrdinals" in generated.source
+
+
 def test_compiler_derives_barrier_descriptor_flag() -> None:
     descriptor_set = replace(
         TEST_LOW_CORE_DESCRIPTOR_SET,
@@ -595,6 +891,110 @@ def test_compiler_rejects_barrier_flag_without_effect() -> None:
     with pytest.raises(
         ValueError,
         match=re.escape("descriptor 'test.add.i32' has the barrier flag without a barrier effect"),
+    ):
+        compiler.compile_descriptor_set(descriptor_set)
+
+
+def _allocation_move_descriptor() -> Descriptor:
+    return replace(
+        TEST_LOW_ADD_PHYS_DESCRIPTOR,
+        key="test.move.phys",
+        mnemonic="test.move.phys",
+        semantic_tag="register.move.phys",
+        operands=(
+            replace(
+                TEST_LOW_ADD_PHYS_DESCRIPTOR.operands[0],
+                encoding_field_id=1,
+            ),
+            replace(
+                TEST_LOW_ADD_PHYS_DESCRIPTOR.operands[1],
+                field_name="src",
+                encoding_field_id=2,
+            ),
+        ),
+        asm_forms=(),
+        flags=(
+            DescriptorFlag.DEAD_REMOVABLE,
+            DescriptorFlag.ALLOCATION_MOVE,
+        ),
+    )
+
+
+def test_compiler_emits_allocation_move_descriptor_flag() -> None:
+    descriptor = _allocation_move_descriptor()
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(descriptor,),
+    )
+
+    compiled = compiler.compile_descriptor_set(descriptor_set)
+    generated = generate_descriptor_set(descriptor_set)
+
+    assert DescriptorFlag.ALLOCATION_MOVE in compiled.descriptors[0].flags
+    assert "LOOM_LOW_DESCRIPTOR_FLAG_ALLOCATION_MOVE" in generated.source
+
+
+def test_compiler_emits_unique_identity_descriptor_flag() -> None:
+    descriptor = replace(
+        TEST_LOW_ADD_I32_DESCRIPTOR,
+        flags=(
+            *TEST_LOW_ADD_I32_DESCRIPTOR.flags,
+            DescriptorFlag.UNIQUE_IDENTITY,
+        ),
+    )
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(descriptor,),
+    )
+
+    compiled = compiler.compile_descriptor_set(descriptor_set)
+    generated = generate_descriptor_set(descriptor_set)
+
+    assert DescriptorFlag.UNIQUE_IDENTITY in compiled.descriptors[0].flags
+    assert "LOOM_LOW_DESCRIPTOR_FLAG_UNIQUE_IDENTITY" in generated.source
+
+
+def test_compiler_rejects_multiunit_allocation_move() -> None:
+    descriptor = _allocation_move_descriptor()
+    descriptor = replace(
+        descriptor,
+        operands=(
+            descriptor.operands[0],
+            replace(descriptor.operands[1], unit_count=2),
+        ),
+    )
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(descriptor,),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="allocation move must copy exactly one allocation unit",
+    ):
+        compiler.compile_descriptor_set(descriptor_set)
+
+
+def test_compiler_rejects_width_changing_allocation_move() -> None:
+    descriptor = _allocation_move_descriptor()
+    descriptor = replace(
+        descriptor,
+        operands=(
+            descriptor.operands[0],
+            replace(
+                descriptor.operands[1],
+                reg_alts=(RegClassAlt("test.i32"),),
+            ),
+        ),
+    )
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(descriptor,),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="allocation move changes allocation-unit width from 32 to 512 bits",
     ):
         compiler.compile_descriptor_set(descriptor_set)
 
@@ -902,6 +1302,26 @@ def test_compiler_rejects_effectful_rematerializable_result() -> None:
         compiler.compile_descriptor_set(descriptor_set)
 
 
+def test_compiler_rejects_rematerializing_unique_identity() -> None:
+    descriptor = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR,
+        flags=(
+            *TEST_LOW_CONST_I32_DESCRIPTOR.flags,
+            DescriptorFlag.UNIQUE_IDENTITY,
+        ),
+    )
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(descriptor,),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor 'test.const.i32' rematerializable result 0 has incompatible descriptor flags: unique_identity"),
+    ):
+        compiler.compile_descriptor_set(descriptor_set)
+
+
 def test_compiler_rejects_rematerialization_across_target_state() -> None:
     descriptor = replace(
         TEST_LOW_STATE_ADD_SCHEDULE_STATE_DESCRIPTOR,
@@ -956,6 +1376,86 @@ def test_allowlist_closes_over_operand_form_replacements() -> None:
     assert source_descriptor.key in generated.source
     assert replacement_descriptor.key in generated.source
     assert ".match_kind = LOOM_LOW_OPERAND_FORM_MATCH_ALL_EQUAL_I64" in generated.source
+
+
+def test_schedule_alternatives_are_validated_closed_and_remapped() -> None:
+    base_descriptor = TEST_LOW_ADD_I32_DESCRIPTOR
+    alternative_descriptor = replace(
+        base_descriptor,
+        key="test.add.i32.pipeline_b",
+        mnemonic="test.add.i32.pipeline_b",
+        encoding_id=2,
+    )
+    source_descriptor = replace(
+        base_descriptor,
+        schedule_alternatives=(alternative_descriptor.key,),
+        encoding_id=1,
+    )
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(source_descriptor, alternative_descriptor),
+    )
+
+    compiled = compiler.compile_descriptor_set(
+        descriptor_set,
+        DescriptorAllowlist(keys=(source_descriptor.key,)),
+    )
+
+    assert [descriptor.key for descriptor in compiled.descriptors] == [
+        source_descriptor.key,
+        alternative_descriptor.key,
+    ]
+    assert compiled.schedule_alternative_rows == [(0, 1)]
+
+    view_spec = replace(
+        descriptor_set,
+        key="test.low.schedule_alternative_view",
+        c_table_prefix="TestLowScheduleAlternativeView",
+        descriptors=(alternative_descriptor, source_descriptor),
+    )
+    compiled_view = views.descriptor_set_view_for_spec(compiled, view_spec)
+    assert compiled_view.schedule_alternative_rows == [(1, 0)]
+    assert not compiled_view.uses_storage_schedule_alternative_tables
+
+    generated_family = generate_descriptor_set_family(
+        descriptor_set,
+        (view_spec,),
+    )
+    assert "kTestLowScheduleAlternativeViewScheduleAlternatives" in (generated_family.source)
+    assert ".source_descriptor_ordinal = 1" in generated_family.source
+    assert ".alternative_descriptor_ordinal = 0" in generated_family.source
+
+    generated = generate_descriptor_set(
+        descriptor_set,
+        DescriptorAllowlist(keys=(source_descriptor.key,)),
+    )
+    assert "loom_low_schedule_alternative_t" in generated.source
+    assert ".source_descriptor_ordinal = 0" in generated.source
+    assert ".alternative_descriptor_ordinal = 1" in generated.source
+
+
+def test_schedule_alternative_rejects_semantic_changes() -> None:
+    base_descriptor = TEST_LOW_ADD_I32_DESCRIPTOR
+    alternative_descriptor = replace(
+        base_descriptor,
+        key="test.sub.i32.pipeline_b",
+        mnemonic="test.sub.i32.pipeline_b",
+        semantic_tag="integer.sub.i32",
+    )
+    source_descriptor = replace(
+        base_descriptor,
+        schedule_alternatives=(alternative_descriptor.key,),
+    )
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(source_descriptor, alternative_descriptor),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor 'test.add.i32' schedule alternative 'test.sub.i32.pipeline_b' changes semantic, allocation, or timing facts"),
+    ):
+        compiler.compile_descriptor_set(descriptor_set)
 
 
 def test_operand_forms_preserve_assembly_implicit_packet_sources() -> None:
@@ -1420,6 +1920,8 @@ def test_generate_test_low_core_descriptor_set() -> None:
     assert '"OpIAdd"' in generated.source
     assert ".op_kind = LOOM_LOW_DESCRIPTOR_OP_KIND_CONST," in generated.source
     assert (".instruction_class_flags = LOOM_LOW_INSTRUCTION_CLASS_FLAG_SCALAR_ALU") in generated.source
+    assert ".kind = LOOM_LOW_ISSUE_USE_KIND_REQUIRED," in generated.source
+    assert ".kind = LOOM_LOW_ISSUE_USE_KIND_RESERVED," in generated.source
 
 
 def test_generator_resolves_symbolic_hazard_resources() -> None:
@@ -2306,7 +2808,7 @@ def test_generator_derives_minimum_issue_cycles_from_resource_pressure() -> None
         TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes[1],
         issue_uses=(
             IssueUse(scalar_resource.name, cycles=3, units=1),
-            IssueUse(scalar_resource.name, cycles=2, units=2),
+            IssueUse(scalar_resource.name, cycles=2, units=2, stage=3),
             IssueUse(vector_resource.name, cycles=3, units=4),
         ),
     )
@@ -2325,6 +2827,434 @@ def test_generator_derives_minimum_issue_cycles_from_resource_pressure() -> None
     # incorrectly serialized by summing their individual lower bounds.
     assert compiled.schedule_rows[0]["minimum_issue_cycles"] == 4
     assert ".minimum_issue_cycles = 4," in generated.source
+    # Calendar storage depends on the furthest stage, not throughput cycles.
+    assert [(row.slot_start, row.slot_mask) for row in compiled.resource_calendars] == [(0, 7), (8, 3)]
+    assert compiled.resource_calendar_slot_count == 12
+
+
+def test_generator_shares_resource_calendar_horizons() -> None:
+    schedule_classes = tuple(
+        replace(schedule, issue_uses=(IssueUse("test.shared_b", cycles=3, units=1, stage=4),)) if schedule.name == "test.event.slow" else schedule
+        for schedule in TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes
+    )
+    compiled = compiler.compile_descriptor_set(
+        replace(TEST_LOW_CORE_DESCRIPTOR_SET, schedule_classes=schedule_classes),
+        DescriptorAllowlist(keys=("test.event.fast.i32", "test.event.slow.i32")),
+    )
+    assert compiled.resource_calendars[compiled.resource_ids["test.shared_a"]] == compiled.resource_calendars[compiled.resource_ids["test.shared_b"]]
+    assert compiled.resource_calendars[compiled.resource_ids["test.shared_a"]].slot_mask == 7
+    assert compiled.resource_calendar_slot_count == 8
+
+
+@pytest.mark.parametrize(("stage", "cycles", "slot_count"), [(0, 1, 1), (3, 2, 8), (65535, 2, 131072)])
+def test_generator_bounds_resource_calendar_stage_and_duration(stage: int, cycles: int, slot_count: int) -> None:
+    resource = TEST_LOW_CORE_DESCRIPTOR_SET.resources[0]
+    schedule = replace(TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes[1], issue_uses=(IssueUse(resource.name, stage=stage, cycles=cycles, units=1),))
+    compiled = compiler.compile_descriptor_set(replace(TEST_LOW_CORE_DESCRIPTOR_SET, resources=(resource,), schedule_classes=(schedule,), descriptors=(TEST_LOW_ADD_I32_DESCRIPTOR,)))
+    assert compiled.resource_calendar_slot_count == slot_count
+    assert compiled.resource_calendars[0].slot_start == 0
+    assert compiled.resource_calendars[0].slot_mask == slot_count - 1
+
+
+def test_generator_emits_compact_timing_event_tables() -> None:
+    compiled = compiler.compile_descriptor_set(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        DescriptorAllowlist(
+            keys=(
+                "test.event.fast.i32",
+                "test.event.consume.early.i32",
+                "test.event.consume.late.i32",
+            )
+        ),
+    )
+    generated = generate_descriptor_set(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        DescriptorAllowlist(
+            keys=(
+                "test.event.fast.i32",
+                "test.event.consume.early.i32",
+                "test.event.consume.late.i32",
+            )
+        ),
+    )
+
+    assert [event.name for event in compiled.timing_events] == [
+        "test.write.fast",
+        "test.read.early",
+        "test.read.late",
+    ]
+    assert [separation.minimum_issue_separation_cycles for separation in compiled.event_separations] == [0, -2, 3]
+    assert "kTestLowCoreTimingEvents" in generated.source
+    assert "kTestLowCoreEventSeparations" in generated.source
+    assert ".minimum_issue_separation_cycles = -2," in generated.source
+    assert ".separation_start = 2," in generated.source
+    assert ".separation_count = 0," in generated.source
+    assert ".separation_count = 1," in generated.source
+    assert ".maximum_issue_separation_cycles = 3," in generated.source
+
+
+@pytest.mark.parametrize(
+    ("delays", "expected_span"),
+    [
+        ((0, -1, 0, -2, 0, -3, 0, -4), (0, 0, 0)),
+        ((-2, 0, 3, 0, 1, -1, 0, -3), (2, 3, 3)),
+        ((2, -1, 0, 0, -2, 0, 0, -3), (0, 1, 2)),
+        ((0, 0, -1, 0, 0, -2, 0, 4), (7, 1, 4)),
+        ((1, 2, 3, 4, 5, 6, 7, 8), (0, 8, 8)),
+    ],
+)
+def test_generator_bounds_frontier_spans_without_discarding_pair_facts(delays: tuple[int, ...], expected_span: tuple[int, int, int]) -> None:
+    events = TEST_LOW_CORE_DESCRIPTOR_SET.timing_events
+    separations = tuple(EventSeparation(events[0].name, event.name, delay, ModelQuality.EXACT) for event, delay in zip(events, delays, strict=True))
+    descriptor_set = replace(TEST_LOW_CORE_DESCRIPTOR_SET, event_separations=separations)
+    compiled = compiler.compile_descriptor_set(descriptor_set)
+    assert tuple(compiled.event_separations) == separations
+    generated = generate_descriptor_set(descriptor_set)
+    spans = re.findall(
+        r"\.separation_start = (\d+),\s*\.separation_count = (\d+),\s*\.maximum_issue_separation_cycles = (\d+),",
+        generated.source,
+    )
+    assert [tuple(map(int, span)) for span in spans] == [expected_span, *((0, 0, 0),) * (len(events) - 1)]
+
+
+def test_generator_rejects_duplicate_schedule_resource() -> None:
+    resource = TEST_LOW_CORE_DESCRIPTOR_SET.resources[0]
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        resources=(*TEST_LOW_CORE_DESCRIPTOR_SET.resources, resource),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' resource 'test.scalar' is duplicated"),
+    ):
+        generate_descriptor_set(descriptor_set)
+
+
+def test_generator_rejects_zero_schedule_resource_capacity() -> None:
+    resources = tuple(replace(resource, capacity_per_cycle=0) if resource.name == "test.shared_a" else resource for resource in TEST_LOW_CORE_DESCRIPTOR_SET.resources)
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' resource 'test.shared_a' has zero per-cycle capacity"),
+    ):
+        generate_descriptor_set(replace(TEST_LOW_CORE_DESCRIPTOR_SET, resources=resources))
+
+
+def test_generator_rejects_mismatched_contention_group_capacity() -> None:
+    resources = tuple(replace(resource, capacity_per_cycle=3) if resource.name == "test.shared_b" else resource for resource in TEST_LOW_CORE_DESCRIPTOR_SET.resources)
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' resource 'test.shared_b' capacity 3 does not match contention group 1 capacity 2"),
+    ):
+        generate_descriptor_set(replace(TEST_LOW_CORE_DESCRIPTOR_SET, resources=resources))
+
+
+def test_generator_rejects_duplicate_timing_event() -> None:
+    timing_event = TEST_LOW_CORE_DESCRIPTOR_SET.timing_events[0]
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' timing event 'test.write.fast' is duplicated"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                timing_events=(
+                    *TEST_LOW_CORE_DESCRIPTOR_SET.timing_events,
+                    timing_event,
+                ),
+            )
+        )
+
+
+def test_generator_rejects_unknown_event_separation_producer() -> None:
+    separation = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET.event_separations[0],
+        producer_event="test.missing",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' event separation 'test.missing' -> 'test.read.early' references an unknown producer event"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                event_separations=(
+                    separation,
+                    *TEST_LOW_CORE_DESCRIPTOR_SET.event_separations[1:],
+                ),
+            )
+        )
+
+
+def test_generator_rejects_unknown_event_separation_consumer() -> None:
+    separation = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET.event_separations[0],
+        consumer_event="test.missing",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' event separation 'test.write.fast' -> 'test.missing' references an unknown consumer event"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                event_separations=(
+                    separation,
+                    *TEST_LOW_CORE_DESCRIPTOR_SET.event_separations[1:],
+                ),
+            )
+        )
+
+
+def test_generator_rejects_duplicate_event_separation() -> None:
+    separation = TEST_LOW_CORE_DESCRIPTOR_SET.event_separations[0]
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' event separation 'test.write.fast' -> 'test.read.early' is duplicated"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                event_separations=(
+                    *TEST_LOW_CORE_DESCRIPTOR_SET.event_separations,
+                    separation,
+                ),
+            )
+        )
+
+
+def test_generator_rejects_out_of_range_event_separation() -> None:
+    separation = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET.event_separations[0],
+        minimum_issue_separation_cycles=1 << 31,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' event separation 'test.write.fast' -> 'test.read.early' minimum issue separation does not fit i32"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                event_separations=(
+                    separation,
+                    *TEST_LOW_CORE_DESCRIPTOR_SET.event_separations[1:],
+                ),
+            )
+        )
+
+
+def test_generator_rejects_out_of_range_schedule_class_separation() -> None:
+    schedule_classes = tuple(
+        replace(
+            schedule_class,
+            minimum_issue_separation_cycles=-(1 << 31) - 1,
+        )
+        if schedule_class.name == "test.event.fast"
+        else schedule_class
+        for schedule_class in TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' schedule class 'test.event.fast' minimum issue separation does not fit i32"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                schedule_classes=schedule_classes,
+            )
+        )
+
+
+def test_generator_rejects_out_of_range_schedule_distance() -> None:
+    schedule_classes = tuple(
+        replace(schedule_class, schedule_distance_cycles=1 << 16) if schedule_class.name == "test.event.fast" else schedule_class for schedule_class in TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' schedule class 'test.event.fast' schedule distance does not fit u16"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                schedule_classes=schedule_classes,
+            )
+        )
+
+
+def test_generator_rejects_issue_use_exceeding_resource_capacity() -> None:
+    schedule_classes = tuple(
+        replace(
+            schedule_class,
+            issue_uses=(replace(schedule_class.issue_uses[0], units=3),),
+        )
+        if schedule_class.name == "test.event.fast"
+        else schedule_class
+        for schedule_class in TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' schedule class 'test.event.fast' consumes 3 units of resource 'test.shared_a' with capacity 2"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                schedule_classes=schedule_classes,
+            )
+        )
+
+
+def test_generator_rejects_aggregate_issue_use_exceeding_shared_capacity() -> None:
+    schedule_classes = tuple(
+        replace(
+            schedule_class,
+            issue_uses=(
+                schedule_class.issue_uses[0],
+                schedule_class.issue_uses[0],
+                schedule_class.issue_uses[0],
+            ),
+        )
+        if schedule_class.name == "test.event.fast"
+        else schedule_class
+        for schedule_class in TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' schedule class 'test.event.fast' consumes 3 units from group:1 at relative cycle 0, exceeding capacity 2"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                schedule_classes=schedule_classes,
+            )
+        )
+
+
+def test_generator_allows_overlapping_resource_reservations() -> None:
+    schedule_classes = tuple(
+        replace(
+            schedule_class,
+            issue_uses=tuple(
+                replace(issue_use, kind=IssueUseKind.RESERVED)
+                for issue_use in (
+                    schedule_class.issue_uses[0],
+                    schedule_class.issue_uses[0],
+                    schedule_class.issue_uses[0],
+                )
+            ),
+        )
+        if schedule_class.name == "test.event.fast"
+        else schedule_class
+        for schedule_class in TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes
+    )
+
+    generate_descriptor_set(
+        replace(
+            TEST_LOW_CORE_DESCRIPTOR_SET,
+            schedule_classes=schedule_classes,
+        )
+    )
+
+
+def test_generator_rejects_required_uses_overlapping_a_reservation() -> None:
+    schedule_classes = tuple(
+        replace(
+            schedule_class,
+            issue_uses=(
+                schedule_class.issue_uses[0],
+                schedule_class.issue_uses[0],
+                replace(
+                    schedule_class.issue_uses[0],
+                    kind=IssueUseKind.RESERVED,
+                ),
+            ),
+        )
+        if schedule_class.name == "test.event.fast"
+        else schedule_class
+        for schedule_class in TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' schedule class 'test.event.fast' consumes 3 units from group:1 at relative cycle 0, exceeding capacity 2"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                schedule_classes=schedule_classes,
+            )
+        )
+
+
+def test_generator_rejects_invalid_issue_use_kind() -> None:
+    schedule_classes = tuple(
+        replace(
+            schedule_class,
+            issue_uses=(
+                replace(
+                    schedule_class.issue_uses[0],
+                    kind=cast(IssueUseKind, "invalid"),
+                ),
+            ),
+        )
+        if schedule_class.name == "test.event.fast"
+        else schedule_class
+        for schedule_class in TEST_LOW_CORE_DESCRIPTOR_SET.schedule_classes
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor set 'test.low.core' schedule class 'test.event.fast' has invalid issue-use kind 'invalid'"),
+    ):
+        generate_descriptor_set(
+            replace(
+                TEST_LOW_CORE_DESCRIPTOR_SET,
+                schedule_classes=schedule_classes,
+            )
+        )
+
+
+def test_generator_rejects_unknown_operand_timing_event() -> None:
+    descriptor = replace(
+        TEST_LOW_ADD_I32_DESCRIPTOR,
+        operands=(
+            replace(
+                TEST_LOW_ADD_I32_DESCRIPTOR.operands[0],
+                write_event="test.missing",
+            ),
+            *TEST_LOW_ADD_I32_DESCRIPTOR.operands[1:],
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor 'test.add.i32' operand 'dst' write references unknown timing event 'test.missing'"),
+    ):
+        generate_descriptor_set(replace(TEST_LOW_CORE_DESCRIPTOR_SET, descriptors=(descriptor,)))
+
+
+def test_generator_rejects_unknown_effect_endpoint_event() -> None:
+    descriptor = next(descriptor for descriptor in TEST_LOW_CORE_DESCRIPTOR_SET.descriptors if descriptor.key == "test.event.memory.read.i32")
+    descriptor = replace(
+        descriptor,
+        effects=(replace(descriptor.effects[0], producer_event="test.missing"),),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor 'test.event.memory.read.i32' effect 0 producer references unknown timing event 'test.missing'"),
+    ):
+        generate_descriptor_set(replace(TEST_LOW_CORE_DESCRIPTOR_SET, descriptors=(descriptor,)))
 
 
 def test_generator_emits_enum_immediate_domains() -> None:
@@ -2427,6 +3357,60 @@ def test_generator_emits_defaulted_immediate() -> None:
 
     assert "LOOM_LOW_IMMEDIATE_FLAG_DEFAULT_VALUE" in generated.source
     assert ".default_value = INT64_C(7)" in generated.source
+
+
+def test_generator_emits_immediate_value_step() -> None:
+    immediate = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR.immediates[0],
+        value_step=64,
+    )
+    descriptor = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR,
+        immediates=(immediate,),
+    )
+    descriptor_set = replace(TEST_LOW_CORE_DESCRIPTOR_SET, descriptors=(descriptor,))
+
+    generated = generate_descriptor_set(descriptor_set)
+
+    assert ".value_step = UINT64_C(64)" in generated.source
+
+
+def test_generator_rejects_zero_immediate_value_step() -> None:
+    immediate = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR.immediates[0],
+        value_step=0,
+    )
+    descriptor = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR,
+        immediates=(immediate,),
+    )
+    descriptor_set = replace(TEST_LOW_CORE_DESCRIPTOR_SET, descriptors=(descriptor,))
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor 'test.const.i32' immediate 'i32_value' has zero value step"),
+    ):
+        generate_descriptor_set(descriptor_set)
+
+
+def test_generator_rejects_misaligned_immediate_default() -> None:
+    immediate = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR.immediates[0],
+        flags=(ImmediateFlag.DEFAULT_VALUE,),
+        value_step=4,
+        default_value=7,
+    )
+    descriptor = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR,
+        immediates=(immediate,),
+    )
+    descriptor_set = replace(TEST_LOW_CORE_DESCRIPTOR_SET, descriptors=(descriptor,))
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("descriptor 'test.const.i32' immediate 'i32_value' default value is not a multiple of 4"),
+    ):
+        generate_descriptor_set(descriptor_set)
 
 
 def test_generator_rejects_default_without_default_flag() -> None:

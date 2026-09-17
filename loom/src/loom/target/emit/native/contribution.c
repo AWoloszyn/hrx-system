@@ -11,7 +11,7 @@
 
 typedef struct loom_native_section_accumulator_t {
   // Section descriptor being assembled.
-  loom_native_elf64le_section_t section;
+  loom_native_elf_section_t section;
   // Total assembled byte length so far, before final allocation.
   uint64_t next_offset;
 } loom_native_section_accumulator_t;
@@ -19,6 +19,13 @@ typedef struct loom_native_section_accumulator_t {
 static uint64_t loom_native_contribution_normalize_alignment(
     uint64_t alignment) {
   return alignment == 0 ? 1u : alignment;
+}
+
+static uint64_t loom_native_contribution_byte_length(
+    const loom_native_section_contribution_t* contribution) {
+  return contribution->section_type == LOOM_NATIVE_ELF_SECTION_TYPE_NOBITS
+             ? contribution->zero_fill_length
+             : (uint64_t)contribution->contents.data_length;
 }
 
 static iree_status_t loom_native_contribution_validate_name(
@@ -63,11 +70,24 @@ static iree_status_t loom_native_contribution_validate(
         IREE_STATUS_INVALID_ARGUMENT,
         "native contribution %" PRIhsz " has a size but no contents", index);
   }
+  if (contribution->section_type == LOOM_NATIVE_ELF_SECTION_TYPE_NOBITS) {
+    if (contribution->contents.data_length != 0) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "native SHT_NOBITS contribution %" PRIhsz
+                              " must not have contents",
+                              index);
+    }
+  } else if (contribution->zero_fill_length != 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "native content-backed contribution %" PRIhsz
+                            " must not have a zero-fill length",
+                            index);
+  }
   return iree_ok_status();
 }
 
 static bool loom_native_contribution_sections_match(
-    const loom_native_elf64le_section_t* section,
+    const loom_native_elf_section_t* section,
     const loom_native_section_contribution_t* contribution) {
   return section->type == contribution->section_type &&
          section->flags == contribution->section_flags &&
@@ -117,6 +137,7 @@ static iree_status_t loom_native_contribution_find_or_add_section(
               .link = contribution->link,
               .info = contribution->info,
               .contents = iree_const_byte_span_empty(),
+              .zero_fill_length = 0,
           },
       .next_offset = 0,
   };
@@ -155,9 +176,9 @@ static iree_status_t loom_native_contribution_plan_layout(
                               "native contribution section layout overflow");
     }
     uint64_t next_offset = 0;
-    if (!iree_checked_add_u64(section_offset,
-                              (uint64_t)contribution->contents.data_length,
-                              &next_offset)) {
+    if (!iree_checked_add_u64(
+            section_offset, loom_native_contribution_byte_length(contribution),
+            &next_offset)) {
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "native contribution section layout overflow");
     }
@@ -172,8 +193,7 @@ static iree_status_t loom_native_contribution_plan_layout(
 
 static iree_status_t loom_native_contribution_allocate_output(
     const loom_native_section_accumulator_t* accumulators,
-    iree_host_size_t section_count,
-    loom_native_elf64le_section_t** out_sections,
+    iree_host_size_t section_count, loom_native_elf_section_t** out_sections,
     uint8_t*** out_section_contents, iree_arena_allocator_t* arena) {
   *out_sections = NULL;
   *out_section_contents = NULL;
@@ -195,7 +215,7 @@ static iree_status_t loom_native_contribution_allocate_output(
         iree_arena_allocate(arena, section_name_bytes, (void**)&section_names));
   }
 
-  loom_native_elf64le_section_t* sections = NULL;
+  loom_native_elf_section_t* sections = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, section_count, sizeof(*sections), (void**)&sections));
   uint8_t** section_contents = NULL;
@@ -217,6 +237,11 @@ static iree_status_t loom_native_contribution_allocate_output(
     }
     if (accumulator->next_offset == 0) {
       sections[i].contents = iree_const_byte_span_empty();
+      continue;
+    }
+    if (accumulator->section.type == LOOM_NATIVE_ELF_SECTION_TYPE_NOBITS) {
+      sections[i].contents = iree_const_byte_span_empty();
+      sections[i].zero_fill_length = accumulator->next_offset;
       continue;
     }
     if (accumulator->next_offset > IREE_HOST_SIZE_MAX) {
@@ -244,6 +269,9 @@ static iree_status_t loom_native_contribution_copy_contents(
     uint8_t** section_contents) {
   for (iree_host_size_t i = 0; i < contribution_count; ++i) {
     const loom_native_section_contribution_t* contribution = &contributions[i];
+    if (contribution->section_type == LOOM_NATIVE_ELF_SECTION_TYPE_NOBITS) {
+      continue;
+    }
     if (contribution->contents.data_length == 0) {
       continue;
     }
@@ -290,7 +318,7 @@ iree_status_t loom_native_assemble_section_contributions(
         contributions, contribution_count, accumulators, &section_count,
         contribution_layouts);
   }
-  loom_native_elf64le_section_t* sections = NULL;
+  loom_native_elf_section_t* sections = NULL;
   uint8_t** section_contents = NULL;
   if (iree_status_is_ok(status)) {
     status = loom_native_contribution_allocate_output(

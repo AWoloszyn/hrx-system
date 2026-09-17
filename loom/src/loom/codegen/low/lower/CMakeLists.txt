@@ -64,9 +64,8 @@ loom_cc_library(
     loom::codegen::low::builder
     loom::codegen::low::descriptor_traits
     loom::codegen::low::descriptors
+    loom::codegen::low::diagnostics
     loom::codegen::low::memory_access
-    loom::codegen::low::memory_access_builder
-    loom::codegen::low::memory_access_ir
     loom::codegen::low::source_memory_plan
     loom::codegen::low::target_binding
     loom::decision::predicate
@@ -84,7 +83,9 @@ loom_cc_library(
     loom::ops::low
     loom::ops::op_defs
     loom::ops::scf
+    loom::ops::type_registry
     loom::ops::vector
+    loom::ops::view
     loom::rewrite::materialize
     loom::rewrite::remap
     loom::sanitizer::options
@@ -200,6 +201,7 @@ loom_cc_test(
     loom::codegen::low::testing::source_workload
     loom::ir
     loom::ops::index
+    loom::ops::scalar
 )
 
 loom_cc_test(

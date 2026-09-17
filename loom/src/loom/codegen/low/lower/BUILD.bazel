@@ -23,7 +23,6 @@ _LOWER_VISIBILITY = [
     "//loom/src/loom/target/reporting:__pkg__",
     "//loom/src/loom/target/test:__subpackages__",
     "//loom/src/loom/tools/loom-check:__pkg__",
-    "//loom/src/loom/tools/loom-check:__pkg__",
 ]
 
 loom_cc_library(
@@ -80,9 +79,8 @@ loom_cc_library(
         "//loom/src/loom/codegen/low:builder",
         "//loom/src/loom/codegen/low:descriptor_traits",
         "//loom/src/loom/codegen/low:descriptors",
+        "//loom/src/loom/codegen/low:diagnostics",
         "//loom/src/loom/codegen/low:memory_access",
-        "//loom/src/loom/codegen/low:memory_access_builder",
-        "//loom/src/loom/codegen/low:memory_access_ir",
         "//loom/src/loom/codegen/low:source_memory_plan",
         "//loom/src/loom/codegen/low:target_binding",
         "//loom/src/loom/decision:predicate",
@@ -92,6 +90,7 @@ loom_cc_library(
         "//loom/src/loom/ir:facts",
         "//loom/src/loom/ops:func_symbol_facts",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops:type_registry",
         "//loom/src/loom/ops/buffer",
         "//loom/src/loom/ops/cfg",
         "//loom/src/loom/ops/encoding",
@@ -101,6 +100,7 @@ loom_cc_library(
         "//loom/src/loom/ops/low",
         "//loom/src/loom/ops/scf",
         "//loom/src/loom/ops/vector",
+        "//loom/src/loom/ops/view",
         "//loom/src/loom/rewrite:materialize",
         "//loom/src/loom/rewrite:remap",
         "//loom/src/loom/sanitizer:options",
@@ -210,6 +210,7 @@ loom_cc_test(
         "//loom/src/loom/codegen/low/testing:source_workload",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scalar",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",

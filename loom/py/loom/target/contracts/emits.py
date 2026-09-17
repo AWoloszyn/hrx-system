@@ -4,11 +4,11 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Descriptor-backed contract emission forms."""
+"""Target-Low contract emission forms."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, unique
 
@@ -87,6 +87,149 @@ type ResultTypeBinding = ValueRef | TypePattern | DescriptorResultType
 
 
 @dataclass(frozen=True, slots=True)
+class EmitRegisterSlice:
+    """Projects consecutive register units from one source value."""
+
+    source: ValueRef
+    result: ValueRef
+    unit_offset: int = 0
+    unit_count: int | None = None
+    result_type: ResultTypeBinding | None = None
+
+    def __post_init__(self) -> None:
+        if self.unit_offset < 0 or self.unit_offset > 0xFFFF:
+            raise ValueError("register slice unit offset must fit u16")
+        if self.unit_count is not None and (
+            self.unit_count <= 0 or self.unit_count > 0xFFFF
+        ):
+            raise ValueError("register slice unit count must be in [1, 65535]")
+        if self.unit_count is not None and self.result_type is not None:
+            raise ValueError(
+                "register slice cannot specify both unit count and result type"
+            )
+        if (
+            self.unit_count is not None
+            and self.result.kind is not SourceValueKind.TEMPORARY
+        ):
+            raise ValueError(
+                "register slice unit count is only valid for temporary results"
+            )
+
+    def validate(
+        self,
+        source_op: Op,
+        descriptor_set: DescriptorSet,
+        defined_temporaries: set[str],
+        *,
+        source_ops: Mapping[str, Op] | None = None,
+    ) -> tuple[str, ...]:
+        del descriptor_set
+        _validate_structural_source(
+            source_op,
+            self.source,
+            "register slice source",
+            defined_temporaries,
+            source_ops,
+        )
+        return _validate_structural_result(
+            source_op,
+            self.result,
+            self.result_type,
+            "register slice result",
+            defined_temporaries,
+            has_derived_type=self.unit_count is not None,
+            source_ops=source_ops,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EmitRegisterCopy:
+    """Copies one register value into a compatible register class."""
+
+    source: ValueRef
+    result: ValueRef
+    result_type: ResultTypeBinding | None = None
+
+    def validate(
+        self,
+        source_op: Op,
+        descriptor_set: DescriptorSet,
+        defined_temporaries: set[str],
+        *,
+        source_ops: Mapping[str, Op] | None = None,
+    ) -> tuple[str, ...]:
+        del descriptor_set
+        _validate_structural_source(
+            source_op,
+            self.source,
+            "register copy source",
+            defined_temporaries,
+            source_ops,
+        )
+        return _validate_structural_result(
+            source_op,
+            self.result,
+            self.result_type,
+            "register copy result",
+            defined_temporaries,
+            source_ops=source_ops,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EmitRegisterConcat:
+    """Concatenates register-unit sources into one aggregate value."""
+
+    sources: tuple[ValueRef, ...]
+    result: ValueRef
+    result_type: ResultTypeBinding | None = None
+
+    def __init__(
+        self,
+        *,
+        sources: Sequence[ValueRef],
+        result: ValueRef,
+        result_type: ResultTypeBinding | None = None,
+    ) -> None:
+        object.__setattr__(self, "sources", tuple(sources))
+        object.__setattr__(self, "result", result)
+        object.__setattr__(self, "result_type", result_type)
+        if not sources:
+            raise ValueError("register concat needs at least one source")
+
+    def validate(
+        self,
+        source_op: Op,
+        descriptor_set: DescriptorSet,
+        defined_temporaries: set[str],
+        *,
+        source_ops: Mapping[str, Op] | None = None,
+    ) -> tuple[str, ...]:
+        del descriptor_set
+        for source_index, source in enumerate(self.sources):
+            _validate_structural_source(
+                source_op,
+                source,
+                f"register concat source {source_index}",
+                defined_temporaries,
+                source_ops,
+            )
+        return _validate_structural_result(
+            source_op,
+            self.result,
+            self.result_type,
+            "register concat result",
+            defined_temporaries,
+            source_ops=source_ops,
+        )
+
+
+type ContractEmit = (
+    EmitDescriptorOp | EmitRegisterCopy | EmitRegisterSlice | EmitRegisterConcat
+)
+
+
+@dataclass(frozen=True, slots=True)
 class EmitDescriptorOp:
     """Emits one descriptor-backed low op from source fields."""
 
@@ -139,6 +282,8 @@ class EmitDescriptorOp:
         source_op: Op,
         descriptor_set: DescriptorSet,
         defined_temporaries: set[str],
+        *,
+        source_ops: Mapping[str, Op] | None = None,
     ) -> tuple[str, ...]:
         _require_descriptor(descriptor_set, self.descriptor)
         if (
@@ -174,9 +319,11 @@ class EmitDescriptorOp:
                 self.descriptor, descriptor_field, "descriptor operand binding"
             )
             _require_input_descriptor_role(self.descriptor, operand)
-            value_ref.validate(
+            _validate_value_ref(
                 source_op,
+                value_ref,
                 f"descriptor '{self.descriptor.key}' operand '{descriptor_field}'",
+                source_ops=source_ops,
                 defined_temporaries=defined_temporaries,
             )
         produced_temporaries = []
@@ -216,9 +363,11 @@ class EmitDescriptorOp:
                     )
                 produced_temporaries.append(value_ref.field)
             else:
-                value_ref.validate(
+                _validate_value_ref(
                     source_op,
+                    value_ref,
                     f"descriptor '{self.descriptor.key}' result '{descriptor_field}'",
+                    source_ops=source_ops,
                 )
         for descriptor_field, binding in result_type_bindings.items():
             operand = _require_descriptor_operand(
@@ -238,9 +387,11 @@ class EmitDescriptorOp:
                         f"{source_op.name}: descriptor result type "
                         f"'{descriptor_field}' cannot bind a source-memory value"
                     )
-                binding.validate(
+                _validate_value_ref(
                     source_op,
+                    binding,
                     f"descriptor result type '{descriptor_field}'",
+                    source_ops=source_ops,
                     defined_temporaries=defined_temporaries,
                 )
         _validate_required_descriptor_operands(
@@ -259,6 +410,11 @@ class EmitDescriptorOp:
                     f"{source_op.name}: copied descriptor operand "
                     f"'{descriptor_field}' is not an operand binding"
                 )
+            _require_descriptor_copy_operand(
+                source_op,
+                self.descriptor,
+                descriptor_field,
+            )
         if self.form == DescriptorEmitForm.ACCUMULATE_LANES:
             if self.accumulator is None:
                 raise ValueError(
@@ -308,7 +464,7 @@ class EmitDescriptorOp:
             descriptor_set,
             operand_bindings,
         )
-        self._validate_immediates(source_op, descriptor_set)
+        self._validate_immediates(source_op, descriptor_set, source_ops)
         return tuple(produced_temporaries)
 
     def _validate_source_memory_emit(
@@ -428,6 +584,7 @@ class EmitDescriptorOp:
         self,
         source_op: Op,
         descriptor_set: DescriptorSet,
+        source_ops: Mapping[str, Op] | None,
     ) -> None:
         if isinstance(self.immediates, Mapping):
             bound_names = set[str]()
@@ -437,7 +594,14 @@ class EmitDescriptorOp:
                     immediate_name,
                     "descriptor immediate binding",
                 )
-                if isinstance(binding, AttrProject | SourceOpProject | ValueProject):
+                if isinstance(binding, ValueProject):
+                    binding.validate(
+                        source_op,
+                        self.descriptor,
+                        immediate_name,
+                        source_ops=source_ops,
+                    )
+                elif isinstance(binding, AttrProject | SourceOpProject):
                     binding.validate(source_op, self.descriptor, immediate_name)
                 elif isinstance(binding, SourceMemoryProject):
                     if self.source_memory is None:
@@ -446,6 +610,29 @@ class EmitDescriptorOp:
                             f"'{immediate_name}' needs a source-memory emit"
                         )
                     binding.validate(source_op, self.descriptor, immediate_name)
+                    if (
+                        binding.kind
+                        == SourceMemoryProjectKind.STATIC_BYTE_OFFSET_PLUS_LITERAL
+                    ):
+                        projected_minimum = (
+                            self.source_memory.static_byte_offset_minimum
+                            + binding.literal_i64
+                        )
+                        projected_maximum = (
+                            self.source_memory.static_byte_offset_maximum
+                            + binding.literal_i64
+                        )
+                        if not (
+                            -(2**63)
+                            <= projected_minimum
+                            <= projected_maximum
+                            <= (2**63) - 1
+                        ):
+                            raise ValueError(
+                                f"{source_op.name}: source-memory immediate "
+                                f"'{immediate_name}' static byte offset range plus "
+                                f"{binding.literal_i64} must fit in signed i64"
+                            )
                     if binding.kind == SourceMemoryProjectKind.DYNAMIC_BYTE_STRIDE and (
                         self.source_memory.dynamic_term_count is None
                         or binding.dynamic_term_index
@@ -482,6 +669,110 @@ class EmitDescriptorOp:
                 )
 
 
+def _validate_structural_source(
+    source_op: Op,
+    source: ValueRef,
+    subject: str,
+    defined_temporaries: set[str],
+    source_ops: Mapping[str, Op] | None,
+) -> None:
+    if source.kind not in (SourceValueKind.OPERAND, SourceValueKind.TEMPORARY):
+        raise ValueError(
+            f"{source_op.name}: {subject} must bind an operand or temporary"
+        )
+    _validate_value_ref(
+        source_op,
+        source,
+        subject,
+        source_ops=source_ops,
+        defined_temporaries=defined_temporaries,
+    )
+
+
+def _validate_structural_result(
+    source_op: Op,
+    result: ValueRef,
+    result_type: ResultTypeBinding | None,
+    subject: str,
+    defined_temporaries: set[str],
+    *,
+    has_derived_type: bool = False,
+    source_ops: Mapping[str, Op] | None = None,
+) -> tuple[str, ...]:
+    if result.kind not in (SourceValueKind.RESULT, SourceValueKind.TEMPORARY):
+        raise ValueError(
+            f"{source_op.name}: {subject} must bind a source result or temporary"
+        )
+    produced_temporaries: tuple[str, ...] = ()
+    if result.kind == SourceValueKind.TEMPORARY:
+        if result.field in defined_temporaries:
+            raise ValueError(
+                f"{source_op.name}: {subject} redefines temporary '{result.field}'"
+            )
+        if result_type is None and not has_derived_type:
+            raise ValueError(
+                f"{source_op.name}: {subject} temporary '{result.field}' "
+                "needs an explicit result type binding"
+            )
+        produced_temporaries = (result.field,)
+    else:
+        _validate_value_ref(
+            source_op,
+            result,
+            subject,
+            source_ops=source_ops,
+        )
+
+    if isinstance(result_type, DescriptorResultType):
+        raise ValueError(f"{source_op.name}: {subject} has no descriptor result type")
+    if isinstance(result_type, ValueRef):
+        if result_type.kind in (
+            SourceValueKind.SOURCE_MEMORY_DYNAMIC_TERM,
+            SourceValueKind.SOURCE_MEMORY_DYNAMIC_BYTE_OFFSET,
+            SourceValueKind.SOURCE_MEMORY_ADDRESS,
+        ):
+            raise ValueError(
+                f"{source_op.name}: {subject} type cannot bind source memory"
+            )
+        if result_type.kind == SourceValueKind.TEMPORARY:
+            raise ValueError(
+                f"{source_op.name}: {subject} type cannot bind a temporary"
+            )
+        _validate_value_ref(
+            source_op,
+            result_type,
+            f"{subject} type",
+            source_ops=source_ops,
+            defined_temporaries=defined_temporaries,
+        )
+    return produced_temporaries
+
+
+def _validate_value_ref(
+    source_op: Op,
+    value_ref: ValueRef,
+    subject: str,
+    *,
+    source_ops: Mapping[str, Op] | None,
+    defined_temporaries: Iterable[str] = (),
+) -> None:
+    referenced_op = source_op
+    if value_ref.source_node:
+        referenced_op = (
+            source_ops.get(value_ref.source_node) if source_ops is not None else None
+        )
+        if referenced_op is None:
+            raise ValueError(
+                f"{source_op.name}: {subject} references unknown source node "
+                f"'{value_ref.source_node}'"
+            )
+    value_ref.validate(
+        referenced_op,
+        subject,
+        defined_temporaries=defined_temporaries,
+    )
+
+
 def _require_descriptor_result_type_operand(
     source_op: Op,
     operand: Operand,
@@ -501,6 +792,34 @@ def _require_descriptor_result_type_operand(
         raise ValueError(
             f"{source_op.name}: descriptor result '{operand.field_name}' cannot "
             "infer a descriptor result type with zero register units"
+        )
+
+
+def _require_descriptor_copy_operand(
+    source_op: Op,
+    descriptor: Descriptor,
+    descriptor_field: str,
+) -> None:
+    operand = _require_descriptor_operand(
+        descriptor,
+        descriptor_field,
+        "copied descriptor operand",
+    )
+    register_alternatives = tuple(
+        alternative
+        for alternative in operand.reg_alts
+        if alternative.reg_class is not None
+        and RegClassAltFlag.IMMEDIATE not in alternative.flags
+    )
+    if not register_alternatives:
+        raise ValueError(
+            f"{source_op.name}: copied descriptor operand "
+            f"'{descriptor_field}' has no register alternative"
+        )
+    if operand.unit_count == 0:
+        raise ValueError(
+            f"{source_op.name}: copied descriptor operand "
+            f"'{descriptor_field}' has zero register units"
         )
 
 

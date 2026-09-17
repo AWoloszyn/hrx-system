@@ -1,0 +1,81 @@
+// Accumulator loads use signed 10-bit byte offsets aligned to 64 bytes.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @bounds(%pointer: reg<aie2p.ep>) -> (reg<aie2p.mbms>, reg<aie2p.mbms>) asm {
+  %minimum = vlda.acc %pointer, -512
+  %maximum = vlda.acc %pointer, 448
+  return %minimum, %maximum
+}
+
+// ====
+
+// The compiler pipeline must reject authored operands before cleanup can erase
+// their unused results.
+// RUN: emit source-low
+
+low.func.def retain target<amd.xdna.aie2p.core> @unused_overflow(%pointer: reg<aie2p.ep>) asm {
+  // ERROR@+1: STRUCTURE/014 "imm" "512"
+  %unused = vlda.acc %pointer, 512
+  return
+}
+
+// ====
+
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @overflow(%pointer: reg<aie2p.ep>) asm {
+  // ERROR@+1: STRUCTURE/014 "imm" "512"
+  %unused = vlda.acc %pointer, 512
+  return
+}
+
+// ====
+
+low.func.def target<amd.xdna.aie2p.core> @underflow(%pointer: reg<aie2p.ep>) asm {
+  // ERROR@+1: STRUCTURE/014 "imm" "-576"
+  %unused = vlda.acc %pointer, -576
+  return
+}
+
+// ====
+
+low.func.def target<amd.xdna.aie2p.core> @misaligned(%pointer: reg<aie2p.ep>) asm {
+  // ERROR@+1: STRUCTURE/014 "imm" "1"
+  %unused = vlda.acc %pointer, 1
+  return
+}
+
+// ====
+
+// A 128-bit load defines fresh W storage without a preserved input. A possibly
+// aliasing store invalidates the memory read.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @fresh_vector_loads(%pointer: reg<aie2p.ep>, %output: reg<aie2p.ep>) -> (reg<aie2p.vec256>, reg<aie2p.vec256>, reg<aie2p.vec256>) asm {
+  %first = vlda.128.i32x4 %pointer, 16
+  %same = vlda.128.i32x4 %pointer, 16
+  vst.128.i32x4 %first, %output, 0
+  %after = vlda.128.i32x4 %pointer, 16
+  return %first, %same, %after
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> @fresh_vector_loads(%pointer: reg<aie2p.ep>, %output: reg<aie2p.ep>) -> (reg<aie2p.vec256>, reg<aie2p.vec256>, reg<aie2p.vec256>) asm {
+  %first = vlda.128.i32x4 %pointer, 16
+  vst.128.i32x4 %first, %output, 0
+  %after = vlda.128.i32x4 %pointer, 16
+  return %first, %first, %after
+}
+
+// ====
+
+// Both load lanes and BF16 storage define their whole result register without
+// an input destination, including register-indexed addresses.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @fresh_indexed_vectors(%pointer: reg<aie2p.ep>, %index: reg<aie2p.edj>) -> (reg<aie2p.vec256>, reg<aie2p.ewl>, reg<aie2p.ewl>) asm {
+  %bytes = vldb.128.i8x16.index %pointer, %index
+  %bf16_a = vlda.128.bf16x8.index %pointer, %index
+  %bf16_b = vldb.128.bf16x8 %pointer, 16
+  return %bytes, %bf16_a, %bf16_b
+}

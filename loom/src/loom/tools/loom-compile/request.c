@@ -7,6 +7,7 @@
 #include "loom/tools/loom-compile/request.h"
 
 #include "loom/ops/op_defs.h"
+#include "loom/ops/pipeline/ops.h"
 #include "loom/target/entry_selection.h"
 #include "loom/target/projection.h"
 #include "loom/target/selection.h"
@@ -55,14 +56,49 @@ static iree_status_t loom_compile_request_lookup_root(
   return iree_ok_status();
 }
 
+static bool loom_compile_request_is_array_program(const loom_module_t* module,
+                                                  const loom_symbol_t* symbol) {
+  const loom_func_like_t function =
+      loom_func_like_const_cast(module, symbol->defining_op);
+  return loom_func_like_isa(function) &&
+         loom_func_like_abi(function) == LOOM_TARGET_ABI_ARRAY_PROGRAM;
+}
+
 static iree_status_t loom_compile_request_classify_symbol(
     const loom_module_t* module, const loom_symbol_t* symbol,
     loom_compile_product_t* out_product) {
+  if (loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_PIPELINE)) {
+    const loom_symbol_product_carrier_t carrier =
+        loom_symbol_definition_product_carrier(symbol->definition,
+                                               symbol->defining_op);
+    switch (carrier) {
+      case LOOM_SYMBOL_PRODUCT_CARRIER_UNCLASSIFIED:
+      case 0:
+        *out_product = LOOM_COMPILE_PRODUCT_MODULE;
+        return iree_ok_status();
+      case LOOM_PIPELINE_DEF_SCOPE_KERNEL:
+        *out_product = LOOM_COMPILE_PRODUCT_KERNEL;
+        return iree_ok_status();
+      case LOOM_PIPELINE_DEF_SCOPE_COMMAND:
+        *out_product = LOOM_COMPILE_PRODUCT_COMMAND;
+        return iree_ok_status();
+      default: {
+        const iree_string_view_t symbol_name =
+            module->strings.entries[symbol->name_id];
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "pipeline root '@%.*s' has unsupported product scope %u",
+            (int)symbol_name.size, symbol_name.data, (unsigned)carrier);
+      }
+    }
+  }
   if (loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_COMMAND_PROGRAM)) {
     *out_product = LOOM_COMPILE_PRODUCT_COMMAND;
     return iree_ok_status();
   }
-  if (loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_KERNEL)) {
+  if (loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_KERNEL) ||
+      loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_KERNEL_ENTRY) ||
+      loom_compile_request_is_array_program(module, symbol)) {
     *out_product = LOOM_COMPILE_PRODUCT_KERNEL;
     return iree_ok_status();
   }
@@ -183,11 +219,46 @@ static bool loom_compile_request_is_concrete_public_command(
                           LOOM_SYMBOL_FLAG_PUBLIC | LOOM_SYMBOL_FLAG_RETAIN);
 }
 
-static bool loom_compile_request_is_concrete_kernel_entry(
-    const loom_symbol_t* symbol) {
+static bool loom_compile_request_is_concrete_scoped_pipeline(
+    const loom_symbol_t* symbol, loom_pipeline_def_scope_t scope) {
   return symbol->defining_op != NULL &&
-         loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_KERNEL_ENTRY) &&
-         !loom_symbol_definition_is_declaration(symbol->definition);
+         loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_PIPELINE) &&
+         loom_symbol_definition_product_carrier(symbol->definition,
+                                                symbol->defining_op) == scope &&
+         !loom_symbol_definition_is_declaration(symbol->definition) &&
+         iree_any_bit_set(symbol->flags,
+                          LOOM_SYMBOL_FLAG_PUBLIC | LOOM_SYMBOL_FLAG_RETAIN);
+}
+
+static bool loom_compile_request_is_concrete_kernel_entry(
+    const loom_module_t* module, const loom_symbol_t* symbol) {
+  if (symbol->defining_op == NULL ||
+      loom_symbol_definition_is_declaration(symbol->definition)) {
+    return false;
+  }
+  return loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_KERNEL_ENTRY) ||
+         (iree_any_bit_set(symbol->flags,
+                           LOOM_SYMBOL_FLAG_PUBLIC | LOOM_SYMBOL_FLAG_RETAIN) &&
+          loom_compile_request_is_array_program(module, symbol));
+}
+
+bool loom_compile_request_symbol_is_implicit_root(
+    const loom_module_t* module, loom_compile_product_t product,
+    const loom_symbol_t* symbol) {
+  switch (product) {
+    case LOOM_COMPILE_PRODUCT_COMMAND:
+      return loom_compile_request_is_concrete_public_command(symbol) ||
+             loom_compile_request_is_concrete_scoped_pipeline(
+                 symbol, LOOM_PIPELINE_DEF_SCOPE_COMMAND);
+    case LOOM_COMPILE_PRODUCT_KERNEL:
+      return loom_compile_request_is_concrete_kernel_entry(module, symbol) ||
+             loom_compile_request_is_concrete_scoped_pipeline(
+                 symbol, LOOM_PIPELINE_DEF_SCOPE_KERNEL);
+    case LOOM_COMPILE_PRODUCT_INVALID:
+    case LOOM_COMPILE_PRODUCT_MODULE:
+      return false;
+  }
+  return false;
 }
 
 static void loom_compile_request_collect_implicit_commands(
@@ -195,7 +266,8 @@ static void loom_compile_request_collect_implicit_commands(
   summary->product = LOOM_COMPILE_PRODUCT_COMMAND;
   for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
     const loom_symbol_t* symbol = &module->symbols.entries[i];
-    if (loom_compile_request_is_concrete_public_command(symbol)) {
+    if (loom_compile_request_symbol_is_implicit_root(
+            module, LOOM_COMPILE_PRODUCT_COMMAND, symbol)) {
       ++summary->root_count;
     }
   }
@@ -206,7 +278,8 @@ static iree_status_t loom_compile_request_collect_implicit_kernels(
   summary->product = LOOM_COMPILE_PRODUCT_KERNEL;
   for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
     const loom_symbol_t* symbol = &module->symbols.entries[i];
-    if (!loom_compile_request_is_concrete_kernel_entry(symbol)) {
+    if (!loom_compile_request_symbol_is_implicit_root(
+            module, LOOM_COMPILE_PRODUCT_KERNEL, symbol)) {
       continue;
     }
     ++summary->root_count;
@@ -272,7 +345,8 @@ static iree_status_t loom_compile_request_select_roots(
     if (out_summary->root_count == 0) {
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
-          "product 'kernel' requires at least one kernel entry root");
+          "product 'kernel' requires a kernel entry or a public or retained "
+          "kernel-scoped pipeline or array program root");
     }
     return iree_ok_status();
   }

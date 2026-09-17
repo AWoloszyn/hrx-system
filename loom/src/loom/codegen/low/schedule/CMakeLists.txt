@@ -66,19 +66,67 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    event_frontier
+  HDRS
+    "event_frontier.h"
+  SRCS
+    "event_frontier.c"
+  DEPS
+    iree::base
+    iree::base::internal::arena
+    loom::codegen::low::descriptors
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    physical_issue
+  HDRS
+    "physical_issue.h"
+  SRCS
+    "physical_issue.c"
+  DEPS
+    ::event_frontier
+    ::resource_calendar
+    iree::base
+    iree::base::internal::arena
+    loom::codegen::low::descriptors
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    resource_calendar
+  HDRS
+    "resource_calendar.h"
+  SRCS
+    "resource_calendar.c"
+  DEPS
+    iree::base
+    iree::base::internal::arena
+    loom::codegen::low::descriptors
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     schedule
   HDRS
+    "completion_demand.h"
+    "diagnostics.h"
     "json.h"
     "run.h"
     "types.h"
   SRCS
     "candidate_policy.c"
     "candidate_policy.h"
+    "completion_demand.c"
     "context.h"
     "descriptor_rows.c"
     "descriptor_rows.h"
     "diagnostics.c"
-    "diagnostics.h"
+    "effect_dependencies.c"
+    "effect_dependencies.h"
     "graph.c"
     "graph.h"
     "json.c"
@@ -86,6 +134,7 @@ loom_cc_library(
     "pressure.h"
     "pressure_alias.c"
     "pressure_alias.h"
+    "pressure_priority.c"
     "ready_policy.c"
     "ready_policy.h"
     "run.c"
@@ -100,6 +149,7 @@ loom_cc_library(
     ::dependencies
     ::dependency_index
     ::ready_frontier
+    ::resource_calendar
     iree::base
     iree::base::internal
     iree::base::internal::arena
@@ -107,10 +157,12 @@ loom_cc_library(
     loom::analysis::liveness_json
     loom::codegen::low::allocation::storage
     loom::codegen::low::allocation::target_constraints
+    loom::codegen::low::descriptor_traits
     loom::codegen::low::descriptors
     loom::codegen::low::diagnostics
     loom::codegen::low::function
     loom::codegen::low::function_model
+    loom::codegen::low::function_requirements
     loom::codegen::low::memory_access
     loom::codegen::low::placement
     loom::codegen::low::storage_layout
@@ -130,6 +182,20 @@ loom_cc_library(
     loom::util::segmented_storage
     loom::util::stream
   PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    completion_demand_test
+  SRCS
+    "completion_demand_test.cc"
+  DEPS
+    ::dependencies
+    ::dependency_index
+    ::schedule
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 loom_cc_test(
@@ -175,6 +241,30 @@ loom_cc_test(
     ::dependencies
     iree::testing::gtest
     iree::testing::gtest_main
+)
+
+loom_cc_test(
+  NAME
+    event_frontier_test
+  SRCS
+    "event_frontier_test.cc"
+  DEPS
+    ::event_frontier
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::target::test::descriptors
+)
+
+loom_cc_test(
+  NAME
+    resource_calendar_test
+  SRCS
+    "resource_calendar_test.cc"
+  DEPS
+    ::resource_calendar
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::target::test::descriptors
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

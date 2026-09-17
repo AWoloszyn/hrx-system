@@ -1,0 +1,61 @@
+// RUN: pass source-to-low
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @attr_minus_literal(%source: i32) -> (i32) {
+  %result = scalar.bitfield.extracts %source {offset = 8, width = 8} : i32 -> i32
+  func.return %result : i32
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) abi(object_function) @attr_minus_literal(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = test.const.i32 -24
+  return %result
+}
+
+// ====
+// RUN: pass source-to-low
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @volatile_vector_load(%source: buffer) -> (vector<4xi32>) {
+  %base = index.constant 0 : offset
+  %view = buffer.view %source[%base] : buffer -> view<4xi32>
+  %result = vector.load<volatile> %view[0] : view<4xi32> -> vector<4xi32>
+  func.return %result : vector<4xi32>
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) abi(object_function) @volatile_vector_load() -> (reg<test.i32 x4>) asm {
+  %view = resource<native_pointer> {index = 0, source_type = buffer} : reg<test.ptr>
+  %result = test.load.ordered.v4i32 %view
+  return %result
+}
+
+// ====
+// RUN: pass source-to-low
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @dynamic_volatile_vector_load(%source: buffer, %element0: index) -> (vector<4xi32>) {
+  %element = index.assume %element0 [range(%element0, 0, 60), mul(%element0, 4)] : index
+  %base = index.constant 0 : offset
+  %view = buffer.view %source[%base] : buffer -> view<64xi32>
+  %result = vector.load<volatile> %view[%element] : view<64xi32> -> vector<4xi32>
+  func.return %result : vector<4xi32>
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) abi(object_function) @dynamic_volatile_vector_load(%element: reg<test.i32>) -> (reg<test.i32 x4>) asm {
+  %view = resource<native_pointer> {index = 0, source_type = buffer} : reg<test.ptr>
+  %10 = test.const.i32 4
+  %11 = test.mul.i32 %element, %10
+  %result = test.load.index.ordered.v4i32 %view, %11
+  return %result
+}

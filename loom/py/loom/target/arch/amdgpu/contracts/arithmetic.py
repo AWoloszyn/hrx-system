@@ -238,6 +238,11 @@ _VEC_I1_STATIC = Vector(
     minimum_static_elements=1,
     maximum_static_elements="LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES",
 )
+_VEC_INDEX_STATIC = Vector(
+    "index",
+    minimum_static_elements=1,
+    maximum_static_elements="LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES",
+)
 _VEC_F16_PACKED_STORAGE = Vector(
     "f16",
     minimum_lanes=1,
@@ -525,6 +530,8 @@ def _type_diagnostic(type_pattern: TypePattern) -> GuardDiagnostic:
         return _VEC_F64_DIAGNOSTIC
     if type_pattern == _VEC_I1_STATIC:
         return _VEC_I1_DIAGNOSTIC
+    if type_pattern == _VEC_INDEX_STATIC:
+        return _INDEX_DIAGNOSTIC
     if type_pattern in (_VEC_F16_PACKED, _VEC_F16_PACKED_STORAGE):
         return _VEC_F16_PACKED_DIAGNOSTIC
     if type_pattern in (
@@ -595,37 +602,6 @@ def _bitcast_alias_rule(
             _value_type("input", input_type),
             _value_type("result", result_type),
         ),
-    )
-
-
-def _scalar_assume_alias_rule(type_pattern: TypePattern) -> OrdinalValueAliasRule:
-    return OrdinalValueAliasRule(
-        source_op=scalar_analysis.scalar_assume,
-        source=ValueRef.operand("values"),
-        result=ValueRef.result("results"),
-        guards=(
-            _value_type("values", type_pattern),
-            _value_type("results", type_pattern),
-        ),
-    )
-
-
-def _scalar_assume_alias_rules() -> tuple[OrdinalValueAliasRule, ...]:
-    return tuple(
-        _scalar_assume_alias_rule(type_pattern)
-        for type_pattern in (
-            _I1,
-            _I8,
-            _I16,
-            _I32,
-            _I64,
-            _F8E4M3,
-            _F8E5M2,
-            _F16,
-            _BF16,
-            _F32,
-            _F64,
-        )
     )
 
 
@@ -999,32 +975,74 @@ def _vector_transform_recipe_rule() -> RecipeRule:
     )
 
 
-def _vector_splat_recipe_rule(
-    scalar_type: TypePattern,
-    result_type: TypePattern,
-) -> RecipeRule:
-    return RecipeRule(
-        source_op=vector.vector_splat,
-        guards=(
-            _value_type("scalar", scalar_type),
-            _value_type("result", result_type),
-        ),
+def _vector_storage_construct_recipe_types() -> tuple[TypePattern, ...]:
+    return (
+        _VEC_I1_STATIC,
+        _VEC_I32_STATIC,
+        _VEC_F32_STATIC,
+        _VEC_I64_STATIC,
+        _VEC_F64_STATIC,
+        _VEC_F16_PACKED_STORAGE,
+        _VEC_BF16_PACKED_STORAGE,
+        _VEC_I16_PACKED_STORAGE,
+        _VEC_I8_PACKED,
+        _VEC_F8E4M3_PACKED,
+        _VEC_F8E5M2_PACKED,
     )
 
 
-def _vector_splat_recipe_rules() -> tuple[RecipeRule, ...]:
-    return (
-        _vector_splat_recipe_rule(_I1, _VEC_I1_STATIC),
-        _vector_splat_recipe_rule(_I32, _VEC_I32_STATIC),
-        _vector_splat_recipe_rule(_F32, _VEC_F32_STATIC),
-        _vector_splat_recipe_rule(_I64, _VEC_I64_STATIC),
-        _vector_splat_recipe_rule(_F64, _VEC_F64_STATIC),
-        _vector_splat_recipe_rule(_F16, _VEC_F16_PACKED_STORAGE),
-        _vector_splat_recipe_rule(_BF16, _VEC_BF16_PACKED_STORAGE),
-        _vector_splat_recipe_rule(_I16, _VEC_I16_PACKED_STORAGE),
-        _vector_splat_recipe_rule(_I8, _VEC_I8_PACKED),
-        _vector_splat_recipe_rule(_F8E4M3, _VEC_F8E4M3_PACKED),
-        _vector_splat_recipe_rule(_F8E5M2, _VEC_F8E5M2_PACKED),
+def _vector_uniform_construct_recipe_rules(
+    source_op: Op,
+    result_types: tuple[TypePattern, ...],
+) -> tuple[RecipeRule, ...]:
+    # from_elements and splat verify every scalar operand against the result's
+    # element type before target selection, so the result binds the recipe.
+    return tuple(
+        RecipeRule(
+            source_op=source_op,
+            guards=(_value_type("result", result_type),),
+        )
+        for result_type in result_types
+    )
+
+
+def _vector_iota_recipe_rules() -> tuple[RecipeRule, ...]:
+    return tuple(
+        RecipeRule(
+            source_op=vector.vector_iota,
+            guards=(
+                _value_type("base", scalar_type),
+                _value_type("step", scalar_type),
+                _value_type("result", result_type),
+            ),
+        )
+        for scalar_type, result_type in (
+            (_I32, _VEC_I32_STATIC),
+            (_INDEX, _VEC_INDEX_STATIC),
+        )
+    )
+
+
+def _vector_insert_recipe_rules() -> tuple[RecipeRule, ...]:
+    supported_type_pairs = (
+        (_I32, _VEC_I32_STATIC),
+        (_F32, _VEC_F32_STATIC),
+        (_F16, _VEC_F16_PACKED_STORAGE),
+        (_BF16, _VEC_BF16_PACKED_STORAGE),
+        (_I8, _VEC_I8_PACKED),
+        (_I16, _VEC_I16_PACKED_STORAGE),
+    )
+    return tuple(
+        RecipeRule(
+            source_op=vector.vector_insert,
+            guards=(
+                Guard.i64_array_count("static_indices", 1),
+                _value_type("value", scalar_type),
+                _value_type("dest", vector_type),
+                _value_type("result", vector_type),
+            ),
+        )
+        for scalar_type, vector_type in supported_type_pairs
     )
 
 
@@ -4339,7 +4357,28 @@ def _rules() -> tuple[ContractCase, ...]:
             _index_madd_rule(),
         )
     )
-    rules.extend((*_vector_splat_recipe_rules(), *_scalar_assume_alias_rules()))
+    rules.extend(
+        (
+            *_vector_uniform_construct_recipe_rules(
+                vector.vector_from_elements,
+                (
+                    *_vector_storage_construct_recipe_types(),
+                    _VEC_INDEX_STATIC,
+                ),
+            ),
+            *_vector_iota_recipe_rules(),
+            *_vector_insert_recipe_rules(),
+            *_vector_uniform_construct_recipe_rules(
+                vector.vector_splat,
+                _vector_storage_construct_recipe_types(),
+            ),
+            OrdinalValueAliasRule(
+                source_op=scalar_analysis.scalar_assume,
+                source=ValueRef.operand("values"),
+                result=ValueRef.result("results"),
+            ),
+        )
+    )
     return tuple(rules)
 
 

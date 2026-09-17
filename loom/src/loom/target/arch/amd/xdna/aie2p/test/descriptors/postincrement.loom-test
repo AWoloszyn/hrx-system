@@ -1,0 +1,137 @@
+// Indexed loads can share a value. A post-increment load also returns the
+// pointer needed by the following store and cannot be replaced by that value.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @load_recurrence(%pointer: reg<aie2p.ep>) -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.ep>) asm {
+  %first = lda %pointer, 0
+  %same = lda %pointer, 0
+  %next, %pointer1 = lda.i32.post %pointer, 4
+  %pointer2 = st.i32.post %next, %pointer1, 4
+  return %first, %same, %next, %pointer2
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> @load_recurrence(%pointer: reg<aie2p.ep>) -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.ep>) asm {
+  %first = lda %pointer, 0
+  %next, %pointer1 = lda.i32.post %pointer, 4
+  %pointer2 = st.i32.post %next, %pointer1, 4
+  return %first, %first, %next, %pointer2
+}
+
+// ====
+
+// The pointer result keeps an otherwise unused load alive. An ordered access
+// remains observable even when both results are unused.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @observable_updates(%pointer: reg<aie2p.ep>, %other: reg<aie2p.ep>) -> (reg<aie2p.ep>) asm {
+  %unused, %next = lda.i32.post %pointer, -4
+  %unused_value, %unused_pointer = lda.i32.post.volatile %other, -4
+  return %next
+}
+
+// ====
+
+// Address updates carry an ordinary pointer value; unused updates are removable.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @address_updates(%pointer: reg<aie2p.ep>, %step: reg<aie2p.er>) -> (reg<aie2p.ep>) asm {
+  %modifier = mov.modifier %step
+  %unused = padda %pointer, 64
+  %first = padda.modifier %pointer, %modifier
+  %second = paddb %first, -64
+  %third = padds.modifier %second, %modifier
+  return %third
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> @address_updates(%pointer: reg<aie2p.ep>, %step: reg<aie2p.er>) -> (reg<aie2p.ep>) asm {
+  %modifier = mov.modifier %step
+  %first = padda.modifier %pointer, %modifier
+  %second = paddb %first, -64
+  %third = padds.modifier %second, %modifier
+  return %third
+}
+
+// ====
+
+// Signed post-increment immediates describe the next pointer, not a load offset.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @immediate_bounds(%pointer: reg<aie2p.ep>) -> (reg<aie2p.ep>) asm {
+  %minimum, %first = lda.i32.post %pointer, -32
+  %maximum, %second = lda.i32.post %first, 28
+  %third = st.i8.post %minimum, %second, -8
+  %fourth = st.i8.post %maximum, %third, 7
+  return %fourth
+}
+
+// ====
+
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @overflow(%pointer: reg<aie2p.ep>) asm {
+  // ERROR@+1: STRUCTURE/014 "imm" "32"
+  %value, %next = lda.i32.post %pointer, 32
+  return
+}
+
+// ====
+
+low.func.def target<amd.xdna.aie2p.core> @misaligned(%pointer: reg<aie2p.ep>) asm {
+  // ERROR@+1: STRUCTURE/014 "imm" "2"
+  %value, %next = lda.i32.post %pointer, 2
+  return
+}
+
+// ====
+
+// A tied memory update transfers the pointer; subsequent accesses use its
+// returned state instead of the consumed input.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @consumed_pointer(%pointer: reg<aie2p.ep>) -> (reg<aie2p.er>) asm {
+  %value, %next = lda.i32.post %pointer, 4
+  // ERROR@+1: DOMINANCE/002
+  %stale = lda %pointer, 0
+  return %stale
+}
+
+// ====
+
+// Pointer recurrence keeps both vector load lanes observable at every width.
+// Stores and modifier updates use the returned pointer, not a repeated index.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @vector_pointer_recurrence(%pointer: reg<aie2p.ep>, %modifier: reg<aie2p.em>) -> (reg<aie2p.ep>) asm {
+  %unused128, %pointer1 = vlda.128.i8x16.post %pointer, 16
+  %unused256, %pointer2 = vldb.256.i16x16.post.modifier %pointer1, %modifier
+  %wide, %pointer3 = vlda.512.f32x16.post %pointer2, -64
+  %pointer4 = vst.512.f32x16.post.modifier %wide, %pointer3, %modifier
+  return %pointer4
+}
+
+// ====
+
+// Post-increment loads consume the old pointer even when their data is unused.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @consumed_vector_pointer(%pointer: reg<aie2p.ep>) asm {
+  %value, %next = vldb.128.bf16x8.post %pointer, 16
+  // ERROR@+1: DOMINANCE/002
+  %stale = vldb.128.bf16x8 %pointer, 0
+  return
+}
+
+// ====
+
+// Accumulator transfers retain pointer updates even when the loaded data is unused.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @accumulator_pointer_recurrence(%input: reg<aie2p.ep>, %output: reg<aie2p.ep>, %modifier: reg<aie2p.em>) -> (reg<aie2p.ep>, reg<aie2p.ep>) asm {
+  %unused, %input1 = vlda.acc.post %input, 64
+  %value, %input2 = vlda.acc.post.modifier %input1, %modifier
+  %output1 = vst.acc.post %value, %output, -64
+  %output2 = vst.acc.post.modifier %value, %output1, %modifier
+  return %input2, %output2
+}

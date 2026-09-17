@@ -8,51 +8,48 @@
 
 #include "loom/codegen/low/allocation/storage.h"
 #include "loom/codegen/low/allocation/unit_location.h"
+#include "loom/codegen/low/schedule/types.h"
 
 typedef struct loom_low_allocation_move_plan_group_context_t {
   // Plan owning shared allocation facts and persistent output rows.
   loom_low_allocation_move_plan_t* plan;
-  // Operation that owns the current move group.
-  const loom_op_t* op;
+  // Accepted operation position that owns the current move group.
+  const loom_liveness_operation_point_t* operation_point;
   // Global move-row index corresponding to local output row zero.
   iree_host_size_t move_start;
 } loom_low_allocation_move_plan_group_context_t;
-
-static uint32_t loom_low_allocation_move_group_program_point(
-    const loom_low_allocation_move_plan_group_context_t* group_context) {
-  const loom_liveness_analysis_t* liveness =
-      group_context->plan->context.assignment_map.liveness;
-  for (iree_host_size_t i = 0; i < liveness->operation_count; ++i) {
-    const loom_liveness_operation_point_t* point =
-        &liveness->operation_points[i];
-    if (point->op == group_context->op) {
-      return point->start_point;
-    }
-  }
-  IREE_ASSERT_UNREACHABLE(
-      "allocation move operation must have a liveness program point");
-  return 0;
-}
 
 static bool loom_low_allocation_move_group_uses_location(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_move_t* moves, iree_host_size_t move_count,
     const loom_low_move_location_t* location) {
+  const loom_low_allocation_assignment_t location_assignment = {
+      .descriptor_reg_class_id = location->descriptor_reg_class_id,
+      .location_kind = location->location_kind,
+      .location_base = location->location,
+      .location_count = 1,
+  };
   for (iree_host_size_t i = 0; i < move_count; ++i) {
     const loom_low_move_location_t* source = &moves[i].source;
     const loom_low_move_location_t* destination = &moves[i].destination;
-    if (source->location_kind == location->location_kind &&
-        source->location == location->location &&
-        loom_low_allocation_storage_reg_classes_share(
-            descriptor_set, source->descriptor_reg_class_id,
-            location->descriptor_reg_class_id)) {
+    const loom_low_allocation_assignment_t source_assignment = {
+        .descriptor_reg_class_id = source->descriptor_reg_class_id,
+        .location_kind = source->location_kind,
+        .location_base = source->location,
+        .location_count = 1,
+    };
+    if (loom_low_allocation_storage_assignment_ranges_overlap(
+            descriptor_set, &source_assignment, &location_assignment)) {
       return true;
     }
-    if (destination->location_kind == location->location_kind &&
-        destination->location == location->location &&
-        loom_low_allocation_storage_reg_classes_share(
-            descriptor_set, destination->descriptor_reg_class_id,
-            location->descriptor_reg_class_id)) {
+    const loom_low_allocation_assignment_t destination_assignment = {
+        .descriptor_reg_class_id = destination->descriptor_reg_class_id,
+        .location_kind = destination->location_kind,
+        .location_base = destination->location,
+        .location_count = 1,
+    };
+    if (loom_low_allocation_storage_assignment_ranges_overlap(
+            descriptor_set, &destination_assignment, &location_assignment)) {
       return true;
     }
   }
@@ -64,11 +61,10 @@ static iree_status_t loom_low_allocation_move_plan_record_scratch(
   loom_low_allocation_move_plan_group_context_t* group_context =
       (loom_low_allocation_move_plan_group_context_t*)user_data;
   loom_low_allocation_move_plan_t* plan = group_context->plan;
-  if (plan->scratch_move_index_count == plan->scratch_move_index_capacity) {
-    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
-        plan->sequence_scratch.arena, plan->scratch_move_index_count,
-        plan->scratch_move_index_count + 1, sizeof(*plan->scratch_move_indices),
-        &plan->scratch_move_index_capacity,
+  if (!plan->scratch_move_indices) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        plan->output_arena, plan->scratch_move_index_capacity,
+        sizeof(*plan->scratch_move_indices),
         (void**)&plan->scratch_move_indices));
   }
   plan->scratch_move_indices[plan->scratch_move_index_count++] =
@@ -84,34 +80,44 @@ static iree_status_t loom_low_allocation_move_plan_resolve_temporary(
       (const loom_low_allocation_move_plan_group_context_t*)user_data;
   const loom_low_allocation_move_plan_context_t* context =
       &group_context->plan->context;
+  const loom_op_t* op = group_context->operation_point->op;
   *out_temporary = (loom_low_move_location_t){0};
   *out_resolved = false;
   if (!loom_low_allocation_location_kind_is_register_like(
           storage_class->location_kind)) {
-    return loom_low_allocation_target_constraints_emit_failure(
-        context->target_constraints, group_context->op,
-        storage_class->value_class, 0, 1,
-        IREE_SV("parallel-move-non-register-storage"));
+    loom_low_allocation_target_constraints_record_move_failure(
+        context->target_constraints, op, storage_class->descriptor_reg_class_id,
+        0, 1, IREE_SV("parallel-move-non-register-storage"));
+    return iree_ok_status();
   }
 
   loom_low_allocation_class_capacity_t capacity = {0};
-  IREE_RETURN_IF_ERROR(loom_low_allocation_target_constraints_class_capacity(
-      context->target_constraints, storage_class->value_class, &capacity));
+  IREE_RETURN_IF_ERROR(
+      loom_low_allocation_target_constraints_reg_class_capacity(
+          context->target_constraints, storage_class->descriptor_reg_class_id,
+          &capacity));
   if (capacity.location_kind != storage_class->location_kind) {
-    return loom_low_allocation_target_constraints_emit_failure(
-        context->target_constraints, group_context->op,
-        storage_class->value_class,
+    loom_low_allocation_target_constraints_record_move_failure(
+        context->target_constraints, op, storage_class->descriptor_reg_class_id,
         capacity.is_bounded ? capacity.max_units : UINT32_MAX, 1,
         IREE_SV("parallel-move-storage-kind-mismatch"));
+    return iree_ok_status();
   }
+
+  const loom_low_reg_class_t* reg_class =
+      &context->descriptor_set
+           ->reg_classes[storage_class->descriptor_reg_class_id];
+  const bool uses_explicit_physical_registers =
+      loom_low_reg_class_uses_explicit_physical_registers(reg_class);
 
   uint32_t last_location = 0;
   if (capacity.is_bounded) {
     if (capacity.max_units == 0) {
-      return loom_low_allocation_target_constraints_emit_failure(
-          context->target_constraints, group_context->op,
-          storage_class->value_class, capacity.max_units, 1,
+      loom_low_allocation_target_constraints_record_move_failure(
+          context->target_constraints, op,
+          storage_class->descriptor_reg_class_id, capacity.max_units, 1,
           IREE_SV("parallel-move-empty-budget"));
+      return iree_ok_status();
     }
     last_location = capacity.max_units - 1u;
   } else {
@@ -120,19 +126,31 @@ static iree_status_t loom_low_allocation_move_plan_resolve_temporary(
             context->target_constraints, storage_class->descriptor_reg_class_id,
             storage_class->location_kind);
     if (last_location == UINT32_MAX) {
-      return loom_low_allocation_target_constraints_emit_failure(
-          context->target_constraints, group_context->op,
-          storage_class->value_class, UINT32_MAX, 1,
+      loom_low_allocation_target_constraints_record_move_failure(
+          context->target_constraints, op,
+          storage_class->descriptor_reg_class_id, UINT32_MAX, 1,
           IREE_SV("parallel-move-location-range-overflow"));
+      return iree_ok_status();
     }
   }
 
-  const uint32_t program_point =
-      loom_low_allocation_move_group_program_point(group_context);
-  for (uint32_t location = 0; location <= last_location; ++location) {
+  const uint32_t candidate_count =
+      uses_explicit_physical_registers
+          ? iree_min((uint32_t)reg_class->allocatable_count,
+                     capacity.is_bounded ? capacity.max_units : UINT32_MAX)
+          : last_location + 1u;
+  const uint32_t program_point = group_context->operation_point->start_point;
+  for (uint32_t candidate_ordinal = 0; candidate_ordinal < candidate_count;
+       ++candidate_ordinal) {
+    const uint32_t location =
+        uses_explicit_physical_registers
+            ? loom_low_descriptor_set_physical_register_candidate(
+                  context->descriptor_set,
+                  storage_class->descriptor_reg_class_id,
+                  (uint16_t)candidate_ordinal)
+            : candidate_ordinal;
     const loom_low_move_location_t temporary = {
         .location_kind = storage_class->location_kind,
-        .value_class = storage_class->value_class,
         .descriptor_reg_class_id = storage_class->descriptor_reg_class_id,
         .location = location,
     };
@@ -145,9 +163,6 @@ static iree_status_t loom_low_allocation_move_plan_resolve_temporary(
             &temporary, program_point) ||
         loom_low_allocation_move_group_uses_location(
             context->descriptor_set, moves, move_count, &temporary)) {
-      if (location == UINT32_MAX) {
-        break;
-      }
       continue;
     }
     *out_temporary = temporary;
@@ -158,32 +173,77 @@ static iree_status_t loom_low_allocation_move_plan_resolve_temporary(
     return iree_ok_status();
   }
 
-  return loom_low_allocation_target_constraints_emit_failure(
-      context->target_constraints, group_context->op,
-      storage_class->value_class,
+  loom_low_allocation_target_constraints_record_move_failure(
+      context->target_constraints, op, storage_class->descriptor_reg_class_id,
       capacity.is_bounded ? capacity.max_units : UINT32_MAX, 1,
       IREE_SV("parallel-move-no-scratch-unit"));
+
+  return iree_ok_status();
 }
 
 iree_status_t loom_low_allocation_move_plan_initialize(
     const loom_low_allocation_move_plan_context_t* context,
-    iree_arena_allocator_t* arena, iree_host_size_t move_input_capacity,
-    iree_host_size_t raw_group_capacity,
+    iree_host_size_t move_input_capacity, iree_host_size_t raw_group_capacity,
+    iree_arena_allocator_t* output_arena, iree_arena_allocator_t* scratch_arena,
     loom_low_allocation_move_plan_t* out_plan) {
   *out_plan = (loom_low_allocation_move_plan_t){
       .context = *context,
+      .output_arena = output_arena,
+      .scratch_move_index_capacity = move_input_capacity / 2,
   };
+  const loom_low_schedule_table_t* schedule = context->schedule;
+  if (schedule != NULL && schedule->node_count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        scratch_arena, schedule->node_count,
+        sizeof(*out_plan->operation_indices_by_source_node),
+        (void**)&out_plan->operation_indices_by_source_node));
+    const loom_liveness_analysis_t* liveness = context->assignment_map.liveness;
+    uint32_t scheduled_index = 0;
+    for (uint32_t i = 0; i < liveness->operation_count; ++i) {
+      if (liveness->operation_points[i].parent_operation_index != UINT32_MAX) {
+        continue;
+      }
+      const uint32_t node_index =
+          schedule->scheduled_node_indices[scheduled_index++];
+      IREE_ASSERT_EQ(schedule->nodes[node_index].op,
+                     liveness->operation_points[i].op);
+      out_plan->operation_indices_by_source_node[node_index] = i;
+    }
+    IREE_ASSERT_EQ(scheduled_index, schedule->scheduled_node_count);
+  }
   if (move_input_capacity == 0) {
     return iree_ok_status();
   }
-  const iree_host_size_t move_capacity =
-      move_input_capacity + move_input_capacity / 2;
+  iree_host_size_t move_capacity = 0;
+  if (!iree_host_size_checked_add(move_input_capacity, move_input_capacity / 2,
+                                  &move_capacity)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "parallel move output capacity exceeds host size");
+  }
   out_plan->move_capacity = move_capacity;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, move_capacity,
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(output_arena, move_capacity,
                                                  sizeof(*out_plan->moves),
                                                  (void**)&out_plan->moves));
-  return loom_low_move_sequence_scratch_initialize(arena, raw_group_capacity,
-                                                   &out_plan->sequence_scratch);
+  return loom_low_move_sequence_scratch_initialize(
+      scratch_arena, raw_group_capacity, &out_plan->sequence_scratch);
+}
+
+const loom_liveness_operation_point_t*
+loom_low_allocation_move_plan_next_operation(
+    const loom_low_allocation_move_plan_t* plan, const loom_op_t* op,
+    loom_low_allocation_move_cursor_t* cursor) {
+  const loom_liveness_analysis_t* liveness =
+      plan->context.assignment_map.liveness;
+  if (plan->operation_indices_by_source_node != NULL &&
+      op->parent_block->parent_region == liveness->region) {
+    cursor->operation_index =
+        plan->operation_indices_by_source_node[cursor->source_node_index++];
+  }
+  const loom_liveness_operation_point_t* point =
+      &liveness->operation_points[cursor->operation_index++];
+  IREE_ASSERT_EQ(point->op, op,
+                 "move traversal must match the accepted liveness subtree");
+  return point;
 }
 
 loom_low_move_t* loom_low_allocation_move_plan_raw_moves(
@@ -192,7 +252,8 @@ loom_low_move_t* loom_low_allocation_move_plan_raw_moves(
 }
 
 iree_status_t loom_low_allocation_move_plan_append_group(
-    loom_low_allocation_move_plan_t* plan, const loom_op_t* op,
+    loom_low_allocation_move_plan_t* plan,
+    const loom_liveness_operation_point_t* operation_point,
     iree_host_size_t raw_move_count, loom_low_move_group_t* out_group) {
   *out_group = (loom_low_move_group_t){
       .moves.start = plan->move_count,
@@ -203,7 +264,7 @@ iree_status_t loom_low_allocation_move_plan_append_group(
   }
   loom_low_allocation_move_plan_group_context_t group_context = {
       .plan = plan,
-      .op = op,
+      .operation_point = operation_point,
       .move_start = plan->move_count,
   };
   const loom_low_move_sequence_options_t options = {

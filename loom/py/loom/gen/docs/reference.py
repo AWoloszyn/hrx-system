@@ -93,12 +93,15 @@ DIALECT_REFERENCE_SPECS = (
     DialectReferenceSpec("vector", "program"),
     DialectReferenceSpec("index", "program"),
     DialectReferenceSpec("kernel", "program"),
+    DialectReferenceSpec("group", "program"),
+    DialectReferenceSpec("pipeline", "program"),
     DialectReferenceSpec("target", "program"),
     DialectReferenceSpec("config", "program"),
     DialectReferenceSpec("check", "testing"),
     DialectReferenceSpec("pass", "testing"),
     DialectReferenceSpec("sanitizer", "testing"),
     DialectReferenceSpec("low", "target"),
+    DialectReferenceSpec("aie2p", "target"),
     DialectReferenceSpec("llvmir", "target"),
     DialectReferenceSpec("amdgpu", "target"),
     DialectReferenceSpec("spirv", "target"),
@@ -843,6 +846,60 @@ def _render_encoding(encoding: EncodingFamilyDef) -> str:
                 "",
             ]
         )
+        if record.fields:
+            lines.extend(
+                [
+                    "### Logical fields",
+                    "",
+                    *_table(
+                        (
+                            "Role",
+                            "Level",
+                            "Format",
+                            "Elements",
+                            "Bits per element",
+                        ),
+                        (
+                            (
+                                f"`{field.role.name.lower()}`",
+                                field.hierarchy_level,
+                                f"`{field.numeric_format.keyword}`",
+                                field.element_count,
+                                field.element_bit_count,
+                            )
+                            for field in record.fields
+                        ),
+                    ),
+                    "",
+                    "### Bit projections",
+                    "",
+                    *_table(
+                        (
+                            "Field",
+                            "Record bit offset",
+                            "Record bit stride",
+                            "Field element offset",
+                            "Elements",
+                            "Field bit offset",
+                            "Bits",
+                        ),
+                        (
+                            (
+                                f"`{field.role.name.lower()}[{field.hierarchy_level}]`",
+                                mapping.record_bit_offset,
+                                mapping.record_bit_stride,
+                                mapping.field_element_offset,
+                                mapping.element_count,
+                                mapping.field_bit_offset,
+                                mapping.bit_count,
+                            )
+                            for field in record.fields
+                            for mapping in field.mappings
+                        ),
+                    ),
+                    "",
+                ]
+            )
     if encoding.required_auxiliary_keys:
         lines.extend(
             [

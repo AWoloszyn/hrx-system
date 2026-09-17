@@ -40,14 +40,14 @@ typedef uint16_t loom_low_lower_type_pattern_flags_t;
 #define LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_ELEMENT ((uint16_t)1u << 1)
 // Shaped rank must match rank.
 #define LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_RANK ((uint16_t)1u << 2)
-// First shaped dimension must be statically equal to static_dim0.
+// First shaped dimension must equal shape.exact.dim0.
 #define LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_STATIC_DIM0 ((uint16_t)1u << 3)
-// First shaped dimension must be inside [static_dim0_min, static_dim0_max].
+// First shaped dimension must be inside shape.dim0_range.
 #define LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_STATIC_DIM0_RANGE ((uint16_t)1u << 4)
-// Second shaped dimension must be statically equal to static_dim1.
+// Second shaped dimension must equal shape.exact.dim1.
 #define LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_STATIC_DIM1 ((uint16_t)1u << 5)
 // Total static shaped element count must be inside
-// [static_element_count_min, static_element_count_max].
+// shape.static_element_count_range.
 #define LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_STATIC_ELEMENT_COUNT_RANGE \
   ((uint16_t)1u << 6)
 
@@ -56,32 +56,48 @@ typedef struct loom_low_lower_type_pattern_t {
   loom_low_lower_type_pattern_flags_t flags;
   // Required type kind when the KIND flag is set.
   loom_type_kind_t type_kind;
-  // Allowed element scalar types when the ELEMENT flag is set.
-  uint64_t element_type_mask;
   // Required rank when the RANK flag is set.
   uint8_t rank;
-  // Required static dimension 0 when the STATIC_DIM0 flag is set.
-  int64_t static_dim0;
-  // Inclusive minimum static dimension 0 when STATIC_DIM0_RANGE is set.
-  int64_t static_dim0_min;
-  // Inclusive maximum static dimension 0 when STATIC_DIM0_RANGE is set.
-  int64_t static_dim0_max;
-  // Required static dimension 1 when the STATIC_DIM1 flag is set.
-  int64_t static_dim1;
-  // Inclusive minimum total static element count when
-  // STATIC_ELEMENT_COUNT_RANGE is set.
-  uint64_t static_element_count_min;
-  // Inclusive maximum total static element count when
-  // STATIC_ELEMENT_COUNT_RANGE is set.
-  uint64_t static_element_count_max;
+  // Allowed element scalar types when the ELEMENT flag is set.
+  uint64_t element_type_mask;
+  // Shape constraint selected by the static-shape flags. Python generation
+  // proves that exact dimensions, a dimension range, and a total-element range
+  // are mutually exclusive.
+  union {
+    // Exact static dimensions used by STATIC_DIM0 and STATIC_DIM1.
+    struct {
+      // Required first static dimension.
+      int64_t dim0;
+      // Required second static dimension.
+      int64_t dim1;
+    } exact;
+    // Inclusive first-dimension range used by STATIC_DIM0_RANGE.
+    struct {
+      // Inclusive minimum first dimension.
+      int64_t minimum;
+      // Inclusive maximum first dimension.
+      int64_t maximum;
+    } dim0_range;
+    // Inclusive total-element range used by STATIC_ELEMENT_COUNT_RANGE.
+    struct {
+      // Inclusive minimum total static element count.
+      uint64_t minimum;
+      // Inclusive maximum total static element count.
+      uint64_t maximum;
+    } static_element_count_range;
+  } shape;
 } loom_low_lower_type_pattern_t;
+static_assert(sizeof(loom_low_lower_type_pattern_t) == 32,
+              "lower type-pattern rows must remain compact");
 
-typedef enum loom_low_lower_value_ref_kind_e {
+typedef uint8_t loom_low_lower_value_ref_kind_t;
+
+enum loom_low_lower_value_ref_kind_e {
   // Invalid or uninitialized value reference.
   LOOM_LOW_LOWER_VALUE_REF_INVALID = 0,
-  // Source op operand at |index|.
+  // Source op operand field |index|, element |element_index|.
   LOOM_LOW_LOWER_VALUE_REF_OPERAND = 1,
-  // Source op result at |index|.
+  // Source op result field |index|, element |element_index|.
   LOOM_LOW_LOWER_VALUE_REF_RESULT = 2,
   // Rule-local temporary low value at |index|.
   LOOM_LOW_LOWER_VALUE_REF_TEMPORARY = 3,
@@ -91,7 +107,12 @@ typedef enum loom_low_lower_value_ref_kind_e {
   LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_DYNAMIC_BYTE_OFFSET = 5,
   // Complete target address materialized from one source-memory plan.
   LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ADDRESS = 6,
-} loom_low_lower_value_ref_kind_t;
+  // Maximum value-ref kind plus one.
+  LOOM_LOW_LOWER_VALUE_REF_COUNT_,
+};
+
+static_assert(LOOM_LOW_LOWER_VALUE_REF_COUNT_ <= UINT8_MAX,
+              "lower value-ref kinds must fit in uint8_t storage");
 
 // Returns true when the materializer can produce a low value for the source
 // value without emitting IR. Selection uses this to keep diagnostics tied to
@@ -125,15 +146,60 @@ static_assert(sizeof(loom_low_lower_rule_descriptor_ref_t) == 4,
 typedef struct loom_low_lower_value_ref_t {
   // Source value namespace being referenced.
   loom_low_lower_value_ref_kind_t kind;
-  // Ordinal within the namespace selected by |kind|. For operand refs this is
-  // the source operand field index; |element_index| selects within that field.
+  // Source node containing the referenced field. Zero selects the rule root.
+  uint8_t source_node_index;
+  // Ordinal within the namespace selected by |kind|. For operand and result
+  // refs this is the source field index; |element_index| selects within that
+  // field.
   uint16_t index;
-  // Element ordinal within the operand field selected by |index|.
+  // Element ordinal within the operand or result field selected by |index|.
   uint16_t element_index;
   // One-based materializer table row used when this source ref is consumed as a
   // low operand. Zero means direct source-to-low value lookup.
   uint16_t materializer_index;
 } loom_low_lower_value_ref_t;
+static_assert(sizeof(loom_low_lower_value_ref_t) == 8,
+              "loom_low_lower_value_ref_t must be 8 bytes");
+
+#define LOOM_LOW_LOWER_MAX_SOURCE_NODES 8
+
+// Number of low bits occupied by the related source-node count in a packed
+// rule source-node span. The root is implicit, so at most seven rows are
+// stored for an eight-node source graph.
+#define LOOM_LOW_LOWER_SOURCE_NODE_COUNT_BITS 3
+#define LOOM_LOW_LOWER_SOURCE_NODE_COUNT_MASK \
+  ((1u << LOOM_LOW_LOWER_SOURCE_NODE_COUNT_BITS) - 1u)
+#define LOOM_LOW_LOWER_SOURCE_NODE_SPAN(start, count)                        \
+  ((uint16_t)(((uint16_t)(start) << LOOM_LOW_LOWER_SOURCE_NODE_COUNT_BITS) | \
+              ((uint16_t)(count) & LOOM_LOW_LOWER_SOURCE_NODE_COUNT_MASK)))
+
+typedef uint8_t loom_low_lower_source_node_relation_t;
+
+enum loom_low_lower_source_node_relation_e {
+  // The node is the adjacent sole ordinary user of a parent result.
+  LOOM_LOW_LOWER_SOURCE_NODE_ADJACENT_UNIQUE_USER = 0,
+  // The node is the adjacent sole-use definition of a parent operand.
+  LOOM_LOW_LOWER_SOURCE_NODE_ADJACENT_DEFINITION = 1,
+};
+
+typedef struct loom_low_lower_source_node_t {
+  // SSA relation used to find this source op.
+  loom_low_lower_source_node_relation_t relation;
+  // Previously resolved node that owns parent_value_ref_index.
+  uint8_t parent_node_index;
+  // Required source op kind for this node.
+  loom_op_kind_t source_op_kind;
+  // Value-ref row selecting the connection in the parent node.
+  uint16_t parent_value_ref_index;
+  // Value-ref row selecting the same connection in this node.
+  uint16_t node_value_ref_index;
+  // First node-local guard ref.
+  uint16_t guard_start;
+  // Number of node-local guard refs.
+  uint16_t guard_count;
+} loom_low_lower_source_node_t;
+static_assert(sizeof(loom_low_lower_source_node_t) == 12,
+              "loom_low_lower_source_node_t must be 12 bytes");
 
 typedef enum loom_low_lower_attr_copy_kind_e {
   // Copy the source op attribute directly into the emitted low packet.
@@ -200,6 +266,19 @@ typedef enum loom_low_lower_attr_copy_kind_e {
   LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_STATIC_BYTE_OFFSET_REMAINDER = 24,
   // Emits log2 of a verified positive power-of-two i64 source attribute.
   LOOM_LOW_LOWER_ATTR_COPY_I64_LOG2 = 25,
+  // Emits one i64 source attribute minus literal_i64.
+  LOOM_LOW_LOWER_ATTR_COPY_I64_ATTR_MINUS_LITERAL = 26,
+  // Emits selected source-memory static byte offset plus literal_i64.
+  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_STATIC_BYTE_OFFSET_PLUS_LITERAL = 27,
+  // Emits one signed i32 word from an exact i64 source value bit pattern.
+  LOOM_LOW_LOWER_ATTR_COPY_VALUE_EXACT_I64_I32_WORD = 28,
+  // Emits one signed i32 word from an exact f64 source value bit pattern.
+  LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_F64_I32_WORD = 29,
+  // Emits exact f32 source value bits reinterpreted as a signed i32 packet
+  // attribute.
+  LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_F32_I32 = 30,
+  // Emits one i64_array element plus literal_i64.
+  LOOM_LOW_LOWER_ATTR_COPY_I64_ARRAY_ELEMENT_PLUS_LITERAL = 31,
 } loom_low_lower_attr_copy_kind_t;
 
 typedef struct loom_low_lower_attr_copy_t {
@@ -211,7 +290,8 @@ typedef struct loom_low_lower_attr_copy_t {
   uint16_t source_attr_index;
   // Second source op attribute ordinal consumed by two-attr projections.
   uint16_t other_source_attr_index;
-  // First source i64_array element ordinal consumed by array projection rows.
+  // First source i64_array element ordinal or i32 word ordinal consumed by the
+  // projection row.
   uint16_t source_element_index;
   // Number of source elements consumed by PACK_ELEMENTS rows or byte stride
   // used by I64_ARRAY_LANE_BYTE rows.
@@ -220,7 +300,7 @@ typedef struct loom_low_lower_attr_copy_t {
   uint8_t source_element_bit_width;
   // Low bit position of the projected or packed value in the emitted i64.
   uint8_t target_bit_offset;
-  // Source value-ref table row consumed by VALUE_EXACT_I64 rows.
+  // Source value-ref table row consumed by value projection rows.
   uint16_t value_ref_index;
   // Dynamic source-memory term ordinal consumed by SOURCE_MEMORY rows.
   uint8_t dynamic_term_index;
@@ -384,6 +464,71 @@ typedef uint16_t loom_low_lower_source_memory_flags_t;
 // static contribution from it into the source-memory static byte offset.
 #define LOOM_LOW_LOWER_SOURCE_MEMORY_FLAG_PRESERVE_SOURCE_INDEX \
   ((uint16_t)1u << 2)
+// Accept any advisory source cache policy.
+#define LOOM_LOW_LOWER_SOURCE_MEMORY_FLAG_CACHE_POLICY_ANY ((uint16_t)1u << 3)
+
+typedef struct loom_low_lower_source_memory_byte_offset_materializer_t {
+  // Rule-set B-string offset for the i64 constant immediate field.
+  loom_bstring_table_offset_t const_i64_immediate_string_offset;
+  // Descriptor ref used to materialize i64 constants.
+  loom_low_lower_descriptor_ref_t const_i64_descriptor_ref;
+  // Descriptor ref used to materialize i64 additions.
+  loom_low_lower_descriptor_ref_t add_i64_descriptor_ref;
+  // Descriptor ref used to materialize i64 multiplies.
+  loom_low_lower_descriptor_ref_t mul_i64_descriptor_ref;
+  // Descriptor ref used to materialize i64 shifts.
+  loom_low_lower_descriptor_ref_t shl_i64_descriptor_ref;
+} loom_low_lower_source_memory_byte_offset_materializer_t;
+static_assert(sizeof(loom_low_lower_source_memory_byte_offset_materializer_t) ==
+                  12,
+              "source-memory byte-offset materializer must be 12 bytes");
+
+typedef struct loom_low_lower_source_memory_address_materializer_t {
+  // Minimum accepted complete address coordinate.
+  int64_t coordinate_minimum;
+  // Maximum accepted complete address coordinate.
+  int64_t coordinate_maximum;
+  // Number of bytes represented by one materialized address coordinate unit.
+  uint32_t coordinate_unit_byte_count;
+  // Rule-set B-string offset for the coordinate constant immediate field.
+  loom_bstring_table_offset_t const_coordinate_immediate_string_offset;
+  // Descriptor ref used to materialize a complete address coordinate constant.
+  loom_low_lower_descriptor_ref_t const_coordinate_descriptor_ref;
+  // Descriptor ref used to add complete address coordinate values.
+  loom_low_lower_descriptor_ref_t add_coordinate_descriptor_ref;
+  // Descriptor ref used to multiply complete address coordinate values.
+  loom_low_lower_descriptor_ref_t mul_coordinate_descriptor_ref;
+  // Descriptor ref used to shift complete address coordinate values.
+  loom_low_lower_descriptor_ref_t shl_coordinate_descriptor_ref;
+  // Descriptor ref used to normalize an index before converting its carrier.
+  loom_low_lower_descriptor_ref_t index_to_coordinate_input_descriptor_ref;
+  // Descriptor ref used to convert a semantic index to the coordinate carrier.
+  loom_low_lower_descriptor_ref_t index_to_coordinate_descriptor_ref;
+  // Descriptor ref used to materialize the final target address.
+  loom_low_lower_descriptor_ref_t address_descriptor_ref;
+  // Source-memory value used as the complete-address base.
+  uint8_t base_kind;
+  // Semantic source type carried by materialized address coordinates.
+  uint8_t coordinate_type;
+} loom_low_lower_source_memory_address_materializer_t;
+static_assert(sizeof(loom_low_lower_source_memory_address_materializer_t) == 40,
+              "source-memory address materializer must be 40 bytes");
+
+#define LOOM_LOW_LOWER_SOURCE_MEMORY_MATERIALIZER_NONE ((uint8_t)0)
+
+// Interned diagnostic selection for one source-memory constraint family.
+typedef struct loom_low_lower_source_memory_diagnostics_t {
+  // Diagnostic emitted when the base source-memory constraint rejects.
+  uint16_t constraint_diagnostic_index;
+  // Diagnostic emitted when the dynamic byte-offset width check rejects.
+  uint16_t dynamic_offset_diagnostic_index;
+  // Diagnostic emitted when the address-layout classification rejects.
+  uint16_t address_layout_diagnostic_index;
+  // Diagnostic emitted when complete address materialization rejects.
+  uint16_t address_diagnostic_index;
+} loom_low_lower_source_memory_diagnostics_t;
+static_assert(sizeof(loom_low_lower_source_memory_diagnostics_t) == 8,
+              "source-memory diagnostic rows must remain compact");
 
 typedef struct loom_low_lower_source_memory_t {
   // Source memory operation category required by this row.
@@ -402,28 +547,24 @@ typedef struct loom_low_lower_source_memory_t {
   uint8_t dynamic_index_source;
   // Required unsigned dynamic byte offset bit width, or zero if unconstrained.
   uint8_t dynamic_offset_unsigned_bit_count;
-  // Source-memory value used as the complete-address base.
-  uint8_t address_base_kind;
-  // Semantic source type carried by materialized address coordinates.
-  uint8_t address_coordinate_type;
+  // One-based dynamic byte-offset materializer row, or zero when unused.
+  uint8_t byte_offset_materializer_ordinal;
+  // One-based complete-address materializer row, or zero when unused.
+  uint8_t address_materializer_ordinal;
+  // Rule-set source-memory diagnostic row index.
+  uint16_t diagnostics_index;
   // Bitfield of source-memory row option bits.
   loom_low_lower_source_memory_flags_t flags;
   // Accepted target-independent source memory spaces.
   loom_low_lower_memory_space_mask_t memory_space_mask;
-  // Reserved storage completing the compact match classifier header.
-  uint16_t reserved_classifier;
   // Required byte count of one addressed view element.
   uint32_t element_byte_count;
   // Required static number of vector lanes addressed by the operation.
   uint32_t vector_lane_count;
   // Minimum required final address byte alignment, or zero if unconstrained.
   uint32_t minimum_alignment;
-  // Required source cache-policy build flags.
+  // Required source cache-policy build flags unless CACHE_POLICY_ANY is set.
   uint32_t cache_policy_build_flags;
-  // Number of bytes represented by one materialized address coordinate unit.
-  uint32_t address_coordinate_unit_byte_count;
-  // Reserved storage aligning the compact 64-bit match geometry.
-  uint32_t reserved_geometry;
   // Required byte stride between adjacent vector lanes.
   int64_t vector_lane_byte_stride;
   // Minimum accepted static byte offset from the storage root.
@@ -432,50 +573,9 @@ typedef struct loom_low_lower_source_memory_t {
   int64_t static_byte_offset_maximum;
   // Required byte stride for each dynamic address term unless ANY is set.
   int64_t dynamic_byte_stride;
-  // Minimum accepted complete address coordinate.
-  int64_t address_coordinate_minimum;
-  // Maximum accepted complete address coordinate.
-  int64_t address_coordinate_maximum;
-  // Rule-set B-string offset for the i64 constant immediate field.
-  loom_bstring_table_offset_t byte_offset_const_i64_immediate_string_offset;
-  // Rule-set B-string offset for the coordinate constant immediate field.
-  loom_bstring_table_offset_t address_const_coordinate_immediate_string_offset;
-  // Diagnostic emitted when the dynamic byte offset width check rejects.
-  uint16_t dynamic_offset_diagnostic_index;
-  // Diagnostic emitted when the address-layout classification rejects.
-  uint16_t address_layout_diagnostic_index;
-  // Diagnostic table row emitted when this source-memory row rejects.
-  uint16_t diagnostic_index;
-  // Diagnostic table row emitted when complete address materialization rejects.
-  uint16_t address_diagnostic_index;
-  // Descriptor ref used to materialize i64 constants for dynamic byte offsets.
-  loom_low_lower_descriptor_ref_t byte_offset_const_i64_descriptor_ref;
-  // Descriptor ref used to materialize i64 additions for dynamic byte offsets.
-  loom_low_lower_descriptor_ref_t byte_offset_add_i64_descriptor_ref;
-  // Descriptor ref used to materialize i64 multiplies for dynamic byte offsets.
-  loom_low_lower_descriptor_ref_t byte_offset_mul_i64_descriptor_ref;
-  // Descriptor ref used to materialize i64 shifts for dynamic byte offsets.
-  loom_low_lower_descriptor_ref_t byte_offset_shl_i64_descriptor_ref;
-  // Descriptor ref used to materialize a complete address coordinate constant.
-  loom_low_lower_descriptor_ref_t address_const_coordinate_descriptor_ref;
-  // Descriptor ref used to add complete address coordinate values.
-  loom_low_lower_descriptor_ref_t address_add_coordinate_descriptor_ref;
-  // Descriptor ref used to multiply complete address coordinate values.
-  loom_low_lower_descriptor_ref_t address_mul_coordinate_descriptor_ref;
-  // Descriptor ref used to shift complete address coordinate values.
-  loom_low_lower_descriptor_ref_t address_shl_coordinate_descriptor_ref;
-  // Descriptor ref used to normalize an index before converting its carrier.
-  loom_low_lower_descriptor_ref_t
-      address_index_to_coordinate_input_descriptor_ref;
-  // Descriptor ref used to convert a semantic index to the coordinate carrier.
-  loom_low_lower_descriptor_ref_t address_index_to_coordinate_descriptor_ref;
-  // Descriptor ref used to materialize the final target address.
-  loom_low_lower_descriptor_ref_t address_descriptor_ref;
-  // Reserved storage completing the second 64-byte row half.
-  uint16_t reserved_materialization;
 } loom_low_lower_source_memory_t;
-static_assert(sizeof(loom_low_lower_source_memory_t) == 128,
-              "loom_low_lower_source_memory_t must be 128 bytes");
+static_assert(sizeof(loom_low_lower_source_memory_t) == 64,
+              "source-memory rows must remain compact");
 
 typedef enum loom_low_lower_guard_kind_e {
   // Invalid or uninitialized guard.
@@ -539,7 +639,8 @@ typedef enum loom_low_lower_guard_kind_e {
   // Source value facts must prove every integer element is >= every integer
   // element in the other source value facts.
   LOOM_LOW_LOWER_GUARD_VALUE_I64_RANGE_GE = 24,
-  // Source value type storage schema element format must match u64.
+  // Source value's retained schema or type storage element format must match
+  // u64.
   LOOM_LOW_LOWER_GUARD_VALUE_STORAGE_ELEMENT_FORMAT = 25,
   // Packed integer storage payload bits must equal source lane count times a
   // source i64 width attribute.
@@ -625,7 +726,9 @@ static_assert(sizeof(loom_low_lower_guard_t) == 32,
 // Ordinal into a rule set's interned guard table.
 typedef uint16_t loom_low_lower_guard_ref_t;
 
-typedef enum loom_low_lower_emit_kind_e {
+typedef uint8_t loom_low_lower_emit_kind_t;
+
+enum loom_low_lower_emit_kind_e {
   // Invalid or uninitialized emit action.
   LOOM_LOW_LOWER_EMIT_INVALID = 0,
   // Emits a descriptor-backed low.op.
@@ -638,38 +741,50 @@ typedef enum loom_low_lower_emit_kind_e {
   // Slices register-range operands by descriptor packet operand widths, emits
   // one descriptor-backed low.op per source lane, and concatenates each result.
   LOOM_LOW_LOWER_EMIT_DESCRIPTOR_OP_PER_LANE = 4,
-  // Executes a rule's whole emit program once per register lane using
-  // lane-local temporaries, then concatenates the final lane results.
+  // Executes the final contiguous emit-program tail once per register lane
+  // using lane-local temporaries, then concatenates the final lane results.
+  // Ordinary emits before the tail provide shared setup values.
   LOOM_LOW_LOWER_EMIT_DESCRIPTOR_OP_PER_LANE_SEQUENCE = 5,
   // Slices register-range operands, emits one descriptor-backed low.op per
   // register lane, and threads one scalar accumulator operand through the
   // emitted results.
   LOOM_LOW_LOWER_EMIT_DESCRIPTOR_OP_ACCUMULATE_LANES = 6,
-} loom_low_lower_emit_kind_t;
+  // Projects consecutive register units with low.slice.
+  LOOM_LOW_LOWER_EMIT_REGISTER_SLICE = 7,
+  // Concatenates register values with low.concat.
+  LOOM_LOW_LOWER_EMIT_REGISTER_CONCAT = 8,
+  // Copies a register value into a compatible register class with low.copy.
+  LOOM_LOW_LOWER_EMIT_REGISTER_COPY = 9,
+  // Maximum emit kind plus one.
+  LOOM_LOW_LOWER_EMIT_COUNT_,
+};
 
-typedef uint16_t loom_low_lower_emit_flags_t;
+static_assert(LOOM_LOW_LOWER_EMIT_COUNT_ <= UINT8_MAX,
+              "lower emit kinds must fit in uint8_t storage");
+
+typedef uint8_t loom_low_lower_emit_flags_t;
 
 // Swaps emitted descriptor operands 0 and 1 after operand lookup/copy/slicing.
-#define LOOM_LOW_LOWER_EMIT_FLAG_SWAP_OPERANDS_0_1 ((uint16_t)1u << 0)
+#define LOOM_LOW_LOWER_EMIT_FLAG_SWAP_OPERANDS_0_1 ((uint8_t)1u << 0)
 // Binds emitted low results to result_bind_ref_start instead of
-// result_ref_start.
-#define LOOM_LOW_LOWER_EMIT_FLAG_BIND_RESULTS_TO_REFS ((uint16_t)1u << 1)
+// result_type.value_ref_start.
+#define LOOM_LOW_LOWER_EMIT_FLAG_BIND_RESULTS_TO_REFS ((uint8_t)1u << 1)
 // Maps emitted low result types from exact type-pattern rows instead of
-// result_ref_start source value refs.
-#define LOOM_LOW_LOWER_EMIT_FLAG_RESULT_TYPE_PATTERN ((uint16_t)1u << 2)
+// result_type.value_ref_start source value refs.
+#define LOOM_LOW_LOWER_EMIT_FLAG_RESULT_TYPE_PATTERN ((uint8_t)1u << 2)
 // Seeds DESCRIPTOR_OP_ACCUMULATE_LANES from lane 0 of its accumulator operand
 // and starts descriptor emission at lane 1.
-#define LOOM_LOW_LOWER_EMIT_FLAG_ACCUMULATE_SEED_FIRST_LANE ((uint16_t)1u << 3)
+#define LOOM_LOW_LOWER_EMIT_FLAG_ACCUMULATE_SEED_FIRST_LANE ((uint8_t)1u << 3)
 // Builds DESCRIPTOR_OP_ACCUMULATE_LANES as a balanced tree over source lanes.
-#define LOOM_LOW_LOWER_EMIT_FLAG_ACCUMULATE_TREE_BALANCED ((uint16_t)1u << 4)
+#define LOOM_LOW_LOWER_EMIT_FLAG_ACCUMULATE_TREE_BALANCED ((uint8_t)1u << 4)
 // Starts DESCRIPTOR_OP_ACCUMULATE_LANES at lane 1. The accumulator operand must
 // already contain the folded lane 0 contribution.
-#define LOOM_LOW_LOWER_EMIT_FLAG_ACCUMULATE_SKIP_FIRST_LANE ((uint16_t)1u << 5)
+#define LOOM_LOW_LOWER_EMIT_FLAG_ACCUMULATE_SKIP_FIRST_LANE ((uint8_t)1u << 5)
 // Synthesizes emitted low result types from descriptor result operand rows.
-#define LOOM_LOW_LOWER_EMIT_FLAG_RESULT_DESCRIPTOR_TYPE ((uint16_t)1u << 6)
+#define LOOM_LOW_LOWER_EMIT_FLAG_RESULT_DESCRIPTOR_TYPE ((uint8_t)1u << 6)
 // Records the source access summary for an emitted descriptor with memory
 // effects. Address arithmetic consumes the plan without recording an access.
-#define LOOM_LOW_LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY ((uint16_t)1u << 7)
+#define LOOM_LOW_LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY ((uint8_t)1u << 7)
 
 typedef struct loom_low_lower_emit_t {
   // Emit action to perform.
@@ -680,42 +795,63 @@ typedef struct loom_low_lower_emit_t {
   loom_low_lower_descriptor_ref_t descriptor_ref;
   // First value-ref table row copied as a low operand.
   uint16_t operand_ref_start;
-  // Number of low operands to copy from value-ref rows.
-  uint16_t operand_ref_count;
   // Bitmask of emitted low operand ordinals copied through low.copy before the
-  // descriptor op consumes them. Used for destructive/tied packet operands
-  // without clobbering the source SSA value's later uses.
+  // descriptor op consumes them. The copy uses the descriptor operand's
+  // concrete register class, supporting destructive/tied operands and fixed
+  // physical-register constraints without changing source SSA values.
   uint16_t copy_operand_mask;
-  // Operand ordinal that carries the threaded scalar accumulator for
-  // DESCRIPTOR_OP_ACCUMULATE_LANES.
-  uint16_t accumulator_operand_index;
-  // First value-ref table row mapped as a low result.
-  //
-  // Result type refs must address source results. When
-  // BIND_RESULTS_TO_REFS is set, result_bind_ref_start controls where the
-  // emitted low results are bound.
-  uint16_t result_ref_start;
-  // First exact type-pattern table row mapped as a low result type when
-  // RESULT_TYPE_PATTERN is set.
-  uint16_t result_type_pattern_start;
-  // Number of low results to map and bind.
-  uint16_t result_ref_count;
+  // Result-type table range selected by RESULT_TYPE_PATTERN.
+  union {
+    // First value-ref table row mapped as a low result. Result type refs must
+    // address source results. When BIND_RESULTS_TO_REFS is set,
+    // result_bind_ref_start controls where the emitted low results are bound.
+    uint16_t value_ref_start;
+    // First exact type-pattern table row mapped as a low result type.
+    uint16_t type_pattern_start;
+  } result_type;
   // First value-ref table row receiving emitted low results when
   // BIND_RESULTS_TO_REFS is set.
   uint16_t result_bind_ref_start;
-  // First attr-copy table row emitted onto the low packet.
-  uint16_t attr_copy_start;
-  // Number of attributes copied onto the low packet.
-  uint16_t attr_copy_count;
-  // First tied-result table row forwarded to the low packet builder.
-  uint16_t tied_result_start;
-  // Number of tied-result rows forwarded to the low packet builder.
-  uint16_t tied_result_count;
   // One-based source-memory row consumed by this descriptor emit. Zero means
   // the emit does not consume a source memory plan. RECORD_SOURCE_MEMORY marks
   // memory packets; address-only emits use the plan without recording it.
   uint16_t source_memory_ordinal;
+  // Kind-specific descriptor or structural emit payload.
+  union {
+    // Descriptor-backed emit table ranges.
+    struct {
+      // First attr-copy table row emitted onto the low packet.
+      uint16_t attr_copy_start;
+      // First tied-result table row forwarded to the low packet builder.
+      uint16_t tied_result_start;
+    } descriptor;
+    // Structural register operation parameters.
+    struct {
+      // Register-unit offset consumed by REGISTER_SLICE.
+      uint16_t offset;
+      // Explicit result register-unit count consumed by REGISTER_SLICE. Zero
+      // maps the result type through the normal result reference or type
+      // pattern.
+      uint16_t unit_count;
+    } structural;
+  } payload;
+  // Number of low operands to copy from value-ref rows.
+  uint8_t operand_ref_count;
+  // Operand ordinal that carries the threaded scalar accumulator for
+  // DESCRIPTOR_OP_ACCUMULATE_LANES.
+  uint8_t accumulator_operand_index;
+  // Number of low results to map and bind.
+  uint8_t result_ref_count;
+  // Number of attributes copied onto the low packet.
+  uint8_t attr_copy_count;
+  // Number of tied-result rows forwarded to the low packet builder.
+  uint8_t tied_result_count;
 } loom_low_lower_emit_t;
+static_assert(sizeof(loom_low_lower_emit_t) == 24,
+              "loom_low_lower_emit_t must be 24 bytes");
+
+// Ordinal into a rule set's interned emit table.
+typedef uint16_t loom_low_lower_emit_ref_t;
 
 typedef uint16_t loom_low_lower_rule_flags_t;
 
@@ -731,6 +867,9 @@ typedef uint16_t loom_low_lower_rule_flags_t;
 // Rule row has no structured report key.
 #define LOOM_LOW_LOWER_RULE_REPORT_KEY_NONE ((uint16_t)0)
 
+// Emission rule has no descriptor-bearing primary emit.
+#define LOOM_LOW_LOWER_RULE_PRIMARY_EMIT_NONE ((uint16_t)UINT16_MAX)
+
 typedef struct loom_low_lower_rule_t {
   // Source op kind this rule accepts.
   loom_op_kind_t source_op_kind;
@@ -742,23 +881,54 @@ typedef struct loom_low_lower_rule_t {
   // Number of rule-local temporary low values available while emitting this
   // rule.
   uint16_t temporary_count;
+  // Packed first related source-node row and row count. The root source op is
+  // implicit node zero.
+  uint16_t source_node_span;
   // First guard-ref row for this rule.
   uint16_t guard_start;
   // Number of guard refs for this rule.
   uint16_t guard_count;
-  // First emit-program table row for this rule.
-  uint16_t emit_start;
-  // Number of emit-program rows for this rule.
+  // Rule action range selected by its nonzero count.
+  union {
+    // First emit-reference row for this rule's program.
+    uint16_t emit_start;
+    // First value-ref pair whose source operand aliases a source result.
+    uint16_t alias_ref_start;
+    // First value-ref table row whose source result is intentionally erased.
+    uint16_t elide_ref_start;
+  } action;
+  // Number of emit-reference rows for this rule's program.
   uint16_t emit_count;
-  // First value-ref pair whose source operand aliases a source result.
-  uint16_t alias_ref_start;
-  // Number of operand/result alias pairs consumed by this rule.
-  uint16_t alias_ref_count;
-  // First value-ref table row whose source result is intentionally erased.
-  uint16_t elide_ref_start;
-  // Number of source result refs erased by this rule.
-  uint16_t elide_ref_count;
+  // Action-specific metadata sharing storage across disjoint rule kinds.
+  union {
+    // Metadata for descriptor-emission rules.
+    struct {
+      // Ordinal of the descriptor emit representing the rule's primary action.
+      uint16_t primary_emit_ordinal;
+    } emit;
+    // Metadata for value alias and elision rules.
+    struct {
+      // Number of operand/result alias pairs consumed by this rule.
+      uint8_t alias_ref_count;
+      // Number of source result refs erased by this rule.
+      uint8_t elide_ref_count;
+    } value;
+  } metadata;
 } loom_low_lower_rule_t;
+static_assert(sizeof(loom_low_lower_rule_t) == 20,
+              "loom_low_lower_rule_t must be 20 bytes");
+
+static inline uint16_t loom_low_lower_rule_source_node_start(
+    const loom_low_lower_rule_t* rule) {
+  return (uint16_t)(rule->source_node_span >>
+                    LOOM_LOW_LOWER_SOURCE_NODE_COUNT_BITS);
+}
+
+static inline uint8_t loom_low_lower_rule_source_node_count(
+    const loom_low_lower_rule_t* rule) {
+  return (uint8_t)(rule->source_node_span &
+                   LOOM_LOW_LOWER_SOURCE_NODE_COUNT_MASK);
+}
 
 typedef struct loom_low_lower_rule_span_t {
   // Source op kind covered by this contiguous rule range.
@@ -802,6 +972,10 @@ typedef struct loom_low_lower_rule_set_t {
   const loom_low_lower_value_ref_t* value_refs;
   // Number of rows in value_refs.
   uint16_t value_ref_count;
+  // Related source-op rows referenced by rules.
+  const loom_low_lower_source_node_t* source_nodes;
+  // Number of rows in source_nodes.
+  uint16_t source_node_count;
   // Target-owned value materializers referenced by one-based value refs.
   const loom_low_lower_value_materializer_t* materializers;
   // Number of rows in materializers.
@@ -810,6 +984,20 @@ typedef struct loom_low_lower_rule_set_t {
   const loom_low_lower_source_memory_t* source_memories;
   // Number of rows in source_memories.
   uint16_t source_memory_count;
+  // Interned diagnostic selections referenced by source memories.
+  const loom_low_lower_source_memory_diagnostics_t* source_memory_diagnostics;
+  // Number of rows in source_memory_diagnostics.
+  uint16_t source_memory_diagnostic_count;
+  // Interned dynamic byte-offset materializers referenced by source memories.
+  const loom_low_lower_source_memory_byte_offset_materializer_t*
+      source_memory_byte_offset_materializers;
+  // Number of rows in source_memory_byte_offset_materializers.
+  uint8_t source_memory_byte_offset_materializer_count;
+  // Interned complete-address materializers referenced by source memories.
+  const loom_low_lower_source_memory_address_materializer_t*
+      source_memory_address_materializers;
+  // Number of rows in source_memory_address_materializers.
+  uint8_t source_memory_address_materializer_count;
   // Descriptor refs referenced by guards and emits.
   const loom_low_lower_rule_descriptor_ref_t* descriptor_refs;
   // Number of rows in descriptor_refs.
@@ -838,7 +1026,11 @@ typedef struct loom_low_lower_rule_set_t {
   const loom_tied_result_t* tied_results;
   // Number of rows in tied_results.
   uint16_t tied_result_count;
-  // Emit-program rows referenced by rules.
+  // Emit refs addressed by rule emit-program spans.
+  const loom_low_lower_emit_ref_t* emit_refs;
+  // Number of rows in emit_refs.
+  uint16_t emit_ref_count;
+  // Interned emit rows referenced by emit_refs.
   const loom_low_lower_emit_t* emits;
   // Number of rows in emits.
   uint16_t emit_count;
@@ -847,6 +1039,39 @@ typedef struct loom_low_lower_rule_set_t {
   // Number of rows in diagnostics.
   uint16_t diagnostic_count;
 } loom_low_lower_rule_set_t;
+
+// Resolves one emit-program position to its interned emit row.
+static inline const loom_low_lower_emit_t* loom_low_lower_rule_set_emit_at(
+    const loom_low_lower_rule_set_t* rule_set, uint16_t emit_ref_index) {
+  return &rule_set->emits[rule_set->emit_refs[emit_ref_index]];
+}
+
+// Resolves the trusted byte-offset materializer referenced by |source_memory|.
+static inline const loom_low_lower_source_memory_byte_offset_materializer_t*
+loom_low_lower_rule_set_source_memory_byte_offset_materializer(
+    const loom_low_lower_rule_set_t* rule_set,
+    const loom_low_lower_source_memory_t* source_memory) {
+  return &rule_set->source_memory_byte_offset_materializers
+              [source_memory->byte_offset_materializer_ordinal - 1];
+}
+
+// Resolves the trusted diagnostic selection referenced by |source_memory|.
+static inline const loom_low_lower_source_memory_diagnostics_t*
+loom_low_lower_rule_set_source_memory_diagnostics(
+    const loom_low_lower_rule_set_t* rule_set,
+    const loom_low_lower_source_memory_t* source_memory) {
+  return &rule_set->source_memory_diagnostics[source_memory->diagnostics_index];
+}
+
+// Resolves the trusted complete-address materializer referenced by
+// |source_memory|.
+static inline const loom_low_lower_source_memory_address_materializer_t*
+loom_low_lower_rule_set_source_memory_address_materializer(
+    const loom_low_lower_rule_set_t* rule_set,
+    const loom_low_lower_source_memory_t* source_memory) {
+  return &rule_set->source_memory_address_materializers
+              [source_memory->address_materializer_ordinal - 1];
+}
 
 // Returns the trusted rule-set B-string at |string_offset|.
 static inline iree_string_view_t loom_low_lower_rule_set_string(

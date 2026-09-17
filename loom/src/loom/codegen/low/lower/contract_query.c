@@ -297,7 +297,7 @@ static iree_status_t loom_low_lower_query_target_contract_index(
             &selection));
     if (selection.rule != NULL) {
       const loom_low_lower_descriptor_ref_t descriptor_ref =
-          loom_low_lower_rule_first_descriptor_ref(rule_set, selection.rule);
+          loom_low_lower_rule_primary_descriptor_ref(rule_set, selection.rule);
       const loom_low_descriptor_t* selected_descriptor = NULL;
       if (descriptor_ref != LOOM_LOW_LOWER_DESCRIPTOR_REF_NONE) {
         IREE_RETURN_IF_ERROR(loom_low_lower_rule_resolve_descriptor_ref(
@@ -324,14 +324,8 @@ static iree_status_t loom_low_lower_query_target_contract_index(
       };
       return iree_ok_status();
     }
-    if (selection.has_source_op_span &&
-        (failed_rule_set == NULL ||
-         (selection.source_memory_compatible &&
-          !failed_selection.source_memory_compatible) ||
-         (selection.source_memory_compatible ==
-              failed_selection.source_memory_compatible &&
-          selection.matched_guard_count >
-              failed_selection.matched_guard_count))) {
+    if (loom_low_lower_rule_selection_failure_is_better(selection,
+                                                        failed_selection)) {
       failed_rule_set = rule_set;
       failed_selection = selection;
       failed_binding_index = contract_case->binding_index;

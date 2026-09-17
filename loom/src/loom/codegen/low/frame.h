@@ -41,9 +41,7 @@ typedef struct loom_low_emission_frame_options_t {
   // already include the function contract and remain immutable for the build.
   // When omitted, frame construction resolves the target from authored IR.
   const loom_target_facts_t* function_target_facts;
-  // Optional source-derived memory summaries for the scheduled low function.
-  // When empty, frame construction rebuilds the table from durable low.op
-  // memory_access attributes.
+  // Optional analysis-derived memory summaries for the scheduled low function.
   loom_low_memory_access_table_t memory_access_table;
   // Optional immutable target residency policy.
   const loom_target_residency_model_t* residency_model;
@@ -53,6 +51,9 @@ typedef struct loom_low_emission_frame_options_t {
   // materializations that emit target packets without descriptor rows.
   loom_low_schedule_structural_state_read_list_t
       schedule_structural_state_reads;
+  // Optional target-provided schedule models for structural low operations
+  // that emit native packets without descriptor rows.
+  loom_low_schedule_structural_model_list_t schedule_structural_models;
   // Candidate selection strategy used by the scheduler.
   loom_low_schedule_strategy_t schedule_strategy;
   // Optional structured scheduler feedback to emit.

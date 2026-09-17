@@ -24,6 +24,7 @@ from loom.target.low_descriptors import (
     Effect,
     EffectFlag,
     EffectKind,
+    EventSeparation,
     Hazard,
     HazardKind,
     Immediate,
@@ -31,6 +32,7 @@ from loom.target.low_descriptors import (
     ImmediateKind,
     InstructionClass,
     IssueUse,
+    IssueUseKind,
     LatencyKind,
     MemorySpace,
     ModelQuality,
@@ -40,15 +42,20 @@ from loom.target.low_descriptors import (
     OperandFormMatch,
     OperandFormMatchKind,
     OperandRole,
+    PhysicalRegister,
+    PhysicalRegisterView,
     RegClass,
     RegClassAlt,
     RegClassFlag,
+    RegisterPackingResource,
+    RegisterPackingResourceMember,
     RegisterPart,
     Resource,
     ResourceKind,
     ScheduleClass,
     ScheduleClassFlag,
     SpillSlotSpace,
+    TimingEvent,
 )
 
 _REG_I32 = "test.i32"
@@ -63,6 +70,12 @@ _REG_ALIAS32 = "test.alias32"
 _REG_ALIAS64 = "test.alias64"
 _REG_PRESSURE_ALIAS32 = "test.pressure.alias32"
 _REG_PRESSURE_ALIAS64 = "test.pressure.alias64"
+_REG_EXPLICIT32 = "test.explicit32"
+_REG_SPILLABLE_EXPLICIT32 = "test.spillable.explicit32"
+_REG_FIXED_R0 = "test.fixed.r0"
+_REG_PACKED_NARROW = "test.packed.narrow"
+_REG_PACKED_WIDE = "test.packed.wide"
+_REG_COINDEXED_PARTNER = "test.coindexed.partner"
 
 _REG_PART_I32_LOW16 = "test.i32.low16"
 _REG_PART_I32_HIGH16 = "test.i32.high16"
@@ -74,6 +87,8 @@ _RESOURCE_LOAD = "test.load"
 _RESOURCE_STORE = "test.store"
 _RESOURCE_CALL = "test.call"
 _RESOURCE_CONTROL = "test.control"
+_RESOURCE_SHARED_A = "test.shared_a"
+_RESOURCE_SHARED_B = "test.shared_b"
 
 _SCHEDULE_CONST = "test.const"
 _SCHEDULE_SCALAR_ALU = "test.scalar.alu"
@@ -83,6 +98,22 @@ _SCHEDULE_COUNTER_LOAD = "test.counter_load"
 _SCHEDULE_STORE = "test.store"
 _SCHEDULE_CALL = "test.call"
 _SCHEDULE_CONTROL = "test.control"
+_SCHEDULE_EVENT_FAST = "test.event.fast"
+_SCHEDULE_EVENT_SLOW = "test.event.slow"
+_SCHEDULE_EVENT_CONSUMER = "test.event.consumer"
+_SCHEDULE_RESOURCE_REQUIRED = "test.resource.required"
+_SCHEDULE_RESOURCE_RESERVED = "test.resource.reserved"
+_SCHEDULE_RESOURCE_SERIAL = "test.resource.serial"
+_SCHEDULE_ALTERNATIVE_B = "test.schedule.alternative_b"
+
+_EVENT_FAST_WRITE = "test.write.fast"
+_EVENT_SLOW_WRITE = "test.write.slow"
+_EVENT_EARLY_READ = "test.read.early"
+_EVENT_LATE_READ = "test.read.late"
+_EVENT_MEMORY_READ = "test.memory.read"
+_EVENT_MEMORY_WRITE = "test.memory.write"
+_EVENT_STATE_READ = "test.state.read"
+_EVENT_STATE_WRITE = "test.state.write"
 
 _I32_ALT = (RegClassAlt(_REG_I32),)
 _I8_ALT = (RegClassAlt(_REG_I8),)
@@ -91,8 +122,13 @@ _I32_I64_ALT = (RegClassAlt(_REG_I32), RegClassAlt(_REG_I64))
 _PTR_ALT = (RegClassAlt(_REG_PTR),)
 _PHYS_ALT = (RegClassAlt(_REG_PHYS),)
 _SPECIAL_ALT = (RegClassAlt(_REG_SPECIAL),)
+_EXPLICIT32_ALT = (RegClassAlt(_REG_EXPLICIT32),)
+_FIXED_R0_ALT = (RegClassAlt(_REG_FIXED_R0),)
 _SCHEDULE_STATE_ALT = (RegClassAlt(_REG_SCHEDULE_STATE),)
 _PRESSURE_ALIAS32_ALT = (RegClassAlt(_REG_PRESSURE_ALIAS32),)
+_PACKED_NARROW_ALT = (RegClassAlt(_REG_PACKED_NARROW),)
+_PACKED_WIDE_ALT = (RegClassAlt(_REG_PACKED_WIDE),)
+_COINDEXED_PARTNER_ALT = (RegClassAlt(_REG_COINDEXED_PARTNER),)
 
 
 def _asm(
@@ -197,12 +233,42 @@ def _phys_operand(field_name: str) -> Operand:
     return Operand(field_name, OperandRole.OPERAND, _PHYS_ALT)
 
 
+def _explicit32_result(field_name: str = "dst") -> Operand:
+    return Operand(field_name, OperandRole.RESULT, _EXPLICIT32_ALT)
+
+
+def _packed_narrow_result(field_name: str = "dst") -> Operand:
+    return Operand(field_name, OperandRole.RESULT, _PACKED_NARROW_ALT)
+
+
+def _packed_narrow_operand(field_name: str) -> Operand:
+    return Operand(field_name, OperandRole.OPERAND, _PACKED_NARROW_ALT)
+
+
+def _packed_wide_result(field_name: str = "dst") -> Operand:
+    return Operand(field_name, OperandRole.RESULT, _PACKED_WIDE_ALT, unit_count=2)
+
+
+def _packed_wide_operand(field_name: str) -> Operand:
+    return Operand(field_name, OperandRole.OPERAND, _PACKED_WIDE_ALT, unit_count=2)
+
+
 def _schedule_state_result(field_name: str = "dst") -> Operand:
-    return Operand(field_name, OperandRole.RESULT, _SCHEDULE_STATE_ALT)
+    return Operand(
+        field_name,
+        OperandRole.RESULT,
+        _SCHEDULE_STATE_ALT,
+        write_event=_EVENT_STATE_WRITE,
+    )
 
 
 def _schedule_state_operand(field_name: str) -> Operand:
-    return Operand(field_name, OperandRole.OPERAND, _SCHEDULE_STATE_ALT)
+    return Operand(
+        field_name,
+        OperandRole.OPERAND,
+        _SCHEDULE_STATE_ALT,
+        read_event=_EVENT_STATE_READ,
+    )
 
 
 def _pressure_alias32_result(
@@ -231,6 +297,7 @@ def _schedule_state_operand_read(field_name: str) -> Operand:
         OperandRole.OPERAND,
         _SCHEDULE_STATE_ALT,
         flags=(OperandFlag.STATE_READ,),
+        read_event=_EVENT_STATE_READ,
     )
 
 
@@ -240,6 +307,7 @@ def _schedule_state_read(field_name: str = "state_in") -> Operand:
         OperandRole.IMPLICIT,
         _SCHEDULE_STATE_ALT,
         flags=(OperandFlag.IMPLICIT, OperandFlag.STATE_READ),
+        read_event=_EVENT_STATE_READ,
     )
 
 
@@ -249,6 +317,7 @@ def _schedule_state_write(field_name: str = "state_out") -> Operand:
         OperandRole.IMPLICIT,
         _SCHEDULE_STATE_ALT,
         flags=(OperandFlag.IMPLICIT, OperandFlag.STATE_WRITE),
+        write_event=_EVENT_STATE_WRITE,
     )
 
 
@@ -259,6 +328,10 @@ def _special_state_operand(field_name: str) -> Operand:
         _SPECIAL_ALT,
         flags=(OperandFlag.STATE_READ,),
     )
+
+
+def _fixed_r0_operand(field_name: str) -> Operand:
+    return Operand(field_name, OperandRole.OPERAND, _FIXED_R0_ALT)
 
 
 def _special_state_read(field_name: str = "state_in") -> Operand:
@@ -348,6 +421,8 @@ _LOAD_EFFECT = Effect(
     memory_space=MemorySpace.GENERIC,
     flags=(EffectFlag.DEPENDENCY,),
     width_bits=128,
+    producer_event=_EVENT_MEMORY_READ,
+    consumer_event=_EVENT_MEMORY_READ,
 )
 
 _COUNTER_LOAD_EFFECT = Effect(
@@ -358,11 +433,22 @@ _COUNTER_LOAD_EFFECT = Effect(
     width_bits=128,
 )
 
+_ORDERED_LOAD_EFFECT = Effect(
+    EffectKind.READ,
+    memory_space=MemorySpace.GENERIC,
+    flags=(EffectFlag.ORDERED, EffectFlag.DEPENDENCY),
+    width_bits=128,
+    producer_event=_EVENT_MEMORY_READ,
+    consumer_event=_EVENT_MEMORY_READ,
+)
+
 _STORE_EFFECT = Effect(
     EffectKind.WRITE,
     memory_space=MemorySpace.GENERIC,
     flags=(EffectFlag.DEPENDENCY,),
     width_bits=128,
+    producer_event=_EVENT_MEMORY_WRITE,
+    consumer_event=_EVENT_MEMORY_WRITE,
 )
 
 _CALL_EFFECT = Effect(
@@ -374,6 +460,8 @@ _BARRIER_EFFECT = Effect(
     EffectKind.BARRIER,
     memory_space=MemorySpace.GENERIC,
     flags=(EffectFlag.ORDERED, EffectFlag.DEPENDENCY),
+    producer_event=_EVENT_MEMORY_WRITE,
+    consumer_event=_EVENT_MEMORY_READ,
 )
 
 _CONTROL_EFFECT = Effect(
@@ -417,6 +505,47 @@ TEST_LOW_CONST_ZERO_I32_DESCRIPTOR = Descriptor(
     instruction_classes=(InstructionClass.OTHER,),
 )
 
+TEST_LOW_CONST_ISSUED_I32_DESCRIPTOR = Descriptor(
+    key="test.const.issued.i32",
+    mnemonic="test.const.issued.i32",
+    semantic_tag="test.integer.const.issued.i32",
+    operands=(_i32_result(),),
+    op_kind=DescriptorOpKind.CONST,
+    immediates=(_I32_VALUE_IMMEDIATE,),
+    constraints=(Constraint(ConstraintKind.REMATERIALIZABLE, 0),),
+    asm_forms=_asm(results=("dst",), immediates=("i32_value",)),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_CONST_PACKED_NARROW_DESCRIPTOR = Descriptor(
+    key="test.const.packed.narrow",
+    mnemonic="test.const.packed.narrow",
+    semantic_tag="test.const.packed.narrow",
+    operands=(_packed_narrow_result(),),
+    op_kind=DescriptorOpKind.CONST,
+    immediates=(_I32_VALUE_IMMEDIATE,),
+    constraints=(Constraint(ConstraintKind.REMATERIALIZABLE, 0),),
+    asm_forms=_asm(results=("dst",), immediates=("i32_value",)),
+    schedule_class=_SCHEDULE_CONST,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    instruction_classes=(InstructionClass.OTHER,),
+)
+
+TEST_LOW_CONST_EXPLICIT32_DESCRIPTOR = Descriptor(
+    key="test.const.explicit32",
+    mnemonic="test.const.explicit32",
+    semantic_tag="test.const.explicit32",
+    operands=(_explicit32_result(),),
+    op_kind=DescriptorOpKind.CONST,
+    immediates=(_I32_VALUE_IMMEDIATE,),
+    constraints=(Constraint(ConstraintKind.REMATERIALIZABLE, 0),),
+    asm_forms=_asm(results=("dst",), immediates=("i32_value",)),
+    schedule_class=_SCHEDULE_CONST,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    instruction_classes=(InstructionClass.OTHER,),
+)
+
 TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR = Descriptor(
     key="test.rematerialize.i32",
     mnemonic="test.rematerialize.i32",
@@ -438,6 +567,16 @@ TEST_LOW_ADD_I32_DESCRIPTOR = Descriptor(
     flags=(DescriptorFlag.DEAD_REMOVABLE,),
 )
 
+TEST_LOW_ADD_I32_PHYS_RHS_DESCRIPTOR = Descriptor(
+    key="test.add.i32.phys_rhs",
+    mnemonic="test.add.i32.phys_rhs",
+    semantic_tag="integer.add.i32",
+    operands=(_i32_result(), _i32_operand("lhs"), _phys_operand("rhs")),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
 TEST_LOW_MUL_I32_DESCRIPTOR = Descriptor(
     key="test.mul.i32",
     mnemonic="test.mul.i32",
@@ -448,6 +587,227 @@ TEST_LOW_MUL_I32_DESCRIPTOR = Descriptor(
     flags=(DescriptorFlag.DEAD_REMOVABLE,),
 )
 
+TEST_LOW_ADD_MUL_I32_DESCRIPTOR = Descriptor(
+    key="test.add_mul.i32",
+    mnemonic="test.add_mul.i32",
+    semantic_tag="test.fused.add_mul.i32",
+    operands=(
+        _i32_result(),
+        _i32_operand("add_lhs"),
+        _i32_operand("add_rhs"),
+        _i32_operand("factor"),
+    ),
+    asm_forms=_asm(
+        results=("dst",),
+        operands=("add_lhs", "add_rhs", "factor"),
+    ),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_MUL_ADD_I32_DESCRIPTOR = Descriptor(
+    key="test.mul_add.i32",
+    mnemonic="test.mul_add.i32",
+    semantic_tag="test.fused.mul_add.i32",
+    operands=(
+        _i32_result(),
+        _i32_operand("multiplicand"),
+        _i32_operand("multiplier"),
+        _i32_operand("addend"),
+    ),
+    asm_forms=_asm(
+        results=("dst",),
+        operands=("multiplicand", "multiplier", "addend"),
+    ),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_EVENT_FAST_I32_DESCRIPTOR = Descriptor(
+    key="test.event.fast.i32",
+    mnemonic="test.event.fast.i32",
+    semantic_tag="integer.add.i32",
+    operands=(
+        Operand(
+            "dst",
+            OperandRole.RESULT,
+            _I32_ALT,
+            write_event=_EVENT_FAST_WRITE,
+        ),
+        _i32_operand("lhs"),
+        _i32_operand("rhs"),
+    ),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_EVENT_FAST,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_EVENT_FAST_PHYS_DESCRIPTOR = Descriptor(
+    key="test.event.write.fast.phys",
+    mnemonic="test.event.write.fast.phys",
+    semantic_tag="test.event.write.fast.phys",
+    operands=(
+        Operand("dst", OperandRole.RESULT, _PHYS_ALT, write_event=_EVENT_FAST_WRITE),
+        _phys_operand("source"),
+    ),
+    asm_forms=_asm(results=("dst",), operands=("source",)),
+    schedule_class=_SCHEDULE_EVENT_FAST,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_EVENT_LATE_READ_PHYS_DESCRIPTOR = Descriptor(
+    key="test.event.read.late.phys",
+    mnemonic="test.event.read.late.phys",
+    semantic_tag="test.event.read.late.phys",
+    operands=(
+        Operand("source", OperandRole.OPERAND, _PHYS_ALT, read_event=_EVENT_LATE_READ),
+    ),
+    asm_forms=_asm(operands=("source",)),
+    effects=(_STORE_EFFECT,),
+    schedule_class=_SCHEDULE_EVENT_CONSUMER,
+    flags=(DescriptorFlag.SIDE_EFFECTING,),
+)
+
+TEST_LOW_EVENT_SLOW_I32_DESCRIPTOR = Descriptor(
+    key="test.event.slow.i32",
+    mnemonic="test.event.slow.i32",
+    semantic_tag="integer.add.i32",
+    operands=(
+        Operand(
+            "dst",
+            OperandRole.RESULT,
+            _I32_ALT,
+            write_event=_EVENT_SLOW_WRITE,
+        ),
+        _i32_operand("lhs"),
+        _i32_operand("rhs"),
+    ),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_EVENT_SLOW,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_RESOURCE_REQUIRED_I32_DESCRIPTOR = Descriptor(
+    key="test.resource.required.i32",
+    mnemonic="test.resource.required.i32",
+    semantic_tag="test.resource.required.i32",
+    operands=(_i32_result(), _i32_operand("lhs"), _i32_operand("rhs")),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_RESOURCE_REQUIRED,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_RESOURCE_RESERVED_I32_DESCRIPTOR = Descriptor(
+    key="test.resource.reserved.i32",
+    mnemonic="test.resource.reserved.i32",
+    semantic_tag="test.resource.reserved.i32",
+    operands=(_i32_result(), _i32_operand("lhs"), _i32_operand("rhs")),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_RESOURCE_RESERVED,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_RESOURCE_SERIAL_I32_DESCRIPTOR = Descriptor(
+    key="test.resource.serial.i32",
+    mnemonic="test.resource.serial.i32",
+    semantic_tag="test.resource.serial.i32",
+    operands=(_i32_result(), _i32_operand("lhs"), _i32_operand("rhs")),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_RESOURCE_SERIAL,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_SCHEDULE_ALTERNATIVE_B_I32_DESCRIPTOR = Descriptor(
+    key="test.schedule.alternative.b.i32",
+    mnemonic="test.schedule.alternative.b.i32",
+    semantic_tag="test.schedule.alternative.i32",
+    operands=(_i32_result(), _i32_operand("lhs"), _i32_operand("rhs")),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_ALTERNATIVE_B,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_SCHEDULE_ALTERNATIVE_A_I32_DESCRIPTOR = Descriptor(
+    key="test.schedule.alternative.a.i32",
+    mnemonic="test.schedule.alternative.a.i32",
+    semantic_tag="test.schedule.alternative.i32",
+    operands=(_i32_result(), _i32_operand("lhs"), _i32_operand("rhs")),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    schedule_alternatives=(TEST_LOW_SCHEDULE_ALTERNATIVE_B_I32_DESCRIPTOR.key,),
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_EVENT_EARLY_CONSUMER_I32_DESCRIPTOR = Descriptor(
+    key="test.event.consume.early.i32",
+    mnemonic="test.event.consume.early.i32",
+    semantic_tag="integer.add.i32",
+    operands=(
+        Operand(
+            "dst",
+            OperandRole.RESULT,
+            _I32_ALT,
+            write_event=_EVENT_FAST_WRITE,
+        ),
+        Operand(
+            "lhs",
+            OperandRole.OPERAND,
+            _I32_ALT,
+            read_event=_EVENT_EARLY_READ,
+        ),
+        _i32_operand("rhs"),
+    ),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_EVENT_CONSUMER,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_EVENT_LATE_CONSUMER_I32_DESCRIPTOR = Descriptor(
+    key="test.event.consume.late.i32",
+    mnemonic="test.event.consume.late.i32",
+    semantic_tag="integer.add.i32",
+    operands=(
+        Operand(
+            "dst",
+            OperandRole.RESULT,
+            _I32_ALT,
+            write_event=_EVENT_FAST_WRITE,
+        ),
+        Operand(
+            "lhs",
+            OperandRole.OPERAND,
+            _I32_ALT,
+            read_event=_EVENT_LATE_READ,
+        ),
+        _i32_operand("rhs"),
+    ),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_EVENT_CONSUMER,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_EVENT_MEMORY_READ_I32_DESCRIPTOR = Descriptor(
+    key="test.event.memory.read.i32",
+    mnemonic="test.event.memory.read.i32",
+    semantic_tag="test.event.memory.read.i32",
+    operands=(_i32_operand("value"),),
+    asm_forms=_asm(operands=("value",)),
+    effects=(_LOAD_EFFECT,),
+    schedule_class=_SCHEDULE_EVENT_FAST,
+    flags=(DescriptorFlag.SIDE_EFFECTING,),
+)
+
+TEST_LOW_EVENT_MEMORY_WRITE_I32_DESCRIPTOR = Descriptor(
+    key="test.event.memory.write.i32",
+    mnemonic="test.event.memory.write.i32",
+    semantic_tag="test.event.memory.write.i32",
+    operands=(_i32_operand("value"),),
+    asm_forms=_asm(operands=("value",)),
+    effects=(_STORE_EFFECT,),
+    schedule_class=_SCHEDULE_EVENT_CONSUMER,
+    flags=(DescriptorFlag.SIDE_EFFECTING,),
+)
+
 TEST_LOW_TIED_ANY_DESCRIPTOR = Descriptor(
     key="test.tied.any",
     mnemonic="test.tied.any",
@@ -455,6 +815,20 @@ TEST_LOW_TIED_ANY_DESCRIPTOR = Descriptor(
     operands=(_i32_i64_result(), _i32_i64_operand("src")),
     constraints=_TIED_RESULT_CONSTRAINTS,
     asm_forms=_asm(results=("dst",), operands=("src",)),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_COINDEXED_RESULTS_DESCRIPTOR = Descriptor(
+    key="test.coindexed.results",
+    mnemonic="test.coindexed.results",
+    semantic_tag="test.coindexed.results",
+    operands=(
+        Operand("primary", OperandRole.RESULT, _PACKED_NARROW_ALT),
+        Operand("partner", OperandRole.RESULT, _COINDEXED_PARTNER_ALT),
+    ),
+    constraints=(Constraint(ConstraintKind.SAME_REGISTER_ORDINAL, 0, 1),),
+    asm_forms=_asm(results=("primary", "partner")),
     schedule_class=_SCHEDULE_SCALAR_ALU,
     flags=(DescriptorFlag.DEAD_REMOVABLE,),
 )
@@ -513,6 +887,39 @@ TEST_LOW_SELECT_I32_DESCRIPTOR = Descriptor(
         results=("dst",),
         operands=("condition", "true_value", "false_value"),
     ),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_FIXED_SELECT_I32_DESCRIPTOR = Descriptor(
+    key="test.fixed.select.i32",
+    mnemonic="test.fixed.select.i32",
+    semantic_tag="integer.select.i32",
+    operands=(
+        _i32_result(),
+        _i32_operand("true_value"),
+        _i32_operand("false_value"),
+        _fixed_r0_operand("condition"),
+    ),
+    asm_forms=_asm(
+        results=("dst",),
+        operands=("true_value", "false_value", "condition"),
+    ),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_FIXED_UPDATE_I32_DESCRIPTOR = Descriptor(
+    key="test.fixed.update.i32",
+    mnemonic="test.fixed.update.i32",
+    semantic_tag="integer.add.i32",
+    operands=(
+        Operand("dst", OperandRole.RESULT, _FIXED_R0_ALT),
+        _fixed_r0_operand("state"),
+        _i32_operand("delta"),
+    ),
+    constraints=(Constraint(ConstraintKind.TIED, 0, 1),),
+    asm_forms=_asm(results=("dst",), operands=("state", "delta")),
     schedule_class=_SCHEDULE_SCALAR_ALU,
     flags=(DescriptorFlag.DEAD_REMOVABLE,),
 )
@@ -852,6 +1259,58 @@ TEST_LOW_ADD_PHYS_DESCRIPTOR = Descriptor(
     flags=(DescriptorFlag.DEAD_REMOVABLE,),
 )
 
+TEST_LOW_PACKING_CREATE_DESCRIPTOR = Descriptor(
+    key="test.packing.create",
+    mnemonic="test.packing.create",
+    semantic_tag="test.register.packing.create",
+    operands=(_packed_narrow_result(), _i32_operand("src")),
+    asm_forms=_asm(results=("dst",), operands=("src",)),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_PACKING_EXPAND_DESCRIPTOR = Descriptor(
+    key="test.packing.expand",
+    mnemonic="test.packing.expand",
+    semantic_tag="test.register.packing.expand",
+    operands=(_packed_wide_result(), _packed_narrow_operand("src")),
+    asm_forms=_asm(results=("dst",), operands=("src",)),
+    schedule_class=_SCHEDULE_VECTOR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_PACKING_CONFIGURED_EXPAND_DESCRIPTOR = Descriptor(
+    key="test.packing.configured.expand",
+    mnemonic="test.packing.configured.expand",
+    semantic_tag="test.register.packing.configured_expand",
+    operands=(
+        _packed_wide_result("lhs_dst"),
+        _packed_wide_result("rhs_dst"),
+        _packed_narrow_operand("src"),
+        _i32_operand("config"),
+    ),
+    asm_forms=_asm(
+        results=("lhs_dst", "rhs_dst"),
+        operands=("src", "config"),
+    ),
+    schedule_class=_SCHEDULE_VECTOR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_PACKING_RETIRE_DESCRIPTOR = Descriptor(
+    key="test.packing.retire",
+    mnemonic="test.packing.retire",
+    semantic_tag="test.register.packing.retire",
+    operands=(
+        _i32_result(),
+        _packed_wide_operand("lhs"),
+        _packed_wide_operand("rhs"),
+    ),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_VECTOR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
 TEST_LOW_MOVE_TO_PRESSURE_ALIAS32_DESCRIPTOR = Descriptor(
     key="test.move.to.pressure.alias32",
     mnemonic="test.move.to.pressure.alias32",
@@ -931,6 +1390,30 @@ TEST_LOW_CONVERGENT_EXPLICIT_STATE_READ_I32_DESCRIPTOR = Descriptor(
     effects=(_CONVERGENT_EFFECT,),
     asm_forms=_asm(results=("dst",), operands=("value", "state")),
     schedule_class=_SCHEDULE_SCALAR_ALU,
+)
+
+TEST_LOW_STATE_SAMPLE_I32_DESCRIPTOR = Descriptor(
+    key="test.state.sample.i32",
+    mnemonic="test.state.sample.i32",
+    semantic_tag="test.state.sample.i32",
+    operands=(_i32_result(), _special_state_read()),
+    asm_forms=_asm(results=("dst",)),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
+TEST_LOW_STATE_READ_BOTH_I32_DESCRIPTOR = Descriptor(
+    key="test.state.read.both.i32",
+    mnemonic="test.state.read.both.i32",
+    semantic_tag="test.state.read.both.i32",
+    operands=(
+        _i32_result(),
+        _special_state_read("special"),
+        _schedule_state_read("schedule"),
+    ),
+    asm_forms=_asm(results=("dst",)),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
 )
 
 TEST_LOW_STATE_ADD_I32_DESCRIPTOR = Descriptor(
@@ -1029,6 +1512,20 @@ TEST_LOW_COUNTER_LOAD_V4I32_DESCRIPTOR = Descriptor(
     flags=(DescriptorFlag.SIDE_EFFECTING,),
 )
 
+TEST_LOW_LOAD_ORDERED_V4I32_DESCRIPTOR = Descriptor(
+    key="test.load.ordered.v4i32",
+    mnemonic="test.load.ordered.v4i32",
+    semantic_tag="memory.load.ordered.v128",
+    operands=(
+        Operand("dst", OperandRole.RESULT, _I32_ALT, unit_count=4),
+        _ptr_resource("address"),
+    ),
+    asm_forms=_asm(results=("dst",), operands=("address",)),
+    effects=(_ORDERED_LOAD_EFFECT,),
+    schedule_class=_SCHEDULE_LOAD,
+    flags=(DescriptorFlag.SIDE_EFFECTING,),
+)
+
 TEST_LOW_LOAD_V4F32_DESCRIPTOR = Descriptor(
     key="test.load.v4f32",
     mnemonic="test.load.v4f32",
@@ -1054,6 +1551,21 @@ TEST_LOW_LOAD_INDEX_V4I32_DESCRIPTOR = Descriptor(
     ),
     asm_forms=_asm(results=("dst",), operands=("address", "index")),
     effects=(_LOAD_EFFECT,),
+    schedule_class=_SCHEDULE_LOAD,
+    flags=(DescriptorFlag.SIDE_EFFECTING,),
+)
+
+TEST_LOW_LOAD_INDEX_ORDERED_V4I32_DESCRIPTOR = Descriptor(
+    key="test.load.index.ordered.v4i32",
+    mnemonic="test.load.index.ordered.v4i32",
+    semantic_tag="memory.load.index.ordered.v128",
+    operands=(
+        Operand("dst", OperandRole.RESULT, _I32_ALT, unit_count=4),
+        _ptr_resource("address"),
+        _i32_operand("index"),
+    ),
+    asm_forms=_asm(results=("dst",), operands=("address", "index")),
+    effects=(_ORDERED_LOAD_EFFECT,),
     schedule_class=_SCHEDULE_LOAD,
     flags=(DescriptorFlag.SIDE_EFFECTING,),
 )
@@ -1084,6 +1596,35 @@ TEST_LOW_STORE_V4I32_DESCRIPTOR = Descriptor(
     asm_forms=_asm(operands=("address", "value")),
     effects=(_STORE_EFFECT,),
     schedule_class=_SCHEDULE_STORE,
+    flags=(DescriptorFlag.SIDE_EFFECTING,),
+)
+
+TEST_LOW_SCHEDULE_ALTERNATIVE_STORE_B_V4I32_DESCRIPTOR = Descriptor(
+    key="test.schedule.alternative.store.b.v4i32",
+    mnemonic="test.schedule.alternative.store.b.v4i32",
+    semantic_tag="memory.schedule_alternative.store.v128",
+    operands=(
+        _ptr_resource("address"),
+        Operand("value", OperandRole.OPERAND, _I32_ALT, unit_count=4),
+    ),
+    asm_forms=_asm(operands=("address", "value")),
+    effects=(_STORE_EFFECT,),
+    schedule_class=_SCHEDULE_STORE,
+    flags=(DescriptorFlag.SIDE_EFFECTING,),
+)
+
+TEST_LOW_SCHEDULE_ALTERNATIVE_STORE_A_V4I32_DESCRIPTOR = Descriptor(
+    key="test.schedule.alternative.store.a.v4i32",
+    mnemonic="test.schedule.alternative.store.a.v4i32",
+    semantic_tag="memory.schedule_alternative.store.v128",
+    operands=(
+        _ptr_resource("address"),
+        Operand("value", OperandRole.OPERAND, _I32_ALT, unit_count=4),
+    ),
+    asm_forms=_asm(operands=("address", "value")),
+    effects=(_STORE_EFFECT,),
+    schedule_class=_SCHEDULE_STORE,
+    schedule_alternatives=(TEST_LOW_SCHEDULE_ALTERNATIVE_STORE_B_V4I32_DESCRIPTOR.key,),
     flags=(DescriptorFlag.SIDE_EFFECTING,),
 )
 
@@ -1315,10 +1856,196 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
             SpillSlotSpace.PRIVATE,
             flags=(RegClassFlag.VIRTUAL_ONLY,),
         ),
+        RegClass(
+            _REG_EXPLICIT32,
+            32,
+            SpillSlotSpace.PRIVATE,
+            flags=(
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.UNSPILLABLE,
+                RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+            ),
+            physical_registers=(
+                "test.r0",
+                "test.r1",
+                "test.r2",
+                "test.r3",
+            ),
+        ),
+        RegClass(
+            _REG_SPILLABLE_EXPLICIT32,
+            32,
+            SpillSlotSpace.STACK,
+            flags=(
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+            ),
+            physical_registers=(
+                "test.r0",
+                "test.r1",
+                "test.r2",
+                "test.r3",
+            ),
+        ),
+        RegClass(
+            _REG_FIXED_R0,
+            32,
+            SpillSlotSpace.PRIVATE,
+            flags=(
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.UNSPILLABLE,
+                RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+            ),
+            physical_registers=("test.r0",),
+        ),
+        RegClass(
+            _REG_PACKED_NARROW,
+            32,
+            SpillSlotSpace.PRIVATE,
+            flags=(
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.UNSPILLABLE,
+                RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+            ),
+            physical_registers=("test.r0", "test.r1"),
+        ),
+        RegClass(
+            _REG_PACKED_WIDE,
+            32,
+            SpillSlotSpace.PRIVATE,
+            flags=(
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.UNSPILLABLE,
+                RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+            ),
+            physical_registers=(
+                "test.r0",
+                "test.r2",
+                "test.r1",
+                "test.r3",
+            ),
+        ),
+        RegClass(
+            _REG_COINDEXED_PARTNER,
+            32,
+            SpillSlotSpace.PRIVATE,
+            flags=(
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.UNSPILLABLE,
+                RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+            ),
+            physical_registers=("test.r2", "test.r3"),
+        ),
+    ),
+    physical_registers=(
+        PhysicalRegister("test.r0", (1,)),
+        PhysicalRegister("test.r1", (0,)),
+        PhysicalRegister("test.r2", (3,)),
+        PhysicalRegister("test.r3", (2,)),
+        PhysicalRegister("test.l0", (1, 3)),
+        PhysicalRegister("test.l1", (0, 2)),
+        PhysicalRegister("test.q0", (0, 1, 2, 3)),
+    ),
+    physical_register_views=(
+        PhysicalRegisterView("test.l0", _REG_EXPLICIT32, ("test.r0", "test.r2")),
+        PhysicalRegisterView("test.l1", _REG_EXPLICIT32, ("test.r1", "test.r3")),
+        PhysicalRegisterView("test.l0", _REG_PACKED_WIDE, ("test.r0", "test.r2")),
+        PhysicalRegisterView("test.l1", _REG_PACKED_WIDE, ("test.r1", "test.r3")),
+    ),
+    register_packing_resources=(
+        RegisterPackingResource(
+            name="test.pair_slots",
+            capacity=2,
+            members=(
+                RegisterPackingResourceMember(_REG_PACKED_NARROW),
+                RegisterPackingResourceMember(
+                    _REG_PACKED_WIDE,
+                    register_unit_count=2,
+                ),
+            ),
+        ),
     ),
     register_parts=(
         RegisterPart(_REG_PART_I32_LOW16, _REG_I32, 0x1),
         RegisterPart(_REG_PART_I32_HIGH16, _REG_I32, 0x2),
+    ),
+    timing_events=(
+        TimingEvent(_EVENT_FAST_WRITE),
+        TimingEvent(_EVENT_SLOW_WRITE),
+        TimingEvent(_EVENT_EARLY_READ),
+        TimingEvent(_EVENT_LATE_READ),
+        TimingEvent(_EVENT_MEMORY_READ),
+        TimingEvent(_EVENT_MEMORY_WRITE),
+        TimingEvent(_EVENT_STATE_READ),
+        TimingEvent(_EVENT_STATE_WRITE),
+    ),
+    event_separations=(
+        EventSeparation(
+            _EVENT_FAST_WRITE,
+            _EVENT_EARLY_READ,
+            minimum_issue_separation_cycles=0,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_SLOW_WRITE,
+            _EVENT_EARLY_READ,
+            minimum_issue_separation_cycles=3,
+            model_quality=ModelQuality.CALIBRATED,
+        ),
+        EventSeparation(
+            _EVENT_FAST_WRITE,
+            _EVENT_LATE_READ,
+            minimum_issue_separation_cycles=-2,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_LATE_READ,
+            _EVENT_FAST_WRITE,
+            minimum_issue_separation_cycles=3,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_MEMORY_READ,
+            _EVENT_MEMORY_WRITE,
+            minimum_issue_separation_cycles=0,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_MEMORY_WRITE,
+            _EVENT_MEMORY_READ,
+            minimum_issue_separation_cycles=2,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_MEMORY_WRITE,
+            _EVENT_MEMORY_WRITE,
+            minimum_issue_separation_cycles=1,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_STATE_READ,
+            _EVENT_STATE_READ,
+            minimum_issue_separation_cycles=0,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_STATE_READ,
+            _EVENT_STATE_WRITE,
+            minimum_issue_separation_cycles=0,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_STATE_WRITE,
+            _EVENT_STATE_READ,
+            minimum_issue_separation_cycles=3,
+            model_quality=ModelQuality.EXACT,
+        ),
+        EventSeparation(
+            _EVENT_STATE_WRITE,
+            _EVENT_STATE_WRITE,
+            minimum_issue_separation_cycles=1,
+            model_quality=ModelQuality.EXACT,
+        ),
     ),
     resources=(
         Resource(_RESOURCE_SCALAR, capacity_per_cycle=1, kind=ResourceKind.SCALAR_ALU),
@@ -1328,11 +2055,24 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
         Resource(_RESOURCE_STORE, capacity_per_cycle=1, kind=ResourceKind.STORE),
         Resource(_RESOURCE_CALL, capacity_per_cycle=1, kind=ResourceKind.CONTROL),
         Resource(_RESOURCE_CONTROL, capacity_per_cycle=1, kind=ResourceKind.CONTROL),
+        Resource(
+            _RESOURCE_SHARED_A,
+            capacity_per_cycle=2,
+            kind=ResourceKind.SCALAR_ALU,
+            contention_group_id=1,
+        ),
+        Resource(
+            _RESOURCE_SHARED_B,
+            capacity_per_cycle=2,
+            kind=ResourceKind.SCALAR_ALU,
+            contention_group_id=1,
+        ),
     ),
     schedule_classes=(
         ScheduleClass(
             _SCHEDULE_CONST,
             latency_kind=LatencyKind.EXACT,
+            minimum_issue_separation_cycles=0,
             model_quality=ModelQuality.EXACT,
         ),
         ScheduleClass(
@@ -1346,6 +2086,7 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
             _SCHEDULE_VECTOR_ALU,
             latency_kind=LatencyKind.ESTIMATE,
             latency_cycles=2,
+            minimum_issue_separation_cycles=2,
             issue_uses=(IssueUse(_RESOURCE_VECTOR, cycles=1, units=1),),
             model_quality=ModelQuality.ESTIMATED,
         ),
@@ -1353,6 +2094,7 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
             _SCHEDULE_LOAD,
             latency_kind=LatencyKind.VARIABLE,
             latency_cycles=4,
+            minimum_issue_separation_cycles=4,
             issue_uses=(
                 IssueUse(_RESOURCE_ADDRESS, cycles=1, units=1, stage=0),
                 IssueUse(_RESOURCE_LOAD, cycles=1, units=1, stage=1),
@@ -1374,6 +2116,7 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
             latency_kind=LatencyKind.VARIABLE,
             latency_cycles=4,
             schedule_distance_cycles=1,
+            minimum_issue_separation_cycles=1,
             issue_uses=(
                 IssueUse(_RESOURCE_ADDRESS, cycles=1, units=1, stage=0),
                 IssueUse(_RESOURCE_LOAD, cycles=1, units=1, stage=1),
@@ -1392,6 +2135,7 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
             _SCHEDULE_STORE,
             latency_kind=LatencyKind.VARIABLE,
             latency_cycles=2,
+            minimum_issue_separation_cycles=2,
             issue_uses=(
                 IssueUse(_RESOURCE_ADDRESS, cycles=1, units=1, stage=0),
                 IssueUse(_RESOURCE_STORE, cycles=1, units=1, stage=1),
@@ -1403,6 +2147,7 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
             _SCHEDULE_CALL,
             latency_kind=LatencyKind.VARIABLE,
             latency_cycles=8,
+            minimum_issue_separation_cycles=8,
             issue_uses=(IssueUse(_RESOURCE_CALL, cycles=1, units=1),),
             flags=(ScheduleClassFlag.MAY_CALL,),
             model_quality=ModelQuality.FALLBACK,
@@ -1415,20 +2160,94 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
             flags=(ScheduleClassFlag.CONTROL,),
             model_quality=ModelQuality.EXACT,
         ),
+        ScheduleClass(
+            _SCHEDULE_EVENT_FAST,
+            latency_kind=LatencyKind.EXACT,
+            latency_cycles=9,
+            minimum_issue_separation_cycles=7,
+            issue_uses=(IssueUse(_RESOURCE_SHARED_A, cycles=2, units=1),),
+            model_quality=ModelQuality.EXACT,
+        ),
+        ScheduleClass(
+            _SCHEDULE_EVENT_SLOW,
+            latency_kind=LatencyKind.EXACT,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_SHARED_A, cycles=1, units=1, stage=1),),
+            model_quality=ModelQuality.EXACT,
+        ),
+        ScheduleClass(
+            _SCHEDULE_EVENT_CONSUMER,
+            latency_kind=LatencyKind.EXACT,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_SHARED_B, cycles=1, units=1),),
+            model_quality=ModelQuality.EXACT,
+        ),
+        ScheduleClass(
+            _SCHEDULE_RESOURCE_REQUIRED,
+            latency_kind=LatencyKind.EXACT,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_SHARED_B, cycles=1, units=1),),
+            model_quality=ModelQuality.EXACT,
+        ),
+        ScheduleClass(
+            _SCHEDULE_RESOURCE_RESERVED,
+            latency_kind=LatencyKind.EXACT,
+            latency_cycles=1,
+            issue_uses=(
+                IssueUse(
+                    _RESOURCE_SHARED_A,
+                    cycles=1,
+                    units=1,
+                    kind=IssueUseKind.RESERVED,
+                ),
+            ),
+            model_quality=ModelQuality.EXACT,
+        ),
+        ScheduleClass(
+            _SCHEDULE_RESOURCE_SERIAL,
+            latency_kind=LatencyKind.EXACT,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_SCALAR, cycles=4, units=1),),
+            model_quality=ModelQuality.EXACT,
+        ),
+        ScheduleClass(
+            _SCHEDULE_ALTERNATIVE_B,
+            latency_kind=LatencyKind.EXACT,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_SHARED_A, cycles=1, units=1),),
+            model_quality=ModelQuality.EXACT,
+        ),
     ),
     descriptors=(
         TEST_LOW_CONST_I32_DESCRIPTOR,
         TEST_LOW_CONST_ZERO_I32_DESCRIPTOR,
+        TEST_LOW_CONST_PACKED_NARROW_DESCRIPTOR,
+        TEST_LOW_CONST_EXPLICIT32_DESCRIPTOR,
         TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR,
         TEST_LOW_ADD_I32_DESCRIPTOR,
+        TEST_LOW_ADD_I32_PHYS_RHS_DESCRIPTOR,
         TEST_LOW_CONVERGENT_I32_DESCRIPTOR,
         TEST_LOW_MUL_I32_DESCRIPTOR,
+        TEST_LOW_ADD_MUL_I32_DESCRIPTOR,
+        TEST_LOW_MUL_ADD_I32_DESCRIPTOR,
+        TEST_LOW_EVENT_FAST_I32_DESCRIPTOR,
+        TEST_LOW_EVENT_FAST_PHYS_DESCRIPTOR,
+        TEST_LOW_EVENT_LATE_READ_PHYS_DESCRIPTOR,
+        TEST_LOW_EVENT_SLOW_I32_DESCRIPTOR,
+        TEST_LOW_RESOURCE_REQUIRED_I32_DESCRIPTOR,
+        TEST_LOW_RESOURCE_RESERVED_I32_DESCRIPTOR,
+        TEST_LOW_RESOURCE_SERIAL_I32_DESCRIPTOR,
+        TEST_LOW_EVENT_EARLY_CONSUMER_I32_DESCRIPTOR,
+        TEST_LOW_EVENT_LATE_CONSUMER_I32_DESCRIPTOR,
+        TEST_LOW_EVENT_MEMORY_READ_I32_DESCRIPTOR,
+        TEST_LOW_EVENT_MEMORY_WRITE_I32_DESCRIPTOR,
         TEST_LOW_ADD_F32_DESCRIPTOR,
         TEST_LOW_SUB_F32_DESCRIPTOR,
         TEST_LOW_MUL_F32_DESCRIPTOR,
         TEST_LOW_AMBIGUOUS_DESCRIPTOR,
         TEST_LOW_PASS_ANY_DESCRIPTOR,
         TEST_LOW_TIED_ANY_DESCRIPTOR,
+        TEST_LOW_COINDEXED_RESULTS_DESCRIPTOR,
         TEST_LOW_READ_LOW16_I32_DESCRIPTOR,
         TEST_LOW_READ_HIGH16_I32_DESCRIPTOR,
         TEST_LOW_WRITE_LOW16_I32_DESCRIPTOR,
@@ -1437,6 +2256,8 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
         TEST_LOW_SPV_OP_IADD_I32_DESCRIPTOR,
         TEST_LOW_CMP_EQ_I32_DESCRIPTOR,
         TEST_LOW_SELECT_I32_DESCRIPTOR,
+        TEST_LOW_FIXED_SELECT_I32_DESCRIPTOR,
+        TEST_LOW_FIXED_UPDATE_I32_DESCRIPTOR,
         TEST_LOW_ADD_V4I32_DESCRIPTOR,
         TEST_LOW_EARLY_CLOBBER_V4I32_DESCRIPTOR,
         TEST_LOW_MIXED_EARLY_CLOBBER_V4I32_DESCRIPTOR,
@@ -1450,22 +2271,32 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
         TEST_LOW_EXTRACT_LANE_I32_DESCRIPTOR,
         TEST_LOW_SHUFFLE_BYTES_DESCRIPTOR,
         TEST_LOW_ADD_PHYS_DESCRIPTOR,
+        TEST_LOW_PACKING_CREATE_DESCRIPTOR,
+        TEST_LOW_PACKING_EXPAND_DESCRIPTOR,
+        TEST_LOW_PACKING_CONFIGURED_EXPAND_DESCRIPTOR,
+        TEST_LOW_PACKING_RETIRE_DESCRIPTOR,
         TEST_LOW_MOVE_TO_PRESSURE_ALIAS32_DESCRIPTOR,
         TEST_LOW_MOVE_FROM_PRESSURE_ALIAS32_X5_DESCRIPTOR,
         TEST_LOW_ADD_SCHEDULE_STATE_DESCRIPTOR,
         TEST_LOW_STATE_ADD_SCHEDULE_STATE_DESCRIPTOR,
         TEST_LOW_EXPLICIT_STATE_ADD_SCHEDULE_STATE_DESCRIPTOR,
         TEST_LOW_CONVERGENT_EXPLICIT_STATE_READ_I32_DESCRIPTOR,
+        TEST_LOW_STATE_SAMPLE_I32_DESCRIPTOR,
+        TEST_LOW_STATE_READ_BOTH_I32_DESCRIPTOR,
         TEST_LOW_STATE_ADD_I32_DESCRIPTOR,
         TEST_LOW_STATE_ADD_I32_RHS_ZERO_DESCRIPTOR,
         TEST_LOW_STATE_READ_I32_DESCRIPTOR,
         TEST_LOW_STATE_READ_PAIR_I32_DESCRIPTOR,
         TEST_LOW_LOAD_V4I32_DESCRIPTOR,
         TEST_LOW_COUNTER_LOAD_V4I32_DESCRIPTOR,
+        TEST_LOW_LOAD_ORDERED_V4I32_DESCRIPTOR,
         TEST_LOW_LOAD_V4F32_DESCRIPTOR,
         TEST_LOW_LOAD_INDEX_V4I32_DESCRIPTOR,
+        TEST_LOW_LOAD_INDEX_ORDERED_V4I32_DESCRIPTOR,
         TEST_LOW_LOAD_INDEX_V4F32_DESCRIPTOR,
         TEST_LOW_STORE_V4I32_DESCRIPTOR,
+        TEST_LOW_SCHEDULE_ALTERNATIVE_STORE_A_V4I32_DESCRIPTOR,
+        TEST_LOW_SCHEDULE_ALTERNATIVE_STORE_B_V4I32_DESCRIPTOR,
         TEST_LOW_STORE_V4F32_DESCRIPTOR,
         TEST_LOW_STORE_INDEX_V4I32_DESCRIPTOR,
         TEST_LOW_STORE_INDEX_V4F32_DESCRIPTOR,
@@ -1476,6 +2307,9 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
         TEST_LOW_RETURN_I32_DESCRIPTOR,
         TEST_LOW_RETURN_VOID_DESCRIPTOR,
         TEST_LOW_PROJECTABLE_EFFECT_I32_DESCRIPTOR,
+        TEST_LOW_SCHEDULE_ALTERNATIVE_A_I32_DESCRIPTOR,
+        TEST_LOW_SCHEDULE_ALTERNATIVE_B_I32_DESCRIPTOR,
+        TEST_LOW_CONST_ISSUED_I32_DESCRIPTOR,
     ),
 )
 

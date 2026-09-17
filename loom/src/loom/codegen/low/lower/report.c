@@ -143,7 +143,9 @@ iree_status_t loom_low_lower_report_record_selected_plan(
       .selection_kind = LOOM_LOW_LOWER_REPORT_SELECTION_PLAN,
       .rule_set_index = UINT16_MAX,
       .rule_index = UINT16_MAX,
-      .plan_id = selected_plan->plan.id,
+      .plan_id = selected_plan->kind == LOOM_LOW_LOWER_SELECTED_PLAN_RULE
+                     ? LOOM_LOW_LOWER_PLAN_ID_NONE
+                     : selected_plan->data.target_plan.id,
       .plan_key = iree_string_view_empty(),
       .native_contraction_facts = NULL,
       .native_transition_facts = NULL,
@@ -169,16 +171,23 @@ iree_status_t loom_low_lower_report_record_selected_plan(
           selected_plan->rule_set->report_key_string_offsets[report_key_index]);
     }
     if (selected_plan->rule->emit_count != 0 &&
+        selected_plan->rule->metadata.emit.primary_emit_ordinal !=
+            LOOM_LOW_LOWER_RULE_PRIMARY_EMIT_NONE &&
         selected_plan->resolved_emits != NULL) {
+      const uint16_t primary_emit_ordinal =
+          selected_plan->rule->metadata.emit.primary_emit_ordinal;
+      IREE_ASSERT_LT(primary_emit_ordinal, selected_plan->rule->emit_count);
       loom_low_lower_report_populate_descriptor(
-          context, selected_plan->resolved_emits[0].descriptor.descriptor,
+          context,
+          selected_plan->resolved_emits[primary_emit_ordinal]
+              .descriptor.descriptor,
           &row);
     }
   } else if (selected_plan->kind ==
              LOOM_LOW_LOWER_SELECTED_PLAN_DESCRIPTOR_MATRIX) {
     const loom_low_lower_descriptor_matrix_plan_t* plan =
         (const loom_low_lower_descriptor_matrix_plan_t*)
-            selected_plan->plan.target_data;
+            selected_plan->data.target_plan.target_data;
     loom_low_lower_report_populate_descriptor(
         context, plan->descriptor.descriptor, &row);
     row.native_contraction_facts = plan->native_contraction_facts;
@@ -188,7 +197,8 @@ iree_status_t loom_low_lower_report_record_selected_plan(
     loom_low_lower_plan_report_t plan_report = {0};
     context->policy->describe_plan.fn(context->policy->describe_plan.user_data,
                                       context, selected_plan->source_op,
-                                      selected_plan->plan, &plan_report);
+                                      selected_plan->data.target_plan,
+                                      &plan_report);
     row.plan_key = plan_report.plan_key;
     if (plan_report.native_contraction_facts != NULL) {
       row.native_contraction_facts = plan_report.native_contraction_facts;

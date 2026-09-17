@@ -8,13 +8,14 @@
 
 #include <string.h>
 
-#include "loom/codegen/low/memory_access_ir.h"
+#include "loom/codegen/low/diagnostics.h"
 #include "loom/codegen/low/source_memory_plan.h"
 #include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/cfg/ops.h"
 #include "loom/ops/low/ops.h"
+#include "loom/ops/type_registry.h"
 #include "loom/target/registers.h"
 
 static iree_string_view_t loom_low_lower_nonempty(
@@ -113,6 +114,19 @@ loom_low_lower_emit_source_type_unsupported(loom_low_lower_context_t* context,
   };
   return loom_low_lower_emit_target_context_error(
       context, source_op, LOOM_ERR_TARGET_033, params, IREE_ARRAYSIZE(params));
+}
+
+iree_status_t loom_low_lower_emit_function_storage_extent_unsupported(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_storage_space_t storage_space, loom_value_id_t byte_length_value) {
+  const loom_module_t* module = loom_low_lower_context_module(context);
+  const loom_diagnostic_param_t params[] = {
+      loom_param_string(loom_low_storage_type_space_name(storage_space)),
+      loom_param_string(
+          loom_low_diagnostic_value_name(module, byte_length_value)),
+  };
+  return loom_low_lower_emit_target_context_error(
+      context, source_op, LOOM_ERR_TARGET_080, params, IREE_ARRAYSIZE(params));
 }
 
 iree_status_t loom_low_lower_emit_register_width_relation_unsupported(
@@ -344,13 +358,16 @@ iree_host_size_t loom_low_lower_context_selected_plan_count(
 loom_low_lower_selected_plan_view_t loom_low_lower_context_selected_plan_view(
     const loom_low_lower_context_t* context, iree_host_size_t index) {
   IREE_ASSERT_LT(index, context->lowering.source_plan.selected_plan_count);
+  const loom_low_lower_selected_plan_t* selected_plan =
+      &context->lowering.source_plan.selected_plans[index];
   return (loom_low_lower_selected_plan_view_t){
-      .source_op =
-          context->lowering.source_plan.selected_plans[index].source_op,
-      .plan = context->lowering.source_plan.selected_plans[index].plan,
-      .elided = iree_any_bit_set(
-          context->lowering.source_plan.selected_plans[index].flags,
-          LOOM_LOW_LOWER_SELECTED_PLAN_ELIDED),
+      .source_op = selected_plan->source_op,
+      .plan = selected_plan->kind == LOOM_LOW_LOWER_SELECTED_PLAN_RULE
+                  ? loom_low_lower_plan_empty()
+                  : selected_plan->data.target_plan,
+      .elided = iree_any_bit_set(selected_plan->flags,
+                                 LOOM_LOW_LOWER_SELECTED_PLAN_ELIDED |
+                                     LOOM_LOW_LOWER_SELECTED_PLAN_CLAIMED),
   };
 }
 
@@ -828,54 +845,6 @@ iree_status_t loom_low_lower_emit_resolved_descriptor_const(
   return loom_low_build_resolved_descriptor_const(
       &context->builder, context->descriptor_set, descriptor->descriptor, attrs,
       result_type, location, out_op);
-}
-
-iree_status_t loom_low_lower_record_memory_access_summary(
-    loom_low_lower_context_t* context, loom_op_t* low_op,
-    const loom_low_memory_access_summary_t* summary,
-    loom_low_lower_memory_access_record_flags_t flags) {
-  if (iree_any_bit_set(flags, ~LOOM_LOW_LOWER_MEMORY_ACCESS_RECORD_PRESERVE)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "unsupported low memory access record flags");
-  }
-  if (iree_any_bit_set(flags, LOOM_LOW_LOWER_MEMORY_ACCESS_RECORD_PRESERVE)) {
-    IREE_RETURN_IF_ERROR(
-        loom_low_memory_access_ir_attach(context->module, low_op, summary));
-  }
-  if (context->options->table_arena == NULL) {
-    return iree_ok_status();
-  }
-  loom_region_t* low_body = loom_low_lower_context_low_body(context);
-  uint16_t block_index = LOOM_BLOCK_REGION_INDEX_INVALID;
-  IREE_ASSERT(low_body != NULL);
-  const bool found_block_index =
-      loom_region_try_block_index(low_body, low_op->parent_block, &block_index);
-  IREE_ASSERT(found_block_index);
-  (void)found_block_index;
-  const loom_low_memory_access_record_t record = {
-      .position =
-          {
-              .block_index = block_index,
-              .block_ordinal = low_op->block_ordinal,
-          },
-      .op = low_op,
-      .summary = *summary,
-  };
-  return loom_low_memory_access_builder_append(
-      &context->lowering.memory_access_builder, &record,
-      &context->function_arena);
-}
-
-iree_status_t loom_low_lower_record_source_memory_access(
-    loom_low_lower_context_t* context, loom_op_t* low_op,
-    const loom_low_source_memory_access_plan_t* source_plan,
-    loom_low_lower_memory_access_record_flags_t flags) {
-  loom_low_byte_interval_t byte_interval = {0};
-  loom_low_memory_access_summary_t summary = {0};
-  loom_low_source_memory_access_plan_make_summary(source_plan, &byte_interval,
-                                                  &summary);
-  return loom_low_lower_record_memory_access_summary(context, low_op, &summary,
-                                                     flags);
 }
 
 iree_status_t loom_low_lower_map_type(loom_low_lower_context_t* context,

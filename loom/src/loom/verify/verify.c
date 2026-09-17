@@ -143,7 +143,8 @@ loom_verify_command_effect_scope(loom_verify_state_t* state,
     return;
   }
   if (!loom_traits_may_read(traits) && !loom_traits_may_write(traits) &&
-      !loom_traits_are_convergent(traits)) {
+      !loom_traits_are_convergent(traits) &&
+      !loom_traits_have_observable_effects(traits)) {
     return;
   }
   if (iree_any_bit_set(vtable->traits, LOOM_TRAIT_COMMAND_EFFECT)) {

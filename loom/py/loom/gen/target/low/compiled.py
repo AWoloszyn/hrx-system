@@ -22,6 +22,7 @@ from loom.target.low_descriptors import (
     EncodingFieldValue,
     EnumDomain,
     EnumValue,
+    EventSeparation,
     Hazard,
     Immediate,
     ImmediateEncodingSlice,
@@ -31,14 +32,49 @@ from loom.target.low_descriptors import (
     Operand,
     OperandFormImmediateAction,
     OperandFormMatchKind,
+    PhysicalRegister,
     PressureDelta,
     RegClass,
     RegClassAltFlag,
+    RegisterPackingResource,
     RegisterPart,
     Resource,
     ScheduleClass,
     StorageLease,
+    TimingEvent,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledPhysicalRegisterView:
+    physical_register_id: int
+    reg_class_id: int
+    unit_candidate_ordinal_start: int
+    unit_count: int
+    # Lowest unit position in the class's aggregate-preserving search order.
+    packing_rank: int
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledRegisterPackingResource:
+    source: RegisterPackingResource
+    member_start: int
+    member_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledRegisterPackingResourceMember:
+    reg_class_id: int
+    register_unit_count: int
+    resource_unit_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledResourceCalendar:
+    # First occupancy slot, shared by resources in one contention group.
+    slot_start: int
+    # Power-of-two ring length minus one.
+    slot_mask: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +104,26 @@ class GeneratedDescriptorSetFamily:
 
 
 @dataclass(slots=True)
+class CompiledPhysicalRegisterCandidateLookup:
+    # First row in the packed reverse candidate table.
+    ordinal_start: int
+    # Physical-register ID represented by the first row.
+    register_base: int
+    # Number of physical-register IDs covered by the range.
+    register_count: int
+
+
+@dataclass(slots=True)
+class CompiledPhysicalRegisterViewLookup:
+    # First row in the packed view ordinal table.
+    ordinal_start: int
+    # Register-class ID represented by the first row.
+    class_base: int
+    # Number of register-class IDs covered by the range.
+    class_count: int
+
+
+@dataclass(slots=True)
 class CompiledDescriptorSet:
     spec: DescriptorSet
     # Selected, validated descriptors before compact runtime projections.
@@ -76,14 +132,40 @@ class CompiledDescriptorSet:
     descriptors: list[Descriptor]
     instruction_classes: list[tuple[InstructionClass, ...]]
     reg_classes: list[RegClass]
+    physical_registers: list[PhysicalRegister]
+    physical_register_candidate_ids: list[int]
+    # Class-local semantic ordinals in aggregate-preserving search order.
+    physical_register_allocation_ordinals: list[int]
+    physical_register_candidate_starts: list[int]
+    # Semantic ordinals indexed by physical ID, with 0xFFFF for nonmembers.
+    physical_register_candidate_ordinals: list[int]
+    # Reverse candidate ranges paired positionally with register classes.
+    physical_register_candidate_lookups: list[CompiledPhysicalRegisterCandidateLookup]
+    physical_register_atomic_units: list[int]
+    physical_register_atomic_unit_starts: list[int]
+    physical_register_views: list[CompiledPhysicalRegisterView]
+    # View ordinals indexed by class ID, with 0xFFFFFFFF for absent views.
+    physical_register_view_ordinals: list[int]
+    # Class-ID intervals paired positionally with physical registers.
+    physical_register_view_lookups: list[CompiledPhysicalRegisterViewLookup]
+    physical_register_view_unit_candidate_ordinals: list[int]
+    register_packing_resources: list[CompiledRegisterPackingResource]
+    register_packing_resource_members: list[CompiledRegisterPackingResourceMember]
     register_parts: list[RegisterPart]
     resources: list[Resource]
+    # Ring layouts paired with resources; shared groups have identical layouts.
+    resource_calendars: list[CompiledResourceCalendar]
+    # Total occupancy slots across distinct resource calendars.
+    resource_calendar_slot_count: int
     schedule_classes: list[ScheduleClass]
+    timing_events: list[TimingEvent]
+    event_separations: list[EventSeparation]
     enum_domains: list[EnumDomain]
     reg_class_ids: dict[str, int]
     register_part_ids: dict[str, int]
     resource_ids: dict[str, int]
     schedule_class_ids: dict[str, int]
+    timing_event_ids: dict[str, int]
     enum_domain_ids: dict[str, int]
     string_pool: CStringPool
     reg_class_alts: list[tuple[int | None, tuple[RegClassAltFlag, ...]]]
@@ -110,6 +192,7 @@ class CompiledDescriptorSet:
     operand_form_operand_indices: list[int]
     descriptor_rows: list[dict[str, int]]
     descriptor_refs: list[tuple[str, int]]
+    schedule_alternative_rows: list[tuple[int, int]]
     canonical_asm_form_ordinals: list[int | None]
     asm_forms: list[CompiledAsmForm]
     asm_table_storage: CompiledAsmTableStorage
@@ -126,6 +209,7 @@ class DescriptorSetView:
     instruction_classes: tuple[tuple[InstructionClass, ...], ...]
     descriptor_ordinals: tuple[int, ...]
     descriptor_refs: list[tuple[str, int]]
+    schedule_alternative_rows: list[tuple[int, int]]
     descriptor_rows: list[dict[str, int]]
     canonical_asm_form_ordinals: list[int | None]
     asm_forms: list[CompiledAsmForm]
@@ -136,6 +220,7 @@ class DescriptorSetView:
     uses_storage_descriptor_view_tables: bool
     uses_storage_asm_form_tables: bool
     uses_storage_operand_form_tables: bool
+    uses_storage_schedule_alternative_tables: bool
 
     @property
     def descriptor_count(self) -> int:

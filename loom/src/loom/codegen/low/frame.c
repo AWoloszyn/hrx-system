@@ -13,9 +13,9 @@
 #include "loom/codegen/low/diagnostics.h"
 #include "loom/codegen/low/function.h"
 #include "loom/codegen/low/function_model.h"
-#include "loom/codegen/low/memory_access_ir.h"
 #include "loom/codegen/low/packet.h"
 #include "loom/codegen/low/rematerialization.h"
+#include "loom/codegen/low/schedule/diagnostics.h"
 #include "loom/codegen/low/schedule/run.h"
 #include "loom/codegen/low/storage_layout.h"
 #include "loom/error/error_catalog.h"
@@ -206,12 +206,11 @@ static void loom_low_emission_frame_advance_repair_iteration(
   }
 }
 
-static iree_status_t loom_low_emission_frame_build_with_diagnostic_emitter(
+static iree_status_t loom_low_emission_frame_build_impl(
     loom_module_t* module, loom_op_t* low_func_op,
     const loom_low_emission_frame_options_t* options,
     loom_low_placement_pair_use_list_t preferred_pair_uses,
-    iree_bitmap_t required_register_values,
-    iree_diagnostic_emitter_t diagnostic_emitter, iree_arena_allocator_t* arena,
+    iree_bitmap_t required_register_values, iree_arena_allocator_t* arena,
     loom_low_planning_statistics_t* statistics,
     loom_low_emission_frame_t* out_frame) {
   if (!loom_low_function_def_isa(low_func_op)) {
@@ -227,29 +226,20 @@ static iree_status_t loom_low_emission_frame_build_with_diagnostic_emitter(
     ++statistics->frame_build_count;
   }
 
-  loom_low_memory_access_table_t memory_access_table =
-      options->memory_access_table;
-  iree_status_t status = iree_ok_status();
-  if (loom_low_memory_access_table_is_empty(memory_access_table)) {
-    status = loom_low_memory_access_table_build_from_ir(low_func_op, arena,
-                                                        &memory_access_table);
-  }
   loom_low_function_model_t model = {0};
-  if (iree_status_is_ok(status)) {
-    status = loom_low_function_model_initialize(
-        module, low_func_op, options->function_target_facts,
-        options->descriptor_registry, diagnostic_emitter,
-        LOOM_LOW_FUNCTION_MODEL_FLAG_REGION_TREE, arena, &model);
-  }
+  iree_status_t status = loom_low_function_model_initialize(
+      module, low_func_op, options->function_target_facts,
+      options->descriptor_registry, options->emitter,
+      LOOM_LOW_FUNCTION_MODEL_FLAG_REGION_TREE, arena, &model);
   loom_low_schedule_options_t schedule_options = {
-      .memory_access_table = memory_access_table,
+      .memory_access_table = options->memory_access_table,
       .residency_model = options->residency_model,
       .allocation_budgets = options->allocation_budgets,
       .allocation_budget_count = options->allocation_budget_count,
       .pair_affinities = options->schedule_pair_affinities,
       .preferred_pair_uses = preferred_pair_uses,
       .structural_state_reads = options->schedule_structural_state_reads,
-      .emitter = diagnostic_emitter,
+      .structural_models = options->schedule_structural_models,
       .diagnostic_flags = options->schedule_diagnostic_flags,
       .strategy = options->schedule_strategy,
   };
@@ -277,8 +267,7 @@ static iree_status_t loom_low_emission_frame_build_with_diagnostic_emitter(
       .required_register_values = required_register_values,
       .residency_model = options->residency_model,
       .storage_leases = storage_leases,
-      .emitter = diagnostic_emitter,
-      .diagnostic_flags = options->allocation_diagnostic_flags,
+      .emitter = options->emitter,
   };
   if (iree_status_is_ok(status) && out_frame->schedule.error_count == 0) {
     if (statistics != NULL) {
@@ -294,35 +283,52 @@ static iree_status_t loom_low_emission_frame_build_with_diagnostic_emitter(
   return status;
 }
 
+static iree_status_t loom_low_emission_frame_emit_diagnostics(
+    const loom_low_emission_frame_options_t* options,
+    const loom_low_emission_frame_t* frame) {
+  IREE_RETURN_IF_ERROR(loom_low_schedule_diagnostics_emit(
+      &frame->schedule, options->schedule_diagnostic_flags, options->emitter));
+  if (frame->schedule.error_count != 0) {
+    return iree_ok_status();
+  }
+  return loom_low_allocation_diagnostics_emit(
+      &frame->allocation, options->allocation_diagnostic_flags,
+      options->emitter);
+}
+
 iree_status_t loom_low_emission_frame_build(
     loom_module_t* module, loom_op_t* low_func_op,
     const loom_low_emission_frame_options_t* options,
     iree_arena_allocator_t* arena, loom_low_emission_frame_t* out_frame) {
   loom_low_planning_statistics_t* statistics = options->statistics;
-  if (statistics == NULL) {
-    return loom_low_emission_frame_build_with_diagnostic_emitter(
-        module, low_func_op, options, loom_low_placement_pair_use_list_empty(),
-        (iree_bitmap_t){0}, options->emitter, arena,
-        /*statistics=*/NULL, out_frame);
+  if (statistics != NULL) {
+    *statistics = (loom_low_planning_statistics_t){0};
   }
-  *statistics = (loom_low_planning_statistics_t){0};
   const iree_arena_checkpoint_t frame_checkpoint =
       iree_arena_checkpoint_save(arena);
 #if IREE_STATISTICS_ENABLE
   iree_arena_block_pool_statistics_t pool_statistics_before = {0};
-  iree_arena_block_pool_query_statistics(arena->block_pool,
-                                         &pool_statistics_before);
+  if (statistics != NULL) {
+    iree_arena_block_pool_query_statistics(arena->block_pool,
+                                           &pool_statistics_before);
+  }
 #endif  // IREE_STATISTICS_ENABLE
-  iree_status_t status = loom_low_emission_frame_build_with_diagnostic_emitter(
+  iree_status_t status = loom_low_emission_frame_build_impl(
       module, low_func_op, options, loom_low_placement_pair_use_list_empty(),
-      (iree_bitmap_t){0}, options->emitter, arena, statistics, out_frame);
-  loom_low_emission_frame_record_arena_high_water(
-      arena, frame_checkpoint.used_allocation_size,
-      frame_checkpoint.total_allocation_size, &statistics->memory.frame_arena);
+      (iree_bitmap_t){0}, arena, statistics, out_frame);
+  if (iree_status_is_ok(status)) {
+    status = loom_low_emission_frame_emit_diagnostics(options, out_frame);
+  }
+  if (statistics != NULL) {
+    loom_low_emission_frame_record_arena_high_water(
+        arena, frame_checkpoint.used_allocation_size,
+        frame_checkpoint.total_allocation_size,
+        &statistics->memory.frame_arena);
 #if IREE_STATISTICS_ENABLE
-  loom_low_emission_frame_record_system_allocation_delta(
-      arena->block_pool, &pool_statistics_before, statistics);
+    loom_low_emission_frame_record_system_allocation_delta(
+        arena->block_pool, &pool_statistics_before, statistics);
 #endif  // IREE_STATISTICS_ENABLE
+  }
   return status;
 }
 
@@ -603,35 +609,6 @@ static iree_status_t loom_low_emission_frame_apply_materialization_summary(
   return iree_ok_status();
 }
 
-static iree_status_t loom_low_emission_frame_replay_diagnostics(
-    loom_module_t* module, loom_op_t* low_func_op,
-    const loom_low_emission_frame_options_t* frame_options,
-    loom_low_placement_pair_use_list_t preferred_pair_uses,
-    iree_bitmap_t required_register_values,
-    const iree_arena_checkpoint_t* frame_checkpoint,
-    iree_arena_allocator_t* repair_arena, iree_arena_allocator_t* scratch_arena,
-    iree_arena_allocator_t* arena, loom_low_planning_statistics_t* statistics,
-    loom_low_emission_frame_t* out_frame) {
-  loom_low_emission_frame_record_memory_high_water(
-      frame_checkpoint, repair_arena, scratch_arena, statistics);
-  iree_arena_checkpoint_restore(frame_checkpoint);
-  *out_frame = (loom_low_emission_frame_t){0};
-  if (statistics != NULL) {
-    ++statistics->repair.diagnostic_replay_count;
-  }
-  return loom_low_emission_frame_build_with_diagnostic_emitter(
-      module, low_func_op, frame_options, preferred_pair_uses,
-      required_register_values, frame_options->emitter, arena, statistics,
-      out_frame);
-}
-
-static bool loom_low_emission_frame_diagnostics_requested(
-    const loom_low_emission_frame_options_t* frame_options) {
-  return frame_options->emitter.fn != NULL &&
-         (frame_options->schedule_diagnostic_flags != 0 ||
-          frame_options->allocation_diagnostic_flags != 0);
-}
-
 static iree_status_t loom_low_emission_frame_build_spill_free_impl(
     loom_module_t* module, loom_op_t* low_func_op,
     const loom_low_emission_frame_options_t* frame_options,
@@ -690,13 +667,12 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
     }
     iree_arena_reset(scratch_arena);
     loom_low_emission_frame_t frame = {0};
-    IREE_RETURN_IF_ERROR(loom_low_emission_frame_build_with_diagnostic_emitter(
+    IREE_RETURN_IF_ERROR(loom_low_emission_frame_build_impl(
         module, low_func_op, frame_options,
         pair_replication.edit_count != 0
             ? pair_replication_preferred_pairs
             : loom_low_placement_pair_use_list_empty(),
-        required_register_values, (iree_diagnostic_emitter_t){0}, arena,
-        statistics, &frame));
+        required_register_values, arena, statistics, &frame));
     if (pair_replication.edit_count != 0) {
       bool rejected =
           frame.schedule.error_count != 0 ||
@@ -761,13 +737,8 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
           continue;
         }
       }
-      if (frame_options->emitter.fn != NULL) {
-        IREE_RETURN_IF_ERROR(loom_low_emission_frame_replay_diagnostics(
-            module, low_func_op, frame_options,
-            loom_low_placement_pair_use_list_empty(), required_register_values,
-            frame_checkpoint, repair_arena, scratch_arena, arena, statistics,
-            &frame));
-      }
+      IREE_RETURN_IF_ERROR(
+          loom_low_emission_frame_emit_diagnostics(frame_options, &frame));
       *out_frame = frame;
       return iree_ok_status();
     }
@@ -801,13 +772,8 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
           continue;
         }
       }
-      if (frame_options->emitter.fn != NULL) {
-        IREE_RETURN_IF_ERROR(loom_low_emission_frame_replay_diagnostics(
-            module, low_func_op, frame_options,
-            loom_low_placement_pair_use_list_empty(), required_register_values,
-            frame_checkpoint, repair_arena, scratch_arena, arena, statistics,
-            &frame));
-      }
+      IREE_RETURN_IF_ERROR(
+          loom_low_emission_frame_emit_diagnostics(frame_options, &frame));
       *out_frame = frame;
       return iree_ok_status();
     }
@@ -854,15 +820,8 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
       if (!accepted) {
         return iree_ok_status();
       }
-      if (loom_low_emission_frame_diagnostics_requested(frame_options)) {
-        IREE_RETURN_IF_ERROR(loom_low_emission_frame_replay_diagnostics(
-            module, low_func_op, frame_options,
-            pair_replication.edit_count != 0
-                ? pair_replication_preferred_pairs
-                : loom_low_placement_pair_use_list_empty(),
-            required_register_values, frame_checkpoint, repair_arena,
-            scratch_arena, arena, statistics, &frame));
-      }
+      IREE_RETURN_IF_ERROR(
+          loom_low_emission_frame_emit_diagnostics(frame_options, &frame));
       IREE_RETURN_IF_ERROR(
           loom_low_emission_frame_apply_materialization_summary(
               &materialization_summary, arena, &frame));

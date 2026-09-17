@@ -6,13 +6,14 @@
 
 #include "loom/codegen/low/allocation/interval_assignment.h"
 
-#include <string.h>
-
 #include "loom/analysis/consumption.h"
+#include "loom/codegen/low/allocation/active_capacity.h"
 #include "loom/codegen/low/allocation/active_set.h"
 #include "loom/codegen/low/allocation/coalescing.h"
 #include "loom/codegen/low/allocation/interval_order.h"
 #include "loom/codegen/low/allocation/live_range.h"
+#include "loom/codegen/low/allocation/physical_domains.h"
+#include "loom/codegen/low/allocation/scalar_packing.h"
 #include "loom/codegen/low/allocation/search.h"
 #include "loom/codegen/low/allocation/spill_plan.h"
 #include "loom/codegen/low/allocation/spill_traffic.h"
@@ -20,9 +21,22 @@
 #include "loom/codegen/low/descriptors.h"
 #include "loom/codegen/low/diagnostics.h"
 
+typedef struct loom_low_allocation_spill_decision_t {
+  // Assignment selected for spilling, in decision order.
+  uint32_t assignment_index;
+  // Register budget active when this spill was selected.
+  uint32_t budget_units;
+} loom_low_allocation_spill_decision_t;
+
 typedef struct loom_low_allocation_interval_assignment_state_t {
   // Caller-provided facts and mutable owner state.
   const loom_low_allocation_interval_assignment_context_t* context;
+  // Owns working indexes and decisions that do not escape assignment.
+  iree_arena_allocator_t* scratch_arena;
+  // Scalar/aggregate lifetime preferences shared by every location query.
+  loom_low_allocation_scalar_packing_t scalar_packing;
+  // Full-scalar physical candidate preferences retained before assignment.
+  loom_low_allocation_physical_domains_t physical_domains;
   // Reusable consumed-value query for the allocated function body.
   loom_consumption_region_query_t function_consumption_query;
   // Reusable consumed-value query for the current nested relation region.
@@ -31,6 +45,11 @@ typedef struct loom_low_allocation_interval_assignment_state_t {
   loom_low_allocation_active_set_t active;
   // Cached predicted spill traffic, dense by liveness value ordinal.
   loom_low_allocation_spill_plan_traffic_t* spill_traffic_by_value_ordinal;
+  // Lazily allocated decision array. Each allocatable interval spills at most
+  // once, so the interval count is a fixed upper bound without growth.
+  loom_low_allocation_spill_decision_t* spill_decisions;
+  // Upper bound for assignments and spill decisions.
+  iree_host_size_t interval_count;
   // Next free spill-slot allocation unit.
   uint32_t next_spill_slot;
   // Mutable assignment, spill, remark, and lookup state being built.
@@ -90,7 +109,8 @@ loom_low_allocation_interval_assignment_search_context(
       .storage_leases = state->context->storage_leases,
       .required_register_values = state->context->required_register_values,
       .spill_traffic_by_value_ordinal = state->spill_traffic_by_value_ordinal,
-      .strategy = state->context->search_strategy,
+      .scalar_packing = state->scalar_packing,
+      .physical_domains = &state->physical_domains,
   };
 }
 
@@ -179,6 +199,9 @@ static iree_status_t loom_low_allocation_interval_assignment_record_failure(
     bool interval_requires_register, iree_string_view_t failure_code) {
   loom_low_allocation_failure_t failure = {
       .failure_code = failure_code,
+      .op = loom_low_diagnostic_value_origin_op(state->context->module,
+                                                interval->value_id,
+                                                state->context->function_op),
       .value_id = interval->value_id,
       .value_class = interval->value_class,
       .descriptor_reg_class_id = capacity->descriptor_reg_class_id,
@@ -208,16 +231,21 @@ static iree_status_t loom_low_allocation_interval_assignment_record_failure(
   if (capacity->is_bounded && interval->unit_count > capacity->max_units) {
     failure.blocking_kind =
         LOOM_LOW_ALLOCATION_FAILURE_BLOCKING_INTERVAL_EXCEEDS_BUDGET;
-    state->result.failure = failure;
+    state->context->target_constraints->failure = failure;
     return iree_ok_status();
   }
 
   const uint32_t alignment = iree_max(
       (uint32_t)1, loom_low_allocation_live_range_interval_alignment(interval));
+  const loom_low_reg_class_t* reg_class =
+      &state->context->target->descriptor_set
+           ->reg_classes[capacity->descriptor_reg_class_id];
+  const bool uses_explicit_physical_registers =
+      loom_low_reg_class_uses_explicit_physical_registers(reg_class);
   uint32_t last_base = 0;
-  if (capacity->is_bounded) {
+  if (!uses_explicit_physical_registers && capacity->is_bounded) {
     last_base = capacity->max_units - interval->unit_count;
-  } else {
+  } else if (!uses_explicit_physical_registers) {
     const uint32_t search_limit =
         loom_low_allocation_target_constraints_assigned_location_search_limit(
             state->context->target_constraints,
@@ -226,7 +254,7 @@ static iree_status_t loom_low_allocation_interval_assignment_record_failure(
             search_limit, alignment, &last_base)) {
       failure.blocking_kind =
           LOOM_LOW_ALLOCATION_FAILURE_BLOCKING_NO_ASSIGNABLE_LOCATION;
-      state->result.failure = failure;
+      state->context->target_constraints->failure = failure;
       return iree_ok_status();
     }
   }
@@ -235,7 +263,30 @@ static iree_status_t loom_low_allocation_interval_assignment_record_failure(
       loom_low_allocation_interval_assignment_search_context(state);
   const uint32_t interval_end =
       loom_low_allocation_live_range_interval_storage_end_point(interval);
-  for (uint32_t base = 0; base <= last_base;) {
+  const uint32_t explicit_pressure_limit =
+      uses_explicit_physical_registers
+          ? iree_min((uint32_t)reg_class->allocatable_count,
+                     capacity->is_bounded ? capacity->max_units : UINT32_MAX)
+          : 0;
+  const uint64_t candidate_count =
+      uses_explicit_physical_registers
+          ? state->context->target->descriptor_set->physical_register_count
+          : (uint64_t)last_base / alignment + 1u;
+  for (uint64_t candidate_index = 0; candidate_index < candidate_count;
+       ++candidate_index) {
+    uint32_t candidate_ordinal = (uint32_t)candidate_index;
+    uint32_t base = candidate_ordinal * alignment;
+    if (uses_explicit_physical_registers) {
+      uint32_t pressure_extent = 0;
+      base = (uint32_t)candidate_index;
+      if (!loom_low_allocation_storage_explicit_physical_register_view(
+              state->context->target->descriptor_set,
+              capacity->descriptor_reg_class_id, base, interval->unit_count,
+              &candidate_ordinal, &pressure_extent) ||
+          pressure_extent > explicit_pressure_limit) {
+        continue;
+      }
+    }
     loom_low_allocation_assignment_t candidate =
         loom_low_allocation_interval_assignment_failure_candidate(
             state, interval, value_ordinal, capacity, base);
@@ -244,13 +295,12 @@ static iree_status_t loom_low_allocation_interval_assignment_record_failure(
 
     bool saw_active_conflict = false;
     for (iree_host_size_t i = 0; i < state->active.count; ++i) {
-      const uint32_t assignment_index =
-          state->active.assignment_indices[state->active.start + i];
+      const uint32_t assignment_index = state->active.assignment_indices[i];
       IREE_ASSERT_LT(assignment_index, state->result.assignment_count);
       const loom_low_allocation_assignment_t* assignment =
           &state->result.assignments[assignment_index];
       if (!loom_low_allocation_active_assignment_conflicts(
-              state->context->target->descriptor_set, state->context->liveness,
+              state->context->target->descriptor_set,
               state->context->unit_liveness, assignment, &candidate,
               /*ignored_value_ids=*/NULL,
               /*ignored_value_count=*/0)) {
@@ -270,14 +320,14 @@ static iree_status_t loom_low_allocation_interval_assignment_record_failure(
             LOOM_LOW_ALLOCATION_FAILURE_BLOCKING_ACTIVE_ASSIGNMENT;
         loom_low_allocation_interval_assignment_failure_set_conflict(
             &failure, assignment_index, assignment);
-        state->result.failure = failure;
+        state->context->target_constraints->failure = failure;
         return iree_ok_status();
       }
     }
 
-    if (loom_low_allocation_target_constraints_fixed_value_conflicts(
-            state->context->target_constraints, state->context->liveness,
-            state->context->unit_liveness, &candidate,
+    if (loom_low_allocation_target_constraints_fixed_storage_conflicts(
+            state->context->target_constraints, state->context->unit_liveness,
+            state->context->placement, &candidate,
             /*ignored_value_ids=*/NULL, /*ignored_value_count=*/0) ||
         loom_low_allocation_target_constraints_reserved_range_conflicts(
             state->context->target_constraints,
@@ -291,25 +341,21 @@ static iree_status_t loom_low_allocation_interval_assignment_record_failure(
             LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FORBIDDEN)) {
       failure.blocking_kind =
           LOOM_LOW_ALLOCATION_FAILURE_BLOCKING_LOCATION_CONSTRAINT;
-      state->result.failure = failure;
+      state->context->target_constraints->failure = failure;
       return iree_ok_status();
     }
 
     if (!saw_active_conflict) {
       failure.blocking_kind =
           LOOM_LOW_ALLOCATION_FAILURE_BLOCKING_NO_ASSIGNABLE_LOCATION;
-      state->result.failure = failure;
+      state->context->target_constraints->failure = failure;
       return iree_ok_status();
     }
-    if (base > UINT32_MAX - alignment) {
-      break;
-    }
-    base += alignment;
   }
 
   failure.blocking_kind =
       LOOM_LOW_ALLOCATION_FAILURE_BLOCKING_NO_ASSIGNABLE_LOCATION;
-  state->result.failure = failure;
+  state->context->target_constraints->failure = failure;
   return iree_ok_status();
 }
 
@@ -347,7 +393,7 @@ static iree_status_t loom_low_allocation_interval_assignment_consumption_query(
       loom_consumption_region_query_initialize_with_cfg_graph(
           state->context->module, region, state->context->function_cfg_graph,
           state->context->liveness, state->context->value_domain,
-          state->context->arena, query);
+          state->scratch_arena, query);
     }
     *out_query = query;
     return iree_ok_status();
@@ -355,7 +401,7 @@ static iree_status_t loom_low_allocation_interval_assignment_consumption_query(
   loom_consumption_region_query_t* query = &state->nested_consumption_query;
   if (query->region != region) {
     loom_consumption_region_query_initialize(state->context->module, region,
-                                             state->context->arena, query);
+                                             state->scratch_arena, query);
   }
   *out_query = query;
   return iree_ok_status();
@@ -370,6 +416,24 @@ loom_low_allocation_interval_assignment_consumption_query_callback(
       out_query);
 }
 
+static iree_status_t loom_low_allocation_interval_assignment_record_spill(
+    loom_low_allocation_interval_assignment_state_t* state,
+    uint32_t assignment_index,
+    const loom_low_allocation_class_capacity_t* capacity) {
+  if (!state->spill_decisions) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        state->scratch_arena, state->interval_count,
+        sizeof(*state->spill_decisions), (void**)&state->spill_decisions));
+  }
+  state->spill_decisions[state->result.spill_count++] =
+      (loom_low_allocation_spill_decision_t){
+          .assignment_index = assignment_index,
+          .budget_units =
+              capacity->is_bounded ? capacity->max_units : UINT32_MAX,
+      };
+  return iree_ok_status();
+}
+
 static iree_status_t
 loom_low_allocation_interval_assignment_spill_active_assignment(
     loom_low_allocation_interval_assignment_state_t* state,
@@ -381,23 +445,15 @@ loom_low_allocation_interval_assignment_spill_active_assignment(
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "allocation spill slots exceed uint32_t range");
   }
-  loom_low_allocation_active_set_remove_assignment_units(
+  loom_low_allocation_active_set_remove(
       &state->active, state->result.assignments, state->result.assignment_count,
       assignment_index);
   assignment->location_kind = LOOM_LOW_ALLOCATION_LOCATION_SPILL_SLOT;
   assignment->location_base = state->next_spill_slot;
   assignment->location_count = assignment->unit_count;
   state->next_spill_slot += assignment->unit_count;
-  ++state->result.spill_count;
-  IREE_RETURN_IF_ERROR(loom_low_allocation_spill_plan_record(
-      state->context->module, state->context->function_cfg_graph, assignment,
-      assignment_index, capacity->alloc_unit_bits, capacity->spill_slot_space,
-      state->result.spill_plans, &state->result.spill_plan_count));
-  loom_low_allocation_spill_remark_record(
-      state->result.remarks, &state->result.remark_count, assignment_index,
-      capacity->is_bounded ? capacity->max_units : UINT32_MAX,
-      assignment->unit_count);
-  return iree_ok_status();
+  return loom_low_allocation_interval_assignment_record_spill(
+      state, assignment_index, capacity);
 }
 
 static iree_status_t
@@ -501,10 +557,14 @@ static iree_status_t loom_low_allocation_interval_assignment_append_assignment(
           state->context->storage_leases,
           state->context->target->descriptor_set, state->context->liveness,
           &stored_assignment, assignment_index, value_ordinal));
-  loom_low_allocation_active_set_insert(
-      &state->active, state->context->target->descriptor_set,
-      state->result.assignments, state->result.assignment_count,
-      assignment_index);
+  // Spill slots are unique, monotonically assigned storage. They cannot
+  // conflict with register candidates and need no active-set membership.
+  if (loom_low_allocation_assignment_is_register_like(&stored_assignment)) {
+    loom_low_allocation_active_set_insert(
+        &state->active, state->context->target->descriptor_set,
+        state->result.assignments, state->result.assignment_count,
+        assignment_index);
+  }
   if (out_assignment_index) {
     *out_assignment_index = assignment_index;
   }
@@ -560,11 +620,6 @@ static bool loom_low_allocation_interval_assignment_tied_location_matches(
     uint16_t counterpart_reg_class_id,
     loom_low_allocation_location_kind_t counterpart_location_kind,
     uint32_t counterpart_location_base, uint32_t counterpart_location_count) {
-  if (fixed_location_kind != counterpart_location_kind ||
-      !loom_low_allocation_storage_reg_classes_share(
-          descriptor_set, fixed_reg_class_id, counterpart_reg_class_id)) {
-    return false;
-  }
   if (relation->unit_count != fixed_location_count ||
       relation->unit_count != counterpart_location_count) {
     return false;
@@ -580,13 +635,24 @@ static bool loom_low_allocation_interval_assignment_tied_location_matches(
       relation->unit_count > fixed_location_count - fixed_unit_offset ||
       counterpart_unit_offset > counterpart_location_count ||
       relation->unit_count >
-          counterpart_location_count - counterpart_unit_offset ||
-      fixed_location_base > UINT32_MAX - fixed_unit_offset ||
-      counterpart_location_base > UINT32_MAX - counterpart_unit_offset) {
+          counterpart_location_count - counterpart_unit_offset) {
     return false;
   }
-  return fixed_location_base + fixed_unit_offset ==
-         counterpart_location_base + counterpart_unit_offset;
+  const loom_low_allocation_assignment_t fixed_assignment = {
+      .descriptor_reg_class_id = fixed_reg_class_id,
+      .location_kind = fixed_location_kind,
+      .location_base = fixed_location_base,
+      .location_count = fixed_location_count,
+  };
+  const loom_low_allocation_assignment_t counterpart_assignment = {
+      .descriptor_reg_class_id = counterpart_reg_class_id,
+      .location_kind = counterpart_location_kind,
+      .location_base = counterpart_location_base,
+      .location_count = counterpart_location_count,
+  };
+  return loom_low_allocation_storage_assignment_subranges_equal(
+      descriptor_set, &fixed_assignment, fixed_unit_offset,
+      &counterpart_assignment, counterpart_unit_offset, relation->unit_count);
 }
 
 static bool loom_low_allocation_interval_assignment_tied_fixed_location_matches(
@@ -722,7 +788,7 @@ loom_low_allocation_interval_assignment_assign_fixed_interval(
     const loom_liveness_interval_t* interval, bool* out_assigned) {
   *out_assigned = false;
   const loom_low_allocation_resolved_fixed_value_t* fixed_value =
-      loom_low_allocation_target_constraints_fixed_value_for_value(
+      loom_low_allocation_target_constraints_preassigned_fixed_value_for_value(
           state->context->target_constraints, interval->value_id);
   if (!fixed_value) {
     return iree_ok_status();
@@ -748,10 +814,10 @@ loom_low_allocation_interval_assignment_assign_fixed_interval(
       inline_ignored_storage_lease_value_ids;
   if (ignored_value_capacity > IREE_ARRAYSIZE(inline_ignored_value_ids)) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        state->context->arena, ignored_value_capacity,
+        state->scratch_arena, ignored_value_capacity,
         sizeof(*ignored_value_ids), (void**)&ignored_value_ids));
     IREE_RETURN_IF_ERROR(
-        iree_arena_allocate_array(state->context->arena, ignored_value_capacity,
+        iree_arena_allocate_array(state->scratch_arena, ignored_value_capacity,
                                   sizeof(*ignored_storage_lease_value_ids),
                                   (void**)&ignored_storage_lease_value_ids));
   }
@@ -808,22 +874,14 @@ loom_low_allocation_interval_assignment_initialize_result_storage(
         iree_arena_allocate_array(state->context->arena, order->interval_count,
                                   sizeof(*state->result.assignments),
                                   (void**)&state->result.assignments));
-    memset(state->result.assignments, 0,
-           order->interval_count * sizeof(*state->result.assignments));
+    loom_low_allocation_active_capacity_t capacity = {0};
+    IREE_RETURN_IF_ERROR(loom_low_allocation_active_capacity_calculate(
+        state->context->target->descriptor_set, state->context->liveness,
+        state->context->unit_liveness, state->context->placement,
+        state->scratch_arena->block_pool, &capacity));
     IREE_RETURN_IF_ERROR(loom_low_allocation_active_set_initialize(
-        state->context->liveness, order->interval_count, order->unit_count,
-        state->context->arena, &state->active));
-    IREE_RETURN_IF_ERROR(
-        iree_arena_allocate_array(state->context->arena, order->interval_count,
-                                  sizeof(*state->result.spill_plans),
-                                  (void**)&state->result.spill_plans));
-    memset(state->result.spill_plans, 0,
-           order->interval_count * sizeof(*state->result.spill_plans));
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        state->context->arena, order->interval_count,
-        sizeof(*state->result.remarks), (void**)&state->result.remarks));
-    memset(state->result.remarks, 0,
-           order->interval_count * sizeof(*state->result.remarks));
+        order->interval_count, capacity.program_point_count,
+        capacity.unit_count, state->scratch_arena, &state->active));
   }
 
   state->result.assignment_map = (loom_low_allocation_assignment_map_t){
@@ -848,7 +906,7 @@ loom_low_allocation_interval_assignment_initialize_spill_traffic_cache(
     return iree_ok_status();
   }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      state->context->arena, value_count,
+      state->scratch_arena, value_count,
       sizeof(*state->spill_traffic_by_value_ordinal),
       (void**)&state->spill_traffic_by_value_ordinal));
   for (iree_host_size_t i = 0; i < value_count; ++i) {
@@ -860,63 +918,69 @@ loom_low_allocation_interval_assignment_initialize_spill_traffic_cache(
   return iree_ok_status();
 }
 
-iree_status_t loom_low_allocation_interval_assignment_build(
-    const loom_low_allocation_interval_assignment_context_t* context,
-    loom_low_allocation_interval_assignment_result_t* out_result) {
-  *out_result = (loom_low_allocation_interval_assignment_result_t){0};
-  loom_low_allocation_interval_assignment_state_t state = {
-      .context = context,
-  };
-
+static iree_status_t loom_low_allocation_interval_assignment_assign(
+    loom_low_allocation_interval_assignment_state_t* state) {
+  const loom_low_allocation_interval_assignment_context_t* context =
+      state->context;
   loom_low_allocation_interval_order_t order = {0};
   IREE_RETURN_IF_ERROR(loom_low_allocation_interval_order_build(
-      context->liveness, context->arena, &order));
+      context->liveness, state->scratch_arena, &order));
+  state->interval_count = order.interval_count;
   IREE_RETURN_IF_ERROR(
       loom_low_allocation_interval_assignment_initialize_result_storage(
-          &state, &order));
+          state, &order));
   if (order.interval_count == 0) {
-    *out_result = state.result;
     return iree_ok_status();
+  }
+  IREE_RETURN_IF_ERROR(loom_low_allocation_physical_domains_build(
+      context->target->descriptor_set, context->liveness,
+      context->unit_liveness, context->placement, state->scratch_arena,
+      &state->physical_domains));
+  if (context->search_strategy ==
+      LOOM_LOW_ALLOCATION_SEARCH_STRATEGY_FRAGMENTATION_REPAIR) {
+    IREE_RETURN_IF_ERROR(loom_low_allocation_scalar_packing_build(
+        context->target->descriptor_set, context->liveness, &order,
+        state->scratch_arena, &state->scalar_packing));
   }
 
   for (iree_host_size_t i = 0; i < order.interval_count; ++i) {
     const loom_liveness_interval_t* interval = order.intervals[i];
     loom_low_allocation_active_set_expire(
-        &state.active, state.result.assignments, state.result.assignment_count,
-        interval->start_point);
+        &state->active, state->result.assignments,
+        state->result.assignment_count, interval->start_point);
 
     loom_value_ordinal_t value_ordinal = LOOM_VALUE_ORDINAL_INVALID;
     IREE_RETURN_IF_ERROR(
         loom_low_allocation_interval_assignment_value_ordinal_for_interval(
-            &state, interval, &value_ordinal));
+            state, interval, &value_ordinal));
     if (loom_low_allocation_interval_assignment_current_assignment_for_value_ordinal(
-            &state, value_ordinal)) {
+            state, value_ordinal)) {
       continue;
     }
 
     bool assigned_fixed_interval = false;
     IREE_RETURN_IF_ERROR(
         loom_low_allocation_interval_assignment_assign_fixed_interval(
-            &state, interval, &assigned_fixed_interval));
+            state, interval, &assigned_fixed_interval));
     if (assigned_fixed_interval) {
       continue;
     }
 
     loom_low_allocation_search_context_t search_context =
-        loom_low_allocation_interval_assignment_search_context(&state);
+        loom_low_allocation_interval_assignment_search_context(state);
     loom_low_allocation_coalescing_context_t coalescing_context = {
-        .arena = context->arena,
+        .arena = state->scratch_arena,
         .liveness = context->liveness,
         .schedule = context->schedule,
         .placement = context->placement,
         .target_constraints = context->target_constraints,
-        .assignment_map = &state.result.assignment_map,
+        .assignment_map = &state->result.assignment_map,
         .search_context = &search_context,
         .append_assignment =
             loom_low_allocation_interval_assignment_append_assignment_callback,
         .consumption_query =
             loom_low_allocation_interval_assignment_consumption_query_callback,
-        .user_data = &state,
+        .user_data = state,
     };
 
     bool assigned_tied_interval = false;
@@ -954,7 +1018,7 @@ iree_status_t loom_low_allocation_interval_assignment_build(
     IREE_RETURN_IF_ERROR(
         loom_low_allocation_target_constraints_interval_capacity(
             context->target_constraints, interval, &capacity));
-    if (interval->unit_count > UINT32_MAX - state.next_spill_slot) {
+    if (interval->unit_count > UINT32_MAX - state->next_spill_slot) {
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "allocation spill slots exceed uint32_t range");
     }
@@ -970,21 +1034,23 @@ iree_status_t loom_low_allocation_interval_assignment_build(
                           interval->value_id)) ||
         loom_low_allocation_spill_traffic_interval_requires_register_location(
             context->module, interval);
-    if (!assigned && (capacity.is_spillable || requires_register)) {
+    const bool interval_requires_register =
+        !capacity.is_spillable || requires_register;
+    if (!assigned) {
       IREE_RETURN_IF_ERROR(
           loom_low_allocation_interval_assignment_initialize_spill_traffic_cache(
-              &state));
+              state));
       search_context =
-          loom_low_allocation_interval_assignment_search_context(&state);
+          loom_low_allocation_interval_assignment_search_context(state);
       loom_low_allocation_search_spill_victim_set_t victim_set = {0};
       IREE_RETURN_IF_ERROR(
           loom_low_allocation_search_find_active_spill_victim_set(
-              &search_context, interval, &capacity, requires_register,
-              context->arena, &victim_set));
+              &search_context, interval, &capacity, interval_requires_register,
+              state->scratch_arena, &victim_set));
       if (victim_set.found) {
         IREE_RETURN_IF_ERROR(
             loom_low_allocation_interval_assignment_spill_active_assignment_set(
-                &state, victim_set.assignment_indices,
+                state, victim_set.assignment_indices,
                 victim_set.assignment_count));
         location_base = victim_set.location_base;
         assigned = true;
@@ -998,15 +1064,9 @@ iree_status_t loom_low_allocation_interval_assignment_build(
                             : IREE_SV("unspillable-register-exhausted");
       IREE_RETURN_IF_ERROR(
           loom_low_allocation_interval_assignment_record_failure(
-              &state, interval, value_ordinal, &capacity, budget_units,
+              state, interval, value_ordinal, &capacity, budget_units,
               requires_register, failure_code));
-      IREE_RETURN_IF_ERROR(loom_low_allocation_target_constraints_emit_failure(
-          context->target_constraints,
-          loom_low_diagnostic_value_origin_op(
-              context->module, interval->value_id, context->function_op),
-          interval->value_class, budget_units,
-          state.result.failure.peak_live_units, failure_code));
-      *out_result = state.result;
+      ++context->target_constraints->error_count;
       return iree_ok_status();
     }
 
@@ -1020,30 +1080,73 @@ iree_status_t loom_low_allocation_interval_assignment_build(
         .unit_count = interval->unit_count,
         .location_kind = assigned ? capacity.location_kind
                                   : LOOM_LOW_ALLOCATION_LOCATION_SPILL_SLOT,
-        .location_base = assigned ? location_base : state.next_spill_slot,
+        .location_base = assigned ? location_base : state->next_spill_slot,
         .location_count = interval->unit_count,
     };
 
     uint32_t assignment_index = 0;
     IREE_RETURN_IF_ERROR(
         loom_low_allocation_interval_assignment_append_assignment(
-            &state, &assignment, /*ignored_storage_lease_value_ids=*/NULL,
+            state, &assignment, /*ignored_storage_lease_value_ids=*/NULL,
             /*ignored_storage_lease_value_count=*/0, &assignment_index));
     if (!assigned) {
-      state.next_spill_slot += interval->unit_count;
-      ++state.result.spill_count;
-      IREE_RETURN_IF_ERROR(loom_low_allocation_spill_plan_record(
-          context->module, context->function_cfg_graph,
-          &state.result.assignments[assignment_index], assignment_index,
-          capacity.alloc_unit_bits, capacity.spill_slot_space,
-          state.result.spill_plans, &state.result.spill_plan_count));
-      loom_low_allocation_spill_remark_record(
-          state.result.remarks, &state.result.remark_count, assignment_index,
-          capacity.is_bounded ? capacity.max_units : UINT32_MAX,
-          interval->unit_count);
+      state->next_spill_slot += interval->unit_count;
+      IREE_RETURN_IF_ERROR(loom_low_allocation_interval_assignment_record_spill(
+          state, assignment_index, &capacity));
     }
   }
-
-  *out_result = state.result;
   return iree_ok_status();
+}
+
+static iree_status_t loom_low_allocation_interval_assignment_finalize_spills(
+    loom_low_allocation_interval_assignment_state_t* state) {
+  loom_low_allocation_interval_assignment_result_t* result = &state->result;
+  if (!result->spill_count) {
+    return iree_ok_status();
+  }
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      state->context->arena, result->spill_count, sizeof(*result->spill_plans),
+      (void**)&result->spill_plans));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      state->context->arena, result->spill_count, sizeof(*result->remarks),
+      (void**)&result->remarks));
+  for (iree_host_size_t i = 0; i < result->spill_count; ++i) {
+    const loom_low_allocation_spill_decision_t* decision =
+        &state->spill_decisions[i];
+    const loom_low_allocation_assignment_t* assignment =
+        &result->assignments[decision->assignment_index];
+    const loom_low_reg_class_t* reg_class =
+        &state->context->target->descriptor_set
+             ->reg_classes[assignment->descriptor_reg_class_id];
+    IREE_RETURN_IF_ERROR(loom_low_allocation_spill_plan_record(
+        state->context->module, state->context->function_cfg_graph, assignment,
+        decision->assignment_index, reg_class->alloc_unit_bits,
+        (loom_low_spill_slot_space_t)reg_class->spill_slot_space,
+        result->spill_plans, &result->spill_plan_count));
+    loom_low_allocation_spill_remark_record(
+        result->remarks, &result->remark_count, decision->assignment_index,
+        decision->budget_units, assignment->unit_count);
+  }
+  return iree_ok_status();
+}
+
+iree_status_t loom_low_allocation_interval_assignment_build(
+    const loom_low_allocation_interval_assignment_context_t* context,
+    loom_low_allocation_interval_assignment_result_t* out_result) {
+  *out_result = (loom_low_allocation_interval_assignment_result_t){0};
+  iree_arena_allocator_t scratch_arena;
+  iree_arena_initialize(context->arena->block_pool, &scratch_arena);
+  loom_low_allocation_interval_assignment_state_t state = {
+      .context = context,
+      .scratch_arena = &scratch_arena,
+  };
+  iree_status_t status = loom_low_allocation_interval_assignment_assign(&state);
+  if (iree_status_is_ok(status)) {
+    status = loom_low_allocation_interval_assignment_finalize_spills(&state);
+  }
+  if (iree_status_is_ok(status)) {
+    *out_result = state.result;
+  }
+  iree_arena_deinitialize(&scratch_arena);
+  return status;
 }

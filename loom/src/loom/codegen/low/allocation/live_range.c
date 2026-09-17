@@ -164,12 +164,12 @@ bool loom_low_allocation_live_range_values_overlap(
 
 bool loom_low_allocation_live_range_assignments_conflict(
     const loom_low_descriptor_set_t* descriptor_set,
-    const loom_liveness_analysis_t* liveness, const uint32_t* unit_start_points,
-    const uint32_t* unit_end_points, iree_host_size_t unit_point_count,
+    const loom_liveness_segment_t* storage_segments,
+    const uint32_t* unit_start_points, const uint32_t* unit_end_points,
+    iree_host_size_t unit_point_count,
     const loom_low_allocation_assignment_t* lhs,
     const loom_low_allocation_assignment_t* rhs) {
   IREE_ASSERT_ARGUMENT(descriptor_set);
-  IREE_ASSERT_ARGUMENT(liveness);
   IREE_ASSERT_ARGUMENT(lhs);
   IREE_ASSERT_ARGUMENT(rhs);
   if (!loom_low_allocation_assignment_is_register_like(lhs) ||
@@ -184,6 +184,58 @@ bool loom_low_allocation_live_range_assignments_conflict(
                                                             rhs)) {
     return false;
   }
+  const bool lhs_is_explicit =
+      loom_low_allocation_storage_assignment_uses_explicit_physical_register(
+          descriptor_set, lhs);
+  const bool rhs_is_explicit =
+      loom_low_allocation_storage_assignment_uses_explicit_physical_register(
+          descriptor_set, rhs);
+  if (lhs_is_explicit || rhs_is_explicit) {
+    if (!lhs_is_explicit || !rhs_is_explicit ||
+        !loom_low_allocation_storage_assignment_ranges_overlap(descriptor_set,
+                                                               lhs, rhs)) {
+      return false;
+    }
+    if (lhs->liveness_segments.count != 0 &&
+        rhs->liveness_segments.count != 0 &&
+        !loom_liveness_segment_ranges_overlap(
+            storage_segments, lhs->liveness_segments, rhs->liveness_segments)) {
+      return false;
+    }
+    const bool has_refined_unit_starts = iree_any_bit_set(
+        lhs->flags | rhs->flags,
+        LOOM_LOW_ALLOCATION_ASSIGNMENT_FLAG_REFINED_UNIT_STARTS);
+    for (uint32_t lhs_unit = 0; lhs_unit < lhs->location_count; ++lhs_unit) {
+      for (uint32_t rhs_unit = 0; rhs_unit < rhs->location_count; ++rhs_unit) {
+        if (!loom_low_allocation_storage_assignment_subranges_overlap(
+                descriptor_set, lhs, lhs_unit, rhs, rhs_unit,
+                /*unit_count=*/1)) {
+          continue;
+        }
+        const uint32_t lhs_unit_end_point =
+            loom_low_allocation_live_range_assignment_unit_end_point(
+                unit_end_points, unit_point_count, lhs, lhs_unit);
+        const uint32_t rhs_unit_end_point =
+            loom_low_allocation_live_range_assignment_unit_end_point(
+                unit_end_points, unit_point_count, rhs, rhs_unit);
+        const uint32_t lhs_unit_start_point =
+            has_refined_unit_starts
+                ? loom_low_allocation_live_range_assignment_unit_start_point(
+                      unit_start_points, unit_point_count, lhs, lhs_unit)
+                : lhs->start_point;
+        const uint32_t rhs_unit_start_point =
+            has_refined_unit_starts
+                ? loom_low_allocation_live_range_assignment_unit_start_point(
+                      unit_start_points, unit_point_count, rhs, rhs_unit)
+                : rhs->start_point;
+        if (lhs_unit_start_point < rhs_unit_end_point &&
+            rhs_unit_start_point < lhs_unit_end_point) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
   const uint64_t lhs_end = (uint64_t)lhs->location_base + lhs->location_count;
   const uint64_t rhs_end = (uint64_t)rhs->location_base + rhs->location_count;
   const uint64_t overlap_begin = lhs->location_base > rhs->location_base
@@ -194,8 +246,8 @@ bool loom_low_allocation_live_range_assignments_conflict(
     return false;
   }
   if (lhs->liveness_segments.count != 0 && rhs->liveness_segments.count != 0 &&
-      !loom_liveness_segment_ranges_overlap(liveness, lhs->liveness_segments,
-                                            rhs->liveness_segments)) {
+      !loom_liveness_segment_ranges_overlap(
+          storage_segments, lhs->liveness_segments, rhs->liveness_segments)) {
     return false;
   }
   const bool has_refined_unit_starts =
