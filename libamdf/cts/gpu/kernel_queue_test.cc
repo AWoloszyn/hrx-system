@@ -330,8 +330,6 @@ TEST_F(Pm4KernelQueueTest, ExecutesMaterializedCopyData) {
 
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
-  EXPECT_EQ(amdf_status_code(api_->memory_destroy(memory_)),
-            AMDF_STATUS_CODE_BUSY);
 
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
       queue_, submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
@@ -584,8 +582,6 @@ TEST_F(Pm4KernelQueueTest, ExecutesDeviceLocalCommandStream) {
   ASSERT_TRUE(amdf_status_is_ok(gpu_api_->kernel_queue_submit(
       queue_, &submission_info, &local_submission)));
   indirect_memory_may_be_in_use_ = true;
-  EXPECT_EQ(amdf_status_code(api_->memory_destroy(local_memory_)),
-            AMDF_STATUS_CODE_BUSY);
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
       queue_, local_submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
   indirect_memory_may_be_in_use_ = false;

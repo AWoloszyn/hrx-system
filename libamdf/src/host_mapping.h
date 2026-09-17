@@ -34,12 +34,9 @@ struct amdf_host_mapping_t {
 };
 
 // Initializes an unpublished mapping base and borrows its memory.
-amdf_status_t amdf_host_mapping_initialize(
-    amdf_host_mapping_t* mapping, const amdf_host_mapping_vtable_t* vtable,
-    amdf_memory_t* memory);
-
-// Releases the memory borrow held by an unpublished or torn-down mapping.
-void amdf_host_mapping_deinitialize(amdf_host_mapping_t* mapping);
+void amdf_host_mapping_initialize(amdf_host_mapping_t* mapping,
+                                  const amdf_host_mapping_vtable_t* vtable,
+                                  amdf_memory_t* memory);
 
 // Copies immutable host mapping properties.
 amdf_status_t AMDF_CALL amdf_host_mapping_query_info(

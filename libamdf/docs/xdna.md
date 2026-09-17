@@ -127,9 +127,9 @@ The returned submission number identifies accepted work. A caller can observe
 progress with `kernel_queue_query_status` or wait with
 `kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0)`. A successful
 wait establishes native retirement, including command-result inspection. A
-timeout or wait error is not cancellation and does not by itself release the
-instruction borrow; the status query reports retirement separately from sticky
-terminal failure.
+timeout or wait error is not cancellation and does not by itself permit
+instruction storage reuse; the status query reports retirement separately from
+sticky terminal failure.
 
 The [canonical ELF consumer](../../experimental/xdna/cts/execution_test.cc)
 shows the complete flow, including target selection, image loading, relocation,
@@ -152,9 +152,10 @@ enable/disable/reset sequences, DMA descriptors, channel and lock protocols,
 program replacement, and idle policy. These operations are expressed through
 caller-owned target-native instructions and tile programs. Changing between
 finite dispatches and resident work queues does not require a different libamdf
-submission API. Native retirement releases the submitted instruction borrow;
-the HAL establishes logical dispatch completion and retains indirectly
-referenced memory until its tile and DMA users have finished.
+submission API. Native retirement establishes when the caller may reuse the
+submitted instruction storage. The caller keeps all indirectly referenced
+memory live until its tile and DMA users have finished; neither libamdf nor the
+HAL discovers or tracks those uses.
 
 Native context scheduling and placement constrain those execution models.
 Fixed physical backing does not grant exclusive ownership or uninterrupted

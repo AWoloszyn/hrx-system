@@ -21,7 +21,8 @@ typedef struct amdf_gpu_umd_user_queue_t amdf_gpu_umd_user_queue_t;
 typedef struct amdf_gpu_umd_user_queue_mapping_t
     amdf_gpu_umd_user_queue_mapping_t;
 
-// Queue-device scratch range resolved and retained by the shared GPU layer.
+// Queue-device scratch range resolved by the shared GPU layer. The caller
+// keeps its backing live until queue destruction succeeds.
 typedef struct amdf_gpu_umd_queue_scratch_t {
   // Queue-device address of the first scratch byte, or zero when disabled.
   uint64_t device_address;

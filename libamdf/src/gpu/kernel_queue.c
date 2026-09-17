@@ -42,8 +42,6 @@ typedef struct amdf_gpu_kernel_queue_t {
   amdf_gpu_umd_kernel_queue_t* umd;
   // Submission sequence and ownership state of the single pending slot.
   amdf_atomic_uint64_t slot_state;
-  // Memory attachment borrowed by the pending submission.
-  amdf_memory_t* pending_memory;
   // Native progress value covering the pending submission.
   amdf_atomic_uint64_t pending_native_submission;
 } amdf_gpu_kernel_queue_t;
@@ -70,8 +68,7 @@ static amdf_gpu_kernel_queue_occupancy_t amdf_gpu_kernel_queue_slot_occupancy(
 }
 
 // Samples native progress and claims completed software retirement exactly
-// once. A true result proves that `submission` has completely retired,
-// including release of its memory borrow.
+// once. A true result proves that `submission` has completely retired.
 static bool amdf_gpu_kernel_queue_try_retire(amdf_gpu_kernel_queue_t* queue,
                                              uint64_t submission) {
   uint64_t slot_state = amdf_atomic_uint64_load_acquire(&queue->slot_state);
@@ -111,8 +108,6 @@ static bool amdf_gpu_kernel_queue_try_retire(amdf_gpu_kernel_queue_t* queue,
              observed_occupancy == AMDF_GPU_KERNEL_QUEUE_OCCUPANCY_RESERVING));
   }
 
-  amdf_memory_unregister_child(queue->pending_memory);
-  queue->pending_memory = NULL;
   amdf_atomic_uint64_store_release(
       &queue->slot_state,
       amdf_gpu_kernel_queue_make_slot_state(
@@ -383,19 +378,12 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_submit(
     return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
   }
 
-  status = amdf_memory_register_child(memory);
-  const bool memory_registered = amdf_status_is_ok(status);
   uint64_t native_submission = 0;
-  if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_umd_kernel_queue_submit(
-        queue->umd,
-        access->addresses[AMDF_MEMORY_ADDRESS_GPU] + command->byte_offset,
-        command->byte_length, &native_submission);
-  }
+  status = amdf_gpu_umd_kernel_queue_submit(
+      queue->umd,
+      access->addresses[AMDF_MEMORY_ADDRESS_GPU] + command->byte_offset,
+      command->byte_length, &native_submission);
   if (!amdf_status_is_ok(status)) {
-    if (memory_registered) {
-      amdf_memory_unregister_child(memory);
-    }
     amdf_atomic_uint64_store_release(
         &queue->slot_state,
         amdf_gpu_kernel_queue_make_slot_state(
@@ -404,7 +392,6 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_submit(
   }
 
   const uint64_t submission = last_submitted + 1;
-  queue->pending_memory = memory;
   amdf_atomic_uint64_store_release(&queue->pending_native_submission,
                                    native_submission);
   amdf_atomic_uint64_store_release(

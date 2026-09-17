@@ -8,7 +8,6 @@
 #define AMDF_SRC_MEMORY_RESOURCE_H_
 
 #include "amdf/amdf.h"
-#include "libamdf/src/child_tracker.h"
 #include "libamdf/src/memory_pair.h"
 
 #ifdef __cplusplus
@@ -78,18 +77,7 @@ struct amdf_memory_t {
   uint32_t backing_access_ordinal;
   // Host-view limits selected during construction, independent of consumers.
   amdf_host_mapping_capabilities_t host_mapping;
-  // Number of live mappings and commands borrowing this memory.
-  amdf_child_tracker_t children;
 };
-
-// Registers one child that borrows `memory`. Used by command publication:
-// atomic bookkeeping only, without locks, allocation or lazy initialization.
-// The shared borrow counter may contend; this is not a wait-free operation.
-amdf_status_t amdf_memory_register_child(amdf_memory_t* memory);
-
-// Releases one child borrow. Also runs on no-syscall command retirement paths;
-// performs only atomic bookkeeping, with the same contention contract above.
-void amdf_memory_unregister_child(amdf_memory_t* memory);
 
 // Returns the host allocator copied by the memory attachment.
 amdf_allocator_t amdf_memory_host_allocator(const amdf_memory_t* memory);

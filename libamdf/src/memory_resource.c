@@ -15,14 +15,6 @@ _Static_assert(
         sizeof(amdf_memory_t) % amdf_alignof(amdf_memory_access_state_t) == 0,
     "memory allocation tail must align its access records");
 
-amdf_status_t amdf_memory_register_child(amdf_memory_t* memory) {
-  return amdf_child_tracker_register(&memory->children);
-}
-
-void amdf_memory_unregister_child(amdf_memory_t* memory) {
-  amdf_child_tracker_unregister(&memory->children);
-}
-
 amdf_allocator_t amdf_memory_host_allocator(const amdf_memory_t* memory) {
   return memory->host_allocator;
 }
@@ -46,7 +38,6 @@ amdf_status_t amdf_memory_resource_allocate(amdf_allocator_t host_allocator,
   for (uint32_t i = 0; i < count; ++i) {
     memory->accesses[i].native_owner_ordinal = i;
   }
-  amdf_child_tracker_initialize(&memory->children);
   *out_memory = memory;
   return AMDF_STATUS_OK;
 }

@@ -92,7 +92,6 @@ class GpuUserQueueTest : public ::testing::Test {
     if (queue_ != nullptr) {
       EXPECT_EQ(amdf_user_queue_destroy(queue_), AMDF_STATUS_OK);
     }
-    EXPECT_EQ(amdf_child_tracker_count(&scratch_.children), 0u);
     EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 0u);
     EXPECT_EQ(amdf_child_tracker_count(&producer_.base.children), 0u);
   }
@@ -126,7 +125,6 @@ class GpuUserQueueTest : public ::testing::Test {
     scratch_accesses_[1].addresses[AMDF_MEMORY_ADDRESS_GPU] =
         UINT64_C(0x800000);
     scratch_accesses_[1].info.reset_epoch = consumer_.info.reset_epoch;
-    amdf_child_tracker_initialize(&scratch_.children);
   }
 
   amdf_gpu_user_queue_create_info_t MakeCreateInfo() const {
@@ -157,13 +155,12 @@ class GpuUserQueueTest : public ::testing::Test {
   amdf_user_queue_mapping_t* mapping_ = nullptr;
 };
 
-TEST_F(GpuUserQueueTest, RetainsScratchAndMappingsAcrossDestroyRetries) {
+TEST_F(GpuUserQueueTest, PreservesNativeQueueAndMappingAcrossDestroyErrors) {
   const amdf_gpu_user_queue_create_info_t create_info = MakeCreateInfo();
   ASSERT_EQ(amdf_gpu_user_queue_create(&consumer_.base, &create_info, &queue_),
             AMDF_STATUS_OK);
   ASSERT_NE(queue_, nullptr);
   EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 1u);
-  EXPECT_EQ(amdf_child_tracker_count(&scratch_.children), 1u);
   EXPECT_EQ(consumer_state_.observed_create.scratch.device_address,
             scratch_accesses_[1].addresses[AMDF_MEMORY_ADDRESS_GPU] +
                 create_info.scratch.byte_offset);
@@ -211,12 +208,10 @@ TEST_F(GpuUserQueueTest, RetainsScratchAndMappingsAcrossDestroyRetries) {
   EXPECT_EQ(amdf_status_code(amdf_user_queue_destroy(queue_)),
             AMDF_STATUS_CODE_BUSY);
   EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 1u);
-  EXPECT_EQ(amdf_child_tracker_count(&scratch_.children), 1u);
   consumer_state_.destroy_status = AMDF_STATUS_OK;
   ASSERT_EQ(amdf_user_queue_destroy(queue_), AMDF_STATUS_OK);
   queue_ = nullptr;
   EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 0u);
-  EXPECT_EQ(amdf_child_tracker_count(&scratch_.children), 0u);
 }
 
 TEST_F(GpuUserQueueTest, PreservesPublicOutputsAcrossNativeFailures) {
@@ -232,7 +227,6 @@ TEST_F(GpuUserQueueTest, PreservesPublicOutputsAcrossNativeFailures) {
   EXPECT_EQ(queue_, queue_sentinel);
   queue_ = nullptr;
   EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 0u);
-  EXPECT_EQ(amdf_child_tracker_count(&scratch_.children), 0u);
 
   consumer_state_.create_status = AMDF_STATUS_OK;
   ASSERT_EQ(amdf_gpu_user_queue_create(&consumer_.base, &create_info, &queue_),
@@ -387,14 +381,6 @@ amdf_gpu_umd_device_t* amdf_gpu_device_get_umd(amdf_device_t* device) {
 const amdf_gpu_device_info_t* amdf_gpu_device_get_info(
     const amdf_device_t* device) {
   return &reinterpret_cast<const TestGpuDevice*>(device)->info;
-}
-
-amdf_status_t amdf_memory_register_child(amdf_memory_t* memory) {
-  return amdf_child_tracker_register(&memory->children);
-}
-
-void amdf_memory_unregister_child(amdf_memory_t* memory) {
-  amdf_child_tracker_unregister(&memory->children);
 }
 
 amdf_status_t amdf_gpu_umd_user_queue_create(

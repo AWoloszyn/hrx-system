@@ -196,8 +196,6 @@ TEST_F(HostMemoryTest, AllocatesOneBackingWithoutAnAccelerator) {
                 memory, 0, AMDF_MEMORY_ADDRESS_GPU, &address)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);
   EXPECT_EQ(address, UINT64_MAX);
-  EXPECT_EQ(amdf_status_code(api_->memory_destroy(memory)),
-            AMDF_STATUS_CODE_BUSY);
 }
 
 TEST_F(HostMemoryTest, BorrowsCallerStorageWithoutTakingOwnership) {

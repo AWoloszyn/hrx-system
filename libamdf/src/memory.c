@@ -724,9 +724,6 @@ amdf_status_t AMDF_CALL amdf_memory_destroy(amdf_memory_t* memory) {
   if (memory == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  if (amdf_child_tracker_count(&memory->children) != 0) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
-  }
   const amdf_status_t status = amdf_memory_release_native(memory);
   if (amdf_status_is_ok(status)) {
     const amdf_allocator_t host_allocator = memory->host_allocator;

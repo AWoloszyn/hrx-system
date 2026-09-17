@@ -94,15 +94,13 @@ static amdf_status_t amdf_gpu_memory_map(
       amdf_calloc(host_allocator, sizeof(*mapping),
                   amdf_alignof(amdf_gpu_host_mapping_t), (void**)&mapping);
   if (!amdf_status_is_ok(status)) return status;
-  status = amdf_host_mapping_initialize(&mapping->base,
-                                        &amdf_gpu_host_mapping_vtable, memory);
+  amdf_host_mapping_initialize(&mapping->base, &amdf_gpu_host_mapping_vtable,
+                               memory);
 
   amdf_gpu_umd_host_mapping_result_t result = {0};
-  if (amdf_status_is_ok(status)) {
-    status =
-        amdf_gpu_umd_memory_map(amdf_gpu_memory_native(memory, access_ordinal),
-                                capabilities, map_info, &mapping->umd, &result);
-  }
+  status =
+      amdf_gpu_umd_memory_map(amdf_gpu_memory_native(memory, access_ordinal),
+                              capabilities, map_info, &mapping->umd, &result);
   if (amdf_status_is_ok(status)) {
     amdf_assert((result.flags & map_info->flags) == map_info->flags &&
                 (result.flags & ~capabilities->supported_access) == 0 &&
@@ -125,9 +123,6 @@ static amdf_status_t amdf_gpu_memory_map(
     mapping->base.info.invalidate = result.visibility.invalidate;
     *out_mapping = &mapping->base;
   } else {
-    if (mapping->base.memory != NULL) {
-      amdf_host_mapping_deinitialize(&mapping->base);
-    }
     amdf_free(host_allocator, mapping);
   }
   return status;
