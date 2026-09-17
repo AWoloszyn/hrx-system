@@ -89,11 +89,13 @@ static inline bool iree_hal_amdgpu_last_signal_load(
     iree_hal_amdgpu_last_signal_flags_t* out_flags,
     iree_async_axis_t* out_producer_axis, uint64_t* out_epoch,
     uint64_t* out_value) {
-  int32_t sequence;
-  do {
-    sequence = iree_atomic_load(&cache->sequence, iree_memory_order_acquire);
+  for (;;) {
+    int32_t sequence =
+        iree_atomic_load(&cache->sequence, iree_memory_order_acquire);
+    // An active writer cannot validate a snapshot, even if its sequence stays
+    // unchanged while the reader retries.
     if (IREE_UNLIKELY(sequence & 1)) {
-      continue;  // writer in progress
+      continue;
     }
     *out_flags = (iree_hal_amdgpu_last_signal_flags_t)iree_atomic_load(
         &cache->flags, iree_memory_order_relaxed);
@@ -107,10 +109,11 @@ static inline bool iree_hal_amdgpu_last_signal_load(
     // observed a concurrent writer this fence pairs with the writer's opening
     // release fence and the closing check must observe its odd sequence.
     iree_atomic_thread_fence(iree_memory_order_acquire);
-  } while (
-      IREE_UNLIKELY(iree_atomic_load(&cache->sequence,
-                                     iree_memory_order_relaxed) != sequence));
-  return (*out_flags & IREE_HAL_AMDGPU_LAST_SIGNAL_FLAG_VALID) != 0;
+    if (IREE_LIKELY(iree_atomic_load(&cache->sequence,
+                                     iree_memory_order_relaxed) == sequence)) {
+      return (*out_flags & IREE_HAL_AMDGPU_LAST_SIGNAL_FLAG_VALID) != 0;
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
