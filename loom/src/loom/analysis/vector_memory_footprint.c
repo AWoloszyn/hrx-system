@@ -1626,7 +1626,9 @@ loom_vector_memory_footprint_condition_facts_for_assumption(
     IREE_RETURN_IF_ERROR(loom_condition_facts_query(
         &state->expression_context.condition_query, state->fact_table,
         condition, assumed_truth, &additional, &complete));
-    if (!complete) loom_condition_fact_set_reset(&additional);
+    // An incomplete result still contains sound consequences of the guard.
+    // Retain them when the guard has more relations than the output capacity.
+    (void)complete;
   }
   return loom_vector_memory_footprint_condition_facts_copy(
       state, base, &additional, out_facts);

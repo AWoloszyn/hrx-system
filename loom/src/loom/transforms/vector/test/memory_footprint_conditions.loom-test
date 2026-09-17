@@ -1,0 +1,102 @@
+// RUN: pass vector-memory-footprint
+
+// The bounds relation is retained even when independent predicates exceed
+// the derivation result capacity.
+func.def @partial_guard_relations_keep_dynamic_bounds(%storage: buffer, %base: offset, %raw: index, %bound_raw: index, %predicate0: i1, %predicate1: i1, %predicate2: i1, %predicate3: i1, %predicate4: i1, %predicate5: i1, %predicate6: i1, %predicate7: i1, %predicate8: i1, %predicate9: i1, %predicate10: i1, %predicate11: i1, %predicate12: i1, %predicate13: i1, %predicate14: i1, %predicate15: i1, %predicate16: i1, %predicate17: i1, %predicate18: i1, %predicate19: i1, %predicate20: i1, %predicate21: i1, %predicate22: i1, %predicate23: i1, %predicate24: i1, %predicate25: i1, %predicate26: i1, %predicate27: i1, %predicate28: i1, %predicate29: i1, %predicate30: i1, %predicate31: i1) {
+  %origin = index.assume %raw [range(%raw, 0, 63)] : index
+  %bound = index.assume %bound_raw [range(%bound_raw, 1, 64)] : index
+  %view = buffer.view %storage[%base] : buffer -> view<[%bound]xi32>
+  %fits = index.cmp slt, %origin, %bound : index
+  %guard0 = scalar.andi %fits, %predicate0 : i1
+  %guard1 = scalar.andi %guard0, %predicate1 : i1
+  %guard2 = scalar.andi %guard1, %predicate2 : i1
+  %guard3 = scalar.andi %guard2, %predicate3 : i1
+  %guard4 = scalar.andi %guard3, %predicate4 : i1
+  %guard5 = scalar.andi %guard4, %predicate5 : i1
+  %guard6 = scalar.andi %guard5, %predicate6 : i1
+  %guard7 = scalar.andi %guard6, %predicate7 : i1
+  %guard8 = scalar.andi %guard7, %predicate8 : i1
+  %guard9 = scalar.andi %guard8, %predicate9 : i1
+  %guard10 = scalar.andi %guard9, %predicate10 : i1
+  %guard11 = scalar.andi %guard10, %predicate11 : i1
+  %guard12 = scalar.andi %guard11, %predicate12 : i1
+  %guard13 = scalar.andi %guard12, %predicate13 : i1
+  %guard14 = scalar.andi %guard13, %predicate14 : i1
+  %guard15 = scalar.andi %guard14, %predicate15 : i1
+  %guard16 = scalar.andi %guard15, %predicate16 : i1
+  %guard17 = scalar.andi %guard16, %predicate17 : i1
+  %guard18 = scalar.andi %guard17, %predicate18 : i1
+  %guard19 = scalar.andi %guard18, %predicate19 : i1
+  %guard20 = scalar.andi %guard19, %predicate20 : i1
+  %guard21 = scalar.andi %guard20, %predicate21 : i1
+  %guard22 = scalar.andi %guard21, %predicate22 : i1
+  %guard23 = scalar.andi %guard22, %predicate23 : i1
+  %guard24 = scalar.andi %guard23, %predicate24 : i1
+  %guard25 = scalar.andi %guard24, %predicate25 : i1
+  %guard26 = scalar.andi %guard25, %predicate26 : i1
+  %guard27 = scalar.andi %guard26, %predicate27 : i1
+  %guard28 = scalar.andi %guard27, %predicate28 : i1
+  %guard29 = scalar.andi %guard28, %predicate29 : i1
+  %guard30 = scalar.andi %guard29, %predicate30 : i1
+  %guard31 = scalar.andi %guard30, %predicate31 : i1
+  scf.if %guard31 {
+    %loaded = vector.load %view[%origin] : view<[%bound]xi32> -> vector<1xi32>
+    test.use %loaded : vector<1xi32>
+  }
+  func.return
+}
+
+// ====
+
+// Retaining a sound subset does not make those relations available to the
+// other arm or after the join.
+func.def @partial_guard_relations_stay_in_selected_scope(%storage: buffer, %base: offset, %raw: index, %bound_raw: index, %predicate0: i1, %predicate1: i1, %predicate2: i1, %predicate3: i1, %predicate4: i1, %predicate5: i1, %predicate6: i1, %predicate7: i1, %predicate8: i1, %predicate9: i1, %predicate10: i1, %predicate11: i1, %predicate12: i1, %predicate13: i1, %predicate14: i1, %predicate15: i1, %predicate16: i1, %predicate17: i1, %predicate18: i1, %predicate19: i1, %predicate20: i1, %predicate21: i1, %predicate22: i1, %predicate23: i1, %predicate24: i1, %predicate25: i1, %predicate26: i1, %predicate27: i1, %predicate28: i1, %predicate29: i1, %predicate30: i1, %predicate31: i1) {
+  %origin = index.assume %raw [range(%raw, 0, 63)] : index
+  %bound = index.assume %bound_raw [range(%bound_raw, 1, 64)] : index
+  %view = buffer.view %storage[%base] : buffer -> view<[%bound]xi32>
+  %fits = index.cmp slt, %origin, %bound : index
+  %guard0 = scalar.andi %fits, %predicate0 : i1
+  %guard1 = scalar.andi %guard0, %predicate1 : i1
+  %guard2 = scalar.andi %guard1, %predicate2 : i1
+  %guard3 = scalar.andi %guard2, %predicate3 : i1
+  %guard4 = scalar.andi %guard3, %predicate4 : i1
+  %guard5 = scalar.andi %guard4, %predicate5 : i1
+  %guard6 = scalar.andi %guard5, %predicate6 : i1
+  %guard7 = scalar.andi %guard6, %predicate7 : i1
+  %guard8 = scalar.andi %guard7, %predicate8 : i1
+  %guard9 = scalar.andi %guard8, %predicate9 : i1
+  %guard10 = scalar.andi %guard9, %predicate10 : i1
+  %guard11 = scalar.andi %guard10, %predicate11 : i1
+  %guard12 = scalar.andi %guard11, %predicate12 : i1
+  %guard13 = scalar.andi %guard12, %predicate13 : i1
+  %guard14 = scalar.andi %guard13, %predicate14 : i1
+  %guard15 = scalar.andi %guard14, %predicate15 : i1
+  %guard16 = scalar.andi %guard15, %predicate16 : i1
+  %guard17 = scalar.andi %guard16, %predicate17 : i1
+  %guard18 = scalar.andi %guard17, %predicate18 : i1
+  %guard19 = scalar.andi %guard18, %predicate19 : i1
+  %guard20 = scalar.andi %guard19, %predicate20 : i1
+  %guard21 = scalar.andi %guard20, %predicate21 : i1
+  %guard22 = scalar.andi %guard21, %predicate22 : i1
+  %guard23 = scalar.andi %guard22, %predicate23 : i1
+  %guard24 = scalar.andi %guard23, %predicate24 : i1
+  %guard25 = scalar.andi %guard24, %predicate25 : i1
+  %guard26 = scalar.andi %guard25, %predicate26 : i1
+  %guard27 = scalar.andi %guard26, %predicate27 : i1
+  %guard28 = scalar.andi %guard27, %predicate28 : i1
+  %guard29 = scalar.andi %guard28, %predicate29 : i1
+  %guard30 = scalar.andi %guard29, %predicate30 : i1
+  %guard31 = scalar.andi %guard30, %predicate31 : i1
+  scf.if %guard31 {
+    %loaded = vector.load %view[%origin] : view<[%bound]xi32> -> vector<1xi32>
+    test.use %loaded : vector<1xi32>
+  } else {
+    // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1"}
+    %other = vector.load %view[%origin] : view<[%bound]xi32> -> vector<1xi32>
+    test.use %other : vector<1xi32>
+  }
+  // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1"}
+  %joined = vector.load %view[%origin] : view<[%bound]xi32> -> vector<1xi32>
+  test.use %joined : vector<1xi32>
+  func.return
+}
