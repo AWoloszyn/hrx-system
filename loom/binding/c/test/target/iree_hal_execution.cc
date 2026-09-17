@@ -49,7 +49,7 @@ using TargetProfilePtr =
     HandlePtr<loomc_target_profile_t, loomc_target_profile_release>;
 using WorkspacePtr = HandlePtr<loomc_workspace_t, loomc_workspace_release>;
 
-void PrintIreeStatus(const char* label, iree_status_t status) {
+void PrintIreeStatus(const char* label, const iree_status_t status) {
   iree_status_code_t code = iree_status_code(status);
   iree_string_view_t message = iree_status_message(status);
   if (iree_string_view_is_empty(message)) {

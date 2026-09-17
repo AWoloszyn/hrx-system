@@ -454,6 +454,11 @@ iree_hal_buffer_release(buffer);
 iree_hal_buffer_release(buffer);  // No remaining modeled reference edge.
 ```
 
+Helpers ending in `_await_release` or `_wait_release` observe release completion
+without consuming the caller's reference. They are ordinary uses of the object:
+using the object after waiting is valid, while waiting through an already
+released handle is diagnosed.
+
 Explicit direct retains in the same block add modeled reference edges, so code
 that deliberately drops multiple owned references stays valid:
 

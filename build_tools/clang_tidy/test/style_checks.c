@@ -112,6 +112,10 @@ iree_clang_tidy_style_c_designated_init_t
 
 void iree_clang_tidy_style_resource_release(
     iree_clang_tidy_style_resource_t* resource);
+void iree_clang_tidy_style_resource_await_release(
+    iree_clang_tidy_style_resource_t* resource);
+void iree_clang_tidy_style_resource_wait_release(
+    iree_clang_tidy_style_resource_t* resource);
 void iree_clang_tidy_style_resource_deinitialize(
     iree_clang_tidy_style_resource_t* resource);
 void iree_clang_tidy_style_resource_destroy(
@@ -135,6 +139,17 @@ void iree_clang_tidy_style_guarded_release_with_clear(
   if (resource != NULL) {
     iree_clang_tidy_style_resource_release(resource);
     resource = NULL;
+  }
+}
+
+void iree_clang_tidy_style_guarded_wait_ignored(
+    iree_clang_tidy_style_resource_t* awaited_resource,
+    iree_clang_tidy_style_resource_t* waited_resource) {
+  if (awaited_resource) {
+    iree_clang_tidy_style_resource_await_release(awaited_resource);
+  }
+  if (waited_resource) {
+    iree_clang_tidy_style_resource_wait_release(waited_resource);
   }
 }
 

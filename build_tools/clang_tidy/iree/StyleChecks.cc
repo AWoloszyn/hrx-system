@@ -25,6 +25,7 @@
 #include "clang/Lex/MacroArgs.h"
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Lex/Preprocessor.h"
+#include "iree/RefCountChecks.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Path.h"
 
@@ -274,13 +275,13 @@ bool IsPointerLikeSingleArgumentRelease(const CallExpr* Call,
   }
   std::optional<std::string> CalleeText =
       SourceText(Call->getCallee(), SourceManager, LangOptions);
-  if (!CalleeText || !StringRef(*CalleeText).ends_with("_release")) {
+  if (!CalleeText || !IsRefCountReleaseFunctionName(*CalleeText)) {
     return false;
   }
   const FunctionDecl* Callee = Call->getDirectCallee();
   if (!Callee || Callee->getNumParams() != 1 ||
       !Callee->getReturnType()->isVoidType() ||
-      !Callee->getName().ends_with("_release")) {
+      !IsRefCountReleaseFunctionName(Callee->getName())) {
     return false;
   }
   return Callee->getParamDecl(0)->getType()->isAnyPointerType();

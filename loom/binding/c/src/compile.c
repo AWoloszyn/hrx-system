@@ -505,7 +505,7 @@ static loomc_status_t loomc_compile_emit_requested_artifacts(
   return status;
 }
 
-static loomc_status_t loomc_compiled_module_product_allocate(
+static loomc_status_t loomc_compiled_module_product_create(
     loomc_result_t* result, loomc_host_size_t export_count,
     loomc_allocator_t allocator, loomc_product_t** out_product) {
   *out_product = NULL;
@@ -792,7 +792,7 @@ loomc_status_t loomc_compile_request(
                                               target_specialization, result);
   }
   if (loomc_status_is_ok(status) && loomc_result_succeeded(result)) {
-    status = loomc_compiled_module_product_allocate(
+    status = loomc_compiled_module_product_create(
         result, loomc_request_root_count(request), allocator, &product);
   }
   if (loomc_status_is_ok(status)) {
