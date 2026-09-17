@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common/graph.h"
 #include "common/internal.h"
 #include "common/kernel_arguments.h"
 
@@ -303,6 +304,8 @@ iree_status_t iree_hal_streaming_stream_create(
       iree_allocator_malloc(host_allocator, sizeof(*stream), (void**)&stream));
   iree_atomic_ref_count_init(&stream->ref_count);
   stream->context = context;
+  stream->registration_state =
+      IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_UNREGISTERED;
   stream->flags = flags;
   stream->priority = priority;
   stream->stream_id = 0;
@@ -323,7 +326,6 @@ iree_status_t iree_hal_streaming_stream_create(
   stream->capture_graph = NULL;
   stream->capture_graph_owned = false;
   stream->capture_origin = false;
-  stream->capture_joined_to_origin = false;
   stream->capture_id = 0;
   stream->capture_owner_thread_id = 0;
   stream->capture_dependencies = NULL;
@@ -397,10 +399,6 @@ static void iree_hal_streaming_stream_destroy(
   iree_slim_mutex_unlock(&stream->mutex);
   if (context) {
     iree_status_ignore(iree_hal_streaming_stream_synchronize(stream));
-    if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-      iree_hal_streaming_stream_set_capture_status(
-          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_NONE);
-    }
     iree_slim_mutex_lock(&stream->mutex);
     if (stream->context == context) {
       iree_hal_queue_t* queue = stream->queue;
@@ -1009,18 +1007,22 @@ static iree_status_t iree_hal_streaming_stream_synchronize_impl(
   uint64_t timing_query_ns = 0;
   uint64_t timing_wait_ns = 0;
 
+  iree_status_t status = iree_ok_status();
   uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
   if (flush_context) {
     // HIP launches are logically submitted work even when HRX batches command
-    // buffer recording. Before waiting on a stream, submit all pending work in
-    // the same context so stream-ordered dependencies and device-side waits can
-    // make forward progress without repeatedly flushing unrelated contexts.
-    iree_status_t flush_status =
-        iree_hal_streaming_context_flush(stream->context);
+    // buffer recording. A flush error may be reported after queue submission
+    // has already advanced this stream's accepted tail, so retain that error
+    // while still draining the published point below.
+    status = iree_hal_streaming_context_flush(stream->context);
+    // Context flushing snapshots its registered streams. If that snapshot
+    // allocation fails the target stream may still own an unsubmitted command
+    // buffer, so always flush it directly before selecting the wait target.
+    // A second flush is a no-op when the context flush already handled it.
+    status = iree_status_join(status, iree_hal_streaming_stream_flush(stream));
     if (timing_enabled) {
       timing_flush_ns += hrx_launch_timing_now_ns() - timing_step_ns;
     }
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, flush_status);
   }
 
   // Snapshot the synchronization target under the same mutex used to reserve
@@ -1035,18 +1037,21 @@ static iree_status_t iree_hal_streaming_stream_synchronize_impl(
   uint64_t current_value = 0;
   iree_status_t query_status =
       iree_hal_semaphore_query(stream->timeline_semaphore, &current_value);
-  if (iree_status_is_ok(query_status)) {
-    if (current_value > completed_value) {
-      completed_value = current_value;
-    }
+  if (iree_status_is_ok(query_status) && current_value > completed_value) {
+    completed_value = current_value;
   }
   if (timing_enabled) {
     timing_query_ns += hrx_launch_timing_now_ns() - timing_step_ns;
   }
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, query_status);
-
-  // Wait for the timeline semaphore to reach the captured target.
-  if (target_value > completed_value) {
+  status = iree_status_join(status, query_status);
+  // The stream timeline is private: each published value is a HAL queue signal
+  // (whose contract publishes success only after terminal completion and
+  // reports post-accept failures through that same signal), except host
+  // operations that fail it only after their callback has returned. Therefore
+  // either result of this infinite wait is a terminal resolution of the
+  // accepted tail, even though only success advances |completed_value|.
+  bool target_completed = target_value <= completed_value;
+  if (!target_completed) {
     timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
     iree_status_t wait_status = iree_hal_semaphore_wait(
         stream->timeline_semaphore, target_value, iree_infinite_timeout(),
@@ -1054,19 +1059,20 @@ static iree_status_t iree_hal_streaming_stream_synchronize_impl(
     if (timing_enabled) {
       timing_wait_ns += hrx_launch_timing_now_ns() - timing_step_ns;
     }
-    if (!iree_status_is_ok(wait_status)) {
-      IREE_TRACE_ZONE_END(z0);
-      return wait_status;
-    }
-    completed_value = target_value;
+    target_completed = iree_status_is_ok(wait_status);
+    status = iree_status_join(status, wait_status);
+    if (target_completed) completed_value = target_value;
   }
 
-  iree_slim_mutex_lock(&stream->mutex);
-  stream->completed_value = iree_max(stream->completed_value, completed_value);
-  iree_slim_mutex_unlock(&stream->mutex);
-
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_streaming_memory_release_completed_async_frees(stream));
+  if (target_completed) {
+    iree_slim_mutex_lock(&stream->mutex);
+    stream->completed_value =
+        iree_max(stream->completed_value, completed_value);
+    iree_slim_mutex_unlock(&stream->mutex);
+    status = iree_status_join(
+        status,
+        iree_hal_streaming_memory_release_completed_async_frees(stream));
+  }
 
   if (timing_enabled) {
     ++g_hrx_launch_timing.sync_count;
@@ -1077,7 +1083,7 @@ static iree_status_t iree_hal_streaming_stream_synchronize_impl(
     g_hrx_launch_timing.sync_wait_ns += timing_wait_ns;
   }
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 iree_status_t iree_hal_streaming_stream_synchronize(
@@ -1161,68 +1167,93 @@ iree_status_t iree_hal_streaming_stream_wait_submitted(
   return iree_ok_status();
 }
 
-// Joins |stream| to the capture |event|'s last capture-time record belongs to,
-// adopting |capture_graph| as |stream|'s own capture when the stream is not
-// already capturing and then adding the event's dependency frontier to the
-// stream's.
-//
-// |capture_graph| is borrowed for the call; a stream that adopts it takes its
-// own reference.
-static iree_status_t iree_hal_streaming_stream_wait_captured_event(
-    iree_hal_streaming_stream_t* stream, iree_hal_streaming_event_t* event,
-    iree_hal_streaming_graph_t* capture_graph) {
-  bool adopt_capture_graph = false;
-  iree_slim_mutex_lock(&stream->mutex);
-  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-    adopt_capture_graph = true;
-  } else if (stream->capture_graph != capture_graph) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "event wait crosses different active capture graphs");
-  }
-  iree_slim_mutex_unlock(&stream->mutex);
+typedef struct iree_hal_streaming_capture_event_wait_t {
+  iree_hal_streaming_event_t* event;
+} iree_hal_streaming_capture_event_wait_t;
 
-  if (adopt_capture_graph) {
-    IREE_RETURN_IF_ERROR(iree_hal_streaming_stream_flush(stream));
+static iree_status_t iree_hal_streaming_capture_record_event_wait(
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, void* user_data,
+    iree_hal_streaming_graph_node_t** out_terminal_node) {
+  iree_hal_streaming_capture_event_wait_t* capture =
+      (iree_hal_streaming_capture_event_wait_t*)user_data;
+  return iree_hal_streaming_graph_add_event_node(
+      graph, dependencies, dependency_count,
+      IREE_HAL_STREAMING_GRAPH_NODE_TYPE_EVENT_WAIT, capture->event,
+      out_terminal_node);
+}
 
-    unsigned long long capture_id = 0;
-    if (!event->recording_stream) {
-      IREE_RETURN_IF_ERROR(iree_hal_streaming_context_allocate_capture_id(
-          stream->context, &capture_id));
+typedef struct iree_hal_streaming_capture_kernel_t {
+  iree_hal_streaming_symbol_t* symbol;
+  const iree_hal_streaming_dispatch_params_t* params;
+} iree_hal_streaming_capture_kernel_t;
+
+static iree_status_t iree_hal_streaming_capture_record_kernel(
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, void* user_data,
+    iree_hal_streaming_graph_node_t** out_terminal_node) {
+  iree_hal_streaming_capture_kernel_t* capture =
+      (iree_hal_streaming_capture_kernel_t*)user_data;
+  return iree_hal_streaming_graph_add_kernel_node(
+      graph, dependencies, dependency_count, capture->symbol, capture->params,
+      out_terminal_node);
+}
+typedef struct iree_hal_streaming_captured_event_snapshot_t {
+  iree_hal_streaming_graph_t* graph;
+  unsigned long long capture_id;
+  iree_hal_streaming_graph_node_t** dependencies;
+  iree_host_size_t dependency_count;
+} iree_hal_streaming_captured_event_snapshot_t;
+
+static iree_status_t iree_hal_streaming_event_snapshot_capture(
+    iree_hal_streaming_event_t* event,
+    iree_hal_streaming_captured_event_snapshot_t* out_snapshot) {
+  *out_snapshot = (iree_hal_streaming_captured_event_snapshot_t){0};
+
+  iree_status_t status = iree_ok_status();
+  iree_slim_mutex_lock(&event->mutex);
+  if (event->capture_graph) {
+    iree_host_size_t allocation_size = 0;
+    if (event->capture_id == 0) {
+      status = iree_make_status(IREE_STATUS_DATA_LOSS,
+                                "captured event has no session identifier");
+    } else if (IREE_UNLIKELY(!iree_host_size_checked_mul(
+                   event->capture_dependency_count,
+                   sizeof(*out_snapshot->dependencies), &allocation_size))) {
+      status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "captured event frontier size overflow");
+    } else if (allocation_size > 0) {
+      status = iree_allocator_malloc(event->host_allocator, allocation_size,
+                                     (void**)&out_snapshot->dependencies);
     }
-
-    iree_slim_mutex_lock(&stream->mutex);
-    if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
-      stream->capture_graph = capture_graph;
-      stream->capture_graph_owned = true;
-      stream->capture_origin = false;
-      stream->capture_joined_to_origin = false;
-      if (event->recording_stream) {
-        stream->capture_mode = event->recording_stream->capture_mode;
-        stream->capture_id = event->recording_stream->capture_id;
-        stream->capture_owner_thread_id =
-            event->recording_stream->capture_owner_thread_id;
-      } else {
-        stream->capture_mode = IREE_HAL_STREAMING_CAPTURE_MODE_GLOBAL;
-        stream->capture_id = capture_id;
-        stream->capture_owner_thread_id = 0;
+    if (iree_status_is_ok(status)) {
+      if (allocation_size > 0) {
+        memcpy(out_snapshot->dependencies, event->capture_dependencies,
+               allocation_size);
       }
-      iree_hal_streaming_graph_retain(stream->capture_graph);
-      iree_hal_streaming_stream_set_capture_status(
-          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE);
-    } else if (stream->capture_graph != capture_graph) {
-      iree_slim_mutex_unlock(&stream->mutex);
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "event wait crosses different active capture graphs");
+      out_snapshot->dependency_count = event->capture_dependency_count;
+      out_snapshot->capture_id = event->capture_id;
+      out_snapshot->graph = event->capture_graph;
+      iree_hal_streaming_graph_retain(out_snapshot->graph);
     }
-    iree_slim_mutex_unlock(&stream->mutex);
   }
+  iree_slim_mutex_unlock(&event->mutex);
 
-  return iree_hal_streaming_update_capture_dependencies(
-      stream, event->capture_dependencies, event->capture_dependency_count,
-      IREE_HAL_STREAMING_CAPTURE_DEPENDENCIES_ADD);
+  if (!iree_status_is_ok(status)) {
+    iree_allocator_free(event->host_allocator, out_snapshot->dependencies);
+    *out_snapshot = (iree_hal_streaming_captured_event_snapshot_t){0};
+  }
+  return status;
+}
+
+static void iree_hal_streaming_captured_event_snapshot_deinitialize(
+    iree_hal_streaming_event_t* event,
+    iree_hal_streaming_captured_event_snapshot_t* snapshot) {
+  iree_allocator_free(event->host_allocator, snapshot->dependencies);
+  iree_hal_streaming_graph_release(snapshot->graph);
+  *snapshot = (iree_hal_streaming_captured_event_snapshot_t){0};
 }
 
 iree_status_t iree_hal_streaming_stream_wait_event(
@@ -1234,34 +1265,34 @@ iree_status_t iree_hal_streaming_stream_wait_event(
 
   // An external wait remains an explicit node so each graph launch resolves
   // the event point supplied by the application at execution time.
-  if (capture_external_wait &&
-      stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-    iree_hal_streaming_graph_node_t* node = NULL;
+  if (capture_external_wait) {
+    iree_hal_streaming_capture_event_wait_t capture = {
+        .event = event,
+    };
+    bool was_captured = false;
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_graph_add_event_node(
-                stream->capture_graph, stream->capture_dependencies,
-                stream->capture_dependency_count,
-                IREE_HAL_STREAMING_GRAPH_NODE_TYPE_EVENT_WAIT, event, &node));
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_capture_set_last_node(stream, node));
-    IREE_TRACE_ZONE_END(z0);
-    return iree_ok_status();
+        z0, iree_hal_streaming_capture_try_record_node(
+                stream, iree_hal_streaming_capture_record_event_wait, &capture,
+                &was_captured));
+    if (was_captured) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_ok_status();
+    }
   }
 
-  // A capture-time record leaves the event naming the graph it was captured
-  // into. A wait on such an event joins that capture and submits no timeline
-  // wait. The association is read once and held for the whole branch, so the
-  // graph the branch works from cannot be freed underneath it.
-  iree_hal_streaming_graph_t* capture_graph =
-      iree_hal_streaming_event_acquire_capture_graph(event);
-  if (capture_graph) {
-    const iree_status_t capture_status =
-        iree_hal_streaming_stream_wait_captured_event(stream, event,
-                                                      capture_graph);
-    // Released with no lock held: the last reference to a graph frees the
-    // allocations it owns, which synchronizes every context and relocks this
-    // stream.
-    iree_hal_streaming_graph_release(capture_graph);
+  // Capture graph, exact session, and frontier are copied as one event value.
+  // The event lock is released before the graph transaction is acquired, which
+  // preserves graph -> stream -> event lock ordering.
+  iree_hal_streaming_captured_event_snapshot_t capture_snapshot;
+  iree_status_t capture_status =
+      iree_hal_streaming_event_snapshot_capture(event, &capture_snapshot);
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, capture_status);
+  if (capture_snapshot.graph) {
+    capture_status = iree_hal_streaming_capture_join_graph(
+        stream, capture_snapshot.graph, capture_snapshot.capture_id,
+        capture_snapshot.dependencies, capture_snapshot.dependency_count);
+    iree_hal_streaming_captured_event_snapshot_deinitialize(event,
+                                                            &capture_snapshot);
     IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, capture_status);
     IREE_TRACE_ZONE_END(z0);
     return iree_ok_status();
@@ -1598,16 +1629,18 @@ iree_status_t iree_hal_streaming_launch_kernel(
                             "direct kernel launch missing expected parameters");
   }
 
-  // Check if we're capturing to a graph.
-  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-    // Add kernel node to the graph instead of recording to command buffer.
-    iree_hal_streaming_graph_node_t* node = NULL;
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_graph_add_kernel_node(
-                stream->capture_graph, stream->capture_dependencies,
-                stream->capture_dependency_count, symbol, params, &node));
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_capture_set_last_node(stream, node));
+  // Check if we are capturing to a graph. The capture transaction serializes
+  // this mutation and frontier publication with origin end-capture.
+  iree_hal_streaming_capture_kernel_t capture = {
+      .symbol = symbol,
+      .params = params,
+  };
+  bool was_captured = false;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_streaming_capture_try_record_node(
+              stream, iree_hal_streaming_capture_record_kernel, &capture,
+              &was_captured));
+  if (was_captured) {
     IREE_TRACE_ZONE_END(z0);
     return iree_ok_status();
   }

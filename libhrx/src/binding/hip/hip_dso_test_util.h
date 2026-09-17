@@ -20,8 +20,9 @@ class HipDso {
   HipDso(const HipDso&) = delete;
   HipDso& operator=(const HipDso&) = delete;
 
-  // Opens and verifies the configured build artifact.
-  bool Open();
+  // Opens and verifies the configured build artifact. The environment path
+  // takes precedence over this build-provided fallback.
+  bool Open(const char* fallback_path);
 
   // Closes the DSO. Returns false when the loader rejects the close request.
   bool Close();

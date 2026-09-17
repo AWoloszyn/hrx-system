@@ -19,16 +19,12 @@
 namespace hrx::hip::testing {
 namespace {
 
-const char* ConfiguredPath() {
+const char* ConfiguredPath(const char* fallback_path) {
   const char* environment_path = std::getenv("HRX_TEST_LIBAMDHIP64");
   if (environment_path && environment_path[0] != '\0') {
     return environment_path;
   }
-#ifdef HRX_TEST_LIBAMDHIP64_PATH
-  return HRX_TEST_LIBAMDHIP64_PATH;
-#else
-  return nullptr;
-#endif
+  return fallback_path;
 }
 
 std::string CanonicalPath(const char* path) {
@@ -42,11 +38,11 @@ HipDso::~HipDso() {
   if (handle_) dlclose(handle_);
 }
 
-bool HipDso::Open() {
+bool HipDso::Open(const char* fallback_path) {
   if (handle_) return true;
   error_.clear();
 
-  const char* configured_path = ConfiguredPath();
+  const char* configured_path = ConfiguredPath(fallback_path);
   if (!configured_path) {
     error_ = "the build did not provide a libamdhip64 artifact";
     return false;
