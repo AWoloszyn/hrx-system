@@ -270,3 +270,42 @@ low.func.def public target<test.low.core>(@target) @prepared_caller(%choose: reg
   %result = test.add.i32 %selected, %input
   return %result
 }
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// The fused producer stays after its consumer in block layout. Its SSA value
+// still dominates the consumer and must survive the cross-block substitution.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @fused_concat_dominates_earlier_block(%choose: reg<test.i32>, %seed: reg<test.i32 x2>) -> (reg<test.i32 x2>) asm {
+  low.cond_br %choose, ^producer, ^exit : reg<test.i32>
+^definition:
+  %low = test.const.i32 7
+  %high = test.const.i32 11
+  %pair = concat(%low, %high) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  low.cond_br %choose, ^consumer, ^exit : reg<test.i32>
+^consumer:
+  return %pair
+^producer:
+  low.br ^definition
+^exit:
+  return %seed
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @fused_concat_dominates_earlier_block(%choose: reg<test.i32>, %seed: reg<test.i32 x2>) -> (reg<test.i32 x2>) asm {
+  low.cond_br %choose, ^producer, ^exit : reg<test.i32>
+^consumer:
+  return %pair
+^producer:
+  %low = test.const.i32 7
+  %high = test.const.i32 11
+  %pair = concat(%low, %high) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  low.cond_br %choose, ^consumer, ^exit : reg<test.i32>
+^exit:
+  return %seed
+}
