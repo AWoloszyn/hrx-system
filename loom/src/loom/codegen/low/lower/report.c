@@ -18,7 +18,7 @@
 #include "loom/ops/func/ops.h"
 #include "loom/ops/index/ops.h"
 #include "loom/util/cfg_graph.h"
-#include "loom/util/cfg_loop.h"
+#include "loom/util/cfg_loop_nest.h"
 
 enum {
   // Default allocation block size for source-to-Low selection report rows.
@@ -652,21 +652,25 @@ static bool loom_low_lower_report_compute_trip_count(int64_t lower_bound,
 
 static bool loom_low_lower_report_try_counted_cfg_loop(
     const loom_low_lower_context_t* context, const loom_cfg_graph_t* graph,
-    const loom_cfg_loop_interval_t* interval, uint64_t* out_trip_count) {
+    const loom_cfg_natural_loop_t* loop, uint64_t* out_trip_count) {
   *out_trip_count = 0;
-  const loom_block_t* header = graph->blocks[interval->header_index].block;
-  if (header == NULL || header->arg_count == 0 || header->last_op == NULL ||
+  if (loop->entries.count != 1 || loop->backedges.count != 1 ||
+      loop->exits.count != 1) {
+    return false;
+  }
+  const loom_cfg_edge_info_t* exit_edge =
+      &graph->edges[loop->exits.unique_index];
+  const loom_block_t* header = graph->blocks[loop->header_index].block;
+  if (exit_edge->source_block_index != loop->header_index ||
+      exit_edge->successor_index != 1 || header->arg_count == 0 ||
       !loom_cfg_cond_br_isa(header->last_op)) {
     return false;
   }
   const loom_value_id_t iv_id = loom_block_arg_id(header, 0);
   const loom_cfg_edge_info_t* entry_edge =
-      loom_cfg_graph_edge(graph, interval->entry_edge_index);
+      &graph->edges[loop->entries.unique_index];
   const loom_cfg_edge_info_t* backedge =
-      loom_cfg_graph_edge(graph, interval->backedge_edge_index);
-  if (entry_edge == NULL || backedge == NULL) {
-    return false;
-  }
+      &graph->edges[loop->backedges.unique_index];
 
   const loom_op_t* initial_branch_op = NULL;
   if (!loom_low_lower_report_block_branches_to(
@@ -711,32 +715,28 @@ static bool loom_low_lower_report_try_counted_cfg_loop(
 static iree_status_t loom_low_lower_report_calculate_source_block_counts(
     loom_low_lower_context_t* context, loom_region_t* body,
     iree_arena_allocator_t* analysis_arena) {
-  loom_cfg_graph_t graph = {0};
-  IREE_RETURN_IF_ERROR(
-      loom_cfg_graph_build(context->module, body, analysis_arena, &graph));
-  if (graph.malformed || graph.block_count != body->block_count) {
-    context->lowering.report.source_block_execution_counts_exact = false;
+  if (!iree_any_bit_set(body->flags, LOOM_REGION_INSTANCE_FLAG_CFG)) {
+    context->lowering.report.source_block_execution_counts[0] = 1;
     return iree_ok_status();
   }
-  loom_cfg_loop_forest_t loop_forest = {0};
-  IREE_RETURN_IF_ERROR(
-      loom_cfg_loop_forest_build(&graph, analysis_arena, &loop_forest));
+  const loom_cfg_loop_nest_t* loops = NULL;
+  IREE_RETURN_IF_ERROR(loom_low_lower_context_cfg_loops(context, &loops));
   uint64_t* trip_counts = NULL;
-  if (loop_forest.interval_count > 0) {
+  if (loops->loop_count > 0) {
     IREE_RETURN_IF_ERROR(
-        iree_arena_allocate_array(analysis_arena, loop_forest.interval_count,
+        iree_arena_allocate_array(analysis_arena, loops->loop_count,
                                   sizeof(*trip_counts), (void**)&trip_counts));
   }
-  for (iree_host_size_t i = 0; i < loop_forest.interval_count; ++i) {
+  for (iree_host_size_t i = 0; i < loops->loop_count; ++i) {
     if (!loom_low_lower_report_try_counted_cfg_loop(
-            context, &graph, &loop_forest.intervals[i], &trip_counts[i])) {
+            context, loops->graph, &loops->loops[i], &trip_counts[i])) {
       context->lowering.report.source_block_execution_counts_exact = false;
       return iree_ok_status();
     }
   }
   context->lowering.report.source_block_execution_counts_exact =
-      loom_cfg_loop_forest_calculate_block_execution_counts(
-          &loop_forest, &graph, trip_counts,
+      loom_cfg_loop_nest_calculate_block_execution_counts(
+          loops, trip_counts,
           context->lowering.report.source_block_execution_counts);
   return iree_ok_status();
 }

@@ -7,13 +7,15 @@
 #ifndef LOOM_UTIL_CFG_GRAPH_TEST_UTIL_H_
 #define LOOM_UTIL_CFG_GRAPH_TEST_UTIL_H_
 
+#include <algorithm>
+#include <utility>
 #include <vector>
 
 #include "loom/util/cfg_graph.h"
 
 namespace loom::testing {
 
-// Adjacency and entry-reachability fixture for graph-only analysis APIs.
+// Adjacency, DFS and entry-reachability fixture for graph-only analysis APIs.
 // Authored IR and extraction contracts are exercised by loom-check fixtures.
 class CfgGraph {
  public:
@@ -22,10 +24,13 @@ class CfgGraph {
     std::vector<std::vector<uint32_t>> incoming(blocks_.size());
     for (size_t i = 0; i < blocks_.size(); ++i) {
       auto& block = blocks_[i];
+      block.preorder = UINT16_MAX;
+      block.parent = UINT16_MAX;
       block.successor_start = successor_indices_.size();
       block.successor_edge_start = successor_indices_.size();
       block.successor_count = successors[i].size();
       for (uint16_t target : successors[i]) {
+        graph_.backward_edge_count += target <= i;
         uint32_t edge = edges_.size();
         incoming[target].push_back(edge);
         loom_cfg_edge_info_t edge_info = {};
@@ -49,18 +54,27 @@ class CfgGraph {
       }
     }
     if (!blocks_.empty()) {
-      std::vector<uint16_t> pending{0};
+      std::vector<std::pair<uint16_t, size_t>> pending{{0, 0}};
+      uint16_t preorder = 0;
       blocks_[0].reachable = true;
+      blocks_[0].preorder = preorder++;
       while (!pending.empty()) {
-        uint16_t source = pending.back();
-        pending.pop_back();
-        for (uint16_t target : successors[source]) {
-          if (!blocks_[target].reachable) {
-            blocks_[target].reachable = true;
-            pending.push_back(target);
-          }
+        auto& frame = pending.back();
+        if (frame.second == successors[frame.first].size()) {
+          blocks_[frame.first].preorder_end = preorder;
+          reverse_postorder_.push_back(frame.first);
+          pending.pop_back();
+          continue;
+        }
+        uint16_t target = successors[frame.first][frame.second++];
+        if (!blocks_[target].reachable) {
+          blocks_[target].reachable = true;
+          blocks_[target].preorder = preorder++;
+          blocks_[target].parent = frame.first;
+          pending.emplace_back(target, 0);
         }
       }
+      std::reverse(reverse_postorder_.begin(), reverse_postorder_.end());
     }
     graph_.blocks = blocks_.data();
     graph_.block_count = blocks_.size();
@@ -70,6 +84,8 @@ class CfgGraph {
     graph_.predecessor_indices = predecessor_indices_.data();
     graph_.successor_edge_indices = successor_edges_.data();
     graph_.predecessor_edge_indices = predecessor_edges_.data();
+    graph_.reverse_postorder = {reverse_postorder_.data(),
+                                reverse_postorder_.size()};
   }
 
   CfgGraph(const CfgGraph&) = delete;
@@ -92,6 +108,8 @@ class CfgGraph {
   std::vector<uint32_t> successor_edges_;
   // Dense incoming edge adjacency.
   std::vector<uint32_t> predecessor_edges_;
+  // Reachable blocks in reverse DFS postorder.
+  std::vector<uint16_t> reverse_postorder_;
   // Non-owning graph view over the fixture arrays.
   loom_cfg_graph_t graph_ = {};
 };

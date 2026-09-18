@@ -102,6 +102,8 @@ typedef struct loom_amdgpu_branch_plan_t {
   loom_block_t* loop_entry_block;
   // Original low loop header destination reached after loop_entry_block.
   loom_block_t* loop_header_dest;
+  // True when the loop's true successor exits and its false successor repeats.
+  bool loop_exits_on_true;
   // Number of values merged by an if/else diamond.
   uint16_t if_else_merge_arg_count;
 } loom_amdgpu_branch_plan_t;
@@ -1277,109 +1279,70 @@ static iree_status_t loom_amdgpu_prepare_if_else_diamond(
       loom_low_lower_plan_make(LOOM_AMDGPU_BRANCH_PLAN_IF_ELSE_DIAMOND, plan));
 }
 
-static bool loom_amdgpu_try_find_divergent_loop_entry_edge(
-    loom_region_t* source_body, const loom_amdgpu_bounded_region_t* body_region,
-    const loom_block_t* header_block,
-    loom_amdgpu_region_exit_edge_t* out_entry_edge) {
-  *out_entry_edge = (loom_amdgpu_region_exit_edge_t){0};
-  bool found_entry = false;
-  for (uint16_t block_index = 0; block_index < source_body->block_count;
-       ++block_index) {
-    if (body_region->contains_block[block_index]) {
-      continue;
-    }
-    const loom_block_t* source_block =
-        loom_region_block(source_body, block_index);
-    const loom_op_t* terminator = loom_block_const_last_op(source_block);
-    if (terminator == NULL) {
-      continue;
-    }
-    loom_block_t* const* successors = loom_op_const_successors(terminator);
-    for (uint8_t successor_index = 0;
-         successor_index < terminator->successor_count; ++successor_index) {
-      if (successors[successor_index] != header_block) {
-        continue;
-      }
-      if (found_entry) {
-        return false;
-      }
-      found_entry = true;
-      *out_entry_edge = (loom_amdgpu_region_exit_edge_t){
-          .terminator = terminator,
-          .successor_index = successor_index,
-      };
-    }
-  }
-  return found_entry;
-}
-
 static iree_status_t loom_amdgpu_try_prepare_divergent_loop(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
-    loom_amdgpu_branch_analysis_workspace_t* workspace, bool* out_prepared) {
-  *out_prepared = false;
-  loom_block_t* header_block = source_op->parent_block;
-  loom_block_t* body_entry = loom_cfg_cond_br_true_dest(source_op);
-  if (body_entry == header_block ||
-      loom_cfg_cond_br_false_dest(source_op) == header_block) {
+    bool* out_handled) {
+  *out_handled = false;
+  const loom_cfg_loop_nest_t* loops = NULL;
+  IREE_RETURN_IF_ERROR(loom_low_lower_context_cfg_loops(context, &loops));
+  const loom_cfg_graph_t* graph = loops->graph;
+  uint16_t block_index =
+      (uint16_t)loom_cfg_graph_block_index(graph, source_op->parent_block);
+  uint16_t loop_index = loom_cfg_loop_nest_innermost(loops, block_index);
+  if (loop_index == LOOM_CFG_LOOP_NEST_NONE) {
     return iree_ok_status();
   }
-
-  loom_region_t* source_body = loom_amdgpu_source_body(context);
-
-  loom_amdgpu_bounded_region_t body_region = {0};
-  if (!loom_amdgpu_try_analyze_bounded_region(
-          source_body, body_entry, header_block,
-          workspace->primary_region.exit_edges,
-          workspace->primary_region.contains_block, workspace->stack,
-          &body_region)) {
+  loom_cfg_edge_index_span_t outgoing =
+      loom_cfg_graph_successor_edges(graph, block_index);
+  const loom_cfg_edge_info_t* true_edge = &graph->edges[outgoing.values[0]];
+  const loom_cfg_edge_info_t* false_edge = &graph->edges[outgoing.values[1]];
+  if (loom_cfg_loop_nest_contains(loops, loop_index,
+                                  true_edge->target_block_index) &&
+      loom_cfg_loop_nest_contains(loops, loop_index,
+                                  false_edge->target_block_index)) {
     return iree_ok_status();
   }
-  if (body_region.exit_edge_count == 0) {
-    return iree_ok_status();
+  *out_handled = true;
+  const loom_cfg_natural_loop_t* loop = &loops->loops[loop_index];
+  if (loop->exits.count != 1) {
+    return loom_low_lower_emit_branch_constraint(
+        context, source_op, IREE_SV("divergent_loop_single_exit"));
   }
-  if (!loom_amdgpu_region_has_single_entry(
-          source_body, body_region.contains_block, header_block, body_entry,
-          /*ignored_entry_terminator=*/NULL,
-          /*ignored_entry_successor_index=*/0)) {
+  const loom_cfg_edge_info_t* exit_edge =
+      &graph->edges[loop->exits.unique_index];
+  if (loop->entries.count != 1) {
     return loom_low_lower_emit_branch_constraint(
         context, source_op, IREE_SV("divergent_loop_single_entry"));
   }
-
-  loom_amdgpu_region_exit_edge_t entry_edge = {0};
-  if (!loom_amdgpu_try_find_divergent_loop_entry_edge(
-          source_body, &body_region, header_block, &entry_edge)) {
-    return loom_low_lower_emit_branch_constraint(
-        context, source_op, IREE_SV("divergent_loop_single_entry"));
-  }
+  const loom_cfg_edge_info_t* entry_edge =
+      &graph->edges[loop->entries.unique_index];
+  const loom_block_t* header_block = graph->blocks[loop->header_index].block;
 
   loom_block_t* loop_header_dest = NULL;
   IREE_RETURN_IF_ERROR(
       loom_low_lower_lookup_block(context, header_block, &loop_header_dest));
-  if (!loom_cfg_br_isa(entry_edge.terminator) &&
-      loop_header_dest->arg_count != 0) {
-    return loom_low_lower_emit_branch_constraint(
-        context, source_op, IREE_SV("divergent_loop_entry_payload"));
-  }
 
   loom_amdgpu_branch_plan_t* plan = NULL;
   IREE_RETURN_IF_ERROR(
       loom_low_lower_allocate_plan_data(context, sizeof(*plan), (void**)&plan));
-  *plan = (loom_amdgpu_branch_plan_t){0};
+  *plan = (loom_amdgpu_branch_plan_t){
+      .loop_exits_on_true = exit_edge->successor_index == 0,
+  };
 
   IREE_RETURN_IF_ERROR(
       loom_low_lower_append_low_block(context, &plan->loop_entry_block));
   IREE_RETURN_IF_ERROR(loom_amdgpu_append_block_args_like_dest(
       context, loop_header_dest, plan->loop_entry_block, NULL));
   IREE_RETURN_IF_ERROR(loom_low_lower_interpose_successor_dest(
-      context, entry_edge.terminator, entry_edge.successor_index,
+      context, entry_edge->terminator, (uint8_t)entry_edge->successor_index,
       plan->loop_entry_block, &plan->loop_header_dest));
 
   IREE_RETURN_IF_ERROR(
       loom_low_lower_append_low_block(context, &plan->restore_block));
   IREE_RETURN_IF_ERROR(loom_low_lower_interpose_successor_dest(
-      context, source_op, 1, plan->restore_block, &plan->restore_dest));
+      context, source_op, (uint8_t)exit_edge->successor_index,
+      plan->restore_block, &plan->restore_dest));
 
-  *out_prepared = true;
   return loom_low_lower_set_branch_plan(
       context, source_op,
       loom_low_lower_plan_make(LOOM_AMDGPU_BRANCH_PLAN_DIVERGENT_LOOP, plan));
@@ -1394,6 +1357,12 @@ static iree_status_t loom_amdgpu_prepare_exec_mask_branch(
                                       &false_terminator)) {
     return loom_amdgpu_prepare_if_else_diamond(
         context, source_op, true_terminator, false_terminator);
+  }
+  bool handled_loop = false;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_try_prepare_divergent_loop(
+      context, source_op, &handled_loop));
+  if (handled_loop) {
+    return iree_ok_status();
   }
   loom_block_t* passthrough_continuation = NULL;
   const loom_op_t* passthrough_terminator = NULL;
@@ -1425,12 +1394,6 @@ static iree_status_t loom_amdgpu_prepare_exec_mask_branch(
   IREE_RETURN_IF_ERROR(loom_amdgpu_try_emit_if_else_diamond_argument_error(
       context, source_op, &emitted_diagnostic));
   if (emitted_diagnostic) {
-    return iree_ok_status();
-  }
-  bool prepared_divergent_loop = false;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_try_prepare_divergent_loop(
-      context, source_op, &workspace, &prepared_divergent_loop));
-  if (prepared_divergent_loop) {
     return iree_ok_status();
   }
   return loom_amdgpu_prepare_then_masked_region(context, source_op, &workspace);
@@ -2101,6 +2064,16 @@ static iree_status_t loom_amdgpu_emit_exec_mask_cond_branch(
   if (branch_plan.id == LOOM_AMDGPU_BRANCH_PLAN_DIVERGENT_LOOP) {
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_loop_entry_block(
         context, source_op, condition_type, plan, &loop_saved_exec));
+    if (plan->loop_exits_on_true) {
+      // Within the saved parent mask, XOR complements the exit condition.
+      // AND_SAVEEXEC still excludes lanes retired on earlier iterations.
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_native_i1_mask_binary(
+          context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_XOR_B64,
+          loop_saved_exec, low_condition, condition_type, &low_condition));
+      loom_block_t* repeat_dest = low_false_dest;
+      low_false_dest = low_true_dest;
+      low_true_dest = repeat_dest;
+    }
   }
 
   loom_op_t* saveexec_op = NULL;

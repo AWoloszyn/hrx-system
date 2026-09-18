@@ -306,6 +306,25 @@ const loom_value_fact_table_t* loom_low_lower_context_fact_table(
   return context->lowering.fact_table;
 }
 
+iree_status_t loom_low_lower_context_cfg_loops(
+    loom_low_lower_context_t* context, const loom_cfg_loop_nest_t** out_loops) {
+  loom_low_lower_function_analysis_t* analysis =
+      &context->lowering.function_analysis;
+  if (analysis->cfg_loops == NULL) {
+    const loom_cfg_graph_t* graph = loom_value_fact_table_lookup_cfg_graph(
+        context->lowering.fact_table,
+        loom_func_like_body(context->source_function));
+    loom_cfg_loop_nest_t* loops = NULL;
+    IREE_RETURN_IF_ERROR(iree_arena_allocate(&context->function_arena,
+                                             sizeof(*loops), (void**)&loops));
+    IREE_RETURN_IF_ERROR(
+        loom_cfg_loop_nest_build(graph, &context->function_arena, loops));
+    analysis->cfg_loops = loops;
+  }
+  *out_loops = analysis->cfg_loops;
+  return iree_ok_status();
+}
+
 loom_condition_query_t* loom_low_lower_context_condition_query(
     loom_low_lower_context_t* context) {
   return &context->lowering.condition_query;

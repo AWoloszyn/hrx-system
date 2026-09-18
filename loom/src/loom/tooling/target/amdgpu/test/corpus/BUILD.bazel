@@ -14,7 +14,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["gfx11/schedule_scopes.loom"])
+exports_files([
+    "gfx11/loop_entry_wave32.loom",
+    "gfx11/schedule_scopes.loom",
+])
 
 _EXECUTION_TAGS = [
     "iree-run-requirement=runtime.resource.amd_gpu",
@@ -86,6 +89,29 @@ iree_executable_test(
     ],
     data = [":gfx11_test_module"],
     tags = _EXECUTION_TAGS,
+    target_compatible_with = _GFX11_COMPATIBLE_WITH,
+)
+
+loom_module(
+    name = "gfx11_loop_entry_module",
+    srcs = [
+        "gfx11/loop_entry.loom",
+        "gfx11/loop_entry_wave32.loom",
+    ],
+    output_format = "bc",
+    target_compatible_with = _GFX11_ARTIFACT_COMPATIBLE_WITH,
+)
+
+iree_executable_test(
+    name = "gfx11_loop_entry_access_test",
+    src = "//loom/src/loom/tools/iree-test-loom",
+    args = [
+        "$(rootpath :gfx11_loop_entry_module)",
+        "--device=amdgpu",
+        "--sanitizer=access",
+    ],
+    data = [":gfx11_loop_entry_module"],
+    tags = _EXECUTION_TAGS + ["notsan"],
     target_compatible_with = _GFX11_COMPATIBLE_WITH,
 )
 

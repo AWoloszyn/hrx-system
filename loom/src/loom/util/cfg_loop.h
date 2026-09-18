@@ -65,13 +65,14 @@ iree_status_t loom_cfg_loop_forest_build(const loom_cfg_graph_t* graph,
 
 // Expands one exact trip count per interval into block execution counts.
 //
-// Reachable blocks outside loops execute once. A loop header executes one more
-// time than its trip count, while other loop blocks execute once per trip.
-// Nested counts are multiplied. |graph| is the immutable graph from which
-// |forest| was built. Returns false when the forest does not cover every
+// Unconditionally reached blocks outside loops execute once. A loop header
+// executes one more time than its trip count, while other loop blocks execute
+// once per trip. Nested counts are multiplied. |graph| is the immutable graph
+// from which |forest| was built; edgeless single-block schedules may omit
+// adjacency storage. Returns false when the forest does not cover every
 // reachable backward edge, contains a noncanonical interval, has unmodeled
-// branching inside a loop, or a count overflows. Expansion takes O(B+L) time
-// and no additional storage.
+// branching outside modeled loop headers, or a count overflows. Expansion takes
+// O(B+L) time and no additional storage.
 bool loom_cfg_loop_forest_calculate_block_execution_counts(
     const loom_cfg_loop_forest_t* forest, const loom_cfg_graph_t* graph,
     const uint64_t* trip_counts, uint64_t* out_block_counts);

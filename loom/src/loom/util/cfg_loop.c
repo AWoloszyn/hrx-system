@@ -296,18 +296,27 @@ bool loom_cfg_loop_forest_calculate_block_execution_counts(
     const uint64_t* trip_counts, uint64_t* out_block_counts) {
   IREE_ASSERT(forest->interval_count == 0 || trip_counts != NULL);
 
+  // An edgeless graph reaches only its entry. Structured single-block Low
+  // schedules retain the block count without allocating CFG adjacency.
+  if (graph->edge_count == 0) {
+    for (iree_host_size_t i = 0; i < graph->block_count; ++i) {
+      out_block_counts[i] = i == 0 ? 1 : 0;
+    }
+    return true;
+  }
   for (iree_host_size_t i = 0; i < graph->block_count; ++i) {
     const bool is_reachable =
-        graph->blocks == NULL ||
         loom_cfg_graph_block_is_reachable(graph, (uint16_t)i);
     out_block_counts[i] = is_reachable ? 1 : 0;
-    if (!is_reachable || forest->interval_count == 0) {
+    if (!is_reachable) {
       continue;
     }
-    const uint32_t loop_index = forest->innermost_loop_indices[i];
-    if (loop_index != LOOM_CFG_LOOP_NONE &&
-        forest->intervals[loop_index].header_index != i &&
-        graph->blocks[i].successor_count > 1) {
+    const uint32_t loop_index = forest->interval_count
+                                    ? forest->innermost_loop_indices[i]
+                                    : LOOM_CFG_LOOP_NONE;
+    if (graph->blocks[i].successor_count > 1 &&
+        (loop_index == LOOM_CFG_LOOP_NONE ||
+         forest->intervals[loop_index].header_index != i)) {
       return false;
     }
   }

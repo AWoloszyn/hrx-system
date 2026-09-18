@@ -1,0 +1,193 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include "loom/util/cfg_loop_nest.h"
+
+#include <random>
+#include <vector>
+
+#include "iree/testing/gtest.h"
+#include "iree/testing/status_matchers.h"
+#include "loom/util/cfg_graph_test_util.h"
+#include "loom/util/cfg_loop_nest_test_util.h"
+
+namespace loom {
+namespace {
+
+using testing::CfgGraph;
+
+class CfgLoopNestTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    iree_arena_block_pool_initialize(4096, iree_allocator_system(), &pool_);
+    iree_arena_initialize(&pool_, &arena_);
+  }
+  void TearDown() override {
+    iree_arena_deinitialize(&arena_);
+    iree_arena_block_pool_deinitialize(&pool_);
+  }
+
+  loom_cfg_loop_nest_t Build(const CfgGraph& fixture) {
+    iree_arena_reset(&arena_);
+    loom_cfg_loop_nest_t nest;
+    IREE_CHECK_OK(loom_cfg_loop_nest_build(fixture.get(), &arena_, &nest));
+    return nest;
+  }
+
+  void CheckOracle(const std::vector<std::vector<uint16_t>>& successors) {
+    CfgGraph fixture(successors);
+    const auto nest = Build(fixture);
+    IREE_ASSERT_OK(testing::CheckLoopNest(nest));
+  }
+
+  // Pool shared by successive independent immutable snapshots.
+  iree_arena_block_pool_t pool_;
+  // Retained storage for the active test snapshot.
+  iree_arena_allocator_t arena_;
+};
+
+TEST_F(CfgLoopNestTest, EmptyAcyclicAndUnreachableCycles) {
+  CheckOracle({});
+  CheckOracle({{}});
+  CheckOracle({{3}, {}, {1}, {2}});
+  CheckOracle({{1}, {}, {2}});
+}
+
+TEST_F(CfgLoopNestTest, DelayedGuardAndReorderedBlocks) {
+  // Entry -> header diamond -> guard -> latch -> header; guard also exits.
+  CheckOracle({{1}, {2, 3}, {4}, {4}, {5, 6}, {1}, {}});
+  CheckOracle({{4}, {3}, {}, {6, 2}, {1, 5}, {3}, {4}});
+}
+
+TEST_F(CfgLoopNestTest, ParallelEdgesMultipleEntriesLatchesAndExits) {
+  CheckOracle({{1, 1}, {2, 3}, {1}, {1, 4}, {}});
+  CheckOracle({{1}, {2, 5}, {3, 4}, {1, 5}, {1, 6}, {}, {}});
+  CheckOracle({{1}, {1, 2}, {}});
+  CheckOracle({{0}});
+}
+
+TEST_F(CfgLoopNestTest, NestedSiblingAndSharedExits) {
+  CheckOracle({{1}, {2, 6}, {3, 4}, {2}, {5}, {1}, {7}, {7, 8}, {}});
+  CheckOracle({{1}, {2}, {3, 6}, {2, 4}, {1, 5}, {6}, {}});
+}
+
+TEST_F(CfgLoopNestTest, IrreducibleCyclesRetainNaturalSubloops) {
+  CheckOracle({{1, 2}, {2, 3}, {1, 3}, {}});
+  CheckOracle({{1, 2}, {3}, {3}, {4, 5}, {3, 1}, {2}});
+}
+
+TEST_F(CfgLoopNestTest, EveryThreeBlockGraph) {
+  for (uint32_t bits = 0; bits < (1u << 9); ++bits) {
+    SCOPED_TRACE(bits);
+    std::vector<std::vector<uint16_t>> successors(3);
+    for (uint16_t source = 0; source < 3; ++source) {
+      for (uint16_t target = 0; target < 3; ++target) {
+        if (bits & (1u << (source * 3 + target))) {
+          successors[source].push_back(target);
+        }
+      }
+    }
+    CheckOracle(successors);
+  }
+}
+
+TEST_F(CfgLoopNestTest, DeterministicArbitraryGraphs) {
+  std::mt19937 random(715321);
+  for (size_t sample = 0; sample < 2000; ++sample) {
+    SCOPED_TRACE(sample);
+    uint16_t count = 2 + random() % 15;
+    std::vector<std::vector<uint16_t>> successors(count);
+    for (auto& outgoing : successors) {
+      size_t edges = random() % 5;
+      for (size_t i = 0; i < edges; ++i) {
+        outgoing.push_back(random() % count);
+      }
+    }
+    CheckOracle(successors);
+  }
+}
+
+TEST_F(CfgLoopNestTest, DeepNestingUsesCompactMembership) {
+  constexpr uint16_t depth = 8192;
+  std::vector<std::vector<uint16_t>> successors(depth * 2 + 2);
+  successors[0] = {1};
+  for (uint16_t i = 0; i < depth; ++i) {
+    uint16_t header = i + 1;
+    uint16_t latch = depth + i + 1;
+    successors[header] = {uint16_t(i + 1 < depth ? header + 1 : latch),
+                          uint16_t(i ? depth + i : successors.size() - 1)};
+    successors[latch] = {header};
+  }
+  CfgGraph fixture(successors);
+  const auto nest = Build(fixture);
+  ASSERT_TRUE(nest.reducible);
+  ASSERT_EQ(nest.loop_count, depth);
+  for (uint16_t i = 0; i < depth; ++i) {
+    uint16_t loop_index = loom_cfg_loop_nest_innermost(&nest, i + 1);
+    const auto& loop = nest.loops[loop_index];
+    EXPECT_EQ(loop.entries.count, 1u);
+    EXPECT_EQ(loop.backedges.count, 1u);
+    EXPECT_EQ(loop.exits.count, 1u);
+    EXPECT_EQ(loop.parent_loop_index, i ? loom_cfg_loop_nest_innermost(&nest, i)
+                                        : LOOM_CFG_LOOP_NEST_NONE);
+    EXPECT_TRUE(loom_cfg_loop_nest_contains(&nest, loop_index, depth));
+    EXPECT_FALSE(loom_cfg_loop_nest_contains(&nest, loop_index, 0));
+    EXPECT_FALSE(loom_cfg_loop_nest_contains(&nest, loop_index, depth * 2 + 1));
+  }
+}
+
+TEST_F(CfgLoopNestTest, NestedExecutionCountsDoNotDependOnBlockOrder) {
+  // Headers 4 and 2, with latches 1 and 5. Block 7 is unreachable.
+  CfgGraph fixture({{4}, {4}, {5, 1}, {}, {2, 6}, {2}, {3}, {7}});
+  const auto nest = Build(fixture);
+  ASSERT_EQ(nest.loop_count, 2u);
+  std::vector<uint64_t> trips(2);
+  trips[loom_cfg_loop_nest_innermost(&nest, 4)] = 4;
+  trips[loom_cfg_loop_nest_innermost(&nest, 2)] = 8;
+  std::vector<uint64_t> counts(8);
+  EXPECT_TRUE(loom_cfg_loop_nest_calculate_block_execution_counts(
+      &nest, trips.data(), counts.data()));
+  EXPECT_EQ(counts, (std::vector<uint64_t>{1, 4, 36, 1, 5, 32, 1, 0}));
+  trips[loom_cfg_loop_nest_innermost(&nest, 4)] = 0;
+  EXPECT_TRUE(loom_cfg_loop_nest_calculate_block_execution_counts(
+      &nest, trips.data(), counts.data()));
+  EXPECT_EQ(counts, (std::vector<uint64_t>{1, 0, 0, 1, 1, 0, 1, 0}));
+  trips[loom_cfg_loop_nest_innermost(&nest, 4)] = UINT64_MAX;
+  EXPECT_FALSE(loom_cfg_loop_nest_calculate_block_execution_counts(
+      &nest, trips.data(), counts.data()));
+}
+
+TEST_F(CfgLoopNestTest, UnmodeledPathsDoNotProduceExactCounts) {
+  const std::vector<std::vector<std::vector<uint16_t>>> cases = {
+      {{1, 2}, {3}, {3}, {}},
+      {{1, 3}, {2, 3}, {1}, {}},
+      {{1}, {2, 3}, {4}, {4}, {5, 6}, {1}, {}},
+      {{1}, {2, 5}, {3, 4}, {1}, {1}, {}},
+      {{1}, {2, 4}, {1, 4}, {}, {}},
+      {{1, 2}, {2, 3}, {1, 3}, {}},
+      {{0}},
+  };
+  for (const auto& successors : cases) {
+    CfgGraph fixture(successors);
+    const auto nest = Build(fixture);
+    std::vector<uint64_t> trips(nest.loop_count, 4);
+    std::vector<uint64_t> counts(successors.size());
+    EXPECT_FALSE(loom_cfg_loop_nest_calculate_block_execution_counts(
+        &nest, trips.data(), counts.data()));
+  }
+}
+
+TEST_F(CfgLoopNestTest, UnreachableBranchesDoNotInvalidateCounts) {
+  CfgGraph fixture({{1}, {}, {1, 3}, {}});
+  const auto nest = Build(fixture);
+  std::vector<uint64_t> counts(4);
+  EXPECT_TRUE(loom_cfg_loop_nest_calculate_block_execution_counts(
+      &nest, nullptr, counts.data()));
+  EXPECT_EQ(counts, (std::vector<uint64_t>{1, 1, 0, 0}));
+}
+
+}  // namespace
+}  // namespace loom

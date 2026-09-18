@@ -87,6 +87,42 @@ iree_native_test(
 )
 endif()
 
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_GFX11_GENERIC_CORE AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_module(
+  NAME
+    gfx11_loop_entry_module
+  SRCS
+    "gfx11/loop_entry.loom"
+    "gfx11/loop_entry_wave32.loom"
+  MODE
+    "merge"
+  OUTPUT
+    "gfx11_loop_entry_module.loombc"
+  OUTPUT_FORMAT
+    "bc"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_AMDGPU_IREE_HAL_DESCRIPTOR_SET_GFX11_GENERIC_CORE)
+iree_native_test(
+  NAME
+    "gfx11_loop_entry_access_test"
+  ARGS
+    "{{${CMAKE_CURRENT_BINARY_DIR}/gfx11_loop_entry_module.loombc}}"
+    "--device=amdgpu"
+    "--sanitizer=access"
+  SRC
+    loom::tools::iree-test-loom
+  DATA
+    "${CMAKE_CURRENT_BINARY_DIR}/gfx11_loop_entry_module.loombc"
+  LABELS
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "requires-gpu-amd"
+    "runtime-resource=amd-gpu"
+    "notsan"
+)
+endif()
+
 file(GLOB _GLOB_GFX1100_X_LOOM LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS gfx1100/*.loom)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 loom_module(

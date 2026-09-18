@@ -25,6 +25,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_scaling.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_wide_offsets.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/complete_authoring_module.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/loop_entry_wave32.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/schedule_scopes.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/gfx1250_configured_fragment_bank.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/loom_opt_f32_arith.loom"

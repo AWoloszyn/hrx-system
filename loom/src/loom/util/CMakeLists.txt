@@ -397,6 +397,66 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    cfg_loop_nest
+  HDRS
+    "cfg_loop_nest.h"
+  SRCS
+    "cfg_loop_nest.c"
+  DEPS
+    ::cfg_dominance
+    ::cfg_graph
+    iree::base
+    iree::base::internal
+    iree::base::internal::arena
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    cfg_loop_nest_test
+  SRCS
+    "cfg_loop_nest_test.cc"
+  DEPS
+    ::cfg_graph
+    ::cfg_graph_test_util
+    ::cfg_loop_nest
+    ::cfg_loop_nest_test_util
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_library(
+  NAME
+    cfg_loop_nest_test_util
+  HDRS
+    "cfg_loop_nest_test_util.h"
+  SRCS
+    "cfg_loop_nest_test_util.cc"
+  DEPS
+    ::cfg_graph
+    ::cfg_loop_nest
+    iree::base
+  TESTONLY
+  PUBLIC
+)
+
+loom_cc_fuzz(
+  NAME
+    cfg_loop_nest_fuzz
+  SRCS
+    "cfg_loop_nest_fuzz.cc"
+  DEPS
+    ::cfg_graph_test_util
+    ::cfg_loop_nest
+    ::cfg_loop_nest_test_util
+    iree::base
+    iree::base::internal::arena
+)
+
+loom_cc_library(
+  NAME
     cfg_control
   HDRS
     "cfg_control.h"

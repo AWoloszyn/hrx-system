@@ -1088,18 +1088,19 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
     if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT) {
       continue;
     }
-    uint32_t source_assignment_index = 0;
     const loom_value_id_t source_value_id = loom_low_placement_value_id(
         context->placement, relation->source_ordinal);
     IREE_RETURN_IF_ERROR(loom_low_allocation_coalescing_append_unique_value_id(
         ignored_value_ids, ignored_value_capacity, &ignored_value_count,
         source_value_id));
-    IREE_RETURN_IF_ERROR(
-        loom_low_allocation_coalescing_assignment_index_for_value(
-            context, source_value_id, &source_assignment_index));
+    // CFG layout can make the result live before its source intervals. In
+    // that order, allocate the result normally; later sources can coalesce
+    // through the existing result-affinity path.
     const loom_low_allocation_assignment_t* source_assignment =
-        &context->assignment_map->assignments[source_assignment_index];
-    if (!loom_low_allocation_assignment_is_register_like(source_assignment)) {
+        loom_low_allocation_coalescing_current_assignment_for_value_ordinal(
+            context, relation->source_ordinal);
+    if (!source_assignment ||
+        !loom_low_allocation_assignment_is_register_like(source_assignment)) {
       return iree_ok_status();
     }
     if (!loom_low_allocation_coalescing_assignment_unit_span_fits(

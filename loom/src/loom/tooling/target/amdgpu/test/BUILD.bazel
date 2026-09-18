@@ -37,6 +37,7 @@ iree_execution_test_suite(
         "selected_root_amdgpu.loom",
         "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
         "//loom/src/loom/test/corpus/source_low:memory_wide_offsets.loom-test",
+        "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/loop_entry_wave32.loom",
         "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/schedule_scopes.loom",
     ],
     manifests = [

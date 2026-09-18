@@ -1,0 +1,73 @@
+// RUN: pass source-to-low
+
+amdgpu.target<gfx11-generic> @target
+
+// Two distinct retirement points need a shared exit-mask plan, even when they
+// lead to the same continuation. They cannot each restore parent EXEC alone.
+func.def target(@target) @multiple_loop_exits(%values: vector<2xi32>, %limit: i32) {
+  %lane = vector.extract %values[0] : vector<2xi32> -> i32
+  %loop_begin = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  cfg.br ^header(%loop_begin: i32)
+^header(%counter: i32):
+  %more = scalar.cmpi slt, %counter, %lane : i32
+  // ERROR@+1: TARGET/034 {branch_constraint="divergent_loop_single_exit"}
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %continue = scalar.cmpi slt, %counter, %limit : i32
+  cfg.cond_br %continue, ^latch, ^exit
+^latch:
+  %next = scalar.addi %counter, %increment : i32
+  cfg.br ^header(%next: i32)
+^exit:
+  func.return
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @multiple_loop_entries(%values: vector<2xi32>, %choice: i1) {
+  %lane = vector.extract %values[0] : vector<2xi32> -> i32
+  %loop_begin = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  cfg.cond_br %choice, ^first, ^second
+^first:
+  cfg.br ^header(%loop_begin: i32)
+^second:
+  cfg.br ^header(%increment: i32)
+^header(%counter: i32):
+  %more = scalar.cmpi slt, %counter, %lane : i32
+  // ERROR@+1: TARGET/034 {branch_constraint="divergent_loop_single_entry"}
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = scalar.addi %counter, %increment : i32
+  cfg.br ^header(%next: i32)
+^exit:
+  func.return
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+// Two distinct retirement points need a shared exit-mask plan, even when they
+// lead to the same continuation. They cannot each restore parent EXEC alone.
+func.def target(@target) @divergent_exit_after_uniform_guard(%values: vector<2xi32>, %limit: i32) {
+  %lane = vector.extract %values[0] : vector<2xi32> -> i32
+  %loop_begin = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  cfg.br ^header(%loop_begin: i32)
+^header(%counter: i32):
+  %more = scalar.cmpi slt, %counter, %limit : i32
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %continue = scalar.cmpi slt, %counter, %lane : i32
+  // ERROR@+1: TARGET/034 {branch_constraint="divergent_loop_single_exit"}
+  cfg.cond_br %continue, ^latch, ^exit
+^latch:
+  %next = scalar.addi %counter, %increment : i32
+  cfg.br ^header(%next: i32)
+^exit:
+  func.return
+}

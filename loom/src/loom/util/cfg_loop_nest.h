@@ -1,0 +1,108 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#ifndef LOOM_UTIL_CFG_LOOP_NEST_H_
+#define LOOM_UTIL_CFG_LOOP_NEST_H_
+
+#include "iree/base/api.h"
+#include "iree/base/internal/arena.h"
+#include "loom/util/cfg_graph.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define LOOM_CFG_LOOP_NEST_NONE UINT16_MAX
+
+// Compact summary of one class of loop edges, including parallel edges.
+typedef struct loom_cfg_loop_edge_summary_t {
+  // Number of reachable edges in this class.
+  uint32_t count;
+  // Graph edge index when count is one, otherwise LOOM_CFG_EDGE_INDEX_INVALID.
+  loom_cfg_edge_index_t unique_index;
+} loom_cfg_loop_edge_summary_t;
+
+// A natural loop is the union of cycles returning to one dominating header.
+// Its entry and exit edges need not be adjacent to each other in the CFG or
+// in block layout. Multiple latches and exits remain represented explicitly.
+typedef struct loom_cfg_natural_loop_t {
+  // Dense index of the header dominating every loop member.
+  uint16_t header_index;
+  // Immediately enclosing natural loop, or LOOM_CFG_LOOP_NEST_NONE.
+  uint16_t parent_loop_index;
+  // Packed inclusive loop-tree preorder range: first low, last high 16 bits.
+  uint32_t interval;
+  // Edges entering the header from outside the loop.
+  loom_cfg_loop_edge_summary_t entries;
+  // Edges returning to the header from inside the loop.
+  loom_cfg_loop_edge_summary_t backedges;
+  // Edges from loop members to blocks outside the loop.
+  loom_cfg_loop_edge_summary_t exits;
+} loom_cfg_natural_loop_t;
+
+// Immutable semantic loop structure for one graph snapshot. Unlike canonical
+// layout intervals, this nesting is independent of textual block order.
+typedef struct loom_cfg_loop_nest_t {
+  // Borrowed graph; it must outlive the nest and retain its topology/indices.
+  const loom_cfg_graph_t* graph;
+  // Natural loops in child-before-parent order, owned by the caller's arena.
+  const loom_cfg_natural_loop_t* loops;
+  // Innermost natural loop per block, or NONE. NULL when loop_count is zero.
+  const uint16_t* innermost_loop_indices;
+  // Number of entries in loops.
+  iree_host_size_t loop_count;
+  // True when every reachable cycle has a dominating header. Irreducible
+  // graphs still retain their natural subloops; malformed graphs are false.
+  bool reducible;
+} loom_cfg_loop_nest_t;
+
+// Builds loop nesting from graph-owned adjacency and DFS facts. Discovery
+// uses dominance and path-compressed subloop contraction, taking
+// O((B+E) log B) time and O(B+E) space without inclusive per-loop block lists.
+// Entry/exit summaries and loop-tree intervals take O(B+E) time. Scratch
+// storage is released before returning; retained storage is O(B+L).
+// The graph must be produced by loom_cfg_graph_build. Rebuild after topology
+// changes. Graphs with no backward edges require no traversal or allocation.
+iree_status_t loom_cfg_loop_nest_build(const loom_cfg_graph_t* graph,
+                                       iree_arena_allocator_t* arena,
+                                       loom_cfg_loop_nest_t* out_nest);
+
+// Returns the innermost loop for a valid dense block index, or NONE.
+static inline uint16_t loom_cfg_loop_nest_innermost(
+    const loom_cfg_loop_nest_t* nest, uint16_t block_index) {
+  return nest->loop_count ? nest->innermost_loop_indices[block_index]
+                          : LOOM_CFG_LOOP_NEST_NONE;
+}
+
+// Constant-time membership query for a loop and valid dense block index.
+static inline bool loom_cfg_loop_nest_contains(const loom_cfg_loop_nest_t* nest,
+                                               uint16_t loop_index,
+                                               uint16_t block_index) {
+  uint16_t inner = loom_cfg_loop_nest_innermost(nest, block_index);
+  if (loop_index == LOOM_CFG_LOOP_NEST_NONE ||
+      inner == LOOM_CFG_LOOP_NEST_NONE) {
+    return false;
+  }
+  uint32_t interval = nest->loops[loop_index].interval;
+  uint16_t position = (uint16_t)nest->loops[inner].interval;
+  return (uint16_t)interval <= position && position <= (interval >> 16);
+}
+
+// Expands exact trip counts for header-tested, single-entry/single-backedge
+// loops into block execution counts in O(B+L) time without extra storage.
+// Returns false for irreducible cycles, non-header exits, conditional paths
+// outside modeled loop headers, or overflow. A header executes trip_count+1
+// times per entry; other loop blocks execute trip_count times. Nested counts
+// are multiplied.
+bool loom_cfg_loop_nest_calculate_block_execution_counts(
+    const loom_cfg_loop_nest_t* nest, const uint64_t* trip_counts,
+    uint64_t* out_block_counts);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#endif  // LOOM_UTIL_CFG_LOOP_NEST_H_
