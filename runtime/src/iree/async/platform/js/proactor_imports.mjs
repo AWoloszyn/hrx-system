@@ -262,7 +262,7 @@ function createWorkerImports(context) {
     // No-op in worker mode. The worker drives poll() directly.
     wake() {},
 
-    // No-op in worker mode. NOPs are in the ready queue and drained during
+    // No-op in worker mode. Poll-owned work is drained during
     // the next poll() call on the same thread.
     schedule_drain() {},
   };

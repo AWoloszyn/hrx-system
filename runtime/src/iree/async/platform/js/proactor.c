@@ -19,29 +19,29 @@
 static const iree_async_proactor_vtable_t iree_async_proactor_js_vtable;
 
 //===----------------------------------------------------------------------===//
-// Ready queue
+// Poll-owned pending queue
 //===----------------------------------------------------------------------===//
 
-// Pushes an operation onto the ready queue tail.
-static void iree_async_proactor_js_ready_enqueue(
+// Pushes an operation onto the pending queue tail.
+static void iree_async_proactor_js_pending_enqueue(
     iree_async_proactor_js_t* proactor, iree_async_operation_t* operation) {
   operation->next = NULL;
-  if (proactor->ready_tail) {
-    proactor->ready_tail->next = operation;
+  if (proactor->pending_tail) {
+    proactor->pending_tail->next = operation;
   } else {
-    proactor->ready_head = operation;
+    proactor->pending_head = operation;
   }
-  proactor->ready_tail = operation;
+  proactor->pending_tail = operation;
 }
 
-// Pops an operation from the ready queue head. Returns NULL if empty.
-static iree_async_operation_t* iree_async_proactor_js_ready_dequeue(
+// Pops an operation from the pending queue head. Returns NULL if empty.
+static iree_async_operation_t* iree_async_proactor_js_pending_dequeue(
     iree_async_proactor_js_t* proactor) {
-  iree_async_operation_t* operation = proactor->ready_head;
+  iree_async_operation_t* operation = proactor->pending_head;
   if (operation) {
-    proactor->ready_head = operation->next;
-    if (!proactor->ready_head) {
-      proactor->ready_tail = NULL;
+    proactor->pending_head = operation->next;
+    if (!proactor->pending_head) {
+      proactor->pending_tail = NULL;
     }
     operation->next = NULL;
   }
@@ -52,79 +52,180 @@ static iree_async_operation_t* iree_async_proactor_js_ready_dequeue(
 // Submit
 //===----------------------------------------------------------------------===//
 
-static iree_status_t iree_async_proactor_js_submit_one(
-    iree_async_proactor_js_t* proactor, iree_async_operation_t* operation) {
-  iree_async_operation_clear_internal_flags(operation);
-  switch (operation->type) {
-    case IREE_ASYNC_OPERATION_TYPE_NOP: {
-      iree_async_operation_retain_resources(operation);
-      IREE_TRACE(operation->submit_time_ns = iree_time_now();)
-      // NOPs complete immediately: push to ready queue and schedule drain.
-      iree_async_proactor_js_ready_enqueue(proactor, operation);
-      iree_async_js_import_schedule_drain();
-      return iree_ok_status();
-    }
+// Validates one public operation before the batch reserves or mutates any
+// backend state. Commit relies on these checks and cannot reject an operation.
+static iree_status_t iree_async_proactor_js_validate_operation(
+    const iree_async_operation_t* operation) {
+  const iree_async_operation_flags_t known_operation_flags =
+      IREE_ASYNC_OPERATION_FLAG_MULTISHOT | IREE_ASYNC_OPERATION_FLAG_LINKED |
+      IREE_ASYNC_OPERATION_FLAG_CANCELLATION_IS_SUCCESS;
+  if (operation->flags & ~known_operation_flags) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "operation has unknown flags 0x%08X",
+                            operation->flags & ~known_operation_flags);
+  }
+  if (!operation->completion_fn) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "operation requires a completion callback");
+  }
+  if (iree_any_bit_set(operation->flags, IREE_ASYNC_OPERATION_FLAG_MULTISHOT)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "MULTISHOT is unsupported for JS operation type %d",
+                            (int)operation->type);
+  }
 
+  switch (operation->type) {
+    case IREE_ASYNC_OPERATION_TYPE_NOP:
+    case IREE_ASYNC_OPERATION_TYPE_TIMER:
+      return iree_ok_status();
+    case IREE_ASYNC_OPERATION_TYPE_SEQUENCE:
+      return iree_async_sequence_validate(
+          (const iree_async_sequence_operation_t*)operation);
+    default:
+      return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                              "JS proactor does not support operation type %d",
+                              (int)operation->type);
+  }
+}
+
+// Reserves the token slot needed by a future timer. Timer routing is frozen
+// against one batch timestamp so commit cannot cross the expired/future
+// boundary and introduce a new failure after earlier operations are visible.
+static iree_status_t iree_async_proactor_js_reserve_operation(
+    iree_async_proactor_js_t* proactor, iree_async_operation_t* operation,
+    iree_time_t now_ns) {
+  if (operation->type != IREE_ASYNC_OPERATION_TYPE_TIMER) {
+    return iree_ok_status();
+  }
+
+  iree_async_timer_operation_t* timer =
+      (iree_async_timer_operation_t*)operation;
+  if (timer->deadline_ns <= now_ns) {
+    return iree_ok_status();
+  }
+
+  IREE_RETURN_IF_ERROR(iree_async_js_token_table_acquire(
+      &proactor->token_table, operation, &timer->platform.js.token));
+  timer->platform.js.is_token_active = true;
+  return iree_ok_status();
+}
+
+static void iree_async_proactor_js_rollback_reservations(
+    iree_async_proactor_js_t* proactor,
+    iree_async_operation_list_t operations) {
+  iree_async_continuation_chain_iterator_t iterator =
+      iree_async_continuation_chain_iterator_make(operations);
+  iree_async_operation_t* operation = NULL;
+  while ((operation = iree_async_continuation_chain_iterator_next(&iterator)) !=
+         NULL) {
+    if (operation->type != IREE_ASYNC_OPERATION_TYPE_TIMER) {
+      continue;
+    }
+    iree_async_timer_operation_t* timer =
+        (iree_async_timer_operation_t*)operation;
+    if (timer->platform.js.is_token_active) {
+      iree_async_js_token_table_release(&proactor->token_table,
+                                        timer->platform.js.token);
+      timer->platform.js.is_token_active = false;
+    }
+  }
+}
+
+// Commits one fully validated and reserved operation. No branch can reject the
+// operation after this point; sequence startup failures become completions.
+static bool iree_async_proactor_js_commit_operation(
+    iree_async_proactor_js_t* proactor, iree_async_operation_t* operation) {
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+    iree_async_sequence_prepare_for_submission(
+        (iree_async_sequence_operation_t*)operation);
+  } else {
+    iree_async_operation_clear_internal_flags(operation);
+  }
+  iree_async_operation_retain_resources(operation);
+  IREE_TRACE(operation->submit_time_ns = iree_time_now();)
+
+  switch (operation->type) {
+    case IREE_ASYNC_OPERATION_TYPE_NOP:
+    case IREE_ASYNC_OPERATION_TYPE_SEQUENCE:
+      iree_async_proactor_js_pending_enqueue(proactor, operation);
+      return true;
     case IREE_ASYNC_OPERATION_TYPE_TIMER: {
       iree_async_timer_operation_t* timer =
           (iree_async_timer_operation_t*)operation;
-      iree_async_operation_retain_resources(operation);
-      IREE_TRACE(operation->submit_time_ns = iree_time_now();)
-
-      // Check if the timer has already expired.
-      iree_time_t now = iree_time_now();
-      if (timer->deadline_ns <= now) {
-        // Already expired: complete immediately via ready queue.
-        iree_async_proactor_js_ready_enqueue(proactor, operation);
-        iree_async_js_import_schedule_drain();
-        return iree_ok_status();
+      if (timer->platform.js.is_token_active) {
+        iree_async_js_import_timer_start(timer->platform.js.token,
+                                         timer->deadline_ns);
+        return false;
       }
-
-      // Acquire a token for the timer so JS can identify it on completion.
-      uint32_t token = UINT32_MAX;
-      iree_status_t status = iree_async_js_token_table_acquire(
-          &proactor->token_table, operation, &token);
-      if (!iree_status_is_ok(status)) {
-        iree_async_operation_release_resources(operation);
-        return status;
-      }
-
-      timer->platform.js.token = token;
-      iree_async_js_import_timer_start(token, timer->deadline_ns);
-      return iree_ok_status();
+      iree_async_proactor_js_pending_enqueue(proactor, operation);
+      return true;
     }
-
-    case IREE_ASYNC_OPERATION_TYPE_SEQUENCE: {
-      iree_async_sequence_operation_t* sequence =
-          (iree_async_sequence_operation_t*)operation;
-      IREE_RETURN_IF_ERROR(iree_async_sequence_validate(sequence));
-      iree_async_sequence_prepare_for_submission(sequence);
-      if (sequence->step_count == 0) {
-        iree_async_operation_retain_resources(operation);
-        IREE_TRACE(operation->submit_time_ns = iree_time_now();)
-        iree_async_proactor_js_ready_enqueue(proactor, operation);
-        iree_async_js_import_schedule_drain();
-        return iree_ok_status();
-      }
-      if (!sequence->step_fn) {
-        return iree_async_sequence_submit_as_linked(&proactor->base, sequence);
-      } else {
-        return iree_async_sequence_emulation_begin(&proactor->sequence_emulator,
-                                                   sequence);
-      }
-    }
-
     default:
-      return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                              "JS proactor does not support operation type %u",
-                              operation->type);
+      IREE_ASSERT_UNREACHABLE("operation type must be validated");
+      IREE_BUILTIN_UNREACHABLE();
   }
+}
+
+// Submits a list whose LINKED topology has already been established. Public
+// batches arrive here after continuation preparation; continuation dispatch
+// supplies a single pre-linked chain head.
+static iree_status_t iree_async_proactor_js_submit_prepared(
+    iree_async_proactor_js_t* proactor,
+    iree_async_operation_list_t operations) {
+  for (iree_host_size_t i = 0; i < operations.count; ++i) {
+    IREE_RETURN_IF_ERROR(
+        iree_async_proactor_js_validate_operation(operations.values[i]));
+  }
+
+  // Clear reservation scratch for active heads before any acquisition. Linked
+  // successors remain owned by their predecessors and are admitted later.
+  iree_async_continuation_chain_iterator_t clear_iterator =
+      iree_async_continuation_chain_iterator_make(operations);
+  iree_async_operation_t* operation = NULL;
+  while ((operation = iree_async_continuation_chain_iterator_next(
+              &clear_iterator)) != NULL) {
+    operation->next = NULL;
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_TIMER) {
+      iree_async_timer_operation_t* timer =
+          (iree_async_timer_operation_t*)operation;
+      timer->platform.js.token = 0;
+      timer->platform.js.is_token_active = false;
+    }
+  }
+
+  iree_time_t now_ns = iree_time_now();
+  iree_async_continuation_chain_iterator_t reserve_iterator =
+      iree_async_continuation_chain_iterator_make(operations);
+  while ((operation = iree_async_continuation_chain_iterator_next(
+              &reserve_iterator)) != NULL) {
+    iree_status_t status =
+        iree_async_proactor_js_reserve_operation(proactor, operation, now_ns);
+    if (!iree_status_is_ok(status)) {
+      iree_async_proactor_js_rollback_reservations(proactor, operations);
+      return status;
+    }
+  }
+
+  bool requires_drain = false;
+  iree_async_continuation_chain_iterator_t commit_iterator =
+      iree_async_continuation_chain_iterator_make(operations);
+  while ((operation = iree_async_continuation_chain_iterator_next(
+              &commit_iterator)) != NULL) {
+    requires_drain |=
+        iree_async_proactor_js_commit_operation(proactor, operation);
+  }
+  if (requires_drain) {
+    iree_async_js_import_schedule_drain();
+  }
+  return iree_ok_status();
 }
 
 static iree_status_t iree_async_proactor_js_submit_continuation(
     void* user_data, iree_async_operation_t* chain_head) {
-  return iree_async_proactor_js_submit_one((iree_async_proactor_js_t*)user_data,
-                                           chain_head);
+  iree_async_operation_t* operations[] = {chain_head};
+  return iree_async_proactor_js_submit_prepared(
+      (iree_async_proactor_js_t*)user_data,
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations)));
 }
 
 // Dispatches a final completion and any continuation callbacks from poll().
@@ -156,25 +257,8 @@ static iree_status_t iree_async_proactor_js_submit(
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_async_continuation_prepare_batch(operations));
-
-  for (iree_host_size_t i = 0; i < operations.count; ++i) {
-    iree_async_operation_t* operation = operations.values[i];
-
-    // Skip continuation operations — they are held in the predecessor's
-    // linked_next and will be submitted when it completes.
-    if (i > 0 && iree_any_bit_set(operations.values[i - 1]->flags,
-                                  IREE_ASYNC_OPERATION_FLAG_LINKED)) {
-      continue;
-    }
-
-    iree_status_t status =
-        iree_async_proactor_js_submit_one(js_proactor, operation);
-    if (!iree_status_is_ok(status)) {
-      IREE_TRACE_ZONE_END(z0);
-      return status;
-    }
-  }
-
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_async_proactor_js_submit_prepared(js_proactor, operations));
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
@@ -224,6 +308,10 @@ static iree_host_size_t iree_async_proactor_js_drain_ring(
     // Release the token table slot before dispatching the callback, since the
     // callback may submit new operations that reuse this slot.
     iree_async_js_token_table_release(&proactor->token_table, entry->token);
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_TIMER) {
+      ((iree_async_timer_operation_t*)operation)->platform.js.is_token_active =
+          false;
+    }
 
     // Check if the operation was cancelled while in flight.
     iree_async_operation_internal_flags_t internal_flags =
@@ -245,20 +333,46 @@ static iree_host_size_t iree_async_proactor_js_drain_ring(
   return completed_count;
 }
 
-// Drains the ready queue and dispatches callbacks.
-static iree_host_size_t iree_async_proactor_js_drain_ready(
+// Drains immediate completions and starts accepted sequences on the poll
+// owner. Sequence startup may submit child operations onto this same queue.
+static iree_host_size_t iree_async_proactor_js_drain_pending(
     iree_async_proactor_js_t* proactor) {
   iree_host_size_t count = 0;
   iree_async_operation_t* operation;
-  while ((operation = iree_async_proactor_js_ready_dequeue(proactor)) != NULL) {
-    iree_async_operation_internal_flags_t internal_flags =
-        iree_atomic_load(&operation->internal_flags, iree_memory_order_relaxed);
-    bool is_cancelled = iree_any_bit_set(
-        internal_flags, IREE_ASYNC_JS_OPERATION_INTERNAL_FLAG_CANCELLED);
+  while ((operation = iree_async_proactor_js_pending_dequeue(proactor)) !=
+         NULL) {
     if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
-      iree_async_sequence_prepare_for_completion(
-          (iree_async_sequence_operation_t*)operation);
+      iree_async_sequence_operation_t* sequence =
+          (iree_async_sequence_operation_t*)operation;
+      bool is_cancelled =
+          iree_any_bit_set(iree_async_operation_load_internal_flags(operation),
+                           IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED);
+      if (is_cancelled || sequence->step_count == 0) {
+        iree_async_sequence_prepare_for_completion(sequence);
+        count += iree_async_proactor_js_complete(
+            proactor, operation,
+            is_cancelled ? iree_status_from_code(IREE_STATUS_CANCELLED)
+                         : iree_ok_status(),
+            IREE_ASYNC_COMPLETION_FLAG_NONE);
+        continue;
+      }
+
+      iree_status_t status =
+          sequence->step_fn
+              ? iree_async_sequence_emulation_begin(
+                    &proactor->sequence_emulator, sequence)
+              : iree_async_sequence_submit_as_linked(&proactor->base, sequence);
+      if (!iree_status_is_ok(status)) {
+        iree_async_sequence_prepare_for_completion(sequence);
+        count += iree_async_proactor_js_complete(
+            proactor, operation, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+      }
+      continue;
     }
+
+    bool is_cancelled =
+        iree_any_bit_set(iree_async_operation_load_internal_flags(operation),
+                         IREE_ASYNC_JS_OPERATION_INTERNAL_FLAG_CANCELLED);
     if (is_cancelled) {
       count += iree_async_proactor_js_complete(
           proactor, operation, iree_status_from_code(IREE_STATUS_CANCELLED),
@@ -282,8 +396,8 @@ static iree_status_t iree_async_proactor_js_poll(
   // Run progress callbacks (shared infrastructure with other backends).
   completed_count += iree_async_proactor_run_progress(proactor);
 
-  // Drain ready queue (NOPs, expired timers queued during submit).
-  completed_count += iree_async_proactor_js_drain_ready(js_proactor);
+  // Drain poll-owned completions and sequence startup work.
+  completed_count += iree_async_proactor_js_drain_pending(js_proactor);
 
   // Drain completions from the JS ring.
   completed_count += iree_async_proactor_js_drain_ring(js_proactor);
@@ -324,16 +438,40 @@ static iree_status_t iree_async_proactor_js_cancel(
     iree_async_proactor_t* proactor, iree_async_operation_t* operation) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  // Set the CANCELLED flag. Since we're single-threaded, relaxed ordering is
-  // sufficient.
-  iree_atomic_fetch_or(&operation->internal_flags,
-                       IREE_ASYNC_JS_OPERATION_INTERNAL_FLAG_CANCELLED,
-                       iree_memory_order_relaxed);
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_async_sequence_cancel(
+        proactor, (iree_async_sequence_operation_t*)operation);
+  }
+  if (operation->type != IREE_ASYNC_OPERATION_TYPE_NOP &&
+      operation->type != IREE_ASYNC_OPERATION_TYPE_TIMER) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "JS proactor does not support cancelling operation type %u",
+        operation->type);
+  }
+
+  iree_async_operation_internal_flags_t previous_flags =
+      (iree_async_operation_internal_flags_t)iree_atomic_fetch_or(
+          &operation->internal_flags,
+          (int32_t)IREE_ASYNC_JS_OPERATION_INTERNAL_FLAG_CANCELLED,
+          iree_memory_order_release);
+  if (iree_any_bit_set(previous_flags,
+                       IREE_ASYNC_JS_OPERATION_INTERNAL_FLAG_CANCELLED)) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_ok_status();
+  }
 
   switch (operation->type) {
     case IREE_ASYNC_OPERATION_TYPE_TIMER: {
       iree_async_timer_operation_t* timer =
           (iree_async_timer_operation_t*)operation;
+      if (!timer->platform.js.is_token_active) {
+        // Expired timers are already pending on the poll owner. They never
+        // acquire a token and cancellation only changes their terminal status.
+        break;
+      }
       uint32_t cancelled =
           iree_async_js_import_timer_cancel(timer->platform.js.token);
       if (cancelled) {
@@ -342,7 +480,8 @@ static iree_status_t iree_async_proactor_js_cancel(
         iree_async_js_token_table_release(
             &iree_async_proactor_js_cast(proactor)->token_table,
             timer->platform.js.token);
-        iree_async_proactor_js_ready_enqueue(
+        timer->platform.js.is_token_active = false;
+        iree_async_proactor_js_pending_enqueue(
             iree_async_proactor_js_cast(proactor), operation);
         iree_async_js_import_schedule_drain();
       }
@@ -353,21 +492,12 @@ static iree_status_t iree_async_proactor_js_cancel(
     }
 
     case IREE_ASYNC_OPERATION_TYPE_NOP:
-      // NOP is in the ready queue. The CANCELLED flag is checked when it's
+      // NOP is in the pending queue. The CANCELLED flag is checked when it's
       // dequeued during poll.
       break;
-
-    case IREE_ASYNC_OPERATION_TYPE_SEQUENCE:
-      IREE_TRACE_ZONE_END(z0);
-      return iree_async_sequence_cancel(
-          proactor, (iree_async_sequence_operation_t*)operation);
-
     default:
-      IREE_TRACE_ZONE_END(z0);
-      return iree_make_status(
-          IREE_STATUS_UNIMPLEMENTED,
-          "JS proactor does not support cancelling operation type %u",
-          operation->type);
+      IREE_ASSERT_UNREACHABLE("operation type must be validated");
+      IREE_BUILTIN_UNREACHABLE();
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -571,9 +701,9 @@ static void iree_async_proactor_js_destroy(iree_async_proactor_t* proactor) {
   iree_async_proactor_js_t* js_proactor = iree_async_proactor_js_cast(proactor);
   iree_allocator_t allocator = proactor->allocator;
 
-  // The ready queue should be empty by the time we destroy.
-  IREE_ASSERT(js_proactor->ready_head == NULL,
-              "JS proactor destroyed with operations in ready queue");
+  // Poll-owned work must be drained before destruction.
+  IREE_ASSERT(js_proactor->pending_head == NULL,
+              "JS proactor destroyed with pending operations");
 
   iree_async_js_token_table_deinitialize(&js_proactor->token_table);
   iree_allocator_free(allocator, js_proactor);
@@ -631,9 +761,9 @@ iree_status_t iree_async_proactor_create_js(
                                           completion_buffer_offset);
   proactor->completion_buffer_capacity = completion_buffer_capacity;
 
-  // Ready queue starts empty.
-  proactor->ready_head = NULL;
-  proactor->ready_tail = NULL;
+  // Poll-owned queue starts empty.
+  proactor->pending_head = NULL;
+  proactor->pending_tail = NULL;
 
   // Initialize sequence emulator for SEQUENCE operation support. Uses the
   // public submit_one API which re-enters through the vtable submit path.
