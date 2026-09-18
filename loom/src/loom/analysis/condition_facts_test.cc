@@ -539,6 +539,84 @@ TEST_F(ConditionFactsTest, DeepBooleanConditionDerivesFacts) {
             LOOM_SYMBOLIC_INTEGER_RELATION_LT);
 }
 
+TEST_F(ConditionFactsTest, CompleteQueryRetainsAllRelationsAndTruth) {
+  constexpr iree_host_size_t kRelationCount = 64;
+  loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t compare_results[kRelationCount];
+  for (iree_host_size_t i = 0; i < kRelationCount; ++i) {
+    const loom_value_id_t left = DefineIndexValue();
+    const loom_value_id_t right = DefineIndexValue();
+    compare_results[i] = loom_index_cmp_result(
+        BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, left, right));
+    condition = condition == LOOM_VALUE_ID_INVALID
+                    ? compare_results[i]
+                    : loom_scalar_andi_result(
+                          BuildBoolAnd(condition, compare_results[i]));
+  }
+
+  loom_condition_derivation_t derivation;
+  loom_condition_derivation_initialize(&analysis_arena_, &derivation);
+  IREE_ASSERT_OK(loom_condition_facts_query_complete(
+      &condition_query_, &fact_table_, condition, /*assumed_truth=*/true,
+      &derivation));
+
+  ASSERT_EQ(derivation.integer_facts.integer_relation_count, kRelationCount);
+  ASSERT_EQ(derivation.boolean_fact_count, kRelationCount * 2 - 1);
+  for (loom_value_id_t compare_result : compare_results) {
+    bool found = false;
+    for (iree_host_size_t i = 0; i < derivation.boolean_fact_count; ++i) {
+      found |= derivation.boolean_facts[i].value_id == compare_result &&
+               derivation.boolean_facts[i].value;
+    }
+    EXPECT_TRUE(found);
+  }
+
+  loom_condition_integer_relation_t* relation_storage =
+      derivation.integer_facts.integer_relations;
+  loom_condition_boolean_fact_t* boolean_storage = derivation.boolean_facts;
+  const iree_host_size_t relation_capacity =
+      derivation.integer_facts.integer_relation_capacity;
+  const iree_host_size_t boolean_capacity = derivation.boolean_fact_capacity;
+  IREE_ASSERT_OK(loom_condition_facts_query_complete(
+      &condition_query_, &fact_table_, compare_results[0],
+      /*assumed_truth=*/true, &derivation));
+  EXPECT_EQ(derivation.integer_facts.integer_relation_count, 1u);
+  EXPECT_EQ(derivation.boolean_fact_count, 1u);
+  EXPECT_EQ(derivation.integer_facts.integer_relations, relation_storage);
+  EXPECT_EQ(derivation.boolean_facts, boolean_storage);
+  EXPECT_EQ(derivation.integer_facts.integer_relation_capacity,
+            relation_capacity);
+  EXPECT_EQ(derivation.boolean_fact_capacity, boolean_capacity);
+}
+
+TEST_F(ConditionFactsTest, CompleteQueryDeduplicatesEquivalentRelations) {
+  constexpr iree_host_size_t kCompareCount = 64;
+  const loom_value_id_t left = DefineIndexValue();
+  const loom_value_id_t right = DefineIndexValue();
+  loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
+  for (iree_host_size_t i = 0; i < kCompareCount; ++i) {
+    const loom_value_id_t compare = loom_index_cmp_result(
+        BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SGT, right, left));
+    condition = condition == LOOM_VALUE_ID_INVALID
+                    ? compare
+                    : loom_scalar_andi_result(BuildBoolAnd(condition, compare));
+  }
+
+  loom_condition_derivation_t derivation;
+  loom_condition_derivation_initialize(&analysis_arena_, &derivation);
+  IREE_ASSERT_OK(loom_condition_facts_query_complete(
+      &condition_query_, &fact_table_, condition, /*assumed_truth=*/true,
+      &derivation));
+
+  ASSERT_EQ(derivation.integer_facts.integer_relation_count, 1u);
+  EXPECT_EQ(derivation.integer_facts.integer_relations[0].relation,
+            LOOM_SYMBOLIC_INTEGER_RELATION_LT);
+  EXPECT_EQ(derivation.integer_facts.integer_relations[0].left.value_id, left);
+  EXPECT_EQ(derivation.integer_facts.integer_relations[0].right.value_id,
+            right);
+  EXPECT_EQ(derivation.boolean_fact_count, kCompareCount * 2 - 1);
+}
+
 TEST_F(ConditionFactsTest, OpaqueBooleanConditionProducesEdgeFact) {
   loom_value_id_t condition =
       DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
@@ -558,6 +636,23 @@ TEST_F(ConditionFactsTest, OpaqueBooleanConditionProducesEdgeFact) {
 
   ASSERT_EQ(condition_facts_.integer_relation_count, 1u);
   EXPECT_EQ(condition_facts_.integer_relations[0].right.constant, 0);
+}
+
+TEST_F(ConditionFactsTest, CompleteQueryRetainsOpaqueBooleanTruth) {
+  const loom_value_id_t condition =
+      DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  loom_condition_derivation_t derivation;
+  loom_condition_derivation_initialize(&analysis_arena_, &derivation);
+
+  IREE_ASSERT_OK(loom_condition_facts_query_complete(
+      &condition_query_, &fact_table_, condition, /*assumed_truth=*/false,
+      &derivation));
+
+  ASSERT_EQ(derivation.integer_facts.integer_relation_count, 1u);
+  EXPECT_EQ(derivation.integer_facts.integer_relations[0].right.constant, 0);
+  ASSERT_EQ(derivation.boolean_fact_count, 1u);
+  EXPECT_EQ(derivation.boolean_facts[0].value_id, condition);
+  EXPECT_FALSE(derivation.boolean_facts[0].value);
 }
 
 TEST_F(ConditionFactsTest, RetainedBooleanTruthProvesOpaqueCondition) {

@@ -241,6 +241,7 @@ loom_cc_library(
     loom::ir::facts
     loom::ops::index
     loom::ops::scalar
+    loom::util::adaptive_sort
     loom::util::fact_table
   PUBLIC
 )
