@@ -1449,6 +1449,10 @@ def _cases() -> Sequence[ContractCase]:
             descriptor_lookup,
         ),
         _select_rule(_I32, "x86.scalar.select.gpr32", descriptor_lookup),
+        *(
+            _select_rule(type_pattern, "x86.scalar.select.gpr64", descriptor_lookup)
+            for type_pattern in (_I64, _INDEX, _OFFSET)
+        ),
         _shift_imm_rule(
             scalar_bitwise.scalar_shli,
             _I32,
@@ -1639,6 +1643,12 @@ def _cases() -> Sequence[ContractCase]:
         ),
         _sub_disp_rule(_INDEX, descriptor_lookup),
         _sub_disp_rule(_OFFSET, descriptor_lookup),
+        *(
+            _binary_rule(
+                index.index_sub, type_pattern, "x86.scalar.sub.gpr64", descriptor_lookup
+            )
+            for type_pattern in (_INDEX, _OFFSET)
+        ),
         _binary_rule(
             index.index_add, _INDEX, "x86.scalar.lea.add.gpr64", descriptor_lookup
         ),

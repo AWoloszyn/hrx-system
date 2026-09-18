@@ -35,6 +35,7 @@ iree_execution_test_suite(
         "gfx1250_configured_fragment_bank.loom",
         "loom_opt_f32_arith.loom",
         "selected_root_amdgpu.loom",
+        "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
         "//loom/src/loom/test/corpus/source_low:memory_wide_offsets.loom-test",
         "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/schedule_scopes.loom",
     ],
@@ -83,6 +84,15 @@ loom_test(
         "//loom/src/loom/tooling/execution/hal:testdata/buffer_bulk_hal_actual.loom",
         "//loom/src/loom/tooling/execution/hal:testdata/dynamic_workgroup_hal_actual.loom",
         "//loom/src/loom/tooling/execution/hal:testdata/launch_schedule_hal_actual.loom",
+    ],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+)
+
+loom_test(
+    name = "wide_offset_hardware_test",
+    srcs = [
+        "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
+        "//loom/src/loom/test/corpus/conformance:address_selection.loom",
     ],
     execution_profile = AMDGPU_HARDWARE_PROFILE,
 )

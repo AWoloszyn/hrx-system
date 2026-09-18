@@ -22,6 +22,7 @@ iree_execution_test_suite(
     "loom-format=loom::tools::loom-format"
     "loom-opt=loom::tools::loom-opt"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_scaling.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_wide_offsets.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/complete_authoring_module.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/schedule_scopes.loom"
