@@ -493,10 +493,10 @@ loom_module_encoding_family_descriptor(const loom_module_t* module,
 // encodings referenced by the type or its dependencies must already
 // exist in the module. Encoding parameters likewise reference only existing
 // types and encodings, keeping the combined dependency graph acyclic.
-// Heap-backed payload owned by |type| (overflow dims, function signatures,
-// dialect params, typed register payloads) is recursively copied into the
-// module arena before storage, so callers may pass temporary or
-// foreign-allocator payloads.
+// Pointer-backed payload owned by |type| may be temporary or foreign-allocated.
+// Import processes each distinct compound payload once and retains canonical
+// immediate children, preserving shared structure instead of expanding it.
+// Exact module-owned payload identities resolve without a structural walk.
 iree_status_t loom_module_intern_type(loom_module_t* module, loom_type_t type,
                                       loom_type_t* out_interned_type);
 
@@ -509,17 +509,18 @@ iree_status_t loom_module_intern_type_id(loom_module_t* module,
 //
 // |structural_dependency_ids| lists function arguments/results, dialect type
 // parameters, or a typed register's value type in representation order. It is
-// empty for all other type kinds. The corresponding by-value types in |type|
-// must be exact copies of those module entries. Pointer-backed storage owned by
-// |type| may be temporary; only its top-level payload is copied because nested
-// payloads are retained by the canonical dependency entries.
-// Shaped scalar element types are interned implicitly to preserve the module's
+// empty for all other type kinds. The IDs supply the canonical child
+// identities; |type| supplies the parent metadata (function counts, dialect
+// name, register carrier). Its child payload entries are not read. Parent
+// metadata may be temporary; only its top-level payload is copied because
+// nested payloads are retained by the canonical dependency entries. Shaped
+// scalar element types are interned implicitly to preserve the module's
 // serializer closure even when a selective reader has not reached a separate
 // scalar type-table entry.
 // All static encoding attachments must already exist in the module.
 //
-// This is the topological construction path for validated serialized type
-// tables. General callers with arbitrary recursive type values use
+// This is the shared construction path for type import and validated serialized
+// type tables. General callers with arbitrary recursive type values use
 // loom_module_intern_type_id instead.
 iree_status_t loom_module_intern_topological_type_id(
     loom_module_t* module, loom_type_t type,
@@ -528,9 +529,9 @@ iree_status_t loom_module_intern_topological_type_id(
 
 // Interns a function type directly from argument and result type arrays. If a
 // structurally identical function type already exists, returns the canonical
-// module-owned entry without cloning. Otherwise, recursively interns signature
-// dependencies, clones the signature payload into the module arena, and appends
-// a new interned type.
+// module-owned entry without cloning. Otherwise, imports signature
+// dependencies, retains their canonical entries in a new module-owned signature
+// payload, and appends a new interned type.
 //
 // |arg_types| and |result_types| may point to temporary parser scratch as long
 // as they remain valid for the duration of this call.
@@ -542,8 +543,8 @@ iree_status_t loom_module_intern_function_type(loom_module_t* module,
                                                loom_type_t* out_interned_type);
 
 // Interns a register type carrying a semantic value type. Carrier payload
-// interpretation remains target-owned. The value type is recursively interned
-// and copied into module-owned storage only when the register type is new.
+// interpretation remains target-owned. The semantic value type is imported once
+// and retained canonically when constructing a new register payload.
 iree_status_t loom_module_intern_register_type(loom_module_t* module,
                                                uint64_t carrier_payload0,
                                                uint64_t carrier_payload1,

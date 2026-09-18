@@ -61,6 +61,8 @@ loom_cc_library(
     "type_constraint.h"
     "type_dependencies.h"
     "type_descriptor.h"
+    "type_identity.h"
+    "type_import.h"
     "types.h"
     "value_refs.h"
   TEXTUAL_HDRS
@@ -78,6 +80,8 @@ loom_cc_library(
     "scalar_type.c"
     "type_constraint.c"
     "type_dependencies.c"
+    "type_identity.c"
+    "type_import.c"
     "types.c"
     "value_refs.c"
   DEPS

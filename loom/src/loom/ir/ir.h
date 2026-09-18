@@ -104,6 +104,7 @@ extern "C" {
 
 typedef struct loom_context_t loom_context_t;
 typedef struct loom_module_t loom_module_t;
+struct loom_type_identity_page_t;
 typedef struct loom_symbol_t loom_symbol_t;
 typedef struct loom_block_t loom_block_t;
 typedef struct loom_op_t loom_op_t;
@@ -2545,6 +2546,14 @@ typedef struct loom_module_t {
   loom_intern_table_t string_intern;
   loom_intern_table_t type_intern;
   loom_intern_table_t encoding_intern;
+
+  // Complete immutable canonical-payload identity index, published with types.
+  struct {
+    // Radix directory of pages containing canonical payload starts.
+    uint64_t root;
+    // Most recently published page, accelerating sequential arena construction.
+    struct loom_type_identity_page_t* recent_page;
+  } type_identity;
 
   // One-based IDs of the two most-recent exact type candidates, newest first.
   // Zero denotes an empty slot and keeps zero-initialized modules inert.
