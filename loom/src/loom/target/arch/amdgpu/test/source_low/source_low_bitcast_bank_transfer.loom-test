@@ -28,3 +28,19 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @i32_uni
   %floats = concat(%13, %15, %17, %19) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
   return %floats
 }
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @wide_offset_from_words(%words: vector<2xi32>) -> (offset) {
+  %packed = vector.bitcast %words : vector<2xi32> to vector<1xi64>
+  %bits = vector.extract %packed[0] : vector<1xi64> -> i64
+  %bytes = index.cast %bits : i64 to offset
+  func.return %bytes : offset
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @wide_offset_from_words(%bytes: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  return %bytes
+}

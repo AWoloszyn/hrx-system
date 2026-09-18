@@ -37,6 +37,89 @@ kernel.def @double_i32_at_byte_offset() {
 )";
 
 constexpr char kWideScaledSourceText[] = R"(
+amdgpu.target<gfx9-4-generic> @gfx9_4
+amdgpu.target<gfx11-generic> @gfx11
+amdgpu.target<gfx12-generic> @gfx12
+amdgpu.target<gfx12-5-generic> @gfx12_5
+
+template.decl @spill_offset(%words: vector<2xi32>) -> (vector<2xi32>)
+
+low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4) @gfx9_4_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
+  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
+  return %reloaded
+}
+
+template.def<@spill_offset> target(@gfx9_4) @gfx9_4_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
+  %reloaded = low.invoke @gfx9_4_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
+  template.return %reloaded : vector<2xi32>
+}
+
+low.func.def target<amdgpu.gfx11.generic.core>(@gfx11) @gfx11_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
+  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
+  return %reloaded
+}
+
+template.def<@spill_offset> target(@gfx11) @gfx11_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
+  %reloaded = low.invoke @gfx11_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
+  template.return %reloaded : vector<2xi32>
+}
+
+low.func.def target<amdgpu.gfx12.generic.core>(@gfx12) @gfx12_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
+  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
+  return %reloaded
+}
+
+template.def<@spill_offset> target(@gfx12) @gfx12_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
+  %reloaded = low.invoke @gfx12_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
+  template.return %reloaded : vector<2xi32>
+}
+
+low.func.def target<amdgpu.gfx12_5.generic.core>(@gfx12_5) @gfx12_5_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
+  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
+  return %reloaded
+}
+
+template.def<@spill_offset> target(@gfx12_5) @gfx12_5_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
+  %reloaded = low.invoke @gfx12_5_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
+  template.return %reloaded : vector<2xi32>
+}
+
+low.func.def target<amdgpu.rdna4m.core> @gfx117x_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
+  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
+  return %reloaded
+}
+
+amdgpu.target<gfx1170> @gfx1170
+
+template.def<@spill_offset> target(@gfx1170) @gfx1170_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
+  %reloaded = low.invoke @gfx117x_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
+  template.return %reloaded : vector<2xi32>
+}
+
+amdgpu.target<gfx1171> @gfx1171
+
+template.def<@spill_offset> target(@gfx1171) @gfx1171_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
+  %reloaded = low.invoke @gfx117x_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
+  template.return %reloaded : vector<2xi32>
+}
+
+amdgpu.target<gfx1172> @gfx1172
+
+template.def<@spill_offset> target(@gfx1172) @gfx1172_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
+  %reloaded = low.invoke @gfx117x_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
+  template.return %reloaded : vector<2xi32>
+}
+
 kernel.def @double_i32_at_scaled_offset() {
   %unit = index.constant 1 : index
   %lanes = index.constant 2 : index
@@ -50,7 +133,14 @@ kernel.def @double_i32_at_scaled_offset() {
   %unsigned = index.cast %wrapped : i32 to offset
   %element = index.cast %unsigned : offset to index
   %stride = index.constant 4 : offset
-  %byte_offset = index.scale %element, %stride : index, offset -> offset
+  %scaled_offset = index.scale %element, %stride : index, offset -> offset
+  %offset_bits = index.cast %scaled_offset : offset to i64
+  %offset_value = vector.splat %offset_bits : vector<1xi64>
+  %offset_words = vector.bitcast %offset_value : vector<1xi64> to vector<2xi32>
+  %reloaded_words = template.apply<@spill_offset>(%offset_words) : (vector<2xi32>) -> (vector<2xi32>)
+  %reloaded_value = vector.bitcast %reloaded_words : vector<2xi32> to vector<1xi64>
+  %reloaded_bits = vector.extract %reloaded_value[0] : vector<1xi64> -> i64
+  %byte_offset = index.cast %reloaded_bits : i64 to offset
   %input_view = buffer.view %input_aligned[%byte_offset] : buffer -> view<1xi32>
   %loaded = view.load %input_view[0] : view<1xi32> -> i32
   %doubled = scalar.addi %loaded, %loaded : i32
@@ -315,7 +405,7 @@ TEST(LoomcAmdgpuIreeHalExecutionTest, UniformByteOffsetBeyond4GiB) {
       });
 }
 
-TEST(LoomcAmdgpuIreeHalExecutionTest, VaryingScaledOffsetBeyond4GiB) {
+TEST(LoomcAmdgpuIreeHalExecutionTest, SpilledVaryingScaledOffsetBeyond4GiB) {
   loomc::testing::target::RunIreeHalKernelExecutionTest(
       MakeExecutionTarget(kWideScaledSourceText, "double_i32_at_scaled_offset"),
       [](const loomc::testing::target::IreeHalKernelExecution& execution) {
