@@ -1,0 +1,162 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#ifndef LOOMC_IMPORT_CXX_H_
+#define LOOMC_IMPORT_CXX_H_
+
+#include "loomc/module.h"
+
+/// @file
+/// Optional native C/C++ source import into ordinary Loom modules.
+///
+/// One configured translation unit produces one compilation-unit module.
+/// Multiple kernels and ordinary functions share the module. Build scheduling,
+/// host/device partitioning, and linking remain above this interface.
+///
+/// The implementation uses the standalone cxx frontend and native Loom APIs;
+/// no LLVM or Python runtime is required. Enable the cxx importer package when
+/// building the library and link the optional import/cxx component.
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/// Source integer and pointer layout, independent of the importing process.
+typedef enum loomc_cxx_data_model_e {
+  /// 32-bit int; 64-bit long and pointers.
+  LOOMC_CXX_DATA_MODEL_LP64 = 0,
+  /// 32-bit int and long; 64-bit pointers.
+  LOOMC_CXX_DATA_MODEL_LLP64 = 1,
+  /// 32-bit int, long, and pointers.
+  LOOMC_CXX_DATA_MODEL_ILP32 = 2,
+} loomc_cxx_data_model_t;
+
+/// Explicit source permissions and include delivery policy.
+typedef enum loomc_cxx_import_flag_bits_e {
+  /// Permit approximate mathematical functions (Loom's AFN contract).
+  LOOMC_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS = 1u << 0,
+  /// Omit the embedded system include root; use caller paths/providers only.
+  LOOMC_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES = 1u << 1,
+} loomc_cxx_import_flag_bits_t;
+/// Bitmask of loomc_cxx_import_flag_bits_t values.
+typedef uint32_t loomc_cxx_import_flags_t;
+
+/// Resolves a candidate include path to immutable source bytes.
+///
+/// Paths follow ordinary quote, user, system, and include_next search rules.
+/// Return OK with a NULL output for a missing candidate. Other failures return
+/// status with a NULL output. A found source uses UNKNOWN format; its contents
+/// supply the header and the candidate path determines include identity.
+///
+/// @param user_data Caller state from the provider descriptor.
+/// @param path Candidate path borrowed for this callback.
+/// @param out_source Receives one retained source or NULL for a missing path.
+/// @return OK for found/missing candidates, or a provider failure status.
+///
+/// @ownership
+/// A successful non-NULL output transfers one retained reference to the
+/// importer. A cache can retain its own reference and return another. The
+/// importer releases the reference once it has copied the bytes.
+///
+/// @thread_safety
+/// Calls are synchronous and sequential within one import. A provider shared
+/// by concurrent imports must synchronize its own mutable state.
+typedef loomc_status_t(LOOMC_API_PTR* loomc_cxx_source_provider_fn_t)(
+    void* user_data, loomc_string_view_t path, loomc_source_t** out_source);
+
+/// Optional source provider replacing filesystem include reads.
+typedef struct loomc_cxx_source_provider_t {
+  /// Callback, or NULL to read ordinary filesystem paths.
+  loomc_cxx_source_provider_fn_t fn;
+  /// Caller-owned state borrowed until import returns.
+  void* user_data;
+} loomc_cxx_source_provider_t;
+
+/// Preprocessor definition applied after the frontend's predefined macros.
+typedef struct loomc_cxx_define_t {
+  /// Macro name, including parameters for a function-like macro.
+  loomc_string_view_t name;
+  /// Replacement token text; empty defines an empty macro.
+  loomc_string_view_t value;
+} loomc_cxx_define_t;
+
+/// Configuration for one source translation unit.
+///
+/// Zero initialization selects C++26, LP64, strict math, visible definitions
+/// as roots, and the embedded facade system root when built into the library.
+/// All strings, arrays, and callback state are borrowed until import returns.
+typedef struct loomc_cxx_import_options_t {
+  /// Structure type; LOOMC_STRUCTURE_TYPE_CXX_IMPORT_OPTIONS when nonzero.
+  loomc_structure_type_t type;
+  /// Size of this structure in bytes, or zero.
+  loomc_host_size_t structure_size;
+  /// Reserved extension chain. Must be NULL.
+  const void* next;
+  /// Frontend standard spelling, such as c23 or c++26. Empty selects c++26.
+  loomc_string_view_t standard;
+  /// Source ABI triple, independent of output target selection.
+  loomc_string_view_t triple;
+  /// Source integer and pointer layout.
+  loomc_cxx_data_model_t data_model;
+  /// Source permissions and include delivery flags.
+  loomc_cxx_import_flags_t flags;
+  /// Optional include provider; embedded headers are resolved separately.
+  loomc_cxx_source_provider_t source_provider;
+  /// User include directories, searched after quoted local includes.
+  const loomc_string_view_t* include_paths;
+  /// Number of user include directories.
+  loomc_host_size_t include_path_count;
+  /// System include directories, searched before the embedded system root.
+  const loomc_string_view_t* system_include_paths;
+  /// Number of system include directories.
+  loomc_host_size_t system_include_path_count;
+  /// Ordered macro definitions.
+  const loomc_cxx_define_t* defines;
+  /// Number of macro definitions.
+  loomc_host_size_t define_count;
+  /// Qualified source function names to export. Empty exports visible concrete
+  /// definitions; reached helpers remain private when roots are explicit.
+  const loomc_string_view_t* roots;
+  /// Number of explicitly selected roots.
+  loomc_host_size_t root_count;
+} loomc_cxx_import_options_t;
+
+/// Imports C/C++ source into a verified High IR module, without cleanup passes.
+///
+/// @param context Immutable context containing the core dialects.
+/// @param workspace Workspace backing the returned module's arena storage.
+/// @param source Source with UNKNOWN format. Its identifier labels diagnostics
+/// and supplies the main file's path for quoted include lookup.
+/// @param options Source configuration, or NULL for defaults.
+/// @param allocator Host allocator for public handles and temporary adapters.
+/// @param out_module Receives one owned module on successful source admission.
+/// @param out_result Receives one owned result with retained diagnostics.
+/// @return OK for successful import or diagnosed source rejection. Rejection
+/// returns a failed result and NULL module. Infrastructure/API failures return
+/// non-OK status and NULL outputs. C++ exceptions never cross this boundary.
+///
+/// @ownership
+/// Release outputs with loomc_module_release and loomc_result_release. The
+/// module retains its context/workspace. The result owns diagnostic contents.
+///
+/// @lifetime
+/// Source/include bytes, options, and callback state may be released on return.
+/// Neither the module nor the result retains borrowed frontend or AST storage.
+///
+/// @thread_safety
+/// Each import requires exclusive access to its workspace. Concurrent imports
+/// may share an immutable context and immutable source handles.
+LOOMC_API_EXPORT loomc_status_t loomc_module_import_cxx(
+    loomc_context_t* context, loomc_workspace_t* workspace,
+    const loomc_source_t* source, const loomc_cxx_import_options_t* options,
+    loomc_allocator_t allocator, loomc_module_t** out_module,
+    loomc_result_t** out_result);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#endif  // LOOMC_IMPORT_CXX_H_

@@ -34,6 +34,7 @@ load(
 PACKAGE_POLICIES = [
     package_policy(
         packages = [
+            "loom/binding/c/import/cxx/...",
             "loom/src/loom/import/cxx/...",
             "loom/src/loom/tools/loom-import-cxx/...",
         ],

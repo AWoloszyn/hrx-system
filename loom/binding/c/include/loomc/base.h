@@ -295,6 +295,9 @@ typedef enum loomc_structure_type_e {
 
   /// `loomc_task_pool_options_t`.
   LOOMC_STRUCTURE_TYPE_TASK_POOL_OPTIONS = 40,
+
+  /// `loomc_cxx_import_options_t`.
+  LOOMC_STRUCTURE_TYPE_CXX_IMPORT_OPTIONS = 41,
 } loomc_structure_type_t;
 
 /// One loose string option entry.

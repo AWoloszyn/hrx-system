@@ -1,0 +1,65 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
+load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_binary", "loom_cc_test", "loom_config_compatible_with")
+
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+_COMPATIBLE_WITH = loom_config_compatible_with([
+    "//loom/config/import:cxx",
+    "//loom/config/execute:amdgpu_hal",
+])
+
+iree_c_embed_data(
+    name = "kernels",
+    srcs = ["kernels.cpp"],
+    c_file_output = "kernels.c",
+    flatten = True,
+    h_file_output = "kernels.h",
+    identifier = "loomc_cxx_example_kernels",
+    target_compatible_with = _COMPATIBLE_WITH,
+)
+
+_DEPS = [
+    ":kernels",
+    "//loom/binding/c:loomc",
+    "//loom/binding/c/import/cxx",
+    "//loom/binding/c/target/amdgpu",
+    "//loom/binding/c/target/amdgpu:iree_hal",
+    "//runtime/src/iree/async",
+    "//runtime/src/iree/async/util:proactor_pool",
+    "//runtime/src/iree/base",
+    "//runtime/src/iree/base/threading",
+    "//runtime/src/iree/hal",
+    "//runtime/src/iree/hal/drivers",
+]
+
+loom_cc_binary(
+    name = "jit_amdgpu",
+    srcs = ["jit_amdgpu.c"],
+    target_compatible_with = _COMPATIBLE_WITH,
+    deps = _DEPS,
+)
+
+loom_cc_test(
+    name = "jit_amdgpu_test",
+    srcs = ["jit_amdgpu.c"],
+    sanitizer_suppressions = rocm_suppressions,
+    tags = [
+        "iree-run-requirement=runtime.resource.amd_gpu",
+        "runtime-resource=amd-gpu",
+    ],
+    target_compatible_with = _COMPATIBLE_WITH + loom_config_compatible_with([
+        "//loom/config/import/cxx:embed_includes_enabled",
+    ]),
+    deps = _DEPS,
+)

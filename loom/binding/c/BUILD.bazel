@@ -108,6 +108,11 @@ _TARGET_EXTENSION_VISIBILITY = [
     "//loom/binding/c/target:__subpackages__",
 ]
 
+exports_files(
+    ["include/loomc/import/cxx.h"],
+    visibility = ["//loom/binding/c/import/cxx:__pkg__"],
+)
+
 _LOOMC_FULL_COMPATIBLE_WITH = loom_config_compatible_with([
     "//loom/config/execute:spirv_vulkan_hal",
 ])

@@ -33,10 +33,10 @@ typedef uint32_t loom_cxx_import_flags_t;
 
 // Supplies the bytes at a candidate include path. A missing path is a normal
 // successful query with *out_found=false. Other failures return a status.
-// Returned bytes are borrowed until import returns. The importer copies each
-// found header into its per-invocation frontend; providers may share immutable
-// storage between concurrent imports. Providers receive paths after the
-// preprocessor's ordinary quote, user, system, and include_next search rules.
+// Returned bytes are borrowed until the next provider call or import returns.
+// The importer copies each found header into its per-invocation frontend;
+// providers may share immutable storage between concurrent imports. Paths
+// follow the preprocessor's quote, user, system, and include_next search rules.
 typedef iree_status_t (*loom_cxx_source_provider_fn_t)(
     void* user_data, iree_string_view_t path, bool* out_found,
     iree_string_view_t* out_source);

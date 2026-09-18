@@ -49,6 +49,18 @@ diagnostics and a null module; infrastructure failures return status. The API
 runs verification and leaves cleanup policy to its caller. Source buffers,
 headers, and the frontend AST can be released as soon as import returns.
 
+The optional public extension `loomc/import/cxx.h` exposes
+`loomc_module_import_cxx` to C embedders. It takes an ordinary immutable source
+with UNKNOWN format, context, workspace, source configuration and allocator.
+The returned module uses the existing compile, emit, link, query and serialize
+APIs. A failed source produces a failed result with retained diagnostics;
+allocation, provider and API failures return status without partial outputs.
+Diagnostics own their source contents, including included headers.
+
+The `//loom/binding/c/example/cxx:jit_amdgpu` example imports two HIP-style
+kernels, specializes them to a live AMDGPU profile, emits one HSACO and executes
+both through IREE HAL. Its host driver is C; its input kernels are C++.
+
 Includes follow ordinary quoted, user-directory, system-directory and
 `include_next` ordering. A source provider can replace filesystem reads with
 immutable caller-owned headers, including a shared source cache. Each invocation
