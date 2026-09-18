@@ -1,0 +1,1137 @@
+// RUN: pass canonicalize
+
+// Each position retains only the suffix of initial values and the final producer.
+func.def @open_suffix(%repeat: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %seed12 = index.constant 96 : offset
+  %seed13 = index.constant 104 : offset
+  %seed14 = index.constant 112 : offset
+  %seed15 = index.constant 120 : offset
+  %seed16 = index.constant 128 : offset
+  %seed17 = index.constant 136 : offset
+  %seed18 = index.constant 144 : offset
+  %seed19 = index.constant 152 : offset
+  %seed20 = index.constant 160 : offset
+  %injected = index.constant 168 : offset
+  cfg.br ^header(%seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset, %seed4: offset, %seed5: offset, %seed6: offset, %seed7: offset, %seed8: offset, %seed9: offset, %seed10: offset, %seed11: offset, %seed12: offset, %seed13: offset, %seed14: offset, %seed15: offset, %seed16: offset, %seed17: offset, %seed18: offset, %seed19: offset, %seed20: offset)
+^header(%slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset):
+  %slot0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+  test.use %slot0_range_hi : i64
+  %slot0_divisor = test.fact_divisor %slot0 : offset -> i64
+  test.use %slot0_divisor : i64
+  %slot10_range_lo = test.fact_range_lo %slot10 : offset -> i64
+  test.use %slot10_range_lo : i64
+  %slot10_range_hi = test.fact_range_hi %slot10 : offset -> i64
+  test.use %slot10_range_hi : i64
+  %slot10_divisor = test.fact_divisor %slot10 : offset -> i64
+  test.use %slot10_divisor : i64
+  %slot19_range_lo = test.fact_range_lo %slot19 : offset -> i64
+  test.use %slot19_range_lo : i64
+  %slot19_range_hi = test.fact_range_hi %slot19 : offset -> i64
+  test.use %slot19_range_hi : i64
+  %slot19_divisor = test.fact_divisor %slot19 : offset -> i64
+  test.use %slot19_divisor : i64
+  %slot20_range_lo = test.fact_range_lo %slot20 : offset -> i64
+  test.use %slot20_range_lo : i64
+  %slot20_range_hi = test.fact_range_hi %slot20 : offset -> i64
+  test.use %slot20_range_hi : i64
+  %slot20_divisor = test.fact_divisor %slot20 : offset -> i64
+  test.use %slot20_divisor : i64
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset, %injected: offset)
+^exit:
+  func.return
+}
+
+// ----
+func.def @open_suffix(%repeat: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %seed12 = index.constant 96 : offset
+  %seed13 = index.constant 104 : offset
+  %seed14 = index.constant 112 : offset
+  %seed15 = index.constant 120 : offset
+  %seed16 = index.constant 128 : offset
+  %seed17 = index.constant 136 : offset
+  %seed18 = index.constant 144 : offset
+  %seed19 = index.constant 152 : offset
+  %seed20 = index.constant 160 : offset
+  %injected = index.constant 168 : offset
+  cfg.br ^header(%seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset, %seed4: offset, %seed5: offset, %seed6: offset, %seed7: offset, %seed8: offset, %seed9: offset, %seed10: offset, %seed11: offset, %seed12: offset, %seed13: offset, %seed14: offset, %seed15: offset, %seed16: offset, %seed17: offset, %seed18: offset, %seed19: offset, %seed20: offset)
+^header(%slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset):
+  %slot0_range_lo = scalar.constant 0 : i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = scalar.constant 168 : i64
+  test.use %slot0_range_hi : i64
+  %slot0_divisor = scalar.constant 8 : i64
+  test.use %slot0_divisor : i64
+  %slot10_range_lo = scalar.constant 80 : i64
+  test.use %slot10_range_lo : i64
+  %slot10_range_hi = scalar.constant 168 : i64
+  test.use %slot10_range_hi : i64
+  %slot10_divisor = scalar.constant 8 : i64
+  test.use %slot10_divisor : i64
+  %slot19_range_lo = scalar.constant 152 : i64
+  test.use %slot19_range_lo : i64
+  %slot19_range_hi = scalar.constant 168 : i64
+  test.use %slot19_range_hi : i64
+  %slot19_divisor = scalar.constant 8 : i64
+  test.use %slot19_divisor : i64
+  %slot20_range_lo = scalar.constant 160 : i64
+  test.use %slot20_range_lo : i64
+  %slot20_range_hi = scalar.constant 168 : i64
+  test.use %slot20_range_hi : i64
+  %slot20_divisor = scalar.constant 8 : i64
+  test.use %slot20_divisor : i64
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset, %injected: offset)
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Reversing argument and block layout preserves the same suffix domains.
+func.def @reversed_layout(%repeat: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %seed12 = index.constant 96 : offset
+  %seed13 = index.constant 104 : offset
+  %seed14 = index.constant 112 : offset
+  %seed15 = index.constant 120 : offset
+  %seed16 = index.constant 128 : offset
+  %seed17 = index.constant 136 : offset
+  %seed18 = index.constant 144 : offset
+  %seed19 = index.constant 152 : offset
+  %seed20 = index.constant 160 : offset
+  %injected = index.constant 168 : offset
+  cfg.br ^header(%seed20: offset, %seed19: offset, %seed18: offset, %seed17: offset, %seed16: offset, %seed15: offset, %seed14: offset, %seed13: offset, %seed12: offset, %seed11: offset, %seed10: offset, %seed9: offset, %seed8: offset, %seed7: offset, %seed6: offset, %seed5: offset, %seed4: offset, %seed3: offset, %seed2: offset, %seed1: offset, %seed0: offset)
+^exit:
+  func.return
+^header(%slot20: offset, %slot19: offset, %slot18: offset, %slot17: offset, %slot16: offset, %slot15: offset, %slot14: offset, %slot13: offset, %slot12: offset, %slot11: offset, %slot10: offset, %slot9: offset, %slot8: offset, %slot7: offset, %slot6: offset, %slot5: offset, %slot4: offset, %slot3: offset, %slot2: offset, %slot1: offset, %slot0: offset):
+  %slot0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+  test.use %slot0_range_hi : i64
+  %slot0_divisor = test.fact_divisor %slot0 : offset -> i64
+  test.use %slot0_divisor : i64
+  %slot10_range_lo = test.fact_range_lo %slot10 : offset -> i64
+  test.use %slot10_range_lo : i64
+  %slot10_range_hi = test.fact_range_hi %slot10 : offset -> i64
+  test.use %slot10_range_hi : i64
+  %slot10_divisor = test.fact_divisor %slot10 : offset -> i64
+  test.use %slot10_divisor : i64
+  %slot19_range_lo = test.fact_range_lo %slot19 : offset -> i64
+  test.use %slot19_range_lo : i64
+  %slot19_range_hi = test.fact_range_hi %slot19 : offset -> i64
+  test.use %slot19_range_hi : i64
+  %slot19_divisor = test.fact_divisor %slot19 : offset -> i64
+  test.use %slot19_divisor : i64
+  %slot20_range_lo = test.fact_range_lo %slot20 : offset -> i64
+  test.use %slot20_range_lo : i64
+  %slot20_range_hi = test.fact_range_hi %slot20 : offset -> i64
+  test.use %slot20_range_hi : i64
+  %slot20_divisor = test.fact_divisor %slot20 : offset -> i64
+  test.use %slot20_divisor : i64
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%injected: offset, %slot20: offset, %slot19: offset, %slot18: offset, %slot17: offset, %slot16: offset, %slot15: offset, %slot14: offset, %slot13: offset, %slot12: offset, %slot11: offset, %slot10: offset, %slot9: offset, %slot8: offset, %slot7: offset, %slot6: offset, %slot5: offset, %slot4: offset, %slot3: offset, %slot2: offset, %slot1: offset)
+}
+
+// ----
+func.def @reversed_layout(%repeat: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %seed12 = index.constant 96 : offset
+  %seed13 = index.constant 104 : offset
+  %seed14 = index.constant 112 : offset
+  %seed15 = index.constant 120 : offset
+  %seed16 = index.constant 128 : offset
+  %seed17 = index.constant 136 : offset
+  %seed18 = index.constant 144 : offset
+  %seed19 = index.constant 152 : offset
+  %seed20 = index.constant 160 : offset
+  %injected = index.constant 168 : offset
+  cfg.br ^header(%seed20: offset, %seed19: offset, %seed18: offset, %seed17: offset, %seed16: offset, %seed15: offset, %seed14: offset, %seed13: offset, %seed12: offset, %seed11: offset, %seed10: offset, %seed9: offset, %seed8: offset, %seed7: offset, %seed6: offset, %seed5: offset, %seed4: offset, %seed3: offset, %seed2: offset, %seed1: offset, %seed0: offset)
+^exit:
+  func.return
+^header(%slot20: offset, %slot19: offset, %slot18: offset, %slot17: offset, %slot16: offset, %slot15: offset, %slot14: offset, %slot13: offset, %slot12: offset, %slot11: offset, %slot10: offset, %slot9: offset, %slot8: offset, %slot7: offset, %slot6: offset, %slot5: offset, %slot4: offset, %slot3: offset, %slot2: offset, %slot1: offset, %slot0: offset):
+  %slot0_range_lo = scalar.constant 0 : i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = scalar.constant 168 : i64
+  test.use %slot0_range_hi : i64
+  %slot0_divisor = scalar.constant 8 : i64
+  test.use %slot0_divisor : i64
+  %slot10_range_lo = scalar.constant 80 : i64
+  test.use %slot10_range_lo : i64
+  %slot10_range_hi = scalar.constant 168 : i64
+  test.use %slot10_range_hi : i64
+  %slot10_divisor = scalar.constant 8 : i64
+  test.use %slot10_divisor : i64
+  %slot19_range_lo = scalar.constant 152 : i64
+  test.use %slot19_range_lo : i64
+  %slot19_range_hi = scalar.constant 168 : i64
+  test.use %slot19_range_hi : i64
+  %slot19_divisor = scalar.constant 8 : i64
+  test.use %slot19_divisor : i64
+  %slot20_range_lo = scalar.constant 160 : i64
+  test.use %slot20_range_lo : i64
+  %slot20_range_hi = scalar.constant 168 : i64
+  test.use %slot20_range_hi : i64
+  %slot20_divisor = scalar.constant 8 : i64
+  test.use %slot20_divisor : i64
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%injected: offset, %slot20: offset, %slot19: offset, %slot18: offset, %slot17: offset, %slot16: offset, %slot15: offset, %slot14: offset, %slot13: offset, %slot12: offset, %slot11: offset, %slot10: offset, %slot9: offset, %slot8: offset, %slot7: offset, %slot6: offset, %slot5: offset, %slot4: offset, %slot3: offset, %slot2: offset, %slot1: offset)
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// The rotated tail feeds an open chain without merging its independent seeds.
+func.def @cycle_feeds_open_chain(%repeat: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %seed12 = index.constant 96 : offset
+  %seed13 = index.constant 104 : offset
+  %seed14 = index.constant 112 : offset
+  %seed15 = index.constant 120 : offset
+  %seed16 = index.constant 128 : offset
+  %seed17 = index.constant 136 : offset
+  %seed18 = index.constant 144 : offset
+  %seed19 = index.constant 152 : offset
+  %seed20 = index.constant 160 : offset
+  cfg.br ^header(%seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset, %seed4: offset, %seed5: offset, %seed6: offset, %seed7: offset, %seed8: offset, %seed9: offset, %seed10: offset, %seed11: offset, %seed12: offset, %seed13: offset, %seed14: offset, %seed15: offset, %seed16: offset, %seed17: offset, %seed18: offset, %seed19: offset, %seed20: offset)
+^header(%slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset):
+  %slot0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+  test.use %slot0_range_hi : i64
+  %slot0_divisor = test.fact_divisor %slot0 : offset -> i64
+  test.use %slot0_divisor : i64
+  %slot10_range_lo = test.fact_range_lo %slot10 : offset -> i64
+  test.use %slot10_range_lo : i64
+  %slot10_range_hi = test.fact_range_hi %slot10 : offset -> i64
+  test.use %slot10_range_hi : i64
+  %slot10_divisor = test.fact_divisor %slot10 : offset -> i64
+  test.use %slot10_divisor : i64
+  %slot19_range_lo = test.fact_range_lo %slot19 : offset -> i64
+  test.use %slot19_range_lo : i64
+  %slot19_range_hi = test.fact_range_hi %slot19 : offset -> i64
+  test.use %slot19_range_hi : i64
+  %slot19_divisor = test.fact_divisor %slot19 : offset -> i64
+  test.use %slot19_divisor : i64
+  %slot20_range_lo = test.fact_range_lo %slot20 : offset -> i64
+  test.use %slot20_range_lo : i64
+  %slot20_range_hi = test.fact_range_hi %slot20 : offset -> i64
+  test.use %slot20_range_hi : i64
+  %slot20_divisor = test.fact_divisor %slot20 : offset -> i64
+  test.use %slot20_divisor : i64
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset, %slot19: offset)
+^exit:
+  func.return
+}
+
+// ----
+func.def @cycle_feeds_open_chain(%repeat: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %seed12 = index.constant 96 : offset
+  %seed13 = index.constant 104 : offset
+  %seed14 = index.constant 112 : offset
+  %seed15 = index.constant 120 : offset
+  %seed16 = index.constant 128 : offset
+  %seed17 = index.constant 136 : offset
+  %seed18 = index.constant 144 : offset
+  %seed19 = index.constant 152 : offset
+  %seed20 = index.constant 160 : offset
+  cfg.br ^header(%seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset, %seed4: offset, %seed5: offset, %seed6: offset, %seed7: offset, %seed8: offset, %seed9: offset, %seed10: offset, %seed11: offset, %seed12: offset, %seed13: offset, %seed14: offset, %seed15: offset, %seed16: offset, %seed17: offset, %seed18: offset, %seed19: offset, %seed20: offset)
+^header(%slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset):
+  %slot0_range_lo = scalar.constant 0 : i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = scalar.constant 160 : i64
+  test.use %slot0_range_hi : i64
+  %slot0_divisor = scalar.constant 8 : i64
+  test.use %slot0_divisor : i64
+  %slot10_range_lo = scalar.constant 80 : i64
+  test.use %slot10_range_lo : i64
+  %slot10_range_hi = scalar.constant 160 : i64
+  test.use %slot10_range_hi : i64
+  %slot10_divisor = scalar.constant 8 : i64
+  test.use %slot10_divisor : i64
+  %slot19_range_lo = scalar.constant 152 : i64
+  test.use %slot19_range_lo : i64
+  %slot19_range_hi = scalar.constant 160 : i64
+  test.use %slot19_range_hi : i64
+  %slot19_divisor = scalar.constant 8 : i64
+  test.use %slot19_divisor : i64
+  %slot20_range_lo = scalar.constant 152 : i64
+  test.use %slot20_range_lo : i64
+  %slot20_range_hi = scalar.constant 160 : i64
+  test.use %slot20_range_hi : i64
+  %slot20_divisor = scalar.constant 8 : i64
+  test.use %slot20_divisor : i64
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset, %slot19: offset)
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Both backedge payloads participate, with separate lower bounds per slot.
+func.def @multiple_backedge_inputs(%repeat: i1, %choose: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %seed12 = index.constant 96 : offset
+  %seed13 = index.constant 104 : offset
+  %seed14 = index.constant 112 : offset
+  %seed15 = index.constant 120 : offset
+  %seed16 = index.constant 128 : offset
+  %seed17 = index.constant 136 : offset
+  %seed18 = index.constant 144 : offset
+  %seed19 = index.constant 152 : offset
+  %seed20 = index.constant 160 : offset
+  %injected = index.constant 168 : offset
+  %other = index.constant 176 : offset
+  cfg.br ^header(%seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset, %seed4: offset, %seed5: offset, %seed6: offset, %seed7: offset, %seed8: offset, %seed9: offset, %seed10: offset, %seed11: offset, %seed12: offset, %seed13: offset, %seed14: offset, %seed15: offset, %seed16: offset, %seed17: offset, %seed18: offset, %seed19: offset, %seed20: offset)
+^header(%slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset):
+  %slot0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+  test.use %slot0_range_hi : i64
+  %slot0_divisor = test.fact_divisor %slot0 : offset -> i64
+  test.use %slot0_divisor : i64
+  %slot10_range_lo = test.fact_range_lo %slot10 : offset -> i64
+  test.use %slot10_range_lo : i64
+  %slot10_range_hi = test.fact_range_hi %slot10 : offset -> i64
+  test.use %slot10_range_hi : i64
+  %slot10_divisor = test.fact_divisor %slot10 : offset -> i64
+  test.use %slot10_divisor : i64
+  %slot19_range_lo = test.fact_range_lo %slot19 : offset -> i64
+  test.use %slot19_range_lo : i64
+  %slot19_range_hi = test.fact_range_hi %slot19 : offset -> i64
+  test.use %slot19_range_hi : i64
+  %slot19_divisor = test.fact_divisor %slot19 : offset -> i64
+  test.use %slot19_divisor : i64
+  %slot20_range_lo = test.fact_range_lo %slot20 : offset -> i64
+  test.use %slot20_range_lo : i64
+  %slot20_range_hi = test.fact_range_hi %slot20 : offset -> i64
+  test.use %slot20_range_hi : i64
+  %slot20_divisor = test.fact_divisor %slot20 : offset -> i64
+  test.use %slot20_divisor : i64
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.cond_br %choose, ^first, ^second
+^first:
+  cfg.br ^header(%slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset, %injected: offset)
+^second:
+  cfg.br ^header(%slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset, %other: offset)
+^exit:
+  func.return
+}
+
+// ----
+func.def @multiple_backedge_inputs(%repeat: i1, %choose: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %seed12 = index.constant 96 : offset
+  %seed13 = index.constant 104 : offset
+  %seed14 = index.constant 112 : offset
+  %seed15 = index.constant 120 : offset
+  %seed16 = index.constant 128 : offset
+  %seed17 = index.constant 136 : offset
+  %seed18 = index.constant 144 : offset
+  %seed19 = index.constant 152 : offset
+  %seed20 = index.constant 160 : offset
+  %injected = index.constant 168 : offset
+  %other = index.constant 176 : offset
+  cfg.br ^header(%seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset, %seed4: offset, %seed5: offset, %seed6: offset, %seed7: offset, %seed8: offset, %seed9: offset, %seed10: offset, %seed11: offset, %seed12: offset, %seed13: offset, %seed14: offset, %seed15: offset, %seed16: offset, %seed17: offset, %seed18: offset, %seed19: offset, %seed20: offset)
+^header(%slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset):
+  %slot0_range_lo = scalar.constant 0 : i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = scalar.constant 176 : i64
+  test.use %slot0_range_hi : i64
+  %slot0_divisor = scalar.constant 8 : i64
+  test.use %slot0_divisor : i64
+  %slot10_range_lo = scalar.constant 80 : i64
+  test.use %slot10_range_lo : i64
+  %slot10_range_hi = scalar.constant 176 : i64
+  test.use %slot10_range_hi : i64
+  %slot10_divisor = scalar.constant 8 : i64
+  test.use %slot10_divisor : i64
+  %slot19_range_lo = scalar.constant 152 : i64
+  test.use %slot19_range_lo : i64
+  %slot19_range_hi = scalar.constant 176 : i64
+  test.use %slot19_range_hi : i64
+  %slot19_divisor = scalar.constant 8 : i64
+  test.use %slot19_divisor : i64
+  %slot20_range_lo = scalar.constant 160 : i64
+  test.use %slot20_range_lo : i64
+  %slot20_range_hi = scalar.constant 176 : i64
+  test.use %slot20_range_hi : i64
+  %slot20_divisor = scalar.constant 8 : i64
+  test.use %slot20_divisor : i64
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.cond_br %choose, ^first, ^second
+^first:
+  cfg.br ^header(%slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset, %injected: offset)
+^second:
+  cfg.br ^header(%slot1: offset, %slot2: offset, %slot3: offset, %slot4: offset, %slot5: offset, %slot6: offset, %slot7: offset, %slot8: offset, %slot9: offset, %slot10: offset, %slot11: offset, %slot12: offset, %slot13: offset, %slot14: offset, %slot15: offset, %slot16: offset, %slot17: offset, %slot18: offset, %slot19: offset, %slot20: offset, %other: offset)
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Both the queue data and its continuation predicate have this scope.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_lane() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %selector = kernel.subgroup.lane.id : index
+  %injected = index.add %selector, %unit : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_subgroup_uniform = test.fact_subgroup_uniform %slot0 : index -> i1
+  test.use %slot0_subgroup_uniform : i1
+  %slot0_workgroup_uniform = test.fact_workgroup_uniform %slot0 : index -> i1
+  test.use %slot0_workgroup_uniform : i1
+  %slot0_cluster_uniform = test.fact_cluster_uniform %slot0 : index -> i1
+  test.use %slot0_cluster_uniform : i1
+  %slot0_lane_varying = test.fact_lane_varying %slot0 : index -> i1
+  test.use %slot0_lane_varying : i1
+  %slot9_subgroup_uniform = test.fact_subgroup_uniform %slot9 : index -> i1
+  test.use %slot9_subgroup_uniform : i1
+  %slot9_workgroup_uniform = test.fact_workgroup_uniform %slot9 : index -> i1
+  test.use %slot9_workgroup_uniform : i1
+  %slot9_cluster_uniform = test.fact_cluster_uniform %slot9 : index -> i1
+  test.use %slot9_cluster_uniform : i1
+  %slot9_lane_varying = test.fact_lane_varying %slot9 : index -> i1
+  test.use %slot9_lane_varying : i1
+  %slot18_subgroup_uniform = test.fact_subgroup_uniform %slot18 : index -> i1
+  test.use %slot18_subgroup_uniform : i1
+  %slot18_workgroup_uniform = test.fact_workgroup_uniform %slot18 : index -> i1
+  test.use %slot18_workgroup_uniform : i1
+  %slot18_cluster_uniform = test.fact_cluster_uniform %slot18 : index -> i1
+  test.use %slot18_cluster_uniform : i1
+  %slot18_lane_varying = test.fact_lane_varying %slot18 : index -> i1
+  test.use %slot18_lane_varying : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_lane() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %selector = kernel.subgroup.lane.id : index
+  %injected = index.add %selector, %unit : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_subgroup_uniform = scalar.constant false : i1
+  test.use %slot0_subgroup_uniform : i1
+  %slot0_workgroup_uniform = scalar.constant false : i1
+  test.use %slot0_workgroup_uniform : i1
+  %slot0_cluster_uniform = scalar.constant false : i1
+  test.use %slot0_cluster_uniform : i1
+  %slot0_lane_varying = scalar.constant true : i1
+  test.use %slot0_lane_varying : i1
+  %slot9_subgroup_uniform = scalar.constant false : i1
+  test.use %slot9_subgroup_uniform : i1
+  %slot9_workgroup_uniform = scalar.constant false : i1
+  test.use %slot9_workgroup_uniform : i1
+  %slot9_cluster_uniform = scalar.constant false : i1
+  test.use %slot9_cluster_uniform : i1
+  %slot9_lane_varying = scalar.constant true : i1
+  test.use %slot9_lane_varying : i1
+  %slot18_subgroup_uniform = scalar.constant false : i1
+  test.use %slot18_subgroup_uniform : i1
+  %slot18_workgroup_uniform = scalar.constant false : i1
+  test.use %slot18_workgroup_uniform : i1
+  %slot18_cluster_uniform = scalar.constant false : i1
+  test.use %slot18_cluster_uniform : i1
+  %slot18_lane_varying = scalar.constant true : i1
+  test.use %slot18_lane_varying : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Both the queue data and its continuation predicate have this scope.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_subgroup() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %selector = kernel.subgroup.id : index
+  %injected = index.add %selector, %unit : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_subgroup_uniform = test.fact_subgroup_uniform %slot0 : index -> i1
+  test.use %slot0_subgroup_uniform : i1
+  %slot0_workgroup_uniform = test.fact_workgroup_uniform %slot0 : index -> i1
+  test.use %slot0_workgroup_uniform : i1
+  %slot0_cluster_uniform = test.fact_cluster_uniform %slot0 : index -> i1
+  test.use %slot0_cluster_uniform : i1
+  %slot0_lane_varying = test.fact_lane_varying %slot0 : index -> i1
+  test.use %slot0_lane_varying : i1
+  %slot9_subgroup_uniform = test.fact_subgroup_uniform %slot9 : index -> i1
+  test.use %slot9_subgroup_uniform : i1
+  %slot9_workgroup_uniform = test.fact_workgroup_uniform %slot9 : index -> i1
+  test.use %slot9_workgroup_uniform : i1
+  %slot9_cluster_uniform = test.fact_cluster_uniform %slot9 : index -> i1
+  test.use %slot9_cluster_uniform : i1
+  %slot9_lane_varying = test.fact_lane_varying %slot9 : index -> i1
+  test.use %slot9_lane_varying : i1
+  %slot18_subgroup_uniform = test.fact_subgroup_uniform %slot18 : index -> i1
+  test.use %slot18_subgroup_uniform : i1
+  %slot18_workgroup_uniform = test.fact_workgroup_uniform %slot18 : index -> i1
+  test.use %slot18_workgroup_uniform : i1
+  %slot18_cluster_uniform = test.fact_cluster_uniform %slot18 : index -> i1
+  test.use %slot18_cluster_uniform : i1
+  %slot18_lane_varying = test.fact_lane_varying %slot18 : index -> i1
+  test.use %slot18_lane_varying : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_subgroup() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %selector = kernel.subgroup.id : index
+  %injected = index.add %selector, %unit : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_subgroup_uniform = scalar.constant true : i1
+  test.use %slot0_subgroup_uniform : i1
+  %slot0_workgroup_uniform = scalar.constant false : i1
+  test.use %slot0_workgroup_uniform : i1
+  %slot0_cluster_uniform = scalar.constant false : i1
+  test.use %slot0_cluster_uniform : i1
+  %slot0_lane_varying = scalar.constant false : i1
+  test.use %slot0_lane_varying : i1
+  %slot9_subgroup_uniform = scalar.constant true : i1
+  test.use %slot9_subgroup_uniform : i1
+  %slot9_workgroup_uniform = scalar.constant false : i1
+  test.use %slot9_workgroup_uniform : i1
+  %slot9_cluster_uniform = scalar.constant false : i1
+  test.use %slot9_cluster_uniform : i1
+  %slot9_lane_varying = scalar.constant false : i1
+  test.use %slot9_lane_varying : i1
+  %slot18_subgroup_uniform = scalar.constant true : i1
+  test.use %slot18_subgroup_uniform : i1
+  %slot18_workgroup_uniform = scalar.constant false : i1
+  test.use %slot18_workgroup_uniform : i1
+  %slot18_cluster_uniform = scalar.constant false : i1
+  test.use %slot18_cluster_uniform : i1
+  %slot18_lane_varying = scalar.constant false : i1
+  test.use %slot18_lane_varying : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Both the queue data and its continuation predicate have this scope.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_workgroup() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %selector = kernel.workgroup.id<x> : index
+  %injected = index.add %selector, %unit : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_subgroup_uniform = test.fact_subgroup_uniform %slot0 : index -> i1
+  test.use %slot0_subgroup_uniform : i1
+  %slot0_workgroup_uniform = test.fact_workgroup_uniform %slot0 : index -> i1
+  test.use %slot0_workgroup_uniform : i1
+  %slot0_cluster_uniform = test.fact_cluster_uniform %slot0 : index -> i1
+  test.use %slot0_cluster_uniform : i1
+  %slot0_lane_varying = test.fact_lane_varying %slot0 : index -> i1
+  test.use %slot0_lane_varying : i1
+  %slot9_subgroup_uniform = test.fact_subgroup_uniform %slot9 : index -> i1
+  test.use %slot9_subgroup_uniform : i1
+  %slot9_workgroup_uniform = test.fact_workgroup_uniform %slot9 : index -> i1
+  test.use %slot9_workgroup_uniform : i1
+  %slot9_cluster_uniform = test.fact_cluster_uniform %slot9 : index -> i1
+  test.use %slot9_cluster_uniform : i1
+  %slot9_lane_varying = test.fact_lane_varying %slot9 : index -> i1
+  test.use %slot9_lane_varying : i1
+  %slot18_subgroup_uniform = test.fact_subgroup_uniform %slot18 : index -> i1
+  test.use %slot18_subgroup_uniform : i1
+  %slot18_workgroup_uniform = test.fact_workgroup_uniform %slot18 : index -> i1
+  test.use %slot18_workgroup_uniform : i1
+  %slot18_cluster_uniform = test.fact_cluster_uniform %slot18 : index -> i1
+  test.use %slot18_cluster_uniform : i1
+  %slot18_lane_varying = test.fact_lane_varying %slot18 : index -> i1
+  test.use %slot18_lane_varying : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_workgroup() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %selector = kernel.workgroup.id<x> : index
+  %injected = index.add %selector, %unit : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_subgroup_uniform = scalar.constant true : i1
+  test.use %slot0_subgroup_uniform : i1
+  %slot0_workgroup_uniform = scalar.constant true : i1
+  test.use %slot0_workgroup_uniform : i1
+  %slot0_cluster_uniform = scalar.constant false : i1
+  test.use %slot0_cluster_uniform : i1
+  %slot0_lane_varying = scalar.constant false : i1
+  test.use %slot0_lane_varying : i1
+  %slot9_subgroup_uniform = scalar.constant true : i1
+  test.use %slot9_subgroup_uniform : i1
+  %slot9_workgroup_uniform = scalar.constant true : i1
+  test.use %slot9_workgroup_uniform : i1
+  %slot9_cluster_uniform = scalar.constant false : i1
+  test.use %slot9_cluster_uniform : i1
+  %slot9_lane_varying = scalar.constant false : i1
+  test.use %slot9_lane_varying : i1
+  %slot18_subgroup_uniform = scalar.constant true : i1
+  test.use %slot18_subgroup_uniform : i1
+  %slot18_workgroup_uniform = scalar.constant true : i1
+  test.use %slot18_workgroup_uniform : i1
+  %slot18_cluster_uniform = scalar.constant false : i1
+  test.use %slot18_cluster_uniform : i1
+  %slot18_lane_varying = scalar.constant false : i1
+  test.use %slot18_lane_varying : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Both the queue data and its continuation predicate have this scope.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_cluster() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %injected = index.add %variant, %unit : index
+  %repeat = index.cmp ne, %variant, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_subgroup_uniform = test.fact_subgroup_uniform %slot0 : index -> i1
+  test.use %slot0_subgroup_uniform : i1
+  %slot0_workgroup_uniform = test.fact_workgroup_uniform %slot0 : index -> i1
+  test.use %slot0_workgroup_uniform : i1
+  %slot0_cluster_uniform = test.fact_cluster_uniform %slot0 : index -> i1
+  test.use %slot0_cluster_uniform : i1
+  %slot0_lane_varying = test.fact_lane_varying %slot0 : index -> i1
+  test.use %slot0_lane_varying : i1
+  %slot9_subgroup_uniform = test.fact_subgroup_uniform %slot9 : index -> i1
+  test.use %slot9_subgroup_uniform : i1
+  %slot9_workgroup_uniform = test.fact_workgroup_uniform %slot9 : index -> i1
+  test.use %slot9_workgroup_uniform : i1
+  %slot9_cluster_uniform = test.fact_cluster_uniform %slot9 : index -> i1
+  test.use %slot9_cluster_uniform : i1
+  %slot9_lane_varying = test.fact_lane_varying %slot9 : index -> i1
+  test.use %slot9_lane_varying : i1
+  %slot18_subgroup_uniform = test.fact_subgroup_uniform %slot18 : index -> i1
+  test.use %slot18_subgroup_uniform : i1
+  %slot18_workgroup_uniform = test.fact_workgroup_uniform %slot18 : index -> i1
+  test.use %slot18_workgroup_uniform : i1
+  %slot18_cluster_uniform = test.fact_cluster_uniform %slot18 : index -> i1
+  test.use %slot18_cluster_uniform : i1
+  %slot18_lane_varying = test.fact_lane_varying %slot18 : index -> i1
+  test.use %slot18_lane_varying : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_cluster() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %injected = index.add %variant, %unit : index
+  %repeat = index.cmp ne, %variant, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_subgroup_uniform = scalar.constant true : i1
+  test.use %slot0_subgroup_uniform : i1
+  %slot0_workgroup_uniform = scalar.constant true : i1
+  test.use %slot0_workgroup_uniform : i1
+  %slot0_cluster_uniform = scalar.constant true : i1
+  test.use %slot0_cluster_uniform : i1
+  %slot0_lane_varying = scalar.constant false : i1
+  test.use %slot0_lane_varying : i1
+  %slot9_subgroup_uniform = scalar.constant true : i1
+  test.use %slot9_subgroup_uniform : i1
+  %slot9_workgroup_uniform = scalar.constant true : i1
+  test.use %slot9_workgroup_uniform : i1
+  %slot9_cluster_uniform = scalar.constant true : i1
+  test.use %slot9_cluster_uniform : i1
+  %slot9_lane_varying = scalar.constant false : i1
+  test.use %slot9_lane_varying : i1
+  %slot18_subgroup_uniform = scalar.constant true : i1
+  test.use %slot18_subgroup_uniform : i1
+  %slot18_workgroup_uniform = scalar.constant true : i1
+  test.use %slot18_workgroup_uniform : i1
+  %slot18_cluster_uniform = scalar.constant true : i1
+  test.use %slot18_cluster_uniform : i1
+  %slot18_lane_varying = scalar.constant false : i1
+  test.use %slot18_lane_varying : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Layout is opposite execution order; an acyclic chain never needs widening.
+func.def @reverse_acyclic_layout() {
+  %seed = index.constant 8 : offset
+  cfg.br ^stage0(%seed: offset)
+^stage23(%value23: offset):
+  %result_range_lo = test.fact_range_lo %value23 : offset -> i64
+  test.use %result_range_lo : i64
+  %result_range_hi = test.fact_range_hi %value23 : offset -> i64
+  test.use %result_range_hi : i64
+  func.return
+^stage22(%value22: offset):
+  cfg.br ^stage23(%value22: offset)
+^stage21(%value21: offset):
+  cfg.br ^stage22(%value21: offset)
+^stage20(%value20: offset):
+  cfg.br ^stage21(%value20: offset)
+^stage19(%value19: offset):
+  cfg.br ^stage20(%value19: offset)
+^stage18(%value18: offset):
+  cfg.br ^stage19(%value18: offset)
+^stage17(%value17: offset):
+  cfg.br ^stage18(%value17: offset)
+^stage16(%value16: offset):
+  cfg.br ^stage17(%value16: offset)
+^stage15(%value15: offset):
+  cfg.br ^stage16(%value15: offset)
+^stage14(%value14: offset):
+  cfg.br ^stage15(%value14: offset)
+^stage13(%value13: offset):
+  cfg.br ^stage14(%value13: offset)
+^stage12(%value12: offset):
+  cfg.br ^stage13(%value12: offset)
+^stage11(%value11: offset):
+  cfg.br ^stage12(%value11: offset)
+^stage10(%value10: offset):
+  cfg.br ^stage11(%value10: offset)
+^stage9(%value9: offset):
+  cfg.br ^stage10(%value9: offset)
+^stage8(%value8: offset):
+  cfg.br ^stage9(%value8: offset)
+^stage7(%value7: offset):
+  cfg.br ^stage8(%value7: offset)
+^stage6(%value6: offset):
+  cfg.br ^stage7(%value6: offset)
+^stage5(%value5: offset):
+  cfg.br ^stage6(%value5: offset)
+^stage4(%value4: offset):
+  cfg.br ^stage5(%value4: offset)
+^stage3(%value3: offset):
+  cfg.br ^stage4(%value3: offset)
+^stage2(%value2: offset):
+  cfg.br ^stage3(%value2: offset)
+^stage1(%value1: offset):
+  cfg.br ^stage2(%value1: offset)
+^stage0(%value0: offset):
+  cfg.br ^stage1(%value0: offset)
+}
+
+// ----
+func.def @reverse_acyclic_layout() {
+  %seed = index.constant 8 : offset
+  cfg.br ^stage0(%seed: offset)
+^stage23(%value23: offset):
+  %result_range_lo = scalar.constant 8 : i64
+  test.use %result_range_lo : i64
+  %result_range_hi = scalar.constant 8 : i64
+  test.use %result_range_hi : i64
+  func.return
+^stage22(%value22: offset):
+  cfg.br ^stage23(%value22: offset)
+^stage21(%value21: offset):
+  cfg.br ^stage22(%value21: offset)
+^stage20(%value20: offset):
+  cfg.br ^stage21(%value20: offset)
+^stage19(%value19: offset):
+  cfg.br ^stage20(%value19: offset)
+^stage18(%value18: offset):
+  cfg.br ^stage19(%value18: offset)
+^stage17(%value17: offset):
+  cfg.br ^stage18(%value17: offset)
+^stage16(%value16: offset):
+  cfg.br ^stage17(%value16: offset)
+^stage15(%value15: offset):
+  cfg.br ^stage16(%value15: offset)
+^stage14(%value14: offset):
+  cfg.br ^stage15(%value14: offset)
+^stage13(%value13: offset):
+  cfg.br ^stage14(%value13: offset)
+^stage12(%value12: offset):
+  cfg.br ^stage13(%value12: offset)
+^stage11(%value11: offset):
+  cfg.br ^stage12(%value11: offset)
+^stage10(%value10: offset):
+  cfg.br ^stage11(%value10: offset)
+^stage9(%value9: offset):
+  cfg.br ^stage10(%value9: offset)
+^stage8(%value8: offset):
+  cfg.br ^stage9(%value8: offset)
+^stage7(%value7: offset):
+  cfg.br ^stage8(%value7: offset)
+^stage6(%value6: offset):
+  cfg.br ^stage7(%value6: offset)
+^stage5(%value5: offset):
+  cfg.br ^stage6(%value5: offset)
+^stage4(%value4: offset):
+  cfg.br ^stage5(%value4: offset)
+^stage3(%value3: offset):
+  cfg.br ^stage4(%value3: offset)
+^stage2(%value2: offset):
+  cfg.br ^stage3(%value2: offset)
+^stage1(%value1: offset):
+  cfg.br ^stage2(%value1: offset)
+^stage0(%value0: offset):
+  cfg.br ^stage1(%value0: offset)
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Range growth still widens; propagation distance does not erase uniformity.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_recurrence() {
+  %unit_extent = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %repeat = index.cmp ne, %variant, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_range_lo = test.fact_range_lo %slot0 : index -> i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = test.fact_range_hi %slot0 : index -> i64
+  test.use %slot0_range_hi : i64
+  %slot0_cluster_uniform = test.fact_cluster_uniform %slot0 : index -> i1
+  test.use %slot0_cluster_uniform : i1
+  %slot18_range_lo = test.fact_range_lo %slot18 : index -> i64
+  test.use %slot18_range_lo : i64
+  %slot18_range_hi = test.fact_range_hi %slot18 : index -> i64
+  test.use %slot18_range_hi : i64
+  %slot18_cluster_uniform = test.fact_cluster_uniform %slot18 : index -> i1
+  test.use %slot18_cluster_uniform : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  %injected = index.add %slot0, %unit : index
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_recurrence() {
+  %unit_extent = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %repeat = index.cmp ne, %variant, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_range_lo = scalar.constant -9223372036854775808 : i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = scalar.constant 9223372036854775807 : i64
+  test.use %slot0_range_hi : i64
+  %slot0_cluster_uniform = scalar.constant true : i1
+  test.use %slot0_cluster_uniform : i1
+  %slot18_range_lo = scalar.constant -9223372036854775808 : i64
+  test.use %slot18_range_lo : i64
+  %slot18_range_hi = scalar.constant 9223372036854775807 : i64
+  test.use %slot18_range_hi : i64
+  %slot18_cluster_uniform = scalar.constant true : i1
+  test.use %slot18_cluster_uniform : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  %injected = index.add %slot0, %unit : index
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Range growth still widens; propagation distance does not erase uniformity.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_nested_recurrence() {
+  %unit_extent = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %repeat = index.cmp ne, %variant, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_range_lo = test.fact_range_lo %slot0 : index -> i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = test.fact_range_hi %slot0 : index -> i64
+  test.use %slot0_range_hi : i64
+  %slot0_cluster_uniform = test.fact_cluster_uniform %slot0 : index -> i1
+  test.use %slot0_cluster_uniform : i1
+  %slot18_range_lo = test.fact_range_lo %slot18 : index -> i64
+  test.use %slot18_range_lo : i64
+  %slot18_range_hi = test.fact_range_hi %slot18 : index -> i64
+  test.use %slot18_range_hi : i64
+  %slot18_cluster_uniform = test.fact_cluster_uniform %slot18 : index -> i1
+  test.use %slot18_cluster_uniform : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  %injected = scf.if %repeat -> (index) {
+    %next = index.add %slot0, %unit : index
+    scf.yield %next : index
+  } else {
+    scf.yield %slot18 : index
+  }
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @queued_nested_recurrence() {
+  %unit_extent = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %repeat = index.cmp ne, %variant, %seed : index
+  cfg.br ^header(%seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index, %seed: index)
+^header(%slot0: index, %slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index):
+  %slot0_range_lo = scalar.constant -9223372036854775808 : i64
+  test.use %slot0_range_lo : i64
+  %slot0_range_hi = scalar.constant 9223372036854775807 : i64
+  test.use %slot0_range_hi : i64
+  %slot0_cluster_uniform = scalar.constant true : i1
+  test.use %slot0_cluster_uniform : i1
+  %slot18_range_lo = scalar.constant -9223372036854775808 : i64
+  test.use %slot18_range_lo : i64
+  %slot18_range_hi = scalar.constant 9223372036854775807 : i64
+  test.use %slot18_range_hi : i64
+  %slot18_cluster_uniform = scalar.constant true : i1
+  test.use %slot18_cluster_uniform : i1
+  cfg.cond_br %repeat, ^latch, ^exit
+^latch:
+  %injected = scf.if %repeat -> (index) {
+    %next = index.add %slot0, %unit : index
+    scf.yield %next : index
+  } else {
+    scf.yield %slot18 : index
+  }
+  cfg.br ^header(%slot1: index, %slot2: index, %slot3: index, %slot4: index, %slot5: index, %slot6: index, %slot7: index, %slot8: index, %slot9: index, %slot10: index, %slot11: index, %slot12: index, %slot13: index, %slot14: index, %slot15: index, %slot16: index, %slot17: index, %slot18: index, %injected: index)
+^exit:
+  kernel.return
+}

@@ -144,6 +144,7 @@ iree_status_t loom_value_fact_cfg_update_forwarding(
         region->argument_components[argument_index] = retained_index;
       }
     }
+    partition->component_count = components.count;
     partition->dirty = false;
   }
   iree_arena_checkpoint_restore(&checkpoint);
@@ -177,13 +178,11 @@ static iree_status_t loom_value_fact_cfg_group_control_flow(
     offset += components[i].node_count;
     components[i].node_count = 0;
   }
-  for (uint16_t i = 0; i < graph->block_count; ++i) {
-    const loom_cfg_block_info_t* block = &graph->blocks[i];
-    if (!block->reachable) {
-      continue;
-    }
+  for (iree_host_size_t i = 0; i < graph->reverse_postorder.count; ++i) {
+    const uint16_t block_index = graph->reverse_postorder.values[i];
+    const loom_cfg_block_info_t* block = &graph->blocks[block_index];
     loom_scc_t* component = &components[block->component];
-    nodes[(component->nodes - nodes) + component->node_count++] = i;
+    nodes[(component->nodes - nodes) + component->node_count++] = block_index;
   }
   *out_components = (loom_scc_list_t){
       .values = components,
@@ -259,6 +258,7 @@ iree_status_t loom_value_fact_cfg_region_initialize(
     }
     partition->argument_count =
         out_region->argument_count - partition->argument_offset;
+    partition->component_count = partition->argument_count;
     partition->dirty = component->is_cycle && partition->argument_count != 0;
   }
   if (out_region->argument_count == 0) {

@@ -525,20 +525,6 @@ static iree_status_t loom_value_fact_table_seed_block_args(
 // CFG block argument summaries
 //===----------------------------------------------------------------------===//
 
-static bool loom_value_fact_table_block_has_backedge(
-    const loom_cfg_graph_t* graph, uint16_t block_index) {
-  loom_cfg_block_index_span_t predecessors =
-      loom_cfg_graph_predecessors(graph, block_index);
-  for (iree_host_size_t i = 0; i < predecessors.count; ++i) {
-    uint16_t predecessor_index = predecessors.values[i];
-    if (loom_cfg_graph_block_is_reachable(graph, predecessor_index) &&
-        predecessor_index >= block_index) {
-      return true;
-    }
-  }
-  return false;
-}
-
 static iree_status_t loom_value_fact_table_define_block_arg_facts(
     loom_value_fact_table_t* table, const loom_module_t* module,
     loom_value_id_t arg_id, loom_value_facts_t facts, bool* out_changed) {
@@ -706,40 +692,42 @@ static iree_status_t loom_value_fact_table_compute_cfg_block_arg(
   return iree_ok_status();
 }
 
+// Every direct-forwarding component consumes already joined source components.
+// Arithmetic producers remain external inputs and advance in the outer solve.
+static iree_status_t loom_value_fact_table_compute_cfg_forwarding(
+    loom_value_fact_table_t* table, const loom_module_t* module,
+    const loom_value_fact_cfg_region_t* region,
+    iree_host_size_t control_flow_component, uint32_t iteration,
+    bool* out_changed) {
+  IREE_RETURN_IF_ERROR(loom_value_fact_cfg_update_forwarding(
+      region, control_flow_component, table->transient_arena));
+  const loom_value_fact_cfg_forwarding_t* partition =
+      &region->control_flow.forwarding[control_flow_component];
+  for (iree_host_size_t i = 0; i < partition->component_count; ++i) {
+    const loom_scc_t* component =
+        &region->components[partition->argument_offset + i];
+    const loom_value_fact_cfg_argument_t* argument =
+        &region->arguments[component->nodes[0]];
+    IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_arg(
+        table, module, region, component->is_cycle ? component : NULL,
+        argument->block_index, argument->argument_index, true, iteration, NULL,
+        NULL, out_changed));
+  }
+  return iree_ok_status();
+}
+
 static iree_status_t loom_value_fact_table_compute_cfg_block_args(
     loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_value_fact_cfg_region_t* region, uint16_t block_index,
-    uint32_t iteration, iree_host_size_t component_offset,
-    uint32_t* visited_components, bool* out_changed) {
-  const loom_cfg_graph_t* graph = &region->graph;
-  const loom_block_t* block = graph->blocks[block_index].block;
-  if (!block || !loom_cfg_graph_block_is_reachable(graph, block_index)) {
-    return iree_ok_status();
-  }
+    bool* out_changed) {
   if (block_index == 0) {
     return iree_ok_status();
   }
-  const bool has_backedge =
-      loom_value_fact_table_block_has_backedge(graph, block_index);
+  const loom_block_t* block = region->graph.blocks[block_index].block;
   for (uint16_t i = 0; i < block->arg_count; ++i) {
-    const loom_scc_t* component = NULL;
-    if (region->argument_count != 0) {
-      iree_host_size_t component_index =
-          region
-              ->argument_components[region->argument_offsets[block_index] + i];
-      const loom_scc_t* candidate = &region->components[component_index];
-      if (candidate->is_cycle) {
-        if (visited_components[component_index - component_offset] ==
-            iteration + 1) {
-          continue;
-        }
-        visited_components[component_index - component_offset] = iteration + 1;
-        component = candidate;
-      }
-    }
     IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_arg(
-        table, module, region, component, block_index, i,
-        has_backedge || component != NULL, iteration, NULL, NULL, out_changed));
+        table, module, region, NULL, block_index, i, false, 0, NULL, NULL,
+        out_changed));
   }
   return iree_ok_status();
 }
@@ -907,8 +895,6 @@ iree_status_t loom_value_fact_table_recompute_cfg_component(
       component - region->control_flow.components.values;
   IREE_RETURN_IF_ERROR(loom_value_fact_cfg_update_forwarding(
       region, component_index, scratch_arena));
-  const loom_value_fact_cfg_forwarding_t* partition =
-      &region->control_flow.forwarding[component_index];
   const iree_host_size_t* blocks = component->nodes;
   loom_value_fact_cfg_saved_values_t saved = {0};
   for (iree_host_size_t i = 0; i < component->node_count; ++i) {
@@ -917,21 +903,14 @@ iree_status_t loom_value_fact_table_recompute_cfg_component(
         scratch_arena, &saved));
   }
   loom_value_fact_cfg_seed_control(table, region, component);
-  uint32_t* visited_components = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      scratch_arena, partition->argument_count, sizeof(*visited_components),
-      (void**)&visited_components));
-  memset(visited_components, 0,
-         partition->argument_count * sizeof(*visited_components));
   bool converged = false;
   for (uint32_t iteration = 0; iteration < LOOM_VALUE_FACT_CFG_MAX_ITERATIONS;
        ++iteration) {
     bool changed = false;
+    IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_forwarding(
+        table, module, region, component_index, iteration, &changed));
     for (iree_host_size_t i = 0; i < component->node_count; ++i) {
       uint16_t block_index = blocks[i];
-      IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_args(
-          table, module, region, block_index, iteration,
-          partition->argument_offset, visited_components, &changed));
       IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_tree(
           table, module, region->graph.blocks[block_index].block, &changed));
     }
@@ -970,12 +949,13 @@ static iree_status_t loom_value_fact_table_compute_cfg_region_tree(
       table, module, region, &structure));
   const loom_cfg_graph_t* graph = &structure->graph;
   uint32_t* visited_components = NULL;
-  if (structure->argument_count != 0) {
+  if (structure->control_flow.components.count != 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        table->transient_arena, structure->argument_count,
+        table->transient_arena, structure->control_flow.components.count,
         sizeof(*visited_components), (void**)&visited_components));
-    memset(visited_components, 0,
-           structure->argument_count * sizeof(*visited_components));
+    memset(
+        visited_components, 0,
+        structure->control_flow.components.count * sizeof(*visited_components));
   }
 
   if (region->block_count == 0) {
@@ -989,15 +969,21 @@ static iree_status_t loom_value_fact_table_compute_cfg_region_tree(
   for (uint32_t iteration = 0; iteration < LOOM_VALUE_FACT_CFG_MAX_ITERATIONS;
        ++iteration) {
     bool changed = false;
-    for (uint16_t block_index = 0; block_index < region->block_count;
-         ++block_index) {
-      const loom_block_t* block = graph->blocks[block_index].block;
-      if (!block || !loom_cfg_graph_block_is_reachable(graph, block_index)) {
-        continue;
+    for (iree_host_size_t i = 0; i < graph->reverse_postorder.count; ++i) {
+      const uint16_t block_index = graph->reverse_postorder.values[i];
+      const loom_cfg_block_info_t* block_info = &graph->blocks[block_index];
+      const loom_block_t* block = block_info->block;
+      if (block_info->component_is_cyclic) {
+        const iree_host_size_t component_index = block_info->component;
+        if (visited_components[component_index] != iteration + 1) {
+          visited_components[component_index] = iteration + 1;
+          IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_forwarding(
+              table, module, structure, component_index, iteration, &changed));
+        }
+      } else {
+        IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_args(
+            table, module, structure, block_index, &changed));
       }
-      IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_args(
-          table, module, structure, block_index, iteration, 0,
-          visited_components, &changed));
       IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_tree(
           table, module, block, &changed));
     }

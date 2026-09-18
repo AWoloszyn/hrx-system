@@ -7,6 +7,8 @@
 #include "loom/rewrite/greedy.h"
 
 #include <cstdint>
+#include <tuple>
+#include <vector>
 
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
@@ -800,6 +802,157 @@ TEST_F(GreedyRewriteTest, ForwardingComponentsTrackPayloadReplacements) {
   loom_pass_value_fact_owner_deinitialize(&owner);
   iree_arena_deinitialize(&arena);
 }
+
+class ForwardingFactsRewriteTest
+    : public GreedyRewriteTest,
+      public ::testing::WithParamInterface<std::tuple<uint16_t, bool>> {};
+
+TEST_P(ForwardingFactsRewriteTest, OpenQueuesRestartAcrossSemanticEdits) {
+  const auto [count, reverse_layout] = GetParam();
+  const loom_type_t i1 = loom_type_scalar(LOOM_SCALAR_TYPE_I1);
+  const loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_region_t* region = loom_func_like_body(function_);
+  region->flags |= LOOM_REGION_INSTANCE_FLAG_CFG;
+  std::vector<loom_value_id_t> seeds(count);
+  std::vector<loom_value_id_t> carried(count);
+  std::vector<loom_value_id_t> forwarded(count);
+  for (uint16_t i = 0; i < count; ++i) {
+    loom_op_t* constant = nullptr;
+    IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(i), i32,
+                                            LOOM_LOCATION_UNKNOWN, &constant));
+    seeds[i] = loom_test_constant_result(constant);
+  }
+  loom_op_t* injected = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(count + 8),
+                                          i32, LOOM_LOCATION_UNKNOWN,
+                                          &injected));
+  const loom_value_id_t injected_id = loom_test_constant_result(injected);
+  loom_op_t* uniform = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(1), i1,
+                                          LOOM_LOCATION_UNKNOWN, &uniform));
+  const loom_value_id_t uniform_id = loom_test_constant_result(uniform);
+  loom_op_t* unknown = nullptr;
+  IREE_ASSERT_OK(loom_test_attrs_build(&builder_, 0, uniform_id, {}, i1,
+                                       LOOM_LOCATION_UNKNOWN, &unknown));
+  const loom_value_id_t unknown_id = loom_test_attrs_result(unknown);
+  loom_op_t* unknown_input = nullptr;
+  IREE_ASSERT_OK(loom_test_attrs_build(&builder_, 0, injected_id, {}, i32,
+                                       LOOM_LOCATION_UNKNOWN, &unknown_input));
+  const loom_value_id_t unknown_input_id =
+      loom_test_attrs_result(unknown_input);
+  loom_block_t* header = nullptr;
+  loom_block_t* latch = nullptr;
+  loom_block_t* exit = nullptr;
+  const auto block_order = reverse_layout ? std::vector{&exit, &latch, &header}
+                                          : std::vector{&header, &latch, &exit};
+  for (loom_block_t** block : block_order) {
+    IREE_ASSERT_OK(loom_region_append_block(module_, region, block));
+  }
+  for (loom_value_id_t& value : carried) {
+    IREE_ASSERT_OK(
+        loom_builder_define_block_arg(&builder_, header, i32, &value));
+  }
+  for (uint16_t i = 0; i < count; ++i) {
+    forwarded[i] = i + 1 < count ? carried[i + 1] : injected_id;
+  }
+  loom_op_t* branch = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, seeds.data(), count,
+                                   LOOM_LOCATION_UNKNOWN, &branch));
+  loom_builder_set_block(&builder_, header);
+  loom_op_t* selector = nullptr;
+  IREE_ASSERT_OK(loom_cfg_cond_br_build(&builder_, uniform_id, latch, exit,
+                                        LOOM_LOCATION_UNKNOWN, &selector));
+  loom_builder_set_block(&builder_, latch);
+  loom_op_t* backedge = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, forwarded.data(), count,
+                                   LOOM_LOCATION_UNKNOWN, &backedge));
+  loom_builder_set_block(&builder_, exit);
+  IREE_ASSERT_OK(loom_test_use_build(&builder_, carried.data(), count,
+                                     LOOM_LOCATION_UNKNOWN, &branch));
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &branch));
+
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_pass_value_fact_owner_t owner;
+  loom_pass_value_fact_owner_initialize(&block_pool_, &owner);
+  loom_value_fact_table_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module_, loom_pass_value_fact_scope_function(function_), &facts));
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &arena));
+  loom_rewriter_attach_value_facts(&rewriter, facts);
+
+  enum class QueueState { kOpenUniform, kOpenUnknown, kClosed, kUnknownInput };
+  int64_t injected_value = count + 8;
+  auto check = [&](QueueState state) {
+    while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
+      bool folded = false;
+      IREE_ASSERT_OK(loom_rewriter_try_fold(&rewriter, op, &folded));
+    }
+    loom_pass_value_fact_owner_t fresh_owner;
+    loom_pass_value_fact_owner_initialize(&block_pool_, &fresh_owner);
+    loom_value_fact_table_t* fresh = nullptr;
+    IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+        &fresh_owner, module_, loom_pass_value_fact_scope_function(function_),
+        &fresh));
+    for (uint16_t i = 0; i < count; ++i) {
+      SCOPED_TRACE(i);
+      const loom_value_facts_t value =
+          loom_rewriter_value_facts(&rewriter, carried[i]);
+      EXPECT_TRUE(loom_value_fact_table_facts_equal_for_type(
+          module_, i32, facts, value, fresh,
+          loom_value_fact_table_lookup(fresh, carried[i])));
+      if (state != QueueState::kUnknownInput) {
+        EXPECT_EQ(value.range_lo, state == QueueState::kClosed ? 0 : i);
+        EXPECT_EQ(value.range_hi,
+                  state == QueueState::kClosed ? count - 1 : injected_value);
+      }
+      EXPECT_EQ(
+          loom_value_facts_is_cluster_uniform(value),
+          state == QueueState::kOpenUniform || state == QueueState::kClosed);
+    }
+    loom_pass_value_fact_owner_deinitialize(&fresh_owner);
+  };
+  check(QueueState::kOpenUniform);
+
+  for (int edit = 0; edit < 3; ++edit) {
+    // Changing an external producer must reach the entire queue and preserve
+    // each suffix's independent lower bound.
+    injected_value += count;
+    IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, injected, 0,
+                                          loom_attr_i64(injected_value)));
+    check(QueueState::kOpenUniform);
+    IREE_ASSERT_OK(
+        loom_rewriter_set_operand(&rewriter, selector, 0, unknown_id));
+    check(QueueState::kOpenUnknown);
+    IREE_ASSERT_OK(
+        loom_rewriter_set_operand(&rewriter, selector, 0, uniform_id));
+    check(QueueState::kOpenUniform);
+
+    // Joining every slot into a cycle changes the component count. Reopening
+    // it must restore dependency order instead of retaining the broad cycle.
+    IREE_ASSERT_OK(
+        loom_rewriter_set_operand(&rewriter, backedge, count - 1, carried[0]));
+    check(QueueState::kClosed);
+    IREE_ASSERT_OK(
+        loom_rewriter_set_operand(&rewriter, backedge, count - 1, injected_id));
+    check(QueueState::kOpenUniform);
+    IREE_ASSERT_OK(loom_rewriter_set_operand(&rewriter, backedge, count - 1,
+                                             unknown_input_id));
+    check(QueueState::kUnknownInput);
+    IREE_ASSERT_OK(
+        loom_rewriter_set_operand(&rewriter, backedge, count - 1, injected_id));
+    check(QueueState::kOpenUniform);
+  }
+  loom_rewriter_deinitialize(&rewriter);
+  loom_pass_value_fact_owner_deinitialize(&owner);
+  iree_arena_deinitialize(&arena);
+}
+
+INSTANTIATE_TEST_SUITE_P(IndependentQueueDepth, ForwardingFactsRewriteTest,
+                         ::testing::Combine(::testing::Values(1, 2, 17, 65),
+                                            ::testing::Bool()));
 
 TEST_F(GreedyRewriteTest, NonEquationEditsPreserveCyclicFacts) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
