@@ -138,7 +138,8 @@ TEST(LoomcSpirvIreeHalExecutionTest,
   target.validate_target_profile = ValidateSpirvVulkanProfile;
   target.emit_module = EmitSpirvModule;
 
-  loomc::testing::target::RunIreeHalKernelExecutionTest(target);
+  loomc::testing::target::RunIreeHalKernelExecutionTest(
+      target, loomc::testing::target::RunIreeHalByteOffsetExecution);
 }
 
 }  // namespace
