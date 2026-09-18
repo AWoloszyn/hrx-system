@@ -17,6 +17,14 @@
 extern "C" {
 #endif
 
+// Materializes an address operand in a two-unit carrier of |register_class_id|
+// (SGPR or VGPR). One-unit inputs are zero-extended; two-unit inputs retain
+// both words. Scalar materialization requires a uniform source operand.
+iree_status_t loom_amdgpu_lookup_or_materialize_address_i64_operand(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_value_id_t source_value, uint32_t register_class_id,
+    loom_value_id_t* out_low_value);
+
 // Emits the low 64 bits of a product. Both inputs use the same two-unit SGPR
 // or VGPR carrier, which is also the result carrier.
 iree_status_t loom_amdgpu_emit_i64_mul_lo(loom_low_lower_context_t* context,
