@@ -18,13 +18,17 @@
 // Atomics.waitAsync and writes the result back.
 //
 // Cancel control SharedArrayBuffer layout (Int32Array, 4 slots = 16 bytes):
-//   [0] request   — token+1 when cancel requested, 0 when idle
-//   [1] response  — 0=pending, 1=cancelled, 2=already fired
+//   [0] token          — raw timer token bits
+//   [1] response       — 0=pending, 1=cancelled, 2=already fired
+//   [2] request state  — 0=idle, 1=pending
 
 import {ProactorRing} from './proactor_ring.mjs';
 
-const CANCEL_REQUEST = 0;
+const CANCEL_TOKEN = 0;
 const CANCEL_RESPONSE = 1;
+const CANCEL_REQUEST_STATE = 2;
+const CANCEL_REQUEST_IDLE = 0;
+const CANCEL_REQUEST_PENDING = 1;
 
 export class ProactorEventHost {
   constructor(ringBuffer, cancelBuffer, ringCapacity) {
@@ -45,7 +49,7 @@ export class ProactorEventHost {
   stop() {
     this.running = false;
     // Wake the cancel listener if it's blocked in waitAsync.
-    Atomics.notify(this.cancelControl, CANCEL_REQUEST);
+    Atomics.notify(this.cancelControl, CANCEL_REQUEST_STATE);
     for (const timerId of this.timers.values()) {
       clearTimeout(timerId);
     }
@@ -80,20 +84,25 @@ export class ProactorEventHost {
   // cancel control region. Uses Atomics.waitAsync so the event loop stays
   // responsive for timer callbacks and other async work.
   async _cancelListener() {
-    while (this.running) {
+    while (true) {
       // Block (async) until a cancel request arrives.
-      const result = Atomics.waitAsync(this.cancelControl, CANCEL_REQUEST, 0);
+      const result = Atomics.waitAsync(
+          this.cancelControl, CANCEL_REQUEST_STATE, CANCEL_REQUEST_IDLE);
       if (result.async) {
         await result.value;
       }
-      if (!this.running) break;
 
-      const tokenPlusOne = Atomics.load(this.cancelControl, CANCEL_REQUEST);
-      if (tokenPlusOne === 0) continue;
-      Atomics.store(this.cancelControl, CANCEL_REQUEST, 0);
+      const requestState =
+          Atomics.load(this.cancelControl, CANCEL_REQUEST_STATE);
+      if (requestState !== CANCEL_REQUEST_PENDING) {
+        if (!this.running) break;
+        continue;
+      }
+      const token = Atomics.load(this.cancelControl, CANCEL_TOKEN);
+      Atomics.store(
+          this.cancelControl, CANCEL_REQUEST_STATE, CANCEL_REQUEST_IDLE);
 
       // Try to cancel the timer.
-      const token = tokenPlusOne - 1;
       const timerId = this.timers.get(token);
       let cancelled;
       if (timerId !== undefined) {
@@ -107,6 +116,8 @@ export class ProactorEventHost {
       // Write response and wake the worker.
       Atomics.store(this.cancelControl, CANCEL_RESPONSE, cancelled);
       Atomics.notify(this.cancelControl, CANCEL_RESPONSE);
+
+      if (!this.running) break;
     }
   }
 }

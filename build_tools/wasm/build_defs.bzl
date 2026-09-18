@@ -347,6 +347,10 @@ def iree_wasm_cc_test(name, main = None, srcs = None, deps = None, **kwargs):
         name = name,
         args = ["$(rootpath :" + name + "_bundle)"],
         data = [":" + name + "_bundle"],
+        env_inherit = [
+            "IREE_WASM_NODE",
+            "PATH",
+        ],
         srcs = ["//build_tools/wasm:wasm_node_test_runner.sh"],
         target_compatible_with = kwargs["target_compatible_with"],
     )

@@ -7,6 +7,7 @@
 # JS proactor backend for browser and Node.js environments.
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load(
     "//build_tools/wasm:build_defs.bzl",
     "iree_wasm_cc_library",
@@ -85,6 +86,24 @@ iree_runtime_cc_test(
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
+)
+
+sh_test(
+    name = "proactor_event_host_test",
+    srcs = ["//build_tools/wasm:wasm_node_test_runner.sh"],
+    args = ["$(rootpath :proactor_event_host_test.mjs)"],
+    data = [
+        "proactor_event_host.mjs",
+        "proactor_event_host_test.mjs",
+        "proactor_event_host_test_worker.mjs",
+        "proactor_imports.mjs",
+        "proactor_ring.mjs",
+    ],
+    env_inherit = [
+        "IREE_WASM_NODE",
+        "PATH",
+    ],
+    tags = ["skip-bazel_to_cmake"],
 )
 
 #===------------------------------------------------------------------------===#
