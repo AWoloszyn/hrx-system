@@ -229,6 +229,9 @@ static bool loom_amdgpu_memory_access_has_contiguous_vector_lanes(
              access->source.element_byte_count;
 }
 
+// Canonical address expressions can retain integer payloads after a
+// value-preserving address cast. Both payload widths are materializable;
+// the selected address form owns any narrowing proof.
 static bool loom_amdgpu_memory_dynamic_index_can_materialize_vaddr(
     const loom_module_t* module, loom_value_id_t value_id) {
   if (value_id >= module->values.count) {
@@ -236,7 +239,7 @@ static bool loom_amdgpu_memory_dynamic_index_can_materialize_vaddr(
   }
   const loom_type_t type = loom_module_value_type(module, value_id);
   return loom_amdgpu_type_is_address_scalar(type) ||
-         loom_amdgpu_type_is_i32(type);
+         loom_amdgpu_type_is_i32(type) || loom_amdgpu_type_is_i64(type);
 }
 
 static bool loom_amdgpu_memory_dynamic_index_can_materialize_soffset(
@@ -247,7 +250,7 @@ static bool loom_amdgpu_memory_dynamic_index_can_materialize_soffset(
   }
   const loom_type_t type = loom_module_value_type(module, value_id);
   return (loom_amdgpu_type_is_address_scalar(type) ||
-          loom_amdgpu_type_is_i32(type)) &&
+          loom_amdgpu_type_is_i32(type) || loom_amdgpu_type_is_i64(type)) &&
          !loom_amdgpu_source_value_prefers_vgpr(module, fact_table,
                                                 view_regions, value_id);
 }
@@ -260,8 +263,9 @@ static bool loom_amdgpu_memory_dynamic_index_can_materialize_u32_soffset(
     return false;
   }
   const loom_type_t type = loom_module_value_type(module, value_id);
-  if (!loom_type_is_scalar(type) ||
-      loom_type_element_type(type) != LOOM_SCALAR_TYPE_OFFSET) {
+  if (!loom_amdgpu_type_is_i64(type) &&
+      (!loom_type_is_scalar(type) ||
+       loom_type_element_type(type) != LOOM_SCALAR_TYPE_OFFSET)) {
     return true;
   }
   return fact_table != NULL &&
@@ -285,7 +289,7 @@ static bool loom_amdgpu_memory_dynamic_term_can_materialize_soffset(
   }
   const loom_type_t type = loom_module_value_type(module, term->index);
   if (!loom_amdgpu_type_is_address_scalar(type) &&
-      !loom_amdgpu_type_is_i32(type)) {
+      !loom_amdgpu_type_is_i32(type) && !loom_amdgpu_type_is_i64(type)) {
     return false;
   }
   if (term->source !=

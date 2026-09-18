@@ -198,6 +198,7 @@ def _memory_constraint(
         dynamic_term_count=None if dynamic else 0,
         dynamic_term_count_minimum=1 if dynamic else 0,
         allow_dynamic_stride_values=dynamic,
+        dynamic_offset_unsigned_bit_count=32,
         cache_policy_build_flags=None,
     )
 

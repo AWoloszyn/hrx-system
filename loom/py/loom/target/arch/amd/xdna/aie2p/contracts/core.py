@@ -313,6 +313,7 @@ def _index_scale_rule() -> DescriptorRule:
             Guard.value_type("index", _INDEX),
             Guard.value_type("stride", _OFFSET),
             Guard.value_type("result", _OFFSET),
+            Guard.value_unsigned_bit_count("result", 32),
         ),
         emit=(
             _op_emit(

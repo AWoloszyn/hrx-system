@@ -225,6 +225,7 @@ TEST_F(SourceMemoryPlanTest, DynamicStridedLayoutScalesDynamicOrigin) {
   EXPECT_EQ(plan.dynamic_terms[0].byte_stride, 4);
   ASSERT_EQ(plan.dynamic_terms[0].stride_value_count, 1u);
   EXPECT_EQ(plan.dynamic_terms[0].stride_values[0], row_stride);
+  EXPECT_EQ(plan.source_index_byte_stride, 0);
 }
 
 TEST_F(SourceMemoryPlanTest, DynamicStridedLayoutScalesStaticOrigin) {

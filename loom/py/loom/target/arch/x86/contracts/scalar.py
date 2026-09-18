@@ -641,6 +641,100 @@ def _memory_descriptor_key(
     return f"x86.scalar.mov.{operation}{indexed}.{register_suffix}"
 
 
+def x86_full_width_memory_rules(
+    source_op: Op,
+    operation: SourceMemoryOperation,
+    value_type: TypePattern,
+    *,
+    element_byte_count: int,
+    lane_count: int,
+    descriptor_key: str,
+    descriptor_lookup: _DescriptorLookup,
+    diagnostic: GuardDiagnostic,
+) -> tuple[DescriptorRule, ...]:
+    """Materializes displacements that cannot fit an instruction's disp32."""
+
+    descriptor = descriptor_lookup(descriptor_key)
+    if operation is SourceMemoryOperation.LOAD:
+        type_field = "result"
+        results = {"dst": ValueRef.result("result")}
+        value_operands = {}
+    elif operation is SourceMemoryOperation.STORE:
+        type_field = "value"
+        results = {}
+        value_operands = {"value": ValueRef.operand("value")}
+    else:
+        raise ValueError(f"unsupported x86 memory operation {operation.value}")
+    rules: list[DescriptorRule] = []
+    for dynamic in (False, True):
+        source_memory = SourceMemoryConstraint(
+            operation=operation,
+            root_kind=SourceMemoryRootKind.BLOCK_ARGUMENT,
+            memory_spaces=("unknown", "generic", "global"),
+            element_byte_count=element_byte_count,
+            vector_lane_count=lane_count,
+            vector_lane_byte_stride=element_byte_count,
+            static_byte_offset_minimum=_I64_MIN,
+            static_byte_offset_maximum=_I64_MAX,
+            dynamic_term_count=None if dynamic else 0,
+            dynamic_term_count_minimum=1 if dynamic else 0,
+            dynamic_view_base_term_count=None,
+            allow_dynamic_stride_values=dynamic,
+            diagnostic=diagnostic,
+        )
+        static_offset = ValueRef.temporary("static_byte_offset")
+        byte_offset = static_offset
+        emits = [
+            EmitDescriptorOp(
+                descriptor=descriptor_lookup("x86.scalar.movimm.gpr64"),
+                results={"dst": static_offset},
+                result_types={"dst": _I64},
+                immediates={"imm64": SourceMemoryProject.static_byte_offset()},
+                source_memory=source_memory,
+                form=DescriptorEmitForm.CONST,
+            )
+        ]
+        if dynamic:
+            byte_offset = ValueRef.temporary("byte_offset")
+            emits.append(
+                _op_emit(
+                    descriptor=descriptor_lookup("x86.scalar.add.gpr64"),
+                    operands={
+                        "lhs": static_offset,
+                        "rhs": ValueRef.source_memory_dynamic_byte_offset(),
+                    },
+                    results={"dst": byte_offset},
+                    result_types={"dst": _I64},
+                    source_memory=source_memory,
+                    source_memory_byte_offset_materializer=(
+                        x86_source_memory_byte_offset_materializer(descriptor_lookup)
+                    ),
+                )
+            )
+        emits.append(
+            _op_emit(
+                descriptor=descriptor,
+                operands={
+                    "base": ValueRef.operand("view"),
+                    "index": byte_offset,
+                    **value_operands,
+                },
+                results=results,
+                immediates={"disp32": 0, "scale": 1},
+                source_memory=source_memory,
+            )
+        )
+        rules.append(
+            DescriptorRule(
+                source_op=source_op,
+                descriptor=descriptor,
+                guards=(Guard.value_type(type_field, value_type),),
+                emit=tuple(emits),
+            )
+        )
+    return tuple(rules)
+
+
 def _memory_rules(
     descriptor_lookup: _DescriptorLookup,
 ) -> tuple[DescriptorRule, ...]:
@@ -742,6 +836,26 @@ def _memory_rules(
                         materialize_byte_offset=True,
                     )
                 )
+        for source_op, operation in (
+            (view.view_load, SourceMemoryOperation.LOAD),
+            (view.view_store, SourceMemoryOperation.STORE),
+        ):
+            rules.extend(
+                x86_full_width_memory_rules(
+                    source_op,
+                    operation,
+                    value_type,
+                    element_byte_count=element_byte_count,
+                    lane_count=1,
+                    descriptor_key=_memory_descriptor_key(
+                        operation.value,
+                        dynamic=True,
+                        register_suffix=register_suffix,
+                    ),
+                    descriptor_lookup=descriptor_lookup,
+                    diagnostic=_SOURCE_MEMORY_DIAGNOSTIC,
+                )
+            )
     return tuple(rules)
 
 
@@ -806,6 +920,7 @@ def _buffer_store_i8_rule(
 def _index_cast_alias_rule(
     input_type: TypePattern,
     result_type: TypePattern,
+    value_guards: tuple[Guard, ...] = (),
 ) -> ValueAliasRule:
     return ValueAliasRule(
         source_op=index.index_cast,
@@ -814,6 +929,7 @@ def _index_cast_alias_rule(
         guards=(
             Guard.value_type("input", input_type),
             Guard.value_type("result", result_type),
+            *value_guards,
         ),
     )
 
@@ -1451,6 +1567,38 @@ def _cases() -> Sequence[ContractCase]:
             unsigned=False,
         ),
         _index_cast_alias_rule(_I64, _INDEX),
+        _index_cast_alias_rule(_INDEX, _I64),
+        _index_cast_alias_rule(_OFFSET, _I64),
+        _index_cast_alias_rule(_OFFSET, _INDEX),
+        *(
+            _index_cast_alias_rule(
+                input_type,
+                _OFFSET,
+                (
+                    Guard.value_i64_range(
+                        "input", 0, _I64_MAX, diagnostic=_INDEX_CAST_DIAGNOSTIC
+                    ),
+                ),
+            )
+            for input_type in (_I64, _INDEX)
+        ),
+        _conversion_rule(
+            index.index_cast,
+            _I32,
+            _OFFSET,
+            "x86.scalar.movzx.gpr64.gpr32",
+            descriptor_lookup,
+        ),
+        *(
+            _conversion_rule(
+                index.index_cast,
+                input_type,
+                _I32,
+                "x86.scalar.mov.trunc.gpr32.gpr64",
+                descriptor_lookup,
+            )
+            for input_type in (_INDEX, _OFFSET)
+        ),
         _conversion_alias_rule(scalar_conversion.scalar_bitcast, _F8E4M3, _I8),
         _conversion_alias_rule(scalar_conversion.scalar_bitcast, _F8E5M2, _I8),
         _conversion_alias_rule(scalar_conversion.scalar_bitcast, _F16, _I16),

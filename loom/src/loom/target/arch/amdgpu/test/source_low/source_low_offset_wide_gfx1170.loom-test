@@ -103,8 +103,8 @@ low.func.def target<amdgpu.rdna4m.core>(@target) abi(hal_kernel) @offset_scale_d
 
 amdgpu.target<gfx1170> @target
 
-func.def target(@target) @offset_scale_lane(%elements: vector<2xi32>, %stride: offset) -> (offset) {
-  %raw = vector.extract %elements[0] : vector<2xi32> -> i32
+func.def target(@target) @offset_scale_lane(%elements: vector<4xi32>, %stride: offset) -> (offset) {
+  %raw = vector.extract %elements[0] : vector<4xi32> -> i32
   %unsigned = index.cast %raw : i32 to offset
   %element = index.cast %unsigned : offset to index
   %bytes = index.scale %element, %stride : index, offset -> offset
@@ -112,8 +112,8 @@ func.def target(@target) @offset_scale_lane(%elements: vector<2xi32>, %stride: o
 }
 
 // ----
-low.func.def target<amdgpu.rdna4m.core>(@target) abi(hal_kernel) @offset_scale_lane(%elements: reg<amdgpu.vgpr x2>, %stride: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
-  %element = slice %elements[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+low.func.def target<amdgpu.rdna4m.core>(@target) abi(hal_kernel) @offset_scale_lane(%elements: reg<amdgpu.vgpr x4>, %stride: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %element = slice %elements[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %11 = v_mov_b32 0
   %13 = slice %stride[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %14 = v_mov_b32_copy %13
@@ -144,5 +144,30 @@ func.def target(@target) @offset_scale_bounded(%element: index) -> (offset) {
 low.func.def target<amdgpu.rdna4m.core>(@target) abi(hal_kernel) @offset_scale_bounded(%bounded: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
   %stride = s_mov_b32 4
   %bytes = s_mul_i32 %bounded, %stride
+  return %bytes
+}
+
+// ====
+
+amdgpu.target<gfx1170> @target
+
+func.def target(@target) @offset_scale_nonnegative(%element_input: index, %stride: offset) -> (offset) {
+  %element = index.assume %element_input [range(%element_input, 0, 2147483647)] : index
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ----
+low.func.def target<amdgpu.rdna4m.core>(@target) abi(hal_kernel) @offset_scale_nonnegative(%element: reg<amdgpu.sgpr>, %stride: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr x2>) asm {
+  %8 = s_mov_b32 0
+  %12 = slice %stride[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %13 = slice %stride[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %14 = s_mul_i32 %element, %12
+  %15 = s_mul_hi_u32 %element, %12
+  %16 = s_mul_i32 %element, %13
+  %17 = s_mul_i32 %8, %12
+  %18 = s_add_u32 %15, %16
+  %19 = s_add_u32 %18, %17
+  %bytes = concat(%14, %19) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   return %bytes
 }

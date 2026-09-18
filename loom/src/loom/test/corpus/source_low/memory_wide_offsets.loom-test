@@ -4,7 +4,9 @@ kernel.def @wide_offset_unsigned_index() {
   %unit = index.constant 1 : index
   %lane_count = index.constant 64 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lane_count, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %base: i32) {
+} launch(%input_storage: buffer, %output_storage: buffer, %base: i32) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %lane = kernel.workitem.id<x> : index
   %lane_bits = index.cast %lane : index to i32
   %wrapped = scalar.addi %base, %lane_bits : i32
@@ -25,7 +27,10 @@ kernel.def @wide_offset_unsigned_index() {
 kernel.def @wide_offset_uniform() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %byte_offset: offset) {
+} launch(%input_storage: buffer, %output_storage: buffer, %byte_offset_input: offset) {
+  %byte_offset = index.assume %byte_offset_input [mul(%byte_offset_input, 4)] : offset
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %buffer_base = index.constant 0 : offset
   %input_view = buffer.view %input[%byte_offset] : buffer -> view<1xi32>
   %output_view = buffer.view %output[%buffer_base] : buffer -> view<1xi32>
@@ -40,11 +45,16 @@ kernel.def @wide_offset_loaded_lane() {
   %unit = index.constant 1 : index
   %lanes = index.constant 64 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %offsets: buffer) {
+} launch(%input_storage: buffer, %output_storage: buffer, %offsets_storage: buffer) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
+  %offsets = buffer.assume.alignment %offsets_storage {minimum_alignment = 8} : buffer
   %lane = kernel.workitem.id<x> : index
   %buffer_base = index.constant 0 : offset
   %offset_view = buffer.view %offsets[%buffer_base] : buffer -> view<64xi64>
-  %raw = view.load %offset_view[%lane] : view<64xi64> -> i64
+  %raw_bits = view.load %offset_view[%lane] : view<64xi64> -> i64
+  %offset_mask = scalar.constant 9223372036854775804 : i64
+  %raw = scalar.andi %raw_bits, %offset_mask : i64
   %byte_offset = index.cast %raw : i64 to offset
   %input_view = buffer.view %input[%byte_offset] : buffer -> view<1xi32>
   %output_view = buffer.view %output[%buffer_base] : buffer -> view<64xi32>
@@ -58,7 +68,9 @@ kernel.def @wide_offset_varying_record_stride() {
   %unit = index.constant 1 : index
   %lanes = index.constant 2 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer) {
+} launch(%input_storage: buffer, %output_storage: buffer) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %lane = kernel.workitem.id<x> : index
   %buffer_base = index.constant 0 : offset
   %input_view = buffer.view %input[%buffer_base] : buffer -> view<2x1073741825xi32>
@@ -74,7 +86,9 @@ kernel.def @wide_offset_varying_dynamic_dimensions() {
   %unit = index.constant 1 : index
   %lanes = index.constant 64 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %columns_input: index) {
+} launch(%input_storage: buffer, %output_storage: buffer, %columns_input: index) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %columns = index.assume %columns_input [range(%columns_input, 1, 2147483647)] : index
   %lane = kernel.workitem.id<x> : index
   %buffer_base = index.constant 0 : offset
@@ -91,7 +105,9 @@ kernel.def @wide_offset_multiple_dynamic_factors() {
   %unit = index.constant 1 : index
   %lanes = index.constant 64 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %rows_input: index, %columns_input: index) {
+} launch(%input_storage: buffer, %output_storage: buffer, %rows_input: index, %columns_input: index) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %rows = index.assume %rows_input [range(%rows_input, 1, 1048576)] : index
   %columns = index.assume %columns_input [range(%columns_input, 1, 1048576)] : index
   %lane = kernel.workitem.id<x> : index
@@ -110,7 +126,9 @@ kernel.def @wide_offset_varying_stride_factor() {
   %groups = index.constant 2 : index
   %lanes = index.constant 64 : index
   kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %columns_input: index) {
+} launch(%input_storage: buffer, %output_storage: buffer, %columns_input: index) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %columns_base = index.assume %columns_input [range(%columns_input, 1, 2147483584)] : index
   %group = kernel.workgroup.id<x> : index
   %lane = kernel.workitem.id<x> : index
@@ -129,7 +147,9 @@ kernel.def @wide_offset_large_power_two_stride() {
   %unit = index.constant 1 : index
   %lanes = index.constant 2 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer) {
+} launch(%input_storage: buffer, %output_storage: buffer) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %lane = kernel.workitem.id<x> : index
   %buffer_base = index.constant 0 : offset
   %stride = index.constant 4294967296 : offset
@@ -148,7 +168,9 @@ kernel.def @wide_offset_large_record_stride() {
   %rows = index.constant 2 : index
   %lanes = index.constant 64 : index
   kernel.launch.config workgroups(%rows, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer) {
+} launch(%input_storage: buffer, %output_storage: buffer) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %row = kernel.workgroup.id<x> : index
   %lane = kernel.workitem.id<x> : index
   %buffer_base = index.constant 0 : offset
@@ -165,7 +187,10 @@ kernel.def @wide_offset_dynamic_stride() {
   %unit = index.constant 1 : index
   %lanes = index.constant 64 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %stride: offset) {
+} launch(%input_storage: buffer, %output_storage: buffer, %stride_input: offset) {
+  %stride = index.assume %stride_input [mul(%stride_input, 4)] : offset
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %lane = kernel.workitem.id<x> : index
   %buffer_base = index.constant 0 : offset
   %byte_offset = index.scale %lane, %stride : index, offset -> offset
@@ -183,7 +208,9 @@ kernel.def @wide_offset_dynamic_dimensions() {
   %rows = index.constant 2 : index
   %lanes = index.constant 64 : index
   kernel.launch.config workgroups(%rows, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %columns_input: index) {
+} launch(%input_storage: buffer, %output_storage: buffer, %columns_input: index) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %columns = index.assume %columns_input [range(%columns_input, 64, 2147483647)] : index
   %row = kernel.workgroup.id<x> : index
   %lane = kernel.workitem.id<x> : index
@@ -201,7 +228,11 @@ kernel.def @wide_offset_mixed_terms() {
   %unit = index.constant 1 : index
   %lanes = index.constant 64 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
-} launch(%input: buffer, %output: buffer, %base: offset, %stride: offset) {
+} launch(%input_storage: buffer, %output_storage: buffer, %base_input: offset, %stride_input: offset) {
+  %base = index.assume %base_input [mul(%base_input, 4)] : offset
+  %stride = index.assume %stride_input [mul(%stride_input, 4)] : offset
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
   %lane = kernel.workitem.id<x> : index
   %buffer_base = index.constant 0 : offset
   %lane_offset = index.scale %lane, %stride : index, offset -> offset

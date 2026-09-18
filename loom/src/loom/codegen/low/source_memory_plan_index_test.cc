@@ -92,6 +92,7 @@ TEST_F(SourceMemoryPlanTest, DynamicDenseLoadClassifiesWorkitemIndex) {
             LOOM_LOW_SOURCE_MEMORY_DYNAMIC_INDEX_SOURCE_WORKITEM_ID);
   EXPECT_EQ(plan.dynamic_terms[0].dimension, LOOM_KERNEL_DIMENSION_X);
   EXPECT_EQ(plan.dynamic_terms[0].axis, 0u);
+  EXPECT_EQ(plan.source_index_byte_stride, 4);
   EXPECT_EQ(plan.dynamic_terms[0].byte_stride, 4);
   EXPECT_EQ(plan.dynamic_terms[0].byte_shift, 2u);
   EXPECT_EQ(plan.vector_lane_byte_stride, 4);

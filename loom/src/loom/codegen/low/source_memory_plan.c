@@ -1383,6 +1383,9 @@ static bool loom_low_source_memory_access_plan_from_components(
     int64_t dynamic_index_multiplier = 1;
     int64_t dynamic_index_offset = 0;
     const int64_t expression_byte_stride = byte_stride;
+    if (dynamic_axis_count == 1 && stride_value_count == 0) {
+      out_plan->source_index_byte_stride = expression_byte_stride;
+    }
     loom_value_facts_t expression_facts =
         loom_value_fact_table_lookup(fact_table, source_index);
 

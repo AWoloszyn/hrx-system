@@ -1,0 +1,192 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/memory_scalar_wide_offsets.loom-test
+// RUN: emit source-low output=low
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_wide_byte_offset(%input_storage: buffer, %output_storage: buffer, %byte_offset_input: offset) -> (i32) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
+  %byte_offset = index.assume %byte_offset_input [mul(%byte_offset_input, 4)] : offset
+  %input_view = buffer.view %input[%byte_offset] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%byte_offset] : buffer -> view<1xi32>
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  view.store %loaded, %output_view[0] : i32, view<1xi32>
+  func.return %loaded : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_wide_byte_offset(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>, %byte_offset: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %loaded = mov.load.indexed.gpr32 %input_view, %byte_offset {disp32 = 0, scale = 1}
+  mov.store.indexed.gpr32 %loaded, %output_view, %byte_offset {disp32 = 0, scale = 1}
+  return %loaded
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_wide_scaled_index(%input_storage: buffer, %output_storage: buffer, %element_input: index) -> (i32) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
+  %element = index.assume %element_input [range(%element_input, 0, 2147483647)] : index
+  %element_bytes = index.constant 4 : offset
+  %byte_offset = index.scale %element, %element_bytes : index, offset -> offset
+  %input_view = buffer.view %input[%byte_offset] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%byte_offset] : buffer -> view<1xi32>
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  view.store %loaded, %output_view[0] : i32, view<1xi32>
+  func.return %loaded : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_wide_scaled_index(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>, %element: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %16 = mov.imm64 4
+  %17 = copy %element : reg<x86.gpr64> -> reg<x86.gpr64>
+  %18 = imul.gpr64 %17, %16
+  %loaded = mov.load.indexed.gpr32 %input_view, %18 {disp32 = 0, scale = 1}
+  %21 = copy %element : reg<x86.gpr64> -> reg<x86.gpr64>
+  %22 = imul.gpr64 %21, %16
+  mov.store.indexed.gpr32 %loaded, %output_view, %22 {disp32 = 0, scale = 1}
+  return %loaded
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_wide_static_base(%input_storage: buffer, %output_storage: buffer) -> (i32) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
+  %byte_offset = index.constant 1099511627784 : offset
+  %input_view = buffer.view %input[%byte_offset] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%byte_offset] : buffer -> view<1xi32>
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  view.store %loaded, %output_view[0] : i32, view<1xi32>
+  func.return %loaded : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_wide_static_base(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %12 = mov.imm64 1099511627784
+  %loaded = mov.load.indexed.gpr32 %input_view, %12 {disp32 = 0, scale = 1}
+  mov.store.indexed.gpr32 %loaded, %output_view, %12 {disp32 = 0, scale = 1}
+  return %loaded
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_wide_dynamic_dimensions(%input_storage: buffer, %output_storage: buffer, %row_input: index, %columns_input: index) -> (i32) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
+  %row = index.assume %row_input [range(%row_input, 0, 1)] : index
+  %columns = index.assume %columns_input [range(%columns_input, 1, 2147483647)] : index
+  %buffer_base = index.constant 0 : offset
+  %input_view = buffer.view %input[%buffer_base] : buffer -> view<2x[%columns]xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<2x[%columns]xi32>
+  %loaded = view.load %input_view[%row, 0] : view<2x[%columns]xi32> -> i32
+  view.store %loaded, %output_view[%row, 0] : i32, view<2x[%columns]xi32>
+  func.return %loaded : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_wide_dynamic_dimensions(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>, %row: reg<x86.gpr64>, %columns: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %18 = copy %row : reg<x86.gpr64> -> reg<x86.gpr64>
+  %19 = imul.gpr64 %18, %columns
+  %20 = mov.imm64 4
+  %21 = copy %19 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %22 = imul.gpr64 %21, %20
+  %loaded = mov.load.indexed.gpr32 %input_view, %22 {disp32 = 0, scale = 1}
+  %24 = copy %row : reg<x86.gpr64> -> reg<x86.gpr64>
+  %25 = imul.gpr64 %24, %columns
+  %27 = copy %25 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %28 = imul.gpr64 %27, %20
+  mov.store.indexed.gpr32 %loaded, %output_view, %28 {disp32 = 0, scale = 1}
+  return %loaded
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_wide_mixed_base(%input_storage: buffer, %output_storage: buffer, %byte_offset_input: offset) -> (i32) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 4} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 4} : buffer
+  %byte_offset = index.assume %byte_offset_input [mul(%byte_offset_input, 4)] : offset
+  %static_base = index.constant 1099511627784 : offset
+  %combined_offset = index.add %byte_offset, %static_base : offset
+  %input_view = buffer.view %input[%combined_offset] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%combined_offset] : buffer -> view<1xi32>
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  view.store %loaded, %output_view[0] : i32, view<1xi32>
+  func.return %loaded : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_wide_mixed_base(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>, %byte_offset: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %16 = mov.imm64 1099511627784
+  %17 = copy %16 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %18 = add.gpr64 %17, %byte_offset
+  %loaded = mov.load.indexed.gpr32 %input_view, %18 {disp32 = 0, scale = 1}
+  %21 = copy %16 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %22 = add.gpr64 %21, %byte_offset
+  mov.store.indexed.gpr32 %loaded, %output_view, %22 {disp32 = 0, scale = 1}
+  return %loaded
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @vector_wide_static_base(%input_storage: buffer, %output_storage: buffer) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 16} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 16} : buffer
+  %byte_offset = index.constant 1099511627792 : offset
+  %input_view = buffer.view %input[%byte_offset] : buffer -> view<4xi32>
+  %output_view = buffer.view %output[%byte_offset] : buffer -> view<4xi32>
+  %loaded = vector.load %input_view[0] : view<4xi32> -> vector<4xi32>
+  vector.store %loaded, %output_view[0] : vector<4xi32>, view<4xi32>
+  func.return
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @vector_wide_static_base(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) asm {
+  %10 = mov.imm64 1099511627792
+  %loaded = vmovdqu32.load.indexed.xmm %input_view, %10 {disp32 = 0, scale = 1}
+  vmovdqu32.store.indexed.xmm %loaded, %output_view, %10 {disp32 = 0, scale = 1}
+  return
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @vector_wide_dynamic_dimensions(%input_storage: buffer, %output_storage: buffer, %row_input: index, %columns_input: index) {
+  %input = buffer.assume.alignment %input_storage {minimum_alignment = 16} : buffer
+  %output = buffer.assume.alignment %output_storage {minimum_alignment = 16} : buffer
+  %row = index.assume %row_input [range(%row_input, 0, 1)] : index
+  %columns = index.assume %columns_input [range(%columns_input, 4, 2147483647), mul(%columns_input, 4)] : index
+  %buffer_base = index.constant 0 : offset
+  %input_view = buffer.view %input[%buffer_base] : buffer -> view<2x[%columns]xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<2x[%columns]xi32>
+  %loaded = vector.load %input_view[%row, 0] : view<2x[%columns]xi32> -> vector<4xi32>
+  vector.store %loaded, %output_view[%row, 0] : vector<4xi32>, view<2x[%columns]xi32>
+  func.return
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @vector_wide_dynamic_dimensions(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>, %row: reg<x86.gpr64>, %columns: reg<x86.gpr64>) asm {
+  %16 = copy %row : reg<x86.gpr64> -> reg<x86.gpr64>
+  %17 = imul.gpr64 %16, %columns
+  %18 = mov.imm64 4
+  %19 = copy %17 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %20 = imul.gpr64 %19, %18
+  %loaded = vmovdqu32.load.indexed.xmm %input_view, %20 {disp32 = 0, scale = 1}
+  %22 = copy %row : reg<x86.gpr64> -> reg<x86.gpr64>
+  %23 = imul.gpr64 %22, %columns
+  %25 = copy %23 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %26 = imul.gpr64 %25, %18
+  vmovdqu32.store.indexed.xmm %loaded, %output_view, %26 {disp32 = 0, scale = 1}
+  return
+}

@@ -252,6 +252,10 @@ typedef struct loom_low_source_memory_access_plan_t {
   // dynamic index into |static_byte_offset|. Original source index operands
   // cannot be combined with the canonical static offset when this is true.
   bool source_index_static_offset_extracted;
+  // Byte stride of the sole authored dynamic coordinate when its axis has a
+  // static stride. Zero when multiple coordinates or dynamic extents prevent
+  // using one source index directly with an instruction's static scale.
+  int64_t source_index_byte_stride;
   // Optional source expressions equivalent to contiguous canonical term
   // ranges. These preserve reusable SSA provenance without changing the
   // canonical address representation used for analysis.

@@ -34,8 +34,8 @@ func.def @offset_scale_dynamic_stride(%element: index, %stride: offset) -> (offs
 
 // ====
 
-func.def @offset_scale_lane(%elements: vector<2xi32>, %stride: offset) -> (offset) {
-  %raw = vector.extract %elements[0] : vector<2xi32> -> i32
+func.def @offset_scale_lane(%elements: vector<4xi32>, %stride: offset) -> (offset) {
+  %raw = vector.extract %elements[0] : vector<4xi32> -> i32
   %unsigned = index.cast %raw : i32 to offset
   %element = index.cast %unsigned : offset to index
   %bytes = index.scale %element, %stride : index, offset -> offset
@@ -48,5 +48,13 @@ func.def @offset_scale_bounded(%element: index) -> (offset) {
   %bounded = index.assume %element [range(%element, 0, 1023)] : index
   %stride = index.constant 4 : offset
   %bytes = index.scale %bounded, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ====
+
+func.def @offset_scale_nonnegative(%element_input: index, %stride: offset) -> (offset) {
+  %element = index.assume %element_input [range(%element_input, 0, 2147483647)] : index
+  %bytes = index.scale %element, %stride : index, offset -> offset
   func.return %bytes : offset
 }
