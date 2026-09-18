@@ -255,6 +255,7 @@ iree_py_library(
     "descriptors/scalar_float.py"
     "descriptors/sets.py"
     "descriptors/tensor.py"
+    "descriptors/timing.py"
     "descriptors/workgroup.py"
   DEPS
     loom::py::loom::target::arch::amdgpu::encoding_info
@@ -297,6 +298,7 @@ iree_py_test(
     "descriptors/rdna35_test.py"
     "descriptors/rdna4_test.py"
     "descriptors/rdna4m_test.py"
+    "descriptors/timing_test.py"
     "descriptors_test.py"
     "isa_xml_test.py"
     "low_aliases_test.py"
@@ -306,6 +308,7 @@ iree_py_test(
     "loom.target.arch.amdgpu.descriptors.rdna4_test"
     "loom.target.arch.amdgpu.descriptors.rdna35_test"
     "loom.target.arch.amdgpu.descriptors.rdna4m_test"
+    "loom.target.arch.amdgpu.descriptors.timing_test"
     "loom.target.arch.amdgpu.descriptors_test"
     "loom.target.arch.amdgpu.low_aliases_test"
   DEPS

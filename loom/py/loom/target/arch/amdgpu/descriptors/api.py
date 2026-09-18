@@ -56,6 +56,7 @@ from .rdna4m import (
 )
 from .sets import *
 from .tensor import _gfx125x_tensor_descriptors
+from .timing import _with_valu_sgpr_timing
 
 
 def _descriptor_has_memory_effect(descriptor: Descriptor) -> bool:
@@ -1442,6 +1443,8 @@ class _AmdgpuCoreDescriptorSetBuilder:
     extra_descriptors: tuple[Descriptor, ...] = ()
     # Builder behavior flags.
     flags: int = 0
+    # Estimated VALU-to-SGPR separation; zero uses schedule-class timing.
+    valu_sgpr_separation_cycles: int = 0
 
 
 _GFX125X_EXTRA_DESCRIPTORS = (
@@ -1468,25 +1471,31 @@ _AMDGPU_CORE_DESCRIPTOR_SET_BUILDERS = {
         overlay_rows=_gfx9_4_generic_core_overlays,
         overlay_descriptors=_gfx9_4_generic_core_overlay_descriptors,
     ),
+    # LLVM SISchedule.td models RDNA Write32Bit results at five cycles.
+    # Use that estimate for VALU-produced SGPRs independently of class latency.
     "rdna3": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_RDNA3_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx11_core_overlays,
         overlay_descriptors=_gfx11_core_overlay_descriptors,
         extra_descriptors=(_s_delay_alu_descriptor(),),
     ),
     "gfx11_generic": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_GFX11_GENERIC_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx11_core_overlays,
         overlay_descriptors=_gfx11_core_overlay_descriptors,
         extra_descriptors=(_s_delay_alu_descriptor(),),
     ),
     "gfx12_generic": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_GFX12_GENERIC_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx12_core_overlays,
         overlay_descriptors=_gfx12_core_overlay_descriptors,
         extra_descriptors=(_s_delay_alu_descriptor(),),
     ),
     "gfx12_5_generic": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_GFX12_5_GENERIC_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx12_5_generic_core_overlays,
         overlay_descriptors=_gfx12_5_generic_core_overlay_descriptors,
@@ -1494,12 +1503,14 @@ _AMDGPU_CORE_DESCRIPTOR_SET_BUILDERS = {
         flags=_AMDGPU_CORE_DESCRIPTOR_SET_BUILDER_FLAG_GFX125X,
     ),
     "rdna3_5": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_RDNA3_5_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx115x_core_overlays,
         overlay_descriptors=_gfx115x_core_overlay_descriptors,
         extra_descriptors=(_s_delay_alu_descriptor(),),
     ),
     "rdna4m": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_RDNA4M_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_rdna4m_core_overlays,
         overlay_descriptors=_rdna4m_core_overlay_descriptors,
@@ -1517,12 +1528,14 @@ _AMDGPU_CORE_DESCRIPTOR_SET_BUILDERS = {
         extra_descriptors=(_s_delay_alu_descriptor(),),
     ),
     "rdna4": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_RDNA4_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx12_core_overlays,
         overlay_descriptors=_gfx12_core_overlay_descriptors,
         extra_descriptors=(_s_delay_alu_descriptor(),),
     ),
     "rdna4_gfx125x": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_RDNA4_GFX125X_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx125x_core_overlays,
         overlay_descriptors=_gfx125x_core_overlay_descriptors,
@@ -1530,6 +1543,7 @@ _AMDGPU_CORE_DESCRIPTOR_SET_BUILDERS = {
         flags=_AMDGPU_CORE_DESCRIPTOR_SET_BUILDER_FLAG_GFX125X,
     ),
     "rdna4_gfx1250_a0": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_RDNA4_GFX1250_A0_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx125x_core_overlays,
         overlay_descriptors=_gfx125x_core_overlay_descriptors,
@@ -1538,6 +1552,7 @@ _AMDGPU_CORE_DESCRIPTOR_SET_BUILDERS = {
         flags=_AMDGPU_CORE_DESCRIPTOR_SET_BUILDER_FLAG_GFX125X,
     ),
     "rdna4_gfx1251": _AmdgpuCoreDescriptorSetBuilder(
+        valu_sgpr_separation_cycles=5,
         base=_AMDGPU_RDNA4_GFX1251_CORE_DESCRIPTOR_SET_BASE,
         overlay_rows=_gfx125x_core_overlays,
         overlay_descriptors=_gfx125x_core_overlay_descriptors,
@@ -1609,6 +1624,10 @@ def _build_amdgpu_core_descriptor_set_from_spec(
         descriptor_set, enable_gfx125x_xcnt=is_gfx125x
     )
     descriptor_set = _with_instruction_classes(descriptor_set)
+    if builder.valu_sgpr_separation_cycles:
+        descriptor_set = _with_valu_sgpr_timing(
+            descriptor_set, builder.valu_sgpr_separation_cycles
+        )
     # Execution pipelines overlap, but a wave issues one encoded instruction
     # at a time. A VOPD packet still occupies one instruction issue slot.
     descriptor_set = replace(

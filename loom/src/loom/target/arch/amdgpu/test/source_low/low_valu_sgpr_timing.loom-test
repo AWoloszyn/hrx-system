@@ -1,0 +1,44 @@
+// RUN: emit amdgpu-assembly @compare_masks strategy=resource-stall
+
+// Independent compares issue before scalar instructions consume their masks.
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @compare_masks(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>, %mask: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr x2>) asm {
+  %equal = v_cmp_eq_f32 %lhs, %rhs
+  %greater = v_cmp_gt_f32 %lhs, %rhs
+  %equal_masked = s_and_b64 %equal, %mask
+  %selected = s_or_b64 %greater, %equal_masked
+  return %selected
+}
+
+// ----
+  v_cmp_eq_f32 s[2:3], v0, v1
+  v_cmp_gt_f32 s[4:5], v0, v1
+  s_delay_alu instid0(VALU_DEP_2)
+  s_and_b64 s[0:1], s[2:3], s[0:1]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_or_b64 s[0:1], s[4:5], s[0:1]
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @read_lanes strategy=resource-stall
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @read_lanes(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>, %mask: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %left_lane = v_readfirstlane_b32 %lhs
+  %right_lane = v_readfirstlane_b32 %rhs
+  %left_masked = s_and_b32 %left_lane, %mask
+  %selected = s_or_b32 %right_lane, %left_masked
+  return %selected
+}
+
+// ----
+  v_readfirstlane_b32 s1, v0
+  v_readfirstlane_b32 s2, v1
+  s_delay_alu instid0(VALU_DEP_2)
+  s_and_b32 s0, s1, s0
+  s_delay_alu instid0(VALU_DEP_1)
+  s_or_b32 s0, s2, s0
+  s_endpgm

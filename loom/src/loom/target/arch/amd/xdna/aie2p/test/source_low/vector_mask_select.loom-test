@@ -498,3 +498,52 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @f64_spla
   %splat = vbcst.64 %value
   return %splat
 }
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @f32_compare_masks(%lhs: f32, %rhs: f32, %tie_mask: i1) -> (i1) {
+  %equal = scalar.cmpf oeq, %lhs, %rhs : f32
+  %greater = scalar.cmpf ogt, %lhs, %rhs : f32
+  %equal_masked = scalar.andi %equal, %tie_mask : i1
+  %selected = scalar.ori %greater, %equal_masked : i1
+  func.return %selected : i1
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @f32_compare_masks(%lhs: reg<aie2p.er>, %rhs: reg<aie2p.er>, %tie_mask: reg<aie2p.er>) -> (reg<aie2p.er>) asm {
+  %12 = mov.i32 2147483647
+  %15 = mov.short 1
+  %16 = mov.i32 2139095040
+  %17 = and %lhs, %12
+  %18 = and %rhs, %12
+  %19 = ltu %16, %17
+  %20 = ltu %16, %18
+  %21 = or %19, %20
+  %22 = or %17, %18
+  %23 = eqz %22
+  %24 = eq %lhs, %rhs
+  %25 = or %24, %23
+  %41 = xor %21, %15
+  %equal = and %25, %41
+  %44 = mov.i32 -2147483648
+  %45 = mov.short -1
+  %57 = and %lhs, %44
+  %58 = xor %lhs, %45
+  %59 = xor %lhs, %44
+  %60 = copy %57 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %61 = sel.nez %58, %59, %60
+  %62 = and %rhs, %44
+  %63 = xor %rhs, %45
+  %64 = xor %rhs, %44
+  %65 = copy %62 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %66 = sel.nez %63, %64, %65
+  %67 = xor %23, %15
+  %70 = ltu %66, %61
+  %71 = and %70, %67
+  %greater = and %71, %41
+  %equal_masked = and %equal, %tie_mask
+  %selected = or %greater, %equal_masked
+  return %selected
+}
