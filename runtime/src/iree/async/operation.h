@@ -271,12 +271,21 @@ typedef struct iree_async_operation_t {
   // cannot use an operation pool.
   iree_async_operation_pool_t* pool;
 
-  // LINKED chain continuation pointer (proactor-internal).
-  // When this operation has IREE_ASYNC_OPERATION_FLAG_LINKED set, points to
-  // the next operation in the chain. On completion, the proactor submits
-  // continuations (on success) or cancels them (on failure).
-  // Callers must not access this field.
-  struct iree_async_operation_t* linked_next;
+  // Proactor-managed continuation or deferred completion state. Continuation
+  // links are consumed before a backend stores a pending status, making the
+  // two representations mutually exclusive.
+  union {
+    // LINKED chain continuation pointer. When this operation has
+    // IREE_ASYNC_OPERATION_FLAG_LINKED set, points to the next operation in
+    // the chain. On completion, the proactor submits continuations on success
+    // or cancels them on failure.
+    struct iree_async_operation_t* linked_next;
+
+    // Owned status while the operation is queued for deferred completion.
+    // The queue consumer transfers ownership out and resets this to OK before
+    // invoking the completion callback.
+    iree_status_t pending_status;
+  };
 
   // Tracing: timestamp of submission for latency measurement.
   IREE_TRACE(iree_time_t submit_time_ns;)

@@ -1,0 +1,329 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include <sys/eventfd.h>
+
+#include <vector>
+
+#include "iree/async/file.h"
+#include "iree/async/operations/file.h"
+#include "iree/async/operations/message.h"
+#include "iree/async/operations/net.h"
+#include "iree/async/operations/scheduling.h"
+#include "iree/async/platform/io_uring/api.h"
+#include "iree/testing/gtest.h"
+#include "iree/testing/status_matchers.h"
+
+extern "C" iree_async_operation_t*
+iree_async_proactor_io_uring_build_software_submission_list(
+    iree_async_operation_list_t operations);
+
+namespace {
+
+struct CompletionState {
+  int call_count = 0;
+  std::vector<iree_status_code_t> status_codes;
+
+  static void Callback(void* user_data, iree_async_operation_t* operation,
+                       iree_status_t status,
+                       iree_async_completion_flags_t flags) {
+    auto* state = static_cast<CompletionState*>(user_data);
+    (void)operation;
+    (void)flags;
+    ++state->call_count;
+    state->status_codes.push_back(iree_status_code(status));
+    iree_status_free(status);
+  }
+};
+
+struct ReuseCompletionState {
+  iree_host_size_t call_count = 0;
+
+  static void Callback(void* user_data, iree_async_operation_t* operation,
+                       iree_status_t status,
+                       iree_async_completion_flags_t flags) {
+    (void)flags;
+    auto* state = static_cast<ReuseCompletionState*>(user_data);
+    ++state->call_count;
+    iree_status_free(status);
+    iree_async_operation_initialize(operation, IREE_ASYNC_OPERATION_TYPE_NOP,
+                                    IREE_ASYNC_OPERATION_FLAG_NONE, Callback,
+                                    state);
+  }
+};
+
+TEST(IoUringSubmissionPlanTest, SurvivesPublishedOperationReuse) {
+  ReuseCompletionState completion;
+  iree_async_operation_t storage[7] = {};
+  const iree_async_operation_type_t types[] = {
+      IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV,
+      IREE_ASYNC_OPERATION_TYPE_NOP,
+      IREE_ASYNC_OPERATION_TYPE_NOP,
+      IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV,
+      IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV,
+      IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV,
+      IREE_ASYNC_OPERATION_TYPE_NOP,
+  };
+  iree_async_operation_t* operations[IREE_ARRAYSIZE(storage)] = {};
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(storage); ++i) {
+    iree_async_operation_flags_t flags = (i == 0 || i == 2 || i == 4)
+                                             ? IREE_ASYNC_OPERATION_FLAG_LINKED
+                                             : IREE_ASYNC_OPERATION_FLAG_NONE;
+    iree_async_operation_initialize(&storage[i], types[i], flags,
+                                    ReuseCompletionState::Callback,
+                                    &completion);
+    operations[i] = &storage[i];
+  }
+
+  iree_async_operation_t* software_operation =
+      iree_async_proactor_io_uring_build_software_submission_list(
+          iree_async_operation_list_make(operations,
+                                         IREE_ARRAYSIZE(operations)));
+  EXPECT_EQ(software_operation, &storage[2]);
+
+  // Kernel submission and a concurrent software completion may reuse earlier
+  // operations after the plan is built. Traversal must depend only on the
+  // captured intrusive links.
+  storage[0].completion_fn(storage[0].user_data, &storage[0], iree_ok_status(),
+                           IREE_ASYNC_COMPLETION_FLAG_NONE);
+  iree_async_operation_t* next_software_operation = software_operation->next;
+  software_operation->next = nullptr;
+  software_operation->completion_fn(software_operation->user_data,
+                                    software_operation, iree_ok_status(),
+                                    IREE_ASYNC_COMPLETION_FLAG_NONE);
+  EXPECT_EQ(next_software_operation, &storage[6]);
+
+  software_operation = next_software_operation;
+  next_software_operation = software_operation->next;
+  software_operation->next = nullptr;
+  software_operation->completion_fn(software_operation->user_data,
+                                    software_operation, iree_ok_status(),
+                                    IREE_ASYNC_COMPLETION_FLAG_NONE);
+  EXPECT_EQ(next_software_operation, nullptr);
+  EXPECT_EQ(completion.call_count, 3u);
+}
+
+class IoUringSubmitTest : public ::testing::Test {
+ protected:
+  static constexpr uint32_t kSubmissionQueueEntries = 8;
+
+  void SetUp() override {
+    iree_async_proactor_options_t options =
+        iree_async_proactor_options_default();
+    options.max_concurrent_operations = kSubmissionQueueEntries;
+    options.allowed_capabilities &=
+        ~IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING;
+    iree_status_t status = iree_async_proactor_create_io_uring(
+        options, iree_allocator_system(), &proactor_);
+    if (iree_status_is_unavailable(status)) {
+      iree_status_free(status);
+      GTEST_SKIP() << "io_uring is unavailable";
+    }
+    IREE_ASSERT_OK(status);
+  }
+
+  void TearDown() override {
+    DrainFillers();
+    iree_async_proactor_release(target_proactor_);
+    iree_async_proactor_release(proactor_);
+  }
+
+  void CreateTarget() {
+    iree_async_proactor_options_t options =
+        iree_async_proactor_options_default();
+    options.allowed_capabilities &=
+        ~IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING;
+    IREE_ASSERT_OK(iree_async_proactor_create_io_uring(
+        options, iree_allocator_system(), &target_proactor_));
+  }
+
+  template <typename Predicate>
+  void PollUntil(iree_async_proactor_t* proactor, Predicate condition) {
+    while (!condition()) {
+      iree_host_size_t completed_count = 0;
+      IREE_ASSERT_OK(iree_async_proactor_poll(proactor, iree_infinite_timeout(),
+                                              &completed_count));
+    }
+  }
+
+  void PollImmediate(iree_async_proactor_t* proactor) {
+    iree_host_size_t completed_count = 0;
+    iree_status_t status = iree_async_proactor_poll(
+        proactor, iree_immediate_timeout(), &completed_count);
+    if (iree_status_is_deadline_exceeded(status)) {
+      iree_status_free(status);
+    } else {
+      IREE_ASSERT_OK(status);
+    }
+  }
+
+  void FillSubmissionQueue() {
+    filler_timers_.resize(kSubmissionQueueEntries);
+    filler_operations_.resize(kSubmissionQueueEntries);
+    filler_completion_.call_count = 0;
+    filler_completion_.status_codes.clear();
+    for (uint32_t i = 0; i < kSubmissionQueueEntries; ++i) {
+      iree_async_timer_operation_t& timer = filler_timers_[i];
+      timer.base.type = IREE_ASYNC_OPERATION_TYPE_TIMER;
+      timer.base.completion_fn = CompletionState::Callback;
+      timer.base.user_data = &filler_completion_;
+      timer.deadline_ns = iree_time_now();
+      filler_operations_[i] = &timer.base;
+    }
+    IREE_ASSERT_OK(iree_async_proactor_submit(
+        proactor_, iree_async_operation_list_make(filler_operations_.data(),
+                                                  filler_operations_.size())));
+    filler_count_ = kSubmissionQueueEntries;
+  }
+
+  void DrainFillers() {
+    if (!proactor_ || filler_count_ == 0) {
+      return;
+    }
+    PollUntil(proactor_, [&] {
+      return filler_completion_.call_count == static_cast<int>(filler_count_);
+    });
+    filler_count_ = 0;
+    filler_operations_.clear();
+    filler_timers_.clear();
+  }
+
+  iree_async_proactor_t* proactor_ = nullptr;
+  iree_async_proactor_t* target_proactor_ = nullptr;
+  std::vector<iree_async_timer_operation_t> filler_timers_;
+  std::vector<iree_async_operation_t*> filler_operations_;
+  CompletionState filler_completion_;
+  uint32_t filler_count_ = 0;
+};
+
+TEST_F(IoUringSubmitTest, FullSqRejectsSequenceWithoutStartingIt) {
+  FillSubmissionQueue();
+
+  CompletionState sequence_completion;
+  iree_async_sequence_operation_t sequence = {};
+  sequence.base.type = IREE_ASYNC_OPERATION_TYPE_SEQUENCE;
+  sequence.base.completion_fn = CompletionState::Callback;
+  sequence.base.user_data = &sequence_completion;
+
+  CompletionState timer_completion;
+  iree_async_timer_operation_t timer = {};
+  timer.base.type = IREE_ASYNC_OPERATION_TYPE_TIMER;
+  timer.base.completion_fn = CompletionState::Callback;
+  timer.base.user_data = &timer_completion;
+  timer.deadline_ns = iree_time_now();
+
+  iree_async_operation_t* operations[] = {&sequence.base, &timer.base};
+  iree_async_operation_list_t operation_list =
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_async_proactor_submit(proactor_, operation_list));
+  EXPECT_EQ(sequence_completion.call_count, 0);
+  EXPECT_EQ(timer_completion.call_count, 0);
+
+  DrainFillers();
+  EXPECT_EQ(sequence_completion.call_count, 0);
+  EXPECT_EQ(timer_completion.call_count, 0);
+
+  IREE_ASSERT_OK(iree_async_proactor_submit(proactor_, operation_list));
+  PollUntil(proactor_, [&] {
+    return sequence_completion.call_count == 1 &&
+           timer_completion.call_count == 1;
+  });
+  EXPECT_EQ(sequence_completion.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+  EXPECT_EQ(timer_completion.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+}
+
+TEST_F(IoUringSubmitTest, MalformedTailDoesNotConsumeCloseOwnership) {
+  int file_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+  ASSERT_GE(file_fd, 0);
+  iree_async_file_t* file = nullptr;
+  IREE_ASSERT_OK(iree_async_file_import(
+      proactor_, iree_async_primitive_from_fd(file_fd), &file));
+
+  CompletionState close_completion;
+  iree_async_file_close_operation_t close_operation = {};
+  close_operation.base.type = IREE_ASYNC_OPERATION_TYPE_FILE_CLOSE;
+  close_operation.base.completion_fn = CompletionState::Callback;
+  close_operation.base.user_data = &close_completion;
+  close_operation.file = file;
+
+  CompletionState malformed_completion;
+  iree_async_socket_recv_operation_t malformed_operation = {};
+  malformed_operation.base.type = IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV;
+  malformed_operation.base.completion_fn = CompletionState::Callback;
+  malformed_operation.base.user_data = &malformed_completion;
+  malformed_operation.buffers.count = IREE_ASYNC_SOCKET_RECV_MAX_BUFFERS + 1;
+
+  iree_async_operation_t* operations[] = {&close_operation.base,
+                                          &malformed_operation.base};
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_async_proactor_submit(proactor_,
+                                 iree_async_operation_list_make(
+                                     operations, IREE_ARRAYSIZE(operations))));
+  EXPECT_EQ(close_completion.call_count, 0);
+  EXPECT_EQ(malformed_completion.call_count, 0);
+
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &close_operation.base));
+  PollUntil(proactor_, [&] { return close_completion.call_count == 1; });
+  EXPECT_EQ(close_completion.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+}
+
+TEST_F(IoUringSubmitTest, MalformedTailDoesNotPublishFallbackMessage) {
+  CreateTarget();
+
+  std::vector<uint64_t> received_messages;
+  iree_async_proactor_set_message_callback(
+      target_proactor_,
+      iree_async_proactor_message_callback_t{
+          +[](iree_async_proactor_t* proactor, uint64_t message_data,
+              void* user_data) {
+            (void)proactor;
+            static_cast<std::vector<uint64_t>*>(user_data)->push_back(
+                message_data);
+          },
+          &received_messages});
+
+  CompletionState message_completion;
+  iree_async_message_operation_t message = {};
+  message.base.type = IREE_ASYNC_OPERATION_TYPE_MESSAGE;
+  message.base.completion_fn = CompletionState::Callback;
+  message.base.user_data = &message_completion;
+  message.target = target_proactor_;
+  message.message_data = 0xA11CE;
+
+  CompletionState malformed_completion;
+  iree_async_socket_recv_operation_t malformed_operation = {};
+  malformed_operation.base.type = IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV;
+  malformed_operation.base.completion_fn = CompletionState::Callback;
+  malformed_operation.base.user_data = &malformed_completion;
+  malformed_operation.buffers.count = IREE_ASYNC_SOCKET_RECV_MAX_BUFFERS + 1;
+
+  iree_async_operation_t* operations[] = {&message.base,
+                                          &malformed_operation.base};
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_async_proactor_submit(proactor_,
+                                 iree_async_operation_list_make(
+                                     operations, IREE_ARRAYSIZE(operations))));
+  PollImmediate(target_proactor_);
+  EXPECT_TRUE(received_messages.empty());
+  EXPECT_EQ(message_completion.call_count, 0);
+  EXPECT_EQ(malformed_completion.call_count, 0);
+
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &message.base));
+  PollUntil(proactor_, [&] { return message_completion.call_count == 1; });
+  PollUntil(target_proactor_, [&] { return received_messages.size() == 1; });
+  EXPECT_EQ(received_messages, (std::vector<uint64_t>{0xA11CE}));
+  EXPECT_EQ(message_completion.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+}
+
+}  // namespace

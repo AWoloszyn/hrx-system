@@ -36,6 +36,7 @@
 #include "iree/async/platform/io_uring/defs.h"
 #include "iree/async/platform/io_uring/notification.h"
 #include "iree/async/platform/io_uring/proactor.h"
+#include "iree/async/platform/io_uring/proactor_validation.h"
 #include "iree/async/platform/io_uring/socket.h"
 #include "iree/async/semaphore.h"
 #include "iree/async/util/continuation.h"
@@ -196,20 +197,10 @@ static void iree_async_proactor_io_uring_fill_socket_accept(
 // Uses IORING_OP_RECV for single-buffer receives, IORING_OP_RECVMSG for
 // scatter- gather (multiple buffers). Retains the socket to ensure it outlives
 // the in-flight operation.
-static iree_status_t iree_async_proactor_io_uring_fill_socket_recv(
+static void iree_async_proactor_io_uring_fill_socket_recv(
     iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
   iree_async_socket_recv_operation_t* recv =
       (iree_async_socket_recv_operation_t*)base_operation;
-
-  // Validate buffer count.
-  if (recv->buffers.count > IREE_ASYNC_SOCKET_RECV_MAX_BUFFERS) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "recv buffer count %" PRIhsz
-                            " exceeds maximum %d; "
-                            "split into multiple operations or reduce buffers",
-                            recv->buffers.count,
-                            IREE_ASYNC_SOCKET_RECV_MAX_BUFFERS);
-  }
 
   // Clear output fields.
   recv->bytes_received = 0;
@@ -255,8 +246,6 @@ static iree_status_t iree_async_proactor_io_uring_fill_socket_recv(
   if (base_operation->flags & IREE_ASYNC_OPERATION_FLAG_MULTISHOT) {
     sqe->ioprio |= IREE_IORING_RECV_MULTISHOT;
   }
-
-  return iree_ok_status();
 }
 
 // Fills an SQE for a SOCKET_RECV_POOL operation.
@@ -264,44 +253,17 @@ static iree_status_t iree_async_proactor_io_uring_fill_socket_recv(
 // buffer from a provided buffer ring (PBUF_RING). On completion, the CQE
 // indicates which buffer was used. The operation's lease is populated with
 // the buffer index and span.
-static iree_status_t iree_async_proactor_io_uring_fill_socket_recv_pool(
+static void iree_async_proactor_io_uring_fill_socket_recv_pool(
     iree_async_proactor_io_uring_t* proactor, iree_io_uring_sqe_t* sqe,
     iree_async_operation_t* base_operation) {
   iree_async_socket_recv_pool_operation_t* recv_pool =
       (iree_async_socket_recv_pool_operation_t*)base_operation;
 
-  // Validate the buffer pool region.
-  // RECV_POOL requires a pool with a provided buffer ring (PBUF_RING), which
-  // is set up during slab registration when the pool has write access and the
-  // kernel supports multishot (5.19+). If the pool lacks a buffer ring, callers
-  // should use SOCKET_RECV with manual buffer management instead.
+  // Validation established that this is a local provided-buffer ring.
   iree_async_region_t* region = iree_async_buffer_pool_region(recv_pool->pool);
-  if (IREE_UNLIKELY(region->type != IREE_ASYNC_REGION_TYPE_IOURING)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "SOCKET_RECV_POOL requires a buffer pool registered with an io_uring "
-        "proactor; got region type %d",
-        (int)region->type);
-  }
-  // Region must belong to the submitting proactor.
-  // Buffer group IDs are ring-local; using a group ID from a different
-  // proactor's registration would select the wrong buffer pool.
-  if (IREE_UNLIKELY(region->proactor != &proactor->base)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "SOCKET_RECV_POOL buffer pool was registered with a different "
-        "proactor; buffer group IDs are ring-local and cannot be used "
-        "across proactors");
-  }
-  if (IREE_UNLIKELY(region->handles.iouring.buffer_group_id < 0)) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "SOCKET_RECV_POOL requires a buffer pool with a provided buffer ring "
-        "(buffer_group_id >= 0); this pool was registered without "
-        "IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE or the kernel lacks multishot "
-        "support (requires 5.19+). Use SOCKET_RECV with manual buffer "
-        "management instead.");
-  }
+  IREE_ASSERT(region->type == IREE_ASYNC_REGION_TYPE_IOURING);
+  IREE_ASSERT(region->proactor == &proactor->base);
+  IREE_ASSERT_GE(region->handles.iouring.buffer_group_id, 0);
 
   // Clear output fields.
   recv_pool->bytes_received = 0;
@@ -325,8 +287,6 @@ static iree_status_t iree_async_proactor_io_uring_fill_socket_recv_pool(
   } else {
     sqe->len = (uint32_t)region->buffer_size;
   }
-
-  return iree_ok_status();
 }
 
 // Result of checking if a span can use fixed-buffer zero-copy send.
@@ -338,110 +298,61 @@ typedef enum {
   IREE_ASYNC_FIXED_BUFFER_ELIGIBLE = 1,
 } iree_async_fixed_buffer_eligibility_t;
 
-// Checks if a span can use the fixed-buffer path for zero-copy send.
-//
-// Returns OK with ELIGIBLE if the span comes from a registered io_uring region
-// with indexed buffers and fits within a single buffer. The buffer index is
-// written to out_buffer_index.
-//
-// Returns OK with INELIGIBLE for legitimate fallback cases (no region,
-// non-io_uring region, unregistered, span crosses buffer boundary, or
-// region belongs to a different proactor).
-//
-// Returns error status for provably corrupt regions (buffer_size == 0 with
-// buffer_count > 0, or index overflow).
-static iree_status_t iree_async_span_check_fixed_buffer_send(
+// Queries whether a validated span can use fixed-buffer zero-copy send.
+static iree_async_fixed_buffer_eligibility_t
+iree_async_span_query_fixed_buffer_send(
     iree_async_proactor_io_uring_t* proactor, iree_async_span_t span,
-    iree_async_fixed_buffer_eligibility_t* out_eligibility,
     uint16_t* out_buffer_index) {
-  *out_eligibility = IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   *out_buffer_index = 0;
 
-  // No region = heap buffer, not registered.
   if (!span.region) {
-    return iree_ok_status();
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
   iree_async_region_t* region = span.region;
+  IREE_ASSERT(region->proactor == &proactor->base);
 
-  // Region must belong to the submitting proactor.
-  // Fixed buffer indices are ring-local; using indices from a different
-  // proactor's registration would access wrong memory.
-  if (region->proactor != &proactor->base) {
-    return iree_ok_status();
-  }
-
-  // Non-io_uring region = different backend (RDMA, dmabuf, etc.).
   if (region->type != IREE_ASYNC_REGION_TYPE_IOURING) {
-    return iree_ok_status();
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
 
-  // buffer_count == 0 = region not registered with indexed buffers.
   uint32_t buffer_count = region->buffer_count;
   if (buffer_count == 0) {
-    return iree_ok_status();
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
-
-  // From here on, the region claims to have indexed buffers.
-  // Validate invariants that should have been established at registration.
 
   iree_host_size_t buffer_size = region->buffer_size;
-
-  // Corrupt region: has indexed buffers but zero buffer_size.
-  // This would cause divide-by-zero and indicates registration bug or memory
-  // corruption.
+  IREE_ASSERT_GT(buffer_size, 0);
   if (IREE_UNLIKELY(buffer_size == 0)) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "io_uring region has buffer_count %" PRIu32
-                            " but buffer_size == 0; "
-                            "region was not properly registered",
-                            buffer_count);
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
 
-  // Must have read access for send operations.
   if (!(region->access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ)) {
-    return iree_ok_status();  // Not eligible, but not an error.
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
 
-  // Calculate which buffer this span starts in.
-  // Use uint64_t to avoid truncation before bounds check.
   uint64_t buffer_index_offset = span.offset / buffer_size;
-
-  // Span starts beyond registered buffer range.
   if (buffer_index_offset >= buffer_count) {
-    return iree_ok_status();
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
 
-  // Check if span fits entirely within one buffer.
-  uint32_t offset_in_buffer = (uint32_t)(span.offset % buffer_size);
+  iree_host_size_t offset_in_buffer = span.offset % buffer_size;
   if (offset_in_buffer + span.length > buffer_size) {
-    return iree_ok_status();
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
 
-  // Calculate final buffer index with overflow check.
   int32_t base_buffer_index = region->handles.iouring.base_buffer_index;
-
-  // -1 = region has indexed buffers for pool management but is not
-  // kernel-registered for zero-copy (e.g., RLIMIT_MEMLOCK too low).
   if (base_buffer_index < 0) {
-    return iree_ok_status();
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
 
   uint64_t final_index = (uint64_t)base_buffer_index + buffer_index_offset;
-
-  // Index overflow: registration allowed too many buffers or base_buffer_index
-  // is corrupt.
+  IREE_ASSERT_LE(final_index, UINT16_MAX);
   if (IREE_UNLIKELY(final_index > UINT16_MAX)) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "fixed buffer index %" PRIu64
-                            " exceeds uint16 maximum; "
-                            "base_buffer_index=%" PRId32 " + offset=%" PRIu64,
-                            final_index, base_buffer_index,
-                            buffer_index_offset);
+    return IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   }
 
-  *out_eligibility = IREE_ASYNC_FIXED_BUFFER_ELIGIBLE;
   *out_buffer_index = (uint16_t)final_index;
-  return iree_ok_status();
+  return IREE_ASYNC_FIXED_BUFFER_ELIGIBLE;
 }
 
 // Fills an SQE for a SOCKET_SEND operation.
@@ -452,21 +363,11 @@ static iree_status_t iree_async_span_check_fixed_buffer_send(
 // requirement - sends fall back to regular SEND/SENDMSG on kernels < 6.0 that
 // lack ZC support. Retains the socket to ensure it outlives the in-flight
 // operation.
-static iree_status_t iree_async_proactor_io_uring_fill_socket_send(
+static void iree_async_proactor_io_uring_fill_socket_send(
     iree_async_proactor_io_uring_t* proactor, iree_io_uring_sqe_t* sqe,
     iree_async_operation_t* base_operation) {
   iree_async_socket_send_operation_t* send =
       (iree_async_socket_send_operation_t*)base_operation;
-
-  // Validate buffer count.
-  if (send->buffers.count > IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "send buffer count %" PRIhsz
-                            " exceeds maximum %d; "
-                            "split into multiple operations or reduce buffers",
-                            send->buffers.count,
-                            IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS);
-  }
 
   // Zero-copy is determined by socket flags, not per-send flags.
   // The socket flag is set at creation (from option) or import time.
@@ -477,14 +378,12 @@ static iree_status_t iree_async_proactor_io_uring_fill_socket_send(
       proactor->capabilities, IREE_ASYNC_PROACTOR_CAPABILITY_ZERO_COPY_SEND);
   bool use_zero_copy = zero_copy_requested && zero_copy_available;
 
-  // Check fixed-buffer eligibility.
-  // The span check is pure validation and can fail on corrupt regions.
   iree_async_fixed_buffer_eligibility_t eligibility =
       IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   uint16_t fixed_buffer_index = 0;
   if (use_zero_copy && send->buffers.count == 1) {
-    IREE_RETURN_IF_ERROR(iree_async_span_check_fixed_buffer_send(
-        proactor, send->buffers.values[0], &eligibility, &fixed_buffer_index));
+    eligibility = iree_async_span_query_fixed_buffer_send(
+        proactor, send->buffers.values[0], &fixed_buffer_index);
   }
 
   // Clear output fields.
@@ -543,29 +442,17 @@ static iree_status_t iree_async_proactor_io_uring_fill_socket_send(
       sqe->ioprio |= IREE_IORING_SEND_ZC_REPORT_USAGE;
     }
   }
-
-  return iree_ok_status();
 }
 
 // Fills an SQE for a SOCKET_SENDTO operation.
 // Always uses IORING_OP_SENDMSG[_ZC] since we need msg_name for the destination
 // address. This works for both single-buffer and scatter-gather sends.
 // Retains the socket to ensure it outlives the in-flight operation.
-static iree_status_t iree_async_proactor_io_uring_fill_socket_sendto(
+static void iree_async_proactor_io_uring_fill_socket_sendto(
     iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation,
     iree_async_proactor_capabilities_t capabilities) {
   iree_async_socket_sendto_operation_t* sendto =
       (iree_async_socket_sendto_operation_t*)base_operation;
-
-  // Validate buffer count.
-  if (sendto->buffers.count > IREE_ASYNC_SOCKET_SENDTO_MAX_BUFFERS) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "sendto buffer count %" PRIhsz
-                            " exceeds maximum %d; "
-                            "split into multiple operations or reduce buffers",
-                            sendto->buffers.count,
-                            IREE_ASYNC_SOCKET_SENDTO_MAX_BUFFERS);
-  }
 
   // Clear output fields.
   sendto->bytes_sent = 0;
@@ -608,28 +495,16 @@ static iree_status_t iree_async_proactor_io_uring_fill_socket_sendto(
   if (use_zero_copy) {
     sqe->ioprio |= IREE_IORING_SEND_ZC_REPORT_USAGE;
   }
-
-  return iree_ok_status();
 }
 
 // Fills an SQE for a SOCKET_RECVFROM operation.
 // Always uses IORING_OP_RECVMSG since we need msg_name for the sender address.
 // This works for both single-buffer and scatter-gather receives.
 // Retains the socket to ensure it outlives the in-flight operation.
-static iree_status_t iree_async_proactor_io_uring_fill_socket_recvfrom(
+static void iree_async_proactor_io_uring_fill_socket_recvfrom(
     iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
   iree_async_socket_recvfrom_operation_t* recvfrom =
       (iree_async_socket_recvfrom_operation_t*)base_operation;
-
-  // Validate buffer count.
-  if (recvfrom->buffers.count > IREE_ASYNC_SOCKET_RECVFROM_MAX_BUFFERS) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "recvfrom buffer count %" PRIhsz
-                            " exceeds maximum %d; "
-                            "split into multiple operations or reduce buffers",
-                            recvfrom->buffers.count,
-                            IREE_ASYNC_SOCKET_RECVFROM_MAX_BUFFERS);
-  }
 
   // Clear output fields. The sender address length is set to the storage size;
   // the kernel will update it to the actual address length on completion.
@@ -659,8 +534,6 @@ static iree_status_t iree_async_proactor_io_uring_fill_socket_recvfrom(
   sqe->len = 1;  // Number of messages (always 1 for RECVMSG).
   sqe->msg_flags = 0;
   sqe->user_data = (uint64_t)(uintptr_t)base_operation;
-
-  return iree_ok_status();
 }
 
 // Fills an SQE for a SOCKET_CLOSE operation.
@@ -978,15 +851,31 @@ static void iree_async_proactor_io_uring_fill_notification_signal_event(
 // Semaphore operation helpers
 //===----------------------------------------------------------------------===//
 
-// Returns true if the operation type is a "software operation" — one that
-// executes entirely in userspace with no kernel SQE. Software ops run their
-// side effects (e.g., semaphore signal) during Phase 3 of submit, outside the
-// SQ lock, with callback delivery deferred to the poll thread via MPSC.
-static inline bool iree_async_proactor_io_uring_is_software_op(
+// Returns true for operation types executed inline while dispatching a
+// userspace continuation chain.
+static inline bool iree_async_proactor_io_uring_is_inline_software_op(
     iree_async_operation_type_t type) {
   return type == IREE_ASYNC_OPERATION_TYPE_NOP ||
          type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL ||
          type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_WAIT;
+}
+
+// Returns true if a planned MESSAGE operation uses the software message pool.
+static bool iree_async_proactor_io_uring_message_uses_fallback(
+    const iree_async_message_operation_t* message) {
+  return message->platform.io_uring.target_ring_fd < 0;
+}
+
+// Returns true for active operations that commit without a kernel SQE.
+static bool iree_async_proactor_io_uring_is_submission_software_op(
+    const iree_async_operation_t* operation) {
+  if (iree_async_proactor_io_uring_is_inline_software_op(operation->type) ||
+      operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+    return true;
+  }
+  return operation->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE &&
+         iree_async_proactor_io_uring_message_uses_fallback(
+             (const iree_async_message_operation_t*)operation);
 }
 
 // Returns true when a successful operation can produce a negative CQE result
@@ -994,11 +883,11 @@ static inline bool iree_async_proactor_io_uring_is_software_op(
 // every negative result as failure and would cancel the remaining chain before
 // the proactor can apply its operation-specific status mapping.
 static inline bool iree_async_proactor_io_uring_requires_userspace_continuation(
-    iree_async_operation_type_t type) {
-  return type == IREE_ASYNC_OPERATION_TYPE_TIMER ||
-         type == IREE_ASYNC_OPERATION_TYPE_FUTEX_WAIT ||
-         type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT ||
-         iree_async_proactor_io_uring_is_software_op(type);
+    const iree_async_operation_t* operation) {
+  return operation->type == IREE_ASYNC_OPERATION_TYPE_TIMER ||
+         operation->type == IREE_ASYNC_OPERATION_TYPE_FUTEX_WAIT ||
+         operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT ||
+         iree_async_proactor_io_uring_is_submission_software_op(operation);
 }
 
 // Returns true when a LINKED edge must be dispatched in userspace instead of
@@ -1006,9 +895,9 @@ static inline bool iree_async_proactor_io_uring_requires_userspace_continuation(
 static inline bool iree_async_proactor_io_uring_requires_userspace_link(
     iree_async_operation_t* operation, iree_async_operation_t* successor) {
   return iree_async_proactor_io_uring_requires_userspace_continuation(
-             operation->type) ||
+             operation) ||
          successor->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE ||
-         iree_async_proactor_io_uring_is_software_op(successor->type);
+         iree_async_proactor_io_uring_is_submission_software_op(successor);
 }
 
 // Advances an analysis pass over a submission batch and returns true when the
@@ -1034,6 +923,28 @@ static bool iree_async_proactor_io_uring_should_submit_batch_operation(
     *defer_chain_tail = true;
   }
   return true;
+}
+
+iree_async_operation_t*
+iree_async_proactor_io_uring_build_software_submission_list(
+    iree_async_operation_list_t operations) {
+  iree_async_operation_t* head = NULL;
+  iree_async_operation_t** tail = &head;
+  bool defer_chain_tail = false;
+  for (iree_host_size_t i = 0; i < operations.count; ++i) {
+    if (!iree_async_proactor_io_uring_should_submit_batch_operation(
+            operations, i, &defer_chain_tail)) {
+      continue;
+    }
+    iree_async_operation_t* operation = operations.values[i];
+    if (!iree_async_proactor_io_uring_is_submission_software_op(operation)) {
+      continue;
+    }
+    operation->next = NULL;
+    *tail = operation;
+    tail = &operation->next;
+  }
+  return head;
 }
 
 // Executes a SEMAPHORE_SIGNAL operation synchronously. Returns OK on success,
@@ -1132,7 +1043,7 @@ void iree_async_proactor_io_uring_dispatch_continuation_chain(
     iree_async_operation_t* chain_head) {
   iree_async_operation_t* op = chain_head;
   while (op) {
-    if (!iree_async_proactor_io_uring_is_software_op(op->type)) {
+    if (!iree_async_proactor_io_uring_is_inline_software_op(op->type)) {
       // Kernel op: submit the remaining chain (op + its linked_next tail).
       // Kernel ops produce CQEs; their completions are counted by the CQE
       // processing loop. If the remaining chain contains more software ops
@@ -1157,15 +1068,15 @@ void iree_async_proactor_io_uring_dispatch_continuation_chain(
           proactor, op, &deferred);
     }
 
-    // Extract next in chain before push (push repurposes linked_next for the
-    // completion status).
+    // Extract the continuation before push because pending_status aliases
+    // linked_next in the operation base.
     iree_async_operation_t* next = op->linked_next;
     op->linked_next = NULL;
 
     if (!iree_status_is_ok(op_status)) {
       // Software op failed. Cancel remaining chain via MPSC.
-      iree_async_proactor_io_uring_push_software_completion(proactor, op,
-                                                            op_status);
+      iree_async_proactor_io_uring_push_software_operation(proactor, op,
+                                                           op_status);
       if (next) {
         iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(proactor,
                                                                        next);
@@ -1184,8 +1095,8 @@ void iree_async_proactor_io_uring_dispatch_continuation_chain(
     }
 
     // Push this op's completion to MPSC.
-    iree_async_proactor_io_uring_push_software_completion(proactor, op,
-                                                          op_status);
+    iree_async_proactor_io_uring_push_software_operation(proactor, op,
+                                                         op_status);
 
     op = next;
   }
@@ -1205,7 +1116,7 @@ void iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
     if (op->completion_fn) {
       // Retain so the drain's release_resources is balanced.
       iree_async_operation_retain_resources(op);
-      iree_async_proactor_io_uring_push_software_completion(
+      iree_async_proactor_io_uring_push_software_operation(
           proactor, op, iree_status_from_code(IREE_STATUS_CANCELLED));
     } else {
       iree_async_operation_complete(
@@ -1220,6 +1131,24 @@ void iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
 // Message operation helpers
 //===----------------------------------------------------------------------===//
 
+// Freezes the delivery strategy for one validated MESSAGE operation. A target
+// ring can transition from disabled to enabled concurrently; retaining the
+// fallback selected here is always valid, while recomputing later could leak a
+// reservation or miscount SQEs.
+static void iree_async_proactor_io_uring_plan_message(
+    iree_async_proactor_io_uring_t* proactor,
+    iree_async_message_operation_t* message) {
+  iree_async_proactor_io_uring_t* target =
+      iree_async_proactor_io_uring_cast(message->target);
+  bool can_use_msg_ring =
+      iree_any_bit_set(proactor->capabilities,
+                       IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING) &&
+      !iree_io_uring_ring_needs_enable(&target->ring);
+  message->platform.io_uring.target_ring_fd =
+      can_use_msg_ring ? target->ring.ring_fd : -1;
+  message->platform.io_uring.reserved_entry = NULL;
+}
+
 // Fills an SQE for a MESSAGE operation (cross-proactor messaging via MSG_RING).
 //
 // MSG_RING posts a CQE directly to the target ring without any userspace
@@ -1231,18 +1160,13 @@ void iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
 // marker so the target proactor can identify it as an incoming message rather
 // than a normal operation completion.
 static void iree_async_proactor_io_uring_fill_message(
-    iree_async_proactor_io_uring_t* proactor, iree_io_uring_sqe_t* sqe,
-    iree_async_operation_t* base_operation) {
+    iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
   iree_async_message_operation_t* message =
       (iree_async_message_operation_t*)base_operation;
 
-  // Get target ring fd from the target proactor.
-  iree_async_proactor_io_uring_t* target =
-      iree_async_proactor_io_uring_cast(message->target);
-
   memset(sqe, 0, sizeof(*sqe));
   sqe->opcode = IREE_IORING_OP_MSG_RING;
-  sqe->fd = target->ring.ring_fd;
+  sqe->fd = message->platform.io_uring.target_ring_fd;
 
   // The target CQE will receive:
   //   cqe->res = sqe->len (lower 32 bits of message_data)
@@ -1274,130 +1198,156 @@ static void iree_async_proactor_io_uring_fill_message(
   }
 }
 
-// Fills an SQE for a MESSAGE operation using the fallback path.
-//
-// When MSG_RING is not available (kernel < 5.18), we use:
-//   1. Message pool send to target's pre-allocated pool
-//   2. eventfd WRITE to wake target's poll()
-//
-// The eventfd WRITE is linkable on io_uring, so LINK chains like
-// RECV -> MESSAGE still work correctly. The message data is delivered
-// via the pool (no per-message heap allocation).
-static iree_status_t iree_async_proactor_io_uring_fill_message_fallback(
-    iree_async_proactor_io_uring_t* proactor, iree_io_uring_sqe_t* sqe,
-    iree_async_operation_t* base_operation) {
-  iree_async_message_operation_t* message =
-      (iree_async_message_operation_t*)base_operation;
-
-  // Get target proactor.
+// Reserves target capacity for a planned fallback message without publishing
+// payload data or waking the target.
+static iree_status_t iree_async_proactor_io_uring_reserve_fallback_message(
+    iree_async_message_operation_t* message) {
   iree_async_proactor_io_uring_t* target =
       iree_async_proactor_io_uring_cast(message->target);
-
-  // Send message data via the target's pre-allocated pool.
-  IREE_RETURN_IF_ERROR(iree_async_message_pool_send(&target->message_pool,
-                                                    message->message_data));
-
-  // Fill SQE: WRITE to target's wake eventfd (LINKABLE!).
-  // We use a static constant for write_value rather than storing it in the
-  // operation struct. This is critical for SKIP_SOURCE_COMPLETION: the user
-  // may free the operation struct immediately after submit, but the kernel
-  // still needs to read the value when processing the WRITE SQE.
-  static const uint64_t kWakeValue = 1;
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_WRITE;
-  sqe->fd = target->wake_eventfd;
-  sqe->addr = (uint64_t)(uintptr_t)&kWakeValue;
-  sqe->len = sizeof(kWakeValue);
-
-  if (message->message_flags & IREE_ASYNC_MESSAGE_FLAG_SKIP_SOURCE_COMPLETION) {
-    // Use MESSAGE_SOURCE tag for explicit handling, matching MSG_RING fast
-    // path.
-    sqe->user_data =
-        iree_io_uring_internal_encode(IREE_IO_URING_TAG_MESSAGE_SOURCE, 0);
-  } else {
-    sqe->user_data = (uint64_t)(uintptr_t)base_operation;
-  }
-
+  iree_async_message_pool_entry_t* entry = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_async_message_pool_acquire(&target->message_pool, &entry));
+  message->platform.io_uring.reserved_entry = entry;
   return iree_ok_status();
 }
 
+// Publishes a reserved fallback message after the complete source batch has
+// crossed its admission boundary.
+static void iree_async_proactor_io_uring_commit_fallback_message(
+    iree_async_message_operation_t* message) {
+  iree_async_proactor_io_uring_t* target =
+      iree_async_proactor_io_uring_cast(message->target);
+  iree_async_message_pool_entry_t* entry =
+      (iree_async_message_pool_entry_t*)
+          message->platform.io_uring.reserved_entry;
+  IREE_ASSERT(entry);
+  message->platform.io_uring.reserved_entry = NULL;
+  iree_async_message_pool_publish(&target->message_pool, entry,
+                                  message->message_data);
+  iree_async_proactor_wake(&target->base);
+}
+
 //===----------------------------------------------------------------------===//
-// Resource cleanup
+// Submission reservation rollback
 //===----------------------------------------------------------------------===//
 
-// Releases the first |retained_operation_count| active kernel operations in a
-// batch. Called on submit rollback to balance resources retained during SQE
-// preparation without touching deferred chain tails or software operations.
-static void iree_async_proactor_io_uring_release_prepared(
-    iree_async_operation_list_t operations,
-    iree_host_size_t retained_operation_count) {
+// Releases unpublished fallback message reservations. No operation resources
+// have been retained when this runs, so close ownership remains caller-owned.
+static void iree_async_proactor_io_uring_rollback_message_reservations(
+    iree_async_operation_list_t operations) {
   bool defer_chain_tail = false;
-  for (iree_host_size_t i = 0;
-       i < operations.count && retained_operation_count > 0; ++i) {
+  for (iree_host_size_t i = 0; i < operations.count; ++i) {
     if (!iree_async_proactor_io_uring_should_submit_batch_operation(
             operations, i, &defer_chain_tail)) {
       continue;
     }
     iree_async_operation_t* operation = operations.values[i];
-    if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE ||
-        iree_async_proactor_io_uring_is_software_op(operation->type)) {
+    if (operation->type != IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
       continue;
     }
-    iree_async_operation_release_resources(operation);
-    --retained_operation_count;
+    iree_async_message_operation_t* message =
+        (iree_async_message_operation_t*)operation;
+    if (!iree_async_proactor_io_uring_message_uses_fallback(message) ||
+        !message->platform.io_uring.reserved_entry) {
+      continue;
+    }
+    iree_async_proactor_io_uring_t* target =
+        iree_async_proactor_io_uring_cast(message->target);
+    iree_async_message_pool_entry_t* entry =
+        (iree_async_message_pool_entry_t*)
+            message->platform.io_uring.reserved_entry;
+    message->platform.io_uring.reserved_entry = NULL;
+    iree_async_message_pool_release(&target->message_pool, entry);
   }
-  IREE_ASSERT(retained_operation_count == 0);
+}
+
+// Commits one software operation from a fully admitted batch. The caller must
+// capture and clear operation->next before calling because this may publish the
+// operation to a concurrent poll owner.
+static void iree_async_proactor_io_uring_commit_software_operation(
+    iree_async_proactor_io_uring_t* proactor,
+    iree_async_operation_t* operation) {
+  IREE_TRACE({ operation->submit_time_ns = iree_time_now(); });
+
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+    iree_async_sequence_prepare_for_submission(
+        (iree_async_sequence_operation_t*)operation);
+    iree_async_proactor_io_uring_push_software_operation(proactor, operation,
+                                                         iree_ok_status());
+    return;
+  }
+
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
+    iree_async_message_operation_t* message =
+        (iree_async_message_operation_t*)operation;
+    iree_async_operation_t* continuation = operation->linked_next;
+    operation->linked_next = NULL;
+    iree_async_proactor_io_uring_commit_fallback_message(message);
+    if (!iree_any_bit_set(message->message_flags,
+                          IREE_ASYNC_MESSAGE_FLAG_SKIP_SOURCE_COMPLETION)) {
+      iree_async_operation_retain_resources(operation);
+      iree_async_proactor_io_uring_push_software_operation(proactor, operation,
+                                                           iree_ok_status());
+    }
+    if (continuation) {
+      iree_async_proactor_io_uring_dispatch_continuation_chain(proactor,
+                                                               continuation);
+    }
+    return;
+  }
+
+  iree_async_operation_retain_resources(operation);
+
+  iree_status_t operation_status = iree_ok_status();
+  bool deferred = false;
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOP) {
+    // NOP has no side effect.
+  } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL) {
+    iree_async_semaphore_signal_operation_t* signal_op =
+        (iree_async_semaphore_signal_operation_t*)operation;
+    operation_status =
+        iree_async_proactor_io_uring_execute_semaphore_signal(signal_op);
+  } else {
+    // SEMAPHORE_WAIT: check immediate satisfaction or register timepoints.
+    operation_status = iree_async_proactor_io_uring_execute_semaphore_wait(
+        proactor, operation, &deferred);
+  }
+
+  // Extract the continuation before push because pending_status aliases
+  // linked_next in the operation base.
+  iree_async_operation_t* continuation = operation->linked_next;
+  operation->linked_next = NULL;
+
+  if (!iree_status_is_ok(operation_status)) {
+    iree_async_proactor_io_uring_push_software_operation(proactor, operation,
+                                                         operation_status);
+    if (continuation) {
+      iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
+          proactor, continuation);
+    }
+    return;
+  }
+
+  if (deferred) {
+    // Timepoints registered. Completion arrives later via
+    // pending_semaphore_waits. The tracker holds the continuation chain
+    // (transferred from linked_next in execute_semaphore_wait).
+    return;
+  }
+
+  // Push this op's completion before dispatching its continuation so the
+  // trigger callback is observed first.
+  iree_async_proactor_io_uring_push_software_operation(proactor, operation,
+                                                       operation_status);
+  if (continuation) {
+    iree_async_proactor_io_uring_dispatch_continuation_chain(proactor,
+                                                             continuation);
+  }
 }
 
 //===----------------------------------------------------------------------===//
 // Submit
 //===----------------------------------------------------------------------===//
-
-// Dispatches standalone SEQUENCE operations in the batch. Must be called before
-// acquiring the SQ lock because submit_as_linked re-enters the submit function
-// through the vtable for the expanded steps, which acquires the lock itself.
-//
-// SEQUENCE continuations (preceded by a LINKED predecessor) are not handled
-// here — they're held in linked_next chains and dispatched on predecessor
-// completion, at which point the SQ lock is not held.
-static iree_status_t iree_async_proactor_io_uring_submit_sequences(
-    iree_async_proactor_io_uring_t* proactor,
-    iree_async_proactor_t* base_proactor,
-    iree_async_operation_list_t operations) {
-  for (iree_host_size_t i = 0; i < operations.count; ++i) {
-    if (operations.values[i]->type != IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
-      continue;
-    }
-    // Skip continuations — dispatched via linked_next on predecessor
-    // completion.
-    if (i > 0 && iree_any_bit_set(operations.values[i - 1]->flags,
-                                  IREE_ASYNC_OPERATION_FLAG_LINKED)) {
-      continue;
-    }
-    iree_async_sequence_operation_t* sequence =
-        (iree_async_sequence_operation_t*)operations.values[i];
-    iree_async_sequence_prepare_for_submission(sequence);
-    if (sequence->step_count == 0) {
-      iree_async_operation_retain_resources(&sequence->base);
-      IREE_TRACE(sequence->base.submit_time_ns = iree_time_now();)
-      iree_async_proactor_io_uring_push_software_completion(
-          proactor, &sequence->base, iree_ok_status());
-      iree_async_proactor_wake(base_proactor);
-      continue;
-    }
-    iree_status_t status;
-    if (!sequence->step_fn) {
-      status = iree_async_sequence_submit_as_linked(base_proactor, sequence);
-    } else {
-      status = iree_async_sequence_emulation_begin(&proactor->sequence_emulator,
-                                                   sequence);
-    }
-    if (!iree_status_is_ok(status)) {
-      return status;
-    }
-  }
-  return iree_ok_status();
-}
 
 iree_status_t iree_async_proactor_io_uring_submit(
     iree_async_proactor_t* base_proactor,
@@ -1410,49 +1360,44 @@ iree_status_t iree_async_proactor_io_uring_submit(
   }
 
   IREE_RETURN_IF_ERROR(iree_async_continuation_prepare_batch(operations));
+
+  //=========================================================================
+  // Phase 1: Validate and plan the complete batch.
+  //=========================================================================
+
   for (iree_host_size_t i = 0; i < operations.count; ++i) {
-    if (operations.values[i]->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
-      IREE_RETURN_IF_ERROR(iree_async_message_operation_validate(
-          (const iree_async_message_operation_t*)operations.values[i]));
-    } else if (operations.values[i]->type ==
-               IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
-      IREE_RETURN_IF_ERROR(iree_async_sequence_validate(
-          (const iree_async_sequence_operation_t*)operations.values[i]));
+    IREE_RETURN_IF_ERROR(iree_async_proactor_io_uring_validate_operation(
+        proactor, operations.values[i]));
+  }
+  for (iree_host_size_t i = 0; i < operations.count; ++i) {
+    iree_async_operation_t* operation = operations.values[i];
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
+      iree_async_proactor_io_uring_plan_message(
+          proactor, (iree_async_message_operation_t*)operation);
     }
   }
 
-  IREE_RETURN_IF_ERROR(iree_async_proactor_io_uring_submit_sequences(
-      proactor, base_proactor, operations));
-
-  //=========================================================================
-  // Phase 1: Analyze the batch.
-  //=========================================================================
-
-  // Count kernel SQEs needed and identify software op presence across the
+  // Count kernel SQEs and software work across the
   // active prefix of each independent chain. A userspace continuation edge
   // defers only the remainder of its own chain; later independent chains are
   // still part of this submission.
   iree_host_size_t sqes_needed = 0;
-  bool has_software_ops = false;
   bool defer_chain_tail = false;
   for (iree_host_size_t i = 0; i < operations.count; ++i) {
     if (!iree_async_proactor_io_uring_should_submit_batch_operation(
             operations, i, &defer_chain_tail)) {
       continue;
     }
-    iree_async_operation_type_t type = operations.values[i]->type;
-    if (type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+    iree_async_operation_t* operation = operations.values[i];
+    operation->next = NULL;
+    if (iree_async_proactor_io_uring_is_submission_software_op(operation)) {
       continue;
     }
-    if (iree_async_proactor_io_uring_is_software_op(type)) {
-      has_software_ops = true;
-      continue;
-    }
-    if (type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT) {
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT) {
       sqes_needed += 2;
-    } else if (type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
+    } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
       iree_async_notification_wait_operation_t* wait =
-          (iree_async_notification_wait_operation_t*)operations.values[i];
+          (iree_async_notification_wait_operation_t*)operation;
       sqes_needed +=
           (wait->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) ? 1
                                                                            : 2;
@@ -1460,16 +1405,38 @@ iree_status_t iree_async_proactor_io_uring_submit(
       sqes_needed += 1;
     }
   }
+  iree_async_operation_t* software_operations = NULL;
 
-  // If all operations were SEQUENCE (handled in pre-scan) with no software
-  // ops and no kernel ops, there is nothing left to do.
-  if (sqes_needed == 0 && !has_software_ops) {
-    return iree_ok_status();
+  //=========================================================================
+  // Phase 2: Reserve bounded userspace and kernel capacity.
+  //=========================================================================
+
+  defer_chain_tail = false;
+  for (iree_host_size_t i = 0; i < operations.count; ++i) {
+    if (!iree_async_proactor_io_uring_should_submit_batch_operation(
+            operations, i, &defer_chain_tail)) {
+      continue;
+    }
+    iree_async_operation_t* operation = operations.values[i];
+    if (operation->type != IREE_ASYNC_OPERATION_TYPE_MESSAGE ||
+        !iree_async_proactor_io_uring_message_uses_fallback(
+            (iree_async_message_operation_t*)operation)) {
+      continue;
+    }
+    iree_status_t status =
+        iree_async_proactor_io_uring_reserve_fallback_message(
+            (iree_async_message_operation_t*)operation);
+    if (!iree_status_is_ok(status)) {
+      iree_async_proactor_io_uring_rollback_message_reservations(operations);
+      return status;
+    }
   }
 
-  //=========================================================================
-  // Phase 2: Fill kernel SQEs (under SQ lock).
-  //=========================================================================
+  // Freeze software selection while the complete batch is still
+  // submitter-owned. Kernel SQEs may become visible to another poll owner as
+  // soon as the SQ lock is released below.
+  software_operations =
+      iree_async_proactor_io_uring_build_software_submission_list(operations);
 
   if (sqes_needed > 0) {
     // Acquire the SQ lock for the duration of SQE preparation.
@@ -1481,16 +1448,24 @@ iree_status_t iree_async_proactor_io_uring_submit(
     uint32_t available = iree_io_uring_ring_sq_space_left(&proactor->ring);
     if (available < sqes_needed) {
       iree_io_uring_ring_sq_unlock(&proactor->ring);
+      iree_async_proactor_io_uring_rollback_message_reservations(operations);
+      while (software_operations) {
+        iree_async_operation_t* operation = software_operations;
+        software_operations = operation->next;
+        operation->next = NULL;
+      }
       return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                               "SQ has %u slots but %zu SQEs needed for %zu "
                               "operations",
                               available, sqes_needed, operations.count);
     }
 
+    //=======================================================================
+    // Phase 3: Commit kernel SQEs under the SQ lock.
+    //=======================================================================
+
     // Fill SQEs for the active kernel prefixes. Software ops execute in Phase
-    // 3 and deferred chain tails are submitted by their predecessors.
-    iree_host_size_t sqes_prepared = 0;
-    iree_host_size_t retained_operation_count = 0;
+    // 4 and deferred chain tails are submitted by their predecessors.
     defer_chain_tail = false;
     for (iree_host_size_t i = 0; i < operations.count; ++i) {
       if (!iree_async_proactor_io_uring_should_submit_batch_operation(
@@ -1499,21 +1474,14 @@ iree_status_t iree_async_proactor_io_uring_submit(
       }
       iree_async_operation_t* operation = operations.values[i];
 
-      // SEQUENCE and software ops don't consume SQEs.
-      if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
-        continue;
-      }
-      if (iree_async_proactor_io_uring_is_software_op(operation->type)) {
+      if (iree_async_proactor_io_uring_is_submission_software_op(operation)) {
         continue;
       }
 
       // Retain resources referenced by this operation to prevent premature
-      // destruction while the SQE is in flight. Rollback walks the same active
-      // prefixes and balances only operations retained here.
+      // destruction while the accepted SQE is in flight. Every fallible check
+      // and capacity reservation has completed before this ownership transfer.
       iree_async_operation_retain_resources(operation);
-      ++retained_operation_count;
-
-      iree_status_t status = iree_ok_status();
 
       // EVENT_WAIT always uses linked POLL_ADD+READ (2 SQEs).
       // NOTIFICATION_WAIT uses 2 SQEs in event mode, 1 SQE in futex mode.
@@ -1533,18 +1501,8 @@ iree_status_t iree_async_proactor_io_uring_submit(
             iree_io_uring_ring_get_sqe(&proactor->ring);
         iree_io_uring_sqe_t* read_sqe =
             iree_io_uring_ring_get_sqe(&proactor->ring);
-        if (!poll_sqe || !read_sqe) {
-          iree_host_size_t partial_sqes =
-              (poll_sqe ? 1 : 0) + (read_sqe ? 1 : 0);
-          iree_io_uring_ring_sq_rollback(
-              &proactor->ring, (uint32_t)(sqes_prepared + partial_sqes));
-          iree_io_uring_ring_sq_unlock(&proactor->ring);
-          iree_async_proactor_io_uring_release_prepared(
-              operations, retained_operation_count);
-          return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                                  "failed to get SQEs for 2-SQE op %zu", i);
-        }
-        sqes_prepared += 2;
+        IREE_ASSERT(poll_sqe);
+        IREE_ASSERT(read_sqe);
 
         if (operation->type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT) {
           iree_async_proactor_io_uring_fill_event_wait(poll_sqe, read_sqe,
@@ -1566,16 +1524,7 @@ iree_status_t iree_async_proactor_io_uring_submit(
       } else {
         // All other kernel operations use 1 SQE.
         iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-        if (!sqe) {
-          iree_io_uring_ring_sq_rollback(&proactor->ring,
-                                         (uint32_t)sqes_prepared);
-          iree_io_uring_ring_sq_unlock(&proactor->ring);
-          iree_async_proactor_io_uring_release_prepared(
-              operations, retained_operation_count);
-          return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                                  "failed to get SQE for operation %zu", i);
-        }
-        ++sqes_prepared;
+        IREE_ASSERT(sqe);
 
         switch (operation->type) {
           case IREE_ASYNC_OPERATION_TYPE_TIMER:
@@ -1588,51 +1537,31 @@ iree_status_t iree_async_proactor_io_uring_submit(
             iree_async_proactor_io_uring_fill_socket_accept(sqe, operation);
             break;
           case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV:
-            status =
-                iree_async_proactor_io_uring_fill_socket_recv(sqe, operation);
+            iree_async_proactor_io_uring_fill_socket_recv(sqe, operation);
             break;
           case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL:
-            status = iree_async_proactor_io_uring_fill_socket_recv_pool(
-                proactor, sqe, operation);
+            iree_async_proactor_io_uring_fill_socket_recv_pool(proactor, sqe,
+                                                               operation);
             break;
           case IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND:
-            status = iree_async_proactor_io_uring_fill_socket_send(
-                proactor, sqe, operation);
+            iree_async_proactor_io_uring_fill_socket_send(proactor, sqe,
+                                                          operation);
             break;
           case IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO:
-            status = iree_async_proactor_io_uring_fill_socket_sendto(
+            iree_async_proactor_io_uring_fill_socket_sendto(
                 sqe, operation, proactor->capabilities);
             break;
           case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM:
-            status = iree_async_proactor_io_uring_fill_socket_recvfrom(
-                sqe, operation);
+            iree_async_proactor_io_uring_fill_socket_recvfrom(sqe, operation);
             break;
           case IREE_ASYNC_OPERATION_TYPE_SOCKET_CLOSE:
             iree_async_proactor_io_uring_fill_socket_close(sqe, operation);
             break;
           case IREE_ASYNC_OPERATION_TYPE_FUTEX_WAIT:
-            if (!iree_any_bit_set(
-                    proactor->capabilities,
-                    IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS)) {
-              status = iree_make_status(
-                  IREE_STATUS_UNAVAILABLE,
-                  "FUTEX_WAIT requires kernel 6.7+ with io_uring futex "
-                  "support");
-            } else {
-              iree_async_proactor_io_uring_fill_futex_wait(sqe, operation);
-            }
+            iree_async_proactor_io_uring_fill_futex_wait(sqe, operation);
             break;
           case IREE_ASYNC_OPERATION_TYPE_FUTEX_WAKE:
-            if (!iree_any_bit_set(
-                    proactor->capabilities,
-                    IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS)) {
-              status = iree_make_status(
-                  IREE_STATUS_UNAVAILABLE,
-                  "FUTEX_WAKE requires kernel 6.7+ with io_uring futex "
-                  "support");
-            } else {
-              iree_async_proactor_io_uring_fill_futex_wake(sqe, operation);
-            }
+            iree_async_proactor_io_uring_fill_futex_wake(sqe, operation);
             break;
           case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT:
             // Futex mode only — event mode uses 2 SQEs and is handled above.
@@ -1652,32 +1581,9 @@ iree_status_t iree_async_proactor_io_uring_submit(
             }
             break;
           }
-          case IREE_ASYNC_OPERATION_TYPE_MESSAGE: {
-            iree_async_message_operation_t* message_op =
-                (iree_async_message_operation_t*)operation;
-            if (!message_op->target ||
-                message_op->target->vtable !=
-                    &iree_async_proactor_io_uring_vtable) {
-              status = iree_make_status(
-                  IREE_STATUS_INVALID_ARGUMENT,
-                  "MESSAGE target must be an io_uring proactor from the same "
-                  "backend; cross-backend messaging is not supported");
-              break;
-            }
-            iree_async_proactor_io_uring_t* target =
-                iree_async_proactor_io_uring_cast(message_op->target);
-            if (iree_any_bit_set(
-                    proactor->capabilities,
-                    IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING) &&
-                !iree_io_uring_ring_needs_enable(&target->ring)) {
-              iree_async_proactor_io_uring_fill_message(proactor, sqe,
-                                                        operation);
-            } else {
-              status = iree_async_proactor_io_uring_fill_message_fallback(
-                  proactor, sqe, operation);
-            }
+          case IREE_ASYNC_OPERATION_TYPE_MESSAGE:
+            iree_async_proactor_io_uring_fill_message(sqe, operation);
             break;
-          }
           case IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL:
             iree_async_proactor_io_uring_fill_handle_poll(sqe, operation);
             break;
@@ -1694,10 +1600,8 @@ iree_status_t iree_async_proactor_io_uring_submit(
             iree_async_proactor_io_uring_fill_file_close(sqe, operation);
             break;
           default:
-            status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                                      "operation type %d not yet implemented",
-                                      (int)operation->type);
-            break;
+            IREE_ASSERT_UNREACHABLE("operation type must be validated");
+            IREE_BUILTIN_UNREACHABLE();
         }
 
         // Apply kernel LINK when the edge does not require userspace status
@@ -1709,15 +1613,6 @@ iree_status_t iree_async_proactor_io_uring_submit(
           sqe->flags |= IREE_IOSQE_IO_LINK;
           operation->linked_next = NULL;
         }
-      }
-
-      if (!iree_status_is_ok(status)) {
-        iree_io_uring_ring_sq_rollback(&proactor->ring,
-                                       (uint32_t)sqes_prepared);
-        iree_io_uring_ring_sq_unlock(&proactor->ring);
-        iree_async_proactor_io_uring_release_prepared(operations,
-                                                      retained_operation_count);
-        return status;
       }
 
       // Publish all writes to the operation (fill, resource retain, user data)
@@ -1733,92 +1628,24 @@ iree_status_t iree_async_proactor_io_uring_submit(
   }
 
   //=========================================================================
-  // Phase 3: Execute software operations (no lock held).
+  // Phase 4: Commit software operations (no lock held).
   //=========================================================================
   //
-  // Software ops (NOP, SEMAPHORE_SIGNAL, SEMAPHORE_WAIT) execute their side
-  // effects here, outside the SQ lock. This keeps NOP allocation-free, fixes
-  // allocator use under the SQ lock, and preserves signal ordering relative to
-  // a predecessor kernel operation.
-  //
-  // All completions are pushed to the MPSC queue for callback delivery on the
-  // poll thread. The poll thread drains pending_software_completions both
-  // before and after CQE processing.
-  //
-  // Completions are pushed BEFORE dispatching continuation chains to preserve
-  // callback ordering: the trigger's callback fires before its continuations.
+  // Inline operations execute their side effects after the complete batch has
+  // reserved capacity. Fallback messages publish their reserved target entry,
+  // and sequences enter the same MPSC queue for startup by the poll owner.
+  // Completion entries are queued before continuations are dispatched so user
+  // callbacks preserve chain order.
 
-  defer_chain_tail = false;
-  for (iree_host_size_t i = 0; i < operations.count && has_software_ops; ++i) {
-    if (!iree_async_proactor_io_uring_should_submit_batch_operation(
-            operations, i, &defer_chain_tail)) {
-      continue;
-    }
-    // Skip non-software operations. Reading operations.values[i]->type is safe
-    // here even after Phase 2 releases the SQ lock: the operations array is
-    // caller-local and software ops were never submitted to the kernel, so
-    // their structs cannot have been recycled by a concurrent completion path.
-    if (!iree_async_proactor_io_uring_is_software_op(
-            operations.values[i]->type)) {
-      continue;
-    }
-
-    iree_async_operation_t* operation = operations.values[i];
-    iree_async_operation_retain_resources(operation);
-
-    iree_status_t op_status = iree_ok_status();
-    bool deferred = false;
-
-    if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOP) {
-      // NOP has no side effect.
-    } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL) {
-      iree_async_semaphore_signal_operation_t* signal_op =
-          (iree_async_semaphore_signal_operation_t*)operation;
-      op_status =
-          iree_async_proactor_io_uring_execute_semaphore_signal(signal_op);
-    } else {
-      // SEMAPHORE_WAIT: check immediate satisfaction or register timepoints.
-      op_status = iree_async_proactor_io_uring_execute_semaphore_wait(
-          proactor, operation, &deferred);
-    }
-
-    // Extract continuation before pushing completion (push repurposes
-    // linked_next to carry the completion status through the MPSC queue).
-    iree_async_operation_t* continuation = operation->linked_next;
-    operation->linked_next = NULL;
-
-    if (!iree_status_is_ok(op_status)) {
-      iree_async_proactor_io_uring_push_software_completion(proactor, operation,
-                                                            op_status);
-      if (continuation) {
-        iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
-            proactor, continuation);
-      }
-      continue;
-    }
-
-    if (deferred) {
-      // Timepoints registered. Completion arrives later via
-      // pending_semaphore_waits. The tracker holds the continuation chain
-      // (transferred from linked_next in execute_semaphore_wait).
-      continue;
-    }
-
-    // Push this op's completion to MPSC BEFORE dispatching its continuation.
-    // This preserves callback ordering: trigger fires first, then
-    // continuations. The iterative dispatch also pushes in chain order.
-    iree_async_proactor_io_uring_push_software_completion(proactor, operation,
-                                                          op_status);
-
-    // Dispatch linked continuation chain (if any).
-    if (continuation) {
-      iree_async_proactor_io_uring_dispatch_continuation_chain(proactor,
-                                                               continuation);
-    }
+  while (software_operations) {
+    iree_async_operation_t* operation = software_operations;
+    software_operations = operation->next;
+    operation->next = NULL;
+    iree_async_proactor_io_uring_commit_software_operation(proactor, operation);
   }
 
   //=========================================================================
-  // Phase 4: Flush or wake.
+  // Phase 5: Flush or wake.
   //=========================================================================
 
   int32_t poll_tid =
@@ -1858,7 +1685,7 @@ iree_status_t iree_async_proactor_io_uring_submit(
   // Poll thread idle. Only the poll thread may call io_uring_enter
   // (SINGLE_ISSUER constraint), so wake it to flush pending SQEs.
   // For pure-software batches (sqes_needed == 0), the wake causes poll() to
-  // drain pending_software_completions and fire callbacks.
+  // drain pending software operations and fire callbacks.
   iree_async_proactor_wake(&proactor->base);
   return iree_ok_status();
 }

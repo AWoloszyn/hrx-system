@@ -162,16 +162,13 @@ typedef struct iree_async_proactor_io_uring_t {
   // the LINK path is used instead (no emulator involvement).
   iree_async_sequence_emulator_t sequence_emulator;
 
-  // MPSC queue of software operation completions (SEMAPHORE_SIGNAL, etc.)
-  // ready for callback delivery. Submit threads push completed operations
-  // here; poll() drains and fires callbacks. This allows software ops to
-  // execute their side effects on the submit thread while deferring callback
-  // delivery to the poll thread.
+  // MPSC queue of software work owned by the poll thread. Most entries carry
+  // completed software operations awaiting callback delivery. SEQUENCE entries
+  // carry admitted operations whose first step must start on the poll owner.
   //
-  // Operations use base.next (offset 0) as the slist entry and base.linked_next
-  // (repurposed after continuation chain is consumed) to carry the completion
-  // status through the queue.
-  iree_atomic_slist_t pending_software_completions;
+  // Operations use base.next (offset 0) as the slist entry and
+  // base.pending_status to carry owned completion status through the queue.
+  iree_atomic_slist_t pending_software_operations;
 
   // MPSC queue of semaphore wait operations ready to complete.
   // Timepoint callbacks push trackers here, poll() drains and completes them.
@@ -339,10 +336,10 @@ void iree_async_proactor_io_uring_submit_continuation_chain(
     iree_async_proactor_io_uring_t* proactor,
     iree_async_operation_t* chain_head);
 
-// Pushes a completed software operation to the MPSC queue for callback
-// delivery on the poll thread (in proactor.c, used by proactor_submit.c).
-// Takes ownership of |status| and carries it with |operation|.
-void iree_async_proactor_io_uring_push_software_completion(
+// Pushes software work to the poll-owned MPSC queue. For SEQUENCE operations,
+// an OK status requests poll-owned startup. All other entries are terminal
+// completions. Takes ownership of |status| and carries it with |operation|.
+void iree_async_proactor_io_uring_push_software_operation(
     iree_async_proactor_io_uring_t* proactor, iree_async_operation_t* operation,
     iree_status_t status);
 
@@ -360,6 +357,14 @@ void iree_async_proactor_io_uring_dispatch_continuation_chain(
 void iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
     iree_async_proactor_io_uring_t* proactor,
     iree_async_operation_t* chain_head);
+
+// Builds the intrusive list of software operations selected from a prepared
+// submission batch. All batch metadata is consumed before the list is
+// returned; callers must capture and clear each operation's next pointer before
+// publishing it.
+iree_async_operation_t*
+iree_async_proactor_io_uring_build_software_submission_list(
+    iree_async_operation_list_t operations);
 
 // Submit vtable implementation (in proactor_submit.c).
 iree_status_t iree_async_proactor_io_uring_submit(
