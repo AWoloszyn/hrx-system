@@ -36,6 +36,7 @@
 #include "loom/target/entry_selection.h"
 #include "loom/target/low_packet_diagnostics.h"
 #include "loom/tooling/compile/pipeline.h"
+#include "loom/tools/loom-check/comparison.h"
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/tools/loom-check/execute.h"
 #include "loom/tools/loom-check/low_emit.h"
@@ -778,32 +779,6 @@ static iree_status_t loom_check_emit_finish_status_failure(
   return status;
 }
 
-static iree_status_t loom_check_emit_compare_output(
-    const loom_test_case_t* test_case, iree_allocator_t allocator,
-    loom_check_result_t* result) {
-  iree_string_builder_t stripped_expected;
-  iree_string_builder_initialize(allocator, &stripped_expected);
-
-  iree_status_t status =
-      loom_test_file_remove_comments(test_case->expected, &stripped_expected);
-  if (iree_status_is_ok(status)) {
-    iree_string_view_t actual_trimmed =
-        iree_string_view_trim(iree_string_builder_view(&result->actual_output));
-    iree_string_view_t expected_trimmed =
-        iree_string_view_trim(iree_string_builder_view(&stripped_expected));
-    if (iree_string_view_equal(actual_trimmed, expected_trimmed)) {
-      result->raw_outcome = LOOM_CHECK_PASS;
-    } else {
-      result->raw_outcome = LOOM_CHECK_FAIL;
-      status = loom_check_result_record_diff(expected_trimmed, actual_trimmed,
-                                             allocator, result);
-    }
-  }
-
-  iree_string_builder_deinitialize(&stripped_expected);
-  return status;
-}
-
 static iree_status_t loom_check_emit_finish_diagnostics_and_compare_output(
     loom_check_diagnostic_collector_t* collector,
     const loom_test_case_t* test_case, iree_host_size_t case_index,
@@ -814,7 +789,7 @@ static iree_status_t loom_check_emit_finish_diagnostics_and_compare_output(
   if (result->raw_outcome != LOOM_CHECK_PASS || !result->has_actual_output) {
     return iree_ok_status();
   }
-  return loom_check_emit_compare_output(test_case, allocator, result);
+  return loom_check_compare_output(test_case, allocator, result);
 }
 
 static iree_status_t loom_check_emit_symbol_not_found(
@@ -1809,7 +1784,7 @@ iree_status_t loom_check_execute_emit(
       iree_arena_deinitialize(&diagnostic_arena);
       return status;
     }
-    status = loom_check_emit_compare_output(test_case, allocator, result);
+    status = loom_check_compare_output(test_case, allocator, result);
     iree_arena_deinitialize(&diagnostic_arena);
     return status;
   }
@@ -1943,7 +1918,7 @@ iree_status_t loom_check_execute_emit(
       iree_arena_deinitialize(&diagnostic_arena);
       return status;
     }
-    status = loom_check_emit_compare_output(test_case, allocator, result);
+    status = loom_check_compare_output(test_case, allocator, result);
     iree_string_builder_deinitialize(&stripped_input);
     iree_arena_deinitialize(&diagnostic_arena);
     return status;
@@ -1994,7 +1969,7 @@ iree_status_t loom_check_execute_emit(
       result->raw_outcome = LOOM_CHECK_PASS;
       status = iree_ok_status();
     } else {
-      status = loom_check_emit_compare_output(test_case, allocator, result);
+      status = loom_check_compare_output(test_case, allocator, result);
     }
     iree_string_builder_deinitialize(&stripped_input);
     iree_arena_deinitialize(&diagnostic_arena);
@@ -2184,7 +2159,7 @@ iree_status_t loom_check_execute_emit(
       result->raw_outcome = LOOM_CHECK_PASS;
       status = iree_ok_status();
     } else {
-      status = loom_check_emit_compare_output(test_case, allocator, result);
+      status = loom_check_compare_output(test_case, allocator, result);
     }
     iree_string_builder_deinitialize(&stripped_input);
     iree_arena_deinitialize(&diagnostic_arena);

@@ -1,0 +1,59 @@
+// RUN: with-checks roundtrip
+
+func.def @identity(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+// ----
+CHECK: func.return * : i32
+CHECK: func.def @identity(*) -> (i32) {
+CHECK-NOT: *index.add*
+
+// ====
+
+// RUN: with-checks pass cse
+
+func.def @constant() -> (index) {
+  %first = index.constant 5 : index
+  %second = index.constant 5 : index
+  func.return %second : index
+}
+
+// ----
+CHECK: * = index.constant 5 : index
+CHECK: func.return * : index
+
+// ====
+
+// RUN: with-checks format bytecode
+
+func.def @identity(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+// ----
+CHECK: func.def @identity(*) -> (i32) {
+CHECK: func.return * : i32
+
+// ====
+
+// XFAIL: Whole-line checks must reject a longer number.
+func.def @fifty() -> (index) {
+  %value = index.constant 50 : index
+  func.return %value : index
+}
+
+// ----
+CHECK: * = index.constant 5 : index
+
+// ====
+
+// XFAIL: A matching CHECK-NOT fails even when every positive check matches.
+func.def @five() -> (index) {
+  %value = index.constant 5 : index
+  func.return %value : index
+}
+
+// ----
+CHECK: func.def @five() -> (index) {
+CHECK-NOT: * = index.constant 5 : index

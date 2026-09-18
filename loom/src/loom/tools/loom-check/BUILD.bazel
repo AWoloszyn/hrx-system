@@ -175,6 +175,7 @@ loom_cc_library(
 loom_cc_library(
     name = "execute",
     srcs = [
+        "comparison.c",
         "diagnostics.c",
         "emit.c",
         "execute.c",
@@ -184,6 +185,7 @@ loom_cc_library(
         "verify.c",
     ],
     hdrs = [
+        "comparison.h",
         "diagnostics.h",
         "execute.h",
         "low_emit.h",
@@ -525,4 +527,16 @@ loom_cc_binary(
         "//loom/src/loom/target/arch/cmd/check:check_provider",
         "//runtime/src/iree/base",
     ] + _LOOM_CHECK_PROVIDER_DEPS,
+)
+
+loom_cc_test(
+    name = "comparison_test",
+    srcs = ["comparison_test.cc"],
+    deps = [
+        ":execute",
+        "//loom/src/loom/testing:test_file",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
 )

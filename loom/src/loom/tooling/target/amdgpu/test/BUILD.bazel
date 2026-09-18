@@ -37,7 +37,6 @@ iree_execution_test_suite(
         "selected_root_amdgpu.loom",
         "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
         "//loom/src/loom/test/corpus/conformance:loop_count.loom",
-        "//loom/src/loom/test/corpus/source_low:loop_count.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_wide_offsets.loom-test",
         "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/loop_entry_wave32.loom",
         "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/schedule_scopes.loom",
@@ -45,7 +44,6 @@ iree_execution_test_suite(
     manifests = [
         "loom-compile-amdgpu.test.json",
         "loop-counts.test.json",
-        "source-loop-counts.test.json",
         "wide-offsets.test.json",
     ],
     tags = ["hostonly"],

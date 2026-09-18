@@ -14,6 +14,7 @@ package(
 loom_check_test_suite(
     name = "core_test",
     srcs = [
+        "checks.loom-test",
         "emit.loom-test",
         "low_asm.loom-test",
         "pass.loom-test",

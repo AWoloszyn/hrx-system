@@ -151,6 +151,8 @@ static iree_status_t loom_test_file_parse_run_modifiers(
       flag = LOOM_TEST_OUTPUT_LOCATIONS;
     } else if (iree_string_view_equal(token, IREE_SV("with-low-asm"))) {
       flag = LOOM_TEST_OUTPUT_LOW_ASM;
+    } else if (iree_string_view_equal(token, IREE_SV("with-checks"))) {
+      flag = LOOM_TEST_OUTPUT_CHECKS;
     } else {
       break;
     }
@@ -167,6 +169,13 @@ static iree_status_t loom_test_file_parse_run_modifiers(
 
 static iree_status_t loom_test_file_verify_run_modifiers(
     loom_test_mode_t mode, loom_test_output_flags_t output_flags) {
+  if (iree_all_bits_set(output_flags, LOOM_TEST_OUTPUT_CHECKS) &&
+      mode == LOOM_TEST_MODE_VERIFY) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "RUN modifier 'with-checks' requires textual output; "
+        "verify mode uses diagnostic annotations");
+  }
   if (iree_all_bits_set(output_flags, LOOM_TEST_OUTPUT_LOCATIONS) &&
       mode != LOOM_TEST_MODE_ROUNDTRIP && mode != LOOM_TEST_MODE_PASS) {
     return iree_make_status(
@@ -1493,6 +1502,14 @@ iree_status_t loom_test_file_parse(iree_string_view_t source,
       out_file->cases[i].pipeline = out_file->default_pipeline;
       out_file->cases[i].format_target = out_file->default_format_target;
       out_file->cases[i].emit_target = out_file->default_emit_target;
+    }
+    if (iree_all_bits_set(out_file->cases[i].output_flags,
+                          LOOM_TEST_OUTPUT_CHECKS) &&
+        !out_file->cases[i].has_expected_section) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "with-checks requires a // ---- expected section "
+                              "in case %" PRIhsz,
+                              i + 1);
     }
   }
 

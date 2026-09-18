@@ -38,6 +38,10 @@
 //                           Parse -> run pipeline -> pass report -> compare.
 //   // RUN: compile-report <pipeline>
 //                           Parse -> run pipeline -> compile report -> compare.
+//   // RUN: with-checks <mode> ...
+//                           Match CHECK/CHECK-NOT whole-line glob patterns in
+//                           the expected section instead of an exact golden.
+//                           Applies to every mode except verify.
 //   // RUN: format <target> Parse -> convert format -> print -> compare.
 //   // RUN: emit <target>   Parse -> emit analysis or target-structured
 //                           output -> compare. Core targets include
@@ -156,6 +160,10 @@ enum loom_test_output_flag_bits_e {
   LOOM_TEST_OUTPUT_LOCATIONS = 1u << 0,
   // Preserve explicitly authored Low assembly in pass output.
   LOOM_TEST_OUTPUT_LOW_ASM = 1u << 1,
+  // Match independent CHECK/CHECK-NOT patterns against trimmed output lines.
+  // '*' matches any sequence and '?' one character. At least one CHECK is
+  // required. Authored checks are preserved by automatic expectation updates.
+  LOOM_TEST_OUTPUT_CHECKS = 1u << 2,
 };
 typedef uint32_t loom_test_output_flags_t;
 

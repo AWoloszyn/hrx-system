@@ -1,10 +1,12 @@
-// RUN: verify
+// RUN: with-checks compile-report source-to-low,low-dce
 
 // Report checks select a 32-bit index carrier and a 64-bit offset carrier.
 // These kernels are compiled only: some loops do not terminate at those widths.
 
 // The unsigned view of -1 is above four, so the body never executes.
-kernel.def @unsigned_empty() {
+amdgpu.target<gfx942> @target
+
+kernel.def target(@target) @unsigned_empty() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
 } launch(%output: buffer) {
@@ -27,10 +29,17 @@ kernel.def @unsigned_empty() {
   kernel.return
 }
 
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_write_bytes=0 *
+CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=0
+
 // ====
 
+
 // The same bit patterns with a signed guard execute five body iterations.
-kernel.def @signed_negative_start() {
+amdgpu.target<gfx950> @target
+
+kernel.def target(@target) @signed_negative_start() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
 } launch(%output: buffer) {
@@ -53,10 +62,17 @@ kernel.def @signed_negative_start() {
   kernel.return
 }
 
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_write_bytes=20 *
+CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=5
+
 // ====
 
+
 // The terminal update reaches the largest signed index without wrapping.
-kernel.def @signed_terminal_fits() {
+amdgpu.target<gfx1100> @target
+
+kernel.def target(@target) @signed_terminal_fits() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
 } launch(%output: buffer) {
@@ -79,10 +95,16 @@ kernel.def @signed_terminal_fits() {
   kernel.return
 }
 
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_write_bytes=4 *
+
 // ====
 
+
 // The terminal update wraps before it can fail the signed guard.
-kernel.def @signed_terminal_wraps() {
+amdgpu.target<gfx1151> @target
+
+kernel.def target(@target) @signed_terminal_wraps() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
 } launch(%output: buffer) {
@@ -105,10 +127,16 @@ kernel.def @signed_terminal_wraps() {
   kernel.return
 }
 
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * exact_dynamic_packets=0 unknown_dynamic_packets=1 *
+
 // ====
 
+
 // Crossing the sign bit preserves unsigned progress, including a partial final step.
-kernel.def @unsigned_crosses_sign() {
+amdgpu.target<gfx1200> @target
+
+kernel.def target(@target) @unsigned_crosses_sign() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
 } launch(%output: buffer) {
@@ -131,10 +159,17 @@ kernel.def @unsigned_crosses_sign() {
   kernel.return
 }
 
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_write_bytes=12 *
+CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=3
+
 // ====
 
+
 // An unsigned inclusive maximum guard remains true after carrier wrap.
-kernel.def @unsigned_inclusive_maximum() {
+amdgpu.target<gfx1250> @target
+
+kernel.def target(@target) @unsigned_inclusive_maximum() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
 } launch(%output: buffer) {
@@ -157,10 +192,16 @@ kernel.def @unsigned_inclusive_maximum() {
   kernel.return
 }
 
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * exact_dynamic_packets=0 unknown_dynamic_packets=1 *
+
 // ====
 
+
 // Offset uses its independent 64-bit carrier rather than the 32-bit index width.
-kernel.def @wide_offset() {
+amdgpu.target<gfx1151> @target
+
+kernel.def target(@target) @wide_offset() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
 } launch(%output: buffer) {
@@ -183,10 +224,17 @@ kernel.def @wide_offset() {
   kernel.return
 }
 
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_write_bytes=16 *
+CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=2
+
 // ====
 
+
 // A signed guard on offset still checks overflow at the 64-bit sign boundary.
-kernel.def @wide_signed_terminal_wraps() {
+amdgpu.target<gfx942> @target
+
+kernel.def target(@target) @wide_signed_terminal_wraps() {
   %unit = index.constant 1 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
 } launch(%output: buffer) {
@@ -208,3 +256,6 @@ kernel.def @wide_signed_terminal_wraps() {
 ^exit:
   kernel.return
 }
+
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * exact_dynamic_packets=0 unknown_dynamic_packets=1 *

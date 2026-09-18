@@ -23,6 +23,7 @@
 #include "loom/pass/tooling.h"
 #include "loom/target/predicate.h"
 #include "loom/target/reporting/format.h"
+#include "loom/tools/loom-check/comparison.h"
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/tools/loom-check/requirements.h"
 #include "loom/tools/loom-format/convert.h"
@@ -692,29 +693,10 @@ static iree_status_t loom_check_execute_pass_with_output(
     result->has_actual_output = true;
   }
 
-  // Remove comments from the comparable expected output. The output printer
-  // owns canonical blank-line placement.
-  iree_string_builder_t stripped_expected;
-  iree_string_builder_initialize(allocator, &stripped_expected);
   if (iree_status_is_ok(status)) {
-    status =
-        loom_test_file_remove_comments(test_case->expected, &stripped_expected);
-  }
-  if (iree_status_is_ok(status)) {
-    iree_string_view_t actual_trimmed =
-        iree_string_view_trim(iree_string_builder_view(&result->actual_output));
-    iree_string_view_t expected_trimmed =
-        iree_string_view_trim(iree_string_builder_view(&stripped_expected));
-    if (iree_string_view_equal(actual_trimmed, expected_trimmed)) {
-      result->raw_outcome = LOOM_CHECK_PASS;
-    } else {
-      result->raw_outcome = LOOM_CHECK_FAIL;
-      status = loom_check_result_record_diff(expected_trimmed, actual_trimmed,
-                                             allocator, result);
-    }
+    status = loom_check_compare_output(test_case, allocator, result);
   }
 
-  iree_string_builder_deinitialize(&stripped_expected);
   loom_pass_report_deinitialize(&pass_report);
   iree_arena_deinitialize(&diagnostic_arena);
   return status;
@@ -828,25 +810,5 @@ iree_status_t loom_check_execute_format(
   IREE_RETURN_IF_ERROR(status);
   result->has_actual_output = true;
 
-  iree_string_builder_t stripped_expected;
-  iree_string_builder_initialize(allocator, &stripped_expected);
-  status =
-      loom_test_file_remove_comments(test_case->expected, &stripped_expected);
-
-  if (iree_status_is_ok(status)) {
-    iree_string_view_t actual_trimmed =
-        iree_string_view_trim(iree_string_builder_view(&result->actual_output));
-    iree_string_view_t expected_trimmed =
-        iree_string_view_trim(iree_string_builder_view(&stripped_expected));
-    if (iree_string_view_equal(actual_trimmed, expected_trimmed)) {
-      result->raw_outcome = LOOM_CHECK_PASS;
-    } else {
-      result->raw_outcome = LOOM_CHECK_FAIL;
-      status = loom_check_result_record_diff(expected_trimmed, actual_trimmed,
-                                             allocator, result);
-    }
-  }
-
-  iree_string_builder_deinitialize(&stripped_expected);
-  return status;
+  return loom_check_compare_output(test_case, allocator, result);
 }

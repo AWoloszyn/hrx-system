@@ -99,6 +99,36 @@ TEST_F(TestFileParseTest, VerifyMode) {
   EXPECT_EQ(file_.cases[0].mode, LOOM_TEST_MODE_VERIFY);
 }
 
+TEST_F(TestFileParseTest, ChecksInheritAndCanBeOverridden) {
+  IREE_ASSERT_OK(
+      Parse("// RUN: with-checks compile-report cse\nfunc.def @a() {}\n"
+            "// ----\nCHECK: *\n// ====\nfunc.def @b() {}\n// ----\nCHECK: *\n"
+            "// ====\n// RUN: roundtrip\nfunc.def @c() {}\n"));
+  ASSERT_EQ(file_.case_count, 3);
+  EXPECT_EQ(file_.cases[0].output_flags, LOOM_TEST_OUTPUT_CHECKS);
+  EXPECT_EQ(file_.cases[1].output_flags, LOOM_TEST_OUTPUT_CHECKS);
+  EXPECT_EQ(file_.cases[2].output_flags, 0u);
+}
+
+TEST_F(TestFileParseTest, ChecksRequireExpectedSectionEvenWhenInherited) {
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      Parse("// RUN: with-checks roundtrip\nfunc.def @f() {}"));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      Parse("// RUN: with-checks roundtrip\nfunc.def @f() {}\n"
+            "// ----\nCHECK: *\n// ====\nfunc.def @g() {}"));
+}
+
+TEST_F(TestFileParseTest, ChecksRejectVerifyAndDuplicateModifier) {
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        Parse("// RUN: with-checks verify\nfunc.def @f() {}\n"
+                              "// ----\nCHECK: *"));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        Parse("// RUN: with-checks with-checks roundtrip\n"
+                              "func.def @f() {}\n// ----\nCHECK: *"));
+}
+
 TEST_F(TestFileParseTest, PassMode) {
   IREE_ASSERT_OK(Parse("// RUN: pass dce,cse\nfunc.def @f() {}\n"));
   ASSERT_EQ(file_.case_count, 1);
