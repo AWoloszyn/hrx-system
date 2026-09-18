@@ -693,35 +693,23 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
     invalid_operations[1].writeValue.value64 = 1;
     invalid_operations[1].writeValue.flags = hipStreamWriteValueDefault;
 
-    // A query can win the race with the one-shot flush timer and report the
-    // batch error directly without failing the stream timeline. Repeat until a
-    // second query proves the timer published the persistent owner error. The
-    // accepted lane wait remains unresolved throughout.
-    hipError_t persistent_query_result = hipErrorNotReady;
-    while (persistent_query_result == hipErrorNotReady) {
-      ASSERT_EQ(hipSuccess,
-                api_.batch_mem_op(owner_stream, 2, invalid_operations,
-                                  /*flags=*/0));
-      EXPECT_EQ(hipSuccess,
-                api_.wait_value_32(peer_stream, ready_signal, ready_value,
-                                   hipStreamWaitValueEq, UINT32_MAX));
-      EXPECT_EQ(hipSuccess, api_.stream_synchronize(peer_stream));
-      const hipError_t immediate_query_result = api_.stream_query(owner_stream);
-      ASSERT_TRUE(immediate_query_result == hipErrorNotReady ||
-                  immediate_query_result == hipErrorInvalidValue);
-      persistent_query_result = api_.stream_query(owner_stream);
-      ASSERT_TRUE(persistent_query_result == hipErrorNotReady ||
-                  persistent_query_result == hipErrorInvalidValue);
-      std::this_thread::yield();
-    }
-    ASSERT_EQ(hipErrorInvalidValue, persistent_query_result);
+    ASSERT_EQ(hipSuccess, api_.batch_mem_op(owner_stream, 2, invalid_operations,
+                                            /*flags=*/0));
+    const hipError_t owner_query_result = api_.stream_query(owner_stream);
+    ASSERT_TRUE(owner_query_result == hipErrorNotReady ||
+                owner_query_result == hipErrorInvalidValue);
     EXPECT_EQ(blocked_value,
               __atomic_load_n(static_cast<uint32_t*>(blocked_signal),
                               __ATOMIC_ACQUIRE));
 
-    // This scan occurs with both the accepted lane blocked and the owner's
-    // timeline failed. The fresh stream must make progress without reclaiming
-    // or reusing the occupied lane.
+    // Command-buffer validation may fail eagerly or after the owner's earlier
+    // wait has completed. In either case, unrelated streams must make progress
+    // while the accepted lane remains occupied and must stay usable after the
+    // deferred owner error is observed.
+    EXPECT_EQ(hipSuccess,
+              api_.wait_value_32(peer_stream, ready_signal, ready_value,
+                                 hipStreamWaitValueEq, UINT32_MAX));
+    EXPECT_EQ(hipSuccess, api_.stream_synchronize(peer_stream));
     EXPECT_EQ(hipSuccess,
               api_.wait_value_32(fresh_stream, ready_signal, ready_value,
                                  hipStreamWaitValueEq, UINT32_MAX));
@@ -740,9 +728,9 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
       EXPECT_EQ(hipErrorInvalidValue, api_.stream_synchronize(owner_stream));
     }
 
-    for (hipStream_t stream : {owner_stream, peer_stream, fresh_stream}) {
-      EXPECT_EQ(hipSuccess, api_.stream_destroy(stream));
-    }
+    EXPECT_EQ(hipErrorInvalidValue, api_.stream_destroy(owner_stream));
+    EXPECT_EQ(hipSuccess, api_.stream_destroy(peer_stream));
+    EXPECT_EQ(hipSuccess, api_.stream_destroy(fresh_stream));
     context_streams.clear();
   }
 }
