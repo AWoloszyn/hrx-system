@@ -13,7 +13,6 @@
 #define LOOM_UTIL_FACT_CFG_H_
 
 #include "loom/analysis/scc.h"
-#include "loom/util/cfg_dominance.h"
 #include "loom/util/cfg_graph.h"
 #include "loom/util/fact_control.h"
 
@@ -54,9 +53,6 @@ typedef struct loom_value_fact_cfg_region_t {
   loom_cfg_graph_t graph;
   // Immutable compressed control dependencies for this graph snapshot.
   loom_cfg_control_t control_structure;
-  // Dominance for proving that an exclusive controller cannot be bypassed.
-  // Present when control_structure has control alternatives.
-  loom_cfg_dominance_t dominance;
   // Selector distributions and live execution facts with snapshot lifetime.
   loom_value_fact_control_t* control;
   // First forwarding node for each block, grouped by control-flow component.

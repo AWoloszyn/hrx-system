@@ -225,7 +225,6 @@ loom_cc_library(
     "reference_transfer.c"
   DEPS
     ::cfg_control
-    ::cfg_dominance
     ::cfg_graph
     ::fact_control
     ::numeric_format

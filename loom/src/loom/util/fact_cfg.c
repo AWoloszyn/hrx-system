@@ -199,10 +199,6 @@ iree_status_t loom_value_fact_cfg_region_initialize(
       loom_cfg_graph_build(module, region, arena, &out_region->graph));
   IREE_RETURN_IF_ERROR(loom_cfg_control_build(&out_region->graph, arena,
                                               &out_region->control_structure));
-  if (out_region->control_structure.node_count) {
-    IREE_RETURN_IF_ERROR(loom_cfg_dominance_build(&out_region->graph, arena,
-                                                  &out_region->dominance));
-  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate(arena, sizeof(*out_region->control),
                                            (void**)&out_region->control));
   IREE_RETURN_IF_ERROR(loom_value_fact_control_initialize(

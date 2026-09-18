@@ -53,9 +53,9 @@ typedef struct loom_control_uniformity_info_t {
   // Populated value facts and cached CFG graphs borrowed for the query
   // lifetime.
   const loom_value_fact_table_t* fact_table;
-  // Arena receiving scratch for mutual-exclusion queries.
+  // Arena receiving dominance and scratch for mutual-exclusion queries.
   iree_arena_allocator_t* arena;
-  // Query scratch for CFG snapshots reached by mutual-exclusion queries.
+  // Dominance and query scratch for CFG snapshots reached by exclusion queries.
   struct {
     // Open-addressed slots keyed by region address.
     loom_control_uniformity_cfg_region_t** slots;
@@ -93,10 +93,11 @@ bool loom_control_uniformity_prove_execution(
 // regions, structured-only control, and incomplete CFG facts conservatively
 // produce a failed proof.
 //
-// Queries follow the fact scope's retained dominator tree, mandatory entry
-// choices, and cycle membership. The first query allocates reusable scratch;
-// no query walks IR or recomputes graph structure. Allocation failures are
-// returned as status; an ordinary failed proof writes false to |out_proven|.
+// The first query for a region builds and retains dominance and mandatory entry
+// choices from the fact scope's graph, alongside reusable query scratch. Later
+// queries follow that tree and the graph's cycle membership. No query walks IR
+// or rebuilds the CFG. Allocation failures are returned as status; an ordinary
+// failed proof writes false to |out_proven|.
 iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
     loom_control_uniformity_info_t* info, iree_host_size_t lhs_op_count,
     const loom_op_t* const* lhs_ops, iree_host_size_t rhs_op_count,
