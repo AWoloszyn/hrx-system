@@ -211,7 +211,22 @@ hrx_status_t hrx_device_can_access_peer(hrx_device_t device_a,
     *can_access = true;
     return hrx_ok_status();
   }
-  *can_access = (device_a->type == HRX_ACCELERATOR_GPU &&
-                 device_b->type == HRX_ACCELERATOR_GPU);
+  *can_access = false;
+  if (device_a->type != HRX_ACCELERATOR_GPU ||
+      device_b->type != HRX_ACCELERATOR_GPU) {
+    return hrx_ok_status();
+  }
+
+  const iree_hal_device_topology_info_t* topology_info_a =
+      iree_hal_device_topology_info(device_a->hal_device);
+  const iree_hal_device_topology_info_t* topology_info_b =
+      iree_hal_device_topology_info(device_b->hal_device);
+  if (!topology_info_a->topology ||
+      topology_info_a->topology != topology_info_b->topology) {
+    return hrx_ok_status();
+  }
+  const iree_hal_topology_edge_t edge =
+      iree_hal_device_topology_query_edge(topology_info_a, topology_info_b);
+  *can_access = hrx_topology_edge_supports_peer_access(edge);
   return hrx_ok_status();
 }

@@ -915,25 +915,6 @@ HIPAPI hipError_t hipExtEnableLogging(void) {
   HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
-HIPAPI hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2,
-                                               uint32_t* linktype,
-                                               uint32_t* hopcount) {
-  HIP_API_BEGIN();
-  if (!linktype || !hopcount || device1 == device2 || device1 < 0 ||
-      device2 < 0) {
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
-  int device_count = 0;
-  hipError_t result = hipGetDeviceCount(&device_count);
-  if (result != hipSuccess) {
-    HIP_RETURN_ERROR(result);
-  }
-  if (device1 >= device_count || device2 >= device_count) {
-    HIP_RETURN_ERROR(hipErrorInvalidDevice);
-  }
-  HIP_RETURN_ERROR(hipErrorNotSupported);
-}
-
 HIPAPI hipError_t hipExtSetLoggingParams(size_t log_level, size_t log_size,
                                          size_t log_mask) {
   HIP_API_BEGIN();

@@ -649,6 +649,31 @@ hrx_status_t hrx_ensure_shared_state(void);
 hrx_status_t hrx_device_query_total_memory_from_spec(
     hrx_device_t device, bool* out_known, iree_device_size_t* out_total);
 
+// Returns whether a topology edge can provide read/write access to the
+// non-coherent allocation surface used for ordinary device allocations.
+// Grant-required edges become directly accessible when HRX imports an
+// allocation for the peer device, so COPY modes with that capability are
+// usable even though the topology cannot advertise them as unconditionally
+// native.
+static inline bool hrx_topology_edge_supports_peer_access(
+    iree_hal_topology_edge_t edge) {
+  const iree_hal_topology_interop_mode_t read_mode =
+      iree_hal_topology_edge_buffer_read_mode_noncoherent(edge.lo);
+  const iree_hal_topology_interop_mode_t write_mode =
+      iree_hal_topology_edge_buffer_write_mode_noncoherent(edge.lo);
+  if (read_mode == IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE &&
+      write_mode == IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE) {
+    return true;
+  }
+  const iree_hal_topology_capability_t capabilities =
+      iree_hal_topology_edge_capability_flags(edge.lo);
+  return read_mode != IREE_HAL_TOPOLOGY_INTEROP_MODE_NONE &&
+         write_mode != IREE_HAL_TOPOLOGY_INTEROP_MODE_NONE &&
+         iree_any_bit_set(
+             capabilities,
+             IREE_HAL_TOPOLOGY_CAPABILITY_PEER_ACCESS_REQUIRES_GRANT);
+}
+
 // Collapses an HRX flattened queue-affinity mask into the corresponding HAL
 // queue-family affinity for resource placement. Zero selects every family.
 iree_status_t hrx_hal_queue_affinity_to_family_affinity(
