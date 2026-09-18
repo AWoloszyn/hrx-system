@@ -29,14 +29,3 @@ func.def target(@target) @i64_index_cast_result_assume_rejected(%value: i64) -> 
   %index = index.assume %index0 [range(%index0, 0, 1023)] : index
   func.return %index : index
 }
-
-// ====
-
-amdgpu.target<gfx11-generic> @target
-
-func.def target(@target) @index_scale_byte_offset_width_rejected(%lane: index) -> (offset) {
-  %stride = index.constant 4294967296 : offset
-  // ERROR@+1: TARGET/003 {subject_role="byte-offset-width", subject_name="u32", constraint_key="amdgpu.byte_offset.u32"}
-  %byte_offset = index.scale %lane, %stride : index, offset -> offset
-  func.return %byte_offset : offset
-}

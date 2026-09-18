@@ -1,0 +1,21 @@
+// RUN: roundtrip
+
+kernel.def @wide_offset_unsigned_index() {
+  %unit = index.constant 1 : index
+  %lane_count = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lane_count, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %base: i32) {
+  %lane = kernel.workitem.id<x> : index
+  %lane_bits = index.cast %lane : index to i32
+  %wrapped = scalar.addi %base, %lane_bits : i32
+  %unsigned = index.cast %wrapped : i32 to offset
+  %element = index.cast %unsigned : offset to index
+  %stride = index.constant 4 : offset
+  %input_offset = index.scale %element, %stride : index, offset -> offset
+  %input_view = buffer.view %input[%input_offset] : buffer -> view<1xi32>
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  %output_offset = index.scale %lane, %stride : index, offset -> offset
+  %output_view = buffer.view %output[%output_offset] : buffer -> view<1xi32>
+  view.store %loaded, %output_view[0] : i32, view<1xi32>
+  kernel.return
+}

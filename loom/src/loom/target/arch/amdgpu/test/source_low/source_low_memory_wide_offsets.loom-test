@@ -1,0 +1,45 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/memory_wide_offsets.loom-test
+// RUN: emit source-low output=low
+
+amdgpu.target<gfx11-generic> @target
+
+kernel.def target(@target) @wide_offset_unsigned_index() {
+  %unit = index.constant 1 : index
+  %lane_count = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lane_count, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %base: i32) {
+  %lane = kernel.workitem.id<x> : index
+  %lane_bits = index.cast %lane : index to i32
+  %wrapped = scalar.addi %base, %lane_bits : i32
+  %unsigned = index.cast %wrapped : i32 to offset
+  %element = index.cast %unsigned : offset to index
+  %stride = index.constant 4 : offset
+  %input_offset = index.scale %element, %stride : index, offset -> offset
+  %input_view = buffer.view %input[%input_offset] : buffer -> view<1xi32>
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  %output_offset = index.scale %lane, %stride : index, offset -> offset
+  %output_view = buffer.view %output[%output_offset] : buffer -> view<1xi32>
+  view.store %loaded, %output_view[0] : i32, view<1xi32>
+  kernel.return
+}
+
+// ----
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @wide_offset_unsigned_index(%base: reg<amdgpu.sgpr>) asm {
+  %lane_bits = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
+  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %20 = v_mov_b32_copy %base
+  %element = v_add_u32 %20, %lane_bits
+  %39 = v_lshlrev_b32_src0_inline %element, 2
+  %40 = v_lshrrev_b32_src0_inline %element, 30
+  %41 = slice %input_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %42 = slice %input_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %43, %44 = v_add_co_u32 %41, %39
+  %45 = v_mov_b32_copy %42
+  %46, %47 = v_add_co_ci_u32 %45, %40, %44
+  %48 = concat(%43, %46) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %loaded = global_load_b32_vaddr %48
+  %52 = v_lshlrev_b32_src0_inline %lane_bits, 2
+  global_store_b32_saddr %52, %loaded, %output_view
+  return
+}

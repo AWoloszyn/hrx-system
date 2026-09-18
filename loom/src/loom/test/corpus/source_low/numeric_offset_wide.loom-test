@@ -1,0 +1,52 @@
+// RUN: roundtrip
+
+func.def @offset_scale_unbounded(%element: index) -> (offset) {
+  %stride = index.constant 4 : offset
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ====
+
+func.def @offset_scale_unsigned_wrap(%base: i32, %increment: i32) -> (offset) {
+  %wrapped = scalar.addi %base, %increment : i32
+  %unsigned = index.cast %wrapped : i32 to offset
+  %element = index.cast %unsigned : offset to index
+  %stride = index.constant 4 : offset
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ====
+
+func.def @offset_scale_large_stride(%element: index) -> (offset) {
+  %stride = index.constant 4294967296 : offset
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ====
+
+func.def @offset_scale_dynamic_stride(%element: index, %stride: offset) -> (offset) {
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ====
+
+func.def @offset_scale_lane(%elements: vector<2xi32>, %stride: offset) -> (offset) {
+  %raw = vector.extract %elements[0] : vector<2xi32> -> i32
+  %unsigned = index.cast %raw : i32 to offset
+  %element = index.cast %unsigned : offset to index
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ====
+
+func.def @offset_scale_bounded(%element: index) -> (offset) {
+  %bounded = index.assume %element [range(%element, 0, 1023)] : index
+  %stride = index.constant 4 : offset
+  %bytes = index.scale %bounded, %stride : index, offset -> offset
+  func.return %bytes : offset
+}

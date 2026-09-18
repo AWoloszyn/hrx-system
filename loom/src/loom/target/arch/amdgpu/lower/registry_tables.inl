@@ -48,6 +48,13 @@ static const loom_amdgpu_lower_dispatch_row_t
                 loom_amdgpu_emit_address_i64_alu_dispatch,
                 loom_amdgpu_low_legality_verify_address_i64_alu, 3,
                 LOOM_AMDGPU_PRESELECT_TARGET_PLAN),
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_INDEX_SCALE)] =
+            LOOM_AMDGPU_GENERATED_PRESELECT_DATA_SOURCE_POLICY_ROW(
+                LOOM_OP_INDEX_SCALE, loom_amdgpu_address_i64_alu_plan_t,
+                loom_amdgpu_select_address_i64_alu_dispatch,
+                loom_amdgpu_emit_address_i64_alu_dispatch,
+                loom_amdgpu_low_legality_verify_address_i64_alu, 2,
+                LOOM_AMDGPU_PRESELECT_TARGET_PLAN),
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_INDEX_SHLI)] =
             LOOM_AMDGPU_GENERATED_PRESELECT_DATA_SOURCE_POLICY_ROW(
                 LOOM_OP_INDEX_SHLI, loom_amdgpu_address_i64_alu_plan_t,

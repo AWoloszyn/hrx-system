@@ -306,11 +306,16 @@ static const loom_amdgpu_i64_alu_descriptor_requirement_row_t
 
 static const loom_amdgpu_i64_alu_descriptor_requirement_row_t
     kAmdgpuAddressI64AluDescriptorRequirementRows
-        [LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_MADD_LO + 1] = {
+        [LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_MUL_LO + 1] = {
             [LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_ADD] =
                 {
                     .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
                         kAmdgpuOffsetAddSgprDescriptorRequirements),
+                },
+            [LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_MUL_LO] =
+                {
+                    .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
+                        kAmdgpuScalarI64MulSgprDescriptorRequirements),
                 },
             [LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_ADD] =
                 {
@@ -1076,6 +1081,11 @@ static const loom_amdgpu_address_i64_alu_source_layout_t
                 .kind = LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_MUL_LO,
                 .operand_count = 2,
             },
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_INDEX_SCALE)] =
+            {
+                .kind = LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_MUL_LO,
+                .operand_count = 2,
+            },
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_INDEX_MADD)] =
             {
                 .kind = LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_MADD_LO,
@@ -1145,6 +1155,18 @@ static bool loom_amdgpu_address_i64_alu_result_needs_wide(
                                                       result, result_type);
 }
 
+static loom_amdgpu_address_i64_alu_kind_t loom_amdgpu_address_i64_alu_sgpr_kind(
+    loom_amdgpu_address_i64_alu_kind_t operation_kind) {
+  switch (operation_kind) {
+    case LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_ADD:
+      return LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_ADD;
+    case LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_MUL_LO:
+      return LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_MUL_LO;
+    default:
+      return LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_NONE;
+  }
+}
+
 static iree_status_t loom_amdgpu_select_address_i64_alu_kind(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_amdgpu_address_i64_alu_kind_t operation_kind, loom_value_id_t result,
@@ -1161,13 +1183,10 @@ static iree_status_t loom_amdgpu_select_address_i64_alu_kind(
     return iree_ok_status();
   }
 
-  if (operation_kind != LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_ADD) {
-    return iree_ok_status();
-  }
   const bool result_is_sgpr64 = loom_amdgpu_low_type_is_register_class_count(
       context, result_low_type, LOOM_AMDGPU_REG_CLASS_ID_SGPR, 2);
   if (result_is_sgpr64) {
-    *out_kind = LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_ADD;
+    *out_kind = loom_amdgpu_address_i64_alu_sgpr_kind(operation_kind);
   }
   return iree_ok_status();
 }
@@ -1295,12 +1314,12 @@ iree_status_t loom_amdgpu_low_legality_verify_address_i64_alu(
   IREE_RETURN_IF_ERROR(loom_amdgpu_target_low_legality_value_prefers_vgpr(
       context, result, &result_prefers_vgpr));
   loom_amdgpu_address_i64_alu_kind_t kind = operation_kind;
-  if (operation_kind == LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_ADD &&
-      !result_prefers_vgpr) {
-    kind = LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_ADD;
-  } else if (!result_prefers_vgpr) {
-    return loom_amdgpu_low_legality_reject(context, op,
-                                           IREE_SV("result.vgpr64"));
+  if (!result_prefers_vgpr) {
+    kind = loom_amdgpu_address_i64_alu_sgpr_kind(operation_kind);
+    if (kind == LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_NONE) {
+      return loom_amdgpu_low_legality_reject(context, op,
+                                             IREE_SV("result.vgpr64"));
+    }
   }
 
   iree_string_view_t constraint_key = iree_string_view_empty();

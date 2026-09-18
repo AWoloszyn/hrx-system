@@ -681,15 +681,21 @@ iree_status_t loom_amdgpu_select_index_constant_plan(
   const loom_value_id_t result = loom_index_constant_result(source_op);
   const loom_attribute_t value = loom_index_constant_value(source_op);
   if (!loom_amdgpu_value_is_address_scalar(context, result) ||
-      !loom_amdgpu_attr_is_u32_address_immediate(value)) {
+      value.kind != LOOM_ATTR_I64) {
     return iree_ok_status();
   }
-  bool result_prefers_vgpr = false;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_context_value_prefers_vgpr(
-      context, result, &result_prefers_vgpr));
+  loom_type_t result_type = loom_type_none();
+  IREE_RETURN_IF_ERROR(
+      loom_amdgpu_low_result_type(context, source_op, result, &result_type));
   const loom_amdgpu_descriptor_ref_t descriptor_ref =
-      result_prefers_vgpr ? LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32
-                          : LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B32;
+      loom_low_register_type_class_id(result_type) ==
+              LOOM_AMDGPU_REG_CLASS_ID_VGPR
+          ? LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32
+          : LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B32;
+  if (loom_low_register_type_unit_count(result_type) == 2) {
+    return loom_amdgpu_select_i64_constant_plan(
+        context, value, result, 2, descriptor_ref, out_plan, out_selected);
+  }
   return loom_amdgpu_select_u32_bit_pattern_constant_plan(
       context, (uint32_t)value.i64, result, descriptor_ref, out_plan,
       out_selected);

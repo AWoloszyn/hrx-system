@@ -21,6 +21,7 @@ static bool loom_amdgpu_address_i64_alu_kind_uses_vgpr(
     case LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_MADD_LO:
       return true;
     case LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_ADD:
+    case LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_MUL_LO:
       return false;
     case LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_NONE:
       break;
@@ -394,6 +395,7 @@ iree_status_t loom_amdgpu_lower_address_i64_alu(
           context, source_op, low_lhs, low_rhs, &low_result));
       return loom_low_lower_bind_value(context, plan->result, low_result);
     }
+    case LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_SGPR_MUL_LO:
     case LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_VGPR_MUL_LO: {
       loom_value_id_t low_lhs = LOOM_VALUE_ID_INVALID;
       IREE_RETURN_IF_ERROR(
