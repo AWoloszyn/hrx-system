@@ -134,6 +134,17 @@ TEST_F(CfgLoopTest, AcyclicGraphHasEmptyForest) {
   EXPECT_EQ(forest.innermost_loop_indices, nullptr);
 }
 
+TEST_F(CfgLoopTest, EdgelessScheduleDoesNotNeedAdjacencyStorage) {
+  // The Low function model omits adjacency for structured single-block bodies.
+  loom_cfg_graph_t graph = {};
+  graph.block_count = 1;
+  loom_cfg_loop_forest_t forest = {};
+  uint64_t block_count = 0;
+  EXPECT_TRUE(loom_cfg_loop_forest_calculate_block_execution_counts(
+      &forest, &graph, nullptr, &block_count));
+  EXPECT_EQ(block_count, 1u);
+}
+
 TEST_F(CfgLoopTest, BuildsNestedCanonicalIntervals) {
   loom_block_t* entry = loom_region_entry_block(body_);
   loom_block_t* outer_header = AppendBlock();
@@ -235,6 +246,49 @@ TEST_F(CfgLoopTest, RetainsEntryPredecessorWithMultipleSuccessors) {
   EXPECT_EQ(forest.reachable_backward_edge_count, 1u);
   EXPECT_EQ(forest.intervals[0].entry_predecessor_index, 0u);
   EXPECT_TRUE(forest.intervals[0].is_canonical);
+
+  const uint64_t trip_counts[] = {4};
+  uint64_t block_counts[4] = {0};
+  EXPECT_FALSE(loom_cfg_loop_forest_calculate_block_execution_counts(
+      &forest, &graph, trip_counts, block_counts));
+}
+
+TEST_F(CfgLoopTest, AcyclicDiamondDoesNotHaveExactCounts) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* left = AppendBlock();
+  loom_block_t* right = AppendBlock();
+  loom_block_t* exit = AppendBlock();
+  SetBlock(entry);
+  BuildConditionalBranch(left, right);
+  SetBlock(left);
+  BuildBranch(exit);
+  SetBlock(right);
+  BuildBranch(exit);
+
+  loom_cfg_graph_t graph = {0};
+  const auto forest = BuildForest(&graph);
+  uint64_t block_counts[4] = {0};
+  EXPECT_FALSE(loom_cfg_loop_forest_calculate_block_execution_counts(
+      &forest, &graph, nullptr, block_counts));
+}
+
+TEST_F(CfgLoopTest, UnreachableBranchDoesNotInvalidateCounts) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* exit = AppendBlock();
+  loom_block_t* unreachable = AppendBlock();
+  SetBlock(entry);
+  BuildBranch(exit);
+  SetBlock(unreachable);
+  BuildConditionalBranch(entry, exit);
+
+  loom_cfg_graph_t graph = {0};
+  const auto forest = BuildForest(&graph);
+  uint64_t block_counts[3] = {0};
+  EXPECT_TRUE(loom_cfg_loop_forest_calculate_block_execution_counts(
+      &forest, &graph, nullptr, block_counts));
+  EXPECT_EQ(block_counts[0], 1u);
+  EXPECT_EQ(block_counts[1], 1u);
+  EXPECT_EQ(block_counts[2], 0u);
 }
 
 TEST_F(CfgLoopTest, RejectsUnmodeledBranchingInsideLoop) {

@@ -278,10 +278,13 @@ bool loom_cfg_loop_nest_calculate_block_execution_counts(
   const loom_cfg_graph_t* graph = nest->graph;
   for (iree_host_size_t i = 0; i < graph->block_count; ++i) {
     out_block_counts[i] = graph->blocks[i].reachable ? 1 : 0;
+    if (!graph->blocks[i].reachable) {
+      continue;
+    }
     uint16_t loop_index = loom_cfg_loop_nest_innermost(nest, (uint16_t)i);
-    if (loop_index != LOOM_CFG_LOOP_NEST_NONE &&
-        nest->loops[loop_index].header_index != i &&
-        graph->blocks[i].successor_count > 1) {
+    if (graph->blocks[i].successor_count > 1 &&
+        (loop_index == LOOM_CFG_LOOP_NEST_NONE ||
+         nest->loops[loop_index].header_index != i)) {
       return false;
     }
   }

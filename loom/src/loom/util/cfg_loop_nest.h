@@ -93,9 +93,10 @@ static inline bool loom_cfg_loop_nest_contains(const loom_cfg_loop_nest_t* nest,
 
 // Expands exact trip counts for header-tested, single-entry/single-backedge
 // loops into block execution counts in O(B+L) time without extra storage.
-// Returns false for irreducible cycles, non-header exits, internal conditional
-// paths, or overflow. A header executes trip_count+1 times per entry; other
-// loop blocks execute trip_count times. Nested counts are multiplied.
+// Returns false for irreducible cycles, non-header exits, conditional paths
+// outside modeled loop headers, or overflow. A header executes trip_count+1
+// times per entry; other loop blocks execute trip_count times. Nested counts
+// are multiplied.
 bool loom_cfg_loop_nest_calculate_block_execution_counts(
     const loom_cfg_loop_nest_t* nest, const uint64_t* trip_counts,
     uint64_t* out_block_counts);

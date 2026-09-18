@@ -162,6 +162,8 @@ TEST_F(CfgLoopNestTest, NestedExecutionCountsDoNotDependOnBlockOrder) {
 
 TEST_F(CfgLoopNestTest, UnmodeledPathsDoNotProduceExactCounts) {
   const std::vector<std::vector<std::vector<uint16_t>>> cases = {
+      {{1, 2}, {3}, {3}, {}},
+      {{1, 3}, {2, 3}, {1}, {}},
       {{1}, {2, 3}, {4}, {4}, {5, 6}, {1}, {}},
       {{1}, {2, 5}, {3, 4}, {1}, {1}, {}},
       {{1}, {2, 4}, {1, 4}, {}, {}},
@@ -176,6 +178,15 @@ TEST_F(CfgLoopNestTest, UnmodeledPathsDoNotProduceExactCounts) {
     EXPECT_FALSE(loom_cfg_loop_nest_calculate_block_execution_counts(
         &nest, trips.data(), counts.data()));
   }
+}
+
+TEST_F(CfgLoopNestTest, UnreachableBranchesDoNotInvalidateCounts) {
+  CfgGraph fixture({{1}, {}, {1, 3}, {}});
+  const auto nest = Build(fixture);
+  std::vector<uint64_t> counts(4);
+  EXPECT_TRUE(loom_cfg_loop_nest_calculate_block_execution_counts(
+      &nest, nullptr, counts.data()));
+  EXPECT_EQ(counts, (std::vector<uint64_t>{1, 1, 0, 0}));
 }
 
 }  // namespace
