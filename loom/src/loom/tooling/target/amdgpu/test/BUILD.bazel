@@ -37,6 +37,7 @@ iree_execution_test_suite(
         "selected_root_amdgpu.loom",
         "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
         "//loom/src/loom/test/corpus/source_low:memory_wide_offsets.loom-test",
+        "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/loop_entry_wave32.loom",
         "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/schedule_scopes.loom",
     ],
     manifests = [
@@ -118,6 +119,15 @@ loom_test(
 loom_test(
     name = "unroll_fences_access_test",
     srcs = ["amdgpu_unroll_fences.loom"],
+    execution_profile = AMDGPU_ACCESS_PROFILE,
+)
+
+loom_test(
+    name = "loop_entry_access_test",
+    srcs = [
+        "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/loop_entry.loom",
+        "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/loop_entry_wave32.loom",
+    ],
     execution_profile = AMDGPU_ACCESS_PROFILE,
 )
 

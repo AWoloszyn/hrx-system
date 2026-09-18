@@ -1,0 +1,41 @@
+amdgpu.target<gfx11-generic> @loop_entry_wave32 {subgroup_size = 32}
+
+// The exit test follows a divergent diamond. Each lane retains the broadcast
+// from its final iteration, including lane zero, which skips the loop body.
+kernel.def target(@loop_entry_wave32) @delayed_guard_broadcast_wave32() {
+  %unit = index.constant 1 : index
+  %size = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%output: buffer) {
+  %loop_begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %not_first = index.cmp ne, %lane, %loop_begin : index
+  %output_view = buffer.view %output[%base] : buffer -> view<32xi32>
+  cfg.br ^header(%loop_begin: index)
+^header(%counter: index):
+  %observed = scf.if %not_first -> (i32) {
+    %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+    scf.yield %broadcast : i32
+  } else {
+    scf.yield %lane_i32 : i32
+  }
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  view.store %observed, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @delayed_guard_broadcast_wave32_case {
+  %actual = check.generate.fill value(-1) : tensor<32xi32>
+  %expected = check.generate.iota offset(0) step(1) : tensor<32xi32>
+  kernel.launch @delayed_guard_broadcast_wave32(%actual) : (tensor<32xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<32xi32>
+  check.return
+}

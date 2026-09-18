@@ -2,6 +2,21 @@
   "version": 1,
   "cases": [
     {
+      "name": "allocates wave32 loop masks with access instrumentation",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/corpus/gfx11/loop_entry_wave32.loom",
+          "--root=@delayed_guard_broadcast_wave32",
+          "--target=amdgpu:gfx1151",
+          "--format=amdgpu-hsaco",
+          "--sanitizer=access",
+          "--output={tmp}/loop_entry_wave32.hsaco"
+        ]
+      },
+      "files": [{"path": "{tmp}/loop_entry_wave32.hsaco", "non_empty": true}]
+    },
+    {
       "name": "resumes explicit kernel roots from Low text and bytecode",
       "steps": [
         {
