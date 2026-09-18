@@ -131,12 +131,12 @@ static void loom_verify_defined_type_refs(
   const loom_value_id_t direct_encoding =
       loom_type_has_ssa_encoding(type) ? loom_type_encoding_value_id(type)
                                        : LOOM_VALUE_ID_INVALID;
-  for (loom_type_use_id_t use_id =
-           loom_module_value_first_outgoing_type_use(state->module, value_id);
-       use_id != LOOM_TYPE_USE_ID_INVALID;) {
-    const loom_type_use_t* use = &state->module->type_uses.records[use_id];
-    use_id = use->next_outgoing_use_id;
-    const loom_value_id_t referenced_id = use->referenced_value_id;
+  loom_type_use_iterator_t dependencies;
+  loom_module_value_type_dependencies(state->module, value_id, &dependencies);
+  for (loom_value_id_t referenced_id =
+           loom_type_dependencies_next(&dependencies);
+       referenced_id != LOOM_VALUE_ID_INVALID;
+       referenced_id = loom_type_dependencies_next(&dependencies)) {
     if (referenced_id == direct_encoding ||
         loom_verify_definition_ref_is_visible(state, op, vtable, referenced_id,
                                               is_result)) {

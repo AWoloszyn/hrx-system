@@ -127,6 +127,7 @@ TEST_P(TypeInternerFailureTest,
 
     EXPECT_EQ(module_->types.entries, types.entries);
     EXPECT_EQ(module_->types.hashes, types.hashes);
+    EXPECT_EQ(module_->types.dependencies, types.dependencies);
     EXPECT_EQ(module_->types.capacity, types.capacity);
     EXPECT_EQ(module_->types.count, types.count);
     EXPECT_EQ(module_->type_intern.hashes, interner.hashes);

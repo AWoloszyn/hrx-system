@@ -382,12 +382,13 @@ static bool loom_callable_outline_value_has_use_outside_range(
     }
   }
 
-  loom_type_use_id_t use_id =
-      loom_module_value_first_incoming_type_use(state->module, value_id);
-  while (use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use = &state->module->type_uses.records[use_id];
+  loom_type_use_iterator_t type_users;
+  loom_module_value_type_users(state->module, value_id, &type_users);
+  for (loom_value_id_t user_value_id = loom_type_users_next(&type_users);
+       user_value_id != LOOM_VALUE_ID_INVALID;
+       user_value_id = loom_type_users_next(&type_users)) {
     const loom_value_t* user_value =
-        loom_module_value(state->module, type_use->user_value_id);
+        loom_module_value(state->module, user_value_id);
     bool inside = loom_value_is_block_arg(user_value)
                       ? loom_callable_outline_block_is_inside_range(
                             state, loom_value_def_block(user_value))
@@ -396,7 +397,6 @@ static bool loom_callable_outline_value_has_use_outside_range(
     if (!inside) {
       return true;
     }
-    use_id = type_use->next_incoming_use_id;
   }
   return false;
 }

@@ -19,7 +19,7 @@ extern "C" {
 // Walks outgoing SSA references owned by |op| and its nested regions: ordinary
 // operands, result/block/signature-argument type references, and attribute
 // references. Declaration-owned operands are definitions, not references.
-// Uses retained reference records without reconstructing type or attribute
+// Uses retained reference indexes without reconstructing type or attribute
 // payloads. Values may be visited more than once; ordering is unspecified.
 //
 // Erase and DCE paths use this before unlinking a subtree to notify providers
@@ -31,9 +31,9 @@ iree_status_t loom_op_walk_subtree_value_refs(
     loom_type_value_ref_callback_t callback, void* user_data);
 
 // Replaces SSA references to |old_id| embedded in |type| with |new_id| and
-// interns the resulting type in |module|. The module value table and type-use
-// side table are not mutated; callers decide which carrier value, if any, owns
-// the returned type.
+// interns the resulting type and its dependency facts in |module|. Values and
+// active type ownership are unchanged; callers decide which carrier value, if
+// any, owns the returned type.
 iree_status_t loom_module_replace_type_value_references(
     loom_module_t* module, loom_type_t type, loom_value_id_t old_id,
     loom_value_id_t new_id, loom_type_t* out_type, bool* out_changed);

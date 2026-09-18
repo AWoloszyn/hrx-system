@@ -14,12 +14,12 @@
 static iree_status_t loom_value_walk_outgoing_type_refs(
     const loom_module_t* module, loom_value_id_t value_id,
     loom_type_value_ref_callback_t callback, void* user_data) {
-  for (loom_type_use_id_t use_id =
-           loom_module_value_first_outgoing_type_use(module, value_id);
-       use_id != LOOM_TYPE_USE_ID_INVALID;) {
-    const loom_type_use_t* use = &module->type_uses.records[use_id];
-    IREE_RETURN_IF_ERROR(callback(use->referenced_value_id, user_data));
-    use_id = use->next_outgoing_use_id;
+  loom_type_use_iterator_t dependencies;
+  loom_module_value_type_dependencies(module, value_id, &dependencies);
+  for (loom_value_id_t provider = loom_type_dependencies_next(&dependencies);
+       provider != LOOM_VALUE_ID_INVALID;
+       provider = loom_type_dependencies_next(&dependencies)) {
+    IREE_RETURN_IF_ERROR(callback(provider, user_data));
   }
   return iree_ok_status();
 }
@@ -872,27 +872,19 @@ iree_status_t loom_module_replace_value_type_uses(loom_module_t* module,
         (unsigned)old_id, (unsigned)new_id, module->values.count);
   }
 
-  // Each iteration rewrites one carrier value reached from the incoming-use
-  // head. The helper removes all outgoing type-use records for that carrier
-  // before inserting the replacement records, so the next head is always a
-  // still-unprocessed carrier without rescanning the table.
+  // Each iteration rewrites one active carrier. Replacement removes its
+  // ownership of old_id, so a fresh cursor reaches an unprocessed carrier
+  // without rescanning types or retaining a cursor across index mutation.
   while (loom_module_value_has_type_uses(module, old_id)) {
-    loom_type_use_id_t use_id =
-        loom_module_value_first_incoming_type_use(module, old_id);
-    loom_value_id_t user_value_id =
-        module->type_uses.records[use_id].user_value_id;
+    loom_type_use_iterator_t type_users;
+    loom_module_value_type_users(module, old_id, &type_users);
+    const loom_value_id_t user_value_id = loom_type_users_next(&type_users);
     loom_type_t old_type = loom_module_value_type(module, user_value_id);
     loom_type_t new_type = old_type;
     bool changed = false;
     IREE_RETURN_IF_ERROR(loom_module_replace_type_value_refs_impl(
         module, old_type, old_id, new_id, &new_type, &changed));
-    if (!changed) {
-      return iree_make_status(
-          IREE_STATUS_INTERNAL,
-          "type-use table says value %%%u references %%%u, but the type does "
-          "not contain that reference",
-          (unsigned)user_value_id, (unsigned)old_id);
-    }
+    IREE_ASSERT(changed && "retained type dependencies must match the payload");
     IREE_RETURN_IF_ERROR(
         loom_module_set_value_type(module, user_value_id, new_type));
   }

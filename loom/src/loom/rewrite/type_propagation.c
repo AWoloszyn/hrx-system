@@ -1230,12 +1230,11 @@ static iree_status_t loom_type_propagator_process_value_adjacency(
     }
   }
 
-  loom_type_use_id_t type_use_id =
-      loom_module_value_first_incoming_type_use(propagator->module, value_id);
-  while (type_use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use =
-        &propagator->module->type_uses.records[type_use_id];
-    loom_value_id_t user_value_id = type_use->user_value_id;
+  loom_type_use_iterator_t type_users;
+  loom_module_value_type_users(propagator->module, value_id, &type_users);
+  for (loom_value_id_t user_value_id = loom_type_users_next(&type_users);
+       user_value_id != LOOM_VALUE_ID_INVALID;
+       user_value_id = loom_type_users_next(&type_users)) {
     if (loom_type_propagator_valid_value_id(propagator, user_value_id)) {
       loom_value_t* user_value =
           loom_module_value(propagator->module, user_value_id);
@@ -1266,7 +1265,6 @@ static iree_status_t loom_type_propagator_process_value_adjacency(
         }
       }
     }
-    type_use_id = type_use->next_incoming_use_id;
   }
   return iree_ok_status();
 }

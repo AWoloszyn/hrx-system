@@ -1,5 +1,43 @@
 // RUN: pass cse,cse
 
+// CSE rewrites an entire carrier once when both dimensions and nested function
+// children refer to the replaced provider. The retained provider already occurs
+// in the same type, so replacement also merges their dependency membership.
+func.def @shared_value_type_references(%extent: index, %increment: index, %seed: i32) {
+  %width = index.add %extent, %increment : index
+  %duplicate_width = index.add %extent, %increment : index
+  %callback = test.convert %seed : i32 -> (vector<[%duplicate_width]x[%width]xf32>, vector<[%duplicate_width]x[%duplicate_width]xf32>) -> ()
+  test.use %callback : (vector<[%duplicate_width]x[%width]xf32>, vector<[%duplicate_width]x[%duplicate_width]xf32>) -> ()
+  func.return
+}
+
+// ----
+func.def @shared_value_type_references(%extent: index, %increment: index, %seed: i32) {
+  %width = index.add %extent, %increment : index
+  %callback = test.convert %seed : i32 -> (vector<[%width]x[%width]xf32>, vector<[%width]x[%width]xf32>) -> ()
+  test.use %callback : (vector<[%width]x[%width]xf32>, vector<[%width]x[%width]xf32>) -> ()
+  func.return
+}
+
+// ====
+// RUN: pass dce,dce
+
+// A carrier is the last use of a computed dimension. Erasing that carrier drops
+// its shared ownership, allowing DCE to erase the dimension as well.
+func.def @dead_shared_type_owner(%extent: index, %increment: index, %seed: i32) {
+  %width = index.add %extent, %increment : index
+  %unused_callback = test.convert %seed : i32 -> (vector<[%width]x[%width]xf32>, vector<[%width]xf32>) -> ()
+  func.return
+}
+
+// ----
+func.def @dead_shared_type_owner(%extent: index, %increment: index, %seed: i32) {
+  func.return
+}
+
+// ====
+// RUN: pass cse,cse
+
 // Replacing a repeated expression updates independent predicate owners and
 // nested type attributes. CSE then erases a duplicate attribute owner; a second
 // pass consumes the surviving references without stale ownership.

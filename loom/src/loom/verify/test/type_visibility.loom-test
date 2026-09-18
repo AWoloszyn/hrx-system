@@ -153,6 +153,33 @@ func.def @local_repeated_shape(%count: index, %tile: tile<[%count]x[%count]xf32>
 
 // ====
 
+// Shared nested signatures report each invisible provider once per carrier,
+// even when the same dimension occurs through several structural paths.
+func.def @shared_nested_capture(%width: index, %height: index) {
+  test.isolated_region {
+    // ERROR@+2: DOMINANCE/016 "args[0] type references value '%width'"
+    // ERROR@+1: DOMINANCE/016 "args[0] type references value '%height'"
+    func.decl @callback(%signature: (vector<[%width]x[%width]xf32>, vector<[%height]x[%width]xf32>) -> (vector<[%width]xf32>))
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// TYPE-valued parameters retain the child type's membership, including nested
+// dictionary fields, without keeping separate paths to the same provider.
+func.def @parameterized_capture(%count: index) {
+  test.isolated_region {
+    // ERROR@+1: DOMINANCE/016 "args[0] type references value '%count'"
+    func.decl @array(%storage: test.array<vector<[%count]xf32>, metadata = {shape = #test.options<mode = precise, element_type = vector<[%count]x[%count]xf32>>}>)
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
 // Declaration-local global placeholders and co-result dimensions are valid.
 global.constant @weights : tile<[%rows]x[%columns]xf32, %layout>
 

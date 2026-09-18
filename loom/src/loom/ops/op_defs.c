@@ -337,22 +337,18 @@ static bool loom_value_has_type_uses_outside_op(const loom_module_t* module,
   if (value_id >= module->values.count) {
     return false;
   }
-  loom_type_use_id_t use_id =
-      loom_module_value_first_incoming_type_use(module, value_id);
-  while (use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (type_use->user_value_id >= module->values.count) {
-      return true;
-    }
-    const loom_value_t* user_value =
-        loom_module_value(module, type_use->user_value_id);
+  loom_type_use_iterator_t type_users;
+  loom_module_value_type_users(module, value_id, &type_users);
+  for (loom_value_id_t user_value_id = loom_type_users_next(&type_users);
+       user_value_id != LOOM_VALUE_ID_INVALID;
+       user_value_id = loom_type_users_next(&type_users)) {
+    const loom_value_t* user_value = loom_module_value(module, user_value_id);
     if (loom_value_is_block_arg(user_value)) {
       return true;
     }
     if (loom_value_def_op(user_value) != op) {
       return true;
     }
-    use_id = type_use->next_incoming_use_id;
   }
   return false;
 }
@@ -2640,19 +2636,18 @@ static iree_status_t loom_region_remove_verify_value_uses(
     }
   }
 
-  loom_type_use_id_t use_id =
-      loom_module_value_first_incoming_type_use(module, value_id);
-  while (use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (!loom_region_remove_value_is_removed(module, scope,
-                                             type_use->user_value_id)) {
+  loom_type_use_iterator_t type_users;
+  loom_module_value_type_users(module, value_id, &type_users);
+  for (loom_value_id_t user_value_id = loom_type_users_next(&type_users);
+       user_value_id != LOOM_VALUE_ID_INVALID;
+       user_value_id = loom_type_users_next(&type_users)) {
+    if (!loom_region_remove_value_is_removed(module, scope, user_value_id)) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
           "cannot remove block set: value %%%u has a type use outside the "
           "removed blocks",
           (unsigned)value_id);
     }
-    use_id = type_use->next_incoming_use_id;
   }
 
   if (loom_value_has_attribute_uses(value)) {

@@ -278,8 +278,11 @@ class FunctionVersionProjectionFixture {
     if (projected_module->symbols.count != expected_symbol_count) {
       std::abort();
     }
-    output_owned_bytes_ = projected_module->arena.total_allocation_size;
-    output_used_bytes_ = projected_module->arena.used_allocation_size;
+    output_owned_bytes_ =
+        projected_module->arena.total_allocation_size +
+        projected_module->type_uses.arena.total_allocation_size;
+    output_used_bytes_ = projected_module->arena.used_allocation_size +
+                         projected_module->type_uses.arena.used_allocation_size;
     loom_module_free(projected_module);
   }
 

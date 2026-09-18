@@ -59,6 +59,7 @@ loom_cc_library(
     "semantics.h"
     "structural_hash.h"
     "type_constraint.h"
+    "type_dependencies.h"
     "type_descriptor.h"
     "types.h"
     "value_refs.h"
@@ -76,10 +77,12 @@ loom_cc_library(
     "module_record.c"
     "scalar_type.c"
     "type_constraint.c"
+    "type_dependencies.c"
     "types.c"
     "value_refs.c"
   DEPS
     iree::base
+    iree::base::internal
     iree::base::internal::arena
     loom::error::emitter
     loom::util::adaptive_sort

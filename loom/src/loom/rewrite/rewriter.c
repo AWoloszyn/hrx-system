@@ -1051,13 +1051,13 @@ static iree_status_t loom_rewriter_add_users_to_worklist(
   }
   IREE_RETURN_IF_ERROR(
       loom_rewriter_add_attribute_users_to_worklist(rewriter, value_id));
-  loom_type_use_id_t use_id =
-      loom_module_value_first_incoming_type_use(rewriter->module, value_id);
-  while (use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use =
-        &rewriter->module->type_uses.records[use_id];
+  loom_type_use_iterator_t type_users;
+  loom_module_value_type_users(rewriter->module, value_id, &type_users);
+  for (loom_value_id_t user_value_id = loom_type_users_next(&type_users);
+       user_value_id != LOOM_VALUE_ID_INVALID;
+       user_value_id = loom_type_users_next(&type_users)) {
     loom_value_t* user_value =
-        loom_module_value(rewriter->module, type_use->user_value_id);
+        loom_module_value(rewriter->module, user_value_id);
     if (!loom_value_is_block_arg(user_value)) {
       loom_op_t* def = loom_value_def_op(user_value);
       if (def) {
@@ -1073,9 +1073,8 @@ static iree_status_t loom_rewriter_add_users_to_worklist(
       IREE_RETURN_IF_ERROR(
           loom_rewriter_add_summary_ops_to_worklist(rewriter, user_op));
     }
-    IREE_RETURN_IF_ERROR(loom_rewriter_add_attribute_users_to_worklist(
-        rewriter, type_use->user_value_id));
-    use_id = type_use->next_incoming_use_id;
+    IREE_RETURN_IF_ERROR(
+        loom_rewriter_add_attribute_users_to_worklist(rewriter, user_value_id));
   }
   return iree_ok_status();
 }

@@ -7,8 +7,8 @@
 // Loom IR graph: Module -> Region -> Block -> Operation -> Value.
 //
 // The IR is a lightweight, arena-allocated graph that represents loom
-// programs. All IR for a module lives in a single arena: creation is
-// bump-pointer allocation, destruction is freeing the arena.
+// programs. Module-owned arenas use bump-pointer allocation and return their
+// blocks to a shared pool on destruction.
 //
 // ==========================================================================
 // Core concepts
@@ -2163,16 +2163,15 @@ typedef struct loom_string_table_t {
   iree_string_view_t* entries;
 } loom_string_table_t;
 
-// Index into the module's type-use record table.
-typedef uint32_t loom_type_use_id_t;
-#define LOOM_TYPE_USE_ID_INVALID ((loom_type_use_id_t)UINT32_MAX)
+// Canonical set of SSA dependencies in a type. Zero is the empty set.
+typedef uint32_t loom_type_dependency_id_t;
 
-// Per-value heads for the type-use adjacency lists.
+// Per-value identities in the shared type-dependency ownership index.
 typedef struct loom_value_type_use_heads_t {
-  // First record whose referenced_value_id is this value.
-  loom_type_use_id_t first_incoming_use_id;
-  // First record whose user_value_id is this value.
-  loom_type_use_id_t first_outgoing_use_id;
+  // Canonical singleton for this provider, or zero until first activation.
+  loom_type_dependency_id_t provider;
+  // Carrier record retaining this value's declared and active dependency sets.
+  uint32_t carrier;
 } loom_value_type_use_heads_t;
 
 // One-based index into the module's attribute-use records. Zero is no use.
@@ -2286,7 +2285,7 @@ static inline const uint32_t* loom_value_table_const_u32_scratch(
   return &segment->u32_scratch[value_id & LOOM_VALUE_SEGMENT_MASK];
 }
 
-// Returns the mutable type-use adjacency heads for |value_id|.
+// Returns the mutable dependency-index identities for |value_id|.
 static inline loom_value_type_use_heads_t* loom_value_table_type_use_heads(
     loom_value_table_t* table, loom_value_id_t value_id) {
   loom_value_segment_t* segment =
@@ -2294,7 +2293,7 @@ static inline loom_value_type_use_heads_t* loom_value_table_type_use_heads(
   return &segment->type_use_heads[value_id & LOOM_VALUE_SEGMENT_MASK];
 }
 
-// Returns the const type-use adjacency heads for |value_id|.
+// Returns the const dependency-index identities for |value_id|.
 static inline const loom_value_type_use_heads_t*
 loom_value_table_const_type_use_heads(const loom_value_table_t* table,
                                       loom_value_id_t value_id) {
@@ -2347,49 +2346,31 @@ typedef struct loom_symbol_table_t {
 
 // Type table. Interned types for pointer-equality comparison.
 typedef struct loom_type_table_t {
+  // Number of published canonical types and parallel facts.
   iree_host_size_t count;
+  // Allocated rows in each parallel array.
   iree_host_size_t capacity;
+  // Immutable module-owned type payloads.
   loom_type_t* entries;
   // Structural hashes parallel to entries.
   uint32_t* hashes;
+  // Canonical SSA dependency sets parallel to entries, including forward IDs.
+  loom_type_dependency_id_t* dependencies;
 } loom_type_table_t;
 
-// A reference from one SSA value's type to another SSA value.
-//
-// Type uses are not operands: they describe symbolic type structure such as
-// dynamic dimensions and SSA encodings. They still participate in liveness and
-// RAUW because printed/serialized types contain the referenced SSA names.
-typedef struct loom_type_use_t {
-  // SSA value referenced by a type payload.
-  loom_value_id_t referenced_value_id;
-  // SSA value whose type carries the reference.
-  loom_value_id_t user_value_id;
-  // Next record in referenced_value_id's incoming list.
-  loom_type_use_id_t next_incoming_use_id;
-  // Previous record in referenced_value_id's incoming list.
-  loom_type_use_id_t previous_incoming_use_id;
-  // Next record in user_value_id's outgoing list.
-  loom_type_use_id_t next_outgoing_use_id;
-  // Previous record in user_value_id's outgoing list.
-  loom_type_use_id_t previous_outgoing_use_id;
-} loom_type_use_t;
+typedef struct loom_type_dependency_index_t loom_type_dependency_index_t;
 
-// Side metadata for SSA references embedded in value types.
+// Shared membership and active ownership of SSA references in value types.
+// These references participate in liveness and RAUW but are not operands.
 typedef struct loom_type_use_table_t {
-  // Value table whose segments own the per-value adjacency heads.
+  // Persistent facts survive speculative type-payload arena checkpoints.
+  iree_arena_allocator_t arena;
+  // Value table whose segments own the provider and carrier identities.
   loom_value_table_t* value_table;
-  // Number of record slots ever allocated from records.
-  iree_host_size_t record_count;
-  // Number of record slots allocated in records.
-  iree_host_size_t record_capacity;
-  // Number of currently active type-use records.
-  iree_host_size_t active_count;
-  // Number of inactive record slots linked through first_free_use_id.
-  iree_host_size_t free_count;
-  // First inactive record slot available for reuse.
-  loom_type_use_id_t first_free_use_id;
-  // Sparse type-use records, indexed by loom_type_use_id_t.
-  loom_type_use_t* records;
+  // Arena-owned index, allocated only for the first nonempty dependency set.
+  loom_type_dependency_index_t* index;
+  // Number of carriers with a nonempty active set, not expanded pair count.
+  uint32_t active_carrier_count;
 } loom_type_use_table_t;
 
 // One SSA reference carried by an operation attribute. Duplicate references

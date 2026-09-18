@@ -57,6 +57,7 @@ loom_cc_library(
         "module_record.c",
         "scalar_type.c",
         "type_constraint.c",
+        "type_dependencies.c",
         "types.c",
         "value_refs.c",
     ],
@@ -77,6 +78,7 @@ loom_cc_library(
         "semantics.h",
         "structural_hash.h",
         "type_constraint.h",
+        "type_dependencies.h",
         "type_descriptor.h",
         "types.h",
         "value_refs.h",
@@ -91,6 +93,7 @@ loom_cc_library(
         "//loom/src/loom/util:bstring",
         "//loom/src/loom/util:segmented_storage",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
         "//runtime/src/iree/base/internal:arena",
     ],
 )
