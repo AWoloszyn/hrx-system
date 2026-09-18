@@ -111,8 +111,9 @@ running the importer.
 
 The current translation surface covers scalar arithmetic and conversions,
 scalar-pointer indexing, local SSA values, conditional regions, counted and
-general `for` loops, fixed workgroup arrays, and direct calls. Unsupported
-reachable types and statements produce source diagnostics. Pointer indexing
+general `for` loops, `while` and `do/while` loops, fixed workgroup arrays, and
+direct calls. Unsupported reachable types and statements produce source
+diagnostics. Pointer indexing
 currently requires unsigned 32-bit source indices; extending it requires
 preserving signedness and source pointer arithmetic in the address projection.
 Objects with constructors, arbitrary pointer manipulation, general early

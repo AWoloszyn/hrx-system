@@ -980,6 +980,9 @@ class Translator {
       return;
     }
     if (auto* declaration = cxx::ast_cast<cxx::DeclarationStatementAST>(ast)) {
+      if (cxx::ast_cast<cxx::EmptyDeclarationAST>(declaration->declaration)) {
+        return;
+      }
       auto* simple =
           cxx::ast_cast<cxx::SimpleDeclarationAST>(declaration->declaration);
       if (!simple) {
@@ -1088,8 +1091,8 @@ class Translator {
       return;
     }
     if (auto* loop = cxx::ast_cast<cxx::ForStatementAST>(ast)) {
-      if (!loop->condition || !loop->expression) {
-        fail(ast, "for loops require condition and step");
+      if (!loop->condition) {
+        fail(ast, "for loops require a condition");
       }
       if (loop->initializer) {
         statement(loop->initializer);
@@ -1099,37 +1102,18 @@ class Translator {
         counted_loop(loop, induction, counted_step);
         return;
       }
-      auto written = live_mutations(ast);
-      auto initial = current(written);
-      auto outer_values = values_;
-      loom_op_t* op;
-      check(loom_scf_while_build(&builder_, initial.data(), initial.size(),
-                                 nullptr, 0, location(ast), &op));
-      auto* before = loom_scf_while_before(op);
-      auto saved = loom_builder_enter_region(&builder_, op, before);
-      bind(written, before);
-      auto condition = expression(loop->condition);
-      auto forwarded = current(written);
-      loom_op_t* terminator;
-      check(loom_scf_condition_build(&builder_, condition, forwarded.data(),
-                                     forwarded.size(), location(ast),
-                                     &terminator));
-      loom_builder_restore(&builder_, saved);
-      auto* after = loom_scf_while_after(op);
-      saved = loom_builder_enter_region(&builder_, op, after);
-      values_ = outer_values;
-      bind(written, after);
-      statement(loop->statement);
-      effect(loop->expression);
-      auto yielded = current(written);
-      check(loom_scf_yield_build(&builder_, yielded.data(), yielded.size(),
-                                 location(ast), &terminator));
-      loom_builder_restore(&builder_, saved);
-      values_ = outer_values;
-      for (size_t index = 0; index < written.size(); ++index) {
-        values_[written[index]] = name(loom_op_results(op)[index],
-                                       cxx::to_string(written[index]->name()));
-      }
+      conditional_loop(ast, loop->condition, loop->statement, loop->expression,
+                       LoopTest::BeforeBody);
+      return;
+    }
+    if (auto* loop = cxx::ast_cast<cxx::WhileStatementAST>(ast)) {
+      conditional_loop(ast, loop->condition, loop->statement, nullptr,
+                       LoopTest::BeforeBody);
+      return;
+    }
+    if (auto* loop = cxx::ast_cast<cxx::DoStatementAST>(ast)) {
+      conditional_loop(ast, loop->expression, loop->statement, nullptr,
+                       LoopTest::AfterBody);
       return;
     }
     if (auto* expression_statement =
@@ -1141,6 +1125,55 @@ class Translator {
     }
     fail(ast,
          "unsupported statement: " + std::string(cxx::to_string(ast->kind())));
+  }
+
+  enum class LoopTest { BeforeBody, AfterBody };
+
+  // The before region's forwarded values are also the loop's final results.
+  // A post-test loop therefore runs its body there and uses an identity after
+  // region; the final body mutations survive the false condition.
+  void conditional_loop(cxx::StatementAST* ast,
+                        cxx::ExpressionAST* condition_expression,
+                        cxx::StatementAST* body, cxx::ExpressionAST* step,
+                        LoopTest test) {
+    auto written = live_mutations(ast);
+    auto initial = current(written);
+    auto outer_values = values_;
+    auto source = location(ast);
+    loom_op_t* op;
+    check(loom_scf_while_build(&builder_, initial.data(), initial.size(),
+                               nullptr, 0, source, &op));
+    auto* before = loom_scf_while_before(op);
+    auto saved = loom_builder_enter_region(&builder_, op, before);
+    bind(written, before);
+    if (test == LoopTest::AfterBody) {
+      statement(body);
+    }
+    auto condition = expression(condition_expression);
+    auto forwarded = current(written);
+    loom_op_t* terminator;
+    check(loom_scf_condition_build(&builder_, condition, forwarded.data(),
+                                   forwarded.size(), source, &terminator));
+    loom_builder_restore(&builder_, saved);
+    auto* after = loom_scf_while_after(op);
+    saved = loom_builder_enter_region(&builder_, op, after);
+    values_ = outer_values;
+    bind(written, after);
+    if (test == LoopTest::BeforeBody) {
+      statement(body);
+    }
+    if (step) {
+      effect(step);
+    }
+    auto yielded = current(written);
+    check(loom_scf_yield_build(&builder_, yielded.data(), yielded.size(),
+                               source, &terminator));
+    loom_builder_restore(&builder_, saved);
+    values_ = outer_values;
+    for (size_t index = 0; index < written.size(); ++index) {
+      values_[written[index]] = name(loom_op_results(op)[index],
+                                     cxx::to_string(written[index]->name()));
+    }
   }
 
   cxx::ExpressionAST* without_cast(cxx::ExpressionAST* ast) {

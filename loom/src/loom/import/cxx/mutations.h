@@ -59,6 +59,8 @@ class Mutations final : public cxx::ASTVisitor {
   static bool structured(cxx::AST* ast) {
     return cxx::ast_cast<cxx::IfStatementAST>(ast) ||
            cxx::ast_cast<cxx::ForStatementAST>(ast) ||
+           cxx::ast_cast<cxx::WhileStatementAST>(ast) ||
+           cxx::ast_cast<cxx::DoStatementAST>(ast) ||
            cxx::ast_cast<cxx::CompoundStatementAST>(ast);
   }
   void record(cxx::ExpressionAST* expression) {

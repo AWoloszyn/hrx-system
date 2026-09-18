@@ -235,10 +235,35 @@ TEST_F(ImportTest, RejectedSourceDoesNotPoisonNextImport) {
 
 TEST_F(ImportTest, UnsupportedSourceHasDiagnosticInsteadOfInvalidModule) {
   IREE_ASSERT_OK(
-      Import(IREE_SV("int entry(int x) { while (x) --x; return x; }")));
+      Import(IREE_SV("int entry(int x) { while (x) { break; } return x; }")));
   EXPECT_EQ(module_, nullptr);
   EXPECT_EQ(diagnostic_count_, 1);
   EXPECT_EQ(diagnostic_filename_, "/app/source.cpp");
+}
+
+TEST_F(ImportTest, PreAndPostTestLoopsPreserveScalarRecurrences) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"cpp(
+    unsigned long long entry(unsigned count) {
+      unsigned char narrow = 254;
+      unsigned long long wide = 0;
+      while (wide < count) {
+        do {
+          ++narrow;
+          ++wide;
+        } while (narrow < 2);
+      }
+      for (; wide < count + 2;) {
+        ++wide;
+      }
+      return wide + narrow;
+    }
+  )cpp")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("scf.while"), std::string::npos);
+  EXPECT_NE(text.find("i8"), std::string::npos);
+  EXPECT_NE(text.find("i64"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
 }
 
 TEST_F(ImportTest, SinkFailurePropagates) {

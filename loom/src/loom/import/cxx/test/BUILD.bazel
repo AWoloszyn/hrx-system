@@ -17,6 +17,7 @@ iree_execution_test_suite(
     name = "kernels_test",
     data = [
         "aiter_swiglu_f16.cpp",
+        "control_flow.cpp",
         "flash_attention.cpp",
         "llama_rms_norm.cpp",
         "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",

@@ -12,15 +12,16 @@ import struct
 import sys
 from pathlib import Path
 
+ELEMENTS = {"f16": ("e", "<f2", 2), "f32": ("f", "<f4", 4), "i32": ("i", "<i4", 4)}
+
 
 def rounded(value, element):
-    code = "e" if element == "f16" else "f"
+    code, _, _ = ELEMENTS[element]
     return struct.unpack("<" + code, struct.pack("<" + code, value))[0]
 
 
 def write_npy(path, values, element):
-    code = "e" if element == "f16" else "f"
-    description = "<f2" if element == "f16" else "<f4"
+    code, description, _ = ELEMENTS[element]
     header = repr({"descr": description, "fortran_order": False, "shape": (len(values),)})
     header += " " * ((64 - (10 + len(header) + 1) % 64) % 64) + "\n"
     path.write_bytes(b"\x93NUMPY\x01\x00" + struct.pack("<H", len(header)) + header.encode("ascii") + struct.pack(f"<{len(values)}{code}", *values))
@@ -32,9 +33,10 @@ class Case:
         self.name = name
         self.element = element
         self.count = count
+        self.guard = "-123" if element == "i32" else "-123.0"
         self.lines = [f"check.case public @{name} {{"]
-        self.lines.append(f"  %storage = check.generate.fill value(-123.0) : tensor<{count + 32}x{element}>")
-        width = 2 if element == "f16" else 4
+        self.lines.append(f"  %storage = check.generate.fill value({self.guard}) : tensor<{count + 32}x{element}>")
+        _, _, width = ELEMENTS[element]
         self.lines.append(f"  %output = check.tensor.view %storage offset({16 * width}) : tensor<{count + 32}x{element}> -> tensor<{count}x{element}>")
 
     def array(self, name, values):
@@ -48,13 +50,16 @@ class Case:
     def launch(self, kernel, arguments, types):
         self.lines.append(f"  kernel.launch @{kernel}({arguments}) : ({types})")
 
-    def finish(self, expected, tolerance):
+    def finish(self, expected, tolerance=None):
         self.array("expected", expected)
-        self.lines.append(f"  check.expect.close actual(%output) expected(%expected) atol({tolerance}) rtol({tolerance}) nan(same) : tensor<{self.count}x{self.element}>")
-        width = 2 if self.element == "f16" else 4
+        if tolerance is None:
+            self.lines.append(f"  check.expect.bitwise actual(%output) expected(%expected) : tensor<{self.count}x{self.element}>")
+        else:
+            self.lines.append(f"  check.expect.close actual(%output) expected(%expected) atol({tolerance}) rtol({tolerance}) nan(same) : tensor<{self.count}x{self.element}>")
+        _, _, width = ELEMENTS[self.element]
         for name, offset in [("prefix", 0), ("suffix", (self.count + 16) * width)]:
             self.lines.append(f"  %{name} = check.tensor.view %storage offset({offset}) : tensor<{self.count + 32}x{self.element}> -> tensor<16x{self.element}>")
-        self.lines.append(f"  %guard = check.generate.fill value(-123.0) : tensor<16x{self.element}>")
+        self.lines.append(f"  %guard = check.generate.fill value({self.guard}) : tensor<16x{self.element}>")
         for name in ["prefix", "suffix"]:
             self.lines.append(f"  check.expect.bitwise actual(%{name}) expected(%guard) : tensor<16x{self.element}>")
         self.lines.extend(["  check.return", "}", ""])
@@ -127,10 +132,25 @@ def swiglu(directory):
     return "kernel.decl @aiter_swiglu_f16() launch(%input: buffer, %output: buffer, %columns: i32)\n\n" + "\n".join(cases)
 
 
+def control_flow(directory):
+    counts = [0, 1, 2, 7, 31, 64, 129]
+    expected = []
+    for count in counts:
+        trips = max(1, count)
+        inner = max(1, count & 3)
+        nested = inner * count * (count - 1) // 2 + count * inner * (inner + 1) // 2
+        expected.extend([count * (count + 1) // 2, count, trips * (trips + 1) // 2, trips, nested, count, trips, max(0, count - 1), trips, trips])
+    case = Case(directory, "loop_semantics", "i32", len(expected))
+    case.array("counts", counts)
+    case.scalar("length", len(counts), "i32")
+    case.launch("control_flow", "%counts, %output, %length", f"tensor<{len(counts)}xi32>, tensor<{len(expected)}xi32>, i32")
+    return "kernel.decl @control_flow() launch(%counts: buffer, %output: buffer, %length: i32)\n\n" + case.finish(expected)
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
-    for name, generator in [("flash_attention", attention), ("llama_rms_norm", rms_norm), ("aiter_swiglu_f16", swiglu)]:
+    for name, generator in [("flash_attention", attention), ("llama_rms_norm", rms_norm), ("aiter_swiglu_f16", swiglu), ("control_flow", control_flow)]:
         (directory / f"{name}.loom").write_text(generator(directory))
 
 
