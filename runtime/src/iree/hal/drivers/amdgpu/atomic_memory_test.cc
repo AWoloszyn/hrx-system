@@ -209,30 +209,62 @@ TEST(AtomicMemoryTest, ValidatesTargetAlignmentAndMemoryCell) {
   IREE_EXPECT_OK(iree_hal_amdgpu_atomic_memory_validate_target(
       IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_SYSTEM_SCOPE_64,
       reinterpret_cast<const void*>(uintptr_t{0x1000}),
-      IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE));
+      IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
                         iree_hal_amdgpu_atomic_memory_validate_target(
                             IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL,
                             reinterpret_cast<const void*>(uintptr_t{0x1000}),
-                            /*width=*/16, IREE_HAL_ATOMIC_FLAG_NONE));
+                            /*width=*/16, IREE_HAL_ATOMIC_FLAG_NONE,
+                            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INCOMPATIBLE,
+                        iree_hal_amdgpu_atomic_memory_validate_target(
+                            IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL,
+                            reinterpret_cast<const void*>(uintptr_t{0x1004}),
+                            IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_NONE,
+                            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
   IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_FAILED_PRECONDITION,
-      iree_hal_amdgpu_atomic_memory_validate_target(
-          IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL,
-          reinterpret_cast<const void*>(uintptr_t{0x1004}),
-          IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_NONE));
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_FAILED_PRECONDITION,
+      IREE_STATUS_INCOMPATIBLE,
       iree_hal_amdgpu_atomic_memory_validate_target(
           IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_DEVICE_SCOPE_64,
           reinterpret_cast<const void*>(uintptr_t{0x1000}),
-          IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE));
+          IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
+}
+
+TEST(AtomicMemoryTest, ExplicitIncompatibleModePreservesTargetFailures) {
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INCOMPATIBLE,
+                        iree_hal_amdgpu_atomic_memory_validate_target(
+                            IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL,
+                            reinterpret_cast<const void*>(uintptr_t{0x1004}),
+                            IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_NONE,
+                            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INCOMPATIBLE,
+      iree_hal_amdgpu_atomic_memory_validate_target(
+          IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_DEVICE_SCOPE_64,
+          reinterpret_cast<const void*>(uintptr_t{0x1000}),
+          IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        iree_hal_amdgpu_atomic_memory_validate_target(
+                            IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL,
+                            reinterpret_cast<const void*>(uintptr_t{0x1000}),
+                            /*width=*/16, IREE_HAL_ATOMIC_FLAG_NONE,
+                            IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        iree_hal_amdgpu_atomic_memory_validate_target(
+                            IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL,
+                            reinterpret_cast<const void*>(uintptr_t{0x1000}),
+                            IREE_HAL_ATOMIC_WIDTH_64, IREE_HAL_ATOMIC_FLAG_NONE,
+                            (iree_hal_atomic_target_error_mode_t)2));
 }
 
 TEST(AtomicMemoryTest, EmptyRequiredCellsAcceptAnyTarget) {
   IREE_EXPECT_OK(iree_hal_amdgpu_atomic_memory_validate_required_cells(
       IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE, nullptr,
-      IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE));
+      IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_NONE,
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
 }
 
 TEST(AtomicMemoryTest, RequiredCellsUseStrictestNaturalAlignment) {
@@ -241,12 +273,12 @@ TEST(AtomicMemoryTest, RequiredCellsUseStrictestNaturalAlignment) {
       IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_SYSTEM_SCOPE_64;
   IREE_EXPECT_OK(iree_hal_amdgpu_atomic_memory_validate_required_cells(
       required_cells, reinterpret_cast<const void*>(uintptr_t{0x1000}),
-      required_cells));
+      required_cells, IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
   IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_FAILED_PRECONDITION,
+      IREE_STATUS_INCOMPATIBLE,
       iree_hal_amdgpu_atomic_memory_validate_required_cells(
           required_cells, reinterpret_cast<const void*>(uintptr_t{0x1004}),
-          required_cells));
+          required_cells, IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
 }
 
 TEST(AtomicMemoryTest, RequiredCellsRejectMissingCapabilities) {
@@ -254,16 +286,18 @@ TEST(AtomicMemoryTest, RequiredCellsRejectMissingCapabilities) {
       IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_DEVICE_SCOPE_32 |
       IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_SYSTEM_SCOPE_64;
   IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_FAILED_PRECONDITION,
+      IREE_STATUS_INCOMPATIBLE,
       iree_hal_amdgpu_atomic_memory_validate_required_cells(
           IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAG_DEVICE_SCOPE_32,
-          reinterpret_cast<const void*>(uintptr_t{0x1000}), required_cells));
+          reinterpret_cast<const void*>(uintptr_t{0x1000}), required_cells,
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       iree_hal_amdgpu_atomic_memory_validate_required_cells(
           IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL,
           reinterpret_cast<const void*>(uintptr_t{0x1000}),
-          IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL | (1u << 31)));
+          IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL | (1u << 31),
+          IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT));
 }
 
 TEST(AtomicMemoryTest, ExpandsCellsToCompleteOperationFamilies) {

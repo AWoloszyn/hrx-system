@@ -41,11 +41,56 @@ static iree_status_t NoopCommandBufferEnd(
   return iree_ok_status();
 }
 
+static iree_status_t NoopCommandBufferAtomicWait(
+    iree_hal_command_buffer_t* command_buffer,
+    iree_hal_execution_stage_t source_stage_mask,
+    iree_hal_execution_stage_t target_stage_mask,
+    iree_hal_buffer_ref_t target_ref, iree_hal_atomic_wait_params_t params) {
+  return iree_ok_status();
+}
+
 static iree_status_t NoopCommandBufferAtomicStore(
     iree_hal_command_buffer_t* command_buffer,
     iree_hal_execution_stage_t source_stage_mask,
     iree_hal_execution_stage_t target_stage_mask,
     iree_hal_buffer_ref_t target_ref, iree_hal_atomic_store_params_t params) {
+  return iree_ok_status();
+}
+
+static iree_status_t NoopCommandBufferAtomicRmw(
+    iree_hal_command_buffer_t* command_buffer,
+    iree_hal_execution_stage_t source_stage_mask,
+    iree_hal_execution_stage_t target_stage_mask,
+    iree_hal_buffer_ref_t target_ref, iree_hal_atomic_rmw_params_t params) {
+  return iree_ok_status();
+}
+
+static void NoopQueueDestroy(iree_hal_queue_t* queue) {}
+
+static iree_status_t NoopQueueAtomicWait(
+    iree_hal_queue_t* queue,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
+    iree_hal_atomic_wait_params_t params) {
+  return iree_ok_status();
+}
+
+static iree_status_t NoopQueueAtomicStore(
+    iree_hal_queue_t* queue,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
+    iree_hal_atomic_store_params_t params) {
+  return iree_ok_status();
+}
+
+static iree_status_t NoopQueueAtomicRmw(
+    iree_hal_queue_t* queue,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
+    iree_hal_atomic_rmw_params_t params) {
   return iree_ok_status();
 }
 
@@ -120,8 +165,139 @@ TEST(AtomicTest, ValidatesReadModifyWriteParameters) {
                         iree_hal_atomic_rmw_params_validate(params));
 }
 
+TEST(AtomicTest, RejectsUnknownTargetErrorModes) {
+  iree_hal_atomic_wait_params_t wait_params = {
+      /*.value=*/1,
+      /*.mask=*/UINT32_MAX,
+      /*.flags=*/IREE_HAL_ATOMIC_FLAG_NONE,
+      /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+      /*.condition=*/IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL,
+      /*.target_error_mode=*/2,
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        iree_hal_atomic_wait_params_validate(wait_params));
+
+  iree_hal_atomic_store_params_t store_params = {
+      /*.value=*/1,
+      /*.flags=*/IREE_HAL_ATOMIC_FLAG_NONE,
+      /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+      /*.target_error_mode=*/2,
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        iree_hal_atomic_store_params_validate(store_params));
+
+  iree_hal_atomic_rmw_params_t rmw_params = {
+      /*.operand=*/1,
+      /*.flags=*/IREE_HAL_ATOMIC_FLAG_NONE,
+      /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+      /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_ADD,
+      /*.target_error_mode=*/2,
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        iree_hal_atomic_rmw_params_validate(rmw_params));
+}
+
 class AtomicTargetValidationTest : public ::testing::Test {
  protected:
+  static iree_hal_atomic_wait_params_t WaitParams(
+      iree_hal_atomic_target_error_mode_t target_error_mode,
+      iree_hal_atomic_width_t width = IREE_HAL_ATOMIC_WIDTH_32) {
+    return (iree_hal_atomic_wait_params_t){
+        /*.value=*/1,
+        /*.mask=*/width == IREE_HAL_ATOMIC_WIDTH_32 ? UINT32_MAX : UINT64_MAX,
+        /*.flags=*/IREE_HAL_ATOMIC_FLAG_NONE,
+        /*.width=*/width,
+        /*.condition=*/IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL,
+        /*.target_error_mode=*/target_error_mode,
+    };
+  }
+
+  static iree_hal_atomic_store_params_t StoreParams(
+      iree_hal_atomic_target_error_mode_t target_error_mode,
+      iree_hal_atomic_width_t width = IREE_HAL_ATOMIC_WIDTH_32) {
+    return (iree_hal_atomic_store_params_t){
+        /*.value=*/1,
+        /*.flags=*/IREE_HAL_ATOMIC_FLAG_NONE,
+        /*.width=*/width,
+        /*.target_error_mode=*/target_error_mode,
+    };
+  }
+
+  static iree_hal_atomic_rmw_params_t RmwParams(
+      iree_hal_atomic_target_error_mode_t target_error_mode,
+      iree_hal_atomic_width_t width = IREE_HAL_ATOMIC_WIDTH_32) {
+    return (iree_hal_atomic_rmw_params_t){
+        /*.operand=*/1,
+        /*.flags=*/IREE_HAL_ATOMIC_FLAG_NONE,
+        /*.width=*/width,
+        /*.operation=*/IREE_HAL_ATOMIC_RMW_OPERATION_ADD,
+        /*.target_error_mode=*/target_error_mode,
+    };
+  }
+
+  void ExpectQueueAlignmentStatus(
+      iree_hal_atomic_target_error_mode_t target_error_mode,
+      iree_status_code_t expected_status) {
+    const iree_hal_semaphore_list_t empty = iree_hal_semaphore_list_empty();
+    IREE_EXPECT_STATUS_IS(
+        expected_status,
+        iree_hal_queue_atomic_wait(&queue_, empty, empty, unaligned_buffer_, 0,
+                                   WaitParams(target_error_mode)));
+    IREE_EXPECT_STATUS_IS(
+        expected_status,
+        iree_hal_queue_atomic_store(&queue_, empty, empty, unaligned_buffer_, 0,
+                                    StoreParams(target_error_mode)));
+    IREE_EXPECT_STATUS_IS(
+        expected_status,
+        iree_hal_queue_atomic_rmw(&queue_, empty, empty, unaligned_buffer_, 0,
+                                  RmwParams(target_error_mode)));
+  }
+
+  void ExpectDirectReferenceAlignmentStatus(
+      iree_hal_atomic_target_error_mode_t target_error_mode,
+      iree_status_code_t expected_status) {
+    const iree_hal_buffer_ref_t target_ref =
+        iree_hal_make_buffer_ref(unaligned_buffer_, /*offset=*/0, /*length=*/4);
+    IREE_EXPECT_STATUS_IS(
+        expected_status,
+        iree_hal_command_buffer_atomic_wait(
+            &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+            IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE, target_ref,
+            WaitParams(target_error_mode)));
+    IREE_EXPECT_STATUS_IS(
+        expected_status,
+        iree_hal_command_buffer_atomic_store(
+            &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+            IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE, target_ref,
+            StoreParams(target_error_mode)));
+    IREE_EXPECT_STATUS_IS(
+        expected_status,
+        iree_hal_command_buffer_atomic_rmw(
+            &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+            IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE, target_ref,
+            RmwParams(target_error_mode)));
+  }
+
+  void RecordIndirectOperations(
+      iree_hal_atomic_target_error_mode_t target_error_mode,
+      iree_hal_atomic_width_t width = IREE_HAL_ATOMIC_WIDTH_32) {
+    const iree_device_size_t length = iree_hal_atomic_width_byte_count(width);
+    const iree_hal_buffer_ref_t target_ref = iree_hal_make_indirect_buffer_ref(
+        /*buffer_slot=*/0, /*offset=*/0, length);
+    IREE_ASSERT_OK(iree_hal_command_buffer_atomic_wait(
+        &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+        IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE, target_ref,
+        WaitParams(target_error_mode, width)));
+    IREE_ASSERT_OK(iree_hal_command_buffer_atomic_store(
+        &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+        IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE, target_ref,
+        StoreParams(target_error_mode, width)));
+    IREE_ASSERT_OK(iree_hal_command_buffer_atomic_rmw(
+        &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+        IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE, target_ref,
+        RmwParams(target_error_mode, width)));
+  }
+
   void SetUp() override {
     IREE_ASSERT_OK(iree_hal_allocator_create_heap(
         IREE_SV("atomic-test"), iree_allocator_system(),
@@ -147,7 +323,9 @@ class AtomicTargetValidationTest : public ::testing::Test {
     command_buffer_vtable_.destroy = NoopCommandBufferDestroy;
     command_buffer_vtable_.begin = NoopCommandBufferBegin;
     command_buffer_vtable_.end = NoopCommandBufferEnd;
+    command_buffer_vtable_.atomic_wait = NoopCommandBufferAtomicWait;
     command_buffer_vtable_.atomic_store = NoopCommandBufferAtomicStore;
+    command_buffer_vtable_.atomic_rmw = NoopCommandBufferAtomicRmw;
     iree_hal_device_queue_spec_t queues = {};
     queues.family_count = 1;
     queues.families = &kQueueFamilySpec;
@@ -164,6 +342,14 @@ class AtomicTargetValidationTest : public ::testing::Test {
     iree_hal_device_spec_release(device_spec);
     IREE_ASSERT_OK(status);
     queue_family_ = iree_hal_device_queue_family(device_, 0);
+    iree_hal_queue_params_t queue_params;
+    iree_hal_queue_params_initialize(&queue_params);
+    queue_vtable_.destroy = NoopQueueDestroy;
+    queue_vtable_.atomic_wait = NoopQueueAtomicWait;
+    queue_vtable_.atomic_store = NoopQueueAtomicStore;
+    queue_vtable_.atomic_rmw = NoopQueueAtomicRmw;
+    iree_hal_queue_initialize(queue_family_, &queue_params, &queue_vtable_,
+                              &queue_);
     iree_hal_command_buffer_initialize(
         allocator_, queue_family_, /*mode=*/0, IREE_HAL_COMMAND_CATEGORY_ATOMIC,
         /*binding_capacity=*/1, validation_state_, &command_buffer_vtable_,
@@ -173,6 +359,7 @@ class AtomicTargetValidationTest : public ::testing::Test {
 
   void TearDown() override {
     iree_hal_command_buffer_release(&command_buffer_);
+    iree_hal_queue_release(&queue_);
     iree_allocator_free(iree_allocator_system(), validation_state_);
     iree_hal_buffer_release(unaligned_buffer_);
     iree_hal_buffer_release(root_buffer_);
@@ -188,22 +375,31 @@ class AtomicTargetValidationTest : public ::testing::Test {
   const iree_hal_queue_family_t* queue_family_ = nullptr;
   // Device owning the canonical family used by this fixture.
   iree_hal_device_t* device_ = nullptr;
+  iree_hal_queue_vtable_t queue_vtable_ = {};
+  iree_hal_queue_t queue_ = {};
   iree_hal_command_buffer_vtable_t command_buffer_vtable_ = {};
   iree_hal_command_buffer_t command_buffer_ = {};
 };
 
-TEST_F(AtomicTargetValidationTest, ValidatesResolvedIndirectTargetAlignment) {
-  const iree_hal_atomic_store_params_t store_params = {
-      /*.value=*/1,
-      /*.flags=*/IREE_HAL_ATOMIC_FLAG_NONE,
-      /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
-  };
-  IREE_ASSERT_OK(iree_hal_command_buffer_atomic_store(
-      &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
-      IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
-      iree_hal_make_indirect_buffer_ref(/*buffer_slot=*/0, /*offset=*/0,
-                                        /*length=*/4),
-      store_params));
+TEST_F(AtomicTargetValidationTest,
+       DirectQueueTargetAlignmentFollowsModeForAllOperations) {
+  ExpectQueueAlignmentStatus(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
+                             IREE_STATUS_INVALID_ARGUMENT);
+  ExpectQueueAlignmentStatus(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+                             IREE_STATUS_INCOMPATIBLE);
+}
+
+TEST_F(AtomicTargetValidationTest,
+       DirectReferenceTargetAlignmentFollowsModeForAllOperations) {
+  ExpectDirectReferenceAlignmentStatus(
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT, IREE_STATUS_INVALID_ARGUMENT);
+  ExpectDirectReferenceAlignmentStatus(
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE, IREE_STATUS_INCOMPATIBLE);
+}
+
+TEST_F(AtomicTargetValidationTest,
+       DefaultIndirectTargetAlignmentPrecedesForAllOperations) {
+  RecordIndirectOperations(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT);
   IREE_ASSERT_OK(iree_hal_command_buffer_end(&command_buffer_));
 
   const iree_hal_buffer_binding_t binding = {
@@ -220,19 +416,129 @@ TEST_F(AtomicTargetValidationTest, ValidatesResolvedIndirectTargetAlignment) {
                             &command_buffer_, binding_table));
 }
 
-TEST_F(AtomicTargetValidationTest, RejectsOutOfRangeDirectTarget) {
-  const iree_hal_atomic_store_params_t store_params = {
-      /*.value=*/1,
-      /*.flags=*/IREE_HAL_ATOMIC_FLAG_NONE,
-      /*.width=*/IREE_HAL_ATOMIC_WIDTH_32,
+TEST_F(AtomicTargetValidationTest,
+       IncompatibleIndirectTargetAlignmentAppliesForAllOperations) {
+  RecordIndirectOperations(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE);
+  IREE_ASSERT_OK(iree_hal_command_buffer_end(&command_buffer_));
+
+  const iree_hal_buffer_binding_t binding = {
+      /*.buffer=*/unaligned_buffer_,
+      /*.offset=*/0,
+      /*.length=*/4,
   };
+  const iree_hal_buffer_binding_table_t binding_table = {
+      /*.count=*/1,
+      /*.bindings=*/&binding,
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INCOMPATIBLE,
+                        iree_hal_command_buffer_validate_submission(
+                            &command_buffer_, binding_table));
+}
+
+TEST_F(AtomicTargetValidationTest,
+       MixedIndirectTargetAlignmentPreservesDefaultPrecedence) {
+  RecordIndirectOperations(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+                           IREE_HAL_ATOMIC_WIDTH_64);
+  RecordIndirectOperations(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
+                           IREE_HAL_ATOMIC_WIDTH_32);
+  IREE_ASSERT_OK(iree_hal_command_buffer_end(&command_buffer_));
+
+  const iree_hal_buffer_binding_t binding = {
+      /*.buffer=*/unaligned_buffer_,
+      /*.offset=*/0,
+      /*.length=*/8,
+  };
+  const iree_hal_buffer_binding_table_t binding_table = {
+      /*.count=*/1,
+      /*.bindings=*/&binding,
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        iree_hal_command_buffer_validate_submission(
+                            &command_buffer_, binding_table));
+}
+
+TEST_F(AtomicTargetValidationTest,
+       MixedIndirectTargetAlignmentKeepsOptInRequirementSeparate) {
+  RecordIndirectOperations(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT,
+                           IREE_HAL_ATOMIC_WIDTH_32);
+  RecordIndirectOperations(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE,
+                           IREE_HAL_ATOMIC_WIDTH_64);
+  IREE_ASSERT_OK(iree_hal_command_buffer_end(&command_buffer_));
+
+  const iree_hal_buffer_binding_t binding = {
+      /*.buffer=*/root_buffer_,
+      /*.offset=*/4,
+      /*.length=*/8,
+  };
+  const iree_hal_buffer_binding_table_t binding_table = {
+      /*.count=*/1,
+      /*.bindings=*/&binding,
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INCOMPATIBLE,
+                        iree_hal_command_buffer_validate_submission(
+                            &command_buffer_, binding_table));
+}
+
+TEST_F(AtomicTargetValidationTest, RejectsOutOfRangeDirectTarget) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_OUT_OF_RANGE,
       iree_hal_command_buffer_atomic_store(
           &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
           IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
           iree_hal_make_buffer_ref(root_buffer_, /*offset=*/16, /*length=*/4),
-          store_params));
+          StoreParams(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT)));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_OUT_OF_RANGE,
+      iree_hal_command_buffer_atomic_store(
+          &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+          IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
+          iree_hal_make_buffer_ref(root_buffer_, /*offset=*/16, /*length=*/4),
+          StoreParams(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE)));
+}
+
+TEST_F(AtomicTargetValidationTest,
+       OptInModeDoesNotReclassifyMalformedUsageOrAccessErrors) {
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_hal_command_buffer_atomic_store(
+          &command_buffer_, IREE_HAL_EXECUTION_STAGE_COMMAND_RETIRE,
+          IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
+          iree_hal_make_buffer_ref(root_buffer_, /*offset=*/0, /*length=*/3),
+          StoreParams(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE)));
+
+  const iree_hal_buffer_params_t bad_usage_params = {
+      /*.usage=*/IREE_HAL_BUFFER_USAGE_TRANSFER,
+      /*.access=*/IREE_HAL_MEMORY_ACCESS_ALL,
+      /*.type=*/IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
+          IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
+  };
+  iree_hal_buffer_t* bad_usage_buffer = nullptr;
+  IREE_ASSERT_OK(iree_hal_allocator_allocate_buffer(
+      allocator_, bad_usage_params, /*allocation_size=*/8, &bad_usage_buffer));
+  const iree_hal_semaphore_list_t empty = iree_hal_semaphore_list_empty();
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_PERMISSION_DENIED,
+      iree_hal_queue_atomic_store(
+          &queue_, empty, empty, bad_usage_buffer, /*target_offset=*/0,
+          StoreParams(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE)));
+  iree_hal_buffer_release(bad_usage_buffer);
+
+  const iree_hal_buffer_params_t bad_access_params = {
+      /*.usage=*/IREE_HAL_BUFFER_USAGE_STORAGE,
+      /*.access=*/IREE_HAL_MEMORY_ACCESS_READ,
+      /*.type=*/IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
+          IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
+  };
+  iree_hal_buffer_t* bad_access_buffer = nullptr;
+  IREE_ASSERT_OK(iree_hal_allocator_allocate_buffer(
+      allocator_, bad_access_params, /*allocation_size=*/8,
+      &bad_access_buffer));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_PERMISSION_DENIED,
+      iree_hal_queue_atomic_store(
+          &queue_, empty, empty, bad_access_buffer, /*target_offset=*/0,
+          StoreParams(IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE)));
+  iree_hal_buffer_release(bad_access_buffer);
 }
 
 }  // namespace

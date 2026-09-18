@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "iree/hal/memory/passthrough_pool.h"
+#include "iree/hal/replay/atomic_params.h"
 #include "iree/hal/replay/execute_object.h"
 #include "iree/hal/replay/execute_vmm.h"
 
@@ -87,10 +88,11 @@ static iree_status_t iree_hal_replay_executor_prepare_record_completion(
       out_completion);
 }
 
-static iree_hal_atomic_wait_params_t
-iree_hal_replay_executor_atomic_wait_params(
-    iree_hal_replay_atomic_wait_params_payload_t payload) {
-  return (iree_hal_atomic_wait_params_t){
+static iree_status_t iree_hal_replay_executor_atomic_wait_params(
+    iree_hal_replay_executor_t* executor,
+    iree_hal_replay_atomic_wait_params_payload_t payload,
+    iree_hal_atomic_wait_params_t* out_params) {
+  *out_params = (iree_hal_atomic_wait_params_t){
       .value = payload.value,
       .mask = payload.mask,
       .flags = payload.flags,
@@ -98,29 +100,40 @@ iree_hal_replay_executor_atomic_wait_params(
       .condition = payload.condition,
       .reserved = payload.reserved0,
   };
+  return iree_hal_replay_atomic_target_error_mode_decode(
+      executor->file_version_minor, payload.target_error_mode,
+      &out_params->target_error_mode);
 }
 
-static iree_hal_atomic_store_params_t
-iree_hal_replay_executor_atomic_store_params(
-    iree_hal_replay_atomic_store_params_payload_t payload) {
-  iree_hal_atomic_store_params_t params = {
+static iree_status_t iree_hal_replay_executor_atomic_store_params(
+    iree_hal_replay_executor_t* executor,
+    iree_hal_replay_atomic_store_params_payload_t payload,
+    iree_hal_atomic_store_params_t* out_params) {
+  *out_params = (iree_hal_atomic_store_params_t){
       .value = payload.value,
       .flags = payload.flags,
       .width = payload.width,
   };
-  memcpy(params.reserved, payload.reserved0, sizeof(params.reserved));
-  return params;
+  memcpy(out_params->reserved, payload.reserved0, sizeof(out_params->reserved));
+  return iree_hal_replay_atomic_target_error_mode_decode(
+      executor->file_version_minor, payload.target_error_mode,
+      &out_params->target_error_mode);
 }
 
-static iree_hal_atomic_rmw_params_t iree_hal_replay_executor_atomic_rmw_params(
-    iree_hal_replay_atomic_rmw_params_payload_t payload) {
-  return (iree_hal_atomic_rmw_params_t){
+static iree_status_t iree_hal_replay_executor_atomic_rmw_params(
+    iree_hal_replay_executor_t* executor,
+    iree_hal_replay_atomic_rmw_params_payload_t payload,
+    iree_hal_atomic_rmw_params_t* out_params) {
+  *out_params = (iree_hal_atomic_rmw_params_t){
       .operand = payload.operand,
       .flags = payload.flags,
       .width = payload.width,
       .operation = payload.operation,
       .reserved = payload.reserved0,
   };
+  return iree_hal_replay_atomic_target_error_mode_decode(
+      executor->file_version_minor, payload.target_error_mode,
+      &out_params->target_error_mode);
 }
 
 static iree_status_t iree_hal_replay_executor_make_atomic_buffer_ref(
@@ -961,6 +974,9 @@ static iree_status_t iree_hal_replay_executor_queue_atomic_wait(
       sizeof(iree_hal_replay_queue_atomic_wait_payload_t)));
   iree_hal_replay_queue_atomic_wait_payload_t payload;
   memcpy(&payload, record->payload.data, sizeof(payload));
+  iree_hal_atomic_wait_params_t params;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_executor_atomic_wait_params(
+      executor, payload.params, &params));
 
   iree_hal_replay_object_entry_t* queue_entry = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_replay_executor_lookup(
@@ -987,8 +1003,7 @@ static iree_status_t iree_hal_replay_executor_queue_atomic_wait(
   if (iree_status_is_ok(status)) {
     status = iree_hal_queue_atomic_wait(
         queue_entry->value.queue, wait_storage.list, signal_storage.list,
-        target_ref.buffer, target_ref.offset,
-        iree_hal_replay_executor_atomic_wait_params(payload.params));
+        target_ref.buffer, target_ref.offset, params);
   }
   status = iree_hal_replay_executor_finalize_queue_completion(
       executor, completion, /*flush_queue=*/true, status);
@@ -1007,6 +1022,9 @@ static iree_status_t iree_hal_replay_executor_queue_atomic_store(
       sizeof(iree_hal_replay_queue_atomic_store_payload_t)));
   iree_hal_replay_queue_atomic_store_payload_t payload;
   memcpy(&payload, record->payload.data, sizeof(payload));
+  iree_hal_atomic_store_params_t params;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_executor_atomic_store_params(
+      executor, payload.params, &params));
 
   iree_hal_replay_object_entry_t* queue_entry = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_replay_executor_lookup(
@@ -1033,8 +1051,7 @@ static iree_status_t iree_hal_replay_executor_queue_atomic_store(
   if (iree_status_is_ok(status)) {
     status = iree_hal_queue_atomic_store(
         queue_entry->value.queue, wait_storage.list, signal_storage.list,
-        target_ref.buffer, target_ref.offset,
-        iree_hal_replay_executor_atomic_store_params(payload.params));
+        target_ref.buffer, target_ref.offset, params);
   }
   status = iree_hal_replay_executor_finalize_queue_completion(
       executor, completion, /*flush_queue=*/true, status);
@@ -1053,6 +1070,9 @@ static iree_status_t iree_hal_replay_executor_queue_atomic_rmw(
       sizeof(iree_hal_replay_queue_atomic_rmw_payload_t)));
   iree_hal_replay_queue_atomic_rmw_payload_t payload;
   memcpy(&payload, record->payload.data, sizeof(payload));
+  iree_hal_atomic_rmw_params_t params;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_executor_atomic_rmw_params(
+      executor, payload.params, &params));
 
   iree_hal_replay_object_entry_t* queue_entry = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_replay_executor_lookup(
@@ -1079,8 +1099,7 @@ static iree_status_t iree_hal_replay_executor_queue_atomic_rmw(
   if (iree_status_is_ok(status)) {
     status = iree_hal_queue_atomic_rmw(
         queue_entry->value.queue, wait_storage.list, signal_storage.list,
-        target_ref.buffer, target_ref.offset,
-        iree_hal_replay_executor_atomic_rmw_params(payload.params));
+        target_ref.buffer, target_ref.offset, params);
   }
   status = iree_hal_replay_executor_finalize_queue_completion(
       executor, completion, /*flush_queue=*/true, status);
@@ -1268,6 +1287,9 @@ static iree_status_t iree_hal_replay_executor_command_buffer_atomic_wait(
       sizeof(iree_hal_replay_command_buffer_atomic_wait_payload_t)));
   iree_hal_replay_command_buffer_atomic_wait_payload_t payload;
   memcpy(&payload, record->payload.data, sizeof(payload));
+  iree_hal_atomic_wait_params_t params;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_executor_atomic_wait_params(
+      executor, payload.params, &params));
 
   iree_hal_replay_object_entry_t* command_buffer_entry = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_replay_executor_lookup(
@@ -1278,8 +1300,7 @@ static iree_status_t iree_hal_replay_executor_command_buffer_atomic_wait(
       executor, &payload.target_ref, payload.params.width, &target_ref));
   return iree_hal_command_buffer_atomic_wait(
       command_buffer_entry->value.command_buffer, payload.source_stage_mask,
-      payload.target_stage_mask, target_ref,
-      iree_hal_replay_executor_atomic_wait_params(payload.params));
+      payload.target_stage_mask, target_ref, params);
 }
 
 static iree_status_t iree_hal_replay_executor_command_buffer_atomic_store(
@@ -1290,6 +1311,9 @@ static iree_status_t iree_hal_replay_executor_command_buffer_atomic_store(
       sizeof(iree_hal_replay_command_buffer_atomic_store_payload_t)));
   iree_hal_replay_command_buffer_atomic_store_payload_t payload;
   memcpy(&payload, record->payload.data, sizeof(payload));
+  iree_hal_atomic_store_params_t params;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_executor_atomic_store_params(
+      executor, payload.params, &params));
 
   iree_hal_replay_object_entry_t* command_buffer_entry = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_replay_executor_lookup(
@@ -1300,8 +1324,7 @@ static iree_status_t iree_hal_replay_executor_command_buffer_atomic_store(
       executor, &payload.target_ref, payload.params.width, &target_ref));
   return iree_hal_command_buffer_atomic_store(
       command_buffer_entry->value.command_buffer, payload.source_stage_mask,
-      payload.target_stage_mask, target_ref,
-      iree_hal_replay_executor_atomic_store_params(payload.params));
+      payload.target_stage_mask, target_ref, params);
 }
 
 static iree_status_t iree_hal_replay_executor_command_buffer_atomic_rmw(
@@ -1312,6 +1335,9 @@ static iree_status_t iree_hal_replay_executor_command_buffer_atomic_rmw(
       sizeof(iree_hal_replay_command_buffer_atomic_rmw_payload_t)));
   iree_hal_replay_command_buffer_atomic_rmw_payload_t payload;
   memcpy(&payload, record->payload.data, sizeof(payload));
+  iree_hal_atomic_rmw_params_t params;
+  IREE_RETURN_IF_ERROR(iree_hal_replay_executor_atomic_rmw_params(
+      executor, payload.params, &params));
 
   iree_hal_replay_object_entry_t* command_buffer_entry = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_replay_executor_lookup(
@@ -1322,8 +1348,7 @@ static iree_status_t iree_hal_replay_executor_command_buffer_atomic_rmw(
       executor, &payload.target_ref, payload.params.width, &target_ref));
   return iree_hal_command_buffer_atomic_rmw(
       command_buffer_entry->value.command_buffer, payload.source_stage_mask,
-      payload.target_stage_mask, target_ref,
-      iree_hal_replay_executor_atomic_rmw_params(payload.params));
+      payload.target_stage_mask, target_ref, params);
 }
 
 static iree_status_t iree_hal_replay_executor_command_buffer_dispatch(

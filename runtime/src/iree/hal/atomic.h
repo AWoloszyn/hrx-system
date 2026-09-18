@@ -68,6 +68,29 @@ typedef enum iree_hal_atomic_flag_bits_e {
                              IREE_HAL_ATOMIC_FLAG_RELEASE | \
                              IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE))
 
+// Controls only the status classification of target validation failures.
+// Alignment requirements, capability checks, successful execution, and all
+// non-target failures are identical in every mode.
+typedef uint8_t iree_hal_atomic_target_error_mode_t;
+typedef enum iree_hal_atomic_target_error_mode_e {
+  // Uses the backend's established target-validation status contract.
+  IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT = 0,
+  // Reports target misalignment or missing target memory capability as
+  // IREE_STATUS_INCOMPATIBLE. This is useful for API adapters whose public
+  // contract distinguishes an incompatible target from other preconditions.
+  IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE = 1,
+} iree_hal_atomic_target_error_mode_e;
+
+// Language-level object alignment. On SysV i386 Clang's __alignof__ reports
+// the preferred alignment of uint64_t (8) instead of its ABI alignment (4).
+#if defined(__cplusplus)
+#define IREE_HAL_ATOMIC_NATURAL_ALIGNOF(x) alignof(x)
+#elif defined(IREE_COMPILER_MSVC)
+#define IREE_HAL_ATOMIC_NATURAL_ALIGNOF(x) __alignof(x)
+#else
+#define IREE_HAL_ATOMIC_NATURAL_ALIGNOF(x) _Alignof(x)
+#endif
+
 // Parameters for an atomic wait operation.
 typedef struct iree_hal_atomic_wait_params_t {
   // Unsigned value compared against the masked value loaded from memory.
@@ -80,9 +103,18 @@ typedef struct iree_hal_atomic_wait_params_t {
   iree_hal_atomic_width_t width;
   // Comparison that determines when the wait is satisfied.
   iree_hal_atomic_wait_condition_t condition;
+  // Status classification used only for target validation failures.
+  iree_hal_atomic_target_error_mode_t target_error_mode;
   // Reserved for future use and must be zero.
-  uint16_t reserved;
+  uint8_t reserved;
 } iree_hal_atomic_wait_params_t;
+static_assert(sizeof(iree_hal_atomic_wait_params_t) == 24,
+              "atomic wait parameter ABI size must remain stable");
+static_assert(IREE_HAL_ATOMIC_NATURAL_ALIGNOF(iree_hal_atomic_wait_params_t) ==
+                  IREE_HAL_ATOMIC_NATURAL_ALIGNOF(uint64_t),
+              "atomic wait parameter ABI alignment must remain stable");
+static_assert(offsetof(iree_hal_atomic_wait_params_t, target_error_mode) == 22,
+              "atomic wait target error mode must consume reserved storage");
 
 // Parameters for an atomic store operation.
 typedef struct iree_hal_atomic_store_params_t {
@@ -92,9 +124,18 @@ typedef struct iree_hal_atomic_store_params_t {
   iree_hal_atomic_flags_t flags;
   // Width of the memory location and stored value.
   iree_hal_atomic_width_t width;
+  // Status classification used only for target validation failures.
+  iree_hal_atomic_target_error_mode_t target_error_mode;
   // Reserved for future use and must be zero.
-  uint8_t reserved[3];
+  uint8_t reserved[2];
 } iree_hal_atomic_store_params_t;
+static_assert(sizeof(iree_hal_atomic_store_params_t) == 16,
+              "atomic store parameter ABI size must remain stable");
+static_assert(IREE_HAL_ATOMIC_NATURAL_ALIGNOF(iree_hal_atomic_store_params_t) ==
+                  IREE_HAL_ATOMIC_NATURAL_ALIGNOF(uint64_t),
+              "atomic store parameter ABI alignment must remain stable");
+static_assert(offsetof(iree_hal_atomic_store_params_t, target_error_mode) == 13,
+              "atomic store target error mode must consume reserved storage");
 
 // Parameters for a no-result atomic read-modify-write operation.
 typedef struct iree_hal_atomic_rmw_params_t {
@@ -106,9 +147,20 @@ typedef struct iree_hal_atomic_rmw_params_t {
   iree_hal_atomic_width_t width;
   // Read-modify-write operation to perform.
   iree_hal_atomic_rmw_operation_t operation;
+  // Status classification used only for target validation failures.
+  iree_hal_atomic_target_error_mode_t target_error_mode;
   // Reserved for future use and must be zero.
-  uint16_t reserved;
+  uint8_t reserved;
 } iree_hal_atomic_rmw_params_t;
+static_assert(sizeof(iree_hal_atomic_rmw_params_t) == 16,
+              "atomic RMW parameter ABI size must remain stable");
+static_assert(IREE_HAL_ATOMIC_NATURAL_ALIGNOF(iree_hal_atomic_rmw_params_t) ==
+                  IREE_HAL_ATOMIC_NATURAL_ALIGNOF(uint64_t),
+              "atomic RMW parameter ABI alignment must remain stable");
+static_assert(offsetof(iree_hal_atomic_rmw_params_t, target_error_mode) == 14,
+              "atomic RMW target error mode must consume reserved storage");
+
+#undef IREE_HAL_ATOMIC_NATURAL_ALIGNOF
 
 // Atomic operation capabilities for one width and coherence-domain cell.
 typedef uint32_t iree_hal_atomic_operation_flags_t;

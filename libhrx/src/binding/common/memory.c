@@ -15,6 +15,7 @@
 #include "common/stream.h"
 #include "iree/base/internal/atomics.h"
 #include "iree/base/threading/call_once.h"
+#include "iree/base/threading/notification.h"
 
 //===----------------------------------------------------------------------===//
 // Memory management
@@ -44,6 +45,21 @@ typedef struct iree_hal_streaming_host_memcpy_callback_data_t {
   const void* src;
   iree_device_size_t count;
 } iree_hal_streaming_host_memcpy_callback_data_t;
+
+typedef struct iree_hal_streaming_owned_host_allocation_t {
+  iree_allocator_t allocator;
+  void* ptr;
+} iree_hal_streaming_owned_host_allocation_t;
+
+static void iree_hal_streaming_owned_host_allocation_release(
+    void* user_data, iree_hal_buffer_t* buffer) {
+  (void)buffer;
+  iree_hal_streaming_owned_host_allocation_t* allocation =
+      (iree_hal_streaming_owned_host_allocation_t*)user_data;
+  const iree_allocator_t allocator = allocation->allocator;
+  iree_allocator_free_aligned(allocator, allocation->ptr);
+  iree_allocator_free(allocator, allocation);
+}
 
 static void iree_hal_streaming_host_memcpy_callback(void* user_data) {
   iree_hal_streaming_host_memcpy_callback_data_t* callback_data =
@@ -170,7 +186,7 @@ static iree_status_t iree_hal_streaming_buffer_wrap_hrx_buffer(
   wrapper->host_register_flags = IREE_HAL_STREAMING_HOST_REGISTER_FLAG_DEFAULT;
   wrapper->imported_host_allocation = imported_host_ptr != NULL;
   wrapper->is_managed = false;
-  wrapper->owns_host_ptr = false;
+  iree_hal_streaming_allocation_preparation_initialize(&wrapper->preparation);
   wrapper->has_host_mapping = false;
   memset(&wrapper->host_mapping, 0, sizeof(wrapper->host_mapping));
   wrapper->managed_page_count = 0;
@@ -331,11 +347,6 @@ static void iree_hal_streaming_buffer_free(
   }
   IREE_TRACE_ZONE_BEGIN(z0);
   const iree_allocator_t host_allocator = buffer->context->host_allocator;
-  void* owned_host_ptr = NULL;
-  if (buffer->owns_host_ptr) {
-    owned_host_ptr = buffer->host_ptr;
-    buffer->owns_host_ptr = false;
-  }
   iree_allocator_free(host_allocator, buffer->managed_read_mostly_pages);
   buffer->managed_read_mostly_pages = NULL;
   iree_allocator_free(host_allocator, buffer->managed_preferred_locations);
@@ -360,6 +371,7 @@ static void iree_hal_streaming_buffer_free(
     iree_allocator_free(host_allocator, import);
   }
   iree_slim_mutex_deinitialize(&buffer->context_import_mutex);
+  iree_hal_streaming_allocation_preparation_deinitialize(&buffer->preparation);
   if (buffer->has_host_mapping) {
     iree_status_ignore(iree_hal_buffer_unmap_range(&buffer->host_mapping));
     memset(&buffer->host_mapping, 0, sizeof(buffer->host_mapping));
@@ -373,10 +385,6 @@ static void iree_hal_streaming_buffer_free(
   }
   hrx_mem_pool_release(buffer->allocation_pool);
   buffer->allocation_pool = NULL;
-  iree_allocator_free_aligned(host_allocator, owned_host_ptr);
-  if (owned_host_ptr == buffer->host_ptr) {
-    buffer->host_ptr = NULL;
-  }
   iree_hal_streaming_buffer_release_context(buffer);
   iree_allocator_free(host_allocator, buffer);
   IREE_TRACE_ZONE_END(z0);
@@ -523,6 +531,586 @@ iree_status_t iree_hal_streaming_memory_lookup_range_across_contexts(
   iree_slim_mutex_unlock(&device_registry->context_list.mutex);
   return found ? iree_ok_status()
                : iree_status_from_code(IREE_STATUS_NOT_FOUND);
+}
+
+static hrx_status_t iree_hal_streaming_buffer_preparation_acquire_callback(
+    const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data) {
+  (void)offset;
+  (void)user_data;
+  iree_hal_streaming_buffer_t* buffer =
+      (iree_hal_streaming_buffer_t*)entry->user_data;
+  if (!buffer) {
+    return hrx_make_status(HRX_STATUS_FAILED_PRECONDITION,
+                           "allocation has no streaming wrapper");
+  }
+  if (!iree_hal_streaming_allocation_preparation_try_acquire(
+          &buffer->preparation)) {
+    return hrx_make_status(HRX_STATUS_FAILED_PRECONDITION,
+                           "allocation is closing");
+  }
+  return hrx_ok_status();
+}
+
+static void iree_hal_streaming_memory_release_table_ref(
+    hrx_buffer_table_retained_ref_t* table_ref) {
+  if (!table_ref || !table_ref->buffer) {
+    return;
+  }
+  iree_hal_streaming_buffer_t* owner_wrapper =
+      (iree_hal_streaming_buffer_t*)table_ref->user_data;
+  hrx_buffer_release(table_ref->buffer);
+  if (owner_wrapper) {
+    iree_hal_streaming_allocation_preparation_release(
+        &owner_wrapper->preparation);
+  }
+  memset(table_ref, 0, sizeof(*table_ref));
+}
+
+// Consumes |table_ref| and transfers its allocation lease to |out_ref|.
+static iree_status_t iree_hal_streaming_memory_adopt_table_ref(
+    iree_hal_streaming_context_t* owner_context,
+    hrx_buffer_table_retained_ref_t* table_ref,
+    iree_hal_streaming_retained_buffer_ref_t* out_ref) {
+  memset(out_ref, 0, sizeof(*out_ref));
+  iree_hal_streaming_buffer_t* owner_wrapper =
+      (iree_hal_streaming_buffer_t*)table_ref->user_data;
+  if (IREE_UNLIKELY(!table_ref->buffer || !table_ref->buffer->hal_buffer ||
+                    !owner_wrapper)) {
+    iree_hal_streaming_memory_release_table_ref(table_ref);
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "registered allocation has no HAL buffer");
+  }
+
+  out_ref->owner_wrapper = owner_wrapper;
+  out_ref->owner = table_ref->buffer;
+  table_ref->buffer = NULL;
+  out_ref->buffer = out_ref->owner->hal_buffer;
+  iree_hal_buffer_retain(out_ref->buffer);
+  out_ref->offset = (iree_device_size_t)table_ref->offset;
+  out_ref->memory_type = iree_hal_buffer_memory_type(out_ref->buffer);
+  out_ref->device_pointer = table_ref->device_ptr;
+  out_ref->host_pointer = table_ref->host_ptr;
+  out_ref->allocation_size = table_ref->size;
+  out_ref->host_register_flags = owner_wrapper->host_register_flags;
+  out_ref->is_cross_context = false;
+  out_ref->owner_context = owner_context;
+  iree_hal_streaming_context_retain(owner_context);
+  memset(table_ref, 0, sizeof(*table_ref));
+  return iree_ok_status();
+}
+
+iree_status_t iree_hal_streaming_memory_lookup_range_retain(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_deviceptr_t device_ptr, iree_device_size_t size,
+    iree_hal_streaming_retained_buffer_ref_t* out_ref) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(out_ref);
+  memset(out_ref, 0, sizeof(*out_ref));
+
+  hrx_buffer_table_retained_ref_t table_ref;
+  iree_status_t status = HRX_CALL(hrx_buffer_table_find_range_retain_if(
+      &context->buffer_table, device_ptr, (size_t)size,
+      iree_hal_streaming_buffer_preparation_acquire_callback,
+      /*callback_user_data=*/NULL, &table_ref));
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
+  return iree_hal_streaming_memory_adopt_table_ref(context, &table_ref,
+                                                   out_ref);
+}
+
+static bool iree_hal_streaming_context_has_enabled_peer(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_context_t* peer_context) {
+  bool enabled = false;
+  iree_slim_mutex_lock(&context->mutex);
+  for (iree_host_size_t i = 0; i < context->peer_count; ++i) {
+    if (context->peer_contexts[i] == peer_context) {
+      enabled = true;
+      break;
+    }
+  }
+  iree_slim_mutex_unlock(&context->mutex);
+  return enabled;
+}
+
+iree_status_t iree_hal_streaming_memory_buffer_for_context(
+    iree_hal_streaming_context_t* execution_context,
+    iree_hal_streaming_buffer_t* buffer, bool allow_peer_device_allocation,
+    iree_hal_buffer_t** out_buffer) {
+  IREE_ASSERT_ARGUMENT(execution_context);
+  IREE_ASSERT_ARGUMENT(buffer);
+  IREE_ASSERT_ARGUMENT(out_buffer);
+  *out_buffer = NULL;
+
+  if (buffer->context == execution_context) {
+    *out_buffer = buffer->buffer;
+    return iree_ok_status();
+  }
+
+  const iree_hal_memory_type_t memory_type =
+      (iree_hal_memory_type_t)buffer->memory_type;
+  const bool import_host_allocation =
+      iree_all_bits_set(memory_type, IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
+                                         IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE);
+  const bool import_device_allocation =
+      allow_peer_device_allocation &&
+      iree_any_bit_set(memory_type, IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL);
+  if (!buffer->is_managed && !import_host_allocation &&
+      !import_device_allocation) {
+    return iree_status_from_code(IREE_STATUS_NOT_FOUND);
+  }
+  if (buffer->is_managed &&
+      (!buffer->host_ptr ||
+       (uint64_t)(uintptr_t)buffer->host_ptr != buffer->device_ptr)) {
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "cross-device managed memory requires one stable host/device address");
+  }
+  if (!buffer->buffer || buffer->device_ptr == 0 || buffer->size == 0) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "allocation is missing device import metadata");
+  }
+
+  iree_status_t status = iree_ok_status();
+  iree_slim_mutex_lock(&buffer->context_import_mutex);
+  for (iree_hal_streaming_context_import_t* import = buffer->context_imports;
+       import; import = import->next) {
+    if (import->context == execution_context) {
+      *out_buffer = import->buffer;
+      iree_slim_mutex_unlock(&buffer->context_import_mutex);
+      return iree_ok_status();
+    }
+  }
+
+  iree_hal_buffer_params_t params = {
+      .usage = iree_hal_buffer_allowed_usage(buffer->buffer),
+      .access = iree_hal_buffer_allowed_access(buffer->buffer),
+      .type = memory_type,
+      .queue_family_affinity = IREE_HAL_QUEUE_FAMILY_AFFINITY_ANY,
+      .min_alignment = 0,
+  };
+  iree_hal_external_buffer_t external_buffer = {
+      .type = import_host_allocation
+                  ? IREE_HAL_EXTERNAL_BUFFER_TYPE_HOST_ALLOCATION
+                  : IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION,
+      .flags = IREE_HAL_EXTERNAL_BUFFER_FLAG_NONE,
+      .size = buffer->size,
+  };
+  if (import_host_allocation) {
+    external_buffer.handle.host_allocation.ptr = buffer->host_ptr;
+  } else {
+    external_buffer.handle.device_allocation.ptr = buffer->device_ptr;
+  }
+
+  iree_hal_buffer_t* imported_buffer = NULL;
+  status = iree_hal_allocator_import_buffer(
+      execution_context->device_allocator, params, &external_buffer,
+      iree_hal_buffer_release_callback_null(), &imported_buffer);
+  iree_hal_streaming_context_import_t* import = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_allocator_malloc(buffer->context->host_allocator,
+                                   sizeof(*import), (void**)&import);
+  }
+  if (iree_status_is_ok(status)) {
+    import->next = buffer->context_imports;
+    import->context = execution_context;
+    iree_hal_streaming_context_retain(execution_context);
+    import->buffer = imported_buffer;
+    buffer->context_imports = import;
+    imported_buffer = NULL;
+    *out_buffer = import->buffer;
+  }
+  iree_slim_mutex_unlock(&buffer->context_import_mutex);
+  iree_hal_buffer_release(imported_buffer);
+  return status;
+}
+
+static iree_status_t iree_hal_streaming_memory_prepare_ref_for_context(
+    iree_hal_streaming_context_t* execution_context, bool peer_access_enabled,
+    iree_hal_streaming_retained_buffer_ref_t* ref) {
+  if (ref->owner_context == execution_context) {
+    return iree_ok_status();
+  }
+
+  const bool is_host_import = iree_all_bits_set(
+      ref->memory_type,
+      IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE);
+  const bool is_device_import =
+      iree_any_bit_set(ref->memory_type, IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL);
+  if (is_device_import && !peer_access_enabled) {
+    return iree_make_status(
+        IREE_STATUS_PERMISSION_DENIED,
+        "device-local stream value target requires enabled peer access");
+  }
+  if (!is_host_import && !is_device_import) {
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "cross-context stream value target memory type is not importable");
+  }
+
+  iree_hal_buffer_t* imported_buffer = NULL;
+  IREE_RETURN_IF_ERROR(iree_hal_streaming_memory_buffer_for_context(
+      execution_context, ref->owner_wrapper,
+      /*allow_peer_device_allocation=*/true, &imported_buffer));
+  iree_hal_buffer_retain(imported_buffer);
+  iree_hal_buffer_release(ref->buffer);
+  ref->buffer = imported_buffer;
+  ref->is_cross_context = true;
+  return iree_ok_status();
+}
+
+iree_status_t iree_hal_streaming_memory_lookup_range_retain_for_context(
+    iree_hal_streaming_context_t* execution_context,
+    iree_hal_streaming_deviceptr_t device_ptr, iree_device_size_t size,
+    iree_hal_streaming_retained_buffer_ref_t* out_ref) {
+  IREE_ASSERT_ARGUMENT(execution_context);
+  IREE_ASSERT_ARGUMENT(out_ref);
+  memset(out_ref, 0, sizeof(*out_ref));
+  const iree_hal_streaming_memory_range_request_t request = {
+      .address = device_ptr,
+      .length = size,
+  };
+  iree_hal_streaming_memory_range_match_t match;
+  iree_host_size_t ref_count = 0;
+  iree_status_t status =
+      iree_hal_streaming_memory_lookup_ranges_retain_for_context(
+          execution_context, 1, &request, 1, out_ref, &ref_count, &match);
+  if (iree_status_is_ok(status)) {
+    out_ref->offset = match.offset;
+  }
+  return status;
+}
+
+void iree_hal_streaming_retained_buffer_ref_deinitialize(
+    iree_hal_streaming_retained_buffer_ref_t* ref) {
+  if (!ref) {
+    return;
+  }
+  iree_hal_streaming_buffer_t* owner_wrapper = ref->owner_wrapper;
+  iree_hal_buffer_release(ref->buffer);
+  hrx_buffer_release(ref->owner);
+  iree_hal_streaming_context_release(ref->owner_context);
+  memset(ref, 0, sizeof(*ref));
+  if (owner_wrapper) {
+    iree_hal_streaming_allocation_preparation_release(
+        &owner_wrapper->preparation);
+  }
+}
+
+enum { IREE_HAL_STREAMING_MEMORY_INLINE_RANGE_COUNT = 16 };
+
+typedef struct iree_hal_streaming_memory_range_workspace_t {
+  // Compacted unresolved requests for one allocation table.
+  hrx_buffer_table_range_request_t* table_requests;
+  // Original request ordinal corresponding to each compacted request.
+  iree_host_size_t* request_indices;
+  // Unique references retained from one allocation table.
+  hrx_buffer_table_retained_ref_t* table_refs;
+  // Per-request matches returned by one allocation table.
+  hrx_buffer_table_range_match_t* table_matches;
+  // Heap storage backing arrays larger than the inline capacity.
+  void* allocated_storage;
+  // Inline request storage.
+  hrx_buffer_table_range_request_t
+      inline_table_requests[IREE_HAL_STREAMING_MEMORY_INLINE_RANGE_COUNT];
+  // Inline original-ordinal storage.
+  iree_host_size_t
+      inline_request_indices[IREE_HAL_STREAMING_MEMORY_INLINE_RANGE_COUNT];
+  // Inline retained-reference storage.
+  hrx_buffer_table_retained_ref_t
+      inline_table_refs[IREE_HAL_STREAMING_MEMORY_INLINE_RANGE_COUNT];
+  // Inline match storage.
+  hrx_buffer_table_range_match_t
+      inline_table_matches[IREE_HAL_STREAMING_MEMORY_INLINE_RANGE_COUNT];
+} iree_hal_streaming_memory_range_workspace_t;
+
+static iree_status_t iree_hal_streaming_memory_range_workspace_initialize(
+    iree_hal_streaming_context_t* context, iree_host_size_t request_count,
+    iree_hal_streaming_memory_range_workspace_t* out_workspace) {
+  memset(out_workspace, 0, sizeof(*out_workspace));
+  out_workspace->table_requests = out_workspace->inline_table_requests;
+  out_workspace->request_indices = out_workspace->inline_request_indices;
+  out_workspace->table_refs = out_workspace->inline_table_refs;
+  out_workspace->table_matches = out_workspace->inline_table_matches;
+  if (request_count <= IREE_HAL_STREAMING_MEMORY_INLINE_RANGE_COUNT) {
+    return iree_ok_status();
+  }
+
+  iree_host_size_t requests_size = 0;
+  iree_host_size_t indices_offset = 0;
+  iree_host_size_t indices_size = 0;
+  iree_host_size_t refs_offset = 0;
+  iree_host_size_t refs_size = 0;
+  iree_host_size_t matches_offset = 0;
+  iree_host_size_t matches_size = 0;
+  iree_host_size_t total_size = 0;
+  if (IREE_UNLIKELY(
+          !iree_host_size_checked_mul(request_count,
+                                      sizeof(*out_workspace->table_requests),
+                                      &requests_size) ||
+          !iree_host_size_checked_align(requests_size, iree_max_align_t,
+                                        &indices_offset) ||
+          !iree_host_size_checked_mul(request_count,
+                                      sizeof(*out_workspace->request_indices),
+                                      &indices_size) ||
+          !iree_host_size_checked_add(indices_offset, indices_size,
+                                      &refs_offset) ||
+          !iree_host_size_checked_align(refs_offset, iree_max_align_t,
+                                        &refs_offset) ||
+          !iree_host_size_checked_mul(
+              request_count, sizeof(*out_workspace->table_refs), &refs_size) ||
+          !iree_host_size_checked_add(refs_offset, refs_size,
+                                      &matches_offset) ||
+          !iree_host_size_checked_align(matches_offset, iree_max_align_t,
+                                        &matches_offset) ||
+          !iree_host_size_checked_mul(request_count,
+                                      sizeof(*out_workspace->table_matches),
+                                      &matches_size) ||
+          !iree_host_size_checked_add(matches_offset, matches_size,
+                                      &total_size))) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "range lookup workspace size overflow");
+  }
+
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc_uninitialized(
+      context->host_allocator, total_size, &out_workspace->allocated_storage));
+  uint8_t* storage = (uint8_t*)out_workspace->allocated_storage;
+  out_workspace->table_requests = (hrx_buffer_table_range_request_t*)storage;
+  out_workspace->request_indices =
+      (iree_host_size_t*)(storage + indices_offset);
+  out_workspace->table_refs =
+      (hrx_buffer_table_retained_ref_t*)(storage + refs_offset);
+  out_workspace->table_matches =
+      (hrx_buffer_table_range_match_t*)(storage + matches_offset);
+  return iree_ok_status();
+}
+
+static void iree_hal_streaming_memory_range_workspace_deinitialize(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_memory_range_workspace_t* workspace) {
+  iree_allocator_free(context->host_allocator, workspace->allocated_storage);
+  memset(workspace, 0, sizeof(*workspace));
+}
+
+static iree_status_t iree_hal_streaming_memory_lookup_ranges_in_context(
+    iree_hal_streaming_context_t* execution_context,
+    iree_hal_streaming_context_t* owner_context, iree_host_size_t request_count,
+    const iree_hal_streaming_memory_range_request_t* requests,
+    iree_hal_streaming_memory_range_workspace_t* workspace,
+    iree_hal_streaming_retained_buffer_ref_t* out_refs,
+    iree_host_size_t* inout_ref_count,
+    iree_hal_streaming_memory_range_match_t* out_matches) {
+  iree_host_size_t unresolved_count = 0;
+  for (iree_host_size_t i = 0; i < request_count; ++i) {
+    if (out_matches[i].ref_index != IREE_HOST_SIZE_MAX) {
+      continue;
+    }
+    workspace->table_requests[unresolved_count] =
+        (hrx_buffer_table_range_request_t){
+            .address = requests[i].address,
+            .length = (size_t)requests[i].length,
+        };
+    workspace->request_indices[unresolved_count] = i;
+    ++unresolved_count;
+  }
+  if (unresolved_count == 0) {
+    return iree_ok_status();
+  }
+
+  size_t table_ref_count = 0;
+  iree_status_t status = HRX_CALL(hrx_buffer_table_find_ranges_retain_if(
+      &owner_context->buffer_table, (size_t)unresolved_count,
+      workspace->table_requests,
+      iree_hal_streaming_buffer_preparation_acquire_callback,
+      /*callback_user_data=*/NULL, (size_t)unresolved_count,
+      workspace->table_refs, &table_ref_count, workspace->table_matches));
+  if (!iree_status_is_ok(status)) {
+    for (size_t i = 0; i < table_ref_count; ++i) {
+      iree_hal_streaming_memory_release_table_ref(&workspace->table_refs[i]);
+    }
+    return status;
+  }
+
+  const iree_host_size_t ref_base = *inout_ref_count;
+  const bool peer_access_enabled = table_ref_count == 0 ||
+                                   owner_context == execution_context ||
+                                   iree_hal_streaming_context_has_enabled_peer(
+                                       execution_context, owner_context);
+  size_t table_ref_index = 0;
+  for (; table_ref_index < table_ref_count; ++table_ref_index) {
+    status = iree_hal_streaming_memory_adopt_table_ref(
+        owner_context, &workspace->table_refs[table_ref_index],
+        &out_refs[*inout_ref_count]);
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
+    ++*inout_ref_count;
+    status = iree_hal_streaming_memory_prepare_ref_for_context(
+        execution_context, peer_access_enabled,
+        &out_refs[*inout_ref_count - 1]);
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
+  }
+  if (!iree_status_is_ok(status)) {
+    for (size_t i = table_ref_index + 1; i < table_ref_count; ++i) {
+      iree_hal_streaming_memory_release_table_ref(&workspace->table_refs[i]);
+    }
+  }
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
+
+  for (iree_host_size_t i = 0; i < unresolved_count; ++i) {
+    const hrx_buffer_table_range_match_t table_match =
+        workspace->table_matches[i];
+    if (table_match.ref_index == SIZE_MAX) {
+      continue;
+    }
+    out_matches[workspace->request_indices[i]] =
+        (iree_hal_streaming_memory_range_match_t){
+            .ref_index = ref_base + table_match.ref_index,
+            .offset = (iree_device_size_t)table_match.offset,
+        };
+  }
+  return iree_ok_status();
+}
+
+iree_status_t iree_hal_streaming_memory_lookup_ranges_retain_for_context(
+    iree_hal_streaming_context_t* execution_context,
+    iree_host_size_t request_count,
+    const iree_hal_streaming_memory_range_request_t* requests,
+    iree_host_size_t ref_capacity,
+    iree_hal_streaming_retained_buffer_ref_t* out_refs,
+    iree_host_size_t* out_ref_count,
+    iree_hal_streaming_memory_range_match_t* out_matches) {
+  IREE_ASSERT_ARGUMENT(execution_context);
+  IREE_ASSERT_ARGUMENT(out_ref_count);
+  *out_ref_count = 0;
+  if (request_count == 0 || !requests || !out_refs || !out_matches) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "range lookup requires non-empty storage");
+  }
+  if (ref_capacity < request_count) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "retained reference storage is too small");
+  }
+  for (iree_host_size_t i = 0; i < request_count; ++i) {
+    out_matches[i] = (iree_hal_streaming_memory_range_match_t){
+        .ref_index = IREE_HOST_SIZE_MAX,
+        .offset = 0,
+    };
+    if (requests[i].length == 0 || requests[i].length > SIZE_MAX ||
+        requests[i].length > UINT64_MAX - requests[i].address) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "range lookup request is invalid");
+    }
+  }
+
+  iree_hal_streaming_memory_range_workspace_t workspace;
+  IREE_RETURN_IF_ERROR(iree_hal_streaming_memory_range_workspace_initialize(
+      execution_context, request_count, &workspace));
+
+  iree_status_t status = iree_hal_streaming_memory_lookup_ranges_in_context(
+      execution_context, execution_context, request_count, requests, &workspace,
+      out_refs, out_ref_count, out_matches);
+
+  enum { IREE_HAL_STREAMING_INLINE_CONTEXT_COUNT = 8 };
+  iree_hal_streaming_context_t*
+      inline_contexts[IREE_HAL_STREAMING_INLINE_CONTEXT_COUNT];
+  iree_hal_streaming_context_t** contexts = inline_contexts;
+  iree_hal_streaming_context_t** allocated_contexts = NULL;
+  iree_host_size_t context_count = 0;
+  if (iree_status_is_ok(status)) {
+    bool all_resolved = true;
+    for (iree_host_size_t i = 0; i < request_count; ++i) {
+      all_resolved &= out_matches[i].ref_index != IREE_HOST_SIZE_MAX;
+    }
+    if (!all_resolved) {
+      iree_hal_streaming_device_registry_t* device_registry =
+          iree_hal_streaming_device_registry();
+      if (!device_registry) {
+        status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                  "HAL stream layer not initialized");
+      } else {
+        iree_slim_mutex_lock(&device_registry->context_list.mutex);
+        for (iree_hal_streaming_context_t* context =
+                 device_registry->context_list.head;
+             context; context = context->context_list_entry.next) {
+          if (context != execution_context) {
+            ++context_count;
+          }
+        }
+        if (context_count > IREE_ARRAYSIZE(inline_contexts)) {
+          iree_host_size_t contexts_size = 0;
+          if (IREE_UNLIKELY(!iree_host_size_checked_mul(
+                  context_count, sizeof(*contexts), &contexts_size))) {
+            status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                      "context snapshot size overflow");
+          } else {
+            status = iree_allocator_malloc(execution_context->host_allocator,
+                                           contexts_size,
+                                           (void**)&allocated_contexts);
+          }
+          if (iree_status_is_ok(status)) {
+            contexts = allocated_contexts;
+          }
+        }
+        if (iree_status_is_ok(status)) {
+          iree_host_size_t index = 0;
+          for (iree_hal_streaming_context_t* context =
+                   device_registry->context_list.head;
+               context; context = context->context_list_entry.next) {
+            if (context == execution_context) {
+              continue;
+            }
+            contexts[index++] = context;
+            iree_hal_streaming_context_retain(context);
+          }
+          context_count = index;
+        } else {
+          context_count = 0;
+        }
+        iree_slim_mutex_unlock(&device_registry->context_list.mutex);
+      }
+    }
+  }
+
+  for (iree_host_size_t i = 0; i < context_count && iree_status_is_ok(status);
+       ++i) {
+    status = iree_hal_streaming_memory_lookup_ranges_in_context(
+        execution_context, contexts[i], request_count, requests, &workspace,
+        out_refs, out_ref_count, out_matches);
+  }
+  for (iree_host_size_t i = 0; i < context_count; ++i) {
+    iree_hal_streaming_context_release(contexts[i]);
+  }
+  iree_allocator_free(execution_context->host_allocator, allocated_contexts);
+
+  if (iree_status_is_ok(status)) {
+    for (iree_host_size_t i = 0; i < request_count; ++i) {
+      if (out_matches[i].ref_index == IREE_HOST_SIZE_MAX) {
+        status = iree_status_from_code(IREE_STATUS_NOT_FOUND);
+        break;
+      }
+    }
+  }
+  iree_hal_streaming_memory_range_workspace_deinitialize(execution_context,
+                                                         &workspace);
+  if (!iree_status_is_ok(status)) {
+    for (iree_host_size_t i = 0; i < *out_ref_count; ++i) {
+      iree_hal_streaming_retained_buffer_ref_deinitialize(&out_refs[i]);
+    }
+    *out_ref_count = 0;
+    for (iree_host_size_t i = 0; i < request_count; ++i) {
+      out_matches[i] = (iree_hal_streaming_memory_range_match_t){
+          .ref_index = IREE_HOST_SIZE_MAX,
+          .offset = 0,
+      };
+    }
+  }
+  return status;
 }
 
 iree_status_t iree_hal_streaming_memory_allocate_device(
@@ -789,10 +1377,13 @@ static iree_status_t iree_hal_streaming_memory_try_reuse_pending_free(
            (allow_opportunistic != 0 && free_op->is_ready));
     }
     if (can_reuse) {
+      iree_hal_streaming_allocation_preparation_reopen(&buffer->preparation);
       hrx_status_t insert_status = hrx_buffer_table_insert(
           &context->buffer_table, buffer->device_ptr, buffer->host_ptr,
           buffer->size, buffer->hrx_buf, buffer);
       if (!hrx_status_is_ok(insert_status)) {
+        iree_hal_streaming_allocation_preparation_begin_close(
+            &buffer->preparation);
         iree_slim_mutex_unlock(&context->pending_free_mutex);
         return HRX_CALL(insert_status);
       }
@@ -904,40 +1495,96 @@ static bool iree_hal_streaming_buffer_is_device_freeable_base(
          (iree_hal_streaming_deviceptr_t)(uintptr_t)buffer->host_ptr == ptr;
 }
 
-static iree_status_t iree_hal_streaming_memory_find_device_allocation_context(
-    iree_hal_streaming_context_t* preferred_context,
-    iree_hal_streaming_deviceptr_t ptr,
+static hrx_status_t iree_hal_streaming_device_allocation_close_callback(
+    const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data) {
+  const iree_hal_streaming_deviceptr_t ptr =
+      *(const iree_hal_streaming_deviceptr_t*)user_data;
+  iree_hal_streaming_buffer_t* buffer =
+      (iree_hal_streaming_buffer_t*)entry->user_data;
+  if (!iree_hal_streaming_buffer_is_device_freeable_base(buffer, ptr, offset)) {
+    return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                           buffer && buffer->device_ptr == ptr && offset == 0
+                               ? "pointer is not a device allocation"
+                               : "device pointer is not an allocation base");
+  }
+  iree_hal_streaming_allocation_preparation_begin_close(&buffer->preparation);
+  return hrx_ok_status();
+}
+
+typedef enum iree_hal_streaming_host_close_kind_e {
+  IREE_HAL_STREAMING_HOST_CLOSE_KIND_FREE = 0,
+  IREE_HAL_STREAMING_HOST_CLOSE_KIND_UNREGISTER = 1,
+} iree_hal_streaming_host_close_kind_t;
+
+typedef struct iree_hal_streaming_host_close_params_t {
+  void* pointer;
+  iree_hal_streaming_host_close_kind_t kind;
+} iree_hal_streaming_host_close_params_t;
+
+static hrx_status_t iree_hal_streaming_host_allocation_close_callback(
+    const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data) {
+  const iree_hal_streaming_host_close_params_t* params =
+      (const iree_hal_streaming_host_close_params_t*)user_data;
+  iree_hal_streaming_buffer_t* buffer =
+      (iree_hal_streaming_buffer_t*)entry->user_data;
+  if (!buffer || buffer->host_ptr != params->pointer || offset != 0) {
+    return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                           "host pointer is not an allocation base");
+  }
+  if (params->kind == IREE_HAL_STREAMING_HOST_CLOSE_KIND_FREE) {
+    if (buffer->imported_host_allocation) {
+      return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                             "registered host memory must be unregistered");
+    }
+    if (buffer->is_managed) {
+      return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                             "managed memory must be freed with hipFree");
+    }
+  } else if (!buffer->imported_host_allocation) {
+    return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                           "host pointer is not a registered allocation base");
+  }
+  iree_hal_streaming_allocation_preparation_begin_close(&buffer->preparation);
+  return hrx_ok_status();
+}
+
+static iree_status_t iree_hal_streaming_memory_take_from_context(
+    iree_hal_streaming_context_t* context, uint64_t pointer,
+    hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
+    iree_hal_streaming_buffer_t** out_buffer) {
+  hrx_buffer_table_entry_t entry;
+  iree_status_t status = HRX_CALL(hrx_buffer_table_remove_reserved_if(
+      &context->buffer_table, pointer, callback, callback_user_data, &entry,
+      /*out_offset=*/NULL));
+  if (iree_status_is_ok(status)) {
+    *out_buffer = (iree_hal_streaming_buffer_t*)entry.user_data;
+  }
+  return status;
+}
+
+static iree_status_t iree_hal_streaming_memory_take_allocation_context(
+    iree_hal_streaming_context_t* preferred_context, uint64_t pointer,
+    hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
     iree_hal_streaming_context_t** out_context,
-    iree_hal_streaming_buffer_t** out_wrapper) {
+    iree_hal_streaming_buffer_t** out_buffer) {
   IREE_ASSERT_ARGUMENT(preferred_context);
   IREE_ASSERT_ARGUMENT(out_context);
-  IREE_ASSERT_ARGUMENT(out_wrapper);
+  IREE_ASSERT_ARGUMENT(out_buffer);
   *out_context = NULL;
-  *out_wrapper = NULL;
+  *out_buffer = NULL;
 
-  iree_hal_streaming_buffer_t* wrapper = NULL;
-  size_t offset = 0;
-  iree_status_t status = HRX_CALL(hrx_buffer_table_find(
-      &preferred_context->buffer_table, ptr, NULL, &offset, (void**)&wrapper));
+  iree_status_t status = iree_hal_streaming_memory_take_from_context(
+      preferred_context, pointer, callback, callback_user_data, out_buffer);
   if (iree_status_is_ok(status)) {
-    if (iree_hal_streaming_buffer_is_device_freeable_base(wrapper, ptr,
-                                                          offset)) {
-      iree_hal_streaming_context_retain(preferred_context);
-      *out_context = preferred_context;
-      *out_wrapper = wrapper;
-      return iree_ok_status();
-    }
-    if (wrapper && wrapper->device_ptr == ptr && offset == 0) {
-      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "pointer is not a device allocation");
-    }
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "device pointer is not an allocation base");
+    iree_hal_streaming_context_retain(preferred_context);
+    *out_context = preferred_context;
+    return status;
   }
   if (iree_status_code(status) != IREE_STATUS_NOT_FOUND) {
     return status;
   }
   iree_status_free(status);
+  status = iree_status_from_code(IREE_STATUS_NOT_FOUND);
 
   iree_hal_streaming_device_registry_t* device_registry =
       iree_hal_streaming_device_registry();
@@ -946,7 +1593,6 @@ static iree_status_t iree_hal_streaming_memory_find_device_allocation_context(
                             "HAL stream layer not initialized");
   }
 
-  bool found_invalid_pointer = false;
   iree_slim_mutex_lock(&device_registry->context_list.mutex);
   for (iree_hal_streaming_context_t* context =
            device_registry->context_list.head;
@@ -954,68 +1600,48 @@ static iree_status_t iree_hal_streaming_memory_find_device_allocation_context(
     if (context == preferred_context) {
       continue;
     }
-    wrapper = NULL;
-    offset = 0;
-    hrx_status_t find_status = hrx_buffer_table_find(
-        &context->buffer_table, ptr, NULL, &offset, (void**)&wrapper);
-    if (hrx_status_is_ok(find_status)) {
-      if (iree_hal_streaming_buffer_is_device_freeable_base(wrapper, ptr,
-                                                            offset)) {
-        iree_hal_streaming_context_retain(context);
-        *out_context = context;
-        *out_wrapper = wrapper;
-        hrx_status_ignore(find_status);
-        break;
-      }
-      if (wrapper && wrapper->device_ptr == ptr && offset == 0) {
-        found_invalid_pointer = true;
-        hrx_status_ignore(find_status);
-        break;
-      }
-      found_invalid_pointer = true;
-      hrx_status_ignore(find_status);
+    status = iree_hal_streaming_memory_take_from_context(
+        context, pointer, callback, callback_user_data, out_buffer);
+    if (iree_status_is_ok(status)) {
+      iree_hal_streaming_context_retain(context);
+      *out_context = context;
       break;
     }
-    hrx_status_ignore(find_status);
+    if (iree_status_code(status) != IREE_STATUS_NOT_FOUND) {
+      break;
+    }
+    iree_status_free(status);
+    status = iree_status_from_code(IREE_STATUS_NOT_FOUND);
   }
   iree_slim_mutex_unlock(&device_registry->context_list.mutex);
-
-  if (*out_context) {
-    return iree_ok_status();
-  }
-  if (found_invalid_pointer) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "pointer is not a device allocation base");
-  }
-  return iree_status_from_code(IREE_STATUS_NOT_FOUND);
+  return status;
 }
 
-static iree_status_t iree_hal_streaming_memory_find_host_allocation_context(
-    iree_hal_streaming_context_t* preferred_context, void* ptr,
-    iree_hal_streaming_context_t** out_context,
-    iree_hal_streaming_buffer_t** out_wrapper, size_t* out_offset) {
-  IREE_ASSERT_ARGUMENT(preferred_context);
-  IREE_ASSERT_ARGUMENT(ptr);
-  IREE_ASSERT_ARGUMENT(out_context);
-  IREE_ASSERT_ARGUMENT(out_wrapper);
-  IREE_ASSERT_ARGUMENT(out_offset);
-  *out_context = NULL;
-  *out_wrapper = NULL;
-  *out_offset = 0;
+static iree_status_t iree_hal_streaming_memory_restore_taken_allocation(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_buffer_t* buffer) {
+  iree_hal_streaming_allocation_preparation_reopen(&buffer->preparation);
+  hrx_status_t status = hrx_buffer_table_insert_reserved(
+      &context->buffer_table, buffer->device_ptr, buffer->host_ptr,
+      buffer->size, buffer->hrx_buf, buffer);
+  if (!hrx_status_is_ok(status)) {
+    iree_hal_streaming_allocation_preparation_begin_close(&buffer->preparation);
+  }
+  return HRX_CALL(status);
+}
 
-  iree_hal_streaming_buffer_t* wrapper = NULL;
-  size_t offset = 0;
-  iree_status_t status = HRX_CALL(hrx_buffer_table_find(
-      &preferred_context->buffer_table, (uint64_t)(uintptr_t)ptr, NULL, &offset,
-      (void**)&wrapper));
+static iree_status_t iree_hal_streaming_memory_lookup_host_allocation(
+    iree_hal_streaming_context_t* preferred_context, void* pointer,
+    iree_hal_streaming_retained_buffer_ref_t* out_ref) {
+  const iree_hal_streaming_deviceptr_t address =
+      (iree_hal_streaming_deviceptr_t)(uintptr_t)pointer;
+  iree_status_t status = iree_hal_streaming_memory_lookup_range_retain(
+      preferred_context, address, /*size=*/1, out_ref);
   if (iree_status_is_ok(status)) {
-    if (wrapper && wrapper->host_ptr) {
-      iree_hal_streaming_context_retain(preferred_context);
-      *out_context = preferred_context;
-      *out_wrapper = wrapper;
-      *out_offset = offset;
-      return iree_ok_status();
+    if (out_ref->host_pointer) {
+      return status;
     }
+    iree_hal_streaming_retained_buffer_ref_deinitialize(out_ref);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "pointer is not host-visible memory");
   }
@@ -1023,6 +1649,7 @@ static iree_status_t iree_hal_streaming_memory_find_host_allocation_context(
     return status;
   }
   iree_status_free(status);
+  status = iree_status_from_code(IREE_STATUS_NOT_FOUND);
 
   iree_hal_streaming_device_registry_t* device_registry =
       iree_hal_streaming_device_registry();
@@ -1038,27 +1665,23 @@ static iree_status_t iree_hal_streaming_memory_find_host_allocation_context(
     if (context == preferred_context) {
       continue;
     }
-    wrapper = NULL;
-    offset = 0;
-    hrx_status_t find_status =
-        hrx_buffer_table_find(&context->buffer_table, (uint64_t)(uintptr_t)ptr,
-                              NULL, &offset, (void**)&wrapper);
-    if (hrx_status_is_ok(find_status)) {
-      hrx_status_ignore(find_status);
-      if (wrapper && wrapper->host_ptr) {
-        iree_hal_streaming_context_retain(context);
-        *out_context = context;
-        *out_wrapper = wrapper;
-        *out_offset = offset;
-      }
+    status = iree_hal_streaming_memory_lookup_range_retain(context, address,
+                                                           /*size=*/1, out_ref);
+    if (iree_status_is_ok(status) ||
+        iree_status_code(status) != IREE_STATUS_NOT_FOUND) {
       break;
     }
-    hrx_status_ignore(find_status);
+    iree_status_free(status);
+    status = iree_status_from_code(IREE_STATUS_NOT_FOUND);
   }
   iree_slim_mutex_unlock(&device_registry->context_list.mutex);
 
-  return *out_context ? iree_ok_status()
-                      : iree_status_from_code(IREE_STATUS_NOT_FOUND);
+  if (iree_status_is_ok(status) && !out_ref->host_pointer) {
+    iree_hal_streaming_retained_buffer_ref_deinitialize(out_ref);
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "pointer is not host-visible memory");
+  }
+  return status;
 }
 
 iree_status_t iree_hal_streaming_memory_free_device(
@@ -1070,28 +1693,28 @@ iree_status_t iree_hal_streaming_memory_free_device(
 
   iree_hal_streaming_context_t* owner_context = NULL;
   iree_hal_streaming_buffer_t* wrapper = NULL;
-  iree_status_t status =
-      iree_hal_streaming_memory_find_device_allocation_context(
-          context, ptr, &owner_context, &wrapper);
+  iree_status_t status = iree_hal_streaming_memory_take_allocation_context(
+      context, ptr, iree_hal_streaming_device_allocation_close_callback, &ptr,
+      &owner_context, &wrapper);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, status);
 
-  // A HIP pointer may be hidden in native kernargs or device memory, so freeing
-  // cannot rely on launch-time binding discovery. Flush and wait every active
-  // context before releasing the allocation.
+  // The table removal closes admission atomically. Existing preparers hold an
+  // allocation-local lease and cannot be overtaken by synchronization.
+  iree_hal_streaming_allocation_preparation_await_idle(&wrapper->preparation);
   status = iree_hal_streaming_context_synchronize_all();
   if (!iree_status_is_ok(status)) {
+    status = iree_status_join(
+        status, iree_hal_streaming_memory_restore_taken_allocation(
+                    owner_context, wrapper));
     iree_hal_streaming_context_release(owner_context);
     IREE_TRACE_ZONE_END(z0);
     return status;
   }
+  hrx_buffer_table_cancel_reserved_insert(&owner_context->buffer_table);
 
-  status = HRX_CALL(hrx_buffer_table_remove(&owner_context->buffer_table,
-                                            wrapper->device_ptr));
-  if (!iree_status_is_ok(status)) {
-    iree_hal_streaming_context_release(owner_context);
-    IREE_TRACE_ZONE_END(z0);
-    return status;
-  }
+  // A HIP pointer may be hidden in native kernargs or device memory, so freeing
+  // cannot rely on launch-time binding discovery. The synchronization above
+  // waits every active context before releasing the allocation.
 
   // Update free memory tracking.
   iree_hal_streaming_memory_account_device_free(wrapper);
@@ -1235,17 +1858,22 @@ iree_status_t iree_hal_streaming_memory_free_device_async(
 
   iree_hal_streaming_context_t* owner_context = NULL;
   iree_hal_streaming_buffer_t* wrapper = NULL;
-  iree_status_t status =
-      iree_hal_streaming_memory_find_device_allocation_context(
-          context, ptr, &owner_context, &wrapper);
+  iree_status_t status = iree_hal_streaming_memory_take_allocation_context(
+      context, ptr, iree_hal_streaming_device_allocation_close_callback, &ptr,
+      &owner_context, &wrapper);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, status);
+  iree_hal_streaming_allocation_preparation_await_idle(&wrapper->preparation);
 
   if (owner_context != stream->context) {
+    status = iree_hal_streaming_memory_restore_taken_allocation(owner_context,
+                                                                wrapper);
     iree_hal_streaming_context_release(owner_context);
     IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(
-        IREE_STATUS_UNIMPLEMENTED,
-        "stream-ordered free cannot be enqueued on a foreign device context");
+    return iree_status_join(
+        iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                         "stream-ordered free cannot be enqueued on a foreign "
+                         "device context"),
+        status);
   }
 
   // Non-pool allocations have no reusable backing and are retired as soon as
@@ -1258,6 +1886,9 @@ iree_status_t iree_hal_streaming_memory_free_device_async(
         wrapper->allocation_pool, HRX_MEM_POOL_ATTR_REUSE_ALLOW_OPPORTUNISTIC,
         &allow_opportunistic));
     if (!iree_status_is_ok(status)) {
+      status = iree_status_join(
+          status, iree_hal_streaming_memory_restore_taken_allocation(
+                      owner_context, wrapper));
       iree_hal_streaming_context_release(owner_context);
       IREE_TRACE_ZONE_END(z0);
       return status;
@@ -1268,6 +1899,9 @@ iree_status_t iree_hal_streaming_memory_free_device_async(
   status = iree_allocator_malloc(iree_allocator_system(), sizeof(*free_op),
                                  (void**)&free_op);
   if (!iree_status_is_ok(status)) {
+    status = iree_status_join(
+        status, iree_hal_streaming_memory_restore_taken_allocation(
+                    owner_context, wrapper));
     iree_hal_streaming_context_release(owner_context);
     IREE_TRACE_ZONE_END(z0);
     return status;
@@ -1291,6 +1925,9 @@ iree_status_t iree_hal_streaming_memory_free_device_async(
   if (!iree_status_is_ok(status)) {
     free_op->buffer = NULL;
     iree_hal_streaming_pending_free_destroy(free_op);
+    status = iree_status_join(
+        status, iree_hal_streaming_memory_restore_taken_allocation(
+                    owner_context, wrapper));
     iree_hal_streaming_context_release(owner_context);
     IREE_TRACE_ZONE_END(z0);
     return status;
@@ -1298,31 +1935,6 @@ iree_status_t iree_hal_streaming_memory_free_device_async(
   iree_hal_resource_initialize(&iree_hal_streaming_pending_free_terminal_vtable,
                                &terminal->resource);
   terminal->free_op = free_op;
-
-  status =
-      HRX_CALL(hrx_buffer_table_reserve_insert(&owner_context->buffer_table));
-  if (!iree_status_is_ok(status)) {
-    free_op->buffer = NULL;
-    iree_hal_resource_release(&terminal->resource);
-    IREE_TRACE_ZONE_END(z0);
-    return status;
-  }
-
-  const hrx_status_t remove_status = hrx_buffer_table_remove(
-      &owner_context->buffer_table, wrapper->device_ptr);
-  if (!hrx_status_is_ok(remove_status)) {
-    hrx_buffer_table_cancel_reserved_insert(&owner_context->buffer_table);
-    free_op->buffer = NULL;
-    iree_hal_resource_release(&terminal->resource);
-    IREE_TRACE_ZONE_END(z0);
-    return HRX_CALL(remove_status);
-  }
-
-  // The allocation becomes unavailable to future streams immediately, but a
-  // later allocation on this stream may adopt its backing before the queued
-  // free reaches the host callback.
-  iree_hal_streaming_buffer_release_pool_allocation(wrapper);
-  iree_hal_streaming_memory_account_device_free(wrapper);
   uint64_t args[4] = {0, 0, 0, 0};
   iree_hal_host_call_t call = iree_hal_make_host_call_with_resource(
       iree_hal_streaming_deferred_device_free, free_op, &terminal->resource);
@@ -1330,6 +1942,10 @@ iree_status_t iree_hal_streaming_memory_free_device_async(
                                               IREE_HAL_HOST_CALL_FLAG_NONE);
   if (iree_status_is_ok(status)) {
     hrx_buffer_table_cancel_reserved_insert(&owner_context->buffer_table);
+    // The allocation is now unavailable to future streams. A later allocation
+    // on this stream may adopt its backing before the callback completes.
+    iree_hal_streaming_buffer_release_pool_allocation(wrapper);
+    iree_hal_streaming_memory_account_device_free(wrapper);
     iree_slim_mutex_lock(&stream->mutex);
     free_op->completion_value = stream->pending_value;
     iree_slim_mutex_unlock(&stream->mutex);
@@ -1340,19 +1956,9 @@ iree_status_t iree_hal_streaming_memory_free_device_async(
     iree_hal_resource_release(&terminal->resource);
   }
   if (!iree_status_is_ok(status)) {
-    hrx_status_t insert_status = hrx_buffer_table_insert_reserved(
-        &owner_context->buffer_table, wrapper->device_ptr, wrapper->host_ptr,
-        wrapper->size, wrapper->hrx_buf, wrapper);
-    if (!hrx_status_is_ok(insert_status)) {
-      status = iree_status_join(status, HRX_CALL(insert_status));
-      status = iree_status_join(
-          status, iree_hal_streaming_buffer_free_and_trim_pool(
-                      wrapper, /*trim_to_release_threshold=*/true));
-    } else {
-      iree_hal_streaming_buffer_activate_pool_allocation(wrapper);
-      iree_hal_streaming_memory_account_device_allocation(
-          owner_context->device_entry, wrapper->size);
-    }
+    status = iree_status_join(
+        status, iree_hal_streaming_memory_restore_taken_allocation(
+                    owner_context, wrapper));
     free_op->buffer = NULL;
     iree_hal_resource_release(&terminal->resource);
   }
@@ -1440,6 +2046,18 @@ iree_hal_streaming_memory_allocate_owned_host_import_with_context_mode(
       context->host_allocator, allocation_size, host_alignment,
       /*offset=*/0, &host_ptr);
 
+  iree_hal_streaming_owned_host_allocation_t* owned_allocation = NULL;
+  bool host_allocation_transferred = false;
+  if (iree_status_is_ok(status)) {
+    status = iree_allocator_malloc(context->host_allocator,
+                                   sizeof(*owned_allocation),
+                                   (void**)&owned_allocation);
+  }
+  if (iree_status_is_ok(status)) {
+    owned_allocation->allocator = context->host_allocator;
+    owned_allocation->ptr = host_ptr;
+  }
+
   iree_hal_buffer_t* buffer = NULL;
   if (iree_status_is_ok(status)) {
     iree_hal_buffer_params_t params = {
@@ -1456,9 +2074,17 @@ iree_hal_streaming_memory_allocate_owned_host_import_with_context_mode(
         .size = allocation_size,
         .handle.host_allocation.ptr = host_ptr,
     };
-    status = iree_hal_allocator_import_buffer(
-        context->device_allocator, params, &external_buffer,
-        iree_hal_buffer_release_callback_null(), &buffer);
+    const iree_hal_buffer_release_callback_t release_callback = {
+        .fn = iree_hal_streaming_owned_host_allocation_release,
+        .user_data = owned_allocation,
+    };
+    status = iree_hal_allocator_import_buffer(context->device_allocator, params,
+                                              &external_buffer,
+                                              release_callback, &buffer);
+    if (iree_status_is_ok(status)) {
+      owned_allocation = NULL;
+      host_allocation_transferred = true;
+    }
   }
 
   iree_hal_streaming_buffer_t* wrapper = NULL;
@@ -1472,18 +2098,19 @@ iree_hal_streaming_memory_allocate_owned_host_import_with_context_mode(
   iree_hal_buffer_release(buffer);
 
   if (iree_status_is_ok(status)) {
-    wrapper->owns_host_ptr = true;
     wrapper->imported_host_allocation = false;
     wrapper->host_register_flags = flags;
     *out_buffer = wrapper;
-    host_ptr = NULL;
   } else {
     if (wrapper) {
       hrx_buffer_table_remove(&context->buffer_table, wrapper->device_ptr);
       iree_hal_streaming_buffer_free(wrapper);
     }
   }
-  iree_allocator_free_aligned(context->host_allocator, host_ptr);
+  if (!host_allocation_transferred) {
+    iree_allocator_free_aligned(context->host_allocator, host_ptr);
+  }
+  iree_allocator_free(context->host_allocator, owned_allocation);
 
   IREE_TRACE_ZONE_END(z0);
   return status;
@@ -1665,43 +2292,33 @@ iree_status_t iree_hal_streaming_memory_free_host(
   }
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  iree_hal_streaming_host_close_params_t close_params = {
+      .pointer = ptr,
+      .kind = IREE_HAL_STREAMING_HOST_CLOSE_KIND_FREE,
+  };
   iree_hal_streaming_context_t* owner_context = NULL;
   iree_hal_streaming_buffer_t* wrapper = NULL;
-  size_t offset = 0;
-  iree_status_t status = iree_hal_streaming_memory_find_host_allocation_context(
-      context, ptr, &owner_context, &wrapper, &offset);
+  iree_status_t status = iree_hal_streaming_memory_take_allocation_context(
+      context, (uint64_t)(uintptr_t)ptr,
+      iree_hal_streaming_host_allocation_close_callback, &close_params,
+      &owner_context, &wrapper);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, status);
-  if (!wrapper || wrapper->host_ptr != ptr || offset != 0) {
-    iree_hal_streaming_context_release(owner_context);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "host pointer is not an allocation base");
-  }
-  if (wrapper->imported_host_allocation) {
-    iree_hal_streaming_context_release(owner_context);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "registered host memory must be unregistered");
-  }
-  if (wrapper->is_managed) {
-    iree_hal_streaming_context_release(owner_context);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "managed memory must be freed with hipFree");
-  }
 
-  // Host allocations can be passed directly to kernels, and those pointers may
-  // be hidden in native kernargs or other buffers. Flush and wait every active
-  // context before returning the host allocation to the system.
+  // Host pointers may be hidden in native kernel arguments or other buffers.
+  // Removing the entry blocks new operations. Wait its existing preparation
+  // leases without holding a table lock, then establish the device-use
+  // boundary.
+  iree_hal_streaming_allocation_preparation_await_idle(&wrapper->preparation);
   status = iree_hal_streaming_context_synchronize_all();
   if (!iree_status_is_ok(status)) {
+    status = iree_status_join(
+        status, iree_hal_streaming_memory_restore_taken_allocation(
+                    owner_context, wrapper));
     iree_hal_streaming_context_release(owner_context);
     IREE_TRACE_ZONE_END(z0);
     return status;
   }
-
-  // Remove from mapping table.
-  hrx_buffer_table_remove(&owner_context->buffer_table, wrapper->device_ptr);
+  hrx_buffer_table_cancel_reserved_insert(&owner_context->buffer_table);
 
   // Free wrapper and release its context ownership edge.
   iree_hal_streaming_buffer_free(wrapper);
@@ -1736,15 +2353,16 @@ static iree_status_t iree_hal_streaming_memory_register_host_with_context_mode(
       .handle.host_allocation.ptr = ptr,
   };
   iree_hal_buffer_t* buffer = NULL;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_allocator_import_buffer(
-              context->device_allocator, params, &external_buffer,
-              iree_hal_buffer_release_callback_null(), &buffer));
+  iree_status_t status = iree_hal_allocator_import_buffer(
+      context->device_allocator, params, &external_buffer,
+      iree_hal_buffer_release_callback_null(), &buffer);
 
   iree_hal_streaming_buffer_t* wrapper = NULL;
-  iree_status_t status = iree_hal_streaming_buffer_wrap(
-      context, buffer, (int)params.type, ptr, /*allocation_pool=*/NULL,
-      context_ownership, &wrapper);
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_buffer_wrap(context, buffer, (int)params.type,
+                                            ptr, /*allocation_pool=*/NULL,
+                                            context_ownership, &wrapper);
+  }
   iree_hal_buffer_release(buffer);
 
   if (iree_status_is_ok(status)) {
@@ -1760,7 +2378,6 @@ static iree_status_t iree_hal_streaming_memory_register_host_with_context_mode(
       iree_hal_streaming_buffer_free(wrapper);
     }
   }
-
   IREE_TRACE_ZONE_END(z0);
   return status;
 }
@@ -1791,34 +2408,35 @@ iree_status_t iree_hal_streaming_memory_unregister_host(
   }
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  iree_hal_streaming_host_close_params_t close_params = {
+      .pointer = ptr,
+      .kind = IREE_HAL_STREAMING_HOST_CLOSE_KIND_UNREGISTER,
+  };
   iree_hal_streaming_context_t* owner_context = NULL;
   iree_hal_streaming_buffer_t* wrapper = NULL;
-  size_t offset = 0;
-  iree_status_t status = iree_hal_streaming_memory_find_host_allocation_context(
-      context, ptr, &owner_context, &wrapper, &offset);
+  iree_status_t status = iree_hal_streaming_memory_take_allocation_context(
+      context, (uint64_t)(uintptr_t)ptr,
+      iree_hal_streaming_host_allocation_close_callback, &close_params,
+      &owner_context, &wrapper);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, status);
-  if (!wrapper || !wrapper->imported_host_allocation ||
-      wrapper->host_ptr != ptr || offset != 0) {
-    iree_hal_streaming_context_release(owner_context);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "host pointer is not a registered allocation base");
-  }
 
-  // Registered host pointers are process-visible HIP pointers. Unregistration
-  // is blocking, so wait all active contexts instead of assuming launch-time
-  // pointer discovery found every consumer.
+  // Existing preparers finish recording before global synchronization starts;
+  // neither wait runs under the registry or buffer-table lock.
+  iree_hal_streaming_allocation_preparation_await_idle(&wrapper->preparation);
   status = iree_hal_streaming_context_synchronize_all();
   if (!iree_status_is_ok(status)) {
+    status = iree_status_join(
+        status, iree_hal_streaming_memory_restore_taken_allocation(
+                    owner_context, wrapper));
     iree_hal_streaming_context_release(owner_context);
     IREE_TRACE_ZONE_END(z0);
     return status;
   }
+  hrx_buffer_table_cancel_reserved_insert(&owner_context->buffer_table);
 
-  // Remove from buffer table.
-  hrx_buffer_table_remove(&owner_context->buffer_table, wrapper->device_ptr);
-
-  // Free wrapper (this will release the HAL buffer and context references).
+  // A captured graph may still retain this HAL import. Removing the public
+  // registration prevents new lookups while the HAL refcount keeps the pages
+  // pinned until the final graph or in-flight operation releases them.
   iree_hal_streaming_buffer_free(wrapper);
   iree_hal_streaming_context_release(owner_context);
 
@@ -1863,14 +2481,12 @@ iree_status_t iree_hal_streaming_memory_host_flags(
   IREE_ASSERT_ARGUMENT(out_flags);
   *out_flags = IREE_HAL_STREAMING_HOST_REGISTER_FLAG_DEFAULT;
 
-  iree_hal_streaming_context_t* owner_context = NULL;
-  iree_hal_streaming_buffer_t* wrapper = NULL;
-  size_t offset = 0;
-  iree_status_t status = iree_hal_streaming_memory_find_host_allocation_context(
-      context, ptr, &owner_context, &wrapper, &offset);
+  iree_hal_streaming_retained_buffer_ref_t retained_ref;
+  iree_status_t status = iree_hal_streaming_memory_lookup_host_allocation(
+      context, ptr, &retained_ref);
   if (iree_status_is_ok(status)) {
-    *out_flags = wrapper->host_register_flags;
-    iree_hal_streaming_context_release(owner_context);
+    *out_flags = retained_ref.host_register_flags;
+    iree_hal_streaming_retained_buffer_ref_deinitialize(&retained_ref);
   }
 
   return status;

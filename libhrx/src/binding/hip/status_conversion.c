@@ -15,6 +15,7 @@ hipError_t iree_status_to_hip_result(iree_status_t status) {
   switch (code) {
     case IREE_STATUS_INVALID_ARGUMENT:
     case IREE_STATUS_OUT_OF_RANGE:
+    case IREE_STATUS_INCOMPATIBLE:
       return hipErrorInvalidValue;
     case IREE_STATUS_RESOURCE_EXHAUSTED:
       return hipErrorOutOfMemory;

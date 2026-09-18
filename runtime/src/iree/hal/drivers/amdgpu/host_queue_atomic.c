@@ -58,6 +58,22 @@ static iree_hal_atomic_flags_t iree_hal_amdgpu_host_queue_atomic_flags(
   }
 }
 
+static iree_hal_atomic_target_error_mode_t
+iree_hal_amdgpu_host_queue_atomic_target_error_mode(
+    const iree_hal_amdgpu_host_queue_atomic_operation_t* operation) {
+  switch (operation->kind) {
+    case IREE_HAL_AMDGPU_HOST_QUEUE_ATOMIC_OPERATION_WAIT:
+      return operation->params.wait.target_error_mode;
+    case IREE_HAL_AMDGPU_HOST_QUEUE_ATOMIC_OPERATION_STORE:
+      return operation->params.store.target_error_mode;
+    case IREE_HAL_AMDGPU_HOST_QUEUE_ATOMIC_OPERATION_RMW:
+      return operation->params.rmw.target_error_mode;
+    default:
+      IREE_ASSERT_UNREACHABLE("atomic operation kind must be validated");
+      return IREE_HAL_ATOMIC_TARGET_ERROR_MODE_DEFAULT;
+  }
+}
+
 static iree_hal_profile_queue_event_type_t
 iree_hal_amdgpu_host_queue_atomic_profile_event_type(
     const iree_hal_amdgpu_host_queue_atomic_operation_t* operation) {
@@ -104,7 +120,8 @@ static iree_status_t iree_hal_amdgpu_host_queue_atomic_resolve_target(
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_atomic_memory_validate_target(
       iree_hal_amdgpu_buffer_atomic_memory_cells(allocated_buffer),
       target_device_ptr, iree_hal_amdgpu_host_queue_atomic_width(operation),
-      iree_hal_amdgpu_host_queue_atomic_flags(operation)));
+      iree_hal_amdgpu_host_queue_atomic_flags(operation),
+      iree_hal_amdgpu_host_queue_atomic_target_error_mode(operation)));
   *out_target_device_ptr = target_device_ptr;
   return iree_ok_status();
 }

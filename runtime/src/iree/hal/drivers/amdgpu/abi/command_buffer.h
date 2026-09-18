@@ -313,12 +313,22 @@ typedef struct IREE_AMDGPU_ALIGNAS(8)
   uint8_t width;
   // Predicate from iree_hal_atomic_wait_condition_e.
   uint8_t condition;
+  // Target-validation status classification.
+  uint8_t target_error_mode;
   // Reserved bytes that must be zero in version 0.
-  uint8_t reserved0[2];
+  uint8_t reserved0[1];
 } iree_hal_amdgpu_command_buffer_atomic_wait_command_t;
 IREE_AMDGPU_STATIC_ASSERT(
     sizeof(iree_hal_amdgpu_command_buffer_atomic_wait_command_t) == 48,
     "atomic wait command size must remain qword aligned");
+IREE_AMDGPU_STATIC_ASSERT(
+    IREE_AMDGPU_ALIGNOF(iree_hal_amdgpu_command_buffer_atomic_wait_command_t) ==
+        8,
+    "atomic wait command alignment must remain stable");
+IREE_AMDGPU_STATIC_ASSERT(
+    IREE_AMDGPU_OFFSETOF(iree_hal_amdgpu_command_buffer_atomic_wait_command_t,
+                         target_error_mode) == 46,
+    "atomic wait target error mode must consume reserved storage");
 
 // Atomic store command record.
 typedef struct IREE_AMDGPU_ALIGNAS(8)
@@ -333,12 +343,22 @@ typedef struct IREE_AMDGPU_ALIGNAS(8)
   uint32_t atomic_flags;
   // Width from iree_hal_atomic_width_e.
   uint8_t width;
+  // Target-validation status classification.
+  uint8_t target_error_mode;
   // Reserved bytes that must be zero in version 0.
-  uint8_t reserved0[3];
+  uint8_t reserved0[2];
 } iree_hal_amdgpu_command_buffer_atomic_store_command_t;
 IREE_AMDGPU_STATIC_ASSERT(
     sizeof(iree_hal_amdgpu_command_buffer_atomic_store_command_t) == 40,
     "atomic store command size must remain qword aligned");
+IREE_AMDGPU_STATIC_ASSERT(
+    IREE_AMDGPU_ALIGNOF(
+        iree_hal_amdgpu_command_buffer_atomic_store_command_t) == 8,
+    "atomic store command alignment must remain stable");
+IREE_AMDGPU_STATIC_ASSERT(
+    IREE_AMDGPU_OFFSETOF(iree_hal_amdgpu_command_buffer_atomic_store_command_t,
+                         target_error_mode) == 37,
+    "atomic store target error mode must consume reserved storage");
 
 // Atomic read-modify-write command record.
 typedef struct IREE_AMDGPU_ALIGNAS(8)
@@ -355,12 +375,22 @@ typedef struct IREE_AMDGPU_ALIGNAS(8)
   uint8_t width;
   // Operation from iree_hal_atomic_rmw_operation_e.
   uint8_t operation;
+  // Target-validation status classification.
+  uint8_t target_error_mode;
   // Reserved bytes that must be zero in version 0.
-  uint8_t reserved0[2];
+  uint8_t reserved0[1];
 } iree_hal_amdgpu_command_buffer_atomic_rmw_command_t;
 IREE_AMDGPU_STATIC_ASSERT(
     sizeof(iree_hal_amdgpu_command_buffer_atomic_rmw_command_t) == 40,
     "atomic RMW command size must remain qword aligned");
+IREE_AMDGPU_STATIC_ASSERT(
+    IREE_AMDGPU_ALIGNOF(iree_hal_amdgpu_command_buffer_atomic_rmw_command_t) ==
+        8,
+    "atomic RMW command alignment must remain stable");
+IREE_AMDGPU_STATIC_ASSERT(
+    IREE_AMDGPU_OFFSETOF(iree_hal_amdgpu_command_buffer_atomic_rmw_command_t,
+                         target_error_mode) == 38,
+    "atomic RMW target error mode must consume reserved storage");
 
 // Dispatch command record.
 typedef struct IREE_AMDGPU_ALIGNAS(8)

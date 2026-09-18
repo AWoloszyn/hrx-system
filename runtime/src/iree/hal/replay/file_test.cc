@@ -198,6 +198,38 @@ TEST(ReplayFileParseTest, RejectsBadMagic) {
           &file_header, &offset));
 }
 
+TEST(ReplayFileParseTest, AcceptsSupportedMinorVersions) {
+  for (uint16_t version_minor = 0;
+       version_minor <= IREE_HAL_REPLAY_FILE_VERSION_MINOR; ++version_minor) {
+    std::vector<uint8_t> storage = MakeReplayFileHeaderStorage();
+    auto* file_header =
+        reinterpret_cast<iree_hal_replay_file_header_t*>(storage.data());
+    file_header->version_minor = version_minor;
+
+    iree_hal_replay_file_header_t parsed_header;
+    iree_host_size_t offset = 0;
+    IREE_ASSERT_OK(iree_hal_replay_file_parse_header(
+        iree_make_const_byte_span(storage.data(), storage.size()),
+        &parsed_header, &offset));
+    EXPECT_EQ(version_minor, parsed_header.version_minor);
+  }
+}
+
+TEST(ReplayFileParseTest, RejectsFutureMinorVersion) {
+  std::vector<uint8_t> storage = MakeReplayFileHeaderStorage();
+  auto* file_header =
+      reinterpret_cast<iree_hal_replay_file_header_t*>(storage.data());
+  file_header->version_minor = IREE_HAL_REPLAY_FILE_VERSION_MINOR + 1;
+
+  iree_hal_replay_file_header_t parsed_header;
+  iree_host_size_t offset = 0;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_hal_replay_file_parse_header(
+          iree_make_const_byte_span(storage.data(), storage.size()),
+          &parsed_header, &offset));
+}
+
 TEST(ReplayFileParseTest, RejectsNonZeroFileFlags) {
   std::vector<uint8_t> storage = MakeReplayFileHeaderStorage();
   auto* file_header =

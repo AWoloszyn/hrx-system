@@ -125,6 +125,92 @@ class GraphExecTest : public ::testing::Test {
   std::atomic<bool> stream_marker_ran_{false};
 };
 
+TEST_F(GraphExecTest, BatchMemoryNodePreservesResolvedWriteSemantics) {
+  iree_hal_buffer_t* buffer = nullptr;
+  iree_hal_buffer_mapping_t mapping = {};
+  iree_hal_streaming_retained_buffer_ref_t target = {};
+  iree_hal_streaming_graph_t* graph = nullptr;
+  iree_hal_streaming_graph_t* clone_graph = nullptr;
+  iree_hal_streaming_graph_exec_t* executable = nullptr;
+  ScopeExit release_handles([&] {
+    iree_hal_streaming_graph_exec_release(executable);
+    iree_hal_streaming_graph_release(clone_graph);
+    iree_hal_streaming_graph_release(graph);
+    iree_hal_streaming_retained_buffer_ref_deinitialize(&target);
+    if (mapping.contents.data) {
+      IREE_EXPECT_OK(iree_hal_buffer_unmap_range(&mapping));
+    }
+    iree_hal_buffer_release(buffer);
+  });
+
+  const iree_hal_buffer_params_t buffer_params = {
+      /*.usage=*/IREE_HAL_BUFFER_USAGE_DEFAULT,
+      /*.access=*/IREE_HAL_MEMORY_ACCESS_ALL,
+      /*.type=*/IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
+          IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
+  };
+  IREE_ASSERT_OK(iree_hal_allocator_allocate_buffer(
+      context_->device_allocator, buffer_params, sizeof(uint64_t), &buffer));
+  IREE_ASSERT_OK(iree_hal_buffer_map_range(
+      buffer, IREE_HAL_MAPPING_MODE_PERSISTENT, IREE_HAL_MEMORY_ACCESS_ALL,
+      /*local_byte_offset=*/0, sizeof(uint64_t), &mapping));
+  ASSERT_NE(mapping.contents.data, nullptr);
+  *reinterpret_cast<uint64_t*>(mapping.contents.data) = 0;
+  IREE_ASSERT_OK(hrx_buffer_create_from_hal(
+      buffer, device_entry_.hrx_device,
+      HRX_MEMORY_TYPE_HOST_LOCAL | HRX_MEMORY_TYPE_DEVICE_VISIBLE,
+      sizeof(uint64_t), mapping.contents.data, &target.owner));
+  target.buffer = buffer;
+  iree_hal_buffer_retain(target.buffer);
+  target.memory_type = buffer_params.type;
+  target.allocation_size = sizeof(uint64_t);
+  IREE_ASSERT_OK(iree_hal_streaming_graph_create(
+      context_, IREE_HAL_STREAMING_GRAPH_FLAG_NONE, iree_allocator_system(),
+      &graph));
+
+  const iree_hal_atomic_store_params_t store_params = {
+      /*.value=*/47,
+      /*.flags=*/IREE_HAL_ATOMIC_FLAG_RELEASE |
+          IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
+      /*.width=*/IREE_HAL_ATOMIC_WIDTH_64,
+      /*.reserved=*/{},
+  };
+  iree_hal_streaming_value_operation_t operation = {
+      /*.kind=*/IREE_HAL_STREAMING_VALUE_OPERATION_STORE,
+      /*.target_buffer=*/target.buffer,
+      /*.target_offset=*/target.offset,
+  };
+  operation.params.store = store_params;
+  const hrx_buffer_t owner = target.owner;
+  const uint32_t public_params = 0x12345678u;
+  const uint64_t public_operation = 0x87654321u;
+  iree_hal_streaming_graph_node_t* node = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_graph_add_batch_mem_op_node(
+      graph, /*dependencies=*/nullptr, /*dependency_count=*/0, &public_params,
+      sizeof(public_params), &public_operation, sizeof(public_operation),
+      &operation, &owner, /*operation_count=*/1, &node));
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(1u, node->attrs.batch_mem_op.operation_count);
+  EXPECT_EQ(store_params.flags,
+            node->attrs.batch_mem_op.operations[0].params.store.flags);
+  EXPECT_EQ(store_params.width,
+            node->attrs.batch_mem_op.operations[0].params.store.width);
+  EXPECT_EQ(store_params.value,
+            node->attrs.batch_mem_op.operations[0].params.store.value);
+  EXPECT_EQ(target.buffer,
+            node->attrs.batch_mem_op.operations[0].target_buffer);
+  EXPECT_EQ(target.offset,
+            node->attrs.batch_mem_op.operations[0].target_offset);
+
+  IREE_ASSERT_OK(iree_hal_streaming_graph_clone(graph, &clone_graph));
+  IREE_ASSERT_OK(iree_hal_streaming_graph_instantiate(
+      clone_graph, IREE_HAL_STREAMING_GRAPH_INSTANTIATE_FLAG_NONE,
+      &executable));
+  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(executable, stream_));
+  IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(stream_));
+  EXPECT_EQ(47u, *reinterpret_cast<uint64_t*>(mapping.contents.data));
+}
+
 // A replayed event record ends its event's association with the graph a
 // capture-time record left on it, and the launch releases every reference it
 // takes over exactly once.

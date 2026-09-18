@@ -7,17 +7,22 @@
 #ifndef IREE_EXPERIMENTAL_STREAMING_INTERNAL_H_
 #define IREE_EXPERIMENTAL_STREAMING_INTERNAL_H_
 
+#include "common/allocation_preparation.h"
+#include "common/capture_admission.h"
 #include "common/event_timestamp_pool.h"
 #include "common/execution_resource.h"
 #include "common/fat_binary.h"
 #include "common/function_attributes.h"
 #include "common/hrx_bridge.h"
 #include "common/stream.h"
+#include "common/stream_value.h"
 #include "iree/async/frontier_tracker.h"
+#include "iree/async/operations/semaphore.h"
 #include "iree/async/util/proactor_pool.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "iree/base/threading/mutex.h"
+#include "iree/base/threading/notification.h"
 #include "iree/hal/api.h"
 
 #ifdef __cplusplus
@@ -33,6 +38,8 @@ typedef struct iree_hal_streaming_context_module_entry_t
     iree_hal_streaming_context_module_entry_t;
 typedef struct iree_hal_streaming_context_symbol_map_t
     iree_hal_streaming_context_symbol_map_t;
+typedef struct iree_hal_streaming_value_flush_timer_t
+    iree_hal_streaming_value_flush_timer_t;
 
 // Timeline advanced by accepted operations in one binding scheduling domain.
 // The semaphore is owned by the containing object and |pending_value| is the
@@ -213,6 +220,134 @@ typedef struct iree_hal_streaming_timestamp_domain_t {
   uint32_t valid_bits;
 } iree_hal_streaming_timestamp_domain_t;
 
+typedef enum iree_hal_streaming_value_wait_submission_state_e {
+  // The completion observer is active but queue acceptance is not yet known.
+  IREE_HAL_STREAMING_VALUE_WAIT_SUBMISSION_STATE_PREPARED = 0,
+  // The queue operation was accepted and this record is owned by its lane.
+  IREE_HAL_STREAMING_VALUE_WAIT_SUBMISSION_STATE_PUBLISHED = 1,
+  // The queue operation was rejected and no lane owns this record.
+  IREE_HAL_STREAMING_VALUE_WAIT_SUBMISSION_STATE_REJECTED = 2,
+} iree_hal_streaming_value_wait_submission_state_t;
+
+// Terminal record for one accepted submission on a value-wait lane. Each
+// submission owns an independent semaphore so a later submission failure
+// cannot poison the completion proof for earlier blocked work on the queue.
+typedef struct iree_hal_streaming_value_wait_submission_t {
+  // Next accepted submission in lane order.
+  struct iree_hal_streaming_value_wait_submission_t* next;
+  // Previous accepted submission in lane order.
+  struct iree_hal_streaming_value_wait_submission_t* prev;
+  // Next completion observer registered in the context.
+  struct iree_hal_streaming_value_wait_submission_t* observer_next;
+  // Previous completion observer registered in the context.
+  struct iree_hal_streaming_value_wait_submission_t* observer_prev;
+  // Semaphore that becomes terminal only with this exact submission.
+  iree_hal_semaphore_t* completion_semaphore;
+  // Context and lane are borrowed while the record is prepared or published.
+  struct iree_hal_streaming_context_t* context;
+  struct iree_hal_streaming_value_wait_lane_t* lane;
+  // A preaccepted asynchronous observer. Its completion callback always runs
+  // from proactor poll context, never inline on a queue completion thread.
+  iree_async_proactor_t* observer_proactor;
+  iree_async_semaphore_wait_operation_t observer_operation;
+  iree_async_semaphore_t* observer_semaphore;
+  uint64_t observer_value;
+  // Fields below are guarded by |context->value_wait_lane_mutex|.
+  iree_hal_streaming_value_wait_submission_state_t state;
+  bool is_terminal;
+  bool has_failed;
+  bool cancellation_requested;
+  bool observer_active;
+} iree_hal_streaming_value_wait_submission_t;
+
+typedef enum iree_hal_streaming_value_wait_lane_list_state_e {
+  IREE_HAL_STREAMING_VALUE_WAIT_LANE_LIST_STATE_NONE = 0,
+  IREE_HAL_STREAMING_VALUE_WAIT_LANE_LIST_STATE_IDLE = 1,
+  IREE_HAL_STREAMING_VALUE_WAIT_LANE_LIST_STATE_PENDING = 2,
+} iree_hal_streaming_value_wait_lane_list_state_t;
+
+// Optional test instrumentation run while the final observer completion is
+// serialized with context teardown by |value_wait_lane_mutex|.
+typedef void (*iree_hal_streaming_value_wait_observer_finish_hook_t)(
+    void* user_data);
+
+// Exact queue kept exclusive to one logical stream while any of its externally
+// controlled atomic waits may block. Further waits on that stream append to the
+// same lane; completed lanes are recycled across streams.
+typedef struct iree_hal_streaming_value_wait_lane_t {
+  // Next lane in a context-owned idle or pending list.
+  struct iree_hal_streaming_value_wait_lane_t* next;
+  // Previous lane in a context-owned idle or pending list.
+  struct iree_hal_streaming_value_wait_lane_t* prev;
+  // List owning this lane, or NONE while temporarily acquired/detached.
+  iree_hal_streaming_value_wait_lane_list_state_t list_state;
+  // Dynamically acquired exact queue owned by this lane.
+  iree_hal_queue_t* queue;
+  // Queue family the lane realizes.
+  const iree_hal_queue_family_t* family;
+  // Scheduling priority the lane realizes.
+  iree_hal_queue_priority_t priority;
+  // Immutable execution-resource set the lane realizes.
+  iree_hal_queue_execution_resource_list_t execution_resources;
+  // Stable identifier of the stream whose ordered waits occupy this lane.
+  // Zero while the lane is idle.
+  unsigned long long owner_stream_id;
+  // Accepted submissions on this lane in enqueue order. The lane becomes
+  // reusable only after every record is terminal.
+  iree_hal_streaming_value_wait_submission_t* submission_head;
+  iree_hal_streaming_value_wait_submission_t* submission_tail;
+  // Number of unresolved records in the submission list.
+  iree_host_size_t submission_count;
+  // Failed terminal records retained until authoritative queue teardown. A
+  // backend may still own its exact completion semaphore after publishing the
+  // failure, so these records outlive both pending-list and acquired states.
+  iree_hal_streaming_value_wait_submission_t* retired_failure_head;
+  iree_host_size_t retired_failure_count;
+  // True while an acquired lane must return to the pending list if the new
+  // submission is rejected synchronously.
+  bool restore_pending;
+  // True after any tracked submission fails. Such a lane is destroyed, never
+  // recycled, after every tracked submission is terminal.
+  bool has_failed_submission;
+  // Serializes the narrow queue-acceptance/publication transaction with
+  // asynchronous completion/failure processing for this lane. Stream flushes
+  // and queue teardown never run while this gate is held.
+  iree_slim_mutex_t submission_mutex;
+} iree_hal_streaming_value_wait_lane_t;
+
+// Removes every terminal record from |lane| while the context value-wait lane
+// mutex is held, including terminal holes after an unresolved record. If the
+// lane is on the pending list and becomes empty it is detached into exactly
+// one of the completed/failed outputs. Reclaimed records are returned for
+// destruction outside the mutex.
+void iree_hal_streaming_detach_resolved_value_wait_lanes_locked(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_value_wait_lane_t* lane,
+    iree_hal_streaming_value_wait_submission_t** out_reclaimed_submissions,
+    iree_hal_streaming_value_wait_lane_t** out_completed_lanes,
+    iree_hal_streaming_value_wait_lane_t** out_failed_lanes);
+
+// Internal value-wait lifecycle entry points shared with focused tests.
+void iree_hal_streaming_value_wait_lanes_initialize(
+    iree_hal_streaming_context_t* context);
+iree_status_t iree_hal_streaming_prepare_value_wait_submission(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_value_wait_lane_t* lane,
+    iree_hal_streaming_value_wait_submission_t** out_submission);
+void iree_hal_streaming_publish_pending_value_wait_lane(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_value_wait_lane_t* lane,
+    iree_hal_streaming_value_wait_submission_t* submission);
+void iree_hal_streaming_reject_value_wait_submission(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_value_wait_submission_t* submission);
+bool iree_hal_streaming_value_wait_lane_accepts_submission(
+    iree_hal_streaming_context_t* context,
+    const iree_hal_streaming_value_wait_lane_t* lane);
+void iree_hal_streaming_release_value_wait_lane(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_value_wait_lane_t* lane);
+
 // Stream context mapped to HAL device.
 struct iree_hal_streaming_context_t {
   // Reference counting.
@@ -271,6 +406,47 @@ struct iree_hal_streaming_context_t {
 
   // Number of streams in this context with capture state other than NONE.
   iree_atomic_int32_t capture_stream_count;
+  // Coordinates capture-state transitions with operations whose stream
+  // ordering and capture disposition must be decided as one transaction.
+  iree_hal_streaming_capture_admission_t capture_admission;
+
+  // Idle exact queues available for an atomic wait submission.
+  iree_hal_streaming_value_wait_lane_t* idle_value_wait_lanes;
+  // Number of lanes in |idle_value_wait_lanes|.
+  iree_host_size_t idle_value_wait_lane_count;
+  // Exact queues still occupied by accepted atomic wait submissions.
+  iree_hal_streaming_value_wait_lane_t* pending_value_wait_lanes;
+  // Completion observers that have not yet delivered their final callback.
+  iree_hal_streaming_value_wait_submission_t* active_value_wait_observers;
+  // Rejected records whose observers completed during context shutdown.
+  iree_hal_streaming_value_wait_submission_t* shutdown_value_wait_submissions;
+  // Number of completion observers that have not entered their final
+  // mutex-serialized completion. A zero predicate is valid only while holding
+  // |value_wait_lane_mutex|, after the final notification post has returned.
+  iree_atomic_int32_t active_value_wait_observer_count;
+  // Wakes context teardown when observer callbacks finish.
+  iree_notification_t value_wait_observer_notification;
+  // Optional test instrumentation invoked after decrementing the active
+  // observer count and before posting the notification. Guarded by
+  // |value_wait_lane_mutex|.
+  iree_hal_streaming_value_wait_observer_finish_hook_t
+      value_wait_observer_finish_hook;
+  void* value_wait_observer_finish_hook_user_data;
+  // True once teardown has forbidden publication and begun cancelling
+  // observers. Guarded by |value_wait_lane_mutex|.
+  bool value_wait_lanes_shutting_down;
+  // Diagnostic counters used to enforce bounded reclamation. Live includes
+  // every published heap record until it is reclaimed, including terminal
+  // failed records retained for queue-first teardown. Guarded by
+  // |value_wait_lane_mutex|.
+  iree_host_size_t live_value_wait_submission_count;
+  iree_host_size_t peak_value_wait_submission_count;
+  uint64_t value_wait_completion_query_count;
+  uint64_t value_wait_record_visit_count;
+  uint64_t value_wait_observer_removal_count;
+  // Guards both value-wait lane lists, their completion records, observer
+  // ownership, shutdown state, and the diagnostic counters above.
+  iree_slim_mutex_t value_wait_lane_mutex;
 
   // Context resource limits.
   iree_hal_streaming_limits_t limits;
@@ -515,6 +691,11 @@ typedef struct iree_hal_streaming_stream_t {
 
   // Command buffer for batching operations.
   iree_hal_command_buffer_t* command_buffer;
+  // Outstanding bounded flush for a write-only value-operation batch, or NULL.
+  // Protected by |mutex|. The timer owns a stream reference until its callback
+  // clears this field, so stream destruction cannot race the callback.
+  iree_hal_streaming_value_flush_timer_t* value_flush_timer;
+  // Number of kernel launches recorded in |command_buffer|.
   uint32_t pending_launch_count;
 
   // Semaphore chain for synchronization.
@@ -556,6 +737,9 @@ typedef struct iree_hal_streaming_stream_t {
   iree_host_size_t capture_dependency_capacity;
 
   // Synchronization.
+  // Serializes value-wait lane ownership for this logical stream. Ordinary
+  // stream dispatch and write-only value operations do not take this mutex.
+  iree_slim_mutex_t value_wait_mutex;
   iree_slim_mutex_t mutex;
 
   // Host allocator.
@@ -581,7 +765,7 @@ static inline iree_status_t iree_hal_streaming_stream_reserve_next_value_locked(
     iree_hal_streaming_stream_t* stream, uint64_t* out_wait_value,
     uint64_t* out_signal_value) {
   const uint64_t wait_value = stream->pending_value;
-  if (IREE_UNLIKELY(wait_value == UINT64_MAX)) {
+  if (IREE_UNLIKELY(wait_value >= IREE_HAL_SEMAPHORE_MAX_VALUE)) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "stream timeline value overflow");
   }
@@ -953,9 +1137,6 @@ typedef struct iree_hal_streaming_buffer_t {
   // Host address, if available.
   void* host_ptr;
 
-  // True when |host_ptr| is separately allocated and owned by this wrapper.
-  bool owns_host_ptr;
-
   // True when |host_mapping| contains an active persistent HAL mapping.
   bool has_host_mapping;
 
@@ -999,6 +1180,9 @@ typedef struct iree_hal_streaming_buffer_t {
 
   // True when the allocation was created by hipMallocManaged.
   bool is_managed;
+
+  // Coordinates operation preparation leases with allocation teardown.
+  iree_hal_streaming_allocation_preparation_t preparation;
 
   // Number of managed-memory metadata pages tracked for this allocation.
   iree_host_size_t managed_page_count;
@@ -1053,6 +1237,34 @@ typedef struct iree_hal_streaming_buffer_ref_t {
   iree_device_size_t offset;
 } iree_hal_streaming_buffer_ref_t;
 
+// Immutable allocation metadata retained independently of the streaming
+// wrapper and buffer-table entry from which it was resolved.
+typedef struct iree_hal_streaming_retained_buffer_ref_t {
+  // Streaming wrapper whose preparation lease this reference owns.
+  iree_hal_streaming_buffer_t* owner_wrapper;
+  // HRX allocation retaining the HAL buffer and its physical backing.
+  hrx_buffer_t owner;
+  // HAL buffer valid in the operation's context. Retained independently
+  // because cross-context operations may require an imported wrapper.
+  iree_hal_buffer_t* buffer;
+  // Byte offset of the requested pointer into |buffer|.
+  iree_device_size_t offset;
+  // Memory type captured while the allocation is retained.
+  iree_hal_memory_type_t memory_type;
+  // Base device pointer captured while the buffer-table entry was protected.
+  iree_hal_streaming_deviceptr_t device_pointer;
+  // Base host pointer captured while the buffer-table entry was protected.
+  void* host_pointer;
+  // Allocation length captured while the buffer-table entry was protected.
+  iree_device_size_t allocation_size;
+  // Host registration flags captured while the operation lease is active.
+  iree_hal_streaming_host_register_flags_t host_register_flags;
+  // True when the target was resolved from a different execution context.
+  bool is_cross_context;
+  // Context retained while the allocation preparation lease is active.
+  iree_hal_streaming_context_t* owner_context;
+} iree_hal_streaming_retained_buffer_ref_t;
+
 static inline iree_hal_buffer_ref_t iree_hal_streaming_convert_buffer_ref(
     iree_hal_streaming_buffer_ref_t ref) {
   const iree_device_size_t length =
@@ -1086,7 +1298,8 @@ enum iree_hal_streaming_graph_node_type_e {
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_EVENT_RECORD = 7,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_MEM_ALLOC = 8,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_MEM_FREE = 9,
-  IREE_HAL_STREAMING_GRAPH_NODE_TYPE_BATCH_MEM_OP = 10,
+  IREE_HAL_STREAMING_GRAPH_NODE_TYPE_BATCH_MEM_OP =
+      10 | IREE_HAL_STREAMING_GRAPH_NODE_TYPE_RECORDABLE,
 };
 typedef uint8_t iree_hal_streaming_graph_node_type_t;
 
@@ -1338,6 +1551,14 @@ typedef struct iree_hal_streaming_graph_batch_mem_op_node_attrs_t {
   iree_host_size_t param_array_size;
   // Number of operation array bytes reserved at |param_array|.
   iree_host_size_t param_array_capacity;
+  // Resolved generic operations recorded when this graph executes.
+  iree_hal_streaming_value_operation_t* operations;
+  // Number of valid entries in |operations| and |owners|.
+  iree_host_size_t operation_count;
+  // Number of entries reserved in |operations| and |owners|.
+  iree_host_size_t operation_capacity;
+  // HRX allocation retained for each corresponding operation target.
+  hrx_buffer_t* owners;
 } iree_hal_streaming_graph_batch_mem_op_node_attrs_t;
 
 // Graph node structure.
@@ -1773,6 +1994,12 @@ iree_status_t iree_hal_streaming_stream_begin(
 iree_status_t iree_hal_streaming_stream_begin_locked(
     iree_hal_streaming_stream_t* stream);
 
+// Submits the current command buffer while the caller holds |stream->mutex|.
+// The command buffer is discarded after any terminal recording/submission
+// failure because it cannot be resumed safely.
+iree_status_t iree_hal_streaming_stream_flush_locked(
+    iree_hal_streaming_stream_t* stream);
+
 // Flushes pending commands.
 // Synchronization: none (submits to queue, non-blocking).
 iree_status_t iree_hal_streaming_stream_flush(
@@ -2064,6 +2291,25 @@ iree_status_t iree_hal_streaming_memory_lookup_range_across_contexts(
     iree_hal_streaming_deviceptr_t device_ptr, iree_device_size_t size,
     iree_hal_streaming_context_t** out_context,
     iree_hal_streaming_buffer_ref_t* out_ref);
+
+// Looks up and retains immutable allocation metadata for an address range.
+// |out_ref| must be deinitialized by the caller on success.
+iree_status_t iree_hal_streaming_memory_lookup_range_retain(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_deviceptr_t device_ptr, iree_device_size_t size,
+    iree_hal_streaming_retained_buffer_ref_t* out_ref);
+
+// Searches every live context for an address range and materializes a HAL
+// buffer valid for |execution_context|. Device-local memory requires enabled
+// peer access. |out_ref| must be deinitialized by the caller on success.
+iree_status_t iree_hal_streaming_memory_lookup_range_retain_for_context(
+    iree_hal_streaming_context_t* execution_context,
+    iree_hal_streaming_deviceptr_t device_ptr, iree_device_size_t size,
+    iree_hal_streaming_retained_buffer_ref_t* out_ref);
+
+// Releases a retained allocation reference and clears its metadata.
+void iree_hal_streaming_retained_buffer_ref_deinitialize(
+    iree_hal_streaming_retained_buffer_ref_t* ref);
 
 // Synchronization: none (allocates memory).
 iree_status_t iree_hal_streaming_memory_allocate_device(
@@ -2398,12 +2644,16 @@ iree_status_t iree_hal_streaming_graph_add_batch_mem_op_node(
     iree_host_size_t dependency_count, const void* params,
     iree_host_size_t params_size, const void* param_array,
     iree_host_size_t param_array_size,
+    const iree_hal_streaming_value_operation_t* operations,
+    const hrx_buffer_t* owners, iree_host_size_t operation_count,
     iree_hal_streaming_graph_node_t** out_node);
 
 iree_status_t iree_hal_streaming_graph_set_batch_mem_op_node_params(
     iree_hal_streaming_graph_node_t* node, const void* params,
     iree_host_size_t params_size, const void* param_array,
-    iree_host_size_t param_array_size);
+    iree_host_size_t param_array_size,
+    const iree_hal_streaming_value_operation_t* operations,
+    const hrx_buffer_t* owners, iree_host_size_t operation_count);
 
 iree_status_t iree_hal_streaming_graph_destroy_node(
     iree_hal_streaming_graph_node_t* node);
@@ -2519,6 +2769,11 @@ iree_status_t iree_hal_streaming_capture_set_last_node_locked(
     iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_node_t* node);
 
 iree_status_t iree_hal_streaming_capture_set_last_node(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_node_t* node);
+
+// Updates the stream capture frontier to |node|. The caller must hold
+// |stream->mutex| and the stream must be actively capturing.
+iree_status_t iree_hal_streaming_capture_set_last_node_locked(
     iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_node_t* node);
 
 //===----------------------------------------------------------------------===//

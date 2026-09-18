@@ -26,6 +26,41 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    allocation_preparation
+  HDRS
+    "allocation_preparation.h"
+  SRCS
+    "allocation_preparation.c"
+  DEPS
+    iree::base
+    iree::base::threading
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/..>"
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    capture_admission
+  HDRS
+    "capture_admission.h"
+  SRCS
+    "capture_admission.c"
+  DEPS
+    iree::base
+    iree::base::internal
+    iree::base::threading
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/..>"
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     execution_resource
   HDRS
     "execution_resource.h"
@@ -80,6 +115,7 @@ iree_cc_library(
     "occupancy.h"
     "peer.h"
     "stream.h"
+    "stream_value.h"
     "tls.h"
   TEXTUAL_HDRS
     "${IREE_ROOT_DIR}/build_tools/amdgpu/elf_machine_map.inl"
@@ -104,9 +140,12 @@ iree_cc_library(
     "registry.c"
     "stream.c"
     "stream_host_call.c"
+    "stream_value.c"
     "tls.c"
   DEPS
+    ::allocation_preparation
     ::amdgpu_architecture
+    ::capture_admission
     ::execution_resource
     ::function_attributes
     iree::async
@@ -138,6 +177,30 @@ iree_cc_test(
     "amdgpu_architecture_test.cc"
   DEPS
     ::amdgpu_architecture
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
+
+iree_cc_test(
+  NAME
+    capture_admission_test
+  SRCS
+    "capture_admission_test.cc"
+  DEPS
+    ::capture_admission
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
+
+iree_cc_test(
+  NAME
+    allocation_preparation_test
+  SRCS
+    "allocation_preparation_test.cc"
+  DEPS
+    ::allocation_preparation
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs
@@ -208,6 +271,22 @@ iree_cc_test(
     ::common
     iree::base
     iree::hal
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx::src::libhrx::hrx_static
+    libhrx_defs
+)
+
+iree_cc_test(
+  NAME
+    stream_value_test
+  SRCS
+    "stream_value_test.cc"
+  DEPS
+    ::common
+    iree::async::util::proactor_pool
+    iree::hal
+    iree::hal::drivers::task::semaphore
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx::src::libhrx::hrx_static

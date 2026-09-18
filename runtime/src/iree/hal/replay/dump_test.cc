@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "iree/hal/api.h"
+#include "iree/hal/replay/file_reader.h"
 #include "iree/hal/replay/file_writer.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -180,6 +181,8 @@ static std::vector<uint8_t> MakeAtomicReplayFileStorage() {
   command_wait.params.flags = IREE_HAL_ATOMIC_FLAGS_KNOWN;
   command_wait.params.width = IREE_HAL_ATOMIC_WIDTH_64;
   command_wait.params.condition = IREE_HAL_ATOMIC_WAIT_CONDITION_NOT_EQUAL;
+  command_wait.params.target_error_mode =
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE;
   builder.Append(MakeAtomicRecordMetadata(
                      0, IREE_HAL_REPLAY_OBJECT_TYPE_COMMAND_BUFFER,
                      IREE_HAL_REPLAY_PAYLOAD_TYPE_COMMAND_BUFFER_ATOMIC_WAIT,
@@ -195,6 +198,8 @@ static std::vector<uint8_t> MakeAtomicReplayFileStorage() {
   command_store.params.value = 34;
   command_store.params.flags = IREE_HAL_ATOMIC_FLAGS_KNOWN;
   command_store.params.width = IREE_HAL_ATOMIC_WIDTH_32;
+  command_store.params.target_error_mode =
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE;
   builder.Append(
       MakeAtomicRecordMetadata(
           1, IREE_HAL_REPLAY_OBJECT_TYPE_COMMAND_BUFFER,
@@ -212,6 +217,8 @@ static std::vector<uint8_t> MakeAtomicReplayFileStorage() {
   command_rmw.params.flags = IREE_HAL_ATOMIC_FLAGS_KNOWN;
   command_rmw.params.width = IREE_HAL_ATOMIC_WIDTH_64;
   command_rmw.params.operation = IREE_HAL_ATOMIC_RMW_OPERATION_XOR;
+  command_rmw.params.target_error_mode =
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE;
   builder.Append(MakeAtomicRecordMetadata(
                      2, IREE_HAL_REPLAY_OBJECT_TYPE_COMMAND_BUFFER,
                      IREE_HAL_REPLAY_PAYLOAD_TYPE_COMMAND_BUFFER_ATOMIC_RMW,
@@ -230,6 +237,8 @@ static std::vector<uint8_t> MakeAtomicReplayFileStorage() {
   queue_wait.params.width = IREE_HAL_ATOMIC_WIDTH_32;
   queue_wait.params.condition =
       IREE_HAL_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL;
+  queue_wait.params.target_error_mode =
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE;
   iree_hal_replay_semaphore_timepoint_payload_t queue_wait_wait = {};
   queue_wait_wait.semaphore_id = 41;
   queue_wait_wait.value = 5;
@@ -252,6 +261,8 @@ static std::vector<uint8_t> MakeAtomicReplayFileStorage() {
   queue_store.params.value = 85;
   queue_store.params.flags = IREE_HAL_ATOMIC_FLAGS_KNOWN;
   queue_store.params.width = IREE_HAL_ATOMIC_WIDTH_64;
+  queue_store.params.target_error_mode =
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE;
   iree_hal_replay_semaphore_timepoint_payload_t queue_store_wait = {};
   queue_store_wait.semaphore_id = 42;
   queue_store_wait.value = 7;
@@ -276,6 +287,8 @@ static std::vector<uint8_t> MakeAtomicReplayFileStorage() {
   queue_rmw.params.flags = IREE_HAL_ATOMIC_FLAGS_KNOWN;
   queue_rmw.params.width = IREE_HAL_ATOMIC_WIDTH_64;
   queue_rmw.params.operation = IREE_HAL_ATOMIC_RMW_OPERATION_SUBTRACT;
+  queue_rmw.params.target_error_mode =
+      IREE_HAL_ATOMIC_TARGET_ERROR_MODE_INCOMPATIBLE;
   iree_hal_replay_semaphore_timepoint_payload_t queue_rmw_wait = {};
   queue_rmw_wait.semaphore_id = 43;
   queue_rmw_wait.value = 9;
@@ -290,6 +303,82 @@ static std::vector<uint8_t> MakeAtomicReplayFileStorage() {
       queue_rmw, queue_rmw_wait, queue_rmw_signal);
 
   return builder.Finish();
+}
+
+static std::vector<size_t> FindAtomicTargetErrorModeOffsets(
+    const std::vector<uint8_t>& storage) {
+  const iree_const_byte_span_t file_contents = MakeReplayFileContents(storage);
+  iree_hal_replay_file_header_t header;
+  iree_host_size_t offset = 0;
+  IREE_CHECK_OK(
+      iree_hal_replay_file_parse_header(file_contents, &header, &offset));
+  std::vector<size_t> offsets;
+  while (offset < file_contents.data_length) {
+    iree_hal_replay_file_record_t record;
+    IREE_CHECK_OK(iree_hal_replay_file_parse_record(file_contents, offset,
+                                                    &record, &offset));
+    const size_t payload_offset =
+        static_cast<size_t>(record.payload.data - file_contents.data);
+    switch (record.header.payload_type) {
+      case IREE_HAL_REPLAY_PAYLOAD_TYPE_COMMAND_BUFFER_ATOMIC_WAIT:
+        offsets.push_back(
+            payload_offset +
+            offsetof(iree_hal_replay_command_buffer_atomic_wait_payload_t,
+                     params) +
+            offsetof(iree_hal_replay_atomic_wait_params_payload_t,
+                     target_error_mode));
+        break;
+      case IREE_HAL_REPLAY_PAYLOAD_TYPE_COMMAND_BUFFER_ATOMIC_STORE:
+        offsets.push_back(
+            payload_offset +
+            offsetof(iree_hal_replay_command_buffer_atomic_store_payload_t,
+                     params) +
+            offsetof(iree_hal_replay_atomic_store_params_payload_t,
+                     target_error_mode));
+        break;
+      case IREE_HAL_REPLAY_PAYLOAD_TYPE_COMMAND_BUFFER_ATOMIC_RMW:
+        offsets.push_back(
+            payload_offset +
+            offsetof(iree_hal_replay_command_buffer_atomic_rmw_payload_t,
+                     params) +
+            offsetof(iree_hal_replay_atomic_rmw_params_payload_t,
+                     target_error_mode));
+        break;
+      case IREE_HAL_REPLAY_PAYLOAD_TYPE_QUEUE_ATOMIC_WAIT:
+        offsets.push_back(
+            payload_offset +
+            offsetof(iree_hal_replay_queue_atomic_wait_payload_t, params) +
+            offsetof(iree_hal_replay_atomic_wait_params_payload_t,
+                     target_error_mode));
+        break;
+      case IREE_HAL_REPLAY_PAYLOAD_TYPE_QUEUE_ATOMIC_STORE:
+        offsets.push_back(
+            payload_offset +
+            offsetof(iree_hal_replay_queue_atomic_store_payload_t, params) +
+            offsetof(iree_hal_replay_atomic_store_params_payload_t,
+                     target_error_mode));
+        break;
+      case IREE_HAL_REPLAY_PAYLOAD_TYPE_QUEUE_ATOMIC_RMW:
+        offsets.push_back(
+            payload_offset +
+            offsetof(iree_hal_replay_queue_atomic_rmw_payload_t, params) +
+            offsetof(iree_hal_replay_atomic_rmw_params_payload_t,
+                     target_error_mode));
+        break;
+    }
+  }
+  return offsets;
+}
+
+static size_t CountOccurrences(const std::string& text,
+                               const std::string& needle) {
+  size_t count = 0;
+  size_t offset = 0;
+  while ((offset = text.find(needle, offset)) != std::string::npos) {
+    ++count;
+    offset += needle.size();
+  }
+  return count;
 }
 
 static std::vector<uint8_t> MakeScopeReplayFileStorage() {
@@ -1398,6 +1487,7 @@ TEST(ReplayDumpTest, EmitsAtomicOperations) {
   EXPECT_THAT(text_output,
               HasSubstr("value=0x0000000000000011 mask=0x00000000000000ff "
                         "flags=0x00000007 width=64 condition=not_equal(1)"));
+  EXPECT_THAT(text_output, HasSubstr("target_error_mode=1"));
   EXPECT_THAT(text_output, HasSubstr("payload=command_buffer_atomic_store"));
   EXPECT_THAT(text_output,
               HasSubstr("value=0x0000000000000022 flags=0x00000007 width=32"));
@@ -1439,12 +1529,14 @@ TEST(ReplayDumpTest, EmitsAtomicOperations) {
   EXPECT_THAT(json_output,
               HasSubstr("\"value\":17,\"mask\":255,\"flags\":7,\"width\":64,"));
   EXPECT_THAT(json_output,
-              HasSubstr("\"condition\":1,\"condition_name\":\"not_equal\""));
+              HasSubstr("\"condition\":1,\"condition_name\":\"not_equal\","
+                        "\"target_error_mode\":1"));
   EXPECT_THAT(json_output,
               HasSubstr("\"payload_type\":\"command_buffer_atomic_store\""));
   EXPECT_THAT(json_output,
               HasSubstr("\"target_ref\":{\"buffer_id\":0,\"offset\":16,"
                         "\"length\":4,\"buffer_slot\":3}"));
+  EXPECT_THAT(json_output, HasSubstr("\"target_error_mode\":1"));
   EXPECT_THAT(json_output,
               HasSubstr("\"payload_type\":\"command_buffer_atomic_rmw\""));
   EXPECT_THAT(json_output,
@@ -1473,6 +1565,73 @@ TEST(ReplayDumpTest, EmitsAtomicOperations) {
                         "\"operation\":1,\"operation_name\":\"subtract\""));
   EXPECT_THAT(json_output, HasSubstr("\"wait_semaphores_range\""));
   EXPECT_THAT(json_output, HasSubstr("\"signal_semaphores_range\""));
+}
+
+TEST(ReplayDumpTest, EmitsLegacyAtomicDefaultModes) {
+  std::vector<uint8_t> storage = MakeAtomicReplayFileStorage();
+  auto* header =
+      reinterpret_cast<iree_hal_replay_file_header_t*>(storage.data());
+  header->version_minor = 2;
+  const std::vector<size_t> mode_offsets =
+      FindAtomicTargetErrorModeOffsets(storage);
+  ASSERT_EQ(6u, mode_offsets.size());
+  for (size_t mode_offset : mode_offsets) {
+    storage[mode_offset] = 0;
+  }
+
+  iree_hal_replay_dump_options_t options =
+      iree_hal_replay_dump_options_default();
+  std::string output;
+  IREE_ASSERT_OK(
+      DumpReplayToString(MakeReplayFileContents(storage), &options, &output));
+  EXPECT_EQ(6u, CountOccurrences(output, "target_error_mode=0"));
+
+  options.format = IREE_HAL_REPLAY_DUMP_FORMAT_JSONL;
+  output.clear();
+  IREE_ASSERT_OK(
+      DumpReplayToString(MakeReplayFileContents(storage), &options, &output));
+  EXPECT_EQ(6u, CountOccurrences(output, "\"target_error_mode\":0"));
+}
+
+TEST(ReplayDumpTest, RejectsVersionedAtomicTargetErrorModes) {
+  std::vector<uint8_t> base_storage = MakeAtomicReplayFileStorage();
+  const std::vector<size_t> mode_offsets =
+      FindAtomicTargetErrorModeOffsets(base_storage);
+  ASSERT_EQ(6u, mode_offsets.size());
+  for (size_t mode_offset : mode_offsets) {
+    base_storage[mode_offset] = 0;
+  }
+
+  struct InvalidModeCase {
+    uint16_t version_minor;
+    uint8_t encoded_mode;
+    iree_status_code_t expected_status;
+  };
+  const InvalidModeCase cases[] = {
+      {/*version_minor=*/2, /*encoded_mode=*/1, IREE_STATUS_DATA_LOSS},
+      {/*version_minor=*/3, /*encoded_mode=*/2, IREE_STATUS_INVALID_ARGUMENT},
+  };
+  for (const InvalidModeCase& test_case : cases) {
+    for (size_t mode_offset : mode_offsets) {
+      std::vector<uint8_t> storage = base_storage;
+      auto* header =
+          reinterpret_cast<iree_hal_replay_file_header_t*>(storage.data());
+      header->version_minor = test_case.version_minor;
+      storage[mode_offset] = test_case.encoded_mode;
+
+      iree_hal_replay_dump_options_t options =
+          iree_hal_replay_dump_options_default();
+      std::string output;
+      IREE_EXPECT_STATUS_IS(test_case.expected_status,
+                            DumpReplayToString(MakeReplayFileContents(storage),
+                                               &options, &output));
+      options.format = IREE_HAL_REPLAY_DUMP_FORMAT_JSONL;
+      output.clear();
+      IREE_EXPECT_STATUS_IS(test_case.expected_status,
+                            DumpReplayToString(MakeReplayFileContents(storage),
+                                               &options, &output));
+    }
+  }
 }
 
 TEST(ReplayDumpTest, RejectsMalformedVmmPayloadSizes) {

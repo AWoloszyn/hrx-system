@@ -22,6 +22,9 @@ typedef struct iree_hal_buffer_binding_requirements_t {
   iree_device_size_t max_byte_offset;
   // Minimum required alignment by at least one command.
   iree_device_size_t min_byte_alignment;
+  // Minimum alignment requested by commands that classify only target
+  // mismatches as IREE_STATUS_INCOMPATIBLE.
+  iree_device_size_t incompatible_min_byte_alignment;
 } iree_hal_buffer_binding_requirements_t;
 
 // Storage for command buffer validation state.
