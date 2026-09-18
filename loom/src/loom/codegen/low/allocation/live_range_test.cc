@@ -264,6 +264,73 @@ TEST(LowAllocationLiveRangeTest, AssignmentConflictsRejectDisjointLifetime) {
       /*unit_end_points=*/nullptr, /*unit_point_count=*/0, &lhs, &rhs));
 }
 
+TEST(LowAllocationLiveRangeTest, PreservesSparseGapsAgainstContiguousStorage) {
+  const uint16_t atomic_units[] = {0};
+  const uint16_t candidate_ids[] = {0};
+  const uint16_t candidate_ordinals[] = {0};
+  const uint16_t allocation_ordinals[] = {0};
+  const loom_low_physical_register_t physical_registers[] = {
+      {/*.name_string_offset=*/0, /*.atomic_unit_start=*/0,
+       /*.atomic_unit_count=*/1, /*.reserved=*/0},
+  };
+  const loom_liveness_segment_t segments[] = {{0, 4}, {20, 30}};
+  for (const uint32_t flags :
+       {0u, uint32_t(LOOM_LOW_REG_CLASS_FLAG_EXPLICIT_PHYSICAL_REGISTERS)}) {
+    SCOPED_TRACE(flags);
+    loom_low_reg_class_t reg_class = RegClass(/*alias_set_id=*/1);
+    reg_class.flags = flags;
+    reg_class.allocatable_count = 1;
+    reg_class.candidate_lookup.register_count = 1;
+    loom_low_descriptor_set_t descriptor_set = {};
+    descriptor_set.reg_classes = &reg_class;
+    descriptor_set.reg_class_count = 1;
+    descriptor_set.physical_registers = physical_registers;
+    descriptor_set.physical_register_count = IREE_ARRAYSIZE(physical_registers);
+    descriptor_set.physical_register_atomic_units = atomic_units;
+    descriptor_set.physical_register_atomic_unit_count =
+        IREE_ARRAYSIZE(atomic_units);
+    descriptor_set.physical_register_candidate_ids = candidate_ids;
+    descriptor_set.physical_register_candidate_count =
+        IREE_ARRAYSIZE(candidate_ids);
+    descriptor_set.physical_register_candidate_ordinals = candidate_ordinals;
+    descriptor_set.physical_register_candidate_ordinal_count =
+        IREE_ARRAYSIZE(candidate_ordinals);
+    descriptor_set.physical_register_allocation_ordinals = allocation_ordinals;
+
+    loom_low_allocation_assignment_t sparse = Assignment(
+        /*value_id=*/1, /*descriptor_reg_class_id=*/0, /*start_point=*/0,
+        /*end_point=*/30, /*location_base=*/0, /*location_count=*/1,
+        /*unit_count=*/1, /*unit_point_start=*/0);
+    sparse.liveness_segments = {0, IREE_ARRAYSIZE(segments)};
+    auto check_contiguous = [&](uint32_t start_point, uint32_t end_point,
+                                bool expected_conflict) {
+      SCOPED_TRACE(start_point);
+      SCOPED_TRACE(end_point);
+      const uint32_t unit_end_points[] = {30, end_point};
+      const loom_low_allocation_assignment_t contiguous = Assignment(
+          /*value_id=*/2, /*descriptor_reg_class_id=*/0, start_point, end_point,
+          /*location_base=*/0, /*location_count=*/1,
+          /*unit_count=*/1, /*unit_point_start=*/1);
+      EXPECT_EQ(loom_low_allocation_live_range_assignments_conflict(
+                    &descriptor_set, segments, /*unit_start_points=*/nullptr,
+                    unit_end_points, IREE_ARRAYSIZE(unit_end_points), &sparse,
+                    &contiguous),
+                expected_conflict);
+      EXPECT_EQ(loom_low_allocation_live_range_assignments_conflict(
+                    &descriptor_set, segments, /*unit_start_points=*/nullptr,
+                    unit_end_points, IREE_ARRAYSIZE(unit_end_points),
+                    &contiguous, &sparse),
+                expected_conflict);
+    };
+    check_contiguous(4, 20, false);
+    check_contiguous(5, 19, false);
+    check_contiguous(3, 20, true);
+    check_contiguous(4, 21, true);
+    check_contiguous(0, 30, true);
+    check_contiguous(30, 31, false);
+  }
+}
+
 TEST(LowAllocationLiveRangeTest, AssignmentConflictsUsePhysicalStorageOverlap) {
   const loom_low_reg_class_t reg_classes[] = {
       RegClass(/*alias_set_id=*/1),

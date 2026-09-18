@@ -162,6 +162,49 @@ bool loom_low_allocation_live_range_values_overlap(
   return false;
 }
 
+static bool loom_low_allocation_live_range_segments_overlap_interval(
+    const loom_liveness_segment_t* segments,
+    loom_liveness_segment_range_t range, uint32_t start_point,
+    uint32_t end_point) {
+  uint32_t first = range.start;
+  uint32_t count = range.count;
+  while (count != 0) {
+    const uint32_t half = count / 2;
+    const uint32_t middle = first + half;
+    const loom_liveness_segment_t* segment = &segments[middle];
+    if (start_point >= segment->end_point) {
+      first = middle + 1;
+      count -= half + 1;
+    } else if (end_point <= segment->start_point) {
+      count = half;
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+
+// An assignment without sparse reservations occupies its continuous lifetime.
+// That does not fill the other assignment's retained storage gaps.
+static bool loom_low_allocation_live_range_storage_overlaps(
+    const loom_liveness_segment_t* storage_segments,
+    const loom_low_allocation_assignment_t* lhs,
+    const loom_low_allocation_assignment_t* rhs) {
+  if (lhs->liveness_segments.count == 0) {
+    return rhs->liveness_segments.count == 0 ||
+           loom_low_allocation_live_range_segments_overlap_interval(
+               storage_segments, rhs->liveness_segments, lhs->start_point,
+               lhs->end_point);
+  }
+  if (rhs->liveness_segments.count == 0) {
+    return loom_low_allocation_live_range_segments_overlap_interval(
+        storage_segments, lhs->liveness_segments, rhs->start_point,
+        rhs->end_point);
+  }
+  return loom_liveness_segment_ranges_overlap(
+      storage_segments, lhs->liveness_segments, rhs->liveness_segments);
+}
+
 bool loom_low_allocation_live_range_assignments_conflict(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_liveness_segment_t* storage_segments,
@@ -196,10 +239,8 @@ bool loom_low_allocation_live_range_assignments_conflict(
                                                                lhs, rhs)) {
       return false;
     }
-    if (lhs->liveness_segments.count != 0 &&
-        rhs->liveness_segments.count != 0 &&
-        !loom_liveness_segment_ranges_overlap(
-            storage_segments, lhs->liveness_segments, rhs->liveness_segments)) {
+    if (!loom_low_allocation_live_range_storage_overlaps(storage_segments, lhs,
+                                                         rhs)) {
       return false;
     }
     const bool has_refined_unit_starts = iree_any_bit_set(
@@ -245,9 +286,8 @@ bool loom_low_allocation_live_range_assignments_conflict(
   if (overlap_begin >= overlap_end) {
     return false;
   }
-  if (lhs->liveness_segments.count != 0 && rhs->liveness_segments.count != 0 &&
-      !loom_liveness_segment_ranges_overlap(
-          storage_segments, lhs->liveness_segments, rhs->liveness_segments)) {
+  if (!loom_low_allocation_live_range_storage_overlaps(storage_segments, lhs,
+                                                       rhs)) {
     return false;
   }
   const bool has_refined_unit_starts =
