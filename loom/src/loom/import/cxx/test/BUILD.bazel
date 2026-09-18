@@ -13,6 +13,12 @@ package(
     licenses = ["notice"],
 )
 
+exports_files([
+    "aiter_swiglu_f16.cpp",
+    "flash_attention.cpp",
+    "llama_rms_norm.cpp",
+])
+
 iree_execution_test_suite(
     name = "kernels_test",
     data = [

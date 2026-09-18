@@ -89,7 +89,7 @@ static iree_status_t CreateAmdgpuBenchmarkTarget(
       /*.identifier=*/processor,
       /*.identity=*/
       {
-          /*.processor=*/processor,
+          /*.target=*/processor,
       },
   };
   loomc_target_profile_t* raw_profile = nullptr;
