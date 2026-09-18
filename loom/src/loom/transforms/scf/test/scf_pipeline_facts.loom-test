@@ -150,16 +150,16 @@ func.def @nested_carried_policy(%input: view<8xf32>, %initial: f32) -> (f32) {
   %step = index.constant 1 : index
   %end = index.constant 4 : index
   %identity = scalar.constant 0.0 : f32
-  %value = view.load %input[%begin] : view<8xf32> -> f32
-  %50, %51 = scf.for %47 = [%step to %end step %step](%48 = %identity : f32, %49 = %value : f32) -> (f32, f32) {
+  %value$42 = view.load %input[%begin] : view<8xf32> -> f32
+  %50, %51 = scf.for %47 = [%step to %end step %step](%48 = %identity : f32, %49 = %value$42 : f32) -> (f32, f32) {
     %loaded = view.load %input[%47] : view<8xf32> -> f32
     %added = scalar.addf %48, %49 : f32
     scf.yield %added, %loaded : f32, f32
   }
   %added = scalar.addf %50, %51 : f32
-  %120, %121, %122 = scf.for %116 = [%step to %end step %step](%117 = %initial : f32, %118 = %value : f32, %119 = %added : f32) -> (f32, f32, f32) {
+  %120, %121, %122 = scf.for %116 = [%step to %end step %step](%117 = %initial : f32, %118 = %value$42 : f32, %119 = %added : f32) -> (f32, f32, f32) {
     %value = view.load %input[%116] : view<8xf32> -> f32
-    %77, %78 = scf.for %74 = [%step to %end step %step](%75 = %identity : f32, %76 = %value : f32) -> (f32, f32) {
+    %77, %78 = scf.for %74 = [%step to %end step %step](%75 = %identity : f32, %76 = %value$42 : f32) -> (f32, f32) {
       %loaded = view.load %input[%74] : view<8xf32> -> f32
       %added = scalar.addf %75, %76 : f32
       scf.yield %added, %loaded : f32, f32

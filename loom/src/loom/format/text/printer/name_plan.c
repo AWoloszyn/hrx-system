@@ -11,6 +11,7 @@
 
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ops/op_defs.h"
 
 // Stack buffer size for formatting generated value-name suffixes.
 #define LOOM_PRINT_NAME_SUFFIX_BUFFER_SIZE 32
@@ -108,6 +109,158 @@ static bool loom_print_name_value_has_name(const loom_module_t* module,
   }
   *out_name_id = name_id;
   return true;
+}
+
+typedef struct loom_print_name_binding_t {
+  // Explicit spelling introduced in the current lexical scope.
+  loom_string_id_t name_id;
+  // Previous binding restored on scope exit.
+  loom_value_id_t previous_value;
+} loom_print_name_binding_t;
+
+typedef struct loom_print_name_capture_state_t {
+  // IR and retained operand/type/attribute references being printed.
+  const loom_module_t* module;
+  // Resolutions marked when a captured reference needs disambiguation.
+  loom_print_name_resolution_t* resolutions;
+  // Current value bound to each interned explicit spelling.
+  loom_value_id_t* active_values;
+  // Scope rollback records, bounded by printable values with explicit names.
+  loom_print_name_binding_t* bindings;
+  // Number of active rollback records.
+  iree_host_size_t binding_count;
+} loom_print_name_capture_state_t;
+
+static void loom_print_name_bind(loom_print_name_capture_state_t* state,
+                                 loom_value_id_t value_id) {
+  loom_string_id_t name_id;
+  if (!loom_print_name_value_has_name(state->module, value_id, &name_id) ||
+      !loom_print_name_value_is_printable(state->module, value_id)) {
+    return;
+  }
+  state->bindings[state->binding_count++] = (loom_print_name_binding_t){
+      .name_id = name_id,
+      .previous_value = state->active_values[name_id],
+  };
+  state->active_values[name_id] = value_id;
+}
+
+static void loom_print_name_restore(loom_print_name_capture_state_t* state,
+                                    iree_host_size_t watermark) {
+  while (state->binding_count > watermark) {
+    const loom_print_name_binding_t binding =
+        state->bindings[--state->binding_count];
+    state->active_values[binding.name_id] = binding.previous_value;
+  }
+}
+
+static void loom_print_name_check_capture(
+    loom_print_name_capture_state_t* state, loom_value_id_t value_id) {
+  loom_string_id_t name_id;
+  if (!loom_print_name_value_has_name(state->module, value_id, &name_id)) {
+    return;
+  }
+  const loom_value_id_t binding = state->active_values[name_id];
+  if (binding != LOOM_VALUE_ID_INVALID && binding != value_id) {
+    state->resolutions[value_id].suffix = 1;
+  }
+}
+
+static void loom_print_name_check_type_captures(
+    loom_print_name_capture_state_t* state, loom_value_id_t value_id) {
+  if (value_id >= state->module->values.count) {
+    return;
+  }
+  for (loom_type_use_id_t use_id =
+           loom_module_value_first_outgoing_type_use(state->module, value_id);
+       use_id != LOOM_TYPE_USE_ID_INVALID;) {
+    const loom_type_use_t* use = &state->module->type_uses.records[use_id];
+    loom_print_name_check_capture(state, use->referenced_value_id);
+    use_id = use->next_outgoing_use_id;
+  }
+}
+
+// Reserve each scope's direct definitions before checking its references. This
+// makes canonical names independent of CFG layout while preserving harmless
+// shadowing. Every scope is visited once; reference checks never walk
+// ancestors.
+static void loom_print_name_check_region_captures(
+    loom_print_name_capture_state_t* state, const loom_region_t* region) {
+  if (!region) {
+    return;
+  }
+  const iree_host_size_t region_watermark = state->binding_count;
+  for (uint16_t b = 0; b < region->block_count; ++b) {
+    const loom_block_t* block = loom_region_const_block(region, b);
+    for (uint16_t i = 0; i < block->arg_count; ++i) {
+      loom_print_name_bind(state, loom_block_arg_id(block, i));
+    }
+    for (const loom_op_t* op = block->first_op; op; op = op->next_op) {
+      if (iree_any_bit_set(op->traits, LOOM_TRAIT_SYMBOL_DEFINE)) {
+        continue;
+      }
+      for (uint16_t i = 0; i < op->result_count; ++i) {
+        loom_print_name_bind(state, loom_op_const_results(op)[i]);
+      }
+    }
+  }
+  for (uint16_t b = 0; b < region->block_count; ++b) {
+    const loom_block_t* block = loom_region_const_block(region, b);
+    for (uint16_t i = 0; i < block->arg_count; ++i) {
+      loom_print_name_check_type_captures(state, loom_block_arg_id(block, i));
+    }
+    for (const loom_op_t* op = block->first_op; op; op = op->next_op) {
+      const iree_host_size_t signature_watermark = state->binding_count;
+      const loom_value_id_t* operands = loom_op_const_operands(op);
+      const loom_value_id_t* results = loom_op_const_results(op);
+      const bool symbol =
+          iree_any_bit_set(op->traits, LOOM_TRAIT_SYMBOL_DEFINE);
+      if (symbol) {
+        const loom_op_vtable_t* vtable = loom_op_vtable(state->module, op);
+        uint16_t argument_count = 0;
+        const loom_value_id_t* arguments = NULL;
+        if (vtable && vtable->func_like) {
+          arguments = loom_func_like_arg_ids(
+              (loom_func_like_t){.op = (loom_op_t*)op,
+                                 .vtable = vtable->func_like},
+              &argument_count);
+        } else if (vtable && loom_op_vtable_owns_operands(vtable)) {
+          arguments = operands;
+          argument_count = op->operand_count;
+        }
+        for (uint16_t i = 0; i < argument_count; ++i) {
+          loom_print_name_bind(state, arguments[i]);
+        }
+        for (uint16_t i = 0; i < op->result_count; ++i) {
+          loom_print_name_bind(state, results[i]);
+        }
+        for (uint16_t i = 0; i < argument_count; ++i) {
+          loom_print_name_check_type_captures(state, arguments[i]);
+        }
+      }
+      for (uint16_t i = 0; i < op->operand_count; ++i) {
+        loom_print_name_check_capture(state, operands[i]);
+        loom_print_name_check_type_captures(state, operands[i]);
+      }
+      for (uint16_t i = 0; i < op->result_count; ++i) {
+        loom_print_name_check_type_captures(state, results[i]);
+      }
+      const loom_attribute_use_id_t* heads = loom_op_attribute_use_heads(op);
+      for (uint8_t i = 0; i < op->attribute_count; ++i) {
+        for (loom_attribute_use_id_t use_id = heads[i]; use_id;) {
+          const loom_attribute_use_t* use =
+              &state->module->attribute_uses.records[use_id - 1];
+          loom_print_name_check_capture(state, use->value_id);
+          use_id = use->next_outgoing;
+        }
+      }
+      loom_print_name_restore(state, signature_watermark);
+      for (uint8_t i = 0; i < op->region_count; ++i) {
+        loom_print_name_check_region_captures(state, loom_op_regions(op)[i]);
+      }
+    }
+  }
+  loom_print_name_restore(state, region_watermark);
 }
 
 static uint64_t loom_print_name_hash(const void* scope,
@@ -300,17 +453,43 @@ iree_status_t loom_print_name_plan_initialize(
   const iree_host_size_t candidate_buffer_capacity =
       temporary_size - candidate_buffer_offset;
 
+  bool shared_spelling = false;
   for (iree_host_size_t i = 0; i < module->values.count; ++i) {
     loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
     if (loom_print_name_value_is_printable(module, (loom_value_id_t)i) &&
         loom_print_name_value_has_name(module, (loom_value_id_t)i, &name_id)) {
       // Reserve explicit spellings across scopes so generated names cannot
       // shadow an explicit name in an enclosing or nested parser scope.
+      shared_spelling |=
+          (explicit_names[name_id / 8] & (1u << (name_id % 8))) != 0;
       explicit_names[name_id / 8] |= 1u << (name_id % 8);
       loom_print_name_index_insert(
           index_entries, index_capacity,
           loom_print_name_parse_scope(module, (loom_value_id_t)i), name_id);
     }
+  }
+
+  if (shared_spelling) {
+    loom_print_name_capture_state_t state = {
+        .module = module,
+        .resolutions = out_plan->resolutions,
+    };
+    status = iree_arena_allocate_array(&out_plan->arena, module->strings.count,
+                                       sizeof(*state.active_values),
+                                       (void**)&state.active_values);
+    if (iree_status_is_ok(status)) {
+      status = iree_arena_allocate_array(&out_plan->arena, indexed_name_count,
+                                         sizeof(*state.bindings),
+                                         (void**)&state.bindings);
+    }
+    if (!iree_status_is_ok(status)) {
+      iree_arena_checkpoint_restore(&temporary_checkpoint);
+      loom_print_name_plan_deinitialize(out_plan);
+      return status;
+    }
+    memset(state.active_values, 0xFF,
+           module->strings.count * sizeof(*state.active_values));
+    loom_print_name_check_region_captures(&state, module->body);
   }
 
   for (iree_host_size_t i = 0; i < module->values.count; ++i) {
@@ -329,7 +508,7 @@ iree_status_t loom_print_name_plan_initialize(
     const bool duplicated =
         entry && (entry->duplicated ||
                   !loom_print_name_value_is_printable(module, value_id));
-    if (!duplicated) {
+    if (!duplicated && out_plan->resolutions[i].suffix == 0) {
       continue;
     }
     out_plan->resolutions[i].suffix = loom_print_name_resolve_suffix(

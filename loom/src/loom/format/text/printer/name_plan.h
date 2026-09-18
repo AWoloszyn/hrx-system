@@ -20,7 +20,9 @@ typedef struct loom_print_name_resolution_t loom_print_name_resolution_t;
 // Canonical SSA name resolutions shared by one print invocation.
 //
 // Construction indexes explicit names by parser scope and resolves all
-// same-scope duplicates and generated-name collisions once. Generated
+// same-scope duplicates, shadowed captures, and generated-name collisions once.
+// A scope walk checks ordinary and embedded type/attribute references against
+// indexed bindings; captured values receive unambiguous spellings. Generated
 // candidates have disjoint value-ID suffixes and cannot equal explicit names in
 // any scope. Emission is then an O(1) value-id lookup. The plan owns only the
 // resolutions in a scoped arena backed by the module block pool; its
