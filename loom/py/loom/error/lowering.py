@@ -682,6 +682,16 @@ ERR_LOWERING_058 = ErrorDef(
     fix_hint="Place nested folds in separate groups.",
 )
 
+# ERR_LOWERING_059: Source construct has no supported IR projection.
+ERR_LOWERING_059 = ErrorDef(
+    domain=ErrorDomain.LOWERING,
+    code=59,
+    severity=Severity.ERROR,
+    summary="Unsupported source-language construct.",
+    message="cannot import source construct: {detail}",
+    params=(ErrorParam("detail", ParamKind.STRING),),
+)
+
 ALL_LOWERING_ERRORS: tuple[ErrorDef, ...] = (
     ERR_LOWERING_022,
     ERR_LOWERING_023,
@@ -717,4 +727,5 @@ ALL_LOWERING_ERRORS: tuple[ErrorDef, ...] = (
     ERR_LOWERING_056,
     ERR_LOWERING_057,
     ERR_LOWERING_058,
+    ERR_LOWERING_059,
 )

@@ -47,6 +47,7 @@ class TargetConverter:
                 "//third_party:spirv_val": ["iree::third_party::spirv_val"],
                 "//third_party:vulkan_headers": ["iree::third_party::vulkan_headers"],
                 "//third_party:catch2": ["iree::third_party::catch2"],
+                "//third_party:cxx_parser": ["iree::third_party::cxx_parser"],
                 "//third_party:amdf_wkmi": ["iree::third_party::amdf_wkmi"],
                 # Driver protocol headers are private build inputs, not
                 # dependencies of the installed libamdf static interface.

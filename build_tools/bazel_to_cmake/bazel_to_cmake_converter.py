@@ -66,6 +66,7 @@ _RUNTIME_HAL_DRIVER_CMAKE_OPTIONS = {
 }
 
 _LOOM_CONFIG_CMAKE_OPTIONS = {
+    "//loom/config/import:cxx": "LOOM_IMPORT_CXX",
     "//loom/config/target:amdgpu_artifacts": "LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU",
     "//loom/config/target:llvmir_amdgpu_target_env": "LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR AND LOOM_TARGET_ARCH_AMDGPU",
     "//loom/config/target:llvmir_artifacts": "LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR",

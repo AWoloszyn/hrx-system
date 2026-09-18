@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePath
 
 LOOM_EXECUTE_SUBSTRATES = ("iree_hal",)
-LOOM_IMPORTERS = ("mlir", "tilelang")
+LOOM_IMPORTERS = ("cxx", "mlir", "tilelang")
 LOOM_TARGETS = ("amdgpu", "llvmir", "spirv", "vm", "wasm", "xdna", "x86")
 LOOM_EMITTERS = ("amdgpu", "llvmir", "spirv", "wasm", "xdna")
 AMDF_FAMILIES = ("rdna", "cdna", "xdna")
@@ -78,6 +78,7 @@ LOOM_EXECUTE_DEFINES = {
     "LOOM_EXECUTE_IREE_HAL": "iree_hal",
 }
 LOOM_IMPORT_DEFINES = {
+    "LOOM_IMPORT_CXX": "cxx",
     "LOOM_IMPORT_MLIR": "mlir",
     "LOOM_IMPORT_TILELANG": "tilelang",
 }

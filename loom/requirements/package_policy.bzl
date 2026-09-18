@@ -19,6 +19,7 @@ load(
     "EMIT_LLVMIR",
     "EMIT_SPIRV",
     "EMIT_WASM",
+    "IMPORT_CXX",
     "IMPORT_MLIR",
     "IMPORT_TILELANG",
     "TARGET_ARCH_AMDGPU",
@@ -31,6 +32,13 @@ load(
 )
 
 PACKAGE_POLICIES = [
+    package_policy(
+        packages = [
+            "loom/src/loom/import/cxx/...",
+            "loom/src/loom/tools/loom-import-cxx/...",
+        ],
+        build_requirements = [IMPORT_CXX],
+    ),
     package_policy(
         packages = ["loom/src/loom/ops/llvmir/..."],
         build_requirements = [TARGET_ARCH_LLVMIR],

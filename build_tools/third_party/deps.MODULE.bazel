@@ -36,6 +36,16 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 
+http_archive(
+    name = "cxx",
+    build_file = "//build_tools/third_party/cxx:cxx.BUILD.bazel",
+    patch_args = ["-p1"],
+    patches = ["//build_tools/third_party/cxx:include_continuation.patch"],
+    sha256 = "39e18971b03f3b5ae2afc8cb9313bcccaf6a51176a94eb57cb8fa4e683ef290b",
+    strip_prefix = "cplusplus-bccf4d1e2d266b3d5d770c49e9eac59a2eab34b9",
+    url = "https://github.com/robertoraggi/cplusplus/archive/bccf4d1e2d266b3d5d770c49e9eac59a2eab34b9.tar.gz",
+)
+
 rocm_repository = use_repo_rule("//build_tools/third_party/rocm:repository.bzl", "rocm_repository")
 
 # Narrow syscall-header snapshots; no kernel or driver runtime is built.

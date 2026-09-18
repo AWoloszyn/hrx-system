@@ -91,6 +91,17 @@ alias(
     visibility = [":libhrx_users"],
 )
 
+filegroup(name = "empty_cxx_parser")
+
+alias(
+    name = "cxx_parser",
+    actual = select({
+        "//loom/config/import:cxx": "@cxx//:parser",
+        "//conditions:default": ":empty_cxx_parser",
+    }),
+    visibility = [":loom_users"],
+)
+
 alias(
     name = "amdf_wkmi",
     actual = "//build_tools/third_party/wkmi",

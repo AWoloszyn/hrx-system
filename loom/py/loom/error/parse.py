@@ -409,6 +409,16 @@ ERR_PARSE_035 = ErrorDef(
     fix_hint="List each symbol at most once",
 )
 
+# ERR_PARSE_036: Diagnostic reported by a source-language frontend.
+ERR_PARSE_036 = ErrorDef(
+    domain=ErrorDomain.PARSE,
+    code=36,
+    severity=Severity.ERROR,
+    summary="Source-language frontend diagnostic.",
+    message="{detail}",
+    params=(ErrorParam("detail", ParamKind.STRING),),
+)
+
 ALL_PARSE_ERRORS: tuple[ErrorDef, ...] = (
     ERR_PARSE_001,
     ERR_PARSE_002,
@@ -445,4 +455,5 @@ ALL_PARSE_ERRORS: tuple[ErrorDef, ...] = (
     ERR_PARSE_033,
     ERR_PARSE_034,
     ERR_PARSE_035,
+    ERR_PARSE_036,
 )
