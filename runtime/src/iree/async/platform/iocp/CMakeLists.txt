@@ -36,6 +36,8 @@ iree_cc_library(
     "proactor.c"
     "proactor.h"
     "proactor_submit.c"
+    "proactor_validation.c"
+    "proactor_validation.h"
     "socket.c"
     "socket.h"
     "timer_list.c"

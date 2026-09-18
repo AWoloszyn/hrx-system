@@ -11,9 +11,15 @@
 #include <thread>
 
 #include "iree/async/event.h"
+#include "iree/async/file.h"
 #include "iree/async/notification.h"
+#include "iree/async/operations/file.h"
+#include "iree/async/operations/message.h"
+#include "iree/async/operations/net.h"
+#include "iree/async/operations/scheduling.h"
 #include "iree/async/operations/semaphore.h"
 #include "iree/async/semaphore.h"
+#include "iree/async/socket.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -22,6 +28,35 @@ namespace {
 struct CompletionState {
   int call_count = 0;
   iree_status_code_t status_code = IREE_STATUS_UNKNOWN;
+};
+
+struct MessageState {
+  int call_count = 0;
+  uint64_t value = 0;
+};
+
+struct ControlledAllocator {
+  iree_allocator_t delegate = iree_allocator_system();
+  int allocations_before_failure = -1;
+
+  static iree_status_t Control(void* self, iree_allocator_command_t command,
+                               const void* params, void** inout_ptr) {
+    auto* allocator = static_cast<ControlledAllocator*>(self);
+    const bool is_allocation = command == IREE_ALLOCATOR_COMMAND_MALLOC ||
+                               command == IREE_ALLOCATOR_COMMAND_CALLOC ||
+                               command == IREE_ALLOCATOR_COMMAND_REALLOC;
+    if (is_allocation && allocator->allocations_before_failure == 0) {
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "intentional allocation failure");
+    }
+    if (is_allocation && allocator->allocations_before_failure > 0) {
+      --allocator->allocations_before_failure;
+    }
+    return allocator->delegate.ctl(allocator->delegate.self, command, params,
+                                   inout_ptr);
+  }
+
+  iree_allocator_t value() { return {/*.self=*/this, /*.ctl=*/Control}; }
 };
 
 static void RecordCompletion(void* user_data, iree_async_operation_t* operation,
@@ -33,6 +68,23 @@ static void RecordCompletion(void* user_data, iree_async_operation_t* operation,
   ++state->call_count;
   state->status_code = iree_status_code(status);
   iree_status_free(status);
+}
+
+static void RecordMessage(iree_async_proactor_t* proactor,
+                          uint64_t message_data, void* user_data) {
+  (void)proactor;
+  auto* state = static_cast<MessageState*>(user_data);
+  ++state->call_count;
+  state->value = message_data;
+}
+
+template <typename T>
+static void InitializeOperation(T* operation, iree_async_operation_type_t type,
+                                CompletionState* completion) {
+  iree_async_operation_zero(&operation->base, sizeof(*operation));
+  iree_async_operation_initialize(
+      &operation->base, type, IREE_ASYNC_OPERATION_FLAG_NONE,
+      completion ? RecordCompletion : nullptr, completion);
 }
 
 // Replaces the component's owned handle with NULL while preserving the same
@@ -105,7 +157,7 @@ class IocpProactorTest : public ::testing::Test {
   iree_async_proactor_t* proactor_ = nullptr;
 };
 
-TEST_F(IocpProactorTest, DirectPostFailureReleasesRetainedResources) {
+TEST_F(IocpProactorTest, DirectPostFailureCompletesAcceptedSignal) {
   iree_async_notification_t* notification = nullptr;
   IREE_ASSERT_OK(iree_async_notification_create(
       proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
@@ -113,10 +165,9 @@ TEST_F(IocpProactorTest, DirectPostFailureReleasesRetainedResources) {
 
   CompletionState completion;
   iree_async_notification_signal_operation_t signal_operation;
-  std::memset(&signal_operation, 0, sizeof(signal_operation));
-  signal_operation.base.type = IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL;
-  signal_operation.base.completion_fn = RecordCompletion;
-  signal_operation.base.user_data = &completion;
+  InitializeOperation(&signal_operation,
+                      IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL,
+                      &completion);
   signal_operation.notification = notification;
   signal_operation.wake_count = 1;
 
@@ -126,17 +177,31 @@ TEST_F(IocpProactorTest, DirectPostFailureReleasesRetainedResources) {
   iree_status_t submit_status =
       iree_async_proactor_submit_one(proactor_, &signal_operation.base);
   RestoreCompletionPosting(iocp(), preserved_port);
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT, submit_status);
+  IREE_EXPECT_OK(submit_status);
 
   EXPECT_NE(iree_async_notification_query_epoch(notification), initial_epoch);
-  EXPECT_EQ(iree_atomic_ref_count_load(&notification->ref_count), 1);
+  EXPECT_EQ(iree_atomic_ref_count_load(&notification->ref_count), 2);
   EXPECT_EQ(completion.call_count, 0);
   EXPECT_EQ(signal_operation.base.next, nullptr);
+  EXPECT_EQ(iree_atomic_load(&iocp()->outstanding_carrier_count,
+                             iree_memory_order_relaxed),
+            1);
+
+  iree_host_size_t completed_count = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_infinite_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(completed_count, 1);
+  EXPECT_EQ(completion.call_count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(iree_atomic_ref_count_load(&notification->ref_count), 1);
+  EXPECT_EQ(iree_atomic_load(&iocp()->outstanding_carrier_count,
+                             iree_memory_order_relaxed),
+            0);
 
   iree_async_notification_release(notification);
 }
 
-TEST_F(IocpProactorTest, RichStatusPostFailureConsumesStashedStatus) {
+TEST_F(IocpProactorTest, DirectPostFailurePreservesRichStatus) {
   iree_async_semaphore_t* semaphore = nullptr;
   IREE_ASSERT_OK(iree_async_semaphore_create(
       proactor_, /*initial_value=*/10,
@@ -147,10 +212,8 @@ TEST_F(IocpProactorTest, RichStatusPostFailureConsumesStashedStatus) {
 
   CompletionState completion;
   iree_async_semaphore_signal_operation_t signal_operation;
-  std::memset(&signal_operation, 0, sizeof(signal_operation));
-  signal_operation.base.type = IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL;
-  signal_operation.base.completion_fn = RecordCompletion;
-  signal_operation.base.user_data = &completion;
+  InitializeOperation(&signal_operation,
+                      IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL, &completion);
   signal_operation.semaphores = &semaphore_storage;
   signal_operation.values = &non_monotonic_value;
   signal_operation.count = 1;
@@ -160,13 +223,229 @@ TEST_F(IocpProactorTest, RichStatusPostFailureConsumesStashedStatus) {
   iree_status_t submit_status =
       iree_async_proactor_submit_one(proactor_, &signal_operation.base);
   RestoreCompletionPosting(iocp(), preserved_port);
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT, submit_status);
+  IREE_EXPECT_OK(submit_status);
 
   EXPECT_EQ(iree_async_semaphore_query(semaphore), 10u);
   EXPECT_EQ(completion.call_count, 0);
   EXPECT_EQ(signal_operation.base.next, nullptr);
 
+  iree_host_size_t completed_count = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_infinite_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(completed_count, 1);
+  EXPECT_EQ(completion.call_count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(iree_atomic_load(&iocp()->outstanding_carrier_count,
+                             iree_memory_order_relaxed),
+            0);
+
   iree_async_semaphore_release(semaphore);
+}
+
+TEST_F(IocpProactorTest, DirectPostFailureCompletesAcceptedSocketClose) {
+  iree_async_socket_t* socket = nullptr;
+  IREE_ASSERT_OK(iree_async_socket_create(proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
+                                          IREE_ASYNC_SOCKET_OPTION_NONE,
+                                          &socket));
+  iree_async_socket_retain(socket);
+
+  CompletionState completion;
+  iree_async_socket_close_operation_t close_operation;
+  InitializeOperation(&close_operation, IREE_ASYNC_OPERATION_TYPE_SOCKET_CLOSE,
+                      &completion);
+  close_operation.socket = socket;
+
+  HANDLE preserved_port = NULL;
+  IREE_ASSERT_OK(DisableCompletionPosting(iocp(), &preserved_port));
+  iree_status_t submit_status =
+      iree_async_proactor_submit_one(proactor_, &close_operation.base);
+  RestoreCompletionPosting(iocp(), preserved_port);
+  IREE_EXPECT_OK(submit_status);
+
+  EXPECT_EQ(socket->primitive.type, IREE_ASYNC_PRIMITIVE_TYPE_NONE);
+  EXPECT_EQ(socket->state, IREE_ASYNC_SOCKET_STATE_CLOSED);
+  EXPECT_EQ(iree_atomic_ref_count_load(&socket->ref_count), 2);
+  EXPECT_EQ(completion.call_count, 0);
+
+  iree_host_size_t completed_count = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_infinite_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(completed_count, 1);
+  EXPECT_EQ(completion.call_count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(iree_atomic_ref_count_load(&socket->ref_count), 1);
+  EXPECT_EQ(iree_atomic_load(&iocp()->outstanding_carrier_count,
+                             iree_memory_order_relaxed),
+            0);
+
+  iree_async_socket_release(socket);
+}
+
+TEST_F(IocpProactorTest, DirectPostFailureCompletesPlatformSetupFailure) {
+  CompletionState completion;
+  iree_async_file_open_operation_t open_operation;
+  InitializeOperation(&open_operation, IREE_ASYNC_OPERATION_TYPE_FILE_OPEN,
+                      &completion);
+  open_operation.path = "iree-iocp-invalid-<>.bin";
+  open_operation.open_flags = IREE_ASYNC_FILE_OPEN_FLAG_READ;
+
+  HANDLE preserved_port = NULL;
+  IREE_ASSERT_OK(DisableCompletionPosting(iocp(), &preserved_port));
+  iree_status_t submit_status =
+      iree_async_proactor_submit_one(proactor_, &open_operation.base);
+  RestoreCompletionPosting(iocp(), preserved_port);
+  IREE_EXPECT_OK(submit_status);
+
+  EXPECT_EQ(open_operation.opened_file, nullptr);
+  EXPECT_EQ(completion.call_count, 0);
+  EXPECT_EQ(iree_atomic_load(&iocp()->outstanding_carrier_count,
+                             iree_memory_order_relaxed),
+            1);
+
+  iree_host_size_t completed_count = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_infinite_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(completed_count, 1);
+  EXPECT_EQ(completion.call_count, 1);
+  EXPECT_NE(completion.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(iree_atomic_load(&iocp()->outstanding_carrier_count,
+                             iree_memory_order_relaxed),
+            0);
+}
+
+TEST_F(IocpProactorTest, MalformedTailDoesNotConsumeSocketClose) {
+  iree_async_socket_t* socket = nullptr;
+  IREE_ASSERT_OK(iree_async_socket_create(proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
+                                          IREE_ASYNC_SOCKET_OPTION_NONE,
+                                          &socket));
+  const SOCKET native_socket = (SOCKET)socket->primitive.value.win32_handle;
+
+  CompletionState completion;
+  iree_async_socket_close_operation_t close_operation;
+  InitializeOperation(&close_operation, IREE_ASYNC_OPERATION_TYPE_SOCKET_CLOSE,
+                      &completion);
+  close_operation.socket = socket;
+
+  iree_async_nop_operation_t malformed_operation;
+  InitializeOperation(&malformed_operation, IREE_ASYNC_OPERATION_TYPE_NOP,
+                      /*completion=*/nullptr);
+  iree_async_operation_t* operations[] = {&close_operation.base,
+                                          &malformed_operation.base};
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_async_proactor_submit(proactor_,
+                                 iree_async_operation_list_make(
+                                     operations, IREE_ARRAYSIZE(operations))));
+
+  int socket_type = 0;
+  int socket_type_length = sizeof(socket_type);
+  EXPECT_EQ(getsockopt(native_socket, SOL_SOCKET, SO_TYPE, (char*)&socket_type,
+                       &socket_type_length),
+            0);
+  EXPECT_EQ(socket->primitive.value.win32_handle, (uintptr_t)native_socket);
+  EXPECT_EQ(socket->state, IREE_ASYNC_SOCKET_STATE_CREATED);
+  EXPECT_EQ(iree_atomic_ref_count_load(&socket->ref_count), 1);
+  EXPECT_EQ(completion.call_count, 0);
+
+  iree_async_socket_retain(socket);
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &close_operation.base));
+  iree_host_size_t completed_count = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_infinite_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(completed_count, 1);
+  EXPECT_EQ(completion.call_count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(socket->primitive.type, IREE_ASYNC_PRIMITIVE_TYPE_NONE);
+  EXPECT_EQ(iree_atomic_ref_count_load(&socket->ref_count), 1);
+  iree_async_socket_release(socket);
+}
+
+TEST(IocpProactorSubmitTest, CarrierAllocationFailureRollsBackCloseAndMessage) {
+  ControlledAllocator allocator;
+  iree_async_proactor_t* source = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_create_iocp(
+      iree_async_proactor_options_default(), allocator.value(), &source));
+  iree_async_proactor_t* target = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_create_iocp(
+      iree_async_proactor_options_default(), iree_allocator_system(), &target));
+
+  MessageState message_state;
+  iree_async_proactor_set_message_callback(
+      target, {/*.fn=*/RecordMessage, /*.user_data=*/&message_state});
+
+  iree_async_socket_t* socket = nullptr;
+  IREE_ASSERT_OK(iree_async_socket_create(source, IREE_ASYNC_SOCKET_TYPE_TCP,
+                                          IREE_ASYNC_SOCKET_OPTION_NONE,
+                                          &socket));
+  const SOCKET native_socket = (SOCKET)socket->primitive.value.win32_handle;
+
+  CompletionState completion;
+  iree_async_socket_close_operation_t close_operation;
+  InitializeOperation(&close_operation, IREE_ASYNC_OPERATION_TYPE_SOCKET_CLOSE,
+                      &completion);
+  close_operation.socket = socket;
+
+  iree_async_message_operation_t message_operation;
+  InitializeOperation(&message_operation, IREE_ASYNC_OPERATION_TYPE_MESSAGE,
+                      &completion);
+  message_operation.target = target;
+  message_operation.message_data = 0xC0FFEE;
+  message_operation.message_flags = IREE_ASYNC_MESSAGE_FLAG_NONE;
+
+  iree_async_operation_t* operations[] = {&close_operation.base,
+                                          &message_operation.base};
+  allocator.allocations_before_failure = 1;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      iree_async_proactor_submit(
+          source, iree_async_operation_list_make(operations,
+                                                 IREE_ARRAYSIZE(operations))));
+
+  int socket_type = 0;
+  int socket_type_length = sizeof(socket_type);
+  EXPECT_EQ(getsockopt(native_socket, SOL_SOCKET, SO_TYPE, (char*)&socket_type,
+                       &socket_type_length),
+            0);
+  EXPECT_EQ(socket->primitive.value.win32_handle, (uintptr_t)native_socket);
+  EXPECT_EQ(iree_atomic_ref_count_load(&socket->ref_count), 1);
+  EXPECT_EQ(message_operation.platform.software.reserved_entry, nullptr);
+  EXPECT_EQ(completion.call_count, 0);
+  EXPECT_EQ(message_state.call_count, 0);
+  EXPECT_EQ(
+      iree_atomic_load(
+          &iree_async_proactor_iocp_cast(source)->outstanding_carrier_count,
+          iree_memory_order_relaxed),
+      0);
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEADLINE_EXCEEDED,
+      iree_async_proactor_poll(source, iree_immediate_timeout(), nullptr));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEADLINE_EXCEEDED,
+      iree_async_proactor_poll(target, iree_immediate_timeout(), nullptr));
+
+  allocator.allocations_before_failure = -1;
+  iree_async_socket_retain(socket);
+  IREE_ASSERT_OK(iree_async_proactor_submit(
+      source,
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations))));
+  iree_host_size_t completed_count = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(source, iree_infinite_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(completed_count, 2);
+  EXPECT_EQ(completion.call_count, 2);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(socket->primitive.type, IREE_ASYNC_PRIMITIVE_TYPE_NONE);
+  EXPECT_EQ(iree_atomic_ref_count_load(&socket->ref_count), 1);
+
+  IREE_ASSERT_OK(iree_async_proactor_poll(target, iree_infinite_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(message_state.call_count, 1);
+  EXPECT_EQ(message_state.value, 0xC0FFEEu);
+
+  iree_async_socket_release(socket);
+  iree_async_proactor_release(target);
+  iree_async_proactor_release(source);
 }
 
 TEST_F(IocpProactorTest, FailedWakePersistsUntilPoll) {
