@@ -6,7 +6,7 @@
       "run": {
         "tool": "loom-compile",
         "args": [
-          "{srcdir}/corpus/gfx11/loop_count.loom",
+          "{srcdir}/../../../../test/corpus/conformance/loop_count.loom",
           "--root=@unsigned_empty_loop",
           "--target=amdgpu:gfx1151",
           "--format=amdgpu-hsaco",
@@ -35,7 +35,7 @@
       "run": {
         "tool": "loom-compile",
         "args": [
-          "{srcdir}/corpus/gfx11/loop_count.loom",
+          "{srcdir}/../../../../test/corpus/conformance/loop_count.loom",
           "--root=@signed_negative_loop",
           "--target=amdgpu:gfx1151",
           "--format=amdgpu-hsaco",
@@ -64,7 +64,7 @@
       "run": {
         "tool": "loom-compile",
         "args": [
-          "{srcdir}/corpus/gfx11/loop_count.loom",
+          "{srcdir}/../../../../test/corpus/conformance/loop_count.loom",
           "--root=@unsigned_sign_crossing_loop",
           "--target=amdgpu:gfx1151",
           "--format=amdgpu-hsaco",
@@ -93,7 +93,7 @@
       "run": {
         "tool": "loom-compile",
         "args": [
-          "{srcdir}/corpus/gfx11/loop_count.loom",
+          "{srcdir}/../../../../test/corpus/conformance/loop_count.loom",
           "--root=@inverted_loop_guard",
           "--target=amdgpu:gfx1151",
           "--format=amdgpu-hsaco",
@@ -120,7 +120,7 @@
       "run": {
         "tool": "loom-compile",
         "args": [
-          "{srcdir}/corpus/gfx11/loop_count.loom",
+          "{srcdir}/../../../../test/corpus/conformance/loop_count.loom",
           "--root=@signed_wrapping_report",
           "--target=amdgpu:gfx1151",
           "--format=amdgpu-hsaco",
@@ -147,7 +147,7 @@
       "run": {
         "tool": "loom-compile",
         "args": [
-          "{srcdir}/corpus/gfx11/loop_count.loom",
+          "{srcdir}/../../../../test/corpus/conformance/loop_count.loom",
           "--root=@unsigned_inclusive_report",
           "--target=amdgpu:gfx1151",
           "--format=amdgpu-hsaco",

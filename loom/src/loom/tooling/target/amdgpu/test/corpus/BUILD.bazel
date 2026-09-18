@@ -15,7 +15,6 @@ package(
 )
 
 exports_files([
-    "gfx11/loop_count.loom",
     "gfx11/loop_entry_wave32.loom",
     "gfx11/schedule_scopes.loom",
 ])
@@ -104,16 +103,16 @@ loom_module(
 )
 
 iree_executable_test(
-    name = "gfx11_loop_count_access_test",
+    name = "loop_count_access_test",
     src = "//loom/src/loom/tools/iree-test-loom",
     args = [
-        "$(rootpath gfx11/loop_count.loom)",
+        "$(rootpath //loom/src/loom/test/corpus/conformance:loop_count.loom)",
         "--device=amdgpu",
         "--sanitizer=access",
     ],
-    data = ["gfx11/loop_count.loom"],
+    data = ["//loom/src/loom/test/corpus/conformance:loop_count.loom"],
     tags = _EXECUTION_TAGS + ["notsan"],
-    target_compatible_with = _GFX11_COMPATIBLE_WITH,
+    target_compatible_with = _GENERIC_COMPATIBLE_WITH,
 )
 
 iree_executable_test(
