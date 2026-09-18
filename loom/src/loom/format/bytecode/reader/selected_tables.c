@@ -451,16 +451,14 @@ static iree_status_t loom_bytecode_selected_table_try_parameterized_type(
 static iree_status_t loom_bytecode_selected_table_construct_type_fact(
     loom_bytecode_selected_table_materializer_t* materializer,
     const loom_bytecode_type_plan_entry_t* entry,
-    const loom_bytecode_type_fact_t* fact, loom_type_t* out_type,
-    loom_type_id_t* out_type_id, loom_type_id_t** out_dependency_ids,
-    iree_host_size_t* out_dependency_count, bool* out_ready) {
-  *out_dependency_ids = NULL;
-  *out_dependency_count = 0;
+    const loom_bytecode_type_fact_t* fact, loom_type_id_t* out_type_id,
+    bool* out_ready) {
   *out_ready = false;
   if (fact->kind == LOOM_TYPE_PARAMETERIZED) {
+    loom_type_t type = {0};
     return loom_bytecode_selected_table_try_parameterized_type(
         materializer, (const loom_bytecode_parameterized_type_fact_t*)fact,
-        out_type, out_type_id, out_ready);
+        &type, out_type_id, out_ready);
   }
   const loom_bytecode_structural_type_fact_t* structural_fact =
       (const loom_bytecode_structural_type_fact_t*)fact;
@@ -479,9 +477,7 @@ static iree_status_t loom_bytecode_selected_table_construct_type_fact(
   }
   IREE_RETURN_IF_ERROR(loom_bytecode_type_materialize_structural(
       &plan, structural_fact, target_type_ids, materializer->output_module,
-      materializer->scratch_arena, out_type));
-  *out_dependency_ids = target_type_ids;
-  *out_dependency_count = plan.dependency_count;
+      out_type_id));
   *out_ready = true;
   return iree_ok_status();
 }
@@ -518,13 +514,10 @@ static iree_status_t loom_bytecode_selected_table_try_type(
 
   loom_type_t type = {0};
   loom_type_id_t target_type_id = LOOM_TYPE_ID_INVALID;
-  loom_type_id_t* dependency_ids = NULL;
-  iree_host_size_t dependency_count = 0;
   if (fact != NULL) {
     bool fact_ready = false;
     IREE_RETURN_IF_ERROR(loom_bytecode_selected_table_construct_type_fact(
-        materializer, &plan_entry, fact, &type, &target_type_id,
-        &dependency_ids, &dependency_count, &fact_ready));
+        materializer, &plan_entry, fact, &target_type_id, &fact_ready));
     if (!fact_ready) {
       return iree_ok_status();
     }
@@ -552,8 +545,7 @@ static iree_status_t loom_bytecode_selected_table_try_type(
 
   if (target_type_id == LOOM_TYPE_ID_INVALID) {
     IREE_RETURN_IF_ERROR(loom_module_intern_topological_type_id(
-        materializer->output_module, type, dependency_ids, dependency_count,
-        &target_type_id));
+        materializer->output_module, type, NULL, 0, &target_type_id));
   }
   IREE_RETURN_IF_ERROR(loom_bytecode_selected_projection_insert(
       &materializer->projection, LOOM_BYTECODE_SELECTED_PROJECTION_DOMAIN_TYPE,

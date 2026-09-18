@@ -16,21 +16,15 @@
 extern "C" {
 #endif
 
-// Native payload layout for a function, dialect, or typed register. Validation
-// fixes the layout once; materialization fills the trailing canonical children.
+// Parent metadata and child arity for a function, dialect, or typed register.
+// Canonical construction consumes retained child IDs without a scratch payload.
 typedef struct loom_bytecode_structural_type_plan_t {
-  // Final loom_type_t header, including the kind and representation flags.
-  uint32_t type_header;
   // Dialect parameter count stored in loom_type_t::encoding_flags, else zero.
   uint16_t parameter_count;
-  // Byte offset of the first loom_type_t child in the native payload.
-  uint16_t children_offset;
   // Validated STRINGS family name ID for dialect types, else zero.
   loom_string_id_t name_id;
   // Number of trailing children, up to 2 * UINT16_MAX for function types.
   uint32_t dependency_count;
-  // Payload bytes, including room for the fixed sparse-fact prefix copy.
-  iree_host_size_t payload_size;
 } loom_bytecode_structural_type_plan_t;
 
 // One dense validated type-table entry. The sparse fact selects the union arm.
@@ -60,7 +54,8 @@ typedef struct loom_bytecode_type_fact_t {
 
 // Native prefix and type-reference facts for a structural payload. The prefix
 // contains the function signature header, the two register carrier words, or
-// zeros for dialect types. Child values overwrite any unused prefix bytes.
+// zeros for dialect types. Canonical construction copies the parent metadata
+// and fills children from the retained IDs.
 typedef struct loom_bytecode_structural_type_fact_t {
   // Common sparse type-fact header.
   loom_bytecode_type_fact_t base;

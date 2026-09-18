@@ -243,6 +243,119 @@ TEST_F(BytecodeTypeTest, BuildsAndMaterializesTopologicalPlan) {
   EXPECT_EQ(error_count_, 0u);
 }
 
+TEST_F(BytecodeTypeTest, StructuralTypesRetainChildrenBeyondPlanLifetime) {
+  iree_string_view_t strings[] = {IREE_SV("example.wrapper")};
+  module_view_.strings = {strings, IREE_ARRAYSIZE(strings)};
+  const uint8_t data[] = {
+      4,
+      LOOM_BYTECODE_TYPE_SCALAR,
+      LOOM_SCALAR_TYPE_I32,
+      LOOM_BYTECODE_TYPE_FUNCTION,
+      1,
+      1,
+      0,
+      0,
+      LOOM_BYTECODE_TYPE_DIALECT,
+      0,
+      1,
+      1,
+      LOOM_BYTECODE_TYPE_REGISTER,
+      1,
+      0x80,
+      0x80,
+      0x04,
+      1,
+      2,
+  };
+  IREE_ASSERT_OK(BuildPlan(data, sizeof(data)));
+
+  loom_type_id_t unused_type_id = LOOM_TYPE_ID_INVALID;
+  loom_type_id_t scalar_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_I64), &unused_type_id));
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_I32), &scalar_type_id));
+  ASSERT_NE(scalar_type_id, 0u);
+  loom_string_id_t unused_name_id = LOOM_STRING_ID_INVALID;
+  loom_string_id_t target_name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("unused"), &unused_name_id));
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, strings[0], &target_name_id));
+  ASSERT_NE(target_name_id, 0u);
+
+  const loom_bytecode_type_fact_t* fact = module_view_.types.facts;
+  ASSERT_NE(fact, nullptr);
+  ASSERT_EQ(fact->kind, LOOM_TYPE_FUNCTION);
+  const loom_type_id_t signature_ids[] = {scalar_type_id, scalar_type_id};
+  loom_type_id_t function_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_structural(
+      &module_view_.types.entries[1].structural,
+      reinterpret_cast<const loom_bytecode_structural_type_fact_t*>(fact),
+      signature_ids, module_, &function_type_id));
+
+  fact = fact->next;
+  ASSERT_NE(fact, nullptr);
+  ASSERT_EQ(fact->kind, LOOM_TYPE_DIALECT);
+  loom_bytecode_structural_type_plan_t dialect_plan =
+      module_view_.types.entries[2].structural;
+  dialect_plan.name_id = target_name_id;
+  loom_type_id_t dialect_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_structural(
+      &dialect_plan,
+      reinterpret_cast<const loom_bytecode_structural_type_fact_t*>(fact),
+      &function_type_id, module_, &dialect_type_id));
+
+  fact = fact->next;
+  ASSERT_NE(fact, nullptr);
+  ASSERT_EQ(fact->kind, LOOM_TYPE_REGISTER);
+  loom_type_id_t register_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_structural(
+      &module_view_.types.entries[3].structural,
+      reinterpret_cast<const loom_bytecode_structural_type_fact_t*>(fact),
+      &dialect_type_id, module_, &register_type_id));
+  EXPECT_EQ(fact->next, nullptr);
+
+  // Published metadata and children survive overwriting their source plan.
+  iree_arena_reset(&scratch_arena_);
+  void* overwritten_plan = nullptr;
+  IREE_ASSERT_OK(iree_arena_allocate(&scratch_arena_, 1024, &overwritten_plan));
+  std::memset(overwritten_plan, 0xA5, 1024);
+
+  const loom_func_type_data_t* signature =
+      loom_type_func_data(module_->types.entries[function_type_id]);
+  ASSERT_NE(signature, nullptr);
+  EXPECT_EQ(signature->arg_count, 1u);
+  EXPECT_EQ(signature->result_count, 1u);
+  for (iree_host_size_t i = 0; i < 2; ++i) {
+    EXPECT_TRUE(loom_type_equal(signature->types[i],
+                                module_->types.entries[scalar_type_id]));
+  }
+  const loom_type_t dialect = module_->types.entries[dialect_type_id];
+  EXPECT_EQ(loom_type_dialect_name_id(dialect), target_name_id);
+  ASSERT_EQ(loom_type_dialect_param_count(dialect), 1u);
+  EXPECT_TRUE(loom_type_equal(loom_type_dialect_params(dialect)[0],
+                              module_->types.entries[function_type_id]));
+  EXPECT_EQ(loom_type_dialect_params(dialect)[0].dims[0],
+            module_->types.entries[function_type_id].dims[0]);
+  const loom_register_type_data_t* carrier =
+      loom_type_register_data(module_->types.entries[register_type_id]);
+  ASSERT_NE(carrier, nullptr);
+  EXPECT_EQ(carrier->carrier_payload0, 1u);
+  EXPECT_EQ(carrier->carrier_payload1, UINT64_C(1) << 16);
+  EXPECT_TRUE(loom_type_equal(carrier->value_type,
+                              module_->types.entries[dialect_type_id]));
+  EXPECT_EQ(carrier->value_type.dims[0],
+            module_->types.entries[dialect_type_id].dims[0]);
+  for (const auto type_id :
+       {function_type_id, dialect_type_id, register_type_id}) {
+    loom_type_id_t duplicate_id = LOOM_TYPE_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_intern_type_id(
+        module_, module_->types.entries[type_id], &duplicate_id));
+    EXPECT_EQ(duplicate_id, type_id);
+  }
+}
+
 TEST_F(BytecodeTypeTest, RetainsOnlyRequestedFactsForMixedTypes) {
   iree_string_view_t strings[] = {
       IREE_SV("wire.parameters"), IREE_SV("first"),

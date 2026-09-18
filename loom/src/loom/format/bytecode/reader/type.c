@@ -73,22 +73,27 @@ static iree_status_t loom_bytecode_type_materialize_parameterized(
 iree_status_t loom_bytecode_type_materialize_structural(
     const loom_bytecode_structural_type_plan_t* plan,
     const loom_bytecode_structural_type_fact_t* fact,
-    const loom_type_id_t* dependency_ids, const loom_module_t* module,
-    iree_arena_allocator_t* scratch_arena, loom_type_t* out_type) {
-  uint8_t* payload = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate(scratch_arena, plan->payload_size, (void**)&payload));
-  memcpy(payload, fact->payload_prefix, sizeof(fact->payload_prefix));
-  loom_type_t* children = (loom_type_t*)(payload + plan->children_offset);
-  for (uint32_t i = 0; i < plan->dependency_count; ++i) {
-    children[i] = module->types.entries[dependency_ids[i]];
+    const loom_type_id_t* dependency_ids, loom_module_t* module,
+    loom_type_id_t* out_type_id) {
+  if (fact->base.kind == LOOM_TYPE_FUNCTION) {
+    loom_func_type_data_t metadata;
+    memcpy(&metadata, fact->payload_prefix, sizeof(metadata));
+    return loom_module_intern_topological_type_id(
+        module, loom_type_function(&metadata), dependency_ids,
+        plan->dependency_count, out_type_id);
   }
-  *out_type = (loom_type_t){
-      .header = plan->type_header,
-      .encoding_flags = plan->parameter_count,
-      .dims = {(uint64_t)(uintptr_t)payload, plan->name_id},
-  };
-  return iree_ok_status();
+  if (fact->base.kind == LOOM_TYPE_REGISTER) {
+    const loom_register_type_data_t metadata = {
+        .carrier_payload0 = fact->payload_prefix[0],
+        .carrier_payload1 = fact->payload_prefix[1],
+    };
+    return loom_module_intern_topological_type_id(
+        module, loom_type_register_payload_with_value_type(&metadata),
+        dependency_ids, plan->dependency_count, out_type_id);
+  }
+  return loom_module_intern_topological_type_id(
+      module, loom_type_dialect(plan->name_id, plan->parameter_count, NULL),
+      dependency_ids, plan->dependency_count, out_type_id);
 }
 
 iree_status_t loom_bytecode_type_materialize(
@@ -98,28 +103,25 @@ iree_status_t loom_bytecode_type_materialize(
   for (iree_host_size_t type_index = 0;
        type_index < materializer->module_view->types.count; ++type_index) {
     IREE_ASSERT(!fact || fact->type_id >= type_index);
-    const iree_arena_checkpoint_t checkpoint =
-        iree_arena_checkpoint_save(materializer->scratch_arena);
     loom_type_t type = {0};
     loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
-    const loom_type_id_t* dependency_ids = NULL;
-    iree_host_size_t dependency_count = 0;
     iree_status_t status = iree_ok_status();
     const loom_bytecode_type_plan_entry_t* entry =
         &materializer->module_view->types.entries[type_index];
     if (fact && fact->type_id == type_index) {
       if (fact->kind == LOOM_TYPE_PARAMETERIZED) {
+        const iree_arena_checkpoint_t checkpoint =
+            iree_arena_checkpoint_save(materializer->scratch_arena);
         status = loom_bytecode_type_materialize_parameterized(
             materializer, (const loom_bytecode_parameterized_type_fact_t*)fact,
             &type, &type_id);
+        iree_arena_checkpoint_restore(&checkpoint);
       } else {
         const loom_bytecode_structural_type_fact_t* structural_fact =
             (const loom_bytecode_structural_type_fact_t*)fact;
-        dependency_ids = structural_fact->type_ids;
-        dependency_count = entry->structural.dependency_count;
         status = loom_bytecode_type_materialize_structural(
-            &entry->structural, structural_fact, dependency_ids,
-            materializer->output_module, materializer->scratch_arena, &type);
+            &entry->structural, structural_fact, structural_fact->type_ids,
+            materializer->output_module, &type_id);
       }
       fact = fact->next;
     } else {
@@ -127,8 +129,7 @@ iree_status_t loom_bytecode_type_materialize(
     }
     if (iree_status_is_ok(status) && type_id == LOOM_TYPE_ID_INVALID) {
       status = loom_module_intern_topological_type_id(
-          materializer->output_module, type, dependency_ids, dependency_count,
-          &type_id);
+          materializer->output_module, type, NULL, 0, &type_id);
     }
     if (iree_status_is_ok(status) && type_id != type_index) {
       status = loom_bytecode_reader_emit_invalid_field(
@@ -137,7 +138,6 @@ iree_status_t loom_bytecode_type_materialize(
           materializer->module_view->types.entries[type_index].bytecode_offset,
           IREE_SV("type_table_must_be_deduplicated_and_topologically_ordered"));
     }
-    iree_arena_checkpoint_restore(&checkpoint);
     IREE_RETURN_IF_ERROR(status);
   }
   IREE_ASSERT(!fact);

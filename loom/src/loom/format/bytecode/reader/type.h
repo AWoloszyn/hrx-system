@@ -40,14 +40,15 @@ typedef struct loom_bytecode_type_materializer_t {
   loom_module_t* output_module;
 } loom_bytecode_type_materializer_t;
 
-// Builds a complete structural payload in scratch storage from a validated
-// layout and canonical dependencies in |module|. Selected readers project the
-// plan's name and dependency IDs into that module before construction.
+// Interns a structural type from validated parent metadata and canonical child
+// IDs. No temporary child payload is assembled. Selected readers project the
+// plan's name and dependency IDs into |module| before construction. The result
+// owns its payload independently of the plan and fact lifetimes.
 iree_status_t loom_bytecode_type_materialize_structural(
     const loom_bytecode_structural_type_plan_t* plan,
     const loom_bytecode_structural_type_fact_t* fact,
-    const loom_type_id_t* dependency_ids, const loom_module_t* module,
-    iree_arena_allocator_t* scratch_arena, loom_type_t* out_type);
+    const loom_type_id_t* dependency_ids, loom_module_t* module,
+    loom_type_id_t* out_type_id);
 
 // Materializes every entry in an immutable validated type plan.
 iree_status_t loom_bytecode_type_materialize(
