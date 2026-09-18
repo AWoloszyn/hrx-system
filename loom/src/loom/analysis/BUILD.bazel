@@ -13,6 +13,29 @@ package(
 )
 
 loom_cc_library(
+    name = "condition_relation_set",
+    srcs = ["condition_relation_set.c"],
+    hdrs = ["condition_relation_set.h"],
+    deps = [
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "condition_relation_set_test",
+    srcs = ["condition_relation_set_test.cc"],
+    deps = [
+        ":condition_relation_set",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
     name = "control_uniformity",
     srcs = ["control_uniformity.c"],
     hdrs = ["control_uniformity.h"],

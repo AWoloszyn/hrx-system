@@ -11,6 +11,33 @@ iree_add_all_subdirs()
 
 loom_cc_library(
   NAME
+    condition_relation_set
+  HDRS
+    "condition_relation_set.h"
+  SRCS
+    "condition_relation_set.c"
+  DEPS
+    iree::base
+    iree::base::internal
+    iree::base::internal::arena
+    loom::ir
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    condition_relation_set_test
+  SRCS
+    "condition_relation_set_test.cc"
+  DEPS
+    ::condition_relation_set
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_library(
+  NAME
     control_uniformity
   HDRS
     "control_uniformity.h"
