@@ -956,8 +956,8 @@ TEST_F(ModuleTest, BlockRemoveArgRejectsPredicateAttributeUses) {
   loom_op_attrs(function_op)[3] = loom_attr_predicate_list(&predicate, 1);
   IREE_ASSERT_OK(loom_module_compute_uses(module));
 
-  EXPECT_NE(loom_module_value_attribute_use_heads(module, argument)->predicate,
-            0u);
+  EXPECT_TRUE(
+      loom_value_has_attribute_uses(loom_module_value(module, argument)));
   IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
                         loom_block_remove_arg(module, entry_block, 0));
   EXPECT_EQ(entry_block->arg_count, 1u);

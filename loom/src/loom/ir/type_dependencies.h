@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Canonical type-dependency membership and active value ownership.
+// Canonical SSA dependency membership and active value/attribute ownership.
 //
 // Producers combine retained child sets and immediate SSA references once at
 // type construction. Immutable compressed radix sets share disjoint children;
@@ -15,6 +15,7 @@
 #ifndef LOOM_IR_TYPE_DEPENDENCIES_H_
 #define LOOM_IR_TYPE_DEPENDENCIES_H_
 
+#include "iree/base/internal/math.h"
 #include "loom/ir/ir.h"
 
 #ifdef __cplusplus
@@ -108,6 +109,28 @@ void loom_type_dependencies_commit(
     loom_type_use_table_t* table, loom_value_id_t value_id,
     const loom_type_dependency_assignment_t* assignment);
 
+// Prepares ownership for one attribute slot. The payload and active index are
+// unchanged on failure. No mutation may intervene before commit.
+iree_status_t loom_attribute_dependencies_prepare(
+    loom_type_use_table_t* table, loom_op_t* op, uint8_t attribute_index,
+    loom_type_dependency_id_t root,
+    loom_type_dependency_assignment_t* out_assignment);
+
+// Publishes prepared attribute ownership. The caller publishes its payload in
+// the same infallible step. The operation pointer and ordinal remain stable
+// when trailing attribute storage moves during result repacking.
+void loom_attribute_dependencies_commit(
+    loom_type_use_table_t* table, loom_op_t* op, uint8_t attribute_index,
+    const loom_type_dependency_assignment_t* assignment);
+
+// Releases an attribute owner and its slot without changing the payload.
+void loom_attribute_dependencies_drop(loom_type_use_table_t* table,
+                                      loom_op_t* op, uint8_t attribute_index);
+
+// Drops all attribute owners before reader reconstruction, retaining reusable
+// storage and canonical membership. Value-type ownership is unchanged.
+void loom_attribute_dependencies_reset(loom_type_use_table_t* table);
+
 // Reactivates the retained declared set over the current value-table prefix.
 iree_status_t loom_type_dependencies_refresh(loom_type_use_table_t* table,
                                              loom_value_id_t value_id);
@@ -138,7 +161,21 @@ typedef struct loom_type_use_iterator_t {
   uint32_t pending_count;
   // Next carrier at the current incoming node; unused for outgoing iteration.
   uint32_t carrier;
+  // Incoming ownership channel, initialized by the corresponding begin call.
+  uint8_t owner_kind;
+  // Remaining outgoing providers within the current aligned 64-ID block.
+  uint64_t members;
+  // First provider ID in the outgoing bitmap's block.
+  loom_value_id_t base;
 } loom_type_use_iterator_t;
+
+// One operation attribute whose retained set contains the queried provider.
+typedef struct loom_attribute_user_t {
+  // Stable owning operation, or NULL at the end of an incoming range.
+  loom_op_t* op;
+  // Attribute ordinal, independent of its current trailing-storage address.
+  uint8_t attribute_index;
+} loom_attribute_user_t;
 
 // Begins iterating the active dependencies of a value, or an empty range for an
 // out-of-range value. A dropped carrier has no active dependencies.
@@ -151,11 +188,43 @@ void loom_type_users_begin(const loom_type_use_table_t* table,
                            loom_value_id_t value_id,
                            loom_type_use_iterator_t* out_iterator);
 
+// Loads the next outgoing bitmap for the inline cursor. Returns false at the
+// end of the range; neither path allocates storage.
+bool loom_type_dependencies_advance(loom_type_use_iterator_t* iterator);
+
 // Returns the next provider or LOOM_VALUE_ID_INVALID at the end of the range.
-loom_value_id_t loom_type_dependencies_next(loom_type_use_iterator_t* iterator);
+// Providers in one bitmap are value operations without an index lookup or
+// out-of-line call per result.
+static inline loom_value_id_t loom_type_dependencies_next(
+    loom_type_use_iterator_t* iterator) {
+  if (!iterator->members && !loom_type_dependencies_advance(iterator)) {
+    return LOOM_VALUE_ID_INVALID;
+  }
+  const loom_value_id_t provider =
+      iterator->base + iree_math_count_trailing_zeros_u64(iterator->members);
+  iterator->members &= iterator->members - 1;
+  return provider;
+}
 
 // Returns the next carrier or LOOM_VALUE_ID_INVALID at the end of the range.
 loom_value_id_t loom_type_users_next(loom_type_use_iterator_t* iterator);
+
+// Begins the active provider set of an attribute. Use
+// loom_type_dependencies_next to enumerate unique providers in ID order.
+void loom_attribute_dependencies_begin(const loom_type_use_table_t* table,
+                                       const loom_op_t* op,
+                                       uint8_t attribute_index,
+                                       loom_type_use_iterator_t* out_iterator);
+
+// Begins incoming attribute owners without visiting value-type owners.
+void loom_attribute_users_begin(const loom_type_use_table_t* table,
+                                loom_value_id_t value_id,
+                                loom_type_use_iterator_t* out_iterator);
+
+// Returns each operation/attribute owner once, or a NULL operation at the end.
+// Mutation invalidates this cursor, as with value-type ownership cursors.
+loom_attribute_user_t loom_attribute_users_next(
+    loom_type_use_iterator_t* iterator);
 
 #ifdef __cplusplus
 }  // extern "C"

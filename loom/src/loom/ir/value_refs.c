@@ -11,17 +11,31 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 
+// Consume one retained bitmap at a time. The callback cannot change membership,
+// so the current batch remains local across calls instead of round-tripping
+// each provider through the address-exposed cursor.
+static iree_status_t loom_value_walk_dependencies(
+    loom_type_use_iterator_t* dependencies,
+    loom_type_value_ref_callback_t callback, void* user_data) {
+  while (loom_type_dependencies_advance(dependencies)) {
+    const loom_value_id_t base = dependencies->base;
+    uint64_t members = dependencies->members;
+    while (members) {
+      const loom_value_id_t provider =
+          base + iree_math_count_trailing_zeros_u64(members);
+      members &= members - 1;
+      IREE_RETURN_IF_ERROR(callback(provider, user_data));
+    }
+  }
+  return iree_ok_status();
+}
+
 static iree_status_t loom_value_walk_outgoing_type_refs(
     const loom_module_t* module, loom_value_id_t value_id,
     loom_type_value_ref_callback_t callback, void* user_data) {
   loom_type_use_iterator_t dependencies;
   loom_module_value_type_dependencies(module, value_id, &dependencies);
-  for (loom_value_id_t provider = loom_type_dependencies_next(&dependencies);
-       provider != LOOM_VALUE_ID_INVALID;
-       provider = loom_type_dependencies_next(&dependencies)) {
-    IREE_RETURN_IF_ERROR(callback(provider, user_data));
-  }
-  return iree_ok_status();
+  return loom_value_walk_dependencies(&dependencies, callback, user_data);
 }
 
 iree_status_t loom_op_walk_subtree_value_refs(
@@ -51,14 +65,15 @@ iree_status_t loom_op_walk_subtree_value_refs(
         module, results[i], callback, user_data));
   }
 
-  const loom_attribute_use_id_t* heads = loom_op_attribute_use_heads(op);
+  const uint32_t* attribute_owners = loom_op_attribute_owners(op);
   for (uint8_t i = 0; i < op->attribute_count; ++i) {
-    for (loom_attribute_use_id_t use_id = heads[i]; use_id;) {
-      const loom_attribute_use_t* use =
-          &module->attribute_uses.records[use_id - 1];
-      IREE_RETURN_IF_ERROR(callback(use->value_id, user_data));
-      use_id = use->next_outgoing;
+    if (!attribute_owners[i]) {
+      continue;
     }
+    loom_type_use_iterator_t dependencies;
+    loom_attribute_dependencies_begin(&module->type_uses, op, i, &dependencies);
+    IREE_RETURN_IF_ERROR(
+        loom_value_walk_dependencies(&dependencies, callback, user_data));
   }
 
   loom_region_t** regions = loom_op_regions(op);
@@ -85,10 +100,21 @@ iree_status_t loom_op_walk_subtree_value_refs(
   return iree_ok_status();
 }
 
+// The structural walker owns aggregate validation. TYPE consumers choose either
+// occurrence traversal or retained membership without duplicating that
+// boundary.
+typedef struct loom_attribute_reference_visitor_t {
+  // Consumes one canonical TYPE field.
+  iree_status_t (*type)(loom_type_id_t type_id, void* user_data);
+  // Consumes one immediate predicate value.
+  loom_type_value_ref_callback_t value;
+  // Borrowed callback state for this walk.
+  void* user_data;
+} loom_attribute_reference_visitor_t;
+
 static iree_status_t loom_module_walk_attribute_value_refs_impl(
     const loom_module_t* module, loom_attribute_t attr, uint8_t depth,
-    loom_type_value_ref_callback_t callback,
-    loom_type_value_ref_callback_t predicate_callback, void* user_data) {
+    const loom_attribute_reference_visitor_t* visitor) {
   switch ((loom_attr_kind_t)attr.kind) {
     case LOOM_ATTR_TYPE:
       if (attr.type_id == LOOM_TYPE_ID_INVALID ||
@@ -99,50 +125,22 @@ static iree_status_t loom_module_walk_attribute_value_refs_impl(
             " types)",
             (unsigned)attr.type_id, module->types.count);
       }
-      return loom_type_walk_value_refs(
-          module, module->types.entries[attr.type_id], callback, user_data);
+      return visitor->type(attr.type_id, visitor->user_data);
 
     case LOOM_ATTR_PREDICATE_LIST:
       for (uint16_t i = 0; i < attr.count; ++i) {
         const loom_predicate_t* predicate = &attr.predicate_list[i];
         for (uint8_t j = 0; j < predicate->arg_count; ++j) {
-          if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) {
-            continue;
+          if (predicate->arg_tags[j] == LOOM_PRED_ARG_VALUE) {
+            IREE_RETURN_IF_ERROR(visitor->value(
+                (loom_value_id_t)predicate->args[j], visitor->user_data));
           }
-          IREE_RETURN_IF_ERROR(predicate_callback(
-              (loom_value_id_t)predicate->args[j], user_data));
         }
       }
       return iree_ok_status();
 
     case LOOM_ATTR_DICT:
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "aggregate attribute nesting exceeds max depth %u",
-            (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
-      }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        IREE_RETURN_IF_ERROR(loom_module_walk_attribute_value_refs_impl(
-            module, attr.dict_entries[i].value, (uint8_t)(depth + 1), callback,
-            predicate_callback, user_data));
-      }
-      return iree_ok_status();
-
     case LOOM_ATTR_PARAMETERIZED:
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "aggregate attribute nesting exceeds max depth %u",
-            (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
-      }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        IREE_RETURN_IF_ERROR(loom_module_walk_attribute_value_refs_impl(
-            module, attr.parameterized_slots[i], (uint8_t)(depth + 1), callback,
-            predicate_callback, user_data));
-      }
-      return iree_ok_status();
-
     case LOOM_ATTR_PARAMETERIZED_ARRAY:
       if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return iree_make_status(
@@ -151,15 +149,49 @@ static iree_status_t loom_module_walk_attribute_value_refs_impl(
             (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
       }
       for (uint16_t i = 0; i < attr.count; ++i) {
+        const loom_attribute_t* child = NULL;
+        switch ((loom_attr_kind_t)attr.kind) {
+          case LOOM_ATTR_DICT:
+            child = &attr.dict_entries[i].value;
+            break;
+          case LOOM_ATTR_PARAMETERIZED:
+            child = &attr.parameterized_slots[i];
+            break;
+          default:
+            child = &attr.parameterized_array[i];
+            break;
+        }
         IREE_RETURN_IF_ERROR(loom_module_walk_attribute_value_refs_impl(
-            module, attr.parameterized_array[i], (uint8_t)(depth + 1), callback,
-            predicate_callback, user_data));
+            module, *child, (uint8_t)(depth + 1), visitor));
       }
       return iree_ok_status();
 
     default:
       return iree_ok_status();
   }
+}
+
+typedef struct loom_attribute_occurrence_walk_t {
+  // Module resolving canonical TYPE identities.
+  const loom_module_t* module;
+  // Receives ordered occurrences, including duplicates.
+  loom_type_value_ref_callback_t callback;
+  // Borrowed caller state.
+  void* user_data;
+} loom_attribute_occurrence_walk_t;
+
+static iree_status_t loom_attribute_walk_type_occurrences(
+    loom_type_id_t type_id, void* user_data) {
+  const loom_attribute_occurrence_walk_t* walk = user_data;
+  return loom_type_walk_value_refs(walk->module,
+                                   walk->module->types.entries[type_id],
+                                   walk->callback, walk->user_data);
+}
+
+static iree_status_t loom_attribute_walk_value_occurrence(
+    loom_value_id_t value_id, void* user_data) {
+  const loom_attribute_occurrence_walk_t* walk = user_data;
+  return walk->callback(value_id, walk->user_data);
 }
 
 iree_status_t loom_module_walk_attribute_value_refs(
@@ -172,109 +204,44 @@ iree_status_t loom_module_walk_attribute_value_refs(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "value reference callback is NULL");
   }
-  return loom_module_walk_attribute_value_refs_impl(
-      module, attr, /*depth=*/0, callback, callback, user_data);
+  loom_attribute_occurrence_walk_t walk = {module, callback, user_data};
+  const loom_attribute_reference_visitor_t visitor = {
+      .type = loom_attribute_walk_type_occurrences,
+      .value = loom_attribute_walk_value_occurrence,
+      .user_data = &walk,
+  };
+  return loom_module_walk_attribute_value_refs_impl(module, attr, 0, &visitor);
 }
 
 //===----------------------------------------------------------------------===//
-// Exact incoming and outgoing use lists
+// Retained attribute dependency ownership
 //===----------------------------------------------------------------------===//
 
-static loom_attribute_use_id_t* loom_attribute_use_incoming_head(
-    loom_module_t* module, const loom_attribute_use_t* use) {
-  loom_value_segment_t* segment =
-      loom_value_table_segment_for_id(&module->values, use->value_id);
-  loom_value_attribute_use_heads_t* heads =
-      &segment->attribute_use_heads[use->value_id & LOOM_VALUE_SEGMENT_MASK];
-  return use->is_predicate ? &heads->predicate : &heads->type;
+typedef struct loom_attribute_dependency_build_t {
+  // Module owning canonical membership.
+  loom_module_t* module;
+  // Union of retained TYPE sets and immediate predicate references.
+  loom_type_dependency_id_t root;
+} loom_attribute_dependency_build_t;
+
+static iree_status_t loom_attribute_collect_type_dependencies(
+    loom_type_id_t type_id, void* user_data) {
+  loom_attribute_dependency_build_t* build = user_data;
+  return loom_type_dependencies_union(
+      &build->module->type_uses, build->root,
+      build->module->types.dependencies[type_id], &build->root);
 }
 
-static void loom_attribute_use_link(loom_module_t* module,
-                                    loom_attribute_use_id_t id) {
-  loom_attribute_use_table_t* table = &module->attribute_uses;
-  loom_attribute_use_t* use = &table->records[id - 1];
-  loom_attribute_use_id_t* head = loom_attribute_use_incoming_head(module, use);
-  use->previous_incoming = 0;
-  use->next_incoming = *head;
-  if (*head) {
-    table->records[*head - 1].previous_incoming = id;
-  }
-  *head = id;
-  loom_module_value(module, use->value_id)->flags |=
-      LOOM_VALUE_FLAG_ATTRIBUTE_USES;
-}
-
-static void loom_attribute_use_unlink(loom_module_t* module,
-                                      loom_attribute_use_id_t id) {
-  loom_attribute_use_table_t* table = &module->attribute_uses;
-  const loom_attribute_use_t* use = &table->records[id - 1];
-  if (use->previous_incoming) {
-    table->records[use->previous_incoming - 1].next_incoming =
-        use->next_incoming;
-  } else {
-    *loom_attribute_use_incoming_head(module, use) = use->next_incoming;
-  }
-  if (use->next_incoming) {
-    table->records[use->next_incoming - 1].previous_incoming =
-        use->previous_incoming;
-  }
-  if (!loom_module_value_first_attribute_use(module, use->value_id)) {
-    loom_module_value(module, use->value_id)->flags &=
-        ~LOOM_VALUE_FLAG_ATTRIBUTE_USES;
-  }
-}
-
-static iree_status_t loom_attribute_use_allocate(
-    loom_module_t* module, loom_attribute_use_id_t* out_id) {
-  loom_attribute_use_table_t* table = &module->attribute_uses;
-  if (table->first_free) {
-    *out_id = table->first_free;
-    table->first_free = table->records[*out_id - 1].next_outgoing;
-    return iree_ok_status();
-  }
-  if (table->count == table->capacity) {
-    if (table->capacity == UINT32_MAX) {
-      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                              "attribute use count exceeds maximum");
-    }
-    uint32_t capacity = 32;
-    if (table->capacity > UINT32_MAX / 2) {
-      capacity = UINT32_MAX;
-    } else if (table->capacity) {
-      capacity = table->capacity * 2;
-    }
-    loom_attribute_use_t* records = NULL;
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        &module->arena, capacity, sizeof(*records), (void**)&records));
-    if (table->count) {
-      memcpy(records, table->records, table->count * sizeof(*records));
-    }
-    table->records = records;
-    table->capacity = capacity;
-  }
-  *out_id = ++table->count;
-  return iree_ok_status();
-}
-
-static void loom_attribute_use_recycle(loom_attribute_use_table_t* table,
-                                       loom_attribute_use_id_t id) {
-  loom_attribute_use_t* use = &table->records[id - 1];
-  use->op = NULL;
-  use->next_outgoing = table->first_free;
-  table->first_free = id;
+static iree_status_t loom_attribute_collect_value_dependency(
+    loom_value_id_t value_id, void* user_data) {
+  loom_attribute_dependency_build_t* build = user_data;
+  return loom_type_dependencies_add(&build->module->type_uses, build->root,
+                                    value_id, &build->root);
 }
 
 void loom_module_drop_attribute_uses(loom_module_t* module, loom_op_t* op,
                                      uint8_t attribute_index) {
-  loom_attribute_use_table_t* table = &module->attribute_uses;
-  loom_attribute_use_id_t id = loom_op_attribute_use_heads(op)[attribute_index];
-  loom_op_attribute_use_heads(op)[attribute_index] = 0;
-  while (id) {
-    const loom_attribute_use_id_t next = table->records[id - 1].next_outgoing;
-    loom_attribute_use_unlink(module, id);
-    loom_attribute_use_recycle(table, id);
-    id = next;
-  }
+  loom_attribute_dependencies_drop(&module->type_uses, op, attribute_index);
 }
 
 void loom_module_drop_op_attribute_uses(loom_module_t* module, loom_op_t* op) {
@@ -284,91 +251,27 @@ void loom_module_drop_op_attribute_uses(loom_module_t* module, loom_op_t* op) {
 }
 
 void loom_module_reset_attribute_uses(loom_module_t* module) {
-  loom_attribute_use_table_t* table = &module->attribute_uses;
-  for (uint32_t i = 0; i < table->count; ++i) {
-    const loom_attribute_use_t* use = &table->records[i];
-    if (!use->op) {
-      continue;
-    }
-    *loom_attribute_use_incoming_head(module, use) = 0;
-    loom_op_attribute_use_heads(use->op)[use->attribute_index] = 0;
-    loom_module_value(module, use->value_id)->flags &=
-        ~LOOM_VALUE_FLAG_ATTRIBUTE_USES;
-  }
-  table->count = 0;
-  table->first_free = 0;
-}
-
-// New records are not linked to values until the entire payload walk succeeds.
-typedef struct loom_attribute_use_build_t {
-  // Module owning the replacement's storage and value identities.
-  loom_module_t* module;
-  // Stable owning operation.
-  loom_op_t* op;
-  // New outgoing list, unpublished until construction succeeds.
-  loom_attribute_use_id_t first;
-  // Ordinal of the attribute being replaced.
-  uint8_t attribute_index;
-} loom_attribute_use_build_t;
-
-static iree_status_t loom_attribute_use_build_append(
-    loom_attribute_use_build_t* build, loom_value_id_t value_id,
-    bool is_predicate) {
-  if (value_id >= build->module->values.count) {
-    return iree_ok_status();
-  }
-  loom_attribute_use_id_t id = 0;
-  IREE_RETURN_IF_ERROR(loom_attribute_use_allocate(build->module, &id));
-  build->module->attribute_uses.records[id - 1] = (loom_attribute_use_t){
-      .op = build->op,
-      .value_id = value_id,
-      .next_outgoing = build->first,
-      .attribute_index = build->attribute_index,
-      .is_predicate = is_predicate,
-  };
-  build->first = id;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_attribute_use_build_type(loom_value_id_t value_id,
-                                                   void* user_data) {
-  return loom_attribute_use_build_append(user_data, value_id, false);
-}
-
-static iree_status_t loom_attribute_use_build_predicate(
-    loom_value_id_t value_id, void* user_data) {
-  return loom_attribute_use_build_append(user_data, value_id, true);
+  loom_attribute_dependencies_reset(&module->type_uses);
 }
 
 iree_status_t loom_module_set_op_attribute(loom_module_t* module, loom_op_t* op,
                                            uint8_t attribute_index,
                                            loom_attribute_t attribute) {
-  loom_attribute_use_build_t build = {
-      .module = module,
-      .op = op,
-      .attribute_index = attribute_index,
+  loom_attribute_dependency_build_t build = {.module = module};
+  const loom_attribute_reference_visitor_t visitor = {
+      .type = loom_attribute_collect_type_dependencies,
+      .value = loom_attribute_collect_value_dependency,
+      .user_data = &build,
   };
-  iree_status_t status = loom_module_walk_attribute_value_refs_impl(
-      module, attribute, 0, loom_attribute_use_build_type,
-      loom_attribute_use_build_predicate, &build);
-  loom_attribute_use_table_t* table = &module->attribute_uses;
-  if (iree_status_is_ok(status)) {
-    loom_module_drop_attribute_uses(module, op, attribute_index);
-    loom_op_attrs(op)[attribute_index] = attribute;
-    loom_op_attribute_use_heads(op)[attribute_index] = build.first;
-    for (loom_attribute_use_id_t id = build.first; id;
-         id = table->records[id - 1].next_outgoing) {
-      loom_attribute_use_link(module, id);
-    }
-  } else {
-    loom_attribute_use_id_t id = build.first;
-    while (id) {
-      const loom_attribute_use_id_t next = table->records[id - 1].next_outgoing;
-      loom_attribute_use_recycle(table, id);
-      id = next;
-    }
-  }
-  return status;
+  IREE_RETURN_IF_ERROR(loom_module_walk_attribute_value_refs_impl(
+      module, attribute, 0, &visitor));
+  loom_type_dependency_assignment_t assignment;
+  IREE_RETURN_IF_ERROR(loom_attribute_dependencies_prepare(
+      &module->type_uses, op, attribute_index, build.root, &assignment));
+  loom_op_attrs(op)[attribute_index] = attribute;
+  loom_attribute_dependencies_commit(&module->type_uses, op, attribute_index,
+                                     &assignment);
+  return iree_ok_status();
 }
 
 iree_status_t loom_module_refresh_op_attribute_uses(loom_module_t* module,
@@ -387,8 +290,8 @@ iree_status_t loom_module_refresh_op_attribute_uses(loom_module_t* module,
         break;
       default:
         // Scalar attributes carry no references. A bulk reader can replace a
-        // formerly reference-carrying slot before refreshing its use records.
-        if (loom_op_attribute_use_heads(op)[i]) {
+        // formerly reference-carrying slot before refreshing its ownership.
+        if (loom_op_attribute_owners(op)[i]) {
           loom_module_drop_attribute_uses(module, op, i);
         }
         break;
@@ -407,24 +310,7 @@ iree_status_t loom_value_replacement_apply_attribute(
       replacement, loom_op_attrs(op)[attribute_index], &attribute, &changed));
   IREE_ASSERT(changed, "attribute use owner must contain the referenced value");
 
-  // Identity substitution and structural interning preserve reference
-  // multiplicity and type/predicate classification. Retain the owner's list;
-  // only edges referencing old_id change their incoming list. All fallible
-  // payload construction has completed before either representation changes.
-  loom_attribute_use_table_t* table = &module->attribute_uses;
-  for (loom_attribute_use_id_t id =
-           loom_op_attribute_use_heads(op)[attribute_index];
-       id; id = table->records[id - 1].next_outgoing) {
-    loom_attribute_use_t* use = &table->records[id - 1];
-    if (use->value_id != replacement->old_id) {
-      continue;
-    }
-    loom_attribute_use_unlink(module, id);
-    use->value_id = replacement->new_id;
-    loom_attribute_use_link(module, id);
-  }
-  loom_op_attrs(op)[attribute_index] = attribute;
-  return iree_ok_status();
+  return loom_module_set_op_attribute(module, op, attribute_index, attribute);
 }
 
 //===----------------------------------------------------------------------===//

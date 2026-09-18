@@ -1013,23 +1013,17 @@ static iree_status_t loom_rewriter_add_subtree_providers_to_worklist(
       rewriter);
 }
 
-// Attribute references have separate incoming lists for types and predicates.
-// Both carry dependencies for rewriting and fact inference, even when the
-// referenced value is absent from the owner's ordinary operands.
+// Attribute membership includes TYPE and predicate dependencies even when the
+// provider is absent from the owner's ordinary operands.
 static iree_status_t loom_rewriter_add_attribute_users_to_worklist(
     loom_rewriter_t* rewriter, loom_value_id_t value_id) {
-  const loom_value_attribute_use_heads_t* heads =
-      loom_module_value_attribute_use_heads(rewriter->module, value_id);
-  const loom_attribute_use_id_t first_uses[] = {heads->type, heads->predicate};
-  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(first_uses); ++i) {
-    for (loom_attribute_use_id_t use_id = first_uses[i]; use_id;) {
-      const loom_attribute_use_t* use =
-          &rewriter->module->attribute_uses.records[use_id - 1];
-      IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, use->op));
-      IREE_RETURN_IF_ERROR(
-          loom_rewriter_add_summary_ops_to_worklist(rewriter, use->op));
-      use_id = use->next_incoming;
-    }
+  loom_type_use_iterator_t users;
+  loom_attribute_users_begin(&rewriter->module->type_uses, value_id, &users);
+  for (loom_attribute_user_t user = loom_attribute_users_next(&users); user.op;
+       user = loom_attribute_users_next(&users)) {
+    IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, user.op));
+    IREE_RETURN_IF_ERROR(
+        loom_rewriter_add_summary_ops_to_worklist(rewriter, user.op));
   }
   return iree_ok_status();
 }

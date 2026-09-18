@@ -53,50 +53,31 @@ iree_status_t loom_module_walk_attribute_value_refs(
     const loom_module_t* module, loom_attribute_t attr,
     loom_type_value_ref_callback_t callback, void* user_data);
 
-// Incoming attribute-use heads for one defined module value.
-static inline const loom_value_attribute_use_heads_t*
-loom_module_value_attribute_use_heads(const loom_module_t* module,
-                                      loom_value_id_t value_id) {
-  const loom_value_segment_t* segment =
-      loom_value_table_const_segment_for_id(&module->values, value_id);
-  return &segment->attribute_use_heads[value_id & LOOM_VALUE_SEGMENT_MASK];
-}
-
-// First exact attribute use of a defined value, or zero when there are none.
-static inline loom_attribute_use_id_t loom_module_value_first_attribute_use(
-    const loom_module_t* module, loom_value_id_t value_id) {
-  const loom_value_attribute_use_heads_t* heads =
-      loom_module_value_attribute_use_heads(module, value_id);
-  return heads->type ? heads->type : heads->predicate;
-}
-
-// Replaces an operation attribute and its exact reference records. The old
-// attribute and index remain unchanged on allocation or payload-validation
-// failure. References to not-yet-defined values are ignored during construction
-// and resolved by the reader's final use rebuild. Generic semantic traits are
-// maintained by loom_op_set_attr, not this storage-level mutation.
+// Replaces an operation attribute and its retained dependency ownership. The
+// old attribute and index remain unchanged on allocation or payload-validation
+// failure. References to not-yet-defined values remain inactive until refresh
+// or the reader's final use rebuild. Generic semantic traits are maintained by
+// loom_op_set_attr, not this storage-level mutation.
 iree_status_t loom_module_set_op_attribute(loom_module_t* module, loom_op_t* op,
                                            uint8_t attribute_index,
                                            loom_attribute_t attribute);
 
 // Applies the fixed substitution to one known attribute owner. The retained
-// index establishes that this slot references the old identity. Substitution
-// preserves reference multiplicity and type/predicate classification, so
-// existing records are retargeted without index allocation. Payload
-// reconstruction may allocate; on failure the old
-// attribute and its records remain intact. The caller maintains semantic traits
+// index establishes that this slot references the old identity. Payload and
+// membership preparation may allocate; on failure the old attribute and its
+// ownership remain intact. The caller maintains semantic traits
 // and summaries after success, as with loom_module_set_op_attribute.
 iree_status_t loom_value_replacement_apply_attribute(
     loom_value_replacement_t* replacement, loom_op_t* op,
     uint8_t attribute_index);
 
 // Registers attributes at the operation construction boundary. Also refreshes
-// existing records if a bulk construction path populated the attributes
+// retained ownership if a bulk construction path populated the attributes
 // directly.
 iree_status_t loom_module_refresh_op_attribute_uses(loom_module_t* module,
                                                     loom_op_t* op);
 
-// Drops the records owned by a single attribute without allocating or changing
+// Drops ownership of a single attribute without allocating or changing
 // its payload. Used when clearing a reference-carrying attribute during
 // erasure.
 void loom_module_drop_attribute_uses(loom_module_t* module, loom_op_t* op,
@@ -105,9 +86,9 @@ void loom_module_drop_attribute_uses(loom_module_t* module, loom_op_t* op,
 // Drops every outgoing attribute reference when its operation is erased.
 void loom_module_drop_op_attribute_uses(loom_module_t* module, loom_op_t* op);
 
-// Clears the index before the bulk reader rebuilds live operation use records.
-// Storage is retained for reuse; incoming and outgoing heads are reset
-// together.
+// Clears attribute ownership before the bulk reader rebuilds live operations.
+// Storage and canonical membership are retained for reuse. Value-type ownership
+// is unchanged.
 void loom_module_reset_attribute_uses(loom_module_t* module);
 
 #ifdef __cplusplus

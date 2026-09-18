@@ -337,7 +337,8 @@ TEST_F(ValueReplacementTest, PublishedAttributesSurviveScratchBlockReuse) {
   EXPECT_EQ(updated.args[0], new_id_);
   EXPECT_EQ(updated.args[1], new_id_);
   EXPECT_EQ(loom_test_attrs_input(owner), new_id_);
-  EXPECT_EQ(loom_module_value_first_attribute_use(module_, old_id_), 0u);
+  EXPECT_FALSE(
+      loom_value_has_attribute_uses(loom_module_value(module_, old_id_)));
 }
 
 TEST_F(ValueReplacementTest, TemporaryChildrenAreNotRetainedByTheMemo) {
@@ -461,18 +462,16 @@ TEST_F(ValueReplacementTest,
     const loom_named_attr_t attributes[] = {
         {key, {}, loom_attr_type(Intern(original))}};
     std::array<loom_op_t*, 2> owners;
-    std::array<loom_attribute_use_id_t, 2> heads;
+    std::array<loom_attribute_owner_id_t, 2> owner_ids;
     for (size_t i = 0; i < owners.size(); ++i) {
       IREE_ASSERT_OK(loom_test_attrs_build(
           &builder_, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT, old_id_,
           loom_make_named_attr_slice(attributes, 1),
           loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_NONE,
           &owners[i]));
-      heads[i] = loom_op_attribute_use_heads(
-          owners[i])[loom_test_attrs_dict_ATTR_INDEX];
+      owner_ids[i] =
+          loom_op_attribute_owners(owners[i])[loom_test_attrs_dict_ATTR_INDEX];
     }
-    const auto records = module_->attribute_uses.records;
-    const auto record_count = module_->attribute_uses.count;
     failure_index_ = failure;
     allocation_count_ = 0;
     iree_status_t status =
@@ -500,19 +499,23 @@ TEST_F(ValueReplacementTest,
         type = module_->types.entries[loom_test_array_type_element_type(type)];
       }
       const auto provider = loom_type_dim_value_id_at(type, 0);
-      EXPECT_EQ(loom_op_attribute_use_heads(
-                    owners[i])[loom_test_attrs_dict_ATTR_INDEX],
-                heads[i]);
-      EXPECT_EQ(module_->attribute_uses.records[heads[i] - 1].value_id,
-                provider);
+      EXPECT_EQ(
+          loom_op_attribute_owners(owners[i])[loom_test_attrs_dict_ATTR_INDEX],
+          owner_ids[i]);
+      loom_type_use_iterator_t dependencies;
+      loom_attribute_dependencies_begin(&module_->type_uses, owners[i],
+                                        loom_test_attrs_dict_ATTR_INDEX,
+                                        &dependencies);
+      EXPECT_EQ(loom_type_dependencies_next(&dependencies), provider);
+      EXPECT_EQ(loom_type_dependencies_next(&dependencies),
+                LOOM_VALUE_ID_INVALID);
       EXPECT_EQ(loom_test_attrs_input(owners[i]),
                 succeeded ? new_id_ : old_id_);
     }
-    EXPECT_EQ(module_->attribute_uses.records, records);
-    EXPECT_EQ(module_->attribute_uses.count, record_count);
     IREE_ASSERT_OK(loom_value_replace_all_uses_with(module_, old_id_, new_id_));
     EXPECT_FALSE(loom_module_value_has_type_uses(module_, old_id_));
-    EXPECT_EQ(loom_module_value_first_attribute_use(module_, old_id_), 0u);
+    EXPECT_FALSE(
+        loom_value_has_attribute_uses(loom_module_value(module_, old_id_)));
     for (const auto carrier : carriers) {
       ExpectDependencies(carrier, {new_id_});
     }

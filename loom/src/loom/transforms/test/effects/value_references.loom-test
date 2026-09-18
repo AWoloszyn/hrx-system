@@ -104,3 +104,26 @@ func.def @value_and_attribute_owners(%extent: index, %increment: index, %left_se
   %annotated = test.attrs %value {nested = {options = #test.options<mode = precise, element_type = test.array<(vector<[%width]xf32>, vector<[%width]xf32>) -> ()>>}} : f32
   func.return %annotated : f32
 }
+
+// ====
+// RUN: pass cse,cse
+
+// Repeated paths through a shared nested type and duplicate predicate operands
+// retain exact owners without multiplying references. Both follow replacement.
+func.def @shared_attribute_membership(%extent: index, %increment: index, %input: f32) -> (f32) {
+  %width = index.add %extent, %increment : index
+  %duplicate_width = index.add %extent, %increment : index
+  %annotated = test.attrs %input {shape = #test.options<mode = precise, element_type = ((vector<[%duplicate_width]xf32>, vector<[%duplicate_width]xf32>) -> (), (vector<[%duplicate_width]xf32>, vector<[%duplicate_width]xf32>) -> ()) -> ()>} : f32
+  %constrained = test.assume %duplicate_width [eq(%duplicate_width, %duplicate_width)] : index
+  test.use %constrained : index
+  func.return %annotated : f32
+}
+
+// ----
+func.def @shared_attribute_membership(%extent: index, %increment: index, %input: f32) -> (f32) {
+  %width = index.add %extent, %increment : index
+  %annotated = test.attrs %input {shape = #test.options<mode = precise, element_type = ((vector<[%width]xf32>, vector<[%width]xf32>) -> (), (vector<[%width]xf32>, vector<[%width]xf32>) -> ()) -> ()>} : f32
+  %constrained = test.assume %width [eq(%width, %width)] : index
+  test.use %constrained : index
+  func.return %annotated : f32
+}

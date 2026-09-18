@@ -359,18 +359,13 @@ static bool loom_value_has_attribute_uses_outside_op(
   if (!loom_value_has_attribute_uses(loom_module_value(module, value_id))) {
     return false;
   }
-  const loom_value_attribute_use_heads_t* heads =
-      loom_module_value_attribute_use_heads(module, value_id);
-  const loom_attribute_use_id_t first_uses[] = {heads->type, heads->predicate};
-  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(first_uses); ++i) {
-    for (loom_attribute_use_id_t use_id = first_uses[i]; use_id;) {
-      const loom_attribute_use_t* use =
-          &module->attribute_uses.records[use_id - 1];
-      // Self-predicates, such as config.decl constraints, die with the owner.
-      if (use->op != op) {
-        return true;
-      }
-      use_id = use->next_incoming;
+  loom_type_use_iterator_t users;
+  loom_attribute_users_begin(&module->type_uses, value_id, &users);
+  for (loom_attribute_user_t user = loom_attribute_users_next(&users); user.op;
+       user = loom_attribute_users_next(&users)) {
+    // Self-predicates, such as config.decl constraints, die with the owner.
+    if (user.op != op) {
+      return true;
     }
   }
   return false;
@@ -2158,7 +2153,7 @@ static iree_status_t loom_builder_allocate_op_storage(
       (iree_host_size_t)attribute_count * sizeof(loom_attribute_t);
   iree_host_size_t total_size =
       aligned_before_attrs + attrs_size +
-      (iree_host_size_t)attribute_count * sizeof(loom_attribute_use_id_t) +
+      (iree_host_size_t)attribute_count * sizeof(loom_attribute_owner_id_t) +
       operand_segment_counts_size;
 
   void* allocation = NULL;
@@ -2331,8 +2326,8 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
       operand_segment_count > 0 ? loom_op_operand_segment_counts(op) : NULL;
   loom_use_index_t* old_operand_use_indices = loom_op_operand_use_indices(op);
   loom_attribute_t* old_attrs = loom_op_attrs(op);
-  loom_attribute_use_id_t* old_attribute_use_heads =
-      loom_op_attribute_use_heads(op);
+  loom_attribute_owner_id_t* old_attribute_owners =
+      loom_op_attribute_owners(op);
   for (uint16_t i = 0; i < old_result_count; ++i) {
     loom_value_id_t result = results[i];
     if (remove_results[i]) {
@@ -2361,9 +2356,9 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
   if (op->attribute_count > 0) {
     memmove(loom_op_attrs(op), old_attrs,
             (iree_host_size_t)op->attribute_count * sizeof(*old_attrs));
-    memmove(loom_op_attribute_use_heads(op), old_attribute_use_heads,
-            (iree_host_size_t)op->attribute_count *
-                sizeof(*old_attribute_use_heads));
+    memmove(
+        loom_op_attribute_owners(op), old_attribute_owners,
+        (iree_host_size_t)op->attribute_count * sizeof(*old_attribute_owners));
   }
   if (operand_segment_count > 0) {
     memmove(loom_op_operand_segment_counts(op), old_operand_segment_counts,
@@ -2651,23 +2646,16 @@ static iree_status_t loom_region_remove_verify_value_uses(
   }
 
   if (loom_value_has_attribute_uses(value)) {
-    const loom_value_attribute_use_heads_t* heads =
-        loom_module_value_attribute_use_heads(module, value_id);
-    const loom_attribute_use_id_t first_uses[] = {heads->type,
-                                                  heads->predicate};
-    for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(first_uses); ++i) {
-      for (loom_attribute_use_id_t attribute_use_id = first_uses[i];
-           attribute_use_id;) {
-        const loom_attribute_use_t* use =
-            &module->attribute_uses.records[attribute_use_id - 1];
-        if (!loom_region_remove_op_is_removed(scope, use->op)) {
-          return iree_make_status(
-              IREE_STATUS_FAILED_PRECONDITION,
-              "cannot remove block set: value %%%u has an attribute use "
-              "outside the removed blocks",
-              (unsigned)value_id);
-        }
-        attribute_use_id = use->next_incoming;
+    loom_type_use_iterator_t users;
+    loom_attribute_users_begin(&module->type_uses, value_id, &users);
+    for (loom_attribute_user_t user = loom_attribute_users_next(&users);
+         user.op; user = loom_attribute_users_next(&users)) {
+      if (!loom_region_remove_op_is_removed(scope, user.op)) {
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "cannot remove block set: value %%%u has an attribute use "
+            "outside the removed blocks",
+            (unsigned)value_id);
       }
     }
   }
@@ -3197,13 +3185,13 @@ iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
     loom_value_replacement_t replacement;
     loom_value_replacement_initialize(module, old_id, new_id, &replacement);
     iree_status_t status = loom_value_replacement_apply_types(&replacement);
-    loom_attribute_use_id_t attribute_use_id =
-        loom_module_value_first_attribute_use(module, old_id);
-    while (attribute_use_id && iree_status_is_ok(status)) {
-      // Replacing this slot retargets every occurrence, including duplicates,
-      // before the next incoming head selects another owner.
-      const loom_attribute_use_t use =
-          module->attribute_uses.records[attribute_use_id - 1];
+    while (loom_value_has_attribute_uses(old_value) &&
+           iree_status_is_ok(status)) {
+      // Mutation invalidates the cursor. Successful replacement removes this
+      // owner's old membership, so restarting selects an unprocessed owner.
+      loom_type_use_iterator_t users;
+      loom_attribute_users_begin(&module->type_uses, old_id, &users);
+      const loom_attribute_user_t use = loom_attribute_users_next(&users);
       status = loom_value_replacement_apply_attribute(&replacement, use.op,
                                                       use.attribute_index);
       if (iree_status_is_ok(status)) {
@@ -3212,7 +3200,6 @@ iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
         loom_module_update_op_direct_summaries(module, use.op, old_traits,
                                                use.op->traits);
       }
-      attribute_use_id = loom_module_value_first_attribute_use(module, old_id);
     }
     loom_value_replacement_deinitialize(&replacement);
     IREE_RETURN_IF_ERROR(status);
