@@ -812,7 +812,8 @@ class ForwardingFactsRewriteTest
       public ::testing::WithParamInterface<std::tuple<uint16_t, bool>> {};
 
 TEST_P(ForwardingFactsRewriteTest, OpenQueuesRestartAcrossSemanticEdits) {
-  const auto [count, reverse_layout] = GetParam();
+  const uint16_t count = std::get<0>(GetParam());
+  const bool reverse_layout = std::get<1>(GetParam());
   const loom_type_t i1 = loom_type_scalar(LOOM_SCALAR_TYPE_I1);
   const loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_region_t* region = loom_func_like_body(function_);
@@ -1059,7 +1060,8 @@ class StructuredForwardingFactsRewriteTest
 
 TEST_P(StructuredForwardingFactsRewriteTest,
        RebuildsAfterYieldAndConditionEdits) {
-  const auto [count, is_while] = GetParam();
+  const uint16_t count = std::get<0>(GetParam());
+  const bool is_while = std::get<1>(GetParam());
   const loom_type_t i1 = loom_type_scalar(LOOM_SCALAR_TYPE_I1);
   const loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   const loom_type_t index = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
