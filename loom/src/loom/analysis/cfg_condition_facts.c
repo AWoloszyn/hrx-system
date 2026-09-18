@@ -1127,6 +1127,16 @@ static loom_cfg_condition_image_span_t loom_cfg_condition_relation_images(
   return images;
 }
 
+static bool loom_cfg_condition_image_span_is_identity(
+    loom_cfg_condition_image_span_t images,
+    loom_cfg_condition_operand_t operand) {
+  if (images.pair_count == 0) {
+    return images.identity == operand;
+  }
+  return images.pair_count == 1 && images.pairs[0].target == operand &&
+         images.identity == LOOM_CFG_CONDITION_OPERAND_INVALID;
+}
+
 static iree_status_t loom_cfg_condition_projection_values_append(
     loom_cfg_condition_relation_solver_t* solver, uint32_t value) {
   if (solver->projection_value_count >= solver->projection_value_capacity) {
@@ -1152,14 +1162,20 @@ typedef struct loom_cfg_condition_projection_visit_t {
 
   // Terminal append failure.
   iree_status_t status;
+
+  // True while every visited operand has exactly one identity image.
+  bool is_identity;
 } loom_cfg_condition_projection_visit_t;
 
-static bool loom_cfg_condition_relation_project_member(void* user_data,
-                                                       uint32_t source) {
+static bool loom_cfg_condition_relation_project_member(
+    void* user_data, uint32_t source_operand) {
   loom_cfg_condition_projection_visit_t* visit =
       (loom_cfg_condition_projection_visit_t*)user_data;
   const loom_cfg_condition_image_span_t images =
-      loom_cfg_condition_relation_images(visit->solver, visit->edge, source);
+      loom_cfg_condition_relation_images(visit->solver, visit->edge,
+                                         source_operand);
+  visit->is_identity &=
+      loom_cfg_condition_image_span_is_identity(images, source_operand);
   for (uint32_t i = 0; i < images.pair_count; ++i) {
     visit->status = loom_cfg_condition_projection_values_append(
         visit->solver, images.pairs[i].target);
@@ -1192,14 +1208,19 @@ static iree_status_t loom_cfg_condition_relation_project_set(
       .solver = solver,
       .edge = edge,
       .status = iree_ok_status(),
+      .is_identity = true,
   };
   loom_condition_relation_set_builder_for_each_while(
       solver->set_builder, source, loom_cfg_condition_relation_project_member,
       &visit);
   IREE_RETURN_IF_ERROR(visit.status);
-  IREE_RETURN_IF_ERROR(loom_condition_relation_set_builder_intern(
-      solver->set_builder, solver->projection_values,
-      solver->projection_value_count, out_target));
+  if (visit.is_identity) {
+    *out_target = source;
+  } else {
+    IREE_RETURN_IF_ERROR(loom_condition_relation_set_builder_intern(
+        solver->set_builder, solver->projection_values,
+        solver->projection_value_count, out_target));
+  }
   return loom_cfg_condition_projection_cache_insert(
       &solver->projection_cache, edge->edge_index, source, *out_target);
 }
@@ -1239,11 +1260,51 @@ static iree_status_t loom_cfg_condition_relation_project_matrix_into_builder(
   return iree_ok_status();
 }
 
+static iree_status_t loom_cfg_condition_relation_matrix_projection_is_identity(
+    loom_cfg_condition_relation_solver_t* solver,
+    const loom_cfg_condition_edge_state_t* edge,
+    const loom_condition_relation_matrix_t* source, bool* out_is_identity) {
+  *out_is_identity = false;
+  for (uint32_t row_index = 0; row_index < source->row_count; ++row_index) {
+    const loom_condition_relation_matrix_row_t* row = &source->rows[row_index];
+    if (loom_condition_relation_matrix_row_is_empty(row)) {
+      // The general projection compacts empty propagation tombstones.
+      return iree_ok_status();
+    }
+    const loom_cfg_condition_image_span_t left_images =
+        loom_cfg_condition_relation_images(solver, edge, row->left);
+    if (!loom_cfg_condition_image_span_is_identity(left_images, row->left)) {
+      return iree_ok_status();
+    }
+    for (loom_condition_relation_outcome_t outcome = 0;
+         outcome < LOOM_CONDITION_RELATION_OUTCOME_COUNT; ++outcome) {
+      loom_condition_relation_set_id_t projected =
+          LOOM_CONDITION_RELATION_SET_EMPTY;
+      IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_project_set(
+          solver, edge, row->excluded[outcome], &projected));
+      if (projected != row->excluded[outcome]) {
+        return iree_ok_status();
+      }
+    }
+  }
+  *out_is_identity = true;
+  return iree_ok_status();
+}
+
 static iree_status_t loom_cfg_condition_relation_project_matrix(
     loom_cfg_condition_relation_solver_t* solver,
     const loom_cfg_condition_edge_state_t* edge,
     const loom_condition_relation_matrix_t* source,
     loom_condition_relation_matrix_t* out_matrix) {
+  bool is_identity = false;
+  IREE_RETURN_IF_ERROR(
+      loom_cfg_condition_relation_matrix_projection_is_identity(
+          solver, edge, source, &is_identity));
+  if (is_identity) {
+    // Propagation mutates matrices independently, so retain distinct storage.
+    return loom_condition_relation_matrix_clone(source, solver->scratch_arena,
+                                                out_matrix);
+  }
   loom_condition_relation_matrix_builder_reset(&solver->matrix_builder);
   IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_project_matrix_into_builder(
       solver, edge, source));
@@ -1350,6 +1411,10 @@ static iree_status_t loom_cfg_condition_relation_project_contribution(
     const loom_cfg_condition_edge_state_t* edge,
     const loom_condition_relation_matrix_t* source,
     loom_condition_relation_matrix_t* out_contribution) {
+  if (edge->assertions.row_count == 0) {
+    return loom_cfg_condition_relation_project_matrix(solver, edge, source,
+                                                      out_contribution);
+  }
   loom_condition_relation_matrix_builder_reset(&solver->matrix_builder);
   IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_builder_add_matrix(
       &solver->matrix_builder, &edge->assertions));
@@ -1366,6 +1431,11 @@ static iree_status_t loom_cfg_condition_relation_project_truth_contribution(
     const loom_cfg_condition_edge_state_t* edge,
     const loom_cfg_condition_truth_t* source,
     loom_cfg_condition_truth_t* out_contribution) {
+  if (edge->truth_assertions.values[0] == LOOM_CONDITION_RELATION_SET_EMPTY &&
+      edge->truth_assertions.values[1] == LOOM_CONDITION_RELATION_SET_EMPTY) {
+    return loom_cfg_condition_relation_project_truth(solver, edge, source,
+                                                     out_contribution);
+  }
   loom_cfg_condition_truth_t projected = {0};
   IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_project_truth(
       solver, edge, source, &projected));
