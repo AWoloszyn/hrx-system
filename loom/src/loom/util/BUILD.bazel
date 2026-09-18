@@ -346,6 +346,33 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "cfg_loop_nest",
+    srcs = ["cfg_loop_nest.c"],
+    hdrs = ["cfg_loop_nest.h"],
+    deps = [
+        ":cfg_dominance",
+        ":cfg_graph",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "cfg_loop_nest_test",
+    srcs = ["cfg_loop_nest_test.cc"],
+    deps = [
+        ":cfg_graph",
+        ":cfg_graph_test_util",
+        ":cfg_loop_nest",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
     name = "cfg_control",
     srcs = ["cfg_control.c"],
     hdrs = ["cfg_control.h"],

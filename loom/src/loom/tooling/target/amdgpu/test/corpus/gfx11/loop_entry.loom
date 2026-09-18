@@ -1,0 +1,213 @@
+amdgpu.target<gfx11-generic> @loop_entry_wave64 {subgroup_size = 64}
+
+// The exit test follows a divergent diamond. Each lane retains the broadcast
+// from its final iteration, including lane zero, which skips the loop body.
+kernel.def target(@loop_entry_wave64) @delayed_guard_broadcast() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%output: buffer) {
+  %loop_begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %not_first = index.cmp ne, %lane, %loop_begin : index
+  %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
+  cfg.br ^header(%loop_begin: index)
+^header(%counter: index):
+  %observed = scf.if %not_first -> (i32) {
+    %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+    scf.yield %broadcast : i32
+  } else {
+    scf.yield %lane_i32 : i32
+  }
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  view.store %observed, %output_view[%lane] : i32, view<64xi32>
+  kernel.return
+}
+
+check.case public @delayed_guard_broadcast_case {
+  %actual = check.generate.fill value(-1) : tensor<64xi32>
+  %expected = check.generate.iota offset(0) step(1) : tensor<64xi32>
+  kernel.launch @delayed_guard_broadcast(%actual) : (tensor<64xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<64xi32>
+  check.return
+}
+
+// An inner divergent loop completes before each outer exit test. Restoring its
+// entry mask must reactivate exactly the lanes still in the outer iteration.
+kernel.def target(@loop_entry_wave64) @loop_before_outer_guard() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%output: buffer) {
+  %loop_begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %initial = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %inner_end = index.add %lane, %step : index
+  %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
+  cfg.br ^outer_header(%loop_begin: index)
+^outer_header(%counter: index):
+  %inner_count = scf.for %inner = [%loop_begin to %inner_end step %step](%count = %initial : i32) -> (i32) {
+    %next_count = scalar.addi %count, %increment : i32
+    scf.yield %next_count : i32
+  }
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^outer_body, ^exit
+^outer_body:
+  %next = index.add %counter, %step : index
+  cfg.br ^outer_header(%next: index)
+^exit:
+  %result = scalar.addi %observed, %inner_count : i32
+  view.store %result, %output_view[%lane] : i32, view<64xi32>
+  kernel.return
+}
+
+check.case public @loop_before_outer_guard_case {
+  %actual = check.generate.fill value(-1) : tensor<64xi32>
+  %expected = check.generate.iota offset(1) step(2) : tensor<64xi32>
+  kernel.launch @loop_before_outer_guard(%actual) : (tensor<64xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<64xi32>
+  check.return
+}
+
+// The preheader follows both latches in textual order. Even lanes advance by
+// one, odd lanes by two; every lane reaches its even bound exactly.
+kernel.def target(@loop_entry_wave64) @reordered_loop_latches() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%output: buffer) {
+  %loop_begin = index.constant 0 : index
+  %increment = index.constant 1 : index
+  %stride = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %limit = index.mul %lane, %stride : index
+  %parity = index.rem %lane, %stride : index
+  %odd = index.cmp ne, %parity, %loop_begin : index
+  %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
+  cfg.br ^preheader
+^header(%counter: index):
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^choose_latch, ^exit
+^choose_latch:
+  cfg.cond_br %odd, ^odd_latch, ^even_latch
+^odd_latch:
+  %odd_next = index.add %counter, %stride : index
+  cfg.br ^header(%odd_next: index)
+^even_latch:
+  %even_next = index.add %counter, %increment : index
+  cfg.br ^header(%even_next: index)
+^exit:
+  %result = index.cast %counter : index to i32
+  view.store %result, %output_view[%lane] : i32, view<64xi32>
+  kernel.return
+^preheader:
+  cfg.br ^header(%loop_begin: index)
+}
+
+check.case public @reordered_loop_latches_case {
+  %actual = check.generate.fill value(-1) : tensor<64xi32>
+  %expected = check.generate.iota offset(0) step(2) : tensor<64xi32>
+  kernel.launch @reordered_loop_latches(%actual) : (tensor<64xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<64xi32>
+  check.return
+}
+
+// Reversing the exit predicate preserves the same lane retirement.
+kernel.def target(@loop_entry_wave64) @delayed_guard_true_exit() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%output: buffer) {
+  %loop_begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %not_first = index.cmp ne, %lane, %loop_begin : index
+  %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
+  cfg.br ^header(%loop_begin: index)
+^header(%counter: index):
+  %observed = scf.if %not_first -> (i32) {
+    %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+    scf.yield %broadcast : i32
+  } else {
+    scf.yield %lane_i32 : i32
+  }
+  %done = index.cmp uge, %counter, %lane : index
+  cfg.cond_br %done, ^exit, ^body
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  view.store %observed, %output_view[%lane] : i32, view<64xi32>
+  kernel.return
+}
+
+check.case public @delayed_guard_true_exit_case {
+  %actual = check.generate.fill value(-1) : tensor<64xi32>
+  %expected = check.generate.iota offset(0) step(1) : tensor<64xi32>
+  kernel.launch @delayed_guard_true_exit(%actual) : (tensor<64xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<64xi32>
+  check.return
+}
+
+// Saving the loop entry mask must preserve an enclosing divergent branch.
+kernel.def target(@loop_entry_wave64) @masked_loop_entry() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%output: buffer) {
+  %loop_begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %not_first = index.cmp ne, %lane, %loop_begin : index
+  %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
+  %split_lane = index.constant 32 : index
+  %inside = index.cmp ult, %lane, %split_lane : index
+  cfg.cond_br %inside, ^setup, ^outside
+^setup:
+  cfg.br ^header(%loop_begin: index)
+^header(%counter: index):
+  %observed = scf.if %not_first -> (i32) {
+    %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+    scf.yield %broadcast : i32
+  } else {
+    scf.yield %lane_i32 : i32
+  }
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  cfg.br ^merge(%observed: i32)
+^outside:
+  cfg.br ^merge(%lane_i32: i32)
+^merge(%result: i32):
+  view.store %result, %output_view[%lane] : i32, view<64xi32>
+  kernel.return
+}
+
+check.case public @masked_loop_entry_case {
+  %actual = check.generate.fill value(-1) : tensor<64xi32>
+  %expected = check.generate.iota offset(0) step(1) : tensor<64xi32>
+  kernel.launch @masked_loop_entry(%actual) : (tensor<64xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<64xi32>
+  check.return
+}

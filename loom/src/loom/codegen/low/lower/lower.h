@@ -33,6 +33,7 @@
 #include "loom/sanitizer/options.h"
 #include "loom/target/low_legality.h"
 #include "loom/target/types.h"
+#include "loom/util/cfg_loop_nest.h"
 #include "loom/util/fact_table.h"
 
 #ifdef __cplusplus
@@ -1077,6 +1078,12 @@ const loom_low_descriptor_set_t* loom_low_lower_context_descriptor_set(
 // the source function being lowered and remains valid only during callbacks.
 const loom_value_fact_table_t* loom_low_lower_context_fact_table(
     const loom_low_lower_context_t* context);
+
+// Returns retained natural-loop structure for the source function's CFG body.
+// The analysis borrows the fact-owned graph and is built once on first use.
+// Both remain valid throughout this immutable source-function lowering.
+iree_status_t loom_low_lower_context_cfg_loops(
+    loom_low_lower_context_t* context, const loom_cfg_loop_nest_t** out_loops);
 
 // Returns reusable traversal state for condition-fact queries.
 loom_condition_query_t* loom_low_lower_context_condition_query(
