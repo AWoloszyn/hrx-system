@@ -19,11 +19,13 @@ loom_generated_cc_library(
         "carrier.c",
         "compare.c",
         "facts.c",
+        "loop_count.c",
         "verify.c",
     ],
     hdrs = [
         "carrier.h",
         "compare.h",
+        "loop_count.h",
         "ops.h",
     ],
     args = ["--dialect=index"],
@@ -48,6 +50,17 @@ loom_generated_cc_library(
         "//loom/src/loom/util:fact_table",
         "//loom/src/loom/util:predicate_facts",
         "//runtime/src/iree/base/internal",
+    ],
+)
+
+loom_cc_test(
+    name = "loop_count_test",
+    srcs = ["loop_count_test.cc"],
+    deps = [
+        ":index",
+        "//loom/src/loom/ops:op_defs",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

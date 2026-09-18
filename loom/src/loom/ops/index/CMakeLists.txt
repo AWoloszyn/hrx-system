@@ -19,6 +19,7 @@ loom_generated_cc_library(
     "carrier.c"
     "compare.c"
     "facts.c"
+    "loop_count.c"
     "verify.c"
   GENERATED_SRC_FLAGS
     "--builders"
@@ -29,6 +30,7 @@ loom_generated_cc_library(
   HDRS
     "carrier.h"
     "compare.h"
+    "loop_count.h"
     "ops.h"
   ARGS
     "--dialect=index"
@@ -44,6 +46,18 @@ loom_generated_cc_library(
     loom::target::facts
     loom::util::fact_table
     loom::util::predicate_facts
+)
+
+loom_cc_test(
+  NAME
+    loop_count_test
+  SRCS
+    "loop_count_test.cc"
+  DEPS
+    ::index
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ops::op_defs
 )
 
 loom_cc_test(

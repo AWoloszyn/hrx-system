@@ -1,0 +1,407 @@
+// RUN: compile-report source-to-low,low-dce
+
+amdgpu.target<gfx11-generic> @target
+
+// The unsigned view of -1 is above four, so the body never executes.
+kernel.def target(@target) @unsigned_empty() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -1 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp ult, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: workload workgroup_size=1x1x1 flat_workgroup_size=1 workgroup_count=1x1x1 dispatch_workgroup_count=1 dispatch_workitem_count=1
+COMPILE-REPORT: source_low selected_ops=10 emitted_ops=8 rows=10
+COMPILE-REPORT: source_low_memory roots=1 arguments=1 argument_packets=1 strategies=0 packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=0 dispatch_source_total_bytes=0 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=0 dispatch_issued_total_bytes=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+COMPILE-REPORT: source_low_selection[1] function=unsigned_empty source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=1 unknown_dynamic_ops=0 dynamic_selected_ops=0 dynamic_emitted_ops=0
+COMPILE-REPORT: source_low[0] function=unsigned_empty source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[1] function=unsigned_empty source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[2] function=unsigned_empty source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[3] function=unsigned_empty source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[4] function=unsigned_empty source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[5] function=unsigned_empty source_op=buffer.view selection=rule emitted_ops=0
+COMPILE-REPORT: source_low[6] function=unsigned_empty source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_u32 descriptor_semantic_tag=integer.compare.ult.i32 emitted_ops=1
+COMPILE-REPORT: source_low[7] function=unsigned_empty source_op=index.cast selection=plan emitted_ops=0 execution_count=0
+COMPILE-REPORT: source_low[8] function=unsigned_empty source_op=view.store selection=plan emitted_ops=3 execution_count=0
+COMPILE-REPORT: source_low[9] function=unsigned_empty source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 emitted_ops=1 execution_count=0
+COMPILE-REPORT: source_low_memory[0] function=unsigned_empty source_op=view.store memory_space=global operation=store packet=amdgpu.global_store_b32_saddr source_root=output source_root_argument_index=0 storage={element_format:i32} source_interval={begin_min_bytes:0,begin_max_bytes:0,end_min_bytes:4,end_max_bytes:4,exact_length_bytes:4} address_form=global_saddr dynamic_term_kind=none fallback_reason=- static_offset_bytes=0 element_bytes=4 vector_lanes=1 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 dynamic_stride_bytes=0 vector_lane_stride_bytes=4
+COMPILE-REPORT: source_low_memory_root[0] function=unsigned_empty source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=0 dispatch_source_total_bytes=0 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=0 dispatch_issued_total_bytes=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument[0] function=unsigned_empty source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=0 dispatch_source_total_bytes=0 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=0 dispatch_issued_total_bytes=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument_packet[0] function=unsigned_empty source_root=output source_root_argument_index=0 memory_space=global operation=store packet=amdgpu.global_store_b32_saddr storage={element_format:i32} packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=0 dispatch_source_total_bytes=0 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=0 dispatch_issued_total_bytes=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+
+// ====
+
+// RUN: compile-report source-to-low,low-dce
+
+amdgpu.target<gfx11-generic> @target
+
+// The same bit patterns with a signed guard execute five body iterations.
+kernel.def target(@target) @signed_negative_start() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -1 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp slt, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: workload workgroup_size=1x1x1 flat_workgroup_size=1 workgroup_count=1x1x1 dispatch_workgroup_count=1 dispatch_workitem_count=1
+COMPILE-REPORT: source_low selected_ops=10 emitted_ops=8 rows=10
+COMPILE-REPORT: source_low_memory roots=1 arguments=1 argument_packets=1 strategies=0 packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=5 dynamic_source_bytes=20 dynamic_read_bytes=0 dynamic_write_bytes=20 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=20 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=20 dispatch_source_total_bytes=20 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=20 dispatch_issued_total_bytes=20 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+COMPILE-REPORT: source_low_selection[0] function=signed_negative_start source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_i32 descriptor_semantic_tag=integer.compare.slt.i32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=1 unknown_dynamic_ops=0 dynamic_selected_ops=6 dynamic_emitted_ops=6
+COMPILE-REPORT: source_low_selection[1] function=signed_negative_start source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=1 unknown_dynamic_ops=0 dynamic_selected_ops=5 dynamic_emitted_ops=5
+COMPILE-REPORT: source_low[0] function=signed_negative_start source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[1] function=signed_negative_start source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[2] function=signed_negative_start source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[3] function=signed_negative_start source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[4] function=signed_negative_start source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[5] function=signed_negative_start source_op=buffer.view selection=rule emitted_ops=0
+COMPILE-REPORT: source_low[6] function=signed_negative_start source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_i32 descriptor_semantic_tag=integer.compare.slt.i32 emitted_ops=1 execution_count=6
+COMPILE-REPORT: source_low[7] function=signed_negative_start source_op=index.cast selection=plan emitted_ops=0 execution_count=5
+COMPILE-REPORT: source_low[8] function=signed_negative_start source_op=view.store selection=plan emitted_ops=3 execution_count=5
+COMPILE-REPORT: source_low[9] function=signed_negative_start source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 emitted_ops=1 execution_count=5
+COMPILE-REPORT: source_low_memory[0] function=signed_negative_start source_op=view.store memory_space=global operation=store packet=amdgpu.global_store_b32_saddr source_root=output source_root_argument_index=0 storage={element_format:i32} source_interval={begin_min_bytes:0,begin_max_bytes:0,end_min_bytes:4,end_max_bytes:4,exact_length_bytes:4} address_form=global_saddr dynamic_term_kind=none fallback_reason=- static_offset_bytes=0 element_bytes=4 vector_lanes=1 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 dynamic_stride_bytes=0 vector_lane_stride_bytes=4
+COMPILE-REPORT: source_low_memory_root[0] function=signed_negative_start source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=5 dynamic_source_bytes=20 dynamic_read_bytes=0 dynamic_write_bytes=20 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=20 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=20 dispatch_source_total_bytes=20 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=20 dispatch_issued_total_bytes=20 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument[0] function=signed_negative_start source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=5 dynamic_source_bytes=20 dynamic_read_bytes=0 dynamic_write_bytes=20 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=20 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=20 dispatch_source_total_bytes=20 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=20 dispatch_issued_total_bytes=20 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument_packet[0] function=signed_negative_start source_root=output source_root_argument_index=0 memory_space=global operation=store packet=amdgpu.global_store_b32_saddr storage={element_format:i32} packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=5 dynamic_source_bytes=20 dynamic_read_bytes=0 dynamic_write_bytes=20 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=20 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=20 dispatch_source_total_bytes=20 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=20 dispatch_issued_total_bytes=20 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+
+// ====
+
+// RUN: compile-report source-to-low,low-dce
+
+amdgpu.target<gfx11-generic> @target
+
+// The terminal update reaches the largest signed index without wrapping.
+kernel.def target(@target) @signed_terminal_fits() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 2147483645 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp slt, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: workload workgroup_size=1x1x1 flat_workgroup_size=1 workgroup_count=1x1x1 dispatch_workgroup_count=1 dispatch_workitem_count=1
+COMPILE-REPORT: source_low selected_ops=10 emitted_ops=8 rows=10
+COMPILE-REPORT: source_low_memory roots=1 arguments=1 argument_packets=1 strategies=0 packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=1 dynamic_source_bytes=4 dynamic_read_bytes=0 dynamic_write_bytes=4 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=4 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=4 dispatch_source_total_bytes=4 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=4 dispatch_issued_total_bytes=4 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+COMPILE-REPORT: source_low_selection[0] function=signed_terminal_fits source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_i32 descriptor_semantic_tag=integer.compare.slt.i32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=1 unknown_dynamic_ops=0 dynamic_selected_ops=2 dynamic_emitted_ops=2
+COMPILE-REPORT: source_low[0] function=signed_terminal_fits source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[1] function=signed_terminal_fits source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[2] function=signed_terminal_fits source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[3] function=signed_terminal_fits source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[4] function=signed_terminal_fits source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[5] function=signed_terminal_fits source_op=buffer.view selection=rule emitted_ops=0
+COMPILE-REPORT: source_low[6] function=signed_terminal_fits source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_i32 descriptor_semantic_tag=integer.compare.slt.i32 emitted_ops=1 execution_count=2
+COMPILE-REPORT: source_low[7] function=signed_terminal_fits source_op=index.cast selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[8] function=signed_terminal_fits source_op=view.store selection=plan emitted_ops=3
+COMPILE-REPORT: source_low[9] function=signed_terminal_fits source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 emitted_ops=1
+COMPILE-REPORT: source_low_memory[0] function=signed_terminal_fits source_op=view.store memory_space=global operation=store packet=amdgpu.global_store_b32_saddr source_root=output source_root_argument_index=0 storage={element_format:i32} source_interval={begin_min_bytes:0,begin_max_bytes:0,end_min_bytes:4,end_max_bytes:4,exact_length_bytes:4} address_form=global_saddr dynamic_term_kind=none fallback_reason=- static_offset_bytes=0 element_bytes=4 vector_lanes=1 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 dynamic_stride_bytes=0 vector_lane_stride_bytes=4
+COMPILE-REPORT: source_low_memory_root[0] function=signed_terminal_fits source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=1 dynamic_source_bytes=4 dynamic_read_bytes=0 dynamic_write_bytes=4 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=4 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=4 dispatch_source_total_bytes=4 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=4 dispatch_issued_total_bytes=4 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument[0] function=signed_terminal_fits source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=1 dynamic_source_bytes=4 dynamic_read_bytes=0 dynamic_write_bytes=4 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=4 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=4 dispatch_source_total_bytes=4 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=4 dispatch_issued_total_bytes=4 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument_packet[0] function=signed_terminal_fits source_root=output source_root_argument_index=0 memory_space=global operation=store packet=amdgpu.global_store_b32_saddr storage={element_format:i32} packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=1 dynamic_source_bytes=4 dynamic_read_bytes=0 dynamic_write_bytes=4 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=4 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=4 dispatch_source_total_bytes=4 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=4 dispatch_issued_total_bytes=4 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+
+// ====
+
+// RUN: compile-report source-to-low,low-dce
+
+amdgpu.target<gfx11-generic> @target
+
+// The terminal update wraps before it can fail the signed guard.
+kernel.def target(@target) @signed_terminal_wraps() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 2147483646 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp slt, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: workload workgroup_size=1x1x1 flat_workgroup_size=1 workgroup_count=1x1x1 dispatch_workgroup_count=1 dispatch_workitem_count=1
+COMPILE-REPORT: source_low selected_ops=10 emitted_ops=8 rows=10
+COMPILE-REPORT: source_low_memory roots=1 arguments=1 argument_packets=1 strategies=0 packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+COMPILE-REPORT: source_low_selection[0] function=signed_terminal_wraps source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_i32 descriptor_semantic_tag=integer.compare.slt.i32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=0 unknown_dynamic_ops=1 dynamic_selected_ops=0 dynamic_emitted_ops=0
+COMPILE-REPORT: source_low_selection[1] function=signed_terminal_wraps source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=0 unknown_dynamic_ops=1 dynamic_selected_ops=0 dynamic_emitted_ops=0
+COMPILE-REPORT: source_low[0] function=signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[1] function=signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[2] function=signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[3] function=signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[4] function=signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[5] function=signed_terminal_wraps source_op=buffer.view selection=rule emitted_ops=0
+COMPILE-REPORT: source_low[6] function=signed_terminal_wraps source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_i32 descriptor_semantic_tag=integer.compare.slt.i32 emitted_ops=1
+COMPILE-REPORT: source_low[7] function=signed_terminal_wraps source_op=index.cast selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[8] function=signed_terminal_wraps source_op=view.store selection=plan emitted_ops=3
+COMPILE-REPORT: source_low[9] function=signed_terminal_wraps source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 emitted_ops=1
+COMPILE-REPORT: source_low_memory[0] function=signed_terminal_wraps source_op=view.store memory_space=global operation=store packet=amdgpu.global_store_b32_saddr source_root=output source_root_argument_index=0 storage={element_format:i32} source_interval={begin_min_bytes:0,begin_max_bytes:0,end_min_bytes:4,end_max_bytes:4,exact_length_bytes:4} address_form=global_saddr dynamic_term_kind=none fallback_reason=- static_offset_bytes=0 element_bytes=4 vector_lanes=1 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 dynamic_stride_bytes=0 vector_lane_stride_bytes=4
+COMPILE-REPORT: source_low_memory_root[0] function=signed_terminal_wraps source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument[0] function=signed_terminal_wraps source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument_packet[0] function=signed_terminal_wraps source_root=output source_root_argument_index=0 memory_space=global operation=store packet=amdgpu.global_store_b32_saddr storage={element_format:i32} packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+
+// ====
+
+// RUN: compile-report source-to-low,low-dce
+
+amdgpu.target<gfx11-generic> @target
+
+// Crossing the sign bit preserves unsigned progress, including a partial final step.
+kernel.def target(@target) @unsigned_crosses_sign() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 2147483646 : index
+  %end = index.constant 2147483651 : index
+  %step = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp ult, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: workload workgroup_size=1x1x1 flat_workgroup_size=1 workgroup_count=1x1x1 dispatch_workgroup_count=1 dispatch_workitem_count=1
+COMPILE-REPORT: source_low selected_ops=10 emitted_ops=8 rows=10
+COMPILE-REPORT: source_low_memory roots=1 arguments=1 argument_packets=1 strategies=0 packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=3 dynamic_source_bytes=12 dynamic_read_bytes=0 dynamic_write_bytes=12 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=12 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=12 dispatch_source_total_bytes=12 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=12 dispatch_issued_total_bytes=12 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+COMPILE-REPORT: source_low_selection[0] function=unsigned_crosses_sign source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_u32 descriptor_semantic_tag=integer.compare.ult.i32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=1 unknown_dynamic_ops=0 dynamic_selected_ops=4 dynamic_emitted_ops=4
+COMPILE-REPORT: source_low_selection[1] function=unsigned_crosses_sign source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=1 unknown_dynamic_ops=0 dynamic_selected_ops=3 dynamic_emitted_ops=3
+COMPILE-REPORT: source_low[0] function=unsigned_crosses_sign source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[1] function=unsigned_crosses_sign source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[2] function=unsigned_crosses_sign source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[3] function=unsigned_crosses_sign source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[4] function=unsigned_crosses_sign source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[5] function=unsigned_crosses_sign source_op=buffer.view selection=rule emitted_ops=0
+COMPILE-REPORT: source_low[6] function=unsigned_crosses_sign source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_lt_u32 descriptor_semantic_tag=integer.compare.ult.i32 emitted_ops=1 execution_count=4
+COMPILE-REPORT: source_low[7] function=unsigned_crosses_sign source_op=index.cast selection=plan emitted_ops=0 execution_count=3
+COMPILE-REPORT: source_low[8] function=unsigned_crosses_sign source_op=view.store selection=plan emitted_ops=3 execution_count=3
+COMPILE-REPORT: source_low[9] function=unsigned_crosses_sign source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 emitted_ops=1 execution_count=3
+COMPILE-REPORT: source_low_memory[0] function=unsigned_crosses_sign source_op=view.store memory_space=global operation=store packet=amdgpu.global_store_b32_saddr source_root=output source_root_argument_index=0 storage={element_format:i32} source_interval={begin_min_bytes:0,begin_max_bytes:0,end_min_bytes:4,end_max_bytes:4,exact_length_bytes:4} address_form=global_saddr dynamic_term_kind=none fallback_reason=- static_offset_bytes=0 element_bytes=4 vector_lanes=1 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 dynamic_stride_bytes=0 vector_lane_stride_bytes=4
+COMPILE-REPORT: source_low_memory_root[0] function=unsigned_crosses_sign source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=3 dynamic_source_bytes=12 dynamic_read_bytes=0 dynamic_write_bytes=12 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=12 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=12 dispatch_source_total_bytes=12 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=12 dispatch_issued_total_bytes=12 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument[0] function=unsigned_crosses_sign source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=3 dynamic_source_bytes=12 dynamic_read_bytes=0 dynamic_write_bytes=12 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=12 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=12 dispatch_source_total_bytes=12 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=12 dispatch_issued_total_bytes=12 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument_packet[0] function=unsigned_crosses_sign source_root=output source_root_argument_index=0 memory_space=global operation=store packet=amdgpu.global_store_b32_saddr storage={element_format:i32} packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=3 dynamic_source_bytes=12 dynamic_read_bytes=0 dynamic_write_bytes=12 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=12 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=12 dispatch_source_total_bytes=12 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=12 dispatch_issued_total_bytes=12 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+
+// ====
+
+// RUN: compile-report source-to-low,low-dce
+
+amdgpu.target<gfx11-generic> @target
+
+// An unsigned inclusive maximum guard remains true after carrier wrap.
+kernel.def target(@target) @unsigned_inclusive_maximum() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -2 : index
+  %end = index.constant -1 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp ule, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: workload workgroup_size=1x1x1 flat_workgroup_size=1 workgroup_count=1x1x1 dispatch_workgroup_count=1 dispatch_workitem_count=1
+COMPILE-REPORT: source_low selected_ops=10 emitted_ops=8 rows=10
+COMPILE-REPORT: source_low_memory roots=1 arguments=1 argument_packets=1 strategies=0 packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+COMPILE-REPORT: source_low_selection[0] function=unsigned_inclusive_maximum source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_le_u32 descriptor_semantic_tag=integer.compare.ule.i32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=0 unknown_dynamic_ops=1 dynamic_selected_ops=0 dynamic_emitted_ops=0
+COMPILE-REPORT: source_low_selection[1] function=unsigned_inclusive_maximum source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 selected_ops=1 emitted_ops=1 exact_dynamic_ops=0 unknown_dynamic_ops=1 dynamic_selected_ops=0 dynamic_emitted_ops=0
+COMPILE-REPORT: source_low[0] function=unsigned_inclusive_maximum source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[1] function=unsigned_inclusive_maximum source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[2] function=unsigned_inclusive_maximum source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[3] function=unsigned_inclusive_maximum source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[4] function=unsigned_inclusive_maximum source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[5] function=unsigned_inclusive_maximum source_op=buffer.view selection=rule emitted_ops=0
+COMPILE-REPORT: source_low[6] function=unsigned_inclusive_maximum source_op=index.cmp selection=rule descriptor_key=amdgpu.s_cmp_le_u32 descriptor_semantic_tag=integer.compare.ule.i32 emitted_ops=1
+COMPILE-REPORT: source_low[7] function=unsigned_inclusive_maximum source_op=index.cast selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[8] function=unsigned_inclusive_maximum source_op=view.store selection=plan emitted_ops=3
+COMPILE-REPORT: source_low[9] function=unsigned_inclusive_maximum source_op=index.add selection=rule descriptor_key=amdgpu.s_add_u32 descriptor_semantic_tag=integer.add.u32 emitted_ops=1
+COMPILE-REPORT: source_low_memory[0] function=unsigned_inclusive_maximum source_op=view.store memory_space=global operation=store packet=amdgpu.global_store_b32_saddr source_root=output source_root_argument_index=0 storage={element_format:i32} source_interval={begin_min_bytes:0,begin_max_bytes:0,end_min_bytes:4,end_max_bytes:4,exact_length_bytes:4} address_form=global_saddr dynamic_term_kind=none fallback_reason=- static_offset_bytes=0 element_bytes=4 vector_lanes=1 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 dynamic_stride_bytes=0 vector_lane_stride_bytes=4
+COMPILE-REPORT: source_low_memory_root[0] function=unsigned_inclusive_maximum source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument[0] function=unsigned_inclusive_maximum source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4,exact_static_packet_count:1,unique_byte_count:4}
+COMPILE-REPORT: source_low_memory_argument_packet[0] function=unsigned_inclusive_maximum source_root=output source_root_argument_index=0 memory_space=global operation=store packet=amdgpu.global_store_b32_saddr storage={element_format:i32} packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=4 read_bytes=0 write_bytes=4 issued_read_bytes=0 issued_write_bytes=4 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:4,byte_count:4}
+
+// ====
+
+// RUN: compile-report source-to-low,low-dce
+
+amdgpu.target<gfx11-generic> @target
+
+// Offset uses its independent 64-bit carrier rather than the 32-bit index width.
+kernel.def target(@target) @wide_offset() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 4294967295 : offset
+  %end = index.constant 4294967298 : offset
+  %step = index.constant 2 : offset
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi64>
+  cfg.br ^header(%begin: offset)
+^header(%counter: offset):
+  %more = index.cmp ult, %counter, %end : offset
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : offset to i64
+  view.store %value, %output_view[%position] : i64, view<1xi64>
+  %next = index.add %counter, %step : offset
+  cfg.br ^header(%next: offset)
+^exit:
+  kernel.return
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: workload workgroup_size=1x1x1 flat_workgroup_size=1 workgroup_count=1x1x1 dispatch_workgroup_count=1 dispatch_workitem_count=1
+COMPILE-REPORT: source_low selected_ops=10 emitted_ops=34 rows=10
+COMPILE-REPORT: source_low_memory roots=1 arguments=1 argument_packets=1 strategies=0 packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=8 read_bytes=0 write_bytes=8 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=2 dynamic_source_bytes=16 dynamic_read_bytes=0 dynamic_write_bytes=16 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=16 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=16 dispatch_source_total_bytes=16 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=16 dispatch_issued_total_bytes=16 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8}
+COMPILE-REPORT: source_low[0] function=wide_offset source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[1] function=wide_offset source_op=index.constant selection=plan emitted_ops=3
+COMPILE-REPORT: source_low[2] function=wide_offset source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[3] function=wide_offset source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[4] function=wide_offset source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[5] function=wide_offset source_op=buffer.view selection=rule emitted_ops=0
+COMPILE-REPORT: source_low[6] function=wide_offset source_op=index.cmp selection=plan emitted_ops=13 execution_count=3
+COMPILE-REPORT: source_low[7] function=wide_offset source_op=index.cast selection=plan emitted_ops=0 execution_count=2
+COMPILE-REPORT: source_low[8] function=wide_offset source_op=view.store selection=plan emitted_ops=7 execution_count=2
+COMPILE-REPORT: source_low[9] function=wide_offset source_op=index.add selection=plan emitted_ops=9 execution_count=2
+COMPILE-REPORT: source_low_memory[0] function=wide_offset source_op=view.store memory_space=global operation=store packet=amdgpu.global_store_b64_saddr source_root=output source_root_argument_index=0 source_interval={begin_min_bytes:0,begin_max_bytes:0,end_min_bytes:8,end_max_bytes:8,exact_length_bytes:8} address_form=global_saddr dynamic_term_kind=none fallback_reason=- static_offset_bytes=0 element_bytes=8 vector_lanes=1 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 dynamic_stride_bytes=0 vector_lane_stride_bytes=8
+COMPILE-REPORT: source_low_memory_root[0] function=wide_offset source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=8 read_bytes=0 write_bytes=8 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=2 dynamic_source_bytes=16 dynamic_read_bytes=0 dynamic_write_bytes=16 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=16 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=16 dispatch_source_total_bytes=16 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=16 dispatch_issued_total_bytes=16 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8,exact_static_packet_count:1,unique_byte_count:8} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8,exact_static_packet_count:1,unique_byte_count:8}
+COMPILE-REPORT: source_low_memory_argument[0] function=wide_offset source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=8 read_bytes=0 write_bytes=8 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=2 dynamic_source_bytes=16 dynamic_read_bytes=0 dynamic_write_bytes=16 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=16 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=16 dispatch_source_total_bytes=16 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=16 dispatch_issued_total_bytes=16 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8,exact_static_packet_count:1,unique_byte_count:8} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8,exact_static_packet_count:1,unique_byte_count:8}
+COMPILE-REPORT: source_low_memory_argument_packet[0] function=wide_offset source_root=output source_root_argument_index=0 memory_space=global operation=store packet=amdgpu.global_store_b64_saddr packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=8 read_bytes=0 write_bytes=8 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=1 unknown_dynamic_packets=0 dynamic_packets=2 dynamic_source_bytes=16 dynamic_read_bytes=0 dynamic_write_bytes=16 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=16 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 dispatch_source_read_bytes=0 dispatch_source_write_bytes=16 dispatch_source_total_bytes=16 dispatch_issued_read_bytes=0 dispatch_issued_write_bytes=16 dispatch_issued_total_bytes=16 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8}
+
+// ====
+
+// RUN: compile-report source-to-low,low-dce
+
+amdgpu.target<gfx11-generic> @target
+
+// A signed guard on offset still checks overflow at the 64-bit sign boundary.
+kernel.def target(@target) @wide_signed_terminal_wraps() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 9223372036854775806 : offset
+  %end = index.constant 9223372036854775807 : offset
+  %step = index.constant 2 : offset
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi64>
+  cfg.br ^header(%begin: offset)
+^header(%counter: offset):
+  %more = index.cmp slt, %counter, %end : offset
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : offset to i64
+  view.store %value, %output_view[%position] : i64, view<1xi64>
+  %next = index.add %counter, %step : offset
+  cfg.br ^header(%next: offset)
+^exit:
+  kernel.return
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: workload workgroup_size=1x1x1 flat_workgroup_size=1 workgroup_count=1x1x1 dispatch_workgroup_count=1 dispatch_workitem_count=1
+COMPILE-REPORT: source_low selected_ops=10 emitted_ops=36 rows=10
+COMPILE-REPORT: source_low_memory roots=1 arguments=1 argument_packets=1 strategies=0 packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=8 read_bytes=0 write_bytes=8 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8}
+COMPILE-REPORT: source_low[0] function=wide_signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=3
+COMPILE-REPORT: source_low[1] function=wide_signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=3
+COMPILE-REPORT: source_low[2] function=wide_signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=1
+COMPILE-REPORT: source_low[3] function=wide_signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[4] function=wide_signed_terminal_wraps source_op=index.constant selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[5] function=wide_signed_terminal_wraps source_op=buffer.view selection=rule emitted_ops=0
+COMPILE-REPORT: source_low[6] function=wide_signed_terminal_wraps source_op=index.cmp selection=plan emitted_ops=13
+COMPILE-REPORT: source_low[7] function=wide_signed_terminal_wraps source_op=index.cast selection=plan emitted_ops=0
+COMPILE-REPORT: source_low[8] function=wide_signed_terminal_wraps source_op=view.store selection=plan emitted_ops=7
+COMPILE-REPORT: source_low[9] function=wide_signed_terminal_wraps source_op=index.add selection=plan emitted_ops=9
+COMPILE-REPORT: source_low_memory[0] function=wide_signed_terminal_wraps source_op=view.store memory_space=global operation=store packet=amdgpu.global_store_b64_saddr source_root=output source_root_argument_index=0 source_interval={begin_min_bytes:0,begin_max_bytes:0,end_min_bytes:8,end_max_bytes:8,exact_length_bytes:8} address_form=global_saddr dynamic_term_kind=none fallback_reason=- static_offset_bytes=0 element_bytes=8 vector_lanes=1 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 dynamic_stride_bytes=0 vector_lane_stride_bytes=8
+COMPILE-REPORT: source_low_memory_root[0] function=wide_signed_terminal_wraps source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=8 read_bytes=0 write_bytes=8 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8,exact_static_packet_count:1,unique_byte_count:8} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8,exact_static_packet_count:1,unique_byte_count:8}
+COMPILE-REPORT: source_low_memory_argument[0] function=wide_signed_terminal_wraps source_root=output source_root_argument_index=0 memory_space=global packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=8 read_bytes=0 write_bytes=8 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8,exact_static_packet_count:1,unique_byte_count:8} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8,exact_static_packet_count:1,unique_byte_count:8}
+COMPILE-REPORT: source_low_memory_argument_packet[0] function=wide_signed_terminal_wraps source_root=output source_root_argument_index=0 memory_space=global operation=store packet=amdgpu.global_store_b64_saddr packets=1 loads=0 stores=1 scalar_packets=1 vector_packets=0 source_lanes=1 source_bytes=8 read_bytes=0 write_bytes=8 issued_read_bytes=0 issued_write_bytes=8 issued_read_unknown_widths=0 issued_write_unknown_widths=0 contiguous_vector_packets=0 strided_vector_packets=0 unknown_stride_vector_packets=0 exact_dynamic_packets=0 unknown_dynamic_packets=1 dynamic_packets=0 dynamic_source_bytes=0 dynamic_read_bytes=0 dynamic_write_bytes=0 dynamic_issued_read_bytes=0 dynamic_issued_write_bytes=0 dynamic_issued_read_unknown_widths=0 dynamic_issued_write_unknown_widths=0 interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8} write_interval_envelope={packets:1,begin_min_bytes:0,end_max_bytes:8,byte_count:8}

@@ -106,6 +106,26 @@ endif()
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_AMDGPU_IREE_HAL_DESCRIPTOR_SET_GFX11_GENERIC_CORE)
 iree_native_test(
   NAME
+    "gfx11_loop_count_access_test"
+  ARGS
+    "{{${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/loop_count.loom}}"
+    "--device=amdgpu"
+    "--sanitizer=access"
+  SRC
+    loom::tools::iree-test-loom
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/loop_count.loom"
+  LABELS
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "requires-gpu-amd"
+    "runtime-resource=amd-gpu"
+    "notsan"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_AMDGPU_IREE_HAL_DESCRIPTOR_SET_GFX11_GENERIC_CORE)
+iree_native_test(
+  NAME
     "gfx11_loop_entry_access_test"
   ARGS
     "{{${CMAKE_CURRENT_BINARY_DIR}/gfx11_loop_entry_module.loombc}}"

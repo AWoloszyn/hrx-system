@@ -1,0 +1,196 @@
+amdgpu.target<gfx11-generic> @loop_count_target
+
+// Unsigned -1 is above four, so no increment executes.
+kernel.def target(@loop_count_target) @unsigned_empty_loop() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -1 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %initial_count = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %initial_count: i32)
+^header(%counter: index, %count: i32):
+  %more = index.cmp ult, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  %next_count = scalar.addi %count, %increment : i32
+  cfg.br ^header(%next: index, %next_count: i32)
+^exit:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  kernel.return
+}
+
+check.case public @unsigned_empty_loop_case {
+  %actual = check.generate.fill value(-1) : tensor<1xi32>
+  %expected = check.generate.fill value(0) : tensor<1xi32>
+  kernel.launch @unsigned_empty_loop(%actual) : (tensor<1xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+// Signed -1 reaches four after five increments.
+kernel.def target(@loop_count_target) @signed_negative_loop() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -1 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %initial_count = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %initial_count: i32)
+^header(%counter: index, %count: i32):
+  %more = index.cmp slt, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  %next_count = scalar.addi %count, %increment : i32
+  cfg.br ^header(%next: index, %next_count: i32)
+^exit:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  kernel.return
+}
+
+check.case public @signed_negative_loop_case {
+  %actual = check.generate.fill value(-1) : tensor<1xi32>
+  %expected = check.generate.fill value(5) : tensor<1xi32>
+  kernel.launch @signed_negative_loop(%actual) : (tensor<1xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+// An unsigned counter advances through the signed boundary without wrapping.
+kernel.def target(@loop_count_target) @unsigned_sign_crossing_loop() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 2147483646 : index
+  %end = index.constant 2147483651 : index
+  %step = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %initial_count = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %initial_count: i32)
+^header(%counter: index, %count: i32):
+  %more = index.cmp ult, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  %next_count = scalar.addi %count, %increment : i32
+  cfg.br ^header(%next: index, %next_count: i32)
+^exit:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  kernel.return
+}
+
+check.case public @unsigned_sign_crossing_loop_case {
+  %actual = check.generate.fill value(-1) : tensor<1xi32>
+  %expected = check.generate.fill value(3) : tensor<1xi32>
+  kernel.launch @unsigned_sign_crossing_loop(%actual) : (tensor<1xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+// A true guard exits immediately; the comparison is not a continuation test.
+kernel.def target(@loop_count_target) @inverted_loop_guard() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %initial_count = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %initial_count: i32)
+^header(%counter: index, %count: i32):
+  %more = index.cmp ult, %counter, %end : index
+  cfg.cond_br %more, ^exit, ^body
+^body:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  %next_count = scalar.addi %count, %increment : i32
+  cfg.br ^header(%next: index, %next_count: i32)
+^exit:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  kernel.return
+}
+
+check.case public @inverted_loop_guard_case {
+  %actual = check.generate.fill value(-1) : tensor<1xi32>
+  %expected = check.generate.fill value(0) : tensor<1xi32>
+  kernel.launch @inverted_loop_guard(%actual) : (tensor<1xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+// This loop is compiled for report checks only: its terminal increment wraps.
+kernel.def target(@loop_count_target) @signed_wrapping_report() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 2147483646 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %initial_count = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %initial_count: i32)
+^header(%counter: index, %count: i32):
+  %more = index.cmp slt, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  %next_count = scalar.addi %count, %increment : i32
+  cfg.br ^header(%next: index, %next_count: i32)
+^exit:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  kernel.return
+}
+
+// This loop is compiled for report checks only: every carrier value passes
+// the guard.
+kernel.def target(@loop_count_target) @unsigned_inclusive_report() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -2 : index
+  %end = index.constant -1 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %initial_count = scalar.constant 0 : i32
+  %increment = scalar.constant 1 : i32
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %initial_count: i32)
+^header(%counter: index, %count: i32):
+  %more = index.cmp ule, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  %next_count = scalar.addi %count, %increment : i32
+  cfg.br ^header(%next: index, %next_count: i32)
+^exit:
+  view.store %count, %output_view[%position] : i32, view<1xi32>
+  kernel.return
+}

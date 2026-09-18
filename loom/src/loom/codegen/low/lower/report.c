@@ -16,6 +16,7 @@
 #include "loom/ir/module.h"
 #include "loom/ops/cfg/ops.h"
 #include "loom/ops/func/ops.h"
+#include "loom/ops/index/loop_count.h"
 #include "loom/ops/index/ops.h"
 #include "loom/util/cfg_graph.h"
 #include "loom/util/cfg_loop_nest.h"
@@ -583,9 +584,7 @@ static bool loom_low_lower_report_add_step(
 
 static bool loom_low_lower_report_header_upper_bound(
     const loom_low_lower_context_t* context, const loom_op_t* cond_br_op,
-    loom_value_id_t iv_id, int64_t* out_upper_bound,
-    bool* out_inclusive_upper_bound) {
-  *out_inclusive_upper_bound = false;
+    loom_value_id_t iv_id, int64_t* out_upper_bound, uint8_t* out_predicate) {
   if (cond_br_op == NULL || !loom_cfg_cond_br_isa(cond_br_op)) {
     return false;
   }
@@ -618,35 +617,7 @@ static bool loom_low_lower_report_header_upper_bound(
           context, loom_index_cmp_rhs(compare_op), out_upper_bound)) {
     return false;
   }
-  *out_inclusive_upper_bound = inclusive_upper;
-  return true;
-}
-
-static bool loom_low_lower_report_compute_trip_count(int64_t lower_bound,
-                                                     int64_t upper_bound,
-                                                     bool inclusive_upper_bound,
-                                                     int64_t step,
-                                                     uint64_t* out_trip_count) {
-  *out_trip_count = 0;
-  if (step <= 0) {
-    return false;
-  }
-  if (inclusive_upper_bound) {
-    if (upper_bound == INT64_MAX) {
-      return false;
-    }
-    ++upper_bound;
-  }
-  if (upper_bound <= lower_bound) {
-    return true;
-  }
-  int64_t span = 0;
-  if (!iree_checked_sub_i64(upper_bound, lower_bound, &span)) {
-    return false;
-  }
-  const uint64_t unsigned_span = (uint64_t)span;
-  const uint64_t unsigned_step = (uint64_t)step;
-  *out_trip_count = ((unsigned_span - 1) / unsigned_step) + 1;
+  *out_predicate = loom_index_cmp_predicate(compare_op);
   return true;
 }
 
@@ -700,16 +671,25 @@ static bool loom_low_lower_report_try_counted_cfg_loop(
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
   int64_t step = 0;
-  bool inclusive_upper_bound = false;
-  bool lower_ok =
-      loom_low_lower_report_value_exact_i64(context, initial_arg, &lower_bound);
-  bool step_ok =
-      loom_low_lower_report_add_step(context, body_backedge_arg, iv_id, &step);
-  bool upper_ok = loom_low_lower_report_header_upper_bound(
-      context, header->last_op, iv_id, &upper_bound, &inclusive_upper_bound);
-  bool trip_ok = loom_low_lower_report_compute_trip_count(
-      lower_bound, upper_bound, inclusive_upper_bound, step, out_trip_count);
-  return lower_ok && step_ok && upper_ok && trip_ok;
+  uint8_t predicate = 0;
+  if (!loom_low_lower_report_value_exact_i64(context, initial_arg,
+                                             &lower_bound) ||
+      !loom_low_lower_report_add_step(context, body_backedge_arg, iv_id,
+                                      &step) ||
+      !loom_low_lower_report_header_upper_bound(context, header->last_op, iv_id,
+                                                &upper_bound, &predicate)) {
+    return false;
+  }
+  const loom_target_snapshot_t* target =
+      &context->options->target_facts->storage.snapshot;
+  const loom_scalar_type_t scalar_type =
+      loom_type_element_type(loom_module_value_type(context->module, iv_id));
+  const uint8_t bitwidth = scalar_type == LOOM_SCALAR_TYPE_INDEX
+                               ? target->index_bitwidth
+                               : target->offset_bitwidth;
+  return loom_index_loop_trip_count(predicate, bitwidth, (uint64_t)lower_bound,
+                                    (uint64_t)upper_bound, (uint64_t)step,
+                                    out_trip_count);
 }
 
 static iree_status_t loom_low_lower_report_calculate_source_block_counts(

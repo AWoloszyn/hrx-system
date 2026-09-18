@@ -153,6 +153,7 @@ loom_cc_library(
     loom::codegen::low::lower
     loom::codegen::low::packet
     loom::ir
+    loom::ops::index
     loom::ops::low
     loom::target::registers
     loom::util::cfg_graph
