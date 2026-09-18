@@ -481,10 +481,14 @@ static iree_status_t loom_cfg_simplify_entry_facts_prove_bool(
     const loom_cfg_condition_relation_view_t* view, loom_value_id_t condition,
     bool* out_value, bool* out_proven) {
   loom_condition_fact_scope_t scope;
-  loom_condition_fact_scope_initialize_indexed(NULL, table, view, &scope);
+  const loom_condition_fact_scope_t* scope_ptr = NULL;
+  if (view != NULL) {
+    loom_condition_fact_scope_initialize_indexed(NULL, table, view, &scope);
+    scope_ptr = &scope;
+  }
   return loom_condition_fact_scope_proves_condition(
-      &state->condition_query, state->fact_table, &scope, condition, out_value,
-      out_proven);
+      &state->condition_query, state->fact_table, scope_ptr, condition,
+      out_value, out_proven);
 }
 
 static iree_status_t loom_cfg_simplify_fold_path_sensitive_cond_br(

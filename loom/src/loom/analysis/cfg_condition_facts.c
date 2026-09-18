@@ -218,6 +218,9 @@ typedef struct loom_cfg_condition_relation_solver_t {
 
   // Finite coalescing propagation queue.
   loom_cfg_condition_event_queue_t pending;
+
+  // True when edge derivation produced any path-sensitive facts.
+  bool has_derived_facts;
 } loom_cfg_condition_relation_solver_t;
 
 static bool loom_cfg_condition_mapping_pair_less(
@@ -611,6 +614,8 @@ static iree_status_t loom_cfg_condition_relation_derive_edges(
       edge->raw_boolean_facts = boolean_facts;
       edge->raw_boolean_fact_count = (uint32_t)derivation.boolean_fact_count;
     }
+    solver->has_derived_facts |=
+        edge->raw_relation_count != 0 || edge->raw_boolean_fact_count != 0;
   }
   return iree_ok_status();
 }
@@ -729,7 +734,11 @@ static iree_status_t loom_cfg_condition_collect_forwarding_pairs(
   return iree_ok_status();
 }
 
-static iree_status_t loom_cfg_condition_relation_build_operand_domain(
+#if IREE_HAVE_ATTRIBUTE(minsize)
+__attribute__((minsize))
+#endif
+IREE_ATTRIBUTE_NOINLINE static iree_status_t
+loom_cfg_condition_relation_build_operand_domain(
     loom_cfg_condition_relation_solver_t* solver) {
   const loom_value_ordinal_t local_value_count =
       solver->value_domain->value_count;
@@ -1256,7 +1265,11 @@ static iree_status_t loom_cfg_condition_relation_project_truth(
   return loom_cfg_condition_truth_normalize(solver, out_truth);
 }
 
-static iree_status_t loom_cfg_condition_relation_build_edges(
+#if IREE_HAVE_ATTRIBUTE(minsize)
+__attribute__((minsize))
+#endif
+IREE_ATTRIBUTE_NOINLINE static iree_status_t
+loom_cfg_condition_relation_build_edges(
     loom_cfg_condition_relation_solver_t* solver) {
   solver->projection_cache.arena = solver->scratch_arena;
   for (loom_cfg_edge_index_t edge_index = 0;
@@ -1361,7 +1374,11 @@ static iree_status_t loom_cfg_condition_relation_project_truth_contribution(
                                              &projected);
 }
 
-static iree_status_t loom_cfg_condition_relation_initialize_candidates(
+#if IREE_HAVE_ATTRIBUTE(minsize)
+__attribute__((minsize))
+#endif
+IREE_ATTRIBUTE_NOINLINE static iree_status_t
+loom_cfg_condition_relation_initialize_candidates(
     loom_cfg_condition_relation_solver_t* solver) {
   const loom_cfg_graph_t* graph = solver->graph;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -1745,7 +1762,11 @@ static iree_status_t loom_cfg_condition_relation_publish_domain(
   return iree_ok_status();
 }
 
-static iree_status_t loom_cfg_condition_relation_publish(
+#if IREE_HAVE_ATTRIBUTE(minsize)
+__attribute__((minsize))
+#endif
+IREE_ATTRIBUTE_NOINLINE static iree_status_t
+loom_cfg_condition_relation_publish(
     loom_cfg_condition_relation_solver_t* solver,
     loom_cfg_condition_relation_table_t* out_table) {
   const loom_cfg_graph_t* graph = solver->graph;
@@ -1887,6 +1908,9 @@ static iree_status_t loom_cfg_condition_relation_solve(
   loom_condition_relation_matrix_builder_initialize(solver->scratch_arena,
                                                     &solver->matrix_builder);
   IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_derive_edges(solver));
+  if (!solver->has_derived_facts) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       loom_cfg_condition_relation_build_operand_domain(solver));
   IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_build_edges(solver));

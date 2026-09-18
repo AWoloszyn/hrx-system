@@ -727,8 +727,11 @@ static iree_status_t loom_condition_relation_publish_dense_set(
   return iree_ok_status();
 }
 
-IREE_ATTRIBUTE_NOINLINE
-iree_status_t loom_condition_relation_set_builder_publish(
+#if IREE_HAVE_ATTRIBUTE(minsize)
+__attribute__((minsize))
+#endif
+IREE_ATTRIBUTE_NOINLINE iree_status_t
+loom_condition_relation_set_builder_publish(
     loom_condition_relation_set_builder_t* builder,
     loom_condition_relation_set_id_t* roots, iree_host_size_t root_count,
     iree_arena_allocator_t* arena,

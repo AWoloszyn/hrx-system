@@ -315,7 +315,11 @@ static iree_status_t loom_condition_relation_matrix_publish_ranges(
   return iree_ok_status();
 }
 
-iree_status_t loom_condition_relation_matrix_view_publish(
+#if IREE_HAVE_ATTRIBUTE(minsize)
+__attribute__((minsize))
+#endif
+IREE_ATTRIBUTE_NOINLINE iree_status_t
+loom_condition_relation_matrix_view_publish(
     const loom_condition_relation_matrix_t* source,
     iree_arena_allocator_t* arena,
     loom_condition_relation_matrix_view_t* out_view) {

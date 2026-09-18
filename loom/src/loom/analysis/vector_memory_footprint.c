@@ -1772,9 +1772,10 @@ static iree_status_t loom_vector_memory_footprint_push_cfg_blocks(
     }
     const loom_cfg_condition_relation_view_t* block_view =
         loom_cfg_condition_relation_table_block(condition_table, block_index);
-    if (block_view->integer_relations.entry_count == 0 &&
-        block_view->boolean_values[0] == LOOM_CONDITION_RELATION_SET_EMPTY &&
-        block_view->boolean_values[1] == LOOM_CONDITION_RELATION_SET_EMPTY) {
+    if (block_view == NULL ||
+        (block_view->integer_relations.entry_count == 0 &&
+         block_view->boolean_values[0] == LOOM_CONDITION_RELATION_SET_EMPTY &&
+         block_view->boolean_values[1] == LOOM_CONDITION_RELATION_SET_EMPTY)) {
       IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_push_block(
           state, stack, block, condition_scope));
       continue;

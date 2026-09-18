@@ -226,6 +226,33 @@ class CfgConditionFactsTest : public ::testing::Test {
   loom_cfg_value_identity_table_t identities_ = {};
 };
 
+TEST_F(CfgConditionFactsTest, OmitsViewsWhenNoPathFactsAreDerived) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* exit = AppendBlock();
+
+  SetBlock(entry);
+  BuildBranch(exit);
+  SetBlock(exit);
+  loom_op_t* terminator = nullptr;
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_cfg_graph_t graph = {};
+  IREE_ASSERT_OK(
+      loom_cfg_graph_build(module_, body_, &analysis_arena_, &graph));
+  loom_dominance_info_t dominance = {};
+  IREE_ASSERT_OK(
+      loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
+
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance);
+  EXPECT_EQ(loom_cfg_condition_relation_table_block(&table, 0), nullptr);
+  EXPECT_EQ(loom_cfg_condition_relation_table_block(&table, 1), nullptr);
+  ASSERT_EQ(graph.edge_count, 1u);
+  EXPECT_EQ(loom_cfg_condition_relation_table_edge(&table, 0), nullptr);
+}
+
 TEST_F(CfgConditionFactsTest, PropagatesNestedBranchRelationsToTailBlock) {
   loom_block_t* entry_block = loom_region_entry_block(body_);
   loom_block_t* in_bounds_block = AppendBlock();
