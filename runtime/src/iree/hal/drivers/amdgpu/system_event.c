@@ -122,7 +122,7 @@ static iree_status_t iree_hal_amdgpu_system_event_make_status(
           event->memory_fault.fault_reason_mask);
     case HSA_AMD_GPU_HW_EXCEPTION_EVENT:
       return iree_make_status(
-          IREE_STATUS_ABORTED,
+          IREE_STATUS_DATA_LOSS,
           "AMDGPU hardware exception (reset type 0x%08" PRIx32
           ", cause 0x%08" PRIx32 ")",
           (uint32_t)event->hw_exception.reset_type,

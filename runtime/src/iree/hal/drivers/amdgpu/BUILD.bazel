@@ -871,6 +871,21 @@ iree_runtime_cc_benchmark(
 )
 
 iree_runtime_cc_test(
+    name = "feedback_state_test",
+    srcs = ["feedback_state_test.cc"],
+    deps = [
+        ":amdgpu",
+        ":headers",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+        "//runtime/src/iree/hal/drivers/amdgpu/abi",
+        "//runtime/src/iree/hal/drivers/amdgpu/device:headers",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
     name = "system_event_test",
     srcs = ["system_event_test.cc"],
     deps = [

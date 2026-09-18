@@ -414,6 +414,19 @@ class SystemEventTest : public ::testing::Test {
     event.memory_fault.fault_reason_mask = 0;
     return g_captured_callback(&event, g_captured_data);
   }
+
+  static hsa_status_t DispatchHardwareException(uint64_t agent_handle,
+                                                uint32_t reset_type,
+                                                uint32_t reset_cause) {
+    hsa_amd_event_t event = {};
+    event.event_type = HSA_AMD_GPU_HW_EXCEPTION_EVENT;
+    event.hw_exception.agent = MakeAgent(agent_handle);
+    event.hw_exception.reset_type =
+        static_cast<hsa_amd_hw_exception_reset_type_t>(reset_type);
+    event.hw_exception.reset_cause =
+        static_cast<hsa_amd_hw_exception_reset_cause_t>(reset_cause);
+    return g_captured_callback(&event, g_captured_data);
+  }
 };
 
 // An event for an agent no registration holds is not claimed, leaving the HSA
@@ -457,6 +470,29 @@ TEST_F(SystemEventTest, MatchedEventFailsPublishedQueues) {
   }
   EXPECT_EQ(device.FailureStatusCode(), IREE_STATUS_ABORTED);
   EXPECT_TRUE(device.FailureStatusMentions("00000000dead0000"));
+
+  iree_hal_amdgpu_system_event_unregister_device(registration);
+}
+
+// Hardware exceptions and memory access faults are both terminal, but they
+// remain distinct status classes so API layers can report the cause accurately.
+TEST_F(SystemEventTest, HardwareExceptionPreservesFailureClass) {
+  const uint64_t agent_handles[] = {kAgentHandleA};
+  FakeLogicalDevice device;
+  device.Initialize(agent_handles, IREE_ARRAYSIZE(agent_handles));
+  FakeHostQueues queues(1);
+  iree_hal_amdgpu_system_event_registration_t* registration = Register(device);
+  Publish(iree_hal_amdgpu_system_event_registration_lookup_agent(
+              registration, MakeAgent(kAgentHandleA)),
+          queues);
+
+  EXPECT_EQ(DispatchHardwareException(kAgentHandleA, /*reset_type=*/3,
+                                      /*reset_cause=*/5),
+            HSA_STATUS_SUCCESS);
+  EXPECT_EQ(queues.ErrorStatusCode(0), IREE_STATUS_DATA_LOSS);
+  EXPECT_EQ(device.FailureStatusCode(), IREE_STATUS_DATA_LOSS);
+  EXPECT_TRUE(queues.ErrorStatusMentions(0, "reset type 0x00000003"));
+  EXPECT_TRUE(device.FailureStatusMentions("cause 0x00000005"));
 
   iree_hal_amdgpu_system_event_unregister_device(registration);
 }
