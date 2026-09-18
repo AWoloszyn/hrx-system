@@ -119,6 +119,8 @@ struct SendState {
   std::vector<iree_status_code_t> status_codes;
   // Transferred byte count from each send callback.
   std::vector<iree_host_size_t> byte_counts;
+  // Optional action invoked after recording a completion.
+  std::function<void()> completion_action;
 
   static void OnCompletion(void* user_data, iree_status_t status,
                            iree_host_size_t bytes_transferred) {
@@ -128,10 +130,28 @@ struct SendState {
     self->status_codes.push_back(iree_status_code(status));
     self->byte_counts.push_back(bytes_transferred);
     iree_status_free(status);
+    if (self->completion_action) {
+      self->completion_action();
+    }
   }
 
   iree_net_send_completion_callback_t callback() {
     return {/*.fn=*/OnCompletion, /*.user_data=*/this};
+  }
+};
+
+struct DeactivationState {
+  // Poll-side marker set by the fixture around proactor polling.
+  int* current_poll_side = nullptr;
+  // Proactor side on which deactivation must complete.
+  PollSide expected_poll_side = kNotPolling;
+  // True after the deactivation callback executes.
+  bool completed = false;
+
+  static void OnDeactivated(void* user_data) {
+    auto* self = static_cast<DeactivationState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    self->completed = true;
   }
 };
 
@@ -142,6 +162,8 @@ struct PrefixWriter {
   int call_count = 0;
   // Alignment observed for transport-owned storage.
   uintptr_t target_alignment = 0;
+  // Status returned after writing the generated prefix.
+  iree_status_code_t result_code = IREE_STATUS_OK;
 
   static iree_status_t Write(void* user_data, iree_byte_span_t target) {
     auto* self = static_cast<PrefixWriter*>(user_data);
@@ -149,7 +171,10 @@ struct PrefixWriter {
     self->target_alignment = reinterpret_cast<uintptr_t>(target.data) %
                              IREE_NET_SEND_PREFIX_ALIGNMENT;
     memset(target.data, self->value, target.data_length);
-    return iree_ok_status();
+    return self->result_code == IREE_STATUS_OK
+               ? iree_ok_status()
+               : iree_make_status(self->result_code,
+                                  "injected prefix writer failure");
   }
 };
 
@@ -362,6 +387,22 @@ TEST_F(LoopbackCarrierTest, QueuesSendUntilPeerActivation) {
                         server_endpoint_.received_bytes.end()),
             "bootstrap");
   EXPECT_EQ(send_state.status_codes[0], IREE_STATUS_OK);
+}
+
+TEST_F(LoopbackCarrierTest, IdleDeactivationCompletesOnOwningProactor) {
+  CreatePair();
+  ActivateBoth();
+
+  DeactivationState state;
+  state.current_poll_side = &current_poll_side_;
+  state.expected_poll_side = kClientPolling;
+  iree_net_carrier_deactivate(client_, DeactivationState::OnDeactivated,
+                              &state);
+  EXPECT_FALSE(state.completed);
+
+  PollUntil(client_proactor_, kClientPolling, [&] { return state.completed; });
+  EXPECT_EQ(iree_net_carrier_state(client_),
+            IREE_NET_CARRIER_STATE_DEACTIVATED);
 }
 
 TEST_F(LoopbackCarrierTest, RetainsRegisteredRegionUntilSendCompletion) {
@@ -582,6 +623,52 @@ TEST_F(LoopbackCarrierTest,
             [&] { return retry_send.completion_count == 1; });
   EXPECT_EQ(retry_send.status_codes,
             (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+}
+
+TEST_F(LoopbackCarrierTest, DrainsCompletionQueuedFromCompletionCallback) {
+  CreatePair();
+  ActivateBoth();
+
+  PrefixWriter failing_writer;
+  failing_writer.result_code = IREE_STATUS_CANCELLED;
+  SendState nested_send;
+  nested_send.current_poll_side = &current_poll_side_;
+  nested_send.expected_poll_side = kClientPolling;
+  iree_net_send_params_t nested_params = {
+      /*.generated_prefix=*/
+      {
+          /*.length=*/1,
+          /*.write=*/PrefixWriter::Write,
+          /*.user_data=*/&failing_writer,
+      },
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/nested_send.callback(),
+  };
+
+  char payload = 'x';
+  iree_async_span_t span = iree_async_span_from_ptr(&payload, sizeof(payload));
+  SendState initial_send;
+  initial_send.current_poll_side = &current_poll_side_;
+  initial_send.expected_poll_side = kClientPolling;
+  initial_send.completion_action = [&] {
+    IREE_EXPECT_OK(iree_net_carrier_send(client_, &nested_params));
+  };
+  iree_net_send_params_t initial_params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
+      /*.data=*/iree_async_span_list_make(&span, 1),
+      /*.completion_callback=*/initial_send.callback(),
+  };
+
+  IREE_ASSERT_OK(iree_net_carrier_send(client_, &initial_params));
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return server_endpoint_.received_bytes.size() == 1; });
+  Poll(client_proactor_, kClientPolling);
+
+  EXPECT_EQ(initial_send.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+  EXPECT_EQ(nested_send.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_CANCELLED}));
+  EXPECT_EQ(nested_send.byte_counts, (std::vector<iree_host_size_t>{0}));
 }
 
 TEST_F(LoopbackCarrierTest, DeactivationCompletesAcceptedGeneratedPrefixSend) {
