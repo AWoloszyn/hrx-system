@@ -907,10 +907,18 @@ iree_status_t loom_value_fact_table_recompute_cfg_component(
   for (uint32_t iteration = 0; iteration < LOOM_VALUE_FACT_CFG_MAX_ITERATIONS;
        ++iteration) {
     bool changed = false;
-    IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_forwarding(
-        table, module, region, component_index, iteration, &changed));
+    // Seed producers in execution order before joining the whole forwarding
+    // partition. An inner loop's initializer can live inside this component.
+    if (iteration != 0) {
+      IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_forwarding(
+          table, module, region, component_index, iteration, &changed));
+    }
     for (iree_host_size_t i = 0; i < component->node_count; ++i) {
       uint16_t block_index = blocks[i];
+      if (iteration == 0) {
+        IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_args(
+            table, module, region, block_index, &changed));
+      }
       IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_tree(
           table, module, region->graph.blocks[block_index].block, &changed));
     }
@@ -973,7 +981,10 @@ static iree_status_t loom_value_fact_table_compute_cfg_region_tree(
       const uint16_t block_index = graph->reverse_postorder.values[i];
       const loom_cfg_block_info_t* block_info = &graph->blocks[block_index];
       const loom_block_t* block = block_info->block;
-      if (block_info->component_is_cyclic) {
+      // The initial sweep must reach in-cycle producers before their users.
+      // Otherwise an unseeded nested loop publishes unknown feedback before
+      // its initializer has contributed facts, permanently losing precision.
+      if (block_info->component_is_cyclic && iteration != 0) {
         const iree_host_size_t component_index = block_info->component;
         if (visited_components[component_index] != iteration + 1) {
           visited_components[component_index] = iteration + 1;

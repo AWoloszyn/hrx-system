@@ -1135,3 +1135,47 @@ kernel.def target(@device) @queued_nested_recurrence() {
 ^exit:
   kernel.return
 }
+
+// ====
+
+// RUN: pass canonicalize
+
+// The initializer is inside the outer cycle but dominates the inner header.
+// Its facts must be seeded before the inner recurrence contributes feedback.
+func.def @nested_loop_initializer(%outer_again: i1, %inner_again: i1) {
+  %c4 = index.constant 4 : index
+  cfg.br ^outer
+^outer:
+  %initial = index.add %c4, %c4 : index
+  cfg.br ^inner(%initial: index)
+^inner(%state: index):
+  %upper = test.fact_range_hi %state : index -> i64
+  test.use %upper : i64
+  cfg.cond_br %inner_again, ^body, ^latch
+^body:
+  %next = index.max %state, %c4 : index
+  cfg.br ^inner(%next: index)
+^latch:
+  cfg.cond_br %outer_again, ^outer, ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @nested_loop_initializer(%outer_again: i1, %inner_again: i1) {
+  cfg.br ^outer
+^outer:
+  %initial = index.constant 8 : index
+  cfg.br ^inner(%initial: index)
+^inner(%state: index):
+  %upper = scalar.constant 8 : i64
+  test.use %upper : i64
+  cfg.cond_br %inner_again, ^body, ^latch
+^body:
+  %next = index.constant 8 : index
+  cfg.br ^inner(%next: index)
+^latch:
+  cfg.cond_br %outer_again, ^outer, ^exit
+^exit:
+  func.return
+}
