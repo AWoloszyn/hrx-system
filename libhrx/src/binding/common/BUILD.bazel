@@ -227,6 +227,7 @@ hrx_cc_test(
     srcs = ["event_test.cc"],
     deps = [
         ":common",
+        "//build_tools/bazel:pthreads",
         "//libhrx/src/libhrx:hrx_static",
         "//runtime/src/iree/base",
         "//runtime/src/iree/hal",
@@ -252,6 +253,26 @@ hrx_cc_test(
 hrx_cc_test(
     name = "event_timestamp_pool_test",
     srcs = ["event_timestamp_pool_test.cc"],
+    deps = [
+        ":common",
+        "//libhrx/src/libhrx:hrx_static",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+hrx_cc_test(
+    name = "memory_test",
+    srcs = ["memory_test.cc"],
+    linkopts = select({
+        "@platforms//os:linux": [
+            "-Wl,--wrap=hrx_buffer_table_insert_reserved",
+            "-Wl,--wrap=iree_hal_command_buffer_execution_barrier",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":common",
         "//libhrx/src/libhrx:hrx_static",

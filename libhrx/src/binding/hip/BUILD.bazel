@@ -35,6 +35,17 @@ _HIP_GPU_COMPATIBILITY = _LINUX_COMPATIBILITY + select({
 })
 
 hrx_cc_library(
+    name = "array_lifetime",
+    srcs = ["array_lifetime.c"],
+    hdrs = ["array_lifetime.h"],
+    includes = ["../.."],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
+    ],
+)
+
+hrx_cc_library(
     name = "hip_dso_test_util",
     testonly = True,
     srcs = ["hip_dso_test_util.cc"],
@@ -304,6 +315,18 @@ hrx_cc_library(
     deps = ["//libhrx/src/binding/common:amdgpu_architecture"],
 )
 
+hrx_cc_library(
+    name = "staged_copy",
+    srcs = ["staged_copy.c"],
+    hdrs = ["staged_copy.h"],
+    includes = ["../.."],
+    deps = [
+        "//libhrx/src/binding/common",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+    ],
+)
+
 hrx_cc_shared_library(
     name = "amdhip64",
     srcs = [
@@ -334,6 +357,7 @@ hrx_cc_shared_library(
     ],
     target_compatible_with = _LINUX_COMPATIBILITY,
     deps = [
+        ":array_lifetime",
         ":blocking_printf_provider",
         ":device_properties",
         ":error_state",
@@ -345,6 +369,7 @@ hrx_cc_shared_library(
         ":launch_params",
         ":peer",
         ":spirv_linker_compiler",
+        ":staged_copy",
         ":status_conversion",
         ":stream",
         ":stream_value",
@@ -354,6 +379,76 @@ hrx_cc_shared_library(
         "//runtime/src/iree/base/internal",
         "//runtime/src/iree/base/threading",
         "//runtime/src/iree/hal",
+    ],
+)
+
+# Test-only DSO variant with a post-retain observer used to force the array
+# copy/free lifetime race. The production :amdhip64 target has no hook code.
+hrx_cc_shared_library(
+    name = "amdhip64_array_lease_test",
+    testonly = True,
+    srcs = [
+        "abi_stubs.c",
+        "api.c",
+        "api_metadata.c",
+        "array_lease_test_hook.c",
+        "library.c",
+        "linker.c",
+    ],
+    hdrs = [
+        "api.h",
+        "binding_internal.h",
+    ],
+    additional_linker_inputs = ["amdhip64.map"],
+    copts = [
+        "-DHRX_ENABLE_ARRAY_LEASE_TEST_HOOK",
+        "-DIREE_HAL_STREAMING_HIP_EXPORTS",
+        "-Wno-unused-variable",
+    ],
+    includes = [
+        "../..",
+        "../../../include",
+        "../../libhrx",
+    ],
+    linkopts = [
+        "-Wl,--undefined-version",
+        "-Wl,--version-script=$(location :amdhip64.map)",
+    ],
+    target_compatible_with = _LINUX_COMPATIBILITY,
+    deps = [
+        ":array_lifetime",
+        ":blocking_printf_provider",
+        ":device_properties",
+        ":error_state",
+        ":execution_context",
+        ":execution_resource",
+        ":execution_resource_descriptor",
+        ":function_handle",
+        ":handle_registry",
+        ":launch_params",
+        ":peer",
+        ":spirv_linker_compiler",
+        ":staged_copy",
+        ":status_conversion",
+        ":stream",
+        ":stream_value",
+        "//libhrx/src/binding/common",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/hal",
+    ],
+)
+
+hrx_cc_test(
+    name = "array_lifetime_test",
+    srcs = ["array_lifetime_test.cc"],
+    deps = [
+        ":array_lifetime",
+        "//build_tools/bazel:pthreads",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 
@@ -458,6 +553,31 @@ hrx_cc_test(
     target_compatible_with = _LINUX_COMPATIBILITY,
     deps = [
         "//build_tools/bazel:dl",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+hrx_cc_test(
+    name = "hip_array_copy_spt_api_test",
+    srcs = [
+        "api.h",
+        "hip_array_copy_spt_api_test.cc",
+    ],
+    data = [":amdhip64_array_lease_test"],
+    env = {
+        "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64_array_lease_test)",
+    },
+    sanitizer_suppressions = hsa_suppressions,
+    tags = [
+        "iree-run-requirement=runtime.resource.amd_gpu",
+        "runtime-resource=amd-gpu",
+    ],
+    target_compatible_with = _HIP_GPU_COMPATIBILITY,
+    deps = [
+        ":hip_dso_test_util",
+        "//build_tools/bazel:dl",
+        "//build_tools/bazel:pthreads",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

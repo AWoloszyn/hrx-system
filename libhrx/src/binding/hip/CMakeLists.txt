@@ -9,6 +9,23 @@
 
 iree_add_all_subdirs()
 
+iree_cc_library(
+  NAME
+    array_lifetime
+  HDRS
+    "array_lifetime.h"
+  SRCS
+    "array_lifetime.c"
+  DEPS
+    iree::base
+    iree::base::threading
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_library(
   NAME
@@ -394,6 +411,24 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_library(
+  NAME
+    staged_copy
+  HDRS
+    "staged_copy.h"
+  SRCS
+    "staged_copy.c"
+  DEPS
+    iree::base
+    iree::hal
+    libhrx::src::binding::common
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_library(
   NAME
@@ -412,6 +447,7 @@ iree_cc_library(
     "library.c"
     "linker.c"
   DEPS
+    ::array_lifetime
     ::blocking_printf_provider
     ::device_properties
     ::error_state
@@ -423,6 +459,7 @@ iree_cc_library(
     ::launch_params
     ::peer
     ::spirv_linker_compiler
+    ::staged_copy
     ::status_conversion
     ::stream
     ::stream_value
@@ -447,6 +484,76 @@ iree_cc_library(
   PUBLIC
 )
 endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_library(
+  NAME
+    amdhip64_array_lease_test
+  COPTS
+    "-DHRX_ENABLE_ARRAY_LEASE_TEST_HOOK"
+    "-DIREE_HAL_STREAMING_HIP_EXPORTS"
+    "-Wno-unused-variable"
+  HDRS
+    "api.h"
+    "binding_internal.h"
+  SRCS
+    "abi_stubs.c"
+    "api.c"
+    "api_metadata.c"
+    "array_lease_test_hook.c"
+    "library.c"
+    "linker.c"
+  DEPS
+    ::array_lifetime
+    ::blocking_printf_provider
+    ::device_properties
+    ::error_state
+    ::execution_context
+    ::execution_resource
+    ::execution_resource_descriptor
+    ::function_handle
+    ::handle_registry
+    ::launch_params
+    ::peer
+    ::spirv_linker_compiler
+    ::staged_copy
+    ::status_conversion
+    ::stream
+    ::stream_value
+    iree::base
+    iree::base::core_headers
+    iree::base::internal
+    iree::base::threading
+    iree::hal
+    libhrx::src::binding::common
+    libhrx_defs
+  TESTONLY
+  SHARED
+  LINKOPTS
+    "-Wl,--undefined-version"
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/amdhip64.map"
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../include>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../../../include>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../libhrx>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../../libhrx>"
+  PUBLIC
+)
+endif()
+
+iree_cc_test(
+  NAME
+    array_lifetime_test
+  SRCS
+    "array_lifetime_test.cc"
+  DEPS
+    ::array_lifetime
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
 
 iree_cc_test(
   NAME
@@ -557,6 +664,32 @@ iree_cc_test(
     libhrx_defs
   ENV
     "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
+iree_cc_test(
+  NAME
+    hip_array_copy_spt_api_test
+  SRCS
+    "api.h"
+    "hip_array_copy_spt_api_test.cc"
+  DATA
+    ::amdhip64_array_lease_test
+  DEPS
+    ${CMAKE_DL_LIBS}
+    ::hip_dso_test_util
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+  ENV
+    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64_array_lease_test>"
+  LABELS
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  SANITIZER_SUPPRESSIONS
+    lsan
+    hsa
 )
 endif()
 
@@ -918,6 +1051,20 @@ foreach(_hrx_hip_dso_test
     )
   endif()
 endforeach()
+
+# The array-copy suite requires its test-only lease observer even when invoked
+# directly without the CTest-provided HRX_TEST_LIBAMDHIP64 environment variable.
+if(TARGET libhrx_src_binding_hip_hip_array_copy_spt_api_test)
+  target_compile_definitions(
+    libhrx_src_binding_hip_hip_array_copy_spt_api_test
+    PRIVATE
+      "HRX_TEST_LIBAMDHIP64_PATH=\"$<TARGET_FILE:libhrx_src_binding_hip_amdhip64_array_lease_test>\""
+  )
+  add_dependencies(
+    libhrx_src_binding_hip_hip_array_copy_spt_api_test
+    libhrx_src_binding_hip_amdhip64_array_lease_test
+  )
+endif()
 
 # The symbol version script and --undefined-version are applied through the
 # generated LINKOPTS above (from linkopts in BUILD.bazel). Keep them out of
