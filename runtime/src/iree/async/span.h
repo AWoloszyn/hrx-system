@@ -7,8 +7,8 @@
 // Value-type subrange of a registered memory region.
 //
 // An iree_async_span_t identifies a contiguous byte range within an
-// iree_async_region_t. Spans are non-owning (like iree_string_view_t): the
-// caller ensures the referenced region remains valid for the span's lifetime.
+// iree_async_region_t. Spans are non-owning values (like iree_string_view_t).
+// Accepted operations acquire their own references to registered regions.
 //
 // Operations that transfer data (recv, send, read, write) take spans to
 // describe their buffers. The proactor uses the span's region to access
@@ -16,19 +16,17 @@
 //
 // ## Region lifetime during I/O
 //
-// When a span is embedded in an operation and submitted to a proactor, the
-// proactor retains the span's region for the duration of the operation. This
-// ensures the region (and its backend handles) remain valid even if the caller
-// releases the buffer registration before the operation completes.
-//
-// Proactor implementations call iree_async_span_retain_region() at submit time
-// and iree_async_span_release_region() after the final completion callback
-// fires. This is transparent to callers: they construct spans, submit
-// operations, and the proactor manages the lifetime window.
+// When an operation containing a span is accepted by a proactor, common
+// operation ownership retains the span's region through the final completion
+// callback. The caller may release its own region reference after submit
+// returns OK. Explicit buffer unregistration remains illegal while an
+// operation is in flight; wait for final completion before unregistering.
+// Retaining a region does not take ownership of arbitrary host memory wrapped
+// by register_buffer; that backing allocation must also remain valid.
 //
 // For spans with region == NULL (unregistered memory), no retain/release
-// occurs. The caller must ensure the memory remains valid for the operation's
-// lifetime.
+// occurs. The caller must ensure the memory remains valid through the final
+// completion callback.
 
 #ifndef IREE_ASYNC_SPAN_H_
 #define IREE_ASYNC_SPAN_H_
@@ -179,25 +177,22 @@ static inline bool iree_async_span_list_is_empty(iree_async_span_list_t list) {
 }
 
 //===----------------------------------------------------------------------===//
-// Region lifetime helpers (proactor-internal)
+// Region lifetime helpers
 //===----------------------------------------------------------------------===//
 
-// Retains the region referenced by a span (if non-NULL).
-// Called by proactor implementations at submit time to ensure the region
-// remains valid for the duration of the operation.
+// Retains the registered region referenced by |span|, if any.
 static inline void iree_async_span_retain_region(iree_async_span_t span) {
   if (span.region) {
     iree_async_region_retain(span.region);
   }
 }
 
-// Releases the region referenced by a span. No-op if the region is NULL.
-// Called by proactor implementations after the final completion callback.
+// Releases the registered region referenced by |span|, if any.
 static inline void iree_async_span_release_region(iree_async_span_t span) {
   iree_async_region_release(span.region);
 }
 
-// Retains all regions in a span list.
+// Retains every registered region referenced by |list|.
 static inline void iree_async_span_list_retain_regions(
     iree_async_span_list_t list) {
   for (iree_host_size_t i = 0; i < list.count; ++i) {
@@ -205,7 +200,7 @@ static inline void iree_async_span_list_retain_regions(
   }
 }
 
-// Releases all regions in a span list.
+// Releases every registered region referenced by |list|.
 static inline void iree_async_span_list_release_regions(
     iree_async_span_list_t list) {
   for (iree_host_size_t i = 0; i < list.count; ++i) {

@@ -172,13 +172,12 @@ void iree_async_proactor_iocp_wake(iree_async_proactor_t* base_proactor) {
 // Pending queue helpers
 //===----------------------------------------------------------------------===//
 
-// Retains operation resources and pushes the operation to the pending_queue for
-// the poll thread to process. Uses the operation's `next` pointer (offset 0) as
-// the slist_entry, which is safe because the operation is exclusively owned by
-// the queue until the poll thread pops it.
+// Pushes an accepted operation to the pending_queue for the poll thread to
+// process. Uses the operation's `next` pointer (offset 0) as the slist_entry,
+// which is safe because the operation is exclusively owned by the queue until
+// the poll thread pops it.
 void iree_async_proactor_iocp_push_pending(iree_async_proactor_iocp_t* proactor,
                                            iree_async_operation_t* operation) {
-  iree_async_operation_retain_resources(operation);
   iree_atomic_slist_push(&proactor->pending_queue,
                          (iree_atomic_slist_entry_t*)operation);
   iree_async_proactor_iocp_wake(&proactor->base);
@@ -186,7 +185,7 @@ void iree_async_proactor_iocp_push_pending(iree_async_proactor_iocp_t* proactor,
 
 // Returns the native HANDLE for a socket or file I/O operation, for use with
 // CancelIoEx. The socket/file struct is ref-counted and retained during the
-// operation's lifetime (via retain_resources at submit), so this is safe to
+// operation's lifetime (via accepted-operation ownership), so this is safe to
 // call from any thread while the operation is in flight.
 static HANDLE iree_async_proactor_iocp_handle_from_io_operation(
     iree_async_operation_t* operation) {
@@ -273,7 +272,6 @@ static void iree_async_proactor_iocp_dispatch_completion(
     continuation = iree_async_continuation_begin(
         iree_async_proactor_iocp_submit_continuation, proactor, chain_head,
         iree_status_code(status));
-    iree_async_operation_release_resources(operation);
   }
   *completed_count += iree_async_operation_complete(operation, status, flags);
   *completed_count += iree_async_continuation_finish(&continuation);

@@ -141,7 +141,6 @@ static bool iree_async_proactor_js_commit_operation(
   } else {
     iree_async_operation_clear_internal_flags(operation);
   }
-  iree_async_operation_retain_resources(operation);
   IREE_TRACE(operation->submit_time_ns = iree_time_now();)
 
   switch (operation->type) {
@@ -206,6 +205,10 @@ static iree_status_t iree_async_proactor_js_submit_prepared(
     }
   }
 
+  // The complete list is now accepted. Acquire linked successors before any
+  // active timer or software completion can make the chain observable.
+  iree_async_operation_list_acquire_resources(operations);
+
   bool requires_drain = false;
   iree_async_continuation_chain_iterator_t commit_iterator =
       iree_async_continuation_chain_iterator_make(operations);
@@ -241,7 +244,6 @@ static iree_host_size_t iree_async_proactor_js_complete(
     continuation = iree_async_continuation_begin(
         iree_async_proactor_js_submit_continuation, proactor, chain_head,
         iree_status_code(status));
-    iree_async_operation_release_resources(operation);
   }
   iree_host_size_t completed_count =
       iree_async_operation_complete(operation, status, flags);
@@ -273,13 +275,12 @@ iree_status_t iree_async_proactor_js_submit_external(
 
   iree_async_proactor_js_t* js_proactor = iree_async_proactor_js_cast(proactor);
   iree_async_operation_clear_internal_flags(operation);
-  iree_async_operation_retain_resources(operation);
   IREE_TRACE(operation->submit_time_ns = iree_time_now();)
 
   iree_status_t status = iree_async_js_token_table_acquire(
       &js_proactor->token_table, operation, out_token);
-  if (!iree_status_is_ok(status)) {
-    iree_async_operation_release_resources(operation);
+  if (iree_status_is_ok(status)) {
+    iree_async_operation_acquire_resources(operation);
   }
   return status;
 }

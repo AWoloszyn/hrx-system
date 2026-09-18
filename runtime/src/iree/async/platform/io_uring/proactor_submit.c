@@ -193,10 +193,26 @@ static void iree_async_proactor_io_uring_fill_socket_accept(
   }
 }
 
+// Converts accepted socket span snapshots to native iovecs in place.
+static void iree_async_proactor_io_uring_materialize_iovecs(
+    iree_async_socket_io_platform_t* platform,
+    iree_async_region_t* const* retained_regions, uint8_t span_count) {
+  iree_async_socket_prepared_span_t
+      prepared_spans[IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS];
+  memcpy(prepared_spans, platform->prepared.spans,
+         span_count * sizeof(prepared_spans[0]));
+  struct iovec* iovecs = (struct iovec*)platform->posix.iovecs;
+  for (uint8_t i = 0; i < span_count; ++i) {
+    iree_async_span_t span = iree_async_socket_prepared_span_resolve(
+        prepared_spans[i], retained_regions[i]);
+    iovecs[i].iov_base = iree_async_span_ptr(span);
+    iovecs[i].iov_len = span.length;
+  }
+}
+
 // Fills an SQE for a SOCKET_RECV operation.
-// Uses IORING_OP_RECV for single-buffer receives, IORING_OP_RECVMSG for
-// scatter- gather (multiple buffers). Retains the socket to ensure it outlives
-// the in-flight operation.
+// Uses IORING_OP_RECV for single-buffer receives and IORING_OP_RECVMSG for
+// scatter-gather receives.
 static void iree_async_proactor_io_uring_fill_socket_recv(
     iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
   iree_async_socket_recv_operation_t* recv =
@@ -209,9 +225,11 @@ static void iree_async_proactor_io_uring_fill_socket_recv(
   sqe->msg_flags = 0;
   sqe->user_data = (uint64_t)(uintptr_t)base_operation;
 
-  if (recv->buffers.count == 1) {
+  const uint8_t span_count = base_operation->acquired_span_count;
+  if (span_count == 1) {
     // Single buffer: use simple RECV for efficiency.
-    iree_async_span_t first_buffer = recv->buffers.values[0];
+    iree_async_span_t first_buffer = iree_async_socket_prepared_span_resolve(
+        recv->platform.prepared.spans[0], recv->retained_buffer_regions[0]);
     sqe->opcode = IREE_IORING_OP_RECV;
     sqe->addr = (uint64_t)(uintptr_t)iree_async_span_ptr(first_buffer);
     sqe->len = (uint32_t)first_buffer.length;
@@ -219,17 +237,14 @@ static void iree_async_proactor_io_uring_fill_socket_recv(
     // Multiple buffers: use RECVMSG with scatter-gather.
     // Convert spans to iovecs. The iovec array is stored in the operation's
     // platform storage to ensure it lives until completion.
+    iree_async_proactor_io_uring_materialize_iovecs(
+        &recv->platform, recv->retained_buffer_regions, span_count);
     struct iovec* iovecs = (struct iovec*)recv->platform.posix.iovecs;
-    iree_host_size_t count = recv->buffers.count;
-    for (iree_host_size_t i = 0; i < count; ++i) {
-      iovecs[i].iov_base = iree_async_span_ptr(recv->buffers.values[i]);
-      iovecs[i].iov_len = recv->buffers.values[i].length;
-    }
 
     struct msghdr* msg = (struct msghdr*)recv->platform.posix.msg_header;
     memset(msg, 0, sizeof(*msg));
     msg->msg_iov = iovecs;
-    msg->msg_iovlen = count;
+    msg->msg_iovlen = span_count;
 
     sqe->opcode = IREE_IORING_OP_RECVMSG;
     sqe->addr = (uint64_t)(uintptr_t)msg;
@@ -361,8 +376,7 @@ iree_async_span_query_fixed_buffer_send(
 // socket has IREE_ASYNC_SOCKET_OPTION_ZERO_COPY AND the capability is
 // available. ZERO_COPY is a socket-level hint ("use ZC if you can"), not a
 // requirement - sends fall back to regular SEND/SENDMSG on kernels < 6.0 that
-// lack ZC support. Retains the socket to ensure it outlives the in-flight
-// operation.
+// lack ZC support.
 static void iree_async_proactor_io_uring_fill_socket_send(
     iree_async_proactor_io_uring_t* proactor, iree_io_uring_sqe_t* sqe,
     iree_async_operation_t* base_operation) {
@@ -381,9 +395,12 @@ static void iree_async_proactor_io_uring_fill_socket_send(
   iree_async_fixed_buffer_eligibility_t eligibility =
       IREE_ASYNC_FIXED_BUFFER_INELIGIBLE;
   uint16_t fixed_buffer_index = 0;
-  if (use_zero_copy && send->buffers.count == 1) {
+  const uint8_t span_count = base_operation->acquired_span_count;
+  if (use_zero_copy && span_count == 1) {
+    iree_async_span_t first_buffer = iree_async_socket_prepared_span_resolve(
+        send->platform.prepared.spans[0], send->retained_buffer_regions[0]);
     eligibility = iree_async_span_query_fixed_buffer_send(
-        proactor, send->buffers.values[0], &fixed_buffer_index);
+        proactor, first_buffer, &fixed_buffer_index);
   }
 
   // Clear output fields.
@@ -396,9 +413,10 @@ static void iree_async_proactor_io_uring_fill_socket_send(
   }
   sqe->user_data = (uint64_t)(uintptr_t)base_operation;
 
-  if (send->buffers.count == 1) {
+  if (span_count == 1) {
     // Single buffer: use simple SEND[_ZC] for efficiency.
-    iree_async_span_t first_buffer = send->buffers.values[0];
+    iree_async_span_t first_buffer = iree_async_socket_prepared_span_resolve(
+        send->platform.prepared.spans[0], send->retained_buffer_regions[0]);
 
     sqe->opcode = use_zero_copy ? IREE_IORING_OP_SEND_ZC : IREE_IORING_OP_SEND;
 
@@ -420,17 +438,14 @@ static void iree_async_proactor_io_uring_fill_socket_send(
     // Convert spans to iovecs (spans have region+offset+length, iovecs have
     // base+length). The iovec array is stored in the operation's platform
     // storage to ensure it lives until completion.
+    iree_async_proactor_io_uring_materialize_iovecs(
+        &send->platform, send->retained_buffer_regions, span_count);
     struct iovec* iovecs = (struct iovec*)send->platform.posix.iovecs;
-    iree_host_size_t count = send->buffers.count;
-    for (iree_host_size_t i = 0; i < count; ++i) {
-      iovecs[i].iov_base = iree_async_span_ptr(send->buffers.values[i]);
-      iovecs[i].iov_len = send->buffers.values[i].length;
-    }
 
     struct msghdr* msg = (struct msghdr*)send->platform.posix.msg_header;
     memset(msg, 0, sizeof(*msg));
     msg->msg_iov = iovecs;
-    msg->msg_iovlen = count;
+    msg->msg_iovlen = span_count;
 
     sqe->opcode =
         use_zero_copy ? IREE_IORING_OP_SENDMSG_ZC : IREE_IORING_OP_SENDMSG;
@@ -447,7 +462,6 @@ static void iree_async_proactor_io_uring_fill_socket_send(
 // Fills an SQE for a SOCKET_SENDTO operation.
 // Always uses IORING_OP_SENDMSG[_ZC] since we need msg_name for the destination
 // address. This works for both single-buffer and scatter-gather sends.
-// Retains the socket to ensure it outlives the in-flight operation.
 static void iree_async_proactor_io_uring_fill_socket_sendto(
     iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation,
     iree_async_proactor_capabilities_t capabilities) {
@@ -466,12 +480,10 @@ static void iree_async_proactor_io_uring_fill_socket_sendto(
 
   // Convert spans to iovecs. The iovec array is stored in the operation's
   // platform storage to ensure it lives until completion.
+  const uint8_t span_count = base_operation->acquired_span_count;
+  iree_async_proactor_io_uring_materialize_iovecs(
+      &sendto->platform, sendto->retained_buffer_regions, span_count);
   struct iovec* iovecs = (struct iovec*)sendto->platform.posix.iovecs;
-  iree_host_size_t count = sendto->buffers.count;
-  for (iree_host_size_t i = 0; i < count; ++i) {
-    iovecs[i].iov_base = iree_async_span_ptr(sendto->buffers.values[i]);
-    iovecs[i].iov_len = sendto->buffers.values[i].length;
-  }
 
   // Build msghdr with destination address.
   struct msghdr* msg = (struct msghdr*)sendto->platform.posix.msg_header;
@@ -479,7 +491,7 @@ static void iree_async_proactor_io_uring_fill_socket_sendto(
   msg->msg_name = sendto->destination.storage;
   msg->msg_namelen = (socklen_t)sendto->destination.length;
   msg->msg_iov = iovecs;
-  msg->msg_iovlen = count;
+  msg->msg_iovlen = span_count;
 
   sqe->fd = sendto->socket->primitive.value.fd;
   sqe->opcode =
@@ -500,7 +512,6 @@ static void iree_async_proactor_io_uring_fill_socket_sendto(
 // Fills an SQE for a SOCKET_RECVFROM operation.
 // Always uses IORING_OP_RECVMSG since we need msg_name for the sender address.
 // This works for both single-buffer and scatter-gather receives.
-// Retains the socket to ensure it outlives the in-flight operation.
 static void iree_async_proactor_io_uring_fill_socket_recvfrom(
     iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
   iree_async_socket_recvfrom_operation_t* recvfrom =
@@ -513,12 +524,10 @@ static void iree_async_proactor_io_uring_fill_socket_recvfrom(
 
   // Convert spans to iovecs. The iovec array is stored in the operation's
   // platform storage to ensure it lives until completion.
+  const uint8_t span_count = base_operation->acquired_span_count;
+  iree_async_proactor_io_uring_materialize_iovecs(
+      &recvfrom->platform, recvfrom->retained_buffer_regions, span_count);
   struct iovec* iovecs = (struct iovec*)recvfrom->platform.posix.iovecs;
-  iree_host_size_t count = recvfrom->buffers.count;
-  for (iree_host_size_t i = 0; i < count; ++i) {
-    iovecs[i].iov_base = iree_async_span_ptr(recvfrom->buffers.values[i]);
-    iovecs[i].iov_len = recvfrom->buffers.values[i].length;
-  }
 
   // Build msghdr with sender address buffer.
   struct msghdr* msg = (struct msghdr*)recvfrom->platform.posix.msg_header;
@@ -526,7 +535,7 @@ static void iree_async_proactor_io_uring_fill_socket_recvfrom(
   msg->msg_name = recvfrom->sender.storage;
   msg->msg_namelen = sizeof(recvfrom->sender.storage);
   msg->msg_iov = iovecs;
-  msg->msg_iovlen = count;
+  msg->msg_iovlen = span_count;
 
   sqe->fd = recvfrom->socket->primitive.value.fd;
   sqe->opcode = IREE_IORING_OP_RECVMSG;
@@ -1053,8 +1062,6 @@ void iree_async_proactor_io_uring_dispatch_continuation_chain(
       return;
     }
 
-    iree_async_operation_retain_resources(op);
-
     iree_status_t op_status = iree_ok_status();
     bool deferred = false;
     if (op->type == IREE_ASYNC_OPERATION_TYPE_NOP) {
@@ -1104,8 +1111,7 @@ void iree_async_proactor_io_uring_dispatch_continuation_chain(
 
 // Cancels a continuation chain by pushing callback-bearing operations to the
 // MPSC queue. Deliberately suppressed completions are consumed immediately so
-// their storage can be released from the preceding callback. Each queued
-// operation is retained so the drain's release_resources call is balanced.
+// their storage can be released from the preceding callback.
 void iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
     iree_async_proactor_io_uring_t* proactor,
     iree_async_operation_t* chain_head) {
@@ -1114,8 +1120,6 @@ void iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
     iree_async_operation_t* next = op->linked_next;
     op->linked_next = NULL;
     if (op->completion_fn) {
-      // Retain so the drain's release_resources is balanced.
-      iree_async_operation_retain_resources(op);
       iree_async_proactor_io_uring_push_software_operation(
           proactor, op, iree_status_from_code(IREE_STATUS_CANCELLED));
     } else {
@@ -1285,7 +1289,6 @@ static void iree_async_proactor_io_uring_commit_software_operation(
     iree_async_proactor_io_uring_commit_fallback_message(message);
     if (!iree_any_bit_set(message->message_flags,
                           IREE_ASYNC_MESSAGE_FLAG_SKIP_SOURCE_COMPLETION)) {
-      iree_async_operation_retain_resources(operation);
       iree_async_proactor_io_uring_push_software_operation(proactor, operation,
                                                            iree_ok_status());
     }
@@ -1295,8 +1298,6 @@ static void iree_async_proactor_io_uring_commit_software_operation(
     }
     return;
   }
-
-  iree_async_operation_retain_resources(operation);
 
   iree_status_t operation_status = iree_ok_status();
   bool deferred = false;
@@ -1366,6 +1367,11 @@ iree_status_t iree_async_proactor_io_uring_submit(
   //=========================================================================
 
   for (iree_host_size_t i = 0; i < operations.count; ++i) {
+    if (operations.values[i]->resources_acquired) {
+      // Accepted continuations were validated with their original batch and
+      // may no longer have accessible caller-owned descriptor arrays.
+      continue;
+    }
     IREE_RETURN_IF_ERROR(iree_async_proactor_io_uring_validate_operation(
         proactor, operations.values[i]));
   }
@@ -1460,6 +1466,11 @@ iree_status_t iree_async_proactor_io_uring_submit(
                               available, sqes_needed, operations.count);
     }
 
+    // The complete list is now accepted. The SQ lock keeps the capacity
+    // reservation stable while linked successors acquire their resources and
+    // submit-scoped descriptors before any SQE is published.
+    iree_async_operation_list_acquire_resources(operations);
+
     //=======================================================================
     // Phase 3: Commit kernel SQEs under the SQ lock.
     //=======================================================================
@@ -1477,11 +1488,6 @@ iree_status_t iree_async_proactor_io_uring_submit(
       if (iree_async_proactor_io_uring_is_submission_software_op(operation)) {
         continue;
       }
-
-      // Retain resources referenced by this operation to prevent premature
-      // destruction while the accepted SQE is in flight. Every fallible check
-      // and capacity reservation has completed before this ownership transfer.
-      iree_async_operation_retain_resources(operation);
 
       // EVENT_WAIT always uses linked POLL_ADD+READ (2 SQEs).
       // NOTIFICATION_WAIT uses 2 SQEs in event mode, 1 SQE in futex mode.
@@ -1625,6 +1631,12 @@ iree_status_t iree_async_proactor_io_uring_submit(
     // Release the SQ lock. All SQEs are fully filled; sq_local_tail is
     // advanced. The SQEs are not yet visible to the kernel.
     iree_io_uring_ring_sq_unlock(&proactor->ring);
+  }
+
+  if (sqes_needed == 0) {
+    // Pure-software batches cross their acceptance boundary after fallback
+    // message reservations complete.
+    iree_async_operation_list_acquire_resources(operations);
   }
 
   //=========================================================================

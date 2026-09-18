@@ -90,16 +90,16 @@ void iree_async_proactor_iocp_release_carrier(
                          (iree_atomic_slist_entry_t*)carrier);
 }
 
-// Builds a WSABUF array from a span list. Returns the number of buffers.
+// Builds a WSABUF array from descriptors captured at accepted submission.
 static DWORD iree_async_proactor_iocp_build_wsabuf(
-    WSABUF* wsabuf, iree_async_span_list_t buffers) {
-  DWORD count =
-      (DWORD)(buffers.count > IREE_ASYNC_IOCP_MAX_SCATTER_GATHER_BUFFERS
-                  ? IREE_ASYNC_IOCP_MAX_SCATTER_GATHER_BUFFERS
-                  : buffers.count);
+    WSABUF* wsabuf, const iree_async_socket_io_platform_t* platform,
+    iree_async_region_t* const* retained_regions, uint8_t span_count) {
+  DWORD count = (DWORD)span_count;
   for (DWORD i = 0; i < count; ++i) {
-    wsabuf[i].buf = (char*)iree_async_span_ptr(buffers.values[i]);
-    wsabuf[i].len = (ULONG)buffers.values[i].length;
+    iree_async_span_t span = iree_async_socket_prepared_span_resolve(
+        platform->prepared.spans[i], retained_regions[i]);
+    wsabuf[i].buf = (char*)iree_async_span_ptr(span);
+    wsabuf[i].len = (ULONG)span.length;
   }
   return count;
 }
@@ -150,9 +150,6 @@ static void iree_async_proactor_iocp_commit_socket_accept(
 
   accept_op->accepted_socket = NULL;
   memset(&accept_op->peer_address, 0, sizeof(accept_op->peer_address));
-
-  // Retain the listen socket before issuing overlapped I/O.
-  iree_async_operation_retain_resources(&accept_op->base);
 
   // AcceptEx requires a pre-created accept socket of the same family/type.
   // MSDN only documents AcceptEx for AF_INET/AF_INET6. AF_UNIX support is
@@ -296,8 +293,6 @@ static void iree_async_proactor_iocp_commit_socket_connect(
   SOCKET sock = (SOCKET)socket->primitive.value.win32_handle;
   carrier->io_handle = (uintptr_t)sock;
 
-  iree_async_operation_retain_resources(&connect_op->base);
-
   // Auto-bind if needed (ConnectEx requires a bound socket; UDP connect also
   // needs it when the socket hasn't been explicitly bound yet).
   iree_status_t bind_status =
@@ -366,10 +361,9 @@ static void iree_async_proactor_iocp_commit_socket_recv(
 
   recv_op->bytes_received = 0;
 
-  iree_async_operation_retain_resources(&recv_op->base);
-
   carrier->data.socket_io.buffer_count = iree_async_proactor_iocp_build_wsabuf(
-      carrier->data.socket_io.wsabuf, recv_op->buffers);
+      carrier->data.socket_io.wsabuf, &recv_op->platform,
+      recv_op->retained_buffer_regions, recv_op->base.acquired_span_count);
   carrier->data.socket_io.flags = 0;
 
   int result =
@@ -396,10 +390,9 @@ static void iree_async_proactor_iocp_commit_socket_send(
 
   send_op->bytes_sent = 0;
 
-  iree_async_operation_retain_resources(&send_op->base);
-
   carrier->data.socket_io.buffer_count = iree_async_proactor_iocp_build_wsabuf(
-      carrier->data.socket_io.wsabuf, send_op->buffers);
+      carrier->data.socket_io.wsabuf, &send_op->platform,
+      send_op->retained_buffer_regions, send_op->base.acquired_span_count);
   // MSG_MORE: silently ignored on Windows (no equivalent; TCP_NODELAY controls
   // coalescing at the socket level).
   DWORD flags = 0;
@@ -427,10 +420,9 @@ static void iree_async_proactor_iocp_commit_socket_sendto(
 
   sendto_op->bytes_sent = 0;
 
-  iree_async_operation_retain_resources(&sendto_op->base);
-
   carrier->data.socket_io.buffer_count = iree_async_proactor_iocp_build_wsabuf(
-      carrier->data.socket_io.wsabuf, sendto_op->buffers);
+      carrier->data.socket_io.wsabuf, &sendto_op->platform,
+      sendto_op->retained_buffer_regions, sendto_op->base.acquired_span_count);
 
   const struct sockaddr* dest_addr =
       (const struct sockaddr*)sendto_op->destination.storage;
@@ -460,10 +452,10 @@ static void iree_async_proactor_iocp_commit_socket_recvfrom(
   recvfrom_op->bytes_received = 0;
   memset(&recvfrom_op->sender, 0, sizeof(recvfrom_op->sender));
 
-  iree_async_operation_retain_resources(&recvfrom_op->base);
-
   carrier->data.socket_io.buffer_count = iree_async_proactor_iocp_build_wsabuf(
-      carrier->data.socket_io.wsabuf, recvfrom_op->buffers);
+      carrier->data.socket_io.wsabuf, &recvfrom_op->platform,
+      recvfrom_op->retained_buffer_regions,
+      recvfrom_op->base.acquired_span_count);
   carrier->data.socket_io.flags = 0;
 
   // WSARecvFrom writes the actual sender address length asynchronously at
@@ -498,8 +490,6 @@ static void iree_async_proactor_iocp_commit_socket_recv_pool(
 
   recv_pool_op->bytes_received = 0;
   memset(&recv_pool_op->lease, 0, sizeof(recv_pool_op->lease));
-
-  iree_async_operation_retain_resources(&recv_pool_op->base);
 
   // Buffer availability is dynamic. Once the batch is accepted, exhaustion is
   // an asynchronous operation result rather than a submit rejection.
@@ -576,9 +566,6 @@ static void iree_async_proactor_iocp_commit_semaphore_signal(
       break;
     }
   }
-
-  // Retain resources and post direct completion for poll-thread dispatch.
-  iree_async_operation_retain_resources(&signal_op->base);
 
   iree_async_proactor_iocp_post_direct_completion(proactor, carrier, op_status);
 }
@@ -669,8 +656,6 @@ static void iree_async_proactor_iocp_commit_notification_signal(
   // the requested count.
   signal_op->woken_count = signal_op->wake_count;
 
-  // Retain and post direct completion for poll-thread dispatch.
-  iree_async_operation_retain_resources(&signal_op->base);
   iree_async_proactor_iocp_post_direct_completion(proactor, carrier,
                                                   iree_ok_status());
 }
@@ -701,8 +686,6 @@ static void iree_async_proactor_iocp_commit_message(
   if (skip_source_completion) {
     return;
   }
-
-  iree_async_operation_retain_resources(&message->base);
   iree_async_proactor_iocp_post_direct_completion(proactor, carrier,
                                                   iree_ok_status());
 }
@@ -807,8 +790,6 @@ static void iree_async_proactor_iocp_commit_file_read(
 
   read_op->bytes_read = 0;
 
-  iree_async_operation_retain_resources(&read_op->base);
-
   // Encode file offset in the OVERLAPPED structure.
   carrier->overlapped.Offset = (DWORD)(read_op->offset & 0xFFFFFFFF);
   carrier->overlapped.OffsetHigh = (DWORD)(read_op->offset >> 32);
@@ -837,8 +818,6 @@ static void iree_async_proactor_iocp_commit_file_write(
   carrier->io_handle = (uintptr_t)file_handle;
 
   write_op->bytes_written = 0;
-
-  iree_async_operation_retain_resources(&write_op->base);
 
   // Encode file offset in the OVERLAPPED structure.
   // For APPEND mode, the caller opened the file with FILE_APPEND_DATA.
@@ -1104,6 +1083,11 @@ static iree_status_t iree_async_proactor_iocp_submit_prepared(
     iree_async_proactor_iocp_t* proactor,
     iree_async_operation_list_t operations) {
   for (iree_host_size_t i = 0; i < operations.count; ++i) {
+    if (operations.values[i]->resources_acquired) {
+      // Accepted continuations were validated with their original batch and
+      // may no longer have accessible caller-owned descriptor arrays.
+      continue;
+    }
     IREE_RETURN_IF_ERROR(iree_async_proactor_iocp_validate_operation(
         proactor, operations.values[i]));
   }
@@ -1131,6 +1115,10 @@ static iree_status_t iree_async_proactor_iocp_submit_prepared(
       return status;
     }
   }
+
+  // The complete list is now accepted. Acquire linked successors before any
+  // active carrier can complete and before submit-scoped descriptors expire.
+  iree_async_operation_list_acquire_resources(operations);
 
   iree_async_continuation_chain_iterator_t commit_iterator =
       iree_async_continuation_chain_iterator_make(operations);

@@ -19,7 +19,7 @@
 //   - The stack frame with the span descriptors is now dead
 //   - The receiver verifies the data matches the expected pattern
 //
-// Backends must materialize native iovec/WSABUF descriptors during submit so
+// Proactors must snapshot descriptors before accepted submission returns so
 // deferred execution never dereferences the expired span list.
 
 #include <cstring>
@@ -27,6 +27,7 @@
 #include "iree/async/cts/util/registry.h"
 #include "iree/async/cts/util/socket_test_base.h"
 #include "iree/async/operations/net.h"
+#include "iree/async/operations/scheduling.h"
 #include "iree/async/socket.h"
 #include "iree/async/span.h"
 
@@ -85,8 +86,41 @@ static IREE_ATTRIBUTE_NOINLINE void submit_echo_response(
   context->send_submit_status =
       iree_async_proactor_submit_one(context->proactor, &context->send_op.base);
 
-  // spans[] dies here. The backend-native descriptors materialized during
-  // submit and the context-owned payload remain valid until completion.
+  // spans[] dies here. The accepted descriptor snapshot and context-owned
+  // payload remain valid until completion.
+}
+
+// Submits a userspace-linked NOP -> SEND chain whose send descriptors are
+// stack-local. The successor is accepted with the batch but does not become
+// active until the NOP completes during poll.
+static IREE_ATTRIBUTE_NOINLINE void submit_linked_send(
+    iree_async_proactor_t* proactor, iree_async_socket_t* socket,
+    iree_const_byte_span_t header, iree_const_byte_span_t body,
+    iree_async_nop_operation_t* nop_op,
+    iree_async_socket_send_operation_t* send_op, CompletionTracker* nop_tracker,
+    CompletionTracker* send_tracker) {
+  iree_async_span_t spans[] = {
+      iree_async_span_from_ptr(const_cast<uint8_t*>(header.data),
+                               header.data_length),
+      iree_async_span_from_ptr(const_cast<uint8_t*>(body.data),
+                               body.data_length),
+  };
+
+  iree_async_operation_initialize(&nop_op->base, IREE_ASYNC_OPERATION_TYPE_NOP,
+                                  IREE_ASYNC_OPERATION_FLAG_LINKED,
+                                  CompletionTracker::Callback, nop_tracker);
+  InitSendOperation(send_op, socket, spans, IREE_ARRAYSIZE(spans),
+                    IREE_ASYNC_SOCKET_SEND_FLAG_NONE,
+                    CompletionTracker::Callback, send_tracker);
+  iree_async_operation_t* operations[] = {&nop_op->base, &send_op->base};
+  IREE_ASSERT_OK(iree_async_proactor_submit(
+      proactor,
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations))));
+
+  // The descriptor contract permits immediate reuse after submit. Poisoning
+  // makes a deferred dereference deterministic instead of relying on a later
+  // stack frame to happen to overwrite these values.
+  memset(spans, 0, sizeof(spans));
 }
 
 // Recv completion callback. Fires on the poll thread during CQE processing.
@@ -247,6 +281,42 @@ TEST_P(DataLifetimeTest, RepeatedSendFromRecvCallback_VaryingPatterns) {
                                       << std::hex << (int)pattern);
     RunEchoBack(client, server, pattern);
   }
+
+  iree_async_socket_release(client);
+  iree_async_socket_release(server);
+  iree_async_socket_release(listener);
+}
+
+TEST_P(DataLifetimeTest, LinkedSendSnapshotsDescriptorsAtBatchAcceptance) {
+  iree_async_socket_t* client = nullptr;
+  iree_async_socket_t* server = nullptr;
+  iree_async_socket_t* listener = nullptr;
+  EstablishConnection(&client, &server, &listener);
+
+  uint8_t header[17];
+  uint8_t body[127];
+  memset(header, 0x3C, sizeof(header));
+  memset(body, 0xA7, sizeof(body));
+
+  iree_async_nop_operation_t nop_op = {};
+  iree_async_socket_send_operation_t send_op = {};
+  CompletionTracker nop_tracker;
+  CompletionTracker send_tracker;
+  submit_linked_send(proactor_, server,
+                     iree_make_const_byte_span(header, sizeof(header)),
+                     iree_make_const_byte_span(body, sizeof(body)), &nop_op,
+                     &send_op, &nop_tracker, &send_tracker);
+
+  uint8_t received[sizeof(header) + sizeof(body)] = {0};
+  ASSERT_EQ(RecvAll(client, received, sizeof(received)), sizeof(received));
+  EXPECT_EQ(memcmp(received, header, sizeof(header)), 0);
+  EXPECT_EQ(memcmp(received + sizeof(header), body, sizeof(body)), 0);
+
+  PollUntilCondition(
+      [&] { return nop_tracker.call_count > 0 && send_tracker.call_count > 0; },
+      "linked send completions");
+  IREE_EXPECT_OK(nop_tracker.ConsumeStatus());
+  IREE_EXPECT_OK(send_tracker.ConsumeStatus());
 
   iree_async_socket_release(client);
   iree_async_socket_release(server);

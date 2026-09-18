@@ -15,7 +15,26 @@
 #include "iree/async/operations/semaphore.h"
 #include "iree/async/socket.h"
 
-void iree_async_operation_retain_resources(iree_async_operation_t* operation) {
+static uint8_t iree_async_operation_acquire_socket_spans(
+    iree_async_span_list_t spans, iree_async_socket_io_platform_t* platform,
+    iree_async_region_t** out_regions) {
+  IREE_ASSERT_LE(spans.count, IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS);
+  for (iree_host_size_t i = 0; i < spans.count; ++i) {
+    iree_async_span_t span = spans.values[i];
+    platform->prepared.spans[i].offset = span.offset;
+    platform->prepared.spans[i].length = span.length;
+    out_regions[i] = span.region;
+    iree_async_region_retain(span.region);
+  }
+  return (uint8_t)spans.count;
+}
+
+void iree_async_operation_acquire_resources(iree_async_operation_t* operation) {
+  if (operation->resources_acquired) {
+    return;
+  }
+
+  operation->acquired_span_count = 0;
   switch (operation->type) {
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT: {
       iree_async_socket_accept_operation_t* accept =
@@ -33,6 +52,9 @@ void iree_async_operation_retain_resources(iree_async_operation_t* operation) {
       iree_async_socket_recv_operation_t* recv =
           (iree_async_socket_recv_operation_t*)operation;
       iree_async_socket_retain(recv->socket);
+      operation->acquired_span_count =
+          iree_async_operation_acquire_socket_spans(
+              recv->buffers, &recv->platform, recv->retained_buffer_regions);
       break;
     }
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL: {
@@ -45,18 +67,29 @@ void iree_async_operation_retain_resources(iree_async_operation_t* operation) {
       iree_async_socket_send_operation_t* send =
           (iree_async_socket_send_operation_t*)operation;
       iree_async_socket_retain(send->socket);
+      operation->acquired_span_count =
+          iree_async_operation_acquire_socket_spans(
+              send->buffers, &send->platform, send->retained_buffer_regions);
       break;
     }
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM: {
       iree_async_socket_recvfrom_operation_t* recvfrom =
           (iree_async_socket_recvfrom_operation_t*)operation;
       iree_async_socket_retain(recvfrom->socket);
+      operation->acquired_span_count =
+          iree_async_operation_acquire_socket_spans(
+              recvfrom->buffers, &recvfrom->platform,
+              recvfrom->retained_buffer_regions);
       break;
     }
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO: {
       iree_async_socket_sendto_operation_t* sendto_op =
           (iree_async_socket_sendto_operation_t*)operation;
       iree_async_socket_retain(sendto_op->socket);
+      operation->acquired_span_count =
+          iree_async_operation_acquire_socket_spans(
+              sendto_op->buffers, &sendto_op->platform,
+              sendto_op->retained_buffer_regions);
       break;
     }
     case IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT: {
@@ -85,20 +118,57 @@ void iree_async_operation_retain_resources(iree_async_operation_t* operation) {
       iree_async_file_read_operation_t* read_op =
           (iree_async_file_read_operation_t*)operation;
       iree_async_file_retain(read_op->file);
+      iree_async_region_retain(read_op->buffer.region);
+      operation->acquired_span_count = 1;
       break;
     }
     case IREE_ASYNC_OPERATION_TYPE_FILE_WRITE: {
       iree_async_file_write_operation_t* write_op =
           (iree_async_file_write_operation_t*)operation;
       iree_async_file_retain(write_op->file);
+      iree_async_region_retain(write_op->buffer.region);
+      operation->acquired_span_count = 1;
       break;
     }
-    default:
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_CLOSE:
+    case IREE_ASYNC_OPERATION_TYPE_FILE_CLOSE:
+      // Accepted close operations transfer their caller-owned reference.
       break;
+    default:
+      // This operation type has no proactor-owned resources.
+      return;
+  }
+  operation->resources_acquired = true;
+}
+
+void iree_async_operation_list_acquire_resources(
+    iree_async_operation_list_t operations) {
+  for (iree_host_size_t i = 0; i < operations.count; ++i) {
+    iree_async_operation_acquire_resources(operations.values[i]);
   }
 }
 
-void iree_async_operation_release_resources(iree_async_operation_t* operation) {
+static uint8_t iree_async_operation_take_socket_regions(
+    uint8_t retained_count, iree_async_region_t** retained_regions,
+    iree_async_region_t** out_retained_regions) {
+  for (uint8_t i = 0; i < retained_count; ++i) {
+    out_retained_regions[i] = retained_regions[i];
+    retained_regions[i] = NULL;
+  }
+  return retained_count;
+}
+
+uint8_t iree_async_operation_release_resources(
+    iree_async_operation_t* operation,
+    iree_async_region_t** out_retained_regions) {
+  if (!operation->resources_acquired) {
+    return 0;
+  }
+  operation->resources_acquired = false;
+  const uint8_t retained_count = operation->acquired_span_count;
+  operation->acquired_span_count = 0;
+  uint8_t out_retained_count = 0;
+
   switch (operation->type) {
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT: {
       iree_async_socket_accept_operation_t* accept =
@@ -115,6 +185,8 @@ void iree_async_operation_release_resources(iree_async_operation_t* operation) {
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV: {
       iree_async_socket_recv_operation_t* recv =
           (iree_async_socket_recv_operation_t*)operation;
+      out_retained_count = iree_async_operation_take_socket_regions(
+          retained_count, recv->retained_buffer_regions, out_retained_regions);
       iree_async_socket_release(recv->socket);
       break;
     }
@@ -127,18 +199,26 @@ void iree_async_operation_release_resources(iree_async_operation_t* operation) {
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND: {
       iree_async_socket_send_operation_t* send =
           (iree_async_socket_send_operation_t*)operation;
+      out_retained_count = iree_async_operation_take_socket_regions(
+          retained_count, send->retained_buffer_regions, out_retained_regions);
       iree_async_socket_release(send->socket);
       break;
     }
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM: {
       iree_async_socket_recvfrom_operation_t* recvfrom =
           (iree_async_socket_recvfrom_operation_t*)operation;
+      out_retained_count = iree_async_operation_take_socket_regions(
+          retained_count, recvfrom->retained_buffer_regions,
+          out_retained_regions);
       iree_async_socket_release(recvfrom->socket);
       break;
     }
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO: {
       iree_async_socket_sendto_operation_t* sendto_op =
           (iree_async_socket_sendto_operation_t*)operation;
+      out_retained_count = iree_async_operation_take_socket_regions(
+          retained_count, sendto_op->retained_buffer_regions,
+          out_retained_regions);
       iree_async_socket_release(sendto_op->socket);
       break;
     }
@@ -175,12 +255,20 @@ void iree_async_operation_release_resources(iree_async_operation_t* operation) {
     case IREE_ASYNC_OPERATION_TYPE_FILE_READ: {
       iree_async_file_read_operation_t* read_op =
           (iree_async_file_read_operation_t*)operation;
+      if (retained_count) {
+        out_retained_regions[0] = read_op->buffer.region;
+        out_retained_count = 1;
+      }
       iree_async_file_release(read_op->file);
       break;
     }
     case IREE_ASYNC_OPERATION_TYPE_FILE_WRITE: {
       iree_async_file_write_operation_t* write_op =
           (iree_async_file_write_operation_t*)operation;
+      if (retained_count) {
+        out_retained_regions[0] = write_op->buffer.region;
+        out_retained_count = 1;
+      }
       iree_async_file_release(write_op->file);
       break;
     }
@@ -195,4 +283,5 @@ void iree_async_operation_release_resources(iree_async_operation_t* operation) {
     default:
       break;
   }
+  return out_retained_count;
 }

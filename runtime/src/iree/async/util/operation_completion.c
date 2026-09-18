@@ -6,6 +6,8 @@
 
 #include "iree/async/util/operation_completion.h"
 
+#include "iree/async/operations/net.h"
+#include "iree/async/region.h"
 #include "iree/async/util/operation_pool.h"
 
 iree_host_size_t iree_async_operation_complete(
@@ -15,6 +17,13 @@ iree_host_size_t iree_async_operation_complete(
       !iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE);
   iree_async_operation_pool_t* pool = is_final ? operation->pool : NULL;
   status = iree_async_operation_resolve_completion(operation, status, &flags);
+
+  iree_async_region_t*
+      retained_regions[IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS];
+  const uint8_t retained_region_count =
+      is_final
+          ? iree_async_operation_release_resources(operation, retained_regions)
+          : 0;
 
   // Final completion returns operation ownership to the caller. Clear all
   // backend-private state before the callback so it may immediately reuse or
@@ -33,6 +42,9 @@ iree_host_size_t iree_async_operation_complete(
     iree_status_free(status);
   }
 
+  for (uint8_t i = 0; i < retained_region_count; ++i) {
+    iree_async_region_release(retained_regions[i]);
+  }
   if (pool) {
     iree_async_operation_pool_release(pool, operation);
   }

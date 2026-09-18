@@ -397,7 +397,6 @@ void iree_async_proactor_io_uring_submit_continuation_chain(
       iree_async_operation_t* remaining_chain = chain_head->linked_next;
       chain_head->linked_next = NULL;
       if (chain_head->completion_fn) {
-        iree_async_operation_retain_resources(chain_head);
         iree_async_proactor_io_uring_push_software_operation(
             proactor, chain_head, alloc_status);
       } else {
@@ -433,7 +432,6 @@ void iree_async_proactor_io_uring_submit_continuation_chain(
     iree_async_operation_t* remaining_chain = failed_head->linked_next;
     failed_head->linked_next = NULL;
     if (failed_head->completion_fn) {
-      iree_async_operation_retain_resources(failed_head);
       iree_async_proactor_io_uring_push_software_operation(
           proactor, failed_head, submit_status);
     } else {
@@ -524,9 +522,6 @@ iree_async_proactor_io_uring_drain_pending_software_operations(
       }
       iree_async_sequence_prepare_for_completion(sequence);
     }
-
-    // Release resources retained at submit time.
-    iree_async_operation_release_resources(operation);
 
     drained_count += iree_async_operation_complete(
         operation, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
@@ -1374,12 +1369,6 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
       iree_async_proactor_io_uring_cancel_continuation_chain_to_mpsc(
           proactor, continuation);
     }
-  }
-
-  // Release resources retained during submission (not for multishot).
-  // Must happen before the callback since it may free the operation.
-  if (is_final) {
-    iree_async_operation_release_resources(operation);
   }
 
   iree_host_size_t completed_count =
