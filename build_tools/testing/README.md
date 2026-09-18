@@ -122,3 +122,23 @@ Generated artifacts can be compared byte-for-byte against another file:
   }
 ]
 ```
+
+File checks also support `empty`, `non_empty`, `contains`, `not_contains`, and
+`normalize` with the same semantics as stream checks. A report test can select
+the fields relevant to its contract without recording the complete output:
+
+```json
+"files": [
+  {
+    "path": "{tmp}/report.json",
+    "contains": ["\"execution_count\":5"],
+    "not_contains": ["\"unknown\":true"]
+  }
+]
+```
+
+Unrecognized file-check fields are schema errors so a misspelled assertion
+cannot silently pass.
+
+`"exists": false` checks that the command did not create a file. Content and
+equality assertions require a present file and cannot be combined with it.

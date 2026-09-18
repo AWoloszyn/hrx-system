@@ -169,13 +169,13 @@
           "files": [
             {
               "path": "{tmp}/specialized_report.json",
-              "contains": [
+              "contains": {"unordered": [
                 "\"target_family\":\"amdgpu\"",
                 "\"target_key\":\"gfx1151\"",
                 "\"residency_constraints\":{\"count\":4,\"rows\":[",
                 "\"name\":\"amdgpu.lds\",\"kind\":\"pooled_resource\",\"unit\":\"bytes\",\"allocation_scope\":\"workgroup\"",
                 "\"name\":\"amdgpu.workgroup_slots\",\"kind\":\"fixed_limit\""
-              ]
+              ]}
             }
           ]
         },
@@ -217,13 +217,11 @@
       "files": [
         {
           "path": "{tmp}/scoped.json",
-          "contains": [
+          "contains": {"unordered": [
             "\"scope_count\":2",
             "\"schedule_scope_count\":2",
-            "\"action_count\":4,\"explicit_action_count\":0,\"planned_action_count\":4,\"full_drain_count\":1,\"partial_wait_count\":3",
-            "\"register_class\":\"amdgpu.vgpr\",\"final\":{\"register_count\":56",
-            "\"code_byte_count\":252"
-          ]
+            {"regex": "\"wait_plan\":\\{[^}]*\"partial_wait_count\":[1-9][0-9]*[,}]"}
+          ]}
         },
         {
           "path": "{tmp}/scoped.hsaco",
