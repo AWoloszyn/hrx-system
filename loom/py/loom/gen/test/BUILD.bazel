@@ -12,6 +12,14 @@ package(
 )
 
 iree_py_binary(
+    name = "cxx_kernel_cases",
+    testonly = True,
+    srcs = ["cxx_kernel_cases.py"],
+    main = "cxx_kernel_cases.py",
+    visibility = ["//loom/src/loom/import/cxx/test:__pkg__"],
+)
+
+iree_py_binary(
     name = "numeric_conversion_matrix",
     srcs = [
         "__init__.py",

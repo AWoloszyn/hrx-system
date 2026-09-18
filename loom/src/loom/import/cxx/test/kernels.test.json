@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "flash_attention imports, links and executes against a numerical reference",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--approximate-functions",
+              "--root=flash_attention",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/flash_attention.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/flash_attention.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--config=flash_attention.workgroup_count.x=3",
+              "--config=flash_attention.workgroup_count.y=1",
+              "--config=flash_attention.workgroup_count.z=1"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":3",
+                "\"sample_count\":3",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "llama_rms_norm imports, links and executes against a numerical reference",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--approximate-functions",
+              "--root=llama_rms_norm",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/llama_rms_norm.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/llama_rms_norm.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--config=llama_rms_norm.workgroup_count.x=3",
+              "--config=llama_rms_norm.workgroup_count.y=1",
+              "--config=llama_rms_norm.workgroup_count.z=1"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":3",
+                "\"sample_count\":3",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "aiter_swiglu_f16 imports, links and executes against a numerical reference",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--approximate-functions",
+              "--root=aiter_swiglu_f16",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/aiter_swiglu_f16.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/aiter_swiglu_f16.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--config=aiter_swiglu_f16.workgroup_count.x=3",
+              "--config=aiter_swiglu_f16.workgroup_count.y=1",
+              "--config=aiter_swiglu_f16.workgroup_count.z=1"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":4",
+                "\"sample_count\":4",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
