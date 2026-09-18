@@ -65,6 +65,7 @@ loom_cc_library(
     "type_import.h"
     "types.h"
     "value_refs.h"
+    "value_replacement.h"
   TEXTUAL_HDRS
     "location_tag_table.inc"
     "scalar_type_table.inc"
@@ -84,6 +85,7 @@ loom_cc_library(
     "type_import.c"
     "types.c"
     "value_refs.c"
+    "value_replacement.c"
   DEPS
     iree::base
     iree::base::internal
@@ -189,6 +191,7 @@ loom_cc_test(
     value_refs_test
   SRCS
     "value_refs_test.cc"
+    "value_replacement_test.cc"
   DEPS
     ::ir
     iree::base::internal::arena

@@ -78,3 +78,29 @@ func.def @mixed_attribute_references(%extent: index, %increment: index, %batch: 
   %annotated = test.attrs %value {options = #test.options<mode = fast, element_type = test.variant_set<[#test.options<mode = precise, element_type = vector<[%width]x[%width]x[%batch]x[%width]xf32>>, #test.options<mode = fast, element_type = vector<[%batch]xf32>>]>>} : f32
   func.return %annotated : f32
 }
+
+// ====
+// RUN: pass cse,cse
+
+// The same parameterized function type belongs to independent value carriers
+// and a nested attribute owner. Replacing its provider preserves that canonical
+// sharing across both ownership paths and keeps the ordinary operand live.
+func.def @value_and_attribute_owners(%extent: index, %increment: index, %left_seed: i32, %right_seed: i32, %value: f32) -> (f32) {
+  %width = index.add %extent, %increment : index
+  %duplicate_width = index.add %extent, %increment : index
+  %left_callback = test.convert %left_seed : i32 -> test.array<(vector<[%duplicate_width]xf32>, vector<[%duplicate_width]xf32>) -> ()>
+  %right_callback = test.convert %right_seed : i32 -> test.array<(vector<[%duplicate_width]xf32>, vector<[%duplicate_width]xf32>) -> ()>
+  test.use %left_callback, %right_callback : test.array<(vector<[%duplicate_width]xf32>, vector<[%duplicate_width]xf32>) -> ()>, test.array<(vector<[%duplicate_width]xf32>, vector<[%duplicate_width]xf32>) -> ()>
+  %annotated = test.attrs %value {nested = {options = #test.options<mode = precise, element_type = test.array<(vector<[%duplicate_width]xf32>, vector<[%duplicate_width]xf32>) -> ()>>}} : f32
+  func.return %annotated : f32
+}
+
+// ----
+func.def @value_and_attribute_owners(%extent: index, %increment: index, %left_seed: i32, %right_seed: i32, %value: f32) -> (f32) {
+  %width = index.add %extent, %increment : index
+  %left_callback = test.convert %left_seed : i32 -> test.array<(vector<[%width]xf32>, vector<[%width]xf32>) -> ()>
+  %right_callback = test.convert %right_seed : i32 -> test.array<(vector<[%width]xf32>, vector<[%width]xf32>) -> ()>
+  test.use %left_callback, %right_callback : test.array<(vector<[%width]xf32>, vector<[%width]xf32>) -> ()>, test.array<(vector<[%width]xf32>, vector<[%width]xf32>) -> ()>
+  %annotated = test.attrs %value {nested = {options = #test.options<mode = precise, element_type = test.array<(vector<[%width]xf32>, vector<[%width]xf32>) -> ()>>}} : f32
+  func.return %annotated : f32
+}

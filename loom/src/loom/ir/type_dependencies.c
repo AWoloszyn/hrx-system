@@ -143,6 +143,20 @@ static loom_dependency_node_t* loom_dependency_node(
       &index->nodes, id, sizeof(loom_dependency_node_t));
 }
 
+bool loom_type_dependencies_contains(const loom_type_use_table_t* table,
+                                     loom_type_dependency_id_t root,
+                                     loom_value_id_t provider) {
+  if (!root) {
+    return false;
+  }
+  const loom_dependency_node_t* node = loom_dependency_node(table->index, root);
+  while (node->bit >= 0) {
+    node = loom_dependency_node(table->index,
+                                node->children[(provider >> node->bit) & 1]);
+  }
+  return node->provider == provider;
+}
+
 static loom_dependency_carrier_t* loom_dependency_carrier(
     const loom_type_dependency_index_t* index, uint32_t id) {
   return (loom_dependency_carrier_t*)loom_dependency_record(

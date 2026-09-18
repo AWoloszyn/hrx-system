@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// SSA references embedded in types and operation attributes: payload traversal,
-// immutable replacement, and exact incoming/outgoing attribute-use ownership.
+// SSA references embedded in types and operation attributes: indexed traversal
+// and exact incoming/outgoing ownership maintained during mutation.
 
 #ifndef LOOM_IR_VALUE_REFS_H_
 #define LOOM_IR_VALUE_REFS_H_
@@ -30,16 +30,18 @@ iree_status_t loom_op_walk_subtree_value_refs(
     const loom_module_t* module, const loom_op_t* op,
     loom_type_value_ref_callback_t callback, void* user_data);
 
-// Replaces SSA references to |old_id| embedded in |type| with |new_id| and
-// interns the resulting type and its dependency facts in |module|. Values and
-// active type ownership are unchanged; callers decide which carrier value, if
-// any, owns the returned type.
-iree_status_t loom_module_replace_type_value_references(
-    loom_module_t* module, loom_type_t type, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_type_t* out_type, bool* out_changed);
+typedef struct loom_value_replacement_t loom_value_replacement_t;
+
+// Applies one fixed substitution to every active value type carrying its old
+// identity. Each carrier and its use index publish together; earlier carriers
+// may already have changed if reconstructing a later carrier fails.
+iree_status_t loom_value_replacement_apply_types(
+    loom_value_replacement_t* replacement);
 
 // Replaces all SSA references to |old_id| embedded in value types with
-// |new_id| and updates the module's type-use side table.
+// |new_id| and updates the module's type-use side table. Uses one shared
+// replacement context for all carriers, with the same partial-progress failure
+// semantics as loom_value_replacement_apply_types.
 iree_status_t loom_module_replace_value_type_uses(loom_module_t* module,
                                                   loom_value_id_t old_id,
                                                   loom_value_id_t new_id);
@@ -50,13 +52,6 @@ iree_status_t loom_module_replace_value_type_uses(loom_module_t* module,
 iree_status_t loom_module_walk_attribute_value_refs(
     const loom_module_t* module, loom_attribute_t attr,
     loom_type_value_ref_callback_t callback, void* user_data);
-
-// Replaces SSA references to |old_id| embedded in |attr| with |new_id|.
-// Aggregate payloads and type-valued attributes are rebuilt in |module| only
-// when a nested reference changes.
-iree_status_t loom_module_replace_attribute_value_references(
-    loom_module_t* module, loom_attribute_t attr, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_attribute_t* out_attr, bool* out_changed);
 
 // Incoming attribute-use heads for one defined module value.
 static inline const loom_value_attribute_use_heads_t*
@@ -84,16 +79,16 @@ iree_status_t loom_module_set_op_attribute(loom_module_t* module, loom_op_t* op,
                                            uint8_t attribute_index,
                                            loom_attribute_t attribute);
 
-// Replaces all references to |old_id| in one known attribute owner with the
-// distinct, defined |new_id|. The retained index establishes that this slot
-// references |old_id|. Identity substitution preserves reference multiplicity
-// and type/predicate classification, so existing records are retargeted without
-// index allocation. Payload reconstruction may allocate; on failure the old
+// Applies the fixed substitution to one known attribute owner. The retained
+// index establishes that this slot references the old identity. Substitution
+// preserves reference multiplicity and type/predicate classification, so
+// existing records are retargeted without index allocation. Payload
+// reconstruction may allocate; on failure the old
 // attribute and its records remain intact. The caller maintains semantic traits
 // and summaries after success, as with loom_module_set_op_attribute.
-iree_status_t loom_module_replace_op_attribute_value_references(
-    loom_module_t* module, loom_op_t* op, uint8_t attribute_index,
-    loom_value_id_t old_id, loom_value_id_t new_id);
+iree_status_t loom_value_replacement_apply_attribute(
+    loom_value_replacement_t* replacement, loom_op_t* op,
+    uint8_t attribute_index);
 
 // Registers attributes at the operation construction boundary. Also refreshes
 // existing records if a bulk construction path populated the attributes

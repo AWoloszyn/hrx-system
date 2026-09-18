@@ -51,6 +51,13 @@ iree_status_t loom_type_dependencies_add(loom_type_use_table_t* table,
                                          loom_value_id_t provider,
                                          loom_type_dependency_id_t* out_root);
 
+// Tests retained declared membership, independent of active carriers and value
+// availability. Empty sets require no index access; other queries follow at
+// most 32 compressed radix branches and allocate no storage.
+bool loom_type_dependencies_contains(const loom_type_use_table_t* table,
+                                     loom_type_dependency_id_t root,
+                                     loom_value_id_t provider);
+
 // Adds immediate dimensions, encodings and parameter attributes to a summary.
 // Types with only structural children are handled by the inline collector.
 iree_status_t loom_type_dependencies_collect_immediate(

@@ -2244,7 +2244,10 @@ iree_status_t loom_op_set_operand(loom_module_t* module, loom_op_t* op,
 // Replaces all uses of |old_id| with |new_id|. Walks old's operand use list,
 // patches each user op's operand slot, bulk-transfers those use entries to
 // new's list, and rewrites SSA references embedded in value types and operation
-// attributes. No-op if old_id == new_id.
+// attributes with one shared immutable substitution context. Each embedded
+// reference owner publishes consistently with its index, but an allocation
+// failure can leave earlier owners changed. Ordinary operands are transferred
+// only after all embedded references succeed. No-op if old_id == new_id.
 iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
                                                loom_value_id_t old_id,
                                                loom_value_id_t new_id);

@@ -25,6 +25,7 @@
 #include "loom/ir/parameterized_attr.h"
 #include "loom/ir/type_dependencies.h"
 #include "loom/ir/value_refs.h"
+#include "loom/ir/value_replacement.h"
 
 #ifdef __cplusplus
 extern "C" {

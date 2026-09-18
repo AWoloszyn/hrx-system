@@ -3192,10 +3192,11 @@ iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
   IREE_RETURN_IF_ERROR(
       loom_value_ensure_use_capacity(module, new_value, old_use_count));
 
-  IREE_RETURN_IF_ERROR(
-      loom_module_replace_value_type_uses(module, old_id, new_id));
-  iree_status_t status = iree_ok_status();
-  if (loom_value_has_attribute_uses(old_value)) {
+  if (loom_module_value_has_type_uses(module, old_id) ||
+      loom_value_has_attribute_uses(old_value)) {
+    loom_value_replacement_t replacement;
+    loom_value_replacement_initialize(module, old_id, new_id, &replacement);
+    iree_status_t status = loom_value_replacement_apply_types(&replacement);
     loom_attribute_use_id_t attribute_use_id =
         loom_module_value_first_attribute_use(module, old_id);
     while (attribute_use_id && iree_status_is_ok(status)) {
@@ -3203,8 +3204,8 @@ iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
       // before the next incoming head selects another owner.
       const loom_attribute_use_t use =
           module->attribute_uses.records[attribute_use_id - 1];
-      status = loom_module_replace_op_attribute_value_references(
-          module, use.op, use.attribute_index, old_id, new_id);
+      status = loom_value_replacement_apply_attribute(&replacement, use.op,
+                                                      use.attribute_index);
       if (iree_status_is_ok(status)) {
         loom_trait_flags_t old_traits = use.op->traits;
         loom_op_refresh_effective_traits(module, use.op);
@@ -3213,8 +3214,9 @@ iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
       }
       attribute_use_id = loom_module_value_first_attribute_use(module, old_id);
     }
+    loom_value_replacement_deinitialize(&replacement);
+    IREE_RETURN_IF_ERROR(status);
   }
-  IREE_RETURN_IF_ERROR(status);
   if (old_use_count == 0) {
     return iree_ok_status();
   }
