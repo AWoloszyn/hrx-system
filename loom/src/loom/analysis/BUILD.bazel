@@ -24,6 +24,30 @@ loom_cc_library(
     ],
 )
 
+loom_cc_library(
+    name = "condition_relation_matrix",
+    srcs = ["condition_relation_matrix.c"],
+    hdrs = ["condition_relation_matrix.h"],
+    deps = [
+        ":condition_relation_set",
+        "//loom/src/loom/util:adaptive_sort",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "condition_relation_matrix_test",
+    srcs = ["condition_relation_matrix_test.cc"],
+    deps = [
+        ":condition_relation_matrix",
+        ":condition_relation_set",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
 loom_cc_test(
     name = "condition_relation_set_test",
     srcs = ["condition_relation_set_test.cc"],

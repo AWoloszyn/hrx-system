@@ -24,6 +24,34 @@ loom_cc_library(
   PUBLIC
 )
 
+loom_cc_library(
+  NAME
+    condition_relation_matrix
+  HDRS
+    "condition_relation_matrix.h"
+  SRCS
+    "condition_relation_matrix.c"
+  DEPS
+    ::condition_relation_set
+    iree::base
+    iree::base::internal::arena
+    loom::util::adaptive_sort
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    condition_relation_matrix_test
+  SRCS
+    "condition_relation_matrix_test.cc"
+  DEPS
+    ::condition_relation_matrix
+    ::condition_relation_set
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
 loom_cc_test(
   NAME
     condition_relation_set_test
