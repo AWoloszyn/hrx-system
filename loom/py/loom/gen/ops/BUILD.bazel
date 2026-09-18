@@ -338,6 +338,17 @@ iree_py_test(
 )
 
 iree_py_test(
+    name = "c_instance_flags_test",
+    srcs = [
+        "c_instance_flags_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_instance_flags_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
     name = "c_tables_test",
     srcs = [
         "c_tables_test.py",

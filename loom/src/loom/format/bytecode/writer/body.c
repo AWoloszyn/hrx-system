@@ -174,18 +174,6 @@ iree_status_t loom_bytecode_emit_value_def(
                                           storage_node);
 }
 
-static uint8_t loom_bytecode_instance_flags_mask(
-    const loom_op_vtable_t* vtable) {
-  if (!iree_all_bits_set(vtable->vtable_flags,
-                         LOOM_OP_VTABLE_HAS_INSTANCE_FLAGS)) {
-    return 0;
-  }
-  if (vtable->instance_flags_case_count >= 8) {
-    return UINT8_MAX;
-  }
-  return (uint8_t)((1u << vtable->instance_flags_case_count) - 1u);
-}
-
 static iree_status_t loom_bytecode_find_successor_block_index(
     const loom_op_t* op, const loom_block_t* target,
     uint16_t* out_block_index) {
@@ -234,7 +222,7 @@ static iree_status_t loom_bytecode_write_operation(
   IREE_RETURN_IF_ERROR(
       loom_bytecode_page_writer_write_uvarint(writer, writer_op_id + 1));
 
-  uint8_t instance_flags_mask = loom_bytecode_instance_flags_mask(vtable);
+  uint8_t instance_flags_mask = vtable->instance_flags_mask;
   if (iree_any_bit_set(op->instance_flags, (uint8_t)~instance_flags_mask)) {
     iree_string_view_t name = loom_op_vtable_name(vtable);
     return iree_make_status(

@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "instance_flags.loom-test"
     "predicate_attributes.loom-test"
     "signature_binders.loom-test"
     "ssa_names.loom-test"

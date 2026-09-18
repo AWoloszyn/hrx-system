@@ -329,6 +329,31 @@ def _emit_enum_case_names(lines: list[str], array_name: str, enum_def: EnumDef) 
     )
 
 
+def _emit_instance_flags(lines: list[str], name: str, enum_def: EnumDef) -> int:
+    """Emits canonical bits followed by aliases and returns the valid bitmask."""
+    bits = sorted(
+        (case for case in enum_def.cases if case.value and case.value & (case.value - 1) == 0),
+        key=lambda case: case.value,
+    )
+    mask = sum(case.value for case in bits)
+    aliases = [case for case in enum_def.cases if case not in bits]
+    for case in aliases:
+        if case.value & ~mask:
+            raise ValueError(f"Instance flags '{enum_def.name}': alias '{case.keyword}' contains bits without individual spellings")
+    c_arrays.append_struct_array(
+        lines,
+        "loom_instance_flag_case_t",
+        f"{name}_cases",
+        [[f".name = {_bstring_expr(case.keyword)},", f".value = {case.value},"] for case in [*bits, *aliases]],
+    )
+    lines.append(f"static const loom_instance_flags_descriptor_t {name} = {{")
+    lines.append(f"    .cases = {name}_cases,")
+    lines.append(f"    .case_count = IREE_ARRAYSIZE({name}_cases),")
+    lines.append(f"    .bit_count = {len(bits)},")
+    lines.append("};")
+    return mask
+
+
 def _emit_parameterized_attr_tables(
     lines: list[str],
     dialect_name: str,
@@ -833,6 +858,7 @@ def generate_tables_c(
         lines.append("")
 
     emitted_enum_case_name_arrays: set[str] = set()
+    instance_flags_descriptors: dict[int, tuple[str, int]] = {}
 
     # Op metadata blocks.
     for op in ops:
@@ -924,20 +950,16 @@ def generate_tables_c(
                 _emit_enum_case_names(lines, array_name, attr_def.enum_def)
                 emitted_enum_case_name_arrays.add(array_name)
 
-        # Instance flags case name array.
+        # Instance flag values and canonical spellings are shared by enum.
         if has_flags:
             flags_attr = next(a for a in op.attrs if a.attr_type == ATTR_TYPE_FLAGS)
             assert flags_attr.enum_def is not None, f"flags attr on {op.name} has no enum_def"
-            individual_cases = [c for c in flags_attr.enum_def.cases if c.value != 0 and (c.value & (c.value - 1)) == 0]
-            individual_cases.sort(key=lambda c: c.value)
-            array_name = f"{prefix}_instance_flags_names"
-            c_arrays.append_value_array(
-                lines,
-                "loom_bstring_t",
-                array_name,
-                [_bstring_expr(case.keyword) for case in individual_cases],
-                trailing_blank=False,
-            )
+            enum_id = id(flags_attr.enum_def)
+            if enum_id not in instance_flags_descriptors:
+                descriptor_name = f"{prefix}_instance_flags"
+                flags_mask = _emit_instance_flags(lines, descriptor_name, flags_attr.enum_def)
+                instance_flags_descriptors[enum_id] = (descriptor_name, flags_mask)
+            flags_descriptor, flags_mask = instance_flags_descriptors[enum_id]
 
         # Attribute symbol-reference descriptors.
         for attr_def in non_flags:
@@ -1242,8 +1264,8 @@ def generate_tables_c(
         if elements:
             lines.append(f"    .format_element_count = IREE_ARRAYSIZE({fmt_ptr}),")
         if has_flags:
-            lines.append(f"    .instance_flags_case_names = {prefix}_instance_flags_names,")
-            lines.append(f"    .instance_flags_case_count = IREE_ARRAYSIZE({prefix}_instance_flags_names),")
+            lines.append(f"    .instance_flags = &{flags_descriptor},")
+            lines.append(f"    .instance_flags_mask = {flags_mask},")
         if op.keyed_module_record_attr is not None:
             key_attr_index = c_queries.resolve_attr_index(
                 op,

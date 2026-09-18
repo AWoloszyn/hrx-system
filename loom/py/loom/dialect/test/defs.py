@@ -201,6 +201,9 @@ _TargetKind = EnumDef(
 _TemplateFlags = EnumDef(
     "TemplateFlags",
     [
+        EnumCase("all", 131, doc="Aggregate of all synthetic flags."),
+        EnumCase("high", 128, doc="Sparse flag at the instance storage limit."),
+        EnumCase("none", 0, doc="Empty flag alias."),
         EnumCase("debug", 1, doc="Synthetic debug flag."),
         EnumCase("trace", 2, doc="Synthetic trace flag."),
     ],

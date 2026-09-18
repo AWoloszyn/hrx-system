@@ -86,15 +86,15 @@ static iree_status_t loom_print_attr_with_field(
 
 static iree_status_t loom_print_instance_flag_list(
     loom_print_context_t* ctx, const loom_op_vtable_t* vtable, uint8_t flags) {
+  const loom_instance_flags_descriptor_t* descriptor = vtable->instance_flags;
   bool first = true;
-  for (uint8_t bit = 0; bit < vtable->instance_flags_case_count; ++bit) {
-    if (flags & (1u << bit)) {
+  for (uint8_t i = 0; i < descriptor->bit_count; ++i) {
+    if (flags & descriptor->cases[i].value) {
       if (!first) {
         IREE_RETURN_IF_ERROR(loom_output_stream_write_char(ctx->stream, '|'));
       }
       IREE_RETURN_IF_ERROR(loom_output_stream_write(
-          ctx->stream,
-          loom_bstring_view(vtable->instance_flags_case_names[bit])));
+          ctx->stream, loom_bstring_view(descriptor->cases[i].name)));
       first = false;
     }
   }
@@ -652,7 +652,7 @@ iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
         IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, "<", true));
         IREE_RETURN_IF_ERROR(loom_print_attr(ctx, &attr, descriptor));
         uint8_t flags = op->instance_flags;
-        if (flags != 0 && vtable->instance_flags_case_names != NULL) {
+        if (flags != 0) {
           IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, ", ", false));
           IREE_RETURN_IF_ERROR(
               loom_print_instance_flag_list(ctx, vtable, flags));

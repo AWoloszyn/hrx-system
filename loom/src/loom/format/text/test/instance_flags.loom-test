@@ -1,0 +1,147 @@
+// RUN: roundtrip
+
+// Aggregate aliases expand to the declared individual flags. Combining an
+// alias with one of its members does not add or remove any bits.
+func.def @scalar_fast(%a: f32, %b: f32, %c: f32) -> (f32) {
+  %product = scalar.mulf<fast> %a, %b : f32
+  %sum = scalar.addf<nsz|fast|afn> %product, %c : f32
+  %result = scalar.fmaf<fast> %a, %b, %sum : f32
+  func.return %result : f32
+}
+
+// ----
+func.def @scalar_fast(%a: f32, %b: f32, %c: f32) -> (f32) {
+  %product = scalar.mulf<reassoc|nnan|ninf|nsz|arcp|contract|afn> %a, %b : f32
+  %sum = scalar.addf<reassoc|nnan|ninf|nsz|arcp|contract|afn> %product, %c : f32
+  %result = scalar.fmaf<reassoc|nnan|ninf|nsz|arcp|contract|afn> %a, %b, %sum : f32
+  func.return %result : f32
+}
+
+// ====
+
+// Packed BF16 arithmetic uses the same source flag values as scalar F32.
+func.def @vector_fast(%a: vector<32xbf16>, %b: vector<32xbf16>) -> (vector<32xbf16>) {
+  %result = vector.mulf<fast> %a, %b : vector<32xbf16>
+  func.return %result : vector<32xbf16>
+}
+
+// ----
+func.def @vector_fast(%a: vector<32xbf16>, %b: vector<32xbf16>) -> (vector<32xbf16>) {
+  %result = vector.mulf<reassoc|nnan|ninf|nsz|arcp|contract|afn> %a, %b : vector<32xbf16>
+  func.return %result : vector<32xbf16>
+}
+
+// ====
+
+// Aliases also work when flags follow a template parameter.
+func.def @activation_fast(%x: f32) -> (f32) {
+  %result = scalar.geluf<tanh, fast> %x : f32
+  func.return %result : f32
+}
+
+// ----
+func.def @activation_fast(%x: f32) -> (f32) {
+  %result = scalar.geluf<tanh, reassoc|nnan|ninf|nsz|arcp|contract|afn> %x : f32
+  func.return %result : f32
+}
+
+// ====
+
+// RUN: format bytecode
+
+// Bytecode preserves the aggregate's seven bits through both flag formats.
+func.def @bytecode_flags(%a: vector<4xf32>, %b: vector<4xf32>, %x: f32) -> (vector<4xf32>, f32) {
+  %product = vector.mulf<fast> %a, %b : vector<4xf32>
+  %activation = scalar.geluf<tanh, fast> %x : f32
+  func.return %product, %activation : vector<4xf32>, f32
+}
+
+// ----
+func.def @bytecode_flags(%a: vector<4xf32>, %b: vector<4xf32>, %x: f32) -> (vector<4xf32>, f32) {
+  %product = vector.mulf<reassoc|nnan|ninf|nsz|arcp|contract|afn> %a, %b : vector<4xf32>
+  %activation = scalar.geluf<tanh, reassoc|nnan|ninf|nsz|arcp|contract|afn> %x : f32
+  func.return %product, %activation : vector<4xf32>, f32
+}
+
+// ====
+
+// RUN: format bytecode
+
+// Individual integer flags retain their values and canonical order.
+func.def @integer_flags(%a: i32, %b: i32) -> (i32) {
+  %result = scalar.addi<nuw|nsw> %a, %b : i32
+  func.return %result : i32
+}
+
+// ----
+func.def @integer_flags(%a: i32, %b: i32) -> (i32) {
+  %result = scalar.addi<nsw|nuw> %a, %b : i32
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: verify
+
+// A flag remains local to the enum declared by the operation.
+func.def @integer_rejects_fast(%a: i32, %b: i32) -> (i32) {
+  // ERROR@+1: PARSE/018 "instance flag" "fast"
+  %result = scalar.addi<fast> %a, %b : i32
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: verify
+
+func.def @float_rejects_integer_flag(%a: f32, %b: f32) -> (f32) {
+  // ERROR@+1: PARSE/018 "instance flag" "nsw"
+  %result = scalar.addf<nsw> %a, %b : f32
+  func.return %result : f32
+}
+
+// ====
+
+// RUN: roundtrip
+
+// Sparse bit values and aliases remain independent of declaration order.
+test.record @flag_target
+
+test.func @sparse_flags() {
+  test.template_param_symbol_flags<@flag_target, all|debug>
+  test.template_param_symbol_flags<@flag_target, high>
+  test.template_param_symbol_flags<@flag_target, none>
+  test.yield
+}
+
+// ----
+test.record @flag_target
+
+test.func @sparse_flags() {
+  test.template_param_symbol_flags<@flag_target, debug|trace|high>
+  test.template_param_symbol_flags<@flag_target, high>
+  test.template_param_symbol_flags<@flag_target>
+  test.yield
+}
+
+// ====
+
+// RUN: format bytecode
+
+// Bytecode retains the declared high bit instead of inferring it from count.
+test.record @flag_target
+
+test.func @sparse_bytecode_flags() {
+  test.template_param_symbol_flags<@flag_target, all>
+  test.template_param_symbol_flags<@flag_target, high|none>
+  test.yield
+}
+
+// ----
+test.record @flag_target
+
+test.func @sparse_bytecode_flags() {
+  test.template_param_symbol_flags<@flag_target, debug|trace|high>
+  test.template_param_symbol_flags<@flag_target, high>
+  test.yield
+}

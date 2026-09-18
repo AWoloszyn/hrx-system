@@ -315,6 +315,9 @@ enum {
 };
 
 // Synthetic flags for TemplateParamFlags parser/printer coverage.
+#define LOOM_TEST_TEMPLATEFLAGS_ALL ((uint8_t)131)
+#define LOOM_TEST_TEMPLATEFLAGS_HIGH ((uint8_t)128)
+#define LOOM_TEST_TEMPLATEFLAGS_NONE ((uint8_t)0)
 #define LOOM_TEST_TEMPLATEFLAGS_DEBUG ((uint8_t)1)
 #define LOOM_TEST_TEMPLATEFLAGS_TRACE ((uint8_t)2)
 
