@@ -30,6 +30,7 @@ typedef struct loom_parser_t {
   loom_tokenizer_t tokenizer;
   loom_module_t* module;
   loom_context_t* context;
+  // Parser-lifetime state and reusable frames; never rewound during parsing.
   iree_arena_allocator_t parser_arena;
   loom_builder_t builder;
   loom_parser_scope_t* scope;
@@ -49,6 +50,9 @@ typedef struct loom_parser_t {
 
   // Parser-owned reusable type-list scratch frames.
   loom_parser_type_list_t* type_list_free_list;
+
+  // Parser-owned reusable parameter slots, leased across nested type parsing.
+  loom_parser_type_parameters_t* type_parameters_free_list;
 
   loom_alias_table_t aliases;
   loom_symbol_map_t symbol_lookup;

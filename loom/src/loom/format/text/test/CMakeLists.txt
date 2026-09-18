@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "ssa_names.loom-test"
+    "type_scratch.loom-test"
 )
 
 loom_cc_test(

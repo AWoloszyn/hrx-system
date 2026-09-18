@@ -1,0 +1,38 @@
+// RUN: roundtrip
+
+// Function and dialect lists remain reusable after a parameterized type has
+// finished. The wider signature also grows a leased list before returning it.
+test.decl @composite_parameters(%first: test.array<(i32, i32, i32, i32, i32, i32, i32, i32, i32) -> (i32)>, %second: test.array<(i32) -> (i32)>, %third: test.array<test.ref<i32>>, %fourth: test.array<test.ref<f32>>)
+
+// ====
+// RUN: roundtrip
+
+// A parent function list remains active while nested parameterized types lease
+// and return their own function and dialect lists.
+test.decl @nested_parameters(%callbacks: (test.array<(i32) -> (f32)>, test.array<test.ref<i32>>) -> (test.array<(f32) -> (i32)>), %continuation: test.array<(i32) -> ()>)
+
+// ====
+// RUN: roundtrip
+
+// Encoding parameter leases have the same parser-wide reuse lifetime.
+test.decl @encoded_parameters(%first: test.array<tile<32xi8, #encoding.i8<payload_elements=32>>>, %second: test.array<tile<64xi8, #encoding.i8<payload_elements=32>>>)
+
+// ====
+// RUN: roundtrip
+
+// A forward dimension binder and a forward symbol reference survive completion
+// of their enclosing type. Escaped string storage also belongs to the parser.
+test.decl @references(%values: test.array<vector<[%width]xf32>, metadata = {callee = @target, label = "quoted\"text"}>, %width: index)
+test.decl @target(%value: f32) -> (f32)
+
+// ----
+test.decl @references(%values: test.array<vector<[%width]xf32>, metadata = {callee = @target, label = "quoted\"text"}>, %width: index)
+
+test.decl @target(%value: f32) -> (f32)
+
+// ====
+// RUN: roundtrip
+
+// Sibling descriptors grow the available slot frame. Absent parameters are
+// cleared on reuse, while a nested type keeps its parent's parameters intact.
+test.decl @parameter_frames(%aligned: test.array<i32, alignment = 32>, %matrix: test.matrix<bf16, scope = workgroup, rows = 16>, %nested: test.array<test.matrix<f32, scope = subgroup, rows = 8>, alignment = 64>, %plain: test.array<i32>)

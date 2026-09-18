@@ -39,8 +39,9 @@ typedef struct loom_text_parse_options_t {
 //
 // Single-pass, table-driven: recursive descent for structure (module,
 // functions, regions, blocks), format element walker for op interiors
-// (same .rodata tables the printer uses). Two arenas: module arena
-// (persistent IR), parser arena (transient scope/accumulator storage).
+// (same .rodata tables the printer uses). Persistent IR uses the module arena;
+// the parser arena owns scopes and reusable scratch frames. Nested type parsing
+// leases distinct frames so completing a type never invalidates retained state.
 // Symbol references may precede their declaration or definition within the
 // source. An unresolved symbol is retained when availability metadata names an
 // external source that may provide it; otherwise a missing declaration or

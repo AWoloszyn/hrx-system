@@ -1146,24 +1146,40 @@ static iree_status_t loom_parse_parameterized_type(
   }
 
   const uint8_t parameter_count = parameterized->parameter_count;
-  const iree_arena_checkpoint_t checkpoint =
-      iree_arena_checkpoint_save(&parser->parser_arena);
-  loom_attribute_t* parameter_slots = NULL;
-  iree_status_t status = iree_ok_status();
-  if (parameter_count > 0) {
-    status = iree_arena_allocate_array(&parser->parser_arena, parameter_count,
-                                       sizeof(*parameter_slots),
-                                       (void**)&parameter_slots);
-    if (iree_status_is_ok(status)) {
-      memset(parameter_slots, 0,
-             (iree_host_size_t)parameter_count * sizeof(*parameter_slots));
+  if (!parameter_count) {
+    return loom_parse_parameterized_type_contents(parser, descriptor, mode,
+                                                  NULL, out_type);
+  }
+
+  // Recursive parsing can publish type-list leases, symbol bindings and other
+  // state in parser_arena. Lease slots instead of rewinding that shared arena.
+  loom_parser_type_parameters_t* parameters = parser->type_parameters_free_list;
+  if (!parameters || parameters->capacity < parameter_count) {
+    iree_host_size_t capacity = parameters ? parameters->capacity * 2 : 0;
+    if (capacity < parameter_count) {
+      capacity = parameter_count;
     }
+    if (capacity > UINT8_MAX) {
+      capacity = UINT8_MAX;
+    }
+    // Descriptor parameter counts fit in a byte, so this layout cannot
+    // overflow.
+    iree_host_size_t allocation_size =
+        sizeof(*parameters) + capacity * sizeof(*parameters->values);
+    loom_parser_type_parameters_t* replacement = NULL;
+    IREE_RETURN_IF_ERROR(iree_arena_allocate(
+        &parser->parser_arena, allocation_size, (void**)&replacement));
+    replacement->capacity = capacity;
+    replacement->next_free = parameters ? parameters->next_free : NULL;
+    parameters = replacement;
   }
-  if (iree_status_is_ok(status)) {
-    status = loom_parse_parameterized_type_contents(parser, descriptor, mode,
-                                                    parameter_slots, out_type);
-  }
-  iree_arena_checkpoint_restore(&checkpoint);
+  parser->type_parameters_free_list = parameters->next_free;
+  memset(parameters->values, 0,
+         (iree_host_size_t)parameter_count * sizeof(*parameters->values));
+  iree_status_t status = loom_parse_parameterized_type_contents(
+      parser, descriptor, mode, parameters->values, out_type);
+  parameters->next_free = parser->type_parameters_free_list;
+  parser->type_parameters_free_list = parameters;
   return status;
 }
 

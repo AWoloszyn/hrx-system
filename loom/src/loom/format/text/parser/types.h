@@ -33,6 +33,17 @@ typedef struct loom_parser_type_list_t {
   loom_type_t types[];
 } loom_parser_type_list_t;
 
+// One active parameterized type owns a frame until its parameters are copied
+// into the canonical module type. Sibling parses reuse completed frames.
+typedef struct loom_parser_type_parameters_t {
+  // Next available parser-owned frame when this frame is not leased.
+  struct loom_parser_type_parameters_t* next_free;
+  // Number of parameter slots allocated in the trailing array.
+  iree_host_size_t capacity;
+  // Temporary parameters; only the active descriptor's slots are initialized.
+  loom_attribute_t values[];
+} loom_parser_type_parameters_t;
+
 #define LOOM_PARSER_ENCODING_PARAMS_INLINE_ATTRS 8
 typedef struct loom_parser_encoding_params_t {
   struct loom_parser_encoding_params_t* next_free;
