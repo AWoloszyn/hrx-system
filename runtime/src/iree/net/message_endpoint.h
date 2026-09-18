@@ -29,7 +29,8 @@
 // atomically swap both message and error handlers. Message callbacks for one
 // endpoint are serialized in delivery order. A swap performed from inside a
 // message callback therefore takes effect before any later message callback,
-// ensuring no later message is delivered to the stale handler.
+// ensuring no later message is delivered to the stale handler. A terminal
+// error racing the swap may observe either complete callback bundle.
 
 #ifndef IREE_NET_MESSAGE_ENDPOINT_H_
 #define IREE_NET_MESSAGE_ENDPOINT_H_
@@ -88,7 +89,10 @@ typedef void(IREE_API_PTR* iree_net_message_endpoint_deactivate_fn_t)(
 //
 // During protocol transitions (e.g., bootstrap to operational), callbacks must
 // change atomically to prevent messages from being delivered to a stale
-// handler. The shared user_data ensures consistency across the bundle.
+// handler. The shared user_data ensures consistency across the bundle. Callback
+// functions and user data remain caller-owned and must stay valid until the
+// endpoint deactivation callback fires, including after this bundle is
+// superseded by a later call to set_callbacks().
 typedef struct iree_net_message_endpoint_callbacks_t {
   // Function invoked for each complete received message.
   iree_net_message_endpoint_message_fn_t on_message;
@@ -153,7 +157,10 @@ struct iree_net_message_endpoint_vtable_t {
 //
 // Used for protocol handoff (e.g., bootstrap completes, operational channel
 // takes over). Both handlers and user_data change in a single operation. When
-// called from an on_message handler, all later messages use the new bundle.
+// called from an on_message handler, all later messages use the new bundle. A
+// terminal-error callback already racing the handoff may use either the old or
+// new bundle, but never a mixture. All installed callback targets must remain
+// valid until endpoint deactivation completes.
 //
 // Must be called on the proactor thread after activation, or from any thread
 // before activation.

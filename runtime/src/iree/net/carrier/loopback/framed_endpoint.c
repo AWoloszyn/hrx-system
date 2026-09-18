@@ -248,22 +248,29 @@ static iree_status_t iree_net_loopback_on_wire_message(
   iree_const_byte_span_t payload = iree_make_const_byte_span(
       frame.data + IREE_NET_LOOPBACK_FRAME_HEADER_SIZE,
       frame.data_length - IREE_NET_LOOPBACK_FRAME_HEADER_SIZE);
-  return endpoint->callbacks.on_message(endpoint->callbacks.user_data, payload,
-                                        lease);
+  iree_slim_mutex_lock(&endpoint->mutex);
+  const iree_net_message_endpoint_callbacks_t callbacks = endpoint->callbacks;
+  iree_slim_mutex_unlock(&endpoint->mutex);
+  return callbacks.on_message(callbacks.user_data, payload, lease);
 }
 
 static void iree_net_loopback_on_wire_error(void* user_data,
                                             iree_status_t status) {
   iree_net_loopback_framed_endpoint_t* endpoint =
       (iree_net_loopback_framed_endpoint_t*)user_data;
-  endpoint->callbacks.on_error(endpoint->callbacks.user_data, status);
+  iree_slim_mutex_lock(&endpoint->mutex);
+  const iree_net_message_endpoint_callbacks_t callbacks = endpoint->callbacks;
+  iree_slim_mutex_unlock(&endpoint->mutex);
+  callbacks.on_error(callbacks.user_data, status);
 }
 
 static void iree_net_loopback_set_callbacks(
     void* self, iree_net_message_endpoint_callbacks_t callbacks) {
   iree_net_loopback_framed_endpoint_t* endpoint =
       (iree_net_loopback_framed_endpoint_t*)self;
+  iree_slim_mutex_lock(&endpoint->mutex);
   endpoint->callbacks = callbacks;
+  iree_slim_mutex_unlock(&endpoint->mutex);
 }
 
 static iree_status_t iree_net_loopback_activate(void* self) {

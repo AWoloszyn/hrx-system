@@ -494,20 +494,18 @@ static void iree_net_tcp_connection_record_terminal_error(
   iree_net_tcp_clear_all_pending_frames(connection);
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
     iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[i];
-    iree_net_message_endpoint_error_fn_t on_error = NULL;
-    void* callback_user_data = NULL;
+    iree_net_message_endpoint_callbacks_t callbacks = {0};
     iree_slim_mutex_lock(&connection->mutex);
     if ((endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING ||
          endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE) &&
         endpoint->callbacks.on_error &&
         iree_net_endpoint_lifecycle_try_begin_operation(&endpoint->lifecycle)) {
-      on_error = endpoint->callbacks.on_error;
-      callback_user_data = endpoint->callbacks.user_data;
+      callbacks = endpoint->callbacks;
     }
     iree_slim_mutex_unlock(&connection->mutex);
-    if (on_error) {
-      on_error(callback_user_data,
-               iree_status_clone(connection->terminal_status));
+    if (callbacks.on_error) {
+      callbacks.on_error(callbacks.user_data,
+                         iree_status_clone(connection->terminal_status));
       iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
     }
   }
@@ -524,8 +522,7 @@ static iree_status_t iree_net_tcp_on_wire_frame(
       frame.data + IREE_NET_TCP_FRAME_HEADER_SIZE,
       frame.data_length - IREE_NET_TCP_FRAME_HEADER_SIZE);
 
-  iree_net_message_endpoint_message_fn_t on_message = NULL;
-  void* callback_user_data = NULL;
+  iree_net_message_endpoint_callbacks_t callbacks = {0};
   iree_slim_mutex_lock(&connection->mutex);
   // Leaving OPEN closes receive admission before endpoint queues are cleared.
   // Frames that lose this lock race remain owned by the framing adapter and
@@ -548,13 +545,12 @@ static iree_status_t iree_net_tcp_on_wire_frame(
         iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                          "TCP endpoint %u is not active", endpoint_ordinal);
   } else {
-    on_message = endpoint->callbacks.on_message;
-    callback_user_data = endpoint->callbacks.user_data;
+    callbacks = endpoint->callbacks;
   }
   iree_slim_mutex_unlock(&connection->mutex);
 
-  if (on_message) {
-    status = on_message(callback_user_data, payload, lease);
+  if (callbacks.on_message) {
+    status = callbacks.on_message(callbacks.user_data, payload, lease);
     iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
   }
   return status;
@@ -639,8 +635,7 @@ static void iree_net_tcp_endpoint_activation_complete(
   } else {
     iree_status_free(status);
     while (true) {
-      iree_net_message_endpoint_message_fn_t on_message = NULL;
-      void* callback_user_data = NULL;
+      iree_net_message_endpoint_callbacks_t callbacks = {0};
       uint32_t frame_index = IREE_NET_TCP_INDEX_NONE;
       iree_slim_mutex_lock(&connection->mutex);
       if (endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING) {
@@ -649,8 +644,7 @@ static void iree_net_tcp_endpoint_activation_complete(
         if (frame_index == IREE_NET_TCP_INDEX_NONE) {
           endpoint->phase = IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE;
         } else {
-          on_message = endpoint->callbacks.on_message;
-          callback_user_data = endpoint->callbacks.user_data;
+          callbacks = endpoint->callbacks;
         }
       }
       iree_slim_mutex_unlock(&connection->mutex);
@@ -660,8 +654,8 @@ static void iree_net_tcp_endpoint_activation_complete(
 
       iree_net_tcp_pending_frame_t* pending_frame =
           &connection->pending_frames[frame_index];
-      iree_status_t callback_status = on_message(
-          callback_user_data, pending_frame->payload, &pending_frame->lease);
+      iree_status_t callback_status = callbacks.on_message(
+          callbacks.user_data, pending_frame->payload, &pending_frame->lease);
       iree_net_tcp_release_pending_frame(connection, frame_index);
       if (!iree_status_is_ok(callback_status)) {
         iree_net_tcp_connection_record_terminal_error(connection,

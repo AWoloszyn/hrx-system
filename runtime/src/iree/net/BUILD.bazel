@@ -180,6 +180,7 @@ iree_runtime_cc_library(
         ":message_endpoint",
         "//runtime/src/iree/async",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
     ],
 )
 

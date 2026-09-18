@@ -7,8 +7,10 @@
 #include "iree/net/framing_adapter.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "iree/async/buffer_pool.h"
@@ -1245,6 +1247,56 @@ struct HandoffHandler {
   }
 };
 
+struct ConcurrentHandoffState {
+  iree_net_message_endpoint_t endpoint = {};
+  std::atomic<bool> writer_started = false;
+  std::atomic<bool> stop_writer = false;
+  std::atomic<int> error_count = 0;
+  std::atomic<int> mismatched_bundle_count = 0;
+};
+
+struct ConcurrentHandoffTarget {
+  ConcurrentHandoffState* state = nullptr;
+  ConcurrentHandoffTarget* peer = nullptr;
+  int identity = 0;
+
+  static iree_status_t OnMessage(void* user_data,
+                                 iree_const_byte_span_t message,
+                                 iree_async_buffer_lease_t* lease) {
+    (void)message;
+    (void)lease;
+    auto* self = static_cast<ConcurrentHandoffTarget*>(user_data);
+    self->state->writer_started.store(true, std::memory_order_release);
+    while (!self->state->stop_writer.load(std::memory_order_acquire)) {
+      iree_net_message_endpoint_set_callbacks(self->state->endpoint,
+                                              self->callbacks());
+      iree_net_message_endpoint_set_callbacks(self->state->endpoint,
+                                              self->peer->callbacks());
+    }
+    return iree_ok_status();
+  }
+
+  template <int CallbackIdentity>
+  static void OnError(void* user_data, iree_status_t status) {
+    auto* self = static_cast<ConcurrentHandoffTarget*>(user_data);
+    if (self->identity != CallbackIdentity) {
+      self->state->mismatched_bundle_count.fetch_add(1,
+                                                     std::memory_order_relaxed);
+    }
+    self->state->error_count.fetch_add(1, std::memory_order_relaxed);
+    self->state->stop_writer.store(true, std::memory_order_release);
+    iree_status_free(status);
+  }
+
+  iree_net_message_endpoint_callbacks_t callbacks() {
+    return {
+        OnMessage,
+        identity == 0 ? OnError<0> : OnError<1>,
+        this,
+    };
+  }
+};
+
 TEST_F(FramingAdapterTest, CallbackSwapRedirectsMessages) {
   ActivateWithCallbacks();
 
@@ -1319,6 +1371,40 @@ TEST_F(FramingAdapterTest, CallbackSwapMidFragment) {
   // Second handler got the completed frame.
   ASSERT_EQ(second_handler.messages.size(), 1u);
   EXPECT_EQ(second_handler.messages[0].data, frame);
+}
+
+TEST_F(FramingAdapterTest,
+       ConcurrentTerminalErrorObservesCoherentCallbackBundle) {
+  ConcurrentHandoffState state;
+  state.endpoint = endpoint_;
+  ConcurrentHandoffTarget target_zero = {&state, nullptr, 0};
+  ConcurrentHandoffTarget target_one = {&state, &target_zero, 1};
+  target_zero.peer = &target_one;
+  iree_net_message_endpoint_set_callbacks(endpoint_, target_zero.callbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(endpoint_));
+
+  const std::vector<uint8_t> frame = MakeFrame("protocol handoff");
+  iree_status_code_t receive_code = IREE_STATUS_UNKNOWN;
+  std::thread message_thread([&] {
+    iree_status_t status = InjectRecv(frame);
+    receive_code = iree_status_code(status);
+    iree_status_free(status);
+  });
+  while (!state.writer_started.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+
+  mock_carrier_->InjectError(
+      iree_make_status(IREE_STATUS_UNAVAILABLE, "concurrent terminal error"));
+  message_thread.join();
+
+  EXPECT_EQ(receive_code, IREE_STATUS_OK);
+  EXPECT_EQ(state.error_count.load(std::memory_order_relaxed), 1);
+  EXPECT_EQ(state.mismatched_bundle_count.load(std::memory_order_relaxed), 0);
+
+  // Retire all callback targets before their stack storage leaves scope.
+  IREE_ASSERT_OK(iree_net_message_endpoint_deactivate(
+      endpoint_, /*callback=*/nullptr, /*user_data=*/nullptr));
 }
 
 //===----------------------------------------------------------------------===//

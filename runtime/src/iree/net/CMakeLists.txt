@@ -189,6 +189,7 @@ iree_cc_library(
     ::message_endpoint
     iree::async
     iree::base
+    iree::base::threading
   PUBLIC
 )
 
