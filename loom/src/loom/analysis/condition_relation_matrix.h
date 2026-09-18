@@ -26,6 +26,21 @@ enum loom_condition_relation_outcome_e {
   LOOM_CONDITION_RELATION_OUTCOME_COUNT = 3,
 };
 
+// Bit set of ordered comparison outcomes.
+typedef uint8_t loom_condition_relation_outcome_bits_t;
+enum loom_condition_relation_outcome_bit_e {
+  LOOM_CONDITION_RELATION_OUTCOME_BIT_LESS =
+      1u << LOOM_CONDITION_RELATION_OUTCOME_LESS,
+  LOOM_CONDITION_RELATION_OUTCOME_BIT_EQUAL =
+      1u << LOOM_CONDITION_RELATION_OUTCOME_EQUAL,
+  LOOM_CONDITION_RELATION_OUTCOME_BIT_GREATER =
+      1u << LOOM_CONDITION_RELATION_OUTCOME_GREATER,
+  LOOM_CONDITION_RELATION_OUTCOME_BIT_ALL =
+      LOOM_CONDITION_RELATION_OUTCOME_BIT_LESS |
+      LOOM_CONDITION_RELATION_OUTCOME_BIT_EQUAL |
+      LOOM_CONDITION_RELATION_OUTCOME_BIT_GREATER,
+};
+
 // One mutable sparse relation row.
 typedef struct loom_condition_relation_matrix_row_t {
   // Canonical left-value ordinal in the same domain as the row's set roots.
@@ -72,6 +87,10 @@ typedef struct loom_condition_relation_matrix_builder_t {
 void loom_condition_relation_matrix_builder_initialize(
     iree_arena_allocator_t* arena,
     loom_condition_relation_matrix_builder_t* out_builder);
+
+// Resets a builder while retaining its arena-backed high-water storage.
+void loom_condition_relation_matrix_builder_reset(
+    loom_condition_relation_matrix_builder_t* builder);
 
 // Appends one excluded right-value set. Empty sets require no row and are
 // ignored.

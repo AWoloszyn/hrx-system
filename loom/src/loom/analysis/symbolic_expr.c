@@ -214,9 +214,9 @@ iree_status_t loom_symbolic_expr_context_lookup_facts(
       context->fact_table
           ? loom_value_fact_table_lookup(context->fact_table, value_id)
           : loom_value_facts_unknown();
-  if (context->condition_facts && context->fact_table) {
-    loom_condition_fact_set_apply_to_value_facts(
-        context->condition_facts, context->fact_table, value_id, &facts);
+  if (context->condition_scope && context->fact_table) {
+    loom_condition_fact_scope_apply_to_value_facts(
+        context->condition_scope, context->fact_table, value_id, &facts);
     while (context->module && value_id < context->module->values.count) {
       const loom_op_t* defining_op =
           loom_symbolic_expr_value_defining_op(context, value_id);
@@ -225,9 +225,9 @@ iree_status_t loom_symbolic_expr_context_lookup_facts(
       if (!defining_op || !loom_scf_select_isa(defining_op)) {
         break;
       }
-      IREE_RETURN_IF_ERROR(loom_condition_fact_set_proves_condition(
+      IREE_RETURN_IF_ERROR(loom_condition_fact_scope_proves_condition(
           &context->condition_query, context->fact_table,
-          context->condition_facts, loom_scf_select_condition(defining_op),
+          context->condition_scope, loom_scf_select_condition(defining_op),
           &condition, &proven));
       if (!proven) {
         break;
@@ -236,9 +236,9 @@ iree_status_t loom_symbolic_expr_context_lookup_facts(
                            : loom_scf_select_false_value(defining_op);
       loom_value_facts_t selected_facts =
           loom_value_fact_table_lookup(context->fact_table, value_id);
-      loom_condition_fact_set_apply_to_value_facts(context->condition_facts,
-                                                   context->fact_table,
-                                                   value_id, &selected_facts);
+      loom_condition_fact_scope_apply_to_value_facts(context->condition_scope,
+                                                     context->fact_table,
+                                                     value_id, &selected_facts);
       facts = loom_symbolic_expr_intersect_integer_facts(facts, selected_facts);
     }
   }

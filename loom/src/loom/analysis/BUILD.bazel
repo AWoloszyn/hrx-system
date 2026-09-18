@@ -233,6 +233,28 @@ loom_cc_test(
     ],
 )
 
+loom_cc_library(
+    name = "condition_fact_scope",
+    srcs = ["condition_fact_scope.c"],
+    hdrs = ["condition_fact_scope.h"],
+    deps = [
+        ":cfg_condition_facts",
+        ":condition_facts",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_test(
+    name = "condition_fact_scope_test",
+    srcs = ["condition_fact_scope_test.cc"],
+    deps = [
+        ":condition_fact_scope",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
 loom_cc_benchmark(
     name = "condition_facts_benchmark",
     srcs = ["condition_facts_benchmark.cc"],
@@ -248,12 +270,22 @@ loom_cc_benchmark(
 
 loom_cc_library(
     name = "cfg_condition_facts",
-    srcs = ["cfg_condition_facts.c"],
-    hdrs = ["cfg_condition_facts.h"],
+    srcs = [
+        "cfg_condition_facts.c",
+        "cfg_condition_operand_domain.c",
+        "cfg_condition_relation_table.c",
+    ],
+    hdrs = [
+        "cfg_condition_facts.h",
+        "cfg_condition_operand_domain.h",
+    ],
     deps = [
+        ":cfg_value_identity",
         ":condition_facts",
+        ":condition_relation_matrix",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/util:adaptive_sort",
         "//loom/src/loom/util:cfg_graph",
         "//loom/src/loom/util:dominance",
         "//loom/src/loom/util:fact_table",
@@ -281,6 +313,7 @@ loom_cc_test(
     srcs = ["cfg_condition_facts_test.cc"],
     deps = [
         ":cfg_condition_facts",
+        ":condition_fact_scope",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/cfg",
         "//loom/src/loom/ops/index",
@@ -549,6 +582,7 @@ loom_cc_library(
     deps = [
         ":cfg_condition_facts",
         ":cfg_value_identity",
+        ":condition_fact_scope",
         ":condition_facts",
         ":symbolic_expr",
         "//loom/src/loom/error:emitter",
@@ -978,6 +1012,7 @@ loom_cc_library(
     ],
     deps = [
         ":cfg_value_identity",
+        ":condition_fact_scope",
         ":condition_facts",
         ":integer_relation",
         "//loom/src/loom/ir",

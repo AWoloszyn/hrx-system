@@ -47,6 +47,11 @@ void loom_condition_relation_matrix_builder_initialize(
   };
 }
 
+void loom_condition_relation_matrix_builder_reset(
+    loom_condition_relation_matrix_builder_t* builder) {
+  builder->row_count = 0;
+}
+
 iree_status_t loom_condition_relation_matrix_builder_add(
     loom_condition_relation_matrix_builder_t* builder,
     loom_condition_relation_outcome_t outcome, uint32_t left,

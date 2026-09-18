@@ -6,11 +6,14 @@
 
 #include "loom/analysis/cfg_condition_facts.h"
 
+#include <array>
 #include <initializer_list>
+#include <vector>
 
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/analysis/condition_fact_scope.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/cfg/ops.h"
@@ -73,6 +76,9 @@ class CfgConditionFactsTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    if (loom_local_value_domain_is_acquired(&value_domain_)) {
+      loom_local_value_domain_release(&value_domain_);
+    }
     loom_module_free(module_);
     loom_context_deinitialize(&context_);
     iree_arena_deinitialize(&analysis_arena_);
@@ -121,9 +127,13 @@ class CfgConditionFactsTest : public ::testing::Test {
 
   void BuildBranch(loom_block_t* dest,
                    std::initializer_list<loom_value_id_t> arguments = {}) {
+    BuildBranch(dest, arguments.begin(), (uint16_t)arguments.size());
+  }
+
+  void BuildBranch(loom_block_t* dest, const loom_value_id_t* arguments,
+                   uint16_t argument_count) {
     loom_op_t* op = nullptr;
-    IREE_ASSERT_OK(loom_cfg_br_build(&builder_, dest, arguments.begin(),
-                                     (uint16_t)arguments.size(),
+    IREE_ASSERT_OK(loom_cfg_br_build(&builder_, dest, arguments, argument_count,
                                      LOOM_LOCATION_UNKNOWN, &op));
   }
 
@@ -136,21 +146,72 @@ class CfgConditionFactsTest : public ::testing::Test {
                                           &op));
   }
 
-  bool HasRelation(const loom_cfg_block_entry_condition_facts_t* facts,
+  enum class IdentityMode { kEmpty, kCfg };
+
+  loom_cfg_condition_relation_table_t ComputeRelationTable(
+      const loom_cfg_graph_t* graph, const loom_dominance_info_t* dominance,
+      IdentityMode identity_mode = IdentityMode::kCfg) {
+    EXPECT_FALSE(loom_local_value_domain_is_acquired(&value_domain_));
+    IREE_CHECK_OK(loom_local_value_domain_acquire_for_region_tree(
+        module_, body_, &analysis_arena_, &value_domain_));
+    IREE_CHECK_OK(loom_cfg_value_identity_table_initialize(
+        &value_domain_, &analysis_arena_, &identities_));
+    if (identity_mode == IdentityMode::kCfg) {
+      loom_value_fact_cfg_region_t retained_region = {};
+      IREE_CHECK_OK(loom_value_fact_cfg_region_initialize(
+          module_, body_, &analysis_arena_, &retained_region));
+      IREE_CHECK_OK(loom_cfg_value_identity_table_update(
+          &identities_, &retained_region, dominance, &analysis_arena_));
+    }
+    loom_cfg_condition_relation_table_t table = {};
+    IREE_CHECK_OK(loom_cfg_condition_relation_table_compute(
+        module_, graph, &fact_table_, dominance, &value_domain_, &identities_,
+        &analysis_arena_, &table));
+    return table;
+  }
+
+  bool HasRelation(const loom_cfg_condition_relation_table_t* table,
+                   const loom_cfg_condition_relation_view_t* view,
                    loom_symbolic_integer_relation_t relation,
                    loom_value_id_t left, loom_value_id_t right) {
-    for (iree_host_size_t i = 0; i < facts->integer_relation_count; ++i) {
-      const loom_condition_integer_relation_t& entry =
-          facts->integer_relations[i];
-      if (entry.relation == relation &&
-          entry.left.kind == LOOM_CONDITION_INTEGER_OPERAND_VALUE &&
-          entry.left.value_id == left &&
-          entry.right.kind == LOOM_CONDITION_INTEGER_OPERAND_VALUE &&
-          entry.right.value_id == right) {
-        return true;
-      }
+    loom_condition_relation_outcome_bits_t required_exclusions = 0;
+    switch (relation) {
+      case LOOM_SYMBOLIC_INTEGER_RELATION_EQ:
+        required_exclusions = LOOM_CONDITION_RELATION_OUTCOME_BIT_LESS |
+                              LOOM_CONDITION_RELATION_OUTCOME_BIT_GREATER;
+        break;
+      case LOOM_SYMBOLIC_INTEGER_RELATION_NE:
+        required_exclusions = LOOM_CONDITION_RELATION_OUTCOME_BIT_EQUAL;
+        break;
+      case LOOM_SYMBOLIC_INTEGER_RELATION_LT:
+        required_exclusions = LOOM_CONDITION_RELATION_OUTCOME_BIT_EQUAL |
+                              LOOM_CONDITION_RELATION_OUTCOME_BIT_GREATER;
+        break;
+      case LOOM_SYMBOLIC_INTEGER_RELATION_LE:
+        required_exclusions = LOOM_CONDITION_RELATION_OUTCOME_BIT_GREATER;
+        break;
+      case LOOM_SYMBOLIC_INTEGER_RELATION_GT:
+        required_exclusions = LOOM_CONDITION_RELATION_OUTCOME_BIT_LESS |
+                              LOOM_CONDITION_RELATION_OUTCOME_BIT_EQUAL;
+        break;
+      case LOOM_SYMBOLIC_INTEGER_RELATION_GE:
+        required_exclusions = LOOM_CONDITION_RELATION_OUTCOME_BIT_LESS;
+        break;
+      default:
+        return false;
     }
-    return false;
+    const loom_condition_relation_outcome_bits_t actual_exclusions =
+        loom_cfg_condition_relation_view_query_excluded_outcomes(
+            table, view, &fact_table_,
+            loom_condition_integer_operand_t{
+                /*.kind=*/LOOM_CONDITION_INTEGER_OPERAND_VALUE,
+                /*.value_id=*/left,
+            },
+            loom_condition_integer_operand_t{
+                /*.kind=*/LOOM_CONDITION_INTEGER_OPERAND_VALUE,
+                /*.value_id=*/right,
+            });
+    return iree_all_bits_set(actual_exclusions, required_exclusions);
   }
 
   iree_arena_block_pool_t block_pool_;
@@ -161,6 +222,8 @@ class CfgConditionFactsTest : public ::testing::Test {
   loom_region_t* body_ = nullptr;
   loom_builder_t builder_;
   loom_value_fact_table_t fact_table_;
+  loom_local_value_domain_t value_domain_ = {};
+  loom_cfg_value_identity_table_t identities_ = {};
 };
 
 TEST_F(CfgConditionFactsTest, PropagatesNestedBranchRelationsToTailBlock) {
@@ -202,23 +265,250 @@ TEST_F(CfgConditionFactsTest, PropagatesNestedBranchRelationsToTailBlock) {
   IREE_ASSERT_OK(
       loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
 
-  loom_cfg_condition_fact_table_t table = {0};
-  IREE_ASSERT_OK(loom_cfg_condition_fact_table_compute(
-      module_, &graph, &fact_table_, &dominance, &analysis_arena_, &table));
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance);
 
-  const loom_cfg_block_entry_condition_facts_t* in_bounds_facts =
-      loom_cfg_condition_fact_table_block(&table, 1);
+  const loom_cfg_condition_relation_view_t* in_bounds_facts =
+      loom_cfg_condition_relation_table_block(&table, 1);
   ASSERT_NE(in_bounds_facts, nullptr);
-  EXPECT_TRUE(HasRelation(in_bounds_facts, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
-                          lane, half_cols));
+  EXPECT_TRUE(HasRelation(&table, in_bounds_facts,
+                          LOOM_SYMBOLIC_INTEGER_RELATION_LT, lane, half_cols));
 
-  const loom_cfg_block_entry_condition_facts_t* tail_facts =
-      loom_cfg_condition_fact_table_block(&table, 4);
+  const loom_cfg_condition_relation_view_t* tail_facts =
+      loom_cfg_condition_relation_table_block(&table, 4);
   ASSERT_NE(tail_facts, nullptr);
-  EXPECT_TRUE(HasRelation(tail_facts, LOOM_SYMBOLIC_INTEGER_RELATION_LT, lane,
-                          half_cols));
-  EXPECT_TRUE(HasRelation(tail_facts, LOOM_SYMBOLIC_INTEGER_RELATION_GE, pair,
-                          half_dims));
+  EXPECT_TRUE(HasRelation(&table, tail_facts, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+                          lane, half_cols));
+  EXPECT_TRUE(HasRelation(&table, tail_facts, LOOM_SYMBOLIC_INTEGER_RELATION_GE,
+                          pair, half_dims));
+}
+
+TEST_F(CfgConditionFactsTest,
+       ResolvesExactConstantsAndOppositeRelationOrientation) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* guarded = AppendBlock();
+  loom_block_t* exit = AppendBlock();
+
+  SetBlock(entry);
+  const loom_value_id_t value = AddBlockArg(entry);
+  const loom_value_id_t exact_bound = BuildIndexConstant(64);
+  const loom_value_id_t condition =
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, value, exact_bound);
+  BuildConditionalBranch(condition, guarded, exit);
+  loom_op_t* terminator = nullptr;
+  SetBlock(guarded);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+  SetBlock(exit);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_cfg_graph_t graph = {};
+  IREE_ASSERT_OK(
+      loom_cfg_graph_build(module_, body_, &analysis_arena_, &graph));
+  loom_dominance_info_t dominance = {};
+  IREE_ASSERT_OK(
+      loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance);
+
+  const uint16_t guarded_index =
+      (uint16_t)loom_cfg_graph_block_index(&graph, guarded);
+  const auto* guarded_facts =
+      loom_cfg_condition_relation_table_block(&table, guarded_index);
+  ASSERT_NE(guarded_facts, nullptr);
+  const loom_condition_integer_operand_t value_operand = {
+      /*.kind=*/LOOM_CONDITION_INTEGER_OPERAND_VALUE,
+      /*.value_id=*/value,
+  };
+  const loom_condition_integer_operand_t bound_value_operand = {
+      /*.kind=*/LOOM_CONDITION_INTEGER_OPERAND_VALUE,
+      /*.value_id=*/exact_bound,
+  };
+  const loom_condition_integer_operand_t bound_constant_operand = {
+      /*.kind=*/LOOM_CONDITION_INTEGER_OPERAND_CONSTANT,
+      /*.value_id=*/{},
+      /*.constant=*/64,
+  };
+  const loom_condition_relation_outcome_bits_t expected_forward =
+      LOOM_CONDITION_RELATION_OUTCOME_BIT_EQUAL |
+      LOOM_CONDITION_RELATION_OUTCOME_BIT_GREATER;
+  EXPECT_EQ(loom_cfg_condition_relation_view_query_excluded_outcomes(
+                &table, guarded_facts, &fact_table_, value_operand,
+                bound_value_operand),
+            expected_forward);
+  EXPECT_EQ(loom_cfg_condition_relation_view_query_excluded_outcomes(
+                &table, guarded_facts, &fact_table_, value_operand,
+                bound_constant_operand),
+            expected_forward);
+  EXPECT_EQ(loom_cfg_condition_relation_view_query_excluded_outcomes(
+                &table, guarded_facts, &fact_table_, bound_constant_operand,
+                value_operand),
+            LOOM_CONDITION_RELATION_OUTCOME_BIT_LESS |
+                LOOM_CONDITION_RELATION_OUTCOME_BIT_EQUAL);
+
+  loom_condition_fact_scope_t scope = {};
+  loom_condition_fact_scope_initialize_indexed(nullptr, &table, guarded_facts,
+                                               &scope);
+  loom_condition_integer_relation_t query = {
+      /*.relation=*/LOOM_SYMBOLIC_INTEGER_RELATION_LE,
+      /*.left=*/value_operand,
+      /*.right=*/bound_constant_operand,
+  };
+  bool result = false;
+  EXPECT_TRUE(loom_condition_fact_scope_proves_integer_relation(
+      &scope, &fact_table_, &query, &result));
+  EXPECT_TRUE(result);
+  query.relation = LOOM_SYMBOLIC_INTEGER_RELATION_GE;
+  EXPECT_TRUE(loom_condition_fact_scope_proves_integer_relation(
+      &scope, &fact_table_, &query, &result));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(CfgConditionFactsTest, IntersectsJoinPredecessors) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* left = AppendBlock();
+  loom_block_t* right = AppendBlock();
+  loom_block_t* merge = AppendBlock();
+  loom_block_t* exit = AppendBlock();
+
+  SetBlock(entry);
+  const loom_value_id_t path_condition =
+      AddBlockArg(entry, LOOM_SCALAR_TYPE_I1);
+  const loom_value_id_t relation_left = AddBlockArg(entry);
+  const loom_value_id_t relation_right = AddBlockArg(entry);
+  BuildConditionalBranch(path_condition, left, right);
+
+  SetBlock(left);
+  const loom_value_id_t left_condition = BuildIndexCompare(
+      LOOM_INDEX_CMP_PREDICATE_SLT, relation_left, relation_right);
+  BuildConditionalBranch(left_condition, merge, exit);
+
+  SetBlock(right);
+  const loom_value_id_t right_condition = BuildIndexCompare(
+      LOOM_INDEX_CMP_PREDICATE_SLT, relation_left, relation_right);
+  BuildConditionalBranch(right_condition, merge, exit);
+
+  loom_op_t* terminator = nullptr;
+  SetBlock(merge);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+  SetBlock(exit);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_cfg_graph_t graph = {};
+  IREE_ASSERT_OK(
+      loom_cfg_graph_build(module_, body_, &analysis_arena_, &graph));
+  loom_dominance_info_t dominance = {};
+  IREE_ASSERT_OK(
+      loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance);
+
+  const uint16_t merge_index =
+      (uint16_t)loom_cfg_graph_block_index(&graph, merge);
+  const auto* merge_facts =
+      loom_cfg_condition_relation_table_block(&table, merge_index);
+  ASSERT_NE(merge_facts, nullptr);
+  EXPECT_TRUE(HasRelation(&table, merge_facts,
+                          LOOM_SYMBOLIC_INTEGER_RELATION_LT, relation_left,
+                          relation_right));
+  bool value = false;
+  EXPECT_FALSE(loom_cfg_condition_relation_view_query_boolean(
+      &table, merge_facts, path_condition, &value));
+  EXPECT_FALSE(loom_cfg_condition_relation_view_query_boolean(
+      &table, merge_facts, left_condition, &value));
+  EXPECT_FALSE(loom_cfg_condition_relation_view_query_boolean(
+      &table, merge_facts, right_condition, &value));
+}
+
+TEST_F(CfgConditionFactsTest, FactorizesRepeatedPayloadValues) {
+  constexpr uint16_t kWidth = 16;
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* guarded = AppendBlock();
+  loom_block_t* target = AppendBlock();
+  loom_block_t* exit = AppendBlock();
+
+  SetBlock(entry);
+  const loom_value_id_t origin = AddBlockArg(entry);
+  const loom_value_id_t bound = AddBlockArg(entry);
+  const loom_value_id_t condition =
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, origin, bound);
+  BuildConditionalBranch(condition, guarded, exit);
+
+  std::vector<loom_value_id_t> payload;
+  payload.reserve(kWidth * 2);
+  payload.insert(payload.end(), kWidth, origin);
+  payload.insert(payload.end(), kWidth, bound);
+  SetBlock(guarded);
+  BuildBranch(target, payload.data(), (uint16_t)payload.size());
+
+  std::array<loom_value_id_t, kWidth> left_values;
+  std::array<loom_value_id_t, kWidth> right_values;
+  for (uint16_t i = 0; i < kWidth; ++i) {
+    left_values[i] = AddBlockArg(target);
+  }
+  for (uint16_t i = 0; i < kWidth; ++i) {
+    right_values[i] = AddBlockArg(target);
+  }
+  loom_op_t* terminator = nullptr;
+  SetBlock(target);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+  SetBlock(exit);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_cfg_graph_t graph = {};
+  IREE_ASSERT_OK(
+      loom_cfg_graph_build(module_, body_, &analysis_arena_, &graph));
+  loom_dominance_info_t dominance = {};
+  IREE_ASSERT_OK(
+      loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance, IdentityMode::kEmpty);
+
+  const uint16_t target_index =
+      (uint16_t)loom_cfg_graph_block_index(&graph, target);
+  const auto* target_facts =
+      loom_cfg_condition_relation_table_block(&table, target_index);
+  ASSERT_NE(target_facts, nullptr);
+  EXPECT_EQ(target_facts->integer_relations.encoding,
+            LOOM_CONDITION_RELATION_MATRIX_VIEW_RANGES);
+  for (uint16_t left = 0; left < kWidth; ++left) {
+    for (uint16_t right = 0; right < kWidth; ++right) {
+      EXPECT_TRUE(HasRelation(&table, target_facts,
+                              LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+                              left_values[left], right_values[right]));
+    }
+  }
+  std::vector<loom_condition_integer_relation_t> incident_relations;
+  const loom_condition_integer_operand_t anchor = {
+      /*.kind=*/LOOM_CONDITION_INTEGER_OPERAND_VALUE,
+      /*.value_id=*/left_values[0],
+  };
+  EXPECT_TRUE(loom_cfg_condition_relation_view_for_each_while(
+      &table, target_facts, &fact_table_, anchor,
+      [](void* user_data, const loom_condition_integer_relation_t* relation) {
+        static_cast<std::vector<loom_condition_integer_relation_t>*>(user_data)
+            ->push_back(*relation);
+        return true;
+      },
+      &incident_relations));
+  ASSERT_EQ(incident_relations.size(), kWidth + 1);
+  bool saw_dominating_bound = false;
+  for (const auto& relation : incident_relations) {
+    EXPECT_EQ(relation.relation, LOOM_SYMBOLIC_INTEGER_RELATION_LT);
+    EXPECT_EQ(relation.left.value_id, left_values[0]);
+    saw_dominating_bound |=
+        relation.right.kind == LOOM_CONDITION_INTEGER_OPERAND_VALUE &&
+        relation.right.value_id == bound;
+  }
+  EXPECT_TRUE(saw_dominating_bound);
 }
 
 enum class LoopArgumentTransfer { kReplace, kSelfForward, kSwap, kDominating };
@@ -296,44 +586,148 @@ TEST_P(CfgConditionFactsLoopTest, TranslatesBackedgeValuesBeforeMeetingFacts) {
   loom_dominance_info_t dominance = {0};
   IREE_ASSERT_OK(
       loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
-  loom_cfg_condition_fact_table_t table = {0};
-  IREE_ASSERT_OK(loom_cfg_condition_fact_table_compute(
-      module_, &graph, &fact_table_, &dominance, &analysis_arena_, &table));
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance);
   ASSERT_EQ(table.block_count, graph.block_count);
 
-  loom_condition_query_t query;
-  loom_condition_query_initialize(module_, nullptr, &analysis_arena_, &query);
-  loom_condition_integer_relation_t
-      storage[LOOM_CFG_CONDITION_FACT_RELATION_CAPACITY];
-  loom_cfg_block_entry_condition_facts_t edge = {0};
-  IREE_ASSERT_OK(loom_cfg_condition_facts_compute_predecessor_edge(
-      &query, &fact_table_, &dominance, header, latch->last_op, latch_index,
-      table.block_facts, storage, IREE_ARRAYSIZE(storage), &edge));
+  const loom_cfg_edge_index_span_t latch_edges =
+      loom_cfg_graph_successor_edges(&graph, latch_index);
+  ASSERT_EQ(latch_edges.count, 1u);
+  const loom_cfg_condition_relation_view_t* edge =
+      loom_cfg_condition_relation_table_edge(&table, latch_edges.values[0]);
+  ASSERT_NE(edge, nullptr);
 
   // Each trip binds fresh header arguments. Only the outgoing payload can
   // transfer a fact about the previous trip's argument to the next one.
   if (transfer == LoopArgumentTransfer::kReplace) {
-    EXPECT_FALSE(edge.condition_known);
-    EXPECT_FALSE(
-        HasRelation(&edge, LOOM_SYMBOLIC_INTEGER_RELATION_LT, carried, bound));
+    bool condition_value = false;
+    EXPECT_FALSE(loom_cfg_condition_relation_view_query_boolean(
+        &table, edge, condition, &condition_value));
+    EXPECT_FALSE(HasRelation(&table, edge, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+                             carried, bound));
   } else {
     const auto expected_value =
         transfer == LoopArgumentTransfer::kSwap ? other : tested_value;
     const auto expected_condition = transfer == LoopArgumentTransfer::kSwap
                                         ? other_condition
                                         : tested_condition;
-    EXPECT_TRUE(edge.condition_known);
-    EXPECT_EQ(edge.condition, expected_condition);
-    EXPECT_TRUE(edge.condition_value);
-    EXPECT_TRUE(HasRelation(&edge, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+    bool condition_value = false;
+    EXPECT_TRUE(loom_cfg_condition_relation_view_query_boolean(
+        &table, edge, expected_condition, &condition_value));
+    EXPECT_TRUE(condition_value);
+    EXPECT_TRUE(HasRelation(&table, edge, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
                             expected_value, bound));
   }
   if (transfer != LoopArgumentTransfer::kSelfForward) {
     const auto* header_facts =
-        loom_cfg_condition_fact_table_block(&table, header_index);
+        loom_cfg_condition_relation_table_block(&table, header_index);
     ASSERT_NE(header_facts, nullptr);
-    EXPECT_FALSE(HasRelation(header_facts, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
-                             carried, bound));
+    EXPECT_FALSE(HasRelation(&table, header_facts,
+                             LOOM_SYMBOLIC_INTEGER_RELATION_LT, carried,
+                             bound));
+  }
+}
+
+TEST_F(CfgConditionFactsTest, DistinguishesSameDestinationSuccessorEdges) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* merge = AppendBlock();
+
+  SetBlock(entry);
+  const loom_value_id_t condition = AddBlockArg(entry, LOOM_SCALAR_TYPE_I1);
+  BuildConditionalBranch(condition, merge, merge);
+  SetBlock(merge);
+  loom_op_t* terminator = nullptr;
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_cfg_graph_t graph = {};
+  IREE_ASSERT_OK(
+      loom_cfg_graph_build(module_, body_, &analysis_arena_, &graph));
+  loom_dominance_info_t dominance = {};
+  IREE_ASSERT_OK(
+      loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance);
+
+  const loom_cfg_edge_index_span_t edges =
+      loom_cfg_graph_successor_edges(&graph, 0);
+  ASSERT_EQ(edges.count, 2u);
+  bool value = false;
+  const auto* true_edge =
+      loom_cfg_condition_relation_table_edge(&table, edges.values[0]);
+  ASSERT_NE(true_edge, nullptr);
+  EXPECT_TRUE(loom_cfg_condition_relation_view_query_boolean(
+      &table, true_edge, condition, &value));
+  EXPECT_TRUE(value);
+  const auto* false_edge =
+      loom_cfg_condition_relation_table_edge(&table, edges.values[1]);
+  ASSERT_NE(false_edge, nullptr);
+  EXPECT_TRUE(loom_cfg_condition_relation_view_query_boolean(
+      &table, false_edge, condition, &value));
+  EXPECT_FALSE(value);
+
+  const auto* merge_facts = loom_cfg_condition_relation_table_block(&table, 1);
+  ASSERT_NE(merge_facts, nullptr);
+  EXPECT_FALSE(loom_cfg_condition_relation_view_query_boolean(
+      &table, merge_facts, condition, &value));
+}
+
+TEST_F(CfgConditionFactsTest, PreservesMoreThanThirtyTwoRelations) {
+  constexpr size_t kRelationCount = 40;
+  loom_block_t* entry = loom_region_entry_block(body_);
+  std::array<loom_value_id_t, kRelationCount> left_values;
+  std::array<loom_value_id_t, kRelationCount> right_values;
+  SetBlock(entry);
+  for (size_t i = 0; i < kRelationCount; ++i) {
+    left_values[i] = AddBlockArg(entry);
+    right_values[i] = AddBlockArg(entry);
+  }
+
+  std::array<loom_block_t*, kRelationCount - 1> continuation_blocks;
+  for (loom_block_t*& block : continuation_blocks) {
+    block = AppendBlock();
+  }
+  loom_block_t* success = AppendBlock();
+  loom_block_t* exit = AppendBlock();
+  for (size_t i = 0; i < kRelationCount; ++i) {
+    const loom_value_id_t condition = BuildIndexCompare(
+        LOOM_INDEX_CMP_PREDICATE_SLT, left_values[i], right_values[i]);
+    loom_block_t* next =
+        i + 1 == kRelationCount ? success : continuation_blocks[i];
+    BuildConditionalBranch(condition, next, exit);
+    if (i + 1 != kRelationCount) {
+      SetBlock(next);
+    }
+  }
+  SetBlock(success);
+  loom_op_t* terminator = nullptr;
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+  SetBlock(exit);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_cfg_graph_t graph = {};
+  IREE_ASSERT_OK(
+      loom_cfg_graph_build(module_, body_, &analysis_arena_, &graph));
+  loom_dominance_info_t dominance = {};
+  IREE_ASSERT_OK(
+      loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance);
+
+  const uint16_t success_index =
+      (uint16_t)loom_cfg_graph_block_index(&graph, success);
+  const auto* success_facts =
+      loom_cfg_condition_relation_table_block(&table, success_index);
+  ASSERT_NE(success_facts, nullptr);
+  for (size_t i = 0; i < kRelationCount; ++i) {
+    EXPECT_TRUE(HasRelation(&table, success_facts,
+                            LOOM_SYMBOLIC_INTEGER_RELATION_LT, left_values[i],
+                            right_values[i]))
+        << "relation " << i;
   }
 }
 

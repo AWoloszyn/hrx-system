@@ -262,6 +262,32 @@ loom_cc_test(
     loom::util::fact_table
 )
 
+loom_cc_library(
+  NAME
+    condition_fact_scope
+  HDRS
+    "condition_fact_scope.h"
+  SRCS
+    "condition_fact_scope.c"
+  DEPS
+    ::cfg_condition_facts
+    ::condition_facts
+    iree::base
+    loom::util::fact_table
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    condition_fact_scope_test
+  SRCS
+    "condition_fact_scope_test.cc"
+  DEPS
+    ::condition_fact_scope
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
 loom_cc_benchmark(
   NAME
     condition_facts_benchmark
@@ -282,14 +308,20 @@ loom_cc_library(
     cfg_condition_facts
   HDRS
     "cfg_condition_facts.h"
+    "cfg_condition_operand_domain.h"
   SRCS
     "cfg_condition_facts.c"
+    "cfg_condition_operand_domain.c"
+    "cfg_condition_relation_table.c"
   DEPS
+    ::cfg_value_identity
     ::condition_facts
+    ::condition_relation_matrix
     iree::base
     iree::base::internal::arena
     loom::ir
     loom::ops::cfg
+    loom::util::adaptive_sort
     loom::util::cfg_graph
     loom::util::dominance
     loom::util::fact_table
@@ -320,6 +352,7 @@ loom_cc_test(
     "cfg_condition_facts_test.cc"
   DEPS
     ::cfg_condition_facts
+    ::condition_fact_scope
     iree::base::internal::arena
     iree::testing::gtest
     iree::testing::gtest_main
@@ -620,6 +653,7 @@ loom_cc_library(
   DEPS
     ::cfg_condition_facts
     ::cfg_value_identity
+    ::condition_fact_scope
     ::condition_facts
     ::symbolic_expr
     iree::base
@@ -1109,6 +1143,7 @@ loom_cc_library(
     "symbolic_value.h"
   DEPS
     ::cfg_value_identity
+    ::condition_fact_scope
     ::condition_facts
     ::integer_relation
     iree::base

@@ -77,6 +77,28 @@ typedef struct loom_condition_fact_set_t {
   iree_host_size_t integer_relation_capacity;
 } loom_condition_fact_set_t;
 
+// Infallible queries over one immutable source of active condition facts.
+// Implementations may use flat local facts or an indexed retained analysis.
+typedef struct loom_condition_fact_resolver_t {
+  // Resolver-owned immutable query state.
+  const void* user_data;
+
+  // Queries retained exact truth for one Boolean SSA value.
+  bool (*query_boolean)(const void* user_data, loom_value_id_t value_id,
+                        bool* out_value);
+
+  // Applies anchored integer relations to one scalar value's facts.
+  bool (*apply_to_value_facts)(const void* user_data,
+                               const loom_value_fact_table_t* fact_table,
+                               loom_value_id_t value_id,
+                               loom_value_facts_t* inout_facts);
+
+  // Proves one normalized integer relation true or false.
+  bool (*proves_integer_relation)(
+      const void* user_data, const loom_value_fact_table_t* fact_table,
+      const loom_condition_integer_relation_t* queried, bool* out_result);
+} loom_condition_fact_resolver_t;
+
 // Complete arena-backed result of deriving one condition expression.
 typedef struct loom_condition_derivation_t {
   // All integer relations implied by the selected condition outcome.
@@ -302,6 +324,14 @@ iree_status_t loom_condition_fact_set_proves_condition(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
     const loom_condition_fact_set_t* facts, loom_value_id_t condition_value,
     bool* out_condition, bool* out_proven);
+
+// Attempts to prove that |condition_value| is exact using facts supplied by
+// |resolver|. The resolver callbacks are infallible queries over trusted
+// analysis state; allocation while traversing the condition remains fallible.
+iree_status_t loom_condition_fact_resolver_proves_condition(
+    loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
+    const loom_condition_fact_resolver_t* resolver,
+    loom_value_id_t condition_value, bool* out_condition, bool* out_proven);
 
 #ifdef __cplusplus
 }  // extern "C"
