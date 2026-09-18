@@ -100,7 +100,7 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @both_paths_complete_source_le
   s_cbranch_scc0 .Lbb2
 .Lbb1:
   s_waitcnt vmcnt(0) lgkmcnt(63)
-  v_add_u32 v2, v1, v0
+  v_add_u32 v0, v1, v0
   s_branch .Lbb3
 .Lbb2:
   s_waitcnt vmcnt(0) lgkmcnt(63)
