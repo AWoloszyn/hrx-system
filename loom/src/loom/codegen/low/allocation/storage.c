@@ -9,18 +9,28 @@
 #include <string.h>
 
 typedef struct loom_low_allocation_explicit_register_view_t {
+  // Borrowed global atomic-unit IDs for the physical register.
   const uint16_t* atomic_units;
+  // Borrowed candidate ordinals for a multi-unit view, or NULL for one unit.
   const uint16_t* unit_candidate_ordinals;
+  // Number of global atomic units covered by the physical register.
   uint16_t atomic_unit_count;
+  // Number of allocation units in the selected view.
   uint16_t unit_count;
+  // Candidate ordinal for a single-unit view.
   uint16_t first_candidate_ordinal;
+  // Exclusive candidate extent used for register-pressure accounting.
   uint16_t pressure_extent;
+  // Physical register ID for the requested allocation unit.
   uint16_t requested_unit_physical_register_id;
 } loom_low_allocation_explicit_register_view_t;
 
 typedef struct loom_low_allocation_explicit_register_subrange_t {
+  // Resolved physical view containing the subrange.
   loom_low_allocation_explicit_register_view_t view;
+  // First allocation unit of the subrange within the view.
   uint32_t unit_start;
+  // Number of allocation units in the subrange.
   uint32_t unit_count;
 } loom_low_allocation_explicit_register_subrange_t;
 

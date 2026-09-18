@@ -286,6 +286,20 @@ TEST(LowAllocationStorageTest, MatchesExplicitRegisterAtomicStorage) {
   EXPECT_EQ(loom_low_allocation_storage_assignment_pressure_extent(
                 &descriptor_set, &wide1),
             2u);
+
+  // Spilled explicit-register values occupy linear slots instead of the
+  // overlapping physical atomic units represented by these numeric IDs.
+  auto wide_spill = wide0;
+  wide_spill.location_kind = LOOM_LOW_ALLOCATION_LOCATION_SPILL_SLOT;
+  auto low_spill = low0;
+  low_spill.location_kind = LOOM_LOW_ALLOCATION_LOCATION_SPILL_SLOT;
+  EXPECT_FALSE(loom_low_allocation_storage_assignment_ranges_overlap(
+      &descriptor_set, &wide_spill, &low_spill));
+  EXPECT_FALSE(loom_low_allocation_storage_assignment_ranges_overlap(
+      &descriptor_set, &wide0, &low_spill));
+  low_spill.location_base = wide_spill.location_base;
+  EXPECT_TRUE(loom_low_allocation_storage_assignment_ranges_equal(
+      &descriptor_set, &wide_spill, &low_spill));
 }
 
 TEST(LowAllocationStorageTest, ResolvesExplicitAggregateRegisterViews) {
