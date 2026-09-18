@@ -1,0 +1,148 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_offset_wide.loom-test
+// RUN: emit source-low output=low
+
+amdgpu.target<gfx9-4-generic> @target
+
+func.def target(@target) @offset_scale_unbounded(%element: index) -> (offset) {
+  %stride = index.constant 4 : offset
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ----
+low.func.def target<amdgpu.gfx9_4.generic.core>(@target) abi(hal_kernel) @offset_scale_unbounded(%element: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>) asm {
+  %stride = s_mov_b32 4
+  %7 = s_mov_b32 0
+  %15 = s_mul_i32 %element, %stride
+  %16 = s_mul_hi_u32 %element, %stride
+  %17 = s_mul_i32 %element, %7
+  %18 = s_mul_i32 %7, %stride
+  %19 = s_add_u32 %16, %17
+  %20 = s_add_u32 %19, %18
+  %bytes = concat(%15, %20) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  return %bytes
+}
+
+// ====
+
+amdgpu.target<gfx9-4-generic> @target
+
+func.def target(@target) @offset_scale_unsigned_wrap(%base: i32, %increment: i32) -> (offset) {
+  %wrapped = scalar.addi %base, %increment : i32
+  %unsigned = index.cast %wrapped : i32 to offset
+  %element = index.cast %unsigned : offset to index
+  %stride = index.constant 4 : offset
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ----
+low.func.def target<amdgpu.gfx9_4.generic.core>(@target) abi(hal_kernel) @offset_scale_unsigned_wrap(%base: reg<amdgpu.sgpr>, %increment: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>) asm {
+  %element = s_add_u32 %base, %increment
+  %stride = s_mov_b32 4
+  %13 = s_mov_b32 0
+  %21 = s_mul_i32 %element, %stride
+  %22 = s_mul_hi_u32 %element, %stride
+  %23 = s_mul_i32 %element, %13
+  %24 = s_mul_i32 %13, %stride
+  %25 = s_add_u32 %22, %23
+  %26 = s_add_u32 %25, %24
+  %bytes = concat(%21, %26) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  return %bytes
+}
+
+// ====
+
+amdgpu.target<gfx9-4-generic> @target
+
+func.def target(@target) @offset_scale_large_stride(%element: index) -> (offset) {
+  %stride = index.constant 4294967296 : offset
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ----
+low.func.def target<amdgpu.gfx9_4.generic.core>(@target) abi(hal_kernel) @offset_scale_large_stride(%element: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>) asm {
+  %6 = s_mov_b32 0
+  %7 = s_mov_b32 1
+  %15 = s_mul_i32 %element, %6
+  %16 = s_mul_hi_u32 %element, %6
+  %17 = s_mul_i32 %element, %7
+  %18 = s_mul_i32 %6, %6
+  %19 = s_add_u32 %16, %17
+  %20 = s_add_u32 %19, %18
+  %bytes = concat(%15, %20) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  return %bytes
+}
+
+// ====
+
+amdgpu.target<gfx9-4-generic> @target
+
+func.def target(@target) @offset_scale_dynamic_stride(%element: index, %stride: offset) -> (offset) {
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ----
+low.func.def target<amdgpu.gfx9_4.generic.core>(@target) abi(hal_kernel) @offset_scale_dynamic_stride(%element: reg<amdgpu.sgpr>, %stride: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr x2>) asm {
+  %7 = s_mov_b32 0
+  %11 = slice %stride[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %12 = slice %stride[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %13 = s_mul_i32 %element, %11
+  %14 = s_mul_hi_u32 %element, %11
+  %15 = s_mul_i32 %element, %12
+  %16 = s_mul_i32 %7, %11
+  %17 = s_add_u32 %14, %15
+  %18 = s_add_u32 %17, %16
+  %bytes = concat(%13, %18) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  return %bytes
+}
+
+// ====
+
+amdgpu.target<gfx9-4-generic> @target
+
+func.def target(@target) @offset_scale_lane(%elements: vector<2xi32>, %stride: offset) -> (offset) {
+  %raw = vector.extract %elements[0] : vector<2xi32> -> i32
+  %unsigned = index.cast %raw : i32 to offset
+  %element = index.cast %unsigned : offset to index
+  %bytes = index.scale %element, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ----
+low.func.def target<amdgpu.gfx9_4.generic.core>(@target) abi(hal_kernel) @offset_scale_lane(%elements: reg<amdgpu.vgpr x2>, %stride: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %element = slice %elements[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %11 = v_mov_b32 0
+  %13 = slice %stride[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %14 = v_mov_b32_copy %13
+  %15 = slice %stride[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %16 = v_mov_b32_copy %15
+  %22 = v_mul_lo_u32 %element, %14
+  %23 = v_mul_hi_u32 %element, %14
+  %24 = v_mul_lo_u32 %element, %16
+  %25 = v_mul_lo_u32 %11, %14
+  %26 = v_add_u32 %23, %24
+  %27 = v_add_u32 %26, %25
+  %bytes = concat(%22, %27) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  return %bytes
+}
+
+// ====
+
+amdgpu.target<gfx9-4-generic> @target
+
+func.def target(@target) @offset_scale_bounded(%element: index) -> (offset) {
+  %bounded = index.assume %element [range(%element, 0, 1023)] : index
+  %stride = index.constant 4 : offset
+  %bytes = index.scale %bounded, %stride : index, offset -> offset
+  func.return %bytes : offset
+}
+
+// ----
+low.func.def target<amdgpu.gfx9_4.generic.core>(@target) abi(hal_kernel) @offset_scale_bounded(%bounded: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %stride = s_mov_b32 4
+  %bytes = s_mul_i32 %bounded, %stride
+  return %bytes
+}

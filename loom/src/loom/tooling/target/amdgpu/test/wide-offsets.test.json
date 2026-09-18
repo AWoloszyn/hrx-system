@@ -1,0 +1,437 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "compiles wide byte offsets for gfx940",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx940",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx941",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx941",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx942",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx942",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx950",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx950",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx9-4-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx9-4-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1100",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1100",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1151",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1151",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1170",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1170",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1200",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1200",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1250",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1250",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1251",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1251",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1250-a0",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1250-a0",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx12-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx12-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx12-5-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx12-5-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1101",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1101",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1102",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1102",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1103",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1103",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1150",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1150",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1152",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1152",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1153",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1153",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1171",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1171",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1172",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1172",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx1201",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx1201",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    },
+    {
+      "name": "compiles wide byte offsets for gfx11-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_wide_offsets.loom-test",
+          "--target=amdgpu:gfx11-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/wide_offsets.hsaco"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/wide_offsets.hsaco",
+          "non_empty": true
+        }
+      ]
+    }
+  ]
+}

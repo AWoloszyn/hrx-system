@@ -35,9 +35,13 @@ iree_execution_test_suite(
         "gfx1250_configured_fragment_bank.loom",
         "loom_opt_f32_arith.loom",
         "selected_root_amdgpu.loom",
+        "//loom/src/loom/test/corpus/source_low:memory_wide_offsets.loom-test",
         "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/schedule_scopes.loom",
     ],
-    manifests = ["loom-compile-amdgpu.test.json"],
+    manifests = [
+        "loom-compile-amdgpu.test.json",
+        "wide-offsets.test.json",
+    ],
     tags = ["hostonly"],
     target_compatible_with = _AMDGPU_ARTIFACTS_COMPATIBLE_WITH,
     tools = {
