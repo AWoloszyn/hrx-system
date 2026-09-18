@@ -52,6 +52,20 @@ loom_cc_library(
 
 loom_cc_test(
   NAME
+    verify_dominance_test
+  SRCS
+    "verify_dominance_test.cc"
+  DEPS
+    ::verify
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::test
+    loom::testing::diagnostic_matchers
+)
+
+loom_cc_test(
+  NAME
     verify_state_test
   SRCS
     "verify_state_test.cc"

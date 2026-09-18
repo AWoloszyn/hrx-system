@@ -33,7 +33,10 @@
 //     Every use of a value is dominated by its definition. In loom's
 //     structured IR, values are visible after their definition and in nested
 //     regions. In multi-block regions, the defining block must also dominate
-//     the use block; source block order has no semantic significance.
+//     the reachable use block, independently of physical block order. Dead
+//     blocks follow the text serialization order: reachable definitions and
+//     earlier dead definitions are available, but later dead definitions are
+//     not.
 //
 //   Linear ownership transfers
 //     Operands consumed by tied or moved results are not used after the
@@ -61,23 +64,25 @@
 // space for B blocks and E edges. Dialect callbacks and ownership queries have
 // their own costs; this is not a whole-verifier constant-work-per-op guarantee.
 //
-// SSA scope tracking uses a bitset (one bit per value_id in the
-// module) and definition-stack watermarks:
+// SSA scope tracking uses a definition-depth table (one byte per value_id in
+// the module) and definition-stack watermarks:
 //
 //   Enter region: push current defined-list watermark.
 //   Enter block:  restore the immediate dominator's ending watermark.
-//   Process ops:  set defined bit for each result, check operands.
-//   Exit region:  pop watermark, clear bits for values defined inside.
+//   Process ops:  record definition depth for each result, check operands.
+//   Exit region:  pop watermark, clear depths for values defined inside.
 //
 // Blocks are visited in dominator-tree preorder, preserving only ancestor
 // definitions between reachable blocks. Unreachable blocks can reference direct
-// definitions from other blocks in their region: inter-block dominance is
-// vacuous there, including for continuations made dead by non-returning calls.
-// A linear declaration inventory is retained only for regions with unreachable
-// blocks. Their own local definitions still become visible in operation order;
-// nested regions retain their lexical boundaries. CFG depth does not
-// consume the nested-region scope limit or the C call stack. Every definition
-// is pushed and removed once, and each operand availability check is O(1).
+// definitions from reachable blocks and earlier unreachable blocks in their
+// region, including for continuations made dead by non-returning calls. A
+// linear declaration inventory is retained only for regions with unreachable
+// blocks. Dead blocks are visited in physical order, matching their
+// serialization order. Their local definitions still become visible in
+// operation order; nested regions retain their lexical boundaries. CFG depth
+// does not consume the nested-region scope limit or the C call stack. Every
+// definition is pushed and removed once, and each operand availability check is
+// O(1).
 //
 // ==========================================================================
 // Diagnostics

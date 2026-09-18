@@ -154,8 +154,9 @@ loom_verify_command_effect_scope(loom_verify_state_t* state,
 }
 
 // Region-local declarations used only when a CFG has unreachable blocks.
-// Unreachability removes inter-block ordering requirements, not lexical region
-// boundaries or definition-before-use within each block. Retain the direct
+// Reachable definitions remain available to dead continuations. Dead blocks
+// establish definitions in serialization order, preserving
+// definition-before-use and lexical region boundaries. Retain the direct
 // definitions once so entering a dead block never rescans its siblings.
 typedef struct loom_verify_unreachable_definitions_t {
   // Direct block arguments/results, excluding all nested-region definitions.
@@ -304,8 +305,7 @@ static iree_status_t loom_verify_region(
     } else {
       // On a malformed CFG, check every block locally and let the structural
       // verifier diagnose its edges. Valid unreachable blocks are checked after
-      // reachable ones, with region-local declarations available independently
-      // of source order.
+      // reachable ones, preserving definition-before-use between dead blocks.
       while (dominance.available &&
              graph.blocks[source_block_index].reachable) {
         ++source_block_index;
@@ -320,15 +320,16 @@ static iree_status_t loom_verify_region(
         if (!iree_status_is_ok(status)) {
           break;
         }
-        loom_verify_set_definition_visibility(state, &unreachable_definitions,
-                                              0, unreachable_definitions.count,
-                                              /*visible=*/true);
+        for (uint16_t live = 0; live < region->block_count; ++live) {
+          if (graph.blocks[live].reachable) {
+            loom_verify_set_definition_visibility(
+                state, &unreachable_definitions,
+                unreachable_definitions.block_offsets[live],
+                unreachable_definitions.block_offsets[live + 1],
+                /*visible=*/true);
+          }
+        }
       }
-      // This block still establishes its own definitions in operation order.
-      loom_verify_set_definition_visibility(
-          state, &unreachable_definitions,
-          unreachable_definitions.block_offsets[b],
-          unreachable_definitions.block_offsets[b + 1], /*visible=*/false);
     }
     loom_block_t* block = loom_region_block(region, b);
     // Define all block arguments before checking references in their types so

@@ -202,7 +202,7 @@ func.def @unreachable_local(%row: i32) -> (i32) {
 // ====
 
 // Non-returning inlining may leave dead code using former live definitions.
-// Dead blocks retain region scope; inter-block dominance is vacuous there.
+// Dead blocks retain previously defined values from their region.
 // RUN: verify
 func.def @unreachable_capture(%row: i32) -> (i32) {
   func.return %row : i32
@@ -309,6 +309,21 @@ func.def @nested_dead_capture(%condition: i1, %row: i32) {
     test.use %dead_bytes : i32
   } else {
   }
+  func.return
+}
+
+// ====
+
+// Earlier dead definitions remain available in later block argument types.
+// RUN: verify
+func.def @dead_dependent_type(%row: i32) {
+  func.return
+^define:
+  %count = test.constant 4 : index
+  %tile = test.convert %row : i32 -> tile<[%count]xf32>
+  cfg.br ^use(%tile: tile<[%count]xf32>)
+^use(%argument: tile<[%count]xf32>):
+  test.use %argument : tile<[%count]xf32>
   func.return
 }
 
