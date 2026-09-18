@@ -888,6 +888,13 @@ static bool loom_amdgpu_source_value_prefers_vgpr_impl(
   if (source_value_id >= module->values.count) {
     return false;
   }
+  const loom_type_t source_type =
+      loom_module_value_type(module, source_value_id);
+  // Fixed physical storage takes precedence over uniformity and producer
+  // transfer rules so consumers use the same bank as value type mapping.
+  if (loom_amdgpu_scalar_type_has_fixed_vgpr_storage(source_type)) {
+    return true;
+  }
   if (loom_amdgpu_source_value_facts_prefer_vgpr(module, fact_table,
                                                  source_value_id)) {
     return true;
@@ -936,8 +943,6 @@ static bool loom_amdgpu_source_value_prefers_vgpr_impl(
     return true;
   }
 
-  const loom_type_t source_type =
-      loom_module_value_type(module, source_value_id);
   const loom_amdgpu_source_producer_flags_t producer_flags =
       loom_amdgpu_source_producer_flags(defining_op->kind);
   if (iree_any_bit_set(producer_flags,
