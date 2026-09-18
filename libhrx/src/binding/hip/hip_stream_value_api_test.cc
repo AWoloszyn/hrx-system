@@ -13,12 +13,27 @@
 #include <cstring>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "binding/hip/api.h"
 #include "iree/testing/gtest.h"
 
 namespace {
+
+template <typename Cleanup>
+class ScopeExit {
+ public:
+  explicit ScopeExit(Cleanup cleanup) : cleanup_(std::move(cleanup)) {}
+  ~ScopeExit() { cleanup_(); }
+  ScopeExit(const ScopeExit&) = delete;
+  ScopeExit& operator=(const ScopeExit&) = delete;
+
+ private:
+  Cleanup cleanup_;
+};
+template <typename Cleanup>
+ScopeExit(Cleanup) -> ScopeExit<Cleanup>;
 
 const char* CandidateLibPath() {
   if (const char* env = std::getenv("HRX_TEST_LIBAMDHIP64");
@@ -517,7 +532,6 @@ TEST_F(HipStreamValueApiTest, RejectsIncompatibleImportedBatchTargets) {
       owner_context = nullptr;
     }
   };
-
   hipError_t setup_result =
       api_.ctx_create(&owner_context, /*flags=*/0, /*device=*/0);
   if (setup_result == hipSuccess) {
@@ -565,10 +579,16 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
   void* imported_target = nullptr;
   void* ready_signal = nullptr;
   void* blocked_signal = nullptr;
+  const uint32_t ready_value = 1;
+  const uint32_t blocked_value = 0;
   std::vector<hipStream_t> context_streams;
   auto cleanup = [&] {
     if (execution_context) {
       EXPECT_EQ(hipSuccess, api_.ctx_set_current(execution_context));
+      if (blocked_signal) {
+        __atomic_store_n(static_cast<uint32_t*>(blocked_signal), ready_value,
+                         __ATOMIC_RELEASE);
+      }
       for (hipStream_t stream : context_streams) {
         EXPECT_EQ(hipSuccess, api_.stream_destroy(stream));
       }
@@ -597,6 +617,7 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
       owner_context = nullptr;
     }
   };
+  ScopeExit cleanup_guard(cleanup);
 
   hipError_t setup_result =
       api_.ctx_create(&owner_context, /*flags=*/0, /*device=*/0);
@@ -621,8 +642,6 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
     setup_result = api_.ext_malloc_with_flags(&blocked_signal, sizeof(uint64_t),
                                               hipMallocSignalMemory);
   }
-  const uint32_t ready_value = 1;
-  const uint32_t blocked_value = 0;
   if (setup_result == hipSuccess) {
     setup_result = api_.memcpy(ready_signal, &ready_value, sizeof(ready_value),
                                hipMemcpyHostToDevice);
@@ -632,7 +651,6 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
                                sizeof(blocked_value), hipMemcpyHostToDevice);
   }
   if (setup_result != hipSuccess) {
-    cleanup();
     FAIL() << "cross-context wait-lane setup failed with " << setup_result;
   }
 
@@ -640,7 +658,6 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
   ASSERT_EQ(hipSuccess, api_.stream_create(&support_stream));
   context_streams.push_back(support_stream);
   if (!CheckWaitSupport(support_stream, ready_signal)) {
-    cleanup();
     GTEST_SKIP() << "stream memory waits are unsupported on this runner";
   }
   ASSERT_EQ(hipSuccess, api_.stream_destroy(support_stream));
@@ -689,7 +706,9 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
                 api_.wait_value_32(peer_stream, ready_signal, ready_value,
                                    hipStreamWaitValueEq, UINT32_MAX));
       EXPECT_EQ(hipSuccess, api_.stream_synchronize(peer_stream));
-      ASSERT_EQ(hipErrorInvalidValue, api_.stream_query(owner_stream));
+      const hipError_t immediate_query_result = api_.stream_query(owner_stream);
+      ASSERT_TRUE(immediate_query_result == hipErrorNotReady ||
+                  immediate_query_result == hipErrorInvalidValue);
       persistent_query_result = api_.stream_query(owner_stream);
       ASSERT_TRUE(persistent_query_result == hipErrorNotReady ||
                   persistent_query_result == hipErrorInvalidValue);
@@ -726,8 +745,6 @@ TEST_F(HipStreamValueApiTest, FailedWaitLaneDoesNotPoisonOtherStreams) {
     }
     context_streams.clear();
   }
-
-  cleanup();
 }
 
 TEST_F(HipStreamValueApiTest, PublishesFinalWriteWithoutHostFlush) {

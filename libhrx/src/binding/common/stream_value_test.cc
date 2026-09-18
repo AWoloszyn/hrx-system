@@ -626,9 +626,9 @@ TEST(StreamValueWaitLaneTest,
   bool wait_submission_accepted = false;
   ScopeExit cleanup([&] {
     if (wait_submission_accepted && target_mapping.contents.data) {
-      __atomic_store_n(
-          reinterpret_cast<uint32_t*>(target_mapping.contents.data), 1u,
-          __ATOMIC_RELEASE);
+      iree_atomic_store(
+          reinterpret_cast<iree_atomic_int32_t*>(target_mapping.contents.data),
+          1, iree_memory_order_release);
       iree_status_ignore(iree_hal_semaphore_wait(lane_completion, /*value=*/1,
                                                  iree_infinite_timeout(),
                                                  IREE_ASYNC_WAIT_FLAG_NONE));
@@ -678,8 +678,9 @@ TEST(StreamValueWaitLaneTest,
       IREE_HAL_MEMORY_ACCESS_ALL, /*local_byte_offset=*/0, sizeof(uint32_t),
       &target_mapping));
   ASSERT_NE(nullptr, target_mapping.contents.data);
-  __atomic_store_n(reinterpret_cast<uint32_t*>(target_mapping.contents.data),
-                   0u, __ATOMIC_RELEASE);
+  iree_atomic_store(
+      reinterpret_cast<iree_atomic_int32_t*>(target_mapping.contents.data), 0,
+      iree_memory_order_release);
 
   IREE_ASSERT_OK(iree_hal_semaphore_create(
       device, IREE_HAL_QUEUE_FAMILY_AFFINITY_ANY, /*initial_value=*/0,
@@ -761,8 +762,9 @@ TEST(StreamValueWaitLaneTest,
                                          IREE_ASYNC_WAIT_FLAG_NONE));
   EXPECT_EQ(&lane, context.pending_value_wait_lanes);
 
-  __atomic_store_n(reinterpret_cast<uint32_t*>(target_mapping.contents.data),
-                   1u, __ATOMIC_RELEASE);
+  iree_atomic_store(
+      reinterpret_cast<iree_atomic_int32_t*>(target_mapping.contents.data), 1,
+      iree_memory_order_release);
   wait_submission_accepted = false;
   iree_status_t completion_status = iree_hal_semaphore_wait(
       lane_completion, /*value=*/1, iree_infinite_timeout(),
