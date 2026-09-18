@@ -321,10 +321,16 @@ TEST_F(LinuxXdnaKernelQueueTest, QueryRecoversACompletedPrefixWithoutWait) {
   for (uint32_t i = 0; i < 2; ++i) {
     native_.packets[i].words[0] = (native_.packets[i].words[0] & ~15u) | 4u;
   }
+  amdf_wait_deadline_t immediate;
+  ASSERT_EQ(amdf_wait_deadline_initialize(0, 0, &immediate), AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_wait(queue_, submission, &immediate),
+            amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED));
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_progress(queue_), 0u);
+  const uint32_t wait_count = native_.wait_count;
   EXPECT_EQ(amdf_xdna_umd_kernel_queue_refresh_progress(queue_),
             AMDF_STATUS_OK);
   EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_progress(queue_), 2u);
-  EXPECT_EQ(native_.wait_count, 0u);
+  EXPECT_EQ(native_.wait_count, wait_count);
   for (uint32_t i = 0; i < 2; ++i) {
     amdf_xdna_umd_kernel_queue_retire_command(queue_, i);
   }

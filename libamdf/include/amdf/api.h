@@ -387,10 +387,10 @@ typedef struct amdf_api_t {
   ///
   /// This is a read-only snapshot, not a native completion check. It does not
   /// consume command results or retire submissions, even when the native
-  /// completion fence has advanced. Use `kernel_queue_wait`, including a
-  /// zero-time wait, to refresh native progress and perform checked retirement
-  /// before reusing command storage. Submission may also reclaim completed
-  /// capacity as specified by its engine; this query never does so.
+  /// completion fence has advanced. Use `kernel_queue_refresh_status` or
+  /// `kernel_queue_wait` to refresh native progress and perform checked
+  /// retirement before reusing command storage. Submission may also reclaim
+  /// completed capacity as specified by its engine; this query never does so.
   /// The operation is thread-safe with submission and waits. It performs no
   /// allocation, system call, sleep, active polling, locking, lazy
   /// initialization or ownership-counter updates. No output is modified when
@@ -576,6 +576,26 @@ typedef struct amdf_api_t {
   amdf_status_t(AMDF_CALL* memory_scope_query_pair_info)(
       amdf_memory_scope_t* scope, const amdf_memory_profile_pair_query_t* query,
       amdf_memory_pair_info_t* out_info);
+
+  /// Refreshes native progress and checks available completed command results.
+  ///
+  /// Unlike the read-only status query, this synchronization operation advances
+  /// checked retirement for the completed accepted prefix without waiting for
+  /// a particular submission. Success returns a snapshot in `out_status`,
+  /// including any sticky execution failure in `terminal_status`. Success does
+  /// not mean that every accepted command has completed. Failure returns the
+  /// observation error and leaves `out_status` unchanged; independently checked
+  /// progress remains available through `kernel_queue_query_status`.
+  ///
+  /// The operation is thread-safe with submission, queries, refreshes and
+  /// waits. If another caller owns result consumption, it returns the
+  /// established frontier without waiting for that caller. It performs no host
+  /// allocation, resource creation, lazy initialization, sleep or active
+  /// polling. Native observation may require nonblocking system calls. Result
+  /// inspection is proportional to newly completed commands, not configured
+  /// queue capacity.
+  amdf_status_t(AMDF_CALL* kernel_queue_refresh_status)(
+      amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
 } amdf_api_t;
 
 /// Function type used to acquire the immutable API table.

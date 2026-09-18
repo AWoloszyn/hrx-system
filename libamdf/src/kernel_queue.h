@@ -18,6 +18,11 @@ typedef struct amdf_kernel_queue_vtable_t {
   // native queries, locks, allocation or system calls.
   amdf_status_t (*query_status)(amdf_kernel_queue_t* queue,
                                 amdf_kernel_queue_status_t* out_status);
+  // Samples native progress and consumes available results without waiting
+  // for another retirement owner. Reports observation errors separately from
+  // the snapshot's cached terminal failure.
+  amdf_status_t (*refresh_status)(amdf_kernel_queue_t* queue,
+                                  amdf_kernel_queue_status_t* out_status);
   // Refreshes native progress and performs checked retirement for one accepted
   // submission, without cancelling on timeout.
   amdf_status_t (*wait)(amdf_kernel_queue_t* queue, uint64_t submission,
@@ -54,6 +59,10 @@ amdf_status_t AMDF_CALL amdf_kernel_queue_query_info(
 
 // Reads established queue retirement and cached terminal state.
 amdf_status_t AMDF_CALL amdf_kernel_queue_query_status(
+    amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
+
+// Refreshes checked progress without waiting for a particular submission.
+amdf_status_t AMDF_CALL amdf_kernel_queue_refresh_status(
     amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
 
 // Waits for one accepted submission with caller-selected polling.

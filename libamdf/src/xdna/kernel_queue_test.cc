@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cerrno>
 #include <condition_variable>
+#include <cstring>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -33,6 +34,8 @@ struct amdf_xdna_umd_kernel_queue_t {
   uint64_t available_progress = 0;
   // Native query failure independent of execution or accepted ownership.
   amdf_status_t refresh_status = AMDF_STATUS_OK;
+  // Number of explicit native progress refreshes.
+  std::atomic<size_t> refresh_count{0};
   // Packet slots provided by the controlled native dependency.
   struct Slot {
     // Accepted native identity, or zero after result consumption.
@@ -191,6 +194,14 @@ class XdnaKernelQueueTest : public ::testing::Test {
     status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
     status.structure_size = sizeof(status);
     EXPECT_EQ(amdf_kernel_queue_query_status(queue, &status), AMDF_STATUS_OK);
+    return status;
+  }
+
+  amdf_kernel_queue_status_t Refresh() {
+    amdf_kernel_queue_status_t status = {};
+    status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+    status.structure_size = sizeof(status);
+    EXPECT_EQ(amdf_kernel_queue_refresh_status(queue, &status), AMDF_STATUS_OK);
     return status;
   }
 
@@ -411,6 +422,112 @@ TEST_F(XdnaKernelQueueTest, ZeroTimeoutRefreshesNativeProgress) {
   EXPECT_EQ(Query().retired_submission, submission);
 }
 
+TEST_F(XdnaKernelQueueTest, RefreshChecksAvailablePrefixWithoutWaiting) {
+  ASSERT_EQ(CreateQueue(3), AMDF_STATUS_OK);
+  uint64_t points[3] = {};
+  for (auto& point : points) {
+    ASSERT_EQ(SubmitCommand(&point), AMDF_STATUS_OK);
+  }
+  context.native.queue.available_progress = points[1];
+  EXPECT_EQ(Query().retired_submission, 0u);
+  const auto checked = Refresh();
+  EXPECT_EQ(checked.retired_submission, points[1]);
+  EXPECT_EQ(checked.terminal_status, AMDF_STATUS_OK);
+  EXPECT_EQ(checked.state, AMDF_QUEUE_STATE_ACTIVE);
+  EXPECT_EQ(Query().retired_submission, points[1]);
+  EXPECT_EQ(context.native.queue.wait_count.load(), 0u);
+  EXPECT_EQ(context.native.queue.slots[0].retirement_count, 1u);
+  EXPECT_EQ(context.native.queue.slots[1].retirement_count, 1u);
+  EXPECT_EQ(context.native.queue.slots[2].retirement_count, 0u);
+  EXPECT_EQ(Refresh().retired_submission, points[1]);
+  context.native.queue.available_progress = points[2];
+  EXPECT_EQ(Refresh().retired_submission, points[2]);
+  for (const auto& slot : context.native.queue.slots) {
+    EXPECT_EQ(slot.retirement_count, 1u);
+  }
+}
+
+TEST_F(XdnaKernelQueueTest, IdleRefreshDoesNotObserveAnUnsubmittedFence) {
+  auto& native = context.native.queue;
+  const auto failure = amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO);
+  native.refresh_status = failure;
+  EXPECT_EQ(Refresh().retired_submission, 0u);
+  EXPECT_EQ(native.refresh_count.load(), 0u);
+  native.refresh_status = AMDF_STATUS_OK;
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  native.available_progress = native.submitted;
+  EXPECT_EQ(Refresh().retired_submission, submission);
+  EXPECT_EQ(native.refresh_count.load(), 1u);
+  native.refresh_status = failure;
+  EXPECT_EQ(Refresh().retired_submission, submission);
+  EXPECT_EQ(native.refresh_count.load(), 1u);
+}
+
+TEST_F(XdnaKernelQueueTest, RefreshErrorPreservesOutputAndKnownRetirement) {
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  auto& native = context.native.queue;
+  native.refresh_status = amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO);
+  amdf_kernel_queue_status_t output = {};
+  output.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+  output.structure_size = sizeof(output);
+  output.retired_submission = UINT64_MAX;
+  const auto original = output;
+  EXPECT_EQ(amdf_kernel_queue_refresh_status(queue, &output),
+            native.refresh_status);
+  EXPECT_EQ(std::memcmp(&output, &original, sizeof(output)), 0);
+  EXPECT_EQ(Query().retired_submission, 0u);
+  EXPECT_EQ(native.slots[0].native_submission, native.submitted);
+  // Another native observer can establish progress independently of this
+  // call's failing query. That progress still permits checked retirement.
+  native.progress = native.submitted;
+  EXPECT_EQ(amdf_kernel_queue_refresh_status(queue, &output),
+            native.refresh_status);
+  EXPECT_EQ(std::memcmp(&output, &original, sizeof(output)), 0);
+  EXPECT_EQ(Query().retired_submission, submission);
+  EXPECT_EQ(Query().terminal_status, AMDF_STATUS_OK);
+  EXPECT_EQ(native.slots[0].retirement_count, 1u);
+}
+
+TEST_F(XdnaKernelQueueTest, RefreshReportsExecutionFailureInSnapshot) {
+  ASSERT_EQ(CreateQueue(2), AMDF_STATUS_OK);
+  uint64_t first = 0, second = 0;
+  ASSERT_EQ(SubmitCommand(&first), AMDF_STATUS_OK);
+  ASSERT_EQ(SubmitCommand(&second), AMDF_STATUS_OK);
+  auto& native = context.native.queue;
+  const auto failure = amdf_make_status(AMDF_STATUS_DOMAIN_FIRMWARE, 5);
+  native.completion_status = failure;
+  native.available_progress = first;
+  auto checked = Refresh();
+  EXPECT_EQ(checked.retired_submission, first);
+  EXPECT_EQ(checked.terminal_status, failure);
+  EXPECT_EQ(checked.state, AMDF_QUEUE_STATE_DEVICE_LOST);
+  native.available_progress = second;
+  checked = Refresh();
+  EXPECT_EQ(checked.retired_submission, second);
+  EXPECT_EQ(checked.terminal_status, failure);
+  EXPECT_EQ(amdf_kernel_queue_wait(queue, first, 0, 0), failure);
+}
+
+TEST_F(XdnaKernelQueueTest, RefreshValidatesOutputBeforeNativeObservation) {
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  amdf_kernel_queue_status_t output = {};
+  output.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO;
+  output.structure_size = sizeof(output);
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_refresh_status(queue, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  output.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+  output.structure_size = sizeof(output) - 1;
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_refresh_status(queue, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_refresh_status(queue, nullptr)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(
+      amdf_status_code(amdf_kernel_queue_refresh_status(nullptr, &output)),
+      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(context.native.queue.refresh_count.load(), 0u);
+  EXPECT_EQ(context.native.queue.slots[0].retirement_count, 0u);
+}
+
 TEST_F(XdnaKernelQueueTest, NativeReleaseFailureConsumesBothLifetimeBorrows) {
   ASSERT_NO_FATAL_FAILURE(Submit());
   EXPECT_EQ(amdf_kernel_queue_destroy(queue),
@@ -492,6 +609,7 @@ TEST_F(XdnaKernelQueueTest, QueryAndFiniteWaitDoNotBlockBehindRetiringWaiter) {
     });
   }
   EXPECT_EQ(Query().retired_submission, 0u);
+  EXPECT_EQ(Refresh().retired_submission, 0u);
   EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0),
             amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED));
   EXPECT_EQ(context.native.queue.wait_count.load(), 0u);
@@ -710,6 +828,7 @@ uint64_t amdf_xdna_umd_kernel_queue_query_progress(
 }
 amdf_status_t amdf_xdna_umd_kernel_queue_refresh_progress(
     amdf_xdna_umd_kernel_queue_t* queue) {
+  ++queue->refresh_count;
   if (!amdf_status_is_ok(queue->refresh_status)) {
     return queue->refresh_status;
   }

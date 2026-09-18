@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -396,6 +397,59 @@ TEST_F(XdnaKernelQueueTest, PipelinesCommandsAtConfiguredCapacity) {
 
 TEST_F(XdnaKernelQueueTest, PipelinesCommandsAtDefaultCapacity) {
   RunPipelinedTransactions(0);
+}
+
+TEST_F(XdnaKernelQueueTest, RefreshRetiresBatchesAndReusesPacketStorage) {
+  const auto transaction = MakeNoOpTransaction();
+  ASSERT_NO_FATAL_FAILURE(CreateInstructions(transaction, transaction));
+  ASSERT_NO_FATAL_FAILURE(CreateQueue(3));
+  amdf_kernel_queue_status_t checked = {};
+  checked.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+  checked.structure_size = sizeof(checked);
+  ASSERT_EQ(api_->kernel_queue_refresh_status(queue_, &checked),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(checked.retired_submission, 0u);
+  amdf_xdna_kernel_command_t command = {};
+  command.memory = memory_;
+  command.byte_length = transaction.size();
+  amdf_xdna_kernel_queue_submission_info_t submit = {};
+  submit.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO;
+  submit.structure_size = sizeof(submit);
+  submit.command_count = 1;
+  submit.commands = &command;
+  uint64_t last = 0;
+  for (uint32_t round = 0; round < 3; ++round) {
+    for (uint32_t i = 0; i < 3; ++i) {
+      command.byte_offset = ((round + i) % 2) * instruction_stride_;
+      ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &last),
+                AMDF_STATUS_OK);
+    }
+    // This caller explicitly polls checked progress. The outer CTS harness
+    // bounds a hang; no execution deadline or native wait changes the result.
+    while (checked.retired_submission < last) {
+      const uint64_t previous = checked.retired_submission;
+      ASSERT_EQ(api_->kernel_queue_refresh_status(queue_, &checked),
+                AMDF_STATUS_OK);
+      ASSERT_EQ(checked.terminal_status, AMDF_STATUS_OK);
+      EXPECT_GE(checked.retired_submission, previous);
+      ASSERT_LE(checked.retired_submission, last);
+      if (checked.retired_submission < last) {
+        std::this_thread::yield();
+      }
+    }
+    ASSERT_EQ(api_->kernel_queue_query_status(queue_, &checked),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(checked.retired_submission, last);
+    EXPECT_EQ(checked.state, AMDF_QUEUE_STATE_ACTIVE);
+  }
+  ASSERT_EQ(api_->host_mapping_cache_control(
+                mapping_, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
+                instruction_stride_ + transaction.size()),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(std::memcmp(pointer_, transaction.data(), transaction.size()), 0);
+  EXPECT_EQ(std::memcmp(pointer_ + instruction_stride_, transaction.data(),
+                        transaction.size()),
+            0);
 }
 
 TEST_F(XdnaKernelQueueTest, PrivateBackingIsQualifiedByExactContext) {

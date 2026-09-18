@@ -135,6 +135,14 @@ class GpuKernelQueueTest
     return status;
   }
 
+  amdf_kernel_queue_status_t Refresh() {
+    amdf_kernel_queue_status_t status = {};
+    status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+    status.structure_size = sizeof(status);
+    EXPECT_EQ(amdf_kernel_queue_refresh_status(queue, &status), AMDF_STATUS_OK);
+    return status;
+  }
+
   // Device dependency retained until queue destruction.
   Device device;
   // Real memory owner kept live by the caller until native last use.
@@ -176,6 +184,41 @@ TEST_P(GpuKernelQueueTest, DefaultCapacityAcceptsAnEntirePendingWindow) {
   EXPECT_EQ(rejected, UINT64_MAX);
   ASSERT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0), AMDF_STATUS_OK);
   EXPECT_EQ(Query().retired_submission, submission);
+}
+
+TEST_P(GpuKernelQueueTest, RefreshChecksCompletedPrefixBeforePendingTail) {
+  EXPECT_EQ(Refresh().retired_submission, 0u);
+  ASSERT_EQ(CreateQueue(3), AMDF_STATUS_OK);
+  uint64_t points[3] = {};
+  for (auto& point : points) {
+    ASSERT_EQ(Submit(&point), AMDF_STATUS_OK);
+  }
+  device.native.queue.progress = points[1];
+  EXPECT_EQ(Query().retired_submission, 0u);
+  auto checked = Refresh();
+  EXPECT_EQ(checked.retired_submission, points[1]);
+  EXPECT_EQ(checked.terminal_status, AMDF_STATUS_OK);
+  EXPECT_EQ(checked.state, AMDF_QUEUE_STATE_ACTIVE);
+  EXPECT_EQ(device.native.queue.progress.load(), points[1]);
+  EXPECT_EQ(Query().retired_submission, points[1]);
+  EXPECT_EQ(Refresh().retired_submission, points[1]);
+  device.native.queue.progress = points[2];
+  EXPECT_EQ(Refresh().retired_submission, points[2]);
+}
+
+TEST_P(GpuKernelQueueTest, RefreshSeparatesTerminalFailureFromProgress) {
+  uint64_t submission = 0;
+  ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
+  const auto failure = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  device.native.queue.terminal_status = failure;
+  auto checked = Refresh();
+  EXPECT_EQ(checked.retired_submission, 0u);
+  EXPECT_EQ(checked.terminal_status, failure);
+  EXPECT_EQ(checked.state, AMDF_QUEUE_STATE_DEVICE_LOST);
+  device.native.queue.progress = submission;
+  checked = Refresh();
+  EXPECT_EQ(checked.retired_submission, submission);
+  EXPECT_EQ(checked.terminal_status, failure);
 }
 
 TEST_P(GpuKernelQueueTest, ConfiguredCapacityReclaimsCompletedCreditsOnSubmit) {
@@ -275,6 +318,7 @@ TEST_P(GpuKernelQueueTest, NativeCompletionCannotExposeUnpublishedAcceptance) {
     native.publication_condition.wait(
         lock, [&] { return native.publication_phase == Phase::kWaiting; });
   }
+  EXPECT_EQ(Refresh().retired_submission, first);
   EXPECT_EQ(amdf_kernel_queue_wait(queue, first, 0, 0), AMDF_STATUS_OK);
   EXPECT_EQ(Query().retired_submission, first);
   uint64_t rejected = UINT64_MAX;

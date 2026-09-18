@@ -67,6 +67,13 @@ static amdf_status_t amdf_gpu_kernel_queue_query_status(
   return AMDF_STATUS_OK;
 }
 
+static amdf_status_t amdf_gpu_kernel_queue_refresh_status(
+    amdf_kernel_queue_t* base_queue, amdf_kernel_queue_status_t* out_status) {
+  amdf_gpu_kernel_queue_refresh_retirement(
+      (amdf_gpu_kernel_queue_t*)base_queue);
+  return amdf_gpu_kernel_queue_query_status(base_queue, out_status);
+}
+
 static amdf_status_t amdf_gpu_kernel_queue_wait(
     amdf_kernel_queue_t* base_queue, uint64_t submission,
     uint64_t timeout_nanoseconds, uint64_t poll_duration_nanoseconds) {
@@ -109,6 +116,7 @@ static amdf_status_t amdf_gpu_kernel_queue_destroy_native(
 
 static const amdf_kernel_queue_vtable_t amdf_gpu_kernel_queue_vtable = {
     .query_status = amdf_gpu_kernel_queue_query_status,
+    .refresh_status = amdf_gpu_kernel_queue_refresh_status,
     .wait = amdf_gpu_kernel_queue_wait,
     .destroy_native = amdf_gpu_kernel_queue_destroy_native,
 };

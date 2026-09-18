@@ -143,15 +143,22 @@ application state in the physical tiles.
 The returned increasing, opaque submission number identifies accepted work.
 Several commands can be published before waiting for the last accepted point;
 that wait covers the queue's accepted prefix. The caller performs checked
-retirement with
-`kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0)`, or uses a
-zero-time wait to refresh without blocking. Retirement includes native
-completion and command-result inspection.
+retirement with `kernel_queue_refresh_status(queue, &status)` to consume the
+available completed prefix without waiting, or
+`kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0)` to wait for an
+exact accepted point. A zero-time wait polls that point; unlike batch refresh,
+it need not discover earlier completion while the requested point is pending.
+Retirement includes native completion and command-result inspection.
 `kernel_queue_query_status` is a read-only snapshot of retirement already
 established by synchronization or capacity reclamation; it does not advance
 retirement, even if the hardware has finished. A timeout or wait error is not
 cancellation and does not by itself permit instruction storage reuse. The status
 query reports established retirement separately from sticky terminal failure.
+Batch refresh makes the same distinction: its return status describes native
+observation, while the returned snapshot carries checked progress and execution
+failure. A successful refresh may report no new progress, including when another
+host caller is consuming results. Native observation failure leaves the output
+unchanged and does not cancel accepted work.
 
 The [canonical ELF consumer](../../experimental/xdna/cts/execution_test.cc)
 shows the complete flow, including target selection, image loading, relocation,

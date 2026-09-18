@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 #include <utility>
 
 #include "amdf/amdf.h"
@@ -500,8 +501,16 @@ TEST_F(Pm4KernelQueueTest, ExecutesMaterializedCopyData) {
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
 
-  ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
-      queue_, submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
+  // Poll checked progress without an exact-point native wait. The outer CTS
+  // harness bounds a hang; successful retirement still gates result access.
+  while (queue_status.retired_submission < submission) {
+    ASSERT_EQ(api_->kernel_queue_refresh_status(queue_, &queue_status),
+              AMDF_STATUS_OK);
+    ASSERT_EQ(queue_status.terminal_status, AMDF_STATUS_OK);
+    if (queue_status.retired_submission < submission) {
+      std::this_thread::yield();
+    }
+  }
   indirect_memory_may_be_in_use_ = false;
   ASSERT_TRUE(amdf_status_is_ok(
       api_->kernel_queue_query_status(queue_, &queue_status)));
