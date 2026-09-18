@@ -306,6 +306,8 @@ const iree_string_view_t* loom_module_block_comments(
 // Most construction paths maintain the table incrementally, but bulk readers
 // and recovery paths can call this after setting value types directly and
 // establishing definition and operand-use bookkeeping.
+// Existing record capacity is reused. Allocation failure preserves the current
+// incoming and outgoing reference lists so the rebuild can be retried.
 iree_status_t loom_module_recompute_type_uses(loom_module_t* module);
 
 // Returns true if |value_id| is referenced by any currently-active value type.
@@ -390,7 +392,9 @@ iree_status_t loom_module_make_canonical_attribute(
 // Each name_id must refer to a string interned in |module|. The builder
 // recursively canonicalizes nested DICT values, sorts entries by key spelling,
 // rejects duplicate keys, arena-copies the resulting immutable entry array,
-// and stores the canonical wrapper in |out_attr|.
+// and stores the canonical wrapper in |out_attr|. Ordering uses linear key
+// comparisons for sorted input and O(n log n) comparisons in the worst case,
+// with no scratch allocation beyond the owned entries and payload copies.
 iree_status_t loom_module_make_canonical_attr_dict(
     loom_module_t* module, loom_named_attr_slice_t entries,
     loom_attribute_t* out_attr);
@@ -422,12 +426,15 @@ iree_status_t loom_module_make_parameterized_attr_array(
 // |parameters| is indexed by |descriptor| and may point to temporary storage.
 // Required fields must be present and optional fields use LOOM_ATTR_ABSENT.
 // Generic parameter arrays are recursively copied and interned. A compact
-// inline enum is packed directly into the returned type without allocating.
+// inline enum is packed directly into the returned type without allocating
+// when |out_type_id| is NULL. When |out_type_id| is provided, both
+// representations are interned and their canonical module ID is returned
+// alongside |out_type|.
 iree_status_t loom_module_make_parameterized_type(
     loom_module_t* module,
     const loom_parameterized_type_descriptor_t* descriptor,
     const loom_attribute_t* parameters, iree_host_size_t parameter_count,
-    loom_type_t* out_type);
+    loom_type_t* out_type, loom_type_id_t* out_type_id);
 
 // Builds a fresh canonical DICT attribute from |base_entries| plus |updates|.
 //
@@ -487,8 +494,11 @@ loom_module_encoding_family_descriptor(const loom_module_t* module,
 // already exists, returns the existing entry by value. Otherwise appends a new
 // entry. Structural dependencies such as shaped element types, function
 // argument/result types, and dialect type parameters are interned first so the
-// type table always contains the closure required by serializers. Any
-// heap-backed payload owned by |type| (overflow dims, function signatures,
+// type table always contains the closure required by serializers. Static
+// encodings referenced by the type or its dependencies must already
+// exist in the module. Encoding parameters likewise reference only existing
+// types and encodings, keeping the combined dependency graph acyclic.
+// Heap-backed payload owned by |type| (overflow dims, function signatures,
 // dialect params, typed register payloads) is recursively copied into the
 // module arena before storage, so callers may pass temporary or
 // foreign-allocator payloads.
@@ -500,8 +510,7 @@ iree_status_t loom_module_intern_type_id(loom_module_t* module,
                                          loom_type_t type,
                                          loom_type_id_t* out_type_id);
 
-// Interns one type whose immediate structural dependencies are already
-// interned in |module|.
+// Interns one type with pre-interned explicit structural dependencies.
 //
 // |structural_dependency_ids| lists function arguments/results, dialect type
 // parameters, or a typed register's value type in representation order. It is
@@ -509,6 +518,10 @@ iree_status_t loom_module_intern_type_id(loom_module_t* module,
 // must be exact copies of those module entries. Pointer-backed storage owned by
 // |type| may be temporary; only its top-level payload is copied because nested
 // payloads are retained by the canonical dependency entries.
+// Shaped scalar element types are interned implicitly to preserve the module's
+// serializer closure even when a selective reader has not reached a separate
+// scalar type-table entry.
+// All static encoding attachments must already exist in the module.
 //
 // This is the topological construction path for validated serialized type
 // tables. General callers with arbitrary recursive type values use

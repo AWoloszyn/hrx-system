@@ -96,13 +96,15 @@ typedef struct loom_bytecode_reader_module_view_t {
     iree_host_size_t count;
   } sources;
 
-  // Immutable type materialization plan.
+  // Validated type count and optional immutable materialization plan.
   struct {
-    // Dense direct entries and diagnostic offsets in wire order.
+    // Dense direct entries and diagnostic offsets for full materialization,
+    // or NULL when only validating metadata or retaining an index.
     loom_bytecode_type_plan_entry_t* entries;
     // Number of types.
     iree_host_size_t count;
-    // Sparse non-direct facts in wire order, or NULL when all types are direct.
+    // Sparse non-direct facts in wire order, or NULL when no plan is requested
+    // or all types are direct.
     loom_bytecode_type_fact_t* facts;
   } types;
 
@@ -122,7 +124,8 @@ typedef struct loom_bytecode_reader_module_view_t {
     loom_string_id_t* family_name_ids;
     // Number of encoding families.
     iree_host_size_t family_count;
-    // Number of encoding instances.
+    // Number of validated encoding instances. While reading ENCODINGS this
+    // is the completed prefix available to later instance parameters.
     iree_host_size_t count;
   } encodings;
 

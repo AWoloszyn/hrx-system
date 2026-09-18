@@ -679,6 +679,36 @@ static void BM_ReadMetadata_TypePlan(benchmark::State& state) {
   iree_arena_block_pool_deinitialize(&block_pool);
 }
 
+static void BM_ReadIndex_TypePlan(benchmark::State& state) {
+  const uint32_t instance_count = (uint32_t)state.range(0);
+  TypePlanBytecodeFixture fixture(instance_count);
+  iree_arena_block_pool_t block_pool;
+  iree_arena_block_pool_initialize(65536, iree_allocator_system(), &block_pool);
+  iree_arena_allocator_t metadata_arena;
+  iree_arena_initialize(&block_pool, &metadata_arena);
+
+  for (auto _ : state) {
+    loom_bytecode_read_result_t result = {};
+    loom_bytecode_file_metadata_t metadata = {};
+    IgnoreStatusOrAbort(loom_bytecode_read_index(
+        iree_make_const_byte_span(fixture.bytes().data(),
+                                  fixture.bytes().size()),
+        IREE_SV("type_plan_benchmark.loombc"), fixture.context(), &block_pool,
+        &metadata_arena, /*options=*/nullptr, &result, &metadata));
+    if (result.error_count != 0 || metadata.module_count != 1 ||
+        metadata.modules[0].types.count != fixture.type_count()) {
+      abort();
+    }
+    benchmark::DoNotOptimize(metadata.modules[0].types.entries);
+    // Include releasing the retained index for reuse in the next read.
+    iree_arena_reset(&metadata_arena);
+  }
+
+  SetTypePlanCounters(state, fixture, instance_count);
+  iree_arena_deinitialize(&metadata_arena);
+  iree_arena_block_pool_deinitialize(&block_pool);
+}
+
 static void BM_ReadModule_TypePlan(benchmark::State& state) {
   const uint32_t instance_count = (uint32_t)state.range(0);
   TypePlanBytecodeFixture fixture(instance_count);
@@ -712,6 +742,9 @@ static void TypePlanScales(benchmark::Benchmark* benchmark) {
 }
 
 BENCHMARK(BM_ReadMetadata_TypePlan)
+    ->Apply(TypePlanScales)
+    ->Complexity(benchmark::oN);
+BENCHMARK(BM_ReadIndex_TypePlan)
     ->Apply(TypePlanScales)
     ->Complexity(benchmark::oN);
 BENCHMARK(BM_ReadModule_TypePlan)

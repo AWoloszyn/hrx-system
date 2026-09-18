@@ -280,6 +280,7 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     loom::error::error_defs
+    loom::format::bytecode::index
     loom::ir
     loom::ops::type_registry
   PUBLIC
@@ -318,6 +319,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::format::bytecode::format
     loom::ir
+    loom::ops::type_registry
 )
 
 loom_cc_library(
@@ -357,6 +359,8 @@ loom_cc_library(
     "selected_projection.c"
   DEPS
     iree::base
+    iree::base::internal
+    iree::base::internal::arena
   PUBLIC
 )
 
@@ -367,6 +371,7 @@ loom_cc_test(
     "selected_projection_test.cc"
   DEPS
     ::selected_projection
+    iree::base::internal::arena
     iree::testing::gtest
     iree::testing::gtest_main
 )
@@ -378,6 +383,7 @@ loom_cc_benchmark(
     "selected_projection_benchmark.cc"
   DEPS
     ::selected_projection
+    iree::base::internal::arena
     iree::testing::benchmark_main
   TESTONLY
 )
@@ -396,6 +402,7 @@ loom_cc_library(
     ::decoder
     ::module_view
     ::selected_projection
+    ::type
     ::type_plan
     ::type_validator
     iree::base

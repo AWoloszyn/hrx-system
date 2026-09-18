@@ -804,7 +804,8 @@ static iree_status_t loom_bytecode_reader_prepare_module(
 
 static iree_status_t loom_bytecode_reader_validate_module(
     loom_bytecode_module_reader_t* reader,
-    const loom_bytecode_reader_module_t* module) {
+    const loom_bytecode_reader_module_t* module,
+    loom_bytecode_module_validation_flags_t flags) {
   IREE_RETURN_IF_ERROR(
       loom_bytecode_reader_prepare_module(reader, module, reader->arena));
 
@@ -817,10 +818,18 @@ static iree_status_t loom_bytecode_reader_validate_module(
   IREE_RETURN_IF_ERROR(loom_bytecode_encoding_table_validate(
       &reader->decoder, reader->context, &reader->view, reader->arena,
       reader->view.sections.encodings));
-  IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_build(
-      &reader->decoder, reader->context, &reader->view, reader->arena,
-      reader->view.sections.types->bytes,
-      reader->view.sections.types->absolute_offset));
+  if (iree_any_bit_set(flags,
+                       LOOM_BYTECODE_MODULE_VALIDATION_RETAIN_TYPE_PLAN)) {
+    IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_build(
+        &reader->decoder, reader->context, &reader->view, reader->arena,
+        reader->view.sections.types->bytes,
+        reader->view.sections.types->absolute_offset));
+  } else {
+    IREE_RETURN_IF_ERROR(loom_bytecode_type_table_validate(
+        &reader->decoder, reader->context, &reader->view,
+        reader->view.sections.types->bytes,
+        reader->view.sections.types->absolute_offset));
+  }
   IREE_RETURN_IF_ERROR(loom_bytecode_operation_table_validate(
       &reader->decoder, reader->context, &reader->view, reader->arena,
       reader->view.sections.ops));
@@ -1006,29 +1015,11 @@ static iree_status_t loom_bytecode_reader_index_module(
       &reader->decoder, reader->context, &reader->view, reader->arena,
       reader->view.sections.encodings, retained_arena,
       &metadata->encodings.entries, &metadata->encodings.count));
-  IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_build(
-      &reader->decoder, reader->context, &reader->view, reader->arena,
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_table_index(
+      &reader->decoder, reader->context, &reader->view,
       reader->view.sections.types->bytes,
-      reader->view.sections.types->absolute_offset));
-  metadata->types.count = reader->view.types.count;
-  if (reader->view.types.count > 0) {
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        retained_arena, reader->view.types.count,
-        sizeof(*metadata->types.entries), (void**)&metadata->types.entries));
-    for (iree_host_size_t i = 0; i < reader->view.types.count; ++i) {
-      const uint64_t entry_offset =
-          reader->view.types.entries[i].bytecode_offset;
-      const uint64_t next_offset =
-          i + 1 < reader->view.types.count
-              ? reader->view.types.entries[i + 1].bytecode_offset
-              : reader->view.sections.types->absolute_offset +
-                    reader->view.sections.types->bytes.data_length;
-      metadata->types.entries[i] = (loom_bytecode_table_entry_metadata_t){
-          .entry_offset = entry_offset,
-          .entry_length = next_offset - entry_offset,
-      };
-    }
-  }
+      reader->view.sections.types->absolute_offset, retained_arena,
+      &metadata->types.entries, &metadata->types.count));
   IREE_RETURN_IF_ERROR(loom_bytecode_operation_table_index(
       &reader->decoder, reader->context, &reader->view, reader->arena,
       reader->view.sections.ops, retained_arena, &metadata->ops.entries,
@@ -1129,11 +1120,12 @@ iree_status_t loom_bytecode_file_reader_validate(
 iree_status_t loom_bytecode_module_validate(
     const loom_bytecode_file_reader_t* file_reader,
     const loom_bytecode_reader_module_t* module,
+    loom_bytecode_module_validation_flags_t flags,
     loom_bytecode_reader_module_view_t* out_view) {
   loom_bytecode_module_reader_t module_reader = {0};
   loom_bytecode_reader_initialize_module(file_reader, &module_reader);
   iree_status_t status =
-      loom_bytecode_reader_validate_module(&module_reader, module);
+      loom_bytecode_reader_validate_module(&module_reader, module, flags);
   *out_view = module_reader.view;
   return status;
 }

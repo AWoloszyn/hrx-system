@@ -873,12 +873,15 @@ loom_cc_library(
   NAME
     symbol_references
   HDRS
+    "symbol_reference_summary.h"
     "symbol_references.h"
   SRCS
+    "symbol_reference_summary.c"
     "symbol_references.c"
   DEPS
     ::scc
     iree::base
+    iree::base::internal
     iree::base::internal::arena
     loom::ir
     loom::ops::func
@@ -893,6 +896,7 @@ loom_cc_test(
   NAME
     symbol_references_test
   SRCS
+    "symbol_reference_summary_test.cc"
     "symbol_references_test.cc"
   DEPS
     ::symbol_references

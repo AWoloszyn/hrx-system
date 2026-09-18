@@ -6,6 +6,8 @@
 
 #include "loom/ir/module.h"
 
+#include <vector>
+
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -182,18 +184,24 @@ TEST_F(ModuleTest, RegisterSourceRejectsInvalidSentinelId) {
   IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
                                       NULL, iree_allocator_system(), &module));
 
-  iree_string_view_t* entries = NULL;
-  IREE_ASSERT_OK(iree_arena_allocate_array(&module->arena,
-                                           LOOM_SOURCE_ID_INVALID,
-                                           sizeof(*entries), (void**)&entries));
-  module->sources.entries = entries;
-  module->sources.capacity = LOOM_SOURCE_ID_INVALID;
-  module->sources.count = LOOM_SOURCE_ID_INVALID;
+  // Append permits repeated source names without a deduplication scan. Fill
+  // the table with real entries so registration can safely probe every name.
+  loom_source_id_t source_id = LOOM_SOURCE_ID_INVALID;
+  for (iree_host_size_t i = 0; i < LOOM_SOURCE_ID_INVALID; ++i) {
+    IREE_ASSERT_OK(
+        loom_module_append_source(module, IREE_SV("present"), &source_id));
+  }
+  EXPECT_EQ(source_id, LOOM_SOURCE_ID_INVALID - 1);
+  EXPECT_EQ(module->sources.count, LOOM_SOURCE_ID_INVALID);
 
-  loom_source_id_t source_id = 0;
+  // An existing source remains resolvable even when no new ID is available.
+  IREE_ASSERT_OK(
+      loom_module_register_source(module, IREE_SV("present"), &source_id));
+  EXPECT_EQ(source_id, 0u);
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_RESOURCE_EXHAUSTED,
       loom_module_register_source(module, IREE_SV("overflow"), &source_id));
+  EXPECT_EQ(source_id, LOOM_SOURCE_ID_INVALID);
   loom_module_free(module);
 }
 
@@ -2897,7 +2905,7 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderPacksWithoutAllocation) {
   loom_type_t encoding_type = {0};
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
       module, &loom_encoding_type_parameterized_descriptor, &role, 1,
-      &encoding_type));
+      &encoding_type, /*out_type_id=*/nullptr));
   EXPECT_TRUE(loom_type_equal(
       encoding_type,
       loom_type_encoding_with_role(LOOM_ENCODING_ROLE_ADDRESS_LAYOUT)));
@@ -2906,7 +2914,7 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderPacksWithoutAllocation) {
   role = loom_attr_absent();
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
       module, &loom_encoding_type_parameterized_descriptor, &role, 1,
-      &encoding_type));
+      &encoding_type, /*out_type_id=*/nullptr));
   EXPECT_TRUE(loom_type_equal(encoding_type, loom_type_encoding()));
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
 
@@ -2914,13 +2922,13 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderPacksWithoutAllocation) {
   loom_type_t storage_type = {0};
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
       module, &loom_low_storage_type_parameterized_descriptor, &space, 1,
-      &storage_type));
+      &storage_type, /*out_type_id=*/nullptr));
   EXPECT_TRUE(loom_type_equal(storage_type,
                               loom_type_storage(LOOM_STORAGE_SPACE_WORKGROUP)));
   space = loom_attr_enum(LOOM_STORAGE_SPACE_STACK);
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
       module, &loom_low_storage_type_parameterized_descriptor, &space, 1,
-      &storage_type));
+      &storage_type, /*out_type_id=*/nullptr));
   EXPECT_TRUE(loom_type_equal(storage_type,
                               loom_type_storage(LOOM_STORAGE_SPACE_STACK)));
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
@@ -2930,9 +2938,82 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderPacksWithoutAllocation) {
       IREE_STATUS_INVALID_ARGUMENT,
       loom_module_make_parameterized_type(
           module, &loom_encoding_type_parameterized_descriptor, &role, 1,
-          &encoding_type));
+          &encoding_type, /*out_type_id=*/nullptr));
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
 
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, ParameterizedTypeBuilderReturnsCanonicalId) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  loom_type_id_t element_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module, loom_type_scalar(LOOM_SCALAR_TYPE_BF16), &element_type_id));
+  loom_attribute_t parameters[] = {loom_attr_type(element_type_id),
+                                   loom_attr_i64(32), loom_attr_absent()};
+  loom_type_t array_type = {};
+  loom_type_id_t array_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_test_array_type_parameterized_descriptor, parameters,
+      IREE_ARRAYSIZE(parameters), &array_type, &array_id));
+  ASSERT_EQ(array_id, 1u);
+  EXPECT_EQ(module->types.count, 2u);
+  EXPECT_EQ(
+      loom_type_parameterized_parameters(array_type),
+      loom_type_parameterized_parameters(module->types.entries[array_id]));
+
+  parameters[1] = loom_attr_i64(64);
+  EXPECT_EQ(loom_test_array_type_alignment(array_type), 32);
+  loom_type_t distinct_type = {};
+  loom_type_id_t distinct_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_test_array_type_parameterized_descriptor, parameters,
+      IREE_ARRAYSIZE(parameters), &distinct_type, &distinct_id));
+  EXPECT_NE(distinct_id, array_id);
+  const iree_host_size_t allocation_size = module->arena.used_allocation_size;
+  parameters[1] = loom_attr_i64(32);
+  loom_type_t duplicate_type = {};
+  loom_type_id_t duplicate_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_test_array_type_parameterized_descriptor, parameters,
+      IREE_ARRAYSIZE(parameters), &duplicate_type, &duplicate_id));
+  EXPECT_EQ(duplicate_id, array_id);
+  EXPECT_EQ(loom_type_parameterized_parameters(duplicate_type),
+            loom_type_parameterized_parameters(array_type));
+  EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
+  EXPECT_EQ(module->types.count, 3u);
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, CompactParameterizedTypeBuilderInternsWhenIdRequested) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  loom_attribute_t role = loom_attr_enum(LOOM_ENCODING_ROLE_ADDRESS_LAYOUT);
+  loom_type_t type = {};
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_encoding_type_parameterized_descriptor, &role, 1, &type,
+      /*out_type_id=*/nullptr));
+  EXPECT_EQ(module->types.count, 0u);
+  loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_encoding_type_parameterized_descriptor, &role, 1, &type,
+      &type_id));
+  ASSERT_EQ(type_id, 0u);
+  EXPECT_EQ(module->types.count, 1u);
+  EXPECT_TRUE(loom_type_equal(module->types.entries[type_id], type));
+  const iree_host_size_t allocation_size = module->arena.used_allocation_size;
+  loom_type_id_t duplicate_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module, &loom_encoding_type_parameterized_descriptor, &role, 1, &type,
+      &duplicate_id));
+  EXPECT_EQ(duplicate_id, type_id);
+  EXPECT_EQ(module->types.count, 1u);
+  EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
   loom_module_free(module);
 }
 
@@ -3010,6 +3091,119 @@ TEST_F(ModuleTest, InternTypeIdReturnsCanonicalId) {
   EXPECT_EQ(module->types.count, 2u);
   EXPECT_TRUE(loom_type_equal(module->types.entries[f32_id], f32));
   EXPECT_TRUE(loom_type_equal(module->types.entries[i32_id], i32));
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, InternTypePreservesCollidingEntriesAcrossGrowth) {
+  const loom_module_size_hints_t hints = {};
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      &hints, iree_allocator_system(),
+                                      &module));
+  const iree_host_size_t initial_capacity = module->type_intern.capacity;
+  std::vector<uint32_t> dimensions_by_slot(initial_capacity, 0);
+  uint32_t colliding_dimensions[2] = {};
+  for (uint32_t dimension = 1; dimension <= initial_capacity + 1; ++dimension) {
+    const loom_type_t type = loom_type_shaped_1d(
+        LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32, loom_dim_pack_static(dimension),
+        /*encoding_id=*/0);
+    const iree_host_size_t slot = loom_type_hash(type) & (initial_capacity - 1);
+    if (dimensions_by_slot[slot] != 0) {
+      colliding_dimensions[0] = dimensions_by_slot[slot];
+      colliding_dimensions[1] = dimension;
+      break;
+    }
+    dimensions_by_slot[slot] = dimension;
+  }
+  ASSERT_NE(colliding_dimensions[1], 0u);
+
+  loom_type_id_t colliding_ids[2] = {};
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(colliding_ids); ++i) {
+    const loom_type_t type = loom_type_shaped_1d(
+        LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+        loom_dim_pack_static(colliding_dimensions[i]), /*encoding_id=*/0);
+    IREE_ASSERT_OK(loom_module_intern_type_id(module, type, &colliding_ids[i]));
+  }
+  EXPECT_NE(colliding_ids[0], colliding_ids[1]);
+  EXPECT_EQ(module->type_intern.capacity, initial_capacity);
+
+  for (uint32_t dimension = initial_capacity + 2;
+       dimension < initial_capacity * 3; ++dimension) {
+    const loom_type_t type = loom_type_shaped_1d(
+        LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32, loom_dim_pack_static(dimension),
+        /*encoding_id=*/0);
+    loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_intern_type_id(module, type, &type_id));
+  }
+  EXPECT_GT(module->type_intern.capacity, initial_capacity);
+  const iree_host_size_t type_count = module->types.count;
+  const iree_host_size_t allocation_size = module->arena.used_allocation_size;
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(colliding_ids); ++i) {
+    const loom_type_t type = loom_type_shaped_1d(
+        LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+        loom_dim_pack_static(colliding_dimensions[i]), /*encoding_id=*/0);
+    loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_intern_topological_type_id(
+        module, type, /*structural_dependency_ids=*/nullptr,
+        /*structural_dependency_count=*/0, &type_id));
+    EXPECT_EQ(type_id, colliding_ids[i]);
+    EXPECT_TRUE(loom_type_equal(module->types.entries[type_id], type));
+  }
+  EXPECT_EQ(module->types.count, type_count);
+  EXPECT_EQ(module->type_intern.count, type_count);
+  EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, ParameterizedTypeDuplicateAtGrowthThresholdKeepsStorage) {
+  const loom_module_size_hints_t hints = {};
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      &hints, iree_allocator_system(),
+                                      &module));
+  loom_type_id_t element_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module, loom_type_scalar(LOOM_SCALAR_TYPE_BF16), &element_type_id));
+  const iree_host_size_t initial_capacity = module->type_intern.capacity;
+  const iree_host_size_t growth_threshold = initial_capacity * 3 / 4;
+  loom_type_t first_type = {};
+  for (iree_host_size_t alignment = 1; alignment < growth_threshold;
+       ++alignment) {
+    loom_type_t type = {};
+    IREE_ASSERT_OK(loom_test_array_type_make(
+        module, LOOM_TEST_ARRAY_TYPE_BUILD_FLAG_HAS_ALIGNMENT, element_type_id,
+        alignment, loom_named_attr_slice_empty(), &type));
+    if (alignment == 1) {
+      first_type = type;
+    }
+  }
+  ASSERT_EQ(module->type_intern.capacity, initial_capacity);
+  ASSERT_EQ(module->type_intern.count, growth_threshold);
+  const uint32_t* indices = module->type_intern.indices;
+  const iree_host_size_t allocation_size = module->arena.used_allocation_size;
+  loom_type_t duplicate_type = {};
+  IREE_ASSERT_OK(loom_test_array_type_make(
+      module, LOOM_TEST_ARRAY_TYPE_BUILD_FLAG_HAS_ALIGNMENT, element_type_id,
+      /*alignment=*/1, loom_named_attr_slice_empty(), &duplicate_type));
+  EXPECT_EQ(loom_type_parameterized_parameters(duplicate_type),
+            loom_type_parameterized_parameters(first_type));
+  EXPECT_EQ(module->type_intern.indices, indices);
+  EXPECT_EQ(module->type_intern.capacity, initial_capacity);
+  EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
+
+  loom_type_t new_type = {};
+  IREE_ASSERT_OK(loom_test_array_type_make(
+      module, LOOM_TEST_ARRAY_TYPE_BUILD_FLAG_HAS_ALIGNMENT, element_type_id,
+      growth_threshold, loom_named_attr_slice_empty(), &new_type));
+  EXPECT_GT(module->type_intern.capacity, initial_capacity);
+  EXPECT_EQ(module->types.count, growth_threshold + 1);
+  EXPECT_EQ(loom_test_array_type_alignment(first_type), 1);
+  loom_type_id_t first_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_topological_type_id(
+      module, first_type, /*structural_dependency_ids=*/nullptr,
+      /*structural_dependency_count=*/0, &first_type_id));
+  EXPECT_EQ(first_type_id, 1u);
+  EXPECT_EQ(module->types.count, growth_threshold + 1);
   loom_module_free(module);
 }
 
@@ -3149,6 +3343,112 @@ TEST_F(ModuleTest, InternImplicitShapedAttachmentUsesAbsentIdentity) {
   EXPECT_EQ(explicit_type_id, implicit_type_id);
   EXPECT_FALSE(loom_type_has_encoding(module->types.entries[implicit_type_id]));
   loom_module_free(module);
+}
+
+TEST_F(ModuleTest, InternShapedTypeRequiresExistingStaticEncoding) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  const uint16_t encoding_ids[] = {1, UINT16_MAX};
+  for (const uint16_t encoding_id : encoding_ids) {
+    const loom_type_t type =
+        loom_type_shaped_1d(LOOM_TYPE_TILE, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_static(4), encoding_id);
+    loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                          loom_module_intern_type_id(module, type, &type_id));
+    EXPECT_EQ(type_id, LOOM_TYPE_ID_INVALID);
+    EXPECT_EQ(module->types.count, 0u);
+  }
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, InternNestedTypeRequiresExistingStaticEncoding) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  const loom_type_t type = loom_type_shaped_1d(
+      LOOM_TYPE_TILE, LOOM_SCALAR_TYPE_F32, loom_dim_pack_static(4), 1);
+  loom_type_t interned_type = {};
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        loom_module_intern_function_type(
+                            module, &type, 1, nullptr, 0, &interned_type));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        loom_module_intern_function_type(
+                            module, nullptr, 0, &type, 1, &interned_type));
+  loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module, IREE_SV("test.nested"), &name_id));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      loom_module_intern_type(module, loom_type_dialect(name_id, 1, &type),
+                              &interned_type));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      loom_module_intern_register_type(module, 1, 1, type, &interned_type));
+  EXPECT_EQ(module->types.count, 0u);
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, InternTypesRetainPriorStaticEncodingDependencies) {
+  static const loom_attr_descriptor_t kParameter = {
+      /*.name=*/LOOM_BSTRING_REF(7, "element"),
+      /*.attr_kind=*/LOOM_ATTR_TYPE,
+  };
+  static const loom_encoding_family_descriptor_t kDescriptor = {
+      /*.name=*/LOOM_BSTRING_REF(5, "typed"),
+      /*.role=*/LOOM_ENCODING_ROLE_STORAGE_SCHEMA,
+      /*.family_flags=*/{},
+      /*.parameter_count=*/1,
+      /*.parameter_descriptors=*/&kParameter,
+  };
+  static const loom_encoding_vtable_t kVtable = {
+      /*.descriptor=*/&kDescriptor,
+  };
+  loom_context_t context;
+  loom_context_initialize(iree_allocator_system(), &context);
+  IREE_ASSERT_OK(loom_context_register_encoding_vtable(&context, &kVtable));
+  IREE_ASSERT_OK(loom_context_finalize(&context));
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  loom_type_id_t dependency_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module, loom_type_scalar(LOOM_SCALAR_TYPE_F32), &dependency_id));
+  loom_named_attr_t parameter = {};
+  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("element"),
+                                           &parameter.name_id));
+  loom_encoding_t encoding = {};
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module, IREE_SV("typed"), &encoding.name_id));
+  encoding.alias_id = LOOM_STRING_ID_INVALID;
+  encoding.attribute_count = 1;
+  encoding.attributes = &parameter;
+  for (uint16_t index = 0; index < 3; ++index) {
+    parameter.value = loom_attr_type(dependency_id);
+    uint16_t encoding_id = 0;
+    IREE_ASSERT_OK(loom_module_add_encoding(module, &encoding, &encoding_id));
+    EXPECT_EQ(encoding_id, index + 1);
+    const loom_type_t type =
+        loom_type_shaped_1d(LOOM_TYPE_TILE, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_static(4), encoding_id);
+    loom_type_id_t general_id = LOOM_TYPE_ID_INVALID;
+    loom_type_id_t topological_id = LOOM_TYPE_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_intern_topological_type_id(module, type, nullptr,
+                                                          0, &topological_id));
+    IREE_ASSERT_OK(loom_module_intern_type_id(module, type, &general_id));
+    EXPECT_EQ(general_id, topological_id);
+    EXPECT_EQ(
+        loom_module_encoding(module, encoding_id)->attributes[0].value.type_id,
+        dependency_id);
+    dependency_id = general_id;
+  }
+  EXPECT_EQ(module->types.count, 4u);
+  loom_module_free(module);
+  loom_context_deinitialize(&context);
 }
 
 TEST_F(ModuleTest, InternRegisterTypeOwnsAndDeduplicatesValueType) {

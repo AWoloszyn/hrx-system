@@ -25,8 +25,9 @@ iree_status_t loom_bytecode_read_metadata(
   if (iree_status_is_ok(status)) {
     for (iree_host_size_t i = 0; i < reader.module_count; ++i) {
       loom_bytecode_reader_module_view_t module_view;
-      status = loom_bytecode_module_validate(&reader, &reader.modules[i],
-                                             &module_view);
+      status = loom_bytecode_module_validate(
+          &reader, &reader.modules[i], LOOM_BYTECODE_MODULE_VALIDATION_NONE,
+          &module_view);
       if (i == 0) {
         reader.result.first_module = module_view.summary;
       }

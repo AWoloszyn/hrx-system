@@ -261,6 +261,7 @@ loom_cc_library(
         ":module_view",
         ":type_plan",
         "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/format/bytecode:index",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:type_registry",
         "//runtime/src/iree/base",
@@ -294,6 +295,7 @@ loom_cc_test(
         ":type_validator",
         "//loom/src/loom/format/bytecode:format",
         "//loom/src/loom/ir",
+        "//loom/src/loom/ops:type_registry",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
@@ -330,7 +332,11 @@ loom_cc_library(
     srcs = ["selected_projection.c"],
     hdrs = ["selected_projection.h"],
     visibility = ["//loom/src/loom/format/bytecode:__pkg__"],
-    deps = ["//runtime/src/iree/base"],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:arena",
+    ],
 )
 
 loom_cc_test(
@@ -338,6 +344,7 @@ loom_cc_test(
     srcs = ["selected_projection_test.cc"],
     deps = [
         ":selected_projection",
+        "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
@@ -348,6 +355,7 @@ loom_cc_benchmark(
     srcs = ["selected_projection_benchmark.cc"],
     deps = [
         ":selected_projection",
+        "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:benchmark_main",
     ],
 )
@@ -368,6 +376,7 @@ loom_cc_library(
         ":decoder",
         ":module_view",
         ":selected_projection",
+        ":type",
         ":type_plan",
         ":type_validator",
         "//loom/src/loom/error:error_defs",

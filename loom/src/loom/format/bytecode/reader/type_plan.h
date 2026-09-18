@@ -16,13 +16,37 @@
 extern "C" {
 #endif
 
-// One dense validated type-table entry.
+// Native payload layout for a function, dialect, or typed register. Validation
+// fixes the layout once; materialization fills the trailing canonical children.
+typedef struct loom_bytecode_structural_type_plan_t {
+  // Final loom_type_t header, including the kind and representation flags.
+  uint32_t type_header;
+  // Dialect parameter count stored in loom_type_t::encoding_flags, else zero.
+  uint16_t parameter_count;
+  // Byte offset of the first loom_type_t child in the native payload.
+  uint16_t children_offset;
+  // Validated STRINGS family name ID for dialect types, else zero.
+  loom_string_id_t name_id;
+  // Number of trailing children, up to 2 * UINT16_MAX for function types.
+  uint32_t dependency_count;
+  // Payload bytes, including room for the fixed sparse-fact prefix copy.
+  iree_host_size_t payload_size;
+} loom_bytecode_structural_type_plan_t;
+
+// One dense validated type-table entry. The sparse fact selects the union arm.
 typedef struct loom_bytecode_type_plan_entry_t {
-  // Complete by-value type when the entry has no sparse fact.
-  loom_type_t direct_type;
+  union {
+    // Complete by-value type when the entry has no sparse fact.
+    loom_type_t direct_type;
+    // Native layout for a structural fact; unused for parameterized facts.
+    loom_bytecode_structural_type_plan_t structural;
+  };
   // Absolute bytecode offset of the entry kind.
   uint64_t bytecode_offset;
 } loom_bytecode_type_plan_entry_t;
+
+static_assert(sizeof(loom_bytecode_type_plan_entry_t) == 32,
+              "type plans retain one 32-byte entry per wire type");
 
 // Common header for one sparse fact in topological type-table order.
 typedef struct loom_bytecode_type_fact_t {
@@ -34,29 +58,17 @@ typedef struct loom_bytecode_type_fact_t {
   loom_type_kind_t kind;
 } loom_bytecode_type_fact_t;
 
-// Type-reference facts for one function type.
-typedef struct loom_bytecode_function_type_fact_t {
+// Native prefix and type-reference facts for a structural payload. The prefix
+// contains the function signature header, the two register carrier words, or
+// zeros for dialect types. Child values overwrite any unused prefix bytes.
+typedef struct loom_bytecode_structural_type_fact_t {
   // Common sparse type-fact header.
   loom_bytecode_type_fact_t base;
-  // Number of leading argument type IDs.
-  uint16_t argument_count;
-  // Number of trailing result type IDs.
-  uint16_t result_count;
-  // Argument then result type IDs in wire order.
+  // Native payload prefix, zero-filled beyond the kind's fixed header.
+  uint64_t payload_prefix[2];
+  // Prior child type IDs in native payload order.
   loom_type_id_t type_ids[];
-} loom_bytecode_function_type_fact_t;
-
-// Type-reference facts for one dialect type.
-typedef struct loom_bytecode_dialect_type_fact_t {
-  // Common sparse type-fact header.
-  loom_bytecode_type_fact_t base;
-  // Validated STRINGS family name ID.
-  loom_string_id_t name_id;
-  // Number of parameter type IDs.
-  uint16_t parameter_count;
-  // Parameter type IDs in wire order.
-  loom_type_id_t type_ids[];
-} loom_bytecode_dialect_type_fact_t;
+} loom_bytecode_structural_type_fact_t;
 
 // Materialization facts for one descriptor-backed type.
 typedef struct loom_bytecode_parameterized_type_fact_t {
@@ -73,18 +85,6 @@ typedef struct loom_bytecode_parameterized_type_fact_t {
   // Validated descriptor indices for present parameters in wire order.
   uint8_t parameter_indices[];
 } loom_bytecode_parameterized_type_fact_t;
-
-// Materialization facts for one typed target-register payload.
-typedef struct loom_bytecode_typed_register_fact_t {
-  // Common sparse type-fact header.
-  loom_bytecode_type_fact_t base;
-  // First target-owned carrier payload word.
-  uint64_t carrier_payload0;
-  // Second target-owned carrier payload word.
-  uint64_t carrier_payload1;
-  // Prior semantic value type ID.
-  loom_type_id_t value_type_id;
-} loom_bytecode_typed_register_fact_t;
 
 #ifdef __cplusplus
 }  // extern "C"

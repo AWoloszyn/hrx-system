@@ -11,6 +11,7 @@
 #include "loom/ir/context.h"
 #include "loom/ir/parameterized_type.h"
 #include "loom/ir/structural_hash.h"
+#include "loom/util/adaptive_sort.h"
 
 //===----------------------------------------------------------------------===//
 // Hash function
@@ -104,18 +105,31 @@ static void loom_intern_table_clear(loom_intern_table_t* table) {
   table->count = 0;
 }
 
-// Inserts a value known to be unique into a table with available capacity.
-static void loom_intern_table_insert_unique(loom_intern_table_t* table,
-                                            uint32_t hash, uint32_t index) {
-  IREE_ASSERT(table->count < table->capacity);
+// Finds a vacant slot for a known-unique value in a non-full table.
+static iree_host_size_t loom_intern_table_find_empty_slot(
+    const loom_intern_table_t* table, uint32_t hash) {
   const iree_host_size_t mask = table->capacity - 1;
   iree_host_size_t slot = hash & mask;
   while (table->indices[slot] != UINT32_MAX) {
     slot = (slot + 1) & mask;
   }
+  return slot;
+}
+
+// Inserts a value known to be unique into a table with available capacity.
+static void loom_intern_table_insert_unique(loom_intern_table_t* table,
+                                            uint32_t hash, uint32_t index) {
+  IREE_ASSERT(table->count < table->capacity);
+  const iree_host_size_t slot = loom_intern_table_find_empty_slot(table, hash);
   table->hashes[slot] = hash;
   table->indices[slot] = index;
   ++table->count;
+}
+
+// Tests whether insertion preserves the maximum load factor without growth.
+static bool loom_intern_table_has_insert_capacity(
+    const loom_intern_table_t* table) {
+  return table->count * 4 < table->capacity * 3;
 }
 
 // Ensures one entry can be inserted while preserving the maximum load factor.
@@ -124,7 +138,7 @@ static iree_status_t loom_intern_table_reserve_insert(
   if (table->capacity == 0) {
     return loom_intern_table_allocate(arena, /*capacity=*/32, table);
   }
-  if (table->count * 4 >= table->capacity * 3) {
+  if (!loom_intern_table_has_insert_capacity(table)) {
     return loom_intern_table_grow(arena, table);
   }
   return iree_ok_status();
@@ -132,12 +146,18 @@ static iree_status_t loom_intern_table_reserve_insert(
 
 typedef bool (*loom_intern_equal_fn_t)(const void* context, uint32_t index);
 
-static uint32_t loom_intern_table_lookup(const loom_intern_table_t* table,
-                                         uint32_t hash,
-                                         loom_intern_equal_fn_t equal_fn,
-                                         const void* equal_context) {
+typedef struct loom_intern_probe_t {
+  // Existing entry index, or UINT32_MAX when the candidate is absent.
+  uint32_t index;
+  // Matching or vacant slot, valid until the table grows or is mutated.
+  iree_host_size_t slot;
+} loom_intern_probe_t;
+
+static loom_intern_probe_t loom_intern_table_probe(
+    const loom_intern_table_t* table, uint32_t hash,
+    loom_intern_equal_fn_t equal_fn, const void* equal_context) {
   if (table->capacity == 0) {
-    return UINT32_MAX;
+    return (loom_intern_probe_t){.index = UINT32_MAX, .slot = 0};
   }
 
   iree_host_size_t mask = table->capacity - 1;
@@ -145,13 +165,20 @@ static uint32_t loom_intern_table_lookup(const loom_intern_table_t* table,
   while (true) {
     uint32_t index = table->indices[slot];
     if (index == UINT32_MAX) {
-      return UINT32_MAX;
+      return (loom_intern_probe_t){.index = UINT32_MAX, .slot = slot};
     }
     if (table->hashes[slot] == hash && equal_fn(equal_context, index)) {
-      return index;
+      return (loom_intern_probe_t){.index = index, .slot = slot};
     }
     slot = (slot + 1) & mask;
   }
+}
+
+static uint32_t loom_intern_table_lookup(const loom_intern_table_t* table,
+                                         uint32_t hash,
+                                         loom_intern_equal_fn_t equal_fn,
+                                         const void* equal_context) {
+  return loom_intern_table_probe(table, hash, equal_fn, equal_context).index;
 }
 
 // Looks up or inserts an entry in the intern table.
@@ -299,6 +326,17 @@ static iree_status_t loom_type_table_ensure_capacity(
   return iree_ok_status();
 }
 
+// Publishes row and hash storage together so a caller can rewind arena
+// allocations after failure without leaving either table pointing into them.
+static iree_status_t loom_module_reserve_type_insert(loom_module_t* module) {
+  loom_type_table_t types = module->types;
+  IREE_RETURN_IF_ERROR(loom_type_table_ensure_capacity(&module->arena, &types));
+  IREE_RETURN_IF_ERROR(
+      loom_intern_table_reserve_insert(&module->arena, &module->type_intern));
+  module->types = types;
+  return iree_ok_status();
+}
+
 static iree_status_t loom_encoding_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_encoding_table_t* table) {
   if (table->count < table->capacity) {
@@ -358,13 +396,7 @@ static iree_status_t loom_comment_table_ensure_capacity(
 
 static iree_status_t loom_type_use_table_ensure_record_capacity(
     iree_arena_allocator_t* arena, loom_type_use_table_t* table,
-    iree_host_size_t additional_record_count) {
-  if (table->free_count >= additional_record_count) {
-    return iree_ok_status();
-  }
-  iree_host_size_t new_records_needed =
-      additional_record_count - table->free_count;
-  iree_host_size_t minimum_capacity = table->record_count + new_records_needed;
+    iree_host_size_t minimum_capacity) {
   if (minimum_capacity <= table->record_capacity) {
     return iree_ok_status();
   }
@@ -2001,38 +2033,52 @@ const iree_string_view_t* loom_module_block_comments(
 // Value definition
 //===----------------------------------------------------------------------===//
 
-typedef struct loom_type_use_prepare_t {
+typedef struct loom_type_use_count_t {
+  // Module defining the valid referenced value range.
   loom_module_t* module;
+  // Number of reference occurrences requiring table records.
   iree_host_size_t reference_count;
-} loom_type_use_prepare_t;
+} loom_type_use_count_t;
 
-static iree_status_t loom_type_use_prepare_callback(loom_value_id_t value_id,
-                                                    void* user_data) {
-  loom_type_use_prepare_t* prepare = (loom_type_use_prepare_t*)user_data;
-  if (value_id >= prepare->module->values.count) {
-    return iree_ok_status();
+static iree_status_t loom_type_use_count_callback(loom_value_id_t value_id,
+                                                  void* user_data) {
+  loom_type_use_count_t* count = (loom_type_use_count_t*)user_data;
+  if (value_id < count->module->values.count) {
+    ++count->reference_count;
   }
-  ++prepare->reference_count;
   return iree_ok_status();
 }
 
-static iree_status_t loom_type_use_prepare_for_type(
+static iree_status_t loom_type_use_count_for_type(
     loom_module_t* module, loom_type_t type,
     iree_host_size_t* out_reference_count) {
   *out_reference_count = 0;
   if (!loom_type_may_reference_values(type)) {
     return iree_ok_status();
   }
-  loom_type_use_prepare_t prepare = {
+  loom_type_use_count_t count = {
       .module = module,
       .reference_count = 0,
   };
   IREE_RETURN_IF_ERROR(loom_type_walk_value_refs(
-      module, type, loom_type_use_prepare_callback, &prepare));
-  IREE_RETURN_IF_ERROR(loom_type_use_table_ensure_record_capacity(
-      &module->arena, &module->type_uses, prepare.reference_count));
-  *out_reference_count = prepare.reference_count;
+      module, type, loom_type_use_count_callback, &count));
+  *out_reference_count = count.reference_count;
   return iree_ok_status();
+}
+
+static iree_status_t loom_type_use_prepare_for_type(
+    loom_module_t* module, loom_type_t type,
+    iree_host_size_t* out_reference_count) {
+  IREE_RETURN_IF_ERROR(
+      loom_type_use_count_for_type(module, type, out_reference_count));
+  const loom_type_use_table_t* table = &module->type_uses;
+  if (table->free_count >= *out_reference_count) {
+    return iree_ok_status();
+  }
+  iree_host_size_t new_record_count = *out_reference_count - table->free_count;
+  return loom_type_use_table_ensure_record_capacity(
+      &module->arena, &module->type_uses,
+      table->record_count + new_record_count);
 }
 
 static loom_type_use_id_t loom_type_use_table_allocate_record(
@@ -2461,8 +2507,8 @@ iree_status_t loom_module_recompute_type_uses(loom_module_t* module) {
       continue;
     }
     iree_host_size_t value_reference_count = 0;
-    IREE_RETURN_IF_ERROR(loom_type_use_prepare_for_type(
-        module, value->type, &value_reference_count));
+    IREE_RETURN_IF_ERROR(loom_type_use_count_for_type(module, value->type,
+                                                      &value_reference_count));
     reference_count += value_reference_count;
   }
   IREE_RETURN_IF_ERROR(loom_type_use_table_ensure_record_capacity(
@@ -2722,6 +2768,17 @@ static iree_status_t loom_module_canonicalize_attr_value(
     loom_attribute_t value, iree_host_size_t depth,
     loom_attribute_t* out_value);
 
+static bool loom_module_attr_dict_key_less(const loom_module_t* module,
+                                           const loom_named_attr_t* lhs,
+                                           const loom_named_attr_t* rhs) {
+  return iree_string_view_compare(module->strings.entries[lhs->name_id],
+                                  module->strings.entries[rhs->name_id]) < 0;
+}
+
+LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT(loom_module_sort_attr_dict_entries,
+                                       loom_named_attr_t, const loom_module_t*,
+                                       loom_module_attr_dict_key_less)
+
 static iree_status_t loom_module_make_canonical_attr_dict_entries(
     loom_module_t* module, const loom_named_attr_t* entries,
     iree_host_size_t count, iree_host_size_t depth,
@@ -2752,46 +2809,33 @@ static iree_status_t loom_module_make_canonical_attr_dict_entries(
                                                  sizeof(loom_named_attr_t),
                                                  (void**)&canonical_entries));
 
-  iree_host_size_t canonical_count = 0;
   for (iree_host_size_t i = 0; i < count; ++i) {
     iree_string_view_t key_name = iree_string_view_empty();
     IREE_RETURN_IF_ERROR(loom_module_resolve_attr_dict_key_name(
         module, entries[i].name_id, &key_name));
 
-    loom_named_attr_t entry = {
+    canonical_entries[i] = (loom_named_attr_t){
         .name_id = entries[i].name_id,
         .value = {0},
     };
     IREE_RETURN_IF_ERROR(loom_module_canonicalize_attr_value(
         module, /*descriptor=*/NULL, entries[i].value, depth + 1,
-        &entry.value));
-
-    iree_host_size_t insert_index = canonical_count;
-    while (insert_index > 0) {
-      iree_string_view_t previous_key_name = iree_string_view_empty();
-      IREE_RETURN_IF_ERROR(loom_module_resolve_attr_dict_key_name(
-          module, canonical_entries[insert_index - 1].name_id,
-          &previous_key_name));
-
-      int comparison = iree_string_view_compare(key_name, previous_key_name);
-      if (comparison == 0) {
-        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "duplicate dict attribute key '%.*s'",
-                                (int)key_name.size, key_name.data);
-      }
-      if (comparison > 0) {
-        break;
-      }
-
-      canonical_entries[insert_index] = canonical_entries[insert_index - 1];
-      --insert_index;
-    }
-
-    canonical_entries[insert_index] = entry;
-    ++canonical_count;
+        &canonical_entries[i].value));
   }
 
-  *out_attr = loom_make_canonical_attr_dict(canonical_entries, canonical_count);
+  // Keys are validated once above. Interned spelling identity makes duplicate
+  // detection an ID comparison after the bounded spelling-order sort.
+  loom_module_sort_attr_dict_entries(module, canonical_entries, count);
+  for (iree_host_size_t i = 1; i < count; ++i) {
+    if (canonical_entries[i - 1].name_id == canonical_entries[i].name_id) {
+      iree_string_view_t key_name =
+          module->strings.entries[canonical_entries[i].name_id];
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "duplicate dict attribute key '%.*s'",
+                              (int)key_name.size, key_name.data);
+    }
+  }
+  *out_attr = loom_make_canonical_attr_dict(canonical_entries, count);
   return iree_ok_status();
 }
 
@@ -4020,8 +4064,7 @@ static uint32_t loom_function_type_hash(const loom_type_t* arg_types,
   hash = loom_structural_hash_mix_u16(hash, 0);
   hash = loom_structural_hash_mix_u16(hash, arg_count);
   hash = loom_structural_hash_mix_u16(hash, result_count);
-  hash =
-      loom_structural_hash_mix_u16(hash, (uint16_t)(arg_count + result_count));
+  hash = loom_structural_hash_mix_u32(hash, (uint32_t)arg_count + result_count);
   for (uint16_t i = 0; i < arg_count; ++i) {
     hash = loom_structural_hash_mix_u32(hash, loom_type_hash(arg_types[i]));
   }
@@ -4047,8 +4090,8 @@ static uint32_t loom_topological_type_hash(
       const loom_func_type_data_t* data = loom_type_func_data(type);
       hash = loom_structural_hash_mix_u16(hash, data->arg_count);
       hash = loom_structural_hash_mix_u16(hash, data->result_count);
-      hash = loom_structural_hash_mix_u16(hash,
-                                          (uint16_t)context->dependency_count);
+      hash = loom_structural_hash_mix_u32(hash,
+                                          (uint32_t)context->dependency_count);
       for (iree_host_size_t i = 0; i < context->dependency_count; ++i) {
         hash = loom_structural_hash_mix_u32(
             hash, context->module->types.hashes[context->dependency_ids[i]]);
@@ -4196,6 +4239,29 @@ static iree_status_t loom_module_clone_function_type_from_context(
       ctx->result_count, out_type);
 }
 
+// Builds a descriptor-backed payload from a matching parameter array. The
+// caller owns any arena rollback and subsequent type-table publication.
+static iree_status_t loom_module_clone_parameterized_type_payload(
+    loom_module_t* module,
+    const loom_parameterized_type_descriptor_t* descriptor,
+    const loom_attribute_t* parameters, loom_type_t* out_type) {
+  const uint8_t parameter_count = descriptor->parameter_count;
+  loom_attribute_t* canonical_parameters = NULL;
+  if (parameter_count > 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        &module->arena, parameter_count, sizeof(*canonical_parameters),
+        (void**)&canonical_parameters));
+    for (uint8_t i = 0; i < parameter_count; ++i) {
+      IREE_RETURN_IF_ERROR(loom_module_canonicalize_attr_value(
+          module, &descriptor->parameter_descriptors[i], parameters[i],
+          /*depth=*/1, &canonical_parameters[i]));
+    }
+  }
+  *out_type = loom_type_parameterized(descriptor, parameter_count,
+                                      canonical_parameters);
+  return iree_ok_status();
+}
+
 // Recursively clones any pointer-backed payload referenced by |type| into the
 // module arena and returns an equivalent by-value type that owns module-local
 // payload.
@@ -4268,20 +4334,8 @@ static iree_status_t loom_module_clone_type_payload(loom_module_t* module,
             IREE_STATUS_INVALID_ARGUMENT,
             "non-empty parameterized type has a NULL slot pointer");
       }
-      loom_attribute_t* cloned_parameters = NULL;
-      if (parameter_count > 0) {
-        IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-            &module->arena, parameter_count, sizeof(*cloned_parameters),
-            (void**)&cloned_parameters));
-        for (uint8_t i = 0; i < parameter_count; ++i) {
-          IREE_RETURN_IF_ERROR(loom_module_canonicalize_attr_value(
-              module, &descriptor->parameter_descriptors[i], parameters[i],
-              /*depth=*/1, &cloned_parameters[i]));
-        }
-      }
-      *out_type = loom_type_parameterized(descriptor, parameter_count,
-                                          cloned_parameters);
-      return iree_ok_status();
+      return loom_module_clone_parameterized_type_payload(module, descriptor,
+                                                          parameters, out_type);
     }
 
     case LOOM_TYPE_REGISTER: {
@@ -4350,8 +4404,9 @@ static iree_status_t loom_module_intern_type_impl(
   if (out_miss) {
     *out_miss = false;
   }
-  uint32_t existing_index = loom_intern_table_lookup(&module->type_intern, hash,
-                                                     equal_fn, equal_context);
+  const loom_intern_probe_t probe = loom_intern_table_probe(
+      &module->type_intern, hash, equal_fn, equal_context);
+  const uint32_t existing_index = probe.index;
   if (existing_index != UINT32_MAX) {
     *out_interned_type = module->types.entries[existing_index];
     if (out_type_id) {
@@ -4377,28 +4432,25 @@ static iree_status_t loom_module_intern_type_impl(
   loom_type_t type = {0};
   IREE_RETURN_IF_ERROR(clone_fn(module, clone_context, &type));
 
-  // Ensure the type table has capacity before inserting into the intern hash
-  // table.
-  IREE_RETURN_IF_ERROR(
-      loom_type_table_ensure_capacity(&module->arena, &module->types));
-  uint32_t new_index = (uint32_t)module->types.count;
-  uint32_t result_index = 0;
-  IREE_RETURN_IF_ERROR(loom_intern_table_find_or_insert(
-      &module->arena, &module->type_intern, hash, new_index, equal_fn,
-      equal_context, &result_index));
-
-  if (result_index != new_index) {
-    *out_interned_type = module->types.entries[result_index];
-    if (out_type_id) {
-      *out_type_id = (loom_type_id_t)result_index;
+  // Payload preparation does not intern types. Only hash-table growth can
+  // invalidate the vacant slot found by the initial probe.
+  iree_host_size_t slot = probe.slot;
+  const bool grow_intern_table =
+      !loom_intern_table_has_insert_capacity(&module->type_intern);
+  if (module->types.count == module->types.capacity || grow_intern_table) {
+    IREE_RETURN_IF_ERROR(loom_module_reserve_type_insert(module));
+    if (grow_intern_table) {
+      slot = loom_intern_table_find_empty_slot(&module->type_intern, hash);
     }
-    loom_module_note_recent_exact_type(module, (loom_type_id_t)result_index);
-    return iree_ok_status();
   }
 
+  uint32_t new_index = (uint32_t)module->types.count;
   module->types.entries[new_index] = type;
   module->types.hashes[new_index] = hash;
   module->types.count++;
+  module->type_intern.hashes[slot] = hash;
+  module->type_intern.indices[slot] = new_index;
+  ++module->type_intern.count;
   *out_interned_type = type;
   if (out_type_id) {
     *out_type_id = (loom_type_id_t)new_index;
@@ -4419,18 +4471,34 @@ static iree_status_t loom_module_retain_type_from_context(
 // before type hashing and interning. Dynamic attachments remain explicit SSA
 // references, and all non-default static families retain their module IDs.
 static loom_type_t loom_module_canonicalize_shaped_type_attachment(
-    const loom_module_t* module, loom_type_t type) {
-  if (!loom_type_has_static_encoding(type)) {
-    return type;
-  }
-  const loom_encoding_t* encoding =
-      loom_module_encoding(module, type.encoding_id);
-  if (!encoding || !loom_encoding_is_implicit_shaped_attachment(encoding)) {
+    loom_type_t type, const loom_encoding_t* encoding) {
+  if (!loom_encoding_is_implicit_shaped_attachment(encoding)) {
     return type;
   }
   type.encoding_id = 0;
   type.encoding_flags = 0;
   return type;
+}
+
+// Retains each shaped scalar dependency once without repeating hash-table
+// queries as distinct shaped types reuse the same element kind.
+static iree_status_t loom_module_intern_shaped_element_type(
+    loom_module_t* module, loom_type_t type) {
+  const loom_scalar_type_t element_type = loom_type_element_type(type);
+  if (loom_scalar_type_set_contains(module->shaped_element_types,
+                                    element_type)) {
+    return iree_ok_status();
+  }
+  loom_type_t interned_element_type = {0};
+  IREE_RETURN_IF_ERROR(loom_module_intern_type(
+      module, loom_type_scalar(element_type), &interned_element_type));
+  // Construction can retain invalid scalar ordinals for verification. Only
+  // concrete scalar types belong to the compact presence set.
+  if (loom_scalar_type_is_valid(element_type)) {
+    module->shaped_element_types |=
+        (loom_scalar_type_set_t)(1u << element_type);
+  }
+  return iree_ok_status();
 }
 
 iree_status_t loom_module_intern_topological_type_id(
@@ -4443,9 +4511,22 @@ iree_status_t loom_module_intern_topological_type_id(
   }
   *out_type_id = LOOM_TYPE_ID_INVALID;
 
-  type = loom_module_canonicalize_shaped_type_attachment(module, type);
+  if (loom_type_has_static_encoding(type)) {
+    type = loom_module_canonicalize_shaped_type_attachment(
+        type, loom_module_encoding(module, type.encoding_id));
+  }
   iree_host_size_t expected_dependency_count = 0;
   switch (loom_type_kind(type)) {
+    case LOOM_TYPE_TILE:
+    case LOOM_TYPE_TENSOR:
+    case LOOM_TYPE_VECTOR:
+    case LOOM_TYPE_VIEW: {
+      // Shaped wire records name their scalar element inline. Selective
+      // readers may not have reached a separate scalar table entry.
+      IREE_RETURN_IF_ERROR(
+          loom_module_intern_shaped_element_type(module, type));
+      break;
+    }
     case LOOM_TYPE_FUNCTION: {
       const loom_func_type_data_t* data = loom_type_func_data(type);
       IREE_ASSERT(data != NULL);
@@ -4492,7 +4573,18 @@ iree_status_t loom_module_intern_topological_type_id(
 static iree_status_t loom_module_intern_type_with_dependencies(
     loom_module_t* module, loom_type_t type, loom_type_t* out_interned_type,
     loom_type_id_t* out_type_id) {
-  type = loom_module_canonicalize_shaped_type_attachment(module, type);
+  if (loom_type_has_static_encoding(type)) {
+    const loom_encoding_t* encoding =
+        loom_module_encoding(module, type.encoding_id);
+    if (!encoding) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "static encoding id %u is out of range for module with %" PRIhsz
+          " encodings",
+          (unsigned)type.encoding_id, module->encodings.count);
+    }
+    type = loom_module_canonicalize_shaped_type_attachment(type, encoding);
+  }
   const loom_type_id_t recent_type_id =
       loom_module_find_recent_exact_type(module, type);
   if (recent_type_id != LOOM_TYPE_ID_INVALID) {
@@ -4507,10 +4599,8 @@ static iree_status_t loom_module_intern_type_with_dependencies(
     case LOOM_TYPE_TENSOR:
     case LOOM_TYPE_VECTOR:
     case LOOM_TYPE_VIEW: {
-      loom_type_t element_type = {0};
-      IREE_RETURN_IF_ERROR(loom_module_intern_type_with_dependencies(
-          module, loom_type_scalar(loom_type_element_type(type)), &element_type,
-          /*out_type_id=*/NULL));
+      IREE_RETURN_IF_ERROR(
+          loom_module_intern_shaped_element_type(module, type));
       break;
     }
     case LOOM_TYPE_FUNCTION: {
@@ -4616,7 +4706,7 @@ iree_status_t loom_module_make_parameterized_type(
     loom_module_t* module,
     const loom_parameterized_type_descriptor_t* descriptor,
     const loom_attribute_t* parameters, iree_host_size_t parameter_count,
-    loom_type_t* out_type) {
+    loom_type_t* out_type, loom_type_id_t* out_type_id) {
   if (!descriptor) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "parameterized type descriptor is NULL");
@@ -4651,39 +4741,28 @@ iree_status_t loom_module_make_parameterized_type(
     loom_type_t type = {0};
     type.header = loom_type_make_raw_header(descriptor->ir_kind, payload, 0,
                                             descriptor->type_flags);
+    if (out_type_id) {
+      return loom_module_intern_type_with_dependencies(module, type, out_type,
+                                                       out_type_id);
+    }
     *out_type = type;
     return iree_ok_status();
   }
 
   iree_arena_checkpoint_t checkpoint =
       iree_arena_checkpoint_save(&module->arena);
-  loom_attribute_t* canonical_parameters = NULL;
-  iree_status_t status = iree_ok_status();
-  if (parameter_count > 0) {
-    status = iree_arena_allocate_array(&module->arena, parameter_count,
-                                       sizeof(*canonical_parameters),
-                                       (void**)&canonical_parameters);
-    for (iree_host_size_t i = 0;
-         i < parameter_count && iree_status_is_ok(status); ++i) {
-      status = loom_module_canonicalize_attr_value(
-          module, &descriptor->parameter_descriptors[i], parameters[i],
-          /*depth=*/1, &canonical_parameters[i]);
-    }
-  }
-  if (!iree_status_is_ok(status)) {
-    iree_arena_checkpoint_restore(&checkpoint);
-    return status;
-  }
-
-  loom_type_t type = loom_type_parameterized(
-      descriptor, (uint8_t)parameter_count, canonical_parameters);
-  uint32_t hash = loom_type_hash(type);
-  loom_type_equal_context_t equal_context = {module, type};
+  loom_type_t type = {0};
+  iree_status_t status = loom_module_clone_parameterized_type_payload(
+      module, descriptor, parameters, &type);
   bool interner_miss = false;
-  status = loom_module_intern_type_impl(
-      module, hash, loom_type_equal_fn, &equal_context,
-      loom_module_retain_type_from_context, &type, out_type,
-      /*out_type_id=*/NULL, &interner_miss);
+  if (iree_status_is_ok(status)) {
+    uint32_t hash = loom_type_hash(type);
+    loom_type_equal_context_t equal_context = {module, type};
+    status = loom_module_intern_type_impl(
+        module, hash, loom_type_equal_fn, &equal_context,
+        loom_module_retain_type_from_context, &type, out_type, out_type_id,
+        &interner_miss);
+  }
   if (!iree_status_is_ok(status) || !interner_miss) {
     iree_arena_checkpoint_restore(&checkpoint);
   }

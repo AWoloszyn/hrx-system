@@ -12,6 +12,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/format/bytecode/reader/decoder.h"
+#include "loom/format/bytecode/reader/type_plan.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
@@ -38,6 +39,15 @@ typedef struct loom_bytecode_type_materializer_t {
   // Module receiving canonical type-table entries.
   loom_module_t* output_module;
 } loom_bytecode_type_materializer_t;
+
+// Builds a complete structural payload in scratch storage from a validated
+// layout and canonical dependencies in |module|. Selected readers project the
+// plan's name and dependency IDs into that module before construction.
+iree_status_t loom_bytecode_type_materialize_structural(
+    const loom_bytecode_structural_type_plan_t* plan,
+    const loom_bytecode_structural_type_fact_t* fact,
+    const loom_type_id_t* dependency_ids, const loom_module_t* module,
+    iree_arena_allocator_t* scratch_arena, loom_type_t* out_type);
 
 // Materializes every entry in an immutable validated type plan.
 iree_status_t loom_bytecode_type_materialize(
