@@ -906,6 +906,9 @@ typedef struct loom_low_resource_t {
     uint32_t slot_start;
     // Ring length minus one, used to index absolute issue cycles.
     uint32_t slot_mask;
+    // Required stage-zero units common to every schedule class, including
+    // uses of aliases in this contention group. Zero means no common demand.
+    uint16_t minimum_issue_units;
   } calendar;
 } loom_low_resource_t;
 

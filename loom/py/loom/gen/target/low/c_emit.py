@@ -761,6 +761,7 @@ def emit_source_for_views(
                 ".calendar = {",
                 f"    .slot_start = {calendar.slot_start},",
                 f"    .slot_mask = {calendar.slot_mask},",
+                f"    .minimum_issue_units = {calendar.minimum_issue_units},",
                 "},",
             ]
             for resource, calendar in zip(compiled.resources, compiled.resource_calendars, strict=True)

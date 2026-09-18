@@ -75,6 +75,8 @@ class CompiledResourceCalendar:
     slot_start: int
     # Power-of-two ring length minus one.
     slot_mask: int
+    # Required stage-zero units common to every schedule class in this group.
+    minimum_issue_units: int
 
 
 @dataclass(frozen=True, slots=True)

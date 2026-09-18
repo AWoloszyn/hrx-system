@@ -32,3 +32,17 @@ low.func.def target<amdgpu.rdna3.core>(@target) @counter_tracked_effect_braid(%a
   s_waitcnt vmcnt(63) lgkmcnt(0)
   s_barrier
   s_endpgm
+
+// ====
+// RUN: emit low-schedule-json @mixed_issue_pipelines strategy=resource-stall diagnostics=resources output=none
+
+amdgpu.target<gfx1151> @target
+
+// Distinct execution pipelines still share the wave's instruction issue slot.
+// REMARK@+1: BACKEND/013 {resource_name="amdgpu.wave.issue", use_count="3", total_unit_cycles="3", estimated_min_cycles="3"}
+low.func.def target<amdgpu.rdna3_5.core>(@target) @mixed_issue_pipelines(%address: reg<amdgpu.vgpr>, %lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>, %scalar_input: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.sgpr>) asm {
+  %loaded = ds_read_b32 %address
+  %scalar = s_add_u32 %scalar_input, %scalar_input
+  %sum = v_add_u32 %lhs, %rhs
+  return %loaded, %sum, %scalar
+}

@@ -1613,28 +1613,25 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
       }
       // Compile-time controls remain visible in the schedule, but cannot hide
       // latency or satisfy an instruction-distance hazard by occupying a slot.
-      if (scheduled_in_block < block_record->node_count &&
-          state->options->strategy !=
-              LOOM_LOW_SCHEDULE_STRATEGY_RESOURCE_STALL &&
-          !loom_low_schedule_node_has_zero_issue_width(chosen)) {
-        if (state->current_issue_cycle == UINT32_MAX) {
+      if (scheduled_in_block < block_record->node_count) {
+        uint64_t next_issue_cycle = issue_cycle;
+        if (!loom_low_schedule_node_has_zero_issue_width(chosen) &&
+            (state->options->strategy !=
+                 LOOM_LOW_SCHEDULE_STRATEGY_RESOURCE_STALL ||
+             scheduled_in_range == range_end - range_start)) {
+          ++next_issue_cycle;
+        }
+        next_issue_cycle = iree_max(
+            next_issue_cycle, state->resource_calendar.minimum_issue_cycle);
+        if (next_issue_cycle > UINT32_MAX) {
           return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                                   "low schedule issue cycle overflows");
         }
-        ++state->current_issue_cycle;
+        state->current_issue_cycle = (uint32_t)next_issue_cycle;
       }
       if (scheduled_in_range == range_end - range_start) {
         range_start = range_end;
         if (range_start < block_node_end) {
-          if (state->options->strategy ==
-                  LOOM_LOW_SCHEDULE_STRATEGY_RESOURCE_STALL &&
-              !loom_low_schedule_node_has_zero_issue_width(chosen)) {
-            if (state->current_issue_cycle == UINT32_MAX) {
-              return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                                      "low schedule issue cycle overflows");
-            }
-            ++state->current_issue_cycle;
-          }
           range_end = loom_low_schedule_source_range_end(state, range_start,
                                                          block_node_end);
           scheduled_in_range = 0;

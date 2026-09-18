@@ -50,6 +50,7 @@ from loom.target.low_descriptors import (
     ImmediateKind,
     InstructionClass,
     IssueUse,
+    IssueUseKind,
     NativeAsmValue,
     NativeAsmValueKind,
     Operand,
@@ -326,19 +327,25 @@ def _compile_resource_calendars(
     resources: Sequence[Resource],
     schedule_classes: Sequence[ScheduleClass],
 ) -> tuple[list[CompiledResourceCalendar], int]:
-    """Sizes fixed occupancy rings from validated target issue-use horizons."""
+    """Retains occupancy horizons and common instruction-issue demand."""
 
     groups = {resource.name: resource.contention_group_id or -index - 1 for index, resource in enumerate(resources)}
     horizons: dict[int, int] = dict.fromkeys(groups.values(), 0)
+    minimum_issue_units: dict[int, int] = {}
     for schedule_class in schedule_classes:
+        issue_units: dict[int, int] = dict.fromkeys(groups.values(), 0)
         for issue_use in schedule_class.issue_uses:
             group = groups[issue_use.resource]
             horizons[group] = max(horizons[group], issue_use.stage + issue_use.cycles)
+            if issue_use.stage == 0 and issue_use.kind is IssueUseKind.REQUIRED:
+                issue_units[group] += issue_use.units
+        for group, units in issue_units.items():
+            minimum_issue_units[group] = min(minimum_issue_units.get(group, units), units)
     calendars: dict[int, CompiledResourceCalendar] = {}
     slot_count = 0
     for group, horizon in horizons.items():
         length = 1 << (horizon - 1).bit_length() if horizon else 0
-        calendars[group] = CompiledResourceCalendar(slot_start=slot_count, slot_mask=max(length - 1, 0))
+        calendars[group] = CompiledResourceCalendar(slot_start=slot_count, slot_mask=max(length - 1, 0), minimum_issue_units=minimum_issue_units.get(group, 0))
         slot_count += length
     validation.validate_u32(slot_count, "resource calendar slot count")
     return [calendars[groups[resource.name]] for resource in resources], slot_count

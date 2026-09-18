@@ -1609,6 +1609,27 @@ def _build_amdgpu_core_descriptor_set_from_spec(
         descriptor_set, enable_gfx125x_xcnt=is_gfx125x
     )
     descriptor_set = _with_instruction_classes(descriptor_set)
+    # Execution pipelines overlap, but a wave issues one encoded instruction
+    # at a time. A VOPD packet still occupies one instruction issue slot.
+    descriptor_set = replace(
+        descriptor_set,
+        resources=(
+            *descriptor_set.resources,
+            Resource(
+                "amdgpu.wave.issue", capacity_per_cycle=1, kind=ResourceKind.PIPELINE
+            ),
+        ),
+        schedule_classes=tuple(
+            replace(
+                schedule_class,
+                issue_uses=(
+                    *schedule_class.issue_uses,
+                    IssueUse("amdgpu.wave.issue", cycles=1, units=1),
+                ),
+            )
+            for schedule_class in descriptor_set.schedule_classes
+        ),
+    )
     _validate_descriptor_encoding_formats(target, spec, descriptor_set)
     _validate_dpp_control_fields(descriptor_set)
     _validate_matrix_high_half_select_fields(descriptor_set)
