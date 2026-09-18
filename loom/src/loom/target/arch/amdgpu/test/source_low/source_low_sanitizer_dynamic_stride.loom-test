@@ -304,8 +304,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   return
 ^_bb2:
   %135, %136 = s_and_saveexec_b64 %124
-  low.br ^_bb3
-^_bb3:
   s_trap {trapid = 2}
   %125 = s_sendmsg_rtn_b32 {message = 128}
   %126 = s_mov_b32 1023
@@ -314,8 +312,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %129 = s_or_b32 %127, %128
   %130 = s_mov_b32_m0 %129
   s_sendmsg %130 {message = 1}
-  low.br ^_bb4
-^_bb4:
+  low.br ^_bb3
+^_bb3:
   s_sethalt {reason = 5}
-  low.br ^_bb4
+  low.br ^_bb3
 }
