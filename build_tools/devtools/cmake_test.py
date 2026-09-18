@@ -11,7 +11,7 @@ import io
 import json
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 from build_tools.devtools import cmake as cmake_dev
@@ -636,6 +636,19 @@ class CMakeTest(unittest.TestCase):
             "target_link_libraries(iree_cmake_try_snippet PRIVATE", cmake_text
         )
         self.assertIn("iree::base", cmake_text)
+
+    def test_try_cmake_file_normalizes_windows_source_paths(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            cmake_path = Path(temporary_dir) / "try.cmake"
+            cmake_try.write_try_cmake_file(
+                cmake_path,
+                source_paths=[PureWindowsPath(r"C:\source tree\snippet.cc")],
+                deps=[],
+            )
+            cmake_text = cmake_path.read_text(encoding="utf-8")
+
+        self.assertIn("[[C:/source tree/snippet.cc]]", cmake_text)
+        self.assertNotIn("\\", cmake_text)
 
 
 if __name__ == "__main__":
