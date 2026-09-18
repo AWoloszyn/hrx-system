@@ -1397,6 +1397,9 @@ typedef struct loom_amdgpu_memory_access_t {
   uint64_t vaddr_static_byte_offset;
   // Static byte offset materialized through the scalar SOFFSET operand.
   uint32_t scalar_byte_offset;
+  // Mixed-bank realizations that fit u32 VADDR and eliminate dynamic SOFFSET.
+  // Bits index source.dynamic_realizations; promotion requires the entire set.
+  uint8_t vaddr_realization_mask;
   // Static byte offset folded into the scalar base pointer.
   uint64_t scalar_base_byte_offset;
   // Location selected for scalar dynamic and static address terms.
@@ -1841,6 +1844,8 @@ typedef struct loom_amdgpu_atomic_plan_t {
   int64_t immediate_offset;
   // Static byte offset materialized through the scalar SOFFSET operand.
   uint32_t scalar_byte_offset;
+  // Mixed-bank realizations that fit u32 VADDR and eliminate dynamic SOFFSET.
+  uint8_t vaddr_realization_mask;
   // Descriptor row selected for the active descriptor set.
   loom_low_lower_resolved_descriptor_t descriptor;
   // Descriptor attrs emitted directly on the selected atomic packet.

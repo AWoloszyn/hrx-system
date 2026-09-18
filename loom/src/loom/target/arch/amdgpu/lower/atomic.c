@@ -149,6 +149,8 @@ typedef struct loom_amdgpu_atomic_selection_t {
   uint32_t scalar_byte_offset;
   // Stable descriptor ref selected for the active descriptor set.
   loom_amdgpu_descriptor_ref_t descriptor_ref;
+  // Mixed-bank realizations that fit u32 VADDR and eliminate dynamic SOFFSET.
+  uint8_t vaddr_realization_mask;
   // Descriptor attrs emitted directly on the selected atomic packet.
   loom_amdgpu_atomic_packet_attrs_t packet_attrs;
   // Explicit packets required to implement source atomic ordering.
@@ -1406,6 +1408,10 @@ static bool loom_amdgpu_atomic_select(
                                         out_selection, diagnostic)) {
     return false;
   }
+  memory_access.address_form = out_selection->address_form;
+  memory_access.scalar_byte_offset = out_selection->scalar_byte_offset;
+  loom_amdgpu_memory_access_select_vaddr_realizations(&memory_access);
+  out_selection->vaddr_realization_mask = memory_access.vaddr_realization_mask;
   return true;
 }
 
@@ -1464,6 +1470,7 @@ static iree_status_t loom_amdgpu_atomic_resolve_selection(
       .address_form = selection->address_form,
       .immediate_offset = selection->immediate_offset,
       .scalar_byte_offset = selection->scalar_byte_offset,
+      .vaddr_realization_mask = selection->vaddr_realization_mask,
       .packet_attrs = selection->packet_attrs,
   };
   for (iree_host_size_t i = 0; i < LOOM_LOW_SOURCE_MEMORY_DYNAMIC_TERM_CAPACITY;
@@ -1713,14 +1720,6 @@ static iree_status_t loom_amdgpu_emit_atomic_cmpxchg_pair(
   return iree_ok_status();
 }
 
-static iree_status_t loom_amdgpu_emit_atomic_buffer_soffset(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    const loom_amdgpu_atomic_plan_t* plan, loom_value_id_t* out_low_soffset) {
-  return loom_amdgpu_emit_sgpr_byte_offset_terms(
-      context, source_op, &plan->source, plan->dynamic_term_kinds,
-      plan->scalar_byte_offset, out_low_soffset);
-}
-
 static iree_status_t loom_amdgpu_emit_atomic_ordering_waits(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_explicit_packet_plan_t* waits,
@@ -1793,6 +1792,7 @@ iree_status_t loom_amdgpu_lower_atomic(loom_low_lower_context_t* context,
       .address_form = plan->address_form,
       .immediate_offset = plan->immediate_offset,
       .scalar_byte_offset = plan->scalar_byte_offset,
+      .vaddr_realization_mask = plan->vaddr_realization_mask,
       .payload_register_count = payload_register_count,
       .packet_byte_count = packet_byte_count,
   };
@@ -1800,6 +1800,8 @@ iree_status_t loom_amdgpu_lower_atomic(loom_low_lower_context_t* context,
        ++i) {
     access.dynamic_term_kinds[i] = plan->dynamic_term_kinds[i];
   }
+  loom_amdgpu_memory_dynamic_term_sequence_t sequence = {0};
+  loom_amdgpu_memory_access_resolve_dynamic_terms(context, &access, &sequence);
   const loom_value_id_t low_base_addr =
       plan->source.memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP
           ? low_resource
@@ -1807,10 +1809,10 @@ iree_status_t loom_amdgpu_lower_atomic(loom_low_lower_context_t* context,
   loom_value_id_t low_vaddr = LOOM_VALUE_ID_INVALID;
   if (loom_amdgpu_atomic_uses_flat_address(plan)) {
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_flat_vaddr(
-        context, source_op, &access, low_resource, &low_vaddr));
+        context, source_op, &access, &sequence, low_resource, &low_vaddr));
   } else {
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_vaddr(
-        context, source_op, &access, low_base_addr, &low_vaddr));
+        context, source_op, &access, &sequence, low_base_addr, &low_vaddr));
   }
 
   loom_named_attr_t attrs[2] = {0};
@@ -1825,12 +1827,12 @@ iree_status_t loom_amdgpu_lower_atomic(loom_low_lower_context_t* context,
   loom_value_id_t low_saddr = LOOM_VALUE_ID_INVALID;
   if (plan->address_form == LOOM_AMDGPU_MEMORY_ADDRESS_FORM_GLOBAL_SADDR) {
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_saddr(
-        context, source_op, &access, low_resource, &low_saddr));
+        context, source_op, &access, &sequence, low_resource, &low_saddr));
   }
   loom_value_id_t low_soffset = LOOM_VALUE_ID_INVALID;
   if (loom_amdgpu_atomic_uses_buffer_resource(plan)) {
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_atomic_buffer_soffset(
-        context, source_op, plan, &low_soffset));
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr_byte_offset_terms(
+        context, source_op, &sequence, plan->scalar_byte_offset, &low_soffset));
   }
   loom_value_id_t low_descriptor = LOOM_VALUE_ID_INVALID;
   if (loom_amdgpu_atomic_uses_buffer_resource(plan)) {

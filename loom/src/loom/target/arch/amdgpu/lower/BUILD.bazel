@@ -120,6 +120,7 @@ loom_cc_library(
         "matrix_fragment_state.c",
         "matrix_representation.c",
         "memory.c",
+        "memory_address.c",
         "memory_bank_service.c",
         "memory_cache.c",
         "memory_diagnostics.c",
@@ -202,6 +203,7 @@ loom_cc_library(
         "matrix_fragment_state.h",
         "matrix_representation.h",
         "memory.h",
+        "memory_address.h",
         "memory_bank_service.h",
         "memory_subgroup_access.h",
         "plan.h",
@@ -362,6 +364,17 @@ loom_cc_test(
         "//loom/src/loom/target/arch/amdgpu/refs:target_refs",
         "//loom/src/loom/verify",
         "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "memory_address_test",
+    srcs = ["memory_address_test.cc"],
+    deps = [
+        ":lower",
+        "//loom/src/loom/ir:facts",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

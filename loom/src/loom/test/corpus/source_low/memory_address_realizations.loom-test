@@ -1,0 +1,209 @@
+// RUN: roundtrip
+
+kernel.def @address_guarded_rows() {
+  %unit = index.constant 1 : index
+  %groups = index.constant 4 : index
+  %lanes = index.constant 64 : index
+  kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %row_limit: index) {
+  %lane = kernel.workitem.id<x> : index
+  %group = kernel.workgroup.id<x> : index
+  %rows_per_group = index.constant 2 : index
+  %half_wave = index.constant 32 : index
+  %row_in_group = index.div %lane, %half_wave : index
+  %column = index.rem %lane, %half_wave : index
+  %row = index.madd %group, %rows_per_group, %row_in_group : index
+  %next_column = index.add %column, %half_wave : index
+  %c0_offset = index.constant 0 : offset
+  %input_view = buffer.view %input[%c0_offset] : buffer -> view<[%row_limit]x64xi32>
+  %output_view = buffer.view %output[%c0_offset] : buffer -> view<[%row_limit]x64xi32>
+  %inside = index.cmp ult, %row, %row_limit : index
+  scf.if %inside {
+    %first = view.load %input_view[%row, %column] : view<[%row_limit]x64xi32> -> i32
+    %second = view.load %input_view[%row, %next_column] : view<[%row_limit]x64xi32> -> i32
+    view.store %first, %output_view[%row, %column] : i32, view<[%row_limit]x64xi32>
+    view.store %second, %output_view[%row, %next_column] : i32, view<[%row_limit]x64xi32>
+  }
+  kernel.return
+}
+
+// ====
+
+kernel.def @address_linearized_static_rows() {
+  %unit = index.constant 1 : index
+  %groups = index.constant 4 : index
+  %lanes = index.constant 64 : index
+  kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %row_limit: index) {
+  %lane = kernel.workitem.id<x> : index
+  %group = kernel.workgroup.id<x> : index
+  %rows_per_group = index.constant 2 : index
+  %half_wave = index.constant 32 : index
+  %row_in_group = index.div %lane, %half_wave : index
+  %column = index.rem %lane, %half_wave : index
+  %row = index.madd %group, %rows_per_group, %row_in_group : index
+  %next_column = index.add %column, %half_wave : index
+  %c0_offset = index.constant 0 : offset
+  %input_view = buffer.view %input[%c0_offset] : buffer -> view<8x64xi32>
+  %output_view = buffer.view %output[%c0_offset] : buffer -> view<8x64xi32>
+  %inside = index.cmp ult, %row, %row_limit : index
+  scf.if %inside {
+    %first = view.load %input_view[%row, %column] : view<8x64xi32> -> i32
+    %second = view.load %input_view[%row, %next_column] : view<8x64xi32> -> i32
+    view.store %first, %output_view[%row, %column] : i32, view<8x64xi32>
+    view.store %second, %output_view[%row, %next_column] : i32, view<8x64xi32>
+  }
+  kernel.return
+}
+
+// ====
+
+kernel.def @address_without_materialized_index() {
+  %unit = index.constant 1 : index
+  %groups = index.constant 4 : index
+  %lanes = index.constant 64 : index
+  kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer) {
+  %lane = kernel.workitem.id<x> : index
+  %group = kernel.workgroup.id<x> : index
+  %width = index.constant 64 : index
+  %linear = index.madd %group, %width, %lane : index
+  %c0_offset = index.constant 0 : offset
+  %input_view = buffer.view %input[%c0_offset] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%c0_offset] : buffer -> view<256xi32>
+  %value = view.load %input_view[%linear] : view<256xi32> -> i32
+  view.store %value, %output_view[%linear] : i32, view<256xi32>
+  kernel.return
+}
+
+// ====
+
+kernel.def @address_reuse_with_wide_scalar_base() {
+  %unit = index.constant 1 : index
+  %groups = index.constant 4 : index
+  %lanes = index.constant 64 : index
+  kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %base_input: offset, %limit: index) {
+  %base = index.assume %base_input [mul(%base_input, 4)] : offset
+  %lane = kernel.workitem.id<x> : index
+  %group = kernel.workgroup.id<x> : index
+  %width = index.constant 64 : index
+  %linear = index.madd %group, %width, %lane : index
+  %c0_offset = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%c0_offset] : buffer -> view<256xi32>
+  %inside = index.cmp ult, %linear, %limit : index
+  scf.if %inside {
+    %value = view.load %input_view[%linear] : view<256xi32> -> i32
+    view.store %value, %output_view[%linear] : i32, view<256xi32>
+  }
+  kernel.return
+}
+
+// ====
+
+kernel.def @address_partially_materialized_axes() {
+  %unit = index.constant 1 : index
+  %groups = index.constant 4 : index
+  %columns = index.constant 16 : index
+  %rows = index.constant 2 : index
+  kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%columns, %rows, %unit) : index
+} launch(%input: buffer, %output: buffer, %limit: index) {
+  %x = kernel.workitem.id<x> : index
+  %y = kernel.workitem.id<y> : index
+  %group = kernel.workgroup.id<x> : index
+  %row_step = index.constant 2 : index
+  %column_step = index.constant 16 : index
+  %row = index.madd %group, %row_step, %y : index
+  %column = index.madd %group, %column_step, %x : index
+  %c0_offset = index.constant 0 : offset
+  %input_view = buffer.view %input[%c0_offset] : buffer -> view<[%limit]x64xi32>
+  %output_view = buffer.view %output[%c0_offset] : buffer -> view<[%limit]x64xi32>
+  %inside = index.cmp ult, %row, %limit : index
+  scf.if %inside {
+    %value = view.load %input_view[%row, %column] : view<[%limit]x64xi32> -> i32
+    view.store %value, %output_view[%row, %column] : i32, view<[%limit]x64xi32>
+  }
+  kernel.return
+}
+
+// ====
+
+kernel.def @address_materialized_axes_distinct_roots() {
+  %unit = index.constant 1 : index
+  %groups = index.constant 4 : index
+  %columns = index.constant 16 : index
+  %rows = index.constant 2 : index
+  kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%columns, %rows, %unit) : index
+} launch(%input: buffer, %other_input: buffer, %output: buffer, %row_limit: index, %column_limit: index) {
+  %x = kernel.workitem.id<x> : index
+  %y = kernel.workitem.id<y> : index
+  %group = kernel.workgroup.id<x> : index
+  %row_step = index.constant 2 : index
+  %column_step = index.constant 16 : index
+  %row = index.madd %group, %row_step, %y : index
+  %column = index.madd %group, %column_step, %x : index
+  %other_column = index.add %column, %column_step : index
+  %c0_offset = index.constant 0 : offset
+  %input_view = buffer.view %input[%c0_offset] : buffer -> view<[%row_limit]x80xi32>
+  %other_view = buffer.view %other_input[%c0_offset] : buffer -> view<[%row_limit]x80xi32>
+  %output_view = buffer.view %output[%c0_offset] : buffer -> view<[%row_limit]x80xi32>
+  %row_inside = index.cmp ult, %row, %row_limit : index
+  scf.if %row_inside {
+    %column_inside = index.cmp ult, %column, %column_limit : index
+    scf.if %column_inside {
+      %first = view.load %input_view[%row, %column] : view<[%row_limit]x80xi32> -> i32
+      %second = view.load %other_view[%row, %other_column] : view<[%row_limit]x80xi32> -> i32
+      %sum = scalar.addi %first, %second : i32
+      view.store %sum, %output_view[%row, %column] : i32, view<[%row_limit]x80xi32>
+    }
+  }
+  kernel.return
+}
+
+// ====
+
+kernel.def @address_materialized_wide_offset() {
+  %unit = index.constant 1 : index
+  %lanes = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %base_input: offset) {
+  %base = index.assume %base_input [mul(%base_input, 4)] : offset
+  %lane = kernel.workitem.id<x> : index
+  %stride = index.constant 4 : offset
+  %lane_offset = index.scale %lane, %stride : index, offset -> offset
+  %offset = index.add %base, %lane_offset : offset
+  %c0_offset = index.constant 0 : offset
+  %input_view = buffer.view %input[%offset] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%c0_offset] : buffer -> view<64xi32>
+  %nonzero = index.cmp ne, %offset, %c0_offset : offset
+  scf.if %nonzero {
+    %value = view.load %input_view[0] : view<1xi32> -> i32
+    view.store %value, %output_view[%lane] : i32, view<64xi32>
+  }
+  kernel.return
+}
+
+// ====
+
+kernel.def @address_guarded_atomic() {
+  %unit = index.constant 1 : index
+  %groups = index.constant 4 : index
+  %lanes = index.constant 64 : index
+  kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%lanes, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %limit: index) {
+  %lane = kernel.workitem.id<x> : index
+  %group = kernel.workgroup.id<x> : index
+  %width = index.constant 64 : index
+  %linear = index.madd %group, %width, %lane : index
+  %increment = index.cast %lane : index to i32
+  %c0_offset = index.constant 0 : offset
+  %input_view = buffer.view %input[%c0_offset] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%c0_offset] : buffer -> view<256xi32>
+  %inside = index.cmp ult, %linear, %limit : index
+  scf.if %inside {
+    %old = view.atomic.rmw<addi> %increment, %input_view[%linear] {ordering = relaxed, scope = device} : i32, view<256xi32> -> i32
+    view.store %old, %output_view[%linear] : i32, view<256xi32>
+  }
+  kernel.return
+}
