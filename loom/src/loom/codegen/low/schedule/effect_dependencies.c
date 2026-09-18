@@ -641,7 +641,9 @@ iree_status_t loom_low_schedule_build_effect_dependencies(
   // Only positive effect pairs can constrain a source terminator. Operand
   // timing and block-local effect ordering need no successor traversal.
   const bool has_boundary_timing =
-      state->target.descriptor_set->has_positive_effect_separations &&
+      iree_any_bit_set(
+          state->target.descriptor_set->flags,
+          LOOM_LOW_DESCRIPTOR_SET_FLAG_POSITIVE_EFFECT_SEPARATIONS) &&
       state->cfg_graph->edge_count != 0;
   if (has_boundary_timing) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(

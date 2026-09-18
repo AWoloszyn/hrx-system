@@ -2052,7 +2052,8 @@ static iree_status_t loom_low_verify_walk_op(void* user_data, loom_op_t* op,
     if (loom_traits_are_compile_time_only(op->traits)) {
       if (loom_low_schedule_control_kind(op) !=
               LOOM_LOW_SCHEDULE_CONTROL_NONE &&
-          !function_state->target->descriptor_set->supports_native_scheduling) {
+          !iree_any_bit_set(function_state->target->descriptor_set->flags,
+                            LOOM_LOW_DESCRIPTOR_SET_FLAG_NATIVE_SCHEDULING)) {
         return loom_low_verify_emit_native_schedule_error(function_state, op);
       }
       return iree_ok_status();
@@ -2143,7 +2144,8 @@ static iree_status_t loom_low_verify_function(loom_low_verify_state_t* state,
   function_state.register_type_resolver =
       loom_low_register_type_resolver_for_descriptor_set(target.descriptor_set);
   if (loom_low_function_schedule(low_func_op) == LOOM_LOW_SCHEDULE_PHASED &&
-      !target.descriptor_set->supports_native_scheduling) {
+      !iree_any_bit_set(target.descriptor_set->flags,
+                        LOOM_LOW_DESCRIPTOR_SET_FLAG_NATIVE_SCHEDULING)) {
     return loom_low_verify_emit_native_schedule_error(&function_state,
                                                       low_func_op);
   }

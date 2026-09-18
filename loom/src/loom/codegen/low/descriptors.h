@@ -1280,17 +1280,23 @@ typedef struct loom_low_asm_form_t {
 static_assert(sizeof(loom_low_asm_form_t) == 32,
               "loom_low_asm_form_t must be 32 bytes");
 
+typedef enum loom_low_descriptor_set_flag_bits_e {
+  // Emitters consume the shared schedule without downstream reordering and
+  // support native instruction-order constraints.
+  LOOM_LOW_DESCRIPTOR_SET_FLAG_NATIVE_SCHEDULING = 1u << 0,
+  // Selected effect endpoints have at least one positive issue separation.
+  // Operand-only timing does not require cross-block effect traversal.
+  LOOM_LOW_DESCRIPTOR_SET_FLAG_POSITIVE_EFFECT_SEPARATIONS = 1u << 1,
+} loom_low_descriptor_set_flag_bits_t;
+typedef uint8_t loom_low_descriptor_set_flags_t;
+
 typedef struct loom_low_descriptor_set_t {
   // Descriptor table ABI version.
   uint32_t abi_version;
   // Generator or hand-authored schema version.
   uint32_t generator_version;
-  // Representation contract supports native instruction-order constraints.
-  // Its emitters consume the shared schedule without downstream reordering.
-  bool supports_native_scheduling;
-  // Selected effect endpoints have at least one positive issue separation.
-  // Operand-only timing does not require cross-block effect traversal.
-  bool has_positive_effect_separations;
+  // Representation capabilities and timing properties of the selected view.
+  loom_low_descriptor_set_flags_t flags;
   // Durable descriptor-set identity derived from the descriptor-set key.
   uint64_t stable_id;
   // Durable target-family identity derived from the target-family key, or NONE.

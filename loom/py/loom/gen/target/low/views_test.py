@@ -137,11 +137,15 @@ def test_view_retains_alias_indices_from_shared_namespace() -> None:
         (("test.event.memory.read.i32", "test.event.memory.write.i32"), True),
     ],
 )
-def test_effect_timing_summary_uses_selected_effect_endpoints(descriptor_keys: tuple[str, ...], expected: bool) -> None:
-    storage = TEST_LOW_CORE_DESCRIPTOR_SET
+@pytest.mark.parametrize("supports_native_scheduling", [False, True])
+def test_effect_timing_summary_uses_selected_effect_endpoints(descriptor_keys: tuple[str, ...], expected: bool, supports_native_scheduling: bool) -> None:
+    storage = replace(TEST_LOW_CORE_DESCRIPTOR_SET, supports_native_scheduling=supports_native_scheduling)
     selected = tuple(descriptor for descriptor in storage.descriptors if descriptor.key in descriptor_keys)
     view = replace(storage, descriptors=selected)
-    expected_field = f".has_positive_effect_separations = {str(expected).lower()},"
+    expected_flags = ["LOOM_LOW_DESCRIPTOR_SET_FLAG_NATIVE_SCHEDULING"] if supports_native_scheduling else []
+    if expected:
+        expected_flags.append("LOOM_LOW_DESCRIPTOR_SET_FLAG_POSITIVE_EFFECT_SEPARATIONS")
+    expected_field = f".flags = {' | '.join(expected_flags) or '0'},"
     # A family view retains shared event tables even when its selected
     # descriptors do not use the positive effect pairs in those tables.
     assert expected_field in generate_descriptor_set_family(storage, (view,)).source
@@ -163,4 +167,7 @@ def test_effect_timing_summary_distinguishes_positive_separations(
     view = replace(storage, descriptors=(write,))
     expected = separation_cycles > 0
     source = generate_descriptor_set_family(storage, (view,)).source
-    assert f".has_positive_effect_separations = {str(expected).lower()}," in source
+    expected_flags = "LOOM_LOW_DESCRIPTOR_SET_FLAG_NATIVE_SCHEDULING"
+    if expected:
+        expected_flags += " | LOOM_LOW_DESCRIPTOR_SET_FLAG_POSITIVE_EFFECT_SEPARATIONS"
+    assert f".flags = {expected_flags}," in source
