@@ -364,6 +364,40 @@ TEST_F(MemoryConstructionTest, LiveProfileConstrainsTheConstructedAccessSet) {
   EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
 }
 
+TEST_F(MemoryConstructionTest, LiveProfilePreservesBackingPayloadGeometry) {
+  FakeDevice devices[2];
+  amdf_memory_device_access_t accesses[2];
+  for (uint32_t i = 0; i < 2; ++i) {
+    InitializeFakeDevice(i + 1, &instance_, &devices[i]);
+    accesses[i] = devices[i].request;
+  }
+  // The first device imports the second device's backing. Import granularity
+  // constrains that consumer's view, not the owned payload charge.
+  devices[0].profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_CREATE;
+  devices[0].profile.import.native_byte_length_granularity = 65536;
+  devices[0].profile.import.maximum_byte_length = 8192;
+  devices[1].profile.allocation.native_byte_length_prefix = 32768;
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  amdf_memory_access_capabilities_t capabilities[2] = {};
+  for (auto& capability : capabilities) {
+    capability.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+    capability.structure_size = sizeof(capability);
+  }
+  ASSERT_EQ(amdf_memory_scope_query_device_profile(
+                &instance_.system_memory_scope, 0, 2, accesses, &profile,
+                capabilities),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(profile.allocation.maximum_byte_length, 8192u);
+  EXPECT_EQ(profile.allocation.native_byte_length_granularity, 4096u);
+  EXPECT_EQ(profile.allocation.native_byte_length_prefix, 32768u);
+  for (const auto& device : devices) {
+    EXPECT_EQ(device.create_call_count, 0u);
+    EXPECT_EQ(device.import_call_count, 0u);
+  }
+}
+
 TEST_F(MemoryConstructionTest, LiveProfileFailurePublishesNoPartialOutputs) {
   FakeDevice devices[2];
   amdf_memory_device_access_t accesses[2];

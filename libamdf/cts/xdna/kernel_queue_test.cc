@@ -144,7 +144,25 @@ class XdnaKernelQueueTest : public XdnaContextFixture {
          granularity) *
         granularity;
     create.minimum_alignment = profile.allocation.minimum_alignment;
+    const auto& geometry = profile.allocation;
+    const uint64_t native_granularity = geometry.native_byte_length_granularity;
+    ASSERT_GT(native_granularity, 0u);
+    ASSERT_LE(geometry.maximum_byte_length,
+              UINT64_MAX - geometry.native_byte_length_prefix -
+                  (native_granularity - 1));
+    const uint64_t native_byte_length =
+        ((create.byte_length + geometry.native_byte_length_prefix +
+          native_granularity - 1) /
+         native_granularity) *
+        native_granularity;
     ASSERT_EQ(api_->memory_create(scope, &create, out_memory), AMDF_STATUS_OK);
+    amdf_memory_info_t info = {};
+    info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
+    info.structure_size = sizeof(info);
+    ASSERT_EQ(api_->memory_query_info(*out_memory, &info), AMDF_STATUS_OK);
+    EXPECT_EQ(info.source_byte_offset, geometry.native_byte_length_prefix);
+    EXPECT_EQ(info.native_allocation_byte_length, native_byte_length);
+    EXPECT_EQ(info.native_allocation_granularity, native_granularity);
   }
 
   void CreateInstructions(const std::vector<uint8_t>& first,

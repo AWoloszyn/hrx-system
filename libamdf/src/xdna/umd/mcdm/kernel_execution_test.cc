@@ -366,6 +366,15 @@ class WindowsXdnaKernelExecutionTest
 
 TEST_P(WindowsXdnaKernelExecutionTest,
        OwnsOneApertureAndSubmitsImmutableRanges) {
+  EXPECT_EQ(profile_.allocation.native_byte_length_prefix, 32768u);
+  const uint64_t granularity =
+      profile_.allocation.native_byte_length_granularity;
+  const uint64_t native_byte_length =
+      ((create_.byte_length + profile_.allocation.native_byte_length_prefix +
+        granularity - 1) /
+       granularity) *
+      granularity;
+  EXPECT_EQ(native_byte_length, UINT64_C(0x4000000));
   amdf_xdna_umd_memory_result_t result = {};
   ASSERT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
                                                  &memory_, &result),
@@ -374,6 +383,7 @@ TEST_P(WindowsXdnaKernelExecutionTest,
   EXPECT_EQ(result.source_byte_offset, 32768u);
   EXPECT_EQ(result.byte_length, UINT64_C(0x4000000) - 32768);
   EXPECT_EQ(result.native_allocation_byte_length, UINT64_C(0x4000000));
+  EXPECT_EQ(result.native_allocation_byte_length, native_byte_length);
   EXPECT_EQ(result.address_kinds, UINT64_C(1)
                                       << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE);
   EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5, 9}));

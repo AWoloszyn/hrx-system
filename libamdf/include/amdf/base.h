@@ -67,7 +67,7 @@ static inline void amdf_abort(void) { abort(); }
 extern "C" {
 #endif
 
-/// Version number identifying a compatible public API table layout.
+/// Version number identifying compatible public API tables and structures.
 typedef uint32_t amdf_abi_version_t;
 
 /// The original libamdf ABI version.
@@ -76,8 +76,11 @@ typedef uint32_t amdf_abi_version_t;
 /// Memory visibility qualification and explicit registered-page cacheability.
 #define AMDF_ABI_VERSION_2 ((amdf_abi_version_t)2)
 
+/// Exact prospective CREATE payload geometry in construction capabilities.
+#define AMDF_ABI_VERSION_3 ((amdf_abi_version_t)3)
+
 /// The most recent ABI version described by this header.
-#define AMDF_ABI_VERSION_LATEST AMDF_ABI_VERSION_2
+#define AMDF_ABI_VERSION_LATEST AMDF_ABI_VERSION_3
 
 /// The unmangled symbol used to acquire the immutable API table.
 #define AMDF_QUERY_API_SYMBOL "amdf_query_api"
