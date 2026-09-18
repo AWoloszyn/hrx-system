@@ -6,6 +6,8 @@
 
 #include "iree/async/util/operation_completion.h"
 
+#include <vector>
+
 #include "iree/async/operation.h"
 #include "iree/async/util/operation_pool.h"
 #include "iree/base/api.h"
@@ -18,6 +20,7 @@ struct CompletionRecord {
   iree_host_size_t call_count = 0;
   iree_status_code_t status_code = IREE_STATUS_OK;
   iree_async_completion_flags_t flags = IREE_ASYNC_COMPLETION_FLAG_NONE;
+  std::vector<iree_async_operation_internal_flags_t> internal_flags;
   iree_async_operation_pool_t* pool = nullptr;
   iree_async_operation_t* acquired_during_callback = nullptr;
 };
@@ -30,6 +33,8 @@ static void RecordCompletion(void* user_data, iree_async_operation_t* operation,
   ++record->call_count;
   record->status_code = iree_status_code(status);
   record->flags = flags;
+  record->internal_flags.push_back(
+      iree_async_operation_load_internal_flags(operation));
   iree_status_free(status);
   if (record->pool) {
     IREE_ASSERT_OK(iree_async_operation_pool_acquire(
@@ -82,6 +87,28 @@ TEST(OperationCompletionTest, ResolvesCancellationAsSuccess) {
   EXPECT_EQ(record.status_code, IREE_STATUS_OK);
   EXPECT_TRUE(
       iree_any_bit_set(record.flags, IREE_ASYNC_COMPLETION_FLAG_CANCELLED));
+}
+
+TEST(OperationCompletionTest, ClearsPrivateStateAtFinalOwnershipHandoff) {
+  CompletionRecord record;
+  iree_async_operation_t operation;
+  iree_async_operation_initialize(&operation, IREE_ASYNC_OPERATION_TYPE_NOP,
+                                  IREE_ASYNC_OPERATION_FLAG_NONE,
+                                  RecordCompletion, &record);
+  iree_async_operation_set_internal_flags(&operation, 0x5A);
+
+  EXPECT_EQ(iree_async_operation_complete(&operation, iree_ok_status(),
+                                          IREE_ASYNC_COMPLETION_FLAG_MORE),
+            1u);
+  EXPECT_EQ(iree_async_operation_load_internal_flags(&operation), 0x5Au);
+
+  EXPECT_EQ(iree_async_operation_complete(&operation, iree_ok_status(),
+                                          IREE_ASYNC_COMPLETION_FLAG_NONE),
+            1u);
+  ASSERT_EQ(record.internal_flags.size(), 2u);
+  EXPECT_EQ(record.internal_flags[0], 0x5Au);
+  EXPECT_EQ(record.internal_flags[1], 0u);
+  EXPECT_EQ(iree_async_operation_load_internal_flags(&operation), 0u);
 }
 
 TEST(OperationCompletionTest, ReturnsFinalOperationToPoolAfterCallback) {

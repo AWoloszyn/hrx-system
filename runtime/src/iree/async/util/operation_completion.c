@@ -16,6 +16,15 @@ iree_host_size_t iree_async_operation_complete(
   iree_async_operation_pool_t* pool = is_final ? operation->pool : NULL;
   status = iree_async_operation_resolve_completion(operation, status, &flags);
 
+  // Final completion returns operation ownership to the caller. Clear all
+  // backend-private state before the callback so it may immediately reuse or
+  // resubmit the operation without carrying cancellation or iteration state
+  // from the completed execution. Multishot operations retain their state
+  // until the final completion.
+  if (is_final) {
+    iree_async_operation_clear_internal_flags(operation);
+  }
+
   iree_host_size_t callback_count = 0;
   if (operation->completion_fn) {
     operation->completion_fn(operation->user_data, operation, status, flags);

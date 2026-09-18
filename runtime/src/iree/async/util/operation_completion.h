@@ -15,7 +15,10 @@ extern "C" {
 #endif  // __cplusplus
 
 // Transfers |status| to an operation's completion callback and returns the
-// operation to its optional pool after a final completion.
+// operation to its optional pool after a final completion. Final completion
+// clears backend-private flags before the callback so the callback receives a
+// caller-owned operation ready for immediate reuse. Multishot completions with
+// MORE preserve those flags until the final completion.
 //
 // The caller must release retained operation resources and detach any data it
 // needs after the callback before calling this function. The callback may free

@@ -81,6 +81,33 @@ TEST_P(CancellationTest, CancelPendingTimerAsControlFlow) {
       iree_any_bit_set(tracker.last_flags, IREE_ASYNC_COMPLETION_FLAG_MORE));
 }
 
+// A final cancellation callback returns a clean operation that can be reused.
+TEST_P(CancellationTest, ReuseCancelledTimer) {
+  iree_async_timer_operation_t timer;
+  memset(&timer, 0, sizeof(timer));
+  timer.base.type = IREE_ASYNC_OPERATION_TYPE_TIMER;
+  timer.deadline_ns = IREE_TIME_INFINITE_FUTURE;
+
+  CompletionTracker cancelled_tracker;
+  timer.base.completion_fn = CompletionTracker::Callback;
+  timer.base.user_data = &cancelled_tracker;
+
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &timer.base));
+  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &timer.base));
+  PollUntil(/*min_completions=*/1);
+  EXPECT_EQ(cancelled_tracker.call_count, 1);
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED,
+                        cancelled_tracker.ConsumeStatus());
+
+  CompletionTracker reused_tracker;
+  timer.base.user_data = &reused_tracker;
+  timer.deadline_ns = iree_time_now();
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &timer.base));
+  PollUntil(/*min_completions=*/1);
+  EXPECT_EQ(reused_tracker.call_count, 1);
+  IREE_EXPECT_OK(reused_tracker.ConsumeStatus());
+}
+
 // Cancel an already-completed timer is harmless.
 TEST_P(CancellationTest, CancelCompletedTimer) {
   iree_async_timer_operation_t timer;
