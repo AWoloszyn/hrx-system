@@ -1288,6 +1288,9 @@ typedef struct loom_low_descriptor_set_t {
   // Representation contract supports native instruction-order constraints.
   // Its emitters consume the shared schedule without downstream reordering.
   bool supports_native_scheduling;
+  // Selected effect endpoints have at least one positive issue separation.
+  // Operand-only timing does not require cross-block effect traversal.
+  bool has_positive_effect_separations;
   // Durable descriptor-set identity derived from the descriptor-set key.
   uint64_t stable_id;
   // Durable target-family identity derived from the target-family key, or NONE.

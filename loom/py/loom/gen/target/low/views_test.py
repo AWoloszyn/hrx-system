@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Register vocabulary and allocation contracts in shared descriptor views."""
+"""Register vocabulary and scheduling contracts in shared descriptor views."""
 
 from __future__ import annotations
 
@@ -13,7 +13,11 @@ from dataclasses import replace
 import pytest
 
 from loom.gen.target.low import compiler, views
-from loom.gen.target.low.low_descriptors import generate_descriptor_set_family
+from loom.gen.target.low.low_descriptors import (
+    DescriptorAllowlist,
+    generate_descriptor_set,
+    generate_descriptor_set_family,
+)
 from loom.target.low_descriptors import DescriptorSet
 from loom.target.test.descriptors import (
     TEST_LOW_ADD_I32_DESCRIPTOR,
@@ -121,3 +125,42 @@ def test_view_retains_alias_indices_from_shared_namespace() -> None:
     row = view.reg_classes[compiled.reg_class_ids["test.pressure.alias32"]]
     assert row is not None and row.alias_set_id == 2
     assert view.reg_classes[compiled.reg_class_ids["test.alias32"]] is None
+
+
+@pytest.mark.parametrize(
+    ("descriptor_keys", "expected"),
+    [
+        (("test.add.i32",), False),
+        (("test.event.fast.i32", "test.event.consume.late.i32"), False),
+        (("test.event.memory.read.i32",), False),
+        (("test.event.memory.write.i32",), True),
+        (("test.event.memory.read.i32", "test.event.memory.write.i32"), True),
+    ],
+)
+def test_effect_timing_summary_uses_selected_effect_endpoints(descriptor_keys: tuple[str, ...], expected: bool) -> None:
+    storage = TEST_LOW_CORE_DESCRIPTOR_SET
+    selected = tuple(descriptor for descriptor in storage.descriptors if descriptor.key in descriptor_keys)
+    view = replace(storage, descriptors=selected)
+    expected_field = f".has_positive_effect_separations = {str(expected).lower()},"
+    # A family view retains shared event tables even when its selected
+    # descriptors do not use the positive effect pairs in those tables.
+    assert expected_field in generate_descriptor_set_family(storage, (view,)).source
+    assert expected_field in generate_descriptor_set(storage, DescriptorAllowlist(keys=descriptor_keys)).source
+
+
+@pytest.mark.parametrize("separation_cycles", [-2, 0, 3])
+def test_effect_timing_summary_distinguishes_positive_separations(
+    separation_cycles: int,
+) -> None:
+    storage = TEST_LOW_CORE_DESCRIPTOR_SET
+    write = next(descriptor for descriptor in storage.descriptors if descriptor.key == "test.event.memory.write.i32")
+    event = write.effects[0].producer_event
+    separation = next(item for item in storage.event_separations if item.producer_event == event and item.consumer_event == event)
+    storage = replace(
+        storage,
+        event_separations=(replace(separation, minimum_issue_separation_cycles=separation_cycles),),
+    )
+    view = replace(storage, descriptors=(write,))
+    expected = separation_cycles > 0
+    source = generate_descriptor_set_family(storage, (view,)).source
+    assert f".has_positive_effect_separations = {str(expected).lower()}," in source

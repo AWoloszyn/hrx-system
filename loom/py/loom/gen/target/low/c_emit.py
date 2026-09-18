@@ -36,6 +36,14 @@ from loom.target.low_descriptors import (
 )
 
 
+def _has_positive_effect_separations(compiled: CompiledDescriptorSet, view: DescriptorSetView) -> bool:
+    producer_events = {effect.producer_event for descriptor in view.descriptors for effect in descriptor.effects if effect.producer_event is not None}
+    consumer_events = {effect.consumer_event for descriptor in view.descriptors for effect in descriptor.effects if effect.consumer_event is not None}
+    return any(
+        separation.minimum_issue_separation_cycles > 0 and separation.producer_event in producer_events and separation.consumer_event in consumer_events for separation in compiled.event_separations
+    )
+
+
 def _register_part_id_expr(compiled: CompiledDescriptorSet, part_name: str | None) -> str:
     if part_name is None:
         return "LOOM_LOW_REGISTER_PART_NONE"
@@ -1119,6 +1127,7 @@ def emit_source_for_views(
             "    .abi_version = LOOM_LOW_DESCRIPTOR_SET_ABI_VERSION,",
             f"    .generator_version = {view_spec.generator_version},",
             f"    .supports_native_scheduling = {str(view_spec.supports_native_scheduling).lower()},",
+            f"    .has_positive_effect_separations = {str(_has_positive_effect_separations(compiled, view)).lower()},",
             f"    .stable_id = UINT64_C(0x{descriptor_stable_id(view_spec.key):016x}),",
             f"    .target_stable_id = {c_spelling.hex_u64_literal(descriptor_stable_id(view_spec.target_key)) if view_spec.target_key is not None else 'LOOM_LOW_STABLE_ID_NONE'},",
             *(
