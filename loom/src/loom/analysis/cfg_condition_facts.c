@@ -207,6 +207,10 @@ typedef struct loom_cfg_condition_relation_solver_t {
   // Cache of immutable edge/set projections.
   loom_cfg_condition_projection_cache_t projection_cache;
 
+  // Last queried target plus one in bits 1..31 and its availability in bit 0
+  // for each value operand. Zero denotes an empty entry.
+  uint32_t* value_availability_cache;
+
   // Reusable set-projection member storage.
   uint32_t* projection_values;
 
@@ -861,6 +865,13 @@ loom_cfg_condition_relation_build_operand_domain(
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         solver->scratch_arena, relation_value_count, sizeof(*relation_values),
         (void**)&relation_values));
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate_array(solver->scratch_arena, relation_value_count,
+                                  sizeof(*solver->value_availability_cache),
+                                  (void**)&solver->value_availability_cache));
+    memset(solver->value_availability_cache, 0,
+           (iree_host_size_t)relation_value_count *
+               sizeof(*solver->value_availability_cache));
   }
   if (local_value_count != 0) {
     IREE_RETURN_IF_ERROR(
@@ -1093,7 +1104,7 @@ typedef struct loom_cfg_condition_image_span_t {
 } loom_cfg_condition_image_span_t;
 
 static loom_cfg_condition_image_span_t loom_cfg_condition_relation_images(
-    const loom_cfg_condition_relation_solver_t* solver,
+    loom_cfg_condition_relation_solver_t* solver,
     const loom_cfg_condition_edge_state_t* edge,
     loom_cfg_condition_operand_t source) {
   loom_cfg_condition_image_span_t images = {
@@ -1104,16 +1115,24 @@ static loom_cfg_condition_image_span_t loom_cfg_condition_relation_images(
 
   bool has_identity = source >= solver->operand_domain.value_count;
   if (!has_identity) {
-    const loom_value_id_t value_id = solver->operand_domain.values[source];
-    const loom_value_t* value = loom_module_value(solver->module, value_id);
-    const bool rebound = loom_value_is_block_arg(value) &&
-                         loom_value_def_block(value) == edge->target_block;
-    has_identity =
-        !rebound && edge->target_block->first_op &&
-        loom_value_is_available_before_op(solver->dominance, value_id,
-                                          edge->target_block->first_op) &&
-        loom_value_type_is_available_before_op(solver->dominance, value_id,
-                                               edge->target_block->first_op);
+    const uint32_t target_key = (uint32_t)edge->target + 1;
+    const uint32_t cached = solver->value_availability_cache[source];
+    if ((cached >> 1) == target_key) {
+      has_identity = (cached & 1) != 0;
+    } else {
+      const loom_value_id_t value_id = solver->operand_domain.values[source];
+      const loom_value_t* value = loom_module_value(solver->module, value_id);
+      const bool rebound = loom_value_is_block_arg(value) &&
+                           loom_value_def_block(value) == edge->target_block;
+      has_identity =
+          !rebound && edge->target_block->first_op &&
+          loom_value_is_available_before_op(solver->dominance, value_id,
+                                            edge->target_block->first_op) &&
+          loom_value_type_is_available_before_op(solver->dominance, value_id,
+                                                 edge->target_block->first_op);
+      solver->value_availability_cache[source] =
+          (target_key << 1) | has_identity;
+    }
   }
   if (!has_identity) {
     return images;
