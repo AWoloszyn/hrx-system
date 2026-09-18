@@ -118,6 +118,27 @@ TEST_F(GpuMemoryTest, ValidatesPlacementRequirementsBeforeNativeAllocation) {
 
 TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
   const amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  amdf_memory_access_capabilities_t capabilities = {};
+  capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+  capabilities.structure_size = sizeof(capabilities);
+  ASSERT_EQ(
+      QueryMemoryProfile(system_scope_, create_info.memory_profile_ordinal,
+                         memory_access_.requirements, &profile, &capabilities),
+      AMDF_STATUS_OK);
+  const auto& geometry = profile.allocation;
+  const uint64_t granularity = geometry.native_byte_length_granularity;
+  ASSERT_GT(granularity, 0u);
+  ASSERT_LE(
+      geometry.maximum_byte_length,
+      UINT64_MAX - geometry.native_byte_length_prefix - (granularity - 1));
+  const uint64_t native_byte_length =
+      ((create_info.byte_length + geometry.native_byte_length_prefix +
+        granularity - 1) /
+       granularity) *
+      granularity;
   ASSERT_TRUE(amdf_status_is_ok(
       api_->memory_create(system_scope_, &create_info, &memory_)));
   ASSERT_NE(memory_, nullptr);
@@ -136,7 +157,10 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
   EXPECT_EQ(
       (memory_info.flags | access_info.flags) & create_info.required_flags,
       create_info.required_flags);
-  EXPECT_GE(memory_info.byte_length, create_info.byte_length);
+  EXPECT_EQ(memory_info.byte_length, create_info.byte_length);
+  EXPECT_EQ(memory_info.native_allocation_byte_length, native_byte_length);
+  EXPECT_EQ(memory_info.native_allocation_granularity, granularity);
+  EXPECT_EQ(memory_info.source_byte_offset, geometry.native_byte_length_prefix);
   EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
   uint64_t address = 0;
   ASSERT_EQ(
@@ -227,6 +251,26 @@ TEST_F(GpuMemoryTest, CreatesDeviceLocalExecutableMemory) {
   create_info.byte_length = 4097;
   create_info.minimum_alignment = 1024 * 1024;
 
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  amdf_memory_access_capabilities_t capabilities = {};
+  capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+  capabilities.structure_size = sizeof(capabilities);
+  ASSERT_EQ(QueryMemoryProfile(local_scope_, create_info.memory_profile_ordinal,
+                               access.requirements, &profile, &capabilities),
+            AMDF_STATUS_OK);
+  const auto& geometry = profile.allocation;
+  const uint64_t granularity = geometry.native_byte_length_granularity;
+  ASSERT_GT(granularity, 0u);
+  ASSERT_LE(
+      geometry.maximum_byte_length,
+      UINT64_MAX - geometry.native_byte_length_prefix - (granularity - 1));
+  const uint64_t native_byte_length =
+      ((create_info.byte_length + geometry.native_byte_length_prefix +
+        granularity - 1) /
+       granularity) *
+      granularity;
   ASSERT_TRUE(amdf_status_is_ok(
       api_->memory_create(local_scope_, &create_info, &memory_)));
   amdf_memory_info_t memory_info = {};
@@ -246,7 +290,10 @@ TEST_F(GpuMemoryTest, CreatesDeviceLocalExecutableMemory) {
   EXPECT_EQ(access_info.access, access.requirements.access);
   EXPECT_EQ(access_info.flags & access.requirements.flags,
             access.requirements.flags);
-  EXPECT_GE(memory_info.byte_length, create_info.byte_length);
+  EXPECT_EQ(memory_info.byte_length, create_info.byte_length);
+  EXPECT_EQ(memory_info.native_allocation_byte_length, native_byte_length);
+  EXPECT_EQ(memory_info.native_allocation_granularity, granularity);
+  EXPECT_EQ(memory_info.source_byte_offset, geometry.native_byte_length_prefix);
   EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
   uint64_t address = 0;
   ASSERT_EQ(

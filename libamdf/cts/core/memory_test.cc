@@ -137,6 +137,17 @@ TEST_F(HostMemoryTest, AllocatesOneBackingWithoutAnAccelerator) {
   create_info.memory_profile_ordinal = profile.ordinal;
   create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
   create_info.byte_length = profile.allocation.minimum_alignment + 37;
+  const auto& geometry = profile.allocation;
+  const uint64_t granularity = geometry.native_byte_length_granularity;
+  ASSERT_GT(granularity, 0u);
+  ASSERT_LE(
+      geometry.maximum_byte_length,
+      UINT64_MAX - geometry.native_byte_length_prefix - (granularity - 1));
+  const uint64_t native_byte_length =
+      ((create_info.byte_length + geometry.native_byte_length_prefix +
+        granularity - 1) /
+       granularity) *
+      granularity;
   amdf_memory_t* memory = nullptr;
   ASSERT_EQ(api_->memory_create(scope_, &create_info, &memory), AMDF_STATUS_OK);
   memories_.push_back(memory);
@@ -149,10 +160,9 @@ TEST_F(HostMemoryTest, AllocatesOneBackingWithoutAnAccelerator) {
   EXPECT_EQ(info.byte_length, create_info.byte_length);
   EXPECT_EQ(info.memory_profile_ordinal, profile.ordinal);
   EXPECT_EQ(info.flags, AMDF_MEMORY_FLAG_HOST_VISIBLE);
-  EXPECT_GE(info.native_allocation_byte_length, info.byte_length);
-  EXPECT_EQ(
-      info.native_allocation_byte_length % info.native_allocation_granularity,
-      0u);
+  EXPECT_EQ(info.native_allocation_byte_length, native_byte_length);
+  EXPECT_EQ(info.native_allocation_granularity, granularity);
+  EXPECT_EQ(info.source_byte_offset, geometry.native_byte_length_prefix);
   amdf_host_mapping_info_t first = {};
   ASSERT_NO_FATAL_FAILURE(Map(memory, 0, info.byte_length, &first));
   amdf_host_mapping_info_t interior = {};

@@ -102,6 +102,16 @@ TEST(QueryApiTest, RejectsTheImplicitRegistrationCacheabilityAbi) {
   EXPECT_EQ(api, sentinel);
 }
 
+TEST(QueryApiTest, RejectsConstructionCapabilitiesWithoutPayloadGeometry) {
+  const auto* const sentinel =
+      reinterpret_cast<const amdf_api_t*>(uintptr_t{1});
+  const amdf_api_t* api = sentinel;
+  EXPECT_EQ(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_1,
+                                          AMDF_ABI_VERSION_2, &api),
+            amdf_make_api_status(AMDF_STATUS_CODE_VERSION_MISMATCH));
+  EXPECT_EQ(api, sentinel);
+}
+
 TEST(QueryApiTest, RejectsUnsupportedVersionWithoutPublishingOutput) {
   const auto* const sentinel =
       reinterpret_cast<const amdf_api_t*>(uintptr_t{1});

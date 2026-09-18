@@ -97,6 +97,12 @@ storage is excluded from the allocation's public address and usable extent.
 The HAL retires work and destroys its mappings and memory before destroying the
 context. No allocation retains that execution owner.
 
+The Windows XDNA instruction binding is claimed once for the context's entire
+lifetime. Releasing its private memory does not permit another allocation in
+that context. A caller retains and suballocates that aperture while the context
+is in use; replacing the aperture requires a fresh context. Its size profile
+describes dimensions, not remaining allocation availability.
+
 `memory_scope_query_device_profile` takes the live consumers and their access
 requirements. Its backing profile and per-consumer capability array describe
 one jointly supported request, in caller order. The query returns complete
@@ -226,8 +232,33 @@ Native process residency charges and device-wide usage have their own scopes:
 shared imports can incur separate residency charges, and exported backing can
 outlive the original owner's accounting entry. Those mutable observations cannot
 establish the pool's owned capacity or whether an allocation will succeed.
-The profile's construction limits describe accepted dimensions, while the live
-resource query describes the extent actually acquired.
+For CREATE, the qualified profile also predicts the exact owned payload extent
+before acquisition. After admitting the logical size and alignment against that
+profile, a caller computes:
+
+```c
+const amdf_memory_construction_capabilities_t* geometry = &profile.allocation;
+const uint64_t granularity = geometry->native_byte_length_granularity;
+const uint64_t native_byte_length =
+    ((create_info.byte_length + geometry->native_byte_length_prefix +
+      granularity - 1) / granularity) * granularity;
+```
+
+The profile's maximum logical length leaves room for the additions. The fixed
+prefix includes native payload before logical byte zero, such as private
+bootstrap storage. Ordinary allocation profiles have a zero prefix. For example,
+a 4 KiB native granularity rounds 4097 logical bytes to 8192 payload bytes even
+when the caller requests a stronger supported base alignment. The Windows XDNA
+private profile exposes 64 MiB minus a 32 KiB prefix and acquires the full 64 MiB.
+
+A pool can capture these immutable facts for its complete scope and consumer
+contract, compute the charge when growing, reserve that charge against its own
+budget, then call `memory_create`. Success reports exactly that payload extent;
+failure publishes no memory and permits the pool to return its reservation.
+Reusing an existing slab needs no new geometry query or native allocation.
+Concurrent budget reservation and backing retention remain caller policy.
+Registration and import use the supplied source's extent instead of this CREATE
+formula. No size calculation guarantees native resource availability.
 
 ## Windows foreign buffers
 

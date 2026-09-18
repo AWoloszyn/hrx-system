@@ -99,6 +99,26 @@ TEST_F(XdnaMemoryTest, ValidatesCreationArgumentsWithoutNativeAllocation) {
 
 TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   const amdf_memory_create_info_t create_info = MakeMemoryCreateInfo();
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  amdf_memory_access_capabilities_t access_capabilities = {};
+  access_capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+  access_capabilities.structure_size = sizeof(access_capabilities);
+  ASSERT_EQ(QueryMemoryProfile(create_info.memory_profile_ordinal, &profile,
+                               &access_capabilities),
+            AMDF_STATUS_OK);
+  const auto& geometry = profile.allocation;
+  const uint64_t granularity = geometry.native_byte_length_granularity;
+  ASSERT_GT(granularity, 0u);
+  ASSERT_LE(
+      geometry.maximum_byte_length,
+      UINT64_MAX - geometry.native_byte_length_prefix - (granularity - 1));
+  const uint64_t native_byte_length =
+      ((create_info.byte_length + geometry.native_byte_length_prefix +
+        granularity - 1) /
+       granularity) *
+      granularity;
   const amdf_status_t create_status =
       api_->memory_create(system_scope_, &create_info, &memory_);
   ASSERT_TRUE(amdf_status_is_ok(create_status))
@@ -122,8 +142,9 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
       create_info.required_flags);
   EXPECT_EQ(access_info.access, memory_access_.requirements.access);
   EXPECT_EQ(access_info.address_domain_ordinal, 0u);
-  EXPECT_GE(memory_info.native_allocation_byte_length, memory_info.byte_length);
-  EXPECT_NE(memory_info.native_allocation_granularity, 0u);
+  EXPECT_EQ(memory_info.native_allocation_byte_length, native_byte_length);
+  EXPECT_EQ(memory_info.native_allocation_granularity, granularity);
+  EXPECT_EQ(memory_info.source_byte_offset, geometry.native_byte_length_prefix);
   EXPECT_EQ(memory_info.byte_length, create_info.byte_length);
   ASSERT_GE(memory_info.alignment, create_info.minimum_alignment);
   EXPECT_EQ(memory_info.alignment & (memory_info.alignment - 1), 0u);
@@ -133,15 +154,6 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
             AMDF_STATUS_OK);
   EXPECT_NE(address, 0u);
   EXPECT_EQ(address & (memory_info.alignment - 1), 0u);
-  amdf_memory_profile_t profile = {};
-  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-  profile.structure_size = sizeof(profile);
-  amdf_memory_access_capabilities_t access_capabilities = {};
-  access_capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
-  access_capabilities.structure_size = sizeof(access_capabilities);
-  ASSERT_EQ(QueryMemoryProfile(create_info.memory_profile_ordinal, &profile,
-                               &access_capabilities),
-            AMDF_STATUS_OK);
   EXPECT_EQ(access_info.address_kinds, access_capabilities.address_kinds);
   ASSERT_GT(access_capabilities.device_address.address_bit_count, 0u);
   ASSERT_LE(access_capabilities.device_address.address_bit_count, 64u);

@@ -119,6 +119,24 @@ class UserQueueMemoryScenario {
     create_info.required_flags = kRequiredFlags;
     create_info.byte_length = kMemoryByteLength;
     create_info.minimum_alignment = 4096;
+    amdf_memory_profile_t profile = {};
+    profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+    profile.structure_size = sizeof(profile);
+    amdf_memory_access_capabilities_t capabilities = {};
+    capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+    capabilities.structure_size = sizeof(capabilities);
+    ASSERT_EQ(api_->memory_scope_query_device_profile(
+                  system_scope_, profile_ordinal, 1, &access, &profile,
+                  &capabilities),
+              AMDF_STATUS_OK);
+    const auto& geometry = profile.allocation;
+    const uint64_t granularity = geometry.native_byte_length_granularity;
+    ASSERT_GT(granularity, 0u);
+    const uint64_t native_byte_length =
+        ((create_info.byte_length + geometry.native_byte_length_prefix +
+          granularity - 1) /
+         granularity) *
+        granularity;
     ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memory),
               AMDF_STATUS_OK);
 
@@ -137,7 +155,10 @@ class UserQueueMemoryScenario {
     EXPECT_EQ((memory_info.flags | access_info.flags) & kRequiredFlags,
               kRequiredFlags);
     EXPECT_EQ(memory_info.byte_length, kMemoryByteLength);
-    EXPECT_GE(memory_info.native_allocation_byte_length, kMemoryByteLength);
+    EXPECT_EQ(memory_info.native_allocation_byte_length, native_byte_length);
+    EXPECT_EQ(memory_info.source_byte_offset,
+              geometry.native_byte_length_prefix);
+    EXPECT_EQ(memory_info.native_allocation_granularity, granularity);
     EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
     uint64_t address = 0;
     ASSERT_EQ(api_->memory_query_address(memory, 0, AMDF_MEMORY_ADDRESS_GPU,

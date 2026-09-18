@@ -151,6 +151,17 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
           QueryMemoryProfile(scope, create_info.memory_profile_ordinal,
                              access.requirements, &profile, &capabilities),
           AMDF_STATUS_OK);
+      const auto& geometry = profile.allocation;
+      const uint64_t granularity = geometry.native_byte_length_granularity;
+      ASSERT_GT(granularity, 0u);
+      ASSERT_LE(
+          geometry.maximum_byte_length,
+          UINT64_MAX - geometry.native_byte_length_prefix - (granularity - 1));
+      const uint64_t native_byte_length =
+          ((create_info.byte_length + geometry.native_byte_length_prefix +
+            granularity - 1) /
+           granularity) *
+          granularity;
       ASSERT_EQ(api_->memory_create(scope, &create_info, &memories_[0]),
                 AMDF_STATUS_OK)
           << "access case " << case_ordinal;
@@ -178,13 +189,10 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
       EXPECT_EQ(access_info.flags & access.requirements.flags,
                 access.requirements.flags);
       EXPECT_EQ(access_info.flags & ~capabilities.supported_flags, 0u);
-      EXPECT_EQ(info.source_byte_offset, 0u);
+      EXPECT_EQ(info.source_byte_offset, geometry.native_byte_length_prefix);
       EXPECT_EQ(info.byte_length, create_info.byte_length);
-      EXPECT_GE(info.native_allocation_byte_length, info.byte_length);
-      EXPECT_EQ(info.native_allocation_byte_length %
-                    profile.allocation.native_byte_length_granularity,
-                0u);
-      EXPECT_GE(info.byte_length, create_info.byte_length);
+      EXPECT_EQ(info.native_allocation_byte_length, native_byte_length);
+      EXPECT_EQ(info.native_allocation_granularity, granularity);
       EXPECT_GE(info.alignment, create_info.minimum_alignment);
       uint64_t address = 0;
       ASSERT_EQ(api_->memory_query_address(memories_[0], 0,

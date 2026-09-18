@@ -267,6 +267,8 @@ void amdf_xdna_umd_context_query_memory_profile(
               .minimum_alignment = AMDF_WINDOWS_KMT_PAGE_SIZE,
               .maximum_alignment = AMDF_WINDOWS_KMT_PAGE_SIZE,
               .native_byte_length_granularity = AMDF_WINDOWS_KMT_PAGE_SIZE,
+              .native_byte_length_prefix =
+                  AMDF_WINDOWS_XDNA_PRIVATE_BOOTSTRAP_SIZE,
           },
       .host_mapping =
           {

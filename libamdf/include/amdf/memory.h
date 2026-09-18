@@ -175,7 +175,7 @@ enum amdf_external_memory_type_e {
   AMDF_EXTERNAL_MEMORY_TYPE_DEVICE_ADDRESS = 5,
 };
 
-/// Number of external-memory types defined by ABI version 1.
+/// Number of external-memory types.
 #define AMDF_EXTERNAL_MEMORY_TYPE_COUNT 5u
 
 /// Opaque identity of the exact native interpretation of a transport payload.
@@ -298,7 +298,7 @@ typedef struct amdf_external_memory_support_t {
   uint64_t maximum_byte_length;
 } amdf_external_memory_support_t;
 
-/// Maximum external-memory support entries in an ABI version 1 profile.
+/// Maximum external-memory support entries in one profile.
 #define AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY \
   AMDF_EXTERNAL_MEMORY_TYPE_COUNT
 
@@ -323,6 +323,14 @@ enum amdf_host_cacheability_e {
 };
 
 /// Limits for one way of constructing a memory attachment.
+///
+/// For CREATE, the exact owned native payload extent is
+/// `align_up(byte_length + native_byte_length_prefix,
+///           native_byte_length_granularity)` for every admitted request.
+/// Maximum logical length leaves enough uint64_t headroom for both additions.
+/// Any admitted minimum alignment preserves this extent. It excludes virtual
+/// address reservation slack, driver/library metadata and residency charges.
+/// REGISTER and IMPORT instead describe an extent established from the source.
 typedef struct amdf_memory_construction_capabilities_t {
   /// Maximum logical attachment length accepted by this operation.
   uint64_t maximum_byte_length;
@@ -344,6 +352,10 @@ typedef struct amdf_memory_construction_capabilities_t {
   uint64_t maximum_alignment;
   /// Granularity of the native physical allocation or page cover in bytes.
   uint64_t native_byte_length_granularity;
+  /// Fixed native payload bytes preceding logical byte zero for CREATE.
+  /// Successful CREATE reports this as source_byte_offset. Zero for REGISTER
+  /// and IMPORT, whose source offset is determined by the supplied storage.
+  uint64_t native_byte_length_prefix;
 } amdf_memory_construction_capabilities_t;
 
 /// Numeric envelope shared by every address kind produced by one profile.
