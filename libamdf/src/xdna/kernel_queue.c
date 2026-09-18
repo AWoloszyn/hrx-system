@@ -106,6 +106,29 @@ static amdf_status_t amdf_xdna_kernel_queue_refresh_status(
   return amdf_xdna_kernel_queue_query_status(base_queue, out_status);
 }
 
+static amdf_status_t amdf_xdna_kernel_queue_request_notification(
+    amdf_kernel_queue_t* base_queue, uint64_t submission,
+    const amdf_native_event_t* event) {
+  amdf_xdna_kernel_queue_t* queue = (amdf_xdna_kernel_queue_t*)base_queue;
+  if (submission > amdf_atomic_uint64_load_acquire(&queue->submitted)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  uint64_t native_submission = 0;
+  if (amdf_atomic_uint64_load_acquire(&queue->retired) < submission) {
+    const uint32_t slot =
+        (submission - 1) % base_queue->info.maximum_pending_submission_count;
+    native_submission =
+        amdf_atomic_uint64_load_acquire(&queue->native_submissions[slot]);
+    // A slot's new native identity is published after its old point retires.
+    // An old-point request must never become a wait for that replacement.
+    if (amdf_atomic_uint64_load_acquire(&queue->retired) >= submission) {
+      native_submission = 0;
+    }
+  }
+  return amdf_xdna_umd_kernel_queue_request_notification(
+      queue->umd, native_submission, event);
+}
+
 static amdf_status_t amdf_xdna_kernel_queue_wait(
     amdf_kernel_queue_t* base_queue, uint64_t submission,
     uint64_t timeout_nanoseconds, uint64_t poll_duration_nanoseconds) {
@@ -185,6 +208,7 @@ static amdf_status_t amdf_xdna_kernel_queue_destroy_native(
 static const amdf_kernel_queue_vtable_t amdf_xdna_kernel_queue_vtable = {
     .query_status = amdf_xdna_kernel_queue_query_status,
     .refresh_status = amdf_xdna_kernel_queue_refresh_status,
+    .request_notification = amdf_xdna_kernel_queue_request_notification,
     .wait = amdf_xdna_kernel_queue_wait,
     .destroy_native = amdf_xdna_kernel_queue_destroy_native,
 };
@@ -270,6 +294,8 @@ amdf_status_t AMDF_CALL amdf_xdna_kernel_queue_create(
         amdf_xdna_context_get_umd(context), capacity, &queue->umd);
   }
   if (amdf_status_is_ok(status)) {
+    queue->base.info.notification_types =
+        amdf_xdna_umd_kernel_queue_query_notification_types(queue->umd);
     *out_queue = &queue->base;
   } else {
     if (queue->base.device != NULL) {

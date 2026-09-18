@@ -9,6 +9,7 @@
 
 #include "amdf/base.h"
 #include "amdf/memory.h"
+#include "amdf/native_event.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -339,6 +340,9 @@ typedef struct amdf_kernel_queue_info_t {
   uint32_t maximum_pending_submission_count;
   /// Maximum commands accepted by one submission.
   uint32_t maximum_command_count;
+  /// Native wake destinations accepted by kernel_queue_request_notification.
+  /// Zero means notification is unavailable; all bits are resolved at creation.
+  amdf_native_event_types_t notification_types;
 } amdf_kernel_queue_info_t;
 
 /// Current retirement and terminal state of one kernel-mediated queue.

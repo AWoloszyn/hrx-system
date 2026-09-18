@@ -596,6 +596,43 @@ typedef struct amdf_api_t {
   /// queue capacity.
   amdf_status_t(AMDF_CALL* kernel_queue_refresh_status)(
       amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
+
+  /// Requests one native-progress wake for an already-accepted queue point.
+  ///
+  /// `submission` must have been returned by this exact queue. `event` borrows
+  /// a caller-owned destination of a type reported in notification_types.
+  /// An unsupported type returns UNSUPPORTED. Invalid descriptor tags, payload
+  /// shapes, reserved fields or point zero return INVALID_ARGUMENT; an
+  /// unaccepted point returns OUT_OF_RANGE. Native registration errors retain
+  /// their native status domain.
+  ///
+  /// This is one-shot, not a subscription. Repeating a request adds a fresh
+  /// wake obligation; it does not replace or cancel an earlier request. An
+  /// already-checked point signals immediately, even after packet-slot reuse.
+  /// Delivery may precede return. Notifications may coalesce and contain no
+  /// completion value. A wake is an opportunity to refresh checked status,
+  /// not proof of successful execution or permission to reuse storage. A
+  /// provider may emit an immediate recheck hint if a concurrent caller owns
+  /// native fence capture; no checked progress is implied by that hint.
+  ///
+  /// The caller prepares event-loop ownership before requesting a wake and
+  /// keeps the native event live through delivery. Cancelling an event-loop
+  /// callback does not cancel native notifications or device execution. A
+  /// request error never rejects, replays or retires the accepted submission.
+  /// Existing checked progress and synchronous waits remain independently
+  /// usable. Normal teardown reconciles outstanding native notifications
+  /// before releasing the event and queue.
+  ///
+  /// The operation is thread-safe with submission, queries, refreshes and
+  /// waits. It consumes no command results, stores no event descriptor, and
+  /// creates no libamdf observer or subscription. It performs no library
+  /// allocation, locking, lazy initialization, polling, sleep or execution
+  /// wait. Native registration/signaling calls are explicit costs and may
+  /// allocate native callback state. Library submission paths never arm
+  /// notifications implicitly.
+  amdf_status_t(AMDF_CALL* kernel_queue_request_notification)(
+      amdf_kernel_queue_t* queue, uint64_t submission,
+      const amdf_native_event_t* event);
 } amdf_api_t;
 
 /// Function type used to acquire the immutable API table.

@@ -7,7 +7,9 @@
 #include "libamdf/src/xdna/umd/kernel_queue.h"
 
 #include <drm/amdxdna_accel.h>
+#include <sys/eventfd.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 
 #include <array>
 #include <cerrno>
@@ -71,6 +73,19 @@ struct NativeState {
   int packet_release_error = 0;
   // Number of final packet release attempts.
   uint32_t packet_release_count = 0;
+  // Handle-zero capability response; ENOENT means the ioctl is implemented.
+  int notification_probe_error = ENOENT;
+  // Native notification registration error, or zero for acceptance.
+  int notification_error = 0;
+  // Number of actual registrations, excluding capability discovery.
+  uint32_t notification_count = 0;
+  // Exact syncobj and timeline point supplied to native registration.
+  struct {
+    // Requested syncobj handle.
+    uint32_t handle = 0;
+    // Requested point in the native object's domain.
+    uint64_t point = UINT64_MAX;
+  } notification;
   // Test synchronization protecting the controlled native wait.
   std::mutex mutex;
   // Notification when the native wait enters or may return.
@@ -111,7 +126,25 @@ class LinuxXdnaKernelQueueTest : public ::testing::Test {
       EXPECT_EQ(amdf_xdna_umd_kernel_queue_destroy(queue_), AMDF_STATUS_OK);
     }
     EXPECT_EQ(amdf_atomic_uint32_load_acquire(&context_.queue_leased), 0u);
+    if (event_.type != AMDF_NATIVE_EVENT_TYPE_NONE) {
+      EXPECT_EQ(close(static_cast<int>(event_.payload.file_descriptor)), 0);
+    }
     native_state = nullptr;
+  }
+
+  void CreateEvent() {
+    const int descriptor = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    ASSERT_GE(descriptor, 0);
+    event_.type = AMDF_NATIVE_EVENT_TYPE_EVENTFD;
+    event_.payload.file_descriptor = descriptor;
+  }
+
+  void ConsumeEvent() {
+    eventfd_t value = 0;
+    ASSERT_EQ(
+        eventfd_read(static_cast<int>(event_.payload.file_descriptor), &value),
+        0);
+    EXPECT_GT(value, 0u);
   }
 
   // Controlled native dependency state.
@@ -124,7 +157,187 @@ class LinuxXdnaKernelQueueTest : public ::testing::Test {
   amdf_xdna_umd_kernel_queue_t* queue_ = nullptr;
   // Infinite production wait; the outer test harness catches hangs.
   amdf_wait_deadline_t deadline_ = {};
+  // Caller-owned native event, live through queue teardown.
+  amdf_native_event_t event_ = {};
 };
+
+TEST_F(LinuxXdnaKernelQueueTest,
+       NotificationUsesExactFirstSnapshotAndLaterPoint) {
+  ASSERT_NO_FATAL_FAILURE(CreateEvent());
+  EXPECT_NE(amdf_xdna_umd_kernel_queue_query_notification_types(queue_) &
+                AMDF_NATIVE_EVENT_TYPE_BIT_EVENTFD,
+            0u);
+  uint64_t first = 0, second = 0;
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_submit(queue_, 0, 32768, 64, &first),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(
+      amdf_xdna_umd_kernel_queue_request_notification(queue_, first, &event_),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(native_.notification.handle, 100u);
+  EXPECT_EQ(native_.notification.point, 0u);
+  EXPECT_EQ(native_.captured_count, 1u);
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_submit(queue_, 1, 65536, 64, &second),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(
+      amdf_xdna_umd_kernel_queue_request_notification(queue_, second, &event_),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(native_.notification.handle, 8u);
+  EXPECT_EQ(native_.notification.point, 1u);
+  EXPECT_EQ(native_.notification_count, 2u);
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_progress(queue_), 0u);
+  EXPECT_EQ(native_.wait_count, 0u);
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_wait(queue_, second, &deadline_),
+            AMDF_STATUS_OK);
+  amdf_xdna_umd_kernel_queue_retire_command(queue_, 0);
+  amdf_xdna_umd_kernel_queue_retire_command(queue_, 1);
+  for (uint32_t i = 0; i < 2; ++i) {
+    ASSERT_EQ(
+        amdf_xdna_umd_kernel_queue_request_notification(queue_, first, &event_),
+        AMDF_STATUS_OK);
+    ASSERT_NO_FATAL_FAILURE(ConsumeEvent());
+  }
+  EXPECT_EQ(native_.notification_count, 2u);
+}
+
+TEST_F(LinuxXdnaKernelQueueTest,
+       FirstCaptureContentionProvidesImmediateRecheck) {
+  ASSERT_NO_FATAL_FAILURE(CreateEvent());
+  uint64_t first = 0;
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_submit(queue_, 0, 32768, 64, &first),
+            AMDF_STATUS_OK);
+  native_.complete_capture = false;
+  amdf_status_t waiter_status = AMDF_STATUS_OK;
+  std::thread waiter([&] {
+    waiter_status = amdf_xdna_umd_kernel_queue_wait(queue_, first, &deadline_);
+  });
+  {
+    std::unique_lock<std::mutex> lock(native_.mutex);
+    native_.changed.wait(lock, [&] { return native_.capture_entered; });
+  }
+  EXPECT_EQ(
+      amdf_xdna_umd_kernel_queue_request_notification(queue_, first, &event_),
+      AMDF_STATUS_OK);
+  ConsumeEvent();
+  EXPECT_EQ(native_.notification_count, 0u);
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_progress(queue_), 0u);
+  {
+    std::lock_guard<std::mutex> lock(native_.mutex);
+    native_.complete_capture = true;
+  }
+  native_.changed.notify_all();
+  waiter.join();
+  EXPECT_EQ(waiter_status, AMDF_STATUS_OK);
+  amdf_xdna_umd_kernel_queue_retire_command(queue_, 0);
+  ASSERT_EQ(
+      amdf_xdna_umd_kernel_queue_request_notification(queue_, first, &event_),
+      AMDF_STATUS_OK);
+  ASSERT_NO_FATAL_FAILURE(ConsumeEvent());
+}
+
+TEST_F(LinuxXdnaKernelQueueTest,
+       NotificationCaptureProtectsFirstFenceFromPublication) {
+  ASSERT_NO_FATAL_FAILURE(CreateEvent());
+  uint64_t first = 0;
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_submit(queue_, 0, 32768, 64, &first),
+            AMDF_STATUS_OK);
+  native_.complete_capture = false;
+  amdf_status_t notification_status = AMDF_STATUS_OK;
+  std::thread notifier([&] {
+    notification_status =
+        amdf_xdna_umd_kernel_queue_request_notification(queue_, first, &event_);
+  });
+  {
+    std::unique_lock<std::mutex> lock(native_.mutex);
+    native_.changed.wait(lock, [&] { return native_.capture_entered; });
+  }
+  uint64_t second = UINT64_MAX;
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_submit(queue_, 1, 65536, 64, &second),
+            amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
+  EXPECT_EQ(second, UINT64_MAX);
+  EXPECT_EQ(native_.submission_count, 1u);
+  {
+    std::lock_guard<std::mutex> lock(native_.mutex);
+    native_.complete_capture = true;
+  }
+  native_.changed.notify_all();
+  notifier.join();
+  ASSERT_EQ(notification_status, AMDF_STATUS_OK);
+  EXPECT_EQ(native_.notification.handle, 100u);
+  EXPECT_EQ(native_.notification.point, 0u);
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_submit(queue_, 1, 65536, 64, &second),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(native_.captured_count, 1u);
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_wait(queue_, second, &deadline_),
+            AMDF_STATUS_OK);
+  amdf_xdna_umd_kernel_queue_retire_command(queue_, 0);
+  amdf_xdna_umd_kernel_queue_retire_command(queue_, 1);
+}
+
+TEST_F(LinuxXdnaKernelQueueTest, NotificationFailuresPreserveAcceptedIdentity) {
+  ASSERT_NO_FATAL_FAILURE(CreateEvent());
+  uint64_t first = 0;
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_submit(queue_, 0, 32768, 64, &first),
+            AMDF_STATUS_OK);
+  native_.capture_error = ENOMEM;
+  EXPECT_EQ(
+      amdf_xdna_umd_kernel_queue_request_notification(queue_, first, &event_),
+      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENOMEM));
+  EXPECT_EQ(native_.notification_count, 0u);
+  native_.capture_error = 0;
+  native_.notification_error = ENOMEM;
+  EXPECT_EQ(
+      amdf_xdna_umd_kernel_queue_request_notification(queue_, first, &event_),
+      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENOMEM));
+  EXPECT_EQ(native_.submission_count, 1u);
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_progress(queue_), 0u);
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_terminal_status(queue_),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_wait(queue_, first, &deadline_),
+            AMDF_STATUS_OK);
+  amdf_xdna_umd_kernel_queue_retire_command(queue_, 0);
+}
+
+TEST_F(LinuxXdnaKernelQueueTest,
+       MissingNotificationSupportDoesNotDisableExecution) {
+  for (const int error : {EINVAL, ENOTTY, EOPNOTSUPP}) {
+    ASSERT_EQ(amdf_xdna_umd_kernel_queue_destroy(queue_), AMDF_STATUS_OK);
+    queue_ = nullptr;
+    native_.notification_probe_error = error;
+    ASSERT_EQ(amdf_xdna_umd_kernel_queue_create(&context_, 1, &queue_),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_notification_types(queue_), 0u);
+    uint64_t submission = 0;
+    ASSERT_EQ(
+        amdf_xdna_umd_kernel_queue_submit(queue_, 0, 32768, 64, &submission),
+        AMDF_STATUS_OK);
+    ASSERT_EQ(amdf_xdna_umd_kernel_queue_wait(queue_, submission, &deadline_),
+              AMDF_STATUS_OK);
+    amdf_xdna_umd_kernel_queue_retire_command(queue_, 0);
+  }
+}
+
+TEST_F(LinuxXdnaKernelQueueTest, UnexpectedProbeErrorRollsBackConstruction) {
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_destroy(queue_), AMDF_STATUS_OK);
+  queue_ = nullptr;
+  native_.notification_probe_error = EIO;
+  auto* output = reinterpret_cast<amdf_xdna_umd_kernel_queue_t*>(uintptr_t{1});
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_create(&context_, 1, &output),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  EXPECT_EQ(output,
+            reinterpret_cast<amdf_xdna_umd_kernel_queue_t*>(uintptr_t{1}));
+  EXPECT_EQ(amdf_atomic_uint32_load_acquire(&context_.queue_leased), 0u);
+  EXPECT_EQ(native_.packet_count, 3u);
+}
+
+TEST_F(LinuxXdnaKernelQueueTest, FullReadableEventCoalescesAnImmediateHint) {
+  ASSERT_NO_FATAL_FAILURE(CreateEvent());
+  ASSERT_EQ(eventfd_write(static_cast<int>(event_.payload.file_descriptor),
+                          UINT64_MAX - 1),
+            0);
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_request_notification(queue_, 0, &event_),
+            AMDF_STATUS_OK);
+  ASSERT_NO_FATAL_FAILURE(ConsumeEvent());
+}
 
 TEST_F(LinuxXdnaKernelQueueTest, FailedPacketReleaseConsumesContextLease) {
   native_.packet_release_error = EBUSY;
@@ -404,6 +617,24 @@ extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
   va_end(arguments);
   EXPECT_EQ(descriptor, 42);
   NativeState& native = *native_state;
+  if (request == DRM_IOCTL_SYNCOBJ_EVENTFD) {
+    const auto* notify = static_cast<const drm_syncobj_eventfd*>(argument);
+    EXPECT_EQ(notify->flags, 0u);
+    EXPECT_EQ(notify->pad, 0u);
+    if (notify->handle == 0) {
+      EXPECT_EQ(notify->fd, -1);
+      errno = native.notification_probe_error;
+      return -1;
+    }
+    ++native.notification_count;
+    native.notification.handle = notify->handle;
+    native.notification.point = notify->point;
+    if (native.notification_error != 0) {
+      errno = native.notification_error;
+      return -1;
+    }
+    return 0;
+  }
   if (request == DRM_IOCTL_SYNCOBJ_CREATE) {
     static_cast<drm_syncobj_create*>(argument)->handle = 100;
     return 0;

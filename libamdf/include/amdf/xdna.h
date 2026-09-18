@@ -408,7 +408,7 @@ typedef struct amdf_xdna_api_t {
   /// grant EXECUTE access. Caller writes must be published before submission;
   /// libamdf neither reads, copies nor modifies instruction bytes. The native
   /// provider fills its preallocated transport packet with address and length.
-  /// Submission performs no allocation, format parsing, lowering, relocation,
+  /// The library performs no allocation, format parsing, lowering, relocation,
   /// binding resolution, native submission retry, sleep or host wait. Native
   /// retirement consumes the command result. The caller keeps instruction
   /// memory live until retirement; libamdf neither retains nor tracks it.
@@ -428,8 +428,9 @@ typedef struct amdf_xdna_api_t {
   /// Returned points increase within this queue, without a caller-visible
   /// starting value or dense-numbering guarantee. Waiting for one point covers
   /// earlier accepted commands, not independently scheduled descendants.
-  /// This is not a wait-free guarantee. Native publication may enter the driver
-  /// and publish queue-owned packet cache lines, not caller instruction/data
+  /// This is not a wait-free guarantee. Native publication can block acquiring
+  /// driver admission credits even when library packet capacity remains. It
+  /// may publish queue-owned packet cache lines, not caller instruction/data
   /// bytes. Preserving the first native completion identity can require a
   /// one-time fence transfer after acceptance and before later publication;
   /// its native storage is already prepared at queue creation.

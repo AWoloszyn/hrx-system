@@ -72,6 +72,13 @@ amdf_status_t amdf_windows_xdna_kernel_execution_submit(
 uint64_t amdf_windows_xdna_kernel_execution_query_progress(
     const amdf_windows_xdna_kernel_execution_t* execution);
 
+// Requests one asynchronous native-fence wake into a validated caller event.
+// Zero or an already-completed point signals immediately. This neither uses
+// the synchronous wait event nor retains any notification state.
+amdf_status_t amdf_windows_xdna_kernel_execution_request_notification(
+    amdf_windows_xdna_kernel_execution_t* execution, uint64_t native_submission,
+    const amdf_native_event_t* event);
+
 // Consumes this slot's result after native fence proof. The caller exclusively
 // owns checked retirement and prevents response reuse.
 void amdf_windows_xdna_kernel_execution_retire_command(

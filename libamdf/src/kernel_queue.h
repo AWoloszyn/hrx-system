@@ -23,6 +23,11 @@ typedef struct amdf_kernel_queue_vtable_t {
   // the snapshot's cached terminal failure.
   amdf_status_t (*refresh_status)(amdf_kernel_queue_t* queue,
                                   amdf_kernel_queue_status_t* out_status);
+  // Requests one wake into a validated, supported caller-owned event. No
+  // descriptor is retained and no result consumption occurs here.
+  amdf_status_t (*request_notification)(amdf_kernel_queue_t* queue,
+                                        uint64_t submission,
+                                        const amdf_native_event_t* event);
   // Refreshes native progress and performs checked retirement for one accepted
   // submission, without cancelling on timeout.
   amdf_status_t (*wait)(amdf_kernel_queue_t* queue, uint64_t submission,
@@ -64,6 +69,11 @@ amdf_status_t AMDF_CALL amdf_kernel_queue_query_status(
 // Refreshes checked progress without waiting for a particular submission.
 amdf_status_t AMDF_CALL amdf_kernel_queue_refresh_status(
     amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
+
+// Requests one native-progress hint without retaining the caller's event.
+amdf_status_t AMDF_CALL amdf_kernel_queue_request_notification(
+    amdf_kernel_queue_t* queue, uint64_t submission,
+    const amdf_native_event_t* event);
 
 // Waits for one accepted submission with caller-selected polling.
 amdf_status_t AMDF_CALL amdf_kernel_queue_wait(

@@ -11,6 +11,7 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/atomics.h"
+#include "libamdf/src/platform/native_event.h"
 #include "libamdf/src/platform/wait.h"
 #include "libamdf/src/wait.h"
 #include "libamdf/src/xdna/bootstrap.h"
@@ -672,6 +673,28 @@ void amdf_windows_xdna_kernel_execution_retire_command(
   if (!amdf_status_is_ok(status)) {
     amdf_windows_xdna_kernel_execution_record_failure(execution, status);
   }
+}
+
+amdf_status_t amdf_windows_xdna_kernel_execution_request_notification(
+    amdf_windows_xdna_kernel_execution_t* execution, uint64_t native_submission,
+    const amdf_native_event_t* event) {
+  if (amdf_windows_xdna_kernel_execution_query_progress(execution) >=
+      native_submission) {
+    return amdf_platform_native_event_signal(event);
+  }
+  D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU wait = {0};
+  wait.hDevice = execution->device->device;
+  wait.ObjectCount = 1;
+  wait.ObjectHandleArray = &execution->progress_fence;
+  wait.FenceValueArray = &native_submission;
+  wait.hAsyncEvent = event->payload.native_handle;
+  const amdf_status_t status =
+      amdf_kmt_make_status(execution->device->kmt->wait_from_cpu(&wait));
+  return amdf_status_is_ok(status)
+             ? status
+             : amdf_kmt_device_status_observe_error(
+                   &execution->device->status, execution->device->kmt,
+                   execution->device->device, status);
 }
 
 amdf_status_t amdf_windows_xdna_kernel_execution_wait(

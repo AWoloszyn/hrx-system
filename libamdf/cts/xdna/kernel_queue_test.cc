@@ -15,6 +15,7 @@
 #include "amdf/amdf.h"
 #include "amdf/xdna.h"
 #include "gtest/gtest.h"
+#include "util/native_event.h"
 #include "xdna_device_fixture.h"
 
 namespace {
@@ -332,6 +333,166 @@ class XdnaKernelQueueTest : public XdnaContextFixture {
     amdf_memory_t* memory = nullptr;
   } sibling_;
 };
+
+class XdnaKernelQueueNotificationTest : public XdnaKernelQueueTest {
+ protected:
+  void TearDown() override {
+    if (notification_pending_) {
+      const auto consumed = amdf::cts::WaitNativeEvent(event_);
+      EXPECT_TRUE(consumed);
+      if (!consumed) {
+        return;
+      }
+      notification_pending_ = false;
+    }
+    XdnaKernelQueueTest::TearDown();
+    if (queue_ == nullptr && event_.type != AMDF_NATIVE_EVENT_TYPE_NONE) {
+      EXPECT_TRUE(amdf::cts::DestroyNativeEvent(&event_));
+    }
+  }
+
+  void CreateEvent() {
+    amdf_kernel_queue_info_t info = {};
+    info.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO;
+    info.structure_size = sizeof(info);
+    ASSERT_EQ(api_->kernel_queue_query_info(queue_, &info), AMDF_STATUS_OK);
+    if ((info.notification_types &
+         (UINT64_C(1) << amdf::cts::NativeEventType())) == 0) {
+      GTEST_SKIP() << "queue does not support this platform's native events";
+    }
+    ASSERT_TRUE(amdf::cts::CreateNativeEvent(&event_));
+  }
+
+  void RequestNotification(uint64_t submission) {
+    // This stack descriptor expires before delivery. Only the native event
+    // itself remains owned by the caller.
+    const amdf_native_event_t borrowed = event_;
+    ASSERT_EQ(
+        api_->kernel_queue_request_notification(queue_, submission, &borrowed),
+        AMDF_STATUS_OK);
+    notification_pending_ = true;
+  }
+
+  void ConsumeNotification() {
+    ASSERT_TRUE(amdf::cts::WaitNativeEvent(event_));
+    notification_pending_ = false;
+  }
+
+  void RefreshThroughNotification(uint64_t last) {
+    amdf_kernel_queue_status_t checked = {};
+    checked.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+    checked.structure_size = sizeof(checked);
+    ASSERT_EQ(api_->kernel_queue_query_status(queue_, &checked),
+              AMDF_STATUS_OK);
+    while (checked.retired_submission < last) {
+      // Use an actual accepted point; public identities need not be dense.
+      ASSERT_NO_FATAL_FAILURE(RequestNotification(last));
+      ASSERT_NO_FATAL_FAILURE(ConsumeNotification());
+      ASSERT_EQ(api_->kernel_queue_refresh_status(queue_, &checked),
+                AMDF_STATUS_OK);
+      ASSERT_EQ(checked.terminal_status, AMDF_STATUS_OK);
+    }
+  }
+
+  // Caller-owned event, separate from queue packet storage and checked
+  // progress.
+  amdf_native_event_t event_ = {};
+  // One outstanding wake in this client flow, reconciled even on test failure.
+  bool notification_pending_ = false;
+};
+
+TEST_F(XdnaKernelQueueNotificationTest,
+       ChecksCompletedBatchesAndReusesPacketStorage) {
+  const auto transaction = MakeNoOpTransaction();
+  ASSERT_NO_FATAL_FAILURE(CreateInstructions(transaction, transaction));
+  ASSERT_NO_FATAL_FAILURE(CreateQueue(3));
+  ASSERT_NO_FATAL_FAILURE(CreateEvent());
+  if (IsSkipped()) {
+    return;
+  }
+  amdf_xdna_kernel_command_t command = {};
+  command.memory = memory_;
+  command.byte_length = transaction.size();
+  amdf_xdna_kernel_queue_submission_info_t submit = {};
+  submit.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO;
+  submit.structure_size = sizeof(submit);
+  submit.command_count = 1;
+  submit.commands = &command;
+
+  // Notify the first accepted native point before a successor can capture it.
+  uint64_t last = 0;
+  ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &last),
+            AMDF_STATUS_OK);
+  ASSERT_NO_FATAL_FAILURE(RefreshThroughNotification(last));
+  for (uint32_t round = 0; round < 3; ++round) {
+    for (uint32_t i = 0; i < 3; ++i) {
+      command.byte_offset = ((round + i) % 2) * instruction_stride_;
+      ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &last),
+                AMDF_STATUS_OK);
+    }
+    ASSERT_NO_FATAL_FAILURE(RefreshThroughNotification(last));
+  }
+  ASSERT_EQ(api_->host_mapping_cache_control(
+                mapping_, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
+                instruction_stride_ + transaction.size()),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(std::memcmp(pointer_, transaction.data(), transaction.size()), 0);
+  EXPECT_EQ(std::memcmp(pointer_ + instruction_stride_, transaction.data(),
+                        transaction.size()),
+            0);
+}
+
+TEST_F(XdnaKernelQueueNotificationTest,
+       OneShotRequestsRemainFreshAfterCompletionAndSlotReuse) {
+  const auto transaction = MakeNoOpTransaction();
+  ASSERT_NO_FATAL_FAILURE(CreateInstructions(transaction, transaction));
+  ASSERT_NO_FATAL_FAILURE(CreateQueue(1));
+  ASSERT_NO_FATAL_FAILURE(CreateEvent());
+  if (IsSkipped()) {
+    return;
+  }
+  amdf_xdna_kernel_command_t command = {};
+  command.memory = memory_;
+  command.byte_length = transaction.size();
+  amdf_xdna_kernel_queue_submission_info_t submit = {};
+  submit.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO;
+  submit.structure_size = sizeof(submit);
+  submit.command_count = 1;
+  submit.commands = &command;
+  uint64_t first = 0;
+  ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &first),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(api_->kernel_queue_wait(queue_, first, AMDF_TIMEOUT_INFINITE, 0),
+            AMDF_STATUS_OK);
+
+  // Already-checked requests signal before return, so both notifications are
+  // delivered before consumption and may coalesce into one readiness edge.
+  ASSERT_NO_FATAL_FAILURE(RequestNotification(first));
+  ASSERT_NO_FATAL_FAILURE(RequestNotification(first));
+  ASSERT_NO_FATAL_FAILURE(ConsumeNotification());
+  bool ready = false;
+  ASSERT_TRUE(amdf::cts::TryConsumeNativeEvent(event_, &ready));
+  EXPECT_FALSE(ready);
+
+  uint64_t second = 0;
+  command.byte_offset = instruction_stride_;
+  ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &second),
+            AMDF_STATUS_OK);
+  ASSERT_TRUE(amdf::cts::TryConsumeNativeEvent(event_, &ready));
+  EXPECT_FALSE(ready);  // Submission did not implicitly rearm the event.
+  ASSERT_NO_FATAL_FAILURE(RequestNotification(first));
+  ASSERT_NO_FATAL_FAILURE(ConsumeNotification());
+  amdf_kernel_queue_status_t checked = {};
+  checked.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+  checked.structure_size = sizeof(checked);
+  ASSERT_EQ(api_->kernel_queue_query_status(queue_, &checked), AMDF_STATUS_OK);
+  EXPECT_EQ(checked.retired_submission, first);
+  ASSERT_NO_FATAL_FAILURE(RefreshThroughNotification(second));
+  ASSERT_NO_FATAL_FAILURE(RequestNotification(first));
+  ASSERT_NO_FATAL_FAILURE(ConsumeNotification());
+  ASSERT_TRUE(amdf::cts::TryConsumeNativeEvent(event_, &ready));
+  EXPECT_FALSE(ready);
+}
 
 TEST_F(XdnaKernelQueueTest, SubmitsImmutableRangesAndReacquiresQueue) {
   const auto transaction = MakeNoOpTransaction();

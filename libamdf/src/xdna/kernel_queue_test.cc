@@ -36,6 +36,15 @@ struct amdf_xdna_umd_kernel_queue_t {
   amdf_status_t refresh_status = AMDF_STATUS_OK;
   // Number of explicit native progress refreshes.
   std::atomic<size_t> refresh_count{0};
+  // Native wake representation qualified before publication of the queue.
+  amdf_native_event_types_t notification_types =
+      AMDF_NATIVE_EVENT_TYPE_BIT_EVENTFD;
+  // Exact native point requested, or zero for an already-checked public point.
+  uint64_t notification_submission = UINT64_MAX;
+  // Number of independent requests received, including repeated points.
+  uint32_t notification_count = 0;
+  // Native registration error independent of accepted command ownership.
+  amdf_status_t notification_status = AMDF_STATUS_OK;
   // Packet slots provided by the controlled native dependency.
   struct Slot {
     // Accepted native identity, or zero after result consumption.
@@ -384,6 +393,16 @@ TEST_F(XdnaKernelQueueTest, RetirementDoesNotPreventPublicationIntoFreeSlots) {
   EXPECT_EQ(SubmitCommand(&rejected),
             amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
   EXPECT_EQ(Query().retired_submission, 0u);
+  amdf_native_event_t event = {};
+  event.type = AMDF_NATIVE_EVENT_TYPE_EVENTFD;
+  event.payload.file_descriptor = 5;
+  for (uint32_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(amdf_kernel_queue_request_notification(queue, first, &event),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(native.notification_submission, first);
+    // A busy result consumer does not own notification or force a handoff.
+    EXPECT_EQ(Refresh().retired_submission, 0u);
+  }
   {
     std::lock_guard<std::mutex> lock(native.mutex);
     native.phase = Phase::kReleased;
@@ -391,6 +410,10 @@ TEST_F(XdnaKernelQueueTest, RetirementDoesNotPreventPublicationIntoFreeSlots) {
   native.condition.notify_all();
   waiter.join();
   ASSERT_EQ(status, AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_kernel_queue_request_notification(queue, first, &event),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(native.notification_submission, 0u);
+  EXPECT_EQ(native.notification_count, 3u);
   ASSERT_EQ(amdf_kernel_queue_wait(queue, second, AMDF_TIMEOUT_INFINITE, 0),
             AMDF_STATUS_OK);
   EXPECT_EQ(Query().retired_submission, second);
@@ -445,6 +468,126 @@ TEST_F(XdnaKernelQueueTest, RefreshChecksAvailablePrefixWithoutWaiting) {
   for (const auto& slot : context.native.queue.slots) {
     EXPECT_EQ(slot.retirement_count, 1u);
   }
+}
+
+TEST_F(XdnaKernelQueueTest, NotificationResolvesNativePointsWithoutRetirement) {
+  auto& native = context.native.queue;
+  native.submitted = 37;
+  native.progress = 37;
+  ASSERT_EQ(SubmitCommand(&submission), AMDF_STATUS_OK);
+  amdf_kernel_queue_info_t info = {};
+  info.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO;
+  info.structure_size = sizeof(info);
+  ASSERT_EQ(amdf_kernel_queue_query_info(queue, &info), AMDF_STATUS_OK);
+  ASSERT_NE(info.notification_types & AMDF_NATIVE_EVENT_TYPE_BIT_EVENTFD, 0u);
+  amdf_native_event_t event = {};
+  event.type = AMDF_NATIVE_EVENT_TYPE_EVENTFD;
+  event.payload.file_descriptor = 5;
+  EXPECT_EQ(amdf_kernel_queue_request_notification(queue, submission, &event),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(native.notification_submission, 38u);
+  EXPECT_EQ(native.notification_count, 1u);
+  EXPECT_EQ(Query().retired_submission, 0u);
+  native.progress = native.submitted;
+  EXPECT_EQ(amdf_kernel_queue_request_notification(queue, submission, &event),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(native.notification_submission, 38u);
+  EXPECT_EQ(native.notification_count, 2u);
+  EXPECT_EQ(Query().retired_submission, 0u);
+  EXPECT_EQ(native.wait_count.load(), 0u);
+  EXPECT_EQ(native.refresh_count.load(), 0u);
+}
+
+TEST_F(XdnaKernelQueueTest, NotificationOfRecycledPointRequestsFreshHint) {
+  ASSERT_EQ(CreateQueue(1), AMDF_STATUS_OK);
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  auto& native = context.native.queue;
+  native.available_progress = native.submitted;
+  uint64_t next = 0;
+  ASSERT_EQ(SubmitCommand(&next), AMDF_STATUS_OK);
+  ASSERT_EQ(Query().retired_submission, submission);
+  ASSERT_EQ(native.slots[0].native_submission, next);
+  amdf_native_event_t event = {};
+  event.type = AMDF_NATIVE_EVENT_TYPE_EVENTFD;
+  event.payload.file_descriptor = 5;
+  for (uint32_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(amdf_kernel_queue_request_notification(queue, submission, &event),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(native.notification_submission, 0u);
+    EXPECT_EQ(native.notification_count, i + 1);
+  }
+  EXPECT_EQ(native.slots[0].native_submission, next);
+  EXPECT_EQ(Query().retired_submission, submission);
+}
+
+TEST_F(XdnaKernelQueueTest, NotificationErrorDoesNotRejectAcceptedWork) {
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  auto& native = context.native.queue;
+  native.notification_status =
+      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENOMEM);
+  amdf_native_event_t event = {};
+  event.type = AMDF_NATIVE_EVENT_TYPE_EVENTFD;
+  event.payload.file_descriptor = 5;
+  EXPECT_EQ(amdf_kernel_queue_request_notification(queue, submission, &event),
+            native.notification_status);
+  EXPECT_EQ(native.submitted, submission);
+  EXPECT_EQ(native.slots[0].native_submission, submission);
+  EXPECT_EQ(Query().retired_submission, 0u);
+  EXPECT_EQ(Query().terminal_status, AMDF_STATUS_OK);
+  ASSERT_EQ(amdf_kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(native.submitted, submission);
+}
+
+TEST_F(XdnaKernelQueueTest, NotificationRejectsInvalidOrUnsupportedInputs) {
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  amdf_native_event_t event = {};
+  event.type = AMDF_NATIVE_EVENT_TYPE_EVENTFD;
+  event.payload.file_descriptor = 5;
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                nullptr, submission, &event)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, nullptr)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(
+                amdf_kernel_queue_request_notification(queue, 0, &event)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission + 1, &event)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  event.reserved = 1;
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, &event)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  event.reserved = 0;
+  event.payload.file_descriptor = -1;
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, &event)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  event.payload.file_descriptor = INT64_MAX;
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, &event)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  event.type = UINT32_MAX;
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, &event)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  event.type = AMDF_NATIVE_EVENT_TYPE_WIN32_EVENT;
+  event.payload.native_handle = nullptr;
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, &event)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  event.payload.native_handle = reinterpret_cast<void*>(UINTPTR_MAX);
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, &event)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  event.payload.native_handle = reinterpret_cast<void*>(uintptr_t{5});
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, &event)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(context.native.queue.notification_count, 0u);
+  EXPECT_EQ(Query().retired_submission, 0u);
 }
 
 TEST_F(XdnaKernelQueueTest, IdleRefreshDoesNotObserveAnUnsubmittedFence) {
@@ -794,6 +937,17 @@ amdf_status_t amdf_xdna_umd_kernel_queue_create(
   context->queue.slots.resize(capacity);
   *out_queue = &context->queue;
   return AMDF_STATUS_OK;
+}
+amdf_native_event_types_t amdf_xdna_umd_kernel_queue_query_notification_types(
+    const amdf_xdna_umd_kernel_queue_t* queue) {
+  return queue->notification_types;
+}
+amdf_status_t amdf_xdna_umd_kernel_queue_request_notification(
+    amdf_xdna_umd_kernel_queue_t* queue, uint64_t native_submission,
+    const amdf_native_event_t*) {
+  queue->notification_submission = native_submission;
+  ++queue->notification_count;
+  return queue->notification_status;
 }
 amdf_status_t amdf_xdna_umd_kernel_queue_submit(
     amdf_xdna_umd_kernel_queue_t* queue, uint32_t slot,

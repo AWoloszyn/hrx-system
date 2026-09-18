@@ -49,6 +49,19 @@ amdf_status_t amdf_xdna_umd_kernel_queue_submit(
       out_native_submission);
 }
 
+amdf_native_event_types_t amdf_xdna_umd_kernel_queue_query_notification_types(
+    const amdf_xdna_umd_kernel_queue_t* queue) {
+  (void)queue;
+  return AMDF_NATIVE_EVENT_TYPE_BIT_WIN32_EVENT;
+}
+
+amdf_status_t amdf_xdna_umd_kernel_queue_request_notification(
+    amdf_xdna_umd_kernel_queue_t* queue, uint64_t native_submission,
+    const amdf_native_event_t* event) {
+  return amdf_windows_xdna_kernel_execution_request_notification(
+      queue->execution, native_submission, event);
+}
+
 uint64_t amdf_xdna_umd_kernel_queue_query_progress(
     const amdf_xdna_umd_kernel_queue_t* queue) {
   return amdf_windows_xdna_kernel_execution_query_progress(queue->execution);

@@ -167,6 +167,26 @@ TEST_P(GpuKernelQueueTest, QueryDoesNotRetireNativeCompletion) {
   ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
 }
 
+TEST_P(GpuKernelQueueTest, UnsupportedNotificationDoesNotChangeAcceptedWork) {
+  amdf_kernel_queue_info_t info = {};
+  info.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO;
+  info.structure_size = sizeof(info);
+  ASSERT_EQ(amdf_kernel_queue_query_info(queue, &info), AMDF_STATUS_OK);
+  ASSERT_EQ(info.notification_types, 0u);
+  uint64_t submission = 0;
+  ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
+  amdf_native_event_t event = {};
+  event.type = AMDF_NATIVE_EVENT_TYPE_EVENTFD;
+  event.payload.file_descriptor = 5;
+  EXPECT_EQ(amdf_status_code(amdf_kernel_queue_request_notification(
+                queue, submission, &event)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(Query().retired_submission, 0u);
+  EXPECT_EQ(Query().terminal_status, AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0), AMDF_STATUS_OK);
+  EXPECT_EQ(Query().retired_submission, submission);
+}
+
 TEST_P(GpuKernelQueueTest, DefaultCapacityAcceptsAnEntirePendingWindow) {
   amdf_kernel_queue_info_t info = {};
   info.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO;

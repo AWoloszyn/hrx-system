@@ -26,6 +26,20 @@ amdf_status_t amdf_xdna_umd_kernel_queue_create(
     amdf_xdna_umd_context_t* context, uint32_t capacity,
     amdf_xdna_umd_kernel_queue_t** out_queue);
 
+// Returns native event types qualified during cold queue construction. This
+// immutable query performs no native call, allocation or initialization.
+amdf_native_event_types_t amdf_xdna_umd_kernel_queue_query_notification_types(
+    const amdf_xdna_umd_kernel_queue_t* queue);
+
+// Requests one native-progress hint into a validated supported event. Zero
+// means the shared owner already checked the public point and requires an
+// immediate hint. No event descriptor or subscription is retained. Explicit
+// native registration/signaling calls are allowed; result consumption,
+// library allocation, waits, locks, retries and lazy setup are not.
+amdf_status_t amdf_xdna_umd_kernel_queue_request_notification(
+    amdf_xdna_umd_kernel_queue_t* queue, uint64_t native_submission,
+    const amdf_native_event_t* event);
+
 // Frames one validated context-qualified instruction range in the queue's
 // preallocated native packet at slot. No instruction bytes are read or
 // modified. Common code owns this idle slot through publication and checked

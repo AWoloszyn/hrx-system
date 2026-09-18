@@ -74,6 +74,15 @@ static amdf_status_t amdf_gpu_kernel_queue_refresh_status(
   return amdf_gpu_kernel_queue_query_status(base_queue, out_status);
 }
 
+static amdf_status_t amdf_gpu_kernel_queue_request_notification(
+    amdf_kernel_queue_t* base_queue, uint64_t submission,
+    const amdf_native_event_t* event) {
+  (void)base_queue;
+  (void)submission;
+  (void)event;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
 static amdf_status_t amdf_gpu_kernel_queue_wait(
     amdf_kernel_queue_t* base_queue, uint64_t submission,
     uint64_t timeout_nanoseconds, uint64_t poll_duration_nanoseconds) {
@@ -117,6 +126,7 @@ static amdf_status_t amdf_gpu_kernel_queue_destroy_native(
 static const amdf_kernel_queue_vtable_t amdf_gpu_kernel_queue_vtable = {
     .query_status = amdf_gpu_kernel_queue_query_status,
     .refresh_status = amdf_gpu_kernel_queue_refresh_status,
+    .request_notification = amdf_gpu_kernel_queue_request_notification,
     .wait = amdf_gpu_kernel_queue_wait,
     .destroy_native = amdf_gpu_kernel_queue_destroy_native,
 };

@@ -79,6 +79,17 @@ struct NativeState {
     // Event retained by an accepted wait whose completion is supplied later.
     HANDLE event = nullptr;
   } deferred_wait;
+  // Captured caller-owned notification request at the KMT boundary.
+  struct {
+    // Number of explicit native registrations.
+    uint32_t count = 0;
+    // Exact native fence value requested by the caller.
+    uint64_t submission = 0;
+    // Borrowed event handle copied by the simulated native registration.
+    HANDLE event = nullptr;
+    // Registration result supplied independently of execution progress.
+    NTSTATUS result = 0;
+  } notification;
   // Publication of the admission PDI within the private instruction backing.
   struct {
     // Number of cache publications requested for this allocation.
@@ -377,7 +388,27 @@ class WindowsXdnaKernelExecutionTest
     for (const auto& allocation : native_.allocations) {
       EXPECT_EQ(allocation.pointer, nullptr);
     }
+    if (event_ != nullptr) {
+      EXPECT_TRUE(CloseHandle(event_));
+    }
     native_state = nullptr;
+  }
+
+  void CreateNotificationEvent() {
+    event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    ASSERT_NE(event_, nullptr);
+    kmt_.wait_from_cpu =
+        [](const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU* wait) -> NTSTATUS {
+      EXPECT_EQ(wait->hDevice, 10u);
+      EXPECT_EQ(wait->ObjectCount, 1u);
+      EXPECT_EQ(wait->ObjectHandleArray[0], 42u);
+      EXPECT_EQ(wait->Flags.Value, 0u);
+      auto& notification = native_state->notification;
+      ++notification.count;
+      notification.submission = wait->FenceValueArray[0];
+      notification.event = wait->hAsyncEvent;
+      return notification.result;
+    };
   }
 
   // Native allocation and submission observations.
@@ -398,7 +429,106 @@ class WindowsXdnaKernelExecutionTest
   amdf_memory_native_create_info_t create_ = {};
   // Actual memory owner, including unpublished preparation state on failure.
   amdf_xdna_umd_memory_t* memory_ = nullptr;
+  // Caller-owned auto-reset wake destination, closed after native teardown.
+  HANDLE event_ = nullptr;
 };
+
+TEST_P(WindowsXdnaKernelExecutionTest,
+       NotificationsBorrowCallerEventWithoutConsumingResults) {
+  ASSERT_NO_FATAL_FAILURE(CreateNotificationEvent());
+  amdf_xdna_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
+                                                 &memory_, &result),
+            AMDF_STATUS_OK);
+  auto* execution = context_.kernel_execution;
+  ASSERT_EQ(amdf_windows_xdna_kernel_execution_acquire_queue(execution, 1),
+            AMDF_STATUS_OK);
+  native_.deferred_opcode = 3;
+  uint64_t submission = 0;
+  ASSERT_EQ(amdf_windows_xdna_kernel_execution_submit(
+                execution, 0, result.device_address, 64, &submission),
+            AMDF_STATUS_OK);
+  const size_t allocation_count = native_.allocations.size();
+  {
+    amdf_native_event_t event = {};
+    event.type = AMDF_NATIVE_EVENT_TYPE_WIN32_EVENT;
+    event.payload.native_handle = event_;
+    EXPECT_EQ(amdf_windows_xdna_kernel_execution_request_notification(
+                  execution, submission, &event),
+              AMDF_STATUS_OK);
+  }
+  EXPECT_EQ(native_.notification.count, 1u);
+  EXPECT_EQ(native_.notification.submission, submission);
+  EXPECT_EQ(native_.notification.event, event_);
+  EXPECT_LT(amdf_windows_xdna_kernel_execution_query_progress(execution),
+            submission);
+  EXPECT_EQ(WaitForSingleObject(event_, 0), WAIT_TIMEOUT);
+  EXPECT_EQ(native_.allocations.size(), allocation_count);
+
+  // The dependency delivers after the borrowed descriptor has gone away.
+  native_.progress = submission;
+  EXPECT_TRUE(SetEvent(native_.notification.event));
+  // KMT excludes NT status macros; a signaled Win32 wait returns zero.
+  EXPECT_EQ(WaitForSingleObject(event_, 0), 0u);
+  EXPECT_EQ(WaitForSingleObject(event_, 0), WAIT_TIMEOUT);
+  amdf_windows_xdna_kernel_execution_retire_command(execution, 0);
+  amdf_native_event_t event = {};
+  event.type = AMDF_NATIVE_EVENT_TYPE_WIN32_EVENT;
+  event.payload.native_handle = event_;
+  for (uint32_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(amdf_windows_xdna_kernel_execution_request_notification(
+                  execution, submission, &event),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(WaitForSingleObject(event_, 0), 0u);
+    EXPECT_EQ(WaitForSingleObject(event_, 0), WAIT_TIMEOUT);
+  }
+  EXPECT_EQ(native_.notification.count, 1u);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_terminal_status(execution),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_release_queue(execution),
+            AMDF_STATUS_OK);
+}
+
+TEST_P(WindowsXdnaKernelExecutionTest,
+       NotificationFailurePreservesAcceptedCommand) {
+  ASSERT_NO_FATAL_FAILURE(CreateNotificationEvent());
+  amdf_xdna_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
+                                                 &memory_, &result),
+            AMDF_STATUS_OK);
+  auto* execution = context_.kernel_execution;
+  ASSERT_EQ(amdf_windows_xdna_kernel_execution_acquire_queue(execution, 1),
+            AMDF_STATUS_OK);
+  native_.deferred_opcode = 3;
+  uint64_t submission = 0;
+  ASSERT_EQ(amdf_windows_xdna_kernel_execution_submit(
+                execution, 0, result.device_address, 64, &submission),
+            AMDF_STATUS_OK);
+  native_.notification.result = static_cast<NTSTATUS>(0xC0000017u);
+  amdf_native_event_t event = {};
+  event.type = AMDF_NATIVE_EVENT_TYPE_WIN32_EVENT;
+  event.payload.native_handle = event_;
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_request_notification(
+                execution, submission, &event),
+            amdf_kmt_make_status(native_.notification.result));
+  EXPECT_EQ(native_.commands.size(), 1u);
+  EXPECT_EQ(native_.pending_submission, submission);
+  EXPECT_LT(amdf_windows_xdna_kernel_execution_query_progress(execution),
+            submission);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_terminal_status(execution),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(WaitForSingleObject(event_, 0), WAIT_TIMEOUT);
+  native_.progress = submission;
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(
+      amdf_windows_xdna_kernel_execution_wait(execution, submission, &deadline),
+      AMDF_STATUS_OK);
+  amdf_windows_xdna_kernel_execution_retire_command(execution, 0);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_release_queue(execution),
+            AMDF_STATUS_OK);
+}
 
 TEST_P(WindowsXdnaKernelExecutionTest,
        OwnsOneApertureAndSubmitsImmutableRanges) {

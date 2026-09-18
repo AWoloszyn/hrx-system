@@ -13,6 +13,7 @@
 #include "libamdf/src/atomics.h"
 #include "libamdf/src/platform/linux/file.h"
 #include "libamdf/src/platform/linux/host_cache.h"
+#include "libamdf/src/platform/native_event.h"
 #include "libamdf/src/platform/wait.h"
 #include "libamdf/src/xdna/umd/drm/context.h"
 #include "libamdf/src/xdna/umd/drm/elf_packet.h"
@@ -31,6 +32,8 @@ struct amdf_xdna_umd_kernel_queue_t {
   // Precreated binary object retaining the first native fence, or zero when
   // this context has already retired its first command before this lease.
   uint32_t first_syncobj;
+  // Native notification representations qualified before queue publication.
+  amdf_native_event_types_t notification_types;
   // Greatest encoded native point confirmed by a native wait or query.
   amdf_atomic_uint64_t progress;
   // Nonwaiting claim around the one-time capture of native point zero.
@@ -38,6 +41,29 @@ struct amdf_xdna_umd_kernel_queue_t {
   // Native command/result storage reused only after checked retirement.
   amdf_linux_xdna_buffer_t packets[];
 };
+
+// DRM has no separate EVENTFD capability bit. Handle zero cannot name a
+// syncobj, so the supported ioctl rejects it before taking an event reference
+// or allocating a callback. Missing ioctl/feature support remains explicit.
+static amdf_status_t amdf_linux_xdna_probe_notification_types(
+    int descriptor, amdf_native_event_types_t* out_types) {
+  struct drm_syncobj_eventfd request = {.fd = -1};
+  if (ioctl(descriptor, DRM_IOCTL_SYNCOBJ_EVENTFD, &request) == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  switch (errno) {
+    case ENOENT:
+      *out_types = AMDF_NATIVE_EVENT_TYPE_BIT_EVENTFD;
+      return AMDF_STATUS_OK;
+    case EINVAL:
+    case ENOTTY:
+    case EOPNOTSUPP:
+      *out_types = 0;
+      return AMDF_STATUS_OK;
+    default:
+      return amdf_linux_error(errno);
+  }
+}
 
 static void amdf_linux_xdna_kernel_queue_record_progress(
     amdf_xdna_umd_kernel_queue_t* queue, uint64_t completed) {
@@ -222,6 +248,10 @@ amdf_status_t amdf_xdna_umd_kernel_queue_create(
   amdf_atomic_uint32_initialize(&queue->first_point,
                                 AMDF_LINUX_XDNA_FIRST_POINT_UNCAPTURED);
   status = amdf_atomic_uint64_load_acquire(&context->terminal_status);
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_xdna_probe_notification_types(
+        device->descriptor, &queue->notification_types);
+  }
   if (amdf_status_is_ok(status) && context->last_native_sequence == 0) {
     struct drm_syncobj_create create = {0};
     if (ioctl(device->descriptor, DRM_IOCTL_SYNCOBJ_CREATE, &create) != 0) {
@@ -278,6 +308,46 @@ amdf_status_t amdf_xdna_umd_kernel_queue_submit(
                                  queue->context->device->cache_line_size);
   return amdf_linux_xdna_command_submit(queue->context, packet,
                                         out_native_submission);
+}
+
+amdf_native_event_types_t amdf_xdna_umd_kernel_queue_query_notification_types(
+    const amdf_xdna_umd_kernel_queue_t* queue) {
+  return queue->notification_types;
+}
+
+amdf_status_t amdf_xdna_umd_kernel_queue_request_notification(
+    amdf_xdna_umd_kernel_queue_t* queue, uint64_t native_submission,
+    const amdf_native_event_t* event) {
+  if (amdf_atomic_uint64_load_acquire(&queue->progress) >= native_submission) {
+    return amdf_platform_native_event_signal(event);
+  }
+  if (native_submission == 1) {
+    const amdf_status_t status =
+        amdf_linux_xdna_kernel_queue_capture_first_point(queue);
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+      // A nonwaiting request must not leave its caller asleep without an arm
+      // when the first-fence snapshot belongs to another thread.
+      return amdf_platform_native_event_signal(event);
+    }
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
+    // Capture can observe another caller's progress instead of transferring
+    // a fence. In that case the still-empty binary snapshot is not a waiter.
+    if (amdf_atomic_uint64_load_acquire(&queue->progress) >= 1) {
+      return amdf_platform_native_event_signal(event);
+    }
+  }
+  struct drm_syncobj_eventfd request = {
+      .handle = native_submission == 1 ? queue->first_syncobj
+                                       : queue->context->completion_syncobj,
+      .point = native_submission - 1,
+      .fd = (int)event->payload.file_descriptor,
+  };
+  return ioctl(queue->context->device->descriptor, DRM_IOCTL_SYNCOBJ_EVENTFD,
+               &request) == 0
+             ? AMDF_STATUS_OK
+             : amdf_linux_error(errno);
 }
 
 uint64_t amdf_xdna_umd_kernel_queue_query_progress(
