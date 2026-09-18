@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "loom/analysis/loop_domain.h"
 #include "loom/codegen/low/lower/context.h"
 #include "loom/codegen/low/lower/rule_emit.h"
 #include "loom/codegen/low/lower/source_plan.h"
@@ -16,7 +17,6 @@
 #include "loom/ir/module.h"
 #include "loom/ops/cfg/ops.h"
 #include "loom/ops/func/ops.h"
-#include "loom/ops/index/loop_count.h"
 #include "loom/ops/index/ops.h"
 #include "loom/util/cfg_graph.h"
 #include "loom/util/cfg_loop_nest.h"
@@ -584,7 +584,8 @@ static bool loom_low_lower_report_add_step(
 
 static bool loom_low_lower_report_header_upper_bound(
     const loom_low_lower_context_t* context, const loom_op_t* cond_br_op,
-    loom_value_id_t iv_id, int64_t* out_upper_bound, uint8_t* out_predicate) {
+    loom_value_id_t iv_id, int64_t* out_upper_bound,
+    loom_loop_bound_flags_t* out_bound_flags) {
   if (cond_br_op == NULL || !loom_cfg_cond_br_isa(cond_br_op)) {
     return false;
   }
@@ -601,14 +602,21 @@ static bool loom_low_lower_report_header_upper_bound(
   if (compare_op == NULL || !loom_index_cmp_isa(compare_op)) {
     return false;
   }
-  const bool exclusive_upper =
-      loom_index_cmp_predicate(compare_op) == LOOM_INDEX_CMP_PREDICATE_SLT ||
-      loom_index_cmp_predicate(compare_op) == LOOM_INDEX_CMP_PREDICATE_ULT;
-  const bool inclusive_upper =
-      loom_index_cmp_predicate(compare_op) == LOOM_INDEX_CMP_PREDICATE_SLE ||
-      loom_index_cmp_predicate(compare_op) == LOOM_INDEX_CMP_PREDICATE_ULE;
-  if (!exclusive_upper && !inclusive_upper) {
-    return false;
+  switch (loom_index_cmp_predicate(compare_op)) {
+    case LOOM_INDEX_CMP_PREDICATE_SLT:
+      *out_bound_flags = LOOM_LOOP_BOUND_SIGNED;
+      break;
+    case LOOM_INDEX_CMP_PREDICATE_SLE:
+      *out_bound_flags = LOOM_LOOP_BOUND_SIGNED | LOOM_LOOP_BOUND_INCLUSIVE;
+      break;
+    case LOOM_INDEX_CMP_PREDICATE_ULT:
+      *out_bound_flags = LOOM_LOOP_BOUND_NONE;
+      break;
+    case LOOM_INDEX_CMP_PREDICATE_ULE:
+      *out_bound_flags = LOOM_LOOP_BOUND_INCLUSIVE;
+      break;
+    default:
+      return false;
   }
   if (loom_index_cmp_lhs(compare_op) != iv_id) {
     return false;
@@ -617,7 +625,6 @@ static bool loom_low_lower_report_header_upper_bound(
           context, loom_index_cmp_rhs(compare_op), out_upper_bound)) {
     return false;
   }
-  *out_predicate = loom_index_cmp_predicate(compare_op);
   return true;
 }
 
@@ -671,13 +678,13 @@ static bool loom_low_lower_report_try_counted_cfg_loop(
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
   int64_t step = 0;
-  uint8_t predicate = 0;
+  loom_loop_bound_flags_t bound_flags = LOOM_LOOP_BOUND_NONE;
   if (!loom_low_lower_report_value_exact_i64(context, initial_arg,
                                              &lower_bound) ||
       !loom_low_lower_report_add_step(context, body_backedge_arg, iv_id,
                                       &step) ||
       !loom_low_lower_report_header_upper_bound(context, header->last_op, iv_id,
-                                                &upper_bound, &predicate)) {
+                                                &upper_bound, &bound_flags)) {
     return false;
   }
   const loom_target_snapshot_t* target =
@@ -687,9 +694,9 @@ static bool loom_low_lower_report_try_counted_cfg_loop(
   const uint8_t bitwidth = scalar_type == LOOM_SCALAR_TYPE_INDEX
                                ? target->index_bitwidth
                                : target->offset_bitwidth;
-  return loom_index_loop_trip_count(predicate, bitwidth, (uint64_t)lower_bound,
-                                    (uint64_t)upper_bound, (uint64_t)step,
-                                    out_trip_count);
+  return loom_loop_domain_trip_count(
+      bound_flags, bitwidth, (uint64_t)lower_bound, (uint64_t)upper_bound,
+      (uint64_t)step, out_trip_count);
 }
 
 static iree_status_t loom_low_lower_report_calculate_source_block_counts(

@@ -146,6 +146,7 @@ loom_cc_library(
     iree::base
     iree::base::internal
     loom::analysis::liveness
+    loom::analysis::loop_domain
     loom::codegen::low::descriptors
     loom::codegen::low::diagnostics
     loom::codegen::low::frame
@@ -153,7 +154,6 @@ loom_cc_library(
     loom::codegen::low::lower
     loom::codegen::low::packet
     loom::ir
-    loom::ops::index
     loom::ops::low
     loom::target::registers
     loom::util::cfg_graph

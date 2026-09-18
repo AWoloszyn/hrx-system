@@ -8,14 +8,13 @@
 
 #include <string.h>
 
+#include "loom/analysis/loop_domain.h"
 #include "loom/codegen/low/diagnostics.h"
 #include "loom/codegen/low/function.h"
 #include "loom/codegen/low/packet.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
-#include "loom/ops/index/loop_count.h"
-#include "loom/ops/index/ops.h"
 #include "loom/ops/low/kernel.h"
 #include "loom/ops/low/ops.h"
 #include "loom/target/registers.h"
@@ -600,7 +599,7 @@ static bool loom_target_compile_report_low_header_upper_bound(
     const loom_low_schedule_table_t* schedule,
     const loom_value_fact_table_t* fact_table, const loom_module_t* module,
     const loom_op_t* cond_br_op, loom_value_id_t iv_id,
-    int64_t* out_upper_bound, uint8_t* out_predicate) {
+    int64_t* out_upper_bound, loom_loop_bound_flags_t* out_bound_flags) {
   const loom_value_id_t condition = loom_low_cond_br_condition(cond_br_op);
   if (condition >= module->values.count) {
     return false;
@@ -616,13 +615,13 @@ static bool loom_target_compile_report_low_header_upper_bound(
   const iree_string_view_t tag =
       loom_target_compile_report_low_op_semantic_tag(schedule, compare_op);
   if (iree_string_view_equal(tag, IREE_SV("integer.compare.slt.i32"))) {
-    *out_predicate = LOOM_INDEX_CMP_PREDICATE_SLT;
+    *out_bound_flags = LOOM_LOOP_BOUND_SIGNED;
   } else if (iree_string_view_equal(tag, IREE_SV("integer.compare.ult.i32"))) {
-    *out_predicate = LOOM_INDEX_CMP_PREDICATE_ULT;
+    *out_bound_flags = LOOM_LOOP_BOUND_NONE;
   } else if (iree_string_view_equal(tag, IREE_SV("integer.compare.sle.i32"))) {
-    *out_predicate = LOOM_INDEX_CMP_PREDICATE_SLE;
+    *out_bound_flags = LOOM_LOOP_BOUND_SIGNED | LOOM_LOOP_BOUND_INCLUSIVE;
   } else if (iree_string_view_equal(tag, IREE_SV("integer.compare.ule.i32"))) {
-    *out_predicate = LOOM_INDEX_CMP_PREDICATE_ULE;
+    *out_bound_flags = LOOM_LOOP_BOUND_INCLUSIVE;
   } else {
     return false;
   }
@@ -716,19 +715,19 @@ static bool loom_target_compile_report_low_try_counted_loop(
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
   int64_t step = 0;
-  uint8_t predicate = 0;
+  loom_loop_bound_flags_t bound_flags = LOOM_LOOP_BOUND_NONE;
   if (!loom_target_compile_report_value_exact_i64(fact_table, initial_arg,
                                                   &lower_bound) ||
       !loom_target_compile_report_low_add_step(
           schedule, fact_table, module, body_backedge_arg, iv_id, &step) ||
       !loom_target_compile_report_low_header_upper_bound(
           schedule, fact_table, module, header->last_op, iv_id, &upper_bound,
-          &predicate)) {
+          &bound_flags)) {
     return false;
   }
-  return loom_index_loop_trip_count(
-      predicate, /*bitwidth=*/32, (uint64_t)lower_bound, (uint64_t)upper_bound,
-      (uint64_t)step, out_trip_count);
+  return loom_loop_domain_trip_count(
+      bound_flags, /*bitwidth=*/32, (uint64_t)lower_bound,
+      (uint64_t)upper_bound, (uint64_t)step, out_trip_count);
 }
 
 static iree_status_t loom_target_compile_report_low_block_multipliers(
