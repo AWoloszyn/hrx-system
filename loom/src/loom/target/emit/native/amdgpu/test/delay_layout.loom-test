@@ -365,3 +365,48 @@ kernel_layout:
         - 1
       .args: []
 .end_amdgpu_metadata
+
+// ====
+
+// A structural consumer keeps its hint before its own VGPR bank transition.
+// RUN: emit amdgpu-assembly @structural_consumer strategy=source fixed=%copy:physical_register:512:1
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @structural_consumer(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.vgpr>) asm {
+  %first = v_add_f32 %a, %b
+  %scalar = v_readfirstlane_b32 %first
+  %second = v_mul_f32 %a, %b
+  %copy = copy %second : reg<amdgpu.vgpr> -> reg<amdgpu.vgpr>
+  return %scalar, %copy
+}
+
+// ----
+  v_add_f32 v2, v0, v1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_readfirstlane_b32 s0, v2
+  v_mul_f32 v0, v0, v1
+  s_delay_alu instid0(VALU_DEP_1)
+  s_set_vgpr_msb 128
+  v_mov_b32 v0, v0
+  s_set_vgpr_msb 32768
+  s_endpgm
+
+// ====
+
+// TRANS32 and VALU selectors retain their distinct consumers in a paired hint.
+// RUN: emit amdgpu-assembly @trans_consumer strategy=source
+amdgpu.target<gfx1200> @target {subgroup_size = 32}
+
+low.func.def target<amdgpu.rdna4.core>(@target) @trans_consumer(%input: reg<amdgpu.vgpr>, %increment: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %first = v_exp_f32 %input
+  %scalar = v_readfirstlane_b32 %first
+  %sum = s_add_u32 %scalar, %increment
+  return %sum
+}
+
+// ----
+  v_exp_f32 v0, v0
+  s_delay_alu instid0(TRANS32_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
+  v_readfirstlane_b32 s1, v0
+  s_add_u32 s0, s1, s0
+  s_endpgm

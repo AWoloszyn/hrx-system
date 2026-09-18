@@ -94,10 +94,9 @@ low.func.def target<amdgpu.rdna3.core>(@target) @loop_carried_lds_fragments_reta
   s_waitcnt vmcnt(63) lgkmcnt(4)
   v_wmma_f32_16x16x16_f16 v[0:7], v[24:31], v[16:23], v[0:7]
   s_waitcnt vmcnt(63) lgkmcnt(2)
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(SKIP_1) | instid1(VALU_DEP_1)
   v_wmma_f32_16x16x16_f16 v[0:7], v[32:39], v[16:23], v[0:7]
   s_waitcnt vmcnt(63) lgkmcnt(0)
-  s_delay_alu instid0(VALU_DEP_1)
   v_wmma_f32_16x16x16_f16 v[0:7], v[40:47], v[16:23], v[0:7]
   ds_read_b128 v[24:27], v8 offset:96
   ds_read_b128 v[28:31], v8 offset:112
