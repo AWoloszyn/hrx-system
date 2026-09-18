@@ -72,6 +72,7 @@ kernel.def target(@device) @temporal_lane() {
   %allocation = buffer.alloca<private> align(4) %length : buffer
   %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
   %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
   %more = index.cmp ult, %counter, %limit : index
   cfg.cond_br %more, ^body, ^exit
 ^body:
@@ -174,6 +175,7 @@ kernel.def target(@device) @temporal_unknown() {
   %allocation = buffer.alloca<private> align(4) %length : buffer
   %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
   %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
   %more = index.cmp ult, %counter, %limit : index
   cfg.cond_br %more, ^body, ^exit
 ^body:
@@ -276,6 +278,7 @@ kernel.def target(@device) @temporal_subgroup() {
   %allocation = buffer.alloca<private> align(4) %length : buffer
   %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
   %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
   %more = index.cmp ult, %counter, %limit : index
   cfg.cond_br %more, ^body, ^exit
 ^body:
@@ -378,6 +381,7 @@ kernel.def target(@device) @temporal_workgroup() {
   %allocation = buffer.alloca<private> align(4) %length : buffer
   %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
   %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
   %more = index.cmp ult, %counter, %limit : index
   cfg.cond_br %more, ^body, ^exit
 ^body:
@@ -480,6 +484,7 @@ kernel.def target(@device) @temporal_cluster() {
   %allocation = buffer.alloca<private> align(4) %length : buffer
   %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
   %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
   %more = index.cmp ult, %counter, %limit : index
   cfg.cond_br %more, ^body, ^exit
 ^body:

@@ -581,8 +581,7 @@ static bool loom_expression_result_is_consumed(const loom_module_t* module,
 bool loom_expression_is_reusable(const loom_expression_cursor_t* cursor) {
   return cursor->op->result_count != 0 && cursor->op->region_count == 0 &&
          !loom_traits_has_side_effects(cursor->traits) &&
-         !iree_any_bit_set(cursor->traits, LOOM_TRAIT_UNIQUE_IDENTITY |
-                                               LOOM_TRAIT_CONVERGENT) &&
+         !loom_traits_has_unique_identity(cursor->traits) &&
          !loom_expression_op_transfers_operand_ownership(cursor->module,
                                                          cursor->op) &&
          !loom_expression_result_is_consumed(cursor->module, cursor->op);
