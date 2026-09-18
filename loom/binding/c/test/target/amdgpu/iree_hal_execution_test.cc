@@ -36,90 +36,92 @@ kernel.def @double_i32_at_byte_offset() {
 }
 )";
 
-constexpr char kWideScaledSourceText[] = R"(
-amdgpu.target<gfx9-4-generic> @gfx9_4
-amdgpu.target<gfx11-generic> @gfx11
-amdgpu.target<gfx12-generic> @gfx12
-amdgpu.target<gfx12-5-generic> @gfx12_5
+// Parsing resolves every Low representation contract before template selection.
+// Include providers only for compiled descriptor sets, with exact target
+// witnesses matching the live HAL profile. A generic-family contract need not
+// be compiled into a binary that supports only one physical processor.
+#define AMDGPU_SPILL_OFFSET_PROVIDER(symbol, processor, representation)        \
+  "amdgpu.target<" processor "> @" #symbol                                     \
+  "\n"                                                                         \
+  "low.func.def target<" representation ">(@" #symbol ") @" #symbol            \
+  "_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {\n"       \
+  "  %storage = storage {byte_alignment = 8, byte_length = 8} : "              \
+  "low.storage<private>\n"                                                     \
+  "  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>\n" \
+  "  %reloaded = low.reload %storage : low.storage<private> -> "               \
+  "reg<amdgpu.vgpr x2>\n"                                                      \
+  "  return %reloaded\n"                                                       \
+  "}\n"                                                                        \
+  "template.def<@spill_offset> target(@" #symbol ") @" #symbol                 \
+  "_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {\n"              \
+  "  %reloaded = low.invoke @" #symbol                                         \
+  "_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)\n"                      \
+  "  template.return %reloaded : vector<2xi32>\n"                              \
+  "}\n"
 
-template.decl @spill_offset(%words: vector<2xi32>) -> (vector<2xi32>)
-
-low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4) @gfx9_4_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
-  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
-  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
-  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
-  return %reloaded
-}
-
-template.def<@spill_offset> target(@gfx9_4) @gfx9_4_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
-  %reloaded = low.invoke @gfx9_4_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
-  template.return %reloaded : vector<2xi32>
-}
-
-low.func.def target<amdgpu.gfx11.generic.core>(@gfx11) @gfx11_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
-  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
-  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
-  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
-  return %reloaded
-}
-
-template.def<@spill_offset> target(@gfx11) @gfx11_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
-  %reloaded = low.invoke @gfx11_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
-  template.return %reloaded : vector<2xi32>
-}
-
-low.func.def target<amdgpu.gfx12.generic.core>(@gfx12) @gfx12_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
-  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
-  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
-  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
-  return %reloaded
-}
-
-template.def<@spill_offset> target(@gfx12) @gfx12_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
-  %reloaded = low.invoke @gfx12_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
-  template.return %reloaded : vector<2xi32>
-}
-
-low.func.def target<amdgpu.gfx12_5.generic.core>(@gfx12_5) @gfx12_5_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
-  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
-  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
-  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
-  return %reloaded
-}
-
-template.def<@spill_offset> target(@gfx12_5) @gfx12_5_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
-  %reloaded = low.invoke @gfx12_5_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
-  template.return %reloaded : vector<2xi32>
-}
-
-low.func.def target<amdgpu.rdna4m.core> @gfx117x_spill(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
-  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
-  low.spill %value, %storage : reg<amdgpu.vgpr x2>, low.storage<private>
-  %reloaded = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x2>
-  return %reloaded
-}
-
-amdgpu.target<gfx1170> @gfx1170
-
-template.def<@spill_offset> target(@gfx1170) @gfx1170_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
-  %reloaded = low.invoke @gfx117x_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
-  template.return %reloaded : vector<2xi32>
-}
-
-amdgpu.target<gfx1171> @gfx1171
-
-template.def<@spill_offset> target(@gfx1171) @gfx1171_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
-  %reloaded = low.invoke @gfx117x_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
-  template.return %reloaded : vector<2xi32>
-}
-
-amdgpu.target<gfx1172> @gfx1172
-
-template.def<@spill_offset> target(@gfx1172) @gfx1172_spill_provider(%words: vector<2xi32>) -> (vector<2xi32>) {
-  %reloaded = low.invoke @gfx117x_spill(%words) : (vector<2xi32>) -> (vector<2xi32>)
-  template.return %reloaded : vector<2xi32>
-}
-
+// Keep these concatenated source literals aligned as a target table.
+// clang-format off
+constexpr char kWideScaledSourceText[] =
+    "template.decl @spill_offset(%words: vector<2xi32>) -> (vector<2xi32>)\n"
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_CDNA3_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx940, "gfx940",
+                                "amdgpu.cdna3.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx941, "gfx941",
+                                "amdgpu.cdna3.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx942, "gfx942",
+                                "amdgpu.cdna3.core")
+#endif
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_CDNA4_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx950, "gfx950",
+                                "amdgpu.cdna4.core")
+#endif
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_RDNA3_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1100, "gfx1100",
+                                "amdgpu.rdna3.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1101, "gfx1101",
+                                "amdgpu.rdna3.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1102, "gfx1102",
+                                "amdgpu.rdna3.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1103, "gfx1103",
+                                "amdgpu.rdna3.core")
+#endif
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_RDNA3_5_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1150, "gfx1150",
+                                "amdgpu.rdna3_5.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1151, "gfx1151",
+                                "amdgpu.rdna3_5.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1152, "gfx1152",
+                                "amdgpu.rdna3_5.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1153, "gfx1153",
+                                "amdgpu.rdna3_5.core")
+#endif
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4M_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1170, "gfx1170",
+                                "amdgpu.rdna4m.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1171, "gfx1171",
+                                "amdgpu.rdna4m.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1172, "gfx1172",
+                                "amdgpu.rdna4m.core")
+#endif
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1200, "gfx1200",
+                                "amdgpu.rdna4.core")
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1201, "gfx1201",
+                                "amdgpu.rdna4.core")
+#endif
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX125X_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1250, "gfx1250",
+                                "amdgpu.rdna4.gfx125x.core")
+#endif
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX1250_A0_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1250_a0, "gfx1250-a0",
+                                "amdgpu.rdna4.gfx1250_a0.core")
+#endif
+#if defined(LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX1251_CORE)
+    AMDGPU_SPILL_OFFSET_PROVIDER(gfx1251, "gfx1251",
+                                "amdgpu.rdna4.gfx1251.core")
+#endif
+    R"(
 kernel.def @double_i32_at_scaled_offset() {
   %unit = index.constant 1 : index
   %lanes = index.constant 2 : index
@@ -149,6 +151,9 @@ kernel.def @double_i32_at_scaled_offset() {
   kernel.return
 }
 )";
+// clang-format on
+
+#undef AMDGPU_SPILL_OFFSET_PROVIDER
 
 loomc_status_t CreateAmdgpuTargetEnvironment(
     loomc_allocator_t host_allocator,

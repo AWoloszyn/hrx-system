@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
+load("//loom/build_tools/amdgpu:descriptor_sets.bzl", "loom_amdgpu_selected_descriptor_set_defines")
 load(
     "//loom/build_tools/bazel:build_defs.bzl",
     "loom_cc_test",
@@ -59,6 +60,7 @@ loom_cc_test(
 loom_cc_test(
     name = "iree_hal_execution_test",
     srcs = ["iree_hal_execution_test.cc"],
+    defines = loom_amdgpu_selected_descriptor_set_defines(),
     sanitizer_suppressions = rocm_suppressions,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
