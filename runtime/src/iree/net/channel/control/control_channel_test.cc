@@ -146,9 +146,14 @@ class TestEndpoint {
     endpoint->last_borrowed_span_pointers.clear();
     std::vector<uint8_t> message(params->generated_prefix.length);
     if (params->generated_prefix.length > 0) {
-      IREE_RETURN_IF_ERROR(params->generated_prefix.write(
+      iree_status_t status = params->generated_prefix.write(
           params->generated_prefix.user_data,
-          iree_make_byte_span(message.data(), message.size())));
+          iree_make_byte_span(message.data(), message.size()));
+      if (!iree_status_is_ok(status)) {
+        params->completion_callback.fn(params->completion_callback.user_data,
+                                       status, 0);
+        return iree_ok_status();
+      }
     }
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
       const iree_async_span_t span = params->data.values[i];

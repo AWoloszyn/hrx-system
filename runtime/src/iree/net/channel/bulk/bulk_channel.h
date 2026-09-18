@@ -186,8 +186,10 @@ IREE_API_EXPORT iree_status_t iree_net_bulk_channel_send_start(
 // |transfer_id| must be nonzero and |payload| must contain at least one byte.
 // The complete message may use the full 32-bit wire extent. Payload spans are
 // sent without a channel copy and remain caller-owned through completion.
-// Credit is consumed only after endpoint admission; transport rejection or
-// exhausted credit returns an error without invoking the completion callback.
+// Credit is consumed only after endpoint admission. If no credit remains, the
+// send is accepted and its terminal completion reports RESOURCE_EXHAUSTED with
+// zero transferred bytes. A synchronous non-OK return occurs before admission,
+// consumes no credit, and suppresses the completion callback.
 IREE_API_EXPORT iree_status_t iree_net_bulk_channel_send_data(
     iree_net_bulk_channel_t* channel, uint64_t transfer_id, uint64_t offset,
     iree_async_span_list_t payload,

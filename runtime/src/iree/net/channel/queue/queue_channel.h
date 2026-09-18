@@ -129,11 +129,11 @@ typedef struct iree_net_queue_message_builder_t {
 
 // Builds transient queue message data after endpoint send admission.
 //
-// Returning a non-OK status rejects the send and suppresses its completion
-// callback. Any application state created by the callback must therefore be
-// unwound or made terminal before returning an error. The callback runs
-// synchronously at most once before the public send function returns and
-// without transport locks held.
+// Returning a non-OK status completes the accepted send with that status and
+// zero transferred bytes. Any application state transferred by the builder
+// remains owned until that terminal completion. The callback runs synchronously
+// at most once before the public send function returns and without transport
+// locks held.
 typedef iree_status_t(IREE_API_PTR* iree_net_queue_message_build_fn_t)(
     void* user_data, const iree_net_queue_message_builder_t* builder);
 

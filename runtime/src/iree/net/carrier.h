@@ -118,8 +118,9 @@ typedef struct iree_net_send_completion_callback_t {
 // IREE_NET_SEND_PREFIX_ALIGNMENT alignment. Its storage may be consumed
 // directly by the transport, such as a shared-memory ring entry or registered
 // network buffer. The writer must initialize every byte and must not retain
-// |target| after returning. A non-OK return rejects the send and suppresses its
-// completion callback.
+// |target| after returning. Invocation means the send has been accepted. A
+// non-OK return becomes its terminal completion status with zero transferred
+// bytes; it is not returned synchronously from the send call.
 typedef iree_status_t(IREE_API_PTR* iree_net_send_prefix_write_fn_t)(
     void* user_data, iree_byte_span_t target);
 
@@ -598,11 +599,14 @@ static inline iree_net_carrier_send_budget_t iree_net_carrier_query_send_budget(
 // must contain at least one byte.
 //
 // The prefix writer may be invoked synchronously at most once before this call
-// returns. The carrier can reject the send before invocation if transport
-// storage is unavailable. Once invoked it receives transport-owned storage and
-// may therefore serialize directly into an SHM ring, registered RDMA staging
-// region, or TCP send buffer without caller-side staging. A writer failure
-// rejects the send and suppresses the completion callback.
+// returns. Validation and unavailable transport capacity can reject the send
+// before invocation. Once invoked it receives transport-owned storage and may
+// therefore serialize directly into an SHM ring, registered RDMA staging
+// region, or TCP send buffer without caller-side staging. Invocation is the
+// observable acceptance point: writer and pre-publication failures complete
+// asynchronously with zero transferred bytes instead of being returned from
+// this call. A failure after transport publication reports any progress through
+// the ordinary completion callback.
 //
 // The data buffers referenced by |params->data| must remain valid until the
 // completion callback fires. This is the standard async I/O contract — the
@@ -623,8 +627,8 @@ static inline iree_net_carrier_send_budget_t iree_net_carrier_query_send_budget(
 // list, OUT_OF_RANGE when the caller span count exceeds the carrier limit or
 // the total byte count overflows, and the stored terminal status after carrier
 // failure. Concrete implementations report lifecycle precondition and
-// synchronous admission failures. A non-OK return means the callback will not
-// fire.
+// synchronous admission failures. A non-OK return means the writer was not
+// invoked, no capacity remains owned, and the callback will not fire.
 static inline iree_status_t iree_net_carrier_send(
     iree_net_carrier_t* carrier, const iree_net_send_params_t* params) {
   if (!params || !params->completion_callback.fn) {

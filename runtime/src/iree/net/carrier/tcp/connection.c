@@ -85,6 +85,11 @@ typedef struct iree_net_tcp_send_state_t {
   // User completion invoked after connection state is released.
   iree_net_send_completion_callback_t completion_callback;
 
+  // Dispatches a locally terminated send on the connection proactor.
+  iree_async_nop_operation_t local_completion_operation;
+
+  // Owned status transferred through |local_completion_operation|.
+  iree_status_t local_completion_status;
 } iree_net_tcp_send_state_t;
 
 typedef struct iree_net_tcp_frame_prefix_t {
@@ -345,6 +350,7 @@ static iree_net_tcp_send_state_t* iree_net_tcp_acquire_send_state_locked(
 static void iree_net_tcp_release_send_state_locked(
     iree_net_tcp_connection_t* connection,
     iree_net_tcp_send_state_t* send_state) {
+  IREE_ASSERT(iree_status_is_ok(send_state->local_completion_status));
   send_state->endpoint = NULL;
   send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_FREE;
   send_state->payload_length = 0;
@@ -597,6 +603,19 @@ static void iree_net_tcp_endpoint_send_complete(
   iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
 }
 
+static void iree_net_tcp_endpoint_local_send_complete(
+    void* user_data, iree_async_operation_t* operation, iree_status_t status,
+    iree_async_completion_flags_t flags) {
+  (void)operation;
+  IREE_ASSERT(!iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE));
+  iree_net_tcp_send_state_t* send_state = (iree_net_tcp_send_state_t*)user_data;
+  iree_status_t completion_status = send_state->local_completion_status;
+  send_state->local_completion_status = iree_ok_status();
+  completion_status = iree_status_join(completion_status, status);
+  iree_net_tcp_endpoint_send_complete(send_state, completion_status,
+                                      /*wire_bytes_transferred=*/0);
+}
+
 static void iree_net_tcp_endpoint_set_callbacks(
     void* self, iree_net_message_endpoint_callbacks_t callbacks) {
   iree_net_tcp_endpoint_t* endpoint = (iree_net_tcp_endpoint_t*)self;
@@ -795,6 +814,29 @@ static void iree_net_tcp_endpoint_reject_send_state(
   iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
 }
 
+static iree_status_t iree_net_tcp_endpoint_schedule_local_send_completion(
+    iree_net_tcp_send_state_t* send_state, iree_status_t status) {
+  IREE_ASSERT(!iree_status_is_ok(status));
+  iree_net_tcp_connection_t* connection = send_state->endpoint->connection;
+  send_state->local_completion_status = status;
+  iree_async_operation_zero(&send_state->local_completion_operation.base,
+                            sizeof(send_state->local_completion_operation));
+  iree_async_operation_initialize(
+      &send_state->local_completion_operation.base,
+      IREE_ASYNC_OPERATION_TYPE_NOP, IREE_ASYNC_OPERATION_FLAG_NONE,
+      iree_net_tcp_endpoint_local_send_complete, send_state);
+  iree_status_t submit_status = iree_async_proactor_submit_one(
+      connection->proactor, &send_state->local_completion_operation.base);
+  if (iree_status_is_ok(submit_status)) {
+    return iree_ok_status();
+  }
+
+  status = send_state->local_completion_status;
+  send_state->local_completion_status = iree_ok_status();
+  iree_net_tcp_endpoint_reject_send_state(send_state);
+  return iree_status_join(status, submit_status);
+}
+
 static iree_status_t iree_net_tcp_endpoint_send(
     void* self, const iree_net_message_endpoint_send_params_t* params) {
   iree_net_tcp_endpoint_t* endpoint = (iree_net_tcp_endpoint_t*)self;
@@ -834,9 +876,10 @@ static iree_status_t iree_net_tcp_endpoint_send(
       iree_net_message_endpoint_send(connection->wire_endpoint, &wire_params);
 
   if (!iree_status_is_ok(status)) {
-    iree_net_tcp_endpoint_reject_send_state(send_state);
+    return iree_net_tcp_endpoint_schedule_local_send_completion(send_state,
+                                                                status);
   }
-  return status;
+  return iree_ok_status();
 }
 
 static iree_net_carrier_send_budget_t iree_net_tcp_endpoint_query_send_budget(
@@ -1242,6 +1285,7 @@ iree_status_t iree_net_tcp_connection_create(
   for (uint32_t i = 0; i < connection->send_state_count; ++i) {
     iree_net_tcp_send_state_t* send_state = &connection->send_states[i];
     send_state->index = i;
+    send_state->local_completion_status = iree_ok_status();
     send_state->next_free =
         i + 1 < connection->send_state_count ? i + 1 : IREE_NET_TCP_INDEX_NONE;
   }

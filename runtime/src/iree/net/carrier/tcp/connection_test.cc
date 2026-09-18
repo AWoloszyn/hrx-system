@@ -650,7 +650,8 @@ TEST_F(TcpConnectionTest, GeneratedPrefixSlabAvoidsSendTimeAllocation) {
             outstanding_count_before);
 }
 
-TEST_F(TcpConnectionTest, GeneratedPrefixOverflowRestoresFailedAdmission) {
+TEST_F(TcpConnectionTest,
+       GeneratedPrefixOverflowCompletesAcceptedEndpointSend) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
   options.carrier_options.generated_prefix_capacity = 32;
@@ -673,18 +674,31 @@ TEST_F(TcpConnectionTest, GeneratedPrefixOverflowRestoresFailedAdmission) {
   const iree_host_size_t outstanding_count_before =
       blocking_allocator_.OutstandingAllocationCount();
   blocking_allocator_.FailNextAllocation();
-  SendResult rejected_result;
-  rejected_result.is_polling = &is_polling_;
+  SendResult failed_result;
+  failed_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(
+      SendMessage(client_endpoint, iree_async_span_list_empty(), &failed_result,
+                  iree_make_const_byte_span(prefix.data(), prefix.size())));
+  EXPECT_EQ(failed_result.callback_count, 0);
+  EXPECT_EQ(iree_net_message_endpoint_query_send_budget(client_endpoint).slots,
+            0u);
+  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(),
+            outstanding_count_before);
+
+  SendResult blocked_result;
+  blocked_result.is_polling = &is_polling_;
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_RESOURCE_EXHAUSTED,
       SendMessage(client_endpoint, iree_async_span_list_empty(),
-                  &rejected_result,
+                  &blocked_result,
                   iree_make_const_byte_span(prefix.data(), prefix.size())));
-  EXPECT_EQ(rejected_result.callback_count, 0);
+  EXPECT_EQ(blocked_result.callback_count, 0);
+
+  PollUntil([&] { return failed_result.callback_count == 1; });
+  EXPECT_EQ(failed_result.status_code, IREE_STATUS_RESOURCE_EXHAUSTED);
+  EXPECT_EQ(failed_result.bytes_transferred, 0u);
   EXPECT_EQ(iree_net_message_endpoint_query_send_budget(client_endpoint).slots,
             1u);
-  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(),
-            outstanding_count_before);
 
   SendResult send_result;
   send_result.is_polling = &is_polling_;
@@ -933,7 +947,7 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
   EXPECT_EQ(callback_order, (std::vector<int>{1, 2}));
 }
 
-TEST_F(TcpConnectionTest, GeneratedPrefixFailureRestoresAdmission) {
+TEST_F(TcpConnectionTest, GeneratedPrefixFailureCompletesNestedOneSlotSend) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
   options.carrier_options.max_send_operations = 1;
@@ -946,26 +960,38 @@ TEST_F(TcpConnectionTest, GeneratedPrefixFailureRestoresAdmission) {
   MessageResult* server_messages = CreateMessageResult();
   ActivateEndpoint(server_endpoint, server_messages);
 
-  SendResult rejected_result;
-  rejected_result.is_polling = &is_polling_;
+  SendResult failed_result;
+  failed_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_endpoint, iree_async_span_list_empty(),
+                             &failed_result,
+                             iree_make_const_byte_span(nullptr, 32)));
+  EXPECT_EQ(failed_result.callback_count, 0);
+  EXPECT_EQ(iree_net_message_endpoint_query_send_budget(client_endpoint).slots,
+            0u);
+
+  constexpr char kPayload[] = "accepted";
+  SendResult retry_result;
+  retry_result.is_polling = &is_polling_;
   IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      SendMessage(client_endpoint, iree_async_span_list_empty(),
-                  &rejected_result, iree_make_const_byte_span(nullptr, 32)));
-  EXPECT_EQ(rejected_result.callback_count, 0);
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      SendMessage(client_endpoint, iree_async_span_list_empty(), &retry_result,
+                  iree_make_const_byte_span(kPayload, sizeof(kPayload) - 1)));
+  EXPECT_EQ(retry_result.callback_count, 0);
+
+  PollUntil([&] { return failed_result.callback_count == 1; });
+  EXPECT_EQ(failed_result.status_code, IREE_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(failed_result.bytes_transferred, 0u);
   EXPECT_EQ(iree_net_message_endpoint_query_send_budget(client_endpoint).slots,
             1u);
 
-  constexpr char kPayload[] = "accepted";
-  SendResult accepted_result;
-  accepted_result.is_polling = &is_polling_;
-  IREE_ASSERT_OK(SendMessage(
-      client_endpoint, iree_async_span_list_empty(), &accepted_result,
-      iree_make_const_byte_span(kPayload, sizeof(kPayload) - 1)));
+  IREE_ASSERT_OK(
+      SendMessage(client_endpoint, iree_async_span_list_empty(), &retry_result,
+                  iree_make_const_byte_span(kPayload, sizeof(kPayload) - 1)));
   PollUntil([&] {
-    return accepted_result.callback_count == 1 &&
+    return retry_result.callback_count == 1 &&
            server_messages->messages.size() == 1;
   });
+  EXPECT_EQ(retry_result.status_code, IREE_STATUS_OK);
   EXPECT_EQ(server_messages->messages[0], kPayload);
 }
 
@@ -1126,7 +1152,7 @@ TEST_F(TcpConnectionTest, SendReturnsDeferredMessageFailureBeforePrefixWrite) {
   EXPECT_EQ(rejected_result.callback_count, 0);
 }
 
-TEST_F(TcpConnectionTest, InvalidScatterOverflowRestoresAdmission) {
+TEST_F(TcpConnectionTest, InvalidScatterCompletesAcceptedEndpointSend) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
   options.carrier_options.max_send_operations = 1;
@@ -1143,12 +1169,14 @@ TEST_F(TcpConnectionTest, InvalidScatterOverflowRestoresAdmission) {
   spans.back() = iree_async_span_from_ptr(nullptr, 1);
   SendResult send_result;
   send_result.is_polling = &is_polling_;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      SendMessage(endpoint,
-                  iree_async_span_list_make(spans.data(), spans.size()),
-                  &send_result));
+  IREE_ASSERT_OK(SendMessage(
+      endpoint, iree_async_span_list_make(spans.data(), spans.size()),
+      &send_result));
   EXPECT_EQ(send_result.callback_count, 0);
+  EXPECT_EQ(iree_net_message_endpoint_query_send_budget(endpoint).slots, 0u);
+  PollUntil([&] { return send_result.callback_count == 1; });
+  EXPECT_EQ(send_result.status_code, IREE_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(send_result.bytes_transferred, 0u);
   EXPECT_EQ(iree_net_message_endpoint_query_send_budget(endpoint).slots, 1u);
 }
 

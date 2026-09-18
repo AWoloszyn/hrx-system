@@ -69,7 +69,12 @@ iree_runtime_cc_test(
         "//runtime/src/iree/net:carrier",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
-    ],
+    ] + select({
+        "@platforms//os:android": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:linux": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:macos": ["//runtime/src/iree/async/platform/posix"],
+        "//conditions:default": [],
+    }),
 )
 
 iree_runtime_cc_test(

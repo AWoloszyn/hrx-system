@@ -143,9 +143,14 @@ class TestEndpoint {
     std::vector<uint8_t> message(params->generated_prefix.length);
     if (params->generated_prefix.length > 0) {
       ++endpoint->prefix_write_count;
-      IREE_RETURN_IF_ERROR(params->generated_prefix.write(
+      iree_status_t status = params->generated_prefix.write(
           params->generated_prefix.user_data,
-          iree_make_byte_span(message.data(), message.size())));
+          iree_make_byte_span(message.data(), message.size()));
+      if (!iree_status_is_ok(status)) {
+        params->completion_callback.fn(params->completion_callback.user_data,
+                                       status, 0);
+        return iree_ok_status();
+      }
     }
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
       const iree_async_span_t span = params->data.values[i];
@@ -393,11 +398,12 @@ TEST_F(BulkChannelTest, CumulativeCreditIsMonotonic) {
   EXPECT_EQ(iree_net_bulk_channel_remote_credit_count(channel_), 0u);
 
   SendCompletion blocked_completion;
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
-                        iree_net_bulk_channel_send_data(
-                            channel_, 1, 2, iree_async_span_list_make(&span, 1),
-                            blocked_completion.callback()));
-  EXPECT_EQ(blocked_completion.count, 0);
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_data(
+      channel_, 1, 2, iree_async_span_list_make(&span, 1),
+      blocked_completion.callback()));
+  EXPECT_EQ(blocked_completion.count, 1);
+  EXPECT_EQ(blocked_completion.status_code, IREE_STATUS_RESOURCE_EXHAUSTED);
+  EXPECT_EQ(blocked_completion.bytes_transferred, 0u);
 
   DeliverRemoteCredit(5);
   EXPECT_EQ(callback_state_.credit_count, 2);
@@ -698,9 +704,14 @@ class ConcurrentEndpoint {
       void* self, const iree_net_message_endpoint_send_params_t* params) {
     (void)self;
     uint8_t header[IREE_NET_BULK_MESSAGE_HEADER_SIZE];
-    IREE_RETURN_IF_ERROR(params->generated_prefix.write(
+    iree_status_t status = params->generated_prefix.write(
         params->generated_prefix.user_data,
-        iree_make_byte_span(header, sizeof(header))));
+        iree_make_byte_span(header, sizeof(header)));
+    if (!iree_status_is_ok(status)) {
+      params->completion_callback.fn(params->completion_callback.user_data,
+                                     status, 0);
+      return iree_ok_status();
+    }
     iree_host_size_t total_length = params->generated_prefix.length;
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
       total_length += params->data.values[i].length;
@@ -729,17 +740,22 @@ const iree_net_message_endpoint_vtable_t ConcurrentEndpoint::vtable_ = {
 };
 
 struct ConcurrentCompletion {
-  std::atomic<int>* count = nullptr;
-  std::atomic<int>* error_count = nullptr;
+  std::atomic<int>* success_count = nullptr;
+  std::atomic<int>* resource_exhausted_count = nullptr;
+  std::atomic<int>* unexpected_count = nullptr;
 
   static void Callback(void* user_data, iree_status_t status,
                        iree_host_size_t bytes_transferred) {
     auto* self = static_cast<ConcurrentCompletion*>(user_data);
-    if (!iree_status_is_ok(status) ||
-        bytes_transferred != IREE_NET_BULK_MESSAGE_HEADER_SIZE + 1u) {
-      self->error_count->fetch_add(1, std::memory_order_relaxed);
+    const iree_status_code_t status_code = iree_status_code(status);
+    if (status_code == IREE_STATUS_OK &&
+        bytes_transferred == IREE_NET_BULK_MESSAGE_HEADER_SIZE + 1u) {
+      self->success_count->fetch_add(1, std::memory_order_relaxed);
+    } else if (status_code == IREE_STATUS_RESOURCE_EXHAUSTED &&
+               bytes_transferred == 0) {
+      self->resource_exhausted_count->fetch_add(1, std::memory_order_relaxed);
     } else {
-      self->count->fetch_add(1, std::memory_order_relaxed);
+      self->unexpected_count->fetch_add(1, std::memory_order_relaxed);
     }
     iree_status_free(status);
   }
@@ -752,7 +768,7 @@ struct ConcurrentCompletion {
   }
 };
 
-TEST(BulkChannelConcurrencyTest, PeerCreditAdmitsExactConcurrentDataCount) {
+TEST(BulkChannelConcurrencyTest, PeerCreditCompletesExactConcurrentDataCount) {
   ConcurrentEndpoint endpoint;
   CallbackState callbacks;
   iree_net_bulk_channel_t* channel = nullptr;
@@ -766,14 +782,15 @@ TEST(BulkChannelConcurrencyTest, PeerCreditAdmitsExactConcurrentDataCount) {
                 credit_message.data(), credit_message.size())),
             IREE_STATUS_OK);
 
-  std::atomic<int> success_count{0};
-  std::atomic<int> exhausted_count{0};
-  std::atomic<int> unexpected_count{0};
-  std::atomic<int> completion_count{0};
-  std::atomic<int> completion_error_count{0};
+  std::atomic<int> accepted_count{0};
+  std::atomic<int> unexpected_submit_count{0};
+  std::atomic<int> completion_success_count{0};
+  std::atomic<int> completion_resource_exhausted_count{0};
+  std::atomic<int> completion_unexpected_count{0};
   ConcurrentCompletion completion = {
-      /*.count=*/&completion_count,
-      /*.error_count=*/&completion_error_count,
+      /*.success_count=*/&completion_success_count,
+      /*.resource_exhausted_count=*/&completion_resource_exhausted_count,
+      /*.unexpected_count=*/&completion_unexpected_count,
   };
   std::vector<std::thread> threads;
   for (int thread_index = 0; thread_index < 8; ++thread_index) {
@@ -786,11 +803,9 @@ TEST(BulkChannelConcurrencyTest, PeerCreditAdmitsExactConcurrentDataCount) {
             iree_async_span_list_make(&span, 1), completion.callback());
         const iree_status_code_t status_code = iree_status_code(status);
         if (status_code == IREE_STATUS_OK) {
-          success_count.fetch_add(1, std::memory_order_relaxed);
-        } else if (status_code == IREE_STATUS_RESOURCE_EXHAUSTED) {
-          exhausted_count.fetch_add(1, std::memory_order_relaxed);
+          accepted_count.fetch_add(1, std::memory_order_relaxed);
         } else {
-          unexpected_count.fetch_add(1, std::memory_order_relaxed);
+          unexpected_submit_count.fetch_add(1, std::memory_order_relaxed);
         }
         iree_status_free(status);
       }
@@ -800,11 +815,12 @@ TEST(BulkChannelConcurrencyTest, PeerCreditAdmitsExactConcurrentDataCount) {
     thread.join();
   }
 
-  EXPECT_EQ(success_count.load(std::memory_order_relaxed), 512);
-  EXPECT_EQ(exhausted_count.load(std::memory_order_relaxed), 512);
-  EXPECT_EQ(unexpected_count.load(std::memory_order_relaxed), 0);
-  EXPECT_EQ(completion_count.load(std::memory_order_relaxed), 512);
-  EXPECT_EQ(completion_error_count.load(std::memory_order_relaxed), 0);
+  EXPECT_EQ(accepted_count.load(std::memory_order_relaxed), 1024);
+  EXPECT_EQ(unexpected_submit_count.load(std::memory_order_relaxed), 0);
+  EXPECT_EQ(completion_success_count.load(std::memory_order_relaxed), 512);
+  EXPECT_EQ(completion_resource_exhausted_count.load(std::memory_order_relaxed),
+            512);
+  EXPECT_EQ(completion_unexpected_count.load(std::memory_order_relaxed), 0);
   EXPECT_EQ(iree_net_bulk_channel_remote_credit_count(channel), 0u);
   iree_net_bulk_channel_free(channel);
 }

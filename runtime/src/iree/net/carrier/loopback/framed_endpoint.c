@@ -8,6 +8,7 @@
 
 #include <string.h>
 
+#include "iree/async/operations/scheduling.h"
 #include "iree/base/threading/mutex.h"
 #include "iree/net/framing_adapter.h"
 
@@ -49,11 +50,19 @@ typedef struct iree_net_loopback_send_state_t {
   // User completion invoked after this state is returned to the pool.
   iree_net_send_completion_callback_t completion_callback;
 
+  // Dispatches a locally terminated send on the endpoint proactor.
+  iree_async_nop_operation_t local_completion_operation;
+
+  // Owned status transferred through |local_completion_operation|.
+  iree_status_t local_completion_status;
 } iree_net_loopback_send_state_t;
 
 struct iree_net_loopback_framed_endpoint_t {
   // Serializes lifecycle transitions and send-state allocation.
   iree_slim_mutex_t mutex;
+
+  // Proactor owning endpoint callbacks. Retained.
+  iree_async_proactor_t* proactor;
 
   // Current endpoint lifecycle state.
   iree_net_loopback_framed_endpoint_state_t state;
@@ -172,6 +181,7 @@ iree_net_loopback_acquire_send_state_locked(
 static void iree_net_loopback_release_send_state_locked(
     iree_net_loopback_framed_endpoint_t* endpoint,
     iree_net_loopback_send_state_t* send_state) {
+  IREE_ASSERT(iree_status_is_ok(send_state->local_completion_status));
   send_state->phase = IREE_NET_LOOPBACK_SEND_STATE_PHASE_FREE;
   send_state->payload_length = 0;
   send_state->completion_callback = (iree_net_send_completion_callback_t){0};
@@ -212,6 +222,20 @@ static void iree_net_loopback_send_complete(
   completion_callback.fn(completion_callback.user_data, status,
                          payload_bytes_transferred);
   iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
+}
+
+static void iree_net_loopback_local_send_complete(
+    void* user_data, iree_async_operation_t* operation, iree_status_t status,
+    iree_async_completion_flags_t flags) {
+  (void)operation;
+  IREE_ASSERT(!iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE));
+  iree_net_loopback_send_state_t* send_state =
+      (iree_net_loopback_send_state_t*)user_data;
+  iree_status_t completion_status = send_state->local_completion_status;
+  send_state->local_completion_status = iree_ok_status();
+  completion_status = iree_status_join(completion_status, status);
+  iree_net_loopback_send_complete(send_state, completion_status,
+                                  /*wire_bytes_transferred=*/0);
 }
 
 static iree_status_t iree_net_loopback_on_wire_message(
@@ -376,6 +400,27 @@ static void iree_net_loopback_reject_send_state(
   iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
 }
 
+static iree_status_t iree_net_loopback_schedule_local_send_completion(
+    iree_net_loopback_send_state_t* send_state, iree_status_t status) {
+  IREE_ASSERT(!iree_status_is_ok(status));
+  iree_net_loopback_framed_endpoint_t* endpoint = send_state->endpoint;
+  send_state->local_completion_status = status;
+  iree_async_operation_initialize(
+      &send_state->local_completion_operation.base,
+      IREE_ASYNC_OPERATION_TYPE_NOP, IREE_ASYNC_OPERATION_FLAG_NONE,
+      iree_net_loopback_local_send_complete, send_state);
+  iree_status_t submit_status = iree_async_proactor_submit_one(
+      endpoint->proactor, &send_state->local_completion_operation.base);
+  if (iree_status_is_ok(submit_status)) {
+    return iree_ok_status();
+  }
+
+  status = send_state->local_completion_status;
+  send_state->local_completion_status = iree_ok_status();
+  iree_net_loopback_reject_send_state(send_state);
+  return iree_status_join(status, submit_status);
+}
+
 static iree_status_t iree_net_loopback_send(
     void* self, const iree_net_message_endpoint_send_params_t* params) {
   iree_net_loopback_framed_endpoint_t* endpoint =
@@ -415,9 +460,9 @@ static iree_status_t iree_net_loopback_send(
   iree_status_t status =
       iree_net_message_endpoint_send(endpoint->wire_endpoint, &wire_params);
   if (!iree_status_is_ok(status)) {
-    iree_net_loopback_reject_send_state(send_state);
+    return iree_net_loopback_schedule_local_send_completion(send_state, status);
   }
-  return status;
+  return iree_ok_status();
 }
 
 static iree_net_carrier_send_budget_t iree_net_loopback_query_send_budget(
@@ -451,16 +496,17 @@ static const iree_net_message_endpoint_vtable_t
 };
 
 iree_status_t iree_net_loopback_framed_endpoint_allocate(
-    iree_net_carrier_t* carrier, uint32_t max_send_operations,
+    iree_net_carrier_t* carrier, iree_async_proactor_t* proactor,
+    uint32_t max_send_operations,
     iree_net_endpoint_deactivation_barrier_t* connection_barrier,
     iree_allocator_t host_allocator,
     iree_net_loopback_framed_endpoint_t** out_endpoint) {
   IREE_ASSERT_ARGUMENT(out_endpoint);
   *out_endpoint = NULL;
-  if (!carrier || max_send_operations == 0) {
+  if (!carrier || !proactor || max_send_operations == 0) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
-        "carrier and nonzero send operation limit are required");
+        "carrier, proactor, and nonzero send operation limit are required");
   }
 
   iree_host_size_t allocation_size = 0;
@@ -473,6 +519,8 @@ iree_status_t iree_net_loopback_framed_endpoint_allocate(
                                              (void**)&endpoint));
   memset(endpoint, 0, allocation_size);
   iree_slim_mutex_initialize(&endpoint->mutex);
+  endpoint->proactor = proactor;
+  iree_async_proactor_retain(proactor);
   iree_net_endpoint_lifecycle_initialize(connection_barrier,
                                          &endpoint->lifecycle);
   endpoint->state = IREE_NET_LOOPBACK_FRAMED_ENDPOINT_STATE_CREATED;
@@ -509,6 +557,7 @@ iree_status_t iree_net_loopback_framed_endpoint_allocate(
     *out_endpoint = endpoint;
   } else {
     iree_net_endpoint_lifecycle_deinitialize(&endpoint->lifecycle);
+    iree_async_proactor_release(endpoint->proactor);
     iree_slim_mutex_deinitialize(&endpoint->mutex);
     iree_allocator_free(host_allocator, endpoint);
   }
@@ -527,6 +576,7 @@ void iree_net_loopback_framed_endpoint_free(
   iree_allocator_t host_allocator = endpoint->host_allocator;
   iree_net_framing_adapter_free(endpoint->framing_adapter);
   iree_net_endpoint_lifecycle_deinitialize(&endpoint->lifecycle);
+  iree_async_proactor_release(endpoint->proactor);
   iree_slim_mutex_deinitialize(&endpoint->mutex);
   iree_allocator_free(host_allocator, endpoint);
 }

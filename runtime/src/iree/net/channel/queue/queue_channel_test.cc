@@ -173,9 +173,14 @@ class TestEndpoint {
     std::vector<uint8_t> message(params->generated_prefix.length);
     if (params->generated_prefix.length > 0) {
       ++endpoint->prefix_write_count;
-      IREE_RETURN_IF_ERROR(params->generated_prefix.write(
+      iree_status_t status = params->generated_prefix.write(
           params->generated_prefix.user_data,
-          iree_make_byte_span(message.data(), message.size())));
+          iree_make_byte_span(message.data(), message.size()));
+      if (!iree_status_is_ok(status)) {
+        params->completion_callback.fn(params->completion_callback.user_data,
+                                       status, 0);
+        return iree_ok_status();
+      }
     }
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
       const iree_async_span_t span = params->data.values[i];
@@ -575,7 +580,7 @@ TEST_F(QueueChannelTest, RejectedSendDoesNotRunBuilderOrCompletion) {
   EXPECT_TRUE(endpoint_.sent_messages.empty());
 }
 
-TEST_F(QueueChannelTest, BuilderFailureRejectsWithoutCompletion) {
+TEST_F(QueueChannelTest, BuilderFailureCompletesAcceptedSend) {
   Attach();
   BuildState build_state = {
       /*.wait_frontier=*/{},
@@ -587,11 +592,11 @@ TEST_F(QueueChannelTest, BuilderFailureRejectsWithoutCompletion) {
   const iree_net_queue_channel_send_params_t params =
       build_state.params(iree_async_span_list_empty(), completion.callback());
 
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_ABORTED,
-      iree_net_queue_channel_send_command(channel_, 0, &params));
+  IREE_ASSERT_OK(iree_net_queue_channel_send_command(channel_, 0, &params));
   EXPECT_EQ(build_state.count, 1);
-  EXPECT_EQ(completion.count, 0);
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_ABORTED);
+  EXPECT_EQ(completion.bytes_transferred, 0u);
   EXPECT_TRUE(endpoint_.sent_messages.empty());
 }
 

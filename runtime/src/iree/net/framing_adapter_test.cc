@@ -144,10 +144,15 @@ struct MockCarrier {
     iree_host_size_t total_length = params->generated_prefix.length;
     if (params->generated_prefix.length > 0) {
       captured.span_data.emplace_back(params->generated_prefix.length);
-      IREE_RETURN_IF_ERROR(params->generated_prefix.write(
+      iree_status_t status = params->generated_prefix.write(
           params->generated_prefix.user_data,
           iree_make_byte_span(captured.span_data.back().data(),
-                              captured.span_data.back().size())));
+                              captured.span_data.back().size()));
+      if (!iree_status_is_ok(status)) {
+        params->completion_callback.fn(params->completion_callback.user_data,
+                                       status, 0);
+        return iree_ok_status();
+      }
     }
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
       iree_async_span_t span = params->data.values[i];
@@ -999,7 +1004,7 @@ TEST_F(FramingAdapterTest, SendRequiresNonEmptyMessage) {
   EXPECT_EQ(completion.count, 0);
 }
 
-TEST_F(FramingAdapterTest, SendRejectsNullGeneratedPrefixSource) {
+TEST_F(FramingAdapterTest, SendCompletesNullGeneratedPrefixSource) {
   ActivateWithCallbacks();
 
   SendCompletion completion;
@@ -1009,10 +1014,11 @@ TEST_F(FramingAdapterTest, SendRejectsNullGeneratedPrefixSource) {
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/completion.callback(),
   };
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        iree_net_message_endpoint_send(endpoint_, &params));
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
   EXPECT_TRUE(mock_carrier_->sends.empty());
-  EXPECT_EQ(completion.count, 0);
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(completion.bytes_transferred, 0u);
 }
 
 TEST_F(FramingAdapterTest, SendRejectsMessageLengthOverflow) {

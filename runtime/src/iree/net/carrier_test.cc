@@ -56,10 +56,15 @@ struct MockCarrier {
                               "mock prefix storage exceeded");
     }
     if (params->generated_prefix.length > 0) {
-      IREE_RETURN_IF_ERROR(params->generated_prefix.write(
+      iree_status_t status = params->generated_prefix.write(
           params->generated_prefix.user_data,
           iree_make_byte_span(mock->prefix_storage,
-                              params->generated_prefix.length)));
+                              params->generated_prefix.length));
+      if (!iree_status_is_ok(status)) {
+        params->completion_callback.fn(params->completion_callback.user_data,
+                                       status, 0);
+        return iree_ok_status();
+      }
     }
     mock->pending_completion = params->completion_callback;
     return iree_ok_status();
@@ -235,6 +240,25 @@ TEST_F(CarrierTest, GeneratedPrefixHasTerminalCompletion) {
   EXPECT_EQ(completion.count, 1);
   EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
   EXPECT_EQ(completion.bytes_transferred, sizeof(prefix));
+}
+
+TEST_F(CarrierTest, GeneratedPrefixFailureCompletesAcceptedSend) {
+  SendCompletion completion;
+  iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(nullptr, 1)),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/
+      {
+          /*.fn=*/SendCompletion::Handle,
+          /*.user_data=*/&completion,
+      },
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(&carrier_.base, &params));
+  EXPECT_EQ(carrier_.send_count, 1);
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(completion.bytes_transferred, 0u);
 }
 
 TEST_F(CarrierTest, TerminalErrorStopsAdmissionAndBudget) {

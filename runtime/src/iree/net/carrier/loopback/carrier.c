@@ -44,6 +44,9 @@ typedef struct iree_net_loopback_pending_send_t {
   // Terminal status code used when the send reaches its source.
   iree_status_code_t completion_code;
 
+  // Owned detailed status for a locally completed send.
+  iree_status_t completion_status;
+
   // True when registered regions referenced by the spans are retained.
   bool regions_retained;
 
@@ -236,6 +239,7 @@ static iree_status_t iree_net_loopback_pending_send_allocate(
       pair->host_allocator, allocation_size, (void**)&pending_send));
   memset(pending_send, 0, allocation_size);
   pending_send->completion_code = IREE_STATUS_OK;
+  pending_send->completion_status = iree_ok_status();
   pending_send->span_count = span_count;
   *out_pending_send = pending_send;
   if (prefix_storage_length > 0) {
@@ -257,6 +261,7 @@ static void iree_net_loopback_pending_send_destroy(
         pending_send->span_count));
   }
   iree_net_loopback_carrier_t* source = pending_send->source;
+  iree_status_free(pending_send->completion_status);
   iree_allocator_free(pair->host_allocator, pending_send);
   if (source) {
     iree_net_carrier_release(&source->base);
@@ -279,6 +284,25 @@ static bool iree_net_loopback_has_dispatch_work_locked(
 static void iree_net_loopback_signal_locked(
     iree_net_loopback_carrier_t* carrier) {
   iree_async_notification_signal(carrier->notification, 1);
+}
+
+// Queues a post-admission local failure for completion on the source proactor.
+static void iree_net_loopback_queue_local_completion_locked(
+    iree_net_loopback_pending_send_t* pending_send, iree_status_t status,
+    uint32_t* out_fallback_drain_mask) {
+  IREE_ASSERT(pending_send->phase == IREE_NET_LOOPBACK_SEND_PHASE_PREPARING);
+  IREE_ASSERT(!iree_status_is_ok(status));
+  pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_COMPLETION;
+  pending_send->completion_code = iree_status_code(status);
+  pending_send->completion_status = status;
+  iree_net_loopback_carrier_t* source = pending_send->source;
+  iree_net_loopback_event_queue_push(
+      &source->pair->event_queues[source->pair_index], pending_send);
+  if (source->dispatch_failed) {
+    *out_fallback_drain_mask |= 1u << source->pair_index;
+  } else {
+    iree_net_loopback_signal_locked(source);
+  }
 }
 
 // Converts an undelivered event into a completion for its source.
@@ -434,8 +458,12 @@ static void iree_net_loopback_process_send_completion(
   --source->send_operations_in_use;
   iree_slim_mutex_unlock(&pair->mutex);
 
-  iree_status_t status =
-      iree_net_loopback_make_completion_status(pending_send->completion_code);
+  iree_status_t status = pending_send->completion_status;
+  pending_send->completion_status = iree_ok_status();
+  if (iree_status_is_ok(status)) {
+    status =
+        iree_net_loopback_make_completion_status(pending_send->completion_code);
+  }
   const iree_host_size_t bytes_transferred =
       pending_send->completion_code == IREE_STATUS_OK
           ? pending_send->total_length
@@ -957,8 +985,7 @@ static iree_status_t iree_net_loopback_carrier_send(
     pending_send->regions_retained = true;
   }
 
-  bool rejected = false;
-  bool dispatch_failed = false;
+  uint32_t fallback_drain_mask = 0;
   iree_slim_mutex_lock(&carrier->pair->mutex);
   peer = NULL;
   if (iree_status_is_ok(status)) {
@@ -972,26 +999,14 @@ static iree_status_t iree_net_loopback_carrier_send(
         &carrier->pair->event_queues[peer->pair_index], pending_send);
     iree_net_loopback_signal_locked(peer);
   } else {
-    rejected = true;
-    IREE_ASSERT(carrier->send_operations_in_use > 0);
-    --carrier->send_operations_in_use;
-    iree_net_loopback_retire_pending_operation_locked(carrier);
-    if (iree_net_carrier_state(base_carrier) ==
-            IREE_NET_CARRIER_STATE_DRAINING &&
-        carrier->wait_armed) {
-      iree_net_loopback_signal_locked(carrier);
-    }
-    dispatch_failed = carrier->dispatch_failed;
+    iree_net_loopback_queue_local_completion_locked(pending_send, status,
+                                                    &fallback_drain_mask);
+    status = iree_ok_status();
   }
   iree_slim_mutex_unlock(&carrier->pair->mutex);
-
-  if (rejected) {
-    if (dispatch_failed) {
-      iree_net_loopback_maybe_complete_deactivation(carrier);
-    }
-    iree_net_loopback_pending_send_destroy(carrier->pair, pending_send);
-  }
-  return status;
+  iree_net_loopback_drain_failed_dispatch_mask(carrier->pair,
+                                               fallback_drain_mask);
+  return iree_ok_status();
 }
 
 static iree_status_t iree_net_loopback_carrier_shutdown(

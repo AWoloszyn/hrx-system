@@ -198,9 +198,11 @@ static inline iree_status_t iree_net_message_endpoint_deactivate(
 // |params->generated_prefix| followed by |params->data| comprises one
 // endpoint-defined message. The prefix writer runs synchronously at most once
 // before this call returns; an endpoint may reject before invoking it when
-// transport storage is unavailable. Data buffers remain caller-owned until the
-// completion callback fires. Either part may be empty, but the complete message
-// must contain at least one byte.
+// transport storage is unavailable. Once any endpoint layer acquires bounded
+// send capacity the operation is accepted; prefix-generation and lower-layer
+// failures are then reported through its terminal completion. Data buffers
+// remain caller-owned until the completion callback fires. Either part may be
+// empty, but the complete message must contain at least one byte.
 //
 // Connection-facing endpoints preserve the message boundary while hiding any
 // transport framing they add. Lower-level transport endpoints may define a
@@ -210,7 +212,8 @@ static inline iree_status_t iree_net_message_endpoint_deactivate(
 // |params->completion_callback|. The callback may race with the return on
 // another proactor thread. Its byte count covers the complete logical message,
 // including the generated prefix. A non-OK return means the callback will not
-// fire.
+// fire, the prefix writer was not invoked, and no bounded capacity remains
+// owned by the operation.
 //
 // The prefix writer, its user data, and the span descriptor array are needed
 // only for the duration of this call. The data buffers must remain valid until

@@ -1234,21 +1234,21 @@ TEST_F(TransportTest, CarriesCreditBoundedBulkTransfer) {
   SendState blocked_data_send;
   blocked_data_send.current_poll_side = &current_poll_side_;
   blocked_data_send.expected_poll_side = kClientPolling;
-  blocked_data_send.expected_bytes =
-      IREE_NET_BULK_MESSAGE_HEADER_SIZE + second_chunk.size();
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
-                        iree_net_bulk_channel_send_data(
-                            client_bulk_channel_, 3, first_chunk.size(),
-                            iree_async_span_list_make(&second_span, 1),
-                            blocked_data_send.callback()));
+  blocked_data_send.expected_bytes = 0;
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_data(
+      client_bulk_channel_, 3, first_chunk.size(),
+      iree_async_span_list_make(&second_span, 1),
+      blocked_data_send.callback()));
   EXPECT_EQ(blocked_data_send.callback_count, 0);
 
   PollBothUntil([&] {
     return server_bulk_messages_.start_count == 1 &&
            server_bulk_messages_.data_payloads.size() == 1 &&
            start_send.callback_count == 1 &&
-           first_data_send.callback_count == 1;
+           first_data_send.callback_count == 1 &&
+           blocked_data_send.callback_count == 1;
   });
+  EXPECT_EQ(blocked_data_send.status_code, IREE_STATUS_RESOURCE_EXHAUSTED);
   ASSERT_NE(server_bulk_messages_.retained_data_lease.release.fn, nullptr);
   EXPECT_EQ(server_bulk_messages_.start_transfer_id, 3u);
   EXPECT_EQ(server_bulk_messages_.start_total_length, transfer_length);

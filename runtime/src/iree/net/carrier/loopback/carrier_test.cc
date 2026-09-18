@@ -162,6 +162,8 @@ struct PrefixWriterGate {
   bool entered = false;
   // True when the writer may return.
   bool release = false;
+  // Status returned after the writer is released.
+  iree_status_code_t result_code = IREE_STATUS_OK;
 
   static iree_status_t Write(void* user_data, iree_byte_span_t target) {
     auto* self = static_cast<PrefixWriterGate*>(user_data);
@@ -170,7 +172,10 @@ struct PrefixWriterGate {
     self->condition.notify_all();
     self->condition.wait(lock, [&] { return self->release; });
     memset(target.data, 0xA5, target.data_length);
-    return iree_ok_status();
+    return self->result_code == IREE_STATUS_OK
+               ? iree_ok_status()
+               : iree_make_status(self->result_code,
+                                  "injected prefix writer failure");
   }
 };
 
@@ -503,7 +508,83 @@ TEST_F(LoopbackCarrierTest, GeneratedPrefixUsesAlignedTransportStorage) {
             kSuffix);
 }
 
-TEST_F(LoopbackCarrierTest, DeactivationWaitsForGeneratedPrefixWriter) {
+TEST_F(LoopbackCarrierTest,
+       FailingGeneratedPrefixCompletesAndRefreshesOneSlotBudget) {
+  iree_net_loopback_carrier_options_t options =
+      iree_net_loopback_carrier_options_default();
+  options.max_send_operations = 1;
+  CreatePair(&options);
+  ActivateBoth();
+
+  PrefixWriterGate writer_gate;
+  writer_gate.result_code = IREE_STATUS_CANCELLED;
+  SendState first_send;
+  first_send.current_poll_side = &current_poll_side_;
+  first_send.expected_poll_side = kClientPolling;
+  iree_net_send_params_t first_params = {
+      /*.generated_prefix=*/
+      {
+          /*.length=*/1,
+          /*.write=*/PrefixWriterGate::Write,
+          /*.user_data=*/&writer_gate,
+      },
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/first_send.callback(),
+  };
+  iree_status_code_t first_send_code = IREE_STATUS_UNKNOWN;
+  std::thread send_thread([&] {
+    iree_status_t status = iree_net_carrier_send(client_, &first_params);
+    first_send_code = iree_status_code(status);
+    iree_status_free(status);
+  });
+  {
+    std::unique_lock<std::mutex> lock(writer_gate.mutex);
+    writer_gate.condition.wait(lock, [&] { return writer_gate.entered; });
+  }
+
+  EXPECT_EQ(iree_net_carrier_query_send_budget(client_).slots, 0u);
+  char retry_payload = 'x';
+  iree_async_span_t retry_span =
+      iree_async_span_from_ptr(&retry_payload, sizeof(retry_payload));
+  SendState retry_send;
+  retry_send.current_poll_side = &current_poll_side_;
+  retry_send.expected_poll_side = kClientPolling;
+  iree_net_send_params_t retry_params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
+      /*.data=*/iree_async_span_list_make(&retry_span, 1),
+      /*.completion_callback=*/retry_send.callback(),
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_net_carrier_send(client_, &retry_params));
+  EXPECT_EQ(retry_send.completion_count, 0);
+
+  {
+    std::lock_guard<std::mutex> lock(writer_gate.mutex);
+    writer_gate.release = true;
+  }
+  writer_gate.condition.notify_all();
+  send_thread.join();
+
+  EXPECT_EQ(first_send_code, IREE_STATUS_OK);
+  EXPECT_EQ(first_send.completion_count, 0);
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return first_send.completion_count == 1; });
+  EXPECT_EQ(first_send.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_CANCELLED}));
+  EXPECT_EQ(first_send.byte_counts, (std::vector<iree_host_size_t>{0}));
+  EXPECT_EQ(iree_net_carrier_query_send_budget(client_).slots, 1u);
+  EXPECT_TRUE(server_endpoint_.received_bytes.empty());
+
+  IREE_ASSERT_OK(iree_net_carrier_send(client_, &retry_params));
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return server_endpoint_.received_bytes.size() == 1; });
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return retry_send.completion_count == 1; });
+  EXPECT_EQ(retry_send.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+}
+
+TEST_F(LoopbackCarrierTest, DeactivationCompletesAcceptedGeneratedPrefixSend) {
   CreatePair();
   ActivateBoth();
 
@@ -545,8 +626,11 @@ TEST_F(LoopbackCarrierTest, DeactivationWaitsForGeneratedPrefixWriter) {
   send_thread.join();
 
   PollUntil(client_proactor_, kClientPolling, [&] { return deactivated; });
-  EXPECT_EQ(send_status_code, IREE_STATUS_FAILED_PRECONDITION);
-  EXPECT_EQ(send_state.completion_count, 0);
+  EXPECT_EQ(send_status_code, IREE_STATUS_OK);
+  EXPECT_EQ(send_state.completion_count, 1);
+  EXPECT_EQ(send_state.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_FAILED_PRECONDITION}));
+  EXPECT_EQ(send_state.byte_counts, (std::vector<iree_host_size_t>{0}));
   EXPECT_EQ(iree_net_carrier_pending_operation_count(client_), 0);
 }
 
