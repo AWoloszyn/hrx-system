@@ -14,6 +14,7 @@
 
 #include "loom/analysis/scc.h"
 #include "loom/util/cfg_graph.h"
+#include "loom/util/fact_control.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,6 +39,8 @@ typedef struct loom_value_fact_cfg_forwarding_t {
   iree_host_size_t argument_offset;
   // Number of arguments and reserved component/member slots in the span.
   iree_host_size_t argument_count;
+  // Populated components in dependency order, starting at argument_offset.
+  iree_host_size_t component_count;
   // True after a branch payload edit changes the forwarding graph.
   bool dirty;
 } loom_value_fact_cfg_forwarding_t;
@@ -48,14 +51,18 @@ typedef struct loom_value_fact_cfg_forwarding_t {
 typedef struct loom_value_fact_cfg_region_t {
   // CFG edges and reachability owned by this analysis.
   loom_cfg_graph_t graph;
+  // Immutable compressed control dependencies for this graph snapshot.
+  loom_cfg_control_t control_structure;
+  // Selector distributions and live execution facts with snapshot lifetime.
+  loom_value_fact_control_t* control;
   // First forwarding node for each block, grouped by control-flow component.
   iree_host_size_t* argument_offsets;
   // Forwarding nodes for reachable non-entry arguments.
   loom_value_fact_cfg_argument_t* arguments;
   // Number of forwarding nodes.
   iree_host_size_t argument_count;
-  // Forwarding components in reserved per-partition slots. Only slots named by
-  // argument_components are populated; at most argument_count slots are used.
+  // Forwarding components in reserved per-partition slots. Each partition's
+  // component_count entries begin at its argument_offset in dependency order.
   loom_scc_t* components;
   // Backing member storage for components, with one slot per argument.
   iree_host_size_t* component_nodes;
@@ -65,11 +72,13 @@ typedef struct loom_value_fact_cfg_region_t {
   // an edit changes a cyclic dataflow equation.
   struct {
     // Member spans grouped by graph-owned reachable component ordinal, with
-    // each span in source block order for deterministic fact propagation.
+    // each span in reverse postorder for initial and restarted propagation.
     loom_scc_list_t components;
     // Retained forwarding structure validity and argument span per component.
     loom_value_fact_cfg_forwarding_t* forwarding;
-    // Existing payload terminator used to schedule each cyclic summary.
+    // First reverse-postorder member's terminator schedules each cyclic
+    // summary, including cycles with observations but no carried block
+    // arguments.
     loom_op_t** anchors;
     // True when semantic edits or input changes require a cyclic summary.
     bool* dirty;
@@ -81,6 +90,20 @@ typedef struct loom_value_fact_cfg_region_t {
 iree_status_t loom_value_fact_cfg_region_initialize(
     const loom_module_t* module, const loom_region_t* region,
     iree_arena_allocator_t* arena, loom_value_fact_cfg_region_t* out_region);
+
+// Refreshes one retained selector from its current SSA identity and facts,
+// then settles indexed control dependents. Returns whether execution changed.
+bool loom_value_fact_cfg_update_control(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, uint16_t block_index);
+
+// Seeds selectors together after snapshot publication or a cyclic value reset.
+// NULL selects the whole region; otherwise only the component's blocks are
+// revisited. Uncomputed values seed the optimistic distribution, whereas
+// defined unknown values contribute unknown control.
+void loom_value_fact_cfg_seed_control(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, const loom_scc_t* component);
 
 // Within a region with forwarding components, returns the node for a value,
 // or IREE_HOST_SIZE_MAX for an operation result, entry argument, or value

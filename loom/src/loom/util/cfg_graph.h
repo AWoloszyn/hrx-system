@@ -180,6 +180,12 @@ const loom_cfg_edge_info_t* loom_cfg_graph_edge(
 bool loom_cfg_graph_block_is_reachable(const loom_cfg_graph_t* graph,
                                        uint16_t block_index);
 
+// Refreshes the cached selector identity after an operand edit that preserves
+// CFG topology. Returns the current selector, or INVALID for an unconditional
+// terminator. All alternatives retain the same current identity.
+loom_value_id_t loom_cfg_graph_refresh_selector(const loom_cfg_graph_t* graph,
+                                                uint16_t block_index);
+
 #ifdef __cplusplus
 }
 #endif

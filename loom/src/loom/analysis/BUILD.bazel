@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_benchmark", "loom_cc_library", "loom_cc_test")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_benchmark", "loom_cc_fuzz", "loom_cc_library", "loom_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -20,7 +20,10 @@ loom_cc_library(
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/util:cfg_control",
+        "//loom/src/loom/util:cfg_dominance",
         "//loom/src/loom/util:cfg_graph",
+        "//loom/src/loom/util:fact_control",
         "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
@@ -55,11 +58,42 @@ loom_cc_test(
     ],
 )
 
+loom_cc_library(
+    name = "control_uniformity_test_util",
+    testonly = True,
+    srcs = ["control_uniformity_test_util.cc"],
+    hdrs = ["control_uniformity_test_util.h"],
+    deps = [
+        ":control_uniformity",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/ops/test",
+        "//loom/src/loom/testing:module_ptr",
+        "//loom/src/loom/verify",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_fuzz(
+    name = "control_uniformity_fuzz",
+    srcs = ["control_uniformity_fuzz.cc"],
+    deps = [
+        ":control_uniformity_test_util",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/ops/test",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
 loom_cc_test(
     name = "control_uniformity_test",
     srcs = ["control_uniformity_test.cc"],
     deps = [
         ":control_uniformity",
+        ":control_uniformity_test_util",
         "//loom/src/loom/format/text:parser",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/cfg",

@@ -1,0 +1,372 @@
+// RUN: pass kernel-async-legality
+
+// Nested control inherits the participation scope of its outer branch.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @nested_lane_control() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %workgroup_extent = index.constant 128 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%workgroup_extent, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.subgroup.lane.id : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^enabled_arm, ^disabled_arm
+^enabled_arm:
+  cfg.cond_br %inner, ^inner_enabled, ^inner_disabled
+^inner_enabled:
+  // ERROR@+1: LOWERING/024 {op_name="kernel.async.cluster.gather", phase_name="kernel-async-legality", rejection_bits="1024"}
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  cfg.br ^join
+^inner_disabled:
+  cfg.br ^join
+^disabled_arm:
+  cfg.br ^join
+^join:
+  kernel.return
+}
+
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+// Nested control inherits the participation scope of its outer branch.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @nested_subgroup_control() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %workgroup_extent = index.constant 128 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%workgroup_extent, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.subgroup.id : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^enabled_arm, ^disabled_arm
+^enabled_arm:
+  cfg.cond_br %inner, ^inner_enabled, ^inner_disabled
+^inner_enabled:
+  // ERROR@+1: LOWERING/024 {op_name="kernel.async.cluster.gather", phase_name="kernel-async-legality", rejection_bits="1024"}
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  cfg.br ^join
+^inner_disabled:
+  cfg.br ^join
+^disabled_arm:
+  cfg.br ^join
+^join:
+  kernel.return
+}
+
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+// Nested control inherits the participation scope of its outer branch.
+kernel.def @nested_workgroup_control() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%c64, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^enabled_arm, ^disabled_arm
+^enabled_arm:
+  cfg.cond_br %inner, ^inner_enabled, ^inner_disabled
+^inner_enabled:
+  // ERROR@+1: LOWERING/024 {op_name="kernel.async.cluster.gather", phase_name="kernel-async-legality", rejection_bits="1024"}
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  cfg.br ^join
+^inner_disabled:
+  cfg.br ^join
+^disabled_arm:
+  cfg.br ^join
+^join:
+  kernel.return
+}
+
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+// Nested control inherits the participation scope of its outer branch.
+kernel.def @nested_cluster_control() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%c64, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %inner, ^enabled_arm, ^disabled_arm
+^enabled_arm:
+  cfg.cond_br %inner, ^inner_enabled, ^inner_disabled
+^inner_enabled:
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  cfg.br ^join
+^inner_disabled:
+  cfg.br ^join
+^disabled_arm:
+  cfg.br ^join
+^join:
+  kernel.return
+}
+
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+kernel.def @deep_reordered() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%c64, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^outer, ^skip
+^deep:
+  // ERROR@+1: LOWERING/024 {op_name="kernel.async.cluster.gather", phase_name="kernel-async-legality", rejection_bits="1024"}
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  cfg.br ^join
+^middle:
+  cfg.cond_br %inner, ^deep, ^skip
+^outer:
+  cfg.cond_br %inner, ^middle, ^skip
+^skip:
+  cfg.br ^join
+^join:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+kernel.def @cycle() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%c64, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^loop, ^skip
+^loop:
+  cfg.cond_br %inner, ^body, ^skip
+^body:
+  // ERROR@+1: LOWERING/024 {op_name="kernel.async.cluster.gather", phase_name="kernel-async-legality", rejection_bits="1024"}
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  cfg.br ^loop
+^skip:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+kernel.def @multiple_exits() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%c64, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^outer, ^skip
+^outer:
+  cfg.cond_br %inner, ^body, ^skip
+^body:
+  // ERROR@+1: LOWERING/024 {op_name="kernel.async.cluster.gather", phase_name="kernel-async-legality", rejection_bits="1024"}
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  kernel.return
+^skip:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+kernel.def @inner_reconvergence() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%c64, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^outer, ^skip
+^outer:
+  cfg.cond_br %inner, ^left, ^right
+^left:
+  cfg.br ^inner_join
+^right:
+  cfg.br ^inner_join
+^inner_join:
+  // ERROR@+1: LOWERING/024 {op_name="kernel.async.cluster.gather", phase_name="kernel-async-legality", rejection_bits="1024"}
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  cfg.br ^join
+^skip:
+  cfg.br ^join
+^join:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+kernel.def @full_reconvergence() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%c64, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^outer, ^skip
+^outer:
+  cfg.cond_br %inner, ^left, ^right
+^left:
+  cfg.br ^join
+^right:
+  cfg.br ^join
+^skip:
+  cfg.br ^join
+^join:
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  kernel.return
+}
+
+// ====
+
+// RUN: pass kernel-async-legality
+
+kernel.def @sequential() {
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c2, %c1) workgroup_size(%c64, %c1, %c1) cluster_size(%c1, %c2, %c1) : index
+} launch(%input: buffer, %inner: i1) {
+  %first_cluster_workgroup = index.constant 0 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 64 : offset
+  %participants = scalar.constant 3 : i32
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %source = buffer.view %global[%base] : buffer -> view<4xi8>
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %dest = buffer.view %scratch[%base] : buffer -> view<4xi8>
+  %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
+  %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
+  cfg.cond_br %is_first, ^left, ^right
+^left:
+  cfg.br ^middle
+^right:
+  cfg.br ^middle
+^middle:
+  cfg.cond_br %inner, ^body, ^skip
+^body:
+  %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
+  %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
+  kernel.async.wait %group {newer_groups = 0} : kernel.async.group
+  cfg.br ^join
+^skip:
+  cfg.br ^join
+^join:
+  kernel.return
+}

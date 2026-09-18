@@ -16,8 +16,11 @@ loom_check_test_suite(
     "canonicalize.loom-test"
     "convergence_facts.loom-test"
     "facts.loom-test"
+    "forwarding_facts.loom-test"
+    "loop_distribution_facts.loom-test"
     "rotation_facts.loom-test"
     "roundtrip.loom-test"
+    "selection_facts.loom-test"
     "verify.loom-test"
 )
 

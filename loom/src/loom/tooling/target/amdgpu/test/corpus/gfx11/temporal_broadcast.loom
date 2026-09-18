@@ -1,0 +1,75 @@
+// A broadcast is uniform within one dynamic execution. Lanes leaving on
+// different iterations retain different results: here each lane retains its ID.
+amdgpu.target<gfx11-generic> @temporal_broadcast_gfx11_wave64 {subgroup_size = 64}
+
+kernel.def target(@temporal_broadcast_gfx11_wave64) @temporal_broadcast() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%output: buffer) {
+  %loop_begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
+  cfg.br ^header(%loop_begin: index)
+^header(%counter: index):
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  view.store %observed, %output_view[%lane] : i32, view<64xi32>
+  kernel.return
+}
+
+check.case public @temporal_broadcast_case {
+  %actual = check.generate.fill value(-1) : tensor<64xi32>
+  %expected = check.generate.iota offset(0) step(1) : tensor<64xi32>
+  kernel.launch @temporal_broadcast(%actual) : (tensor<64xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<64xi32>
+  check.return
+}
+
+// Structured regions nested in the CFG loop preserve the same exit sampling.
+kernel.def target(@temporal_broadcast_gfx11_wave64) @temporal_nested_broadcast() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%output: buffer) {
+  %loop_begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %not_first = index.cmp ne, %lane, %loop_begin : index
+  %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
+  %initial = scalar.constant 0 : i32
+  cfg.br ^header(%loop_begin: index, %initial: i32)
+^header(%counter: index, %last: i32):
+  %more = index.cmp ule, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %observed = scf.if %not_first -> (i32) {
+    %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+    scf.yield %broadcast : i32
+  } else {
+    scf.yield %lane_i32 : i32
+  }
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index, %observed: i32)
+^exit:
+  view.store %last, %output_view[%lane] : i32, view<64xi32>
+  kernel.return
+}
+
+check.case public @temporal_nested_broadcast_case {
+  %actual = check.generate.fill value(-1) : tensor<64xi32>
+  %expected = check.generate.iota offset(0) step(1) : tensor<64xi32>
+  kernel.launch @temporal_nested_broadcast(%actual) : (tensor<64xi32>)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<64xi32>
+  check.return
+}

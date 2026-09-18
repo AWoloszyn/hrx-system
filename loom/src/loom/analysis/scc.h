@@ -44,6 +44,8 @@ static inline loom_scc_successor_callback_t loom_scc_successor_callback_make(
 
 // Iterates the outgoing successors of one node. The callback must invoke
 // |successor| once for each successor and return the first successor failure.
+// An enumeration finishes before another node's enumeration begins, so the
+// adapter may reuse its own traversal scratch between nodes.
 typedef iree_status_t (*loom_scc_visit_successors_fn_t)(
     void* user_data, iree_host_size_t node,
     loom_scc_successor_callback_t successor);
@@ -107,7 +109,10 @@ typedef struct loom_scc_list_t {
   iree_host_size_t count;
 } loom_scc_list_t;
 
-// Computes SCCs for |graph| and stores all transient/result memory in |arena|.
+// Computes SCCs for |graph|, retaining O(V) result storage in |arena|. The walk
+// uses explicit DFS frames and enumerates each reached node exactly once;
+// graph depth does not consume the native stack. O(V + E) traversal scratch
+// is reclaimed before returning, including on callback or allocation failure.
 //
 // When |options| is NULL, all graph nodes are traversed. When options provides
 // roots, only root-reachable nodes appear in the result. A nonzero root_count

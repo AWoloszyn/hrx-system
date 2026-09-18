@@ -43,20 +43,14 @@ static bool loom_scf_lookup_key_is_explicit(loom_attribute_t case_keys,
   return false;
 }
 
-static bool loom_scf_fact_type_is_i1(loom_type_t type) {
-  return loom_type_is_scalar(type) &&
-         loom_type_element_type(type) == LOOM_SCALAR_TYPE_I1;
-}
-
-static void loom_scf_mark_lane_distribution_for_result(
+static void loom_scf_apply_selector_distribution(
     const loom_module_t* module, const loom_op_t* op, uint16_t result_index,
-    loom_value_facts_t* facts) {
-  const loom_value_id_t result_id = loom_op_const_results(op)[result_index];
-  const loom_type_t result_type = loom_module_value_type(module, result_id);
-  if (loom_scf_fact_type_is_i1(result_type)) {
-    loom_value_facts_mark_lane_predicate(facts);
-  } else {
-    loom_value_facts_mark_lane_varying(facts);
+    loom_value_facts_t selector_facts, loom_value_facts_t* facts) {
+  loom_value_facts_propagate_binary_distribution(*facts, selector_facts, facts);
+  if (loom_value_facts_is_lane_varying(*facts)) {
+    loom_value_facts_mark_lane_distribution_for_type(
+        loom_module_value_type(module, loom_op_const_results(op)[result_index]),
+        facts);
   }
 }
 
@@ -112,17 +106,25 @@ static iree_status_t loom_scf_meet_result_facts(
 static iree_status_t loom_scf_lookup_meet_row_facts(
     loom_fact_context_t* context, const loom_module_t* module,
     const loom_op_t* op, uint16_t result_count, iree_host_size_t row_index,
-    const loom_value_facts_t* operand_facts, bool initialized_results,
+    const loom_value_facts_t* operand_facts, iree_host_size_t first_row_index,
     loom_value_facts_t* result_facts) {
   iree_host_size_t row_offset = 1 + row_index * result_count;
   for (uint16_t i = 0; i < result_count; ++i) {
     const loom_value_facts_t* candidate = &operand_facts[row_offset + i];
-    if (!initialized_results) {
+    if (first_row_index == IREE_HOST_SIZE_MAX) {
       result_facts[i] = *candidate;
     } else {
       IREE_RETURN_IF_ERROR(
           loom_scf_meet_result_facts(context, module, op, i, result_facts[i],
                                      *candidate, &result_facts[i]));
+      // A different row can select a different value at each invocation.
+      // Identical SSA inputs do not depend on the selector's distribution.
+      const loom_value_id_t* operands = loom_op_const_operands(op);
+      if (operands[row_offset + i] !=
+          operands[1 + first_row_index * result_count + i]) {
+        loom_scf_apply_selector_distribution(module, op, i, operand_facts[0],
+                                             &result_facts[i]);
+      }
     }
   }
   return iree_ok_status();
@@ -145,10 +147,8 @@ iree_status_t loom_scf_select_facts(loom_fact_context_t* context,
   IREE_RETURN_IF_ERROR(
       loom_scf_meet_result_facts(context, module, op, 0, operand_facts[1],
                                  operand_facts[2], &result_facts[0]));
-  if (loom_value_facts_is_lane_varying(operand_facts[0]) ||
-      loom_value_facts_is_lane_predicate(operand_facts[0])) {
-    loom_scf_mark_lane_distribution_for_result(module, op, 0, &result_facts[0]);
-  }
+  loom_scf_apply_selector_distribution(module, op, 0, operand_facts[0],
+                                       &result_facts[0]);
   return iree_ok_status();
 }
 
@@ -193,7 +193,7 @@ iree_status_t loom_scf_lookup_facts(loom_fact_context_t* context,
     return iree_ok_status();
   }
 
-  bool initialized_results = false;
+  iree_host_size_t first_row_index = IREE_HOST_SIZE_MAX;
   for (uint16_t i = 0; i < case_keys.count; ++i) {
     if (!loom_scf_lookup_key_matches_selector_facts(selector_facts,
                                                     case_keys.i64_array[i])) {
@@ -201,16 +201,20 @@ iree_status_t loom_scf_lookup_facts(loom_fact_context_t* context,
     }
     IREE_RETURN_IF_ERROR(loom_scf_lookup_meet_row_facts(
         context, module, op, op->result_count, i, operand_facts,
-        initialized_results, result_facts));
-    initialized_results = true;
+        first_row_index, result_facts));
+    if (first_row_index == IREE_HOST_SIZE_MAX) {
+      first_row_index = i;
+    }
   }
   if (loom_scf_lookup_default_row_may_match(selector_facts, case_keys)) {
     IREE_RETURN_IF_ERROR(loom_scf_lookup_meet_row_facts(
         context, module, op, op->result_count, case_keys.count, operand_facts,
-        initialized_results, result_facts));
-    initialized_results = true;
+        first_row_index, result_facts));
+    if (first_row_index == IREE_HOST_SIZE_MAX) {
+      first_row_index = case_keys.count;
+    }
   }
-  if (!initialized_results) {
+  if (first_row_index == IREE_HOST_SIZE_MAX) {
     for (uint16_t i = 0; i < op->result_count; ++i) {
       result_facts[i] = loom_value_facts_unknown();
     }

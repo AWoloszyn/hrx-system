@@ -393,10 +393,10 @@ static iree_status_t loom_kernel_async_legality_check_cluster_request(
         state, producer_op, LOOM_MOVEMENT_REJECTION_CLUSTER_PREDICATE);
   }
 
-  bool cluster_uniform_execution = false;
-  IREE_RETURN_IF_ERROR(loom_control_uniformity_prove_execution(
-      &state->control_uniformity, producer_op,
-      LOOM_VALUE_FACT_UNIFORM_SCOPE_CLUSTER, NULL, &cluster_uniform_execution));
+  const bool cluster_uniform_execution =
+      loom_control_uniformity_prove_execution(
+          &state->control_uniformity, producer_op,
+          LOOM_VALUE_FACT_UNIFORM_SCOPE_CLUSTER, NULL);
   if (!cluster_uniform_execution) {
     return loom_kernel_async_legality_fail_movement_rejection(
         state, producer_op, LOOM_MOVEMENT_REJECTION_CLUSTER_CONTROL);

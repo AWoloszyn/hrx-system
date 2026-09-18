@@ -6,11 +6,13 @@
 
 #include "loom/analysis/control_uniformity.h"
 
+#include <random>
 #include <vector>
 
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/analysis/control_uniformity_test_util.h"
 #include "loom/format/text/parser.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
@@ -134,10 +136,104 @@ class ControlUniformityTest : public ::testing::Test {
     return proven;
   }
 
+  void CheckCoexecution(const std::vector<std::vector<uint16_t>>& successors,
+                        uint32_t uniform_selectors) {
+    SCOPED_TRACE(::testing::PrintToString(successors));
+    SCOPED_TRACE(uniform_selectors);
+    IREE_ASSERT_OK(testing::CheckControlCoexecution(
+        &context_, &block_pool_, &analysis_arena_, successors,
+        uniform_selectors));
+    iree_arena_reset(&analysis_arena_);
+  }
+
+  // Backing storage shared by module and analysis lifetimes.
   iree_arena_block_pool_t block_pool_;
+  // Reset between independently generated CFGs.
   iree_arena_allocator_t analysis_arena_;
+  // Registered dialect semantics used by fixtures.
   loom_context_t context_;
 };
+
+TEST_F(ControlUniformityTest, PartialReconvergenceIsNotAnExclusiveAlternative) {
+  CheckCoexecution({{1, 2}, {3, 4}, {3, 4}, {4}, {}}, 0x1F);
+}
+
+TEST_F(ControlUniformityTest, PartialParticipationCannotProveExclusion) {
+  CheckCoexecution({{1, 3}, {2, 3}, {4}, {4}, {}}, 0x1E);
+}
+
+TEST_F(ControlUniformityTest, BypassedControllerCannotProveExclusion) {
+  CheckCoexecution({{2, 1}, {3, 4}, {4, 3}, {5, 5}, {5}, {}}, 0x0B);
+}
+
+TEST_F(ControlUniformityTest, ExhaustiveFourBlockPathsAndSelectorScopes) {
+  // All forward CFGs with at most two alternatives, including duplicate edges,
+  // and every choice of uniform versus lane-varying selectors.
+  auto alternatives = [](uint16_t source) {
+    std::vector<std::vector<uint16_t>> result{{}};
+    for (uint16_t first = source + 1; first < 4; ++first) {
+      result.push_back({first});
+      for (uint16_t second = first; second < 4; ++second) {
+        result.push_back({first, second});
+      }
+    }
+    return result;
+  };
+  for (const auto& entry : alternatives(0)) {
+    for (const auto& second : alternatives(1)) {
+      for (const auto& third : alternatives(2)) {
+        for (uint32_t uniform = 0; uniform < 8; ++uniform) {
+          SCOPED_TRACE(uniform);
+          CheckCoexecution({entry, second, third, {}}, uniform);
+        }
+      }
+    }
+  }
+}
+
+TEST_F(ControlUniformityTest, RandomAcyclicPathsAndMixedSelectorScopes) {
+  std::mt19937 random(73864);
+  for (uint32_t trial = 0; trial < 5000; ++trial) {
+    SCOPED_TRACE(trial);
+    const uint16_t count = 3 + random() % 5;
+    std::vector<std::vector<uint16_t>> successors(count);
+    for (uint16_t source = 0; source + 1 < count; ++source) {
+      const uint32_t edge_count = random() % 3;
+      for (uint32_t edge = 0; edge < edge_count; ++edge) {
+        successors[source].push_back(source + 1 +
+                                     random() % (count - source - 1));
+      }
+    }
+    CheckCoexecution(successors, random() & ((1u << count) - 1));
+  }
+}
+
+TEST_F(ControlUniformityTest, NonterminatingAlternativesCanFlowIntoEachOther) {
+  CheckCoexecution({{1, 2}, {2}, {2}}, 0x7);
+  CheckCoexecution({{2, 1}, {1}, {1}}, 0x7);
+}
+
+TEST_F(ControlUniformityTest, CyclicArmsAndPartialReconvergence) {
+  CheckCoexecution({{1, 2}, {3, 5}, {4, 5}, {1, 5}, {2, 5}, {}}, 1);
+  CheckCoexecution({{1, 2}, {3, 4}, {3, 4}, {1, 5}, {2, 5}, {}}, 1);
+  CheckCoexecution({{1, 2}, {3}, {4}, {1, 4}, {2, 3}}, 0x1F);
+}
+
+TEST_F(ControlUniformityTest, RandomCyclicPathsAndMixedSelectorScopes) {
+  std::mt19937 random(913756);
+  for (uint32_t trial = 0; trial < 3000; ++trial) {
+    SCOPED_TRACE(trial);
+    const uint16_t count = 3 + random() % 5;
+    std::vector<std::vector<uint16_t>> successors(count);
+    for (auto& edges : successors) {
+      const uint32_t edge_count = random() % 3;
+      for (uint32_t i = 0; i < edge_count; ++i) {
+        edges.push_back(1 + random() % (count - 1));
+      }
+    }
+    CheckCoexecution(successors, random() & ((1u << count) - 1));
+  }
+}
 
 TEST_F(ControlUniformityTest, ProvesDirectAlternativesAtSelectorScope) {
   ModulePtr module = ParseModule(R"(

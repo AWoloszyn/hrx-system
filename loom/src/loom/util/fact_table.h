@@ -47,8 +47,7 @@ extern "C" {
 // Fact table
 //===----------------------------------------------------------------------===//
 
-typedef struct loom_value_fact_cfg_graph_entry_t
-    loom_value_fact_cfg_graph_entry_t;
+typedef struct loom_value_fact_region_entry_t loom_value_fact_region_entry_t;
 typedef struct loom_cfg_graph_t loom_cfg_graph_t;
 typedef struct loom_target_facts_t loom_target_facts_t;
 
@@ -142,19 +141,20 @@ struct loom_value_fact_table_t {
   // Context object passed to op-specific fact inference callbacks.
   loom_fact_context_t context;
 
-  // CFG graphs built while solving block argument facts. Entries and buckets
-  // have transient scope lifetime and let downstream analyses reuse the graph
-  // extraction already paid for by value-fact computation.
+  // Region execution context and optional CFG structure retained by the fact
+  // owner. Entries and buckets have transient scope lifetime.
   struct {
     // Hash buckets containing collision chains keyed by region address.
-    loom_value_fact_cfg_graph_entry_t** buckets;
+    loom_value_fact_region_entry_t** buckets;
     // Power-of-two hash bucket count.
     iree_host_size_t bucket_count;
-    // Number of cached CFG region graphs.
+    // Number of analyzed regions.
     iree_host_size_t count;
+    // Number of published CFG snapshots, used to skip CFG-only rewrite work.
+    iree_host_size_t cfg_count;
     // Intrusive list of all entries for bucket-table rehashing.
-    loom_value_fact_cfg_graph_entry_t* entries;
-  } cfg_graphs;
+    loom_value_fact_region_entry_t* entries;
+  } regions;
 
   // Interned fact extension payloads. Extension IDs stored in
   // loom_value_facts_t are one-based indexes into entries and are only valid
@@ -324,6 +324,20 @@ static inline loom_value_facts_t loom_value_fact_table_lookup(
 // owning rewriter replaces or withdraws the region's structural snapshot.
 const loom_cfg_graph_t* loom_value_fact_table_lookup_cfg_graph(
     const loom_value_fact_table_t* table, const loom_region_t* region);
+
+// Publishes the temporal distribution inherited from enclosing CFG cycles.
+// The region traversal owns this transitive context; nested regions import
+// their parent block's scope before computing any child facts.
+iree_status_t loom_value_fact_table_set_region_temporal_scope(
+    loom_value_fact_table_t* table, const loom_region_t* region,
+    loom_value_facts_t scope);
+
+// Returns inherited temporal context met with this block's execution scope
+// when it belongs to a CFG cycle. This bounds facts for operations whose
+// results can differ between dynamic executions. Missing context is unknown;
+// a detached op cannot establish uniformity across unknown enclosing cycles.
+loom_value_facts_t loom_value_fact_table_block_temporal_scope(
+    const loom_value_fact_table_t* table, const loom_block_t* block);
 
 // Defines (or updates) facts for a value, growing the table if needed.
 iree_status_t loom_value_fact_table_define(loom_value_fact_table_t* table,

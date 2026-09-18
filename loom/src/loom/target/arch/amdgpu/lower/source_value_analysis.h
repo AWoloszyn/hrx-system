@@ -54,7 +54,7 @@ typedef struct loom_amdgpu_source_value_analysis_record_t {
 typedef struct loom_amdgpu_source_value_analysis_t {
   // Dense source value domain owned by the current source-to-low lowering run.
   const loom_local_value_domain_t* value_domain;
-  // Fact table used to derive records.
+  // Borrowed active fact scope providing value records and source CFGs.
   const loom_value_fact_table_t* fact_table;
   // Descriptor set governing target-specific source placement capabilities.
   const loom_low_descriptor_set_t* descriptor_set;
@@ -64,12 +64,6 @@ typedef struct loom_amdgpu_source_value_analysis_t {
   loom_amdgpu_source_value_analysis_record_t* records;
   // Number of initialized records.
   iree_host_size_t record_count;
-  // Source function body covered by source_cfg_graph.
-  const loom_region_t* source_body;
-  // CFG graph for source_body, built once per source-to-low run.
-  loom_cfg_graph_t source_cfg_graph;
-  // True when source_cfg_graph has been initialized for a multi-block body.
-  bool source_cfg_graph_initialized;
 } loom_amdgpu_source_value_analysis_t;
 
 typedef uint32_t loom_amdgpu_source_producer_flags_t;
@@ -118,6 +112,8 @@ iree_status_t loom_amdgpu_source_value_analysis_for_target_low_legality(
 iree_status_t loom_amdgpu_source_value_analysis_for_contract_query(
     const loom_target_contract_query_environment_t* environment,
     loom_amdgpu_source_value_analysis_t** out_analysis);
+// Borrows the current fact-owner graph for this query. The graph must not be
+// retained across source rewriting or a change of the active fact scope.
 const loom_cfg_graph_t* loom_amdgpu_source_value_analysis_cfg_graph(
     const loom_amdgpu_source_value_analysis_t* analysis,
     const loom_region_t* region);

@@ -86,11 +86,9 @@ iree_status_t loom_amdgpu_memory_prove_full_subgroup(
   loom_control_uniformity_info_t* control_uniformity = NULL;
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_memory_control_uniformity(context, &control_uniformity));
-  loom_control_uniformity_failure_t failure = {0};
-  bool control_is_uniform = false;
-  IREE_RETURN_IF_ERROR(loom_control_uniformity_prove_execution(
+  const bool control_is_uniform = loom_control_uniformity_prove_execution(
       control_uniformity, source_op, LOOM_VALUE_FACT_UNIFORM_SCOPE_SUBGROUP,
-      &failure, &control_is_uniform));
+      NULL);
   if (!control_is_uniform) {
     out_proof->unknown_reason = IREE_SV("active-lane-control-not-uniform");
     return iree_ok_status();

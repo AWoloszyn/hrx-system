@@ -8,6 +8,44 @@
 
 #include <string.h>
 
+#include "loom/util/fact_table.h"
+
+static void loom_value_fact_cfg_seed_selector(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, uint16_t block_index) {
+  if (!region->control_structure.node_count ||
+      !region->control_structure.blocks[block_index].binding_count) {
+    return;
+  }
+  const loom_value_id_t selector =
+      loom_cfg_graph_refresh_selector(&region->graph, block_index);
+  loom_value_facts_t facts = loom_value_fact_table_lookup(table, selector);
+  if (selector != LOOM_VALUE_ID_INVALID &&
+      !loom_value_fact_table_has_entry(table, selector)) {
+    loom_value_facts_mark_cluster_uniform(&facts);
+  }
+  loom_value_fact_control_set_selector(region->control, block_index, facts);
+}
+
+bool loom_value_fact_cfg_update_control(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, uint16_t block_index) {
+  loom_value_fact_cfg_seed_selector(table, region, block_index);
+  return loom_value_fact_control_settle(region->control);
+}
+
+void loom_value_fact_cfg_seed_control(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, const loom_scc_t* component) {
+  const iree_host_size_t count =
+      component ? component->node_count : region->graph.block_count;
+  for (iree_host_size_t i = 0; i < count; ++i) {
+    loom_value_fact_cfg_seed_selector(table, region,
+                                      component ? component->nodes[i] : i);
+  }
+  loom_value_fact_control_settle(region->control);
+}
+
 iree_host_size_t loom_value_fact_cfg_region_argument_index(
     const loom_value_fact_cfg_region_t* region, loom_value_id_t value_id) {
   const loom_value_t* value = loom_module_value(region->graph.module, value_id);
@@ -106,6 +144,7 @@ iree_status_t loom_value_fact_cfg_update_forwarding(
         region->argument_components[argument_index] = retained_index;
       }
     }
+    partition->component_count = components.count;
     partition->dirty = false;
   }
   iree_arena_checkpoint_restore(&checkpoint);
@@ -139,13 +178,11 @@ static iree_status_t loom_value_fact_cfg_group_control_flow(
     offset += components[i].node_count;
     components[i].node_count = 0;
   }
-  for (uint16_t i = 0; i < graph->block_count; ++i) {
-    const loom_cfg_block_info_t* block = &graph->blocks[i];
-    if (!block->reachable) {
-      continue;
-    }
+  for (iree_host_size_t i = 0; i < graph->reverse_postorder.count; ++i) {
+    const uint16_t block_index = graph->reverse_postorder.values[i];
+    const loom_cfg_block_info_t* block = &graph->blocks[block_index];
     loom_scc_t* component = &components[block->component];
-    nodes[(component->nodes - nodes) + component->node_count++] = i;
+    nodes[(component->nodes - nodes) + component->node_count++] = block_index;
   }
   *out_components = (loom_scc_list_t){
       .values = components,
@@ -160,6 +197,12 @@ iree_status_t loom_value_fact_cfg_region_initialize(
   *out_region = (loom_value_fact_cfg_region_t){0};
   IREE_RETURN_IF_ERROR(
       loom_cfg_graph_build(module, region, arena, &out_region->graph));
+  IREE_RETURN_IF_ERROR(loom_cfg_control_build(&out_region->graph, arena,
+                                              &out_region->control_structure));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(arena, sizeof(*out_region->control),
+                                           (void**)&out_region->control));
+  IREE_RETURN_IF_ERROR(loom_value_fact_control_initialize(
+      &out_region->control_structure, arena, out_region->control));
   if (out_region->graph.backward_edge_count == 0) {
     return iree_ok_status();
   }
@@ -195,6 +238,12 @@ iree_status_t loom_value_fact_cfg_region_initialize(
     *partition = (loom_value_fact_cfg_forwarding_t){
         .argument_offset = out_region->argument_count,
     };
+    if (component->is_cycle) {
+      // Every cycle owns a summary even without carried arguments: repeated
+      // observations can change facts when its execution scope changes.
+      out_region->control_flow.anchors[i] =
+          out_region->graph.blocks[component->nodes[0]].block->last_op;
+    }
     for (iree_host_size_t j = 0; j < component->node_count; ++j) {
       iree_host_size_t block_index = component->nodes[j];
       const loom_block_t* block = out_region->graph.blocks[block_index].block;
@@ -202,24 +251,10 @@ iree_status_t loom_value_fact_cfg_region_initialize(
       if (block_index != 0) {
         out_region->argument_count += block->arg_count;
       }
-      if (!component->is_cycle || !block->arg_count ||
-          out_region->control_flow.anchors[i]) {
-        continue;
-      }
-      loom_cfg_edge_index_span_t predecessors =
-          loom_cfg_graph_predecessor_edges(&out_region->graph, block_index);
-      for (iree_host_size_t k = 0; k < predecessors.count; ++k) {
-        const loom_cfg_edge_info_t* edge =
-            &out_region->graph.edges[predecessors.values[k]];
-        if (out_region->graph.blocks[edge->source_block_index].reachable &&
-            edge->terminator->successor_count == 1) {
-          out_region->control_flow.anchors[i] = (loom_op_t*)edge->terminator;
-          break;
-        }
-      }
     }
     partition->argument_count =
         out_region->argument_count - partition->argument_offset;
+    partition->component_count = partition->argument_count;
     partition->dirty = component->is_cycle && partition->argument_count != 0;
   }
   if (out_region->argument_count == 0) {

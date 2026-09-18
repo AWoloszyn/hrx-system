@@ -224,7 +224,9 @@ loom_cc_library(
     "fact_table_compute.c"
     "reference_transfer.c"
   DEPS
+    ::cfg_control
     ::cfg_graph
+    ::fact_control
     ::numeric_format
     ::reference_facts
     iree::base
@@ -391,6 +393,137 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
   PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    cfg_control
+  HDRS
+    "cfg_control.h"
+  SRCS
+    "cfg_control.c"
+  DEPS
+    ::cfg_graph
+    ::cfg_postdominance
+    iree::base
+    iree::base::internal::arena
+    loom::analysis::scc
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    cfg_graph_test_util
+  HDRS
+    "cfg_graph_test_util.h"
+  DEPS
+    ::cfg_graph
+  TESTONLY
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    cfg_control_test_util
+  HDRS
+    "cfg_control_test_util.h"
+  SRCS
+    "cfg_control_test_util.cc"
+  DEPS
+    ::cfg_control
+    ::cfg_graph
+    ::cfg_postdominance
+    ::fact_control
+    iree::base
+    loom::ir::facts
+  TESTONLY
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    cfg_control_test
+  SRCS
+    "cfg_control_test.cc"
+  DEPS
+    ::cfg_control
+    ::cfg_control_test_util
+    ::cfg_graph_test_util
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_library(
+  NAME
+    fact_control
+  HDRS
+    "fact_control.h"
+  SRCS
+    "fact_control.c"
+  DEPS
+    ::cfg_control
+    ::cfg_graph
+    iree::base
+    iree::base::internal::arena
+    loom::ir::facts
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    fact_control_test
+  SRCS
+    "fact_control_test.cc"
+  DEPS
+    ::cfg_control
+    ::cfg_control_test_util
+    ::cfg_graph_test_util
+    ::fact_control
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_fuzz(
+  NAME
+    fact_control_fuzz
+  SRCS
+    "fact_control_fuzz.cc"
+  DEPS
+    ::cfg_control_test_util
+    ::cfg_graph_test_util
+    ::fact_control
+    iree::base
+    iree::base::internal::arena
+)
+
+loom_cc_library(
+  NAME
+    cfg_postdominance
+  HDRS
+    "cfg_postdominance.h"
+  SRCS
+    "cfg_postdominance.c"
+  DEPS
+    ::cfg_graph
+    iree::base
+    iree::base::internal::arena
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    cfg_postdominance_test
+  SRCS
+    "cfg_postdominance_test.cc"
+  DEPS
+    ::cfg_control_test_util
+    ::cfg_graph
+    ::cfg_graph_test_util
+    ::cfg_postdominance
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 loom_cc_library(

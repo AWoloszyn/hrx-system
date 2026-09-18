@@ -1146,9 +1146,8 @@ static iree_status_t loom_kernel_verify_barrier_control(
     const loom_op_t* barrier_op,
     loom_value_fact_uniform_scope_t required_scope) {
   loom_control_uniformity_failure_t failure = {0};
-  bool proven = false;
-  IREE_RETURN_IF_ERROR(loom_control_uniformity_prove_execution(
-      control_uniformity, barrier_op, required_scope, &failure, &proven));
+  const bool proven = loom_control_uniformity_prove_execution(
+      control_uniformity, barrier_op, required_scope, &failure);
   if (!proven) {
     return loom_kernel_emit_barrier_control_constraint(
         module, emitter, barrier_op, required_scope, &failure);

@@ -28,7 +28,6 @@
 
 static int loom_amdgpu_source_value_analysis_state_key;
 static iree_status_t loom_amdgpu_source_value_analysis_prepare(
-    const loom_module_t* module, loom_func_like_t source_function,
     const loom_value_fact_table_t* fact_table,
     const loom_local_value_domain_t* value_domain,
     const loom_low_descriptor_set_t* descriptor_set,
@@ -62,18 +61,6 @@ static iree_status_t loom_amdgpu_source_value_analysis_prepare(
              analysis->record_count * sizeof(*analysis->records));
     }
   }
-  const loom_region_t* source_body = loom_func_like_body(source_function);
-  if (analysis->source_body != source_body) {
-    analysis->source_body = source_body;
-    analysis->source_cfg_graph = (loom_cfg_graph_t){0};
-    analysis->source_cfg_graph_initialized = false;
-  }
-  if (source_body != NULL && source_body->block_count > 1 &&
-      !analysis->source_cfg_graph_initialized) {
-    IREE_RETURN_IF_ERROR(loom_cfg_graph_build(module, source_body, arena,
-                                              &analysis->source_cfg_graph));
-    analysis->source_cfg_graph_initialized = true;
-  }
   return iree_ok_status();
 }
 
@@ -86,8 +73,6 @@ iree_status_t loom_amdgpu_source_value_analysis_for_context(
       context, &loom_amdgpu_source_value_analysis_state_key, sizeof(*analysis),
       (void**)&analysis));
   IREE_RETURN_IF_ERROR(loom_amdgpu_source_value_analysis_prepare(
-      loom_low_lower_context_module(context),
-      loom_low_lower_context_source_function(context),
       loom_low_lower_context_fact_table(context),
       loom_low_lower_context_value_domain(context),
       loom_low_lower_context_descriptor_set(context),
@@ -105,8 +90,6 @@ iree_status_t loom_amdgpu_source_value_analysis_for_target_low_legality(
       context, &loom_amdgpu_source_value_analysis_state_key, sizeof(*analysis),
       (void**)&analysis));
   IREE_RETURN_IF_ERROR(loom_amdgpu_source_value_analysis_prepare(
-      loom_target_low_legality_module(context),
-      loom_target_low_legality_function(context),
       loom_target_low_legality_fact_table(context),
       loom_target_low_legality_value_domain(context),
       loom_target_low_legality_descriptor_set(context),
@@ -131,9 +114,8 @@ iree_status_t loom_amdgpu_source_value_analysis_for_contract_query(
     return iree_ok_status();
   }
   IREE_RETURN_IF_ERROR(loom_amdgpu_source_value_analysis_prepare(
-      environment->module, environment->function, environment->fact_table,
-      environment->value_domain, environment->descriptor_set,
-      environment->arena, analysis));
+      environment->fact_table, environment->value_domain,
+      environment->descriptor_set, environment->arena, analysis));
   *out_analysis = analysis;
   return iree_ok_status();
 }
@@ -141,11 +123,10 @@ iree_status_t loom_amdgpu_source_value_analysis_for_contract_query(
 const loom_cfg_graph_t* loom_amdgpu_source_value_analysis_cfg_graph(
     const loom_amdgpu_source_value_analysis_t* analysis,
     const loom_region_t* region) {
-  if (analysis == NULL || !analysis->source_cfg_graph_initialized ||
-      analysis->source_body != region || analysis->source_cfg_graph.malformed) {
-    return NULL;
-  }
-  return &analysis->source_cfg_graph;
+  return analysis && analysis->fact_table
+             ? loom_value_fact_table_lookup_cfg_graph(analysis->fact_table,
+                                                      region)
+             : NULL;
 }
 
 static loom_amdgpu_source_value_analysis_record_t*

@@ -1,0 +1,845 @@
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+func.def @for_unknown_exit(%limit: index, %seed: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ----
+func.def @for_unknown_exit(%limit: index, %seed: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %constant, %at_first : index, index, i1
+  }
+  %result_subgroup = scalar.constant false : i1
+  %result_workgroup = scalar.constant false : i1
+  %result_cluster = scalar.constant false : i1
+  %result_varying = scalar.constant false : i1
+  %unchanged_uniform = scalar.constant false : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant false : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @for_lane_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.subgroup.lane.id : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @for_lane_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.subgroup.lane.id : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %constant, %at_first : index, index, i1
+  }
+  %result_subgroup = scalar.constant false : i1
+  %result_workgroup = scalar.constant false : i1
+  %result_cluster = scalar.constant false : i1
+  %result_varying = scalar.constant true : i1
+  %unchanged_uniform = scalar.constant true : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant true : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @for_subgroup_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.subgroup.id : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @for_subgroup_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.subgroup.id : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %constant, %at_first : index, index, i1
+  }
+  %result_subgroup = scalar.constant true : i1
+  %result_workgroup = scalar.constant false : i1
+  %result_cluster = scalar.constant false : i1
+  %result_varying = scalar.constant false : i1
+  %unchanged_uniform = scalar.constant true : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant false : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @for_workgroup_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.workgroup.id<x> : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @for_workgroup_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.workgroup.id<x> : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %constant, %at_first : index, index, i1
+  }
+  %result_subgroup = scalar.constant true : i1
+  %result_workgroup = scalar.constant true : i1
+  %result_cluster = scalar.constant false : i1
+  %result_varying = scalar.constant false : i1
+  %unchanged_uniform = scalar.constant true : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant false : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @for_cluster_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = index.add %bound, %bound : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @for_cluster_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = index.add %bound, %bound : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %exact_result, %last_flag = scf.for %iv = [%begin to %limit step %step](%counter = %begin : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, i1) {
+    %at_first = index.cmp eq, %counter, %begin : index
+    %next = index.add %counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %constant, %at_first : index, index, i1
+  }
+  %result_subgroup = scalar.constant true : i1
+  %result_workgroup = scalar.constant true : i1
+  %result_cluster = scalar.constant true : i1
+  %result_varying = scalar.constant false : i1
+  %unchanged_uniform = scalar.constant true : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant false : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+func.def @while_unknown_exit(%limit: index, %seed: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %body_counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ----
+func.def @while_unknown_exit(%limit: index, %seed: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = scalar.constant false : i1
+  %result_workgroup = scalar.constant false : i1
+  %result_cluster = scalar.constant false : i1
+  %result_varying = scalar.constant false : i1
+  %unchanged_uniform = scalar.constant false : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant false : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @while_lane_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.subgroup.lane.id : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %body_counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @while_lane_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.subgroup.lane.id : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = scalar.constant false : i1
+  %result_workgroup = scalar.constant false : i1
+  %result_cluster = scalar.constant false : i1
+  %result_varying = scalar.constant true : i1
+  %unchanged_uniform = scalar.constant true : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant true : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @while_subgroup_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.subgroup.id : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %body_counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @while_subgroup_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.subgroup.id : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = scalar.constant true : i1
+  %result_workgroup = scalar.constant false : i1
+  %result_cluster = scalar.constant false : i1
+  %result_varying = scalar.constant false : i1
+  %unchanged_uniform = scalar.constant true : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant false : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @while_workgroup_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.workgroup.id<x> : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %body_counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @while_workgroup_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = kernel.workgroup.id<x> : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = scalar.constant true : i1
+  %result_workgroup = scalar.constant true : i1
+  %result_cluster = scalar.constant false : i1
+  %result_varying = scalar.constant false : i1
+  %unchanged_uniform = scalar.constant true : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant false : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Per-iteration uniform state may leave the loop at different iterations.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @while_cluster_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = index.add %bound, %bound : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = test.fact_cluster_uniform %body_counter : index -> i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = test.fact_subgroup_uniform %result : index -> i1
+  %result_workgroup = test.fact_workgroup_uniform %result : index -> i1
+  %result_cluster = test.fact_cluster_uniform %result : index -> i1
+  %result_varying = test.fact_lane_varying %result : index -> i1
+  %unchanged_uniform = test.fact_cluster_uniform %unchanged : index -> i1
+  %exact_uniform = test.fact_cluster_uniform %exact_result : index -> i1
+  %flag_predicate = test.fact_lane_predicate %last_flag : i1 -> i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @while_cluster_exit() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%seed: index, %bound: index) {
+  %limit = index.add %bound, %bound : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %constant = index.constant 7 : index
+  %disabled = scalar.constant false : i1
+  %result, %unchanged, %exact_result, %last_flag = scf.while(%counter = %begin : index, %fixed = %seed : index, %exact = %constant : index, %flag = %disabled : i1) -> (index, index, index, i1) {
+    %keep_going = index.cmp ult, %counter, %limit : index
+    scf.condition %keep_going, %counter, %fixed, %exact, %flag : i1, index, index, index, i1
+  } do(%body_counter: index, %body_fixed: index, %body_exact: index, %body_flag: i1) {
+    %at_first = index.cmp eq, %body_counter, %begin : index
+    %next = index.add %body_counter, %step : index
+    %body_uniform = scalar.constant true : i1
+    test.use %body_uniform : i1
+    scf.yield %next, %body_fixed, %constant, %at_first : index, index, index, i1
+  }
+  %result_subgroup = scalar.constant true : i1
+  %result_workgroup = scalar.constant true : i1
+  %result_cluster = scalar.constant true : i1
+  %result_varying = scalar.constant false : i1
+  %unchanged_uniform = scalar.constant true : i1
+  %exact_uniform = scalar.constant true : i1
+  %flag_predicate = scalar.constant false : i1
+  test.use %result_subgroup, %result_workgroup, %result_cluster, %result_varying, %unchanged_uniform, %exact_uniform, %flag_predicate : i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+kernel.def @for_varying_lower() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch(%seed: index, %other: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c65 = index.constant 65 : index
+  %result, %tail_result = scf.for %iv = [%lane to %c65 step %c1](%value = %seed : index, %tail = %other : index) -> (index, index) {
+    %next = index.add %value, %c1 : index
+    test.use %next : index
+    scf.yield %next, %tail : index, index
+  }
+  %uniform = test.fact_cluster_uniform %result : index -> i1
+  %varying = test.fact_lane_varying %result : index -> i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ----
+kernel.def @for_varying_lower() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch(%seed: index, %other: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c1 = index.constant 1 : index
+  %c65 = index.constant 65 : index
+  %result = scf.for %iv = [%lane to %c65 step %c1](%value = %seed : index) -> (index) {
+    %next = index.add %value, %c1 : index
+    test.use %next : index
+    scf.yield %next : index
+  }
+  %uniform = scalar.constant false : i1
+  %varying = scalar.constant true : i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+kernel.def @for_varying_step() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch(%seed: index, %other: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c65 = index.constant 65 : index
+  %stride = index.add %lane, %c1 : index
+  %result, %tail_result = scf.for %iv = [%c0 to %c65 step %stride](%value = %seed : index, %tail = %other : index) -> (index, index) {
+    %next = index.add %value, %c1 : index
+    test.use %next : index
+    scf.yield %next, %tail : index, index
+  }
+  %uniform = test.fact_cluster_uniform %result : index -> i1
+  %varying = test.fact_lane_varying %result : index -> i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ----
+kernel.def @for_varying_step() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch(%seed: index, %other: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c65 = index.constant 65 : index
+  %stride = index.add %lane, %c1 : index
+  %result = scf.for %iv = [%c0 to %c65 step %stride](%value = %seed : index) -> (index) {
+    %next = index.add %value, %c1 : index
+    test.use %next : index
+    scf.yield %next : index
+  }
+  %uniform = scalar.constant false : i1
+  %varying = scalar.constant true : i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+kernel.def @for_varying_zero_trip() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch(%seed: index, %other: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c65 = index.constant 65 : index
+  %start = index.add %lane, %c65 : index
+  %result, %tail_result = scf.for %iv = [%start to %c1 step %c1](%value = %seed : index, %tail = %other : index) -> (index, index) {
+    %next = index.add %value, %c1 : index
+    test.use %next : index
+    scf.yield %next, %tail : index, index
+  }
+  %uniform = test.fact_cluster_uniform %result : index -> i1
+  %varying = test.fact_lane_varying %result : index -> i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ----
+kernel.def @for_varying_zero_trip() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch(%seed: index, %other: index) {
+  %uniform = scalar.constant true : i1
+  %varying = scalar.constant false : i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+kernel.def @for_varying_rotation() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch(%seed: index, %other: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c65 = index.constant 65 : index
+  %result, %tail_result = scf.for %iv = [%c0 to %lane step %c1](%value = %seed : index, %tail = %other : index) -> (index, index) {
+    test.use %value, %tail : index, index
+    scf.yield %tail, %value : index, index
+  }
+  %uniform = test.fact_cluster_uniform %result : index -> i1
+  %varying = test.fact_lane_varying %result : index -> i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ----
+kernel.def @for_varying_rotation() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch(%seed: index, %other: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %result, %tail_result = scf.for %iv = [%c0 to %lane step %c1](%value = %seed : index, %tail = %other : index) -> (index, index) {
+    test.use %value, %tail : index, index
+    scf.yield %tail, %value : index, index
+  }
+  %uniform = scalar.constant false : i1
+  %varying = scalar.constant true : i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}

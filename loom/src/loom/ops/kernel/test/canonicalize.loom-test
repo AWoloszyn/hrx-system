@@ -160,3 +160,80 @@ kernel.def @trivial_cluster_queries_canonicalize(%workgroups: index) {
   test.use %cluster, %cluster_count : index, index
   kernel.return
 }
+
+// ====
+
+// Exact facts fold consumers while the convergent execution remains observable.
+kernel.def @exact_broadcast_keeps_execution() {
+  %unit_extent = index.constant 1 : index
+  %workgroup_size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%workgroup_size, %unit_extent, %unit_extent) : index
+} launch() {
+  %input = scalar.constant 5 : i32
+  %unit = scalar.constant 1 : i32
+  %observed = kernel.subgroup.broadcast.first %input : i32
+  %result = scalar.addi %observed, %unit : i32
+  test.use %result : i32
+  kernel.return
+}
+
+// ----
+kernel.def @exact_broadcast_keeps_execution() {
+  %unit_extent = index.constant 1 : index
+  %workgroup_size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%workgroup_size, %unit_extent, %unit_extent) : index
+} launch() {
+  %input = scalar.constant 5 : i32
+  %observed = kernel.subgroup.broadcast.first %input : i32
+  %result = scalar.constant 6 : i32
+  test.use %result : i32
+  kernel.return
+}
+
+// ====
+
+// An unused exact broadcast retains the original control predicate and region.
+kernel.def @exact_broadcast_keeps_conditional() {
+  %unit_extent = index.constant 1 : index
+  %workgroup_size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%workgroup_size, %unit_extent, %unit_extent) : index
+} launch(%condition: i1) {
+  %input = scalar.constant 5 : i32
+  %unit = scalar.constant 1 : i32
+  scf.if %condition {
+    %observed = kernel.subgroup.broadcast.first %input : i32
+    %result = scalar.addi %observed, %unit : i32
+    test.use %result : i32
+  }
+  kernel.return
+}
+
+// ----
+kernel.def @exact_broadcast_keeps_conditional() {
+  %unit_extent = index.constant 1 : index
+  %workgroup_size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%workgroup_size, %unit_extent, %unit_extent) : index
+} launch(%condition: i1) {
+  %input = scalar.constant 5 : i32
+  scf.if %condition {
+    %observed = kernel.subgroup.broadcast.first %input : i32
+    %result = scalar.constant 6 : i32
+    test.use %result : i32
+  }
+  kernel.return
+}
+
+// ====
+
+// Resultless regions with only a convergent operation are not dead regions.
+kernel.def @unused_exact_broadcast_keeps_conditional() {
+  %unit_extent = index.constant 1 : index
+  %workgroup_size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%workgroup_size, %unit_extent, %unit_extent) : index
+} launch(%condition: i1) {
+  %input = scalar.constant 5 : i32
+  scf.if %condition {
+    %observed = kernel.subgroup.broadcast.first %input : i32
+  }
+  kernel.return
+}

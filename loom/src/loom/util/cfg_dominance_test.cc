@@ -157,6 +157,37 @@ class CfgDominanceTest : public ::testing::Test {
       }
       EXPECT_EQ(dominance.immediate_dominators[block], parent) << block;
     }
+    // Removing all parallel edges of one source->target alternative checks
+    // mandatory entry independently of the dominator-tree classification.
+    for (uint16_t source = 0; source < count; ++source) {
+      auto alternatives = loom_cfg_graph_successors(graph, source);
+      for (size_t i = 0; i < alternatives.count; ++i) {
+        const uint16_t target = alternatives.values[i];
+        std::vector<bool> reachable(count);
+        std::vector<uint16_t> pending{0};
+        while (!pending.empty()) {
+          const uint16_t current = pending.back();
+          pending.pop_back();
+          if (reachable[current]) {
+            continue;
+          }
+          reachable[current] = true;
+          auto successors = loom_cfg_graph_successors(graph, current);
+          for (size_t j = 0; j < successors.count; ++j) {
+            if (current != source || successors.values[j] != target) {
+              pending.push_back(successors.values[j]);
+            }
+          }
+        }
+        for (uint16_t block = 0; block < count; ++block) {
+          EXPECT_EQ(
+              dominance.entry_predecessors[target] == source &&
+                  loom_cfg_dominance_block_dominates(&dominance, target, block),
+              graph->blocks[block].reachable && !reachable[block])
+              << source << " -> " << target << " dominates " << block;
+        }
+      }
+    }
     std::vector<bool> seen(count);
     for (size_t i = 0; i < dominance.preorder.count; ++i) {
       uint16_t block = dominance.preorder.values[i];
@@ -239,8 +270,11 @@ TEST_F(CfgDominanceTest, FullBlockIndexRangeWithoutRecursiveStack) {
   ASSERT_TRUE(dominance.available);
   ASSERT_EQ(dominance.preorder.count, count);
   EXPECT_EQ(dominance.immediate_dominators[count - 1], 0);
+  EXPECT_EQ(dominance.entry_predecessors[count - 1], 0);
+  EXPECT_EQ(dominance.entry_predecessors[0], LOOM_CFG_DOMINATOR_INVALID);
   for (size_t i = 1; i + 1 < count; ++i) {
     EXPECT_EQ(dominance.immediate_dominators[i], i + 1);
+    EXPECT_EQ(dominance.entry_predecessors[i], i + 1);
   }
   EXPECT_EQ(dominance.intervals[0], (count - 1) << 16);
   EXPECT_EQ(dominance.preorder.values[count - 1], 1);
@@ -255,6 +289,7 @@ TEST_F(CfgDominanceTest, MalformedGraphIsUnavailable) {
   EXPECT_EQ(dominance.preorder.count, 0u);
   EXPECT_EQ(dominance.immediate_dominators, nullptr);
   EXPECT_EQ(dominance.intervals, nullptr);
+  EXPECT_EQ(dominance.entry_predecessors, nullptr);
 }
 
 }  // namespace

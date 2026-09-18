@@ -52,7 +52,10 @@ typedef uint32_t loom_value_fact_flags_t;
 // predicates, or target-independent execution distribution. Range flags are
 // always consistent with the scalar range/divisor fields. Distribution flags
 // describe the widest execution scope over which invocations observe the same
-// SSA value.
+// SSA value, including observations after different iterations of a divergent
+// loop. An op's per-execution distribution transfer alone does not establish
+// uniformity at those observations; the fact owner also carries control
+// context.
 enum loom_value_fact_flag_bits_e {
   // The signed range lower bound is >= 0.
   LOOM_VALUE_FACT_NON_NEGATIVE = 1u << 0,

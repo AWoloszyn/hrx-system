@@ -809,7 +809,7 @@ static inline bool loom_traits_may_read(loom_trait_flags_t traits) {
 static inline bool loom_traits_has_side_effects(loom_trait_flags_t traits) {
   return (traits & (LOOM_TRAIT_WRITES_MEMORY | LOOM_TRAIT_UNKNOWN_EFFECTS |
                     LOOM_TRAIT_NON_DETERMINISTIC | LOOM_TRAIT_MEMORY_FENCE |
-                    LOOM_TRAIT_OBSERVABLE_EFFECT)) != 0;
+                    LOOM_TRAIT_OBSERVABLE_EFFECT | LOOM_TRAIT_CONVERGENT)) != 0;
 }
 
 // Returns true when the op carries an explicit memory ordering effect.

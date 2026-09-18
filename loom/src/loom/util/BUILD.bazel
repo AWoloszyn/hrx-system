@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_fuzz", "loom_cc_library", "loom_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -197,7 +197,9 @@ loom_cc_library(
         "reference_transfer.h",
     ],
     deps = [
+        ":cfg_control",
         ":cfg_graph",
+        ":fact_control",
         ":numeric_format",
         ":reference_facts",
         "//loom/src/loom/analysis:scc",
@@ -340,6 +342,117 @@ loom_cc_library(
         ":cfg_graph",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "cfg_control",
+    srcs = ["cfg_control.c"],
+    hdrs = ["cfg_control.h"],
+    deps = [
+        ":cfg_graph",
+        ":cfg_postdominance",
+        "//loom/src/loom/analysis:scc",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "cfg_graph_test_util",
+    testonly = True,
+    hdrs = ["cfg_graph_test_util.h"],
+    deps = [":cfg_graph"],
+)
+
+loom_cc_library(
+    name = "cfg_control_test_util",
+    testonly = True,
+    srcs = ["cfg_control_test_util.cc"],
+    hdrs = ["cfg_control_test_util.h"],
+    deps = [
+        ":cfg_control",
+        ":cfg_graph",
+        ":cfg_postdominance",
+        ":fact_control",
+        "//loom/src/loom/ir:facts",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_test(
+    name = "cfg_control_test",
+    srcs = ["cfg_control_test.cc"],
+    deps = [
+        ":cfg_control",
+        ":cfg_control_test_util",
+        ":cfg_graph_test_util",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
+    name = "fact_control",
+    srcs = ["fact_control.c"],
+    hdrs = ["fact_control.h"],
+    deps = [
+        ":cfg_control",
+        ":cfg_graph",
+        "//loom/src/loom/ir:facts",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "fact_control_test",
+    srcs = ["fact_control_test.cc"],
+    deps = [
+        ":cfg_control",
+        ":cfg_control_test_util",
+        ":cfg_graph_test_util",
+        ":fact_control",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_fuzz(
+    name = "fact_control_fuzz",
+    srcs = ["fact_control_fuzz.cc"],
+    deps = [
+        ":cfg_control_test_util",
+        ":cfg_graph_test_util",
+        ":fact_control",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "cfg_postdominance",
+    srcs = ["cfg_postdominance.c"],
+    hdrs = ["cfg_postdominance.h"],
+    deps = [
+        ":cfg_graph",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "cfg_postdominance_test",
+    srcs = ["cfg_postdominance_test.cc"],
+    deps = [
+        ":cfg_control_test_util",
+        ":cfg_graph",
+        ":cfg_graph_test_util",
+        ":cfg_postdominance",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 
