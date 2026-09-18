@@ -86,12 +86,9 @@ void loom_low_schedule_ready_policy_insert(
     const loom_low_schedule_build_state_t* state,
     loom_low_schedule_ready_policy_t* policy, uint32_t node_index,
     const loom_low_schedule_ready_keys_t* keys) {
-  const loom_low_descriptor_t* descriptor =
-      state->nodes[node_index].source_descriptor;
   const uint32_t descriptor_ordinal =
-      descriptor != NULL && policy->frontier.descriptor_count != 0
-          ? loom_low_descriptor_set_descriptor_ordinal(
-                state->target.descriptor_set, descriptor)
+      policy->frontier.descriptor_count != 0
+          ? state->nodes[node_index].source_descriptor_ordinal
           : LOOM_LOW_SCHEDULE_READY_NODE_NONE;
   loom_low_schedule_ready_frontier_insert(&policy->frontier, node_index, keys,
                                           descriptor_ordinal);
@@ -138,14 +135,11 @@ loom_low_schedule_ready_policy_find_pair(
     const loom_low_schedule_build_state_t* state,
     const loom_low_schedule_node_t* first,
     const loom_low_schedule_node_t* second) {
-  if (first == NULL || second == NULL || first->source_descriptor == NULL ||
-      second->source_descriptor == NULL || state->pair_affinity_heads == NULL) {
+  if (first == NULL || second == NULL || state->pair_affinity_heads == NULL) {
     return NULL;
   }
-  const uint32_t first_ordinal = loom_low_descriptor_set_descriptor_ordinal(
-      state->target.descriptor_set, first->source_descriptor);
-  const uint32_t second_ordinal = loom_low_descriptor_set_descriptor_ordinal(
-      state->target.descriptor_set, second->source_descriptor);
+  const uint32_t first_ordinal = first->source_descriptor_ordinal;
+  const uint32_t second_ordinal = second->source_descriptor_ordinal;
   if (first_ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE ||
       second_ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE) {
     return NULL;
@@ -244,13 +238,10 @@ static uint16_t loom_low_schedule_ready_policy_affinity_priority(
 static bool loom_low_schedule_ready_policy_node_can_start_pair(
     const loom_low_schedule_build_state_t* state,
     const loom_low_schedule_node_t* node) {
-  if (node == NULL || node->source_descriptor == NULL ||
-      state->pair_affinity_heads == NULL) {
+  if (node == NULL || state->pair_affinity_heads == NULL) {
     return false;
   }
-  const uint32_t descriptor_ordinal =
-      loom_low_descriptor_set_descriptor_ordinal(state->target.descriptor_set,
-                                                 node->source_descriptor);
+  const uint32_t descriptor_ordinal = node->source_descriptor_ordinal;
   return descriptor_ordinal != LOOM_LOW_DESCRIPTOR_ORDINAL_NONE &&
          state->pair_affinity_heads[descriptor_ordinal] !=
              LOOM_LOW_SCHEDULE_PAIR_AFFINITY_RECORD_NONE;
@@ -365,12 +356,10 @@ uint32_t loom_low_schedule_ready_policy_pair_nominee(
   }
 
   const loom_low_schedule_node_t* anchor = &state->nodes[anchor_node];
-  if (anchor->source_descriptor == NULL || state->pair_affinity_heads == NULL) {
+  if (state->pair_affinity_heads == NULL) {
     return LOOM_LOW_SCHEDULE_NODE_NONE;
   }
-  const uint32_t anchor_descriptor_ordinal =
-      loom_low_descriptor_set_descriptor_ordinal(state->target.descriptor_set,
-                                                 anchor->source_descriptor);
+  const uint32_t anchor_descriptor_ordinal = anchor->source_descriptor_ordinal;
   if (anchor_descriptor_ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE) {
     return LOOM_LOW_SCHEDULE_NODE_NONE;
   }
@@ -423,9 +412,9 @@ uint16_t loom_low_schedule_ready_policy_score_setup_unlocks(
     const uint32_t consumer_node = loom_low_schedule_dependency_index_group_at(
                                        &state->dependency_index, group_index)
                                        ->consumer_node;
-    const loom_low_descriptor_t* consumer_descriptor =
-        state->nodes[consumer_node].source_descriptor;
-    if (consumer_descriptor == NULL ||
+    const uint32_t consumer_descriptor_ordinal =
+        state->nodes[consumer_node].source_descriptor_ordinal;
+    if (consumer_descriptor_ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE ||
         policy->setup_dependency_counts[consumer_node] !=
             indegrees[consumer_node]) {
       continue;
@@ -433,11 +422,9 @@ uint16_t loom_low_schedule_ready_policy_score_setup_unlocks(
     priority = iree_max(
         priority, loom_low_schedule_ready_policy_preferred_member_priority(
                       state, consumer_node));
-    priority = iree_max(
-        priority, loom_low_schedule_ready_policy_pair_priority(
-                      state, policy,
-                      loom_low_descriptor_set_descriptor_ordinal(
-                          state->target.descriptor_set, consumer_descriptor)));
+    priority =
+        iree_max(priority, loom_low_schedule_ready_policy_pair_priority(
+                               state, policy, consumer_descriptor_ordinal));
   }
   return priority;
 }

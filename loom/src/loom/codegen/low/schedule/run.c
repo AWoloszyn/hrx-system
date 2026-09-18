@@ -1335,7 +1335,7 @@ static void loom_low_schedule_apply_candidate_descriptor(
     loom_low_schedule_build_state_t* state, loom_low_schedule_node_t* node,
     const loom_low_schedule_candidate_score_t* score) {
   if (state->options->strategy != LOOM_LOW_SCHEDULE_STRATEGY_RESOURCE_STALL ||
-      node->source_descriptor == NULL ||
+      node->source_descriptor_ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE ||
       score->selected_descriptor_ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE) {
     return;
   }

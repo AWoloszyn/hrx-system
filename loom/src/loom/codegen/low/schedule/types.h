@@ -276,22 +276,22 @@ static inline bool loom_low_schedule_structural_model_list_is_empty(
 typedef struct loom_low_schedule_node_t {
   // Operation represented by this node.
   const loom_op_t* op;
-  // Block containing |op|.
-  const loom_block_t* block;
   // Descriptor row for descriptor-backed nodes, or NULL.
   const loom_low_descriptor_t* descriptor;
-  // Semantic descriptor selected before target resource scheduling, or NULL.
-  // Encoding-equivalent schedule alternatives never change this identity.
-  const loom_low_descriptor_t* source_descriptor;
   // Schedule-class row for the target packet model, or NULL.
   const loom_low_schedule_class_t* schedule_class;
+  // Semantic descriptor ordinal before resource scheduling, or
+  // LOOM_LOW_DESCRIPTOR_ORDINAL_NONE for structural nodes.
+  // Encoding-equivalent schedule alternatives never change this identity.
+  uint32_t source_descriptor_ordinal;
   // Region block ordinal containing |op|.
   uint32_t block_index;
   // Source-order ordinal within the whole low function body.
   uint32_t source_ordinal;
-  // Scheduled ordinal within |block| after topological scheduling.
+  // Scheduled ordinal within the containing block after topological scheduling.
   uint32_t scheduled_ordinal;
-  // Abstract issue cycle within |block| after timing-aware scheduling.
+  // Abstract issue cycle within the containing block after timing-aware
+  // scheduling.
   uint32_t issue_cycle;
   // Table-wide issue-group ordinal containing this node.
   uint32_t issue_group_ordinal;
@@ -322,6 +322,9 @@ typedef struct loom_low_schedule_node_t {
     loom_value_ordinal_t* overflow_value_ordinals;
   } value_ordinals;
 } loom_low_schedule_node_t;
+
+static_assert(sizeof(loom_low_schedule_node_t) <= 88,
+              "schedule nodes must retain compact indexed identities");
 
 static inline loom_value_ordinal_t* loom_low_schedule_node_value_ordinals(
     loom_low_schedule_node_t* node) {

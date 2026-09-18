@@ -209,8 +209,8 @@ static iree_status_t loom_low_schedule_emit_state_clobber(
       loom_param_string(loom_low_diagnostic_config_key(&table->target)),
       loom_param_string(
           loom_low_diagnostic_function_name(table->module, table->function_op)),
-      loom_param_string(
-          loom_low_diagnostic_block_name(table->module, clobber->block)),
+      loom_param_string(loom_low_diagnostic_block_name(
+          table->module, table->blocks[clobber->block_index].block)),
       loom_param_string(loom_low_diagnostic_value_name(
           table->module, failure->state_value_id)),
       loom_param_string(clobber_label),

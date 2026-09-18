@@ -79,7 +79,6 @@ class LowPacketHazardPlanTest : public ::testing::Test {
         IREE_ARRAYSIZE(state->scheduled_node_indices);
 
     for (uint32_t i = 0; i < IREE_ARRAYSIZE(state->nodes); ++i) {
-      state->nodes[i].block = &state->block;
       state->nodes[i].block_index = 0;
       state->nodes[i].source_ordinal = i;
       state->nodes[i].scheduled_ordinal = i;

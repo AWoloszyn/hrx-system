@@ -112,9 +112,6 @@ class AmdgpuAddressStateTest : public ::testing::Test {
     region_.blocks = region_blocks_;
     source_block_.parent_region = &region_;
     source_block_.region_index = 0;
-    for (loom_low_schedule_node_t& node : nodes_) {
-      node.block = &source_block_;
-    }
     scheduled_node_indices_[0] = 0;
     scheduled_node_indices_[1] = 1;
     scheduled_node_indices_[2] = 2;

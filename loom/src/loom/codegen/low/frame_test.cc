@@ -782,7 +782,8 @@ TEST_F(LowEmissionFrameTest, StructuralModelCarriesNativePacketTiming) {
   ASSERT_NE(load_node, nullptr);
   EXPECT_EQ(address_node->kind, LOOM_LOW_SCHEDULE_NODE_STRUCTURAL);
   EXPECT_EQ(address_node->descriptor, nullptr);
-  EXPECT_EQ(address_node->source_descriptor, nullptr);
+  EXPECT_EQ(address_node->source_descriptor_ordinal,
+            LOOM_LOW_DESCRIPTOR_ORDINAL_NONE);
   EXPECT_EQ(address_node->schedule_class_id,
             schedule_descriptor_view->schedule_class_id);
   EXPECT_EQ(address_node->schedule_class, expected_schedule_class);

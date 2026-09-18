@@ -234,7 +234,7 @@ void loom_low_schedule_pressure_compute_node_priorities(
         const uint32_t producer_node =
             state->values[operand_ordinals[operand_index]].producer_node;
         if (producer_node == LOOM_LOW_SCHEDULE_NODE_NONE ||
-            state->nodes[producer_node].block != node->block) {
+            state->nodes[producer_node].block_index != node->block_index) {
           continue;
         }
         const loom_low_schedule_class_t* producer_schedule_class =
@@ -421,7 +421,7 @@ void loom_low_schedule_pressure_compute_node_priorities(
           &state->blocks[node->block_index];
       if (node_index == block_record->node_start) {
         loom_low_schedule_remove_source_pressure_block_arguments(
-            state, pressure_state, node->block);
+            state, pressure_state, block_record->block);
       }
     }
   }
