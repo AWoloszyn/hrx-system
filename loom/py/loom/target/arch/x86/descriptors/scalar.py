@@ -231,23 +231,25 @@ def _gpr64_to_gpr32_truncate_descriptor() -> Descriptor:
     )
 
 
-def _gpr32_select_descriptor() -> Descriptor:
+def _gpr_select_descriptor(bit_count: int) -> Descriptor:
+    result = _gpr64_result() if bit_count == 64 else _gpr32_result()
+    operand = _gpr64_operand if bit_count == 64 else _gpr32_operand
     return Descriptor(
-        key="x86.scalar.select.gpr32",
+        key=f"x86.scalar.select.gpr{bit_count}",
         mnemonic="select.cmovne",
-        semantic_tag="integer.select.i32",
+        semantic_tag=f"integer.select.i{bit_count}",
         operands=(
-            _gpr32_result(),
+            result,
             _gpr32_operand("condition"),
-            _gpr32_operand("true_value"),
-            _gpr32_operand("false_value"),
+            operand("true_value"),
+            operand("false_value"),
         ),
         constraints=(
             Constraint(ConstraintKind.TIED, 0, 3),
             Constraint(ConstraintKind.DESTRUCTIVE, 0, 3),
         ),
         asm_forms=_asm(
-            mnemonic="select.gpr32",
+            mnemonic=f"select.gpr{bit_count}",
             results=("dst",),
             operands=("condition", "true_value", "false_value"),
         ),
@@ -425,7 +427,8 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
         semantic_tag="integer.shru.i64",
     ),
     _gpr64_to_gpr32_truncate_descriptor(),
-    _gpr32_select_descriptor(),
+    _gpr_select_descriptor(32),
+    _gpr_select_descriptor(64),
     *(
         _gpr32_compare_descriptor(
             predicate=predicate,

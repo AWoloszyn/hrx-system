@@ -362,7 +362,8 @@ bool loom_low_lower_rule_source_memory_matches(
       (iree_any_bit_set(
            source_memory->flags,
            LOOM_LOW_LOWER_SOURCE_MEMORY_FLAG_PRESERVE_SOURCE_INDEX) &&
-       access->source_index_static_offset_extracted) ||
+       (access->source_index_static_offset_extracted ||
+        access->source_index_byte_stride != access->element_byte_count)) ||
       (source_memory->dynamic_view_base_term_count !=
            LOOM_LOW_LOWER_SOURCE_MEMORY_DYNAMIC_VIEW_BASE_TERM_COUNT_ANY &&
        access->dynamic_view_base_term_count !=

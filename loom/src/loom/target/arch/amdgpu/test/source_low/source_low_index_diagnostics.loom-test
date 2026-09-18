@@ -34,9 +34,43 @@ func.def target(@target) @i64_index_cast_result_assume_rejected(%value: i64) -> 
 
 amdgpu.target<gfx11-generic> @target
 
-func.def target(@target) @index_scale_byte_offset_width_rejected(%lane: index) -> (offset) {
-  %stride = index.constant 4294967296 : offset
-  // ERROR@+1: TARGET/003 {subject_role="byte-offset-width", subject_name="u32", constraint_key="amdgpu.byte_offset.u32"}
-  %byte_offset = index.scale %lane, %stride : index, offset -> offset
-  func.return %byte_offset : offset
+func.def target(@target) @negative_index_constant_below_storage_range() -> (index) {
+  // ERROR@+1: TARGET/001 {op_name="index.constant"}
+  %value = index.constant -2147483649 : index
+  func.return %value : index
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @negative_index_constant_must_not_truncate_to_zero() -> (index) {
+  // ERROR@+1: TARGET/001 {op_name="index.constant"}
+  %value = index.constant -4294967296 : index
+  func.return %value : index
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @address_constant_storage_boundaries() -> (index, index, index, offset, offset) {
+  %signed_min = index.constant -2147483648 : index
+  %all_bits_set = index.constant -1 : index
+  %unsigned_max = index.constant 4294967295 : index
+  %first_wide = index.constant 4294967296 : offset
+  %wide_max = index.constant 9223372036854775807 : offset
+  func.return %signed_min, %all_bits_set, %unsigned_max, %first_wide, %wide_max : index, index, index, offset, offset
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @address_constant_storage_boundaries() -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) asm {
+  %signed_min = s_mov_b32 2147483648
+  %all_bits_set = s_mov_b32 4294967295
+  %18 = s_mov_b32 0
+  %19 = s_mov_b32 1
+  %first_wide = concat(%18, %19) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %22 = s_mov_b32 2147483647
+  %wide_max = concat(%all_bits_set, %22) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  return %signed_min, %all_bits_set, %all_bits_set, %first_wide, %wide_max
 }

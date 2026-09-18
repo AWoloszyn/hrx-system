@@ -45,13 +45,56 @@ loom_cc_test(
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+set(_iree_hal_execution_test_platform_defines "")
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_CDNA3_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_CDNA3_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_CDNA4_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_CDNA4_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_RDNA3_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_RDNA3_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_RDNA4_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX125X_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX125X_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_RDNA3_5_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_RDNA3_5_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_RDNA4M_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4M_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX1251_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX1251_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_GFX9_4_GENERIC_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_GFX9_4_GENERIC_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_GFX11_GENERIC_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_GFX11_GENERIC_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_GFX12_GENERIC_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_GFX12_GENERIC_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_GFX12_5_GENERIC_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_GFX12_5_GENERIC_CORE")
+endif()
+if(LOOM_TARGET_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX1250_A0_CORE)
+  list(APPEND _iree_hal_execution_test_platform_defines "LOOM_AMDGPU_DESCRIPTOR_SET_RDNA4_GFX1250_A0_CORE")
+endif()
 loom_cc_test(
   NAME
     iree_hal_execution_test
   SRCS
     "iree_hal_execution_test.cc"
+  DEFINES
+    ${_iree_hal_execution_test_platform_defines}
   DEPS
     iree::base
+    iree::hal
     iree::testing::gtest
     iree::testing::gtest_main
     loom::binding::c::loomc
@@ -59,6 +102,7 @@ loom_cc_test(
     loom::binding::c::target::amdgpu::iree_hal
     loom::binding::c::target::iree_hal
     loom::binding::c::test::target::iree_hal_execution_test_util
+    loom::binding::c::test::test_util
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"

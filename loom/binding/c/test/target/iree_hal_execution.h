@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 
+#include <functional>
+
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 #include "loomc/loomc.h"
@@ -94,9 +96,37 @@ struct IreeHalKernelExecutionTarget {
   IreeHalTargetModuleEmitFn emit_module;
 };
 
-// Runs the shared public Loom C API to live IREE HAL kernel execution flow.
-// Uses GTest assertions and skips; intended to be called as a `TEST` body.
-void RunIreeHalKernelExecutionTest(const IreeHalKernelExecutionTarget& target);
+// Borrowed execution objects valid for the duration of an execution callback.
+struct IreeHalKernelExecution {
+  // Live device that owns the executable and queues.
+  iree_hal_device_t* device;
+  // Queue used for explicitly synchronized uploads and downloads.
+  iree_hal_queue_t* transfer_queue;
+  // Queue compatible with the loaded executable.
+  iree_hal_queue_t* dispatch_queue;
+  // Native executable compiled through the public Loom C API.
+  iree_hal_executable_t* executable;
+  // Evaluated launch geometry for the selected kernel.
+  loomc_launch_config_t launch_config;
+};
+
+// Compiles and loads a kernel through the public Loom C API and invokes
+// |execute| while all compiler and HAL owners remain alive. The callback must
+// wait for its submitted work before returning. Uses GTest assertions/skips.
+void RunIreeHalKernelExecutionTest(
+    const IreeHalKernelExecutionTarget& target,
+    const std::function<void(const IreeHalKernelExecution&)>& execute);
+
+// Dispatches the selected kernel with two whole-buffer bindings and the given
+// push constants. Submission ordering is defined by the supplied semaphores.
+iree_status_t DispatchIreeHalKernel(
+    const IreeHalKernelExecution& execution, iree_const_byte_span_t constants,
+    iree_hal_buffer_t* input_buffer, iree_hal_buffer_t* output_buffer,
+    iree_hal_semaphore_list_t wait_semaphores,
+    iree_hal_semaphore_list_t signal_semaphores);
+
+// Checks the standard two-element doubling kernel at a four-byte offset.
+void RunIreeHalByteOffsetExecution(const IreeHalKernelExecution& execution);
 
 }  // namespace loomc::testing::target
 

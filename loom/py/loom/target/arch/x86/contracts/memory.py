@@ -15,6 +15,7 @@ from loom.dialect.vector import defs as vector
 from loom.target.arch.x86.contracts.scalar import (
     x86_factored_index_emit,
     x86_factored_memory_immediates,
+    x86_full_width_memory_rules,
     x86_source_memory_byte_offset_materializer,
 )
 from loom.target.contracts import (
@@ -292,4 +293,23 @@ def x86_vector_memory_rules(
                             diagnostic=diagnostic,
                         )
                     )
+                rules.extend(
+                    x86_full_width_memory_rules(
+                        vector.vector_load
+                        if operation is SourceMemoryOperation.LOAD
+                        else vector.vector_store,
+                        operation,
+                        value_type,
+                        element_byte_count=element_byte_count,
+                        lane_count=lane_count,
+                        descriptor_key=_memory_descriptor_key(
+                            descriptor_key_prefix,
+                            operation.value,
+                            addressing=_VectorMemoryAddressing.MATERIALIZE_BYTE_OFFSET,
+                            register_suffix=register_suffix,
+                        ),
+                        descriptor_lookup=descriptor_lookup,
+                        diagnostic=diagnostic,
+                    )
+                )
     return tuple(rules)

@@ -225,6 +225,7 @@ TEST_F(SourceMemoryPlanTest, DynamicStridedLayoutScalesDynamicOrigin) {
   EXPECT_EQ(plan.dynamic_terms[0].byte_stride, 4);
   ASSERT_EQ(plan.dynamic_terms[0].stride_value_count, 1u);
   EXPECT_EQ(plan.dynamic_terms[0].stride_values[0], row_stride);
+  EXPECT_EQ(plan.source_index_byte_stride, 0);
 }
 
 TEST_F(SourceMemoryPlanTest, DynamicStridedLayoutScalesStaticOrigin) {
@@ -646,6 +647,45 @@ TEST_F(SourceMemoryPlanTest, DynamicDenseLoadFactorsScaledViewBase) {
   EXPECT_EQ(plan.dynamic_terms[0].index, element);
   EXPECT_EQ(plan.dynamic_terms[0].byte_stride, 4);
   EXPECT_EQ(plan.dynamic_terms[0].byte_shift, 2u);
+}
+
+TEST_F(SourceMemoryPlanTest, DynamicDenseLoadPreservesWidePowerOfTwoStride) {
+  loom_value_id_t buffer = DefineBufferArg();
+  loom_value_id_t element = DefineIndexArg();
+  loom_value_id_t layout = BuildDenseLayout();
+  loom_value_id_t byte_stride =
+      loom_index_constant_result(BuildOffsetConstant(INT64_C(1) << 40));
+  loom_op_t* byte_offset_op = nullptr;
+  IREE_ASSERT_OK(
+      loom_index_scale_build(&builder_, element, byte_stride,
+                             loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET),
+                             LOOM_LOCATION_UNKNOWN, &byte_offset_op));
+
+  loom_op_t* view_op = nullptr;
+  IREE_ASSERT_OK(loom_buffer_view_build(
+      &builder_, buffer, loom_index_scale_result(byte_offset_op),
+      ViewType1D(LOOM_SCALAR_TYPE_I32, 1, layout), LOOM_LOCATION_UNKNOWN,
+      &view_op));
+  int64_t static_indices[] = {0};
+  loom_op_t* load_op = nullptr;
+  IREE_ASSERT_OK(loom_view_load_build(
+      &builder_, 0, /*instance_flags=*/0, loom_buffer_view_result(view_op),
+      nullptr, 0, static_indices, IREE_ARRAYSIZE(static_indices), 0, 0,
+      loom_type_scalar(LOOM_SCALAR_TYPE_I32), LOOM_LOCATION_UNKNOWN, &load_op));
+
+  loom_value_fact_table_t facts = {0};
+  ComputeFacts(&facts);
+  loom_low_source_memory_access_plan_t plan = {};
+  loom_low_source_memory_access_diagnostic_t diagnostic = {0};
+  ASSERT_TRUE(BuildPlan(&facts, load_op, &plan, &diagnostic));
+  EXPECT_EQ(plan.dynamic_view_base_value_id,
+            loom_index_scale_result(byte_offset_op));
+  EXPECT_EQ(plan.dynamic_view_base_value_static_byte_offset, 0);
+  ASSERT_EQ(plan.dynamic_term_count, 1u);
+  EXPECT_EQ(plan.dynamic_view_base_term_count, 1u);
+  EXPECT_EQ(plan.dynamic_terms[0].index, element);
+  EXPECT_EQ(plan.dynamic_terms[0].byte_stride, INT64_C(1) << 40);
+  EXPECT_EQ(plan.dynamic_terms[0].byte_shift, 40u);
 }
 
 TEST_F(SourceMemoryPlanTest, SubtractedViewBaseKeepsSignedByteTerms) {

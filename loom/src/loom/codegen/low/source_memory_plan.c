@@ -331,19 +331,10 @@ static bool loom_low_source_memory_access_vector_lane_count(
 static bool loom_low_source_memory_access_power_of_two_shift(
     int64_t value, uint32_t* out_shift) {
   *out_shift = LOOM_LOW_SOURCE_MEMORY_ACCESS_BYTE_SHIFT_NONE;
-  if (value <= 0 || value > UINT32_MAX) {
+  if (value <= 0 || !iree_math_is_power_of_two_i64(value)) {
     return false;
   }
-  uint32_t remaining_value = (uint32_t)value;
-  if ((remaining_value & (remaining_value - 1)) != 0) {
-    return false;
-  }
-  uint32_t shift = 0;
-  while (remaining_value > 1) {
-    remaining_value >>= 1;
-    ++shift;
-  }
-  *out_shift = shift;
+  *out_shift = (uint32_t)iree_math_count_trailing_zeros_u64((uint64_t)value);
   return true;
 }
 
@@ -1392,6 +1383,9 @@ static bool loom_low_source_memory_access_plan_from_components(
     int64_t dynamic_index_multiplier = 1;
     int64_t dynamic_index_offset = 0;
     const int64_t expression_byte_stride = byte_stride;
+    if (dynamic_axis_count == 1 && stride_value_count == 0) {
+      out_plan->source_index_byte_stride = expression_byte_stride;
+    }
     loom_value_facts_t expression_facts =
         loom_value_fact_table_lookup(fact_table, source_index);
 

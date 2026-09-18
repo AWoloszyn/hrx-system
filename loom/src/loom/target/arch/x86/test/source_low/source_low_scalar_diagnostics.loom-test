@@ -69,3 +69,23 @@ func.def target(@target) @fp8_bits_do_not_imply_fp8_arithmetic(%lhs: f8E4M3, %rh
   %result = scalar.addf %lhs, %rhs : f8E4M3
   func.return %result : f8E4M3
 }
+
+// ====
+
+x86.target<scalar> @target
+
+func.def target(@target) @offset_cast_requires_nonnegative_integer(%input: i64) -> (offset) {
+  // ERROR@+1: TARGET/003 {constraint_key="x86.scalar.index_cast"}
+  %result = index.cast %input : i64 to offset
+  func.return %result : offset
+}
+
+// ====
+
+x86.target<scalar> @target
+
+func.def target(@target) @offset_cast_requires_nonnegative_index(%input: index) -> (offset) {
+  // ERROR@+1: TARGET/003 {constraint_key="x86.scalar.index_cast"}
+  %result = index.cast %input : index to offset
+  func.return %result : offset
+}
