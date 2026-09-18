@@ -414,17 +414,88 @@ TEST_F(MaterializeTest, ClonesRegionSuccessorsToClonedBlocks) {
   EXPECT_EQ(remap.block_map_count, 0u);
 }
 
+TEST_F(MaterializeTest, ClonesReferencesToLaterListedBlockDefinitions) {
+  loom_region_t* source_region = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate_region(source_, 3, &source_region));
+  loom_block_t* source_entry = loom_region_block(source_region, 0);
+  loom_block_t* source_use = loom_region_block(source_region, 1);
+  loom_block_t* source_definition = loom_region_block(source_region, 2);
+  loom_builder_t builder = {};
+  loom_builder_initialize(source_, &source_->arena, source_entry, &builder);
+  loom_op_t* branch = nullptr;
+  IREE_ASSERT_OK(loom_test_br_build(&builder, source_definition,
+                                    LOOM_LOCATION_UNKNOWN, &branch));
+  loom_builder_initialize(source_, &source_->arena, source_definition,
+                          &builder);
+  loom_op_t* constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(
+      &builder, loom_attr_i64(16), loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      LOOM_LOCATION_UNKNOWN, &constant));
+  const loom_value_id_t width = loom_test_constant_result(constant);
+  loom_type_t tensor_type = loom_type_shaped_1d(
+      LOOM_TYPE_TENSOR, LOOM_SCALAR_TYPE_F32, loom_dim_pack_dynamic(width), 0);
+  loom_op_t* tensor = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(
+      &builder, loom_attr_i64(0), tensor_type, LOOM_LOCATION_UNKNOWN, &tensor));
+  const loom_value_id_t tensor_value = loom_test_constant_result(tensor);
+  IREE_ASSERT_OK(
+      loom_test_br_build(&builder, source_use, LOOM_LOCATION_UNKNOWN, &branch));
+  loom_builder_initialize(source_, &source_->arena, source_use, &builder);
+  loom_op_t* use = nullptr;
+  IREE_ASSERT_OK(
+      loom_test_use_build(&builder, &width, 1, LOOM_LOCATION_UNKNOWN, &use));
+  loom_op_t* nested = nullptr;
+  IREE_ASSERT_OK(loom_test_block_args_build(&builder, &tensor_value, 1,
+                                            LOOM_LOCATION_UNKNOWN, &nested));
+
+  loom_ir_remap_t remap = InitializeRemap();
+  loom_region_t* cloned_region = nullptr;
+  IREE_ASSERT_OK(loom_ir_clone_region(&target_builder_, source_region, &remap,
+                                      &cloned_region));
+  ASSERT_EQ(cloned_region->block_count, 3u);
+  const loom_block_t* cloned_use = loom_region_const_block(cloned_region, 1);
+  const loom_block_t* cloned_definition =
+      loom_region_const_block(cloned_region, 2);
+  const loom_value_id_t cloned_width =
+      loom_test_constant_result(cloned_definition->first_op);
+  EXPECT_EQ(loom_test_use_values(cloned_use->first_op).values[0], cloned_width);
+  const loom_region_t* cloned_nested =
+      loom_test_block_args_body(cloned_use->last_op);
+  const loom_type_t cloned_type = loom_module_value_type(
+      target_, loom_region_entry_arg_id(cloned_nested, 0));
+  EXPECT_EQ(loom_type_dim_value_id_at(cloned_type, 0), cloned_width);
+  EXPECT_EQ(loom_test_br_dest(loom_region_block(cloned_region, 0)->last_op),
+            cloned_definition);
+  EXPECT_EQ(loom_test_br_dest(cloned_definition->last_op), cloned_use);
+}
+
 TEST_F(MaterializeTest, SplicesRegionBlocksAtTargetOffset) {
   loom_region_t* source_region = nullptr;
-  IREE_ASSERT_OK(loom_module_allocate_region(source_, 2, &source_region));
+  IREE_ASSERT_OK(loom_module_allocate_region(source_, 3, &source_region));
   loom_block_t* source_entry = loom_region_block(source_region, 0);
   loom_block_t* source_dest = loom_region_block(source_region, 1);
+  loom_block_t* source_definition = loom_region_block(source_region, 2);
   loom_builder_t source_region_builder = {};
   loom_builder_initialize(source_, &source_->arena, source_entry,
                           &source_region_builder);
   loom_op_t* branch_op = nullptr;
+  IREE_ASSERT_OK(loom_test_br_build(&source_region_builder, source_definition,
+                                    LOOM_LOCATION_UNKNOWN, &branch_op));
+  loom_builder_initialize(source_, &source_->arena, source_definition,
+                          &source_region_builder);
+  loom_op_t* constant = nullptr;
+  IREE_ASSERT_OK(
+      loom_test_constant_build(&source_region_builder, loom_attr_i64(7),
+                               loom_type_scalar(LOOM_SCALAR_TYPE_I32),
+                               LOOM_LOCATION_UNKNOWN, &constant));
+  const loom_value_id_t value = loom_test_constant_result(constant);
   IREE_ASSERT_OK(loom_test_br_build(&source_region_builder, source_dest,
                                     LOOM_LOCATION_UNKNOWN, &branch_op));
+  loom_builder_initialize(source_, &source_->arena, source_dest,
+                          &source_region_builder);
+  loom_op_t* use = nullptr;
+  IREE_ASSERT_OK(loom_test_use_build(&source_region_builder, &value, 1,
+                                     LOOM_LOCATION_UNKNOWN, &use));
 
   loom_region_t* target_region = target_->body;
   loom_block_t* target_entry = loom_region_entry_block(target_region);
@@ -439,14 +510,18 @@ TEST_F(MaterializeTest, SplicesRegionBlocksAtTargetOffset) {
   IREE_ASSERT_OK(loom_ir_clone_region_blocks(&target_builder_, source_region,
                                              target_region, 1, &remap));
 
-  ASSERT_EQ(target_region->block_count, 5u);
+  ASSERT_EQ(target_region->block_count, 6u);
   EXPECT_EQ(loom_region_block(target_region, 0), target_entry);
   loom_block_t* cloned_entry = loom_region_block(target_region, 1);
   loom_block_t* cloned_dest = loom_region_block(target_region, 2);
-  EXPECT_EQ(loom_region_block(target_region, 3), target_tail0);
-  EXPECT_EQ(loom_region_block(target_region, 4), target_tail1);
+  loom_block_t* cloned_definition = loom_region_block(target_region, 3);
+  EXPECT_EQ(loom_region_block(target_region, 4), target_tail0);
+  EXPECT_EQ(loom_region_block(target_region, 5), target_tail1);
   ASSERT_TRUE(loom_test_br_isa(cloned_entry->first_op));
-  EXPECT_EQ(loom_test_br_dest(cloned_entry->first_op), cloned_dest);
+  EXPECT_EQ(loom_test_br_dest(cloned_entry->first_op), cloned_definition);
+  EXPECT_EQ(loom_test_br_dest(cloned_definition->last_op), cloned_dest);
+  EXPECT_EQ(loom_test_use_values(cloned_dest->first_op).values[0],
+            loom_test_constant_result(cloned_definition->first_op));
   for (uint16_t i = 0; i < target_region->block_count; ++i) {
     EXPECT_EQ(loom_block_region_index(loom_region_block(target_region, i)), i);
   }
