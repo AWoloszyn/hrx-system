@@ -696,9 +696,12 @@ iree_status_t loom_amdgpu_select_index_constant_plan(
     return loom_amdgpu_select_i64_constant_plan(
         context, value, result, 2, descriptor_ref, out_plan, out_selected);
   }
+  uint32_t bit_pattern = 0;
+  if (!loom_amdgpu_i64_value_as_u32_bits(value.i64, &bit_pattern)) {
+    return iree_ok_status();
+  }
   return loom_amdgpu_select_u32_bit_pattern_constant_plan(
-      context, (uint32_t)value.i64, result, descriptor_ref, out_plan,
-      out_selected);
+      context, bit_pattern, result, descriptor_ref, out_plan, out_selected);
 }
 
 iree_status_t loom_amdgpu_select_scalar_constant_plan(
