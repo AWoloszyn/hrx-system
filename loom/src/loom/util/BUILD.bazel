@@ -365,10 +365,35 @@ loom_cc_test(
         ":cfg_graph",
         ":cfg_graph_test_util",
         ":cfg_loop_nest",
+        ":cfg_loop_nest_test_util",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
+    name = "cfg_loop_nest_test_util",
+    testonly = True,
+    srcs = ["cfg_loop_nest_test_util.cc"],
+    hdrs = ["cfg_loop_nest_test_util.h"],
+    deps = [
+        ":cfg_graph",
+        ":cfg_loop_nest",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_fuzz(
+    name = "cfg_loop_nest_fuzz",
+    srcs = ["cfg_loop_nest_fuzz.cc"],
+    deps = [
+        ":cfg_graph_test_util",
+        ":cfg_loop_nest",
+        ":cfg_loop_nest_test_util",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
     ],
 )
 

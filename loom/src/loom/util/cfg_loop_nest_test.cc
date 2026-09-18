@@ -6,13 +6,13 @@
 
 #include "loom/util/cfg_loop_nest.h"
 
-#include <algorithm>
 #include <random>
 #include <vector>
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/util/cfg_graph_test_util.h"
+#include "loom/util/cfg_loop_nest_test_util.h"
 
 namespace loom {
 namespace {
@@ -37,167 +37,10 @@ class CfgLoopNestTest : public ::testing::Test {
     return nest;
   }
 
-  // Independent small-graph oracle: remove each possible header to determine
-  // dominance, then close each backedge over predecessors. Explicit sets make
-  // this deliberately different from contraction and boundary cancellation.
   void CheckOracle(const std::vector<std::vector<uint16_t>>& successors) {
     CfgGraph fixture(successors);
-    const auto* graph = fixture.get();
     const auto nest = Build(fixture);
-    size_t expected_count = 0;
-    std::vector<std::vector<bool>> membership;
-    std::vector<uint16_t> headers;
-    std::vector<bool> natural_backedges(graph->edge_count);
-    for (uint16_t header = 0; header < successors.size(); ++header) {
-      if (!graph->blocks[header].reachable) {
-        continue;
-      }
-      std::vector<bool> reached(successors.size());
-      std::vector<uint16_t> pending{0};
-      while (!pending.empty()) {
-        uint16_t block = pending.back();
-        pending.pop_back();
-        if (block == header || reached[block]) {
-          continue;
-        }
-        reached[block] = true;
-        for (uint16_t target : successors[block]) {
-          pending.push_back(target);
-        }
-      }
-      std::vector<uint32_t> entries;
-      std::vector<uint32_t> backedges;
-      auto predecessors = loom_cfg_graph_predecessor_edges(graph, header);
-      for (size_t i = 0; i < predecessors.count; ++i) {
-        uint32_t edge = predecessors.values[i];
-        uint16_t source = graph->edges[edge].source_block_index;
-        if (!graph->blocks[source].reachable) {
-          continue;
-        }
-        if (!reached[source]) {
-          backedges.push_back(edge);
-          natural_backedges[edge] = true;
-        } else {
-          entries.push_back(edge);
-        }
-      }
-      if (backedges.empty()) {
-        continue;
-      }
-      ++expected_count;
-      uint16_t loop_index = loom_cfg_loop_nest_innermost(&nest, header);
-      ASSERT_NE(loop_index, LOOM_CFG_LOOP_NEST_NONE);
-      const auto& loop = nest.loops[loop_index];
-      EXPECT_EQ(loop.header_index, header);
-      std::vector<bool> members(successors.size());
-      members[header] = true;
-      for (uint32_t edge : backedges) {
-        pending.push_back(graph->edges[edge].source_block_index);
-      }
-      while (!pending.empty()) {
-        uint16_t block = pending.back();
-        pending.pop_back();
-        if (members[block] || !graph->blocks[block].reachable) {
-          continue;
-        }
-        members[block] = true;
-        auto incoming = loom_cfg_graph_predecessors(graph, block);
-        for (size_t i = 0; i < incoming.count; ++i) {
-          pending.push_back(incoming.values[i]);
-        }
-      }
-      std::vector<uint32_t> exits;
-      for (size_t i = 0; i < graph->edge_count; ++i) {
-        const auto& edge = graph->edges[i];
-        if (members[edge.source_block_index] &&
-            !members[edge.target_block_index]) {
-          exits.push_back(i);
-        }
-      }
-      auto check_edges = [](const loom_cfg_loop_edge_summary_t& summary,
-                            const std::vector<uint32_t>& edges) {
-        EXPECT_EQ(summary.count, edges.size());
-        EXPECT_EQ(summary.unique_index,
-                  edges.size() == 1 ? edges[0] : LOOM_CFG_EDGE_INDEX_INVALID);
-      };
-      check_edges(loop.entries, entries);
-      check_edges(loop.backedges, backedges);
-      check_edges(loop.exits, exits);
-      for (size_t block = 0; block < members.size(); ++block) {
-        EXPECT_EQ(loom_cfg_loop_nest_contains(&nest, loop_index, block),
-                  members[block])
-            << "header " << header << ", block " << block;
-      }
-      headers.push_back(header);
-      membership.push_back(std::move(members));
-    }
-    EXPECT_EQ(nest.loop_count, expected_count);
-    // Removing all natural backedges leaves a DAG exactly when the reachable
-    // graph is reducible. Topological elimination avoids the producer's DFS
-    // ancestor classification entirely.
-    std::vector<size_t> indegree(successors.size());
-    for (size_t i = 0; i < graph->edge_count; ++i) {
-      const auto& edge = graph->edges[i];
-      if (graph->blocks[edge.source_block_index].reachable &&
-          !natural_backedges[i]) {
-        ++indegree[edge.target_block_index];
-      }
-    }
-    std::vector<uint16_t> ready;
-    size_t reachable_count = 0;
-    for (uint16_t block = 0; block < successors.size(); ++block) {
-      if (!graph->blocks[block].reachable) {
-        continue;
-      }
-      ++reachable_count;
-      if (indegree[block] == 0) {
-        ready.push_back(block);
-      }
-    }
-    for (size_t i = 0; i < ready.size(); ++i) {
-      auto outgoing = loom_cfg_graph_successor_edges(graph, ready[i]);
-      for (size_t j = 0; j < outgoing.count; ++j) {
-        uint32_t edge = outgoing.values[j];
-        uint16_t target = graph->edges[edge].target_block_index;
-        if (!natural_backedges[edge] && --indegree[target] == 0) {
-          ready.push_back(target);
-        }
-      }
-    }
-    EXPECT_EQ(nest.reducible, ready.size() == reachable_count);
-    // Check immediate parents and innermost membership, not just ancestor
-    // containment: skipped levels could otherwise hide a boundary error.
-    for (size_t block = 0; block < successors.size(); ++block) {
-      uint16_t expected = LOOM_CFG_LOOP_NEST_NONE;
-      size_t smallest = successors.size() + 1;
-      for (size_t i = 0; i < membership.size(); ++i) {
-        size_t size =
-            std::count(membership[i].begin(), membership[i].end(), true);
-        if (membership[i][block] && size < smallest) {
-          expected = loom_cfg_loop_nest_innermost(&nest, headers[i]);
-          smallest = size;
-        }
-      }
-      EXPECT_EQ(loom_cfg_loop_nest_innermost(&nest, block), expected);
-    }
-    for (size_t i = 0; i < membership.size(); ++i) {
-      uint16_t expected = LOOM_CFG_LOOP_NEST_NONE;
-      size_t smallest = successors.size() + 1;
-      for (size_t j = 0; j < membership.size(); ++j) {
-        if (i == j || !membership[j][headers[i]]) {
-          continue;
-        }
-        size_t size =
-            std::count(membership[j].begin(), membership[j].end(), true);
-        if (size < smallest) {
-          expected = loom_cfg_loop_nest_innermost(&nest, headers[j]);
-          smallest = size;
-        }
-      }
-      EXPECT_EQ(nest.loops[loom_cfg_loop_nest_innermost(&nest, headers[i])]
-                    .parent_loop_index,
-                expected);
-    }
+    IREE_ASSERT_OK(testing::CheckLoopNest(nest));
   }
 
   // Pool shared by successive independent immutable snapshots.
