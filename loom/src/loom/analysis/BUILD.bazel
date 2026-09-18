@@ -278,6 +278,7 @@ loom_cc_library(
     hdrs = [
         "cfg_condition_facts.h",
         "cfg_condition_operand_domain.h",
+        "cfg_condition_relation_table.h",
     ],
     deps = [
         ":cfg_value_identity",

@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "loom/analysis/cfg_condition_operand_domain.h"
+#include "loom/analysis/cfg_condition_relation_table.h"
 #include "loom/ops/cfg/ops.h"
 #include "loom/util/adaptive_sort.h"
 
@@ -1815,42 +1816,6 @@ static iree_status_t loom_cfg_condition_relation_propagate(
   return iree_ok_status();
 }
 
-typedef struct loom_cfg_condition_solved_view_t {
-  // Mutable solved integer relation matrix.
-  loom_condition_relation_matrix_t integer_relations;
-
-  // Solved exact Boolean facts.
-  loom_cfg_condition_truth_t truth;
-} loom_cfg_condition_solved_view_t;
-
-static iree_status_t loom_cfg_condition_relation_publish_domain(
-    const loom_cfg_condition_relation_solver_t* solver,
-    loom_cfg_condition_operand_domain_t** out_domain) {
-  *out_domain = NULL;
-  loom_cfg_condition_operand_domain_t* domain = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate(solver->arena, sizeof(*domain), (void**)&domain));
-  *domain = solver->operand_domain;
-  if (domain->value_count != 0) {
-    loom_value_id_t* values = NULL;
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        solver->arena, domain->value_count, sizeof(*values), (void**)&values));
-    memcpy(values, domain->values, domain->value_count * sizeof(*values));
-    domain->values = values;
-  }
-  if (domain->constant_count != 0) {
-    int64_t* constants = NULL;
-    IREE_RETURN_IF_ERROR(
-        iree_arena_allocate_array(solver->arena, domain->constant_count,
-                                  sizeof(*constants), (void**)&constants));
-    memcpy(constants, domain->constants,
-           domain->constant_count * sizeof(*constants));
-    domain->constants = constants;
-  }
-  *out_domain = domain;
-  return iree_ok_status();
-}
-
 #if IREE_HAVE_ATTRIBUTE(minsize)
 __attribute__((minsize))
 #endif
@@ -1870,14 +1835,15 @@ loom_cfg_condition_relation_publish(
                             "condition relation views exceed uint32_t");
   }
 
-  loom_cfg_condition_solved_view_t* solved_views = NULL;
+  loom_cfg_condition_relation_table_builder_view_t* views = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      solver->scratch_arena, (iree_host_size_t)view_count,
-      sizeof(*solved_views), (void**)&solved_views));
+      solver->scratch_arena, (iree_host_size_t)view_count, sizeof(*views),
+      (void**)&views));
   for (uint32_t block = 0; block < graph->block_count; ++block) {
-    solved_views[block] = (loom_cfg_condition_solved_view_t){
+    views[block] = (loom_cfg_condition_relation_table_builder_view_t){
         .integer_relations = solver->blocks[block].integer_relations,
-        .truth = solver->blocks[block].truth,
+        .boolean_values = {solver->blocks[block].truth.values[0],
+                           solver->blocks[block].truth.values[1]},
     };
   }
   uint32_t* edge_view_indices = NULL;
@@ -1896,99 +1862,25 @@ loom_cfg_condition_relation_publish(
       edge_view_indices[edge_index] = edge->target;
     } else {
       edge_view_indices[edge_index] = next_view;
-      solved_views[next_view++] = (loom_cfg_condition_solved_view_t){
+      views[next_view++] = (loom_cfg_condition_relation_table_builder_view_t){
           .integer_relations = edge->contribution,
-          .truth = edge->truth_contribution,
+          .boolean_values = {edge->truth_contribution.values[0],
+                             edge->truth_contribution.values[1]},
       };
     }
   }
   IREE_ASSERT_EQ(next_view, view_count);
-
-  uint64_t root_count = view_count * 2;
-  for (uint32_t view = 0; view < view_count; ++view) {
-    root_count += (uint64_t)solved_views[view].integer_relations.row_count *
-                  LOOM_CONDITION_RELATION_OUTCOME_COUNT;
-  }
-  if (root_count > IREE_HOST_SIZE_MAX) {
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "condition relation roots exceed host size");
-  }
-  loom_condition_relation_set_id_t* roots = NULL;
-  if (root_count != 0) {
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        solver->scratch_arena, (iree_host_size_t)root_count, sizeof(*roots),
-        (void**)&roots));
-  }
-  iree_host_size_t root_position = 0;
-  for (uint32_t view = 0; view < view_count; ++view) {
-    for (uint8_t value = 0; value < 2; ++value) {
-      roots[root_position++] = solved_views[view].truth.values[value];
-    }
-    const loom_condition_relation_matrix_t* matrix =
-        &solved_views[view].integer_relations;
-    for (uint32_t row = 0; row < matrix->row_count; ++row) {
-      for (loom_condition_relation_outcome_t outcome = 0;
-           outcome < LOOM_CONDITION_RELATION_OUTCOME_COUNT; ++outcome) {
-        roots[root_position++] = matrix->rows[row].excluded[outcome];
-      }
-    }
-  }
-  IREE_ASSERT_EQ(root_position, root_count);
-  loom_condition_relation_set_index_t set_index = {0};
-  IREE_RETURN_IF_ERROR(loom_condition_relation_set_builder_publish(
-      solver->set_builder, roots, (iree_host_size_t)root_count, solver->arena,
-      &set_index));
-
-  root_position = 0;
-  for (uint32_t view = 0; view < view_count; ++view) {
-    for (uint8_t value = 0; value < 2; ++value) {
-      solved_views[view].truth.values[value] = roots[root_position++];
-    }
-    loom_condition_relation_matrix_t* matrix =
-        &solved_views[view].integer_relations;
-    for (uint32_t row = 0; row < matrix->row_count; ++row) {
-      for (loom_condition_relation_outcome_t outcome = 0;
-           outcome < LOOM_CONDITION_RELATION_OUTCOME_COUNT; ++outcome) {
-        matrix->rows[row].excluded[outcome] = roots[root_position++];
-      }
-    }
-  }
-
-  loom_cfg_condition_relation_view_t* views = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(solver->arena, (iree_host_size_t)view_count,
-                                sizeof(*views), (void**)&views));
-  for (uint32_t view = 0; view < view_count; ++view) {
-    views[view] = (loom_cfg_condition_relation_view_t){
-        .boolean_values = {solved_views[view].truth.values[0],
-                           solved_views[view].truth.values[1]},
-    };
-    IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_view_publish(
-        &solved_views[view].integer_relations, solver->arena,
-        &views[view].integer_relations));
-  }
-
-  uint32_t* retained_edge_view_indices = NULL;
-  if (graph->edge_count != 0) {
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        solver->arena, graph->edge_count, sizeof(*retained_edge_view_indices),
-        (void**)&retained_edge_view_indices));
-    memcpy(retained_edge_view_indices, edge_view_indices,
-           graph->edge_count * sizeof(*retained_edge_view_indices));
-  }
-  loom_cfg_condition_operand_domain_t* operand_domain = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_cfg_condition_relation_publish_domain(solver, &operand_domain));
-  *out_table = (loom_cfg_condition_relation_table_t){
-      .operand_domain = operand_domain,
-      .set_index = set_index,
+  loom_cfg_condition_relation_table_builder_t builder = {
+      .operand_domain = &solver->operand_domain,
+      .set_builder = solver->set_builder,
       .views = views,
-      .edge_view_indices = retained_edge_view_indices,
+      .edge_view_indices = edge_view_indices,
       .view_count = (uint32_t)view_count,
       .block_count = (uint32_t)graph->block_count,
       .edge_count = (uint32_t)graph->edge_count,
   };
-  return iree_ok_status();
+  return loom_cfg_condition_relation_table_publish(
+      &builder, out_table, solver->scratch_arena, solver->arena);
 }
 
 static iree_status_t loom_cfg_condition_relation_solve(

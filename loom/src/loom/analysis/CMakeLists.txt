@@ -309,6 +309,7 @@ loom_cc_library(
   HDRS
     "cfg_condition_facts.h"
     "cfg_condition_operand_domain.h"
+    "cfg_condition_relation_table.h"
   SRCS
     "cfg_condition_facts.c"
     "cfg_condition_operand_domain.c"
