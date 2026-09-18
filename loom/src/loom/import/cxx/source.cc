@@ -18,6 +18,7 @@
 
 #include "loom/error/error_catalog.h"
 #include "loom/import/cxx/failure.h"
+#include "loom/import/cxx/include_catalog.h"
 
 namespace loom::cxx_import {
 
@@ -148,11 +149,22 @@ class SourceToolchain final : public cxx::Toolchain {
 // share source storage, while preprocessing and AST ownership stay local.
 class Sources {
  public:
-  explicit Sources(loom_cxx_source_provider_t provider) : provider_(provider) {}
+  Sources(loom_cxx_source_provider_t provider, std::string_view builtin_root)
+      : provider_(provider), builtin_root_(builtin_root) {}
 
   const std::optional<std::string>& lookup(const std::string& path) {
     auto [entry, inserted] = contents_.try_emplace(path);
     if (!inserted) {
+      return entry->second;
+    }
+    auto root = builtin_root_;
+    if (!root.empty() && path.starts_with(root) && path.size() > root.size() &&
+        path[root.size()] == '/') {
+      auto contents =
+          builtin_include(std::string_view(path).substr(root.size() + 1));
+      if (contents) {
+        entry->second = *contents;
+      }
       return entry->second;
     }
     if (provider_.fn) {
@@ -195,6 +207,8 @@ class Sources {
  private:
   // Borrowed provider state for this invocation.
   loom_cxx_source_provider_t provider_;
+  // Enabled virtual root for this invocation, empty for external-only lookup.
+  std::string_view builtin_root_;
   // Candidate path to immutable source bytes, or a retained miss.
   std::unordered_map<std::string, std::optional<std::string>> contents_;
 };
@@ -215,11 +229,18 @@ std::unique_ptr<cxx::Toolchain> parse_source(
   for (size_t i = 0; i < options.system_include_path_count; ++i) {
     preprocessor->addSystemIncludePath(string(options.system_include_paths[i]));
   }
+  auto root =
+      iree_any_bit_set(options.flags, LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES)
+          ? std::string_view()
+          : builtin_include_root();
+  if (!root.empty()) {
+    preprocessor->addSystemIncludePath(std::string(root));
+  }
   for (size_t i = 0; i < options.define_count; ++i) {
     preprocessor->defineMacro(string(options.defines[i].name),
                               string(options.defines[i].value));
   }
-  Sources sources(options.source_provider);
+  Sources sources(options.source_provider, root);
   unit.beginPreprocessing(string(source), string(filename));
   for (;;) {
     auto state = unit.continuePreprocessing();

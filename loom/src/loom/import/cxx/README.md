@@ -55,6 +55,27 @@ immutable caller-owned headers, including a shared source cache. Each invocation
 owns its mutable preprocessing and semantic state. Header hits and misses are
 reused within an invocation. Diagnostic sinks copy any bytes they retain.
 
+The importer embeds `loomcxx/` and `hip/` source headers by default. User and
+system include paths take precedence over the embedded system root. The HIP
+facade maps topology, synchronization, scalar half conversions and math onto
+the Loom vocabulary; it does not load the HIP runtime or a host SDK.
+
+`--builtin-includes=false --I=loom/src/loom/import/cxx/include` uses the external
+headers. Building with `--//loom/config/import/cxx:embed_includes=false`, or
+`-DLOOM_IMPORT_CXX_EMBED_INCLUDES=OFF` in CMake, also removes those header
+contents from the library and its rebuild dependencies.
+
+Canonical Python op declarations generate the typed `_Float16`, `float` and
+`double` overloads in `loomcxx/scalar.h`, their documentation, and native
+binding entries. For example, `loom::scalar::expf(x)` imports `scalar.expf`;
+`loom::scalar::approximate::expf(x)` explicitly grants AFN. The HIP spelling
+`__expf(x)` is an ordinary inline wrapper around that declaration. An explicit
+`[[loom::op("scalar.expf", "afn")]] float custom_exp(float);` declaration uses
+the same checked binding. Incorrect arity, types, flags, or attribute arguments
+produce source diagnostics. Projection currently covers fixed homogeneous
+floating-point operations; region, shaped-value and semantic-attribute
+projections need their corresponding source representations.
+
 Source standard, predefines, ABI triple, integer/pointer layout, and mathematical
 approximation permissions are explicit options. `--std` selects the pinned
 frontend's language and version macros; it does not promise historical-standard

@@ -35,6 +35,7 @@ GENERATORS = {
     "builders_pyi": "loom.gen.python.builders_pyi",
     "c_errors": "loom.gen.error.c_errors",
     "c_tables": "loom.gen.ops.c_tables",
+    "cxx_intrinsics": "loom.gen.cxx.intrinsics",
     "checked_in_artifacts": "loom.gen.checked_in_artifacts",
     "numeric_conversion_matrix": "loom.gen.test.numeric_conversion_matrix",
     "package_inits": "loom.gen.python.package_inits",

@@ -12,6 +12,7 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/format/text/printer.h"
+#include "loom/import/cxx/include_catalog.h"
 #include "loom/ops/op_registry.h"
 
 namespace {
@@ -61,7 +62,7 @@ class ImportTest : public ::testing::Test {
                                      filename.size);
     auto source = diagnostic->source_location.source;
     self.diagnostic_source_.assign(source.data ? source.data : "", source.size);
-    return iree_ok_status();
+    return loom_diagnostic_stderr_sink(nullptr, diagnostic);
   }
 
   static iree_status_t ProvideSource(void* user_data, iree_string_view_t path,
@@ -275,6 +276,91 @@ TEST_F(ImportTest, WideLoopComparisonRetainsInductionWraparound) {
   auto text = Print();
   EXPECT_NE(text.find("scf.while"), std::string::npos);
   EXPECT_EQ(text.find("scf.for"), std::string::npos);
+}
+
+TEST_F(ImportTest, GeneratedIntrinsicSignaturesAreChecked) {
+  for (const char* source : {
+           "[[loom::op(\"scalar.expf\", 42)]] float broken(float); float "
+           "entry(float x) { return broken(x); }",
+           "[[loom::op(\"scalar.expf\"), loom::op(\"scalar.logf\")]] float "
+           "broken(float); float entry(float x) { return broken(x); }",
+           "[[loom::op(\"scalar.expf\")]] float broken(float x) { return x; }",
+           "[[loom::op(\"scalar.expf\")]] float broken(int); float entry(int "
+           "x) { return broken(x); }",
+           "[[loom::op(\"scalar.expf\")]] int broken(int); int entry(int x) { "
+           "return broken(x); }",
+           "[[loom::op(\"scalar.expf\")]] float broken(float, float); float "
+           "entry(float x) { return broken(x, x); }",
+           "[[loom::op(\"scalar.expf\", \"surprise\")]] float broken(float); "
+           "float entry(float x) { return broken(x); }",
+           "[[loom::op(\"scf.for\")]] float broken(float); float entry(float "
+           "x) { return broken(x); }",
+       }) {
+    SCOPED_TRACE(source);
+    auto before = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_cstring_view(source)));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_GT(diagnostic_count_, before);
+  }
+}
+
+TEST_F(ImportTest, GeneratedIntrinsicFlagsAndTypes) {
+  IREE_ASSERT_OK(Import(
+      IREE_SV("[[loom::op(\"scalar.expf\", \"afn\")]] float approximate(float);"
+              "[[loom::op(\"scalar.maxnumf\")]] double maximum(double, double);"
+              "[[loom::op(\"scalar.sqrtf\")]] _Float16 root(_Float16);"
+              "float entry(float x) { return approximate(x); }"
+              "double wide(double x) { return maximum(x, 1.0); }"
+              "_Float16 narrow(_Float16 x) { return root(x); }")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("scalar.expf<afn>"), std::string::npos);
+  EXPECT_NE(text.find("scalar.maxnumf"), std::string::npos);
+  EXPECT_NE(text.find("scalar.sqrtf"), std::string::npos);
+}
+
+TEST_F(ImportTest, EmbeddedFacadeAndExternalProviderAgree) {
+  const auto source = IREE_SV(
+      "#include <hip/hip_runtime.h>\n#include <hip/hip_fp16.h>\n"
+      "__global__ [[loom::workgroup_size(64, 1, 1), loom::workgroup_count(2, "
+      "1, 1)]] "
+      "void entry(const float* input, float* output) { "
+      "unsigned index = blockIdx.x * blockDim.x + threadIdx.x; "
+      "__builtin_assume(index < 128u); "
+      "output[index] = fmaxf(__shfl_xor(__expf(input[index]), 1), 0.0f); }"
+      "__device__ float convert(half value) { return __half2float(value); }");
+  IREE_ASSERT_OK(Import(source));
+  if (loom::cxx_import::builtin_include_root().empty()) {
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_GT(diagnostic_count_, 0);
+    return;
+  }
+  ASSERT_NE(module_, nullptr);
+  auto embedded = Print();
+  EXPECT_NE(embedded.find("kernel.def @entry"), std::string::npos);
+  EXPECT_NE(embedded.find("scalar.expf<afn>"), std::string::npos);
+  EXPECT_NE(embedded.find("kernel.subgroup.shuffle"), std::string::npos);
+
+  // The provider borrows the same immutable source bytes under an external
+  // include root; preprocessing and binding resolution remain identical.
+  for (const char* name :
+       {"hip/hip_runtime.h", "hip/hip_fp16.h", "loomcxx/kernel.h",
+        "loomcxx/math.h", "loomcxx/scalar.h"}) {
+    auto contents = loom::cxx_import::builtin_include(name);
+    ASSERT_TRUE(contents.has_value());
+    headers_[std::string("/edited/") + name] = *contents;
+  }
+  options_.flags |= LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES;
+  IREE_ASSERT_OK(Import(source));
+  EXPECT_EQ(module_, nullptr);
+  const iree_string_view_t path = IREE_SV("/edited");
+  options_.include_paths = &path;
+  options_.include_path_count = 1;
+  options_.source_provider = {ProvideSource, this};
+  IREE_ASSERT_OK(Import(source));
+  ASSERT_NE(module_, nullptr);
+  headers_.clear();
+  EXPECT_EQ(Print(), embedded);
 }
 
 }  // namespace

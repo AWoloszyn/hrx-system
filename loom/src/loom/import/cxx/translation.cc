@@ -31,6 +31,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/import/cxx/failure.h"
+#include "loom/import/cxx/intrinsics.h"
 #include "loom/import/cxx/mutations.h"
 #include "loom/import/cxx/source.h"
 #include "loom/ir/context.h"
@@ -66,6 +67,7 @@ class Translator {
              loom_module_t* module, const loom_cxx_import_options_t& options)
       : unit_(unit),
         diagnostics_(diagnostics),
+        intrinsics_(unit, diagnostics),
         module_(module),
         options_(options),
         math_flags_(iree_any_bit_set(options.flags,
@@ -135,6 +137,8 @@ class Translator {
       if (auto* function =
               cxx::ast_cast<cxx::FunctionDefinitionAST>(declaration)) {
         if (!function->symbol->isTemplatePattern()) {
+          intrinsics_.declaration(function->symbol, function->attributeList,
+                                  function);
           definitions.push_back(function->symbol);
         }
       } else if (auto* space =
@@ -146,6 +150,11 @@ class Translator {
       } else if (auto* simple =
                      cxx::ast_cast<cxx::SimpleDeclarationAST>(declaration)) {
         for (auto* declarator : cxx::ListView{simple->initDeclaratorList}) {
+          if (auto* function =
+                  cxx::symbol_cast<cxx::FunctionSymbol>(declarator->symbol)) {
+            intrinsics_.declaration(function, simple->attributeList,
+                                    declarator);
+          }
           auto* variable =
               cxx::symbol_cast<cxx::VariableSymbol>(declarator->symbol);
           if (variable && !variable->isExtern() &&
@@ -752,6 +761,10 @@ class Translator {
     if (auto* equal = cxx::ast_cast<cxx::EqualInitializerAST>(ast)) {
       return expression(equal->expression);
     }
+    if (auto* initializer =
+            cxx::ast_cast<cxx::DefaultInitializerExpressionAST>(ast)) {
+      return expression(initializer->expression);
+    }
     if (auto* cast = cxx::ast_cast<cxx::ImplicitCastExpressionAST>(ast)) {
       if (cast->conversionFunction) {
         fail(ast, "user-defined conversions are not admitted");
@@ -879,6 +892,8 @@ class Translator {
                        ? loom_kernel_workgroup_id_build
                    : annotated(base->symbol, "workgroup_size")
                        ? loom_kernel_workgroup_size_build
+                   : annotated(base->symbol, "workgroup_count")
+                       ? loom_kernel_workgroup_count_build
                        : nullptr;
       if (!build) {
         fail(ast, "member base is not an owned topology intrinsic");
@@ -965,68 +980,29 @@ class Translator {
       }
       auto result_type = type(ast->type, ast);
       loom_op_t* op;
+      if (annotated(function, "subgroup_size")) {
+        if (!arguments.empty() ||
+            !loom_type_equal(result_type,
+                             loom_type_scalar(LOOM_SCALAR_TYPE_I32))) {
+          fail(ast, "subgroup_size requires unsigned subgroup_size()");
+        }
+        auto index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+        check(loom_kernel_subgroup_size_build(&builder_, index_type, source,
+                                              &op));
+        auto size = result(op);
+        check(loom_index_cast_build(&builder_, size, index_type, result_type,
+                                    source, &op));
+        return result(op);
+      }
       if (annotated(function, "shuffle_xor") && arguments.size() == 3) {
         check(loom_kernel_subgroup_shuffle_build(
             &builder_, LOOM_KERNEL_SUBGROUP_SHUFFLE_MODE_XOR, arguments[0],
             arguments[1], arguments[2], result_type, source, &op));
         return result(op);
       }
-      using UnaryBuild = decltype(&loom_scalar_expf_build);
-      struct UnaryIntrinsic {
-        // Semantic attribute supplied by the owned header.
-        const char* attribute;
-        // Existing scalar operation builder.
-        UnaryBuild build;
-        // Permissions intrinsic to the explicitly approximate builtin.
-        uint8_t flags;
-      };
-      static constexpr UnaryIntrinsic unary_intrinsics[] = {
-          {"exp_approx", loom_scalar_expf_build, LOOM_SCALAR_FASTMATHFLAGS_AFN},
-          {"exp", loom_scalar_expf_build, 0},
-          {"tanh", loom_scalar_tanhf_build, 0},
-          {"sqrt", loom_scalar_sqrtf_build, 0},
-          {"rsqrt", loom_scalar_rsqrtf_build, 0},
-          {"log", loom_scalar_logf_build, 0},
-          {"log1p", loom_scalar_log1pf_build, 0},
-          {"softplus", loom_scalar_softplusf_build, 0},
-          {"sin", loom_scalar_sinf_build, 0},
-          {"cos", loom_scalar_cosf_build, 0},
-          {"abs", loom_scalar_absf_build, 0},
-          {"erf", loom_scalar_erff_build, 0},
-      };
-      for (const auto& intrinsic : unary_intrinsics) {
-        if (annotated(function, intrinsic.attribute) && arguments.size() == 1) {
-          check(intrinsic.build(&builder_, intrinsic.flags | math_flags_,
-                                arguments[0], result_type, source, &op));
-          return result(op);
-        }
-      }
-      if (arguments.size() == 2) {
-        auto build =
-            annotated(function, "max_number")   ? loom_scalar_maxnumf_build
-            : annotated(function, "min_number") ? loom_scalar_minnumf_build
-            : annotated(function, "pow")        ? loom_scalar_powf_build
-                                                : nullptr;
-        if (build) {
-          check(build(&builder_, annotated(function, "pow") ? math_flags_ : 0,
-                      arguments[0], arguments[1], result_type, source, &op));
-          return result(op);
-        }
-      }
-      if (annotated(function, "reciprocal_approx") && arguments.size() == 1) {
-        loom_op_t* one;
-        check(loom_scalar_constant_build(&builder_, loom_attr_f64(1.0),
-                                         result_type, source, &one));
-        check(loom_scalar_divf_build(&builder_, LOOM_SCALAR_FASTMATHFLAGS_ARCP,
-                                     result(one), arguments[0], result_type,
-                                     source, &op));
-        return result(op);
-      }
-      if (annotated(function, "constant_inf") && arguments.empty()) {
-        check(loom_scalar_constant_build(
-            &builder_, loom_attr_f64(std::numeric_limits<float>::infinity()),
-            result_type, source, &op));
-        return result(op);
+      if (auto value = intrinsics_.call(function, arguments, math_flags_,
+                                        &builder_, source)) {
+        return *value;
       }
       if (!function->declaration()) {
         fail(
@@ -1540,6 +1516,8 @@ class Translator {
   cxx::TranslationUnit& unit_;
   // Source diagnostics share frontend byte ranges and the caller sink.
   Diagnostics& diagnostics_;
+  // Retained generated operation bindings for reached source declarations.
+  Intrinsics intrinsics_;
   // Output arena owner.
   loom_module_t* module_;
   // Current insertion point in the structured output.

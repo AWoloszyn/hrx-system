@@ -39,6 +39,8 @@ IREE_FLAG(bool, cleanup, true,
           "Canonicalize, eliminate common expressions, and remove dead IR.");
 IREE_FLAG_NAMED(bool, approximate_functions, "approximate-functions", false,
                 "Permit approximate mathematical function results.");
+IREE_FLAG_NAMED(bool, builtin_includes, "builtin-includes", true,
+                "Search embedded Loom/HIP source headers when available.");
 
 static iree_status_t loom_cxx_cli_write_block(void* user_data,
                                               iree_const_byte_span_t block) {
@@ -102,6 +104,9 @@ static iree_status_t loom_cxx_cli_import(iree_string_view_t filename,
   }
   if (FLAG_approximate_functions) {
     options.flags |= LOOM_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS;
+  }
+  if (!FLAG_builtin_includes) {
+    options.flags |= LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES;
   }
   const iree_flag_string_list_t includes = FLAG_include_path_list();
   options.include_paths = includes.values;

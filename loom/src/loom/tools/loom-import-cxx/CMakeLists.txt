@@ -42,6 +42,11 @@ iree_execution_test_suite(
     "loom-format=loom::tools::loom-format"
     "loom-import-cxx=::loom-import-cxx"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
     "${_GLOB_TESTDATA_X}"
   LABELS
     "hostonly"

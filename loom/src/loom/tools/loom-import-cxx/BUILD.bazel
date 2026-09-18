@@ -30,7 +30,13 @@ loom_cc_binary(
 
 iree_execution_test_suite(
     name = "execution_test",
-    data = glob(["testdata/*"]),
+    data = glob(["testdata/*"]) + [
+        "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
+        "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/math.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/scalar.h",
+    ],
     manifests = ["loom-import-cxx.test.json"],
     tags = ["hostonly"],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),

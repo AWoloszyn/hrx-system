@@ -26,6 +26,8 @@ typedef enum loom_cxx_data_model_e {
 typedef enum loom_cxx_import_flag_bits_e {
   // Permit approximations for mathematical functions (Loom's AFN contract).
   LOOM_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS = 1u << 0,
+  // Omit the embedded system include root and use explicit source paths only.
+  LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES = 1u << 1,
 } loom_cxx_import_flag_bits_t;
 typedef uint32_t loom_cxx_import_flags_t;
 
@@ -40,7 +42,8 @@ typedef iree_status_t (*loom_cxx_source_provider_fn_t)(
     iree_string_view_t* out_source);
 
 typedef struct loom_cxx_source_provider_t {
-  // Optional resolver replacing filesystem reads for all include candidates.
+  // Optional resolver replacing filesystem reads. Embedded catalog paths are
+  // resolved separately unless NO_BUILTIN_INCLUDES is set.
   loom_cxx_source_provider_fn_t fn;
   // Caller-owned state borrowed for the duration of import.
   void* user_data;

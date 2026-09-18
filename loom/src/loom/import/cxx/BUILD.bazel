@@ -5,7 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/bazel:query.bzl", "iree_assert_dependency_boundary")
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with")
+load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with", "loom_generated_cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -13,11 +14,79 @@ package(
     licenses = ["notice"],
 )
 
+exports_files([
+    "include/hip/hip_fp16.h",
+    "include/hip/hip_runtime.h",
+    "include/loomcxx/kernel.h",
+    "include/loomcxx/math.h",
+    "include/loomcxx/scalar.h",
+])
+
+loom_generated_cc_library(
+    name = "scalar_bindings",
+    hdrs = ["scalar_bindings.h"],
+    generator = "//loom/py/loom/gen/cxx:intrinsics_generator",
+    deps = [
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/scalar",
+    ],
+)
+
+_EMBED_COMPATIBLE_WITH = loom_config_compatible_with([
+    "//loom/config/import:cxx",
+    "//loom/config/import/cxx:embed_includes_enabled",
+])
+
+iree_c_embed_data(
+    name = "embedded_loomcxx_headers",
+    srcs = [
+        "include/loomcxx/kernel.h",
+        "include/loomcxx/math.h",
+        "include/loomcxx/scalar.h",
+    ],
+    c_file_output = "embedded_loomcxx_headers.c",
+    flatten = True,
+    h_file_output = "embedded_loomcxx_headers.h",
+    identifier = "loom_cxx_embedded_loomcxx_headers",
+    target_compatible_with = _EMBED_COMPATIBLE_WITH,
+)
+
+iree_c_embed_data(
+    name = "embedded_hip_headers",
+    srcs = [
+        "include/hip/hip_fp16.h",
+        "include/hip/hip_runtime.h",
+    ],
+    c_file_output = "embedded_hip_headers.c",
+    flatten = True,
+    h_file_output = "embedded_hip_headers.h",
+    identifier = "loom_cxx_embedded_hip_headers",
+    target_compatible_with = _EMBED_COMPATIBLE_WITH,
+)
+
+loom_cc_library(
+    name = "include_catalog",
+    srcs = ["include_catalog.cc"],
+    hdrs = ["include_catalog.h"],
+    defines = select({
+        "//loom/config/import/cxx:embed_includes_enabled": ["LOOM_CXX_EMBED_INCLUDES=1"],
+        "//conditions:default": ["LOOM_CXX_EMBED_INCLUDES=0"],
+    }),
+    deps = select({
+        "//loom/config/import/cxx:embed_includes_enabled": [
+            ":embedded_hip_headers",
+            ":embedded_loomcxx_headers",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
 loom_cc_test(
     name = "import_test",
     srcs = ["import_test.cc"],
     deps = [
         ":cxx",
+        ":include_catalog",
         "//loom/src/loom/format/text:printer",
         "//loom/src/loom/ops:op_registry",
         "//runtime/src/iree/testing:gtest",
@@ -41,6 +110,8 @@ loom_cc_library(
     srcs = [
         "failure.h",
         "import.cc",
+        "intrinsics.cc",
+        "intrinsics.h",
         "mutations.h",
         "source.cc",
         "source.h",
@@ -61,6 +132,8 @@ loom_cc_library(
         ],
     }),
     deps = [
+        ":include_catalog",
+        ":scalar_bindings",
         "//loom/src/loom/error:diagnostic",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",

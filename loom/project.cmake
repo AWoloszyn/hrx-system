@@ -162,6 +162,8 @@ option(LOOM_EXECUTE_IREE_HAL
 
 option(LOOM_IMPORT_CXX
   "Enables the native Loom C/C++ importer, tools, and binding." OFF)
+option(LOOM_IMPORT_CXX_EMBED_INCLUDES
+  "Embeds Loom C++ and HIP source headers in the C++ importer." ON)
 option(LOOM_IMPORT_MLIR
   "Enables the Loom MLIR importer package and importer tests." OFF)
 option(LOOM_IMPORT_TILELANG

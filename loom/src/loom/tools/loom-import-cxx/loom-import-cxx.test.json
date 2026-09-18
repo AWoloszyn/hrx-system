@@ -2,6 +2,20 @@
   "version": 1,
   "cases": [
     {
+      "name": "imports the external HIP facade and generated scalar bindings",
+      "run": {
+        "tool": "loom-import-cxx",
+        "args": [
+          "--builtin-includes=false",
+          "--I={srcdir}/../../import/cxx/include",
+          "{srcdir}/testdata/hip_kernels.cpp"
+        ]
+      },
+      "stdout": {
+        "contains": {"unordered": ["kernel.def @affine", "kernel.def @convert", "scalar.fmaf", "scalar.extf"]}
+      }
+    },
+    {
       "name": "imports multiple kernels and included template helpers",
       "run": {
         "tool": "loom-import-cxx",

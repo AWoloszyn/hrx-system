@@ -1,0 +1,33 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/bazel:python.bzl", "iree_py_binary", "iree_py_library")
+
+package(default_visibility = [
+    "//loom/py/loom/gen:__subpackages__",
+    "//loom/src/loom/import/cxx:__pkg__",
+])
+
+iree_py_library(
+    name = "intrinsics",
+    srcs = [
+        "__init__.py",
+        "intrinsics.py",
+    ],
+    deps = [
+        "//loom/py/loom:core",
+        "//loom/py/loom/dialect/scalar",
+        "//loom/py/loom/gen:bootstrap",
+        "//loom/py/loom/gen/ops:model",
+        "//loom/py/loom/gen/support",
+    ],
+)
+
+iree_py_binary(
+    name = "intrinsics_generator",
+    main_module = "loom.gen.cxx.intrinsics",
+    deps = [":intrinsics"],
+)

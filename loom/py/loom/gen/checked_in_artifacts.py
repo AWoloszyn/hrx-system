@@ -16,6 +16,7 @@ from pathlib import Path
 from types import ModuleType
 
 from loom.gen import bootstrap as _bootstrap
+from loom.gen.cxx import intrinsics as cxx_intrinsics
 from loom.gen.editor import textmate
 from loom.gen.ops import c_tables
 from loom.gen.python import builders_pyi, package_inits
@@ -56,6 +57,18 @@ def checked_in_artifact_families(*, repository_root: Path | None = None) -> tupl
     """Returns each family, discovering obsolete files when a root is given."""
     amdgpu_target_config = _load_amdgpu_target_config()
     return (
+        GeneratedFileFamily(
+            description=cxx_intrinsics.DESCRIPTION,
+            regenerate_command=cxx_intrinsics.REGENERATE_COMMAND,
+            file_set=cxx_intrinsics.checked_in_file_set(),
+            input_roots=(
+                "loom/py/loom/dialect/scalar",
+                "loom/py/loom/dsl.py",
+                "loom/py/loom/gen/cxx",
+                "loom/py/loom/gen/ops/model.py",
+                _PYTHON_GENERATOR_SUPPORT_ROOT,
+            ),
+        ),
         GeneratedFileFamily(
             description=package_inits.DESCRIPTION,
             regenerate_command=package_inits.REGENERATE_COMMAND,
