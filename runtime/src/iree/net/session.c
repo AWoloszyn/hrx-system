@@ -657,17 +657,17 @@ iree_status_t iree_net_session_send_control_data_copy(
     iree_async_span_list_t payload,
     iree_net_send_completion_callback_t completion_callback) {
   iree_slim_mutex_lock(&session->mutex);
-  iree_status_t status = iree_ok_status();
-  if (iree_net_session_state(session) != IREE_NET_SESSION_STATE_OPERATIONAL) {
-    status =
-        iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                         "copied control DATA requires an operational session");
-  } else {
-    status = iree_net_control_channel_send_data_copy(
-        session->control_channel, flags, payload, completion_callback);
-  }
+  const bool operational =
+      iree_net_session_state(session) == IREE_NET_SESSION_STATE_OPERATIONAL;
+  iree_net_control_channel_t* control_channel = session->control_channel;
   iree_slim_mutex_unlock(&session->mutex);
-  return status;
+  if (!operational) {
+    return iree_make_status(
+        IREE_STATUS_FAILED_PRECONDITION,
+        "copied control DATA requires an operational session");
+  }
+  return iree_net_control_channel_send_data_copy(control_channel, flags,
+                                                 payload, completion_callback);
 }
 
 iree_status_t iree_net_session_send_goaway(

@@ -7,8 +7,12 @@
 #include "iree/net/session.h"
 
 #include <array>
+#include <atomic>
+#include <condition_variable>
 #include <functional>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "iree/async/buffer_pool.h"
@@ -213,6 +217,78 @@ struct SessionReceivePoolResources {
   iree_async_buffer_pool_t* pool = nullptr;
 };
 
+class OneShotAllocationGate {
+ public:
+  iree_allocator_t allocator() { return {this, Control}; }
+
+  void ArmAllocationAtLeast(iree_host_size_t minimum_byte_length) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    armed_ = true;
+    minimum_byte_length_ = minimum_byte_length;
+    entered_ = false;
+    released_ = false;
+    attempt_completed_ = false;
+  }
+
+  bool WaitUntilEnteredOrCompleted() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    condition_.wait(lock, [&] { return entered_ || attempt_completed_; });
+    return entered_;
+  }
+
+  void CompleteAttempt() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    armed_ = false;
+    attempt_completed_ = true;
+    condition_.notify_all();
+  }
+
+  void Release() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    released_ = true;
+    condition_.notify_all();
+  }
+
+ private:
+  static iree_status_t Control(void* self, iree_allocator_command_t command,
+                               const void* params, void** inout_ptr) {
+    auto* gate = static_cast<OneShotAllocationGate*>(self);
+    const bool is_allocation = command == IREE_ALLOCATOR_COMMAND_MALLOC ||
+                               command == IREE_ALLOCATOR_COMMAND_CALLOC ||
+                               command == IREE_ALLOCATOR_COMMAND_REALLOC;
+    if (is_allocation) {
+      const auto* alloc_params =
+          static_cast<const iree_allocator_alloc_params_t*>(params);
+      std::unique_lock<std::mutex> lock(gate->mutex_);
+      if (gate->armed_ &&
+          alloc_params->byte_length >= gate->minimum_byte_length_) {
+        gate->armed_ = false;
+        gate->entered_ = true;
+        gate->condition_.notify_all();
+        gate->condition_.wait(lock, [&] { return gate->released_; });
+      }
+    }
+    iree_allocator_t system_allocator = iree_allocator_system();
+    return system_allocator.ctl(system_allocator.self, command, params,
+                                inout_ptr);
+  }
+
+  // Serializes gate state and its notifications.
+  std::mutex mutex_;
+  // Reports gate entry, release, and an allocation-free attempt.
+  std::condition_variable condition_;
+  // True when the next allocation command must stop at the gate.
+  bool armed_ = false;
+  // Minimum allocation extent eligible to enter the gate.
+  iree_host_size_t minimum_byte_length_ = 0;
+  // True after an allocation command enters the gate.
+  bool entered_ = false;
+  // True when the gated allocation command may continue.
+  bool released_ = false;
+  // True when the send attempt returns without entering the gate.
+  bool attempt_completed_ = false;
+};
+
 static iree_status_t CreateSessionReceivePool(
     iree_async_proactor_t* proactor,
     SessionReceivePoolResources* out_resources) {
@@ -262,7 +338,7 @@ class SessionTest : public ::testing::Test {
     IREE_ASSERT_OK(
         CreateSessionReceivePool(server_proactor_, &server_receive_pool_));
     iree_status_t status =
-        backend_->create_factory(iree_allocator_system(), &factory_);
+        backend_->create_factory(factory_allocator_.allocator(), &factory_);
     if (iree_status_code(status) == IREE_STATUS_UNAVAILABLE) {
       iree_status_free(status);
       GTEST_SKIP() << backend_->name << " transport unavailable";
@@ -420,7 +496,39 @@ class SessionTest : public ::testing::Test {
     ASSERT_EQ(server_state_.ready_count, 1);
   }
 
+  iree_status_t AwaitClientControlSendReadiness() {
+    uint8_t payload = 0;
+    iree_async_span_t payload_span = iree_async_span_from_ptr(&payload, 1);
+    SessionSendState send_state;
+    send_state.current_poll_side = &current_poll_side_;
+    send_state.expected_poll_side = kSessionClientPolling;
+    send_state.expected_bytes = IREE_NET_CONTROL_MESSAGE_HEADER_SIZE + 1;
+
+    while (true) {
+      iree_status_t status = iree_net_session_send_control_data(
+          client_session_, 0, iree_async_span_list_make(&payload_span, 1),
+          send_state.callback());
+      if (iree_status_is_ok(status)) {
+        break;
+      }
+      if (!iree_status_is_resource_exhausted(status)) {
+        return status;
+      }
+      iree_status_free(status);
+      PollImmediate(client_proactor_, kSessionClientPolling);
+      PollImmediate(server_proactor_, kSessionServerPolling);
+    }
+
+    PollBothUntil([&] { return send_state.callback_count == 1; });
+    if (send_state.status_code != IREE_STATUS_OK) {
+      return iree_make_status(send_state.status_code,
+                              "control readiness send failed");
+    }
+    return iree_ok_status();
+  }
+
   const TransportBackend* backend_ = nullptr;
+  OneShotAllocationGate factory_allocator_;
   int current_poll_side_ = kSessionNotPolling;
   iree_async_proactor_t* client_proactor_ = nullptr;
   iree_async_proactor_t* server_proactor_ = nullptr;
@@ -537,6 +645,70 @@ TEST_F(SessionTest, EstablishesAndDrainsOperationalSession) {
   EXPECT_EQ(server_state_.deactivated_count, 1);
   EXPECT_EQ(client_state_.error_count, 0);
   EXPECT_EQ(server_state_.error_count, 0);
+}
+
+TEST_F(SessionTest, CopiedControlSendDoesNotSerializeDeactivation) {
+  iree_net_session_options_t client_options =
+      iree_net_session_options_default();
+  iree_net_session_options_t server_options =
+      iree_net_session_options_default();
+  EstablishSessions(&client_options, &server_options);
+
+  std::vector<uint8_t> payload(32 * 1024, 0xA5);
+  iree_async_span_t payload_span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  std::atomic<int> send_completion_count{0};
+  const iree_net_send_completion_callback_t send_callback = {
+      /*.fn=*/+[](void* user_data, iree_status_t status,
+                  iree_host_size_t bytes_transferred) {
+        (void)bytes_transferred;
+        auto* completion_count = static_cast<std::atomic<int>*>(user_data);
+        completion_count->fetch_add(1, std::memory_order_relaxed);
+        iree_status_free(status);
+      },
+      /*.user_data=*/&send_completion_count,
+  };
+  iree_status_code_t send_status_code = IREE_STATUS_UNKNOWN;
+
+  // Session publication and transport peer activation are independent. A
+  // completed accepted send proves the client control endpoint is no longer
+  // consuming its one pre-activation send credit.
+  IREE_ASSERT_OK(AwaitClientControlSendReadiness());
+
+  factory_allocator_.ArmAllocationAtLeast(payload.size());
+  std::thread send_thread([&] {
+    iree_status_t status = iree_net_session_send_control_data_copy(
+        client_session_, 0, iree_async_span_list_make(&payload_span, 1),
+        send_callback);
+    send_status_code = iree_status_code(status);
+    iree_status_free(status);
+    factory_allocator_.CompleteAttempt();
+  });
+  if (!factory_allocator_.WaitUntilEnteredOrCompleted()) {
+    send_thread.join();
+    if (send_status_code == IREE_STATUS_OK) {
+      PollBothUntil([&] {
+        return send_completion_count.load(std::memory_order_relaxed) == 1;
+      });
+    }
+    FAIL() << "copied send did not reach transport storage allocation; status="
+           << send_status_code;
+  }
+
+  iree_net_session_deactivate(client_session_);
+  EXPECT_EQ(iree_net_session_state(client_session_),
+            IREE_NET_SESSION_STATE_DRAINING);
+  factory_allocator_.Release();
+  send_thread.join();
+
+  PollBothUntil([&] { return client_state_.deactivated_count == 1; });
+  if (send_status_code == IREE_STATUS_OK) {
+    EXPECT_EQ(send_completion_count.load(std::memory_order_relaxed), 1);
+  } else {
+    EXPECT_EQ(send_completion_count.load(std::memory_order_relaxed), 0);
+  }
+  EXPECT_EQ(iree_net_session_state(client_session_),
+            IREE_NET_SESSION_STATE_DEACTIVATED);
 }
 
 TEST_F(SessionTest, DeactivatesBeforeConnectCompletes) {
