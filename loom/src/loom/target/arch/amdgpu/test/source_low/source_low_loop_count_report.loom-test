@@ -35,7 +35,6 @@ CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=0
 
 // ====
 
-
 // The same bit patterns with a signed guard execute five body iterations.
 amdgpu.target<gfx950> @target
 
@@ -68,7 +67,6 @@ CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=5
 
 // ====
 
-
 // The terminal update reaches the largest signed index without wrapping.
 amdgpu.target<gfx1100> @target
 
@@ -100,7 +98,6 @@ CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_w
 
 // ====
 
-
 // The terminal update wraps before it can fail the signed guard.
 amdgpu.target<gfx1151> @target
 
@@ -131,7 +128,6 @@ kernel.def target(@target) @signed_terminal_wraps() {
 CHECK: COMPILE-REPORT: source_low_memory * exact_dynamic_packets=0 unknown_dynamic_packets=1 *
 
 // ====
-
 
 // Crossing the sign bit preserves unsigned progress, including a partial final step.
 amdgpu.target<gfx1200> @target
@@ -165,7 +161,6 @@ CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=3
 
 // ====
 
-
 // An unsigned inclusive maximum guard remains true after carrier wrap.
 amdgpu.target<gfx1250> @target
 
@@ -196,7 +191,6 @@ kernel.def target(@target) @unsigned_inclusive_maximum() {
 CHECK: COMPILE-REPORT: source_low_memory * exact_dynamic_packets=0 unknown_dynamic_packets=1 *
 
 // ====
-
 
 // Offset uses its independent 64-bit carrier rather than the 32-bit index width.
 amdgpu.target<gfx1151> @target
@@ -229,7 +223,6 @@ CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_w
 CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=2
 
 // ====
-
 
 // A signed guard on offset still checks overflow at the 64-bit sign boundary.
 amdgpu.target<gfx942> @target

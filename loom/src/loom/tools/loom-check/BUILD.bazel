@@ -180,6 +180,7 @@ loom_cc_library(
         "emit.c",
         "execute.c",
         "low_emit.c",
+        "low_report.c",
         "requirements.c",
         "roundtrip.c",
         "verify.c",
@@ -189,6 +190,7 @@ loom_cc_library(
         "diagnostics.h",
         "execute.h",
         "low_emit.h",
+        "low_report.h",
         "requirements.h",
     ],
     deps = [
@@ -242,6 +244,7 @@ loom_cc_library(
         "//loom/src/loom/target:predicate",
         "//loom/src/loom/target:types",
         "//loom/src/loom/target/reporting:format",
+        "//loom/src/loom/target/reporting:low",
         "//loom/src/loom/testing:test_diagnostic",
         "//loom/src/loom/testing:test_file",
         "//loom/src/loom/tooling/compile:pipeline",

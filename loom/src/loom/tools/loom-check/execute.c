@@ -298,6 +298,14 @@ iree_status_t loom_check_execute_case(
                               "unknown check mode: %d", (int)test_case->mode);
   }
 
+  if (iree_all_bits_set(test_case->output_flags, LOOM_TEST_OUTPUT_CHECKS) &&
+      result->raw_outcome == LOOM_CHECK_PASS &&
+      (!result->has_actual_output || result->actual_output.size == 0)) {
+    result->raw_outcome = LOOM_CHECK_FAIL;
+    IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(
+        &result->detail, "with-checks requires textual output to check\n"));
+  }
+
   // XFAIL inversion: expected failure that fails is a pass, expected
   // failure that passes is a failure.
   if (test_case->xfail) {

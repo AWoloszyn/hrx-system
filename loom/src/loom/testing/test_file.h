@@ -55,7 +55,9 @@
 //                           low-allocation-json @function for the full
 //                           allocation table, diagnostics include
 //                           predicted-spills, copy-decisions, and
-//                           placement-decisions, and low-packet-json @function.
+//                           placement-decisions, low-packet-json @function,
+//                           and low-compile-report @function (emission-frame
+//                           summary including static/dynamic instruction mix).
 //                           Source-to-low tests use source-low
 //                           [output=module|low]
 //                           [sanitizer=none|access|value|operation|race|all]

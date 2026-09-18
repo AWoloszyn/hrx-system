@@ -40,6 +40,7 @@
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/tools/loom-check/execute.h"
 #include "loom/tools/loom-check/low_emit.h"
+#include "loom/tools/loom-check/low_report.h"
 #include "loom/tools/loom-check/target_low_registry_manifest.h"
 #include "loom/util/stream.h"
 #include "loom/verify/verify.h"
@@ -52,6 +53,7 @@ typedef enum loom_check_emit_format_e {
   LOOM_CHECK_EMIT_LOW_ALLOCATION_SUMMARY = 4,
   LOOM_CHECK_EMIT_LOW_PACKET_JSON = 5,
   LOOM_CHECK_EMIT_SOURCE_LOW_TEXT = 6,
+  LOOM_CHECK_EMIT_LOW_COMPILE_REPORT = 7,
 } loom_check_emit_format_t;
 
 typedef enum loom_check_emit_source_low_output_e {
@@ -98,6 +100,7 @@ static const iree_string_view_t kLoomCheckEmitCoreTargetNames[] = {
     IREE_SVL("low-allocation"),      IREE_SVL("low-packet-json"),
     IREE_SVL("low-packet"),          IREE_SVL("target-low-registry-manifest"),
     IREE_SVL("source-low"),          IREE_SVL("source-to-low"),
+    IREE_SVL("low-compile-report"),
 };
 
 typedef struct loom_check_emit_request_t {
@@ -727,6 +730,21 @@ static iree_status_t loom_check_emit_parse_request(
     IREE_RETURN_IF_ERROR(
         loom_check_emit_parse_low_packet_options(option_text, out_request));
     out_request->format = LOOM_CHECK_EMIT_LOW_PACKET_JSON;
+    return iree_ok_status();
+  } else if (iree_string_view_equal(target_name,
+                                    IREE_SV("low-compile-report"))) {
+    iree_string_view_t symbol_name;
+    iree_string_view_t options;
+    iree_string_view_split(target_options, ' ', &symbol_name, &options);
+    if (!iree_string_view_consume_prefix(&symbol_name, IREE_SV("@")) ||
+        iree_string_view_is_empty(symbol_name) ||
+        !iree_string_view_is_empty(iree_string_view_trim(options))) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "low-compile-report requires one low function "
+                              "symbol name and no options");
+    }
+    out_request->analysis_symbol_name = symbol_name;
+    out_request->format = LOOM_CHECK_EMIT_LOW_COMPILE_REPORT;
     return iree_ok_status();
   } else if (iree_string_view_equal(target_name,
                                     IREE_SV("target-low-registry-manifest"))) {
@@ -1980,7 +1998,8 @@ iree_status_t loom_check_execute_emit(
       request.format == LOOM_CHECK_EMIT_LOW_SCHEDULE_JSON ||
       request.format == LOOM_CHECK_EMIT_LOW_ALLOCATION_JSON ||
       request.format == LOOM_CHECK_EMIT_LOW_ALLOCATION_SUMMARY ||
-      request.format == LOOM_CHECK_EMIT_LOW_PACKET_JSON) {
+      request.format == LOOM_CHECK_EMIT_LOW_PACKET_JSON ||
+      request.format == LOOM_CHECK_EMIT_LOW_COMPILE_REPORT) {
     loom_source_entry_t source_entry = {0};
     loom_source_table_resolver_t resolver_data = {0};
     status = loom_check_source_resolver_for_case(
@@ -2016,7 +2035,8 @@ iree_status_t loom_check_execute_emit(
     if (request.format == LOOM_CHECK_EMIT_LOW_SCHEDULE_JSON ||
         request.format == LOOM_CHECK_EMIT_LOW_ALLOCATION_JSON ||
         request.format == LOOM_CHECK_EMIT_LOW_ALLOCATION_SUMMARY ||
-        request.format == LOOM_CHECK_EMIT_LOW_PACKET_JSON) {
+        request.format == LOOM_CHECK_EMIT_LOW_PACKET_JSON ||
+        request.format == LOOM_CHECK_EMIT_LOW_COMPILE_REPORT) {
       loom_check_diagnostic_emitter_capture_t low_diagnostic_capture = {
           .diagnostic_collector = &diagnostic_collector,
           .module = module,
@@ -2103,6 +2123,15 @@ iree_status_t loom_check_execute_emit(
             request.low_allocation_fixed_value_specs,
             request.low_allocation_fixed_value_spec_count,
             request.low_allocation_diagnostic_flags,
+            (iree_diagnostic_emitter_t){
+                .fn = loom_check_diagnostic_emitter_capture_emit,
+                .user_data = &pass_diagnostic_capture,
+            },
+            &diagnostic_arena, result);
+      } else if (request.format == LOOM_CHECK_EMIT_LOW_COMPILE_REPORT) {
+        status = loom_check_emit_low_report(
+            module, request.analysis_symbol_name, &low_registry.registry,
+            test_case, filename, &diagnostic_collector,
             (iree_diagnostic_emitter_t){
                 .fn = loom_check_diagnostic_emitter_capture_emit,
                 .user_data = &pass_diagnostic_capture,

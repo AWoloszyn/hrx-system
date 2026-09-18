@@ -222,6 +222,7 @@ int loom_check_main(int argc, char** argv,
       "              print, compare.\n"
       "              Core targets include liveness-json, low-schedule-json,\n"
       "              low-allocation, low-allocation-json, low-packet-json,\n"
+      "              low-compile-report @function,\n"
       "              target-low-registry-manifest, and source-low.\n"
       "              source-low emits target-lowering\n"
       "              artifacts or pipeline text and accepts\n"

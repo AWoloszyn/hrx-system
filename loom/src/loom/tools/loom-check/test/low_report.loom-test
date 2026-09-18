@@ -1,0 +1,31 @@
+// RUN: with-checks emit low-compile-report @copy
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @copy(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %copied = copy %value : reg<test.i32> -> reg<test.i32>
+  return %copied
+}
+
+// The shared recorder produces instruction estimates without a native provider.
+// ----
+CHECK: COMPILE-REPORT: static_instruction_mix *
+CHECK: COMPILE-REPORT: dynamic_instruction_mix *
+
+// ====
+
+// RUN: emit low-compile-report @missing
+
+// ERROR@+1: SYMBOL/002 {symbol_name="missing"}
+func.def @anchor() {
+  func.return
+}
+
+// ====
+
+// RUN: emit low-compile-report @wrong_kind
+
+// ERROR@+1: SYMBOL/003 {symbol_name="wrong_kind", expected_kind="low function body"}
+func.def @wrong_kind() {
+  func.return
+}

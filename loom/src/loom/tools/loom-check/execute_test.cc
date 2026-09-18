@@ -1335,6 +1335,24 @@ TEST_F(ExecuteTest, EmitSourceLowCanSuppressSuccessfulOutput) {
   loom_check_result_deinitialize(&result);
 }
 
+TEST_F(ExecuteTest, ChecksCannotPassWhenOutputIsSuppressed) {
+  ExpectFirstFailsWithDetail(
+      "// RUN: with-checks emit source-low output=none\n"
+      "test.target<low_core> @target\n"
+      "func.def target(@target) @f() {\n  func.return\n}\n"
+      "// ----\nCHECK: this must not silently pass\n",
+      "with-checks requires textual output");
+}
+
+TEST_F(ExecuteTest, LowReportRejectsMissingSymbolAndExtraOptions) {
+  ExpectFirstFailsWithDetail("// RUN: emit low-compile-report\n",
+                             "requires one low function symbol name");
+  ExpectFirstFailsWithDetail("// RUN: emit low-compile-report @\n",
+                             "requires one low function symbol name");
+  ExpectFirstFailsWithDetail("// RUN: emit low-compile-report @f extra\n",
+                             "requires one low function symbol name");
+}
+
 TEST_F(ExecuteTest, EmitSourceLowParsesSanitizerOptions) {
   loom_check_result_t result;
   IREE_ASSERT_OK(
