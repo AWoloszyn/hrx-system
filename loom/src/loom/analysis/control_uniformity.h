@@ -53,9 +53,9 @@ typedef struct loom_control_uniformity_info_t {
   // Populated value facts and cached CFG graphs borrowed for the query
   // lifetime.
   const loom_value_fact_table_t* fact_table;
-  // Arena receiving lazily constructed CFG control summaries.
+  // Arena receiving scratch for mutual-exclusion queries.
   iree_arena_allocator_t* arena;
-  // CFG region summaries constructed by prior queries.
+  // Query scratch for CFG snapshots reached by mutual-exclusion queries.
   struct {
     // Open-addressed slots keyed by region address.
     loom_control_uniformity_cfg_region_t** slots;
@@ -67,32 +67,35 @@ typedef struct loom_control_uniformity_info_t {
 } loom_control_uniformity_info_t;
 
 // Initializes an empty reusable analysis. This performs no allocation or IR
-// walk; CFG summaries are derived only for regions reached by later queries.
+// walk. The analysis borrows the fact scope and its current CFG snapshots;
+// replacing a snapshot ends the lifetime of query scratch referring to it.
 void loom_control_uniformity_info_initialize(
     const loom_module_t* module, const loom_value_fact_table_t* fact_table,
     iree_arena_allocator_t* arena, loom_control_uniformity_info_t* out_info);
 
 // Proves that every structured and CFG control value governing |op| is uniform
-// at |required_scope|. CFG construction is reused from |fact_table|. The first
-// query in a CFG region constructs a near-linear postdominator summary; later
-// queries in that region are allocation-free block lookups. Infrastructure
-// failures are returned as status. An ordinary failed proof writes false to
-// |out_proven| and describes one insufficient controller in |out_failure|.
-iree_status_t loom_control_uniformity_prove_execution(
-    loom_control_uniformity_info_t* info, const loom_op_t* op,
+// at |required_scope|. CFG execution distributions are direct lookups in the
+// fact scope's maintained control result. Returns false when participation
+// cannot be proven. If |out_failure| is supplied, the fact owner materializes
+// diagnostic witnesses once per changed scope before describing an insufficient
+// controller. This query does not allocate.
+bool loom_control_uniformity_prove_execution(
+    const loom_control_uniformity_info_t* info, const loom_op_t* op,
     loom_value_fact_uniform_scope_t required_scope,
-    loom_control_uniformity_failure_t* out_failure, bool* out_proven);
+    loom_control_uniformity_failure_t* out_failure);
 
 // Proves that every operation in |lhs_ops| and |rhs_ops| executes on distinct
-// alternatives of a common CFG controller whose selector is uniform at
-// |required_scope|. Controllers inside a CFG cycle are rejected because
+// mandatory alternatives of a common CFG controller whose selector is uniform
+// at |required_scope|. An alternative's target dominates the footprint, and
+// its retained entry predecessor proves that the choice cannot be bypassed.
+// Controllers inside a CFG cycle are rejected because
 // distinct alternatives may execute on different loop iterations. Different
 // regions, structured-only control, and incomplete CFG facts conservatively
 // produce a failed proof.
 //
-// The first query in a CFG region lazily retains its control-dependence edges
-// and cycle membership. Later queries compare those retained summaries without
-// walking IR or recomputing graph structure. Infrastructure failures are
+// Queries follow the fact scope's retained dominator tree, mandatory entry
+// choices, and cycle membership. The first query allocates reusable scratch;
+// no query walks IR or recomputes graph structure. Allocation failures are
 // returned as status; an ordinary failed proof writes false to |out_proven|.
 iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
     loom_control_uniformity_info_t* info, iree_host_size_t lhs_op_count,

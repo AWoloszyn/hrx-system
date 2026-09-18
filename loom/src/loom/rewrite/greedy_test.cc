@@ -11,6 +11,7 @@
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/analysis/control_uniformity.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/cfg/ops.h"
@@ -379,6 +380,149 @@ TEST_F(GreedyRewriteTest, CyclicFactsNarrowAfterSemanticUpdates) {
   IREE_ASSERT_OK(loom_rewriter_refresh_cfg_facts(&rewriter, body));
   loom_rewriter_deinitialize(&rewriter);
   EXPECT_EQ(loom_value_fact_table_lookup_cfg_graph(facts, body), nullptr);
+  loom_pass_value_fact_owner_deinitialize(&owner);
+  iree_arena_deinitialize(&arena);
+}
+
+TEST_F(GreedyRewriteTest, SelectorEditsRefreshNonlocalAndCyclicControlFacts) {
+  const loom_type_t i1 = loom_type_scalar(LOOM_SCALAR_TYPE_I1);
+  const loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_region_t* region = loom_func_like_body(function_);
+  region->flags |= LOOM_REGION_INSTANCE_FLAG_CFG;
+  loom_op_t* uniform = nullptr;
+  loom_op_t* unknown = nullptr;
+  loom_op_t* lhs = nullptr;
+  loom_op_t* rhs = nullptr;
+  loom_op_t* step = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(1), i1,
+                                          LOOM_LOCATION_UNKNOWN, &uniform));
+  const loom_value_id_t uniform_id = loom_test_constant_result(uniform);
+  IREE_ASSERT_OK(loom_test_attrs_build(&builder_, 0, uniform_id, {}, i1,
+                                       LOOM_LOCATION_UNKNOWN, &unknown));
+  const loom_value_id_t unknown_id = loom_test_attrs_result(unknown);
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(10), i32,
+                                          LOOM_LOCATION_UNKNOWN, &lhs));
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(20), i32,
+                                          LOOM_LOCATION_UNKNOWN, &rhs));
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(1), i32,
+                                          LOOM_LOCATION_UNKNOWN, &step));
+  loom_block_t* left = nullptr;
+  loom_block_t* left_more = nullptr;
+  loom_block_t* right = nullptr;
+  loom_block_t* header = nullptr;
+  loom_block_t* body = nullptr;
+  loom_block_t* exit = nullptr;
+  for (loom_block_t** block :
+       {&left, &left_more, &right, &header, &body, &exit}) {
+    IREE_ASSERT_OK(loom_region_append_block(module_, region, block));
+  }
+  loom_value_id_t carried = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_builder_define_block_arg(&builder_, header, i32, &carried));
+  loom_op_t* entry_selector = nullptr;
+  IREE_ASSERT_OK(loom_cfg_cond_br_build(&builder_, uniform_id, left, right,
+                                        LOOM_LOCATION_UNKNOWN,
+                                        &entry_selector));
+  loom_op_t* branch = nullptr;
+  loom_builder_set_block(&builder_, left);
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, left_more, nullptr, 0,
+                                   LOOM_LOCATION_UNKNOWN, &branch));
+  const loom_value_id_t lhs_id = loom_test_constant_result(lhs);
+  loom_builder_set_block(&builder_, left_more);
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, &lhs_id, 1,
+                                   LOOM_LOCATION_UNKNOWN, &branch));
+  const loom_value_id_t rhs_id = loom_test_constant_result(rhs);
+  loom_builder_set_block(&builder_, right);
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, &rhs_id, 1,
+                                   LOOM_LOCATION_UNKNOWN, &branch));
+  loom_builder_set_block(&builder_, header);
+  loom_op_t* loop_selector = nullptr;
+  IREE_ASSERT_OK(loom_cfg_cond_br_build(&builder_, uniform_id, body, exit,
+                                        LOOM_LOCATION_UNKNOWN, &loop_selector));
+  loom_builder_set_block(&builder_, body);
+  loom_op_t* increment = nullptr;
+  IREE_ASSERT_OK(loom_test_addi_build(&builder_, carried,
+                                      loom_test_constant_result(step), i32,
+                                      LOOM_LOCATION_UNKNOWN, &increment));
+  const loom_value_id_t next = loom_test_addi_result(increment);
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, &next, 1,
+                                   LOOM_LOCATION_UNKNOWN, &branch));
+  loom_builder_set_block(&builder_, exit);
+  loom_op_t* use = nullptr;
+  IREE_ASSERT_OK(
+      loom_test_use_build(&builder_, &carried, 1, LOOM_LOCATION_UNKNOWN, &use));
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &branch));
+
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_pass_value_fact_owner_t owner;
+  loom_pass_value_fact_owner_initialize(&block_pool_, &owner);
+  loom_value_fact_table_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module_, loom_pass_value_fact_scope_function(function_), &facts));
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &arena));
+  loom_rewriter_attach_value_facts(&rewriter, facts);
+
+  auto check_fresh = [&](bool expected_uniform) {
+    while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
+      bool folded = false;
+      IREE_ASSERT_OK(loom_rewriter_try_fold(&rewriter, op, &folded));
+      EXPECT_FALSE(folded);
+    }
+    loom_pass_value_fact_owner_t fresh_owner;
+    loom_pass_value_fact_owner_initialize(&block_pool_, &fresh_owner);
+    loom_value_fact_table_t* fresh = nullptr;
+    IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+        &fresh_owner, module_, loom_pass_value_fact_scope_function(function_),
+        &fresh));
+    for (loom_value_id_t value : {carried, next}) {
+      EXPECT_TRUE(loom_value_fact_table_facts_equal_for_type(
+          module_, i32, facts, loom_value_fact_table_lookup(facts, value),
+          fresh, loom_value_fact_table_lookup(fresh, value)));
+      EXPECT_EQ(loom_value_facts_is_cluster_uniform(
+                    loom_value_fact_table_lookup(facts, value)),
+                expected_uniform);
+    }
+    loom_pass_value_fact_owner_deinitialize(&fresh_owner);
+  };
+  for (loom_op_t* selector : {entry_selector, loop_selector}) {
+    for (loom_value_id_t condition :
+         {unknown_id, uniform_id, unknown_id, uniform_id}) {
+      IREE_ASSERT_OK(
+          loom_rewriter_set_operand(&rewriter, selector, 0, condition));
+      check_fresh(condition == uniform_id);
+      loom_control_uniformity_info_t info;
+      loom_control_uniformity_info_initialize(module_, facts, &arena, &info);
+      loom_control_uniformity_failure_t failure;
+      const loom_op_t* governed =
+          selector == entry_selector ? left_more->last_op : increment;
+      EXPECT_EQ(
+          loom_control_uniformity_prove_execution(
+              &info, governed, LOOM_VALUE_FACT_UNIFORM_SCOPE_CLUSTER, &failure),
+          condition == uniform_id);
+      if (condition == unknown_id) {
+        EXPECT_EQ(failure.control_value, unknown_id);
+      }
+    }
+  }
+  // A remote topology edit changes which selector governs the incoming values
+  // without changing the loop's immediate predecessor edges or reachability.
+  loom_block_t* gate = nullptr;
+  IREE_ASSERT_OK(loom_region_append_block(module_, region, &gate));
+  loom_builder_set_block(&builder_, gate);
+  IREE_ASSERT_OK(loom_cfg_cond_br_build(&builder_, uniform_id, left, right,
+                                        LOOM_LOCATION_UNKNOWN, &branch));
+  IREE_ASSERT_OK(
+      loom_rewriter_set_operand(&rewriter, entry_selector, 0, unknown_id));
+  for (bool use_gate : {true, false, true, false}) {
+    loom_op_successors(entry_selector)[0] = use_gate ? gate : left;
+    loom_op_successors(entry_selector)[1] = use_gate ? gate : right;
+    IREE_ASSERT_OK(loom_rewriter_refresh_cfg_facts(&rewriter, region));
+    check_fresh(use_gate);
+  }
+  loom_rewriter_deinitialize(&rewriter);
   loom_pass_value_fact_owner_deinitialize(&owner);
   iree_arena_deinitialize(&arena);
 }

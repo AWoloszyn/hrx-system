@@ -8,6 +8,44 @@
 
 #include <string.h>
 
+#include "loom/util/fact_table.h"
+
+static void loom_value_fact_cfg_seed_selector(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, uint16_t block_index) {
+  if (!region->control_structure.node_count ||
+      !region->control_structure.blocks[block_index].binding_count) {
+    return;
+  }
+  const loom_value_id_t selector =
+      loom_cfg_graph_refresh_selector(&region->graph, block_index);
+  loom_value_facts_t facts = loom_value_fact_table_lookup(table, selector);
+  if (selector != LOOM_VALUE_ID_INVALID &&
+      !loom_value_fact_table_has_entry(table, selector)) {
+    loom_value_facts_mark_cluster_uniform(&facts);
+  }
+  loom_value_fact_control_set_selector(region->control, block_index, facts);
+}
+
+bool loom_value_fact_cfg_update_control(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, uint16_t block_index) {
+  loom_value_fact_cfg_seed_selector(table, region, block_index);
+  return loom_value_fact_control_settle(region->control);
+}
+
+void loom_value_fact_cfg_seed_control(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, const loom_scc_t* component) {
+  const iree_host_size_t count =
+      component ? component->node_count : region->graph.block_count;
+  for (iree_host_size_t i = 0; i < count; ++i) {
+    loom_value_fact_cfg_seed_selector(table, region,
+                                      component ? component->nodes[i] : i);
+  }
+  loom_value_fact_control_settle(region->control);
+}
+
 iree_host_size_t loom_value_fact_cfg_region_argument_index(
     const loom_value_fact_cfg_region_t* region, loom_value_id_t value_id) {
   const loom_value_t* value = loom_module_value(region->graph.module, value_id);
@@ -160,6 +198,16 @@ iree_status_t loom_value_fact_cfg_region_initialize(
   *out_region = (loom_value_fact_cfg_region_t){0};
   IREE_RETURN_IF_ERROR(
       loom_cfg_graph_build(module, region, arena, &out_region->graph));
+  IREE_RETURN_IF_ERROR(loom_cfg_control_build(&out_region->graph, arena,
+                                              &out_region->control_structure));
+  if (out_region->control_structure.node_count) {
+    IREE_RETURN_IF_ERROR(loom_cfg_dominance_build(&out_region->graph, arena,
+                                                  &out_region->dominance));
+  }
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(arena, sizeof(*out_region->control),
+                                           (void**)&out_region->control));
+  IREE_RETURN_IF_ERROR(loom_value_fact_control_initialize(
+      &out_region->control_structure, arena, out_region->control));
   if (out_region->graph.backward_edge_count == 0) {
     return iree_ok_status();
   }

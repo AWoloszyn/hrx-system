@@ -455,6 +455,7 @@ iree_status_t loom_value_fact_table_set_cfg_region(
     table->cfg_graphs.count = new_count;
   }
   entry->structure = structure;
+  loom_value_fact_cfg_seed_control(table, structure, NULL);
   return iree_ok_status();
 }
 

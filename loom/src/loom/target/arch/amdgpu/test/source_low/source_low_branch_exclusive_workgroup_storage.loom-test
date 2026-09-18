@@ -429,3 +429,135 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1
 ^done:
   return
 }
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+// The joined block can execute after either arm. Inherited control alternatives
+// are possible paths, not a proof that these allocations exclude each other.
+kernel.def target(@target) @partially_reconverged_allocations_remain_distinct(%outer: index, %inner: index) {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%outer: index, %inner: index, %output: buffer) {
+  %c0 = index.constant 0 : index
+  %buffer_base = index.constant 0 : offset
+  %bytes = index.constant 256 : offset
+  %first_value = scalar.constant 1 : i32
+  %second_value = scalar.constant 2 : i32
+  %first_arm = index.cmp ne, %outer, %c0 : index
+  %continue_left = index.cmp ne, %inner, %c0 : index
+  %continue_right = index.cmp eq, %inner, %c0 : index
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<2xi32>
+  cfg.cond_br %first_arm, ^left, ^right
+^left:
+  %first_scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %first_view = buffer.view %first_scratch[%buffer_base] : buffer -> view<1xi32>
+  view.store %first_value, %first_view[0] : i32, view<1xi32>
+  %first_result = view.load %first_view[0] : view<1xi32> -> i32
+  view.store %first_result, %output_view[0] : i32, view<2xi32>
+  cfg.cond_br %continue_left, ^joined, ^done
+^right:
+  cfg.cond_br %continue_right, ^joined, ^done
+^joined:
+  %second_scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %second_view = buffer.view %second_scratch[%buffer_base] : buffer -> view<1xi32>
+  view.store %second_value, %second_view[0] : i32, view<1xi32>
+  %second_result = view.load %second_view[0] : view<1xi32> -> i32
+  view.store %second_result, %output_view[1] : i32, view<2xi32>
+  cfg.br ^done
+^done:
+  kernel.return
+}
+
+// ----
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @partially_reconverged_allocations_remain_distinct(%outer: reg<amdgpu.sgpr>, %inner: reg<amdgpu.sgpr>) asm {
+  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
+  %24 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
+  %25 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
+  %c0 = s_mov_b32 0
+  %first_arm = s_cmp_lg_i32 %outer, %c0
+  low.cond_br %first_arm, ^left, ^right : reg<amdgpu.scc>
+^left:
+  %31 = v_mov_b32 1
+  %32 = v_mov_b32 0
+  ds_write_b32 %32, %31
+  %first_result = ds_read_b32 %32
+  global_store_b32_saddr %32, %first_result, %output_view
+  %continue_left = s_cmp_lg_i32 %inner, %c0
+  low.cond_br %continue_left, ^joined, ^done : reg<amdgpu.scc>
+^right:
+  %continue_right = s_cmp_eq_i32 %inner, %c0
+  low.cond_br %continue_right, ^joined, ^done : reg<amdgpu.scc>
+^joined:
+  %39 = v_mov_b32 2
+  %40 = v_mov_b32 0
+  ds_write_b32 %40, %39 {offset = 256}
+  %second_result = ds_read_b32 %40 {offset = 256}
+  global_store_b32_saddr %40, %second_result, %output_view {offset = 4}
+  low.br ^done
+^done:
+  return
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+// Both allocations can execute before the nonterminating tail. The synthetic
+// analysis exit does not turn either incoming path into an exclusive arm.
+kernel.def target(@target) @nonterminating_allocations_remain_distinct(%selector: index) {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%selector: index, %output: buffer) {
+  %c0 = index.constant 0 : index
+  %buffer_base = index.constant 0 : offset
+  %bytes = index.constant 256 : offset
+  %first_value = scalar.constant 1 : i32
+  %second_value = scalar.constant 2 : i32
+  %first_arm = index.cmp ne, %selector, %c0 : index
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<2xi32>
+  cfg.cond_br %first_arm, ^first, ^second
+^first:
+  %first_scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %first_view = buffer.view %first_scratch[%buffer_base] : buffer -> view<1xi32>
+  view.store %first_value, %first_view[0] : i32, view<1xi32>
+  %first_result = view.load %first_view[0] : view<1xi32> -> i32
+  view.store %first_result, %output_view[0] : i32, view<2xi32>
+  cfg.br ^second
+^second:
+  %second_scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %second_view = buffer.view %second_scratch[%buffer_base] : buffer -> view<1xi32>
+  view.store %second_value, %second_view[0] : i32, view<1xi32>
+  %second_result = view.load %second_view[0] : view<1xi32> -> i32
+  view.store %second_result, %output_view[1] : i32, view<2xi32>
+  cfg.br ^tail
+^tail:
+  cfg.br ^tail
+}
+
+// ----
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @nonterminating_allocations_remain_distinct(%selector: reg<amdgpu.sgpr>) asm {
+  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
+  %19 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
+  %20 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
+  %c0 = s_mov_b32 0
+  %first_arm = s_cmp_lg_i32 %selector, %c0
+  low.cond_br %first_arm, ^first, ^second : reg<amdgpu.scc>
+^first:
+  %26 = v_mov_b32 1
+  %27 = v_mov_b32 0
+  ds_write_b32 %27, %26
+  %first_result = ds_read_b32 %27
+  global_store_b32_saddr %27, %first_result, %output_view
+  low.br ^second
+^second:
+  %32 = v_mov_b32 2
+  %33 = v_mov_b32 0
+  ds_write_b32 %33, %32 {offset = 256}
+  %second_result = ds_read_b32 %33 {offset = 256}
+  global_store_b32_saddr %33, %second_result, %output_view {offset = 4}
+  low.br ^tail
+^tail:
+  low.br ^tail
+}

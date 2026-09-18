@@ -944,11 +944,9 @@ static iree_status_t loom_stage_loop_carried_fragments_try_rewrite(
   }
 
   loom_control_uniformity_failure_t control_failure = {0};
-  bool control_proven = false;
-  IREE_RETURN_IF_ERROR(loom_control_uniformity_prove_execution(
+  const bool control_proven = loom_control_uniformity_prove_execution(
       context->control_uniformity, yield,
-      LOOM_VALUE_FACT_UNIFORM_SCOPE_WORKGROUP, &control_failure,
-      &control_proven));
+      LOOM_VALUE_FACT_UNIFORM_SCOPE_WORKGROUP, &control_failure);
   if (!control_proven) {
     IREE_RETURN_IF_ERROR(loom_stage_loop_carried_fragments_report(
         context, loom_op_name(context->module, op), op->kind, &staged_fragments,

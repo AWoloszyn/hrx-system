@@ -434,3 +434,21 @@ bool loom_cfg_graph_block_is_reachable(const loom_cfg_graph_t* graph,
   return graph && block_index < graph->block_count &&
          graph->blocks[block_index].reachable;
 }
+
+loom_value_id_t loom_cfg_graph_refresh_selector(const loom_cfg_graph_t* graph,
+                                                uint16_t block_index) {
+  const loom_cfg_edge_index_span_t edges =
+      loom_cfg_graph_successor_edges(graph, block_index);
+  if (!edges.count) {
+    return LOOM_VALUE_ID_INVALID;
+  }
+  bool malformed = false;
+  const loom_value_id_t selector = loom_cfg_graph_selector_value(
+      graph->module, graph->edges[edges.values[0]].terminator, &malformed);
+  // Incomplete builder operands yield INVALID and therefore unknown control;
+  // verification owns their diagnostic, as during initial graph extraction.
+  for (iree_host_size_t i = 0; i < edges.count; ++i) {
+    graph->edges[edges.values[i]].selector_value_id = selector;
+  }
+  return selector;
+}

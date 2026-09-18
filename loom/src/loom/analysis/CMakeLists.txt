@@ -22,8 +22,10 @@ loom_cc_library(
     loom::ir
     loom::ir::facts
     loom::ops::op_defs
+    loom::util::cfg_control
+    loom::util::cfg_dominance
     loom::util::cfg_graph
-    loom::util::cfg_postdominance
+    loom::util::fact_control
     loom::util::fact_table
   PUBLIC
 )
@@ -60,6 +62,40 @@ loom_cc_test(
     loom::ops::scf
 )
 
+loom_cc_library(
+  NAME
+    control_uniformity_test_util
+  HDRS
+    "control_uniformity_test_util.h"
+  SRCS
+    "control_uniformity_test_util.cc"
+  DEPS
+    ::control_uniformity
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+    loom::ops::cfg
+    loom::ops::test
+    loom::testing::module_ptr
+    loom::verify
+  TESTONLY
+  PUBLIC
+)
+
+loom_cc_fuzz(
+  NAME
+    control_uniformity_fuzz
+  SRCS
+    "control_uniformity_fuzz.cc"
+  DEPS
+    ::control_uniformity_test_util
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+    loom::ops::cfg
+    loom::ops::test
+)
+
 loom_cc_test(
   NAME
     control_uniformity_test
@@ -67,6 +103,7 @@ loom_cc_test(
     "control_uniformity_test.cc"
   DEPS
     ::control_uniformity
+    ::control_uniformity_test_util
     iree::base::internal::arena
     iree::testing::gtest
     iree::testing::gtest_main

@@ -11,65 +11,13 @@
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/util/cfg_control_test_util.h"
+#include "loom/util/cfg_graph_test_util.h"
 
 namespace loom {
 namespace {
 
-// Graph-data fixture for the structural API. Production extraction and control
-// consumers are also exercised by the collective-legality loom-test fixtures.
-class Graph {
- public:
-  explicit Graph(std::vector<std::vector<uint16_t>> successors)
-      : blocks_(successors.size()) {
-    std::vector<std::vector<uint16_t>> predecessors(blocks_.size());
-    for (size_t i = 0; i < blocks_.size(); ++i) {
-      blocks_[i].successor_start = successor_indices_.size();
-      blocks_[i].successor_count = successors[i].size();
-      for (uint16_t target : successors[i]) {
-        successor_indices_.push_back(target);
-        predecessors[target].push_back(i);
-      }
-    }
-    for (size_t i = 0; i < blocks_.size(); ++i) {
-      blocks_[i].predecessor_start = predecessor_indices_.size();
-      blocks_[i].predecessor_count = predecessors[i].size();
-      predecessor_indices_.insert(predecessor_indices_.end(),
-                                  predecessors[i].begin(),
-                                  predecessors[i].end());
-    }
-    if (!blocks_.empty()) {
-      std::vector<uint16_t> pending{0};
-      blocks_[0].reachable = true;
-      while (!pending.empty()) {
-        uint16_t source = pending.back();
-        pending.pop_back();
-        for (uint16_t target : successors[source]) {
-          if (!blocks_[target].reachable) {
-            blocks_[target].reachable = true;
-            pending.push_back(target);
-          }
-        }
-      }
-    }
-    graph_.blocks = blocks_.data();
-    graph_.block_count = blocks_.size();
-    graph_.edge_count = successor_indices_.size();
-    graph_.successor_indices = successor_indices_.data();
-    graph_.predecessor_indices = predecessor_indices_.data();
-  }
-
-  const loom_cfg_graph_t* get() const { return &graph_; }
-
- private:
-  // Adjacency ranges and entry reachability consumed by the analysis.
-  std::vector<loom_cfg_block_info_t> blocks_;
-  // Dense outgoing adjacency.
-  std::vector<uint16_t> successor_indices_;
-  // Dense incoming adjacency.
-  std::vector<uint16_t> predecessor_indices_;
-  // Non-owning view of the fixture's retained arrays.
-  loom_cfg_graph_t graph_ = {};
-};
+using Graph = testing::CfgGraph;
 
 class CfgPostdominanceTest : public ::testing::Test {
  protected:
@@ -94,78 +42,13 @@ class CfgPostdominanceTest : public ::testing::Test {
         loom_cfg_postdominance_build(graph, &arena_, &postdominance));
     ASSERT_TRUE(postdominance.available);
     ASSERT_EQ(postdominance.exit_node, exit);
-    std::vector<std::vector<size_t>> edges(count);
-    for (size_t source = 0; source < exit; ++source) {
-      if (!graph->blocks[source].reachable) {
-        continue;
-      }
-      auto successors = loom_cfg_graph_successors(graph, source);
-      for (size_t i = 0; i < successors.count; ++i) {
-        edges[source].push_back(successors.values[i]);
-      }
-      bool reaches_exit = false;
-      std::vector<bool> visited(exit);
-      std::vector<size_t> pending{source};
-      while (!pending.empty()) {
-        size_t current = pending.back();
-        pending.pop_back();
-        if (visited[current]) {
-          continue;
-        }
-        visited[current] = true;
-        auto next = loom_cfg_graph_successors(graph, current);
-        reaches_exit |= next.count == 0;
-        for (size_t i = 0; i < next.count; ++i) {
-          pending.push_back(next.values[i]);
-        }
-      }
-      if (successors.count == 0 || !reaches_exit) {
-        edges[source].push_back(exit);
-      }
-    }
-    std::vector<std::vector<bool>> expected(count, std::vector<bool>(count));
-    std::vector<uint32_t> depth(count);
+    testing::CfgControlOracle oracle(graph);
     for (size_t source = 0; source < count; ++source) {
-      if (source < exit && !graph->blocks[source].reachable) {
-        continue;
-      }
-      for (size_t removed = 0; removed < count; ++removed) {
-        std::vector<bool> reachable(count);
-        std::vector<size_t> pending{source};
-        while (!pending.empty()) {
-          size_t current = pending.back();
-          pending.pop_back();
-          if (current == removed || reachable[current]) {
-            continue;
-          }
-          reachable[current] = true;
-          pending.insert(pending.end(), edges[current].begin(),
-                         edges[current].end());
-        }
-        expected[source][removed] = !reachable[exit];
-        depth[source] += expected[source][removed];
-      }
-      // The node itself contributes one to the removal count.
-      --depth[source];
-    }
-    for (size_t source = 0; source < count; ++source) {
-      uint32_t parent = LOOM_CFG_POSTDOMINATOR_INVALID;
-      if (source == exit) {
-        parent = exit;
-      } else if (graph->blocks[source].reachable) {
-        for (uint32_t candidate = 0; candidate < count; ++candidate) {
-          if (candidate == source || !expected[source][candidate]) {
-            continue;
-          }
-          if (parent == LOOM_CFG_POSTDOMINATOR_INVALID ||
-              depth[candidate] > depth[parent]) {
-            parent = candidate;
-          }
-        }
-      }
-      EXPECT_EQ(postdominance.nodes[source].immediate_postdominator, parent)
+      const auto& expected = oracle.postdominators()[source];
+      EXPECT_EQ(postdominance.nodes[source].immediate_postdominator,
+                expected.immediate_postdominator)
           << "source " << source;
-      EXPECT_EQ(postdominance.nodes[source].depth, depth[source])
+      EXPECT_EQ(postdominance.nodes[source].depth, expected.depth)
           << "source " << source;
     }
     iree_arena_reset(&arena_);

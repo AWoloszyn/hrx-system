@@ -44,6 +44,7 @@ loom_cc_test(
     srcs = ["greedy_test.cc"],
     deps = [
         ":greedy",
+        "//loom/src/loom/analysis:control_uniformity",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/cfg",

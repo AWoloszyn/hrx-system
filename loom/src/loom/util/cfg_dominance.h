@@ -26,6 +26,11 @@ typedef struct loom_cfg_dominance_t {
   // Packed inclusive dominator-tree preorder ranges per block: first in the
   // low 16 bits, last in the high 16 bits. Unreachable entries are UINT32_MAX.
   uint32_t* intervals;
+  // Unique predecessor entering each block from outside its dominance subtree,
+  // or INVALID for entry, unreachable blocks, and multiple entry predecessors.
+  // The source->target alternative dominates every descendant of target iff
+  // entry_predecessors[target] == source. Parallel edges share an alternative.
+  uint16_t* entry_predecessors;
   // Reachable blocks in dominator-tree preorder. Siblings retain block order.
   loom_cfg_block_index_span_t preorder;
   // False for a malformed input graph; arrays and preorder are then empty.

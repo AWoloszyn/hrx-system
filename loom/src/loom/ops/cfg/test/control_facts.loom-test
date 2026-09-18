@@ -1,0 +1,1164 @@
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+func.def @unknown(%condition: i1) {
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ----
+func.def @unknown(%condition: i1) {
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant false : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+func.def @unknown_reordered(%condition: i1) {
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ----
+func.def @unknown_reordered(%condition: i1) {
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant false : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @lane() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @lane() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant false : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant true : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @lane_reordered() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @lane_reordered() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant false : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant true : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @subgroup() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @subgroup() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @subgroup_reordered() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @subgroup_reordered() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @workgroup() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.workgroup.id<x> : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @workgroup() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.workgroup.id<x> : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @workgroup_reordered() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.workgroup.id<x> : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @workgroup_reordered() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %selector = kernel.workgroup.id<x> : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @cluster() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %variant, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @cluster() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %variant, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant true : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Distinct incoming values are bounded by nonlocal control; identical SSA
+// and equal exact values remain independent of selection.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @cluster_reordered() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %variant, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %unchanged_subgroup_uniform = test.fact_subgroup_uniform %unchanged : i32 -> i1
+  %unchanged_workgroup_uniform = test.fact_workgroup_uniform %unchanged : i32 -> i1
+  %unchanged_cluster_uniform = test.fact_cluster_uniform %unchanged : i32 -> i1
+  %unchanged_lane_varying = test.fact_lane_varying %unchanged : i32 -> i1
+  %exact_subgroup_uniform = test.fact_subgroup_uniform %exact : i32 -> i1
+  %exact_workgroup_uniform = test.fact_workgroup_uniform %exact : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : i32 -> i1
+  %exact_lane_varying = test.fact_lane_varying %exact : i32 -> i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @cluster_reordered() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%variant: index) {
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %variant, %c0 : index
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %equal = scalar.constant 10 : i32
+  cfg.cond_br %condition, ^left, ^right
+^right:
+  cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
+^left:
+  test.use %lhs : i32
+  cfg.br ^left_more
+^join(%selected: i32, %unchanged: i32, %exact: i32):
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant true : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %unchanged_subgroup_uniform = scalar.constant true : i1
+  %unchanged_workgroup_uniform = scalar.constant true : i1
+  %unchanged_cluster_uniform = scalar.constant true : i1
+  %unchanged_lane_varying = scalar.constant false : i1
+  %exact_subgroup_uniform = scalar.constant true : i1
+  %exact_workgroup_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  %exact_lane_varying = scalar.constant false : i1
+  test.use %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %unchanged_subgroup_uniform, %unchanged_workgroup_uniform, %unchanged_cluster_uniform, %unchanged_lane_varying, %exact_subgroup_uniform, %exact_workgroup_uniform, %exact_cluster_uniform, %exact_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// On exit, the induction value equals the lane ID. Uniform per-iteration
+// induction does not establish uniformity for this observation.
+kernel.def @cfg_temporal_counter() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch() {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %uniform = test.fact_subgroup_uniform %counter : index -> i1
+  %varying = test.fact_lane_varying %counter : index -> i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ----
+kernel.def @cfg_temporal_counter() {
+  %c1 = index.constant 1 : index
+  %c64 = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c64, %c1, %c1) : index
+} launch() {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %uniform = scalar.constant false : i1
+  %varying = scalar.constant true : i1
+  test.use %uniform, %varying : i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Divergent loop exits select different rotation positions while preserving
+// the finite range and alignment of the complete forwarding component.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_rotation() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%variant: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %step = index.constant 1 : index
+  %low = index.constant 0 : offset
+  %high = index.constant 128 : offset
+  cfg.br ^header(%c0: index, %low: offset, %high: offset)
+^header(%counter: index, %first: offset, %second: offset):
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^latch(%second: offset, %first: offset)
+^latch(%carry_first: offset, %carry_second: offset):
+  cfg.br ^header(%next: index, %carry_first: offset, %carry_second: offset)
+^exit:
+  %lower = test.fact_range_lo %first : offset -> i64
+  %upper = test.fact_range_hi %first : offset -> i64
+  %alignment = test.fact_divisor %first : offset -> i64
+  %uniform = test.fact_subgroup_uniform %first : offset -> i1
+  %varying = test.fact_lane_varying %first : offset -> i1
+  test.use %lower, %upper, %alignment, %uniform, %varying : i64, i64, i64, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_rotation() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%variant: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %step = index.constant 1 : index
+  %low = index.constant 0 : offset
+  %high = index.constant 128 : offset
+  cfg.br ^header(%c0: index, %low: offset, %high: offset)
+^header(%counter: index, %first: offset, %second: offset):
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^latch(%second: offset, %first: offset)
+^latch(%carry_first: offset, %carry_second: offset):
+  cfg.br ^header(%next: index, %carry_first: offset, %carry_second: offset)
+^exit:
+  %lower = scalar.constant 0 : i64
+  %upper = scalar.constant 128 : i64
+  %alignment = scalar.constant 128 : i64
+  %uniform = scalar.constant false : i1
+  %varying = scalar.constant true : i1
+  test.use %lower, %upper, %alignment, %uniform, %varying : i64, i64, i64, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Multiple loop entries retain incoming control across an irreducible forwarding cycle.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @irreducible_selection() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%variant: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %low = index.constant 0 : offset
+  %high = index.constant 128 : offset
+  %choose_first = index.cmp eq, %lane, %c0 : index
+  %keep_going = index.cmp ne, %variant, %c0 : index
+  cfg.cond_br %choose_first, ^seed_first, ^seed_second
+^seed_first:
+  cfg.br ^first(%low: offset)
+^seed_second:
+  cfg.br ^second(%high: offset)
+^first(%first_value: offset):
+  cfg.cond_br %keep_going, ^first_latch, ^first_exit
+^first_latch:
+  cfg.br ^second(%first_value: offset)
+^first_exit:
+  cfg.br ^joined(%first_value: offset)
+^second(%second_value: offset):
+  cfg.cond_br %keep_going, ^second_latch, ^second_exit
+^second_latch:
+  cfg.br ^first(%second_value: offset)
+^second_exit:
+  cfg.br ^joined(%second_value: offset)
+^joined(%observed: offset):
+  %lower = test.fact_range_lo %observed : offset -> i64
+  %upper = test.fact_range_hi %observed : offset -> i64
+  %alignment = test.fact_divisor %observed : offset -> i64
+  %uniform = test.fact_subgroup_uniform %observed : offset -> i1
+  %varying = test.fact_lane_varying %observed : offset -> i1
+  test.use %lower, %upper, %alignment, %uniform, %varying : i64, i64, i64, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @irreducible_selection() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%variant: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %low = index.constant 0 : offset
+  %high = index.constant 128 : offset
+  %choose_first = index.cmp eq, %lane, %c0 : index
+  %keep_going = index.cmp ne, %variant, %c0 : index
+  cfg.cond_br %choose_first, ^seed_first, ^seed_second
+^seed_first:
+  cfg.br ^first(%low: offset)
+^seed_second:
+  cfg.br ^second(%high: offset)
+^first(%first_value: offset):
+  cfg.cond_br %keep_going, ^first_latch, ^first_exit
+^first_latch:
+  cfg.br ^second(%first_value: offset)
+^first_exit:
+  cfg.br ^joined(%first_value: offset)
+^second(%second_value: offset):
+  cfg.cond_br %keep_going, ^second_latch, ^second_exit
+^second_latch:
+  cfg.br ^first(%second_value: offset)
+^second_exit:
+  cfg.br ^joined(%second_value: offset)
+^joined(%observed: offset):
+  %lower = scalar.constant 0 : i64
+  %upper = scalar.constant 128 : i64
+  %alignment = scalar.constant 128 : i64
+  %uniform = scalar.constant false : i1
+  %varying = scalar.constant true : i1
+  test.use %lower, %upper, %alignment, %uniform, %varying : i64, i64, i64, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Divergent loop exits select different rotation positions while preserving
+// the finite range and alignment of the complete forwarding component.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_rotation_reordered() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%variant: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %step = index.constant 1 : index
+  %low = index.constant 0 : offset
+  %high = index.constant 128 : offset
+  cfg.br ^header(%c0: index, %low: offset, %high: offset)
+^header(%counter: index, %first: offset, %second: offset):
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^exit:
+  %lower = test.fact_range_lo %first : offset -> i64
+  %upper = test.fact_range_hi %first : offset -> i64
+  %alignment = test.fact_divisor %first : offset -> i64
+  %uniform = test.fact_subgroup_uniform %first : offset -> i1
+  %varying = test.fact_lane_varying %first : offset -> i1
+  test.use %lower, %upper, %alignment, %uniform, %varying : i64, i64, i64, i1, i1
+  kernel.return
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^latch(%second: offset, %first: offset)
+^latch(%carry_first: offset, %carry_second: offset):
+  cfg.br ^header(%next: index, %carry_first: offset, %carry_second: offset)
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_rotation_reordered() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%variant: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %step = index.constant 1 : index
+  %low = index.constant 0 : offset
+  %high = index.constant 128 : offset
+  cfg.br ^header(%c0: index, %low: offset, %high: offset)
+^header(%counter: index, %first: offset, %second: offset):
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^exit:
+  %lower = scalar.constant 0 : i64
+  %upper = scalar.constant 128 : i64
+  %alignment = scalar.constant 128 : i64
+  %uniform = scalar.constant false : i1
+  %varying = scalar.constant true : i1
+  test.use %lower, %upper, %alignment, %uniform, %varying : i64, i64, i64, i1, i1
+  kernel.return
+^body:
+  %next = index.add %counter, %step : index
+  cfg.br ^latch(%second: offset, %first: offset)
+^latch(%carry_first: offset, %carry_second: offset):
+  cfg.br ^header(%next: index, %carry_first: offset, %carry_second: offset)
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Multiple loop entries retain incoming control across an irreducible forwarding cycle.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @irreducible_selection_reordered() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%variant: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %low = index.constant 0 : offset
+  %high = index.constant 128 : offset
+  %choose_first = index.cmp eq, %lane, %c0 : index
+  %keep_going = index.cmp ne, %variant, %c0 : index
+  cfg.cond_br %choose_first, ^seed_first, ^seed_second
+^joined(%observed: offset):
+  %lower = test.fact_range_lo %observed : offset -> i64
+  %upper = test.fact_range_hi %observed : offset -> i64
+  %alignment = test.fact_divisor %observed : offset -> i64
+  %uniform = test.fact_subgroup_uniform %observed : offset -> i1
+  %varying = test.fact_lane_varying %observed : offset -> i1
+  test.use %lower, %upper, %alignment, %uniform, %varying : i64, i64, i64, i1, i1
+  kernel.return
+^second(%second_value: offset):
+  cfg.cond_br %keep_going, ^second_latch, ^second_exit
+^second_latch:
+  cfg.br ^first(%second_value: offset)
+^second_exit:
+  cfg.br ^joined(%second_value: offset)
+^first(%first_value: offset):
+  cfg.cond_br %keep_going, ^first_latch, ^first_exit
+^first_latch:
+  cfg.br ^second(%first_value: offset)
+^first_exit:
+  cfg.br ^joined(%first_value: offset)
+^seed_first:
+  cfg.br ^first(%low: offset)
+^seed_second:
+  cfg.br ^second(%high: offset)
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @irreducible_selection_reordered() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%variant: index) {
+  %lane = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %low = index.constant 0 : offset
+  %high = index.constant 128 : offset
+  %choose_first = index.cmp eq, %lane, %c0 : index
+  %keep_going = index.cmp ne, %variant, %c0 : index
+  cfg.cond_br %choose_first, ^seed_first, ^seed_second
+^joined(%observed: offset):
+  %lower = scalar.constant 0 : i64
+  %upper = scalar.constant 128 : i64
+  %alignment = scalar.constant 128 : i64
+  %uniform = scalar.constant false : i1
+  %varying = scalar.constant true : i1
+  test.use %lower, %upper, %alignment, %uniform, %varying : i64, i64, i64, i1, i1
+  kernel.return
+^second(%second_value: offset):
+  cfg.cond_br %keep_going, ^second_latch, ^second_exit
+^second_latch:
+  cfg.br ^first(%second_value: offset)
+^second_exit:
+  cfg.br ^joined(%second_value: offset)
+^first(%first_value: offset):
+  cfg.cond_br %keep_going, ^first_latch, ^first_exit
+^first_latch:
+  cfg.br ^second(%first_value: offset)
+^first_exit:
+  cfg.br ^joined(%first_value: offset)
+^seed_first:
+  cfg.br ^first(%low: offset)
+^seed_second:
+  cfg.br ^second(%high: offset)
+}

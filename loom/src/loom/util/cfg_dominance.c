@@ -88,6 +88,34 @@ static void loom_cfg_dominance_number_tree(iree_host_size_t block_count,
       (loom_cfg_block_index_span_t){.values = order, .count = preorder};
 }
 
+// A unique entry predecessor must be the immediate dominator: it has a direct
+// edge into the block. Any other reachable predecessor must be dominated by
+// the block (a backedge), or that direct alternative can be bypassed. Reuse the
+// finished DFS stack to retain this O(B+E) classification without allocating.
+static void loom_cfg_dominance_classify_entries(const loom_cfg_graph_t* graph,
+                                                loom_cfg_dominance_t* dominance,
+                                                uint16_t* entries) {
+  dominance->entry_predecessors = entries;
+  for (uint16_t block = 0; block < graph->block_count; ++block) {
+    uint16_t entry = block ? dominance->immediate_dominators[block]
+                           : LOOM_CFG_DOMINATOR_INVALID;
+    if (entry != LOOM_CFG_DOMINATOR_INVALID) {
+      const loom_cfg_block_index_span_t predecessors =
+          loom_cfg_graph_predecessors(graph, block);
+      for (iree_host_size_t i = 0; i < predecessors.count; ++i) {
+        const uint16_t predecessor = predecessors.values[i];
+        if (predecessor != entry && graph->blocks[predecessor].reachable &&
+            !loom_cfg_dominance_block_dominates(dominance, block,
+                                                predecessor)) {
+          entry = LOOM_CFG_DOMINATOR_INVALID;
+          break;
+        }
+      }
+    }
+    entries[block] = entry;
+  }
+}
+
 iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
                                        iree_arena_allocator_t* arena,
                                        loom_cfg_dominance_t* out_dominance) {
@@ -172,6 +200,7 @@ iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
   }
   loom_cfg_dominance_number_tree(block_count, records, stack, order,
                                  out_dominance);
+  loom_cfg_dominance_classify_entries(graph, out_dominance, stack);
   out_dominance->available = true;
   return iree_ok_status();
 }

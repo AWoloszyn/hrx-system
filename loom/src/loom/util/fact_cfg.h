@@ -13,7 +13,9 @@
 #define LOOM_UTIL_FACT_CFG_H_
 
 #include "loom/analysis/scc.h"
+#include "loom/util/cfg_dominance.h"
 #include "loom/util/cfg_graph.h"
+#include "loom/util/fact_control.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,6 +50,13 @@ typedef struct loom_value_fact_cfg_forwarding_t {
 typedef struct loom_value_fact_cfg_region_t {
   // CFG edges and reachability owned by this analysis.
   loom_cfg_graph_t graph;
+  // Immutable compressed control dependencies for this graph snapshot.
+  loom_cfg_control_t control_structure;
+  // Dominance for proving that an exclusive controller cannot be bypassed.
+  // Present when control_structure has control alternatives.
+  loom_cfg_dominance_t dominance;
+  // Selector distributions and live execution facts with snapshot lifetime.
+  loom_value_fact_control_t* control;
   // First forwarding node for each block, grouped by control-flow component.
   iree_host_size_t* argument_offsets;
   // Forwarding nodes for reachable non-entry arguments.
@@ -81,6 +90,20 @@ typedef struct loom_value_fact_cfg_region_t {
 iree_status_t loom_value_fact_cfg_region_initialize(
     const loom_module_t* module, const loom_region_t* region,
     iree_arena_allocator_t* arena, loom_value_fact_cfg_region_t* out_region);
+
+// Refreshes one retained selector from its current SSA identity and facts,
+// then settles indexed control dependents. Returns whether execution changed.
+bool loom_value_fact_cfg_update_control(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, uint16_t block_index);
+
+// Seeds selectors together after snapshot publication or a cyclic value reset.
+// NULL selects the whole region; otherwise only the component's blocks are
+// revisited. Uncomputed values seed the optimistic distribution, whereas
+// defined unknown values contribute unknown control.
+void loom_value_fact_cfg_seed_control(
+    const loom_value_fact_table_t* table,
+    const loom_value_fact_cfg_region_t* region, const loom_scc_t* component);
 
 // Within a region with forwarding components, returns the node for a value,
 // or IREE_HOST_SIZE_MAX for an operation result, entry argument, or value
