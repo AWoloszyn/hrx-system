@@ -243,27 +243,18 @@ iree_status_t loom_value_fact_cfg_region_initialize(
     *partition = (loom_value_fact_cfg_forwarding_t){
         .argument_offset = out_region->argument_count,
     };
+    if (component->is_cycle) {
+      // Every cycle owns a summary even without carried arguments: repeated
+      // observations can change facts when its execution scope changes.
+      out_region->control_flow.anchors[i] =
+          out_region->graph.blocks[component->nodes[0]].block->last_op;
+    }
     for (iree_host_size_t j = 0; j < component->node_count; ++j) {
       iree_host_size_t block_index = component->nodes[j];
       const loom_block_t* block = out_region->graph.blocks[block_index].block;
       out_region->argument_offsets[block_index] = out_region->argument_count;
       if (block_index != 0) {
         out_region->argument_count += block->arg_count;
-      }
-      if (!component->is_cycle || !block->arg_count ||
-          out_region->control_flow.anchors[i]) {
-        continue;
-      }
-      loom_cfg_edge_index_span_t predecessors =
-          loom_cfg_graph_predecessor_edges(&out_region->graph, block_index);
-      for (iree_host_size_t k = 0; k < predecessors.count; ++k) {
-        const loom_cfg_edge_info_t* edge =
-            &out_region->graph.edges[predecessors.values[k]];
-        if (out_region->graph.blocks[edge->source_block_index].reachable &&
-            edge->terminator->successor_count == 1) {
-          out_region->control_flow.anchors[i] = (loom_op_t*)edge->terminator;
-          break;
-        }
       }
     }
     partition->argument_count =

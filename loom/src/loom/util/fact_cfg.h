@@ -78,7 +78,8 @@ typedef struct loom_value_fact_cfg_region_t {
     loom_scc_list_t components;
     // Retained forwarding structure validity and argument span per component.
     loom_value_fact_cfg_forwarding_t* forwarding;
-    // Existing payload terminator used to schedule each cyclic summary.
+    // First member block's terminator used to schedule each cyclic summary,
+    // including cycles with observations but no carried block arguments.
     loom_op_t** anchors;
     // True when semantic edits or input changes require a cyclic summary.
     bool* dirty;

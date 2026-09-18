@@ -1,0 +1,706 @@
+// RUN: pass canonicalize
+
+// Reads and allocation identities may be observed at different loop exits.
+// An observation before the cycle and pure invariant expressions stay uniform.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_lane() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = kernel.subgroup.lane.id : index
+  %input_view = buffer.view %input[%base] : buffer -> view<1xi32>
+  %before = view.load %input_view[%c0] : view<1xi32> -> i32
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %read = view.load %input_view[%c0] : view<1xi32> -> i32
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = test.fact_subgroup_uniform %read : i32 -> i1
+  %read_workgroup_uniform = test.fact_workgroup_uniform %read : i32 -> i1
+  %read_cluster_uniform = test.fact_cluster_uniform %read : i32 -> i1
+  %read_lane_varying = test.fact_lane_varying %read : i32 -> i1
+  %allocation_subgroup_uniform = test.fact_subgroup_uniform %allocation : buffer -> i1
+  %allocation_workgroup_uniform = test.fact_workgroup_uniform %allocation : buffer -> i1
+  %allocation_cluster_uniform = test.fact_cluster_uniform %allocation : buffer -> i1
+  %allocation_lane_varying = test.fact_lane_varying %allocation : buffer -> i1
+  %observed_subgroup_uniform = test.fact_subgroup_uniform %observed : i32 -> i1
+  %observed_workgroup_uniform = test.fact_workgroup_uniform %observed : i32 -> i1
+  %observed_cluster_uniform = test.fact_cluster_uniform %observed : i32 -> i1
+  %observed_lane_varying = test.fact_lane_varying %observed : i32 -> i1
+  %before_cluster_uniform = test.fact_cluster_uniform %before : i32 -> i1
+  %pure_cluster_uniform = test.fact_cluster_uniform %pure : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : index -> i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_lane() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = kernel.subgroup.lane.id : index
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = scalar.constant false : i1
+  %read_workgroup_uniform = scalar.constant false : i1
+  %read_cluster_uniform = scalar.constant false : i1
+  %read_lane_varying = scalar.constant true : i1
+  %allocation_subgroup_uniform = scalar.constant false : i1
+  %allocation_workgroup_uniform = scalar.constant false : i1
+  %allocation_cluster_uniform = scalar.constant false : i1
+  %allocation_lane_varying = scalar.constant true : i1
+  %observed_subgroup_uniform = scalar.constant false : i1
+  %observed_workgroup_uniform = scalar.constant false : i1
+  %observed_cluster_uniform = scalar.constant false : i1
+  %observed_lane_varying = scalar.constant true : i1
+  %before_cluster_uniform = scalar.constant true : i1
+  %pure_cluster_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Reads and allocation identities may be observed at different loop exits.
+// An observation before the cycle and pure invariant expressions stay uniform.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_unknown() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = test.attrs %bound : index
+  %input_view = buffer.view %input[%base] : buffer -> view<1xi32>
+  %before = view.load %input_view[%c0] : view<1xi32> -> i32
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %read = view.load %input_view[%c0] : view<1xi32> -> i32
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = test.fact_subgroup_uniform %read : i32 -> i1
+  %read_workgroup_uniform = test.fact_workgroup_uniform %read : i32 -> i1
+  %read_cluster_uniform = test.fact_cluster_uniform %read : i32 -> i1
+  %read_lane_varying = test.fact_lane_varying %read : i32 -> i1
+  %allocation_subgroup_uniform = test.fact_subgroup_uniform %allocation : buffer -> i1
+  %allocation_workgroup_uniform = test.fact_workgroup_uniform %allocation : buffer -> i1
+  %allocation_cluster_uniform = test.fact_cluster_uniform %allocation : buffer -> i1
+  %allocation_lane_varying = test.fact_lane_varying %allocation : buffer -> i1
+  %observed_subgroup_uniform = test.fact_subgroup_uniform %observed : i32 -> i1
+  %observed_workgroup_uniform = test.fact_workgroup_uniform %observed : i32 -> i1
+  %observed_cluster_uniform = test.fact_cluster_uniform %observed : i32 -> i1
+  %observed_lane_varying = test.fact_lane_varying %observed : i32 -> i1
+  %before_cluster_uniform = test.fact_cluster_uniform %before : i32 -> i1
+  %pure_cluster_uniform = test.fact_cluster_uniform %pure : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : index -> i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_unknown() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = test.attrs %bound : index
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = scalar.constant false : i1
+  %read_workgroup_uniform = scalar.constant false : i1
+  %read_cluster_uniform = scalar.constant false : i1
+  %read_lane_varying = scalar.constant false : i1
+  %allocation_subgroup_uniform = scalar.constant false : i1
+  %allocation_workgroup_uniform = scalar.constant false : i1
+  %allocation_cluster_uniform = scalar.constant false : i1
+  %allocation_lane_varying = scalar.constant false : i1
+  %observed_subgroup_uniform = scalar.constant false : i1
+  %observed_workgroup_uniform = scalar.constant false : i1
+  %observed_cluster_uniform = scalar.constant false : i1
+  %observed_lane_varying = scalar.constant false : i1
+  %before_cluster_uniform = scalar.constant true : i1
+  %pure_cluster_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Reads and allocation identities may be observed at different loop exits.
+// An observation before the cycle and pure invariant expressions stay uniform.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_subgroup() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = kernel.subgroup.id : index
+  %input_view = buffer.view %input[%base] : buffer -> view<1xi32>
+  %before = view.load %input_view[%c0] : view<1xi32> -> i32
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %read = view.load %input_view[%c0] : view<1xi32> -> i32
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = test.fact_subgroup_uniform %read : i32 -> i1
+  %read_workgroup_uniform = test.fact_workgroup_uniform %read : i32 -> i1
+  %read_cluster_uniform = test.fact_cluster_uniform %read : i32 -> i1
+  %read_lane_varying = test.fact_lane_varying %read : i32 -> i1
+  %allocation_subgroup_uniform = test.fact_subgroup_uniform %allocation : buffer -> i1
+  %allocation_workgroup_uniform = test.fact_workgroup_uniform %allocation : buffer -> i1
+  %allocation_cluster_uniform = test.fact_cluster_uniform %allocation : buffer -> i1
+  %allocation_lane_varying = test.fact_lane_varying %allocation : buffer -> i1
+  %observed_subgroup_uniform = test.fact_subgroup_uniform %observed : i32 -> i1
+  %observed_workgroup_uniform = test.fact_workgroup_uniform %observed : i32 -> i1
+  %observed_cluster_uniform = test.fact_cluster_uniform %observed : i32 -> i1
+  %observed_lane_varying = test.fact_lane_varying %observed : i32 -> i1
+  %before_cluster_uniform = test.fact_cluster_uniform %before : i32 -> i1
+  %pure_cluster_uniform = test.fact_cluster_uniform %pure : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : index -> i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_subgroup() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = kernel.subgroup.id : index
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = scalar.constant true : i1
+  %read_workgroup_uniform = scalar.constant false : i1
+  %read_cluster_uniform = scalar.constant false : i1
+  %read_lane_varying = scalar.constant false : i1
+  %allocation_subgroup_uniform = scalar.constant true : i1
+  %allocation_workgroup_uniform = scalar.constant false : i1
+  %allocation_cluster_uniform = scalar.constant false : i1
+  %allocation_lane_varying = scalar.constant false : i1
+  %observed_subgroup_uniform = scalar.constant true : i1
+  %observed_workgroup_uniform = scalar.constant false : i1
+  %observed_cluster_uniform = scalar.constant false : i1
+  %observed_lane_varying = scalar.constant false : i1
+  %before_cluster_uniform = scalar.constant true : i1
+  %pure_cluster_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Reads and allocation identities may be observed at different loop exits.
+// An observation before the cycle and pure invariant expressions stay uniform.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_workgroup() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = kernel.workgroup.id<x> : index
+  %input_view = buffer.view %input[%base] : buffer -> view<1xi32>
+  %before = view.load %input_view[%c0] : view<1xi32> -> i32
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %read = view.load %input_view[%c0] : view<1xi32> -> i32
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = test.fact_subgroup_uniform %read : i32 -> i1
+  %read_workgroup_uniform = test.fact_workgroup_uniform %read : i32 -> i1
+  %read_cluster_uniform = test.fact_cluster_uniform %read : i32 -> i1
+  %read_lane_varying = test.fact_lane_varying %read : i32 -> i1
+  %allocation_subgroup_uniform = test.fact_subgroup_uniform %allocation : buffer -> i1
+  %allocation_workgroup_uniform = test.fact_workgroup_uniform %allocation : buffer -> i1
+  %allocation_cluster_uniform = test.fact_cluster_uniform %allocation : buffer -> i1
+  %allocation_lane_varying = test.fact_lane_varying %allocation : buffer -> i1
+  %observed_subgroup_uniform = test.fact_subgroup_uniform %observed : i32 -> i1
+  %observed_workgroup_uniform = test.fact_workgroup_uniform %observed : i32 -> i1
+  %observed_cluster_uniform = test.fact_cluster_uniform %observed : i32 -> i1
+  %observed_lane_varying = test.fact_lane_varying %observed : i32 -> i1
+  %before_cluster_uniform = test.fact_cluster_uniform %before : i32 -> i1
+  %pure_cluster_uniform = test.fact_cluster_uniform %pure : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : index -> i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_workgroup() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = kernel.workgroup.id<x> : index
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = scalar.constant true : i1
+  %read_workgroup_uniform = scalar.constant true : i1
+  %read_cluster_uniform = scalar.constant false : i1
+  %read_lane_varying = scalar.constant false : i1
+  %allocation_subgroup_uniform = scalar.constant true : i1
+  %allocation_workgroup_uniform = scalar.constant true : i1
+  %allocation_cluster_uniform = scalar.constant false : i1
+  %allocation_lane_varying = scalar.constant false : i1
+  %observed_subgroup_uniform = scalar.constant true : i1
+  %observed_workgroup_uniform = scalar.constant false : i1
+  %observed_cluster_uniform = scalar.constant false : i1
+  %observed_lane_varying = scalar.constant false : i1
+  %before_cluster_uniform = scalar.constant true : i1
+  %pure_cluster_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Reads and allocation identities may be observed at different loop exits.
+// An observation before the cycle and pure invariant expressions stay uniform.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_cluster() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = index.add %bound, %c1 : index
+  %input_view = buffer.view %input[%base] : buffer -> view<1xi32>
+  %before = view.load %input_view[%c0] : view<1xi32> -> i32
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %read = view.load %input_view[%c0] : view<1xi32> -> i32
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %exact = kernel.subgroup.broadcast.first %c1 : index
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = test.fact_subgroup_uniform %read : i32 -> i1
+  %read_workgroup_uniform = test.fact_workgroup_uniform %read : i32 -> i1
+  %read_cluster_uniform = test.fact_cluster_uniform %read : i32 -> i1
+  %read_lane_varying = test.fact_lane_varying %read : i32 -> i1
+  %allocation_subgroup_uniform = test.fact_subgroup_uniform %allocation : buffer -> i1
+  %allocation_workgroup_uniform = test.fact_workgroup_uniform %allocation : buffer -> i1
+  %allocation_cluster_uniform = test.fact_cluster_uniform %allocation : buffer -> i1
+  %allocation_lane_varying = test.fact_lane_varying %allocation : buffer -> i1
+  %observed_subgroup_uniform = test.fact_subgroup_uniform %observed : i32 -> i1
+  %observed_workgroup_uniform = test.fact_workgroup_uniform %observed : i32 -> i1
+  %observed_cluster_uniform = test.fact_cluster_uniform %observed : i32 -> i1
+  %observed_lane_varying = test.fact_lane_varying %observed : i32 -> i1
+  %before_cluster_uniform = test.fact_cluster_uniform %before : i32 -> i1
+  %pure_cluster_uniform = test.fact_cluster_uniform %pure : i32 -> i1
+  %exact_cluster_uniform = test.fact_cluster_uniform %exact : index -> i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @temporal_cluster() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%input: buffer, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %length = index.constant 4 : offset
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %limit = index.add %bound, %c1 : index
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %allocation = buffer.alloca<private> align(4) %length : buffer
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %pure = scalar.addi %seed, %seed : i32
+  %more = index.cmp ult, %counter, %limit : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %read_subgroup_uniform = scalar.constant true : i1
+  %read_workgroup_uniform = scalar.constant true : i1
+  %read_cluster_uniform = scalar.constant true : i1
+  %read_lane_varying = scalar.constant false : i1
+  %allocation_subgroup_uniform = scalar.constant true : i1
+  %allocation_workgroup_uniform = scalar.constant true : i1
+  %allocation_cluster_uniform = scalar.constant true : i1
+  %allocation_lane_varying = scalar.constant false : i1
+  %observed_subgroup_uniform = scalar.constant true : i1
+  %observed_workgroup_uniform = scalar.constant false : i1
+  %observed_cluster_uniform = scalar.constant false : i1
+  %observed_lane_varying = scalar.constant false : i1
+  %before_cluster_uniform = scalar.constant true : i1
+  %pure_cluster_uniform = scalar.constant true : i1
+  %exact_cluster_uniform = scalar.constant true : i1
+  test.use %read_subgroup_uniform, %read_workgroup_uniform, %read_cluster_uniform, %read_lane_varying, %allocation_subgroup_uniform, %allocation_workgroup_uniform, %allocation_cluster_uniform, %allocation_lane_varying, %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %before_cluster_uniform, %pure_cluster_uniform, %exact_cluster_uniform : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  test.use %allocation, %pure : buffer, i32
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// The observer is nested through two structured summaries. The independent
+// pure result from the same regions must not inherit the observation's scope.
+kernel.def @temporal_nested_regions() {
+  %c1 = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%choose: i1, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %observed, %pure = scf.if %choose -> (i32, i32) {
+    %last = scf.for %iv = [%c0 to %bound step %c1](%previous = %seed : i32) -> (i32) {
+      %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+      scf.yield %broadcast : i32
+    }
+    %twice = scalar.addi %seed, %seed : i32
+    scf.yield %last, %twice : i32, i32
+  } else {
+    %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+    %twice = scalar.addi %seed, %seed : i32
+    scf.yield %broadcast, %twice : i32, i32
+  }
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %observed_subgroup_uniform = test.fact_subgroup_uniform %observed : i32 -> i1
+  %observed_workgroup_uniform = test.fact_workgroup_uniform %observed : i32 -> i1
+  %observed_cluster_uniform = test.fact_cluster_uniform %observed : i32 -> i1
+  %observed_lane_varying = test.fact_lane_varying %observed : i32 -> i1
+  %pure_cluster_uniform = test.fact_cluster_uniform %pure : i32 -> i1
+  test.use %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %pure_cluster_uniform : i1, i1, i1, i1, i1
+  test.use %observed, %pure : i32, i32
+  kernel.return
+}
+
+// ----
+kernel.def @temporal_nested_regions() {
+  %c1 = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%choose: i1, %bound: index, %seed: i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  cfg.br ^header(%c0: index)
+^header(%counter: index):
+  %observed, %pure = scf.if %choose -> (i32, i32) {
+    %last = scf.for %iv = [%c0 to %bound step %c1](%previous = %seed : i32) -> (i32) {
+      %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+      scf.yield %broadcast : i32
+    }
+    %twice = scalar.addi %seed, %seed : i32
+    scf.yield %last, %twice : i32, i32
+  } else {
+    %broadcast = kernel.subgroup.broadcast.first %lane_i32 : i32
+    %twice = scalar.addi %seed, %seed : i32
+    scf.yield %broadcast, %twice : i32, i32
+  }
+  %more = index.cmp ult, %counter, %lane : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %counter, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  %observed_subgroup_uniform = scalar.constant false : i1
+  %observed_workgroup_uniform = scalar.constant false : i1
+  %observed_cluster_uniform = scalar.constant false : i1
+  %observed_lane_varying = scalar.constant true : i1
+  %pure_cluster_uniform = scalar.constant true : i1
+  test.use %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying, %pure_cluster_uniform : i1, i1, i1, i1, i1
+  test.use %observed, %pure : i32, i32
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Two entries and two exits prevent a canonical natural-loop description.
+// The broadcast is defined in a cyclic block and dominates its exit use.
+kernel.def @temporal_irreducible() {
+  %c1 = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%choose: i1, %done: i1) {
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %c0 = index.constant 0 : index
+  %first = index.cmp eq, %lane, %c0 : index
+  cfg.cond_br %choose, ^left, ^right
+^left:
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  cfg.cond_br %first, ^right, ^left_exit
+^right:
+  cfg.cond_br %done, ^right_exit, ^left
+^left_exit:
+  %observed_subgroup_uniform = test.fact_subgroup_uniform %observed : i32 -> i1
+  %observed_workgroup_uniform = test.fact_workgroup_uniform %observed : i32 -> i1
+  %observed_cluster_uniform = test.fact_cluster_uniform %observed : i32 -> i1
+  %observed_lane_varying = test.fact_lane_varying %observed : i32 -> i1
+  test.use %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying : i1, i1, i1, i1
+  test.use %observed : i32
+  kernel.return
+^right_exit:
+  kernel.return
+}
+
+// ----
+kernel.def @temporal_irreducible() {
+  %c1 = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%choose: i1, %done: i1) {
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %c0 = index.constant 0 : index
+  %first = index.cmp eq, %lane, %c0 : index
+  cfg.cond_br %choose, ^left, ^right
+^left:
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  cfg.cond_br %first, ^right, ^left_exit
+^right:
+  cfg.cond_br %done, ^right_exit, ^left
+^left_exit:
+  %observed_subgroup_uniform = scalar.constant false : i1
+  %observed_workgroup_uniform = scalar.constant false : i1
+  %observed_cluster_uniform = scalar.constant false : i1
+  %observed_lane_varying = scalar.constant true : i1
+  test.use %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying : i1, i1, i1, i1
+  test.use %observed : i32
+  kernel.return
+^right_exit:
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// An acyclic partial participant set does not introduce iteration sampling.
+// The broadcast remains uniform among the lanes that can observe its result.
+kernel.def @acyclic_partial_broadcast() {
+  %c1 = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch() {
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %c0 = index.constant 0 : index
+  %first = index.cmp eq, %lane, %c0 : index
+  cfg.cond_br %first, ^active, ^done
+^active:
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %observed_subgroup_uniform = test.fact_subgroup_uniform %observed : i32 -> i1
+  %observed_workgroup_uniform = test.fact_workgroup_uniform %observed : i32 -> i1
+  %observed_cluster_uniform = test.fact_cluster_uniform %observed : i32 -> i1
+  %observed_lane_varying = test.fact_lane_varying %observed : i32 -> i1
+  test.use %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying : i1, i1, i1, i1
+  test.use %observed : i32
+  cfg.br ^done
+^done:
+  kernel.return
+}
+
+// ----
+kernel.def @acyclic_partial_broadcast() {
+  %c1 = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch() {
+  %lane = kernel.subgroup.lane.id : index
+  %lane_i32 = index.cast %lane : index to i32
+  %c0 = index.constant 0 : index
+  %first = index.cmp eq, %lane, %c0 : index
+  cfg.cond_br %first, ^active, ^done
+^active:
+  %observed = kernel.subgroup.broadcast.first %lane_i32 : i32
+  %observed_subgroup_uniform = scalar.constant true : i1
+  %observed_workgroup_uniform = scalar.constant false : i1
+  %observed_cluster_uniform = scalar.constant false : i1
+  %observed_lane_varying = scalar.constant false : i1
+  test.use %observed_subgroup_uniform, %observed_workgroup_uniform, %observed_cluster_uniform, %observed_lane_varying : i1, i1, i1, i1
+  test.use %observed : i32
+  cfg.br ^done
+^done:
+  kernel.return
+}

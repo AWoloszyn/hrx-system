@@ -54,6 +54,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::analysis::control_uniformity
     loom::ir
+    loom::ops::buffer
     loom::ops::cfg
     loom::ops::op_defs
     loom::ops::test

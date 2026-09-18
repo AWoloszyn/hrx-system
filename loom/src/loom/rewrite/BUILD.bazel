@@ -47,6 +47,7 @@ loom_cc_test(
         "//loom/src/loom/analysis:control_uniformity",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/buffer",
         "//loom/src/loom/ops/cfg",
         "//loom/src/loom/ops/test",
         "//loom/src/loom/pass:value_facts",

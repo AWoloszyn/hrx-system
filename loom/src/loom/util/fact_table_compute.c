@@ -1037,6 +1037,15 @@ static iree_status_t loom_value_fact_table_compute_region_tree(
   if (!region) {
     return iree_ok_status();
   }
+  loom_value_facts_t temporal_scope = loom_value_facts_unknown();
+  if (!parent_op || parent_op == table->context.function.op) {
+    loom_value_facts_mark_cluster_uniform(&temporal_scope);
+  } else {
+    temporal_scope = loom_value_fact_table_block_temporal_scope(
+        table, parent_op->parent_block);
+  }
+  IREE_RETURN_IF_ERROR(loom_value_fact_table_set_region_temporal_scope(
+      table, region, temporal_scope));
   if (iree_any_bit_set(region->flags, LOOM_REGION_INSTANCE_FLAG_CFG)) {
     return loom_value_fact_table_compute_cfg_region_tree(table, module, region,
                                                          parent_op);
@@ -1804,10 +1813,29 @@ iree_status_t loom_value_fact_table_compute_op_and_report(
   IREE_RETURN_IF_ERROR(vtable->infer_facts(&table->context, module, op,
                                            operand_facts, result_facts));
 
+  const bool observes_execution = loom_traits_may_read(op->traits) ||
+                                  loom_traits_are_convergent(op->traits) ||
+                                  loom_traits_has_unique_identity(op->traits);
+  loom_value_facts_t temporal_scope = loom_value_facts_unknown();
+  if (observes_execution && op->result_count) {
+    temporal_scope =
+        loom_value_fact_table_block_temporal_scope(table, op->parent_block);
+  }
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
     loom_value_fact_table_apply_operand_distribution(
         module, op, operand_facts, results[i], &result_facts[i]);
+    if (observes_execution) {
+      // A per-execution observation can escape a divergent CFG cycle with a
+      // different result in each lane. Pure invariant expressions do not
+      // depend on execution time; exact observations remain exact as well.
+      loom_value_facts_propagate_binary_distribution(
+          result_facts[i], temporal_scope, &result_facts[i]);
+      if (loom_value_facts_is_lane_varying(result_facts[i])) {
+        loom_value_facts_mark_lane_distribution_for_type(
+            loom_module_value_type(module, results[i]), &result_facts[i]);
+      }
+    }
   }
 
   for (uint16_t i = 0; i < op->result_count; ++i) {
