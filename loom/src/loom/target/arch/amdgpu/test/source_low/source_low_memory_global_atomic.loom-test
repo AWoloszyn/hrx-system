@@ -118,7 +118,8 @@ kernel.def target(@target) @global_atomic_add_f32() {
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_add_f32() asm {
   %view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
   %36 = v_mov_b32 0
-  low.br ^_bb6
+  %47 = s_mov_b64_exec_read
+  low.br ^_bb1(%36: reg<amdgpu.vgpr>)
 ^_bb1(%31: reg<amdgpu.vgpr>):
   %37 = v_add_f32_src0_inline %31, 1065353216
   %39 = s_mov_b32 0
@@ -137,12 +138,10 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1
   %45 = slice %44[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %46 = v_cmp_ne_i32 %45, %31
   %48, %49 = s_and_saveexec_b64 %46
-  low.cond_br %49, ^_bb2, ^_bb7 : reg<amdgpu.scc>
+  low.cond_br %49, ^_bb2, ^_bb5 : reg<amdgpu.scc>
 ^_bb2:
   low.br ^_bb1(%45: reg<amdgpu.vgpr>)
-^_bb3:
-  low.br ^_bb8
-^_bb4(%32: reg<amdgpu.vgpr>):
+^_bb3(%32: reg<amdgpu.vgpr>):
   %50 = v_add_f32_src0_inline %32, 1065353216
   %51 = v_mov_b32 0
   %52 = s_mov_b32 0
@@ -161,19 +160,14 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1
   %58 = slice %57[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %59 = v_cmp_ne_i32 %58, %32
   %61, %62 = s_and_saveexec_b64 %59
-  low.cond_br %62, ^_bb5, ^_bb9 : reg<amdgpu.scc>
+  low.cond_br %62, ^_bb4, ^_bb6 : reg<amdgpu.scc>
+^_bb4:
+  low.br ^_bb3(%58: reg<amdgpu.vgpr>)
 ^_bb5:
-  low.br ^_bb4(%58: reg<amdgpu.vgpr>)
-^_bb6:
-  %47 = s_mov_b64_exec_read
-  low.br ^_bb1(%36: reg<amdgpu.vgpr>)
-^_bb7:
   s_mov_b64_exec %47
-  low.br ^_bb3
-^_bb8:
   %60 = s_mov_b64_exec_read
-  low.br ^_bb4(%36: reg<amdgpu.vgpr>)
-^_bb9:
+  low.br ^_bb3(%36: reg<amdgpu.vgpr>)
+^_bb6:
   s_mov_b64_exec %60
   return
 }

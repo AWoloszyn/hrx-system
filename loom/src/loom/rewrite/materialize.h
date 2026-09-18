@@ -64,6 +64,9 @@ iree_status_t loom_ir_clone_block_ops(
 // Clones |source_region| and returns a new target-module-owned region.
 // Successor edges are projected through the parallel region block ordinals;
 // the clone does not retain source-to-target block mappings in |remap|.
+// Block layout is preserved independently of dominance order. Direct value
+// definitions are mapped before a multi-block region's uses and argument types,
+// including references to definitions in later-listed blocks.
 iree_status_t loom_ir_clone_region(loom_builder_t* builder,
                                    const loom_region_t* source_region,
                                    loom_ir_remap_t* remap,
@@ -72,9 +75,10 @@ iree_status_t loom_ir_clone_region(loom_builder_t* builder,
 // Clones all blocks from |source_region| into the existing |target_region|.
 //
 // New blocks are inserted beginning at |target_block_index| with one block
-// table shift. Block arguments are mapped through |remap| before any operation
-// is cloned, and successor edges are projected by source block ordinal. The
-// builder's current parent op is retained as the parent of cloned ops.
+// table shift. Block arguments and multi-block region result definitions are
+// mapped before operation payloads, independently of block layout. Successor
+// edges are projected by source block ordinal. The builder's current parent op
+// is retained as the parent of cloned ops.
 // Block labels are intentionally omitted: labels are region-local presentation
 // names and retaining them while splicing into an existing region can create
 // duplicate names. Block comments, flags, value names, locations, and all

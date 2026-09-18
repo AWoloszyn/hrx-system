@@ -711,8 +711,6 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   return
 ^_bb2:
   %1486, %1487 = s_and_saveexec_b64 %1475
-  low.br ^_bb3
-^_bb3:
   s_trap {trapid = 2}
   %1476 = s_sendmsg_rtn_b32 {message = 128}
   %1477 = s_mov_b32 1023
@@ -721,8 +719,8 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   %1480 = s_or_b32 %1478, %1479
   %1481 = s_mov_b32_m0 %1480
   s_sendmsg %1481 {message = 1}
-  low.br ^_bb4
-^_bb4:
+  low.br ^_bb3
+^_bb3:
   s_sethalt {reason = 5}
-  low.br ^_bb4
+  low.br ^_bb3
 }

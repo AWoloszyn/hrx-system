@@ -54,29 +54,32 @@ static iree_status_t loom_ir_clone_op_comments(loom_ir_remap_t* remap,
                                         comments, comment_count);
 }
 
-static iree_status_t loom_ir_clone_block_args(loom_ir_remap_t* remap,
-                                              const loom_block_t* source_block,
-                                              loom_block_t* target_block) {
-  if (source_block->arg_count == 0) {
-    return iree_ok_status();
-  }
-
-  loom_value_id_t* target_args = NULL;
+static iree_status_t loom_ir_clone_value_definition(
+    loom_ir_remap_t* remap, loom_value_id_t source_value,
+    loom_value_id_t* out_target_value) {
+  IREE_RETURN_IF_ERROR(loom_module_define_value(
+      remap->target_module, loom_type_none(), out_target_value));
   IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(remap->arena, source_block->arg_count,
-                                sizeof(loom_value_id_t), (void**)&target_args));
+      loom_ir_remap_map_value(remap, source_value, *out_target_value));
+  return loom_ir_clone_value_name(remap, source_value, *out_target_value);
+}
+
+static iree_status_t loom_ir_clone_block_arg_definitions(
+    loom_ir_remap_t* remap, const loom_block_t* source_block,
+    loom_block_t* target_block) {
   for (uint16_t i = 0; i < source_block->arg_count; ++i) {
     loom_value_id_t target_arg = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_module_define_value(
-        remap->target_module, loom_type_none(), &target_arg));
+    IREE_RETURN_IF_ERROR(loom_ir_clone_value_definition(
+        remap, loom_block_arg_id(source_block, i), &target_arg));
     IREE_RETURN_IF_ERROR(
         loom_block_add_arg(remap->target_module, target_block, target_arg));
-    IREE_RETURN_IF_ERROR(loom_ir_remap_map_value(
-        remap, loom_block_arg_id(source_block, i), target_arg));
-    IREE_RETURN_IF_ERROR(loom_ir_clone_value_name(
-        remap, loom_block_arg_id(source_block, i), target_arg));
-    target_args[i] = target_arg;
   }
+  return iree_ok_status();
+}
+
+static iree_status_t loom_ir_clone_block_arg_types(
+    loom_ir_remap_t* remap, const loom_block_t* source_block,
+    loom_block_t* target_block) {
   for (uint16_t i = 0; i < source_block->arg_count; ++i) {
     loom_type_t target_type = {0};
     IREE_RETURN_IF_ERROR(loom_ir_remap_type(
@@ -85,7 +88,7 @@ static iree_status_t loom_ir_clone_block_args(loom_ir_remap_t* remap,
                                loom_block_arg_id(source_block, i)),
         &target_type));
     IREE_RETURN_IF_ERROR(loom_module_set_value_type(
-        remap->target_module, target_args[i], target_type));
+        remap->target_module, loom_block_arg_id(target_block, i), target_type));
   }
   return iree_ok_status();
 }
@@ -99,12 +102,8 @@ static iree_status_t loom_ir_clone_op_results(loom_ir_remap_t* remap,
     if (source_results[i] == LOOM_VALUE_ID_INVALID) {
       continue;
     }
-    IREE_RETURN_IF_ERROR(loom_module_define_value(
-        remap->target_module, loom_type_none(), &target_results[i]));
-    IREE_RETURN_IF_ERROR(
-        loom_ir_remap_map_value(remap, source_results[i], target_results[i]));
-    IREE_RETURN_IF_ERROR(
-        loom_ir_clone_value_name(remap, source_results[i], target_results[i]));
+    IREE_RETURN_IF_ERROR(loom_ir_clone_value_definition(
+        remap, source_results[i], &target_results[i]));
   }
   return iree_ok_status();
 }
@@ -213,6 +212,41 @@ static iree_status_t loom_ir_clone_op_attrs(loom_ir_remap_t* remap,
   return iree_ok_status();
 }
 
+static iree_status_t loom_ir_clone_region_value_definitions(
+    loom_ir_remap_t* remap, const loom_region_t* source_region,
+    loom_region_t* target_region, uint16_t target_block_index) {
+  for (uint16_t i = 0; i < source_region->block_count; ++i) {
+    const loom_block_t* source_block =
+        loom_region_const_block(source_region, i);
+    IREE_RETURN_IF_ERROR(loom_ir_clone_block_arg_definitions(
+        remap, source_block,
+        loom_region_block(target_region, target_block_index + i)));
+    if (source_region->block_count > 1) {
+      // CFG dominance is independent of block layout. Establish every direct
+      // result identity before remapping uses or dependent block argument
+      // types. Single-block regions define results as their operations are
+      // cloned.
+      for (const loom_op_t* op = source_block->first_op; op; op = op->next_op) {
+        const loom_value_id_t* results = loom_op_const_results(op);
+        for (uint16_t j = 0; j < op->result_count; ++j) {
+          if (results[j] == LOOM_VALUE_ID_INVALID) {
+            continue;
+          }
+          loom_value_id_t target_value = LOOM_VALUE_ID_INVALID;
+          IREE_RETURN_IF_ERROR(
+              loom_ir_clone_value_definition(remap, results[j], &target_value));
+        }
+      }
+    }
+  }
+  for (uint16_t i = 0; i < source_region->block_count; ++i) {
+    IREE_RETURN_IF_ERROR(loom_ir_clone_block_arg_types(
+        remap, loom_region_const_block(source_region, i),
+        loom_region_block(target_region, target_block_index + i)));
+  }
+  return iree_ok_status();
+}
+
 static iree_status_t loom_ir_clone_region_skeleton(
     loom_ir_remap_t* remap, const loom_region_t* source_region,
     loom_region_t** out_target_region) {
@@ -233,9 +267,9 @@ static iree_status_t loom_ir_clone_region_skeleton(
         loom_ir_clone_block_label(remap, source_block, target_block));
     IREE_RETURN_IF_ERROR(
         loom_ir_clone_block_comments(remap, source_block, target_block));
-    IREE_RETURN_IF_ERROR(
-        loom_ir_clone_block_args(remap, source_block, target_block));
   }
+  IREE_RETURN_IF_ERROR(loom_ir_clone_region_value_definitions(
+      remap, source_region, target_region, 0));
 
   *out_target_region = target_region;
   return iree_ok_status();
@@ -368,8 +402,21 @@ static iree_status_t loom_ir_clone_op_impl(
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         remap->arena, source_op->result_count, sizeof(loom_type_t),
         (void**)&target_result_types));
-    IREE_RETURN_IF_ERROR(
-        loom_ir_clone_op_results(remap, source_op, target_results));
+    if (region_projection &&
+        region_projection->source_region->block_count > 1) {
+      const loom_value_id_t* source_results = loom_op_const_results(source_op);
+      for (uint16_t i = 0; i < source_op->result_count; ++i) {
+        target_results[i] = LOOM_VALUE_ID_INVALID;
+        if (source_results[i] == LOOM_VALUE_ID_INVALID) {
+          continue;
+        }
+        IREE_RETURN_IF_ERROR(loom_ir_remap_resolve_value(
+            remap, source_results[i], &target_results[i]));
+      }
+    } else {
+      IREE_RETURN_IF_ERROR(
+          loom_ir_clone_op_results(remap, source_op, target_results));
+    }
     IREE_RETURN_IF_ERROR(loom_ir_clone_op_result_types(
         remap, source_op, target_results, target_result_types));
   }
@@ -597,9 +644,9 @@ iree_status_t loom_ir_clone_region_blocks(loom_builder_t* builder,
     target_block->flags = source_block->flags;
     IREE_RETURN_IF_ERROR(
         loom_ir_clone_block_comments(remap, source_block, target_block));
-    IREE_RETURN_IF_ERROR(
-        loom_ir_clone_block_args(remap, source_block, target_block));
   }
+  IREE_RETURN_IF_ERROR(loom_ir_clone_region_value_definitions(
+      remap, source_region, target_region, target_block_index));
 
   const loom_ir_clone_region_projection_t region_projection = {
       .source_region = source_region,

@@ -13,7 +13,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @copy(%s
   %target = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %22 = s_mov_b32 0
   %23 = s_mov_b32 1
-  low.br ^_bb3
+  %39 = s_mov_b64_exec_read
+  low.br ^_bb1(%22: reg<amdgpu.sgpr>, %22: reg<amdgpu.sgpr>)
 ^_bb1(%92: reg<amdgpu.sgpr>, %93: reg<amdgpu.sgpr>):
   %27 = v_mov_b32_copy %92
   %29 = v_mov_b32_copy %93
@@ -27,7 +28,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @copy(%s
   %37 = s_and_b64 %36, %35
   %38 = s_or_b64 %34, %37
   %40, %41 = s_and_saveexec_b64 %38
-  low.cond_br %41, ^_bb2, ^_bb4 : reg<amdgpu.scc>
+  low.cond_br %41, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %42 = slice %source_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %43 = slice %source_offset[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -55,9 +56,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @copy(%s
   %89, %90 = s_addc_u32 %93, %81, %88
   low.br ^_bb1(%87: reg<amdgpu.sgpr>, %89: reg<amdgpu.sgpr>)
 ^_bb3:
-  %39 = s_mov_b64_exec_read
-  low.br ^_bb1(%22: reg<amdgpu.sgpr>, %22: reg<amdgpu.sgpr>)
-^_bb4:
   s_mov_b64_exec %39
   return
 }
@@ -77,7 +75,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_i3
   %29 = s_mov_b32 0
   %30 = s_mov_b32 1
   %33 = v_mov_b32_copy %pattern
-  low.br ^_bb3
+  %47 = s_mov_b64_exec_read
+  low.br ^_bb1(%29: reg<amdgpu.sgpr>, %29: reg<amdgpu.sgpr>, %33: reg<amdgpu.vgpr>)
 ^_bb1(%83: reg<amdgpu.sgpr>, %84: reg<amdgpu.sgpr>, %25: reg<amdgpu.vgpr>):
   %35 = v_mov_b32_copy %83
   %37 = v_mov_b32_copy %84
@@ -91,7 +90,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_i3
   %45 = s_and_b64 %44, %43
   %46 = s_or_b64 %42, %45
   %48, %49 = s_and_saveexec_b64 %46
-  low.cond_br %49, ^_bb2, ^_bb4 : reg<amdgpu.scc>
+  low.cond_br %49, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %50 = slice %target_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %51 = slice %target_offset[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -112,9 +111,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_i3
   %80, %81 = s_addc_u32 %84, %72, %79
   low.br ^_bb1(%78: reg<amdgpu.sgpr>, %80: reg<amdgpu.sgpr>, %71: reg<amdgpu.vgpr>)
 ^_bb3:
-  %47 = s_mov_b64_exec_read
-  low.br ^_bb1(%29: reg<amdgpu.sgpr>, %29: reg<amdgpu.sgpr>, %33: reg<amdgpu.vgpr>)
-^_bb4:
   s_mov_b64_exec %47
   return
 }
@@ -134,7 +130,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_f8
   %20 = v_and_b32_lit %pattern, 255
   %21 = s_mov_b32 0
   %22 = s_mov_b32 1
-  low.br ^_bb3
+  %38 = s_mov_b64_exec_read
+  low.br ^_bb1(%21: reg<amdgpu.sgpr>, %21: reg<amdgpu.sgpr>)
 ^_bb1(%71: reg<amdgpu.sgpr>, %72: reg<amdgpu.sgpr>):
   %26 = v_mov_b32_copy %71
   %28 = v_mov_b32_copy %72
@@ -148,7 +145,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_f8
   %36 = s_and_b64 %35, %34
   %37 = s_or_b64 %33, %36
   %39, %40 = s_and_saveexec_b64 %37
-  low.cond_br %40, ^_bb2, ^_bb4 : reg<amdgpu.scc>
+  low.cond_br %40, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %41 = slice %target_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %42 = slice %target_offset[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -166,9 +163,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_f8
   %68, %69 = s_addc_u32 %72, %60, %67
   low.br ^_bb1(%66: reg<amdgpu.sgpr>, %68: reg<amdgpu.sgpr>)
 ^_bb3:
-  %38 = s_mov_b64_exec_read
-  low.br ^_bb1(%21: reg<amdgpu.sgpr>, %21: reg<amdgpu.sgpr>)
-^_bb4:
   s_mov_b64_exec %38
   return
 }
@@ -190,7 +184,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_bf
   %36 = v_or_b32 %34, %35
   %37 = s_mov_b32 0
   %38 = s_mov_b32 1
-  low.br ^_bb3
+  %54 = s_mov_b64_exec_read
+  low.br ^_bb1(%37: reg<amdgpu.sgpr>, %37: reg<amdgpu.sgpr>, %36: reg<amdgpu.vgpr>)
 ^_bb1(%90: reg<amdgpu.sgpr>, %91: reg<amdgpu.sgpr>, %30: reg<amdgpu.vgpr>):
   %42 = v_mov_b32_copy %90
   %44 = v_mov_b32_copy %91
@@ -204,7 +199,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_bf
   %52 = s_and_b64 %51, %50
   %53 = s_or_b64 %49, %52
   %55, %56 = s_and_saveexec_b64 %53
-  low.cond_br %56, ^_bb2, ^_bb4 : reg<amdgpu.scc>
+  low.cond_br %56, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %57 = slice %target_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %58 = slice %target_offset[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -225,9 +220,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_bf
   %87, %88 = s_addc_u32 %91, %79, %86
   low.br ^_bb1(%85: reg<amdgpu.sgpr>, %87: reg<amdgpu.sgpr>, %78: reg<amdgpu.vgpr>)
 ^_bb3:
-  %54 = s_mov_b64_exec_read
-  low.br ^_bb1(%37: reg<amdgpu.sgpr>, %37: reg<amdgpu.sgpr>, %36: reg<amdgpu.vgpr>)
-^_bb4:
   s_mov_b64_exec %54
   return
 }
@@ -247,7 +239,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_f6
   %31 = s_mov_b32 0
   %32 = s_mov_b32 1
   %36 = s_mov_b32 56
-  low.br ^_bb3
+  %54 = s_mov_b64_exec_read
+  low.br ^_bb1(%31: reg<amdgpu.sgpr>, %31: reg<amdgpu.sgpr>, %pattern: reg<amdgpu.vgpr x2>)
 ^_bb1(%105: reg<amdgpu.sgpr>, %106: reg<amdgpu.sgpr>, %27: reg<amdgpu.vgpr x2>):
   %42 = v_mov_b32_copy %105
   %44 = v_mov_b32_copy %106
@@ -261,7 +254,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_f6
   %52 = s_and_b64 %51, %50
   %53 = s_or_b64 %49, %52
   %55, %56 = s_and_saveexec_b64 %53
-  low.cond_br %56, ^_bb2, ^_bb4 : reg<amdgpu.scc>
+  low.cond_br %56, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %57 = slice %27[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %58 = slice %target_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -292,9 +285,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @fill_f6
   %102, %103 = s_addc_u32 %106, %94, %101
   low.br ^_bb1(%100: reg<amdgpu.sgpr>, %102: reg<amdgpu.sgpr>, %93: reg<amdgpu.vgpr x2>)
 ^_bb3:
-  %54 = s_mov_b64_exec_read
-  low.br ^_bb1(%31: reg<amdgpu.sgpr>, %31: reg<amdgpu.sgpr>, %pattern: reg<amdgpu.vgpr x2>)
-^_bb4:
   s_mov_b64_exec %54
   return
 }
@@ -315,7 +305,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @compare
   %44 = s_mov_b32 0
   %45 = s_mov_b32 1
   %51 = v_mov_b32 0
-  low.br ^_bb4
+  %67 = s_mov_b64_exec_read
+  low.br ^_bb1(%44: reg<amdgpu.sgpr>, %44: reg<amdgpu.sgpr>, %51: reg<amdgpu.vgpr>)
 ^_bb1(%125: reg<amdgpu.sgpr>, %126: reg<amdgpu.sgpr>, %39: reg<amdgpu.vgpr>):
   %53 = v_mov_b32_copy %125
   %55 = v_mov_b32_copy %126
@@ -331,7 +322,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @compare
   %65 = v_cmp_eq_i32_src1_inline %39 {rhs = 0}
   %66 = s_and_b64 %64, %65
   %68, %69 = s_and_saveexec_b64 %66
-  low.cond_br %69, ^_bb2, ^_bb5 : reg<amdgpu.scc>
+  low.cond_br %69, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %70 = slice %lhs_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %71 = slice %lhs_offset[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -363,11 +354,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @compare
   %122, %123 = s_addc_u32 %126, %114, %121
   low.br ^_bb1(%120: reg<amdgpu.sgpr>, %122: reg<amdgpu.sgpr>, %113: reg<amdgpu.vgpr>)
 ^_bb3:
-  return %39
-^_bb4:
-  %67 = s_mov_b64_exec_read
-  low.br ^_bb1(%44: reg<amdgpu.sgpr>, %44: reg<amdgpu.sgpr>, %51: reg<amdgpu.vgpr>)
-^_bb5:
   s_mov_b64_exec %67
-  low.br ^_bb3
+  return %39
 }

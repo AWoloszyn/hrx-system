@@ -117,8 +117,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   return
 ^_bb2:
   %199, %200 = s_and_saveexec_b64 %188
-  low.br ^_bb3
-^_bb3:
   s_trap {trapid = 2}
   %189 = s_sendmsg_rtn_b32 {message = 128}
   %190 = s_mov_b32 1023
@@ -127,10 +125,10 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %193 = s_or_b32 %191, %192
   %194 = s_mov_b32_m0 %193
   s_sendmsg %194 {message = 1}
-  low.br ^_bb4
-^_bb4:
+  low.br ^_bb3
+^_bb3:
   s_sethalt {reason = 5}
-  low.br ^_bb4
+  low.br ^_bb3
 }
 
 // ====
@@ -203,8 +201,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   return
 ^_bb2:
   %102, %103 = s_and_saveexec_b64 %91
-  low.br ^_bb3
-^_bb3:
   s_trap {trapid = 2}
   %92 = s_sendmsg_rtn_b32 {message = 128}
   %93 = s_mov_b32 1023
@@ -213,10 +209,10 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %96 = s_or_b32 %94, %95
   %97 = s_mov_b32_m0 %96
   s_sendmsg %97 {message = 1}
-  low.br ^_bb4
-^_bb4:
+  low.br ^_bb3
+^_bb3:
   s_sethalt {reason = 5}
-  low.br ^_bb4
+  low.br ^_bb3
 }
 
 // ====
@@ -275,8 +271,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   return
 ^_bb2:
   %62, %63 = s_and_saveexec_b64 %51
-  low.br ^_bb3
-^_bb3:
   s_trap {trapid = 2}
   %52 = s_sendmsg_rtn_b32 {message = 128}
   %53 = s_mov_b32 1023
@@ -285,10 +279,10 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %56 = s_or_b32 %54, %55
   %57 = s_mov_b32_m0 %56
   s_sendmsg %57 {message = 1}
-  low.br ^_bb4
-^_bb4:
+  low.br ^_bb3
+^_bb3:
   s_sethalt {reason = 5}
-  low.br ^_bb4
+  low.br ^_bb3
 }
 
 // ====
@@ -342,13 +336,11 @@ low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @sanitizer_cdna3
   return
 ^_bb2:
   %50, %51 = s_and_saveexec_b64 %45
+  s_trap {trapid = 2}
   low.br ^_bb3
 ^_bb3:
-  s_trap {trapid = 2}
-  low.br ^_bb4
-^_bb4:
   s_sethalt {reason = 5}
-  low.br ^_bb4
+  low.br ^_bb3
 }
 
 // ====
@@ -403,8 +395,6 @@ low.func.def target<amdgpu.rdna4.core>(@target) abi(hal_kernel) @sanitizer_rdna4
   return
 ^_bb2:
   %58, %59 = s_and_saveexec_b64 %47
-  low.br ^_bb3
-^_bb3:
   s_trap {trapid = 2}
   %48 = s_sendmsg_rtn_b32 {message = 128}
   %49 = s_mov_b32 1023
@@ -413,8 +403,8 @@ low.func.def target<amdgpu.rdna4.core>(@target) abi(hal_kernel) @sanitizer_rdna4
   %52 = s_or_b32 %50, %51
   %53 = s_mov_b32_m0 %52
   s_sendmsg %53 {message = 1}
-  low.br ^_bb4
-^_bb4:
+  low.br ^_bb3
+^_bb3:
   s_sethalt {reason = 5}
-  low.br ^_bb4
+  low.br ^_bb3
 }

@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "loom/ops/cfg/ops.h"
+#include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/transforms/cfg/block_arguments.h"
 
@@ -35,11 +36,12 @@ static bool loom_cfg_find_fusable_predecessor(const loom_cfg_graph_t* graph,
   }
 
   loom_op_t* terminator = ((loom_block_t*)predecessor)->last_op;
-  if (!loom_cfg_br_isa(terminator)) {
+  if (!loom_cfg_br_isa(terminator) && !loom_low_br_isa(terminator)) {
     return false;
   }
   *out_predecessor_br = terminator;
-  *out_args = loom_cfg_br_args(terminator);
+  *out_args = loom_cfg_br_isa(terminator) ? loom_cfg_br_args(terminator)
+                                          : loom_low_br_args(terminator);
   return true;
 }
 
@@ -109,7 +111,9 @@ iree_status_t loom_cfg_fuse_single_predecessor_blocks(
       continue;
     }
     loom_block_t* block = (loom_block_t*)graph->blocks[block_index].block;
-    loom_value_slice_t replacements = loom_cfg_br_args(predecessor_br);
+    loom_value_slice_t replacements = loom_cfg_br_isa(predecessor_br)
+                                          ? loom_cfg_br_args(predecessor_br)
+                                          : loom_low_br_args(predecessor_br);
     for (uint16_t argument_index = 0; argument_index < block->arg_count;
          ++argument_index) {
       IREE_RETURN_IF_ERROR(loom_rewriter_replace_all_uses_with(

@@ -355,11 +355,12 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1024, 1
   %42 = v_mov_b32 1023
   %is_right_edge = v_cmp_eq_i32 %lane, %42
   %end = v_cndmask_b32_src0_lit_src1_inline %is_right_edge {imm32 = 3, true_value = 2}
-  low.br ^_bb3
+  %46 = s_mov_b64_exec_read
+  low.br ^_bb1(%begin: reg<amdgpu.vgpr>)
 ^_bb1(%tap: reg<amdgpu.vgpr>):
   %45 = v_cmp_lt_i32 %tap, %end
   %47, %48 = s_and_saveexec_b64 %45
-  low.cond_br %48, ^_bb2, ^_bb4 : reg<amdgpu.scc>
+  low.cond_br %48, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %shifted = v_add_u32 %lane, %tap
   %50 = v_mov_b32 1
@@ -372,9 +373,6 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1024, 1
   %57 = v_add_u32 %tap, %50
   low.br ^_bb1(%57: reg<amdgpu.vgpr>)
 ^_bb3:
-  %46 = s_mov_b64_exec_read
-  low.br ^_bb1(%begin: reg<amdgpu.vgpr>)
-^_bb4:
   s_mov_b64_exec %46
   return
 }
