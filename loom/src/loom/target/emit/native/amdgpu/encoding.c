@@ -185,6 +185,10 @@ typedef struct loom_amdgpu_encode_state_t {
   loom_amdgpu_encode_native_insertion_output_t native_insertions;
   // Function-local branch placement state.
   loom_amdgpu_encode_branch_state_t branches;
+  // Exact hint encoding retained by the first sizing traversal.
+  const loom_amdgpu_delay_layout_t* delay_layout;
+  // Mutable packing state, present only during the first sizing traversal.
+  loom_amdgpu_delay_layout_builder_t* delay_builder;
   // Packet traversal and simulated architectural state.
   loom_amdgpu_encode_traversal_state_t traversal;
 } loom_amdgpu_encode_state_t;
@@ -377,6 +381,9 @@ static iree_status_t loom_amdgpu_encode_vgpr_msb_mode(
     loom_amdgpu_encode_state_t* state, uint8_t new_mode) {
   if (state->traversal.current_vgpr_msb_mode == new_mode) {
     return iree_ok_status();
+  }
+  if (state->delay_builder != NULL) {
+    loom_amdgpu_delay_layout_end_span(state->delay_builder);
   }
   IREE_ASSERT(state->inputs.descriptors.set_vgpr_msb != NULL);
   const uint16_t immediate =
@@ -1081,10 +1088,6 @@ static iree_status_t loom_amdgpu_encode_s_nop_cycles(
 
 static iree_status_t loom_amdgpu_encode_s_delay_alu(
     loom_amdgpu_encode_state_t* state, uint16_t delay_alu_immediate) {
-  if (state->inputs.target->sopp.delay_alu == 0) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "AMDGPU target does not support S_DELAY_ALU");
-  }
   IREE_RETURN_IF_ERROR(loom_amdgpu_encode_sopp_simm16(
       state, state->inputs.target->sopp.delay_alu, delay_alu_immediate));
   loom_amdgpu_record_native_insertion(
@@ -1113,9 +1116,27 @@ static iree_status_t loom_amdgpu_encode_wait_state_action(
   switch (wait_state->action) {
     case LOOM_AMDGPU_WAIT_STATE_ACTION_S_NOP:
       return loom_amdgpu_encode_s_nop_cycles(state, wait_state->cycle_count);
-    case LOOM_AMDGPU_WAIT_STATE_ACTION_S_DELAY_ALU:
-      return loom_amdgpu_encode_s_delay_alu(state,
-                                            wait_state->delay_alu_immediate);
+    case LOOM_AMDGPU_WAIT_STATE_ACTION_S_DELAY_ALU: {
+      const iree_host_size_t state_index =
+          state->packet_plan.next_wait_state_index;
+      // Structural consumers can begin with a VGPR-MSB transition discovered
+      // while expanding their moves. Keep their hint local; subsequent native
+      // expansion still contributes its exact distance to later consumers.
+      if (state->delay_builder != NULL &&
+          state->traversal.current_packet.descriptor == NULL) {
+        loom_amdgpu_delay_layout_end_span(state->delay_builder);
+      }
+      const uint16_t immediate =
+          state->delay_builder != NULL
+              ? loom_amdgpu_delay_layout_record(
+                    state->delay_builder, state_index,
+                    (uint32_t)state->traversal.current_packet.packet_index,
+                    state->stream.instruction_count,
+                    wait_state->delay_alu_immediate)
+              : state->delay_layout->immediates[state_index];
+      return immediate ? loom_amdgpu_encode_s_delay_alu(state, immediate)
+                       : iree_ok_status();
+    }
     case LOOM_AMDGPU_WAIT_STATE_ACTION_V_NOP:
       return loom_amdgpu_encode_v_nop_slots(state, wait_state->cycle_count);
     case LOOM_AMDGPU_WAIT_STATE_ACTION_UNKNOWN:
@@ -1930,6 +1951,14 @@ static iree_status_t loom_amdgpu_encode_packet(
     return iree_ok_status();
   }
   if (packet->descriptor != NULL) {
+    if (state->delay_builder != NULL &&
+        iree_any_bit_set(loom_low_descriptor_set_descriptor_view_at(
+                             state->inputs.schedule->target.descriptor_set,
+                             packet->descriptor_ordinal)
+                             ->instruction_class_flags,
+                         LOOM_LOW_INSTRUCTION_CLASS_FLAG_CONTROL)) {
+      loom_amdgpu_delay_layout_end_span(state->delay_builder);
+    }
     bool handled_vopd = false;
     IREE_RETURN_IF_ERROR(
         loom_amdgpu_try_encode_vopd_packet(state, packet, &handled_vopd));
@@ -2127,10 +2156,14 @@ static iree_status_t loom_amdgpu_encode_instruction_stream_into_state(
   state->branches.emission.next_group_index = 0;
   memset(state->traversal.pc_registers, 0,
          sizeof(state->traversal.pc_registers));
+  iree_host_size_t delay_span_cursor = 0;
   for (iree_host_size_t block_index = 0;
        block_index < state->inputs.schedule->block_count; ++block_index) {
     const loom_low_schedule_block_t* block =
         &state->inputs.schedule->blocks[block_index];
+    if (state->delay_builder != NULL) {
+      loom_amdgpu_delay_layout_end_span(state->delay_builder);
+    }
     memset(state->traversal.pc_registers, 0,
            sizeof(state->traversal.pc_registers));
     if (state->branches.measurement.blocks != NULL) {
@@ -2151,7 +2184,10 @@ static iree_status_t loom_amdgpu_encode_instruction_stream_into_state(
       loom_amdgpu_encode_branch_measurement_t* measurement =
           &state->branches.measurement;
       if (measurement->anchors != NULL &&
-          state->stream.length != packet_start) {
+          state->stream.length != packet_start &&
+          loom_amdgpu_delay_layout_allows_island(state->delay_layout,
+                                                 (uint32_t)packet_index,
+                                                 &delay_span_cursor)) {
         IREE_ASSERT_LT(measurement->anchor_count, measurement->anchor_capacity);
         IREE_ASSERT_LE(packet_index, UINT32_MAX);
         measurement->anchors[measurement->anchor_count++] =
@@ -2285,9 +2321,24 @@ static iree_status_t loom_amdgpu_encode_instruction_stream_internal(
                   },
           },
   };
+  loom_amdgpu_delay_layout_t delay_layout = {0};
+  loom_amdgpu_delay_layout_builder_t delay_builder = {0};
+  if (wait_states != NULL && wait_states->state_count != 0 &&
+      target->sopp.delay_alu != 0) {
+    status = loom_amdgpu_delay_layout_builder_initialize(
+        wait_states->state_count, arena, &delay_builder);
+    sizing_state.delay_builder = &delay_builder;
+  }
+  sizing_state.delay_layout = &delay_layout;
   if (iree_status_is_ok(status)) {
     status = loom_amdgpu_encode_instruction_stream_into_state(&sizing_state);
   }
+  delay_layout = (loom_amdgpu_delay_layout_t){
+      .immediates = delay_builder.immediates,
+      .spans = delay_builder.spans,
+      .span_count = delay_builder.span_count,
+  };
+  sizing_state.delay_builder = NULL;
 
   loom_amdgpu_branch_layout_t branch_layout = {0};
   if (iree_status_is_ok(status)) {
@@ -2378,6 +2429,7 @@ static iree_status_t loom_amdgpu_encode_instruction_stream_internal(
   loom_amdgpu_encode_state_t writing_state = {
       .inputs = inputs,
       .packet_plan = packet_plan_state,
+      .delay_layout = &delay_layout,
       .stream =
           {
               .data = data,
@@ -2420,7 +2472,11 @@ static iree_status_t loom_amdgpu_encode_instruction_stream_internal(
     *out_stream = (loom_amdgpu_encoded_instruction_stream_t){
         .text = iree_make_const_byte_span(data, writing_state.stream.length),
         .instruction_count = writing_state.stream.instruction_count,
-        .branch_layout = branch_layout,
+        .layout =
+            {
+                .branches = branch_layout,
+                .delays = delay_layout,
+            },
         .text_fixups = text_fixups,
         .text_fixup_count = writing_state.text_fixups.count,
         .native_insertions = native_insertions,

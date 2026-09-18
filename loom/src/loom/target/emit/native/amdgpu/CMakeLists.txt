@@ -64,6 +64,8 @@ loom_cc_library(
     "assembly.c"
   DEPS
     ::branch_layout
+    ::delay_layout
+    ::encoding
     ::register_class
     ::storage_layout
     iree::base
@@ -129,6 +131,7 @@ loom_check_test_suite(
     "test/assembly_wmma.loom-test"
     "test/compile_time_insertions.loom-test"
     "test/delay_alu.loom-test"
+    "test/delay_layout.loom-test"
     "test/gfx1201_native.loom-test"
     "test/hal_kernel_library.loom-test"
     "test/packet.loom-test"
@@ -255,6 +258,21 @@ endif()
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 loom_cc_library(
   NAME
+    delay_layout
+  HDRS
+    "delay_layout.h"
+  SRCS
+    "delay_layout.c"
+  DEPS
+    iree::base
+    iree::base::internal::arena
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_cc_library(
+  NAME
     encoding
   HDRS
     "encoding.h"
@@ -262,6 +280,7 @@ loom_cc_library(
     "encoding.c"
   DEPS
     ::branch_layout
+    ::delay_layout
     ::register_class
     ::storage_layout
     ::text_fixup
@@ -278,6 +297,24 @@ loom_cc_library(
     loom::target::arch::amdgpu::refs::target_refs
     loom::target::arch::amdgpu::target_info
   PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_cc_test(
+  NAME
+    delay_layout_test
+  SRCS
+    "delay_layout_test.cc"
+  DEPS
+    ::branch_layout
+    ::delay_layout
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
 )
 endif()
 

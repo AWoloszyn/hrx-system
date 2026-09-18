@@ -345,9 +345,8 @@ low.func.def target<amdgpu.rdna3.core>(@target) @partial_local_wait_preserves_sc
   v_add_u32 v1, v1, v0
   s_waitcnt vmcnt(63) lgkmcnt(0)
   s_add_u32 s0, s3, s2
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_add_u32 v1, v1, v2
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_u32 v1, s0, v1
   ds_write_b32 v0, v1 offset:8
   s_endpgm
@@ -770,9 +769,8 @@ low.func.def target<amdgpu.rdna3.core>(@target) @authored_partial_preserves_scal
   v_add_u32 v1, v1, v0
   s_waitcnt vmcnt(63) lgkmcnt(0)
   s_add_u32 s0, s3, s2
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_add_u32 v1, v1, v2
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_u32 v1, s0, v1
   ds_write_b32 v0, v1 offset:8
   s_endpgm
@@ -941,10 +939,9 @@ low.func.def target<amdgpu.rdna3.core>(@target) @authored_partial_then_new_work(
   ds_read_b32 v3, v0 offset:8
   v_add_u32 v1, v1, v0
   s_waitcnt vmcnt(63) lgkmcnt(1)
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(SKIP_1) | instid1(VALU_DEP_1)
   v_add_u32 v1, v1, v2
   s_waitcnt vmcnt(63) lgkmcnt(0)
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_u32 v1, v1, v3
   ds_read_b32 v2, v0 offset:12
 .Lbb1:

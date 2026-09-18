@@ -114,8 +114,8 @@ typedef struct loom_amdgpu_kernel_hsaco_contribution_t {
   iree_string_view_t processor;
   // Kernel entry metadata, descriptor flags, and encoded native text.
   loom_amdgpu_hsaco_kernel_t kernel;
-  // Exact branch-island layout applied to |kernel.text|.
-  loom_amdgpu_branch_layout_t branch_layout;
+  // Exact native placement decisions applied to |kernel.text|.
+  loom_amdgpu_instruction_layout_t instruction_layout;
   // Target-owned instructions inserted during native encoding when capture was
   // requested.
   const loom_amdgpu_native_insertion_t* native_insertions;

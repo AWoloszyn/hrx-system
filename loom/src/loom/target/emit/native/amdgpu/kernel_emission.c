@@ -418,7 +418,7 @@ iree_status_t loom_amdgpu_kernel_emission_build(
         .abi_verify = abi_verify,
         .preflight = preflight,
         .packet_plan = &packet_plan,
-        .branch_layout = &out_contribution->branch_layout,
+        .instruction_layout = &out_contribution->instruction_layout,
     };
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_kernel_assembly(
         &frame->schedule, &frame->allocation, &assembly_options, target_listing,
