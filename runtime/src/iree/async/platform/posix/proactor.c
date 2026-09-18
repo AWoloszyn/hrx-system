@@ -380,7 +380,7 @@ static iree_status_t iree_async_proactor_posix_complete_immediately(
   iree_async_posix_completion_t* completion =
       iree_async_posix_completion_pool_acquire(&proactor->completion_pool);
   if (!completion) {
-    iree_status_ignore(op_status);
+    iree_status_free(op_status);
     return iree_make_status(
         IREE_STATUS_RESOURCE_EXHAUSTED,
         "completion pool exhausted; call poll() to drain completions");
@@ -392,20 +392,58 @@ static iree_status_t iree_async_proactor_posix_complete_immediately(
   return iree_ok_status();
 }
 
-// Retains operation resources and pushes a completion for delivery in poll().
-// Used from submit paths where the operation is entering proactor management.
-// On failure (pool exhausted), the retain is rolled back — the caller can
-// safely return the error without any resource cleanup.
-static iree_status_t iree_async_proactor_posix_complete_on_submit(
+// Takes the completion entry reserved for |operation| during batch admission.
+static iree_async_posix_completion_t*
+iree_async_proactor_posix_take_reserved_completion(
+    iree_async_operation_t* operation) {
+  iree_async_posix_completion_t* completion =
+      (iree_async_posix_completion_t*)operation->next;
+  operation->next = NULL;
+  IREE_ASSERT(completion, "submit commit requires a reserved completion entry");
+  return completion;
+}
+
+// Publishes a reserved completion for delivery by the poll owner.
+static void iree_async_proactor_posix_publish_reserved_completion(
+    iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation,
+    iree_status_t op_status, iree_async_completion_flags_t flags) {
+  iree_async_posix_completion_t* completion =
+      iree_async_proactor_posix_take_reserved_completion(operation);
+  completion->operation = operation;
+  completion->status = op_status;
+  completion->flags = flags;
+  iree_atomic_slist_push(&proactor->completion_queue, &completion->slist_entry);
+}
+
+// Retains resources for an accepted operation and publishes its reserved
+// completion. Close operations use the consuming variant below because their
+// caller reference transfers at admission instead of gaining a matching
+// retain.
+static void iree_async_proactor_posix_publish_retained_completion(
     iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation,
     iree_status_t op_status, iree_async_completion_flags_t flags) {
   iree_async_operation_retain_resources(operation);
-  iree_status_t status = iree_async_proactor_posix_complete_immediately(
-      proactor, operation, op_status, flags);
-  if (!iree_status_is_ok(status)) {
-    iree_async_operation_release_resources(operation);
-  }
-  return status;
+  iree_async_proactor_posix_publish_reserved_completion(proactor, operation,
+                                                        op_status, flags);
+}
+
+// Publishes a reserved close completion without retaining the resource being
+// consumed. Final completion release performs the ownership transfer.
+static void iree_async_proactor_posix_publish_consuming_completion(
+    iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation,
+    iree_status_t op_status) {
+  iree_async_proactor_posix_publish_reserved_completion(
+      proactor, operation, op_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+}
+
+// Releases an unused submit-time completion reservation before an accepted
+// operation moves to an allocation-free pending path.
+static void iree_async_proactor_posix_release_reserved_completion(
+    iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation) {
+  iree_async_posix_completion_t* completion =
+      iree_async_proactor_posix_take_reserved_completion(operation);
+  iree_async_posix_completion_pool_release(&proactor->completion_pool,
+                                           completion);
 }
 
 // Pushes an operation directly to the ready queue for worker execution.
@@ -580,13 +618,20 @@ static iree_status_t iree_async_proactor_posix_register_fd_operation(
                                        &handler)) {
       short combined_events =
           iree_async_proactor_posix_compute_chain_events(handler);
-      // Modify to ensure all needed events are registered.
+      // Modify to ensure all needed events are registered. If this fails,
+      // remove the newly inserted operation so the existing chain remains
+      // live under its prior event mask and the caller can complete this
+      // operation with the registration error.
       status = iree_async_posix_event_set_modify(proactor->event_set, fd,
                                                  combined_events);
-      // If modify fails, the operation is still chained - this is a partial
-      // failure but the operation may still work if the existing events match.
-      // Log and continue rather than trying to undo the chain.
-      iree_status_ignore(status);
+      if (!iree_status_is_ok(status)) {
+        bool chain_empty = iree_async_posix_fd_map_remove_operation(
+            &proactor->fd_map, fd, operation);
+        IREE_ASSERT(!chain_empty,
+                    "chained registration rollback removed the prior chain");
+        operation->next = NULL;
+        return status;
+      }
     }
   } else {
     // First operation for this fd - add to event_set.
@@ -762,6 +807,37 @@ static iree_host_size_t iree_async_proactor_posix_drain_pending_queue(
         break;
       }
 
+      case IREE_ASYNC_OPERATION_TYPE_SEQUENCE: {
+        iree_async_sequence_operation_t* sequence =
+            (iree_async_sequence_operation_t*)operation;
+        if (sequence->step_count == 0) {
+          iree_status_t sequence_status =
+              iree_any_bit_set(
+                  iree_async_operation_load_internal_flags(operation),
+                  IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED)
+                  ? iree_status_from_code(IREE_STATUS_CANCELLED)
+                  : iree_ok_status();
+          iree_async_sequence_prepare_for_completion(sequence);
+          completed_count += iree_async_proactor_posix_complete_direct(
+              proactor, operation, sequence_status,
+              IREE_ASYNC_COMPLETION_FLAG_NONE);
+          continue;
+        }
+        if (!sequence->step_fn) {
+          status =
+              iree_async_sequence_submit_as_linked(&proactor->base, sequence);
+        } else {
+          status = iree_async_sequence_emulation_begin(
+              &proactor->sequence_emulator, sequence);
+        }
+        if (!iree_status_is_ok(status)) {
+          iree_async_sequence_prepare_for_completion(sequence);
+          completed_count += iree_async_proactor_posix_complete_direct(
+              proactor, operation, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+        }
+        continue;
+      }
+
       default:
         status = iree_make_status(
             IREE_STATUS_UNIMPLEMENTED,
@@ -811,7 +887,7 @@ static iree_host_size_t iree_async_proactor_posix_drain_pending_queue(
 //
 // This matches io_uring's behavior where the kernel attempts accept4() when
 // processing the SQE and returns a CQE immediately on both success and error.
-static iree_status_t iree_async_proactor_posix_submit_socket_accept(
+static void iree_async_proactor_posix_commit_socket_accept(
     iree_async_proactor_posix_t* proactor,
     iree_async_socket_accept_operation_t* accept_op) {
   struct sockaddr_storage addr;
@@ -822,17 +898,14 @@ static iree_status_t iree_async_proactor_posix_submit_socket_accept(
 
   if (accepted_fd < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
     // No pending connections — defer to poll thread for POLLIN.
-    // push_pending retains the listen_socket reference.
+    iree_async_proactor_posix_release_reserved_completion(proactor,
+                                                          &accept_op->base);
     iree_async_proactor_posix_push_pending(proactor, &accept_op->base);
-    return iree_ok_status();
+    return;
   }
 
-  // All paths below go through complete_on_submit (which retains/releases the
-  // listen_socket reference). Local resources (accepted_fd, accepted_socket)
-  // must be cleaned up on complete_on_submit failure since no callback fires.
-
   iree_status_t op_status = iree_ok_status();
-  iree_async_socket_t* accepted_socket = NULL;
+  accept_op->accepted_socket = NULL;
 
   if (accepted_fd < 0) {
     // Immediate failure (e.g., EINVAL for a non-listening socket).
@@ -841,6 +914,7 @@ static iree_status_t iree_async_proactor_posix_submit_socket_accept(
   }
 
   if (iree_status_is_ok(op_status)) {
+    iree_async_socket_t* accepted_socket = NULL;
     op_status = iree_async_posix_socket_create_accepted(
         proactor, accepted_fd, accept_op->listen_socket->type,
         &accepted_socket);
@@ -853,34 +927,17 @@ static iree_status_t iree_async_proactor_posix_submit_socket_accept(
     }
   }
 
-  iree_async_completion_flags_t completion_flags =
-      IREE_ASYNC_COMPLETION_FLAG_NONE;
-  if (iree_status_is_ok(op_status) &&
-      iree_any_bit_set(accept_op->base.flags,
-                       IREE_ASYNC_OPERATION_FLAG_MULTISHOT)) {
-    completion_flags = IREE_ASYNC_COMPLETION_FLAG_MORE;
+  if (accepted_fd >= 0) {
+    close(accepted_fd);
   }
-
-  iree_status_t status = iree_async_proactor_posix_complete_on_submit(
-      proactor, &accept_op->base, op_status, completion_flags);
-  if (!iree_status_is_ok(status)) {
-    // complete_on_submit failed (pool exhausted). It already rolled back the
-    // listen_socket retain. Clean up any local resources we created.
-    if (accepted_socket) {
-      accept_op->accepted_socket = NULL;
-      iree_async_posix_socket_destroy(proactor, accepted_socket);
-    }
-    if (accepted_fd >= 0) {
-      close(accepted_fd);
-    }
-  }
-  return status;
+  iree_async_proactor_posix_publish_retained_completion(
+      proactor, &accept_op->base, op_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
 }
 
 // Starts a non-blocking connect(). The syscall itself is thread-safe and runs
 // on the submitting thread. EINPROGRESS (the common case) defers completion to
 // the poll thread via the pending_queue.
-static iree_status_t iree_async_proactor_posix_submit_socket_connect(
+static void iree_async_proactor_posix_commit_socket_connect(
     iree_async_proactor_posix_t* proactor,
     iree_async_socket_connect_operation_t* connect_op) {
   int fd = connect_op->socket->primitive.value.fd;
@@ -893,9 +950,10 @@ static iree_status_t iree_async_proactor_posix_submit_socket_connect(
                       IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
                       iree_memory_order_release);
     connect_op->socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTED;
-    return iree_async_proactor_posix_complete_on_submit(
+    iree_async_proactor_posix_publish_retained_completion(
         proactor, &connect_op->base, iree_ok_status(),
         IREE_ASYNC_COMPLETION_FLAG_NONE);
+    return;
   }
   if (errno == EINPROGRESS) {
     // Connection in progress — poll thread will register for POLLOUT.
@@ -904,24 +962,22 @@ static iree_status_t iree_async_proactor_posix_submit_socket_connect(
                       IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
                       iree_memory_order_release);
     connect_op->socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTING;
+    iree_async_proactor_posix_release_reserved_completion(proactor,
+                                                          &connect_op->base);
     iree_async_proactor_posix_push_pending(proactor, &connect_op->base);
-    return iree_ok_status();
+    return;
   }
   // Immediate failure.
-  return iree_async_proactor_posix_complete_on_submit(
+  iree_async_proactor_posix_publish_retained_completion(
       proactor, &connect_op->base,
       iree_make_status(iree_status_code_from_errno(errno), "connect() failed"),
       IREE_ASYNC_COMPLETION_FLAG_NONE);
 }
 
-// Closes a socket fd synchronously and completes the operation.
-// close() doesn't touch fd_map/event_set, so it runs on the submitting thread.
-// Uses complete_immediately (not complete_on_submit) because CLOSE consumes the
-// caller's socket reference: release_operation_resources IS the consumption,
-// with no matching retain. If the pool is exhausted, the close still happened
-// (fd is closed) but the callback won't fire — the caller's reference is
-// unaffected and they release it normally.
-static iree_status_t iree_async_proactor_posix_submit_socket_close(
+// Closes a socket fd on the submitting thread and publishes the reserved
+// completion for poll-owned callback dispatch. CLOSE consumes the caller's
+// socket reference at admission and gains no matching retain.
+static void iree_async_proactor_posix_commit_socket_close(
     iree_async_proactor_posix_t* proactor,
     iree_async_socket_close_operation_t* close_op) {
   int fd = close_op->socket->primitive.value.fd;
@@ -932,77 +988,51 @@ static iree_status_t iree_async_proactor_posix_submit_socket_close(
       close_result == 0 ? iree_ok_status()
                         : iree_make_status(iree_status_code_from_errno(errno),
                                            "close() failed");
-  return iree_async_proactor_posix_complete_immediately(
-      proactor, &close_op->base, close_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+  iree_async_proactor_posix_publish_consuming_completion(
+      proactor, &close_op->base, close_status);
 }
 
 // Validates and submits a SOCKET_RECV_POOL operation.
 // Validates that the pool's region has WRITE access (required for receiving)
 // and that the region was registered with this proactor. The actual recv is
 // deferred to the poll thread via push_pending (which retains the socket).
-static iree_status_t iree_async_proactor_posix_submit_recv_pool(
+static void iree_async_proactor_posix_commit_recv_pool(
     iree_async_proactor_posix_t* proactor,
     iree_async_socket_recv_pool_operation_t* recv_pool) {
-  iree_async_region_t* region = iree_async_buffer_pool_region(recv_pool->pool);
-  if (IREE_UNLIKELY(!iree_any_bit_set(region->access_flags,
-                                      IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE))) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "SOCKET_RECV_POOL requires a buffer pool with WRITE access; "
-        "this pool was registered with read-only access");
-  }
-  if (IREE_UNLIKELY(region->proactor != &proactor->base)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "SOCKET_RECV_POOL buffer pool was registered with a different "
-        "proactor");
-  }
-
   recv_pool->bytes_received = 0;
   memset(&recv_pool->lease, 0, sizeof(recv_pool->lease));
 
   iree_async_proactor_posix_push_pending(proactor, &recv_pool->base);
-  return iree_ok_status();
 }
 
-// Submits a timer operation. Timers with deadlines in the past complete
-// immediately on the submitting thread; future timers go to the pending_queue
-// for the poll thread to insert into the sorted timer list.
-static iree_status_t iree_async_proactor_posix_submit_timer(
+// Defers timer insertion and expiration to the poll owner.
+static void iree_async_proactor_posix_commit_timer(
     iree_async_proactor_posix_t* proactor,
     iree_async_timer_operation_t* timer_op) {
-  if (timer_op->deadline_ns <= iree_time_now()) {
-    return iree_async_proactor_posix_complete_on_submit(
-        proactor, &timer_op->base, iree_ok_status(),
-        IREE_ASYNC_COMPLETION_FLAG_NONE);
-  }
   iree_async_proactor_posix_push_pending(proactor, &timer_op->base);
-  return iree_ok_status();
 }
 
 // Submits an EVENT_WAIT by deferring to the poll thread. push_pending retains
 // the event reference; release_operation_resources releases it on completion.
-static iree_status_t iree_async_proactor_posix_submit_event_wait(
+static void iree_async_proactor_posix_commit_event_wait(
     iree_async_proactor_posix_t* proactor,
     iree_async_event_wait_operation_t* event_wait) {
   iree_async_proactor_posix_push_pending(proactor, &event_wait->base);
-  return iree_ok_status();
 }
 
 // Submits a HANDLE_POLL by deferring to the poll thread. The handle is
 // caller-owned; no retain/release.
-static iree_status_t iree_async_proactor_posix_submit_handle_poll(
+static void iree_async_proactor_posix_commit_handle_poll(
     iree_async_proactor_posix_t* proactor,
     iree_async_handle_poll_operation_t* handle_poll) {
   iree_async_proactor_posix_push_pending(proactor, &handle_poll->base);
-  return iree_ok_status();
 }
 
 // Submits a NOTIFICATION_WAIT by ensuring a wait token is available and
 // deferring to the poll thread. push_pending retains the notification reference
 // and any submitted observation scope; release_operation_resources releases
 // them on completion.
-static iree_status_t iree_async_proactor_posix_submit_notification_wait(
+static void iree_async_proactor_posix_commit_notification_wait(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_wait_operation_t* wait) {
   // Uses epoch_ptr (not the local epoch field) because shared notifications
@@ -1013,27 +1043,26 @@ static iree_status_t iree_async_proactor_posix_submit_notification_wait(
                                         iree_memory_order_acquire);
   }
   iree_async_proactor_posix_push_pending(proactor, &wait->base);
-  return iree_ok_status();
 }
 
-// Submits a NOTIFICATION_SIGNAL by signaling synchronously and completing.
-// The signal increments the epoch and writes to the eventfd/pipe, which also
-// wakes the poll thread to check pending NOTIFICATION_WAITs.
-static iree_status_t iree_async_proactor_posix_submit_notification_signal(
+// Signals on the submitting thread and publishes the reserved completion for
+// poll-owned callback dispatch. The signal increments the epoch and writes to
+// the eventfd/pipe, which also wakes pending NOTIFICATION_WAITs.
+static void iree_async_proactor_posix_commit_notification_signal(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_signal_operation_t* signal_op) {
   signal_op->woken_count = 0;
   iree_async_notification_signal(signal_op->notification,
                                  signal_op->wake_count);
-  return iree_async_proactor_posix_complete_on_submit(
+  iree_async_proactor_posix_publish_retained_completion(
       proactor, &signal_op->base, iree_ok_status(),
       IREE_ASYNC_COMPLETION_FLAG_NONE);
 }
 
-// Submits a SEMAPHORE_SIGNAL by signaling each semaphore synchronously and
-// completing immediately. Errors are delivered via callback rather than
-// returned from submit, maintaining standard async operation semantics.
-static iree_status_t iree_async_proactor_posix_submit_semaphore_signal(
+// Signals each semaphore on the submitting thread and publishes the reserved
+// completion for poll-owned callback dispatch. Errors are delivered via the
+// callback rather than returned from submit.
+static void iree_async_proactor_posix_commit_semaphore_signal(
     iree_async_proactor_posix_t* proactor,
     iree_async_semaphore_signal_operation_t* signal_op) {
   iree_status_t op_status = iree_ok_status();
@@ -1045,7 +1074,7 @@ static iree_status_t iree_async_proactor_posix_submit_semaphore_signal(
       break;
     }
   }
-  return iree_async_proactor_posix_complete_on_submit(
+  iree_async_proactor_posix_publish_retained_completion(
       proactor, &signal_op->base, op_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
 }
 
@@ -1063,7 +1092,7 @@ static void iree_async_proactor_posix_enqueue_semaphore_wait(
 // on each semaphore. The timepoint callbacks fire from the signaling thread
 // and push the tracker to the pending_semaphore_waits MPSC slist, which is
 // drained by the poll thread.
-static iree_status_t iree_async_proactor_posix_submit_semaphore_wait(
+static void iree_async_proactor_posix_commit_semaphore_wait(
     iree_async_proactor_posix_t* proactor,
     iree_async_semaphore_wait_operation_t* wait_op) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -1088,24 +1117,34 @@ static iree_status_t iree_async_proactor_posix_submit_semaphore_wait(
   }
   if (immediately_satisfied) {
     IREE_TRACE_ZONE_END(z0);
-    return iree_async_proactor_posix_complete_on_submit(
+    iree_async_proactor_posix_publish_retained_completion(
         proactor, &wait_op->base, iree_ok_status(),
         IREE_ASYNC_COMPLETION_FLAG_NONE);
+    return;
   }
 
+  iree_async_posix_completion_t* reserved_completion =
+      iree_async_proactor_posix_take_reserved_completion(&wait_op->base);
   iree_async_semaphore_wait_enqueue_callback_t enqueue_callback = {
       .fn = iree_async_proactor_posix_enqueue_semaphore_wait,
       .user_data = proactor,
   };
   iree_async_semaphore_wait_tracker_t* tracker = NULL;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_async_semaphore_wait_tracker_create(
-              &proactor->semaphore_wait_context, wait_op, enqueue_callback,
-              proactor->base.allocator, &tracker));
+  iree_status_t status = iree_async_semaphore_wait_tracker_create(
+      &proactor->semaphore_wait_context, wait_op, enqueue_callback,
+      proactor->base.allocator, &tracker);
+  if (!iree_status_is_ok(status)) {
+    wait_op->base.next = (iree_async_operation_t*)reserved_completion;
+    iree_async_proactor_posix_publish_retained_completion(
+        proactor, &wait_op->base, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+    IREE_TRACE_ZONE_END(z0);
+    return;
+  }
+  iree_async_posix_completion_pool_release(&proactor->completion_pool,
+                                           reserved_completion);
   iree_async_semaphore_wait_tracker_register_timepoints(tracker);
 
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
 }
 
 // Submits a MESSAGE operation: delivers payload to the target proactor's
@@ -1113,42 +1152,32 @@ static iree_status_t iree_async_proactor_posix_submit_semaphore_wait(
 // The target must be a POSIX proactor (same backend) since the message pool
 // is on the backend-specific struct. Cross-backend messaging requires the
 // simple send_message API instead.
-static iree_status_t iree_async_proactor_posix_submit_message(
+static void iree_async_proactor_posix_commit_message(
     iree_async_proactor_posix_t* proactor,
     iree_async_message_operation_t* message) {
   bool skip_source_completion = iree_any_bit_set(
       message->message_flags, IREE_ASYNC_MESSAGE_FLAG_SKIP_SOURCE_COMPLETION);
-  IREE_RETURN_IF_ERROR(iree_async_message_operation_validate(message));
+  iree_async_proactor_posix_t* target =
+      iree_async_proactor_posix_cast(message->target);
+  iree_async_message_pool_entry_t* target_entry =
+      (iree_async_message_pool_entry_t*)
+          message->platform.software.reserved_entry;
+  message->platform.software.reserved_entry = NULL;
 
-  iree_async_proactor_t* target = message->target;
-  if (target->vtable != &iree_async_proactor_posix_vtable) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "MESSAGE target must be a POSIX proactor from the same backend; "
-        "cross-backend messaging is not supported via operations");
-  }
-  iree_async_proactor_posix_t* target_posix =
-      iree_async_proactor_posix_cast(target);
-
-  // Deliver message to the target proactor's pool and wake its poll thread.
-  iree_status_t send_status = iree_async_message_pool_send(
-      &target_posix->message_pool, message->message_data);
-  if (iree_status_is_ok(send_status)) {
-    target->vtable->wake(target);
-  }
+  iree_async_message_pool_publish(&target->message_pool, target_entry,
+                                  message->message_data);
+  iree_async_proactor_posix_wake_poll_thread(target);
 
   // Handle source-side completion.
   if (skip_source_completion) {
-    // Fire-and-forget: the operation deliberately produces no source
-    // completion. Returning the delivery status lets a linked predecessor's
-    // continuation dispatcher fail this tail through the normal contract.
-    return send_status;
+    return;
   }
 
   // Push source completion through the completion queue so the caller's
   // callback fires from poll() (consistent with all other operation types).
-  return iree_async_proactor_posix_complete_on_submit(
-      proactor, &message->base, send_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+  iree_async_proactor_posix_publish_retained_completion(
+      proactor, &message->base, iree_ok_status(),
+      IREE_ASYNC_COMPLETION_FLAG_NONE);
 }
 
 // Materializes iovecs from a span list at submit time so that the execute path
@@ -1169,178 +1198,831 @@ static iree_status_t iree_async_proactor_posix_execute_sendto(
     iree_async_socket_sendto_operation_t* sendto_op,
     iree_async_io_result_t* out_result);
 
+// Commits an accepted connected-socket send. The eager write remains on the
+// submitting thread; EAGAIN returns the unused reservation before handing the
+// operation to the poll owner.
+static void iree_async_proactor_posix_commit_socket_send(
+    iree_async_proactor_posix_t* proactor,
+    iree_async_socket_send_operation_t* send_op) {
+  send_op->bytes_sent = 0;
+  iree_async_proactor_posix_materialize_iovecs(
+      (struct iovec*)send_op->platform.posix.iovecs, &send_op->buffers);
+
+  iree_status_t socket_failure =
+      iree_async_socket_query_failure(send_op->socket);
+  if (!iree_status_is_ok(socket_failure)) {
+    iree_async_proactor_posix_publish_retained_completion(
+        proactor, &send_op->base, iree_status_clone(socket_failure),
+        IREE_ASYNC_COMPLETION_FLAG_NONE);
+    return;
+  }
+
+  iree_async_io_result_t result = IREE_ASYNC_IO_COMPLETE;
+  iree_status_t status =
+      iree_async_proactor_posix_execute_send(send_op, &result);
+  if (!iree_status_is_ok(status)) {
+    iree_async_socket_set_failure(send_op->socket, iree_status_code(status));
+    iree_async_proactor_posix_publish_retained_completion(
+        proactor, &send_op->base, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+    return;
+  }
+  if (result == IREE_ASYNC_IO_WOULD_BLOCK) {
+    iree_async_proactor_posix_release_reserved_completion(proactor,
+                                                          &send_op->base);
+    iree_async_proactor_posix_push_pending(proactor, &send_op->base);
+    return;
+  }
+  iree_async_proactor_posix_publish_retained_completion(
+      proactor, &send_op->base, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+}
+
+// Commits an accepted datagram send using the same eager/EAGAIN ownership
+// transfer as connected sends.
+static void iree_async_proactor_posix_commit_socket_sendto(
+    iree_async_proactor_posix_t* proactor,
+    iree_async_socket_sendto_operation_t* sendto_op) {
+  sendto_op->bytes_sent = 0;
+  iree_async_proactor_posix_materialize_iovecs(
+      (struct iovec*)sendto_op->platform.posix.iovecs, &sendto_op->buffers);
+
+  iree_status_t socket_failure =
+      iree_async_socket_query_failure(sendto_op->socket);
+  if (!iree_status_is_ok(socket_failure)) {
+    iree_async_proactor_posix_publish_retained_completion(
+        proactor, &sendto_op->base, iree_status_clone(socket_failure),
+        IREE_ASYNC_COMPLETION_FLAG_NONE);
+    return;
+  }
+
+  iree_async_io_result_t result = IREE_ASYNC_IO_COMPLETE;
+  iree_status_t status =
+      iree_async_proactor_posix_execute_sendto(sendto_op, &result);
+  if (!iree_status_is_ok(status)) {
+    iree_async_socket_set_failure(sendto_op->socket, iree_status_code(status));
+    iree_async_proactor_posix_publish_retained_completion(
+        proactor, &sendto_op->base, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+    return;
+  }
+  if (result == IREE_ASYNC_IO_WOULD_BLOCK) {
+    iree_async_proactor_posix_release_reserved_completion(proactor,
+                                                          &sendto_op->base);
+    iree_async_proactor_posix_push_pending(proactor, &sendto_op->base);
+    return;
+  }
+  iree_async_proactor_posix_publish_retained_completion(
+      proactor, &sendto_op->base, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+}
+
 //===----------------------------------------------------------------------===//
 // Submit
 //===----------------------------------------------------------------------===//
 
-// Dispatches a single operation to the appropriate backend handler.
-// Clears internal_flags for fresh submission. Does not build linked_next chains
-// or wake the poll thread — callers handle those.
-static iree_status_t iree_async_proactor_posix_submit_operation(
+static iree_status_t iree_async_proactor_posix_validate_socket(
+    iree_async_proactor_posix_t* proactor, iree_async_socket_t* socket,
+    const char* operation_name) {
+  if (!socket) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "%s socket is NULL",
+                            operation_name);
+  }
+  if (socket->proactor != &proactor->base) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "%s socket belongs to a different proactor",
+                            operation_name);
+  }
+  if (socket->primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+      socket->primitive.value.fd < 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "%s socket has an invalid POSIX descriptor",
+                            operation_name);
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t iree_async_proactor_posix_validate_file(
+    iree_async_proactor_posix_t* proactor, iree_async_file_t* file,
+    const char* operation_name) {
+  if (!file) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "%s file is NULL",
+                            operation_name);
+  }
+  if (file->proactor != &proactor->base) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "%s file belongs to a different proactor",
+                            operation_name);
+  }
+  if (file->primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+      file->primitive.value.fd < 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "%s file has an invalid POSIX descriptor",
+                            operation_name);
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t iree_async_proactor_posix_validate_address(
+    const iree_async_address_t* address, const char* operation_name) {
+  if (address->length == 0 || address->length > sizeof(address->storage)) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "%s address length %" PRIhsz " is outside the valid range [1, %zu]",
+        operation_name, address->length, sizeof(address->storage));
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t iree_async_proactor_posix_validate_span(
+    iree_async_proactor_posix_t* proactor, iree_async_span_t span,
+    iree_async_buffer_access_flags_t required_access,
+    const char* operation_name) {
+  if (!span.region) {
+    if (span.length > 0 && span.offset == 0) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "%s span has a NULL data pointer",
+                              operation_name);
+    }
+    return iree_ok_status();
+  }
+
+  iree_async_region_t* region = span.region;
+  if (region->proactor != &proactor->base) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "%s span region belongs to a different proactor",
+                            operation_name);
+  }
+  if (!iree_async_span_is_cpu_accessible(span)) {
+    return iree_make_status(
+        IREE_STATUS_FAILED_PRECONDITION,
+        "%s requires CPU-accessible memory on the POSIX backend",
+        operation_name);
+  }
+  if (!iree_all_bits_set(region->access_flags, required_access)) {
+    return iree_make_status(
+        IREE_STATUS_FAILED_PRECONDITION,
+        "%s span region does not provide required access flags 0x%08X",
+        operation_name, required_access);
+  }
+  if (span.offset > region->length ||
+      span.length > region->length - span.offset) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "%s span range [%" PRIhsz ", %" PRIhsz
+                            ") exceeds region length %" PRIhsz,
+                            operation_name, span.offset,
+                            span.offset + span.length, region->length);
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t iree_async_proactor_posix_validate_span_list(
+    iree_async_proactor_posix_t* proactor, iree_async_span_list_t spans,
+    iree_host_size_t maximum_count,
+    iree_async_buffer_access_flags_t required_access,
+    const char* operation_name) {
+  if (spans.count > maximum_count) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "%s span count %" PRIhsz
+                            " exceeds the maximum of %" PRIhsz,
+                            operation_name, spans.count, maximum_count);
+  }
+  if (spans.count > 0 && !spans.values) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "%s span list is NULL", operation_name);
+  }
+  for (iree_host_size_t i = 0; i < spans.count; ++i) {
+    IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_span(
+        proactor, spans.values[i], required_access, operation_name));
+  }
+  return iree_ok_status();
+}
+
+// Validates one public operation before the batch reserves or mutates any
+// state. The commit path relies on these checks and is intentionally
+// infallible from the submission API's perspective.
+static iree_status_t iree_async_proactor_posix_validate_operation(
     iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation) {
-  iree_async_operation_clear_internal_flags(operation);
+  const iree_async_operation_flags_t known_operation_flags =
+      IREE_ASYNC_OPERATION_FLAG_MULTISHOT | IREE_ASYNC_OPERATION_FLAG_LINKED |
+      IREE_ASYNC_OPERATION_FLAG_CANCELLATION_IS_SUCCESS;
+  if (operation->flags & ~known_operation_flags) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "operation has unknown flags 0x%08X",
+                            operation->flags & ~known_operation_flags);
+  }
+
+  bool skips_completion = false;
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
+    const iree_async_message_operation_t* message =
+        (const iree_async_message_operation_t*)operation;
+    skips_completion = iree_any_bit_set(
+        message->message_flags, IREE_ASYNC_MESSAGE_FLAG_SKIP_SOURCE_COMPLETION);
+  }
+  if (!skips_completion && !operation->completion_fn) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "operation requires a completion callback");
+  }
+
+  if (iree_any_bit_set(operation->flags, IREE_ASYNC_OPERATION_FLAG_MULTISHOT) &&
+      operation->type != IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT &&
+      operation->type != IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV &&
+      operation->type != IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "MULTISHOT is unsupported for POSIX operation type %d",
+        (int)operation->type);
+  }
+
   switch (operation->type) {
     case IREE_ASYNC_OPERATION_TYPE_NOP:
-      iree_async_proactor_posix_push_pending(proactor, operation);
+    case IREE_ASYNC_OPERATION_TYPE_TIMER:
       return iree_ok_status();
 
-    case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
-      return iree_async_proactor_posix_submit_socket_accept(
-          proactor, (iree_async_socket_accept_operation_t*)operation);
+    case IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT: {
+      iree_async_event_wait_operation_t* wait =
+          (iree_async_event_wait_operation_t*)operation;
+      if (!wait->event) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "EVENT_WAIT event is NULL");
+      }
+      if (wait->event->proactor != &proactor->base) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "EVENT_WAIT event belongs to a different proactor");
+      }
+      return iree_ok_status();
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_WAIT: {
+      iree_async_semaphore_wait_operation_t* wait =
+          (iree_async_semaphore_wait_operation_t*)operation;
+      if (wait->count > INT32_MAX) {
+        return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                                "SEMAPHORE_WAIT count %" PRIhsz
+                                " exceeds the maximum of %d",
+                                wait->count, INT32_MAX);
+      }
+      if (wait->mode != IREE_ASYNC_WAIT_MODE_ALL &&
+          wait->mode != IREE_ASYNC_WAIT_MODE_ANY) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "SEMAPHORE_WAIT mode %d is invalid",
+                                (int)wait->mode);
+      }
+      if (wait->count > 0 && (!wait->semaphores || !wait->values)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "SEMAPHORE_WAIT arrays are NULL for a non-empty wait");
+      }
+      for (iree_host_size_t i = 0; i < wait->count; ++i) {
+        if (!wait->semaphores[i]) {
+          return iree_make_status(
+              IREE_STATUS_INVALID_ARGUMENT,
+              "SEMAPHORE_WAIT semaphore %" PRIhsz " is NULL", i);
+        }
+      }
+      return iree_ok_status();
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL: {
+      iree_async_semaphore_signal_operation_t* signal =
+          (iree_async_semaphore_signal_operation_t*)operation;
+      if (signal->count > 0 && (!signal->semaphores || !signal->values)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "SEMAPHORE_SIGNAL arrays are NULL for a non-empty signal");
+      }
+      for (iree_host_size_t i = 0; i < signal->count; ++i) {
+        if (!signal->semaphores[i]) {
+          return iree_make_status(
+              IREE_STATUS_INVALID_ARGUMENT,
+              "SEMAPHORE_SIGNAL semaphore %" PRIhsz " is NULL", i);
+        }
+      }
+      return iree_ok_status();
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_SEQUENCE: {
+      iree_async_sequence_operation_t* sequence =
+          (iree_async_sequence_operation_t*)operation;
+      return iree_async_sequence_validate(sequence);
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT: {
+      iree_async_socket_accept_operation_t* accept =
+          (iree_async_socket_accept_operation_t*)operation;
+      return iree_async_proactor_posix_validate_socket(
+          proactor, accept->listen_socket, "SOCKET_ACCEPT");
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT: {
+      iree_async_socket_connect_operation_t* connect =
+          (iree_async_socket_connect_operation_t*)operation;
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_socket(
+          proactor, connect->socket, "SOCKET_CONNECT"));
+      return iree_async_proactor_posix_validate_address(&connect->address,
+                                                        "SOCKET_CONNECT");
+    }
 
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV: {
-      iree_async_socket_recv_operation_t* recv_op =
+      iree_async_socket_recv_operation_t* recv =
           (iree_async_socket_recv_operation_t*)operation;
-      iree_async_proactor_posix_materialize_iovecs(
-          (struct iovec*)recv_op->platform.posix.iovecs, &recv_op->buffers);
-      iree_async_proactor_posix_push_pending(proactor, operation);
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_socket(
+          proactor, recv->socket, "SOCKET_RECV"));
+      return iree_async_proactor_posix_validate_span_list(
+          proactor, recv->buffers, IREE_ASYNC_SOCKET_RECV_MAX_BUFFERS,
+          IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE, "SOCKET_RECV");
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL: {
+      iree_async_socket_recv_pool_operation_t* recv =
+          (iree_async_socket_recv_pool_operation_t*)operation;
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_socket(
+          proactor, recv->socket, "SOCKET_RECV_POOL"));
+      if (!recv->pool) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "SOCKET_RECV_POOL pool is NULL");
+      }
+      iree_async_region_t* region = iree_async_buffer_pool_region(recv->pool);
+      if (region->proactor != &proactor->base) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "SOCKET_RECV_POOL region belongs to a different proactor");
+      }
+      if (!iree_any_bit_set(region->access_flags,
+                            IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE)) {
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "SOCKET_RECV_POOL region does not provide WRITE access");
+      }
+      if (!region->base_ptr) {
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "SOCKET_RECV_POOL requires CPU-accessible memory on POSIX");
+      }
       return iree_ok_status();
     }
 
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND: {
-      // Eager send: attempt writev during submit as a latency optimization.
-      // When the socket buffer has space, data is consumed immediately
-      // without a poll-thread round-trip. On EAGAIN (buffer full, zero bytes
-      // consumed), defer to the poll loop for POLLOUT-driven retry, matching
-      // io_uring's internal async-poll behavior. Buffer data remains valid
-      // until the completion callback (async contract).
-      iree_async_socket_send_operation_t* send_op =
+      iree_async_socket_send_operation_t* send =
           (iree_async_socket_send_operation_t*)operation;
-      // Fail immediately if the socket already has a sticky failure (e.g.,
-      // ECONNRESET from a prior recv). Without this, eager writev() deposits
-      // data in the kernel buffer and reports success even on broken
-      // connections, bypassing error detection entirely.
-      iree_status_t send_failure =
-          iree_async_socket_query_failure(send_op->socket);
-      if (!iree_status_is_ok(send_failure)) {
-        return iree_async_proactor_posix_complete_on_submit(
-            proactor, operation, iree_status_clone(send_failure),
-            IREE_ASYNC_COMPLETION_FLAG_NONE);
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_socket(
+          proactor, send->socket, "SOCKET_SEND"));
+      if (send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "SOCKET_SEND has unknown flags 0x%08X",
+            send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE);
       }
-      iree_async_proactor_posix_materialize_iovecs(
-          (struct iovec*)send_op->platform.posix.iovecs, &send_op->buffers);
-      iree_async_io_result_t send_result = IREE_ASYNC_IO_COMPLETE;
-      iree_status_t send_status =
-          iree_async_proactor_posix_execute_send(send_op, &send_result);
-      if (send_result == IREE_ASYNC_IO_WOULD_BLOCK) {
-        iree_async_proactor_posix_push_pending(proactor, operation);
-        return iree_ok_status();
-      }
-      if (!iree_status_is_ok(send_status)) {
-        iree_async_socket_set_failure(send_op->socket,
-                                      iree_status_code(send_status));
-      }
-      return iree_async_proactor_posix_complete_on_submit(
-          proactor, operation, send_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
-    }
-
-    case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM: {
-      iree_async_socket_recvfrom_operation_t* recvfrom_op =
-          (iree_async_socket_recvfrom_operation_t*)operation;
-      iree_async_proactor_posix_materialize_iovecs(
-          (struct iovec*)recvfrom_op->platform.posix.iovecs,
-          &recvfrom_op->buffers);
-      iree_async_proactor_posix_push_pending(proactor, operation);
-      return iree_ok_status();
+      return iree_async_proactor_posix_validate_span_list(
+          proactor, send->buffers, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS,
+          IREE_ASYNC_BUFFER_ACCESS_FLAG_READ, "SOCKET_SEND");
     }
 
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO: {
-      // Eager sendto: same latency optimization as SOCKET_SEND above.
-      // On EAGAIN, defer to poll loop for POLLOUT-driven retry.
-      iree_async_socket_sendto_operation_t* sendto_op =
+      iree_async_socket_sendto_operation_t* send =
           (iree_async_socket_sendto_operation_t*)operation;
-      iree_status_t sendto_failure =
-          iree_async_socket_query_failure(sendto_op->socket);
-      if (!iree_status_is_ok(sendto_failure)) {
-        return iree_async_proactor_posix_complete_on_submit(
-            proactor, operation, iree_status_clone(sendto_failure),
-            IREE_ASYNC_COMPLETION_FLAG_NONE);
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_socket(
+          proactor, send->socket, "SOCKET_SENDTO"));
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_address(
+          &send->destination, "SOCKET_SENDTO"));
+      if (send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "SOCKET_SENDTO has unknown flags 0x%08X",
+            send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE);
       }
-      iree_async_proactor_posix_materialize_iovecs(
-          (struct iovec*)sendto_op->platform.posix.iovecs, &sendto_op->buffers);
-      iree_async_io_result_t sendto_result = IREE_ASYNC_IO_COMPLETE;
-      iree_status_t sendto_status =
-          iree_async_proactor_posix_execute_sendto(sendto_op, &sendto_result);
-      if (sendto_result == IREE_ASYNC_IO_WOULD_BLOCK) {
+      return iree_async_proactor_posix_validate_span_list(
+          proactor, send->buffers, IREE_ASYNC_SOCKET_SENDTO_MAX_BUFFERS,
+          IREE_ASYNC_BUFFER_ACCESS_FLAG_READ, "SOCKET_SENDTO");
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM: {
+      iree_async_socket_recvfrom_operation_t* recv =
+          (iree_async_socket_recvfrom_operation_t*)operation;
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_socket(
+          proactor, recv->socket, "SOCKET_RECVFROM"));
+      return iree_async_proactor_posix_validate_span_list(
+          proactor, recv->buffers, IREE_ASYNC_SOCKET_RECVFROM_MAX_BUFFERS,
+          IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE, "SOCKET_RECVFROM");
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_CLOSE: {
+      iree_async_socket_close_operation_t* close =
+          (iree_async_socket_close_operation_t*)operation;
+      return iree_async_proactor_posix_validate_socket(proactor, close->socket,
+                                                       "SOCKET_CLOSE");
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_FILE_OPEN: {
+      iree_async_file_open_operation_t* open =
+          (iree_async_file_open_operation_t*)operation;
+      const iree_async_file_open_flags_t known_open_flags =
+          IREE_ASYNC_FILE_OPEN_FLAG_READ | IREE_ASYNC_FILE_OPEN_FLAG_WRITE |
+          IREE_ASYNC_FILE_OPEN_FLAG_CREATE |
+          IREE_ASYNC_FILE_OPEN_FLAG_TRUNCATE |
+          IREE_ASYNC_FILE_OPEN_FLAG_APPEND | IREE_ASYNC_FILE_OPEN_FLAG_DIRECT;
+      if (!open->path) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "FILE_OPEN path is NULL");
+      }
+      if (open->open_flags & ~known_open_flags) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "FILE_OPEN has unknown flags 0x%08X",
+                                open->open_flags & ~known_open_flags);
+      }
+      if (!iree_any_bit_set(open->open_flags,
+                            IREE_ASYNC_FILE_OPEN_FLAG_READ |
+                                IREE_ASYNC_FILE_OPEN_FLAG_WRITE)) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "FILE_OPEN requires READ, WRITE, or both");
+      }
+      if (iree_any_bit_set(open->open_flags,
+                           IREE_ASYNC_FILE_OPEN_FLAG_CREATE |
+                               IREE_ASYNC_FILE_OPEN_FLAG_TRUNCATE |
+                               IREE_ASYNC_FILE_OPEN_FLAG_APPEND) &&
+          !iree_any_bit_set(open->open_flags,
+                            IREE_ASYNC_FILE_OPEN_FLAG_WRITE)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "FILE_OPEN create, truncate, and append flags require WRITE");
+      }
+      return iree_ok_status();
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_FILE_READ: {
+      iree_async_file_read_operation_t* read =
+          (iree_async_file_read_operation_t*)operation;
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_file(
+          proactor, read->file, "FILE_READ"));
+      return iree_async_proactor_posix_validate_span(
+          proactor, read->buffer, IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE,
+          "FILE_READ");
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_FILE_WRITE: {
+      iree_async_file_write_operation_t* write =
+          (iree_async_file_write_operation_t*)operation;
+      IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_file(
+          proactor, write->file, "FILE_WRITE"));
+      return iree_async_proactor_posix_validate_span(
+          proactor, write->buffer, IREE_ASYNC_BUFFER_ACCESS_FLAG_READ,
+          "FILE_WRITE");
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_FILE_CLOSE: {
+      iree_async_file_close_operation_t* close =
+          (iree_async_file_close_operation_t*)operation;
+      return iree_async_proactor_posix_validate_file(proactor, close->file,
+                                                     "FILE_CLOSE");
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT: {
+      iree_async_notification_wait_operation_t* wait =
+          (iree_async_notification_wait_operation_t*)operation;
+      if (!wait->notification) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "NOTIFICATION_WAIT notification is NULL");
+      }
+      if (wait->notification->proactor != &proactor->base) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "NOTIFICATION_WAIT notification belongs to a different proactor");
+      }
+      if (wait->wait_flags &
+          ~IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "NOTIFICATION_WAIT has unknown flags 0x%08X",
+            wait->wait_flags &
+                ~IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN);
+      }
+      return iree_ok_status();
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL: {
+      iree_async_notification_signal_operation_t* signal =
+          (iree_async_notification_signal_operation_t*)operation;
+      if (!signal->notification) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "NOTIFICATION_SIGNAL notification is NULL");
+      }
+      if (signal->notification->proactor != &proactor->base) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "NOTIFICATION_SIGNAL notification belongs to a different "
+            "proactor");
+      }
+      if (signal->wake_count < 0) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "NOTIFICATION_SIGNAL wake count must be non-negative");
+      }
+      return iree_ok_status();
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL: {
+      iree_async_handle_poll_operation_t* poll =
+          (iree_async_handle_poll_operation_t*)operation;
+      if (poll->primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+          poll->primitive.value.fd < 0) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "HANDLE_POLL requires a valid POSIX descriptor");
+      }
+      return iree_ok_status();
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_MESSAGE: {
+      iree_async_message_operation_t* message =
+          (iree_async_message_operation_t*)operation;
+      IREE_RETURN_IF_ERROR(iree_async_message_operation_validate(message));
+      if (message->message_flags &
+          ~IREE_ASYNC_MESSAGE_FLAG_SKIP_SOURCE_COMPLETION) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT, "MESSAGE has unknown flags 0x%08X",
+            message->message_flags &
+                ~IREE_ASYNC_MESSAGE_FLAG_SKIP_SOURCE_COMPLETION);
+      }
+      if (message->target->vtable != &iree_async_proactor_posix_vtable) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "MESSAGE target must be a POSIX proactor from the same backend");
+      }
+      return iree_ok_status();
+    }
+
+    case IREE_ASYNC_OPERATION_TYPE_FUTEX_WAIT:
+    case IREE_ASYNC_OPERATION_TYPE_FUTEX_WAKE:
+    default:
+      return iree_make_status(
+          IREE_STATUS_UNIMPLEMENTED,
+          "POSIX proactor does not support operation type %d",
+          (int)operation->type);
+  }
+}
+
+static bool iree_async_proactor_posix_requires_submit_completion(
+    const iree_async_operation_t* operation) {
+  switch (operation->type) {
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
+      return !iree_any_bit_set(operation->flags,
+                               IREE_ASYNC_OPERATION_FLAG_MULTISHOT);
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT:
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND:
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO:
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_CLOSE:
+    case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL:
+    case IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_WAIT:
+    case IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL:
+      return true;
+    case IREE_ASYNC_OPERATION_TYPE_MESSAGE: {
+      const iree_async_message_operation_t* message =
+          (const iree_async_message_operation_t*)operation;
+      return !iree_any_bit_set(message->message_flags,
+                               IREE_ASYNC_MESSAGE_FLAG_SKIP_SOURCE_COMPLETION);
+    }
+    default:
+      return false;
+  }
+}
+
+// Reserves every bounded record needed by an active operation. Nothing is
+// published until the complete batch has reserved successfully.
+static iree_status_t iree_async_proactor_posix_reserve_operation(
+    iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation) {
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
+    iree_async_message_operation_t* message =
+        (iree_async_message_operation_t*)operation;
+    iree_async_proactor_posix_t* target =
+        iree_async_proactor_posix_cast(message->target);
+    iree_async_message_pool_entry_t* target_entry = NULL;
+    IREE_RETURN_IF_ERROR(
+        iree_async_message_pool_acquire(&target->message_pool, &target_entry));
+    message->platform.software.reserved_entry = target_entry;
+  }
+
+  if (iree_async_proactor_posix_requires_submit_completion(operation)) {
+    iree_async_posix_completion_t* completion =
+        iree_async_posix_completion_pool_acquire(&proactor->completion_pool);
+    if (!completion) {
+      return iree_make_status(
+          IREE_STATUS_RESOURCE_EXHAUSTED,
+          "completion pool exhausted while reserving a submission batch; "
+          "reduce the batch size or poll before retrying");
+    }
+    operation->next = (iree_async_operation_t*)completion;
+  }
+  return iree_ok_status();
+}
+
+static void iree_async_proactor_posix_rollback_reservations(
+    iree_async_proactor_posix_t* proactor,
+    iree_async_operation_list_t operations) {
+  iree_async_continuation_chain_iterator_t iterator =
+      iree_async_continuation_chain_iterator_make(operations);
+  iree_async_operation_t* operation = NULL;
+  while ((operation = iree_async_continuation_chain_iterator_next(&iterator)) !=
+         NULL) {
+    if (operation->next) {
+      iree_async_posix_completion_t* completion =
+          (iree_async_posix_completion_t*)operation->next;
+      operation->next = NULL;
+      iree_async_posix_completion_pool_release(&proactor->completion_pool,
+                                               completion);
+    }
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
+      iree_async_message_operation_t* message =
+          (iree_async_message_operation_t*)operation;
+      iree_async_message_pool_entry_t* target_entry =
+          (iree_async_message_pool_entry_t*)
+              message->platform.software.reserved_entry;
+      if (target_entry) {
+        iree_async_proactor_posix_t* target =
+            iree_async_proactor_posix_cast(message->target);
+        message->platform.software.reserved_entry = NULL;
+        iree_async_message_pool_release(&target->message_pool, target_entry);
+      }
+    }
+  }
+}
+
+// Commits one fully validated and reserved operation. No branch can reject the
+// operation after this point; local failures become poll-thread completions.
+static void iree_async_proactor_posix_commit_operation(
+    iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation) {
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+    iree_async_sequence_prepare_for_submission(
+        (iree_async_sequence_operation_t*)operation);
+  } else {
+    iree_async_operation_clear_internal_flags(operation);
+  }
+
+  switch (operation->type) {
+    case IREE_ASYNC_OPERATION_TYPE_NOP:
+      iree_async_proactor_posix_push_pending(proactor, operation);
+      return;
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
+      if (iree_any_bit_set(operation->flags,
+                           IREE_ASYNC_OPERATION_FLAG_MULTISHOT)) {
         iree_async_proactor_posix_push_pending(proactor, operation);
-        return iree_ok_status();
+      } else {
+        iree_async_proactor_posix_commit_socket_accept(
+            proactor, (iree_async_socket_accept_operation_t*)operation);
       }
-      if (!iree_status_is_ok(sendto_status)) {
-        iree_async_socket_set_failure(sendto_op->socket,
-                                      iree_status_code(sendto_status));
-      }
-      return iree_async_proactor_posix_complete_on_submit(
-          proactor, operation, sendto_status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+      return;
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT:
+      iree_async_proactor_posix_commit_socket_connect(
+          proactor, (iree_async_socket_connect_operation_t*)operation);
+      return;
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV: {
+      iree_async_socket_recv_operation_t* recv =
+          (iree_async_socket_recv_operation_t*)operation;
+      recv->bytes_received = 0;
+      iree_async_proactor_posix_materialize_iovecs(
+          (struct iovec*)recv->platform.posix.iovecs, &recv->buffers);
+      iree_async_proactor_posix_push_pending(proactor, operation);
+      return;
     }
 
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL:
-      return iree_async_proactor_posix_submit_recv_pool(
+      iree_async_proactor_posix_commit_recv_pool(
           proactor, (iree_async_socket_recv_pool_operation_t*)operation);
+      return;
 
-    case IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT:
-      return iree_async_proactor_posix_submit_socket_connect(
-          proactor, (iree_async_socket_connect_operation_t*)operation);
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND:
+      iree_async_proactor_posix_commit_socket_send(
+          proactor, (iree_async_socket_send_operation_t*)operation);
+      return;
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO:
+      iree_async_proactor_posix_commit_socket_sendto(
+          proactor, (iree_async_socket_sendto_operation_t*)operation);
+      return;
+
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM: {
+      iree_async_socket_recvfrom_operation_t* recv =
+          (iree_async_socket_recvfrom_operation_t*)operation;
+      recv->bytes_received = 0;
+      memset(&recv->sender, 0, sizeof(recv->sender));
+      iree_async_proactor_posix_materialize_iovecs(
+          (struct iovec*)recv->platform.posix.iovecs, &recv->buffers);
+      iree_async_proactor_posix_push_pending(proactor, operation);
+      return;
+    }
 
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_CLOSE:
-      return iree_async_proactor_posix_submit_socket_close(
+      iree_async_proactor_posix_commit_socket_close(
           proactor, (iree_async_socket_close_operation_t*)operation);
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_TIMER:
-      return iree_async_proactor_posix_submit_timer(
+      iree_async_proactor_posix_commit_timer(
           proactor, (iree_async_timer_operation_t*)operation);
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT:
-      return iree_async_proactor_posix_submit_event_wait(
+      iree_async_proactor_posix_commit_event_wait(
           proactor, (iree_async_event_wait_operation_t*)operation);
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL:
-      return iree_async_proactor_posix_submit_handle_poll(
+      iree_async_proactor_posix_commit_handle_poll(
           proactor, (iree_async_handle_poll_operation_t*)operation);
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT:
-      return iree_async_proactor_posix_submit_notification_wait(
+      iree_async_proactor_posix_commit_notification_wait(
           proactor, (iree_async_notification_wait_operation_t*)operation);
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL:
-      return iree_async_proactor_posix_submit_notification_signal(
+      iree_async_proactor_posix_commit_notification_signal(
           proactor, (iree_async_notification_signal_operation_t*)operation);
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_WAIT:
-      return iree_async_proactor_posix_submit_semaphore_wait(
+      iree_async_proactor_posix_commit_semaphore_wait(
           proactor, (iree_async_semaphore_wait_operation_t*)operation);
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL:
-      return iree_async_proactor_posix_submit_semaphore_signal(
+      iree_async_proactor_posix_commit_semaphore_signal(
           proactor, (iree_async_semaphore_signal_operation_t*)operation);
+      return;
+
+    case IREE_ASYNC_OPERATION_TYPE_SEQUENCE:
+      iree_async_proactor_posix_push_pending(proactor, operation);
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_FILE_OPEN:
     case IREE_ASYNC_OPERATION_TYPE_FILE_READ:
     case IREE_ASYNC_OPERATION_TYPE_FILE_WRITE:
     case IREE_ASYNC_OPERATION_TYPE_FILE_CLOSE:
       iree_async_proactor_posix_push_pending(proactor, operation);
-      return iree_ok_status();
+      return;
 
     case IREE_ASYNC_OPERATION_TYPE_MESSAGE:
-      return iree_async_proactor_posix_submit_message(
+      iree_async_proactor_posix_commit_message(
           proactor, (iree_async_message_operation_t*)operation);
+      return;
 
-    case IREE_ASYNC_OPERATION_TYPE_SEQUENCE: {
-      iree_async_sequence_operation_t* sequence =
-          (iree_async_sequence_operation_t*)operation;
-      if (!sequence->step_fn) {
-        return iree_async_sequence_submit_as_linked(&proactor->base, sequence);
-      } else {
-        return iree_async_sequence_emulation_begin(&proactor->sequence_emulator,
-                                                   sequence);
-      }
-    }
-
+    case IREE_ASYNC_OPERATION_TYPE_FUTEX_WAIT:
+    case IREE_ASYNC_OPERATION_TYPE_FUTEX_WAKE:
     default:
-      return iree_make_status(
-          IREE_STATUS_UNIMPLEMENTED,
-          "POSIX proactor does not yet support operation type %d",
-          (int)operation->type);
+      IREE_ASSERT_UNREACHABLE("operation type must be validated");
+      IREE_BUILTIN_UNREACHABLE();
   }
+}
+
+// Submits a list whose LINKED topology has already been established. Public
+// batches arrive here after continuation preparation; continuation dispatch
+// supplies a single pre-linked chain head.
+static iree_status_t iree_async_proactor_posix_submit_prepared(
+    iree_async_proactor_posix_t* proactor,
+    iree_async_operation_list_t operations) {
+  for (iree_host_size_t i = 0; i < operations.count; ++i) {
+    IREE_RETURN_IF_ERROR(iree_async_proactor_posix_validate_operation(
+        proactor, operations.values[i]));
+  }
+
+  // Clear reservation scratch for active heads before any acquisition. Linked
+  // successors remain owned by their predecessors and are admitted later.
+  iree_async_continuation_chain_iterator_t clear_iterator =
+      iree_async_continuation_chain_iterator_make(operations);
+  iree_async_operation_t* operation = NULL;
+  while ((operation = iree_async_continuation_chain_iterator_next(
+              &clear_iterator)) != NULL) {
+    operation->next = NULL;
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
+      ((iree_async_message_operation_t*)operation)
+          ->platform.software.reserved_entry = NULL;
+    }
+  }
+
+  iree_async_continuation_chain_iterator_t reserve_iterator =
+      iree_async_continuation_chain_iterator_make(operations);
+  while ((operation = iree_async_continuation_chain_iterator_next(
+              &reserve_iterator)) != NULL) {
+    iree_status_t status =
+        iree_async_proactor_posix_reserve_operation(proactor, operation);
+    if (!iree_status_is_ok(status)) {
+      iree_async_proactor_posix_rollback_reservations(proactor, operations);
+      return status;
+    }
+  }
+
+  bool committed_any = false;
+  iree_async_continuation_chain_iterator_t commit_iterator =
+      iree_async_continuation_chain_iterator_make(operations);
+  while ((operation = iree_async_continuation_chain_iterator_next(
+              &commit_iterator)) != NULL) {
+    committed_any = true;
+    iree_async_proactor_posix_commit_operation(proactor, operation);
+  }
+  if (committed_any) {
+    iree_async_proactor_posix_wake_poll_thread(proactor);
+  }
+  return iree_ok_status();
 }
 
 static iree_status_t iree_async_proactor_posix_submit(
@@ -1355,44 +2037,17 @@ static iree_status_t iree_async_proactor_posix_submit(
   }
 
   IREE_RETURN_IF_ERROR(iree_async_continuation_prepare_batch(operations));
-  for (iree_host_size_t i = 0; i < operations.count; ++i) {
-    if (operations.values[i]->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
-      IREE_RETURN_IF_ERROR(iree_async_message_operation_validate(
-          (const iree_async_message_operation_t*)operations.values[i]));
-    }
-  }
-
-  for (iree_host_size_t i = 0; i < operations.count; ++i) {
-    iree_async_operation_t* operation = operations.values[i];
-
-    // Skip continuation operations — they are held in the predecessor's
-    // linked_next and will be submitted when it completes.
-    if (i > 0 && iree_any_bit_set(operations.values[i - 1]->flags,
-                                  IREE_ASYNC_OPERATION_FLAG_LINKED)) {
-      continue;
-    }
-
-    IREE_RETURN_IF_ERROR(
-        iree_async_proactor_posix_submit_operation(proactor, operation));
-  }
-
-  if (operations.count > 0) {
-    iree_async_proactor_posix_wake_poll_thread(proactor);
-  }
-
-  return iree_ok_status();
+  return iree_async_proactor_posix_submit_prepared(proactor, operations);
 }
 
 iree_status_t iree_async_proactor_posix_submit_continuation(
     void* user_data, iree_async_operation_t* chain_head) {
   iree_async_proactor_posix_t* proactor =
       (iree_async_proactor_posix_t*)user_data;
-  iree_status_t status =
-      iree_async_proactor_posix_submit_operation(proactor, chain_head);
-  if (iree_status_is_ok(status)) {
-    iree_async_proactor_posix_wake_poll_thread(proactor);
-  }
-  return status;
+  iree_async_operation_t* operations[] = {chain_head};
+  return iree_async_proactor_posix_submit_prepared(
+      proactor,
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations)));
 }
 
 //===----------------------------------------------------------------------===//

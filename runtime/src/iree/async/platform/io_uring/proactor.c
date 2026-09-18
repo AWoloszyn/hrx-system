@@ -500,6 +500,17 @@ iree_async_proactor_io_uring_drain_pending_software_completions(
     iree_status_t status = (iree_status_t)(uintptr_t)operation->linked_next;
     operation->linked_next = NULL;
 
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+      iree_async_sequence_operation_t* sequence =
+          (iree_async_sequence_operation_t*)operation;
+      if (iree_status_is_ok(status) &&
+          iree_any_bit_set(iree_async_operation_load_internal_flags(operation),
+                           IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED)) {
+        status = iree_status_from_code(IREE_STATUS_CANCELLED);
+      }
+      iree_async_sequence_prepare_for_completion(sequence);
+    }
+
     // Release resources retained at submit time.
     iree_async_operation_release_resources(operation);
 

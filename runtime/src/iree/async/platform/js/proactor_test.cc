@@ -421,7 +421,7 @@ TEST_F(JsProactorTest, MixedLinkedAndUnlinkedBatch) {
 // SEQUENCE operations
 //===----------------------------------------------------------------------===//
 
-TEST_F(JsProactorTest, ZeroStepSequenceCompletesImmediately) {
+TEST_F(JsProactorTest, ZeroStepSequenceCompletesFromPoll) {
   iree_status_code_t status_code = IREE_STATUS_INTERNAL;
   iree_async_sequence_operation_t sequence = {};
   sequence.base.type = IREE_ASYNC_OPERATION_TYPE_SEQUENCE;
@@ -431,8 +431,13 @@ TEST_F(JsProactorTest, ZeroStepSequenceCompletesImmediately) {
   sequence.step_count = 0;
   sequence.step_fn = nullptr;
 
-  // Zero-step sequence completes synchronously during submit.
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &sequence.base));
+  EXPECT_EQ(status_code, IREE_STATUS_INTERNAL);
+
+  iree_host_size_t completed_count = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(completed_count, 1u);
   EXPECT_EQ(status_code, IREE_STATUS_OK);
 }
 

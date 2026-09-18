@@ -429,15 +429,6 @@ static inline iree_async_operation_list_t iree_async_operation_list_make(
   return list;
 }
 
-// Creates an operation list containing a single operation.
-static inline iree_async_operation_list_t iree_async_operation_list_from_one(
-    iree_async_operation_t* operation) {
-  iree_async_operation_list_t list;
-  list.values = &operation;
-  list.count = 1;
-  return list;
-}
-
 // Returns an empty operation list.
 static inline iree_async_operation_list_t iree_async_operation_list_empty(
     void) {

@@ -27,6 +27,22 @@ struct TestContext {
   std::vector<CompletionRecord> completions;
 };
 
+struct ReuseContext {
+  iree_host_size_t call_count = 0;
+};
+
+static void ReinitializeOnCompletion(void* user_data,
+                                     iree_async_operation_t* operation,
+                                     iree_status_t status,
+                                     iree_async_completion_flags_t flags) {
+  (void)flags;
+  ReuseContext* context = static_cast<ReuseContext*>(user_data);
+  ++context->call_count;
+  iree_status_free(status);
+  iree_async_operation_initialize(operation, IREE_ASYNC_OPERATION_TYPE_NOP,
+                                  IREE_ASYNC_OPERATION_FLAG_NONE,
+                                  ReinitializeOnCompletion, context);
+}
 static void RecordCompletion(void* user_data, iree_async_operation_t* operation,
                              iree_status_t status,
                              iree_async_completion_flags_t flags) {
@@ -57,8 +73,50 @@ class ContinuationTest : public ::testing::Test {
   }
 
   TestContext context_;
-  iree_async_operation_t operations_[3];
+  iree_async_operation_t operations_[5];
 };
+
+TEST_F(ContinuationTest, ChainIteratorAdvancesBeforeReturningHead) {
+  ReuseContext reuse_context;
+  operations_[0].flags = IREE_ASYNC_OPERATION_FLAG_LINKED;
+  operations_[0].completion_fn = ReinitializeOnCompletion;
+  operations_[0].user_data = &reuse_context;
+  operations_[2].flags = IREE_ASYNC_OPERATION_FLAG_LINKED;
+  operations_[2].completion_fn = ReinitializeOnCompletion;
+  operations_[2].user_data = &reuse_context;
+  operations_[4].completion_fn = ReinitializeOnCompletion;
+  operations_[4].user_data = &reuse_context;
+  iree_async_operation_t* operation_ptrs[] = {&operations_[0], &operations_[1],
+                                              &operations_[2], &operations_[3],
+                                              &operations_[4]};
+  iree_async_operation_list_t operation_list = iree_async_operation_list_make(
+      operation_ptrs, IREE_ARRAYSIZE(operation_ptrs));
+  IREE_ASSERT_OK(iree_async_continuation_prepare_batch(operation_list));
+
+  iree_async_continuation_chain_iterator_t iterator =
+      iree_async_continuation_chain_iterator_make(operation_list);
+  iree_async_operation_t* first_head =
+      iree_async_continuation_chain_iterator_next(&iterator);
+  EXPECT_EQ(first_head, &operations_[0]);
+
+  // Model a final callback immediately reusing the published chain head. The
+  // iterator must have already consumed its original LINKED flag.
+  first_head->completion_fn(first_head->user_data, first_head, iree_ok_status(),
+                            IREE_ASYNC_COMPLETION_FLAG_NONE);
+  iree_async_operation_t* second_head =
+      iree_async_continuation_chain_iterator_next(&iterator);
+  EXPECT_EQ(second_head, &operations_[2]);
+
+  second_head->completion_fn(second_head->user_data, second_head,
+                             iree_ok_status(), IREE_ASYNC_COMPLETION_FLAG_NONE);
+  iree_async_operation_t* third_head =
+      iree_async_continuation_chain_iterator_next(&iterator);
+  EXPECT_EQ(third_head, &operations_[4]);
+  third_head->completion_fn(third_head->user_data, third_head, iree_ok_status(),
+                            IREE_ASYNC_COMPLETION_FLAG_NONE);
+  EXPECT_EQ(iree_async_continuation_chain_iterator_next(&iterator), nullptr);
+  EXPECT_EQ(reuse_context.call_count, 3u);
+}
 
 TEST_F(ContinuationTest, PrepareBatchBuildsIntrusiveChains) {
   operations_[0].flags = IREE_ASYNC_OPERATION_FLAG_LINKED;

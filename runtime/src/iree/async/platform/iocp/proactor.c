@@ -928,6 +928,21 @@ static iree_host_size_t iree_async_proactor_iocp_drain_pending_queue(
             IREE_ASYNC_COMPLETION_FLAG_NONE, &direct_completions);
         break;
 
+      case IREE_ASYNC_OPERATION_TYPE_SEQUENCE: {
+        iree_status_t status =
+            iree_any_bit_set(
+                iree_async_operation_load_internal_flags(operation),
+                IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED)
+                ? iree_status_from_code(IREE_STATUS_CANCELLED)
+                : iree_ok_status();
+        iree_async_sequence_prepare_for_completion(
+            (iree_async_sequence_operation_t*)operation);
+        iree_async_proactor_iocp_dispatch_completion(
+            proactor, operation, status, IREE_ASYNC_COMPLETION_FLAG_NONE,
+            &direct_completions);
+        break;
+      }
+
       case IREE_ASYNC_OPERATION_TYPE_TIMER: {
         iree_async_iocp_timer_list_insert(
             &proactor->timers, (iree_async_timer_operation_t*)operation);

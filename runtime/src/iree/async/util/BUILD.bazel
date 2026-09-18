@@ -222,6 +222,7 @@ iree_runtime_cc_library(
         ":operation_completion",
         "//runtime/src/iree/async",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
     ],
 )
 

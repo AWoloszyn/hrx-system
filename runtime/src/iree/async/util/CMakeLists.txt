@@ -259,6 +259,7 @@ iree_cc_library(
     ::operation_completion
     iree::async
     iree::base
+    iree::base::threading
   PUBLIC
 )
 

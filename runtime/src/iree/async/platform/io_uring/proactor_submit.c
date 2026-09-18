@@ -1376,6 +1376,15 @@ static iree_status_t iree_async_proactor_io_uring_submit_sequences(
     }
     iree_async_sequence_operation_t* sequence =
         (iree_async_sequence_operation_t*)operations.values[i];
+    iree_async_sequence_prepare_for_submission(sequence);
+    if (sequence->step_count == 0) {
+      iree_async_operation_retain_resources(&sequence->base);
+      IREE_TRACE(sequence->base.submit_time_ns = iree_time_now();)
+      iree_async_proactor_io_uring_push_software_completion(
+          proactor, &sequence->base, iree_ok_status());
+      iree_async_proactor_wake(base_proactor);
+      continue;
+    }
     iree_status_t status;
     if (!sequence->step_fn) {
       status = iree_async_sequence_submit_as_linked(base_proactor, sequence);
@@ -1405,6 +1414,10 @@ iree_status_t iree_async_proactor_io_uring_submit(
     if (operations.values[i]->type == IREE_ASYNC_OPERATION_TYPE_MESSAGE) {
       IREE_RETURN_IF_ERROR(iree_async_message_operation_validate(
           (const iree_async_message_operation_t*)operations.values[i]));
+    } else if (operations.values[i]->type ==
+               IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+      IREE_RETURN_IF_ERROR(iree_async_sequence_validate(
+          (const iree_async_sequence_operation_t*)operations.values[i]));
     }
   }
 

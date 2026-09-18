@@ -97,6 +97,15 @@ static iree_status_t iree_async_proactor_js_submit_one(
     case IREE_ASYNC_OPERATION_TYPE_SEQUENCE: {
       iree_async_sequence_operation_t* sequence =
           (iree_async_sequence_operation_t*)operation;
+      IREE_RETURN_IF_ERROR(iree_async_sequence_validate(sequence));
+      iree_async_sequence_prepare_for_submission(sequence);
+      if (sequence->step_count == 0) {
+        iree_async_operation_retain_resources(operation);
+        IREE_TRACE(operation->submit_time_ns = iree_time_now();)
+        iree_async_proactor_js_ready_enqueue(proactor, operation);
+        iree_async_js_import_schedule_drain();
+        return iree_ok_status();
+      }
       if (!sequence->step_fn) {
         return iree_async_sequence_submit_as_linked(&proactor->base, sequence);
       } else {
@@ -244,7 +253,13 @@ static iree_host_size_t iree_async_proactor_js_drain_ready(
   while ((operation = iree_async_proactor_js_ready_dequeue(proactor)) != NULL) {
     iree_async_operation_internal_flags_t internal_flags =
         iree_atomic_load(&operation->internal_flags, iree_memory_order_relaxed);
-    if (internal_flags & IREE_ASYNC_JS_OPERATION_INTERNAL_FLAG_CANCELLED) {
+    bool is_cancelled = iree_any_bit_set(
+        internal_flags, IREE_ASYNC_JS_OPERATION_INTERNAL_FLAG_CANCELLED);
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+      iree_async_sequence_prepare_for_completion(
+          (iree_async_sequence_operation_t*)operation);
+    }
+    if (is_cancelled) {
       count += iree_async_proactor_js_complete(
           proactor, operation, iree_status_from_code(IREE_STATUS_CANCELLED),
           IREE_ASYNC_COMPLETION_FLAG_NONE);

@@ -1098,6 +1098,12 @@ static iree_status_t iree_async_proactor_iocp_submit_operation(
     case IREE_ASYNC_OPERATION_TYPE_SEQUENCE: {
       iree_async_sequence_operation_t* sequence =
           (iree_async_sequence_operation_t*)operation;
+      IREE_RETURN_IF_ERROR(iree_async_sequence_validate(sequence));
+      iree_async_sequence_prepare_for_submission(sequence);
+      if (sequence->step_count == 0) {
+        iree_async_proactor_iocp_push_pending(proactor, operation);
+        return iree_ok_status();
+      }
       if (!sequence->step_fn) {
         return iree_async_sequence_submit_as_linked(&proactor->base, sequence);
       } else {

@@ -37,11 +37,10 @@
 //     cancel: route to iree_async_sequence_cancel
 //
 // Thread safety:
-//   Not thread-safe. All calls happen from the poll thread (submit is called
-//   from the backend's submit path, trampolines fire from poll-dispatched
-//   callbacks). The only cross-thread interaction is cancel(), which sets a
-//   flag read by the emulation trampoline; ordering is guaranteed by the
-//   cancel-step submission and completion processing barriers.
+//   Sequence startup and progression run on the poll owner. Cancellation may
+//   run from any thread and is serialized with active-child publication using
+//   state in the sequence operation itself. User callbacks never run while
+//   that state is locked.
 
 #ifndef IREE_ASYNC_UTIL_SEQUENCE_EMULATION_H_
 #define IREE_ASYNC_UTIL_SEQUENCE_EMULATION_H_
@@ -59,8 +58,16 @@ extern "C" {
 // Internal flags (stored in sequence->base.internal_flags)
 //===----------------------------------------------------------------------===//
 
+// Serializes active-step publication with cross-thread cancellation. The lock
+// is held only while reading or updating current_step and while submitting or
+// cancelling that step; user callbacks never run under it.
+#define IREE_ASYNC_SEQUENCE_INTERNAL_STATE_LOCK (1u << 12)
+
+// An accepted child step is active at current_step.
+#define IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE (1u << 13)
+
 // A non-CANCELLED error was received from a step. The error status is buffered
-// in sequence->internal.stashed_error until every downstream cancellation
+// in sequence->internal.path.stashed_error until every downstream cancellation
 // callback has run, preserving the causal error as the sequence result.
 #define IREE_ASYNC_SEQUENCE_INTERNAL_SAW_ERROR (1u << 14)
 
@@ -68,6 +75,32 @@ extern "C" {
 // trampoline checks this before submitting the next step and aborts with
 // IREE_STATUS_CANCELLED if set.
 #define IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED (1u << 15)
+
+// Validates caller-provided sequence shape before backend admission mutates any
+// operation state. All backends must call this during whole-batch validation.
+iree_status_t iree_async_sequence_validate(
+    const iree_async_sequence_operation_t* sequence);
+
+// Resets backend-owned sequence state when the sequence is admitted.
+//
+// Backends call this once while admitting each sequence attempt, before the
+// operation becomes visible to cancellation. Sequence startup may happen
+// later on the poll owner; resetting state there would erase a cancellation
+// accepted after submit returned.
+void iree_async_sequence_prepare_for_submission(
+    iree_async_sequence_operation_t* sequence);
+
+// Establishes the terminal ownership barrier before a backend dispatches the
+// sequence's final completion. This joins any cancellation already inside the
+// sequence state lock and makes later cancellation a harmless accepted race.
+// The terminal marker remains visible while shared completion clears the base
+// operation flags and transfers ownership to the callback.
+//
+// Shared sequence execution calls this internally. Backends only need to call
+// it when they complete a sequence directly, such as a poll-owned zero-step
+// sequence or an accepted startup failure.
+void iree_async_sequence_prepare_for_completion(
+    iree_async_sequence_operation_t* sequence);
 
 //===----------------------------------------------------------------------===//
 // LINK path (step_fn == NULL)
@@ -79,9 +112,11 @@ extern "C" {
 //
 // The vtable submit call re-enters the backend's submit function, but the
 // expanded steps are not SEQUENCE type and proceed through normal processing.
+// The sequence must have passed iree_async_sequence_validate() before the
+// backend admitted it.
 //
-// Zero-step sequences complete immediately: the base callback fires with OK
-// before this function returns.
+// Backends normally handle zero-step sequences on their poll-owned completion
+// path. Direct utility callers receive an immediate terminal completion.
 //
 // The caller (backend submit path) must not touch the sequence or its steps
 // after this call. The link trampolines own them until the base callback fires.
@@ -108,7 +143,7 @@ typedef iree_status_t (*iree_async_sequence_submit_fn_t)(
 // The emulator stores no per-sequence state beyond what's already in the
 // iree_async_sequence_operation_t struct. It uses the sequence's current_step
 // field to track progress and overwrites step callbacks in-place. The emulator
-// pointer is stored in the sequence's internal.emulator union field during
+// pointer is stored in the sequence's internal.path.emulator field during
 // execution. No additional allocation.
 typedef struct iree_async_sequence_emulator_t {
   // The proactor that owns this emulator (for submitting subsequent steps).
@@ -133,18 +168,19 @@ static inline void iree_async_sequence_emulator_initialize(
 
 // Begins execution of a sequence operation via the emulation path.
 // Submits step 0 and sets up internal trampolines for step advancement.
-// The sequence's current_step is reset to 0.
-//
+// The sequence must have passed iree_async_sequence_validate() before the
+// backend admitted it.
 // The caller (backend submit path) must not touch the sequence or its steps
 // after this call — the emulator owns them until the base callback fires.
 //
-// Zero-step sequences complete immediately: the base callback fires with OK
-// before this function returns.
+// Backends normally handle zero-step sequences on their poll-owned completion
+// path. Direct utility callers receive an immediate terminal completion.
 //
-// Returns OK if step 0 was submitted successfully. If submission fails, the
-// first step is restored to its caller-owned state, no callback fires, and the
-// submission error is returned. A backend that has already admitted the
-// sequence must convert that error to a poll-thread terminal completion.
+// Returns OK if step 0 was submitted successfully. If submission fails or
+// cancellation was requested before startup, the first step remains in its
+// caller-owned state, no callback fires, and the terminal status is returned.
+// A backend that has already admitted the sequence must convert that status to
+// a poll-thread terminal completion.
 iree_status_t iree_async_sequence_emulation_begin(
     iree_async_sequence_emulator_t* emulator,
     iree_async_sequence_operation_t* sequence);
@@ -167,11 +203,13 @@ void iree_async_sequence_emulation_step_completed(
 // Sets CANCEL_REQUESTED on the sequence's internal_flags and attempts to
 // cancel the current in-flight step via iree_async_proactor_cancel().
 //
-// Always returns iree_ok_status(). The actual cancellation is asynchronous:
-// the CANCEL_REQUESTED flag guarantees both the LINK and emulation trampolines
-// will produce IREE_STATUS_CANCELLED as the sequence's final status, even if
-// the cancel-step call is a no-op (step completed between the flag-set and
-// the cancel submission).
+// Returns OK when the request is recorded before startup or between steps,
+// successfully forwarded to the active child, or races terminal completion
+// that is already committed to invoke the callback. Returns an active-child
+// cancel submission failure when the backend cannot accept that request;
+// callers may retry while the sequence remains in flight. A NOT_FOUND child
+// race is resolved as an accepted sequence cancellation because the poll
+// callback that owns progression must still observe CANCEL_REQUESTED.
 //
 // For the LINK path: the link trampoline checks CANCEL_REQUESTED on each step
 // completion. If set and no prior error, it stashes CANCELLED so the final
@@ -182,9 +220,7 @@ void iree_async_sequence_emulation_step_completed(
 // calling step_fn and again before submitting the next step, minimizing the
 // window for cancel-step races.
 //
-// Thread-safe: may be called from any thread. The CANCEL_REQUESTED flag is
-// read by the poll-thread trampoline after the cancel-step barriers provide
-// ordering.
+// Thread-safe: may be called from any thread.
 iree_status_t iree_async_sequence_cancel(
     iree_async_proactor_t* proactor, iree_async_sequence_operation_t* sequence);
 

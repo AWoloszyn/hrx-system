@@ -233,14 +233,24 @@ typedef struct iree_async_sequence_operation_t {
   // Optional inter-step callback. If NULL, io_uring may use linked SQEs.
   iree_async_step_fn_t step_fn;
 
-  // Internal state managed exclusively by the sequence_emulation
-  // implementation during execution. Callers must not access these fields.
-  union {
-    // Emulation path (step_fn != NULL): pointer to the backend's emulator.
-    void* emulator;
-    // LINK path (step_fn == NULL): first error status from a failing step,
-    // buffered until all step CQEs are processed.
-    iree_status_t stashed_error;
+  // Internal state managed exclusively by sequence execution. Callers must not
+  // access these fields.
+  struct {
+    // Proactor owning the active sequence.
+    iree_async_proactor_t* proactor;
+
+    // Whether terminal completion has begun. Protected by the sequence state
+    // lock and retained through the final callback ownership handoff.
+    bool is_terminal;
+
+    // Path-specific sequence state.
+    union {
+      // Emulation path (step_fn != NULL): owning backend emulator.
+      void* emulator;
+      // LINK path (step_fn == NULL): first error buffered until all downstream
+      // cancellation callbacks have run.
+      iree_status_t stashed_error;
+    } path;
   } internal;
 } iree_async_sequence_operation_t;
 
@@ -267,6 +277,9 @@ static inline void iree_async_sequence_operation_initialize(
   sequence->step_count = step_count;
   sequence->current_step = 0;
   sequence->step_fn = step_fn;
+  sequence->internal.proactor = NULL;
+  sequence->internal.is_terminal = false;
+  sequence->internal.path.stashed_error = NULL;
 }
 
 //===----------------------------------------------------------------------===//

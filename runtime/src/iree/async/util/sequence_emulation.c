@@ -7,6 +7,115 @@
 #include "iree/async/util/sequence_emulation.h"
 
 #include "iree/async/util/operation_completion.h"
+#include "iree/base/threading/processor.h"
+
+// Acquires the sequence state lock embedded in base.internal_flags. The lock
+// only serializes current_step publication with cancellation and is never held
+// across a user callback.
+static void iree_async_sequence_state_lock(
+    iree_async_sequence_operation_t* sequence) {
+  int32_t expected = iree_atomic_load(&sequence->base.internal_flags,
+                                      iree_memory_order_acquire);
+  for (;;) {
+    if (expected & IREE_ASYNC_SEQUENCE_INTERNAL_STATE_LOCK) {
+      iree_processor_yield();
+      expected = iree_atomic_load(&sequence->base.internal_flags,
+                                  iree_memory_order_acquire);
+      continue;
+    }
+    int32_t desired = expected | IREE_ASYNC_SEQUENCE_INTERNAL_STATE_LOCK;
+    if (iree_atomic_compare_exchange_weak(
+            &sequence->base.internal_flags, &expected, desired,
+            iree_memory_order_acquire, iree_memory_order_relaxed)) {
+      return;
+    }
+  }
+}
+
+static void iree_async_sequence_state_unlock(
+    iree_async_sequence_operation_t* sequence) {
+  iree_atomic_fetch_and(&sequence->base.internal_flags,
+                        (int32_t)~IREE_ASYNC_SEQUENCE_INTERNAL_STATE_LOCK,
+                        iree_memory_order_release);
+}
+
+static bool iree_async_sequence_is_cancel_requested(
+    iree_async_sequence_operation_t* sequence) {
+  return iree_any_bit_set(
+      iree_async_operation_load_internal_flags(&sequence->base),
+      IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED);
+}
+
+// Cancels the stable active step while the sequence state lock is held.
+static iree_status_t iree_async_sequence_cancel_active_step_locked(
+    iree_async_proactor_t* proactor,
+    iree_async_sequence_operation_t* sequence) {
+  iree_async_operation_internal_flags_t flags =
+      iree_async_operation_load_internal_flags(&sequence->base);
+  if (!iree_any_bit_set(flags, IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE)) {
+    return iree_ok_status();
+  }
+  IREE_ASSERT_LT(sequence->current_step, sequence->step_count);
+  return iree_async_proactor_cancel(proactor,
+                                    sequence->steps[sequence->current_step]);
+}
+
+iree_status_t iree_async_sequence_validate(
+    const iree_async_sequence_operation_t* sequence) {
+  if (iree_any_bit_set(sequence->base.flags,
+                       IREE_ASYNC_OPERATION_FLAG_LINKED)) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "LINKED flag on SEQUENCE operation is not supported; use the "
+        "sequence's steps array to chain operations");
+  }
+  if (sequence->step_count > 0 && !sequence->steps) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "SEQUENCE step array is NULL");
+  }
+  for (iree_host_size_t i = 0; i < sequence->step_count; ++i) {
+    if (!sequence->steps[i]) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "SEQUENCE step %" PRIhsz " is NULL", i);
+    }
+    if (sequence->steps[i] == &sequence->base) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "SEQUENCE step %" PRIhsz " is self-referential",
+                              i);
+    }
+  }
+  return iree_ok_status();
+}
+
+void iree_async_sequence_prepare_for_submission(
+    iree_async_sequence_operation_t* sequence) {
+  iree_async_sequence_state_lock(sequence);
+  iree_atomic_store(&sequence->base.internal_flags,
+                    IREE_ASYNC_SEQUENCE_INTERNAL_STATE_LOCK,
+                    iree_memory_order_relaxed);
+  sequence->current_step = 0;
+  sequence->internal.proactor = NULL;
+  sequence->internal.is_terminal = false;
+  sequence->internal.path.stashed_error = NULL;
+  iree_async_sequence_state_unlock(sequence);
+}
+
+void iree_async_sequence_prepare_for_completion(
+    iree_async_sequence_operation_t* sequence) {
+  iree_async_sequence_state_lock(sequence);
+  sequence->internal.is_terminal = true;
+  iree_atomic_fetch_and(&sequence->base.internal_flags,
+                        (int32_t)~IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE,
+                        iree_memory_order_relaxed);
+  iree_async_sequence_state_unlock(sequence);
+}
+
+static void iree_async_sequence_complete(
+    iree_async_sequence_operation_t* sequence, iree_status_t status) {
+  iree_async_sequence_prepare_for_completion(sequence);
+  iree_async_operation_complete(&sequence->base, status,
+                                IREE_ASYNC_COMPLETION_FLAG_NONE);
+}
 
 //===----------------------------------------------------------------------===//
 // LINK path (step_fn == NULL)
@@ -17,9 +126,9 @@
 // base callback exactly once when all step CQEs have been processed.
 //
 // The triggering error callback fires before cancelled callbacks for downstream
-// steps. The SAW_ERROR flag and internal.stashed_error preserve that causal
-// error until every step callback has run; otherwise the final cancelled step
-// would incorrectly make the whole sequence report CANCELLED.
+// steps. The SAW_ERROR flag and internal.path.stashed_error preserve that
+// causal error until every step callback has run; otherwise the final cancelled
+// step would incorrectly make the whole sequence report CANCELLED.
 static void iree_async_sequence_link_trampoline(
     void* user_data, iree_async_operation_t* step, iree_status_t status,
     iree_async_completion_flags_t flags) {
@@ -27,6 +136,7 @@ static void iree_async_sequence_link_trampoline(
   (void)flags;
   iree_async_sequence_operation_t* sequence =
       (iree_async_sequence_operation_t*)user_data;
+  const bool step_succeeded = iree_status_is_ok(status);
 
   // Capture the first non-CANCELLED error. Subsequent errors should not occur
   // in well-formed linked chains, but retain them as diagnostic context if a
@@ -40,11 +150,11 @@ static void iree_async_sequence_link_trampoline(
       iree_async_operation_set_internal_flags(
           &sequence->base, IREE_ASYNC_SEQUENCE_INTERNAL_SAW_ERROR);
       // Ownership of |status| transfers to the stash.
-      sequence->internal.stashed_error = status;
+      sequence->internal.path.stashed_error = status;
       status = iree_ok_status();
     } else {
-      sequence->internal.stashed_error =
-          iree_status_join(sequence->internal.stashed_error, status);
+      sequence->internal.path.stashed_error =
+          iree_status_join(sequence->internal.path.stashed_error, status);
       status = iree_ok_status();
     }
   }
@@ -63,14 +173,54 @@ static void iree_async_sequence_link_trampoline(
                           IREE_ASYNC_SEQUENCE_INTERNAL_SAW_ERROR)) {
       iree_async_operation_set_internal_flags(
           &sequence->base, IREE_ASYNC_SEQUENCE_INTERNAL_SAW_ERROR);
-      sequence->internal.stashed_error =
+      sequence->internal.path.stashed_error =
           iree_status_from_code(IREE_STATUS_CANCELLED);
     }
   }
 
+  // Publish the next stable active step before cancellation can inspect
+  // current_step. A successful linked predecessor has already admitted its
+  // successor before this callback. Failed predecessors leave their successors
+  // inactive while continuation cancellation invokes their trampolines.
+  iree_async_sequence_state_lock(sequence);
+  iree_atomic_fetch_and(&sequence->base.internal_flags,
+                        (int32_t)~IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE,
+                        iree_memory_order_relaxed);
   ++sequence->current_step;
+  const bool is_final = sequence->current_step == sequence->step_count;
+  if (!is_final && step_succeeded) {
+    iree_async_operation_set_internal_flags(
+        &sequence->base, IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE);
 
-  if (sequence->current_step == sequence->step_count) {
+    // Cancellation may have targeted the just-completed predecessor and lost
+    // the race. Retarget the now-stable successor before releasing the state
+    // lock so an infinite successor cannot be stranded.
+    if (iree_async_sequence_is_cancel_requested(sequence)) {
+      iree_status_t cancel_status =
+          iree_async_sequence_cancel_active_step_locked(
+              sequence->internal.proactor, sequence);
+      if (iree_status_is_not_found(cancel_status)) {
+        // The successor completed before cancellation reached the backend. Its
+        // trampoline will publish the following step and retry if needed.
+        iree_status_free(cancel_status);
+      } else if (!iree_status_is_ok(cancel_status)) {
+        iree_async_operation_internal_flags_t sequence_flags =
+            iree_async_operation_load_internal_flags(&sequence->base);
+        if (!iree_any_bit_set(sequence_flags,
+                              IREE_ASYNC_SEQUENCE_INTERNAL_SAW_ERROR)) {
+          iree_async_operation_set_internal_flags(
+              &sequence->base, IREE_ASYNC_SEQUENCE_INTERNAL_SAW_ERROR);
+          sequence->internal.path.stashed_error = cancel_status;
+        } else {
+          sequence->internal.path.stashed_error = iree_status_join(
+              sequence->internal.path.stashed_error, cancel_status);
+        }
+      }
+    }
+  }
+  iree_async_sequence_state_unlock(sequence);
+
+  if (is_final) {
     // All step CQEs processed. Determine final status and fire base callback.
     iree_status_t final_status;
     if (iree_any_bit_set(
@@ -79,16 +229,15 @@ static void iree_async_sequence_link_trampoline(
       // Use the captured error. The current OK or CANCELLED status has already
       // been accounted for by the aggregate sequence result.
       iree_status_free(status);
-      final_status = sequence->internal.stashed_error;
-      sequence->internal.stashed_error = NULL;
+      final_status = sequence->internal.path.stashed_error;
+      sequence->internal.path.stashed_error = NULL;
     } else {
       // All steps succeeded or the sequence was cancelled. The last step's
       // status carries the right answer: OK if all succeeded, CANCELLED if
       // the sequence (or a predecessor in the linked chain) was cancelled.
       final_status = status;
     }
-    iree_async_operation_complete(&sequence->base, final_status,
-                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_sequence_complete(sequence, final_status);
   } else {
     // More step completions are pending. The intermediate status has either
     // been stored above or is fully represented by the eventual aggregate.
@@ -99,28 +248,17 @@ static void iree_async_sequence_link_trampoline(
 iree_status_t iree_async_sequence_submit_as_linked(
     iree_async_proactor_t* proactor,
     iree_async_sequence_operation_t* sequence) {
-  // LINKED on a SEQUENCE itself is not supported: the expansion logic does not
-  // wire the sequence's last step to the next batch operation, so the
-  // continuation would be silently dropped.
-  if (iree_any_bit_set(sequence->base.flags,
-                       IREE_ASYNC_OPERATION_FLAG_LINKED)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "LINKED flag on SEQUENCE operation is not supported; use the "
-        "sequence's steps array to chain operations");
-  }
-
-  // Zero-step edge case: complete immediately.
+  // Zero-step edge case: complete without admitting child work. Cancellation
+  // that won the state lock is the terminal result.
   if (sequence->step_count == 0) {
-    iree_async_operation_complete(&sequence->base, iree_ok_status(),
-                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_sequence_state_lock(sequence);
+    bool is_cancelled = iree_async_sequence_is_cancel_requested(sequence);
+    iree_async_sequence_state_unlock(sequence);
+    iree_async_sequence_complete(
+        sequence, is_cancelled ? iree_status_from_code(IREE_STATUS_CANCELLED)
+                               : iree_ok_status());
     return iree_ok_status();
   }
-
-  // Reset sequence state.
-  sequence->current_step = 0;
-  iree_async_operation_clear_internal_flags(&sequence->base);
-  sequence->internal.stashed_error = NULL;
 
   // Save original step state before installing trampolines. On submit failure
   // the steps must be restored so the caller can retry or use them
@@ -150,9 +288,25 @@ iree_status_t iree_async_sequence_submit_as_linked(
     }
   }
 
-  // Submit the steps as a linked batch through the proactor's vtable.
-  // This re-enters the backend's submit function. The steps are not SEQUENCE
-  // type, so the re-entered call processes them through normal linked handling.
+  // Serialize child admission with cancellation. A cancellation that wins the
+  // lock leaves every child caller-owned; one that follows successful
+  // admission observes a stable active step.
+  iree_async_sequence_state_lock(sequence);
+  if (iree_async_sequence_is_cancel_requested(sequence)) {
+    for (iree_host_size_t i = 0; i < sequence->step_count; ++i) {
+      iree_async_operation_t* step = sequence->steps[i];
+      step->completion_fn = saved[i].completion_fn;
+      step->user_data = saved[i].user_data;
+      step->flags = saved[i].flags;
+    }
+    iree_async_sequence_state_unlock(sequence);
+    return iree_status_from_code(IREE_STATUS_CANCELLED);
+  }
+
+  // Submit the steps as a linked batch through the proactor's vtable. This
+  // re-enters the backend submit function, but the expanded steps are not
+  // SEQUENCE operations and proceed through normal linked handling.
+  sequence->internal.proactor = proactor;
   iree_async_operation_list_t step_list = {sequence->steps,
                                            sequence->step_count};
   iree_status_t status = iree_async_proactor_submit(proactor, step_list);
@@ -167,7 +321,12 @@ iree_status_t iree_async_sequence_submit_as_linked(
       step->linked_next =
           NULL;  // Clear chain links set by the re-entered submit.
     }
+    sequence->internal.proactor = NULL;
+  } else {
+    iree_async_operation_set_internal_flags(
+        &sequence->base, IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE);
   }
+  iree_async_sequence_state_unlock(sequence);
   return status;
 }
 
@@ -185,7 +344,7 @@ static void iree_async_sequence_emulation_trampoline(
   iree_async_sequence_operation_t* sequence =
       (iree_async_sequence_operation_t*)user_data;
   iree_async_sequence_emulator_t* emulator =
-      (iree_async_sequence_emulator_t*)sequence->internal.emulator;
+      (iree_async_sequence_emulator_t*)sequence->internal.path.emulator;
   iree_async_sequence_emulation_step_completed(emulator, sequence, status);
 }
 
@@ -206,28 +365,17 @@ static iree_status_t iree_async_sequence_emulation_submit_step(
 iree_status_t iree_async_sequence_emulation_begin(
     iree_async_sequence_emulator_t* emulator,
     iree_async_sequence_operation_t* sequence) {
-  // LINKED on a SEQUENCE itself is not supported: the expansion logic does not
-  // wire the sequence's last step to the next batch operation, so the
-  // continuation would be silently dropped.
-  if (iree_any_bit_set(sequence->base.flags,
-                       IREE_ASYNC_OPERATION_FLAG_LINKED)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "LINKED flag on SEQUENCE operation is not supported; use the "
-        "sequence's steps array to chain operations");
-  }
-
-  // Zero-step edge case: complete immediately.
+  // Zero-step edge case. Backends normally defer this to their poll owner, but
+  // keep direct utility callers well-defined.
   if (sequence->step_count == 0) {
-    iree_async_operation_complete(&sequence->base, iree_ok_status(),
-                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_sequence_state_lock(sequence);
+    bool is_cancelled = iree_async_sequence_is_cancel_requested(sequence);
+    iree_async_sequence_state_unlock(sequence);
+    iree_async_sequence_complete(
+        sequence, is_cancelled ? iree_status_from_code(IREE_STATUS_CANCELLED)
+                               : iree_ok_status());
     return iree_ok_status();
   }
-
-  // Reset sequence state and stash the emulator pointer.
-  sequence->current_step = 0;
-  iree_async_operation_clear_internal_flags(&sequence->base);
-  sequence->internal.emulator = emulator;
 
   // Submit step 0. Preserve caller state until admission succeeds so a
   // synchronous failure leaves both the sequence and its first step reusable.
@@ -235,37 +383,57 @@ iree_status_t iree_async_sequence_emulation_begin(
   iree_async_completion_fn_t saved_completion_fn = first_step->completion_fn;
   void* saved_user_data = first_step->user_data;
   iree_async_operation_flags_t saved_flags = first_step->flags;
+
+  // Serialize first-step admission with cancellation. A cancellation accepted
+  // before startup completes the sequence without touching caller-owned child
+  // state. Once submission succeeds, cancellation observes a stable active
+  // child before the lock is released.
+  iree_async_sequence_state_lock(sequence);
+  if (iree_async_sequence_is_cancel_requested(sequence)) {
+    iree_async_sequence_state_unlock(sequence);
+    return iree_status_from_code(IREE_STATUS_CANCELLED);
+  }
+  sequence->internal.proactor = emulator->proactor;
+  sequence->internal.path.emulator = emulator;
   iree_status_t status =
       iree_async_sequence_emulation_submit_step(emulator, sequence);
   if (!iree_status_is_ok(status)) {
     first_step->completion_fn = saved_completion_fn;
     first_step->user_data = saved_user_data;
     first_step->flags = saved_flags;
-    sequence->internal.emulator = NULL;
+    sequence->internal.proactor = NULL;
+    sequence->internal.path.emulator = NULL;
+  } else {
+    iree_async_operation_set_internal_flags(
+        &sequence->base, IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE);
   }
+  iree_async_sequence_state_unlock(sequence);
   return status;
 }
 
 void iree_async_sequence_emulation_step_completed(
     iree_async_sequence_emulator_t* emulator,
     iree_async_sequence_operation_t* sequence, iree_status_t step_status) {
+  // Retire the stable active child before inspecting its result. Cancellation
+  // may have held the state lock while submitting a backend cancel request;
+  // waiting here keeps current_step and child ownership stable for that call.
+  iree_async_sequence_state_lock(sequence);
+  iree_atomic_fetch_and(&sequence->base.internal_flags,
+                        (int32_t)~IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE,
+                        iree_memory_order_relaxed);
+  ++sequence->current_step;
+  iree_async_sequence_state_unlock(sequence);
+
   // Step failure: abort immediately.
   if (!iree_status_is_ok(step_status)) {
-    iree_async_operation_complete(&sequence->base, step_status,
-                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_sequence_complete(sequence, step_status);
     return;
   }
 
-  // Advance to the next step.
-  ++sequence->current_step;
-
   // Check if cancel was requested between steps.
-  if (iree_any_bit_set(
-          iree_async_operation_load_internal_flags(&sequence->base),
-          IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED)) {
-    iree_async_operation_complete(&sequence->base,
-                                  iree_status_from_code(IREE_STATUS_CANCELLED),
-                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
+  if (iree_async_sequence_is_cancel_requested(sequence)) {
+    iree_async_sequence_complete(sequence,
+                                 iree_status_from_code(IREE_STATUS_CANCELLED));
     return;
   }
 
@@ -283,38 +451,46 @@ void iree_async_sequence_emulation_step_completed(
         sequence->step_fn(sequence->base.user_data, completed_step, next_step);
     if (!iree_status_is_ok(step_fn_status)) {
       // step_fn vetoed continuation. Abort with its error.
-      iree_async_operation_complete(&sequence->base, step_fn_status,
-                                    IREE_ASYNC_COMPLETION_FLAG_NONE);
+      iree_async_sequence_complete(sequence, step_fn_status);
       return;
     }
   }
 
   // All steps complete?
   if (sequence->current_step == sequence->step_count) {
-    iree_async_operation_complete(&sequence->base, iree_ok_status(),
-                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_sequence_complete(sequence, iree_ok_status());
     return;
   }
 
   // Re-check cancel after step_fn. Cancel may have arrived during step_fn
   // execution (which can take arbitrary time). Without this check, the next
   // step would be submitted despite the cancel request.
-  if (iree_any_bit_set(
-          iree_async_operation_load_internal_flags(&sequence->base),
-          IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED)) {
-    iree_async_operation_complete(&sequence->base,
-                                  iree_status_from_code(IREE_STATUS_CANCELLED),
-                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
+  if (iree_async_sequence_is_cancel_requested(sequence)) {
+    iree_async_sequence_complete(sequence,
+                                 iree_status_from_code(IREE_STATUS_CANCELLED));
     return;
   }
 
-  // Submit the next step.
+  // Serialize next-step admission with cancellation. A cancellation that wins
+  // the lock leaves the next child unsubmitted. A cancellation that follows a
+  // successful submission observes the new child as active.
+  iree_async_sequence_state_lock(sequence);
+  if (iree_async_sequence_is_cancel_requested(sequence)) {
+    iree_async_sequence_state_unlock(sequence);
+    iree_async_sequence_complete(sequence,
+                                 iree_status_from_code(IREE_STATUS_CANCELLED));
+    return;
+  }
   iree_status_t submit_status =
       iree_async_sequence_emulation_submit_step(emulator, sequence);
+  if (iree_status_is_ok(submit_status)) {
+    iree_async_operation_set_internal_flags(
+        &sequence->base, IREE_ASYNC_SEQUENCE_INTERNAL_STEP_ACTIVE);
+  }
+  iree_async_sequence_state_unlock(sequence);
   if (!iree_status_is_ok(submit_status)) {
     // Next step submission failed. Abort with the submission error.
-    iree_async_operation_complete(&sequence->base, submit_status,
-                                  IREE_ASYNC_COMPLETION_FLAG_NONE);
+    iree_async_sequence_complete(sequence, submit_status);
   }
 }
 
@@ -325,17 +501,27 @@ void iree_async_sequence_emulation_step_completed(
 iree_status_t iree_async_sequence_cancel(
     iree_async_proactor_t* proactor,
     iree_async_sequence_operation_t* sequence) {
+  iree_async_sequence_state_lock(sequence);
+  if (sequence->internal.is_terminal) {
+    iree_async_sequence_state_unlock(sequence);
+    return iree_ok_status();
+  }
   iree_async_operation_set_internal_flags(
       &sequence->base, IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED);
 
-  // Best-effort cancel of the current in-flight step. If this fails (step
-  // already completed due to a race between the cancel thread and the poll
-  // thread), the CANCEL_REQUESTED flag ensures the trampolines (both LINK
-  // and emulation) produce CANCELLED as the final sequence status.
-  iree_host_size_t current = sequence->current_step;
-  if (current < sequence->step_count) {
-    iree_status_ignore(
-        iree_async_proactor_cancel(proactor, sequence->steps[current]));
+  // Cancel the stable active child, if any. Pre-start and inter-step
+  // cancellation has no child to target; startup/progression observes the
+  // request while holding the same lock and terminates the sequence instead.
+  iree_status_t status =
+      iree_async_sequence_cancel_active_step_locked(proactor, sequence);
+  iree_async_sequence_state_unlock(sequence);
+
+  if (iree_status_is_not_found(status)) {
+    // The child completed in the backend but its poll callback has not advanced
+    // the sequence yet. The recorded request makes that callback cancel or
+    // suppress its successor, so cancellation is accepted at sequence scope.
+    iree_status_free(status);
+    return iree_ok_status();
   }
-  return iree_ok_status();
+  return status;
 }

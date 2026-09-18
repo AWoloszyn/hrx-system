@@ -349,9 +349,10 @@ typedef uint32_t iree_async_socket_send_flags_t;
 //
 //   On POSIX backends (epoll, kqueue): the proactor attempts an eager
 //   writev() during submit. If the socket buffer has room, data is consumed
-//   immediately and the completion fires synchronously. If the buffer is full
-//   (EAGAIN), the send is deferred to a POLLOUT-driven retry that reads from
-//   the original buffer addresses when the socket becomes writable.
+//   immediately and the completion is queued for poll-owned callback dispatch.
+//   If the buffer is full (EAGAIN), the send is deferred to a POLLOUT-driven
+//   retry that reads from the original buffer addresses when the socket becomes
+//   writable.
 //
 //   On io_uring: submit's Phase 4 flushes SQEs to the kernel, which may
 //   complete the send inline (data copied during io_uring_enter). Under
