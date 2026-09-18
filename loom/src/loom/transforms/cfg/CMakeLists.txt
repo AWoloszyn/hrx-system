@@ -92,6 +92,7 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     loom::ops::cfg
+    loom::ops::low
     loom::ops::op_defs
     loom::rewrite::rewriter
     loom::util::cfg_graph

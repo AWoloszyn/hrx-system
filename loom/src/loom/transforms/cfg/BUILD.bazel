@@ -79,6 +79,7 @@ loom_cc_library(
         ":block_arguments",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/ops/low",
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/util:cfg_graph",
         "//loom/src/loom/util:dominance",

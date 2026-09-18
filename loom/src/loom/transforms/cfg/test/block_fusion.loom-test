@@ -165,3 +165,108 @@ func.def @chain_iteration_count(%input: i32) -> (i32) {
 
 // ----
 {"invocations":[{"pass":"cfg-simplify","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"chain_iteration_count","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"iterations":2,"branches-folded":0,"edges-forwarded":0,"blocks-removed":0,"block-args-removed":0,"blocks-fused":3,"duplicate-blocks-merged":0,"terminal-blocks-duplicated":0},"details":[{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":4,"cleared_value_count":4}]}]}
+
+// ====
+// RUN: pass cfg-simplify
+
+test.target<low_core> @target
+
+// Low register arguments follow the same reverse-order chain contraction.
+low.func.def target<test.low.core>(@target) @low_reverse_chain(%input: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^start(%input: reg<test.i32>)
+^tail(%last: reg<test.i32>):
+  return %last
+^middle(%middle: reg<test.i32>):
+  %second = test.add.i32 %middle, %input
+  low.br ^tail(%second: reg<test.i32>)
+^start(%first: reg<test.i32>):
+  %sum = test.add.i32 %first, %input
+  low.br ^middle(%sum: reg<test.i32>)
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @low_reverse_chain(%input: reg<test.i32>) -> (reg<test.i32>) asm {
+  %sum = test.add.i32 %input, %input
+  %second = test.add.i32 %sum, %input
+  return %second
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+test.target<low_core> @target
+
+// The shared loop header and conditional exit survive Low body fusion.
+low.func.def target<test.low.core>(@target) @low_loop_chain(%again: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^header(%seed: reg<test.i32>)
+^header(%carried: reg<test.i32>):
+  low.cond_br %again, ^body, ^exit : reg<test.i32>
+^tail(%last: reg<test.i32>):
+  %next = test.add.i32 %last, %seed
+  low.br ^header(%next: reg<test.i32>)
+^middle(%middle: reg<test.i32>):
+  %second = test.add.i32 %middle, %seed
+  low.br ^tail(%second: reg<test.i32>)
+^body:
+  %first = test.add.i32 %carried, %seed
+  low.br ^middle(%first: reg<test.i32>)
+^exit:
+  return %carried
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @low_loop_chain(%again: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^header(%seed: reg<test.i32>)
+^header(%carried: reg<test.i32>):
+  low.cond_br %again, ^body, ^exit : reg<test.i32>
+^body:
+  %first = test.add.i32 %carried, %seed
+  %second = test.add.i32 %first, %seed
+  %next = test.add.i32 %second, %seed
+  low.br ^header(%next: reg<test.i32>)
+^exit:
+  return %carried
+}
+
+// ====
+// RUN: pass inline-callables,cfg-simplify
+
+test.target<low_core> @target
+
+low.func.def inline target<test.low.core>(@target) @prepared_choice(%choose: reg<test.i32>, %input: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.cond_br %choose, ^left, ^right : reg<test.i32>
+^left:
+  %doubled = test.add.i32 %input, %input
+  return %doubled
+^right:
+  return %input
+}
+
+// Inlining removes the call while fusion removes its artificial entry edge.
+// Both return paths still join before the caller's continuation.
+low.func.def public target<test.low.core>(@target) @prepared_caller(%choose: reg<test.i32>, %input: reg<test.i32>) -> (reg<test.i32>) asm {
+  %prefix = test.add.i32 %input, %input
+  %selected = low.func.call @prepared_choice(%choose, %prefix) : (reg<test.i32>, reg<test.i32>) -> (reg<test.i32>)
+  %result = test.add.i32 %selected, %input
+  return %result
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def public target<test.low.core>(@target) @prepared_caller(%choose: reg<test.i32>, %input: reg<test.i32>) -> (reg<test.i32>) asm {
+  %prefix = test.add.i32 %input, %input
+  low.cond_br %choose, ^_bb1, ^_bb2 : reg<test.i32>
+^_bb1:
+  %doubled = test.add.i32 %prefix, %prefix
+  low.br ^_bb3(%doubled: reg<test.i32>)
+^_bb2:
+  low.br ^_bb3(%prefix: reg<test.i32>)
+^_bb3(%selected: reg<test.i32>):
+  %result = test.add.i32 %selected, %input
+  return %result
+}

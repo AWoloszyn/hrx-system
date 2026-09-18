@@ -39,12 +39,13 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   %39 = v_lshlrev_b32_src0_inline %lane, 2
   %upper_bound = global_load_b32_saddr %39, %upper_bound_view
   %41 = v_mov_b32 0
-  low.br ^_bb4
+  %44 = s_mov_b64_exec_read
+  low.br ^_bb1(%loop_begin: reg<amdgpu.sgpr>, %41: reg<amdgpu.vgpr>)
 ^_bb1(%bounded_position: reg<amdgpu.sgpr>, %running_count: reg<amdgpu.vgpr>):
   %42 = v_mov_b32_copy %bounded_position
   %43 = v_cmp_lt_i32 %42, %upper_bound
   %45, %46 = s_and_saveexec_b64 %43
-  low.cond_br %46, ^_bb2, ^_bb5 : reg<amdgpu.scc>
+  low.cond_br %46, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %47 = v_mov_b32 0
   %48 = s_lshl_b32_rhs_inline %bounded_position, 2
@@ -59,15 +60,10 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   %59 = s_add_u32 %bounded_position, %loop_step
   low.br ^_bb1(%59: reg<amdgpu.sgpr>, %next_count: reg<amdgpu.vgpr>)
 ^_bb3:
+  s_mov_b64_exec %44
   %60 = v_lshlrev_b32_src0_inline %lane, 2
   global_store_b32_saddr %60, %running_count, %output_view
   return
-^_bb4:
-  %44 = s_mov_b64_exec_read
-  low.br ^_bb1(%loop_begin: reg<amdgpu.sgpr>, %41: reg<amdgpu.vgpr>)
-^_bb5:
-  s_mov_b64_exec %44
-  low.br ^_bb3
 }
 
 // ====

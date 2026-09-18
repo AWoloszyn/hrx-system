@@ -909,29 +909,27 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
 ^_bb6(%result1: reg<amdgpu.vgpr>):
   %is_lane0 = v_cmp_eq_i32_src1_inline %tid {rhs = 0}
   %137, %138 = s_and_saveexec_b64 %is_lane0
-  low.cond_br %138, ^_bb7, ^_bb12 : reg<amdgpu.scc>
+  low.cond_br %138, ^_bb7, ^_bb11 : reg<amdgpu.scc>
 ^_bb7:
   %139 = v_mov_b32 0
   global_store_b32_saddr %139, %result0, %output_view
-  low.br ^_bb12
+  low.br ^_bb11
 ^_bb8:
-  %row1_in_bounds = s_cmp_lt_u32 %second_row, %row_count
-  low.cond_br %row1_in_bounds, ^_bb9, ^_bb11 : reg<amdgpu.scc>
-^_bb9:
   %141, %142 = s_and_saveexec_b64 %is_lane0
-  low.cond_br %142, ^_bb10, ^_bb13 : reg<amdgpu.scc>
-^_bb10:
+  low.cond_br %142, ^_bb9, ^_bb12 : reg<amdgpu.scc>
+^_bb9:
   %143 = v_mov_b32 0
   global_store_b32_saddr %143, %result1, %output_view {offset = 4}
-  low.br ^_bb13
-^_bb11:
+  low.br ^_bb12
+^_bb10:
   return
-^_bb12:
+^_bb11:
   s_mov_b64_exec %137
-  low.br ^_bb8
-^_bb13:
+  %row1_in_bounds = s_cmp_lt_u32 %second_row, %row_count
+  low.cond_br %row1_in_bounds, ^_bb8, ^_bb10 : reg<amdgpu.scc>
+^_bb12:
   s_mov_b64_exec %141
-  low.br ^_bb11
+  low.br ^_bb10
 }
 
 // ====
@@ -3901,7 +3899,9 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   %biased = v_add_f32 %sum, %bias_value
   low.br ^_bb6(%biased: reg<amdgpu.vgpr>)
 ^_bb3:
-  low.br ^_bb9
+  s_mov_b64_exec %50
+  %53 = v_cndmask_b32 %sum, %out$25, %has_bias
+  low.br ^_bb4(%53: reg<amdgpu.vgpr>)
 ^_bb4(%out$24: reg<amdgpu.vgpr>):
   %59 = v_mov_b32 0
   global_store_b32_saddr %59, %out$24, %output_view
@@ -3921,10 +3921,6 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
 ^_bb8:
   s_mov_b64_exec %50
   low.br ^_bb4(%out$25: reg<amdgpu.vgpr>)
-^_bb9:
-  s_mov_b64_exec %50
-  %53 = v_cndmask_b32 %sum, %out$25, %has_bias
-  low.br ^_bb4(%53: reg<amdgpu.vgpr>)
 }
 
 // ====

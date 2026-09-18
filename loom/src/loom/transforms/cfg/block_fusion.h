@@ -17,8 +17,9 @@
 extern "C" {
 #endif
 
-// Proves argument replacements before mutation, then contracts eligible chains
-// in graph-owned reverse postorder and removes their empty blocks together.
+// Proves argument replacements before mutation, then contracts eligible cfg.br
+// and low.br chains in graph-owned reverse postorder and removes their empty
+// blocks together.
 // Every moved operation moves once, including along long chains whose source
 // block order differs from control-flow order. Entry blocks and shared loop
 // headers survive. |dominance| must cover |graph| and its ancestor regions.

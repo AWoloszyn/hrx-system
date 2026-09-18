@@ -119,8 +119,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %409 = concat(%407, %408) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   %410 = v_cndmask_b32 %353, %395, %402
   %416 = concat(%410, %315) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  low.br ^_bb3
-^_bb3:
   %104 = s_getpc_b64
   %105 = slice %104[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %106 = slice %104[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -154,8 +152,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %137 = s_and_b32 %114, %136
   %138 = s_mov_b32 0
   %139 = s_cmp_lg_i32 %137, %138
-  low.cond_br %139, ^_bb4, ^_bb10 : reg<amdgpu.scc>
-^_bb4:
+  low.cond_br %139, ^_bb3, ^_bb9 : reg<amdgpu.scc>
+^_bb3:
   %140 = v_mov_b32 0
   %141 = global_load_b32_saddr %140, %121 {glc = 1, dlc = 1}
   %142 = v_readfirstlane_b32 %141
@@ -194,8 +192,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %178 = s_mov_b32 0
   %180 = concat(%178, %178) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   %181 = s_cmp_lg_u64 %177, %180
-  low.cond_br %181, ^_bb5, ^_bb9 : reg<amdgpu.scc>
-^_bb5:
+  low.cond_br %181, ^_bb4, ^_bb8 : reg<amdgpu.scc>
+^_bb4:
   %182 = v_mov_b32 128
   %186 = slice %167[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %189, %190 = v_add_co_u32 %173, %182
@@ -219,18 +217,18 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %212 = s_and_b64 %210, %211
   %215 = concat(%178, %178) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   %216 = s_cmp_lg_u64 %212, %215
-  low.cond_br %216, ^_bb6, ^_bb4 : reg<amdgpu.scc>
-^_bb6:
+  low.cond_br %216, ^_bb5, ^_bb3 : reg<amdgpu.scc>
+^_bb5:
   %218 = s_mov_b32 1
   %219 = s_sub_u32 %160, %218
   %221 = v_mov_b32_copy %219
   %222 = v_and_b32 %173, %221
-  low.br ^_bb7(%167: reg<amdgpu.vgpr x2>, %222: reg<amdgpu.vgpr>, %212: reg<amdgpu.sgpr x2>)
-^_bb7(%163: reg<amdgpu.vgpr x2>, %164: reg<amdgpu.vgpr>, %165: reg<amdgpu.sgpr x2>):
+  low.br ^_bb6(%167: reg<amdgpu.vgpr x2>, %222: reg<amdgpu.vgpr>, %212: reg<amdgpu.sgpr x2>)
+^_bb6(%163: reg<amdgpu.vgpr x2>, %164: reg<amdgpu.vgpr>, %165: reg<amdgpu.sgpr x2>):
   %245 = concat(%178, %178) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   %246 = s_cmp_lg_u64 %165, %245
-  low.cond_br %246, ^_bb8, ^_bb10 : reg<amdgpu.scc>
-^_bb8:
+  low.cond_br %246, ^_bb7, ^_bb9 : reg<amdgpu.scc>
+^_bb7:
   %247, %248 = s_and_saveexec_b64 %165
   %249 = v_mov_b32 0
   %252 = concat(%249, %249) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
@@ -298,8 +296,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %304 = s_mov_b32_m0 %303
   s_sendmsg %304 {message = 1}
   s_mov_b64_exec %247
-  low.br ^_bb10
-^_bb9:
+  low.br ^_bb9
+^_bb8:
   %223 = v_mov_b32 0
   %224 = v_mov_b32 1
   %226 = concat(%224, %223) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
@@ -311,7 +309,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   global_atomic_add_u64_saddr %223, %226, %235
   %238 = concat(%223, %223) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   %242 = concat(%230, %230) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  low.br ^_bb7(%238: reg<amdgpu.vgpr x2>, %223: reg<amdgpu.vgpr>, %242: reg<amdgpu.sgpr x2>)
-^_bb10:
+  low.br ^_bb6(%238: reg<amdgpu.vgpr x2>, %223: reg<amdgpu.vgpr>, %242: reg<amdgpu.sgpr x2>)
+^_bb9:
   return
 }
