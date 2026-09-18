@@ -212,8 +212,7 @@ static iree_status_t loom_low_allocation_checker_schedule(
       }
       const loom_low_schedule_node_t* node = &schedule->nodes[node_index];
       if (seen[node_index] || node->block_index != block_index ||
-          node->scheduled_ordinal != ordinal ||
-          node->block != schedule_block->block || operation_point == NULL ||
+          node->scheduled_ordinal != ordinal || operation_point == NULL ||
           operation_point->op != node->op) {
         loom_low_allocation_checker_record(
             checker, LOOM_LOW_ALLOCATION_CHECK_VIOLATION_SCHEDULE_STRUCTURE,

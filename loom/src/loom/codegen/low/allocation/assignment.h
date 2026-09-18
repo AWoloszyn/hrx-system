@@ -66,8 +66,8 @@ typedef struct loom_low_allocation_assignment_t {
   // First per-unit lifetime entry in the allocation table.
   uint32_t unit_point_start;
   // Sparse physical reservations in the allocation's storage segment table.
-  // An empty range keeps conflict checks conservative for synthetic
-  // assignments and dead definitions.
+  // An empty range reserves this assignment's continuous lifetime while
+  // preserving any sparse reservations of assignments it is compared against.
   loom_liveness_segment_range_t liveness_segments;
 } loom_low_allocation_assignment_t;
 

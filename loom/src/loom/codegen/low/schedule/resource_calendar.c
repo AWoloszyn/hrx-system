@@ -30,6 +30,7 @@ iree_status_t loom_low_schedule_resource_calendar_initialize(
 void loom_low_schedule_resource_calendar_reset(
     loom_low_schedule_resource_calendar_t* calendar) {
   calendar->quiescent_cycle = 0;
+  calendar->minimum_issue_cycle = 0;
   const uint32_t slot_count =
       calendar->descriptor_set->resource_calendar_slot_count;
   if (slot_count != 0) {
@@ -176,6 +177,32 @@ uint32_t loom_low_schedule_resource_calendar_find_earliest_issue_cycle(
   }
 }
 
+// A resource common to every instruction can rule out cycles before choosing
+// the next instruction. Keep that unavoidable issue delay out of candidate
+// stall comparisons; it offers no opportunity for latency-hiding recovery.
+static void loom_low_schedule_resource_calendar_advance_issue_floor(
+    loom_low_schedule_resource_calendar_t* calendar,
+    const loom_low_resource_t* resource, uint32_t issue_cycle) {
+  if (resource->calendar.minimum_issue_units == 0) {
+    return;
+  }
+  uint64_t cycle = iree_max(calendar->minimum_issue_cycle, issue_cycle);
+  while (cycle <= UINT32_MAX) {
+    const loom_low_schedule_resource_calendar_slot_t* slot =
+        &calendar->slots[resource->calendar.slot_start +
+                         ((uint32_t)cycle & resource->calendar.slot_mask)];
+    if (slot->issue_cycle != cycle ||
+        (uint32_t)slot->occupancy.required_units +
+                slot->occupancy.reserved_units +
+                resource->calendar.minimum_issue_units <=
+            resource->capacity_per_cycle) {
+      break;
+    }
+    ++cycle;
+  }
+  calendar->minimum_issue_cycle = cycle;
+}
+
 iree_status_t loom_low_schedule_resource_calendar_commit(
     loom_low_schedule_resource_calendar_t* calendar,
     const loom_low_schedule_class_t* const* schedule_classes,
@@ -241,6 +268,8 @@ iree_status_t loom_low_schedule_resource_calendar_commit(
             (uint32_t)occupancy->required_units + occupancy->reserved_units,
             resource->capacity_per_cycle);
       }
+      loom_low_schedule_resource_calendar_advance_issue_floor(
+          calendar, resource, issue_cycle);
     }
   }
   return iree_ok_status();

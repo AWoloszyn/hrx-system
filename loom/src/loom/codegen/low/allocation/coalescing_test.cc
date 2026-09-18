@@ -305,5 +305,92 @@ TEST_F(LowAllocationCoalescingTest, AssignsTiedIntervalToSourceLocation) {
   loom_module_free(module);
 }
 
+TEST_F(LowAllocationCoalescingTest, ConcatMayPrecedeItsSourceAssignments) {
+  loom_module_t* module = AllocateModule();
+  const loom_value_id_t value_ids[] = {DefineValue(module), DefineValue(module),
+                                       DefineValue(module)};
+  loom_module_value_ordinal_scratch_acquire(module);
+  for (uint32_t i = 0; i < IREE_ARRAYSIZE(value_ids); ++i) {
+    loom_module_value_ordinal_scratch_set(module, value_ids[i], i);
+  }
+
+  const loom_liveness_value_class_t value_class = RegisterValueClass(17);
+  loom_liveness_interval_t intervals[] = {
+      Interval(value_ids[0], /*start=*/10, /*end=*/12, value_class),
+      Interval(value_ids[1], /*start=*/11, /*end=*/12, value_class),
+      Interval(value_ids[2], /*start=*/2, /*end=*/14, value_class),
+  };
+  intervals[2].unit_count = 2;
+  const uint32_t interval_indices[] = {0, 1, 2};
+  loom_liveness_analysis_t liveness = {};
+  liveness.intervals = intervals;
+  liveness.interval_count = IREE_ARRAYSIZE(intervals);
+  liveness.value_ids = value_ids;
+  liveness.value_count = IREE_ARRAYSIZE(value_ids);
+  liveness.value_interval_indices = interval_indices;
+
+  loom_low_placement_relation_t relations[2] = {};
+  for (uint32_t i = 0; i < IREE_ARRAYSIZE(relations); ++i) {
+    relations[i].result_ordinal = 2;
+    relations[i].source_ordinal = i;
+    relations[i].result_unit_offset = i;
+    relations[i].unit_count = 1;
+    relations[i].kind = LOOM_LOW_PLACEMENT_RELATION_SUBRANGE;
+    relations[i].cause = LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT;
+    relations[i].flags = LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE;
+  }
+  const loom_low_placement_relation_range_t result_ranges[] = {
+      {0, 0}, {0, 0}, {0, 2}};
+  const loom_low_placement_relation_range_t source_ranges[] = {
+      {0, 1}, {1, 1}, {2, 0}};
+  const uint32_t source_relations[] = {0, 1};
+  loom_low_placement_table_t placement = {};
+  placement.value_ids = value_ids;
+  placement.value_count = IREE_ARRAYSIZE(value_ids);
+  placement.relations = relations;
+  placement.relation_count = IREE_ARRAYSIZE(relations);
+  placement.ranges_by_result_ordinal = result_ranges;
+  placement.ranges_by_source_ordinal = source_ranges;
+  placement.relation_indices_by_source_ordinal = source_relations;
+
+  loom_low_allocation_assignment_t first_assignment =
+      Assignment(value_ids[0], /*start=*/0, /*end=*/12, value_class,
+                 /*location_base=*/0, /*unit_point_start=*/0);
+  uint32_t assignment_indices[] = {UINT32_MAX, UINT32_MAX, UINT32_MAX};
+  loom_low_allocation_assignment_map_t assignment_map = {};
+  assignment_map.module = module;
+  assignment_map.liveness = &liveness;
+  assignment_map.assignments = &first_assignment;
+  assignment_map.assignment_indices_by_value_ordinal = assignment_indices;
+
+  loom_low_allocation_coalescing_context_t context = {};
+  context.arena = &arena_;
+  context.liveness = &liveness;
+  context.placement = &placement;
+  context.assignment_map = &assignment_map;
+
+  // Block layout can put a concat use before its defining block. Allocation
+  // then reserves the result first, even when some operands were defined in
+  // the entry block. The later sources can reuse that reservation.
+  for (uint32_t assigned_count : {0u, 1u}) {
+    SCOPED_TRACE(assigned_count);
+    intervals[0].start_point = assigned_count ? 0 : 10;
+    assignment_map.assignment_count = assigned_count;
+    assignment_indices[0] = assigned_count ? 0 : UINT32_MAX;
+    bool assigned = true;
+    IREE_EXPECT_OK(loom_low_allocation_coalescing_assign_structural_interval(
+        &context, &intervals[2], &assigned));
+    EXPECT_FALSE(assigned);
+    EXPECT_EQ(assignment_map.assignment_count, assigned_count);
+    EXPECT_EQ(assignment_indices[2], UINT32_MAX);
+  }
+
+  for (loom_value_id_t value_id : value_ids) {
+    loom_module_value_ordinal_scratch_clear(module, value_id);
+  }
+  loom_module_value_ordinal_scratch_release(module);
+  loom_module_free(module);
+}
+
 }  // namespace
 }  // namespace loom

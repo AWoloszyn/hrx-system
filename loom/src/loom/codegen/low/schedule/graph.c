@@ -96,7 +96,7 @@ static iree_status_t loom_low_schedule_resolve_descriptor(
                                         &packet);
 
   node->descriptor = packet.descriptor;
-  node->source_descriptor = packet.descriptor;
+  node->source_descriptor_ordinal = packet.descriptor_ordinal;
   if (iree_any_bit_set(packet.descriptor->flags,
                        LOOM_LOW_DESCRIPTOR_FLAG_EARLY_CLOBBER)) {
     node->flags |= LOOM_LOW_SCHEDULE_NODE_FLAG_EARLY_CLOBBER;
@@ -508,8 +508,8 @@ static iree_status_t loom_low_schedule_add_state_chain_read(
       state->state_chain_read_heads == NULL) {
     return iree_ok_status();
   }
-  if (state->nodes[producer_node_index].block !=
-      state->nodes[reader.node_index].block) {
+  if (state->nodes[producer_node_index].block_index !=
+      state->nodes[reader.node_index].block_index) {
     return iree_ok_status();
   }
   if (state->state_chain_read_record_count >=
@@ -542,8 +542,8 @@ static iree_status_t loom_low_schedule_add_state_chain_read_dependencies(
       state->state_chain_read_heads == NULL) {
     return iree_ok_status();
   }
-  if (state->nodes[producer_node_index].block !=
-      state->nodes[consumer.node_index].block) {
+  if (state->nodes[producer_node_index].block_index !=
+      state->nodes[consumer.node_index].block_index) {
     return iree_ok_status();
   }
   uint32_t read_record_index =
@@ -833,7 +833,7 @@ static iree_status_t loom_low_schedule_note_edge_source_writes(
     const loom_value_ordinal_t current_ordinal = current.value_ordinal;
     const uint32_t writer_node = state->values[current_ordinal].producer_node;
     if (writer_node == LOOM_LOW_SCHEDULE_NODE_NONE ||
-        state->nodes[writer_node].block != edge_node->block) {
+        state->nodes[writer_node].block_index != edge_node->block_index) {
       continue;
     }
     IREE_RETURN_IF_ERROR(loom_low_schedule_add_storage_antidependencies(
@@ -1151,7 +1151,8 @@ static iree_status_t loom_low_schedule_note_explicit_state_value_read(
   const uint32_t producer_node = value->producer_node;
   const bool has_same_block_producer =
       producer_node != LOOM_LOW_SCHEDULE_NODE_NONE &&
-      state->nodes[producer_node].block == state->nodes[node_index].block;
+      state->nodes[producer_node].block_index ==
+          state->nodes[node_index].block_index;
   const loom_low_schedule_state_access_t reader =
       loom_low_schedule_state_access(node_index, read_endpoint);
   const loom_low_schedule_state_access_t first_clobber =
@@ -1416,8 +1417,8 @@ iree_status_t loom_low_schedule_fill_nodes(
       loom_low_schedule_node_t* node = &state->nodes[next_node_index];
       *node = (loom_low_schedule_node_t){
           .op = op,
-          .block = block,
           .block_index = block_index,
+          .source_descriptor_ordinal = LOOM_LOW_DESCRIPTOR_ORDINAL_NONE,
           .source_ordinal = next_node_index,
           .scheduled_ordinal = LOOM_LOW_SCHEDULE_NODE_NONE,
           .issue_cycle = LOOM_LOW_SCHEDULE_NODE_NONE,
@@ -1589,7 +1590,7 @@ iree_status_t loom_low_schedule_build_dependencies(
         const uint32_t producer_node =
             state->values[operand_ordinal].producer_node;
         if (producer_node != LOOM_LOW_SCHEDULE_NODE_NONE &&
-            state->nodes[producer_node].block == node->block) {
+            state->nodes[producer_node].block_index == node->block_index) {
           const uint16_t descriptor_operand_index =
               descriptor != NULL ? descriptor_operand_indices[operand_index]
                                  : LOOM_LOW_ID_NONE;

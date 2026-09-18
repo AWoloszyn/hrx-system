@@ -439,3 +439,32 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @f64_spl
   %splat = concat(%value, %value) : (reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) -> reg<amdgpu.vgpr x4>
   return %splat
 }
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @f32_compare_masks(%lhs: f32, %rhs: f32, %tie_mask: i1) -> (i1) {
+  %equal = scalar.cmpf oeq, %lhs, %rhs : f32
+  %greater = scalar.cmpf ogt, %lhs, %rhs : f32
+  %equal_masked = scalar.andi %equal, %tie_mask : i1
+  %selected = scalar.ori %greater, %equal_masked : i1
+  func.return %selected : i1
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @f32_compare_masks(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>, %tie_mask: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>) asm {
+  %equal = v_cmp_eq_f32 %lhs, %rhs
+  %greater = v_cmp_gt_f32 %lhs, %rhs
+  %14 = s_cmp_lg_i32_src1_inline %tie_mask {rhs = 0}
+  %15 = s_mov_b64_exec_read
+  %16 = slice %15[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %17 = slice %15[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %18 = s_mov_b32 0
+  %19 = s_cselect_b32 %16, %18, %14
+  %20 = s_cselect_b32 %17, %18, %14
+  %21 = concat(%19, %20) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %equal_masked = s_and_b64 %equal, %21
+  %selected = s_or_b64 %greater, %equal_masked
+  return %selected
+}

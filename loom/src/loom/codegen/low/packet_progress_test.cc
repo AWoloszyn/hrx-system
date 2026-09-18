@@ -66,13 +66,11 @@ class LowPacketProgressTest : public ::testing::Test {
     state->blocks[0].scheduled_node_count =
         IREE_ARRAYSIZE(state->scheduled_node_indices);
 
-    state->nodes[0].block = &state->block;
     state->nodes[0].block_index = 0;
     state->nodes[0].source_ordinal = 0;
     state->nodes[0].scheduled_ordinal = 0;
     state->nodes[0].kind = LOOM_LOW_SCHEDULE_NODE_DESCRIPTOR;
     state->nodes[0].descriptor = &state->descriptor;
-    state->nodes[1].block = &state->block;
     state->nodes[1].block_index = 0;
     state->nodes[1].source_ordinal = 1;
     state->nodes[1].scheduled_ordinal = 1;

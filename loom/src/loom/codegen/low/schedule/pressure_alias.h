@@ -50,8 +50,8 @@ void loom_low_schedule_pressure_alias_reset(
 // returns the units already owned by live sources.
 uint32_t loom_low_schedule_pressure_alias_append_source_baseline_result(
     loom_low_schedule_build_state_t* state,
-    loom_low_schedule_pressure_state_t* pressure_state,
-    const loom_block_t* block, loom_value_ordinal_t result_ordinal);
+    loom_low_schedule_pressure_state_t* pressure_state, uint32_t block_index,
+    loom_value_ordinal_t result_ordinal);
 
 // Transfers source-owned units to live alias results when the source dies.
 uint32_t loom_low_schedule_pressure_alias_transfer_from_source(

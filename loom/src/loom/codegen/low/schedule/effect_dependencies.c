@@ -638,8 +638,14 @@ iree_status_t loom_low_schedule_build_effect_dependencies(
     loom_low_schedule_build_state_t* state) {
   uint16_t* traversal_stack = NULL;
   uint32_t* visit_epochs = NULL;
-  const bool has_cfg_edges = state->cfg_graph->edge_count != 0;
-  if (has_cfg_edges) {
+  // Only positive effect pairs can constrain a source terminator. Operand
+  // timing and block-local effect ordering need no successor traversal.
+  const bool has_boundary_timing =
+      iree_any_bit_set(
+          state->target.descriptor_set->flags,
+          LOOM_LOW_DESCRIPTOR_SET_FLAG_POSITIVE_EFFECT_SEPARATIONS) &&
+      state->cfg_graph->edge_count != 0;
+  if (has_boundary_timing) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         state->scratch_arena, state->body->block_count,
         sizeof(*traversal_stack), (void**)&traversal_stack));
@@ -668,7 +674,7 @@ iree_status_t loom_low_schedule_build_effect_dependencies(
       }
     }
 
-    if (has_cfg_edges) {
+    if (has_boundary_timing) {
       ++visit_epoch;
       if (visit_epoch == 0) {
         memset(visit_epochs, 0,

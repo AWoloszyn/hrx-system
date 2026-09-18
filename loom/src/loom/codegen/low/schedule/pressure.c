@@ -537,8 +537,8 @@ static uint32_t loom_low_schedule_remove_live_pressure_value(
 
 static void loom_low_schedule_add_source_pressure_value(
     loom_low_schedule_build_state_t* state,
-    loom_low_schedule_pressure_state_t* pressure_state,
-    const loom_block_t* block, loom_value_ordinal_t value_ordinal) {
+    loom_low_schedule_pressure_state_t* pressure_state, uint32_t block_index,
+    loom_value_ordinal_t value_ordinal) {
   loom_low_schedule_value_record_t* value = &state->values[value_ordinal];
   if (iree_any_bit_set(value->flags, LOOM_LOW_SCHEDULE_VALUE_FLAG_LIVE) ||
       value->unit_count == 0) {
@@ -546,7 +546,7 @@ static void loom_low_schedule_add_source_pressure_value(
   }
   const uint32_t source_owned_units =
       loom_low_schedule_pressure_alias_append_source_baseline_result(
-          state, pressure_state, block, value_ordinal);
+          state, pressure_state, block_index, value_ordinal);
   IREE_ASSERT_LE(source_owned_units, value->unit_count);
   value->flags |= LOOM_LOW_SCHEDULE_VALUE_FLAG_LIVE;
   value->live_unit_count = value->unit_count - source_owned_units;
@@ -593,7 +593,8 @@ void loom_low_schedule_reverse_source_pressure_node(
   for (uint16_t operand_index = 0; operand_index < node->operand_count;
        ++operand_index) {
     loom_low_schedule_add_source_pressure_value(
-        state, pressure_state, node->block, operand_ordinals[operand_index]);
+        state, pressure_state, node->block_index,
+        operand_ordinals[operand_index]);
   }
 }
 
@@ -733,7 +734,8 @@ void loom_low_schedule_pressure_initialize_block(
     }
     const uint32_t producer_node = value->producer_node;
     if (producer_node != LOOM_LOW_SCHEDULE_NODE_NONE &&
-        state->nodes[producer_node].block == block_record->block) {
+        state->nodes[producer_node].block_index ==
+            block_record->block->region_index) {
       continue;
     }
     const uint32_t unit_count = value->unit_count;
@@ -899,9 +901,7 @@ static void loom_low_schedule_select_candidate_schedule_class(
     score->completion_wait_cycles =
         state->node_completion_wait_cycles[node_index];
   }
-  const uint32_t source_descriptor_ordinal =
-      loom_low_descriptor_set_descriptor_ordinal(descriptor_set,
-                                                 node->source_descriptor);
+  const uint32_t source_descriptor_ordinal = node->source_descriptor_ordinal;
   score->selected_descriptor_ordinal = source_descriptor_ordinal;
   loom_low_schedule_score_candidate_schedule_class(state, node->schedule_class,
                                                    score);

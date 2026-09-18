@@ -10,12 +10,55 @@ from itertools import permutations
 import pytest
 
 from loom.gen.target.low import compiler
-from loom.target.low_descriptors import EncodingFieldValue
+from loom.target.low_descriptors import (
+    EncodingFieldValue,
+    InstructionClass,
+    IssueUse,
+    IssueUseKind,
+    LatencyKind,
+    ModelQuality,
+    Resource,
+    ResourceKind,
+    ScheduleClass,
+)
 from loom.target.test.descriptors import (
     TEST_LOW_ADD_I32_DESCRIPTOR,
     TEST_LOW_CONST_I32_DESCRIPTOR,
     TEST_LOW_CORE_DESCRIPTOR_SET,
 )
+
+
+@pytest.mark.parametrize(
+    ("second_uses", "expected_units"),
+    [
+        ((IssueUse("test.issue.alias", cycles=1, units=1),), 1),
+        ((IssueUse("test.issue.alias", cycles=1, units=2),), 2),
+        ((IssueUse("test.issue.alias", cycles=1, units=1, stage=1),), 0),
+        ((IssueUse("test.issue.alias", cycles=1, units=1, kind=IssueUseKind.RESERVED),), 0),
+        ((), 0),
+    ],
+)
+def test_resource_calendar_retains_common_issue_demand(second_uses, expected_units) -> None:
+    descriptor_set = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        resources=(
+            Resource("test.issue", capacity_per_cycle=4, kind=ResourceKind.PIPELINE, contention_group_id=1),
+            Resource("test.issue.alias", capacity_per_cycle=4, kind=ResourceKind.PIPELINE, contention_group_id=1),
+        ),
+        schedule_classes=(
+            ScheduleClass(
+                "test.first", latency_kind=LatencyKind.EXACT, model_quality=ModelQuality.EXACT, issue_uses=(IssueUse("test.issue", cycles=1, units=1), IssueUse("test.issue.alias", cycles=1, units=1))
+            ),
+            ScheduleClass("test.second", latency_kind=LatencyKind.EXACT, model_quality=ModelQuality.EXACT, issue_uses=second_uses),
+        ),
+        descriptors=(
+            replace(TEST_LOW_ADD_I32_DESCRIPTOR, schedule_class="test.first", instruction_classes=(InstructionClass.SCALAR_ALU,)),
+            replace(TEST_LOW_CONST_I32_DESCRIPTOR, schedule_class="test.second", instruction_classes=(InstructionClass.SCALAR_ALU,)),
+        ),
+    )
+    compiled = compiler.compile_descriptor_set(descriptor_set)
+    assert compiled.resource_calendars
+    assert all(calendar.minimum_issue_units == expected_units for calendar in compiled.resource_calendars)
 
 
 @pytest.mark.parametrize("candidate_names", permutations(("test.r0", "test.r1", "test.r2", "test.r3")))

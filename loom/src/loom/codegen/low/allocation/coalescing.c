@@ -1081,28 +1081,26 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
   uint32_t result_location_base = 0;
   uint32_t coalesced_unit_count = 0;
   uint16_t ignored_value_count = 0;
-  bool has_result_location_base = false;
+  const loom_low_allocation_assignment_t* first_assignment = NULL;
   for (uint32_t i = 0; i < range->count; ++i) {
     const loom_low_placement_relation_t* relation =
         &context->placement->relations[range->start + i];
     if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT) {
       continue;
     }
-    const loom_value_id_t source_value_id = loom_low_placement_value_id(
-        context->placement, relation->source_ordinal);
-    IREE_RETURN_IF_ERROR(loom_low_allocation_coalescing_append_unique_value_id(
-        ignored_value_ids, ignored_value_capacity, &ignored_value_count,
-        source_value_id));
-    // CFG layout can make the result live before its source intervals. In
-    // that order, allocate the result normally; later sources can coalesce
-    // through the existing result-affinity path.
     const loom_low_allocation_assignment_t* source_assignment =
         loom_low_allocation_coalescing_current_assignment_for_value_ordinal(
             context, relation->source_ordinal);
+    // A use in an earlier-listed block can make the concat interval precede
+    // its operands. Reserve the result normally; later sources can coalesce
+    // into that reservation.
     if (!source_assignment ||
         !loom_low_allocation_assignment_is_register_like(source_assignment)) {
       return iree_ok_status();
     }
+    IREE_RETURN_IF_ERROR(loom_low_allocation_coalescing_append_unique_value_id(
+        ignored_value_ids, ignored_value_capacity, &ignored_value_count,
+        source_assignment->value_id));
     if (!loom_low_allocation_coalescing_assignment_unit_span_fits(
             source_assignment, relation->source_unit_offset,
             relation->unit_count)) {
@@ -1117,9 +1115,9 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
     }
     const uint32_t candidate_base =
         source_unit_location - relation->result_unit_offset;
-    if (!has_result_location_base) {
+    if (!first_assignment) {
       result_location_base = candidate_base;
-      has_result_location_base = true;
+      first_assignment = source_assignment;
     } else if (result_location_base != candidate_base) {
       return iree_ok_status();
     }
@@ -1134,13 +1132,6 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
                             "low.concat placement relations do not cover the "
                             "result interval");
   }
-  const loom_value_id_t first_source_value_id = ignored_value_ids[0];
-  uint32_t first_assignment_index = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_low_allocation_coalescing_assignment_index_for_value(
-          context, first_source_value_id, &first_assignment_index));
-  const loom_low_allocation_assignment_t* first_assignment =
-      &context->assignment_map->assignments[first_assignment_index];
   const uint16_t ignored_storage_lease_value_count = ignored_value_count;
   for (uint32_t i = 0; i < edge_source_range.count; ++i) {
     const uint32_t relation_index =

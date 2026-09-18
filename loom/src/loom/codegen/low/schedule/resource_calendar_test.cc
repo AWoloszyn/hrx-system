@@ -108,6 +108,65 @@ TEST_F(ScheduleResourceCalendarTest, ResetRetainsAnEmptyCalendar) {
   EXPECT_EQ(FindEarliest(fast, 0), 0u);
   EXPECT_EQ(FindEarliest(slow, 0), 0u);
   EXPECT_EQ(FindEarliest(consumer, 0), 0u);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 0u);
+}
+
+TEST_F(ScheduleResourceCalendarTest,
+       AdvancesOnlyWhenCommonIssueCapacityIsFull) {
+  loom_low_resource_t resource = {};
+  resource.capacity_per_cycle = 2;
+  resource.kind = LOOM_LOW_RESOURCE_KIND_PIPELINE;
+  resource.calendar.slot_mask = 3;
+  resource.calendar.minimum_issue_units = 1;
+  const loom_low_issue_use_t uses[] = {
+      {/*resource_id=*/0, /*cycles=*/3, /*units=*/1, /*stage=*/0,
+       /*kind=*/LOOM_LOW_ISSUE_USE_KIND_REQUIRED},
+      {/*resource_id=*/0, /*cycles=*/1, /*units=*/1, /*stage=*/0,
+       /*kind=*/LOOM_LOW_ISSUE_USE_KIND_REQUIRED},
+      {/*resource_id=*/0, /*cycles=*/1, /*units=*/1, /*stage=*/0,
+       /*kind=*/LOOM_LOW_ISSUE_USE_KIND_REQUIRED},
+      {/*resource_id=*/0, /*cycles=*/3, /*units=*/2, /*stage=*/1,
+       /*kind=*/LOOM_LOW_ISSUE_USE_KIND_RESERVED},
+  };
+  loom_low_schedule_class_t classes[3] = {};
+  classes[0].issue_use_count = 1;
+  classes[1].issue_use_start = 1;
+  classes[1].issue_use_count = 1;
+  classes[2].issue_use_start = 2;
+  classes[2].issue_use_count = 2;
+  loom_low_descriptor_set_t descriptor_set = {};
+  descriptor_set.schedule_classes = classes;
+  descriptor_set.schedule_class_count = IREE_ARRAYSIZE(classes);
+  descriptor_set.issue_uses = uses;
+  descriptor_set.issue_use_count = IREE_ARRAYSIZE(uses);
+  descriptor_set.resources = &resource;
+  descriptor_set.resource_count = 1;
+  descriptor_set.resource_calendar_slot_count = 4;
+  IREE_ASSERT_OK(loom_low_schedule_resource_calendar_initialize(
+      &descriptor_set, &arena_, &calendar_));
+  Commit(&classes[0], 0);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 0u);
+  Commit(&classes[1], 0);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 1u);
+  Commit(&classes[1], 1);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 2u);
+  Commit(&classes[1], 2);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 3u);
+  Commit(&classes[1], 3);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 3u);
+  Commit(&classes[1], 3);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 4u);
+  loom_low_schedule_resource_calendar_reset(&calendar_);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 0u);
+  Commit(&classes[2], 0);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 0u);
+  Commit(&classes[1], 0);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, 4u);
+  EXPECT_EQ(FindEarliest(&classes[1], 1), 4u);
+  loom_low_schedule_resource_calendar_reset(&calendar_);
+  Commit(&classes[1], UINT32_MAX);
+  Commit(&classes[1], UINT32_MAX);
+  EXPECT_EQ(calendar_.minimum_issue_cycle, uint64_t{UINT32_MAX} + 1);
 }
 
 TEST_F(ScheduleResourceCalendarTest,

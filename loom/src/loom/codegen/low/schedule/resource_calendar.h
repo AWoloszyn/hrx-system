@@ -41,6 +41,9 @@ typedef struct loom_low_schedule_resource_calendar_t {
   loom_low_schedule_resource_calendar_slot_t* slots;
   // First cycle after every committed resource stage has completed.
   uint64_t quiescent_cycle;
+  // Lower bound on the next descriptor issue cycle from saturated resources
+  // required by every schedule class. Other resource demands may delay it.
+  uint64_t minimum_issue_cycle;
 } loom_low_schedule_resource_calendar_t;
 
 // Allocates the exact target-declared occupancy storage. Resources with the

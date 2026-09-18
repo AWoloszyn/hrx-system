@@ -469,7 +469,7 @@ static iree_status_t loom_target_compile_report_record_schedule_band_rows(
                     : 0,
             .function_name = report->function_name,
             .block_name =
-                loom_target_compile_report_block_name(module, node->block),
+                loom_target_compile_report_block_name(module, block->block),
             .block_index = (uint32_t)block_index,
             .first_packet_index = (uint64_t)packet_index,
             .first_scheduled_ordinal = node->scheduled_ordinal,

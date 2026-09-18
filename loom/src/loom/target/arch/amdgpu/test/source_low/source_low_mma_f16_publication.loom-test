@@ -239,3 +239,39 @@ low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(32, 1, 1) workg
   global_store_short_saddr %57, %73, %output {offset = 28}
   return
 }
+
+// ====
+
+// RUN: emit source-low output=none
+
+// An outer-loop load seeds the fragment contract for an inner MMA recurrence.
+amdgpu.target<gfx1100> @target
+
+kernel.def target(@target) @nested_fragment_initializer() {
+  %unit = index.constant 1 : index
+  %wave = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%wave, %unit, %unit) : index
+} launch(%lhs_buffer: buffer, %rhs_buffer: buffer, %output_buffer: buffer) {
+  %base = index.constant 0 : offset
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %m = index.constant 16 : index
+  %lhs_view = buffer.view %lhs_buffer[%base] : buffer -> view<16x16xf16>
+  %rhs_view = buffer.view %rhs_buffer[%base] : buffer -> view<16x16xf16>
+  %output_view = buffer.view %output_buffer[%base] : buffer -> view<32x16xf16>
+  %lhs = vector.fragment.load<lhs> %lhs_view[0, 0] shape [%m, %m] : view<16x16xf16> -> vector<16xf16>
+  %rhs = vector.fragment.load<rhs> %rhs_view[0, 0] shape [%m, %m] : view<16x16xf16> -> vector<16xf16>
+  scf.for %outer = [%c0 to %c2 step %c1] {
+    %row = index.mul %outer, %m : index
+    %initial = vector.fragment.load<init> %output_view[%row, 0] shape [%m, %m] : view<32x16xf16> -> vector<16xf16>
+    %result = scf.for %inner = [%c0 to %c2 step %c1](%acc = %initial : vector<16xf16>) -> (vector<16xf16>) {
+      %next = vector.mma %lhs, %rhs, %acc : vector<16xf16>, vector<16xf16>, vector<16xf16>
+      scf.yield %next : vector<16xf16>
+    }
+    vector.fragment.store<result> %result, %output_view[%row, 0] shape [%m, %m] : vector<16xf16>, view<32x16xf16>
+  }
+  kernel.return
+}
+
+// ----

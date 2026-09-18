@@ -276,8 +276,8 @@ uint32_t loom_low_schedule_pressure_alias_transfer_to_source(
 
 uint32_t loom_low_schedule_pressure_alias_append_source_baseline_result(
     loom_low_schedule_build_state_t* state,
-    loom_low_schedule_pressure_state_t* pressure_state,
-    const loom_block_t* block, loom_value_ordinal_t result_ordinal) {
+    loom_low_schedule_pressure_state_t* pressure_state, uint32_t block_index,
+    loom_value_ordinal_t result_ordinal) {
   loom_low_schedule_pressure_alias_state_t* alias_state =
       &pressure_state->storage_aliases;
   if (alias_state->records == NULL) {
@@ -285,7 +285,7 @@ uint32_t loom_low_schedule_pressure_alias_append_source_baseline_result(
   }
   const uint32_t producer_node = state->values[result_ordinal].producer_node;
   if (producer_node == LOOM_LOW_SCHEDULE_NODE_NONE ||
-      state->nodes[producer_node].block != block ||
+      state->nodes[producer_node].block_index != block_index ||
       state->nodes[producer_node].storage_relation_count == 0) {
     return 0;
   }

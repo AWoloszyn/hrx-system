@@ -316,3 +316,24 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @f64_spla
   %splat = splat.v2f64 %value
   return %splat
 }
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @f32_compare_masks(%lhs: f32, %rhs: f32, %tie_mask: i1) -> (i1) {
+  %equal = scalar.cmpf oeq, %lhs, %rhs : f32
+  %greater = scalar.cmpf ogt, %lhs, %rhs : f32
+  %equal_masked = scalar.andi %equal, %tie_mask : i1
+  %selected = scalar.ori %greater, %equal_masked : i1
+  func.return %selected : i1
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @f32_compare_masks(%lhs: reg<llvmir.f32>, %rhs: reg<llvmir.f32>, %tie_mask: reg<llvmir.i1>) -> (reg<llvmir.i1>) asm {
+  %equal = cmp.oeq.f32 %lhs, %rhs
+  %greater = cmp.ogt.f32 %lhs, %rhs
+  %equal_masked = and.i1 %equal, %tie_mask
+  %selected = or.i1 %greater, %equal_masked
+  return %selected
+}
