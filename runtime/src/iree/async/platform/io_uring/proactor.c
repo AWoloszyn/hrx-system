@@ -145,7 +145,7 @@ iree_status_t iree_async_proactor_create_io_uring(
                     IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_FREE,
                     iree_memory_order_relaxed);
   proactor->capabilities = IREE_ASYNC_PROACTOR_CAPABILITY_NONE;
-  iree_atomic_slist_initialize(&proactor->pending_software_completions);
+  iree_atomic_slist_initialize(&proactor->pending_software_operations);
   iree_atomic_slist_initialize(&proactor->pending_semaphore_waits);
   iree_async_semaphore_wait_context_initialize(
       &proactor->semaphore_wait_context);
@@ -304,7 +304,7 @@ static void iree_async_proactor_io_uring_destroy(
   // Deinitialize the message pool (all entries returned to free list by now).
   iree_async_message_pool_deinitialize(&proactor->message_pool);
 
-  iree_atomic_slist_deinitialize(&proactor->pending_software_completions);
+  iree_atomic_slist_deinitialize(&proactor->pending_software_operations);
   iree_atomic_slist_deinitialize(&proactor->pending_semaphore_waits);
   iree_async_semaphore_wait_context_deinitialize(
       &proactor->semaphore_wait_context);
@@ -397,8 +397,7 @@ void iree_async_proactor_io_uring_submit_continuation_chain(
       iree_async_operation_t* remaining_chain = chain_head->linked_next;
       chain_head->linked_next = NULL;
       if (chain_head->completion_fn) {
-        iree_async_operation_retain_resources(chain_head);
-        iree_async_proactor_io_uring_push_software_completion(
+        iree_async_proactor_io_uring_push_software_operation(
             proactor, chain_head, alloc_status);
       } else {
         // A deliberately suppressed tail has no callback to order and may be
@@ -433,8 +432,7 @@ void iree_async_proactor_io_uring_submit_continuation_chain(
     iree_async_operation_t* remaining_chain = failed_head->linked_next;
     failed_head->linked_next = NULL;
     if (failed_head->completion_fn) {
-      iree_async_operation_retain_resources(failed_head);
-      iree_async_proactor_io_uring_push_software_completion(
+      iree_async_proactor_io_uring_push_software_operation(
           proactor, failed_head, submit_status);
     } else {
       iree_async_operation_complete(failed_head, submit_status,
@@ -452,39 +450,33 @@ void iree_async_proactor_io_uring_submit_continuation_chain(
 }
 
 //===----------------------------------------------------------------------===//
-// Software operation completion delivery
+// Poll-owned software operation dispatch
 //===----------------------------------------------------------------------===//
 
-// Pushes a completed software operation to the MPSC queue for callback delivery
-// on the poll thread. The operation's side effects (e.g., semaphore signal)
-// have already been executed; this only defers the callback.
-//
-// The completion status is carried in base.linked_next (repurposed after the
-// continuation chain is consumed). The operation's base.next (offset 0) is used
-// as the iree_atomic_slist_entry_t for the MPSC push.
-void iree_async_proactor_io_uring_push_software_completion(
+// Pushes software work to the poll-owned MPSC queue. The status is stored in
+// base.pending_status after any continuation chain has been consumed. SEQUENCE
+// operations use an OK status to request startup instead of completion.
+void iree_async_proactor_io_uring_push_software_operation(
     iree_async_proactor_io_uring_t* proactor, iree_async_operation_t* operation,
     iree_status_t status) {
-  // Stash the completion status in linked_next (reinterpreted as
-  // iree_status_t).
-  operation->linked_next = (iree_async_operation_t*)(uintptr_t)status;
-  iree_atomic_slist_push(&proactor->pending_software_completions,
+  operation->pending_status = status;
+  iree_atomic_slist_push(&proactor->pending_software_operations,
                          (iree_atomic_slist_entry_t*)operation);
 }
 
-// Drains pending software operation completions and invokes callbacks.
+// Drains pending software work and invokes or starts it.
 // Called from poll() BEFORE CQE processing to preserve callback ordering for
 // chains where a software operation precedes a kernel operation (e.g.,
 // SIGNAL(LINKED) → RECV: SIGNAL callback must fire before RECV CQE callback).
 //
-// Returns the number of completions drained (for inclusion in poll's
-// completion count).
+// Returns the number of terminal completions drained (for inclusion in poll's
+// completion count). Successfully started sequences do not count as completed.
 static iree_host_size_t
-iree_async_proactor_io_uring_drain_pending_software_completions(
+iree_async_proactor_io_uring_drain_pending_software_operations(
     iree_async_proactor_io_uring_t* proactor) {
   iree_atomic_slist_entry_t* head = NULL;
   iree_atomic_slist_entry_t* tail = NULL;
-  if (!iree_atomic_slist_flush(&proactor->pending_software_completions,
+  if (!iree_atomic_slist_flush(&proactor->pending_software_operations,
                                IREE_ATOMIC_SLIST_FLUSH_ORDER_APPROXIMATE_FIFO,
                                &head, &tail)) {
     return 0;
@@ -495,13 +487,41 @@ iree_async_proactor_io_uring_drain_pending_software_completions(
   while (entry != NULL) {
     iree_async_operation_t* operation = (iree_async_operation_t*)entry;
     iree_atomic_slist_entry_t* next = entry->next;
+    operation->next = NULL;
 
-    // Extract the completion status from linked_next.
-    iree_status_t status = (iree_status_t)(uintptr_t)operation->linked_next;
-    operation->linked_next = NULL;
+    // Transfer ownership of the pending status out of the queue entry.
+    iree_status_t status = operation->pending_status;
+    operation->pending_status = iree_ok_status();
 
-    // Release resources retained at submit time.
-    iree_async_operation_release_resources(operation);
+    if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+      iree_async_sequence_operation_t* sequence =
+          (iree_async_sequence_operation_t*)operation;
+
+      if (iree_status_is_ok(status)) {
+        if (sequence->step_count == 0) {
+          if (iree_any_bit_set(
+                  iree_async_operation_load_internal_flags(operation),
+                  IREE_ASYNC_SEQUENCE_INTERNAL_CANCEL_REQUESTED)) {
+            status = iree_status_from_code(IREE_STATUS_CANCELLED);
+          }
+        } else if (!sequence->step_fn) {
+          status =
+              iree_async_sequence_submit_as_linked(&proactor->base, sequence);
+          if (iree_status_is_ok(status)) {
+            entry = next;
+            continue;
+          }
+        } else {
+          status = iree_async_sequence_emulation_begin(
+              &proactor->sequence_emulator, sequence);
+          if (iree_status_is_ok(status)) {
+            entry = next;
+            continue;
+          }
+        }
+      }
+      iree_async_sequence_prepare_for_completion(sequence);
+    }
 
     drained_count += iree_async_operation_complete(
         operation, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
@@ -1351,12 +1371,6 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     }
   }
 
-  // Release resources retained during submission (not for multishot).
-  // Must happen before the callback since it may free the operation.
-  if (is_final) {
-    iree_async_operation_release_resources(operation);
-  }
-
   iree_host_size_t completed_count =
       iree_async_operation_complete(operation, status, flags);
 
@@ -1454,16 +1468,15 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   iree_atomic_store(&proactor->poll_tid, (int32_t)syscall(__NR_gettid),
                     iree_memory_order_relaxed);
 
-  // First MPSC drain: software completions from submit threads.
-  // Software ops pushed to the MPSC by submit threads have their side effects
-  // already done; only callback delivery is deferred. Draining these first
-  // preserves callback ordering for chains like SIGNAL(LINKED) → RECV: the
-  // SIGNAL callback fires before the RECV CQE callback.
-  // A second drain occurs after CQE processing and semaphore wait dispatch
-  // to catch software completions pushed during those phases.
+  // First MPSC drain: software work from submit threads. This starts admitted
+  // sequences and delivers terminal completions whose side effects are already
+  // done. Draining these first preserves callback ordering for chains like
+  // SIGNAL(LINKED) → RECV: the SIGNAL callback fires before the RECV CQE
+  // callback. A second drain occurs after CQE processing and semaphore wait
+  // dispatch to catch software work pushed during those phases.
   iree_host_size_t completed =
       progress_count +
-      iree_async_proactor_io_uring_drain_pending_software_completions(proactor);
+      iree_async_proactor_io_uring_drain_pending_software_operations(proactor);
 
   // Process available CQEs using a CQ tail snapshot. The snapshot bounds the
   // loop to CQEs that existed before processing started. CQEs generated by
@@ -1489,14 +1502,14 @@ static iree_status_t iree_async_proactor_io_uring_poll(
     }
   }
 
-  // Second MPSC drain: software completions pushed during the main CQE loop.
-  // CQE processing dispatches continuation chains that push software
-  // completions to the MPSC. These must fire BEFORE the drain loop processes
-  // CQEs from Phase 4 flushes, because those CQEs correspond to operations
-  // that are later in the chain. Example: [RECV → SIGNAL → SEND] — SIGNAL's
-  // callback must fire before SEND's CQE is processed.
+  // Second MPSC drain: software work pushed during the main CQE loop. CQE
+  // processing dispatches continuation chains that push software work to the
+  // MPSC. Terminal completions must fire BEFORE the drain loop processes CQEs
+  // from Phase 4 flushes, because those CQEs correspond to operations later in
+  // the chain. Example: [RECV → SIGNAL → SEND] — SIGNAL's callback must
+  // fire before SEND's CQE is processed.
   completed +=
-      iree_async_proactor_io_uring_drain_pending_software_completions(proactor);
+      iree_async_proactor_io_uring_drain_pending_software_operations(proactor);
 
   // Drain loop: process CQEs generated by Phase 4 flushes and run DEFER_TASKRUN
   // task_work. Each pass calls ring_submit with GETEVENTS to flush any
@@ -1550,12 +1563,12 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   completed +=
       iree_async_proactor_io_uring_drain_pending_semaphore_waits(proactor);
 
-  // Third MPSC drain: software completions pushed during the CQE drain loop
-  // and semaphore wait dispatch. Each drain pass in the CQE drain loop may
-  // dispatch continuations that push software completions. Semaphore wait
-  // dispatch similarly pushes continuation completions.
+  // Third MPSC drain: software work pushed during the CQE drain loop and
+  // semaphore wait dispatch. Each CQE drain pass may dispatch continuations
+  // that push software work. Semaphore wait dispatch similarly pushes
+  // continuation completions.
   completed +=
-      iree_async_proactor_io_uring_drain_pending_software_completions(proactor);
+      iree_async_proactor_io_uring_drain_pending_software_operations(proactor);
 
   if (out_completed_count) {
     *out_completed_count = completed;

@@ -146,9 +146,14 @@ typedef struct iree_async_file_open_operation_t {
 //   When the file was opened with IREE_ASYNC_FILE_OPEN_FLAG_DIRECT, the
 //   buffer address and size must be aligned to the filesystem block size.
 //
+// Buffer lifetime:
+//   Registered regions are retained through the final callback. Raw buffer
+//   memory remains caller-owned and must stay valid through that callback.
+//   Access after callback requires the caller to retain the backing memory,
+//   slab, or region independently.
+//
 // Threading model:
-//   Callback fires on the poll thread. Buffer contents are valid after
-//   the callback—no need to copy during the callback.
+//   Callback fires on the poll thread.
 typedef struct iree_async_file_read_operation_t {
   iree_async_operation_t base;
 
@@ -197,6 +202,10 @@ typedef struct iree_async_file_read_operation_t {
 //   Write completion means data has been accepted by the kernel, not
 //   necessarily persisted to disk. Use fsync/fdatasync (via separate
 //   operation or post-write) for durability guarantees.
+//
+// Buffer lifetime:
+//   Registered regions are retained through the final callback. Raw buffer
+//   memory remains caller-owned and must stay valid through that callback.
 typedef struct iree_async_file_write_operation_t {
   iree_async_operation_t base;
 

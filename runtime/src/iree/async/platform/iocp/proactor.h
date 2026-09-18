@@ -66,10 +66,14 @@ enum iree_async_iocp_operation_internal_flags_e {
 // Identifies the kind of operation a carrier wraps. Determines which member
 // of the data union is active and how the poll thread dispatches completions.
 enum iree_async_iocp_carrier_type_e {
+  // Synthetic completion carrying a status owned by the carrier.
+  // Data: direct (terminal status).
+  IREE_ASYNC_IOCP_CARRIER_DIRECT = 0,
+
   // Event wait: a wait completion packet posts directly to the IOCP port, or a
   // RegisterWaitForSingleObject callback posts through the Windows threadpool.
   // Data: event_wait (wait handle for matching cancellation).
-  IREE_ASYNC_IOCP_CARRIER_EVENT_WAIT = 0,
+  IREE_ASYNC_IOCP_CARRIER_EVENT_WAIT,
 
   // General socket I/O: WSARecv, WSASend, WSASendTo, WSARecvFrom.
   // Data: socket_io (WSABUF array for scatter-gather).
@@ -158,9 +162,18 @@ typedef struct iree_async_iocp_carrier_t {
   struct iree_async_iocp_carrier_t* next;
   struct iree_async_iocp_carrier_t* prev;
 
+  // Intrusive linkage while a failed synthetic post awaits poll dispatch.
+  iree_atomic_slist_intrusive_ptr_t fallback_next;
+
   // Per-type auxiliary data. The active member is determined by |type|.
 #if defined(IREE_PLATFORM_WINDOWS)
   union {
+    // IREE_ASYNC_IOCP_CARRIER_DIRECT
+    struct {
+      // Terminal status transferred to the poll owner for dispatch.
+      iree_status_t status;
+    } direct;
+
     // IREE_ASYNC_IOCP_CARRIER_EVENT_WAIT
     struct {
       // Handle for the outstanding wait registration.
@@ -217,6 +230,11 @@ typedef struct iree_async_iocp_carrier_t {
 #endif
 } iree_async_iocp_carrier_t;
 
+IREE_TYPED_ATOMIC_SLIST_WRAPPER(iree_async_iocp_fallback_completion,
+                                iree_async_iocp_carrier_t,
+                                offsetof(iree_async_iocp_carrier_t,
+                                         fallback_next));
+
 //===----------------------------------------------------------------------===//
 // Proactor implementation struct
 //===----------------------------------------------------------------------===//
@@ -242,6 +260,10 @@ struct iree_async_proactor_iocp_t {
   // I/O (timers, event waits, notification waits, relay management). Submit()
   // pushes here from arbitrary threads; poll() drains on the poll thread.
   iree_atomic_slist_t pending_queue;
+
+  // Synthetic completions whose IOCP post failed after batch acceptance.
+  // Entries are already-owned carriers; publication cannot allocate or fail.
+  iree_async_iocp_fallback_completion_slist_t fallback_completion_queue;
 
   // Semaphore wait operations funneled to the poll thread.
   iree_atomic_slist_t pending_semaphore_waits;
@@ -375,11 +397,6 @@ static inline iree_async_proactor_iocp_t* iree_async_proactor_iocp_cast(
 // Vtable for same-backend validation in submit.
 extern const iree_async_proactor_vtable_t iree_async_proactor_iocp_vtable;
 
-// Sentinel value in dwNumberOfBytesTransferred indicating that a direct
-// completion carries a pre-computed iree_status_t stashed in operation->next,
-// rather than a WSA error code that needs conversion.
-#define IREE_ASYNC_IOCP_STASHED_STATUS_SENTINEL 0xFFFFFFFFu
-
 // Wakes the poll thread by posting a sentinel completion to the IOCP port.
 // (proactor.c)
 void iree_async_proactor_iocp_wake(iree_async_proactor_t* base_proactor);
@@ -388,6 +405,14 @@ void iree_async_proactor_iocp_wake(iree_async_proactor_t* base_proactor);
 // Retains operation resources and wakes the poll thread. (proactor.c)
 void iree_async_proactor_iocp_push_pending(iree_async_proactor_iocp_t* proactor,
                                            iree_async_operation_t* operation);
+
+// Acquires a zeroed carrier from the freelist or allocator and initializes its
+// common fields. (proactor_submit.c)
+iree_status_t iree_async_proactor_iocp_acquire_carrier(
+    iree_async_proactor_iocp_t* proactor,
+    iree_async_iocp_carrier_type_t carrier_type,
+    iree_async_operation_t* operation, uintptr_t io_handle,
+    iree_async_iocp_carrier_t** out_carrier);
 
 // Returns a carrier to the freelist for reuse. Decrements the outstanding
 // carrier count. The carrier must not be referenced after this call.

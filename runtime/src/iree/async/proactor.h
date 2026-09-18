@@ -773,12 +773,12 @@ iree_async_proactor_query_capabilities(iree_async_proactor_t* proactor) {
 //   kqueue: Single kevent() call with all changes.
 //
 // Region lifetime:
-//   Implementations call iree_async_span_retain_region() for each span in
-//   submitted operations at submit time, and release after the final callback
-//   fires. This ensures registered memory regions remain valid for the
-//   operation's in-flight window. For multishot operations, regions are
-//   retained at submit and released only after the final callback (one
-//   without IREE_ASYNC_COMPLETION_FLAG_MORE).
+//   A successful submit acquires resources for every operation in the list,
+//   including linked successors that do not execute until a predecessor
+//   completes. Registered span regions remain alive through the final callback
+//   and are then released. For multishot operations, callbacks carrying
+//   IREE_ASYNC_COMPLETION_FLAG_MORE retain ownership until the terminal
+//   callback. A synchronously rejected batch acquires no resources.
 //
 // Returns:
 //   IREE_STATUS_OK: All operations submitted successfully.

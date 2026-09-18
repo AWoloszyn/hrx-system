@@ -20,6 +20,7 @@
 
 #include "iree/async/cts/util/registry.h"
 #include "iree/async/cts/util/test_base.h"
+#include "iree/async/event.h"
 #include "iree/async/operations/scheduling.h"
 
 namespace iree::async::cts {
@@ -58,14 +59,14 @@ class MessageTest : public CtsTestBase<> {
     }
   }
 
-  // Runs one nonblocking source poll to flush submissions owned by the poll
-  // thread. Backends may report DEADLINE_EXCEEDED when the progress turn has
-  // no user-visible completion.
-  void PollSourceImmediate() {
+  // Runs one nonblocking poll to flush submissions owned by the poll thread.
+  // Backends may report DEADLINE_EXCEEDED when the progress turn has no
+  // user-visible completion.
+  void PollImmediate(iree_async_proactor_t* proactor) {
     iree_status_t status = iree_async_proactor_poll(
-        proactor_, iree_immediate_timeout(), /*out_completed_count=*/nullptr);
+        proactor, iree_immediate_timeout(), /*out_completed_count=*/nullptr);
     if (iree_status_is_deadline_exceeded(status)) {
-      IREE_ASSERT_STATUS_IS(IREE_STATUS_DEADLINE_EXCEEDED, status);
+      iree_status_free(status);
     } else {
       IREE_ASSERT_OK(status);
     }
@@ -153,15 +154,15 @@ TEST_P(MessageTest, SkipSourceCompletion) {
 
   // io_uring submissions are flushed by the source poll owner. This exact
   // nonblocking progress turn replaces the former fixed-duration drain.
-  PollSourceImmediate();
+  PollImmediate(proactor_);
 
   PollTargetUntilCondition([&] { return receiver.count.load() == 1; },
                            "fire-and-forget message delivery");
   EXPECT_EQ(receiver.count.load(), 1);
 }
 
-// LINK chain: TIMER -> MESSAGE (tests linkability).
-TEST_P(MessageTest, LinkChainTimerThenMessage) {
+// A linked MESSAGE must remain invisible until its predecessor completes.
+TEST_P(MessageTest, LinkedEventWaitDefersMessageDelivery) {
   struct MessageReceiver {
     std::atomic<int> count{0};
     uint64_t last_data = 0;
@@ -179,19 +180,19 @@ TEST_P(MessageTest, LinkChainTimerThenMessage) {
       target_proactor_,
       iree_async_proactor_message_callback_t{callback, &receiver});
 
-  // Set up linked operations: TIMER -> MESSAGE.
-  iree_async_timer_operation_t timer;
-  memset(&timer, 0, sizeof(timer));
-  timer.base.type = IREE_ASYNC_OPERATION_TYPE_TIMER;
-  timer.base.flags = IREE_ASYNC_OPERATION_FLAG_LINKED;  // Link to next op.
-  timer.deadline_ns = iree_time_now() + iree_make_duration_ms(10);
+  iree_async_event_t* event = nullptr;
+  IREE_ASSERT_OK(iree_async_event_create(proactor_, &event));
 
-  CompletionTracker timer_tracker;
-  timer.base.completion_fn = CompletionTracker::Callback;
-  timer.base.user_data = &timer_tracker;
+  iree_async_event_wait_operation_t wait = {};
+  wait.base.type = IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT;
+  wait.base.flags = IREE_ASYNC_OPERATION_FLAG_LINKED;
+  wait.event = event;
 
-  iree_async_message_operation_t message;
-  memset(&message, 0, sizeof(message));
+  CompletionTracker wait_tracker;
+  wait.base.completion_fn = CompletionTracker::Callback;
+  wait.base.user_data = &wait_tracker;
+
+  iree_async_message_operation_t message = {};
   message.base.type = IREE_ASYNC_OPERATION_TYPE_MESSAGE;
   message.target = target_proactor_;
   message.message_data = 0x1234ABCD;
@@ -201,22 +202,29 @@ TEST_P(MessageTest, LinkChainTimerThenMessage) {
   message.base.completion_fn = CompletionTracker::Callback;
   message.base.user_data = &message_tracker;
 
-  // Submit as a batch (linked operations).
-  iree_async_operation_t* ops[] = {&timer.base, &message.base};
+  iree_async_operation_t* ops[] = {&wait.base, &message.base};
   iree_async_operation_list_t list = {ops, 2};
   IREE_ASSERT_OK(iree_async_proactor_submit(proactor_, list));
 
-  // Poll source - timer should fire, then message should be sent.
+  // Arm the source wait, then prove the target cannot observe the message
+  // while the predecessor remains blocked.
+  PollImmediate(proactor_);
+  PollImmediate(target_proactor_);
+  EXPECT_EQ(receiver.count.load(), 0);
+
+  IREE_ASSERT_OK(iree_async_event_set(event));
   PollUntil(/*min_completions=*/2);
-  EXPECT_EQ(timer_tracker.call_count, 1);
+  EXPECT_EQ(wait_tracker.call_count, 1);
   EXPECT_EQ(message_tracker.call_count, 1);
-  IREE_EXPECT_OK(timer_tracker.ConsumeStatus());
+  IREE_EXPECT_OK(wait_tracker.ConsumeStatus());
   IREE_EXPECT_OK(message_tracker.ConsumeStatus());
 
   PollTargetUntilCondition([&] { return receiver.count.load() == 1; },
                            "linked message delivery");
   EXPECT_EQ(receiver.count.load(), 1);
   EXPECT_EQ(receiver.last_data, 0x1234ABCD);
+
+  iree_async_event_release(event);
 }
 
 // Self-message: proactor sends to itself.

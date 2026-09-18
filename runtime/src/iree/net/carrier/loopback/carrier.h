@@ -11,9 +11,10 @@
 // own proactor. Cross-proactor notification operations wake bounded pair-owned
 // queues without a private worker thread.
 //
-// Ordinary sends retain caller span descriptors and registered regions without
-// copying payload bytes. The caller's byte storage must remain valid until the
-// send completion callback fires, as required by the generic carrier contract.
+// Borrowed spans and registered regions are retained without copying payload
+// bytes. Generated prefixes are written directly into send-owned storage. The
+// caller's borrowed byte storage must remain valid until the send completion
+// callback fires, as required by the generic carrier contract.
 
 #ifndef IREE_NET_CARRIER_LOOPBACK_CARRIER_H_
 #define IREE_NET_CARRIER_LOOPBACK_CARRIER_H_
@@ -34,10 +35,10 @@ extern "C" {
 
 // Options controlling loopback carrier admission limits.
 typedef struct iree_net_loopback_carrier_options_t {
-  // Maximum accepted ordinary sends and direct-write reservations per carrier.
+  // Maximum accepted sends per carrier.
   uint32_t max_send_operations;
 
-  // Maximum scatter/gather spans accepted by one ordinary send.
+  // Maximum borrowed scatter/gather spans accepted by one send.
   iree_host_size_t max_send_spans;
 } iree_net_loopback_carrier_options_t;
 

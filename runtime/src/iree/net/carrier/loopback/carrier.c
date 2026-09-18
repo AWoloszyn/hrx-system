@@ -8,7 +8,6 @@
 
 #include <string.h>
 
-#include "iree/async/notification.h"
 #include "iree/async/operations/scheduling.h"
 #include "iree/base/internal/math.h"
 #include "iree/base/threading/mutex.h"
@@ -16,32 +15,26 @@
 typedef struct iree_net_loopback_carrier_t iree_net_loopback_carrier_t;
 
 typedef enum iree_net_loopback_send_phase_e {
-  IREE_NET_LOOPBACK_SEND_PHASE_RESERVED = 0,
+  IREE_NET_LOOPBACK_SEND_PHASE_PREPARING = 0,
   IREE_NET_LOOPBACK_SEND_PHASE_DELIVERY = 1,
   IREE_NET_LOOPBACK_SEND_PHASE_COMPLETION = 2,
 } iree_net_loopback_send_phase_t;
 
 // One accepted send as it moves from the source to the target and back.
 typedef struct iree_net_loopback_pending_send_t {
-  // Next send in a pair event queue or carrier reservation list.
+  // Next send in a pair event queue.
   struct iree_net_loopback_pending_send_t* next;
 
   // Source carrier retained until the send reaches its terminal action.
   iree_net_loopback_carrier_t* source;
 
-  // Completion callback installed when the send is committed.
+  // Completion callback installed when the send is admitted.
   iree_net_send_completion_callback_t completion_callback;
-
-  // Span used by a direct-write reservation after it is committed.
-  iree_async_span_t reservation_span;
 
   // Total payload byte count.
   iree_host_size_t total_length;
 
-  // Opaque nonzero ID while this send is a direct-write reservation.
-  uint64_t reservation_id;
-
-  // Number of spans stored in trailing storage for an ordinary send.
+  // Number of spans stored in trailing storage.
   iree_host_size_t span_count;
 
   // Current queue and ownership phase.
@@ -50,11 +43,14 @@ typedef struct iree_net_loopback_pending_send_t {
   // Terminal status code used when the send reaches its source.
   iree_status_code_t completion_code;
 
+  // Owned detailed status for a locally completed send.
+  iree_status_t completion_status;
+
   // True when registered regions referenced by the spans are retained.
   bool regions_retained;
 
-  // Span descriptors for ordinary sends or payload bytes for reservations.
-  iree_alignas(IREE_NET_SEND_RESERVATION_ALIGNMENT) uint8_t storage[];
+  // Span descriptors followed by optional generated-prefix storage.
+  iree_alignas(IREE_NET_SEND_PREFIX_ALIGNMENT) uint8_t storage[];
 } iree_net_loopback_pending_send_t;
 
 static_assert(offsetof(iree_net_loopback_pending_send_t, storage) %
@@ -62,9 +58,9 @@ static_assert(offsetof(iree_net_loopback_pending_send_t, storage) %
                   0,
               "loopback send storage must align span descriptors");
 static_assert(offsetof(iree_net_loopback_pending_send_t, storage) %
-                      IREE_NET_SEND_RESERVATION_ALIGNMENT ==
+                      IREE_NET_SEND_PREFIX_ALIGNMENT ==
                   0,
-              "loopback send storage must align reservation payloads");
+              "loopback send storage must align generated prefixes");
 
 typedef struct iree_net_loopback_event_queue_t {
   // First event awaiting dispatch on the target carrier proactor.
@@ -76,7 +72,7 @@ typedef struct iree_net_loopback_event_queue_t {
 
 // Shared synchronization and event storage for one connected pair.
 typedef struct iree_net_loopback_pair_t {
-  // Serializes pair lifecycle, admission, queues, and reservations.
+  // Serializes pair lifecycle, admission, and queues.
   iree_slim_mutex_t mutex;
 
   // Number of carrier objects that still own this pair.
@@ -99,26 +95,17 @@ struct iree_net_loopback_carrier_t {
   // Proactor owning all callbacks for this carrier. Retained.
   iree_async_proactor_t* proactor;
 
-  // Notification bound to |proactor| and signaled by pair producers.
-  iree_async_notification_t* notification;
-
   // Shared pair containing the peer and event queues.
   iree_net_loopback_pair_t* pair;
 
   // Index of this carrier in the pair arrays.
   uint8_t pair_index;
 
-  // Next embedded wait operation slot to submit.
-  uint8_t next_wait_slot;
+  // Next embedded dispatch operation slot to submit.
+  uint8_t next_dispatch_slot;
 
-  // True while one notification wait operation is submitted.
-  bool wait_armed;
-
-  // True after the owning proactor rejects notification wait submission.
-  bool dispatch_failed;
-
-  // Serializes the exceptional inline drain after dispatch failure.
-  bool fallback_drain_active;
+  // True while a dispatch operation owns the event queue.
+  bool dispatch_scheduled;
 
   // True after shutdown stops new sends in this direction.
   bool shutdown_initiated;
@@ -126,17 +113,11 @@ struct iree_net_loopback_carrier_t {
   // True when peer departure still needs terminal-error delivery.
   bool peer_departed_pending;
 
-  // Maximum number of accepted source sends and reservations.
+  // Maximum number of accepted source sends.
   uint32_t max_send_operations;
 
   // Number of source send slots currently owned.
   uint32_t send_operations_in_use;
-
-  // Next direct-write reservation ID candidate.
-  uint64_t next_reservation_id;
-
-  // Direct-write reservations accepted but not committed or aborted.
-  iree_net_loopback_pending_send_t* reservations;
 
   // Callback invoked after deactivation drains all accepted work.
   struct {
@@ -147,9 +128,13 @@ struct iree_net_loopback_carrier_t {
     void* user_data;
   } deactivate_callback;
 
-  // Reusable notification wait operations, alternated across callbacks.
-  iree_async_notification_wait_operation_t wait_operations[2];
+  // Reusable dispatch operations, alternated across callbacks.
+  iree_async_nop_operation_t dispatch_operations[2];
 };
+
+static void iree_net_loopback_dispatch_completed(
+    void* user_data, iree_async_operation_t* operation, iree_status_t status,
+    iree_async_completion_flags_t flags);
 
 static iree_net_loopback_carrier_t* iree_net_loopback_carrier_cast(
     iree_net_carrier_t* base_carrier) {
@@ -163,9 +148,7 @@ static uint8_t iree_net_loopback_peer_index(
 
 static iree_async_span_t* iree_net_loopback_pending_send_spans(
     iree_net_loopback_pending_send_t* pending_send) {
-  return pending_send->reservation_id
-             ? &pending_send->reservation_span
-             : (iree_async_span_t*)pending_send->storage;
+  return (iree_async_span_t*)pending_send->storage;
 }
 
 static void iree_net_loopback_event_queue_push(
@@ -231,19 +214,32 @@ static iree_status_t iree_net_loopback_validate_span(iree_async_span_t span) {
 }
 
 static iree_status_t iree_net_loopback_pending_send_allocate(
-    iree_net_loopback_pair_t* pair, iree_host_size_t storage_size,
-    iree_net_loopback_pending_send_t** out_pending_send) {
+    iree_net_loopback_pair_t* pair, iree_host_size_t span_count,
+    iree_host_size_t prefix_storage_length,
+    iree_net_loopback_pending_send_t** out_pending_send,
+    iree_byte_span_t* out_prefix_storage) {
   *out_pending_send = NULL;
+  *out_prefix_storage = iree_byte_span_empty();
   iree_host_size_t allocation_size = 0;
+  iree_host_size_t prefix_storage_offset = 0;
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       sizeof(iree_net_loopback_pending_send_t), &allocation_size,
-      IREE_STRUCT_FIELD_FAM(storage_size, uint8_t)));
+      IREE_STRUCT_FIELD(span_count, iree_async_span_t, NULL),
+      IREE_STRUCT_FIELD_ALIGNED(prefix_storage_length, uint8_t,
+                                IREE_NET_SEND_PREFIX_ALIGNMENT,
+                                &prefix_storage_offset)));
   iree_net_loopback_pending_send_t* pending_send = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(
       pair->host_allocator, allocation_size, (void**)&pending_send));
   memset(pending_send, 0, allocation_size);
   pending_send->completion_code = IREE_STATUS_OK;
+  pending_send->completion_status = iree_ok_status();
+  pending_send->span_count = span_count;
   *out_pending_send = pending_send;
+  if (prefix_storage_length > 0) {
+    *out_prefix_storage = iree_make_byte_span(
+        (uint8_t*)pending_send + prefix_storage_offset, prefix_storage_length);
+  }
   return iree_ok_status();
 }
 
@@ -259,6 +255,7 @@ static void iree_net_loopback_pending_send_destroy(
         pending_send->span_count));
   }
   iree_net_loopback_carrier_t* source = pending_send->source;
+  iree_status_free(pending_send->completion_status);
   iree_allocator_free(pair->host_allocator, pending_send);
   if (source) {
     iree_net_carrier_release(&source->base);
@@ -278,9 +275,46 @@ static bool iree_net_loopback_has_dispatch_work_locked(
          carrier->pair->event_queues[carrier->pair_index].head != NULL;
 }
 
-static void iree_net_loopback_signal_locked(
+// Schedules a bounded callback on the carrier's owning proactor. NOP
+// submission is allocation-free and cannot exhaust backend capacity.
+static void iree_net_loopback_schedule_dispatch_locked(
     iree_net_loopback_carrier_t* carrier) {
-  iree_async_notification_signal(carrier->notification, 1);
+  const iree_net_carrier_state_t state = iree_net_carrier_state(&carrier->base);
+  if (carrier->dispatch_scheduled ||
+      (state != IREE_NET_CARRIER_STATE_ACTIVE &&
+       state != IREE_NET_CARRIER_STATE_DRAINING)) {
+    return;
+  }
+
+  iree_async_nop_operation_t* dispatch_operation =
+      &carrier->dispatch_operations[carrier->next_dispatch_slot];
+  carrier->next_dispatch_slot ^= 1u;
+  iree_async_operation_zero(&dispatch_operation->base,
+                            sizeof(*dispatch_operation));
+  iree_async_operation_initialize(
+      &dispatch_operation->base, IREE_ASYNC_OPERATION_TYPE_NOP,
+      IREE_ASYNC_OPERATION_FLAG_NONE, iree_net_loopback_dispatch_completed,
+      carrier);
+  carrier->dispatch_scheduled = true;
+  iree_atomic_fetch_add(&carrier->base.pending_operations, 1,
+                        iree_memory_order_acq_rel);
+  iree_net_carrier_retain(&carrier->base);
+  IREE_CHECK_OK(iree_async_proactor_submit_one(carrier->proactor,
+                                               &dispatch_operation->base));
+}
+
+// Queues a post-admission local failure for completion on the source proactor.
+static void iree_net_loopback_queue_local_completion_locked(
+    iree_net_loopback_pending_send_t* pending_send, iree_status_t status) {
+  IREE_ASSERT(pending_send->phase == IREE_NET_LOOPBACK_SEND_PHASE_PREPARING);
+  IREE_ASSERT(!iree_status_is_ok(status));
+  pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_COMPLETION;
+  pending_send->completion_code = iree_status_code(status);
+  pending_send->completion_status = status;
+  iree_net_loopback_carrier_t* source = pending_send->source;
+  iree_net_loopback_event_queue_push(
+      &source->pair->event_queues[source->pair_index], pending_send);
+  iree_net_loopback_schedule_dispatch_locked(source);
 }
 
 // Converts an undelivered event into a completion for its source.
@@ -288,7 +322,7 @@ static void iree_net_loopback_signal_locked(
 static void iree_net_loopback_fail_delivery_locked(
     iree_net_loopback_carrier_t* target,
     iree_net_loopback_pending_send_t* pending_send,
-    iree_status_code_t completion_code, uint32_t* out_fallback_drain_mask) {
+    iree_status_code_t completion_code) {
   IREE_ASSERT(pending_send->phase == IREE_NET_LOOPBACK_SEND_PHASE_DELIVERY);
   iree_net_loopback_retire_pending_operation_locked(target);
   pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_COMPLETION;
@@ -296,42 +330,13 @@ static void iree_net_loopback_fail_delivery_locked(
   iree_net_loopback_carrier_t* source = pending_send->source;
   iree_net_loopback_event_queue_push(
       &source->pair->event_queues[source->pair_index], pending_send);
-  if (source->dispatch_failed) {
-    *out_fallback_drain_mask |= 1u << source->pair_index;
-  } else {
-    iree_net_loopback_signal_locked(source);
-  }
-}
-
-static iree_net_loopback_pending_send_t*
-iree_net_loopback_cancel_reservations_locked(
-    iree_net_loopback_carrier_t* carrier) {
-  iree_net_loopback_pending_send_t* reservations = carrier->reservations;
-  carrier->reservations = NULL;
-  for (iree_net_loopback_pending_send_t* reservation = reservations;
-       reservation; reservation = reservation->next) {
-    IREE_ASSERT(carrier->send_operations_in_use > 0);
-    --carrier->send_operations_in_use;
-    iree_net_loopback_retire_pending_operation_locked(carrier);
-  }
-  return reservations;
-}
-
-static void iree_net_loopback_destroy_reservation_list(
-    iree_net_loopback_pair_t* pair,
-    iree_net_loopback_pending_send_t* reservations) {
-  while (reservations) {
-    iree_net_loopback_pending_send_t* next = reservations->next;
-    reservations->next = NULL;
-    iree_net_loopback_pending_send_destroy(pair, reservations);
-    reservations = next;
-  }
+  iree_net_loopback_schedule_dispatch_locked(source);
 }
 
 // Detaches a carrier and resolves all queued work that can no longer be
-// delivered. Returns reservations that must be freed after unlocking.
-static iree_net_loopback_pending_send_t* iree_net_loopback_detach_locked(
-    iree_net_loopback_carrier_t* carrier, uint32_t* out_fallback_drain_mask) {
+// delivered.
+static void iree_net_loopback_detach_locked(
+    iree_net_loopback_carrier_t* carrier) {
   iree_net_loopback_pair_t* pair = carrier->pair;
   const bool was_attached = pair->carriers[carrier->pair_index] == carrier;
   if (was_attached) {
@@ -357,8 +362,7 @@ static iree_net_loopback_pending_send_t* iree_net_loopback_detach_locked(
       }
       pending_send->next = NULL;
       iree_net_loopback_fail_delivery_locked(carrier, pending_send,
-                                             IREE_STATUS_UNAVAILABLE,
-                                             out_fallback_drain_mask);
+                                             IREE_STATUS_UNAVAILABLE);
     } else {
       previous = pending_send;
     }
@@ -385,8 +389,8 @@ static iree_net_loopback_pending_send_t* iree_net_loopback_detach_locked(
       }
       pending_send->next = NULL;
       IREE_ASSERT(peer);
-      iree_net_loopback_fail_delivery_locked(
-          peer, pending_send, IREE_STATUS_CANCELLED, out_fallback_drain_mask);
+      iree_net_loopback_fail_delivery_locked(peer, pending_send,
+                                             IREE_STATUS_CANCELLED);
     } else {
       previous = pending_send;
     }
@@ -397,12 +401,8 @@ static iree_net_loopback_pending_send_t* iree_net_loopback_detach_locked(
   if (was_attached && peer &&
       iree_net_carrier_state(&peer->base) == IREE_NET_CARRIER_STATE_ACTIVE) {
     peer->peer_departed_pending = true;
-    if (!peer->dispatch_failed) {
-      iree_net_loopback_signal_locked(peer);
-    }
+    iree_net_loopback_schedule_dispatch_locked(peer);
   }
-
-  return iree_net_loopback_cancel_reservations_locked(carrier);
 }
 
 static iree_status_t iree_net_loopback_make_completion_status(
@@ -428,10 +428,8 @@ static void iree_net_loopback_maybe_complete_deactivation(
   iree_slim_mutex_lock(&carrier->pair->mutex);
   if (iree_net_carrier_state(&carrier->base) ==
           IREE_NET_CARRIER_STATE_DRAINING &&
-      !carrier->wait_armed &&
       iree_atomic_load(&carrier->base.pending_operations,
                        iree_memory_order_acquire) == 0) {
-    IREE_ASSERT(!carrier->reservations);
     IREE_ASSERT(!carrier->pair->event_queues[carrier->pair_index].head);
     iree_net_carrier_set_state(&carrier->base,
                                IREE_NET_CARRIER_STATE_DEACTIVATED);
@@ -464,8 +462,12 @@ static void iree_net_loopback_process_send_completion(
   --source->send_operations_in_use;
   iree_slim_mutex_unlock(&pair->mutex);
 
-  iree_status_t status =
-      iree_net_loopback_make_completion_status(pending_send->completion_code);
+  iree_status_t status = pending_send->completion_status;
+  pending_send->completion_status = iree_ok_status();
+  if (iree_status_is_ok(status)) {
+    status =
+        iree_net_loopback_make_completion_status(pending_send->completion_code);
+  }
   const iree_host_size_t bytes_transferred =
       pending_send->completion_code == IREE_STATUS_OK
           ? pending_send->total_length
@@ -475,76 +477,9 @@ static void iree_net_loopback_process_send_completion(
 
   iree_slim_mutex_lock(&pair->mutex);
   iree_net_loopback_retire_pending_operation_locked(source);
-  const bool dispatch_failed = source->dispatch_failed;
-  const bool should_signal = iree_net_carrier_state(&source->base) ==
-                                 IREE_NET_CARRIER_STATE_DRAINING &&
-                             source->wait_armed;
-  if (should_signal) {
-    iree_net_loopback_signal_locked(source);
-  }
   iree_slim_mutex_unlock(&pair->mutex);
 
   iree_net_loopback_pending_send_destroy(pair, pending_send);
-  if (dispatch_failed) {
-    iree_net_loopback_maybe_complete_deactivation(source);
-  }
-}
-
-// Drains completion events inline only after the owning proactor has rejected
-// its notification wait. This is a terminal fail-safe, not a normal path.
-static void iree_net_loopback_drain_failed_dispatch(
-    iree_net_loopback_carrier_t* carrier) {
-  iree_net_carrier_retain(&carrier->base);
-  iree_slim_mutex_lock(&carrier->pair->mutex);
-  if (carrier->fallback_drain_active) {
-    iree_slim_mutex_unlock(&carrier->pair->mutex);
-    iree_net_carrier_release(&carrier->base);
-    return;
-  }
-  carrier->fallback_drain_active = true;
-  iree_slim_mutex_unlock(&carrier->pair->mutex);
-
-  while (true) {
-    iree_slim_mutex_lock(&carrier->pair->mutex);
-    iree_net_loopback_event_queue_t* queue =
-        &carrier->pair->event_queues[carrier->pair_index];
-    iree_net_loopback_pending_send_t* pending_send =
-        iree_net_loopback_event_queue_pop(queue);
-    if (!pending_send) {
-      carrier->fallback_drain_active = false;
-      iree_slim_mutex_unlock(&carrier->pair->mutex);
-      break;
-    }
-    IREE_ASSERT(pending_send->phase == IREE_NET_LOOPBACK_SEND_PHASE_COMPLETION);
-    iree_slim_mutex_unlock(&carrier->pair->mutex);
-    iree_net_loopback_process_send_completion(pending_send);
-  }
-
-  iree_net_loopback_maybe_complete_deactivation(carrier);
-  iree_net_carrier_release(&carrier->base);
-}
-
-static void iree_net_loopback_drain_failed_dispatch_mask(
-    iree_net_loopback_pair_t* pair, uint32_t fallback_drain_mask) {
-  for (uint8_t i = 0; i < 2; ++i) {
-    if (!iree_all_bits_set(fallback_drain_mask, 1u << i)) {
-      continue;
-    }
-    iree_net_loopback_carrier_t* carrier = NULL;
-    iree_slim_mutex_lock(&pair->mutex);
-    iree_net_loopback_event_queue_t* queue = &pair->event_queues[i];
-    if (queue->head) {
-      carrier = queue->head->source;
-    }
-    if (carrier) {
-      iree_net_carrier_retain(&carrier->base);
-    }
-    iree_slim_mutex_unlock(&pair->mutex);
-    if (carrier) {
-      iree_net_loopback_drain_failed_dispatch(carrier);
-      iree_net_carrier_release(&carrier->base);
-    }
-  }
 }
 
 static void iree_net_loopback_process_delivery(
@@ -565,7 +500,6 @@ static void iree_net_loopback_process_delivery(
     iree_net_carrier_report_terminal_error(&target->base, receive_status);
   }
 
-  uint32_t fallback_drain_mask = 0;
   iree_slim_mutex_lock(&target->pair->mutex);
   iree_net_loopback_retire_pending_operation_locked(target);
   pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_COMPLETION;
@@ -573,21 +507,14 @@ static void iree_net_loopback_process_delivery(
   iree_net_loopback_carrier_t* source = pending_send->source;
   iree_net_loopback_event_queue_push(
       &target->pair->event_queues[source->pair_index], pending_send);
-  if (source->dispatch_failed) {
-    fallback_drain_mask |= 1u << source->pair_index;
-  } else {
-    iree_net_loopback_signal_locked(source);
-  }
+  iree_net_loopback_schedule_dispatch_locked(source);
   iree_slim_mutex_unlock(&target->pair->mutex);
-  iree_net_loopback_drain_failed_dispatch_mask(target->pair,
-                                               fallback_drain_mask);
 }
 
 static bool iree_net_loopback_drain_one(iree_net_loopback_carrier_t* carrier) {
   bool made_progress = false;
   bool report_peer_departure = false;
   iree_net_loopback_pending_send_t* pending_send = NULL;
-  uint32_t fallback_drain_mask = 0;
 
   iree_slim_mutex_lock(&carrier->pair->mutex);
   if (carrier->peer_departed_pending) {
@@ -605,8 +532,8 @@ static bool iree_net_loopback_drain_one(iree_net_loopback_carrier_t* carrier) {
         (iree_net_carrier_state(&carrier->base) !=
              IREE_NET_CARRIER_STATE_ACTIVE ||
          iree_net_carrier_has_terminal_error(&carrier->base))) {
-      iree_net_loopback_fail_delivery_locked(
-          carrier, pending_send, IREE_STATUS_UNAVAILABLE, &fallback_drain_mask);
+      iree_net_loopback_fail_delivery_locked(carrier, pending_send,
+                                             IREE_STATUS_UNAVAILABLE);
       pending_send = NULL;
     }
   }
@@ -623,116 +550,41 @@ static bool iree_net_loopback_drain_one(iree_net_loopback_carrier_t* carrier) {
       iree_net_loopback_process_send_completion(pending_send);
     }
   }
-  iree_net_loopback_drain_failed_dispatch_mask(carrier->pair,
-                                               fallback_drain_mask);
-  return made_progress || fallback_drain_mask != 0;
+  return made_progress;
 }
 
-static iree_status_t iree_net_loopback_submit_wait_locked(
-    iree_net_loopback_carrier_t* carrier, uint32_t wait_token,
-    iree_async_completion_fn_t completion_fn) {
-  IREE_ASSERT(!carrier->wait_armed);
-  iree_async_notification_wait_operation_t* wait_operation =
-      &carrier->wait_operations[carrier->next_wait_slot];
-  carrier->next_wait_slot ^= 1u;
-  iree_async_operation_zero(&wait_operation->base, sizeof(*wait_operation));
-  iree_async_operation_initialize(
-      &wait_operation->base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
-      IREE_ASYNC_OPERATION_FLAG_NONE, completion_fn, carrier);
-  wait_operation->notification = carrier->notification;
-  wait_operation->wait_flags = IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN;
-  wait_operation->wait_token = wait_token;
+static void iree_net_loopback_dispatch_completed(
+    void* user_data, iree_async_operation_t* operation, iree_status_t status,
+    iree_async_completion_flags_t flags) {
+  (void)operation;
+  IREE_ASSERT(!iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE));
+  iree_net_loopback_carrier_t* carrier =
+      (iree_net_loopback_carrier_t*)user_data;
 
-  iree_atomic_fetch_add(&carrier->base.pending_operations, 1,
-                        iree_memory_order_acq_rel);
-  iree_net_carrier_retain(&carrier->base);
-  iree_status_t status =
-      iree_async_proactor_submit_one(carrier->proactor, &wait_operation->base);
-  if (iree_status_is_ok(status)) {
-    carrier->wait_armed = true;
-    if (iree_net_loopback_has_dispatch_work_locked(carrier)) {
-      iree_net_loopback_signal_locked(carrier);
-    }
-  } else {
-    iree_net_loopback_retire_pending_operation_locked(carrier);
-  }
-  return status;
-}
-
-static void iree_net_loopback_fail_dispatch(
-    iree_net_loopback_carrier_t* carrier, iree_status_t status) {
-  iree_net_loopback_pair_t* pair = carrier->pair;
-  iree_net_loopback_pending_send_t* reservations = NULL;
-  uint32_t fallback_drain_mask = 0;
-  bool report_error = false;
-  iree_slim_mutex_lock(&pair->mutex);
-  if (!carrier->dispatch_failed) {
-    carrier->dispatch_failed = true;
-    reservations =
-        iree_net_loopback_detach_locked(carrier, &fallback_drain_mask);
-    fallback_drain_mask |= 1u << carrier->pair_index;
-    report_error = true;
-  }
-  iree_slim_mutex_unlock(&pair->mutex);
-
-  iree_net_loopback_destroy_reservation_list(pair, reservations);
-  if (report_error) {
+  if (!iree_status_is_ok(status)) {
     iree_net_carrier_report_terminal_error(&carrier->base, status);
   } else {
     iree_status_free(status);
   }
-  iree_net_loopback_drain_failed_dispatch_mask(pair, fallback_drain_mask);
-}
 
-static void iree_net_loopback_notification_wait_completed(
-    void* user_data, iree_async_operation_t* operation, iree_status_t status,
-    iree_async_completion_flags_t flags) {
-  (void)operation;
-  (void)flags;
-  iree_net_loopback_carrier_t* carrier =
-      (iree_net_loopback_carrier_t*)user_data;
-
-  iree_slim_mutex_lock(&carrier->pair->mutex);
-  IREE_ASSERT(carrier->wait_armed);
-  carrier->wait_armed = false;
-  iree_slim_mutex_unlock(&carrier->pair->mutex);
-
-  if (!iree_status_is_ok(status)) {
-    iree_net_loopback_fail_dispatch(carrier, status);
-  } else {
-    iree_status_free(status);
+  while (true) {
     while (iree_net_loopback_drain_one(carrier)) {
     }
-  }
 
-  bool should_rearm = false;
-  uint32_t wait_token =
-      iree_async_notification_begin_observe(carrier->notification);
-  iree_slim_mutex_lock(&carrier->pair->mutex);
-  const iree_net_carrier_state_t state = iree_net_carrier_state(&carrier->base);
-  const int32_t pending_operations = iree_atomic_load(
-      &carrier->base.pending_operations, iree_memory_order_acquire);
-  should_rearm =
-      !carrier->dispatch_failed &&
-      (state == IREE_NET_CARRIER_STATE_ACTIVE ||
-       (state == IREE_NET_CARRIER_STATE_DRAINING && pending_operations > 1));
-  iree_status_t rearm_status = iree_ok_status();
-  if (should_rearm) {
-    rearm_status = iree_net_loopback_submit_wait_locked(
-        carrier, wait_token, iree_net_loopback_notification_wait_completed);
-  }
-  iree_net_loopback_retire_pending_operation_locked(carrier);
-  iree_slim_mutex_unlock(&carrier->pair->mutex);
-  iree_async_notification_end_observe(carrier->notification);
-
-  if (should_rearm && !iree_status_is_ok(rearm_status)) {
-    // submit_wait_locked retained the carrier before submission.
-    iree_net_carrier_release(&carrier->base);
-    iree_net_loopback_fail_dispatch(carrier, rearm_status);
+    iree_slim_mutex_lock(&carrier->pair->mutex);
+    if (iree_net_loopback_has_dispatch_work_locked(carrier)) {
+      iree_slim_mutex_unlock(&carrier->pair->mutex);
+      continue;
+    }
+    IREE_ASSERT(carrier->dispatch_scheduled);
+    carrier->dispatch_scheduled = false;
+    iree_net_loopback_retire_pending_operation_locked(carrier);
+    iree_slim_mutex_unlock(&carrier->pair->mutex);
+    break;
   }
 
   iree_net_loopback_maybe_complete_deactivation(carrier);
-  // Releases the retain acquired for the completed wait operation.
+  // Releases the retain acquired for the dispatch operation.
   iree_net_carrier_release(&carrier->base);
 }
 
@@ -745,23 +597,18 @@ static void iree_net_loopback_carrier_destroy(
   IREE_ASSERT(state == IREE_NET_CARRIER_STATE_CREATED ||
               state == IREE_NET_CARRIER_STATE_DEACTIVATED);
 
-  iree_net_loopback_pending_send_t* reservations = NULL;
-  uint32_t fallback_drain_mask = 0;
   iree_slim_mutex_lock(&pair->mutex);
   if (state == IREE_NET_CARRIER_STATE_CREATED) {
-    reservations =
-        iree_net_loopback_detach_locked(carrier, &fallback_drain_mask);
+    iree_net_loopback_detach_locked(carrier);
   } else {
     IREE_ASSERT(pair->carriers[carrier->pair_index] == NULL);
   }
+  IREE_ASSERT(!carrier->dispatch_scheduled);
   IREE_ASSERT(!pair->event_queues[carrier->pair_index].head);
   IREE_ASSERT(iree_atomic_load(&base_carrier->pending_operations,
                                iree_memory_order_acquire) == 0);
   iree_slim_mutex_unlock(&pair->mutex);
 
-  iree_net_loopback_destroy_reservation_list(pair, reservations);
-  iree_net_loopback_drain_failed_dispatch_mask(pair, fallback_drain_mask);
-  iree_async_notification_release(carrier->notification);
   iree_async_proactor_release(carrier->proactor);
   iree_net_carrier_deinitialize(base_carrier);
   iree_allocator_t host_allocator = pair->host_allocator;
@@ -773,12 +620,9 @@ static iree_status_t iree_net_loopback_carrier_activate(
     iree_net_carrier_t* base_carrier) {
   iree_net_loopback_carrier_t* carrier =
       iree_net_loopback_carrier_cast(base_carrier);
-  uint32_t wait_token =
-      iree_async_notification_begin_observe(carrier->notification);
   iree_slim_mutex_lock(&carrier->pair->mutex);
 
   iree_status_t status = iree_ok_status();
-  bool wait_submit_attempted = false;
   if (iree_net_carrier_state(base_carrier) != IREE_NET_CARRIER_STATE_CREATED) {
     status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "loopback carrier is not in CREATED state");
@@ -788,19 +632,11 @@ static iree_status_t iree_net_loopback_carrier_activate(
   }
   if (iree_status_is_ok(status)) {
     iree_net_carrier_set_state(base_carrier, IREE_NET_CARRIER_STATE_ACTIVE);
-    wait_submit_attempted = true;
-    status = iree_net_loopback_submit_wait_locked(
-        carrier, wait_token, iree_net_loopback_notification_wait_completed);
-    if (!iree_status_is_ok(status)) {
-      iree_net_carrier_set_state(base_carrier, IREE_NET_CARRIER_STATE_CREATED);
+    if (iree_net_loopback_has_dispatch_work_locked(carrier)) {
+      iree_net_loopback_schedule_dispatch_locked(carrier);
     }
   }
   iree_slim_mutex_unlock(&carrier->pair->mutex);
-  iree_async_notification_end_observe(carrier->notification);
-  if (wait_submit_attempted && !iree_status_is_ok(status)) {
-    // submit_wait_locked retained the carrier before a failed submission.
-    iree_net_carrier_release(base_carrier);
-  }
   return status;
 }
 
@@ -810,8 +646,6 @@ static void iree_net_loopback_carrier_deactivate(
   iree_net_loopback_carrier_t* carrier =
       iree_net_loopback_carrier_cast(base_carrier);
   iree_net_loopback_pair_t* pair = carrier->pair;
-  iree_net_loopback_pending_send_t* reservations = NULL;
-  uint32_t fallback_drain_mask = 0;
   bool valid_request = false;
 
   iree_slim_mutex_lock(&pair->mutex);
@@ -822,11 +656,8 @@ static void iree_net_loopback_carrier_deactivate(
     iree_net_carrier_set_state(base_carrier, IREE_NET_CARRIER_STATE_DRAINING);
     carrier->deactivate_callback.fn = callback;
     carrier->deactivate_callback.user_data = user_data;
-    reservations =
-        iree_net_loopback_detach_locked(carrier, &fallback_drain_mask);
-    if (carrier->wait_armed) {
-      iree_net_loopback_signal_locked(carrier);
-    }
+    iree_net_loopback_detach_locked(carrier);
+    iree_net_loopback_schedule_dispatch_locked(carrier);
   }
   iree_slim_mutex_unlock(&pair->mutex);
 
@@ -834,8 +665,6 @@ static void iree_net_loopback_carrier_deactivate(
   if (!valid_request) {
     return;
   }
-  iree_net_loopback_destroy_reservation_list(pair, reservations);
-  iree_net_loopback_drain_failed_dispatch_mask(pair, fallback_drain_mask);
   iree_net_loopback_maybe_complete_deactivation(carrier);
 }
 
@@ -869,14 +698,44 @@ static iree_status_t iree_net_loopback_check_send_admission_locked(
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "loopback carrier is not active");
   }
+  IREE_RETURN_IF_ERROR(iree_net_carrier_clone_terminal_error(&carrier->base));
   if (carrier->shutdown_initiated) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "loopback carrier send direction is shut down");
   }
-  IREE_RETURN_IF_ERROR(iree_net_carrier_clone_terminal_error(&carrier->base));
   if (carrier->send_operations_in_use >= carrier->max_send_operations) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "loopback send operation slots are exhausted");
+  }
+  iree_net_loopback_carrier_t* peer =
+      carrier->pair->carriers[iree_net_loopback_peer_index(carrier)];
+  if (!peer ||
+      (iree_net_carrier_state(&peer->base) != IREE_NET_CARRIER_STATE_CREATED &&
+       iree_net_carrier_state(&peer->base) != IREE_NET_CARRIER_STATE_ACTIVE) ||
+      iree_net_carrier_has_terminal_error(&peer->base)) {
+    return iree_make_status(IREE_STATUS_UNAVAILABLE,
+                            "loopback peer is not receiving");
+  }
+  *out_peer = peer;
+  return iree_ok_status();
+}
+
+static iree_status_t iree_net_loopback_check_send_publication_locked(
+    iree_net_loopback_carrier_t* carrier,
+    iree_net_loopback_carrier_t** out_peer) {
+  *out_peer = NULL;
+  if (iree_net_carrier_state(&carrier->base) != IREE_NET_CARRIER_STATE_ACTIVE) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "loopback carrier deactivated during send");
+  }
+  IREE_RETURN_IF_ERROR(iree_net_carrier_clone_terminal_error(&carrier->base));
+  if (carrier->shutdown_initiated) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "loopback carrier send direction is shut down");
+  }
+  if (carrier->pair->carriers[carrier->pair_index] != carrier) {
+    return iree_make_status(IREE_STATUS_CANCELLED,
+                            "loopback carrier detached during send");
   }
   iree_net_loopback_carrier_t* peer =
       carrier->pair->carriers[iree_net_loopback_peer_index(carrier)];
@@ -895,13 +754,9 @@ static iree_status_t iree_net_loopback_carrier_send(
     iree_net_carrier_t* base_carrier, const iree_net_send_params_t* params) {
   iree_net_loopback_carrier_t* carrier =
       iree_net_loopback_carrier_cast(base_carrier);
-  if (iree_any_bit_set(params->flags, ~IREE_NET_SEND_FLAG_ZERO_COPY)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "loopback send has unknown flags 0x%08X",
-                            params->flags);
-  }
 
-  iree_host_size_t total_length = 0;
+  iree_host_size_t total_length = params->generated_prefix.length;
+  iree_host_size_t data_span_count = 0;
   for (iree_host_size_t i = 0; i < params->data.count; ++i) {
     IREE_RETURN_IF_ERROR(
         iree_net_loopback_validate_span(params->data.values[i]));
@@ -910,25 +765,34 @@ static iree_status_t iree_net_loopback_carrier_send(
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "loopback send payload length overflow");
     }
+    if (params->data.values[i].length > 0) {
+      ++data_span_count;
+    }
   }
 
-  iree_host_size_t span_storage_size = 0;
-  if (!iree_host_size_checked_mul(params->data.count, sizeof(iree_async_span_t),
-                                  &span_storage_size)) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "loopback span descriptor size overflow");
-  }
+  const bool has_generated_prefix = params->generated_prefix.length > 0;
+  const iree_host_size_t span_count =
+      data_span_count + (has_generated_prefix ? 1 : 0);
   iree_net_loopback_pending_send_t* pending_send = NULL;
+  iree_byte_span_t prefix_storage = iree_byte_span_empty();
   IREE_RETURN_IF_ERROR(iree_net_loopback_pending_send_allocate(
-      carrier->pair, span_storage_size, &pending_send));
-  pending_send->span_count = params->data.count;
+      carrier->pair, span_count, params->generated_prefix.length, &pending_send,
+      &prefix_storage));
   pending_send->total_length = total_length;
   pending_send->completion_callback = params->completion_callback;
-  memcpy(pending_send->storage, params->data.values, span_storage_size);
-  iree_async_span_list_retain_regions(iree_async_span_list_make(
-      iree_net_loopback_pending_send_spans(pending_send),
-      pending_send->span_count));
-  pending_send->regions_retained = true;
+  iree_async_span_t* spans = iree_net_loopback_pending_send_spans(pending_send);
+  iree_host_size_t span_index = 0;
+  if (has_generated_prefix) {
+    spans[span_index++] = iree_async_span_from_ptr(
+        prefix_storage.data, params->generated_prefix.length);
+  }
+  for (iree_host_size_t i = 0; i < params->data.count; ++i) {
+    if (params->data.values[i].length == 0) {
+      continue;
+    }
+    spans[span_index++] = params->data.values[i];
+  }
+  IREE_ASSERT(span_index == span_count);
 
   iree_status_t status = iree_ok_status();
   iree_slim_mutex_lock(&carrier->pair->mutex);
@@ -937,178 +801,48 @@ static iree_status_t iree_net_loopback_carrier_send(
   if (iree_status_is_ok(status)) {
     pending_send->source = carrier;
     iree_net_carrier_retain(base_carrier);
-    pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_DELIVERY;
+    pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_PREPARING;
     ++carrier->send_operations_in_use;
     iree_atomic_fetch_add(&carrier->base.pending_operations, 1,
                           iree_memory_order_acq_rel);
+  }
+  iree_slim_mutex_unlock(&carrier->pair->mutex);
+
+  if (!iree_status_is_ok(status)) {
+    iree_net_loopback_pending_send_destroy(carrier->pair, pending_send);
+    return status;
+  }
+
+  if (has_generated_prefix) {
+    status = params->generated_prefix.write(
+        params->generated_prefix.user_data,
+        iree_make_byte_span(prefix_storage.data,
+                            params->generated_prefix.length));
+  }
+  if (iree_status_is_ok(status)) {
+    iree_async_span_list_retain_regions(
+        iree_async_span_list_make(spans, span_count));
+    pending_send->regions_retained = true;
+  }
+
+  iree_slim_mutex_lock(&carrier->pair->mutex);
+  peer = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_net_loopback_check_send_publication_locked(carrier, &peer);
+  }
+  if (iree_status_is_ok(status)) {
+    pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_DELIVERY;
     iree_atomic_fetch_add(&peer->base.pending_operations, 1,
                           iree_memory_order_acq_rel);
     iree_net_loopback_event_queue_push(
         &carrier->pair->event_queues[peer->pair_index], pending_send);
-    iree_net_loopback_signal_locked(peer);
-  }
-  iree_slim_mutex_unlock(&carrier->pair->mutex);
-
-  if (!iree_status_is_ok(status)) {
-    iree_net_loopback_pending_send_destroy(carrier->pair, pending_send);
-  }
-  return status;
-}
-
-static uint64_t iree_net_loopback_allocate_reservation_id_locked(
-    iree_net_loopback_carrier_t* carrier) {
-  while (true) {
-    uint64_t reservation_id = carrier->next_reservation_id++;
-    if (reservation_id == 0) {
-      continue;
-    }
-    bool already_used = false;
-    for (iree_net_loopback_pending_send_t* reservation = carrier->reservations;
-         reservation; reservation = reservation->next) {
-      if (reservation->reservation_id == reservation_id) {
-        already_used = true;
-        break;
-      }
-    }
-    if (!already_used) {
-      return reservation_id;
-    }
-  }
-}
-
-static iree_status_t iree_net_loopback_carrier_begin_send(
-    iree_net_carrier_t* base_carrier, iree_host_size_t size, void** out_ptr,
-    iree_net_carrier_send_handle_t* out_handle) {
-  iree_net_loopback_carrier_t* carrier =
-      iree_net_loopback_carrier_cast(base_carrier);
-  iree_net_loopback_pending_send_t* pending_send = NULL;
-  IREE_RETURN_IF_ERROR(iree_net_loopback_pending_send_allocate(
-      carrier->pair, size, &pending_send));
-  pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_RESERVED;
-  pending_send->span_count = 1;
-  pending_send->total_length = size;
-  pending_send->reservation_span =
-      iree_async_span_from_ptr(pending_send->storage, size);
-
-  iree_status_t status = iree_ok_status();
-  iree_slim_mutex_lock(&carrier->pair->mutex);
-  iree_net_loopback_carrier_t* peer = NULL;
-  status = iree_net_loopback_check_send_admission_locked(carrier, &peer);
-  if (iree_status_is_ok(status)) {
-    pending_send->source = carrier;
-    iree_net_carrier_retain(base_carrier);
-    pending_send->reservation_id =
-        iree_net_loopback_allocate_reservation_id_locked(carrier);
-    pending_send->next = carrier->reservations;
-    carrier->reservations = pending_send;
-    ++carrier->send_operations_in_use;
-    iree_atomic_fetch_add(&carrier->base.pending_operations, 1,
-                          iree_memory_order_acq_rel);
-    *out_ptr = pending_send->storage;
-    *out_handle = pending_send->reservation_id;
-  }
-  iree_slim_mutex_unlock(&carrier->pair->mutex);
-
-  if (!iree_status_is_ok(status)) {
-    iree_net_loopback_pending_send_destroy(carrier->pair, pending_send);
-  }
-  return status;
-}
-
-static iree_net_loopback_pending_send_t*
-iree_net_loopback_take_reservation_locked(
-    iree_net_loopback_carrier_t* carrier,
-    iree_net_carrier_send_handle_t handle) {
-  iree_net_loopback_pending_send_t** previous_next = &carrier->reservations;
-  iree_net_loopback_pending_send_t* reservation = carrier->reservations;
-  while (reservation && reservation->reservation_id != handle) {
-    previous_next = &reservation->next;
-    reservation = reservation->next;
-  }
-  if (reservation) {
-    *previous_next = reservation->next;
-    reservation->next = NULL;
-  }
-  return reservation;
-}
-
-static iree_status_t iree_net_loopback_carrier_commit_send(
-    iree_net_carrier_t* base_carrier, iree_net_carrier_send_handle_t handle,
-    iree_net_send_completion_callback_t callback) {
-  iree_net_loopback_carrier_t* carrier =
-      iree_net_loopback_carrier_cast(base_carrier);
-  iree_net_loopback_pending_send_t* pending_send = NULL;
-  iree_status_t status = iree_ok_status();
-  bool destroy_pending_send = false;
-  bool dispatch_failed = false;
-
-  iree_slim_mutex_lock(&carrier->pair->mutex);
-  pending_send = iree_net_loopback_take_reservation_locked(carrier, handle);
-  if (!pending_send) {
-    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "loopback send reservation is no longer valid");
+    iree_net_loopback_schedule_dispatch_locked(peer);
   } else {
-    iree_net_loopback_carrier_t* peer =
-        carrier->pair->carriers[iree_net_loopback_peer_index(carrier)];
-    if (!peer ||
-        (iree_net_carrier_state(&peer->base) !=
-             IREE_NET_CARRIER_STATE_CREATED &&
-         iree_net_carrier_state(&peer->base) !=
-             IREE_NET_CARRIER_STATE_ACTIVE) ||
-        iree_net_carrier_has_terminal_error(&peer->base)) {
-      status = iree_make_status(IREE_STATUS_UNAVAILABLE,
-                                "loopback peer is not receiving");
-      IREE_ASSERT(carrier->send_operations_in_use > 0);
-      --carrier->send_operations_in_use;
-      iree_net_loopback_retire_pending_operation_locked(carrier);
-      destroy_pending_send = true;
-      dispatch_failed = carrier->dispatch_failed;
-    } else {
-      pending_send->completion_callback = callback;
-      pending_send->phase = IREE_NET_LOOPBACK_SEND_PHASE_DELIVERY;
-      iree_atomic_fetch_add(&peer->base.pending_operations, 1,
-                            iree_memory_order_acq_rel);
-      iree_net_loopback_event_queue_push(
-          &carrier->pair->event_queues[peer->pair_index], pending_send);
-      iree_net_loopback_signal_locked(peer);
-    }
+    iree_net_loopback_queue_local_completion_locked(pending_send, status);
+    status = iree_ok_status();
   }
   iree_slim_mutex_unlock(&carrier->pair->mutex);
-
-  if (destroy_pending_send) {
-    iree_net_loopback_pending_send_destroy(carrier->pair, pending_send);
-    if (dispatch_failed) {
-      iree_net_loopback_maybe_complete_deactivation(carrier);
-    }
-  }
-  return status;
-}
-
-static void iree_net_loopback_carrier_abort_send(
-    iree_net_carrier_t* base_carrier, iree_net_carrier_send_handle_t handle) {
-  iree_net_loopback_carrier_t* carrier =
-      iree_net_loopback_carrier_cast(base_carrier);
-  bool dispatch_failed = false;
-  iree_slim_mutex_lock(&carrier->pair->mutex);
-  iree_net_loopback_pending_send_t* pending_send =
-      iree_net_loopback_take_reservation_locked(carrier, handle);
-  if (pending_send) {
-    IREE_ASSERT(carrier->send_operations_in_use > 0);
-    --carrier->send_operations_in_use;
-    iree_net_loopback_retire_pending_operation_locked(carrier);
-    if (iree_net_carrier_state(base_carrier) ==
-            IREE_NET_CARRIER_STATE_DRAINING &&
-        carrier->wait_armed) {
-      iree_net_loopback_signal_locked(carrier);
-    }
-    dispatch_failed = carrier->dispatch_failed;
-  }
-  iree_slim_mutex_unlock(&carrier->pair->mutex);
-  IREE_ASSERT(pending_send, "loopback send reservation is no longer valid");
-  iree_net_loopback_pending_send_destroy(carrier->pair, pending_send);
-  if (dispatch_failed) {
-    iree_net_loopback_maybe_complete_deactivation(carrier);
-  }
+  return iree_ok_status();
 }
 
 static iree_status_t iree_net_loopback_carrier_shutdown(
@@ -1133,9 +867,6 @@ static const iree_net_carrier_vtable_t iree_net_loopback_carrier_vtable = {
     .deactivate = iree_net_loopback_carrier_deactivate,
     .query_send_budget = iree_net_loopback_carrier_query_send_budget,
     .send = iree_net_loopback_carrier_send,
-    .begin_send = iree_net_loopback_carrier_begin_send,
-    .commit_send = iree_net_loopback_carrier_commit_send,
-    .abort_send = iree_net_loopback_carrier_abort_send,
     .shutdown = iree_net_loopback_carrier_shutdown,
 };
 
@@ -1155,7 +886,6 @@ static void iree_net_loopback_carrier_initialize(
   carrier->pair = pair;
   carrier->pair_index = pair_index;
   carrier->max_send_operations = options->max_send_operations;
-  carrier->next_reservation_id = 1;
 }
 
 IREE_API_EXPORT iree_status_t iree_net_loopback_carrier_create_pair(
@@ -1206,32 +936,10 @@ IREE_API_EXPORT iree_status_t iree_net_loopback_carrier_create_pair(
                                          options);
     iree_net_loopback_carrier_initialize(server, server_proactor, pair, 1,
                                          options);
-    status = iree_async_notification_create(client_proactor,
-                                            IREE_ASYNC_NOTIFICATION_FLAG_NONE,
-                                            &client->notification);
-    if (iree_status_is_ok(status)) {
-      status = iree_async_notification_create(server_proactor,
-                                              IREE_ASYNC_NOTIFICATION_FLAG_NONE,
-                                              &server->notification);
-    }
-  }
-
-  if (iree_status_is_ok(status)) {
     pair->carriers[0] = client;
     pair->carriers[1] = server;
     *out_client = &client->base;
     *out_server = &server->base;
-  } else if (pair && client && server) {
-    iree_async_notification_release(client->notification);
-    iree_async_notification_release(server->notification);
-    iree_async_proactor_release(client->proactor);
-    iree_async_proactor_release(server->proactor);
-    iree_net_carrier_deinitialize(&client->base);
-    iree_net_carrier_deinitialize(&server->base);
-    iree_slim_mutex_deinitialize(&pair->mutex);
-    iree_allocator_free(host_allocator, server);
-    iree_allocator_free(host_allocator, client);
-    iree_allocator_free(host_allocator, pair);
   } else {
     iree_allocator_free(host_allocator, server);
     iree_allocator_free(host_allocator, client);

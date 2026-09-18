@@ -9,6 +9,7 @@
 // This provides transport-independent networking primitives. The stack is
 // layered:
 //
+//   Layer 4: Sessions - peer bootstrap and connection lifecycle
 //   Layer 3: Connections and message endpoints - framed message multiplexing
 //   Layer 2: Carriers - asynchronous byte and message transport
 //   Layer 1: Proactor (iree/async/) - completion-based I/O
@@ -23,6 +24,7 @@
 #include "iree/net/carrier.h"
 #include "iree/net/connection.h"
 #include "iree/net/message_endpoint.h"
+#include "iree/net/session.h"
 #include "iree/net/transport_factory.h"
 #include "iree/net/transport_registry.h"
 

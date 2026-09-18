@@ -15,12 +15,17 @@ extern "C" {
 #endif  // __cplusplus
 
 // Transfers |status| to an operation's completion callback and returns the
-// operation to its optional pool after a final completion.
+// operation to its optional pool after a final completion. Final completion
+// clears backend-private flags before the callback so the callback receives a
+// caller-owned operation ready for immediate reuse. Multishot completions with
+// MORE preserve those flags until the final completion.
 //
-// The caller must release retained operation resources and detach any data it
-// needs after the callback before calling this function. The callback may free
-// or recycle the operation. If completion is deliberately suppressed and
-// completion_fn is NULL, the status is freed as handled.
+// On final completion this releases acquired non-region resources before the
+// callback, detaches retained span regions before the callback, and releases
+// those regions after it returns. The callback may therefore use registered
+// memory and immediately free, recycle, or resubmit the operation. If
+// completion is deliberately suppressed and completion_fn is NULL, the status
+// is freed as handled.
 //
 // Returns 1 when a user callback was invoked and 0 when completion was
 // suppressed.

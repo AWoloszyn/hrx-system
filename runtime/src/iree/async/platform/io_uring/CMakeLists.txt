@@ -23,6 +23,8 @@ iree_cc_library(
     "proactor_probe.c"
     "proactor_registration.c"
     "proactor_submit.c"
+    "proactor_validation.c"
+    "proactor_validation.h"
     "relay.c"
     "relay.h"
     "socket.c"
@@ -247,6 +249,23 @@ iree_cc_test(
     iree::base::threading
     iree::testing::gtest
     iree::testing::gtest_main
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    proactor_submit_test
+  SRCS
+    "proactor_submit_test.cc"
+  DEPS
+    ::io_uring
+    iree::async
+    iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
+  RESOURCE_GROUP
+    io_uring
 )
 endif()
 

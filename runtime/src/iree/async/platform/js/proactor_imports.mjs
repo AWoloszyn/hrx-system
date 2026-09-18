@@ -75,8 +75,10 @@ class ProactorRing {
   }
 }
 
-const CANCEL_REQUEST = 0;
+const CANCEL_TOKEN = 0;
 const CANCEL_RESPONSE = 1;
+const CANCEL_REQUEST_STATE = 2;
+const CANCEL_REQUEST_PENDING = 1;
 
 // Creates the iree_proactor import implementations.
 //
@@ -216,7 +218,7 @@ function createWorkerImports(context) {
   // In single-thread mode, create a dummy buffer (cancel always reports
   // "already fired" since there's no event host to cancel timers).
   const cancelControl =
-      context.cancelControl || new Int32Array(new SharedArrayBuffer(8));
+      context.cancelControl || new Int32Array(new SharedArrayBuffer(16));
 
   return {
     // Copies completions from the shared ring into wasm linear memory.
@@ -253,8 +255,10 @@ function createWorkerImports(context) {
         return 1;
       }
       Atomics.store(cancelControl, CANCEL_RESPONSE, 0);
-      Atomics.store(cancelControl, CANCEL_REQUEST, token + 1);
-      Atomics.notify(cancelControl, CANCEL_REQUEST);
+      Atomics.store(cancelControl, CANCEL_TOKEN, token);
+      Atomics.store(
+          cancelControl, CANCEL_REQUEST_STATE, CANCEL_REQUEST_PENDING);
+      Atomics.notify(cancelControl, CANCEL_REQUEST_STATE);
       Atomics.wait(cancelControl, CANCEL_RESPONSE, 0);
       return Atomics.load(cancelControl, CANCEL_RESPONSE) === 1 ? 1 : 0;
     },
@@ -262,7 +266,7 @@ function createWorkerImports(context) {
     // No-op in worker mode. The worker drives poll() directly.
     wake() {},
 
-    // No-op in worker mode. NOPs are in the ready queue and drained during
+    // No-op in worker mode. Poll-owned work is drained during
     // the next poll() call on the same thread.
     schedule_drain() {},
   };

@@ -50,12 +50,44 @@ extern "C" {
   (IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS * \
    IREE_ASYNC_SOCKET_PLATFORM_IOVEC_SIZE)
 
-// Platform storage shared by connected and unconnected socket sends.
+// Submit-time snapshot of one socket scatter/gather span.
+//
+// Region identity is retained in a parallel operation-owned array. Keeping the
+// two words here allows the operation to reuse this storage for native
+// descriptors after copying the portable values to bounded local scratch.
+typedef struct iree_async_socket_prepared_span_t {
+  // Region-relative byte offset or raw pointer bits for an unregistered span.
+  iree_host_size_t offset;
+
+  // Byte length of the span.
+  iree_host_size_t length;
+} iree_async_socket_prepared_span_t;
+
+// Resolves a submit-time snapshot and its retained region into a span value.
+static inline iree_async_span_t iree_async_socket_prepared_span_resolve(
+    iree_async_socket_prepared_span_t prepared_span,
+    iree_async_region_t* region) {
+  return iree_async_span_make(region, prepared_span.offset,
+                              prepared_span.length);
+}
+
+// Platform storage shared by socket scatter/gather operations.
 //
 // The io_uring state aliases the POSIX message descriptors. The primary
 // zero-copy completion ends the descriptor lifetime, allowing its result to be
 // retained in the same storage until the buffer-ownership notification arrives.
-typedef union iree_async_socket_send_platform_t {
+typedef union iree_async_socket_io_platform_t {
+  // Portable descriptors captured while the caller's span list is valid.
+  struct {
+    // Storage reserved for a native message header after activation.
+    iree_alignas(iree_max_align_t) uint8_t
+        message_header[IREE_ASYNC_SOCKET_PLATFORM_MSGHDR_SIZE];
+
+    // Span offsets and lengths retained from accepted submission to activation.
+    iree_async_socket_prepared_span_t
+        spans[IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS];
+  } prepared;
+
   // POSIX vectored I/O descriptors.
   struct {
     // Storage for struct msghdr used by SENDMSG.
@@ -69,7 +101,7 @@ typedef union iree_async_socket_send_platform_t {
     // Raw primary CQE result retained until the ownership notification.
     int32_t primary_result;
   } io_uring;
-} iree_async_socket_send_platform_t;
+} iree_async_socket_io_platform_t;
 
 //===----------------------------------------------------------------------===//
 // Accept
@@ -192,33 +224,31 @@ typedef struct iree_async_socket_connect_operation_t {
 // Threading model:
 //   Callback fires on the poll thread. Buffer contents are valid only
 //   during the callback—copy out if needed after return.
+//
+// Data lifetime:
+//   The span descriptor array is consumed during submit and need not remain
+//   valid after submit returns. Registered regions are retained through the
+//   final callback. Raw buffer memory remains caller-owned and must stay valid
+//   through that callback.
 typedef struct iree_async_socket_recv_operation_t {
   iree_async_operation_t base;
 
   // The socket to receive from.
   iree_async_socket_t* socket;
 
-  // Scatter buffer list. The values pointer may reference trailing slab
-  // data or caller-managed storage.
+  // Scatter buffer list consumed during submit. The values pointer may
+  // reference trailing slab data or caller-managed storage.
   iree_async_span_list_t buffers;
+
+  // Proactor-owned region references retained for the scatter buffers.
+  iree_async_region_t*
+      retained_buffer_regions[IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS];
 
   // Result: total bytes received across all buffer entries.
   iree_host_size_t bytes_received;
 
-  // Platform-specific storage for scatter-gather I/O.
-  // Opaque to callers; initialized by the proactor.
-  // Alignment ensures platform structs (msghdr, iovec) can be safely cast.
-  union {
-    // POSIX vectored I/O (all POSIX-based backends: poll, epoll, kqueue,
-    // io_uring). Contains struct msghdr and struct iovec storage.
-    struct {
-      // Storage for struct msghdr used by RECVMSG.
-      iree_alignas(iree_max_align_t) uint8_t
-          msg_header[IREE_ASYNC_SOCKET_PLATFORM_MSGHDR_SIZE];
-      // Storage for struct iovec array.
-      uint8_t iovecs[IREE_ASYNC_SOCKET_PLATFORM_IOVEC_STORAGE];
-    } posix;
-  } platform;
+  // Proactor-managed descriptor storage. Opaque to callers.
+  iree_async_socket_io_platform_t platform;
 } iree_async_socket_recv_operation_t;
 
 // Maximum number of scatter-gather buffers supported in a single recv.
@@ -339,8 +369,9 @@ typedef uint32_t iree_async_socket_send_flags_t;
 //
 // Data lifetime:
 //   The span descriptor array is consumed during submit and need not remain
-//   valid after submit returns. Backends materialize native descriptors before
-//   returning.
+//   valid after submit returns. The proactor snapshots descriptors before the
+//   operation becomes observable and materializes native descriptors before
+//   execution.
 //
 //   Buffer data referenced by spans must remain valid until the completion
 //   callback fires. The send operation does not copy buffer contents; the
@@ -349,9 +380,10 @@ typedef uint32_t iree_async_socket_send_flags_t;
 //
 //   On POSIX backends (epoll, kqueue): the proactor attempts an eager
 //   writev() during submit. If the socket buffer has room, data is consumed
-//   immediately and the completion fires synchronously. If the buffer is full
-//   (EAGAIN), the send is deferred to a POLLOUT-driven retry that reads from
-//   the original buffer addresses when the socket becomes writable.
+//   immediately and the completion is queued for poll-owned callback dispatch.
+//   If the buffer is full (EAGAIN), the send is deferred to a POLLOUT-driven
+//   retry that reads from the original buffer addresses when the socket becomes
+//   writable.
 //
 //   On io_uring: submit's Phase 4 flushes SQEs to the kernel, which may
 //   complete the send inline (data copied during io_uring_enter). Under
@@ -386,9 +418,13 @@ typedef struct iree_async_socket_send_operation_t {
   // The socket to send on.
   iree_async_socket_t* socket;
 
-  // Scatter-gather buffer list. The values pointer may reference trailing slab
-  // data or caller-managed storage.
+  // Scatter-gather buffer list consumed during submit. The values pointer may
+  // reference trailing slab data or caller-managed storage.
   iree_async_span_list_t buffers;
+
+  // Proactor-owned region references retained for the scatter-gather buffers.
+  iree_async_region_t*
+      retained_buffer_regions[IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS];
 
   // Behavioral flags (zero-copy, cork, etc.).
   iree_async_socket_send_flags_t send_flags;
@@ -397,7 +433,7 @@ typedef struct iree_async_socket_send_operation_t {
   iree_host_size_t bytes_sent;
 
   // Proactor-managed platform storage.
-  iree_async_socket_send_platform_t platform;
+  iree_async_socket_io_platform_t platform;
 } iree_async_socket_send_operation_t;
 
 // Maximum number of scatter-gather buffers supported in a single send.
@@ -469,9 +505,13 @@ typedef struct iree_async_socket_sendto_operation_t {
   // The socket to send on (need not be connected).
   iree_async_socket_t* socket;
 
-  // Scatter-gather buffer list. The values pointer may reference trailing slab
-  // data or caller-managed storage.
+  // Scatter-gather buffer list consumed during submit. The values pointer may
+  // reference trailing slab data or caller-managed storage.
   iree_async_span_list_t buffers;
+
+  // Proactor-owned region references retained for the scatter-gather buffers.
+  iree_async_region_t*
+      retained_buffer_regions[IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS];
 
   // Behavioral flags (cork, etc.).
   iree_async_socket_send_flags_t send_flags;
@@ -483,7 +523,7 @@ typedef struct iree_async_socket_sendto_operation_t {
   iree_host_size_t bytes_sent;
 
   // Proactor-managed platform storage.
-  iree_async_socket_send_platform_t platform;
+  iree_async_socket_io_platform_t platform;
 } iree_async_socket_sendto_operation_t;
 
 // Maximum number of scatter-gather buffers supported in a single sendto.
@@ -545,15 +585,25 @@ static inline void iree_async_socket_sendto_operation_initialize(
 //   Callback fires on the poll thread. |sender| is populated with the peer
 //   address. Buffer contents and sender address are valid only during the
 //   callback for multishot (not currently supported).
+//
+// Data lifetime:
+//   The span descriptor array is consumed during submit and need not remain
+//   valid after submit returns. Registered regions are retained through the
+//   final callback. Raw buffer memory remains caller-owned and must stay valid
+//   through that callback.
 typedef struct iree_async_socket_recvfrom_operation_t {
   iree_async_operation_t base;
 
   // The socket to receive from.
   iree_async_socket_t* socket;
 
-  // Scatter buffer list. The values pointer may reference trailing slab
-  // data or caller-managed storage.
+  // Scatter buffer list consumed during submit. The values pointer may
+  // reference trailing slab data or caller-managed storage.
   iree_async_span_list_t buffers;
+
+  // Proactor-owned region references retained for the scatter buffers.
+  iree_async_region_t*
+      retained_buffer_regions[IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS];
 
   // Result: sender address (OUTPUT).
   // Populated by the kernel with the source address of the received datagram.
@@ -563,20 +613,8 @@ typedef struct iree_async_socket_recvfrom_operation_t {
   // Result: total bytes received across all buffer entries.
   iree_host_size_t bytes_received;
 
-  // Platform-specific storage for scatter-gather I/O.
-  // Opaque to callers; initialized by the proactor.
-  // Alignment ensures platform structs (msghdr, iovec) can be safely cast.
-  union {
-    // POSIX vectored I/O (all POSIX-based backends: poll, epoll, kqueue,
-    // io_uring). Contains struct msghdr and struct iovec storage.
-    struct {
-      // Storage for struct msghdr used by RECVMSG.
-      iree_alignas(iree_max_align_t) uint8_t
-          msg_header[IREE_ASYNC_SOCKET_PLATFORM_MSGHDR_SIZE];
-      // Storage for struct iovec array.
-      uint8_t iovecs[IREE_ASYNC_SOCKET_PLATFORM_IOVEC_STORAGE];
-    } posix;
-  } platform;
+  // Proactor-managed descriptor storage. Opaque to callers.
+  iree_async_socket_io_platform_t platform;
 } iree_async_socket_recvfrom_operation_t;
 
 // Maximum number of scatter-gather buffers supported in a single recvfrom.

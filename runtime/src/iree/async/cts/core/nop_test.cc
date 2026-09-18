@@ -18,6 +18,25 @@ namespace iree::async::cts {
 
 class NopTest : public CtsTestBase<> {};
 
+struct NopOrderState {
+  struct CallbackState {
+    NopOrderState* owner;
+    int index;
+  };
+
+  std::vector<int> completion_order;
+
+  static void Callback(void* user_data, iree_async_operation_t* operation,
+                       iree_status_t status,
+                       iree_async_completion_flags_t flags) {
+    (void)operation;
+    (void)flags;
+    auto* callback_state = static_cast<CallbackState*>(user_data);
+    IREE_EXPECT_OK(status);
+    callback_state->owner->completion_order.push_back(callback_state->index);
+  }
+};
+
 // Single NOP: submit, poll, verify callback fires with OK status.
 TEST_P(NopTest, SingleNop) {
   iree_async_nop_operation_t nop;
@@ -38,25 +57,20 @@ TEST_P(NopTest, SingleNop) {
   EXPECT_EQ(tracker.last_operation, &nop.base);
 }
 
-// Multiple NOPs: submit batch, verify all complete.
+// Multiple NOPs: submit batch, verify all complete in submission order.
 TEST_P(NopTest, MultipleNops) {
   constexpr int kNopCount = 5;
   iree_async_nop_operation_t nops[kNopCount];
   memset(nops, 0, sizeof(nops));
 
-  int completion_count = 0;
-  auto counting_callback = [](void* user_data, iree_async_operation_t* op,
-                              iree_status_t status,
-                              iree_async_completion_flags_t flags) {
-    ++(*static_cast<int*>(user_data));
-    iree_status_ignore(status);
-  };
-
+  NopOrderState order_state;
+  NopOrderState::CallbackState callback_states[kNopCount];
   iree_async_operation_t* ops[kNopCount];
   for (int i = 0; i < kNopCount; ++i) {
+    callback_states[i] = {&order_state, i};
     nops[i].base.type = IREE_ASYNC_OPERATION_TYPE_NOP;
-    nops[i].base.completion_fn = counting_callback;
-    nops[i].base.user_data = &completion_count;
+    nops[i].base.completion_fn = NopOrderState::Callback;
+    nops[i].base.user_data = &callback_states[i];
     ops[i] = &nops[i].base;
   }
 
@@ -66,7 +80,32 @@ TEST_P(NopTest, MultipleNops) {
   // All NOPs should complete quickly.
   PollUntil(/*min_completions=*/kNopCount);
 
-  EXPECT_EQ(completion_count, kNopCount);
+  EXPECT_EQ(order_state.completion_order, (std::vector<int>{0, 1, 2, 3, 4}));
+}
+
+TEST_P(NopTest, LinkedNops) {
+  constexpr int kNopCount = 5;
+  iree_async_nop_operation_t nops[kNopCount];
+  memset(nops, 0, sizeof(nops));
+
+  NopOrderState order_state;
+  NopOrderState::CallbackState callback_states[kNopCount];
+  iree_async_operation_t* ops[kNopCount];
+  for (int i = 0; i < kNopCount; ++i) {
+    callback_states[i] = {&order_state, i};
+    nops[i].base.type = IREE_ASYNC_OPERATION_TYPE_NOP;
+    nops[i].base.flags = i + 1 < kNopCount ? IREE_ASYNC_OPERATION_FLAG_LINKED
+                                           : IREE_ASYNC_OPERATION_FLAG_NONE;
+    nops[i].base.completion_fn = NopOrderState::Callback;
+    nops[i].base.user_data = &callback_states[i];
+    ops[i] = &nops[i].base;
+  }
+
+  IREE_ASSERT_OK(iree_async_proactor_submit(
+      proactor_, iree_async_operation_list_make(ops, kNopCount)));
+  PollUntil(/*min_completions=*/kNopCount);
+
+  EXPECT_EQ(order_state.completion_order, (std::vector<int>{0, 1, 2, 3, 4}));
 }
 
 // NOP callback receives correct operation pointer.

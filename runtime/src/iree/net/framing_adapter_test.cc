@@ -6,8 +6,11 @@
 
 #include "iree/net/framing_adapter.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "iree/async/buffer_pool.h"
@@ -70,24 +73,28 @@ static std::vector<uint8_t> MakeFrame(const std::string& payload) {
 
 struct CapturedSend {
   std::vector<std::vector<uint8_t>> span_data;
-  iree_net_send_flags_t flags;
 };
 
 struct PendingSendCompletion {
   iree_net_send_completion_callback_t callback;
   iree_host_size_t bytes_transferred;
+  std::vector<iree_async_span_t> retained_spans;
 };
 
 struct MockCarrier {
   iree_net_carrier_t base;
   std::vector<CapturedSend> sends;
   std::vector<PendingSendCompletion> pending_completions;
-  std::vector<uint8_t> reservation_storage;
   iree_status_code_t next_activate_error = IREE_STATUS_OK;
   iree_status_code_t next_send_error = IREE_STATUS_OK;
   iree_host_size_t send_budget_bytes = SIZE_MAX;
   uint32_t send_budget_slots = UINT32_MAX;
-  bool reservation_live = false;
+  // Checksum observed from retained ordinary-send storage at completion.
+  uint8_t retained_checksum = 0;
+  // Callback held while deactivation waits for accepted sends.
+  iree_net_carrier_deactivate_callback_fn_t deactivate_callback = nullptr;
+  // Opaque value paired with |deactivate_callback|.
+  void* deactivate_user_data = nullptr;
   int destroy_count = 0;
 
   static void Destroy(iree_net_carrier_t* carrier) {
@@ -110,9 +117,14 @@ struct MockCarrier {
   static void Deactivate(iree_net_carrier_t* carrier,
                          iree_net_carrier_deactivate_callback_fn_t callback,
                          void* user_data) {
-    iree_net_carrier_set_state(carrier, IREE_NET_CARRIER_STATE_DEACTIVATED);
-    if (callback) {
+    MockCarrier* mock = reinterpret_cast<MockCarrier*>(carrier);
+    iree_net_carrier_set_state(carrier, IREE_NET_CARRIER_STATE_DRAINING);
+    if (mock->pending_completions.empty()) {
+      iree_net_carrier_set_state(carrier, IREE_NET_CARRIER_STATE_DEACTIVATED);
       callback(user_data);
+    } else {
+      mock->deactivate_callback = callback;
+      mock->deactivate_user_data = user_data;
     }
   }
 
@@ -131,8 +143,19 @@ struct MockCarrier {
       return iree_status_from_code(error);
     }
     CapturedSend captured;
-    captured.flags = params->flags;
-    iree_host_size_t total_length = 0;
+    iree_host_size_t total_length = params->generated_prefix.length;
+    if (params->generated_prefix.length > 0) {
+      captured.span_data.emplace_back(params->generated_prefix.length);
+      iree_status_t status = params->generated_prefix.write(
+          params->generated_prefix.user_data,
+          iree_make_byte_span(captured.span_data.back().data(),
+                              captured.span_data.back().size()));
+      if (!iree_status_is_ok(status)) {
+        params->completion_callback.fn(params->completion_callback.user_data,
+                                       status, 0);
+        return iree_ok_status();
+      }
+    }
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
       iree_async_span_t span = params->data.values[i];
       uint8_t* ptr = iree_async_span_ptr(span);
@@ -141,50 +164,14 @@ struct MockCarrier {
       total_length += span.length;
     }
     mock->sends.push_back(std::move(captured));
-    mock->pending_completions.push_back(
-        {params->completion_callback, total_length});
-    return iree_ok_status();
-  }
-
-  static iree_status_t BeginSend(iree_net_carrier_t* carrier,
-                                 iree_host_size_t size, void** out_ptr,
-                                 iree_net_carrier_send_handle_t* out_handle) {
-    MockCarrier* mock = reinterpret_cast<MockCarrier*>(carrier);
-    if (mock->reservation_live) {
-      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                              "mock reservation already live");
+    std::vector<iree_async_span_t> retained_spans;
+    if (params->data.count > 0) {
+      retained_spans.assign(params->data.values,
+                            params->data.values + params->data.count);
     }
-    mock->reservation_storage.resize(size);
-    mock->reservation_live = true;
-    *out_ptr = mock->reservation_storage.data();
-    *out_handle = 1;
-    return iree_ok_status();
-  }
-
-  static iree_status_t CommitSend(
-      iree_net_carrier_t* carrier, iree_net_carrier_send_handle_t handle,
-      iree_net_send_completion_callback_t callback) {
-    MockCarrier* mock = reinterpret_cast<MockCarrier*>(carrier);
-    if (!mock->reservation_live || handle != 1) {
-      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "invalid mock reservation");
-    }
-    CapturedSend captured;
-    captured.flags = IREE_NET_SEND_FLAG_NONE;
-    captured.span_data.push_back(mock->reservation_storage);
-    mock->sends.push_back(std::move(captured));
     mock->pending_completions.push_back(
-        {callback, mock->reservation_storage.size()});
-    mock->reservation_live = false;
+        {params->completion_callback, total_length, std::move(retained_spans)});
     return iree_ok_status();
-  }
-
-  static void AbortSend(iree_net_carrier_t* carrier,
-                        iree_net_carrier_send_handle_t handle) {
-    MockCarrier* mock = reinterpret_cast<MockCarrier*>(carrier);
-    IREE_ASSERT(mock->reservation_live && handle == 1);
-    mock->reservation_live = false;
-    mock->reservation_storage.clear();
   }
 
   static iree_status_t Shutdown(iree_net_carrier_t* carrier) {
@@ -228,8 +215,25 @@ struct MockCarrier {
     ASSERT_FALSE(pending_completions.empty());
     PendingSendCompletion completion = pending_completions.front();
     pending_completions.erase(pending_completions.begin());
+    uint8_t retained_checksum = 0;
+    for (iree_async_span_t span : completion.retained_spans) {
+      if (span.length > 0) {
+        const uint8_t* data = iree_async_span_ptr(span);
+        retained_checksum ^= data[0];
+        retained_checksum ^= data[span.length - 1];
+      }
+    }
+    this->retained_checksum = retained_checksum;
     completion.callback.fn(completion.callback.user_data, status,
                            completion.bytes_transferred);
+    if (pending_completions.empty() && deactivate_callback) {
+      iree_net_carrier_deactivate_callback_fn_t callback = deactivate_callback;
+      void* user_data = deactivate_user_data;
+      deactivate_callback = nullptr;
+      deactivate_user_data = nullptr;
+      iree_net_carrier_set_state(&base, IREE_NET_CARRIER_STATE_DEACTIVATED);
+      callback(user_data);
+    }
   }
 };
 
@@ -239,9 +243,6 @@ const iree_net_carrier_vtable_t MockCarrier::kVtable = {
     /*.deactivate=*/MockCarrier::Deactivate,
     /*.query_send_budget=*/MockCarrier::QuerySendBudget,
     /*.send=*/MockCarrier::Send,
-    /*.begin_send=*/MockCarrier::BeginSend,
-    /*.commit_send=*/MockCarrier::CommitSend,
-    /*.abort_send=*/MockCarrier::AbortSend,
     /*.shutdown=*/MockCarrier::Shutdown,
 };
 
@@ -332,13 +333,14 @@ struct TestContext {
 struct SendCompletion {
   int count = 0;
   iree_status_code_t status_code = IREE_STATUS_UNKNOWN;
+  iree_host_size_t bytes_transferred = 0;
 
   static void Complete(void* user_data, iree_status_t status,
                        iree_host_size_t bytes_transferred) {
-    (void)bytes_transferred;
     SendCompletion* completion = static_cast<SendCompletion*>(user_data);
     ++completion->count;
     completion->status_code = iree_status_code(status);
+    completion->bytes_transferred = bytes_transferred;
     iree_status_free(status);
   }
 
@@ -808,7 +810,7 @@ TEST_F(FramingAdapterTest, SendForwardsToCarrier) {
   std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
   iree_async_span_t span = iree_async_span_from_ptr(data.data(), data.size());
   SendCompletion completion;
-  iree_net_message_endpoint_send_params_t params;
+  iree_net_message_endpoint_send_params_t params = {};
   params.data = iree_async_span_list_make(&span, 1);
   params.completion_callback = completion.callback();
 
@@ -818,7 +820,6 @@ TEST_F(FramingAdapterTest, SendForwardsToCarrier) {
   ASSERT_EQ(mock_carrier_->sends.size(), 1u);
   ASSERT_EQ(mock_carrier_->sends[0].span_data.size(), 1u);
   EXPECT_EQ(mock_carrier_->sends[0].span_data[0], data);
-  EXPECT_EQ(mock_carrier_->sends[0].flags, IREE_NET_SEND_FLAG_NONE);
   mock_carrier_->CompleteNextSend(iree_ok_status());
   EXPECT_EQ(completion.count, 1);
   EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
@@ -834,7 +835,7 @@ TEST_F(FramingAdapterTest, SendMultipleSpans) {
       iree_async_span_from_ptr(data2.data(), data2.size()),
   };
   SendCompletion completion;
-  iree_net_message_endpoint_send_params_t params;
+  iree_net_message_endpoint_send_params_t params = {};
   params.data = iree_async_span_list_make(spans, 2);
   params.completion_callback = completion.callback();
 
@@ -849,19 +850,72 @@ TEST_F(FramingAdapterTest, SendMultipleSpans) {
   EXPECT_EQ(completion.count, 1);
 }
 
-TEST_F(FramingAdapterTest, ReservedSendForwardsTerminalCompletion) {
+TEST_F(FramingAdapterTest, SendCopiesTransientPrefix) {
   ActivateWithCallbacks();
 
-  void* data = nullptr;
-  iree_net_carrier_send_handle_t handle = 0;
-  IREE_ASSERT_OK(
-      iree_net_message_endpoint_begin_send(endpoint_, 4, &data, &handle));
-  const uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
-  memcpy(data, payload, sizeof(payload));
-
+  std::vector<uint8_t> prefix = {0x10, 0x20, 0x30};
+  std::vector<uint8_t> data = {0x40, 0x50};
+  const std::vector<uint8_t> expected_prefix = prefix;
+  iree_async_span_t span = iree_async_span_from_ptr(data.data(), data.size());
   SendCompletion completion;
-  IREE_ASSERT_OK(iree_net_message_endpoint_commit_send(endpoint_, handle,
-                                                       completion.callback()));
+  iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
+      /*.data=*/iree_async_span_list_make(&span, 1),
+      /*.completion_callback=*/completion.callback(),
+  };
+
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
+  std::fill(prefix.begin(), prefix.end(), 0xFF);
+
+  ASSERT_EQ(mock_carrier_->sends.size(), 1u);
+  ASSERT_EQ(mock_carrier_->sends[0].span_data.size(), 2u);
+  EXPECT_EQ(mock_carrier_->sends[0].span_data[0], expected_prefix);
+  EXPECT_EQ(mock_carrier_->sends[0].span_data[1], data);
+  mock_carrier_->CompleteNextSend(iree_ok_status());
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(completion.bytes_transferred, expected_prefix.size() + data.size());
+  EXPECT_EQ(mock_carrier_->retained_checksum, 0x10u);
+}
+
+TEST_F(FramingAdapterTest, SendCopiesPrefixOnlyMessage) {
+  ActivateWithCallbacks();
+
+  std::vector<uint8_t> prefix = {0x10, 0x20, 0x30};
+  const std::vector<uint8_t> expected_prefix = prefix;
+  SendCompletion completion;
+  iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/completion.callback(),
+  };
+
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
+  std::fill(prefix.begin(), prefix.end(), 0xFF);
+
+  ASSERT_EQ(mock_carrier_->sends.size(), 1u);
+  ASSERT_EQ(mock_carrier_->sends[0].span_data.size(), 1u);
+  EXPECT_EQ(mock_carrier_->sends[0].span_data[0], expected_prefix);
+  mock_carrier_->CompleteNextSend(iree_ok_status());
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_EQ(completion.bytes_transferred, expected_prefix.size());
+  EXPECT_EQ(mock_carrier_->retained_checksum, 0u);
+}
+
+TEST_F(FramingAdapterTest, GeneratedPrefixForwardsTerminalCompletion) {
+  ActivateWithCallbacks();
+
+  const uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
+  SendCompletion completion;
+  iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(payload, sizeof(payload))),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/completion.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
   EXPECT_EQ(completion.count, 0);
   ASSERT_EQ(mock_carrier_->sends.size(), 1u);
   ASSERT_EQ(mock_carrier_->sends[0].span_data.size(), 1u);
@@ -878,10 +932,13 @@ TEST_F(FramingAdapterTest, SendCarrierError) {
 
   mock_carrier_->next_send_error = IREE_STATUS_RESOURCE_EXHAUSTED;
 
+  std::vector<uint8_t> prefix = {0x01, 0x02};
   std::vector<uint8_t> data = {0x01};
   iree_async_span_t span = iree_async_span_from_ptr(data.data(), data.size());
   SendCompletion completion;
-  iree_net_message_endpoint_send_params_t params;
+  iree_net_message_endpoint_send_params_t params = {};
+  params.generated_prefix = iree_net_send_prefix_from_bytes(
+      iree_make_const_byte_span(prefix.data(), prefix.size()));
   params.data = iree_async_span_list_make(&span, 1);
   params.completion_callback = completion.callback();
 
@@ -890,12 +947,35 @@ TEST_F(FramingAdapterTest, SendCarrierError) {
   EXPECT_EQ(completion.count, 0);
 }
 
+TEST_F(FramingAdapterTest, SendCopiedPrefixForwardsAsynchronousError) {
+  ActivateWithCallbacks();
+
+  std::vector<uint8_t> prefix = {0x10, 0x20, 0x30};
+  SendCompletion completion;
+  iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/completion.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
+  std::fill(prefix.begin(), prefix.end(), 0xFF);
+
+  mock_carrier_->CompleteNextSend(
+      iree_status_from_code(IREE_STATUS_UNAVAILABLE));
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_UNAVAILABLE);
+  EXPECT_EQ(completion.bytes_transferred, prefix.size());
+  EXPECT_EQ(mock_carrier_->retained_checksum, 0u);
+}
+
 TEST_F(FramingAdapterTest, SendRequiresCompletionCallback) {
   ActivateWithCallbacks();
 
   std::vector<uint8_t> data = {0x01};
   iree_async_span_t span = iree_async_span_from_ptr(data.data(), data.size());
   iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
       /*.completion_callback=*/{nullptr, nullptr},
   };
@@ -905,11 +985,12 @@ TEST_F(FramingAdapterTest, SendRequiresCompletionCallback) {
   EXPECT_TRUE(mock_carrier_->sends.empty());
 }
 
-TEST_F(FramingAdapterTest, SendRequiresNonEmptyData) {
+TEST_F(FramingAdapterTest, SendRequiresNonEmptyMessage) {
   ActivateWithCallbacks();
 
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/completion.callback(),
   };
@@ -925,17 +1006,33 @@ TEST_F(FramingAdapterTest, SendRequiresNonEmptyData) {
   EXPECT_EQ(completion.count, 0);
 }
 
-TEST_F(FramingAdapterTest, SendRejectsPayloadLengthOverflow) {
+TEST_F(FramingAdapterTest, SendCompletesNullGeneratedPrefixSource) {
+  ActivateWithCallbacks();
+
+  SendCompletion completion;
+  iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(nullptr, 1)),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/completion.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
+  EXPECT_TRUE(mock_carrier_->sends.empty());
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_EQ(completion.status_code, IREE_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(completion.bytes_transferred, 0u);
+}
+
+TEST_F(FramingAdapterTest, SendRejectsMessageLengthOverflow) {
   ActivateWithCallbacks();
 
   uint8_t byte = 0;
-  iree_async_span_t spans[2] = {
-      iree_async_span_from_ptr(&byte, IREE_HOST_SIZE_MAX),
-      iree_async_span_from_ptr(&byte, 1),
-  };
+  iree_async_span_t span = iree_async_span_from_ptr(&byte, 1);
   SendCompletion completion;
   iree_net_message_endpoint_send_params_t params = {
-      /*.data=*/iree_async_span_list_make(spans, 2),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(&byte, IREE_HOST_SIZE_MAX)),
+      /*.data=*/iree_async_span_list_make(&span, 1),
       /*.completion_callback=*/completion.callback(),
   };
   IREE_EXPECT_STATUS_IS(IREE_STATUS_OUT_OF_RANGE,
@@ -976,6 +1073,30 @@ TEST_F(FramingAdapterTest, DeactivationWithNullCallback) {
       iree_net_message_endpoint_deactivate(endpoint_, nullptr, nullptr));
 
   // Should not crash.
+}
+
+TEST_F(FramingAdapterTest, DeactivationDrainsRetainedCopiedPrefix) {
+  ActivateWithCallbacks();
+
+  std::vector<uint8_t> prefix = {0x10, 0x20, 0x30};
+  SendCompletion completion;
+  iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/completion.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(endpoint_, &params));
+  std::fill(prefix.begin(), prefix.end(), 0xFF);
+
+  IREE_ASSERT_OK(iree_net_message_endpoint_deactivate(
+      endpoint_, TestContext::OnDeactivated, &ctx_));
+  EXPECT_FALSE(ctx_.deactivated);
+  EXPECT_EQ(completion.count, 0);
+
+  mock_carrier_->CompleteNextSend(iree_ok_status());
+  EXPECT_EQ(completion.count, 1);
+  EXPECT_TRUE(ctx_.deactivated);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1095,6 +1216,87 @@ struct SecondHandler {
   }
 };
 
+struct HandoffHandler {
+  iree_net_message_endpoint_t endpoint = {};
+  SecondHandler* next_handler = nullptr;
+  bool message_callback_active = false;
+  std::vector<ReceivedMessage> messages;
+
+  static iree_status_t OnMessage(void* user_data,
+                                 iree_const_byte_span_t message,
+                                 iree_async_buffer_lease_t* lease) {
+    auto* handler = static_cast<HandoffHandler*>(user_data);
+    EXPECT_FALSE(handler->message_callback_active);
+    handler->message_callback_active = true;
+    ReceivedMessage received;
+    received.data.assign(message.data, message.data + message.data_length);
+    received.had_lease = (lease != nullptr);
+    handler->messages.push_back(std::move(received));
+    iree_net_message_endpoint_set_callbacks(
+        handler->endpoint, handler->next_handler->MakeCallbacks());
+    handler->message_callback_active = false;
+    return iree_ok_status();
+  }
+
+  static void OnError(void* user_data, iree_status_t status) {
+    iree_status_free(status);
+  }
+
+  iree_net_message_endpoint_callbacks_t MakeCallbacks() {
+    return {OnMessage, OnError, this};
+  }
+};
+
+struct ConcurrentHandoffState {
+  iree_net_message_endpoint_t endpoint = {};
+  std::atomic<bool> writer_started = false;
+  std::atomic<bool> stop_writer = false;
+  std::atomic<int> error_count = 0;
+  std::atomic<int> mismatched_bundle_count = 0;
+};
+
+struct ConcurrentHandoffTarget {
+  ConcurrentHandoffState* state = nullptr;
+  ConcurrentHandoffTarget* peer = nullptr;
+  int identity = 0;
+
+  static iree_status_t OnMessage(void* user_data,
+                                 iree_const_byte_span_t message,
+                                 iree_async_buffer_lease_t* lease) {
+    (void)message;
+    (void)lease;
+    auto* self = static_cast<ConcurrentHandoffTarget*>(user_data);
+    self->state->writer_started.store(true, std::memory_order_release);
+    while (!self->state->stop_writer.load(std::memory_order_acquire)) {
+      iree_net_message_endpoint_set_callbacks(self->state->endpoint,
+                                              self->callbacks());
+      iree_net_message_endpoint_set_callbacks(self->state->endpoint,
+                                              self->peer->callbacks());
+    }
+    return iree_ok_status();
+  }
+
+  template <int CallbackIdentity>
+  static void OnError(void* user_data, iree_status_t status) {
+    auto* self = static_cast<ConcurrentHandoffTarget*>(user_data);
+    if (self->identity != CallbackIdentity) {
+      self->state->mismatched_bundle_count.fetch_add(1,
+                                                     std::memory_order_relaxed);
+    }
+    self->state->error_count.fetch_add(1, std::memory_order_relaxed);
+    self->state->stop_writer.store(true, std::memory_order_release);
+    iree_status_free(status);
+  }
+
+  iree_net_message_endpoint_callbacks_t callbacks() {
+    return {
+        OnMessage,
+        identity == 0 ? OnError<0> : OnError<1>,
+        this,
+    };
+  }
+};
+
 TEST_F(FramingAdapterTest, CallbackSwapRedirectsMessages) {
   ActivateWithCallbacks();
 
@@ -1115,6 +1317,30 @@ TEST_F(FramingAdapterTest, CallbackSwapRedirectsMessages) {
   EXPECT_EQ(ctx_.messages[0].data, frame1);
 
   // Second handler got frame2 only.
+  ASSERT_EQ(second_handler.messages.size(), 1u);
+  EXPECT_EQ(second_handler.messages[0].data, frame2);
+}
+
+TEST_F(FramingAdapterTest, CallbackSwapInsideMessageRedirectsFollowingFrame) {
+  SecondHandler second_handler;
+  HandoffHandler handoff_handler = {
+      /*.endpoint=*/endpoint_,
+      /*.next_handler=*/&second_handler,
+  };
+  iree_net_message_endpoint_set_callbacks(endpoint_,
+                                          handoff_handler.MakeCallbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(endpoint_));
+
+  auto frame1 = MakeFrame("Bootstrap");
+  auto frame2 = MakeFrame("Operational");
+  std::vector<uint8_t> buffer;
+  buffer.insert(buffer.end(), frame1.begin(), frame1.end());
+  buffer.insert(buffer.end(), frame2.begin(), frame2.end());
+  IREE_ASSERT_OK(InjectRecv(buffer));
+
+  EXPECT_FALSE(handoff_handler.message_callback_active);
+  ASSERT_EQ(handoff_handler.messages.size(), 1u);
+  EXPECT_EQ(handoff_handler.messages[0].data, frame1);
   ASSERT_EQ(second_handler.messages.size(), 1u);
   EXPECT_EQ(second_handler.messages[0].data, frame2);
 }
@@ -1145,6 +1371,40 @@ TEST_F(FramingAdapterTest, CallbackSwapMidFragment) {
   // Second handler got the completed frame.
   ASSERT_EQ(second_handler.messages.size(), 1u);
   EXPECT_EQ(second_handler.messages[0].data, frame);
+}
+
+TEST_F(FramingAdapterTest,
+       ConcurrentTerminalErrorObservesCoherentCallbackBundle) {
+  ConcurrentHandoffState state;
+  state.endpoint = endpoint_;
+  ConcurrentHandoffTarget target_zero = {&state, nullptr, 0};
+  ConcurrentHandoffTarget target_one = {&state, &target_zero, 1};
+  target_zero.peer = &target_one;
+  iree_net_message_endpoint_set_callbacks(endpoint_, target_zero.callbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(endpoint_));
+
+  const std::vector<uint8_t> frame = MakeFrame("protocol handoff");
+  iree_status_code_t receive_code = IREE_STATUS_UNKNOWN;
+  std::thread message_thread([&] {
+    iree_status_t status = InjectRecv(frame);
+    receive_code = iree_status_code(status);
+    iree_status_free(status);
+  });
+  while (!state.writer_started.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+
+  mock_carrier_->InjectError(
+      iree_make_status(IREE_STATUS_UNAVAILABLE, "concurrent terminal error"));
+  message_thread.join();
+
+  EXPECT_EQ(receive_code, IREE_STATUS_OK);
+  EXPECT_EQ(state.error_count.load(std::memory_order_relaxed), 1);
+  EXPECT_EQ(state.mismatched_bundle_count.load(std::memory_order_relaxed), 0);
+
+  // Retire all callback targets before their stack storage leaves scope.
+  IREE_ASSERT_OK(iree_net_message_endpoint_deactivate(
+      endpoint_, /*callback=*/nullptr, /*user_data=*/nullptr));
 }
 
 //===----------------------------------------------------------------------===//

@@ -73,6 +73,18 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_test(
+  NAME
+    message_pool_test
+  SRCS
+    "message_pool_test.cc"
+  DEPS
+    ::message_pool
+    iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
 iree_cc_library(
   NAME
     operation_completion
@@ -244,9 +256,25 @@ iree_cc_library(
   SRCS
     "sequence_emulation.c"
   DEPS
+    ::operation_completion
     iree::async
     iree::base
+    iree::base::threading
   PUBLIC
+)
+
+iree_cc_test(
+  NAME
+    sequence_emulation_test
+  SRCS
+    "sequence_emulation_test.cc"
+  DEPS
+    ::operation_pool
+    ::sequence_emulation
+    iree::async
+    iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 iree_cc_library(

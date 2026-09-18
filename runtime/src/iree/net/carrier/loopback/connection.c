@@ -339,7 +339,7 @@ iree_status_t iree_net_loopback_connection_create_pair(
         &client_carrier, &server_carrier);
     if (iree_status_is_ok(status)) {
       status = iree_net_loopback_framed_endpoint_allocate(
-          client_carrier, carrier_options->max_send_operations,
+          client_carrier, client_proactor, carrier_options->max_send_operations,
           &client_connection->deactivation_barrier, host_allocator,
           &client_connection->endpoints[i].endpoint);
       if (iree_status_is_ok(status)) {
@@ -348,7 +348,7 @@ iree_status_t iree_net_loopback_connection_create_pair(
     }
     if (iree_status_is_ok(status)) {
       status = iree_net_loopback_framed_endpoint_allocate(
-          server_carrier, carrier_options->max_send_operations,
+          server_carrier, server_proactor, carrier_options->max_send_operations,
           &server_connection->deactivation_barrier, host_allocator,
           &server_connection->endpoints[i].endpoint);
       if (iree_status_is_ok(status)) {

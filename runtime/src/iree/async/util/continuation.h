@@ -34,6 +34,49 @@ typedef struct iree_async_continuation_t {
   bool cancel_chain;
 } iree_async_continuation_t;
 
+// Iterates the independent continuation chain heads in a prepared batch.
+//
+// Each call consumes the complete current chain topology before returning its
+// head. The returned head may therefore be published to a concurrent poll
+// owner, completed, and reused before the next call without changing which
+// operation is returned next.
+typedef struct iree_async_continuation_chain_iterator_t {
+  // Prepared submission batch being traversed.
+  iree_async_operation_list_t operations;
+  // Index of the next independent chain head.
+  iree_host_size_t next_head_index;
+} iree_async_continuation_chain_iterator_t;
+
+// Returns an iterator positioned at the first chain in |operations|.
+static inline iree_async_continuation_chain_iterator_t
+iree_async_continuation_chain_iterator_make(
+    iree_async_operation_list_t operations) {
+  iree_async_continuation_chain_iterator_t iterator;
+  iterator.operations = operations;
+  iterator.next_head_index = 0;
+  return iterator;
+}
+
+// Returns the next independent chain head or NULL when traversal is complete.
+// The input batch must have passed iree_async_continuation_prepare_batch.
+static inline iree_async_operation_t*
+iree_async_continuation_chain_iterator_next(
+    iree_async_continuation_chain_iterator_t* iterator) {
+  if (iterator->next_head_index >= iterator->operations.count) {
+    return NULL;
+  }
+
+  iree_host_size_t head_index = iterator->next_head_index;
+  do {
+    ++iterator->next_head_index;
+  } while (
+      iterator->next_head_index < iterator->operations.count &&
+      iree_any_bit_set(
+          iterator->operations.values[iterator->next_head_index - 1]->flags,
+          IREE_ASYNC_OPERATION_FLAG_LINKED));
+  return iterator->operations.values[head_index];
+}
+
 // Validates LINKED flags and constructs intrusive linked_next chains for a
 // submission batch. All linked_next fields are cleared and rebuilt from the
 // batch; the caller's operation pointer array is not retained.

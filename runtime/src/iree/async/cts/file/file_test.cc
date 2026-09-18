@@ -21,6 +21,8 @@
 #include "iree/async/cts/util/registry.h"
 #include "iree/async/cts/util/test_base.h"
 #include "iree/async/operations/file.h"
+#include "iree/async/region.h"
+#include "iree/async/slab.h"
 #include "iree/async/span.h"
 #include "iree/io/file_contents.h"
 #include "iree/testing/temp_file.h"
@@ -92,6 +94,31 @@ class FileTest : public CtsTestBase<> {
  private:
   std::vector<iree::testing::TempFilePath> temp_paths_;
 };
+
+struct RegisteredReadContext {
+  bool callback_fired = false;
+  int32_t callback_region_ref_count = 0;
+  iree_status_t status = iree_ok_status();
+  std::vector<uint8_t> contents;
+};
+
+static void registered_read_callback(void* user_data,
+                                     iree_async_operation_t* operation,
+                                     iree_status_t status,
+                                     iree_async_completion_flags_t flags) {
+  (void)flags;
+  auto* context = static_cast<RegisteredReadContext*>(user_data);
+  auto* read_op =
+      reinterpret_cast<iree_async_file_read_operation_t*>(operation);
+  context->callback_fired = true;
+  context->status = status;
+  context->callback_region_ref_count =
+      iree_atomic_ref_count_load(&read_op->buffer.region->ref_count);
+  if (iree_status_is_ok(status)) {
+    const uint8_t* data = iree_async_span_ptr(read_op->buffer);
+    context->contents.assign(data, data + read_op->bytes_read);
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // File open tests
@@ -206,6 +233,48 @@ TEST_P(FileTest, ReadEntireFile) {
   IREE_EXPECT_OK(tracker.ConsumeStatus());
   EXPECT_EQ(read_op.bytes_read, strlen(kTestData));
   EXPECT_EQ(memcmp(read_buffer, kTestData, strlen(kTestData)), 0);
+
+  iree_async_file_release(file);
+}
+
+TEST_P(FileTest, ReadRetainsRegisteredSlabThroughCallback) {
+  const char kTestData[] = "registered slab lifetime";
+  const iree_host_size_t data_length = strlen(kTestData);
+  std::string path = CreateTempFileWithContents(kTestData, data_length);
+
+  iree_async_file_t* file = ImportTempFileForRead(path);
+  ASSERT_NE(file, nullptr);
+
+  iree_async_slab_options_t slab_options = iree_async_slab_options_default();
+  slab_options.buffer_size = 4096;
+  slab_options.buffer_count = 1;
+  iree_async_slab_t* slab = nullptr;
+  IREE_ASSERT_OK(
+      iree_async_slab_create(slab_options, iree_allocator_system(), &slab));
+  iree_async_region_t* region = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_register_slab(
+      proactor_, slab, IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE, &region));
+
+  RegisteredReadContext context;
+  iree_async_file_read_operation_t read_op = {};
+  iree_async_operation_initialize(
+      &read_op.base, IREE_ASYNC_OPERATION_TYPE_FILE_READ,
+      IREE_ASYNC_OPERATION_FLAG_NONE, registered_read_callback, &context);
+  read_op.file = file;
+  read_op.buffer = iree_async_span_make(region, 0, data_length);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &read_op.base));
+
+  // The accepted operation now owns the region and its retained slab. Drop
+  // both caller references before the backend begins the read.
+  iree_async_region_release(region);
+  iree_async_slab_release(slab);
+
+  PollUntilCondition([&] { return context.callback_fired; },
+                     "registered file read completion");
+  IREE_EXPECT_OK(context.status);
+  EXPECT_EQ(context.callback_region_ref_count, 1);
+  EXPECT_EQ(context.contents.size(), data_length);
+  EXPECT_EQ(memcmp(context.contents.data(), kTestData, data_length), 0);
 
   iree_async_file_release(file);
 }

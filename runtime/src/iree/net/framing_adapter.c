@@ -8,13 +8,17 @@
 
 #include <string.h>
 
+#include "iree/base/threading/mutex.h"
 #include "iree/net/buffer_lease.h"
 
 struct iree_net_framing_adapter_t {
+  // Serializes callback bundle replacement and snapshots.
+  iree_slim_mutex_t callback_mutex;
+
   // Owned carrier - released when adapter is freed.
   iree_net_carrier_t* carrier;
 
-  // Message handlers replaced on the proactor thread during protocol handoff.
+  // Message handlers protected by |callback_mutex|.
   iree_net_message_endpoint_callbacks_t callbacks;
 
   // Coordinates endpoint and connection deactivation requests.
@@ -27,16 +31,26 @@ struct iree_net_framing_adapter_t {
   iree_net_frame_accumulator_t accumulator;
 };
 
+static iree_net_message_endpoint_callbacks_t
+iree_net_framing_adapter_snapshot_callbacks(
+    iree_net_framing_adapter_t* adapter) {
+  iree_slim_mutex_lock(&adapter->callback_mutex);
+  iree_net_message_endpoint_callbacks_t callbacks = adapter->callbacks;
+  iree_slim_mutex_unlock(&adapter->callback_mutex);
+  return callbacks;
+}
+
 // Called by frame_accumulator when a complete frame is ready.
 // Bridges a copy-path frame to independently owned host storage.
 static iree_status_t iree_net_framing_adapter_on_frame_complete(
     void* user_data, iree_const_byte_span_t frame,
     iree_async_buffer_lease_t* lease) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)user_data;
+  const iree_net_message_endpoint_callbacks_t callbacks =
+      iree_net_framing_adapter_snapshot_callbacks(adapter);
 
   if (lease) {
-    return adapter->callbacks.on_message(adapter->callbacks.user_data, frame,
-                                         lease);
+    return callbacks.on_message(callbacks.user_data, frame, lease);
   }
 
   // Borrowed path: the frame is either in accumulator storage or precedes
@@ -51,8 +65,8 @@ static iree_status_t iree_net_framing_adapter_on_frame_complete(
   iree_const_byte_span_t bridged_frame =
       iree_make_const_byte_span(dest, frame.data_length);
 
-  iree_status_t status = adapter->callbacks.on_message(
-      adapter->callbacks.user_data, bridged_frame, &bridged_lease);
+  iree_status_t status =
+      callbacks.on_message(callbacks.user_data, bridged_frame, &bridged_lease);
 
   // Release unless the handler moved the lease and cleared this value.
   iree_async_buffer_lease_release(&bridged_lease);
@@ -84,7 +98,9 @@ static iree_status_t iree_net_framing_adapter_on_recv(
 static void iree_net_framing_adapter_on_carrier_error(void* user_data,
                                                       iree_status_t status) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)user_data;
-  adapter->callbacks.on_error(adapter->callbacks.user_data, status);
+  const iree_net_message_endpoint_callbacks_t callbacks =
+      iree_net_framing_adapter_snapshot_callbacks(adapter);
+  callbacks.on_error(callbacks.user_data, status);
 }
 
 static void iree_net_framing_adapter_on_carrier_deactivated(void* user_data) {
@@ -95,12 +111,16 @@ static void iree_net_framing_adapter_on_carrier_deactivated(void* user_data) {
 static void iree_net_framing_adapter_set_callbacks(
     void* self, iree_net_message_endpoint_callbacks_t callbacks) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)self;
+  iree_slim_mutex_lock(&adapter->callback_mutex);
   adapter->callbacks = callbacks;
+  iree_slim_mutex_unlock(&adapter->callback_mutex);
 }
 
 static iree_status_t iree_net_framing_adapter_activate(void* self) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)self;
-  if (!adapter->callbacks.on_message || !adapter->callbacks.on_error) {
+  const iree_net_message_endpoint_callbacks_t callbacks =
+      iree_net_framing_adapter_snapshot_callbacks(adapter);
+  if (!callbacks.on_message || !callbacks.on_error) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "message and error callbacks are required");
   }
@@ -144,8 +164,8 @@ static iree_status_t iree_net_framing_adapter_send(
     void* self, const iree_net_message_endpoint_send_params_t* params) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)self;
   iree_net_send_params_t carrier_params = {
+      .generated_prefix = params->generated_prefix,
       .data = params->data,
-      .flags = IREE_NET_SEND_FLAG_NONE,
       .completion_callback = params->completion_callback,
   };
   return iree_net_carrier_send(adapter->carrier, &carrier_params);
@@ -155,28 +175,6 @@ static iree_net_carrier_send_budget_t
 iree_net_framing_adapter_query_send_budget(void* self) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)self;
   return iree_net_carrier_query_send_budget(adapter->carrier);
-}
-
-static iree_status_t iree_net_framing_adapter_begin_send(
-    void* self, iree_host_size_t size, void** out_ptr,
-    iree_net_carrier_send_handle_t* out_handle) {
-  iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)self;
-  return iree_net_carrier_begin_send(adapter->carrier, size, out_ptr,
-                                     out_handle);
-}
-
-static iree_status_t iree_net_framing_adapter_commit_send(
-    void* self, iree_net_carrier_send_handle_t handle,
-    iree_net_send_completion_callback_t completion_callback) {
-  iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)self;
-  return iree_net_carrier_commit_send(adapter->carrier, handle,
-                                      completion_callback);
-}
-
-static void iree_net_framing_adapter_abort_send(
-    void* self, iree_net_carrier_send_handle_t handle) {
-  iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)self;
-  iree_net_carrier_abort_send(adapter->carrier, handle);
 }
 
 iree_status_t iree_net_framing_adapter_allocate(
@@ -230,6 +228,7 @@ iree_status_t iree_net_framing_adapter_allocate(
   if (iree_status_is_ok(status)) {
     memset(adapter, 0, total_size);
     adapter->host_allocator = host_allocator;
+    iree_slim_mutex_initialize(&adapter->callback_mutex);
     iree_net_endpoint_lifecycle_initialize(connection_barrier,
                                            &adapter->lifecycle);
   }
@@ -265,6 +264,7 @@ void iree_net_framing_adapter_free(iree_net_framing_adapter_t* adapter) {
   iree_net_endpoint_lifecycle_deinitialize(&adapter->lifecycle);
   iree_net_frame_accumulator_deinitialize(&adapter->accumulator);
   iree_net_carrier_release(adapter->carrier);
+  iree_slim_mutex_deinitialize(&adapter->callback_mutex);
   iree_allocator_free(allocator, adapter);
   IREE_TRACE_ZONE_END(z0);
 }
@@ -291,9 +291,6 @@ iree_net_message_endpoint_t iree_net_framing_adapter_as_endpoint(
       .deactivate = iree_net_framing_adapter_deactivate,
       .send = iree_net_framing_adapter_send,
       .query_send_budget = iree_net_framing_adapter_query_send_budget,
-      .begin_send = iree_net_framing_adapter_begin_send,
-      .commit_send = iree_net_framing_adapter_commit_send,
-      .abort_send = iree_net_framing_adapter_abort_send,
   };
   iree_net_message_endpoint_t endpoint = {
       .self = adapter,

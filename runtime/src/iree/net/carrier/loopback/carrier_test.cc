@@ -6,6 +6,7 @@
 
 #include "iree/net/carrier/loopback/carrier.h"
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
@@ -118,6 +119,8 @@ struct SendState {
   std::vector<iree_status_code_t> status_codes;
   // Transferred byte count from each send callback.
   std::vector<iree_host_size_t> byte_counts;
+  // Optional action invoked after recording a completion.
+  std::function<void()> completion_action;
 
   static void OnCompletion(void* user_data, iree_status_t status,
                            iree_host_size_t bytes_transferred) {
@@ -127,10 +130,77 @@ struct SendState {
     self->status_codes.push_back(iree_status_code(status));
     self->byte_counts.push_back(bytes_transferred);
     iree_status_free(status);
+    if (self->completion_action) {
+      self->completion_action();
+    }
   }
 
   iree_net_send_completion_callback_t callback() {
     return {/*.fn=*/OnCompletion, /*.user_data=*/this};
+  }
+};
+
+struct DeactivationState {
+  // Poll-side marker set by the fixture around proactor polling.
+  int* current_poll_side = nullptr;
+  // Proactor side on which deactivation must complete.
+  PollSide expected_poll_side = kNotPolling;
+  // True after the deactivation callback executes.
+  bool completed = false;
+
+  static void OnDeactivated(void* user_data) {
+    auto* self = static_cast<DeactivationState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    self->completed = true;
+  }
+};
+
+struct PrefixWriter {
+  // Byte copied into every generated-prefix position.
+  uint8_t value = 0;
+  // Number of writer invocations.
+  int call_count = 0;
+  // Alignment observed for transport-owned storage.
+  uintptr_t target_alignment = 0;
+  // Status returned after writing the generated prefix.
+  iree_status_code_t result_code = IREE_STATUS_OK;
+
+  static iree_status_t Write(void* user_data, iree_byte_span_t target) {
+    auto* self = static_cast<PrefixWriter*>(user_data);
+    ++self->call_count;
+    self->target_alignment = reinterpret_cast<uintptr_t>(target.data) %
+                             IREE_NET_SEND_PREFIX_ALIGNMENT;
+    memset(target.data, self->value, target.data_length);
+    return self->result_code == IREE_STATUS_OK
+               ? iree_ok_status()
+               : iree_make_status(self->result_code,
+                                  "injected prefix writer failure");
+  }
+};
+
+struct PrefixWriterGate {
+  // Serializes writer entry and release.
+  std::mutex mutex;
+  // Notifies the test when writer state changes.
+  std::condition_variable condition;
+  // True after the writer receives transport-owned storage.
+  bool entered = false;
+  // True when the writer may return.
+  bool release = false;
+  // Status returned after the writer is released.
+  iree_status_code_t result_code = IREE_STATUS_OK;
+
+  static iree_status_t Write(void* user_data, iree_byte_span_t target) {
+    auto* self = static_cast<PrefixWriterGate*>(user_data);
+    std::unique_lock<std::mutex> lock(self->mutex);
+    self->entered = true;
+    self->condition.notify_all();
+    self->condition.wait(lock, [&] { return self->release; });
+    memset(target.data, 0xA5, target.data_length);
+    return self->result_code == IREE_STATUS_OK
+               ? iree_ok_status()
+               : iree_make_status(self->result_code,
+                                  "injected prefix writer failure");
   }
 };
 
@@ -262,8 +332,8 @@ TEST_F(LoopbackCarrierTest, UsesOwningProactorsAndRetainsScatterGatherData) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(spans, IREE_ARRAYSIZE(spans)),
-      /*.flags=*/IREE_NET_SEND_FLAG_ZERO_COPY,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -300,8 +370,8 @@ TEST_F(LoopbackCarrierTest, QueuesSendUntilPeerActivation) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_NONE,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -317,6 +387,22 @@ TEST_F(LoopbackCarrierTest, QueuesSendUntilPeerActivation) {
                         server_endpoint_.received_bytes.end()),
             "bootstrap");
   EXPECT_EQ(send_state.status_codes[0], IREE_STATUS_OK);
+}
+
+TEST_F(LoopbackCarrierTest, IdleDeactivationCompletesOnOwningProactor) {
+  CreatePair();
+  ActivateBoth();
+
+  DeactivationState state;
+  state.current_poll_side = &current_poll_side_;
+  state.expected_poll_side = kClientPolling;
+  iree_net_carrier_deactivate(client_, DeactivationState::OnDeactivated,
+                              &state);
+  EXPECT_FALSE(state.completed);
+
+  PollUntil(client_proactor_, kClientPolling, [&] { return state.completed; });
+  EXPECT_EQ(iree_net_carrier_state(client_),
+            IREE_NET_CARRIER_STATE_DEACTIVATED);
 }
 
 TEST_F(LoopbackCarrierTest, RetainsRegisteredRegionUntilSendCompletion) {
@@ -337,8 +423,8 @@ TEST_F(LoopbackCarrierTest, RetainsRegisteredRegionUntilSendCompletion) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_ZERO_COPY,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -367,8 +453,8 @@ TEST_F(LoopbackCarrierTest, CreatedPeerDestructionFailsQueuedSend) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_NONE,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -398,8 +484,8 @@ TEST_F(LoopbackCarrierTest, EnforcesSlotBackpressureAndCompletionRetryEdge) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_NONE,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -423,46 +509,215 @@ TEST_F(LoopbackCarrierTest, EnforcesSlotBackpressureAndCompletionRetryEdge) {
             [&] { return send_state.completion_count == 3; });
 }
 
-TEST_F(LoopbackCarrierTest, DirectReservationsCommitAbortAndDrain) {
+TEST_F(LoopbackCarrierTest, GeneratedPrefixUsesAlignedTransportStorage) {
   iree_net_loopback_carrier_options_t options =
       iree_net_loopback_carrier_options_default();
   options.max_send_operations = 2;
   CreatePair(&options);
   ActivateBoth();
 
-  void* data = nullptr;
-  iree_net_carrier_send_handle_t handle = 0;
-  IREE_ASSERT_OK(iree_net_carrier_begin_send(client_, 32, &data, &handle));
-  EXPECT_EQ(
-      reinterpret_cast<uintptr_t>(data) % IREE_NET_SEND_RESERVATION_ALIGNMENT,
-      0u);
-  EXPECT_EQ(iree_net_carrier_query_send_budget(client_).slots, 1u);
-  iree_net_carrier_abort_send(client_, handle);
-  EXPECT_EQ(iree_net_carrier_query_send_budget(client_).slots, 2u);
-
-  constexpr char kPayload[] = "reserved payload";
-  IREE_ASSERT_OK(iree_net_carrier_begin_send(client_, sizeof(kPayload) - 1,
-                                             &data, &handle));
-  memcpy(data, kPayload, sizeof(kPayload) - 1);
+  PrefixWriter writer = {/*.value=*/0xA5};
+  constexpr char kSuffix[] = "borrowed";
+  iree_async_span_t suffix =
+      iree_async_span_from_ptr((void*)kSuffix, sizeof(kSuffix) - 1);
   SendState send_state;
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
-  IREE_ASSERT_OK(
-      iree_net_carrier_commit_send(client_, handle, send_state.callback()));
+  iree_net_send_params_t params = {
+      /*.generated_prefix=*/
+      {
+          /*.length=*/32,
+          /*.write=*/PrefixWriter::Write,
+          /*.user_data=*/&writer,
+      },
+      /*.data=*/iree_async_span_list_make(&suffix, 1),
+      /*.completion_callback=*/send_state.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
+  EXPECT_EQ(writer.call_count, 1);
+  EXPECT_EQ(writer.target_alignment, 0u);
   PollUntil(server_proactor_, kServerPolling,
             [&] { return !server_endpoint_.received_bytes.empty(); });
   PollUntil(client_proactor_, kClientPolling,
             [&] { return send_state.completion_count == 1; });
-  EXPECT_EQ(std::string(server_endpoint_.received_bytes.begin(),
+  ASSERT_EQ(server_endpoint_.received_bytes.size(), 32 + sizeof(kSuffix) - 1);
+  EXPECT_TRUE(std::all_of(server_endpoint_.received_bytes.begin(),
+                          server_endpoint_.received_bytes.begin() + 32,
+                          [](uint8_t value) { return value == 0xA5; }));
+  EXPECT_EQ(std::string(server_endpoint_.received_bytes.begin() + 32,
                         server_endpoint_.received_bytes.end()),
-            kPayload);
+            kSuffix);
+}
 
-  IREE_ASSERT_OK(iree_net_carrier_begin_send(client_, 64, &data, &handle));
+TEST_F(LoopbackCarrierTest,
+       FailingGeneratedPrefixCompletesAndRefreshesOneSlotBudget) {
+  iree_net_loopback_carrier_options_t options =
+      iree_net_loopback_carrier_options_default();
+  options.max_send_operations = 1;
+  CreatePair(&options);
+  ActivateBoth();
+
+  PrefixWriterGate writer_gate;
+  writer_gate.result_code = IREE_STATUS_CANCELLED;
+  SendState first_send;
+  first_send.current_poll_side = &current_poll_side_;
+  first_send.expected_poll_side = kClientPolling;
+  iree_net_send_params_t first_params = {
+      /*.generated_prefix=*/
+      {
+          /*.length=*/1,
+          /*.write=*/PrefixWriterGate::Write,
+          /*.user_data=*/&writer_gate,
+      },
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/first_send.callback(),
+  };
+  iree_status_code_t first_send_code = IREE_STATUS_UNKNOWN;
+  std::thread send_thread([&] {
+    iree_status_t status = iree_net_carrier_send(client_, &first_params);
+    first_send_code = iree_status_code(status);
+    iree_status_free(status);
+  });
+  {
+    std::unique_lock<std::mutex> lock(writer_gate.mutex);
+    writer_gate.condition.wait(lock, [&] { return writer_gate.entered; });
+  }
+
+  EXPECT_EQ(iree_net_carrier_query_send_budget(client_).slots, 0u);
+  char retry_payload = 'x';
+  iree_async_span_t retry_span =
+      iree_async_span_from_ptr(&retry_payload, sizeof(retry_payload));
+  SendState retry_send;
+  retry_send.current_poll_side = &current_poll_side_;
+  retry_send.expected_poll_side = kClientPolling;
+  iree_net_send_params_t retry_params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
+      /*.data=*/iree_async_span_list_make(&retry_span, 1),
+      /*.completion_callback=*/retry_send.callback(),
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_net_carrier_send(client_, &retry_params));
+  EXPECT_EQ(retry_send.completion_count, 0);
+
+  {
+    std::lock_guard<std::mutex> lock(writer_gate.mutex);
+    writer_gate.release = true;
+  }
+  writer_gate.condition.notify_all();
+  send_thread.join();
+
+  EXPECT_EQ(first_send_code, IREE_STATUS_OK);
+  EXPECT_EQ(first_send.completion_count, 0);
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return first_send.completion_count == 1; });
+  EXPECT_EQ(first_send.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_CANCELLED}));
+  EXPECT_EQ(first_send.byte_counts, (std::vector<iree_host_size_t>{0}));
+  EXPECT_EQ(iree_net_carrier_query_send_budget(client_).slots, 1u);
+  EXPECT_TRUE(server_endpoint_.received_bytes.empty());
+
+  IREE_ASSERT_OK(iree_net_carrier_send(client_, &retry_params));
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return server_endpoint_.received_bytes.size() == 1; });
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return retry_send.completion_count == 1; });
+  EXPECT_EQ(retry_send.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+}
+
+TEST_F(LoopbackCarrierTest, DrainsCompletionQueuedFromCompletionCallback) {
+  CreatePair();
+  ActivateBoth();
+
+  PrefixWriter failing_writer;
+  failing_writer.result_code = IREE_STATUS_CANCELLED;
+  SendState nested_send;
+  nested_send.current_poll_side = &current_poll_side_;
+  nested_send.expected_poll_side = kClientPolling;
+  iree_net_send_params_t nested_params = {
+      /*.generated_prefix=*/
+      {
+          /*.length=*/1,
+          /*.write=*/PrefixWriter::Write,
+          /*.user_data=*/&failing_writer,
+      },
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/nested_send.callback(),
+  };
+
+  char payload = 'x';
+  iree_async_span_t span = iree_async_span_from_ptr(&payload, sizeof(payload));
+  SendState initial_send;
+  initial_send.current_poll_side = &current_poll_side_;
+  initial_send.expected_poll_side = kClientPolling;
+  initial_send.completion_action = [&] {
+    IREE_EXPECT_OK(iree_net_carrier_send(client_, &nested_params));
+  };
+  iree_net_send_params_t initial_params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
+      /*.data=*/iree_async_span_list_make(&span, 1),
+      /*.completion_callback=*/initial_send.callback(),
+  };
+
+  IREE_ASSERT_OK(iree_net_carrier_send(client_, &initial_params));
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return server_endpoint_.received_bytes.size() == 1; });
+  Poll(client_proactor_, kClientPolling);
+
+  EXPECT_EQ(initial_send.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+  EXPECT_EQ(nested_send.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_CANCELLED}));
+  EXPECT_EQ(nested_send.byte_counts, (std::vector<iree_host_size_t>{0}));
+}
+
+TEST_F(LoopbackCarrierTest, DeactivationCompletesAcceptedGeneratedPrefixSend) {
+  CreatePair();
+  ActivateBoth();
+
+  PrefixWriterGate writer_gate;
+  SendState send_state;
+  send_state.current_poll_side = &current_poll_side_;
+  send_state.expected_poll_side = kClientPolling;
+  iree_net_send_params_t params = {
+      /*.generated_prefix=*/
+      {
+          /*.length=*/64,
+          /*.write=*/PrefixWriterGate::Write,
+          /*.user_data=*/&writer_gate,
+      },
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/send_state.callback(),
+  };
+  iree_status_code_t send_status_code = IREE_STATUS_UNKNOWN;
+  std::thread send_thread([&] {
+    iree_status_t status = iree_net_carrier_send(client_, &params);
+    send_status_code = iree_status_code(status);
+    iree_status_free(status);
+  });
+  {
+    std::unique_lock<std::mutex> lock(writer_gate.mutex);
+    writer_gate.condition.wait(lock, [&] { return writer_gate.entered; });
+  }
+
   bool deactivated = false;
   iree_net_carrier_deactivate(
       client_, [](void* user_data) { *static_cast<bool*>(user_data) = true; },
       &deactivated);
+  EXPECT_FALSE(deactivated);
+  {
+    std::lock_guard<std::mutex> lock(writer_gate.mutex);
+    writer_gate.release = true;
+  }
+  writer_gate.condition.notify_all();
+  send_thread.join();
+
   PollUntil(client_proactor_, kClientPolling, [&] { return deactivated; });
+  EXPECT_EQ(send_status_code, IREE_STATUS_OK);
+  EXPECT_EQ(send_state.completion_count, 1);
+  EXPECT_EQ(send_state.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_FAILED_PRECONDITION}));
+  EXPECT_EQ(send_state.byte_counts, (std::vector<iree_host_size_t>{0}));
   EXPECT_EQ(iree_net_carrier_pending_operation_count(client_), 0);
 }
 
@@ -477,8 +732,8 @@ TEST_F(LoopbackCarrierTest, PeerDepartureFailsUndeliveredSend) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_NONE,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -511,8 +766,8 @@ TEST_F(LoopbackCarrierTest, ReceiveFailureRemainsLocalToReceiver) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_NONE,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -539,8 +794,8 @@ TEST_F(LoopbackCarrierTest, DeactivationWaitsForClaimedReceive) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_NONE,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -568,8 +823,8 @@ TEST_F(LoopbackCarrierTest, ConcurrentDeactivationWaitsForClaimedReceive) {
   send_state.current_poll_side = &current_poll_side_;
   send_state.expected_poll_side = kClientPolling;
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_NONE,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_, &params));
@@ -616,8 +871,8 @@ TEST_F(LoopbackCarrierTest, RejectsInvalidSpanStorageAndRanges) {
   send_state.expected_poll_side = kClientPolling;
   iree_async_span_t span = iree_async_span_from_ptr(nullptr, 4);
   iree_net_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_empty(),
       /*.data=*/iree_async_span_list_make(&span, 1),
-      /*.flags=*/IREE_NET_SEND_FLAG_NONE,
       /*.completion_callback=*/send_state.callback(),
   };
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,

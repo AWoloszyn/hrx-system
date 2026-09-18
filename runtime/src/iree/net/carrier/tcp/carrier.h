@@ -29,13 +29,21 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Default number of accepted sends and direct reservations per carrier.
+// Default number of accepted sends per carrier.
 #define IREE_NET_TCP_DEFAULT_MAX_SEND_OPERATIONS 64u
+
+// Default generated-prefix bytes retained per send without allocation.
+#define IREE_NET_TCP_DEFAULT_GENERATED_PREFIX_CAPACITY (16u * 1024u)
 
 // Options controlling bounded TCP carrier resources.
 typedef struct iree_net_tcp_carrier_options_t {
-  // Maximum accepted ordinary sends and direct reservations.
+  // Maximum accepted sends.
   uint32_t max_send_operations;
+
+  // Generated-prefix bytes retained per admitted send without allocation.
+  // Zero disables preallocated storage without limiting accepted messages;
+  // larger prefixes allocate exact completion-scoped storage.
+  uint32_t generated_prefix_capacity;
 } iree_net_tcp_carrier_options_t;
 
 // Returns default TCP carrier options.
@@ -43,6 +51,8 @@ static inline iree_net_tcp_carrier_options_t
 iree_net_tcp_carrier_options_default(void) {
   iree_net_tcp_carrier_options_t options;
   options.max_send_operations = IREE_NET_TCP_DEFAULT_MAX_SEND_OPERATIONS;
+  options.generated_prefix_capacity =
+      IREE_NET_TCP_DEFAULT_GENERATED_PREFIX_CAPACITY;
   return options;
 }
 
@@ -57,8 +67,11 @@ iree_net_tcp_carrier_options_default(void) {
 //
 // The returned carrier begins in CREATED state. Install handlers and activate
 // it before sending. The carrier accepts at most
-// |options.max_send_operations| ordinary sends and direct reservations and at
-// most IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS spans per ordinary send.
+// |options.max_send_operations| sends and at most
+// IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS borrowed spans per send. A generated
+// prefix does not reduce the accepted borrowed-span count. When the prefix plus
+// borrowed spans exceed one physical socket vector the carrier continues the
+// same logical send in another socket operation without copying the payload.
 IREE_API_EXPORT iree_status_t iree_net_tcp_carrier_create(
     iree_async_proactor_t* proactor, iree_async_socket_t* socket,
     iree_async_buffer_pool_t* receive_pool,

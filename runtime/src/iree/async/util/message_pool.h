@@ -65,8 +65,29 @@ void iree_async_message_pool_initialize(
 // back to the pool before calling this.
 void iree_async_message_pool_deinitialize(iree_async_message_pool_t* pool);
 
-// Sends a message by acquiring an entry from the free list, writing
-// |message_data| into it, and pushing it onto the pending list.
+// Reserves an entry without publishing it to the pending list.
+//
+// Thread-safe: may be called from any thread concurrently. A reserved entry is
+// owned exclusively by the caller until it is either published with
+// iree_async_message_pool_publish() or returned with
+// iree_async_message_pool_release().
+//
+// Returns IREE_STATUS_RESOURCE_EXHAUSTED if the pool has no free entries.
+iree_status_t iree_async_message_pool_acquire(
+    iree_async_message_pool_t* pool,
+    iree_async_message_pool_entry_t** out_entry);
+
+// Publishes |entry| with |message_data| to the pending list.
+//
+// Thread-safe: may be called from any thread concurrently. The caller must wake
+// the target proactor's poll thread after publication so that the message is
+// delivered promptly. Ownership transfers to the pool until the consumer
+// flushes and releases the entry.
+void iree_async_message_pool_publish(iree_async_message_pool_t* pool,
+                                     iree_async_message_pool_entry_t* entry,
+                                     uint64_t message_data);
+
+// Sends a message by reserving an entry and immediately publishing it.
 //
 // Thread-safe: may be called from any thread concurrently. The caller must
 // wake the target proactor's poll thread after a successful send so that
@@ -95,8 +116,8 @@ iree_async_message_pool_entry_next(iree_async_message_pool_entry_t* entry) {
   return (iree_async_message_pool_entry_t*)next;
 }
 
-// Releases an entry back to the pool's free list after the caller has
-// finished processing it. The entry must have come from a prior flush.
+// Releases a reserved or flushed entry back to the pool's free list.
+// The entry must not be present in the pending list.
 void iree_async_message_pool_release(iree_async_message_pool_t* pool,
                                      iree_async_message_pool_entry_t* entry);
 

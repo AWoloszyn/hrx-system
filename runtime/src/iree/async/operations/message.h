@@ -95,6 +95,9 @@ typedef struct iree_async_message_operation_t {
     struct {
       // Ring fd of the target proactor (for MSG_RING).
       int target_ring_fd;
+      // Reserved fallback message-pool entry during submission.
+      // Callers must not access this field.
+      void* reserved_entry;
     } io_uring;
     struct {
       // Target proactor's wake eventfd for fallback path.
@@ -102,6 +105,11 @@ typedef struct iree_async_message_operation_t {
       // Storage for eventfd WRITE value (must remain valid until CQE fires).
       uint64_t write_value;
     } fallback;
+    struct {
+      // Backend-owned reserved software message-pool entry during submission.
+      // Callers must not access this field.
+      void* reserved_entry;
+    } software;
   } platform;
 } iree_async_message_operation_t;
 

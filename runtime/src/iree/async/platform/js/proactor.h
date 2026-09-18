@@ -51,11 +51,10 @@ typedef struct iree_async_proactor_js_t {
   // Token table mapping tokens to in-flight operations.
   iree_async_js_token_table_t token_table;
 
-  // Ready queue for operations that complete immediately (NOPs, expired
-  // timers). Intrusive singly-linked list via operation->next. Drained during
-  // poll before checking the ring.
-  iree_async_operation_t* ready_head;
-  iree_async_operation_t* ready_tail;
+  // Head of poll-owned immediate completions and sequence startup work.
+  iree_async_operation_t* pending_head;
+  // Tail of the intrusive queue linked through operation->next.
+  iree_async_operation_t* pending_tail;
 
   // Buffer for ring_drain results. Points into trailing allocation data.
   iree_async_js_completion_entry_t* completion_buffer;

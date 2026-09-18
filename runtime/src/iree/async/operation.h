@@ -35,6 +35,7 @@ extern "C" {
 
 typedef struct iree_async_operation_t iree_async_operation_t;
 typedef struct iree_async_operation_pool_t iree_async_operation_pool_t;
+typedef struct iree_async_region_t iree_async_region_t;
 
 //===----------------------------------------------------------------------===//
 // Completion callback
@@ -238,7 +239,8 @@ typedef uint32_t iree_async_operation_internal_flags_t;
 //   type, flags, completion_fn, user_data, pool
 //
 // Fields are managed by the proactor during execution:
-//   next, internal_flags, linked_next, submit_time_ns (tracing only)
+//   next, acquired_span_count, resources_acquired, internal_flags,
+//   linked_next, submit_time_ns (tracing only)
 //
 // After the final completion callback, all fields are caller-owned again.
 // MESSAGE operations that deliberately suppress source completion have a
@@ -250,6 +252,15 @@ typedef struct iree_async_operation_t {
 
   // Discriminates the concrete subtype for safe downcasting.
   iree_async_operation_type_t type;
+
+  // Number of span slots acquired into subtype-owned storage.
+  // Includes raw spans whose retained region pointer is NULL so descriptor
+  // indices remain stable. Managed by the proactor until final completion.
+  uint8_t acquired_span_count;
+
+  // Whether the proactor has acquired this operation's resource ownership.
+  // Guards linked continuation admission so each resource is acquired once.
+  bool resources_acquired;
 
   // Proactor-private flags for cancellation, iteration safety, etc.
   // Initialized to 0; callers must not access this field.
@@ -271,12 +282,21 @@ typedef struct iree_async_operation_t {
   // cannot use an operation pool.
   iree_async_operation_pool_t* pool;
 
-  // LINKED chain continuation pointer (proactor-internal).
-  // When this operation has IREE_ASYNC_OPERATION_FLAG_LINKED set, points to
-  // the next operation in the chain. On completion, the proactor submits
-  // continuations (on success) or cancels them (on failure).
-  // Callers must not access this field.
-  struct iree_async_operation_t* linked_next;
+  // Proactor-managed continuation or deferred completion state. Continuation
+  // links are consumed before a backend stores a pending status, making the
+  // two representations mutually exclusive.
+  union {
+    // LINKED chain continuation pointer. When this operation has
+    // IREE_ASYNC_OPERATION_FLAG_LINKED set, points to the next operation in
+    // the chain. On completion, the proactor submits continuations on success
+    // or cancels them on failure.
+    struct iree_async_operation_t* linked_next;
+
+    // Owned status while the operation is queued for deferred completion.
+    // The queue consumer transfers ownership out and resets this to OK before
+    // invoking the completion callback.
+    iree_status_t pending_status;
+  };
 
   // Tracing: timestamp of submission for latency measurement.
   IREE_TRACE(iree_time_t submit_time_ns;)
@@ -313,26 +333,40 @@ typedef struct iree_async_operation_list_t {
 } iree_async_operation_list_t;
 
 //===----------------------------------------------------------------------===//
-// Resource retain/release
+// Resource acquisition/release
 //===----------------------------------------------------------------------===//
 
-// Retains resources referenced by an operation entering proactor management.
-// Called at submit time to prevent premature destruction while the operation is
-// in flight. Each retained resource gets exactly one reference increment.
+// Acquires resources referenced by an operation entering proactor management.
+// Called after a complete batch crosses its synchronous rejection boundary and
+// before any operation is published. Idempotent so deferred linked successors
+// can re-enter backend submission without acquiring their resources twice.
+// Each retained resource gets exactly one reference increment.
 //
-// Close operations (SOCKET_CLOSE, FILE_CLOSE) are intentionally absent: they
-// consume the caller's reference rather than retaining a new one. The
-// corresponding release in iree_async_operation_release_resources IS the
-// consumption, with no prior retain to balance it.
-IREE_API_EXPORT void iree_async_operation_retain_resources(
+// Close operations (SOCKET_CLOSE, FILE_CLOSE) consume the caller's reference
+// instead of retaining a new one. The corresponding release in
+// iree_async_operation_release_resources is the consumption, with no prior
+// retain to balance it.
+IREE_API_EXPORT void iree_async_operation_acquire_resources(
     iree_async_operation_t* operation);
 
-// Releases resources retained by iree_async_operation_retain_resources, plus
-// consumes caller references for close operations. Called during completion
-// dispatch, after linked continuation dispatch but before the user's callback.
-// Must happen BEFORE the callback since the callback may free the operation.
-IREE_API_EXPORT void iree_async_operation_release_resources(
-    iree_async_operation_t* operation);
+// Acquires resources for every operation in an accepted submission list.
+IREE_API_EXPORT void iree_async_operation_list_acquire_resources(
+    iree_async_operation_list_t operations);
+
+// Releases non-region resources acquired by
+// iree_async_operation_acquire_resources, plus consumes caller references for
+// close operations. Detaches retained span regions into
+// |out_retained_regions| so final completion can release them after the user
+// callback returns. The output must have capacity for the operation's
+// acquired_span_count entries.
+//
+// Called centrally by final completion after linked continuation dispatch but
+// before the user's callback, which may free or resubmit the operation. No-op
+// when the operation has no acquired resources. Returns the number of detached
+// region entries, including NULL entries for unregistered spans.
+IREE_API_EXPORT uint8_t iree_async_operation_release_resources(
+    iree_async_operation_t* operation,
+    iree_async_region_t** out_retained_regions);
 
 //===----------------------------------------------------------------------===//
 // Inline helpers
@@ -365,6 +399,8 @@ static inline void iree_async_operation_initialize(
     iree_async_completion_fn_t completion_fn, void* user_data) {
   operation->next = NULL;
   operation->type = type;
+  operation->acquired_span_count = 0;
+  operation->resources_acquired = false;
   iree_atomic_store(&operation->internal_flags, 0, iree_memory_order_relaxed);
   operation->flags = flags;
   operation->completion_fn = completion_fn;
@@ -426,15 +462,6 @@ static inline iree_async_operation_list_t iree_async_operation_list_make(
   iree_async_operation_list_t list;
   list.values = values;
   list.count = count;
-  return list;
-}
-
-// Creates an operation list containing a single operation.
-static inline iree_async_operation_list_t iree_async_operation_list_from_one(
-    iree_async_operation_t* operation) {
-  iree_async_operation_list_t list;
-  list.values = &operation;
-  list.count = 1;
   return list;
 }
 

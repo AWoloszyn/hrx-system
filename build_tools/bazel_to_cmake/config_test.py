@@ -310,6 +310,42 @@ unhandled_rule(name = "must_not_disappear")
                 repo_root=str(repo_root),
             )
 
+    def test_loaded_shell_test_honors_explicit_conversion_skip(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        repo_cfg = SimpleNamespace(PROJECTS=[], REPO_MAP={"@hrx": ""})
+        build_dir = str(repo_root / "synthetic")
+
+        cmake = bazel_to_cmake_converter.convert_build_file(
+            """
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_test(
+    name = "bazel_only_test",
+    srcs = ["bazel_only_test.sh"],
+    tags = ["skip-bazel_to_cmake"],
+)
+""",
+            repo_cfg,
+            build_dir,
+            repo_root=str(repo_root),
+        )
+        self.assertNotIn("bazel_only_test", cmake)
+
+        with self.assertRaisesRegex(NotImplementedError, "sh_test: visible_test"):
+            bazel_to_cmake_converter.convert_build_file(
+                """
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_test(
+    name = "visible_test",
+    srcs = ["visible_test.sh"],
+)
+""",
+                repo_cfg,
+                build_dir,
+                repo_root=str(repo_root),
+            )
+
     def test_glob_exclusions_have_distinct_cmake_storage(self):
         repo_root = Path(__file__).resolve().parents[2]
         loom = bazel_to_cmake_config.include_project(

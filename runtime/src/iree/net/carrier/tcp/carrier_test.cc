@@ -7,7 +7,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 #if defined(_WIN32)
@@ -16,7 +19,12 @@
 #include <sys/socket.h>
 #endif
 
+#include "iree/async/notification.h"
 #include "iree/async/operations/net.h"
+#include "iree/async/operations/scheduling.h"
+#if !defined(IREE_PLATFORM_WINDOWS) && !defined(IREE_PLATFORM_WASM)
+#include "iree/async/platform/posix/api.h"
+#endif
 #include "iree/async/proactor_platform.h"
 #include "iree/async/slab.h"
 #include "iree/net/carrier/tcp/carrier.h"
@@ -86,6 +94,9 @@ struct SendResult {
   // Identifier appended to |completion_order|.
   int identifier = 0;
 
+  // Fixture flag proving callback affinity to proactor polling.
+  bool* is_polling = nullptr;
+
   // Completion status code.
   iree_status_code_t status_code = IREE_STATUS_UNKNOWN;
 
@@ -97,7 +108,7 @@ struct SendResult {
 };
 
 struct ReentrantFailureContext {
-  // Carrier used to create all three send ownership phases.
+  // Carrier used to create submitted and queued send ownership phases.
   iree_net_carrier_t* carrier = nullptr;
 
   // Completion state for the send submitted to the proactor.
@@ -112,12 +123,6 @@ struct ReentrantFailureContext {
   // Stable storage referenced by |queued_send|.
   std::array<uint8_t, 8> queued_payload = {};
 
-  // Writable storage owned by the direct-send reservation.
-  void* reservation_ptr = nullptr;
-
-  // Handle invalidated by reentrant explicit deactivation.
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-
   // Fixture state marked by the deactivation callback.
   bool* deactivated = nullptr;
 
@@ -131,6 +136,56 @@ struct ReentrantFailureContext {
   iree_status_code_t error_code = IREE_STATUS_OK;
 };
 
+struct PrefixWriter {
+  // Byte copied into every generated-prefix position.
+  uint8_t value = 0;
+
+  // Number of writer invocations.
+  int call_count = 0;
+
+  // Alignment observed for transport-owned storage.
+  uintptr_t target_alignment = 0;
+
+  static iree_status_t Write(void* user_data, iree_byte_span_t target) {
+    auto* self = static_cast<PrefixWriter*>(user_data);
+    ++self->call_count;
+    self->target_alignment = reinterpret_cast<uintptr_t>(target.data) %
+                             IREE_NET_SEND_PREFIX_ALIGNMENT;
+    memset(target.data, self->value, target.data_length);
+    return iree_ok_status();
+  }
+};
+
+struct PrefixWriterGate {
+  // Serializes writer entry and release.
+  std::mutex mutex;
+
+  // Notifies the test when writer state changes.
+  std::condition_variable condition;
+
+  // True after the writer receives transport-owned storage.
+  bool entered = false;
+
+  // True when the writer may return.
+  bool release = false;
+
+  // Status returned after the writer is released.
+  iree_status_code_t result_code = IREE_STATUS_OK;
+
+  static iree_status_t Write(void* user_data, iree_byte_span_t target) {
+    auto* self = static_cast<PrefixWriterGate*>(user_data);
+    std::unique_lock<std::mutex> lock(self->mutex);
+    self->entered = true;
+    self->condition.notify_all();
+    self->condition.wait(lock, [&] { return self->release; });
+    memset(target.data, 0xA5, target.data_length);
+    return self->result_code == IREE_STATUS_OK
+               ? iree_ok_status()
+               : iree_make_status(self->result_code,
+                                  "generated-prefix failure for testing");
+  }
+};
+
 struct CountingAllocator {
   // Number of allocation requests issued through this allocator.
   uint32_t allocation_count = 0;
@@ -138,7 +193,12 @@ struct CountingAllocator {
   // Number of free requests issued through this allocator.
   uint32_t free_count = 0;
 
+  // True when the next allocation request should fail.
+  bool fail_next_allocation = false;
+
   iree_allocator_t allocator() { return {this, Control}; }
+
+  void FailNextAllocation() { fail_next_allocation = true; }
 
   static iree_status_t Control(void* self, iree_allocator_command_t command,
                                const void* params, void** inout_ptr) {
@@ -147,6 +207,12 @@ struct CountingAllocator {
       case IREE_ALLOCATOR_COMMAND_MALLOC:
       case IREE_ALLOCATOR_COMMAND_CALLOC:
         ++allocator->allocation_count;
+        if (allocator->fail_next_allocation) {
+          allocator->fail_next_allocation = false;
+          *inout_ptr = nullptr;
+          return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                  "injected allocation failure");
+        }
         break;
       case IREE_ALLOCATOR_COMMAND_FREE:
         ++allocator->free_count;
@@ -205,6 +271,9 @@ static void Error(void* user_data, iree_status_t status) {
 static void SendCompleted(void* user_data, iree_status_t status,
                           iree_host_size_t bytes_transferred) {
   auto* result = static_cast<SendResult*>(user_data);
+  if (result->is_polling) {
+    EXPECT_TRUE(*result->is_polling);
+  }
   result->status_code = iree_status_code(status);
   result->bytes_transferred = bytes_transferred;
   ++result->completion_count;
@@ -236,8 +305,8 @@ static iree_status_t QueueSendsAndFail(void* user_data, iree_async_span_t data,
   iree_async_span_t submitted_span = iree_async_span_from_ptr(
       context->submitted_payload.data(), context->submitted_payload.size());
   iree_net_send_params_t submitted_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&submitted_span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &context->submitted_send},
   };
   IREE_RETURN_IF_ERROR(
@@ -246,16 +315,12 @@ static iree_status_t QueueSendsAndFail(void* user_data, iree_async_span_t data,
   iree_async_span_t queued_span = iree_async_span_from_ptr(
       context->queued_payload.data(), context->queued_payload.size());
   iree_net_send_params_t queued_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&queued_span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &context->queued_send},
   };
   IREE_RETURN_IF_ERROR(iree_net_carrier_send(context->carrier, &queued_params));
 
-  IREE_RETURN_IF_ERROR(iree_net_carrier_begin_send(
-      context->carrier, 32, &context->reservation_ptr,
-      &context->reservation_handle));
-  memset(context->reservation_ptr, 0xA5, 32);
   return iree_make_status(IREE_STATUS_DATA_LOSS,
                           "receive rejected after queuing sends");
 }
@@ -313,8 +378,11 @@ class TcpCarrierTest : public ::testing::Test {
   void PollUntil(Predicate predicate) {
     while (!predicate()) {
       iree_host_size_t completion_count = 0;
-      IREE_ASSERT_OK(iree_async_proactor_poll(
-          proactor_, iree_infinite_timeout(), &completion_count));
+      is_polling_ = true;
+      iree_status_t status = iree_async_proactor_poll(
+          proactor_, iree_infinite_timeout(), &completion_count);
+      is_polling_ = false;
+      IREE_ASSERT_OK(status);
     }
   }
 
@@ -464,6 +532,9 @@ class TcpCarrierTest : public ::testing::Test {
   // Platform proactor shared by both test peers.
   iree_async_proactor_t* proactor_ = nullptr;
 
+  // True only while the fixture is polling |proactor_|.
+  bool is_polling_ = false;
+
   // Client receive storage.
   ReceivePool client_receive_pool_;
 
@@ -494,9 +565,11 @@ TEST(TcpCarrierOptionsTest, Defaults) {
       iree_net_tcp_carrier_options_default();
   EXPECT_EQ(options.max_send_operations,
             IREE_NET_TCP_DEFAULT_MAX_SEND_OPERATIONS);
+  EXPECT_EQ(options.generated_prefix_capacity,
+            IREE_NET_TCP_DEFAULT_GENERATED_PREFIX_CAPACITY);
 }
 
-TEST_F(TcpCarrierTest, PreservesOrderedScatterGatherAndDirectSends) {
+TEST_F(TcpCarrierTest, PreservesOrderedScatterGatherAndGeneratedPrefixSends) {
   CreateCarrierPair(/*max_send_operations=*/4,
                     /*receive_buffer_size=*/4096,
                     /*receive_buffer_count=*/4);
@@ -516,26 +589,26 @@ TEST_F(TcpCarrierTest, PreservesOrderedScatterGatherAndDirectSends) {
   SendResult direct_result = {&completion_order, 2};
 
   iree_net_send_params_t first_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(first_spans.data(), first_spans.size()),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &first_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &first_params));
   iree_net_send_params_t second_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&second_span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &second_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &second_params));
 
   constexpr const char kDirectPayload[] = "direct-send";
-  void* direct_ptr = nullptr;
-  iree_net_carrier_send_handle_t direct_handle = 0;
-  IREE_ASSERT_OK(iree_net_carrier_begin_send(
-      client_carrier_, sizeof(kDirectPayload), &direct_ptr, &direct_handle));
-  memcpy(direct_ptr, kDirectPayload, sizeof(kDirectPayload));
-  IREE_ASSERT_OK(iree_net_carrier_commit_send(client_carrier_, direct_handle,
-                                              {SendCompleted, &direct_result}));
+  iree_net_send_params_t direct_params = {
+      iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(kDirectPayload, sizeof(kDirectPayload))),
+      iree_async_span_list_empty(),
+      {SendCompleted, &direct_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &direct_params));
 
   const iree_host_size_t expected_size =
       first.size() + second.size() + sizeof(kDirectPayload);
@@ -563,6 +636,120 @@ TEST_F(TcpCarrierTest, PreservesOrderedScatterGatherAndDirectSends) {
             0);
 }
 
+TEST_F(TcpCarrierTest, GeneratedPrefixSupportsFastAndScatterOverflowPaths) {
+  CreateCarrierPair(/*max_send_operations=*/2,
+                    /*receive_buffer_size=*/4096,
+                    /*receive_buffer_count=*/8);
+
+  PrefixWriter small_writer = {
+      /*.value=*/0x31,
+  };
+  SendResult small_result;
+  iree_net_send_params_t small_params = {
+      {
+          /*.length=*/32,
+          /*.write=*/PrefixWriter::Write,
+          /*.user_data=*/&small_writer,
+      },
+      iree_async_span_list_empty(),
+      {SendCompleted, &small_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &small_params));
+
+  PrefixWriter overflow_writer = {
+      /*.value=*/0x32,
+  };
+  std::array<uint8_t, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS> suffix_bytes = {};
+  std::array<iree_async_span_t, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS>
+      suffix_spans;
+  for (iree_host_size_t i = 0; i < suffix_spans.size(); ++i) {
+    suffix_bytes[i] = static_cast<uint8_t>(i);
+    suffix_spans[i] = iree_async_span_from_ptr(&suffix_bytes[i], 1);
+  }
+  constexpr iree_host_size_t kOverflowPrefixLength =
+      IREE_NET_TCP_DEFAULT_GENERATED_PREFIX_CAPACITY + 1;
+  SendResult overflow_result;
+  iree_net_send_params_t overflow_params = {
+      {
+          /*.length=*/kOverflowPrefixLength,
+          /*.write=*/PrefixWriter::Write,
+          /*.user_data=*/&overflow_writer,
+      },
+      iree_async_span_list_make(suffix_spans.data(), suffix_spans.size()),
+      {SendCompleted, &overflow_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &overflow_params));
+
+  const iree_host_size_t expected_size =
+      32 + kOverflowPrefixLength + suffix_bytes.size();
+  PollUntil([&] {
+    return small_result.completion_count == 1 &&
+           overflow_result.completion_count == 1 &&
+           server_context_.received_data.size() == expected_size;
+  });
+
+  EXPECT_EQ(small_writer.call_count, 1);
+  EXPECT_EQ(small_writer.target_alignment, 0u);
+  EXPECT_EQ(overflow_writer.call_count, 1);
+  EXPECT_EQ(overflow_writer.target_alignment, 0u);
+  EXPECT_TRUE(std::all_of(server_context_.received_data.begin(),
+                          server_context_.received_data.begin() + 32,
+                          [](uint8_t value) { return value == 0x31; }));
+  EXPECT_TRUE(std::all_of(
+      server_context_.received_data.begin() + 32,
+      server_context_.received_data.begin() + 32 + kOverflowPrefixLength,
+      [](uint8_t value) { return value == 0x32; }));
+  EXPECT_TRUE(std::equal(
+      suffix_bytes.begin(), suffix_bytes.end(),
+      server_context_.received_data.begin() + 32 + kOverflowPrefixLength));
+}
+
+TEST_F(TcpCarrierTest, OverflowAllocationFailurePrecedesSendAdmission) {
+  CountingAllocator server_allocator;
+  CreateCarrierPair(/*max_send_operations=*/1,
+                    /*receive_buffer_size=*/4096,
+                    /*receive_buffer_count=*/4, server_allocator.allocator());
+
+  PrefixWriter writer = {
+      /*.value=*/0x31,
+  };
+  SendResult failed_result;
+  constexpr iree_host_size_t kOverflowPrefixLength =
+      IREE_NET_TCP_DEFAULT_GENERATED_PREFIX_CAPACITY + 1;
+  iree_net_send_params_t failed_params = {
+      {
+          /*.length=*/kOverflowPrefixLength,
+          /*.write=*/PrefixWriter::Write,
+          /*.user_data=*/&writer,
+      },
+      iree_async_span_list_empty(),
+      {SendCompleted, &failed_result},
+  };
+  server_allocator.FailNextAllocation();
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_net_carrier_send(server_carrier_, &failed_params));
+  EXPECT_EQ(writer.call_count, 0);
+  EXPECT_EQ(failed_result.completion_count, 0);
+  EXPECT_EQ(iree_net_carrier_query_send_budget(server_carrier_).slots, 1u);
+
+  std::array<uint8_t, 8> payload = {};
+  iree_async_span_t span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  SendResult retry_result;
+  iree_net_send_params_t retry_params = {
+      iree_net_send_prefix_empty(),
+      iree_async_span_list_make(&span, 1),
+      {SendCompleted, &retry_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(server_carrier_, &retry_params));
+  PollUntil([&] {
+    return retry_result.completion_count == 1 &&
+           client_context_.received_data.size() == payload.size();
+  });
+  EXPECT_EQ(retry_result.status_code, IREE_STATUS_OK);
+  DeactivatePair();
+}
+
 TEST_F(TcpCarrierTest, RetainedReceiveLeasePausesAndResumesProgress) {
   CreateCarrierPair(/*max_send_operations=*/4,
                     /*receive_buffer_size=*/64,
@@ -580,8 +767,8 @@ TEST_F(TcpCarrierTest, RetainedReceiveLeasePausesAndResumesProgress) {
   SendResult first_result;
   SendResult second_result;
   iree_net_send_params_t first_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&first_span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &first_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &first_params));
@@ -592,8 +779,8 @@ TEST_F(TcpCarrierTest, RetainedReceiveLeasePausesAndResumesProgress) {
   ASSERT_NE(server_context_.retained_lease.release.fn, nullptr);
 
   iree_net_send_params_t second_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&second_span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &second_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &second_params));
@@ -619,8 +806,8 @@ TEST_F(TcpCarrierTest, RetainedReceiveLeaseExtendsCarrierLifetime) {
       iree_async_span_from_ptr(payload.data(), payload.size());
   SendResult send_result;
   iree_net_send_params_t params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &send_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
@@ -640,14 +827,35 @@ TEST_F(TcpCarrierTest, RetainedReceiveLeaseExtendsCarrierLifetime) {
   EXPECT_EQ(server_host_allocator.free_count, 1u);
 }
 
-TEST_F(TcpCarrierTest, ReservationBackpressureClearsAfterAbort) {
+TEST_F(TcpCarrierTest,
+       GeneratedPrefixFailureCompletesAndRestoresOneSlotAdmission) {
   CreateCarrierPair(/*max_send_operations=*/1);
 
-  void* reservation_ptr = nullptr;
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-  IREE_ASSERT_OK(iree_net_carrier_begin_send(
-      client_carrier_, 32, &reservation_ptr, &reservation_handle));
-  ASSERT_NE(reservation_ptr, nullptr);
+  PrefixWriterGate writer_gate;
+  writer_gate.result_code = IREE_STATUS_INVALID_ARGUMENT;
+  SendResult failed_result;
+  failed_result.is_polling = &is_polling_;
+  iree_net_send_params_t failed_params = {
+      {
+          32,
+          PrefixWriterGate::Write,
+          &writer_gate,
+      },
+      iree_async_span_list_empty(),
+      {SendCompleted, &failed_result},
+  };
+  iree_status_code_t send_status = IREE_STATUS_UNKNOWN;
+  std::thread send_thread([&] {
+    iree_status_t status =
+        iree_net_carrier_send(client_carrier_, &failed_params);
+    send_status = iree_status_code(status);
+    iree_status_free(status);
+  });
+  {
+    std::unique_lock<std::mutex> lock(writer_gate.mutex);
+    writer_gate.condition.wait(lock, [&] { return writer_gate.entered; });
+  }
+
   iree_net_carrier_send_budget_t budget =
       iree_net_carrier_query_send_budget(client_carrier_);
   EXPECT_EQ(budget.bytes, IREE_HOST_SIZE_MAX);
@@ -656,39 +864,128 @@ TEST_F(TcpCarrierTest, ReservationBackpressureClearsAfterAbort) {
   std::array<uint8_t, 8> payload = {};
   iree_async_span_t span =
       iree_async_span_from_ptr(payload.data(), payload.size());
-  SendResult result;
-  iree_net_send_params_t params = {
+  SendResult retry_result;
+  retry_result.is_polling = &is_polling_;
+  iree_net_send_params_t retry_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&span, 1),
-      IREE_NET_SEND_FLAG_NONE,
-      {SendCompleted, &result},
+      {SendCompleted, &retry_result},
   };
   IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
-                        iree_net_carrier_send(client_carrier_, &params));
-  EXPECT_EQ(result.completion_count, 0);
+                        iree_net_carrier_send(client_carrier_, &retry_params));
+  EXPECT_EQ(retry_result.completion_count, 0);
 
-  iree_net_carrier_abort_send(client_carrier_, reservation_handle);
+  {
+    std::lock_guard<std::mutex> lock(writer_gate.mutex);
+    writer_gate.release = true;
+  }
+  writer_gate.condition.notify_all();
+  send_thread.join();
+  EXPECT_EQ(send_status, IREE_STATUS_OK);
+  EXPECT_EQ(failed_result.completion_count, 0);
+  PollUntil([&] { return failed_result.completion_count == 1; });
+  EXPECT_EQ(failed_result.status_code, IREE_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(failed_result.bytes_transferred, 0u);
   budget = iree_net_carrier_query_send_budget(client_carrier_);
-  EXPECT_EQ(budget.bytes, IREE_HOST_SIZE_MAX);
   EXPECT_EQ(budget.slots, 1u);
 
-  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &retry_params));
   PollUntil([&] {
-    return result.completion_count == 1 &&
+    return retry_result.completion_count == 1 &&
            server_context_.received_data.size() == payload.size();
   });
-  EXPECT_EQ(result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(retry_result.status_code, IREE_STATUS_OK);
 }
 
-TEST_F(TcpCarrierTest, GracefulShutdownDrainsReservationBeforeFin) {
+#if !defined(IREE_PLATFORM_WINDOWS) && !defined(IREE_PLATFORM_WASM)
+TEST_F(TcpCarrierTest,
+       InitialSubmissionFailureCompletesAcceptedSendOnProactor) {
+  iree_async_proactor_release(proactor_);
+  proactor_ = nullptr;
+  iree_async_proactor_options_t proactor_options =
+      iree_async_proactor_options_default();
+  proactor_options.max_concurrent_operations = 1;
+  IREE_ASSERT_OK(iree_async_proactor_create_posix(
+      proactor_options, iree_allocator_system(), &proactor_));
+  CreateCarrierPair(/*max_send_operations=*/1);
+
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  std::array<iree_async_notification_signal_operation_t, 64> signal_operations =
+      {};
+  std::array<AsyncOperationResult, 64> signal_results;
+  iree_host_size_t accepted_signal_count = 0;
+  for (; accepted_signal_count < signal_operations.size();
+       ++accepted_signal_count) {
+    iree_async_notification_signal_operation_t* signal_operation =
+        &signal_operations[accepted_signal_count];
+    iree_async_operation_initialize(
+        &signal_operation->base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL,
+        IREE_ASYNC_OPERATION_FLAG_NONE, AsyncOperationCompleted,
+        &signal_results[accepted_signal_count]);
+    signal_operation->notification = notification;
+    signal_operation->wake_count = 1;
+    iree_status_t status =
+        iree_async_proactor_submit_one(proactor_, &signal_operation->base);
+    if (!iree_status_is_ok(status)) {
+      EXPECT_EQ(iree_status_code(status), IREE_STATUS_RESOURCE_EXHAUSTED);
+      iree_status_free(status);
+      break;
+    }
+  }
+  ASSERT_GT(accepted_signal_count, 0u);
+  ASSERT_LT(accepted_signal_count, signal_operations.size());
+
+  std::array<uint8_t, 8> payload = {};
+  iree_async_span_t span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  SendResult send_result;
+  send_result.is_polling = &is_polling_;
+  iree_net_send_params_t params = {
+      iree_net_send_prefix_empty(),
+      iree_async_span_list_make(&span, 1),
+      {SendCompleted, &send_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  EXPECT_EQ(send_result.completion_count, 0);
+  EXPECT_EQ(iree_net_carrier_query_send_budget(client_carrier_).slots, 0u);
+
+  PollUntil([&] {
+    if (send_result.completion_count != 1) {
+      return false;
+    }
+    for (iree_host_size_t i = 0; i < accepted_signal_count; ++i) {
+      if (!signal_results[i].completed) {
+        return false;
+      }
+    }
+    return true;
+  });
+  EXPECT_EQ(send_result.status_code, IREE_STATUS_RESOURCE_EXHAUSTED);
+  EXPECT_EQ(send_result.bytes_transferred, 0u);
+  EXPECT_EQ(client_context_.error_count, 1);
+  EXPECT_EQ(client_context_.error_code, IREE_STATUS_RESOURCE_EXHAUSTED);
+  EXPECT_EQ(iree_net_carrier_query_send_budget(client_carrier_).slots, 0u);
+  for (iree_host_size_t i = 0; i < accepted_signal_count; ++i) {
+    EXPECT_EQ(signal_results[i].status_code, IREE_STATUS_OK);
+  }
+  iree_async_notification_release(notification);
+}
+#endif  // !IREE_PLATFORM_WINDOWS && !IREE_PLATFORM_WASM
+
+TEST_F(TcpCarrierTest, GracefulShutdownDrainsAcceptedSendBeforeFin) {
   CreateCarrierPair(/*max_send_operations=*/1);
 
   constexpr const char kPayload[] = "before-fin";
-  void* reservation_ptr = nullptr;
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-  IREE_ASSERT_OK(iree_net_carrier_begin_send(client_carrier_, sizeof(kPayload),
-                                             &reservation_ptr,
-                                             &reservation_handle));
-  memcpy(reservation_ptr, kPayload, sizeof(kPayload));
+  SendResult accepted_result;
+  iree_net_send_params_t accepted_params = {
+      iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(kPayload, sizeof(kPayload))),
+      iree_async_span_list_empty(),
+      {SendCompleted, &accepted_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &accepted_params));
 
   IREE_ASSERT_OK(iree_net_carrier_shutdown(client_carrier_));
   iree_net_carrier_send_budget_t budget =
@@ -701,8 +998,8 @@ TEST_F(TcpCarrierTest, GracefulShutdownDrainsReservationBeforeFin) {
       rejected_payload.data(), rejected_payload.size());
   SendResult rejected_result;
   iree_net_send_params_t rejected_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&rejected_span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &rejected_result},
   };
   IREE_EXPECT_STATUS_IS(
@@ -710,16 +1007,12 @@ TEST_F(TcpCarrierTest, GracefulShutdownDrainsReservationBeforeFin) {
       iree_net_carrier_send(client_carrier_, &rejected_params));
   EXPECT_EQ(rejected_result.completion_count, 0);
 
-  SendResult reservation_result;
-  IREE_ASSERT_OK(
-      iree_net_carrier_commit_send(client_carrier_, reservation_handle,
-                                   {SendCompleted, &reservation_result}));
   PollUntil([&] {
-    return reservation_result.completion_count == 1 &&
+    return accepted_result.completion_count == 1 &&
            server_context_.received_data.size() == sizeof(kPayload) &&
            server_context_.eof_count == 1;
   });
-  EXPECT_EQ(reservation_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(accepted_result.status_code, IREE_STATUS_OK);
   EXPECT_EQ(server_context_.error_count, 0);
   EXPECT_EQ(
       memcmp(server_context_.received_data.data(), kPayload, sizeof(kPayload)),
@@ -730,8 +1023,8 @@ TEST_F(TcpCarrierTest, GracefulShutdownDrainsReservationBeforeFin) {
       iree_async_span_from_ptr(const_cast<char*>(kResponse), sizeof(kResponse));
   SendResult response_result;
   iree_net_send_params_t response_params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&response_span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &response_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(server_carrier_, &response_params));
@@ -754,8 +1047,8 @@ TEST_F(TcpCarrierTest, ReceiveFailureBecomesStickyTerminalError) {
       iree_async_span_from_ptr(payload.data(), payload.size());
   SendResult send_result;
   iree_net_send_params_t params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &send_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
@@ -773,22 +1066,40 @@ TEST_F(TcpCarrierTest, ReceiveFailureBecomesStickyTerminalError) {
   EXPECT_EQ(server_context_.error_count, 1);
 }
 
-TEST_F(TcpCarrierTest, TerminalFailurePreservesDirectReservationUntilAbort) {
+TEST_F(TcpCarrierTest, TerminalFailureRejectsPreparingGeneratedPrefix) {
   CreateCarrierPair();
   server_context_.receive_error = IREE_STATUS_DATA_LOSS;
 
-  void* reservation_ptr = nullptr;
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-  IREE_ASSERT_OK(iree_net_carrier_begin_send(
-      server_carrier_, 32, &reservation_ptr, &reservation_handle));
-  ASSERT_NE(reservation_ptr, nullptr);
+  PrefixWriterGate writer_gate;
+  SendResult preparing_result;
+  preparing_result.is_polling = &is_polling_;
+  iree_net_send_params_t preparing_params = {
+      {
+          32,
+          PrefixWriterGate::Write,
+          &writer_gate,
+      },
+      iree_async_span_list_empty(),
+      {SendCompleted, &preparing_result},
+  };
+  iree_status_code_t preparing_status = IREE_STATUS_UNKNOWN;
+  std::thread preparing_thread([&] {
+    iree_status_t status =
+        iree_net_carrier_send(server_carrier_, &preparing_params);
+    preparing_status = iree_status_code(status);
+    iree_status_free(status);
+  });
+  {
+    std::unique_lock<std::mutex> lock(writer_gate.mutex);
+    writer_gate.condition.wait(lock, [&] { return writer_gate.entered; });
+  }
 
   uint8_t payload = 0x5A;
   iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
   SendResult send_result;
   iree_net_send_params_t params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &send_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
@@ -799,8 +1110,17 @@ TEST_F(TcpCarrierTest, TerminalFailurePreservesDirectReservationUntilAbort) {
 
   EXPECT_EQ(server_context_.error_code, IREE_STATUS_DATA_LOSS);
   EXPECT_EQ(iree_net_carrier_pending_operation_count(server_carrier_), 1);
-  memset(reservation_ptr, 0xA5, 32);
-  iree_net_carrier_abort_send(server_carrier_, reservation_handle);
+  {
+    std::lock_guard<std::mutex> lock(writer_gate.mutex);
+    writer_gate.release = true;
+  }
+  writer_gate.condition.notify_all();
+  preparing_thread.join();
+  EXPECT_EQ(preparing_status, IREE_STATUS_OK);
+  EXPECT_EQ(preparing_result.completion_count, 0);
+  PollUntil([&] { return preparing_result.completion_count == 1; });
+  EXPECT_EQ(preparing_result.status_code, IREE_STATUS_DATA_LOSS);
+  EXPECT_EQ(preparing_result.bytes_transferred, 0u);
   EXPECT_EQ(iree_net_carrier_pending_operation_count(server_carrier_), 0);
 }
 
@@ -810,7 +1130,7 @@ TEST_F(TcpCarrierTest, ReentrantFailureDeactivationDetachesEachSendSlotOnce) {
   CreateCarrierPairWithHandlers(
       {Receive, Error, &client_context_},
       {QueueSendsAndFail, DeactivateOnError, &failure_context},
-      /*max_send_operations=*/3,
+      /*max_send_operations=*/2,
       /*receive_buffer_size=*/4096,
       /*receive_buffer_count=*/4, iree_allocator_system());
   failure_context.carrier = server_carrier_;
@@ -819,8 +1139,8 @@ TEST_F(TcpCarrierTest, ReentrantFailureDeactivationDetachesEachSendSlotOnce) {
   iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
   SendResult trigger_result;
   iree_net_send_params_t params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&span, 1),
-      IREE_NET_SEND_FLAG_NONE,
       {SendCompleted, &trigger_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
@@ -840,27 +1160,50 @@ TEST_F(TcpCarrierTest, ReentrantFailureDeactivationDetachesEachSendSlotOnce) {
   EXPECT_EQ(iree_net_carrier_pending_operation_count(server_carrier_), 0);
 }
 
-TEST_F(TcpCarrierTest, DeactivationInvalidatesDirectReservation) {
+TEST_F(TcpCarrierTest, DeactivationWaitsForGeneratedPrefixWriter) {
   CreateCarrierPair();
 
-  void* reservation_ptr = nullptr;
-  iree_net_carrier_send_handle_t reservation_handle = 0;
-  IREE_ASSERT_OK(iree_net_carrier_begin_send(
-      client_carrier_, 128, &reservation_ptr, &reservation_handle));
-  ASSERT_NE(reservation_ptr, nullptr);
+  PrefixWriterGate writer_gate;
+  SendResult result;
+  result.is_polling = &is_polling_;
+  iree_net_send_params_t params = {
+      {
+          128,
+          PrefixWriterGate::Write,
+          &writer_gate,
+      },
+      iree_async_span_list_empty(),
+      {SendCompleted, &result},
+  };
+  iree_status_code_t send_status = IREE_STATUS_UNKNOWN;
+  std::thread send_thread([&] {
+    iree_status_t status = iree_net_carrier_send(client_carrier_, &params);
+    send_status = iree_status_code(status);
+    iree_status_free(status);
+  });
+  {
+    std::unique_lock<std::mutex> lock(writer_gate.mutex);
+    writer_gate.condition.wait(lock, [&] { return writer_gate.entered; });
+  }
+
   CarrierDeactivateResult deactivate_result;
   deactivate_result.deactivated = &client_deactivated_;
   iree_net_carrier_deactivate(client_carrier_, CarrierDeactivationCounted,
                               &deactivate_result);
-  PollUntil([&] { return client_deactivated_; });
-  EXPECT_EQ(deactivate_result.callback_count, 1);
+  EXPECT_FALSE(client_deactivated_);
+  {
+    std::lock_guard<std::mutex> lock(writer_gate.mutex);
+    writer_gate.release = true;
+  }
+  writer_gate.condition.notify_all();
+  send_thread.join();
 
-  SendResult result;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_FAILED_PRECONDITION,
-      iree_net_carrier_commit_send(client_carrier_, reservation_handle,
-                                   {SendCompleted, &result}));
-  EXPECT_EQ(result.completion_count, 0);
+  PollUntil(
+      [&] { return client_deactivated_ && result.completion_count == 1; });
+  EXPECT_EQ(deactivate_result.callback_count, 1);
+  EXPECT_EQ(send_status, IREE_STATUS_OK);
+  EXPECT_EQ(result.status_code, IREE_STATUS_FAILED_PRECONDITION);
+  EXPECT_EQ(result.bytes_transferred, 0u);
   iree_net_carrier_send_budget_t budget =
       iree_net_carrier_query_send_budget(client_carrier_);
   EXPECT_EQ(budget.bytes, 0u);
@@ -880,8 +1223,8 @@ TEST_F(TcpCarrierTest, DeactivationCompletesEveryAcceptedSendExactlyOnce) {
   for (iree_host_size_t i = 0; i < payloads.size(); ++i) {
     spans[i] = iree_async_span_from_ptr(payloads[i].data(), payloads[i].size());
     iree_net_send_params_t params = {
+        iree_net_send_prefix_empty(),
         iree_async_span_list_make(&spans[i], 1),
-        IREE_NET_SEND_FLAG_NONE,
         {SendCompleted, &results[i]},
     };
     IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
@@ -937,8 +1280,8 @@ TEST_F(TcpCarrierTest, RetainsRegisteredRegionThroughSendCompletion) {
       iree_async_span_make(&region.base, 0, payload.size());
   SendResult result;
   iree_net_send_params_t params = {
+      iree_net_send_prefix_empty(),
       iree_async_span_list_make(&span, 1),
-      IREE_NET_SEND_FLAG_ZERO_COPY,
       {SendCompleted, &result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));

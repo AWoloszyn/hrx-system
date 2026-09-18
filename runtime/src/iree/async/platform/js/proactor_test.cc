@@ -31,6 +31,21 @@ class JsProactorTest : public ::testing::Test {
     proactor_ = NULL;
   }
 
+  void ResetProactor(iree_host_size_t max_concurrent_operations) {
+    iree_async_proactor_release(proactor_);
+    proactor_ = NULL;
+    iree_async_proactor_options_t options =
+        iree_async_proactor_options_default();
+    options.max_concurrent_operations = max_concurrent_operations;
+    options.debug_name = iree_make_cstring_view("test");
+    IREE_ASSERT_OK(iree_async_proactor_create_js(
+        options, iree_allocator_system(), &proactor_));
+  }
+
+  iree_async_proactor_js_t* js_proactor() {
+    return iree_async_proactor_js_cast(proactor_);
+  }
+
   // Initializes a NOP operation with the given completion callback.
   void InitNop(iree_async_nop_operation_t* nop,
                iree_async_completion_fn_t completion_fn, void* user_data) {
@@ -55,7 +70,7 @@ class JsProactorTest : public ::testing::Test {
                                iree_async_operation_t* operation,
                                iree_status_t status,
                                iree_async_completion_flags_t flags) {
-    iree_status_ignore(status);
+    iree_status_free(status);
     int* counter = reinterpret_cast<int*>(user_data);
     ++(*counter);
   }
@@ -67,7 +82,7 @@ class JsProactorTest : public ::testing::Test {
                                       iree_async_completion_flags_t flags) {
     iree_status_code_t* code = reinterpret_cast<iree_status_code_t*>(user_data);
     *code = iree_status_code(status);
-    iree_status_ignore(status);
+    iree_status_free(status);
   }
 
   iree_async_proactor_t* proactor_ = NULL;
@@ -235,6 +250,158 @@ TEST_F(JsProactorTest, CancelFutureTimer) {
   EXPECT_EQ(poll_completed, 1u);
 }
 
+TEST_F(JsProactorTest, BatchValidationFailureIsAtomic) {
+  int nop_completed_count = 0;
+  iree_async_nop_operation_t nop;
+  InitNop(&nop, CountingCallback, &nop_completed_count);
+
+  int unsupported_completed_count = 0;
+  iree_async_operation_t unsupported = {};
+  unsupported.type = IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT;
+  unsupported.completion_fn = CountingCallback;
+  unsupported.user_data = &unsupported_completed_count;
+
+  iree_async_operation_t* operations[] = {&nop.base, &unsupported};
+  iree_async_operation_list_t operation_list = {operations,
+                                                IREE_ARRAYSIZE(operations)};
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_UNIMPLEMENTED,
+                        proactor_->vtable->submit(proactor_, operation_list));
+
+  EXPECT_EQ(js_proactor()->pending_head, nullptr);
+  EXPECT_EQ(nop_completed_count, 0);
+  EXPECT_EQ(unsupported_completed_count, 0);
+  iree_host_size_t poll_completed = 0;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEADLINE_EXCEEDED,
+      iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                               &poll_completed));
+  EXPECT_EQ(poll_completed, 0u);
+}
+
+TEST_F(JsProactorTest, BatchReservationFailureIsAtomicAndRetryable) {
+  ResetProactor(2);
+  iree_time_t far_future = iree_time_now() + 60ll * 1000000000ll;
+
+  int blocker_completed_count = 0;
+  iree_async_timer_operation_t blocker;
+  InitTimer(&blocker, far_future, CountingCallback, &blocker_completed_count);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &blocker.base));
+  ASSERT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 1u);
+
+  int sequence_completed_count = 0;
+  iree_async_nop_operation_t sequence_step;
+  InitNop(&sequence_step, CountingCallback, nullptr);
+  iree_async_operation_t* sequence_steps[] = {&sequence_step.base};
+  iree_async_sequence_operation_t sequence = {};
+  sequence.base.type = IREE_ASYNC_OPERATION_TYPE_SEQUENCE;
+  sequence.base.completion_fn = CountingCallback;
+  sequence.base.user_data = &sequence_completed_count;
+  sequence.steps = sequence_steps;
+  sequence.step_count = IREE_ARRAYSIZE(sequence_steps);
+
+  int nop_completed_count = 0;
+  iree_async_nop_operation_t nop;
+  InitNop(&nop, CountingCallback, &nop_completed_count);
+
+  int timer0_completed_count = 0;
+  int timer1_completed_count = 0;
+  iree_async_timer_operation_t timer0;
+  iree_async_timer_operation_t timer1;
+  InitTimer(&timer0, far_future, CountingCallback, &timer0_completed_count);
+  InitTimer(&timer1, far_future, CountingCallback, &timer1_completed_count);
+
+  iree_async_operation_t* operations[] = {&sequence.base, &nop.base,
+                                          &timer0.base, &timer1.base};
+  iree_async_operation_list_t operation_list = {operations,
+                                                IREE_ARRAYSIZE(operations)};
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        proactor_->vtable->submit(proactor_, operation_list));
+
+  // The first batch timer acquired the final slot before the second failed.
+  // Rollback must leave only the preexisting blocker and publish no work.
+  EXPECT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 1u);
+  EXPECT_FALSE(timer0.platform.js.is_token_active);
+  EXPECT_FALSE(timer1.platform.js.is_token_active);
+  EXPECT_EQ(js_proactor()->pending_head, nullptr);
+  EXPECT_EQ(sequence_completed_count, 0);
+  EXPECT_EQ(nop_completed_count, 0);
+
+  iree_host_size_t poll_completed = 0;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEADLINE_EXCEEDED,
+      iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                               &poll_completed));
+  EXPECT_EQ(poll_completed, 0u);
+
+  IREE_ASSERT_OK(proactor_->vtable->cancel(proactor_, &blocker.base));
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                                          &poll_completed));
+  EXPECT_EQ(blocker_completed_count, 1);
+  EXPECT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 0u);
+
+  // The caller can retry the exact same batch once capacity becomes available.
+  IREE_ASSERT_OK(proactor_->vtable->submit(proactor_, operation_list));
+  EXPECT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 2u);
+  EXPECT_TRUE(timer0.platform.js.is_token_active);
+  EXPECT_TRUE(timer1.platform.js.is_token_active);
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                                          &poll_completed));
+  EXPECT_EQ(sequence_completed_count, 1);
+  EXPECT_EQ(nop_completed_count, 1);
+  EXPECT_EQ(timer0_completed_count, 0);
+  EXPECT_EQ(timer1_completed_count, 0);
+
+  IREE_ASSERT_OK(proactor_->vtable->cancel(proactor_, &timer0.base));
+  IREE_ASSERT_OK(proactor_->vtable->cancel(proactor_, &timer0.base));
+  IREE_ASSERT_OK(proactor_->vtable->cancel(proactor_, &timer1.base));
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                                          &poll_completed));
+  EXPECT_EQ(timer0_completed_count, 1);
+  EXPECT_EQ(timer1_completed_count, 1);
+  EXPECT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 0u);
+}
+
+TEST_F(JsProactorTest, CancelExpiredTimerPreservesActiveToken) {
+  ResetProactor(1);
+  iree_time_t far_future = iree_time_now() + 60ll * 1000000000ll;
+
+  int blocker_completed_count = 0;
+  iree_async_timer_operation_t blocker;
+  InitTimer(&blocker, far_future, CountingCallback, &blocker_completed_count);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &blocker.base));
+  ASSERT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 1u);
+
+  iree_status_code_t expired_status = IREE_STATUS_INTERNAL;
+  iree_async_timer_operation_t expired;
+  InitTimer(&expired, 0, StatusRecordingCallback, &expired_status);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &expired.base));
+  ASSERT_FALSE(expired.platform.js.is_token_active);
+
+  // The expired timer has no token. Repeated cancellation must neither release
+  // the blocker's slot nor enqueue the expired timer more than once.
+  IREE_ASSERT_OK(proactor_->vtable->cancel(proactor_, &expired.base));
+  IREE_ASSERT_OK(proactor_->vtable->cancel(proactor_, &expired.base));
+  EXPECT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 1u);
+
+  iree_host_size_t poll_completed = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                                          &poll_completed));
+  EXPECT_EQ(poll_completed, 1u);
+  EXPECT_EQ(expired_status, IREE_STATUS_CANCELLED);
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEADLINE_EXCEEDED,
+      iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                               &poll_completed));
+  EXPECT_EQ(poll_completed, 0u);
+  EXPECT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 1u);
+
+  IREE_ASSERT_OK(proactor_->vtable->cancel(proactor_, &blocker.base));
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                                          &poll_completed));
+  EXPECT_EQ(blocker_completed_count, 1);
+  EXPECT_EQ(iree_async_js_token_table_count(&js_proactor()->token_table), 0u);
+}
+
 TEST_F(JsProactorTest, UnsupportedOperationReturnsUnimplemented) {
   // Try to submit a socket connect operation (unsupported).
   iree_async_operation_t fake_op;
@@ -328,7 +495,7 @@ static void OrderedCallback(void* user_data, iree_async_operation_t* operation,
   state->completions[state->count].operation = operation;
   state->completions[state->count].status_code = iree_status_code(status);
   state->count++;
-  iree_status_ignore(status);
+  iree_status_free(status);
 }
 
 TEST_F(JsProactorTest, TwoLinkedNops) {
@@ -421,7 +588,7 @@ TEST_F(JsProactorTest, MixedLinkedAndUnlinkedBatch) {
 // SEQUENCE operations
 //===----------------------------------------------------------------------===//
 
-TEST_F(JsProactorTest, ZeroStepSequenceCompletesImmediately) {
+TEST_F(JsProactorTest, ZeroStepSequenceCompletesFromPoll) {
   iree_status_code_t status_code = IREE_STATUS_INTERNAL;
   iree_async_sequence_operation_t sequence = {};
   sequence.base.type = IREE_ASYNC_OPERATION_TYPE_SEQUENCE;
@@ -431,8 +598,13 @@ TEST_F(JsProactorTest, ZeroStepSequenceCompletesImmediately) {
   sequence.step_count = 0;
   sequence.step_fn = nullptr;
 
-  // Zero-step sequence completes synchronously during submit.
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &sequence.base));
+  EXPECT_EQ(status_code, IREE_STATUS_INTERNAL);
+
+  iree_host_size_t completed_count = 0;
+  IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_immediate_timeout(),
+                                          &completed_count));
+  EXPECT_EQ(completed_count, 1u);
   EXPECT_EQ(status_code, IREE_STATUS_OK);
 }
 
@@ -540,7 +712,7 @@ static void EmulationSequenceCallback(void* user_data,
   auto* state = reinterpret_cast<EmulationStepState*>(user_data);
   state->sequence_status = iree_status_code(status);
   state->sequence_completed = true;
-  iree_status_ignore(status);
+  iree_status_free(status);
 }
 
 TEST_F(JsProactorTest, TwoStepNopSequenceEmulationPath) {
@@ -564,7 +736,7 @@ TEST_F(JsProactorTest, TwoStepNopSequenceEmulationPath) {
 
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &sequence.base));
 
-  // The emulation path submits one step at a time. The drain_ready loop picks
+  // The emulation path submits one step at a time. The pending drain picks
   // up re-submitted steps during the same pass, so a single poll suffices.
   iree_host_size_t poll_completed = 0;
   IREE_ASSERT_OK(iree_async_proactor_poll(proactor_, iree_make_timeout_ms(0),
@@ -615,7 +787,7 @@ TEST_F(JsProactorTest, SequenceCancellation) {
     iree_status_t poll_status = iree_async_proactor_poll(
         proactor_, iree_make_timeout_ms(0), &poll_completed);
     if (iree_status_code(poll_status) == IREE_STATUS_DEADLINE_EXCEEDED) {
-      iree_status_ignore(poll_status);
+      iree_status_free(poll_status);
     } else {
       IREE_ASSERT_OK(poll_status);
     }

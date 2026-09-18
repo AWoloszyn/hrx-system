@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <memory>
@@ -13,6 +14,9 @@
 #include "iree/async/buffer_pool.h"
 #include "iree/async/proactor_platform.h"
 #include "iree/async/slab.h"
+#include "iree/net/channel/bulk/bulk_channel.h"
+#include "iree/net/channel/control/control_channel.h"
+#include "iree/net/channel/queue/queue_channel.h"
 #include "iree/net/connection.h"
 #include "iree/net/cts/transport_backend.h"
 #include "iree/net/message_endpoint.h"
@@ -147,6 +151,337 @@ struct MessageState {
   }
 };
 
+struct ProtocolHandoffState {
+  int* current_poll_side = nullptr;
+  PollSide expected_poll_side = kNotPolling;
+  iree_net_message_endpoint_t endpoint = {};
+  bool message_callback_active = false;
+  std::vector<std::string> bootstrap_messages;
+  std::vector<std::string> operational_messages;
+  int error_count = 0;
+
+  static iree_status_t OnBootstrapMessage(void* user_data,
+                                          iree_const_byte_span_t message,
+                                          iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<ProtocolHandoffState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    EXPECT_FALSE(self->message_callback_active);
+    self->message_callback_active = true;
+    self->bootstrap_messages.emplace_back(
+        reinterpret_cast<const char*>(message.data), message.data_length);
+    iree_net_message_endpoint_set_callbacks(self->endpoint,
+                                            self->operational_callbacks());
+    self->message_callback_active = false;
+    return iree_ok_status();
+  }
+
+  static iree_status_t OnOperationalMessage(void* user_data,
+                                            iree_const_byte_span_t message,
+                                            iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<ProtocolHandoffState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    EXPECT_FALSE(self->message_callback_active);
+    self->message_callback_active = true;
+    self->operational_messages.emplace_back(
+        reinterpret_cast<const char*>(message.data), message.data_length);
+    self->message_callback_active = false;
+    return iree_ok_status();
+  }
+
+  static void OnError(void* user_data, iree_status_t status) {
+    auto* self = static_cast<ProtocolHandoffState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->error_count;
+    iree_status_free(status);
+  }
+
+  iree_net_message_endpoint_callbacks_t bootstrap_callbacks() {
+    return {
+        /*.on_message=*/OnBootstrapMessage,
+        /*.on_error=*/OnError,
+        /*.user_data=*/this,
+    };
+  }
+
+  iree_net_message_endpoint_callbacks_t operational_callbacks() {
+    return {
+        /*.on_message=*/OnOperationalMessage,
+        /*.on_error=*/OnError,
+        /*.user_data=*/this,
+    };
+  }
+};
+
+struct ControlMessageState {
+  int* current_poll_side = nullptr;
+  PollSide expected_poll_side = kNotPolling;
+  std::vector<std::string> messages;
+  std::vector<iree_net_control_data_flags_t> flags;
+  int goaway_count = 0;
+  uint32_t goaway_reason = 0;
+  int error_count = 0;
+  iree_status_code_t error_code = IREE_STATUS_OK;
+
+  static iree_status_t OnData(void* user_data,
+                              iree_net_control_data_flags_t flags,
+                              iree_const_byte_span_t payload,
+                              iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<ControlMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    self->messages.emplace_back(reinterpret_cast<const char*>(payload.data),
+                                payload.data_length);
+    self->flags.push_back(flags);
+    return iree_ok_status();
+  }
+
+  static void OnGoaway(void* user_data, uint32_t reason_code) {
+    auto* self = static_cast<ControlMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->goaway_count;
+    self->goaway_reason = reason_code;
+  }
+
+  static void OnError(void* user_data, iree_status_t status) {
+    auto* self = static_cast<ControlMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->error_count;
+    self->error_code = iree_status_code(status);
+    iree_status_free(status);
+  }
+
+  iree_net_control_channel_callbacks_t callbacks() {
+    return {
+        /*.on_data=*/OnData,
+        /*.on_goaway=*/OnGoaway,
+        /*.on_error=*/OnError,
+        /*.user_data=*/this,
+    };
+  }
+};
+
+struct QueueMessageState {
+  int* current_poll_side = nullptr;
+  PollSide expected_poll_side = kNotPolling;
+  int command_count = 0;
+  uint32_t command_queue_id = IREE_NET_QUEUE_ID_NONE;
+  std::vector<iree_async_frontier_entry_t> command_wait_frontier;
+  std::vector<iree_async_frontier_entry_t> command_signal_frontier;
+  std::string command_payload;
+  int advance_count = 0;
+  std::vector<iree_async_frontier_entry_t> advance_signal_frontier;
+  std::string advance_payload;
+  int error_count = 0;
+  iree_status_code_t error_code = IREE_STATUS_OK;
+
+  static std::vector<iree_async_frontier_entry_t> CaptureFrontier(
+      const iree_net_queue_frontier_view_t* frontier) {
+    std::vector<iree_async_frontier_entry_t> entries;
+    entries.reserve(frontier->count);
+    for (iree_host_size_t i = 0; i < frontier->count; ++i) {
+      entries.push_back(iree_net_queue_frontier_view_get(frontier, i));
+    }
+    return entries;
+  }
+
+  static iree_status_t OnCommand(
+      void* user_data, uint32_t queue_id,
+      const iree_net_queue_frontier_view_t* wait_frontier,
+      const iree_net_queue_frontier_view_t* signal_frontier,
+      iree_const_byte_span_t payload, iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<QueueMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    ++self->command_count;
+    self->command_queue_id = queue_id;
+    self->command_wait_frontier = CaptureFrontier(wait_frontier);
+    self->command_signal_frontier = CaptureFrontier(signal_frontier);
+    self->command_payload.assign(reinterpret_cast<const char*>(payload.data),
+                                 payload.data_length);
+    return iree_ok_status();
+  }
+
+  static iree_status_t OnAdvance(
+      void* user_data, const iree_net_queue_frontier_view_t* signal_frontier,
+      iree_const_byte_span_t payload, iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<QueueMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    ++self->advance_count;
+    self->advance_signal_frontier = CaptureFrontier(signal_frontier);
+    self->advance_payload.assign(reinterpret_cast<const char*>(payload.data),
+                                 payload.data_length);
+    return iree_ok_status();
+  }
+
+  static void OnError(void* user_data, iree_status_t status) {
+    auto* self = static_cast<QueueMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->error_count;
+    self->error_code = iree_status_code(status);
+    iree_status_free(status);
+  }
+
+  iree_net_queue_channel_callbacks_t callbacks() {
+    return {
+        /*.on_command=*/OnCommand,
+        /*.on_advance=*/OnAdvance,
+        /*.on_error=*/OnError,
+        /*.user_data=*/this,
+    };
+  }
+};
+
+struct QueueBuildState {
+  std::vector<iree_async_frontier_entry_t> wait_frontier;
+  std::vector<iree_async_frontier_entry_t> signal_frontier;
+  std::string generated_payload;
+
+  static iree_status_t Build(void* user_data,
+                             const iree_net_queue_message_builder_t* builder) {
+    auto* self = static_cast<QueueBuildState*>(user_data);
+    if (builder->wait_frontier.count != self->wait_frontier.size() ||
+        builder->signal_frontier.count != self->signal_frontier.size() ||
+        builder->generated_payload.data_length !=
+            self->generated_payload.size()) {
+      return iree_make_status(IREE_STATUS_INTERNAL,
+                              "queue builder target layout mismatch");
+    }
+    for (iree_host_size_t i = 0; i < self->wait_frontier.size(); ++i) {
+      iree_net_queue_frontier_builder_set(&builder->wait_frontier, i,
+                                          self->wait_frontier[i]);
+    }
+    for (iree_host_size_t i = 0; i < self->signal_frontier.size(); ++i) {
+      iree_net_queue_frontier_builder_set(&builder->signal_frontier, i,
+                                          self->signal_frontier[i]);
+    }
+    if (!self->generated_payload.empty()) {
+      memcpy(builder->generated_payload.data, self->generated_payload.data(),
+             self->generated_payload.size());
+    }
+    return iree_ok_status();
+  }
+
+  iree_net_queue_channel_send_params_t params(
+      iree_async_span_list_t payload,
+      iree_net_send_completion_callback_t completion_callback) {
+    return {
+        /*.wait_frontier_count=*/static_cast<uint8_t>(wait_frontier.size()),
+        /*.signal_frontier_count=*/
+        static_cast<uint8_t>(signal_frontier.size()),
+        /*.generated_payload_length=*/generated_payload.size(),
+        /*.build=*/Build,
+        /*.build_user_data=*/this,
+        /*.payload=*/payload,
+        /*.completion_callback=*/completion_callback,
+    };
+  }
+};
+
+struct BulkMessageState {
+  int* current_poll_side = nullptr;
+  PollSide expected_poll_side = kNotPolling;
+  int start_count = 0;
+  uint64_t start_transfer_id = 0;
+  uint64_t start_total_length = 0;
+  std::vector<uint64_t> data_offsets;
+  std::vector<std::string> data_payloads;
+  bool retain_next_data = false;
+  iree_async_buffer_lease_t retained_data_lease = {};
+  int complete_count = 0;
+  uint64_t complete_transfer_id = 0;
+  int abort_count = 0;
+  uint64_t abort_transfer_id = 0;
+  std::string abort_detail;
+  int credit_count = 0;
+  uint64_t credit_delta = 0;
+  uint64_t available_credit_count = 0;
+  int error_count = 0;
+  iree_status_code_t error_code = IREE_STATUS_OK;
+
+  static iree_status_t OnStart(void* user_data, uint64_t transfer_id,
+                               uint64_t total_length) {
+    auto* self = static_cast<BulkMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->start_count;
+    self->start_transfer_id = transfer_id;
+    self->start_total_length = total_length;
+    return iree_ok_status();
+  }
+
+  static iree_status_t OnData(void* user_data, uint64_t transfer_id,
+                              uint64_t offset, iree_const_byte_span_t payload,
+                              iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<BulkMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    EXPECT_EQ(transfer_id, self->start_transfer_id);
+    self->data_offsets.push_back(offset);
+    self->data_payloads.emplace_back(
+        reinterpret_cast<const char*>(payload.data), payload.data_length);
+    if (self->retain_next_data) {
+      EXPECT_EQ(self->retained_data_lease.release.fn, nullptr);
+      self->retained_data_lease = *lease;
+      *lease = {};
+      self->retain_next_data = false;
+    }
+    return iree_ok_status();
+  }
+
+  static iree_status_t OnComplete(void* user_data, uint64_t transfer_id) {
+    auto* self = static_cast<BulkMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->complete_count;
+    self->complete_transfer_id = transfer_id;
+    return iree_ok_status();
+  }
+
+  static iree_status_t OnAbort(void* user_data, uint64_t transfer_id,
+                               iree_const_byte_span_t detail,
+                               iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<BulkMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    ++self->abort_count;
+    self->abort_transfer_id = transfer_id;
+    self->abort_detail.assign(reinterpret_cast<const char*>(detail.data),
+                              detail.data_length);
+    return iree_ok_status();
+  }
+
+  static iree_status_t OnCredit(void* user_data, uint64_t credit_delta,
+                                uint64_t available_credit_count) {
+    auto* self = static_cast<BulkMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->credit_count;
+    self->credit_delta = credit_delta;
+    self->available_credit_count = available_credit_count;
+    return iree_ok_status();
+  }
+
+  static void OnError(void* user_data, iree_status_t status) {
+    auto* self = static_cast<BulkMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->error_count;
+    self->error_code = iree_status_code(status);
+    iree_status_free(status);
+  }
+
+  iree_net_bulk_channel_callbacks_t callbacks() {
+    return {
+        /*.on_start=*/OnStart,
+        /*.on_data=*/OnData,
+        /*.on_complete=*/OnComplete,
+        /*.on_abort=*/OnAbort,
+        /*.on_credit=*/OnCredit,
+        /*.on_error=*/OnError,
+        /*.user_data=*/this,
+    };
+  }
+};
+
 struct SendState {
   int* current_poll_side = nullptr;
   PollSide expected_poll_side = kNotPolling;
@@ -258,10 +593,18 @@ class TransportTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    iree_async_buffer_lease_release(&client_bulk_messages_.retained_data_lease);
+    iree_async_buffer_lease_release(&server_bulk_messages_.retained_data_lease);
     DrainPendingConnection();
     StopAndFreeListener();
     DeactivateAndRelease(client_connection_, client_proactor_, kClientPolling);
     DeactivateAndRelease(server_connection_, server_proactor_, kServerPolling);
+    iree_net_control_channel_free(client_control_channel_);
+    iree_net_control_channel_free(server_control_channel_);
+    iree_net_queue_channel_free(client_queue_channel_);
+    iree_net_queue_channel_free(server_queue_channel_);
+    iree_net_bulk_channel_free(client_bulk_channel_);
+    iree_net_bulk_channel_free(server_bulk_channel_);
     iree_net_transport_factory_release(factory_);
     ReleaseReceivePool(&client_receive_pool_);
     ReleaseReceivePool(&server_receive_pool_);
@@ -297,6 +640,13 @@ class TransportTest : public ::testing::Test {
                  const std::function<bool()>& condition) {
     while (!condition()) {
       Poll(proactor, side);
+    }
+  }
+
+  void PollBothUntil(const std::function<bool()>& condition) {
+    while (!condition()) {
+      PollImmediate(client_proactor_, kClientPolling);
+      PollImmediate(server_proactor_, kServerPolling);
     }
   }
 
@@ -396,6 +746,14 @@ class TransportTest : public ::testing::Test {
     return state->endpoint;
   }
 
+  void WaitForSendSlots(iree_net_message_endpoint_t endpoint,
+                        iree_host_size_t minimum_slots) {
+    PollBothUntil([&] {
+      return iree_net_message_endpoint_query_send_budget(endpoint).slots >=
+             minimum_slots;
+    });
+  }
+
   void StopAndFreeListener() {
     if (!listener_) {
       return;
@@ -451,6 +809,18 @@ class TransportTest : public ::testing::Test {
   MessageState server_messages_;
   SendState client_send_;
   SendState server_send_;
+  ControlMessageState client_control_messages_;
+  ControlMessageState server_control_messages_;
+  iree_net_control_channel_t* client_control_channel_ = nullptr;
+  iree_net_control_channel_t* server_control_channel_ = nullptr;
+  QueueMessageState client_queue_messages_;
+  QueueMessageState server_queue_messages_;
+  iree_net_queue_channel_t* client_queue_channel_ = nullptr;
+  iree_net_queue_channel_t* server_queue_channel_ = nullptr;
+  BulkMessageState client_bulk_messages_;
+  BulkMessageState server_bulk_messages_;
+  iree_net_bulk_channel_t* client_bulk_channel_ = nullptr;
+  iree_net_bulk_channel_t* server_bulk_channel_ = nullptr;
 };
 
 TEST_F(TransportTest, ReportsRequiredCapabilities) {
@@ -500,20 +870,20 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
 
   char client_prefix[] = "client-";
   char client_suffix[] = "message";
-  iree_async_span_t client_spans[] = {
-      iree_async_span_from_ptr(client_prefix, sizeof(client_prefix) - 1),
-      iree_async_span_from_ptr(client_suffix, sizeof(client_suffix) - 1),
-  };
+  iree_async_span_t client_span =
+      iree_async_span_from_ptr(client_suffix, sizeof(client_suffix) - 1);
   client_send_.current_poll_side = &current_poll_side_;
   client_send_.expected_poll_side = kClientPolling;
   client_send_.expected_bytes =
       (sizeof(client_prefix) - 1) + (sizeof(client_suffix) - 1);
   iree_net_message_endpoint_send_params_t send_params = {
-      /*.data=*/iree_async_span_list_make(client_spans,
-                                          IREE_ARRAYSIZE(client_spans)),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(client_prefix, sizeof(client_prefix) - 1)),
+      /*.data=*/iree_async_span_list_make(&client_span, 1),
       /*.completion_callback=*/client_send_.callback(),
   };
   IREE_ASSERT_OK(iree_net_message_endpoint_send(client_endpoint, &send_params));
+  client_prefix[0] = 'X';
   PollImmediate(client_proactor_, kClientPolling);
   PollUntil(server_proactor_, kServerPolling,
             [&] { return server_messages_.messages.size() == 1; });
@@ -523,16 +893,18 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
   EXPECT_EQ(client_send_.status_code, IREE_STATUS_OK);
 
   char server_payload[] = "server-message";
-  iree_async_span_t server_span =
-      iree_async_span_from_ptr(server_payload, sizeof(server_payload) - 1);
   server_send_.current_poll_side = &current_poll_side_;
   server_send_.expected_poll_side = kServerPolling;
   server_send_.expected_bytes = sizeof(server_payload) - 1;
   send_params = {
-      /*.data=*/iree_async_span_list_make(&server_span, 1),
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(server_payload,
+                                    sizeof(server_payload) - 1)),
+      /*.data=*/iree_async_span_list_empty(),
       /*.completion_callback=*/server_send_.callback(),
   };
   IREE_ASSERT_OK(iree_net_message_endpoint_send(server_endpoint, &send_params));
+  server_payload[0] = 'X';
   PollImmediate(server_proactor_, kServerPolling);
   PollUntil(client_proactor_, kClientPolling,
             [&] { return client_messages_.messages.size() == 1; });
@@ -542,6 +914,484 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
   EXPECT_EQ(server_send_.status_code, IREE_STATUS_OK);
   EXPECT_EQ(client_messages_.error_count, 0);
   EXPECT_EQ(server_messages_.error_count, 0);
+}
+
+TEST_F(TransportTest, CallbackHandoffPreservesQueuedMessageOrder) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  ASSERT_NE(client_endpoint.self, nullptr);
+  ASSERT_NE(server_endpoint.self, nullptr);
+
+  client_messages_.current_poll_side = &current_poll_side_;
+  client_messages_.expected_poll_side = kClientPolling;
+  iree_net_message_endpoint_set_callbacks(client_endpoint,
+                                          client_messages_.callbacks());
+  ProtocolHandoffState handoff_state;
+  handoff_state.current_poll_side = &current_poll_side_;
+  handoff_state.expected_poll_side = kServerPolling;
+  handoff_state.endpoint = server_endpoint;
+  iree_net_message_endpoint_set_callbacks(server_endpoint,
+                                          handoff_state.bootstrap_callbacks());
+  std::array<std::string, 3> messages = {
+      "bootstrap",
+      "control-1",
+      "control-2",
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+  // This test requires all messages to be admitted before the server polls so
+  // they exercise callback handoff while queued in the transport.
+  WaitForSendSlots(client_endpoint, messages.size());
+
+  std::array<SendState, 3> send_states;
+  for (iree_host_size_t i = 0; i < messages.size(); ++i) {
+    send_states[i].current_poll_side = &current_poll_side_;
+    send_states[i].expected_poll_side = kClientPolling;
+    send_states[i].expected_bytes = messages[i].size();
+    iree_net_message_endpoint_send_params_t send_params = {
+        /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+            iree_make_const_byte_span(messages[i].data(), messages[i].size())),
+        /*.data=*/iree_async_span_list_empty(),
+        /*.completion_callback=*/send_states[i].callback(),
+    };
+    IREE_ASSERT_OK(
+        iree_net_message_endpoint_send(client_endpoint, &send_params));
+  }
+
+  PollBothUntil([&] {
+    const bool all_messages_received =
+        handoff_state.bootstrap_messages.size() +
+            handoff_state.operational_messages.size() ==
+        messages.size();
+    const bool all_sends_completed = std::all_of(
+        send_states.begin(), send_states.end(),
+        [](const SendState& state) { return state.callback_count == 1; });
+    return all_messages_received && all_sends_completed;
+  });
+
+  EXPECT_FALSE(handoff_state.message_callback_active);
+  EXPECT_EQ(handoff_state.bootstrap_messages,
+            std::vector<std::string>({"bootstrap"}));
+  EXPECT_EQ(handoff_state.operational_messages,
+            std::vector<std::string>({"control-1", "control-2"}));
+  EXPECT_EQ(handoff_state.error_count, 0);
+  for (const SendState& send_state : send_states) {
+    EXPECT_EQ(send_state.status_code, IREE_STATUS_OK);
+  }
+}
+
+TEST_F(TransportTest, CarriesControlDataAndGoaway) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  ASSERT_NE(client_endpoint.self, nullptr);
+  ASSERT_NE(server_endpoint.self, nullptr);
+
+  client_control_messages_.current_poll_side = &current_poll_side_;
+  client_control_messages_.expected_poll_side = kClientPolling;
+  server_control_messages_.current_poll_side = &current_poll_side_;
+  server_control_messages_.expected_poll_side = kServerPolling;
+  IREE_ASSERT_OK(iree_net_control_channel_allocate(
+      client_endpoint, client_control_messages_.callbacks(),
+      iree_allocator_system(), &client_control_channel_));
+  IREE_ASSERT_OK(iree_net_control_channel_allocate(
+      server_endpoint, server_control_messages_.callbacks(),
+      iree_allocator_system(), &server_control_channel_));
+  iree_net_control_channel_attach(client_control_channel_);
+  iree_net_control_channel_attach(server_control_channel_);
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+  WaitForSendSlots(client_endpoint, 2);
+
+  std::string borrowed_payload = "borrowed request";
+  iree_async_span_t borrowed_span = iree_async_span_from_ptr(
+      borrowed_payload.data(), borrowed_payload.size());
+  SendState borrowed_send;
+  borrowed_send.current_poll_side = &current_poll_side_;
+  borrowed_send.expected_poll_side = kClientPolling;
+  borrowed_send.expected_bytes =
+      IREE_NET_CONTROL_MESSAGE_HEADER_SIZE + borrowed_payload.size();
+  IREE_ASSERT_OK(iree_net_control_channel_send_data(
+      client_control_channel_, 3, iree_async_span_list_make(&borrowed_span, 1),
+      borrowed_send.callback()));
+
+  std::string copied_prefix(4097, 'p');
+  std::string copied_suffix(4096, 's');
+  const std::string expected_copy = copied_prefix + copied_suffix;
+  iree_async_span_t copied_spans[] = {
+      iree_async_span_from_ptr(copied_prefix.data(), copied_prefix.size()),
+      iree_async_span_from_ptr(copied_suffix.data(), copied_suffix.size()),
+  };
+  SendState copied_send;
+  copied_send.current_poll_side = &current_poll_side_;
+  copied_send.expected_poll_side = kServerPolling;
+  copied_send.expected_bytes =
+      IREE_NET_CONTROL_MESSAGE_HEADER_SIZE + expected_copy.size();
+  IREE_ASSERT_OK(iree_net_control_channel_send_data_copy(
+      server_control_channel_, 5, iree_async_span_list_make(copied_spans, 2),
+      copied_send.callback()));
+  std::fill(copied_prefix.begin(), copied_prefix.end(), 'x');
+  std::fill(copied_suffix.begin(), copied_suffix.end(), 'x');
+
+  SendState goaway_send;
+  goaway_send.current_poll_side = &current_poll_side_;
+  goaway_send.expected_poll_side = kClientPolling;
+  goaway_send.expected_bytes = IREE_NET_CONTROL_MESSAGE_HEADER_SIZE;
+  IREE_ASSERT_OK(iree_net_control_channel_send_goaway(
+      client_control_channel_, 42, goaway_send.callback()));
+
+  PollBothUntil([&] {
+    return server_control_messages_.messages.size() == 1 &&
+           server_control_messages_.goaway_count == 1 &&
+           client_control_messages_.messages.size() == 1 &&
+           borrowed_send.callback_count == 1 &&
+           copied_send.callback_count == 1 && goaway_send.callback_count == 1;
+  });
+
+  EXPECT_EQ(server_control_messages_.messages,
+            std::vector<std::string>({"borrowed request"}));
+  EXPECT_EQ(server_control_messages_.flags,
+            std::vector<iree_net_control_data_flags_t>({3}));
+  EXPECT_EQ(server_control_messages_.goaway_reason, 42u);
+  EXPECT_EQ(client_control_messages_.messages,
+            std::vector<std::string>({expected_copy}));
+  EXPECT_EQ(client_control_messages_.flags,
+            std::vector<iree_net_control_data_flags_t>({5}));
+  EXPECT_EQ(client_control_messages_.error_count, 0);
+  EXPECT_EQ(server_control_messages_.error_count, 0);
+  EXPECT_EQ(borrowed_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(copied_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(goaway_send.status_code, IREE_STATUS_OK);
+}
+
+TEST_F(TransportTest, CarriesQueueCommandsAndAdvances) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  ASSERT_NE(client_endpoint.self, nullptr);
+  ASSERT_NE(server_endpoint.self, nullptr);
+
+  client_queue_messages_.current_poll_side = &current_poll_side_;
+  client_queue_messages_.expected_poll_side = kClientPolling;
+  server_queue_messages_.current_poll_side = &current_poll_side_;
+  server_queue_messages_.expected_poll_side = kServerPolling;
+  IREE_ASSERT_OK(iree_net_queue_channel_allocate(
+      client_endpoint, client_queue_messages_.callbacks(),
+      iree_allocator_system(), &client_queue_channel_));
+  IREE_ASSERT_OK(iree_net_queue_channel_allocate(
+      server_endpoint, server_queue_messages_.callbacks(),
+      iree_allocator_system(), &server_queue_channel_));
+  iree_net_queue_channel_attach(client_queue_channel_);
+  iree_net_queue_channel_attach(server_queue_channel_);
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+
+  QueueBuildState command_builder = {
+      /*.wait_frontier=*/{{3, 5}, {7, 11}},
+      /*.signal_frontier=*/{{9, 13}},
+      /*.generated_payload=*/"generated:",
+  };
+  std::string command_suffix = "borrowed-command";
+  iree_async_span_t command_span =
+      iree_async_span_from_ptr(command_suffix.data(), command_suffix.size());
+  SendState command_send;
+  command_send.current_poll_side = &current_poll_side_;
+  command_send.expected_poll_side = kClientPolling;
+  command_send.expected_bytes = IREE_NET_QUEUE_MESSAGE_HEADER_SIZE +
+                                (command_builder.wait_frontier.size() +
+                                 command_builder.signal_frontier.size()) *
+                                    IREE_NET_QUEUE_FRONTIER_ENTRY_SIZE +
+                                command_builder.generated_payload.size() +
+                                command_suffix.size();
+  const iree_net_queue_channel_send_params_t command_params =
+      command_builder.params(iree_async_span_list_make(&command_span, 1),
+                             command_send.callback());
+  IREE_ASSERT_OK(iree_net_queue_channel_send_command(client_queue_channel_, 7,
+                                                     &command_params));
+
+  QueueBuildState advance_builder = {
+      /*.wait_frontier=*/{},
+      /*.signal_frontier=*/{{9, 13}, {17, 19}},
+      /*.generated_payload=*/"advance:",
+  };
+  std::string advance_suffix = "complete";
+  iree_async_span_t advance_span =
+      iree_async_span_from_ptr(advance_suffix.data(), advance_suffix.size());
+  SendState advance_send;
+  advance_send.current_poll_side = &current_poll_side_;
+  advance_send.expected_poll_side = kServerPolling;
+  advance_send.expected_bytes = IREE_NET_QUEUE_MESSAGE_HEADER_SIZE +
+                                advance_builder.signal_frontier.size() *
+                                    IREE_NET_QUEUE_FRONTIER_ENTRY_SIZE +
+                                advance_builder.generated_payload.size() +
+                                advance_suffix.size();
+  const iree_net_queue_channel_send_params_t advance_params =
+      advance_builder.params(iree_async_span_list_make(&advance_span, 1),
+                             advance_send.callback());
+  IREE_ASSERT_OK(iree_net_queue_channel_send_advance(server_queue_channel_,
+                                                     &advance_params));
+
+  PollImmediate(client_proactor_, kClientPolling);
+  PollImmediate(server_proactor_, kServerPolling);
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return server_queue_messages_.command_count == 1; });
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return client_queue_messages_.advance_count == 1; });
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return command_send.callback_count == 1; });
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return advance_send.callback_count == 1; });
+
+  EXPECT_EQ(server_queue_messages_.command_queue_id, 7u);
+  ASSERT_EQ(server_queue_messages_.command_wait_frontier.size(), 2u);
+  EXPECT_EQ(server_queue_messages_.command_wait_frontier[0].axis, 3u);
+  EXPECT_EQ(server_queue_messages_.command_wait_frontier[0].epoch, 5u);
+  EXPECT_EQ(server_queue_messages_.command_wait_frontier[1].axis, 7u);
+  EXPECT_EQ(server_queue_messages_.command_wait_frontier[1].epoch, 11u);
+  ASSERT_EQ(server_queue_messages_.command_signal_frontier.size(), 1u);
+  EXPECT_EQ(server_queue_messages_.command_signal_frontier[0].axis, 9u);
+  EXPECT_EQ(server_queue_messages_.command_signal_frontier[0].epoch, 13u);
+  EXPECT_EQ(server_queue_messages_.command_payload,
+            "generated:borrowed-command");
+
+  ASSERT_EQ(client_queue_messages_.advance_signal_frontier.size(), 2u);
+  EXPECT_EQ(client_queue_messages_.advance_signal_frontier[0].axis, 9u);
+  EXPECT_EQ(client_queue_messages_.advance_signal_frontier[0].epoch, 13u);
+  EXPECT_EQ(client_queue_messages_.advance_signal_frontier[1].axis, 17u);
+  EXPECT_EQ(client_queue_messages_.advance_signal_frontier[1].epoch, 19u);
+  EXPECT_EQ(client_queue_messages_.advance_payload, "advance:complete");
+  EXPECT_EQ(client_queue_messages_.error_count, 0);
+  EXPECT_EQ(server_queue_messages_.error_count, 0);
+  EXPECT_EQ(command_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(advance_send.status_code, IREE_STATUS_OK);
+}
+
+TEST_F(TransportTest, CarriesCreditBoundedBulkTransfer) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  ASSERT_NE(client_endpoint.self, nullptr);
+  ASSERT_NE(server_endpoint.self, nullptr);
+
+  client_bulk_messages_.current_poll_side = &current_poll_side_;
+  client_bulk_messages_.expected_poll_side = kClientPolling;
+  server_bulk_messages_.current_poll_side = &current_poll_side_;
+  server_bulk_messages_.expected_poll_side = kServerPolling;
+  IREE_ASSERT_OK(iree_net_bulk_channel_allocate(
+      client_endpoint, client_bulk_messages_.callbacks(),
+      iree_allocator_system(), &client_bulk_channel_));
+  IREE_ASSERT_OK(iree_net_bulk_channel_allocate(
+      server_endpoint, server_bulk_messages_.callbacks(),
+      iree_allocator_system(), &server_bulk_channel_));
+  iree_net_bulk_channel_attach(client_bulk_channel_);
+  iree_net_bulk_channel_attach(server_bulk_channel_);
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+  // Semantic bulk credit does not imply reciprocal transport readiness. Wait
+  // until both endpoints advertise ordinary multi-send capacity before the
+  // test issues adjacent START/DATA and COMPLETE/ABORT operations.
+  WaitForSendSlots(client_endpoint, 2);
+  WaitForSendSlots(server_endpoint, 2);
+
+  SendState initial_credit_send;
+  initial_credit_send.current_poll_side = &current_poll_side_;
+  initial_credit_send.expected_poll_side = kServerPolling;
+  initial_credit_send.expected_bytes = IREE_NET_BULK_MESSAGE_HEADER_SIZE;
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_credit(
+      server_bulk_channel_, 1, initial_credit_send.callback()));
+  PollBothUntil([&] {
+    return client_bulk_messages_.credit_count == 1 &&
+           initial_credit_send.callback_count == 1;
+  });
+  EXPECT_EQ(client_bulk_messages_.credit_delta, 1u);
+  EXPECT_EQ(client_bulk_messages_.available_credit_count, 1u);
+  EXPECT_EQ(iree_net_bulk_channel_remote_credit_count(client_bulk_channel_),
+            1u);
+
+  std::string first_chunk(32 * 1024, 'a');
+  std::string second_chunk(32 * 1024, 'b');
+  const uint64_t transfer_length =
+      static_cast<uint64_t>(first_chunk.size() + second_chunk.size());
+  server_bulk_messages_.retain_next_data = true;
+
+  SendState start_send;
+  start_send.current_poll_side = &current_poll_side_;
+  start_send.expected_poll_side = kClientPolling;
+  start_send.expected_bytes = IREE_NET_BULK_MESSAGE_HEADER_SIZE;
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_start(
+      client_bulk_channel_, 3, transfer_length, start_send.callback()));
+
+  iree_async_span_t first_spans[] = {
+      iree_async_span_from_ptr(first_chunk.data(), first_chunk.size() / 2),
+      iree_async_span_from_ptr(first_chunk.data() + first_chunk.size() / 2,
+                               first_chunk.size() / 2),
+  };
+  SendState first_data_send;
+  first_data_send.current_poll_side = &current_poll_side_;
+  first_data_send.expected_poll_side = kClientPolling;
+  first_data_send.expected_bytes =
+      IREE_NET_BULK_MESSAGE_HEADER_SIZE + first_chunk.size();
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_data(
+      client_bulk_channel_, 3, 0, iree_async_span_list_make(first_spans, 2),
+      first_data_send.callback()));
+  EXPECT_EQ(iree_net_bulk_channel_remote_credit_count(client_bulk_channel_),
+            0u);
+
+  iree_async_span_t second_span =
+      iree_async_span_from_ptr(second_chunk.data(), second_chunk.size());
+  SendState blocked_data_send;
+  blocked_data_send.current_poll_side = &current_poll_side_;
+  blocked_data_send.expected_poll_side = kClientPolling;
+  blocked_data_send.expected_bytes = 0;
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_data(
+      client_bulk_channel_, 3, first_chunk.size(),
+      iree_async_span_list_make(&second_span, 1),
+      blocked_data_send.callback()));
+  EXPECT_EQ(blocked_data_send.callback_count, 0);
+
+  PollBothUntil([&] {
+    return server_bulk_messages_.start_count == 1 &&
+           server_bulk_messages_.data_payloads.size() == 1 &&
+           start_send.callback_count == 1 &&
+           first_data_send.callback_count == 1 &&
+           blocked_data_send.callback_count == 1;
+  });
+  EXPECT_EQ(blocked_data_send.status_code, IREE_STATUS_RESOURCE_EXHAUSTED);
+  ASSERT_NE(server_bulk_messages_.retained_data_lease.release.fn, nullptr);
+  EXPECT_EQ(server_bulk_messages_.start_transfer_id, 3u);
+  EXPECT_EQ(server_bulk_messages_.start_total_length, transfer_length);
+  EXPECT_EQ(server_bulk_messages_.data_offsets, (std::vector<uint64_t>{0}));
+  EXPECT_EQ(server_bulk_messages_.data_payloads,
+            (std::vector<std::string>{first_chunk}));
+
+  iree_async_buffer_lease_release(&server_bulk_messages_.retained_data_lease);
+  SendState replenished_credit_send;
+  replenished_credit_send.current_poll_side = &current_poll_side_;
+  replenished_credit_send.expected_poll_side = kServerPolling;
+  replenished_credit_send.expected_bytes = IREE_NET_BULK_MESSAGE_HEADER_SIZE;
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_credit(
+      server_bulk_channel_, 1, replenished_credit_send.callback()));
+  PollBothUntil([&] {
+    return client_bulk_messages_.credit_count == 2 &&
+           replenished_credit_send.callback_count == 1;
+  });
+  EXPECT_EQ(client_bulk_messages_.credit_delta, 1u);
+  EXPECT_EQ(client_bulk_messages_.available_credit_count, 1u);
+
+  SendState second_data_send;
+  second_data_send.current_poll_side = &current_poll_side_;
+  second_data_send.expected_poll_side = kClientPolling;
+  second_data_send.expected_bytes =
+      IREE_NET_BULK_MESSAGE_HEADER_SIZE + second_chunk.size();
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_data(
+      client_bulk_channel_, 3, first_chunk.size(),
+      iree_async_span_list_make(&second_span, 1), second_data_send.callback()));
+  SendState transfer_complete_send;
+  transfer_complete_send.current_poll_side = &current_poll_side_;
+  transfer_complete_send.expected_poll_side = kClientPolling;
+  transfer_complete_send.expected_bytes = IREE_NET_BULK_MESSAGE_HEADER_SIZE;
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_complete(
+      client_bulk_channel_, 3, transfer_complete_send.callback()));
+
+  PollBothUntil([&] {
+    return server_bulk_messages_.data_payloads.size() == 2 &&
+           server_bulk_messages_.complete_count == 1 &&
+           second_data_send.callback_count == 1 &&
+           transfer_complete_send.callback_count == 1;
+  });
+  EXPECT_EQ(server_bulk_messages_.data_offsets,
+            (std::vector<uint64_t>{0, first_chunk.size()}));
+  EXPECT_EQ(server_bulk_messages_.data_payloads,
+            (std::vector<std::string>{first_chunk, second_chunk}));
+  EXPECT_EQ(server_bulk_messages_.complete_transfer_id, 3u);
+
+  SendState acknowledgment_send;
+  acknowledgment_send.current_poll_side = &current_poll_side_;
+  acknowledgment_send.expected_poll_side = kServerPolling;
+  acknowledgment_send.expected_bytes = IREE_NET_BULK_MESSAGE_HEADER_SIZE;
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_complete(
+      server_bulk_channel_, 3, acknowledgment_send.callback()));
+  std::string abort_detail = "cancelled by receiver";
+  iree_async_span_t abort_span =
+      iree_async_span_from_ptr(abort_detail.data(), abort_detail.size());
+  SendState abort_send;
+  abort_send.current_poll_side = &current_poll_side_;
+  abort_send.expected_poll_side = kServerPolling;
+  abort_send.expected_bytes =
+      IREE_NET_BULK_MESSAGE_HEADER_SIZE + abort_detail.size();
+  IREE_ASSERT_OK(iree_net_bulk_channel_send_abort(
+      server_bulk_channel_, 5, iree_async_span_list_make(&abort_span, 1),
+      abort_send.callback()));
+
+  PollBothUntil([&] {
+    return client_bulk_messages_.complete_count == 1 &&
+           client_bulk_messages_.abort_count == 1 &&
+           acknowledgment_send.callback_count == 1 &&
+           abort_send.callback_count == 1;
+  });
+
+  EXPECT_EQ(client_bulk_messages_.complete_transfer_id, 3u);
+  EXPECT_EQ(client_bulk_messages_.abort_transfer_id, 5u);
+  EXPECT_EQ(client_bulk_messages_.abort_detail, abort_detail);
+  EXPECT_EQ(client_bulk_messages_.error_count, 0);
+  EXPECT_EQ(server_bulk_messages_.error_count, 0);
+  EXPECT_EQ(start_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(first_data_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(second_data_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(transfer_complete_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(acknowledgment_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(abort_send.status_code, IREE_STATUS_OK);
+}
+
+TEST_F(TransportTest, GeneratesLargeTransientPrefixWithoutSizeCliff) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+
+  server_messages_.current_poll_side = &current_poll_side_;
+  server_messages_.expected_poll_side = kServerPolling;
+  iree_net_message_endpoint_set_callbacks(server_endpoint,
+                                          server_messages_.callbacks());
+  client_messages_.current_poll_side = &current_poll_side_;
+  client_messages_.expected_poll_side = kClientPolling;
+  iree_net_message_endpoint_set_callbacks(client_endpoint,
+                                          client_messages_.callbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+
+  std::string prefix(16 * 1024 + 1, 'p');
+  const std::string expected = prefix;
+  SendState send_state;
+  send_state.current_poll_side = &current_poll_side_;
+  send_state.expected_poll_side = kClientPolling;
+  send_state.expected_bytes = prefix.size();
+  iree_net_message_endpoint_send_params_t send_params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span(prefix.data(), prefix.size())),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/send_state.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(client_endpoint, &send_params));
+  std::fill(prefix.begin(), prefix.end(), 'x');
+
+  PollImmediate(client_proactor_, kClientPolling);
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return server_messages_.messages.size() == 1; });
+  EXPECT_EQ(server_messages_.messages[0], expected);
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return send_state.callback_count == 1; });
+  EXPECT_EQ(send_state.status_code, IREE_STATUS_OK);
 }
 
 TEST_F(TransportTest, DeactivationCancelsPendingEndpointReadyCallback) {

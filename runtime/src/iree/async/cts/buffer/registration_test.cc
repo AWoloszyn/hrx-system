@@ -713,14 +713,19 @@ TEST_P(BufferRegistrationTest, RecvPoolRejectsReadOnlyRegion) {
   // Submit a RECV_POOL operation using the READ-only pool. This must fail
   // at submission time with FAILED_PRECONDITION, not proceed to the kernel.
   iree_async_socket_recv_pool_operation_t recv_pool_op;
-  memset(&recv_pool_op, 0, sizeof(recv_pool_op));
-  recv_pool_op.base.type = IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL;
+  CompletionTracker recv_pool_tracker;
+  iree_async_operation_zero(&recv_pool_op.base, sizeof(recv_pool_op));
+  iree_async_operation_initialize(
+      &recv_pool_op.base, IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback,
+      &recv_pool_tracker);
   recv_pool_op.socket = server;
   recv_pool_op.pool = pool;
 
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_FAILED_PRECONDITION,
       iree_async_proactor_submit_one(proactor_, &recv_pool_op.base));
+  EXPECT_EQ(recv_pool_tracker.call_count, 0);
 
   iree_async_socket_release(server);
   iree_async_socket_release(client);

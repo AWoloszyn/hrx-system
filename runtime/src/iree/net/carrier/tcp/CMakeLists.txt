@@ -19,6 +19,7 @@ iree_cc_library(
   DEPS
     iree::async
     iree::base
+    iree::base::core_headers
     iree::base::internal
     iree::base::threading
     iree::net::carrier
@@ -62,6 +63,14 @@ iree_cc_library(
   PUBLIC
 )
 
+set(_carrier_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+  list(APPEND _carrier_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _carrier_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  list(APPEND _carrier_test_platform_deps iree::async::platform::posix)
+endif()
 iree_cc_test(
   NAME
     carrier_test
@@ -75,6 +84,7 @@ iree_cc_test(
     iree::net::carrier
     iree::testing::gtest
     iree::testing::gtest_main
+    ${_carrier_test_platform_deps}
 )
 
 iree_cc_test(

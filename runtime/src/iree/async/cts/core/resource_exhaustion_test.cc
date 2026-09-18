@@ -100,7 +100,9 @@ TEST_P(ResourceExhaustionTest, ManyConcurrentCancellations) {
 // Submit NOP operations in rapid succession.
 // NOPs are the simplest operations and stress the submit/complete path.
 TEST_P(ResourceExhaustionTest, RapidNopSubmissions) {
-  constexpr int kNumNops = 200;
+  // Exceeds the default POSIX completion-pool and io_uring SQ capacities.
+  // NOP submission is intrusive and must not consume either resource.
+  constexpr int kNumNops = 1024;
 
   std::vector<iree_async_nop_operation_t> nops(kNumNops);
   std::vector<CompletionTracker> trackers(kNumNops);

@@ -32,8 +32,10 @@ void iree_async_message_pool_deinitialize(iree_async_message_pool_t* pool) {
   IREE_TRACE_ZONE_END(z0);
 }
 
-iree_status_t iree_async_message_pool_send(iree_async_message_pool_t* pool,
-                                           uint64_t message_data) {
+iree_status_t iree_async_message_pool_acquire(
+    iree_async_message_pool_t* pool,
+    iree_async_message_pool_entry_t** out_entry) {
+  *out_entry = NULL;
   iree_atomic_slist_entry_t* slist_entry =
       iree_atomic_slist_pop(&pool->free_list);
   if (!slist_entry) {
@@ -42,11 +44,22 @@ iree_status_t iree_async_message_pool_send(iree_async_message_pool_t* pool,
                             pool->capacity);
   }
 
-  iree_async_message_pool_entry_t* entry =
-      (iree_async_message_pool_entry_t*)slist_entry;
-  entry->message_data = message_data;
+  *out_entry = (iree_async_message_pool_entry_t*)slist_entry;
+  return iree_ok_status();
+}
 
+void iree_async_message_pool_publish(iree_async_message_pool_t* pool,
+                                     iree_async_message_pool_entry_t* entry,
+                                     uint64_t message_data) {
+  entry->message_data = message_data;
   iree_atomic_slist_push(&pool->pending_list, &entry->slist_entry);
+}
+
+iree_status_t iree_async_message_pool_send(iree_async_message_pool_t* pool,
+                                           uint64_t message_data) {
+  iree_async_message_pool_entry_t* entry = NULL;
+  IREE_RETURN_IF_ERROR(iree_async_message_pool_acquire(pool, &entry));
+  iree_async_message_pool_publish(pool, entry, message_data);
   return iree_ok_status();
 }
 

@@ -11,6 +11,7 @@ load("//runtime/build_tools/bazel:cc_test.bzl", "iree_runtime_cc_test")
 # Transport-independent networking primitives.
 #
 # Layering:
+#   Layer 4: Sessions - peer bootstrap and connection lifecycle
 #   Layer 3: Connections and message endpoints - framed message multiplexing
 #   Layer 2: Carriers - asynchronous byte and message transport
 #   Layer 1: Proactor (iree/async/) - completion-based I/O
@@ -32,6 +33,7 @@ iree_runtime_cc_library(
         ":carrier",
         ":connection",
         ":message_endpoint",
+        ":session",
         ":transport_factory",
         ":transport_registry",
     ],
@@ -78,6 +80,34 @@ iree_runtime_cc_library(
         ":carrier",
         "//runtime/src/iree/async",
         "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "session_bootstrap",
+    srcs = ["session_bootstrap.c"],
+    hdrs = ["session_bootstrap.h"],
+    deps = [
+        ":bootstrap",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "session",
+    srcs = ["session.c"],
+    hdrs = ["session.h"],
+    deps = [
+        ":bootstrap",
+        ":connection",
+        ":message_endpoint",
+        ":session_bootstrap",
+        ":transport_factory",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/net/channel/control:control_channel",
     ],
 )
 
@@ -150,6 +180,7 @@ iree_runtime_cc_library(
         ":message_endpoint",
         "//runtime/src/iree/async",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
     ],
 )
 
@@ -270,6 +301,19 @@ iree_runtime_cc_test(
         ":status_wire",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "session_bootstrap_test",
+    srcs = ["session_bootstrap_test.cc"],
+    deps = [
+        ":bootstrap",
+        ":session_bootstrap",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
