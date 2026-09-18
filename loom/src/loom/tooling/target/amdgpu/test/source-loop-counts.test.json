@@ -1,0 +1,271 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "reports source loop count for unsigned_empty on gfx942",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/loop_count.loom-test",
+          "--root=@unsigned_empty",
+          "--target=amdgpu:gfx942",
+          "--format=amdgpu-hsaco",
+          "--pipeline=source-to-low,amdgpu-materialize-hal-buffer-descriptors,amdgpu-materialize-hal-kernel-abi,low-dce",
+          "--output={tmp}/loop.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/loop.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/loop.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/loop.json",
+          "contains": {
+            "unordered": [
+              {
+                "regex": "\"source_op\":\"view.store\"[^{}]*\"execution_count\":0[,}]"
+              },
+              "\"unknown_dynamic_packet_count\":0,",
+              "\"dynamic_write_byte_count\":0,"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports source loop count for signed_negative_start on gfx950",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/loop_count.loom-test",
+          "--root=@signed_negative_start",
+          "--target=amdgpu:gfx950",
+          "--format=amdgpu-hsaco",
+          "--pipeline=source-to-low,amdgpu-materialize-hal-buffer-descriptors,amdgpu-materialize-hal-kernel-abi,low-dce",
+          "--output={tmp}/loop.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/loop.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/loop.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/loop.json",
+          "contains": {
+            "unordered": [
+              {
+                "regex": "\"source_op\":\"view.store\"[^{}]*\"execution_count\":5[,}]"
+              },
+              "\"unknown_dynamic_packet_count\":0,",
+              "\"dynamic_write_byte_count\":20,"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports source loop count for signed_terminal_fits on gfx1100",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/loop_count.loom-test",
+          "--root=@signed_terminal_fits",
+          "--target=amdgpu:gfx1100",
+          "--format=amdgpu-hsaco",
+          "--pipeline=source-to-low,amdgpu-materialize-hal-buffer-descriptors,amdgpu-materialize-hal-kernel-abi,low-dce",
+          "--output={tmp}/loop.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/loop.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/loop.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/loop.json",
+          "contains": {
+            "unordered": [
+              "\"unknown_dynamic_packet_count\":0,",
+              "\"dynamic_write_byte_count\":4,"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports source loop count for signed_terminal_wraps on gfx1151",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/loop_count.loom-test",
+          "--root=@signed_terminal_wraps",
+          "--target=amdgpu:gfx1151",
+          "--format=amdgpu-hsaco",
+          "--pipeline=source-to-low,amdgpu-materialize-hal-buffer-descriptors,amdgpu-materialize-hal-kernel-abi,low-dce",
+          "--output={tmp}/loop.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/loop.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/loop.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/loop.json",
+          "contains": {
+            "unordered": [
+              "\"exact_dynamic_packet_count\":0,",
+              {
+                "regex": "\"unknown_dynamic_packet_count\":[1-9][0-9]*[,}]"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports source loop count for unsigned_crosses_sign on gfx1200",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/loop_count.loom-test",
+          "--root=@unsigned_crosses_sign",
+          "--target=amdgpu:gfx1200",
+          "--format=amdgpu-hsaco",
+          "--pipeline=source-to-low,amdgpu-materialize-hal-buffer-descriptors,amdgpu-materialize-hal-kernel-abi,low-dce",
+          "--output={tmp}/loop.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/loop.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/loop.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/loop.json",
+          "contains": {
+            "unordered": [
+              {
+                "regex": "\"source_op\":\"view.store\"[^{}]*\"execution_count\":3[,}]"
+              },
+              "\"unknown_dynamic_packet_count\":0,",
+              "\"dynamic_write_byte_count\":12,"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports source loop count for unsigned_inclusive_maximum on gfx1250",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/loop_count.loom-test",
+          "--root=@unsigned_inclusive_maximum",
+          "--target=amdgpu:gfx1250",
+          "--format=amdgpu-hsaco",
+          "--pipeline=source-to-low,amdgpu-materialize-hal-buffer-descriptors,amdgpu-materialize-hal-kernel-abi,low-dce",
+          "--output={tmp}/loop.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/loop.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/loop.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/loop.json",
+          "contains": {
+            "unordered": [
+              "\"exact_dynamic_packet_count\":0,",
+              {
+                "regex": "\"unknown_dynamic_packet_count\":[1-9][0-9]*[,}]"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports source loop count for wide_offset on gfx1151",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/loop_count.loom-test",
+          "--root=@wide_offset",
+          "--target=amdgpu:gfx1151",
+          "--format=amdgpu-hsaco",
+          "--pipeline=source-to-low,amdgpu-materialize-hal-buffer-descriptors,amdgpu-materialize-hal-kernel-abi,low-dce",
+          "--output={tmp}/loop.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/loop.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/loop.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/loop.json",
+          "contains": {
+            "unordered": [
+              {
+                "regex": "\"source_op\":\"view.store\"[^{}]*\"execution_count\":2[,}]"
+              },
+              "\"unknown_dynamic_packet_count\":0,",
+              "\"dynamic_write_byte_count\":16,"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports source loop count for wide_signed_terminal_wraps on gfx942",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/loop_count.loom-test",
+          "--root=@wide_signed_terminal_wraps",
+          "--target=amdgpu:gfx942",
+          "--format=amdgpu-hsaco",
+          "--pipeline=source-to-low,amdgpu-materialize-hal-buffer-descriptors,amdgpu-materialize-hal-kernel-abi,low-dce",
+          "--output={tmp}/loop.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/loop.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/loop.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/loop.json",
+          "contains": {
+            "unordered": [
+              "\"exact_dynamic_packet_count\":0,",
+              {
+                "regex": "\"unknown_dynamic_packet_count\":[1-9][0-9]*[,}]"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

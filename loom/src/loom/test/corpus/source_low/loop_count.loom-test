@@ -1,0 +1,210 @@
+// RUN: verify
+
+// Report checks select a 32-bit index carrier and a 64-bit offset carrier.
+// These kernels are compiled only: some loops do not terminate at those widths.
+
+// The unsigned view of -1 is above four, so the body never executes.
+kernel.def @unsigned_empty() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -1 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp ult, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// The same bit patterns with a signed guard execute five body iterations.
+kernel.def @signed_negative_start() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -1 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp slt, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// The terminal update reaches the largest signed index without wrapping.
+kernel.def @signed_terminal_fits() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 2147483645 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp slt, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// The terminal update wraps before it can fail the signed guard.
+kernel.def @signed_terminal_wraps() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 2147483646 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp slt, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// Crossing the sign bit preserves unsigned progress, including a partial final step.
+kernel.def @unsigned_crosses_sign() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 2147483646 : index
+  %end = index.constant 2147483651 : index
+  %step = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp ult, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// An unsigned inclusive maximum guard remains true after carrier wrap.
+kernel.def @unsigned_inclusive_maximum() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant -2 : index
+  %end = index.constant -1 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index)
+^header(%counter: index):
+  %more = index.cmp ule, %counter, %end : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : index to i32
+  view.store %value, %output_view[%position] : i32, view<1xi32>
+  %next = index.add %counter, %step : index
+  cfg.br ^header(%next: index)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// Offset uses its independent 64-bit carrier rather than the 32-bit index width.
+kernel.def @wide_offset() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 4294967295 : offset
+  %end = index.constant 4294967298 : offset
+  %step = index.constant 2 : offset
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi64>
+  cfg.br ^header(%begin: offset)
+^header(%counter: offset):
+  %more = index.cmp ult, %counter, %end : offset
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : offset to i64
+  view.store %value, %output_view[%position] : i64, view<1xi64>
+  %next = index.add %counter, %step : offset
+  cfg.br ^header(%next: offset)
+^exit:
+  kernel.return
+}
+
+// ====
+
+// A signed guard on offset still checks overflow at the 64-bit sign boundary.
+kernel.def @wide_signed_terminal_wraps() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %begin = index.constant 9223372036854775806 : offset
+  %end = index.constant 9223372036854775807 : offset
+  %step = index.constant 2 : offset
+  %base = index.constant 0 : offset
+  %position = index.constant 0 : index
+  %output_view = buffer.view %output[%base] : buffer -> view<1xi64>
+  cfg.br ^header(%begin: offset)
+^header(%counter: offset):
+  %more = index.cmp slt, %counter, %end : offset
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %value = index.cast %counter : offset to i64
+  view.store %value, %output_view[%position] : i64, view<1xi64>
+  %next = index.add %counter, %step : offset
+  cfg.br ^header(%next: offset)
+^exit:
+  kernel.return
+}
