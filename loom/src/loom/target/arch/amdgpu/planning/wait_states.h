@@ -23,7 +23,6 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
-#include "iree/base/string_builder.h"
 #include "loom/codegen/low/allocation.h"
 #include "loom/codegen/low/packet.h"
 #include "loom/codegen/low/packet_hazard_plan.h"
@@ -154,16 +153,6 @@ iree_status_t loom_amdgpu_wait_state_plan_build(
     struct loom_amdgpu_matrix_coexecution_t* matrix_coexecution,
     iree_arena_allocator_t* arena, iree_arena_allocator_t* transient_arena,
     loom_amdgpu_wait_state_plan_t* out_plan);
-
-// Formats the wait-state plan as compact deterministic text for loom-check
-// fixtures.
-iree_status_t loom_amdgpu_wait_state_plan_format_text(
-    const loom_amdgpu_wait_state_plan_t* plan, iree_string_builder_t* builder);
-
-// Formats the wait-state plan, common progress table, and common hazard sidecar
-// as deterministic JSON for diagnostics and structured tooling.
-iree_status_t loom_amdgpu_wait_state_plan_format_json(
-    const loom_amdgpu_wait_state_plan_t* plan, iree_string_builder_t* builder);
 
 // Returns the number of concrete wait-state instructions needed by |plan|.
 uint64_t loom_amdgpu_wait_state_plan_instruction_count(

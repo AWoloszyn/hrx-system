@@ -153,12 +153,42 @@ endif()
 if(LOOM_TARGET_ARCH_AMDGPU)
 loom_cc_library(
   NAME
+    delay_alu
+  HDRS
+    "delay_alu.h"
+  SRCS
+    "delay_alu.c"
+  DEPS
+    iree::base
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_cc_test(
+  NAME
+    delay_alu_test
+  SRCS
+    "delay_alu_test.cc"
+  DEPS
+    ::delay_alu
+    iree::testing::gtest
+    iree::testing::gtest_main
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_cc_library(
+  NAME
     wait_states
   HDRS
     "wait_states.h"
   SRCS
     "wait_states.c"
   DEPS
+    ::delay_alu
     ::descriptor_semantics
     ::matrix_coexecution
     ::matrix_wait_states
@@ -169,7 +199,6 @@ loom_cc_library(
     loom::codegen::low::allocation
     loom::codegen::low::packet
     loom::codegen::low::packet_hazard_plan
-    loom::codegen::low::packet_hazard_plan_json
     loom::codegen::low::packet_progress
     loom::codegen::low::schedule
     loom::ir
@@ -178,6 +207,24 @@ loom_cc_library(
     loom::target::arch::amdgpu::matrix::contract
     loom::target::arch::amdgpu::refs::target_refs
     loom::target::arch::amdgpu::target_info
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_cc_library(
+  NAME
+    wait_states_format
+  HDRS
+    "wait_states_format.h"
+  SRCS
+    "wait_states_format.c"
+  DEPS
+    ::matrix_wait_states
+    ::wait_states
+    iree::base
+    loom::codegen::low::packet_hazard_plan_json
+    loom::codegen::low::packet_progress
     loom::util::json
     loom::util::stream
   PUBLIC

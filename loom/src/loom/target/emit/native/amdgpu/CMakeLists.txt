@@ -109,6 +109,7 @@ loom_cc_library(
     loom::target::arch::amdgpu::planning::packet_plan
     loom::target::arch::amdgpu::planning::storage_lease
     loom::target::arch::amdgpu::planning::vopd_plan
+    loom::target::arch::amdgpu::planning::wait_states_format
     loom::tools::loom-check::execute
   PUBLIC
 )
@@ -127,6 +128,7 @@ loom_check_test_suite(
     "test/assembly_vopd_profiles.loom-test"
     "test/assembly_wmma.loom-test"
     "test/compile_time_insertions.loom-test"
+    "test/delay_alu.loom-test"
     "test/gfx1201_native.loom-test"
     "test/hal_kernel_library.loom-test"
     "test/packet.loom-test"
