@@ -74,11 +74,11 @@ func.def @unknown_reordered(%condition: i1) {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
   %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
@@ -104,11 +104,11 @@ func.def @unknown_reordered(%condition: i1) {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = scalar.constant false : i1
   %selected_workgroup_uniform = scalar.constant false : i1
@@ -234,11 +234,11 @@ kernel.def target(@device) @lane_reordered() {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
   %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
@@ -274,11 +274,11 @@ kernel.def target(@device) @lane_reordered() {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = scalar.constant false : i1
   %selected_workgroup_uniform = scalar.constant false : i1
@@ -404,11 +404,11 @@ kernel.def target(@device) @subgroup_reordered() {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
   %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
@@ -444,11 +444,11 @@ kernel.def target(@device) @subgroup_reordered() {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = scalar.constant true : i1
   %selected_workgroup_uniform = scalar.constant false : i1
@@ -574,11 +574,11 @@ kernel.def target(@device) @workgroup_reordered() {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
   %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
@@ -614,11 +614,11 @@ kernel.def target(@device) @workgroup_reordered() {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = scalar.constant true : i1
   %selected_workgroup_uniform = scalar.constant true : i1
@@ -741,11 +741,11 @@ kernel.def target(@device) @cluster_reordered() {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
   %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
@@ -780,11 +780,11 @@ kernel.def target(@device) @cluster_reordered() {
   cfg.cond_br %condition, ^left, ^right
 ^right:
   cfg.br ^join(%rhs: i32, %lhs: i32, %equal: i32)
-^left_more:
-  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^left:
   test.use %lhs : i32
   cfg.br ^left_more
+^left_more:
+  cfg.br ^join(%lhs: i32, %lhs: i32, %lhs: i32)
 ^join(%selected: i32, %unchanged: i32, %exact: i32):
   %selected_subgroup_uniform = scalar.constant true : i1
   %selected_workgroup_uniform = scalar.constant true : i1

@@ -1007,12 +1007,12 @@ func.def @preserves_effectful_forward_block(%cond: i1, %buffer: buffer, %offset:
 // does not prevent removing a closed unreachable block set.
 func.def @closed_signature_carrier() {
   cfg.br ^exit
+^exit:
+  func.return
 ^unused:
   %width = index.constant 16 : index
   test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
   cfg.br ^exit
-^exit:
-  func.return
 }
 
 // ----
@@ -1027,6 +1027,8 @@ func.def @closed_signature_carrier() {
 // unreachable subtree. Nested and sibling regions share the removed width.
 func.def @closed_nested_references(%element: f32) {
   cfg.br ^exit
+^exit:
+  func.return
 ^unused:
   %width = index.constant 16 : index
   %input = test.constant 0.0 : vector<[%width]xf32>
@@ -1043,8 +1045,6 @@ func.def @closed_nested_references(%element: f32) {
     test.yield
   }
   cfg.br ^exit
-^exit:
-  func.return
 }
 
 // ====
@@ -1052,6 +1052,8 @@ func.def @closed_nested_references(%element: f32) {
 
 func.def @closed_nested_references(%element: f32) {
   cfg.br ^exit
+^exit:
+  func.return
 ^unused:
   %width = index.constant 16 : index
   %input = test.constant 0.0 : vector<[%width]xf32>
@@ -1068,8 +1070,6 @@ func.def @closed_nested_references(%element: f32) {
     test.yield
   }
   cfg.br ^exit
-^exit:
-  func.return
 }
 
 // ----
@@ -1172,21 +1172,21 @@ func.def @fuses_cross_pair_dependent_args(%cond: i1, %layout: encoding<layout>, 
 // ====
 
 
-func.def @fuses_chain_in_reverse_block_order(%a: i32, %b: i32) -> (i32) {
+func.def @fuses_argument_forwarding_chain(%a: i32, %b: i32) -> (i32) {
   cfg.br ^first(%a: i32)
-^third(%z: i32):
-  %result = test.addi %z, %b : i32
-  func.return %result : i32
-^second(%y: i32):
-  %second_sum = test.addi %y, %b : i32
-  cfg.br ^third(%second_sum: i32)
 ^first(%x: i32):
   %first_sum = test.addi %x, %b : i32
   cfg.br ^second(%first_sum: i32)
+^second(%y: i32):
+  %second_sum = test.addi %y, %b : i32
+  cfg.br ^third(%second_sum: i32)
+^third(%z: i32):
+  %result = test.addi %z, %b : i32
+  func.return %result : i32
 }
 
 // ----
-func.def @fuses_chain_in_reverse_block_order(%a: i32, %b: i32) -> (i32) {
+func.def @fuses_argument_forwarding_chain(%a: i32, %b: i32) -> (i32) {
   %first_sum = test.addi %a, %b : i32
   %second_sum = test.addi %first_sum, %b : i32
   %result = test.addi %second_sum, %b : i32

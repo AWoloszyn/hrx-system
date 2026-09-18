@@ -118,7 +118,7 @@ func.def @open_suffix(%repeat: i1) {
 
 // RUN: pass canonicalize
 
-// Reversing argument and block layout preserves the same suffix domains.
+// Reversing argument order preserves the same suffix domains.
 func.def @reversed_layout(%repeat: i1) {
   %seed0 = index.constant 0 : offset
   %seed1 = index.constant 8 : offset
@@ -143,8 +143,6 @@ func.def @reversed_layout(%repeat: i1) {
   %seed20 = index.constant 160 : offset
   %injected = index.constant 168 : offset
   cfg.br ^header(%seed20: offset, %seed19: offset, %seed18: offset, %seed17: offset, %seed16: offset, %seed15: offset, %seed14: offset, %seed13: offset, %seed12: offset, %seed11: offset, %seed10: offset, %seed9: offset, %seed8: offset, %seed7: offset, %seed6: offset, %seed5: offset, %seed4: offset, %seed3: offset, %seed2: offset, %seed1: offset, %seed0: offset)
-^exit:
-  func.return
 ^header(%slot20: offset, %slot19: offset, %slot18: offset, %slot17: offset, %slot16: offset, %slot15: offset, %slot14: offset, %slot13: offset, %slot12: offset, %slot11: offset, %slot10: offset, %slot9: offset, %slot8: offset, %slot7: offset, %slot6: offset, %slot5: offset, %slot4: offset, %slot3: offset, %slot2: offset, %slot1: offset, %slot0: offset):
   %slot0_range_lo = test.fact_range_lo %slot0 : offset -> i64
   test.use %slot0_range_lo : i64
@@ -171,6 +169,8 @@ func.def @reversed_layout(%repeat: i1) {
   %slot20_divisor = test.fact_divisor %slot20 : offset -> i64
   test.use %slot20_divisor : i64
   cfg.cond_br %repeat, ^latch, ^exit
+^exit:
+  func.return
 ^latch:
   cfg.br ^header(%injected: offset, %slot20: offset, %slot19: offset, %slot18: offset, %slot17: offset, %slot16: offset, %slot15: offset, %slot14: offset, %slot13: offset, %slot12: offset, %slot11: offset, %slot10: offset, %slot9: offset, %slot8: offset, %slot7: offset, %slot6: offset, %slot5: offset, %slot4: offset, %slot3: offset, %slot2: offset, %slot1: offset)
 }
@@ -200,8 +200,6 @@ func.def @reversed_layout(%repeat: i1) {
   %seed20 = index.constant 160 : offset
   %injected = index.constant 168 : offset
   cfg.br ^header(%seed20: offset, %seed19: offset, %seed18: offset, %seed17: offset, %seed16: offset, %seed15: offset, %seed14: offset, %seed13: offset, %seed12: offset, %seed11: offset, %seed10: offset, %seed9: offset, %seed8: offset, %seed7: offset, %seed6: offset, %seed5: offset, %seed4: offset, %seed3: offset, %seed2: offset, %seed1: offset, %seed0: offset)
-^exit:
-  func.return
 ^header(%slot20: offset, %slot19: offset, %slot18: offset, %slot17: offset, %slot16: offset, %slot15: offset, %slot14: offset, %slot13: offset, %slot12: offset, %slot11: offset, %slot10: offset, %slot9: offset, %slot8: offset, %slot7: offset, %slot6: offset, %slot5: offset, %slot4: offset, %slot3: offset, %slot2: offset, %slot1: offset, %slot0: offset):
   %slot0_range_lo = scalar.constant 0 : i64
   test.use %slot0_range_lo : i64
@@ -228,6 +226,8 @@ func.def @reversed_layout(%repeat: i1) {
   %slot20_divisor = scalar.constant 8 : i64
   test.use %slot20_divisor : i64
   cfg.cond_br %repeat, ^latch, ^exit
+^exit:
+  func.return
 ^latch:
   cfg.br ^header(%injected: offset, %slot20: offset, %slot19: offset, %slot18: offset, %slot17: offset, %slot16: offset, %slot15: offset, %slot14: offset, %slot13: offset, %slot12: offset, %slot11: offset, %slot10: offset, %slot9: offset, %slot8: offset, %slot7: offset, %slot6: offset, %slot5: offset, %slot4: offset, %slot3: offset, %slot2: offset, %slot1: offset)
 }
@@ -870,120 +870,120 @@ kernel.def target(@device) @queued_cluster() {
 
 // RUN: pass canonicalize
 
-// Layout is opposite execution order; an acyclic chain never needs widening.
-func.def @reverse_acyclic_layout() {
+// An acyclic forwarding chain never needs widening.
+func.def @acyclic_forwarding_chain() {
   %seed = index.constant 8 : offset
   cfg.br ^stage0(%seed: offset)
+^stage0(%value0: offset):
+  cfg.br ^stage1(%value0: offset)
+^stage1(%value1: offset):
+  cfg.br ^stage2(%value1: offset)
+^stage2(%value2: offset):
+  cfg.br ^stage3(%value2: offset)
+^stage3(%value3: offset):
+  cfg.br ^stage4(%value3: offset)
+^stage4(%value4: offset):
+  cfg.br ^stage5(%value4: offset)
+^stage5(%value5: offset):
+  cfg.br ^stage6(%value5: offset)
+^stage6(%value6: offset):
+  cfg.br ^stage7(%value6: offset)
+^stage7(%value7: offset):
+  cfg.br ^stage8(%value7: offset)
+^stage8(%value8: offset):
+  cfg.br ^stage9(%value8: offset)
+^stage9(%value9: offset):
+  cfg.br ^stage10(%value9: offset)
+^stage10(%value10: offset):
+  cfg.br ^stage11(%value10: offset)
+^stage11(%value11: offset):
+  cfg.br ^stage12(%value11: offset)
+^stage12(%value12: offset):
+  cfg.br ^stage13(%value12: offset)
+^stage13(%value13: offset):
+  cfg.br ^stage14(%value13: offset)
+^stage14(%value14: offset):
+  cfg.br ^stage15(%value14: offset)
+^stage15(%value15: offset):
+  cfg.br ^stage16(%value15: offset)
+^stage16(%value16: offset):
+  cfg.br ^stage17(%value16: offset)
+^stage17(%value17: offset):
+  cfg.br ^stage18(%value17: offset)
+^stage18(%value18: offset):
+  cfg.br ^stage19(%value18: offset)
+^stage19(%value19: offset):
+  cfg.br ^stage20(%value19: offset)
+^stage20(%value20: offset):
+  cfg.br ^stage21(%value20: offset)
+^stage21(%value21: offset):
+  cfg.br ^stage22(%value21: offset)
+^stage22(%value22: offset):
+  cfg.br ^stage23(%value22: offset)
 ^stage23(%value23: offset):
   %result_range_lo = test.fact_range_lo %value23 : offset -> i64
   test.use %result_range_lo : i64
   %result_range_hi = test.fact_range_hi %value23 : offset -> i64
   test.use %result_range_hi : i64
   func.return
-^stage22(%value22: offset):
-  cfg.br ^stage23(%value22: offset)
-^stage21(%value21: offset):
-  cfg.br ^stage22(%value21: offset)
-^stage20(%value20: offset):
-  cfg.br ^stage21(%value20: offset)
-^stage19(%value19: offset):
-  cfg.br ^stage20(%value19: offset)
-^stage18(%value18: offset):
-  cfg.br ^stage19(%value18: offset)
-^stage17(%value17: offset):
-  cfg.br ^stage18(%value17: offset)
-^stage16(%value16: offset):
-  cfg.br ^stage17(%value16: offset)
-^stage15(%value15: offset):
-  cfg.br ^stage16(%value15: offset)
-^stage14(%value14: offset):
-  cfg.br ^stage15(%value14: offset)
-^stage13(%value13: offset):
-  cfg.br ^stage14(%value13: offset)
-^stage12(%value12: offset):
-  cfg.br ^stage13(%value12: offset)
-^stage11(%value11: offset):
-  cfg.br ^stage12(%value11: offset)
-^stage10(%value10: offset):
-  cfg.br ^stage11(%value10: offset)
-^stage9(%value9: offset):
-  cfg.br ^stage10(%value9: offset)
-^stage8(%value8: offset):
-  cfg.br ^stage9(%value8: offset)
-^stage7(%value7: offset):
-  cfg.br ^stage8(%value7: offset)
-^stage6(%value6: offset):
-  cfg.br ^stage7(%value6: offset)
-^stage5(%value5: offset):
-  cfg.br ^stage6(%value5: offset)
-^stage4(%value4: offset):
-  cfg.br ^stage5(%value4: offset)
-^stage3(%value3: offset):
-  cfg.br ^stage4(%value3: offset)
-^stage2(%value2: offset):
-  cfg.br ^stage3(%value2: offset)
-^stage1(%value1: offset):
-  cfg.br ^stage2(%value1: offset)
-^stage0(%value0: offset):
-  cfg.br ^stage1(%value0: offset)
 }
 
 // ----
-func.def @reverse_acyclic_layout() {
+func.def @acyclic_forwarding_chain() {
   %seed = index.constant 8 : offset
   cfg.br ^stage0(%seed: offset)
+^stage0(%value0: offset):
+  cfg.br ^stage1(%value0: offset)
+^stage1(%value1: offset):
+  cfg.br ^stage2(%value1: offset)
+^stage2(%value2: offset):
+  cfg.br ^stage3(%value2: offset)
+^stage3(%value3: offset):
+  cfg.br ^stage4(%value3: offset)
+^stage4(%value4: offset):
+  cfg.br ^stage5(%value4: offset)
+^stage5(%value5: offset):
+  cfg.br ^stage6(%value5: offset)
+^stage6(%value6: offset):
+  cfg.br ^stage7(%value6: offset)
+^stage7(%value7: offset):
+  cfg.br ^stage8(%value7: offset)
+^stage8(%value8: offset):
+  cfg.br ^stage9(%value8: offset)
+^stage9(%value9: offset):
+  cfg.br ^stage10(%value9: offset)
+^stage10(%value10: offset):
+  cfg.br ^stage11(%value10: offset)
+^stage11(%value11: offset):
+  cfg.br ^stage12(%value11: offset)
+^stage12(%value12: offset):
+  cfg.br ^stage13(%value12: offset)
+^stage13(%value13: offset):
+  cfg.br ^stage14(%value13: offset)
+^stage14(%value14: offset):
+  cfg.br ^stage15(%value14: offset)
+^stage15(%value15: offset):
+  cfg.br ^stage16(%value15: offset)
+^stage16(%value16: offset):
+  cfg.br ^stage17(%value16: offset)
+^stage17(%value17: offset):
+  cfg.br ^stage18(%value17: offset)
+^stage18(%value18: offset):
+  cfg.br ^stage19(%value18: offset)
+^stage19(%value19: offset):
+  cfg.br ^stage20(%value19: offset)
+^stage20(%value20: offset):
+  cfg.br ^stage21(%value20: offset)
+^stage21(%value21: offset):
+  cfg.br ^stage22(%value21: offset)
+^stage22(%value22: offset):
+  cfg.br ^stage23(%value22: offset)
 ^stage23(%value23: offset):
   %result_range_lo = scalar.constant 8 : i64
   test.use %result_range_lo : i64
   %result_range_hi = scalar.constant 8 : i64
   test.use %result_range_hi : i64
   func.return
-^stage22(%value22: offset):
-  cfg.br ^stage23(%value22: offset)
-^stage21(%value21: offset):
-  cfg.br ^stage22(%value21: offset)
-^stage20(%value20: offset):
-  cfg.br ^stage21(%value20: offset)
-^stage19(%value19: offset):
-  cfg.br ^stage20(%value19: offset)
-^stage18(%value18: offset):
-  cfg.br ^stage19(%value18: offset)
-^stage17(%value17: offset):
-  cfg.br ^stage18(%value17: offset)
-^stage16(%value16: offset):
-  cfg.br ^stage17(%value16: offset)
-^stage15(%value15: offset):
-  cfg.br ^stage16(%value15: offset)
-^stage14(%value14: offset):
-  cfg.br ^stage15(%value14: offset)
-^stage13(%value13: offset):
-  cfg.br ^stage14(%value13: offset)
-^stage12(%value12: offset):
-  cfg.br ^stage13(%value12: offset)
-^stage11(%value11: offset):
-  cfg.br ^stage12(%value11: offset)
-^stage10(%value10: offset):
-  cfg.br ^stage11(%value10: offset)
-^stage9(%value9: offset):
-  cfg.br ^stage10(%value9: offset)
-^stage8(%value8: offset):
-  cfg.br ^stage9(%value8: offset)
-^stage7(%value7: offset):
-  cfg.br ^stage8(%value7: offset)
-^stage6(%value6: offset):
-  cfg.br ^stage7(%value6: offset)
-^stage5(%value5: offset):
-  cfg.br ^stage6(%value5: offset)
-^stage4(%value4: offset):
-  cfg.br ^stage5(%value4: offset)
-^stage3(%value3: offset):
-  cfg.br ^stage4(%value3: offset)
-^stage2(%value2: offset):
-  cfg.br ^stage3(%value2: offset)
-^stage1(%value1: offset):
-  cfg.br ^stage2(%value1: offset)
-^stage0(%value0: offset):
-  cfg.br ^stage1(%value0: offset)
 }
 
 // ====

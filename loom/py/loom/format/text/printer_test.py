@@ -21,6 +21,7 @@ from loom.dialect.test import (
     test_scope_type,
     test_tile_attr,
 )
+from loom.format.text.block_order import ordered_blocks
 from loom.format.text.parser import Parser
 from loom.format.text.printer import Printer, print_type
 from loom.ir import (
@@ -1090,6 +1091,29 @@ class TestLocationPrinting:
 # ============================================================================
 # Region printing
 # ============================================================================
+
+
+@pytest.mark.parametrize(
+    ("successors", "expected"),
+    [
+        ([[]], [0]),
+        ([[1, 2], [3], [4], [4], []], [0, 1, 2, 3, 4]),
+        ([[3], [], [1], [2]], [0, 3, 2, 1]),
+        ([[3], [3], [], [1, 2]], [0, 3, 1, 2]),
+        ([[1, 2], [2, 3], [1, 3], []], [0, 1, 2, 3]),
+        ([[3], [2], [1], []], [0, 3, 1, 2]),
+    ],
+)
+def test_dominance_block_order(successors, expected):
+    blocks = [Block(label=str(index)) for index in range(len(successors))]
+    for block, targets in zip(blocks, successors, strict=True):
+        block.ops.append(Operation(successors=[blocks[index] for index in targets]))
+    region = Region(blocks=list(blocks))
+    assert [int(block.label) for block in ordered_blocks(region)] == expected
+    assert all(
+        actual is original
+        for actual, original in zip(region.blocks, blocks, strict=True)
+    )
 
 
 class TestRegionPrinting:

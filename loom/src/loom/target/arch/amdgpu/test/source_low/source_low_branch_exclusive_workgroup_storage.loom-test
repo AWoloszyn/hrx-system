@@ -233,6 +233,9 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(2, 1, 1
   %30 = v_lshlrev_b32_src0_inline %lane, 2
   global_store_b32_saddr %30, %first_result, %output_view
   low.br ^_bb3
+^_bb3:
+  %24 = s_xor_b64_exec %22
+  low.cond_br %24, ^second, ^_bb4 : reg<amdgpu.scc>
 ^second:
   %32 = v_mov_b32 1
   %33 = v_mov_b32 0
@@ -241,9 +244,6 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(2, 1, 1
   %36 = v_lshlrev_b32_src0_inline %lane, 2
   global_store_b32_saddr %36, %second_result, %output_view
   low.br ^_bb4
-^_bb3:
-  %24 = s_xor_b64_exec %22
-  low.cond_br %24, ^second, ^_bb4 : reg<amdgpu.scc>
 ^_bb4:
   s_mov_b64_exec %22
   return

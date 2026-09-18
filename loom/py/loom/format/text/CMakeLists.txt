@@ -14,6 +14,7 @@ iree_py_library(
     text
   SRCS
     "__init__.py"
+    "block_order.py"
     "parser.py"
     "printer.py"
     "tokenizer.py"

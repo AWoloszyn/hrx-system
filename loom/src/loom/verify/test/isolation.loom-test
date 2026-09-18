@@ -186,28 +186,28 @@ func.def @dead_region_capture() {
 // RUN: pass cse
 func.def @cfg_restoration(%row: i32) -> (i32) {
   cfg.br ^define
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
 ^use:
   func.def @cfg_nested(%local_row: i32) -> (i32) {
     func.return %local_row : i32
   }
   %local_bytes = test.addi %row, %row : i32
   func.return %local_bytes : i32
-^define:
-  %row_bytes = test.addi %row, %row : i32
-  cfg.br ^use
 }
 
 // ----
 func.def @cfg_restoration(%row: i32) -> (i32) {
   cfg.br ^define
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
 ^use:
   func.def @cfg_nested(%local_row: i32) -> (i32) {
     func.return %local_row : i32
   }
   func.return %row_bytes : i32
-^define:
-  %row_bytes = test.addi %row, %row : i32
-  cfg.br ^use
 }
 
 // ====

@@ -87,6 +87,7 @@ from loom.fields import (
     compute_layout,
     resolve_fields,
 )
+from loom.format.text.block_order import ordered_blocks
 from loom.ir import (
     Block,
     BufferType,
@@ -1366,7 +1367,7 @@ class Printer:
         implicit_terminator_name: str | None = None,
     ) -> None:
         """Print the blocks of a region."""
-        for block in region.blocks:
+        for block in ordered_blocks(region):
             # Block label (if named and not the entry block).
             if block.label:
                 if block.leading_blank_line:

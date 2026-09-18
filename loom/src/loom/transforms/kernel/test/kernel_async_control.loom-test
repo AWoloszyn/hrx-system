@@ -176,16 +176,16 @@ kernel.def @deep_reordered() {
   %cluster_workgroup = kernel.cluster.workgroup.id<y> : index
   %is_first = index.cmp eq, %cluster_workgroup, %first_cluster_workgroup : index
   cfg.cond_br %is_first, ^outer, ^skip
+^outer:
+  cfg.cond_br %inner, ^middle, ^skip
+^middle:
+  cfg.cond_br %inner, ^deep, ^skip
 ^deep:
   // ERROR@+1: LOWERING/024 {op_name="kernel.async.cluster.gather", phase_name="kernel-async-legality", rejection_bits="1024"}
   %copy = kernel.async.cluster.gather %source to %dest using %participants {cache_scope = cu, cache_temporal = regular} : view<4xi8> to view<4xi8>, i32 -> kernel.async.token
   %group = kernel.async.group %copy : kernel.async.token -> kernel.async.group
   kernel.async.wait %group {newer_groups = 0} : kernel.async.group
   cfg.br ^join
-^middle:
-  cfg.cond_br %inner, ^deep, ^skip
-^outer:
-  cfg.cond_br %inner, ^middle, ^skip
 ^skip:
   cfg.br ^join
 ^join:

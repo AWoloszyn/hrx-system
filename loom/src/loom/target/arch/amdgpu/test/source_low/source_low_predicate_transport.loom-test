@@ -430,6 +430,11 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @constan
   %48 = s_mov_b32 0
   %49 = concat(%47, %48) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   low.br ^_bb4(%46: reg<amdgpu.sgpr x2>, %49: reg<amdgpu.sgpr x2>)
+^_bb4(%positive$23: reg<amdgpu.sgpr x2>, %negative$24: reg<amdgpu.sgpr x2>):
+  s_mov_b64_exec %33
+  %44 = s_and_b64 %33, %condition
+  %45 = s_xor_b64_exec %44
+  low.cond_br %45, ^else, ^_bb6 : reg<amdgpu.scc>
 ^else:
   %50 = s_cmp_lg_i32_src1_inline %fallback {rhs = 0}
   %51 = s_mov_b64_exec_read
@@ -452,11 +457,6 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @constan
   %first = v_cndmask_b32 %no, %yes, %positive$21
   %second = v_cndmask_b32 %no, %yes, %negative$22
   return %first, %second
-^_bb4(%positive$23: reg<amdgpu.sgpr x2>, %negative$24: reg<amdgpu.sgpr x2>):
-  s_mov_b64_exec %33
-  %44 = s_and_b64 %33, %condition
-  %45 = s_xor_b64_exec %44
-  low.cond_br %45, ^else, ^_bb6 : reg<amdgpu.scc>
 ^_bb5:
   s_mov_b64_exec %33
   %35 = s_mov_b32 0
@@ -513,6 +513,11 @@ low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @constant_predic
   %48 = s_mov_b32 0
   %49 = concat(%47, %48) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   low.br ^_bb4(%46: reg<amdgpu.sgpr x2>, %49: reg<amdgpu.sgpr x2>)
+^_bb4(%positive$23: reg<amdgpu.sgpr x2>, %negative$24: reg<amdgpu.sgpr x2>):
+  s_mov_b64_exec %33
+  %44 = s_and_b64 %33, %condition
+  %45 = s_xor_b64_exec %44
+  low.cond_br %45, ^else, ^_bb6 : reg<amdgpu.scc>
 ^else:
   %50 = s_cmp_lg_i32_src1_inline %fallback {rhs = 0}
   %51 = s_mov_b64_exec_read
@@ -535,11 +540,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @constant_predic
   %first = v_cndmask_b32 %no, %yes, %positive$21
   %second = v_cndmask_b32 %no, %yes, %negative$22
   return %first, %second
-^_bb4(%positive$23: reg<amdgpu.sgpr x2>, %negative$24: reg<amdgpu.sgpr x2>):
-  s_mov_b64_exec %33
-  %44 = s_and_b64 %33, %condition
-  %45 = s_xor_b64_exec %44
-  low.cond_br %45, ^else, ^_bb6 : reg<amdgpu.scc>
 ^_bb5:
   s_mov_b64_exec %33
   %35 = s_mov_b32 0
