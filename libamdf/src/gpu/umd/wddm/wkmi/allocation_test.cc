@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <vector>
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter_state.h"
 
@@ -64,6 +65,15 @@ amdf_allocator_t MakeTestAllocator(TestAllocatorState* state) {
   return amdf_allocator_t{state, TestAllocate, nullptr, TestFree};
 }
 
+struct NativeAllocationRequest {
+  // Exact payload bytes passed to the native allocation encoder.
+  uint64_t byte_length;
+  // Native placement or caller-page registration class.
+  Wkmi::AllocDomain domain;
+  // Requested device address for local memory, zero for system memory.
+  uint64_t address;
+};
+
 struct FakeNativeState {
   // Status returned by native allocation creation.
   NTSTATUS create_status = STATUS_SUCCESS;
@@ -75,6 +85,11 @@ struct FakeNativeState {
   uint32_t destroy_attempt_count = 0;
   // Number of contract violations observed inside a fake dependency.
   uint32_t dependency_failure_count = 0;
+  // Complete native payload requests expected before allocation creation.
+  std::vector<NativeAllocationRequest> expected_allocations = {
+      {4096, Wkmi::kSystem, 0}};
+  // Number of allocation records encoded before the native create call.
+  size_t allocation_info_count = 0;
 };
 
 FakeNativeState* g_fake_native_state = nullptr;
@@ -113,15 +128,21 @@ extern "C" NTSTATUS APIENTRY
 D3DKMTCreateAllocation2(D3DKMT_CREATEALLOCATION* create) {
   ++g_fake_native_state->create_attempt_count;
   RecordDependencyExpectation(create->hDevice == kDeviceHandle);
-  RecordDependencyExpectation(create->NumAllocations == 1);
+  RecordDependencyExpectation(create->NumAllocations ==
+                              g_fake_native_state->expected_allocations.size());
+  RecordDependencyExpectation(create->NumAllocations ==
+                              g_fake_native_state->allocation_info_count);
   RecordDependencyExpectation(create->pPrivateDriverData != nullptr);
   RecordDependencyExpectation(create->pAllocationInfo2 != nullptr);
   if (g_fake_native_state->create_status != STATUS_SUCCESS) {
     return g_fake_native_state->create_status;
   }
   create->hResource = kResourceHandle;
-  create->pAllocationInfo2[0].hAllocation =
-      g_fake_native_state->malformed_create_count == 0 ? kAllocationHandle : 0;
+  for (uint32_t i = 0; i < create->NumAllocations; ++i) {
+    create->pAllocationInfo2[i].hAllocation =
+        g_fake_native_state->malformed_create_count == 0 ? kAllocationHandle + i
+                                                         : 0;
+  }
   if (g_fake_native_state->malformed_create_count != 0) {
     --g_fake_native_state->malformed_create_count;
   }
@@ -153,9 +174,15 @@ void SetAllocationInfo(void* allocation_private_data, uint64_t byte_length,
                        uint32_t memory_flags, uint32_t engine_flag,
                        const DeviceInfo&) {
   RecordDependencyExpectation(allocation_private_data != nullptr);
-  RecordDependencyExpectation(byte_length == 4096);
-  RecordDependencyExpectation(domain == kSystem);
-  RecordDependencyExpectation(address == 0);
+  const size_t ordinal = g_fake_native_state->allocation_info_count++;
+  RecordDependencyExpectation(ordinal <
+                              g_fake_native_state->expected_allocations.size());
+  if (ordinal < g_fake_native_state->expected_allocations.size()) {
+    const auto& expected = g_fake_native_state->expected_allocations[ordinal];
+    RecordDependencyExpectation(byte_length == expected.byte_length);
+    RecordDependencyExpectation(domain == expected.domain);
+    RecordDependencyExpectation(address == expected.address);
+  }
   RecordDependencyExpectation(memory_flags == 0);
   RecordDependencyExpectation(engine_flag == KCOMPUTE0);
 }
@@ -329,6 +356,76 @@ bool QueryLayoutPublishesOnlyOnSuccess() {
   return passed;
 }
 
+bool NativeChunksPreserveExactPayloadExtent() {
+  bool passed = true;
+  constexpr uint64_t kChunkSize = UINT64_C(2) * 1024 * 1024 * 1024;
+  constexpr uint64_t kAddress = UINT64_C(0x100000);
+  struct TestCase {
+    // Complete page-aligned native payload requested by the caller.
+    uint64_t byte_length;
+    // Expected native records, including the final partial chunk.
+    std::vector<NativeAllocationRequest> allocations;
+  };
+  const TestCase cases[] = {
+      {kChunkSize - 4096, {{kChunkSize - 4096, Wkmi::kLocal, kAddress}}},
+      {kChunkSize, {{kChunkSize, Wkmi::kLocal, kAddress}}},
+      {kChunkSize + 4096,
+       {{kChunkSize, Wkmi::kLocal, kAddress},
+        {4096, Wkmi::kLocal, kAddress + kChunkSize}}},
+      {2 * kChunkSize + 65536,
+       {{kChunkSize, Wkmi::kLocal, kAddress},
+        {kChunkSize, Wkmi::kLocal, kAddress + kChunkSize},
+        {65536, Wkmi::kLocal, kAddress + 2 * kChunkSize}}},
+  };
+  for (const TestCase& test_case : cases) {
+    FakeNativeState native_state;
+    TestAllocatorState allocator_state;
+    native_state.expected_allocations = test_case.allocations;
+    g_fake_native_state = &native_state;
+    amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = MakeTestAllocator(&allocator_state);
+    uint32_t allocation_count = 0;
+    uint64_t maximum_allocation_byte_length = 0;
+    AMDF_EXPECT(amdf::wkmi_bridge::GpuAllocationQueryLayout(
+                    &adapter, test_case.byte_length, &allocation_count,
+                    &maximum_allocation_byte_length) ==
+                AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
+    AMDF_EXPECT(allocation_count == test_case.allocations.size());
+    AMDF_EXPECT(maximum_allocation_byte_length == kChunkSize);
+    AMDF_EXPECT(allocator_state.allocation_count == 0);
+    AMDF_EXPECT(native_state.create_attempt_count == 0);
+
+    amdf_wkmi_bridge_gpu_allocation_create_info_t create_info = {};
+    create_info.structure_size = sizeof(create_info);
+    create_info.device_handle = kDeviceHandle;
+    create_info.domain = AMDF_WKMI_BRIDGE_GPU_ALLOCATION_DOMAIN_LOCAL;
+    create_info.byte_length = test_case.byte_length;
+    create_info.placement_device_address = kAddress;
+    std::array<uint32_t, 3> handles = {};
+    uint32_t resource_handle = 0;
+    uint32_t native_status = 0;
+    AMDF_EXPECT(amdf::wkmi_bridge::GpuAllocationCreate(
+                    &adapter, &create_info,
+                    static_cast<uint32_t>(handles.size()), handles.data(),
+                    &resource_handle, &allocation_count,
+                    &native_status) == AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
+    AMDF_EXPECT(allocation_count == test_case.allocations.size());
+    AMDF_EXPECT(native_state.allocation_info_count ==
+                test_case.allocations.size());
+    AMDF_EXPECT(resource_handle == kResourceHandle);
+    AMDF_EXPECT(native_status == 0);
+    AMDF_EXPECT(native_state.create_attempt_count == 1);
+    AMDF_EXPECT(native_state.dependency_failure_count == 0);
+    AMDF_EXPECT(allocator_state.live_allocation_count == 0);
+    AMDF_EXPECT(allocator_state.invalid_alignment_count == 0);
+    for (uint32_t i = 0; i < allocation_count && i < handles.size(); ++i) {
+      AMDF_EXPECT(handles[i] == kAllocationHandle + i);
+    }
+  }
+  g_fake_native_state = nullptr;
+  return passed;
+}
+
 bool MetadataAllocationFailureLeavesOwnershipOutputsUnchanged() {
   bool passed = true;
   FakeNativeState native_state;
@@ -381,6 +478,8 @@ int main() {
       {"NativeCreateFailureLeavesOutputsUnchanged",
        NativeCreateFailureLeavesOutputsUnchanged},
       {"QueryLayoutPublishesOnlyOnSuccess", QueryLayoutPublishesOnlyOnSuccess},
+      {"NativeChunksPreserveExactPayloadExtent",
+       NativeChunksPreserveExactPayloadExtent},
       {"InsufficientCapacityReportsCountWithoutAllocating",
        InsufficientCapacityReportsCountWithoutAllocating},
       {"MetadataAllocationFailureLeavesOwnershipOutputsUnchanged",
