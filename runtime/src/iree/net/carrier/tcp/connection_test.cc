@@ -141,6 +141,7 @@ enum class MalformedHeaderKind {
   kEndpointOrdinal,
   kReserved,
   kEmptyPayload,
+  kActivePayload,
 };
 
 struct MalformedHeaderCase {
@@ -572,6 +573,63 @@ class TcpConnectionTest : public ::testing::Test {
         send_result);
   }
 
+  void EstablishPeerReadiness(iree_net_message_endpoint_t client_endpoint,
+                              MessageResult* client_messages,
+                              iree_net_message_endpoint_t server_endpoint,
+                              MessageResult* server_messages) {
+    const iree_host_size_t initial_client_message_count =
+        client_messages->messages.size();
+    const iree_host_size_t initial_server_message_count =
+        server_messages->messages.size();
+    uint8_t client_payload = 0xC1;
+    uint8_t server_payload = 0x51;
+    iree_async_span_t client_span =
+        iree_async_span_from_ptr(&client_payload, 1);
+    iree_async_span_t server_span =
+        iree_async_span_from_ptr(&server_payload, 1);
+    SendResult client_result;
+    client_result.is_polling = &is_polling_;
+    SendResult server_result;
+    server_result.is_polling = &is_polling_;
+    IREE_ASSERT_OK(SendMessage(client_endpoint,
+                               iree_async_span_list_make(&client_span, 1),
+                               &client_result));
+    IREE_ASSERT_OK(SendMessage(server_endpoint,
+                               iree_async_span_list_make(&server_span, 1),
+                               &server_result));
+    PollUntil([&] {
+      return client_result.callback_count == 1 &&
+             server_result.callback_count == 1 &&
+             client_messages->messages.size() ==
+                 initial_client_message_count + 1 &&
+             server_messages->messages.size() ==
+                 initial_server_message_count + 1;
+    });
+    EXPECT_EQ(client_result.status_code, IREE_STATUS_OK);
+    EXPECT_EQ(server_result.status_code, IREE_STATUS_OK);
+    EXPECT_EQ(client_messages->messages.back(),
+              std::string(1, static_cast<char>(server_payload)));
+    EXPECT_EQ(server_messages->messages.back(),
+              std::string(1, static_cast<char>(client_payload)));
+    client_messages->messages.resize(initial_client_message_count);
+    server_messages->messages.resize(initial_server_message_count);
+  }
+
+  void SendRawBytes(iree_async_socket_t* socket, iree_byte_span_t bytes) {
+    iree_async_span_t span =
+        iree_async_span_from_ptr(bytes.data, bytes.data_length);
+    OperationResult result;
+    iree_async_socket_send_operation_t operation = {};
+    iree_async_operation_initialize(
+        &operation.base, IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND,
+        IREE_ASYNC_OPERATION_FLAG_NONE, OperationCompleted, &result);
+    operation.socket = socket;
+    operation.buffers = iree_async_span_list_make(&span, 1);
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
+    PollUntil([&] { return result.completed; });
+    EXPECT_EQ(result.status_code, IREE_STATUS_OK);
+  }
+
   void DeactivateAndRelease(iree_net_connection_t** connection_ptr) {
     iree_net_connection_t* connection = *connection_ptr;
     if (!connection) {
@@ -626,12 +684,18 @@ TEST(TcpConnectionOptionsTest, Defaults) {
   EXPECT_EQ(options.max_endpoint_count,
             IREE_NET_TCP_DEFAULT_MAX_ENDPOINT_COUNT);
   EXPECT_EQ(options.max_frame_size, IREE_NET_TCP_DEFAULT_MAX_FRAME_SIZE);
-  EXPECT_EQ(options.max_pending_frames_per_endpoint,
-            IREE_NET_TCP_DEFAULT_MAX_PENDING_FRAMES_PER_ENDPOINT);
   EXPECT_EQ(options.carrier_options.max_send_operations,
             IREE_NET_TCP_DEFAULT_MAX_SEND_OPERATIONS);
   EXPECT_EQ(options.carrier_options.generated_prefix_capacity,
             IREE_NET_TCP_DEFAULT_GENERATED_PREFIX_CAPACITY);
+}
+
+TEST(TcpConnectionOptionsTest, ReservesInternalActivationSlot) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.carrier_options.max_send_operations = UINT32_MAX - 1u;
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_OUT_OF_RANGE,
+                        iree_net_tcp_connection_options_validate(&options));
 }
 
 TEST_F(TcpConnectionTest, GeneratedPrefixSlabAvoidsSendTimeAllocation) {
@@ -819,49 +883,263 @@ TEST_F(TcpConnectionTest, RoutesOrdinalsAndSegmentsMaximumScatter) {
   EXPECT_TRUE(client_messages_1->messages.empty());
 }
 
-TEST_F(TcpConnectionTest, DeliversFramesSentBeforePeerEndpointActivation) {
+TEST_F(TcpConnectionTest,
+       SerializesActivationAnnouncementsOutsideApplicationCapacity) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
-  options.carrier_options.max_send_operations = 2;
+  options.max_endpoint_count = 4;
+  options.carrier_options.max_send_operations = 1;
+  CreateConnectionPair(options, options);
+
+  std::array<iree_net_message_endpoint_t, 4> client_endpoints;
+  std::array<iree_net_message_endpoint_t, 4> server_endpoints;
+  std::array<MessageResult*, 4> client_messages;
+  std::array<MessageResult*, 4> server_messages;
+  for (iree_host_size_t i = 0; i < client_endpoints.size(); ++i) {
+    client_endpoints[i] = OpenEndpoint(client_connection_);
+    server_endpoints[i] = OpenEndpoint(server_connection_);
+    client_messages[i] = CreateMessageResult();
+    server_messages[i] = CreateMessageResult();
+  }
+  for (iree_host_size_t i = 0; i < client_endpoints.size(); ++i) {
+    ActivateEndpoint(client_endpoints[i], client_messages[i]);
+    ActivateEndpoint(server_endpoints[i], server_messages[i]);
+  }
+
+  for (iree_host_size_t i = 0; i < client_endpoints.size(); ++i) {
+    EstablishPeerReadiness(client_endpoints[i], client_messages[i],
+                           server_endpoints[i], server_messages[i]);
+    EXPECT_EQ(
+        iree_net_message_endpoint_query_send_budget(client_endpoints[i]).slots,
+        1u);
+    EXPECT_EQ(
+        iree_net_message_endpoint_query_send_budget(server_endpoints[i]).slots,
+        1u);
+  }
+}
+
+TEST_F(TcpConnectionTest,
+       ConnectionDrainCancelsActivationAnnouncementWithoutTerminalError) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.carrier_options.generated_prefix_capacity = 0;
+  CreateConnectionPair(options, options,
+                       /*receive_buffer_size=*/4096,
+                       /*receive_buffer_count=*/4,
+                       blocking_allocator_.allocator());
+  iree_net_message_endpoint_t endpoint = OpenEndpoint(client_connection_);
+  MessageResult* messages = CreateMessageResult();
+  ActivateEndpoint(endpoint, messages);
+
+  blocking_allocator_.Arm(BlockingAllocator::Gate::kAllocation);
+  ConnectionDeactivateResult deactivate_result;
+  bool allocation_entered = false;
+  std::thread deactivate_thread([&] {
+    allocation_entered = blocking_allocator_.WaitUntilEnteredOrCompleted();
+    if (allocation_entered) {
+      iree_net_connection_deactivate(
+          client_connection_, {ConnectionDeactivated, &deactivate_result});
+    }
+    blocking_allocator_.Release();
+  });
+  Poll();
+  blocking_allocator_.CompleteAttempt();
+  deactivate_thread.join();
+  ASSERT_TRUE(allocation_entered);
+  PollUntil([&] { return deactivate_result.completed; });
+  EXPECT_EQ(messages->error_count, 0);
+
+  iree_net_connection_release(client_connection_);
+  client_connection_ = nullptr;
+  EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(), 0u);
+}
+
+TEST_F(TcpConnectionTest, BackpressuresUntilPeerEndpointActivation) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.max_endpoint_count = 2;
+  options.carrier_options.max_send_operations = 16;
   CreateConnectionPair(options, options,
                        /*receive_buffer_size=*/64,
-                       /*receive_buffer_count=*/2);
+                       /*receive_buffer_count=*/4);
 
-  iree_net_message_endpoint_t client_endpoint =
+  iree_net_message_endpoint_t client_data_endpoint =
       OpenEndpoint(client_connection_);
-  MessageResult* client_messages = CreateMessageResult();
-  ActivateEndpoint(client_endpoint, client_messages);
-
-  std::array<std::string, 2> payloads = {
-      std::string(256 * 1024, 'p'),
-      std::string(128 * 1024, 'q'),
-  };
-  std::array<iree_async_span_t, 2> payload_spans;
-  std::array<SendResult, 2> send_results;
-  for (iree_host_size_t i = 0; i < payloads.size(); ++i) {
-    payload_spans[i] =
-        iree_async_span_from_ptr(payloads[i].data(), payloads[i].size());
-    send_results[i].is_polling = &is_polling_;
-    IREE_ASSERT_OK(SendMessage(client_endpoint,
-                               iree_async_span_list_make(&payload_spans[i], 1),
-                               &send_results[i]));
-  }
-  PollUntil([&] {
-    return send_results[0].callback_count == 1 &&
-           send_results[1].callback_count == 1;
-  });
-  EXPECT_EQ(send_results[0].status_code, IREE_STATUS_OK);
-  EXPECT_EQ(send_results[1].status_code, IREE_STATUS_OK);
-
-  iree_net_message_endpoint_t server_endpoint =
+  iree_net_message_endpoint_t client_marker_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_data_endpoint =
       OpenEndpoint(server_connection_);
-  MessageResult* server_messages = CreateMessageResult();
-  ActivateEndpoint(server_endpoint, server_messages);
-  PollUntil(
-      [&] { return server_messages->messages.size() == payloads.size(); });
-  EXPECT_EQ(server_messages->messages[0], payloads[0]);
-  EXPECT_EQ(server_messages->messages[1], payloads[1]);
-  EXPECT_EQ(server_messages->error_count, 0);
+  iree_net_message_endpoint_t server_marker_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(client_data_endpoint, CreateMessageResult());
+  ActivateEndpoint(client_marker_endpoint, CreateMessageResult());
+  MessageResult* server_marker_messages = CreateMessageResult();
+  ActivateEndpoint(server_marker_endpoint, server_marker_messages);
+
+  std::string payload(256 * 1024, 'p');
+  iree_async_span_t payload_span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  SendResult data_result;
+  data_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_data_endpoint,
+                             iree_async_span_list_make(&payload_span, 1),
+                             &data_result));
+  EXPECT_EQ(
+      iree_net_message_endpoint_query_send_budget(client_data_endpoint).slots,
+      0u);
+
+  std::array<SendResult, 9> blocked_results;
+  for (SendResult& blocked_result : blocked_results) {
+    blocked_result.is_polling = &is_polling_;
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_RESOURCE_EXHAUSTED,
+        SendMessage(client_data_endpoint,
+                    iree_async_span_list_make(&payload_span, 1),
+                    &blocked_result));
+    EXPECT_EQ(blocked_result.callback_count, 0);
+  }
+
+  uint8_t marker = 0x5A;
+  iree_async_span_t marker_span = iree_async_span_from_ptr(&marker, 1);
+  SendResult marker_result;
+  marker_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_marker_endpoint,
+                             iree_async_span_list_make(&marker_span, 1),
+                             &marker_result));
+  // The marker follows DATA on the ordered TCP stream. Its delivery proves
+  // DATA reached the inactive endpoint and released its raw carrier slot.
+  PollUntil([&] {
+    return marker_result.callback_count == 1 &&
+           server_marker_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(data_result.callback_count, 0);
+  EXPECT_EQ(
+      iree_net_message_endpoint_query_send_budget(client_data_endpoint).slots,
+      0u);
+
+  MessageResult* server_data_messages = CreateMessageResult();
+  ActivateEndpoint(server_data_endpoint, server_data_messages);
+  PollUntil([&] {
+    return data_result.callback_count == 1 &&
+           server_data_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(data_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(data_result.bytes_transferred, payload.size());
+  EXPECT_EQ(server_data_messages->messages[0], payload);
+  EXPECT_EQ(server_data_messages->error_count, 0);
+  EXPECT_GT(
+      iree_net_message_endpoint_query_send_budget(client_data_endpoint).slots,
+      0u);
+}
+
+TEST_F(TcpConnectionTest,
+       EndpointDrainCancelsRawCompleteRendezvousOnOwningProactor) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.max_endpoint_count = 2;
+  CreateConnectionPair(options, options);
+
+  iree_net_message_endpoint_t client_data_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t client_marker_endpoint =
+      OpenEndpoint(client_connection_);
+  OpenEndpoint(server_connection_);
+  iree_net_message_endpoint_t server_marker_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(client_data_endpoint, CreateMessageResult());
+  ActivateEndpoint(client_marker_endpoint, CreateMessageResult());
+  MessageResult* server_marker_messages = CreateMessageResult();
+  ActivateEndpoint(server_marker_endpoint, server_marker_messages);
+
+  uint8_t payload = 0xD1;
+  iree_async_span_t payload_span = iree_async_span_from_ptr(&payload, 1);
+  SendResult data_result;
+  data_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_data_endpoint,
+                             iree_async_span_list_make(&payload_span, 1),
+                             &data_result));
+  uint8_t marker = 0x5A;
+  iree_async_span_t marker_span = iree_async_span_from_ptr(&marker, 1);
+  SendResult marker_result;
+  marker_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_marker_endpoint,
+                             iree_async_span_list_make(&marker_span, 1),
+                             &marker_result));
+  PollUntil([&] {
+    return marker_result.callback_count == 1 &&
+           server_marker_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(data_result.callback_count, 0);
+
+  EndpointDeactivateResult deactivate_result;
+  iree_status_code_t deactivate_status = IREE_STATUS_UNKNOWN;
+  std::thread producer([&] {
+    iree_status_t status = iree_net_message_endpoint_deactivate(
+        client_data_endpoint, EndpointDeactivated, &deactivate_result);
+    deactivate_status = iree_status_code(status);
+    iree_status_free(status);
+  });
+  producer.join();
+  EXPECT_EQ(deactivate_status, IREE_STATUS_OK);
+  EXPECT_EQ(data_result.callback_count, 0);
+  EXPECT_FALSE(deactivate_result.completed);
+  PollUntil([&] { return deactivate_result.completed; });
+  EXPECT_EQ(data_result.callback_count, 1);
+  EXPECT_EQ(data_result.status_code, IREE_STATUS_CANCELLED);
+}
+
+TEST_F(TcpConnectionTest,
+       ConnectionDrainCancelsRawCompleteRendezvousOnOwningProactor) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.max_endpoint_count = 2;
+  CreateConnectionPair(options, options);
+
+  iree_net_message_endpoint_t client_data_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t client_marker_endpoint =
+      OpenEndpoint(client_connection_);
+  OpenEndpoint(server_connection_);
+  iree_net_message_endpoint_t server_marker_endpoint =
+      OpenEndpoint(server_connection_);
+  ActivateEndpoint(client_data_endpoint, CreateMessageResult());
+  ActivateEndpoint(client_marker_endpoint, CreateMessageResult());
+  MessageResult* server_marker_messages = CreateMessageResult();
+  ActivateEndpoint(server_marker_endpoint, server_marker_messages);
+
+  uint8_t payload = 0xD1;
+  iree_async_span_t payload_span = iree_async_span_from_ptr(&payload, 1);
+  SendResult data_result;
+  data_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_data_endpoint,
+                             iree_async_span_list_make(&payload_span, 1),
+                             &data_result));
+  uint8_t marker = 0x5A;
+  iree_async_span_t marker_span = iree_async_span_from_ptr(&marker, 1);
+  SendResult marker_result;
+  marker_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_marker_endpoint,
+                             iree_async_span_list_make(&marker_span, 1),
+                             &marker_result));
+  PollUntil([&] {
+    return marker_result.callback_count == 1 &&
+           server_marker_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(data_result.callback_count, 0);
+
+  ConnectionDeactivateResult deactivate_result;
+  std::thread producer([&] {
+    iree_net_connection_deactivate(client_connection_,
+                                   {ConnectionDeactivated, &deactivate_result});
+  });
+  producer.join();
+  EXPECT_EQ(data_result.callback_count, 0);
+  EXPECT_FALSE(deactivate_result.completed);
+  PollUntil([&] { return deactivate_result.completed; });
+  EXPECT_EQ(data_result.callback_count, 1);
+  EXPECT_EQ(data_result.status_code, IREE_STATUS_CANCELLED);
+  iree_net_connection_release(client_connection_);
+  client_connection_ = nullptr;
 }
 
 TEST_F(TcpConnectionTest, EndpointDeactivationWaitsForAcceptedSend) {
@@ -874,6 +1152,8 @@ TEST_F(TcpConnectionTest, EndpointDeactivationWaitsForAcceptedSend) {
   MessageResult* server_messages = CreateMessageResult();
   ActivateEndpoint(client_endpoint, client_messages);
   ActivateEndpoint(server_endpoint, server_messages);
+  EstablishPeerReadiness(client_endpoint, client_messages, server_endpoint,
+                         server_messages);
 
   std::vector<int> callback_order;
   std::string payload(256 * 1024, 'd');
@@ -916,6 +1196,8 @@ TEST_F(TcpConnectionTest, ConcurrentDeactivationPreservesAdmittedSend) {
   MessageResult* server_messages = CreateMessageResult();
   ActivateEndpoint(client_endpoint, client_messages);
   ActivateEndpoint(server_endpoint, server_messages);
+  EstablishPeerReadiness(client_endpoint, client_messages, server_endpoint,
+                         server_messages);
 
   std::string prefix(17, 'p');
   std::array<uint8_t, 8> bytes = {'p', 'a', 'y', 'l', 'o', 'a', 'd', '!'};
@@ -1030,9 +1312,12 @@ TEST_F(TcpConnectionTest, DeactivationWaitsForGeneratedPrefixWriter) {
       OpenEndpoint(client_connection_);
   iree_net_message_endpoint_t server_endpoint =
       OpenEndpoint(server_connection_);
-  ActivateEndpoint(client_endpoint, CreateMessageResult());
+  MessageResult* client_messages = CreateMessageResult();
+  ActivateEndpoint(client_endpoint, client_messages);
   MessageResult* server_messages = CreateMessageResult();
   ActivateEndpoint(server_endpoint, server_messages);
+  EstablishPeerReadiness(client_endpoint, client_messages, server_endpoint,
+                         server_messages);
 
   PrefixWriterGate writer_gate;
   std::vector<int> callback_order;
@@ -1153,16 +1438,17 @@ TEST_F(TcpConnectionTest, SendReturnsDeferredMessageFailureBeforePrefixWrite) {
   // Ordered wire delivery proves the earlier frame reached the inactive
   // endpoint before this marker reaches its active endpoint.
   PollUntil([&] {
-    return queued_result.callback_count == 1 &&
-           marker_result.callback_count == 1 &&
+    return marker_result.callback_count == 1 &&
            server_marker_messages->messages.size() == 1;
   });
+  EXPECT_EQ(queued_result.callback_count, 0);
 
   MessageResult* server_messages = CreateMessageResult();
   server_messages->message_status = IREE_STATUS_DATA_LOSS;
   ActivateEndpoint(server_endpoint, server_messages);
   PollUntil([&] { return server_messages->error_count == 1; });
   ASSERT_EQ(server_messages->error_code, IREE_STATUS_DATA_LOSS);
+  EXPECT_EQ(queued_result.callback_count, 0);
 
   PrefixWriter writer = {
       /*.value=*/0x7A,
@@ -1177,6 +1463,11 @@ TEST_F(TcpConnectionTest, SendReturnsDeferredMessageFailureBeforePrefixWrite) {
   EXPECT_EQ(writer.call_count, 0);
   EXPECT_EQ(rejected_result.callback_count, 0);
 
+  // Retire the accepted pre-activation send while its stack-owned callback
+  // state is alive. The peer never published ACTIVE after its terminal error.
+  DeactivateAndRelease(&client_connection_);
+  EXPECT_EQ(queued_result.callback_count, 1);
+  EXPECT_EQ(queued_result.status_code, IREE_STATUS_CANCELLED);
   DeactivateAndRelease(&server_connection_);
   EXPECT_EQ(rejected_result.callback_count, 0);
 }
@@ -1212,12 +1503,13 @@ TEST_F(TcpConnectionTest,
       ConnectionDeactivated,
       &deactivate_result,
   };
-  server_results[2]->message_status = IREE_STATUS_CANCELLED;
-
   for (iree_host_size_t i = 0; i < client_endpoints.size(); ++i) {
     ActivateEndpoint(client_endpoints[i], client_results[i]);
     ActivateEndpoint(server_endpoints[i], server_results[i]);
   }
+  EstablishPeerReadiness(client_endpoints[2], client_results[2],
+                         server_endpoints[2], server_results[2]);
+  server_results[2]->message_status = IREE_STATUS_CANCELLED;
 
   uint8_t payload = 0x5A;
   iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
@@ -1308,6 +1600,120 @@ TEST_F(TcpConnectionTest, ReportsConfiguredFrameLimitAsTerminalError) {
   EXPECT_EQ(rejected_result.callback_count, 0);
 }
 
+TEST_F(TcpConnectionTest, RejectsDuplicateEndpointActive) {
+  CreateConnectionPair();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_);
+  MessageResult* client_messages = CreateMessageResult();
+  MessageResult* server_messages = CreateMessageResult();
+  ActivateEndpoint(client_endpoint, client_messages);
+  ActivateEndpoint(server_endpoint, server_messages);
+  EstablishPeerReadiness(client_endpoint, client_messages, server_endpoint,
+                         server_messages);
+
+  std::array<uint8_t, 16> wire_data = {};
+  wire_data[0] = 'I';
+  wire_data[1] = 'R';
+  wire_data[2] = 'N';
+  wire_data[3] = '1';
+  wire_data[4] = 1;
+  wire_data[6] = 1;
+  SendRawBytes(client_socket_,
+               iree_make_byte_span(wire_data.data(), wire_data.size()));
+  PollUntil([&] { return server_messages->error_count == 1; });
+  EXPECT_EQ(server_messages->error_code, IREE_STATUS_DATA_LOSS);
+}
+
+TEST_F(TcpConnectionTest, RejectsSecondDataBeforeEndpointActivation) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.max_endpoint_count = 2;
+  CreateConnectionPair(options, options);
+  iree_net_message_endpoint_t observer_endpoint =
+      OpenEndpoint(server_connection_);
+  OpenEndpoint(server_connection_);
+  MessageResult* observer_messages = CreateMessageResult();
+  ActivateEndpoint(observer_endpoint, observer_messages);
+
+  auto encode_data_frame = [](uint8_t* target, uint16_t ordinal,
+                              uint8_t payload) {
+    target[0] = 'I';
+    target[1] = 'R';
+    target[2] = 'N';
+    target[3] = '1';
+    target[4] = 1;
+    target[8] = 1;
+    target[12] = static_cast<uint8_t>(ordinal);
+    target[16] = payload;
+  };
+  std::array<uint8_t, 34> initial_wire_data = {};
+  encode_data_frame(initial_wire_data.data(), 1, 0xA1);
+  encode_data_frame(initial_wire_data.data() + 17, 0, 0xB1);
+  SendRawBytes(client_socket_, iree_make_byte_span(initial_wire_data.data(),
+                                                   initial_wire_data.size()));
+  PollUntil([&] { return observer_messages->messages.size() == 1; });
+
+  std::array<uint8_t, 17> second_wire_data = {};
+  encode_data_frame(second_wire_data.data(), 1, 0xA2);
+  SendRawBytes(client_socket_, iree_make_byte_span(second_wire_data.data(),
+                                                   second_wire_data.size()));
+  PollUntil([&] { return observer_messages->error_count == 1; });
+  EXPECT_EQ(observer_messages->error_code, IREE_STATUS_DATA_LOSS);
+}
+
+TEST_F(TcpConnectionTest, TerminalErrorCompletesRendezvousSend) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.max_endpoint_count = 2;
+  CreateConnectionPair(options, options);
+
+  iree_net_message_endpoint_t client_data_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t client_marker_endpoint =
+      OpenEndpoint(client_connection_);
+  OpenEndpoint(server_connection_);
+  iree_net_message_endpoint_t server_marker_endpoint =
+      OpenEndpoint(server_connection_);
+  MessageResult* client_data_messages = CreateMessageResult();
+  ActivateEndpoint(client_data_endpoint, client_data_messages);
+  ActivateEndpoint(client_marker_endpoint, CreateMessageResult());
+  MessageResult* server_marker_messages = CreateMessageResult();
+  ActivateEndpoint(server_marker_endpoint, server_marker_messages);
+
+  uint8_t payload = 0xD1;
+  iree_async_span_t payload_span = iree_async_span_from_ptr(&payload, 1);
+  SendResult data_result;
+  data_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_data_endpoint,
+                             iree_async_span_list_make(&payload_span, 1),
+                             &data_result));
+  uint8_t marker = 0x5A;
+  iree_async_span_t marker_span = iree_async_span_from_ptr(&marker, 1);
+  SendResult marker_result;
+  marker_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_marker_endpoint,
+                             iree_async_span_list_make(&marker_span, 1),
+                             &marker_result));
+  PollUntil([&] {
+    return marker_result.callback_count == 1 &&
+           server_marker_messages->messages.size() == 1;
+  });
+  EXPECT_EQ(data_result.callback_count, 0);
+
+  std::array<uint8_t, 16> malformed_header = {};
+  malformed_header[0] = 'X';
+  SendRawBytes(server_socket_, iree_make_byte_span(malformed_header.data(),
+                                                   malformed_header.size()));
+  PollUntil([&] {
+    return data_result.callback_count == 1 &&
+           client_data_messages->error_count == 1;
+  });
+  EXPECT_EQ(data_result.status_code, IREE_STATUS_DATA_LOSS);
+  EXPECT_EQ(client_data_messages->error_code, IREE_STATUS_DATA_LOSS);
+}
+
 TEST_P(TcpConnectionMalformedHeaderTest, ReportsDataLoss) {
   CreateConnectionPair();
   iree_net_message_endpoint_t server_endpoint =
@@ -1332,7 +1738,7 @@ TEST_P(TcpConnectionMalformedHeaderTest, ReportsDataLoss) {
       wire_data[4] = 2;
       break;
     case MalformedHeaderKind::kFlags:
-      wire_data[6] = 1;
+      wire_data[6] = 2;
       break;
     case MalformedHeaderKind::kEndpointOrdinal:
       wire_data[12] = IREE_NET_TCP_DEFAULT_MAX_ENDPOINT_COUNT;
@@ -1343,6 +1749,9 @@ TEST_P(TcpConnectionMalformedHeaderTest, ReportsDataLoss) {
     case MalformedHeaderKind::kEmptyPayload:
       wire_data[8] = 0;
       wire_length = 16;
+      break;
+    case MalformedHeaderKind::kActivePayload:
+      wire_data[6] = 1;
       break;
   }
   iree_async_span_t invalid_span =
@@ -1374,8 +1783,9 @@ INSTANTIATE_TEST_SUITE_P(
         MalformedHeaderCase{"EndpointOrdinal",
                             MalformedHeaderKind::kEndpointOrdinal},
         MalformedHeaderCase{"Reserved", MalformedHeaderKind::kReserved},
-        MalformedHeaderCase{"EmptyPayload",
-                            MalformedHeaderKind::kEmptyPayload}),
+        MalformedHeaderCase{"EmptyPayload", MalformedHeaderKind::kEmptyPayload},
+        MalformedHeaderCase{"ActivePayload",
+                            MalformedHeaderKind::kActivePayload}),
     [](const ::testing::TestParamInfo<MalformedHeaderCase>& info) {
       return info.param.name;
     });
@@ -1416,37 +1826,44 @@ TEST_F(TcpConnectionTest, ConnectionDrainClosesInactiveEndpointAdmission) {
       OpenEndpoint(client_connection_);
   iree_net_message_endpoint_t client_endpoint_1 =
       OpenEndpoint(client_connection_);
-  ActivateEndpoint(client_endpoint_0, CreateMessageResult());
+  MessageResult* client_messages_0 = CreateMessageResult();
+  ActivateEndpoint(client_endpoint_0, client_messages_0);
   ActivateEndpoint(client_endpoint_1, CreateMessageResult());
 
+  iree_net_message_endpoint_t server_endpoint_0 =
+      OpenEndpoint(server_connection_);
   OpenEndpoint(server_connection_);
-  OpenEndpoint(server_connection_);
+  MessageResult* server_messages_0 = CreateMessageResult();
+  ActivateEndpoint(server_endpoint_0, server_messages_0);
+  EstablishPeerReadiness(client_endpoint_0, client_messages_0,
+                         server_endpoint_0, server_messages_0);
 
   const iree_host_size_t blocker_allocation_count =
       blocking_allocator_.AllocationCount();
-  std::array<std::string, 2> blocker_payloads = {
-      std::string(128, 'y'),
-      std::string(128, 'z'),
-  };
-  std::array<iree_async_span_t, 2> blocker_spans;
-  std::array<SendResult, 2> blocker_results;
-  for (iree_host_size_t i = 0; i < blocker_payloads.size(); ++i) {
-    blocker_spans[i] = iree_async_span_from_ptr(blocker_payloads[i].data(),
-                                                blocker_payloads[i].size());
-    blocker_results[i].is_polling = &is_polling_;
-    IREE_ASSERT_OK(SendMessage(client_endpoint_1,
-                               iree_async_span_list_make(&blocker_spans[i], 1),
-                               &blocker_results[i]));
-  }
-  // The stream is ordered, so beginning reassembly of the second frame proves
-  // that the first frame has completed and entered the inactive endpoint's
-  // pending queue.
+  std::string blocker_payload(128, 'y');
+  iree_async_span_t blocker_span =
+      iree_async_span_from_ptr(blocker_payload.data(), blocker_payload.size());
+  SendResult blocker_result;
+  blocker_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_endpoint_1,
+                             iree_async_span_list_make(&blocker_span, 1),
+                             &blocker_result));
+  uint8_t marker = 0x5A;
+  iree_async_span_t marker_span = iree_async_span_from_ptr(&marker, 1);
+  SendResult marker_result;
+  marker_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(client_endpoint_0,
+                             iree_async_span_list_make(&marker_span, 1),
+                             &marker_result));
+  // Ordered marker delivery proves the blocker entered the inactive
+  // endpoint's one-frame rendezvous storage.
   PollUntil([&] {
-    return blocker_results[0].callback_count == 1 &&
-           blocker_results[1].callback_count == 1 &&
+    return marker_result.callback_count == 1 &&
+           server_messages_0->messages.size() == 1 &&
            blocking_allocator_.AllocationCount() >=
-               blocker_allocation_count + blocker_payloads.size();
+               blocker_allocation_count + 1;
   });
+  EXPECT_EQ(blocker_result.callback_count, 0);
 
   blocking_allocator_.Arm(BlockingAllocator::Gate::kFree);
   ConnectionDeactivateResult deactivate_result;
@@ -1506,10 +1923,12 @@ TEST_F(TcpConnectionTest, ConnectionDrainClosesInactiveEndpointAdmission) {
   finish_deactivation();
   EXPECT_EQ(deactivate_result.callback_count, 1);
 
-  // Destruction asserts that every pending-frame record was returned. A frame
-  // admitted after the inactive endpoint was cleared violates that invariant.
+  // Destruction asserts that the embedded frame lease was returned. Frames
+  // admitted after the connection left OPEN must not repopulate that slot.
   iree_net_connection_release(server_connection_);
   server_connection_ = nullptr;
+  DeactivateAndRelease(&client_connection_);
+  EXPECT_EQ(blocker_result.callback_count, 1);
   EXPECT_EQ(blocking_allocator_.OutstandingAllocationCount(), 0u);
 }
 
@@ -1519,16 +1938,12 @@ TEST_F(TcpConnectionTest, DeactivationKeepsSendCallbacksOnOwningProactor) {
       OpenEndpoint(client_connection_);
   iree_net_message_endpoint_t server_endpoint =
       OpenEndpoint(server_connection_);
-  ActivateEndpoint(client_endpoint, CreateMessageResult());
-  ActivateEndpoint(server_endpoint, CreateMessageResult());
-
-  OperationResult activation_barrier;
-  iree_async_nop_operation_t barrier = {};
-  iree_async_operation_initialize(&barrier.base, IREE_ASYNC_OPERATION_TYPE_NOP,
-                                  IREE_ASYNC_OPERATION_FLAG_NONE,
-                                  OperationCompleted, &activation_barrier);
-  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &barrier.base));
-  PollUntil([&] { return activation_barrier.completed; });
+  MessageResult* client_messages = CreateMessageResult();
+  MessageResult* server_messages = CreateMessageResult();
+  ActivateEndpoint(client_endpoint, client_messages);
+  ActivateEndpoint(server_endpoint, server_messages);
+  EstablishPeerReadiness(client_endpoint, client_messages, server_endpoint,
+                         server_messages);
 
   uint8_t payload = 42;
   iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);

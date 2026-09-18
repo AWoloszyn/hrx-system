@@ -27,9 +27,6 @@ extern "C" {
 // contribute to resident connection storage.
 #define IREE_NET_TCP_DEFAULT_MAX_FRAME_SIZE UINT32_MAX
 
-// Default number of frames retained for one endpoint before local activation.
-#define IREE_NET_TCP_DEFAULT_MAX_PENDING_FRAMES_PER_ENDPOINT 8u
-
 // Options controlling TCP connection framing and bounded resources.
 typedef struct iree_net_tcp_connection_options_t {
   // Number of ordinal message endpoints preallocated by the connection.
@@ -38,10 +35,8 @@ typedef struct iree_net_tcp_connection_options_t {
   // Maximum total wire-frame extent including the transport header.
   uint32_t max_frame_size;
 
-  // Maximum frames retained per endpoint before local activation.
-  uint32_t max_pending_frames_per_endpoint;
-
-  // Admission limits for the shared raw TCP carrier.
+  // DATA admission and generated-prefix storage limits. The connection
+  // reserves one additional send operation internally for ACTIVE frames.
   iree_net_tcp_carrier_options_t carrier_options;
 } iree_net_tcp_connection_options_t;
 
@@ -51,8 +46,6 @@ iree_net_tcp_connection_options_default(void) {
   iree_net_tcp_connection_options_t options;
   options.max_endpoint_count = IREE_NET_TCP_DEFAULT_MAX_ENDPOINT_COUNT;
   options.max_frame_size = IREE_NET_TCP_DEFAULT_MAX_FRAME_SIZE;
-  options.max_pending_frames_per_endpoint =
-      IREE_NET_TCP_DEFAULT_MAX_PENDING_FRAMES_PER_ENDPOINT;
   options.carrier_options = iree_net_tcp_carrier_options_default();
   return options;
 }
@@ -71,12 +64,14 @@ IREE_API_EXPORT iree_status_t iree_net_tcp_connection_options_validate(
 // The connection retains all three resources through its shared carrier
 // stack without consuming the caller's references.
 //
-// The shared receive path is activated before this function returns. Peer
-// frames arriving before their ordinal endpoint is activated are retained up
-// to |options.max_pending_frames_per_endpoint| and delivered in wire order
-// after activation. Retention moves the framing adapter's existing lease
-// without copying payload data; a direct receive lease therefore reduces the
-// dedicated pool's available capacity until the endpoint activates or drains.
+// The shared receive path is activated before this function returns. Each
+// endpoint may send one message before its peer activates. That send's
+// completion remains pending until the peer advertises readiness, and the
+// receiver retains at most that one message for delivery after local
+// activation.
+// Retention moves the framing adapter's existing lease without copying payload
+// data; a direct receive lease therefore reduces the dedicated pool's
+// available capacity until the endpoint activates or drains.
 //
 // The returned connection must be deactivated before its final release.
 IREE_API_EXPORT iree_status_t iree_net_tcp_connection_create(

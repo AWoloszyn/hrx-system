@@ -172,8 +172,10 @@ static void iree_net_session_fail(iree_net_session_t* session,
   IREE_ASSERT(!iree_status_is_ok(status));
   bool report_error = false;
   iree_slim_mutex_lock(&session->mutex);
+  // Explicit deactivation owns later operation failures as teardown outcomes.
   if (!iree_any_bit_set(session->lifecycle_flags,
-                        IREE_NET_SESSION_LIFECYCLE_FLAG_ERROR_REPORTED) &&
+                        IREE_NET_SESSION_LIFECYCLE_FLAG_DEACTIVATION_REQUESTED |
+                            IREE_NET_SESSION_LIFECYCLE_FLAG_ERROR_REPORTED) &&
       iree_net_session_state(session) != IREE_NET_SESSION_STATE_DEACTIVATED) {
     session->lifecycle_flags |=
         IREE_NET_SESSION_LIFECYCLE_FLAG_ERROR_REPORTED |

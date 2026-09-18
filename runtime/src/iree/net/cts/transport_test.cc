@@ -746,6 +746,14 @@ class TransportTest : public ::testing::Test {
     return state->endpoint;
   }
 
+  void WaitForSendSlots(iree_net_message_endpoint_t endpoint,
+                        iree_host_size_t minimum_slots) {
+    PollBothUntil([&] {
+      return iree_net_message_endpoint_query_send_budget(endpoint).slots >=
+             minimum_slots;
+    });
+  }
+
   void StopAndFreeListener() {
     if (!listener_) {
       return;
@@ -927,14 +935,17 @@ TEST_F(TransportTest, CallbackHandoffPreservesQueuedMessageOrder) {
   handoff_state.endpoint = server_endpoint;
   iree_net_message_endpoint_set_callbacks(server_endpoint,
                                           handoff_state.bootstrap_callbacks());
-  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
-  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
-
   std::array<std::string, 3> messages = {
       "bootstrap",
       "control-1",
       "control-2",
   };
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+  // This test requires all messages to be admitted before the server polls so
+  // they exercise callback handoff while queued in the transport.
+  WaitForSendSlots(client_endpoint, messages.size());
+
   std::array<SendState, 3> send_states;
   for (iree_host_size_t i = 0; i < messages.size(); ++i) {
     send_states[i].current_poll_side = &current_poll_side_;
@@ -995,6 +1006,7 @@ TEST_F(TransportTest, CarriesControlDataAndGoaway) {
   iree_net_control_channel_attach(server_control_channel_);
   IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
   IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+  WaitForSendSlots(client_endpoint, 2);
 
   std::string borrowed_payload = "borrowed request";
   iree_async_span_t borrowed_span = iree_async_span_from_ptr(
@@ -1184,6 +1196,11 @@ TEST_F(TransportTest, CarriesCreditBoundedBulkTransfer) {
   iree_net_bulk_channel_attach(server_bulk_channel_);
   IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
   IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+  // Semantic bulk credit does not imply reciprocal transport readiness. Wait
+  // until both endpoints advertise ordinary multi-send capacity before the
+  // test issues adjacent START/DATA and COMPLETE/ABORT operations.
+  WaitForSendSlots(client_endpoint, 2);
+  WaitForSendSlots(server_endpoint, 2);
 
   SendState initial_credit_send;
   initial_credit_send.current_poll_side = &current_poll_side_;

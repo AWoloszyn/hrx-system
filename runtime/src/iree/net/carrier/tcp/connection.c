@@ -21,6 +21,13 @@
 #define IREE_NET_TCP_FRAME_HEADER_SIZE 16u
 #define IREE_NET_TCP_INDEX_NONE UINT32_MAX
 
+typedef enum iree_net_tcp_frame_flag_bits_e {
+  IREE_NET_TCP_FRAME_FLAG_NONE = 0u,
+  // Announces that the endpoint can receive DATA frames.
+  IREE_NET_TCP_FRAME_FLAG_ENDPOINT_ACTIVE = 1u << 0,
+} iree_net_tcp_frame_flag_bits_t;
+typedef uint16_t iree_net_tcp_frame_flags_t;
+
 typedef struct iree_net_tcp_connection_t iree_net_tcp_connection_t;
 typedef struct iree_net_tcp_endpoint_t iree_net_tcp_endpoint_t;
 
@@ -52,19 +59,33 @@ typedef enum iree_net_tcp_send_state_phase_e {
   // The state record is available for admission.
   IREE_NET_TCP_SEND_STATE_PHASE_FREE = 0,
   // The shared carrier owns the submitted logical send.
-  IREE_NET_TCP_SEND_STATE_PHASE_IN_FLIGHT = 1,
+  IREE_NET_TCP_SEND_STATE_PHASE_RAW_IN_FLIGHT = 1,
+  // Raw transmission succeeded and peer readiness owns completion.
+  IREE_NET_TCP_SEND_STATE_PHASE_WAITING_FOR_PEER_ACTIVE = 2,
+  // An owner-proactor NOP owns terminal completion.
+  IREE_NET_TCP_SEND_STATE_PHASE_LOCAL_COMPLETION = 3,
+  // Terminal-error fanout owns completion on the current proactor callback.
+  IREE_NET_TCP_SEND_STATE_PHASE_TERMINAL_COMPLETION = 4,
 } iree_net_tcp_send_state_phase_t;
 
 typedef struct iree_net_tcp_pending_frame_t {
-  // Next frame index in an endpoint queue or the connection free list.
-  uint32_t next;
-
   // Storage lease moved from the framing adapter.
   iree_async_buffer_lease_t lease;
 
   // Payload view kept valid by |lease|.
   iree_const_byte_span_t payload;
 } iree_net_tcp_pending_frame_t;
+
+typedef enum iree_net_tcp_activation_announcement_phase_e {
+  // The endpoint has not queued its one-time announcement.
+  IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_NONE = 0,
+  // The endpoint is waiting in the connection control lane.
+  IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_QUEUED = 1,
+  // The raw carrier owns the endpoint's ACTIVE frame.
+  IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_IN_FLIGHT = 2,
+  // The announcement completed or was cancelled during drain.
+  IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_RETIRED = 3,
+} iree_net_tcp_activation_announcement_phase_t;
 
 typedef struct iree_net_tcp_send_state_t {
   // Endpoint operation retained through terminal completion.
@@ -93,6 +114,9 @@ typedef struct iree_net_tcp_send_state_t {
 } iree_net_tcp_send_state_t;
 
 typedef struct iree_net_tcp_frame_prefix_t {
+  // Wire flags distinguishing DATA from control frames.
+  iree_net_tcp_frame_flags_t flags;
+
   // Payload byte count encoded into the wire header.
   uint32_t payload_length;
 
@@ -116,8 +140,20 @@ struct iree_net_tcp_endpoint_t {
   // Message and terminal-error callbacks installed by the consumer.
   iree_net_message_endpoint_callbacks_t callbacks;
 
+  // True after peer ACTIVE has made ordinary send admission safe.
+  bool peer_active;
+
+  // True after any DATA arrived before local activation completed.
+  bool preactivation_data_observed;
+
+  // True while |pending_frame| owns a receive lease.
+  bool pending_frame_present;
+
   // True while terminal-error fanout owns a lifecycle operation hold.
   bool terminal_error_callback_pending;
+
+  // Send whose completion owns the one pre-activation DATA credit.
+  iree_net_tcp_send_state_t* preactivation_send_state;
 
   // Coordinates endpoint operations with endpoint/connection drain.
   iree_net_endpoint_lifecycle_t lifecycle;
@@ -131,6 +167,12 @@ struct iree_net_tcp_endpoint_t {
   // Preallocated operation draining frames queued before activation.
   iree_async_nop_operation_t activation_operation;
 
+  // Current ownership phase of the one-time ACTIVE announcement.
+  iree_net_tcp_activation_announcement_phase_t activation_announcement_phase;
+
+  // Next endpoint ordinal in the connection announcement queue.
+  uint32_t next_activation_ordinal;
+
   // Endpoint-consumer callback awaiting explicit endpoint deactivation.
   struct {
     // Function invoked after the endpoint lifecycle drains.
@@ -139,21 +181,15 @@ struct iree_net_tcp_endpoint_t {
     void* user_data;
   } deactivate_callback;
 
-  // Head pending-frame index in wire order.
-  uint32_t pending_head;
-
-  // Tail pending-frame index in wire order.
-  uint32_t pending_tail;
-
-  // Number of frames queued before activation.
-  uint32_t pending_count;
+  // One DATA frame retained before local activation.
+  iree_net_tcp_pending_frame_t pending_frame;
 };
 
 struct iree_net_tcp_connection_t {
   // Public connection base; must be first.
   iree_net_connection_t base;
 
-  // Serializes connection, endpoint, send-state, and pending-frame ownership.
+  // Serializes connection, endpoint, send-state, and control ownership.
   iree_slim_mutex_t mutex;
 
   // Proactor dispatching all connection callbacks. Retained.
@@ -180,9 +216,6 @@ struct iree_net_tcp_connection_t {
   // Maximum accepted total frame extent including its header.
   uint32_t max_frame_size;
 
-  // Maximum frames retained per endpoint before activation.
-  uint32_t max_pending_frames_per_endpoint;
-
   // First terminal shared connection status, owned until destruction.
   iree_status_t terminal_status;
 
@@ -207,17 +240,14 @@ struct iree_net_tcp_connection_t {
   // Preallocated framing completion records.
   iree_net_tcp_send_state_t* send_states;
 
-  // Number of preallocated pending-frame records.
-  uint32_t pending_frame_count;
+  // First endpoint waiting to publish its ACTIVE announcement.
+  uint32_t activation_queue_head;
 
-  // Number of pending-frame records currently available.
-  uint32_t free_pending_frame_count;
+  // Last endpoint waiting to publish its ACTIVE announcement.
+  uint32_t activation_queue_tail;
 
-  // Head index of the pending-frame free list.
-  uint32_t free_pending_frame_head;
-
-  // Preallocated metadata for frames received before endpoint activation.
-  iree_net_tcp_pending_frame_t* pending_frames;
+  // Endpoint whose ACTIVE frame is owned by the raw carrier.
+  uint32_t activation_in_flight;
 };
 
 //===----------------------------------------------------------------------===//
@@ -225,11 +255,12 @@ struct iree_net_tcp_connection_t {
 //===----------------------------------------------------------------------===//
 
 static void iree_net_tcp_encode_frame_header(uint8_t* header,
+                                             iree_net_tcp_frame_flags_t flags,
                                              uint32_t payload_length,
                                              uint16_t endpoint_ordinal) {
   iree_unaligned_store_le_u32(header + 0, IREE_NET_TCP_FRAME_MAGIC);
   iree_unaligned_store_le_u16(header + 4, IREE_NET_TCP_FRAME_VERSION);
-  iree_unaligned_store_le_u16(header + 6, 0);
+  iree_unaligned_store_le_u16(header + 6, flags);
   iree_unaligned_store_le_u32(header + 8, payload_length);
   iree_unaligned_store_le_u16(header + 12, endpoint_ordinal);
   iree_unaligned_store_le_u16(header + 14, 0);
@@ -238,7 +269,8 @@ static void iree_net_tcp_encode_frame_header(uint8_t* header,
 static iree_status_t iree_net_tcp_write_frame_prefix(void* user_data,
                                                      iree_byte_span_t target) {
   iree_net_tcp_frame_prefix_t* prefix = (iree_net_tcp_frame_prefix_t*)user_data;
-  iree_net_tcp_encode_frame_header(target.data, prefix->payload_length,
+  iree_net_tcp_encode_frame_header(target.data, prefix->flags,
+                                   prefix->payload_length,
                                    prefix->endpoint_ordinal);
   if (prefix->message_prefix.length == 0) {
     return iree_ok_status();
@@ -288,11 +320,8 @@ static iree_status_t iree_net_tcp_resolve_frame_size(
     return iree_make_status(IREE_STATUS_DATA_LOSS,
                             "unsupported TCP frame version %u", version);
   }
-  const uint16_t flags = iree_unaligned_load_le_u16(available.data + 6);
-  if (flags != 0) {
-    return iree_make_status(IREE_STATUS_DATA_LOSS,
-                            "unsupported TCP frame flags 0x%04X", flags);
-  }
+  const iree_net_tcp_frame_flags_t flags =
+      iree_unaligned_load_le_u16(available.data + 6);
   const uint16_t endpoint_ordinal =
       iree_unaligned_load_le_u16(available.data + 12);
   if (endpoint_ordinal >= connection->base.max_endpoint_count) {
@@ -308,9 +337,23 @@ static iree_status_t iree_net_tcp_resolve_frame_size(
 
   const uint32_t payload_length =
       iree_unaligned_load_le_u32(available.data + 8);
-  if (payload_length == 0) {
-    return iree_make_status(IREE_STATUS_DATA_LOSS,
-                            "TCP frame payload must be nonempty");
+  switch (flags) {
+    case IREE_NET_TCP_FRAME_FLAG_NONE:
+      if (payload_length == 0) {
+        return iree_make_status(IREE_STATUS_DATA_LOSS,
+                                "TCP DATA frame payload must be nonempty");
+      }
+      break;
+    case IREE_NET_TCP_FRAME_FLAG_ENDPOINT_ACTIVE:
+      if (payload_length != 0) {
+        return iree_make_status(
+            IREE_STATUS_DATA_LOSS,
+            "TCP endpoint ACTIVE frame must not carry a payload");
+      }
+      break;
+    default:
+      return iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "unsupported TCP frame flags 0x%04X", flags);
   }
   iree_host_size_t frame_size = 0;
   if (!iree_host_size_checked_add(IREE_NET_TCP_FRAME_HEADER_SIZE,
@@ -345,7 +388,7 @@ static iree_net_tcp_send_state_t* iree_net_tcp_acquire_send_state_locked(
   connection->free_send_state_head = send_state->next_free;
   --connection->free_send_state_count;
   send_state->next_free = IREE_NET_TCP_INDEX_NONE;
-  send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_IN_FLIGHT;
+  send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_RAW_IN_FLIGHT;
   send_state->endpoint = endpoint;
   return send_state;
 }
@@ -363,108 +406,95 @@ static void iree_net_tcp_release_send_state_locked(
   ++connection->free_send_state_count;
 }
 
-static uint32_t iree_net_tcp_acquire_pending_frame_locked(
-    iree_net_tcp_connection_t* connection) {
-  const uint32_t frame_index = connection->free_pending_frame_head;
-  if (frame_index == IREE_NET_TCP_INDEX_NONE) {
-    return frame_index;
+typedef struct iree_net_tcp_send_completion_t {
+  // Endpoint whose lifecycle hold retires after the callback.
+  iree_net_tcp_endpoint_t* endpoint;
+
+  // Application callback receiving terminal send status.
+  iree_net_send_completion_callback_t callback;
+
+  // Logical application payload length.
+  iree_host_size_t payload_length;
+} iree_net_tcp_send_completion_t;
+
+static iree_net_tcp_send_completion_t iree_net_tcp_claim_send_completion_locked(
+    iree_net_tcp_connection_t* connection,
+    iree_net_tcp_send_state_t* send_state) {
+  IREE_ASSERT(send_state->phase != IREE_NET_TCP_SEND_STATE_PHASE_FREE);
+  iree_net_tcp_endpoint_t* endpoint = send_state->endpoint;
+  if (endpoint->preactivation_send_state == send_state) {
+    endpoint->preactivation_send_state = NULL;
   }
-  iree_net_tcp_pending_frame_t* pending_frame =
-      &connection->pending_frames[frame_index];
-  connection->free_pending_frame_head = pending_frame->next;
-  --connection->free_pending_frame_count;
-  pending_frame->next = IREE_NET_TCP_INDEX_NONE;
-  return frame_index;
+  iree_net_tcp_send_completion_t completion = {
+      .endpoint = endpoint,
+      .callback = send_state->completion_callback,
+      .payload_length = send_state->payload_length,
+  };
+  iree_net_tcp_release_send_state_locked(connection, send_state);
+  return completion;
 }
 
-static void iree_net_tcp_release_pending_frame_locked(
-    iree_net_tcp_connection_t* connection, uint32_t frame_index) {
-  iree_net_tcp_pending_frame_t* pending_frame =
-      &connection->pending_frames[frame_index];
-  pending_frame->lease = (iree_async_buffer_lease_t){0};
-  pending_frame->payload = iree_const_byte_span_empty();
-  pending_frame->next = connection->free_pending_frame_head;
-  connection->free_pending_frame_head = frame_index;
-  ++connection->free_pending_frame_count;
+static void iree_net_tcp_invoke_send_completion(
+    iree_net_tcp_send_completion_t completion, iree_status_t status,
+    iree_host_size_t bytes_transferred) {
+  completion.callback.fn(completion.callback.user_data, status,
+                         bytes_transferred);
+  iree_net_endpoint_lifecycle_end_operation(&completion.endpoint->lifecycle);
 }
 
-static uint32_t iree_net_tcp_pop_pending_frame_locked(
-    iree_net_tcp_connection_t* connection, iree_net_tcp_endpoint_t* endpoint) {
-  const uint32_t frame_index = endpoint->pending_head;
-  if (frame_index == IREE_NET_TCP_INDEX_NONE) {
-    return frame_index;
-  }
-  iree_net_tcp_pending_frame_t* pending_frame =
-      &connection->pending_frames[frame_index];
-  endpoint->pending_head = pending_frame->next;
-  if (endpoint->pending_head == IREE_NET_TCP_INDEX_NONE) {
-    endpoint->pending_tail = IREE_NET_TCP_INDEX_NONE;
-  }
-  pending_frame->next = IREE_NET_TCP_INDEX_NONE;
-  --endpoint->pending_count;
-  return frame_index;
-}
-
-static iree_status_t iree_net_tcp_enqueue_pending_frame_locked(
+static iree_status_t iree_net_tcp_store_pending_frame_locked(
     iree_net_tcp_endpoint_t* endpoint, iree_const_byte_span_t payload,
     iree_async_buffer_lease_t* lease) {
-  iree_net_tcp_connection_t* connection = endpoint->connection;
-  if (endpoint->pending_count >= connection->max_pending_frames_per_endpoint) {
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "TCP endpoint %u has %u frames pending activation",
-                            endpoint->ordinal, endpoint->pending_count);
+  if (endpoint->preactivation_data_observed) {
+    return iree_make_status(
+        IREE_STATUS_DATA_LOSS,
+        "TCP endpoint %u received multiple DATA frames before activation",
+        endpoint->ordinal);
   }
-  const uint32_t frame_index =
-      iree_net_tcp_acquire_pending_frame_locked(connection);
-  if (frame_index == IREE_NET_TCP_INDEX_NONE) {
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "TCP pending-frame records are exhausted");
-  }
-
-  iree_net_tcp_pending_frame_t* pending_frame =
-      &connection->pending_frames[frame_index];
-  pending_frame->lease = *lease;
+  IREE_ASSERT(!endpoint->pending_frame_present);
+  endpoint->preactivation_data_observed = true;
+  endpoint->pending_frame_present = true;
+  endpoint->pending_frame.lease = *lease;
+  endpoint->pending_frame.payload = payload;
   *lease = (iree_async_buffer_lease_t){0};
-  pending_frame->payload = payload;
-  if (endpoint->pending_tail == IREE_NET_TCP_INDEX_NONE) {
-    endpoint->pending_head = frame_index;
-  } else {
-    connection->pending_frames[endpoint->pending_tail].next = frame_index;
-  }
-  endpoint->pending_tail = frame_index;
-  ++endpoint->pending_count;
   return iree_ok_status();
 }
 
-static void iree_net_tcp_release_pending_frame(
-    iree_net_tcp_connection_t* connection, uint32_t frame_index) {
-  iree_net_tcp_pending_frame_t* pending_frame =
-      &connection->pending_frames[frame_index];
-  iree_async_buffer_lease_release(&pending_frame->lease);
-  iree_slim_mutex_lock(&connection->mutex);
-  iree_net_tcp_release_pending_frame_locked(connection, frame_index);
-  iree_slim_mutex_unlock(&connection->mutex);
+static bool iree_net_tcp_take_pending_frame_locked(
+    iree_net_tcp_endpoint_t* endpoint,
+    iree_net_tcp_pending_frame_t* out_pending_frame) {
+  *out_pending_frame = (iree_net_tcp_pending_frame_t){0};
+  if (!endpoint->pending_frame_present) {
+    return false;
+  }
+  endpoint->pending_frame_present = false;
+  *out_pending_frame = endpoint->pending_frame;
+  endpoint->pending_frame = (iree_net_tcp_pending_frame_t){0};
+  return true;
 }
 
-static void iree_net_tcp_clear_endpoint_pending_frames(
+static void iree_net_tcp_release_pending_frame(
+    iree_net_tcp_pending_frame_t* pending_frame) {
+  iree_async_buffer_lease_release(&pending_frame->lease);
+  *pending_frame = (iree_net_tcp_pending_frame_t){0};
+}
+
+static void iree_net_tcp_clear_endpoint_pending_frame(
     iree_net_tcp_endpoint_t* endpoint) {
-  iree_net_tcp_connection_t* connection = endpoint->connection;
-  while (true) {
-    iree_slim_mutex_lock(&connection->mutex);
-    const uint32_t frame_index =
-        iree_net_tcp_pop_pending_frame_locked(connection, endpoint);
-    iree_slim_mutex_unlock(&connection->mutex);
-    if (frame_index == IREE_NET_TCP_INDEX_NONE) {
-      break;
-    }
-    iree_net_tcp_release_pending_frame(connection, frame_index);
+  iree_net_tcp_pending_frame_t pending_frame;
+  iree_slim_mutex_lock(&endpoint->connection->mutex);
+  const bool has_pending_frame =
+      iree_net_tcp_take_pending_frame_locked(endpoint, &pending_frame);
+  iree_slim_mutex_unlock(&endpoint->connection->mutex);
+  if (has_pending_frame) {
+    iree_net_tcp_release_pending_frame(&pending_frame);
   }
 }
 
 static void iree_net_tcp_clear_all_pending_frames(
     iree_net_tcp_connection_t* connection) {
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
-    iree_net_tcp_clear_endpoint_pending_frames(&connection->endpoints[i]);
+    iree_net_tcp_clear_endpoint_pending_frame(&connection->endpoints[i]);
   }
 }
 
@@ -476,9 +506,6 @@ static void iree_net_tcp_connection_record_terminal_error(
     iree_net_tcp_connection_t* connection, iree_status_t status) {
   IREE_ASSERT(!iree_status_is_ok(status),
               "terminal connection error must be non-OK");
-  if (iree_status_is_ok(status)) {
-    return;
-  }
 
   iree_net_connection_retain(&connection->base);
   bool is_first_error = false;
@@ -499,6 +526,17 @@ static void iree_net_tcp_connection_record_terminal_error(
                     "TCP endpoint %u already has terminal error pending",
                     endpoint->ordinal);
         endpoint->terminal_error_callback_pending = true;
+      }
+    }
+    // Claim every raw-complete rendezvous before callbacks can begin drain.
+    for (uint32_t i = 0; i < connection->send_state_count; ++i) {
+      iree_net_tcp_send_state_t* send_state = &connection->send_states[i];
+      if (send_state->phase ==
+          IREE_NET_TCP_SEND_STATE_PHASE_WAITING_FOR_PEER_ACTIVE) {
+        IREE_ASSERT(send_state->endpoint->preactivation_send_state ==
+                    send_state);
+        send_state->endpoint->preactivation_send_state = NULL;
+        send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_TERMINAL_COMPLETION;
       }
     }
   }
@@ -531,6 +569,22 @@ static void iree_net_tcp_connection_record_terminal_error(
       iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
     }
   }
+  for (uint32_t i = 0; i < connection->send_state_count; ++i) {
+    iree_net_tcp_send_completion_t completion = {0};
+    iree_slim_mutex_lock(&connection->mutex);
+    iree_net_tcp_send_state_t* send_state = &connection->send_states[i];
+    if (send_state->phase ==
+        IREE_NET_TCP_SEND_STATE_PHASE_TERMINAL_COMPLETION) {
+      completion =
+          iree_net_tcp_claim_send_completion_locked(connection, send_state);
+    }
+    iree_slim_mutex_unlock(&connection->mutex);
+    if (completion.endpoint) {
+      iree_net_tcp_invoke_send_completion(
+          completion, iree_status_clone(connection->terminal_status),
+          /*bytes_transferred=*/0);
+    }
+  }
   iree_net_connection_release(&connection->base);
 }
 
@@ -540,11 +594,14 @@ static iree_status_t iree_net_tcp_on_wire_frame(
   iree_net_tcp_connection_t* connection = (iree_net_tcp_connection_t*)user_data;
   const uint16_t endpoint_ordinal = iree_unaligned_load_le_u16(frame.data + 12);
   iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[endpoint_ordinal];
+  const iree_net_tcp_frame_flags_t frame_flags =
+      iree_unaligned_load_le_u16(frame.data + 6);
   const iree_const_byte_span_t payload = iree_make_const_byte_span(
       frame.data + IREE_NET_TCP_FRAME_HEADER_SIZE,
       frame.data_length - IREE_NET_TCP_FRAME_HEADER_SIZE);
 
   iree_net_message_endpoint_callbacks_t callbacks = {0};
+  iree_net_tcp_send_completion_t readiness_completion = {0};
   iree_slim_mutex_lock(&connection->mutex);
   // Leaving OPEN closes receive admission before endpoint queues are cleared.
   // Frames that lose this lock race remain owned by the framing adapter and
@@ -556,10 +613,35 @@ static iree_status_t iree_net_tcp_on_wire_frame(
   iree_status_t status = iree_ok_status();
   if (!iree_status_is_ok(connection->terminal_status)) {
     status = iree_status_clone(connection->terminal_status);
+  } else if (frame_flags == IREE_NET_TCP_FRAME_FLAG_ENDPOINT_ACTIVE) {
+    if (endpoint->peer_active) {
+      status = iree_make_status(
+          IREE_STATUS_DATA_LOSS,
+          "TCP endpoint %u received duplicate ACTIVE announcement",
+          endpoint_ordinal);
+    } else {
+      endpoint->peer_active = true;
+      iree_net_tcp_send_state_t* send_state =
+          endpoint->preactivation_send_state;
+      if (send_state) {
+        if (send_state->phase ==
+            IREE_NET_TCP_SEND_STATE_PHASE_WAITING_FOR_PEER_ACTIVE) {
+          readiness_completion =
+              iree_net_tcp_claim_send_completion_locked(connection, send_state);
+        } else {
+          IREE_ASSERT(send_state->phase ==
+                              IREE_NET_TCP_SEND_STATE_PHASE_RAW_IN_FLIGHT ||
+                          send_state->phase ==
+                              IREE_NET_TCP_SEND_STATE_PHASE_LOCAL_COMPLETION,
+                      "TCP pre-activation send has invalid phase %d",
+                      (int)send_state->phase);
+          endpoint->preactivation_send_state = NULL;
+        }
+      }
+    }
   } else if (endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_CREATED ||
              endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING) {
-    status =
-        iree_net_tcp_enqueue_pending_frame_locked(endpoint, payload, lease);
+    status = iree_net_tcp_store_pending_frame_locked(endpoint, payload, lease);
   } else if (endpoint->phase != IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE ||
              !iree_net_endpoint_lifecycle_try_begin_operation(
                  &endpoint->lifecycle)) {
@@ -571,7 +653,10 @@ static iree_status_t iree_net_tcp_on_wire_frame(
   }
   iree_slim_mutex_unlock(&connection->mutex);
 
-  if (callbacks.on_message) {
+  if (readiness_completion.endpoint) {
+    iree_net_tcp_invoke_send_completion(readiness_completion, iree_ok_status(),
+                                        readiness_completion.payload_length);
+  } else if (callbacks.on_message) {
     status = callbacks.on_message(callbacks.user_data, payload, lease);
     iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
   }
@@ -594,15 +679,7 @@ static void iree_net_tcp_endpoint_send_complete(
   iree_net_tcp_endpoint_t* endpoint = send_state->endpoint;
   iree_net_tcp_connection_t* connection = endpoint->connection;
 
-  iree_slim_mutex_lock(&connection->mutex);
-  IREE_ASSERT(send_state->phase == IREE_NET_TCP_SEND_STATE_PHASE_IN_FLIGHT,
-              "TCP send completed from phase %d", (int)send_state->phase);
   const iree_host_size_t payload_length = send_state->payload_length;
-  iree_net_send_completion_callback_t completion_callback =
-      send_state->completion_callback;
-  iree_net_tcp_release_send_state_locked(connection, send_state);
-  iree_slim_mutex_unlock(&connection->mutex);
-
   IREE_ASSERT(!iree_status_is_ok(status) ||
                   wire_bytes_transferred ==
                       payload_length + IREE_NET_TCP_FRAME_HEADER_SIZE,
@@ -610,15 +687,58 @@ static void iree_net_tcp_endpoint_send_complete(
               " wire bytes",
               wire_bytes_transferred,
               payload_length + IREE_NET_TCP_FRAME_HEADER_SIZE);
+
+  bool retained_for_peer_active = false;
+  bool complete_with_terminal_error = false;
+  bool complete_with_cancellation = false;
+  iree_net_tcp_send_completion_t completion = {0};
+  iree_slim_mutex_lock(&connection->mutex);
+  IREE_ASSERT(send_state->phase == IREE_NET_TCP_SEND_STATE_PHASE_RAW_IN_FLIGHT,
+              "TCP raw send completed from phase %d", (int)send_state->phase);
+  if (iree_status_is_ok(status) && !endpoint->peer_active &&
+      connection->state == IREE_NET_TCP_CONNECTION_STATE_OPEN &&
+      iree_status_is_ok(connection->terminal_status) &&
+      (endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING ||
+       endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE)) {
+    IREE_ASSERT(endpoint->preactivation_send_state == send_state);
+    send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_WAITING_FOR_PEER_ACTIVE;
+    retained_for_peer_active = true;
+  } else {
+    if (iree_status_is_ok(status) && !endpoint->peer_active) {
+      if (!iree_status_is_ok(connection->terminal_status)) {
+        complete_with_terminal_error = true;
+      } else {
+        complete_with_cancellation = true;
+      }
+    }
+    completion =
+        iree_net_tcp_claim_send_completion_locked(connection, send_state);
+  }
+  iree_slim_mutex_unlock(&connection->mutex);
+
+  if (retained_for_peer_active) {
+    iree_status_free(status);
+    return;
+  }
+
   iree_host_size_t payload_bytes_transferred = 0;
-  if (wire_bytes_transferred > IREE_NET_TCP_FRAME_HEADER_SIZE) {
+  if (!complete_with_terminal_error && !complete_with_cancellation &&
+      wire_bytes_transferred > IREE_NET_TCP_FRAME_HEADER_SIZE) {
     payload_bytes_transferred =
         iree_min(payload_length,
                  wire_bytes_transferred - IREE_NET_TCP_FRAME_HEADER_SIZE);
   }
-  completion_callback.fn(completion_callback.user_data, status,
-                         payload_bytes_transferred);
-  iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
+  if (complete_with_terminal_error) {
+    iree_status_free(status);
+    status = iree_status_clone(connection->terminal_status);
+  } else if (complete_with_cancellation) {
+    iree_status_free(status);
+    status =
+        iree_make_status(IREE_STATUS_CANCELLED,
+                         "TCP send cancelled before peer endpoint activation");
+  }
+  iree_net_tcp_invoke_send_completion(completion, status,
+                                      payload_bytes_transferred);
 }
 
 static void iree_net_tcp_endpoint_local_send_complete(
@@ -630,8 +750,49 @@ static void iree_net_tcp_endpoint_local_send_complete(
   iree_status_t completion_status = send_state->local_completion_status;
   send_state->local_completion_status = iree_ok_status();
   completion_status = iree_status_join(completion_status, status);
-  iree_net_tcp_endpoint_send_complete(send_state, completion_status,
-                                      /*wire_bytes_transferred=*/0);
+  iree_net_tcp_connection_t* connection = send_state->endpoint->connection;
+  iree_slim_mutex_lock(&connection->mutex);
+  IREE_ASSERT(
+      send_state->phase == IREE_NET_TCP_SEND_STATE_PHASE_LOCAL_COMPLETION,
+      "TCP local send completed from phase %d", (int)send_state->phase);
+  const iree_net_tcp_send_completion_t completion =
+      iree_net_tcp_claim_send_completion_locked(connection, send_state);
+  iree_slim_mutex_unlock(&connection->mutex);
+  iree_net_tcp_invoke_send_completion(completion, completion_status,
+                                      /*bytes_transferred=*/0);
+}
+
+// Schedules an accepted send completion on the connection's owning proactor.
+// NOP submission is allocation-free and cannot exhaust backend capacity.
+static void iree_net_tcp_schedule_local_send_completion(
+    iree_net_tcp_send_state_t* send_state, iree_status_t status) {
+  IREE_ASSERT(!iree_status_is_ok(status));
+  IREE_ASSERT(send_state->phase ==
+              IREE_NET_TCP_SEND_STATE_PHASE_LOCAL_COMPLETION);
+  iree_net_tcp_connection_t* connection = send_state->endpoint->connection;
+  send_state->local_completion_status = status;
+  iree_async_operation_zero(&send_state->local_completion_operation.base,
+                            sizeof(send_state->local_completion_operation));
+  iree_async_operation_initialize(
+      &send_state->local_completion_operation.base,
+      IREE_ASYNC_OPERATION_TYPE_NOP, IREE_ASYNC_OPERATION_FLAG_NONE,
+      iree_net_tcp_endpoint_local_send_complete, send_state);
+  IREE_CHECK_OK(iree_async_proactor_submit_one(
+      connection->proactor, &send_state->local_completion_operation.base));
+}
+
+static iree_net_tcp_send_state_t*
+iree_net_tcp_claim_waiting_send_for_cancellation_locked(
+    iree_net_tcp_endpoint_t* endpoint) {
+  iree_net_tcp_send_state_t* send_state = endpoint->preactivation_send_state;
+  if (!send_state ||
+      send_state->phase !=
+          IREE_NET_TCP_SEND_STATE_PHASE_WAITING_FOR_PEER_ACTIVE) {
+    return NULL;
+  }
+  endpoint->preactivation_send_state = NULL;
+  send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_LOCAL_COMPLETION;
+  return send_state;
 }
 
 static void iree_net_tcp_endpoint_set_callbacks(
@@ -643,6 +804,170 @@ static void iree_net_tcp_endpoint_set_callbacks(
   iree_slim_mutex_unlock(&connection->mutex);
 }
 
+typedef struct iree_net_tcp_activation_work_t {
+  // Endpoint whose ACTIVE frame must be submitted next.
+  iree_net_tcp_endpoint_t* send_endpoint;
+
+  // First detached endpoint whose announcement hold must be retired.
+  uint32_t retire_head;
+} iree_net_tcp_activation_work_t;
+
+static void iree_net_tcp_activation_announcement_complete(
+    void* user_data, iree_status_t status,
+    iree_host_size_t wire_bytes_transferred);
+
+static void iree_net_tcp_collect_activation_work_locked(
+    iree_net_tcp_connection_t* connection,
+    iree_net_tcp_activation_work_t* out_work) {
+  *out_work = (iree_net_tcp_activation_work_t){
+      .retire_head = IREE_NET_TCP_INDEX_NONE,
+  };
+  if (connection->activation_in_flight != IREE_NET_TCP_INDEX_NONE ||
+      connection->activation_queue_head == IREE_NET_TCP_INDEX_NONE) {
+    return;
+  }
+
+  if (connection->state != IREE_NET_TCP_CONNECTION_STATE_OPEN ||
+      !iree_status_is_ok(connection->terminal_status)) {
+    out_work->retire_head = connection->activation_queue_head;
+    connection->activation_queue_head = IREE_NET_TCP_INDEX_NONE;
+    connection->activation_queue_tail = IREE_NET_TCP_INDEX_NONE;
+    for (uint32_t ordinal = out_work->retire_head;
+         ordinal != IREE_NET_TCP_INDEX_NONE;) {
+      iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[ordinal];
+      IREE_ASSERT(endpoint->activation_announcement_phase ==
+                  IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_QUEUED);
+      endpoint->activation_announcement_phase =
+          IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_RETIRED;
+      ordinal = endpoint->next_activation_ordinal;
+    }
+    return;
+  }
+
+  const uint32_t ordinal = connection->activation_queue_head;
+  iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[ordinal];
+  connection->activation_queue_head = endpoint->next_activation_ordinal;
+  if (connection->activation_queue_head == IREE_NET_TCP_INDEX_NONE) {
+    connection->activation_queue_tail = IREE_NET_TCP_INDEX_NONE;
+  }
+  endpoint->next_activation_ordinal = IREE_NET_TCP_INDEX_NONE;
+  IREE_ASSERT(endpoint->activation_announcement_phase ==
+              IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_QUEUED);
+  endpoint->activation_announcement_phase =
+      IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_IN_FLIGHT;
+  connection->activation_in_flight = ordinal;
+  out_work->send_endpoint = endpoint;
+}
+
+static void iree_net_tcp_enqueue_activation_announcement_locked(
+    iree_net_tcp_endpoint_t* endpoint,
+    iree_net_tcp_activation_work_t* out_work) {
+  iree_net_tcp_connection_t* connection = endpoint->connection;
+  IREE_ASSERT(endpoint->activation_announcement_phase ==
+              IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_NONE);
+  endpoint->activation_announcement_phase =
+      IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_QUEUED;
+  endpoint->next_activation_ordinal = IREE_NET_TCP_INDEX_NONE;
+  if (connection->activation_queue_tail == IREE_NET_TCP_INDEX_NONE) {
+    connection->activation_queue_head = endpoint->ordinal;
+  } else {
+    connection->endpoints[connection->activation_queue_tail]
+        .next_activation_ordinal = endpoint->ordinal;
+  }
+  connection->activation_queue_tail = endpoint->ordinal;
+  iree_net_tcp_collect_activation_work_locked(connection, out_work);
+}
+
+static void iree_net_tcp_retire_activation_announcement(
+    iree_net_tcp_endpoint_t* endpoint) {
+  iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
+  iree_net_connection_release(&endpoint->connection->base);
+}
+
+static void iree_net_tcp_retire_activation_queue(
+    iree_net_tcp_connection_t* connection, uint32_t retire_head) {
+  for (uint32_t ordinal = retire_head; ordinal != IREE_NET_TCP_INDEX_NONE;) {
+    iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[ordinal];
+    ordinal = endpoint->next_activation_ordinal;
+    endpoint->next_activation_ordinal = IREE_NET_TCP_INDEX_NONE;
+    iree_net_tcp_retire_activation_announcement(endpoint);
+  }
+}
+
+static iree_status_t iree_net_tcp_write_activation_announcement(
+    void* user_data, iree_byte_span_t target) {
+  iree_net_tcp_endpoint_t* endpoint = (iree_net_tcp_endpoint_t*)user_data;
+  iree_net_tcp_encode_frame_header(target.data,
+                                   IREE_NET_TCP_FRAME_FLAG_ENDPOINT_ACTIVE,
+                                   /*payload_length=*/0, endpoint->ordinal);
+  return iree_ok_status();
+}
+
+static void iree_net_tcp_submit_activation_announcement(
+    iree_net_tcp_endpoint_t* endpoint) {
+  iree_net_tcp_connection_t* connection = endpoint->connection;
+  const iree_net_message_endpoint_send_params_t params = {
+      .generated_prefix =
+          {
+              .length = IREE_NET_TCP_FRAME_HEADER_SIZE,
+              .write = iree_net_tcp_write_activation_announcement,
+              .user_data = endpoint,
+          },
+      .data = iree_async_span_list_empty(),
+      .completion_callback =
+          {
+              .fn = iree_net_tcp_activation_announcement_complete,
+              .user_data = endpoint,
+          },
+  };
+  iree_status_t status =
+      iree_net_message_endpoint_send(connection->wire_endpoint, &params);
+  if (!iree_status_is_ok(status)) {
+    iree_net_tcp_activation_announcement_complete(endpoint, status,
+                                                  /*wire_bytes_transferred=*/0);
+  }
+}
+
+static void iree_net_tcp_activation_announcement_complete(
+    void* user_data, iree_status_t status,
+    iree_host_size_t wire_bytes_transferred) {
+  iree_net_tcp_endpoint_t* endpoint = (iree_net_tcp_endpoint_t*)user_data;
+  iree_net_tcp_connection_t* connection = endpoint->connection;
+  if (!iree_status_is_ok(status)) {
+    iree_slim_mutex_lock(&connection->mutex);
+    const bool connection_is_open =
+        connection->state == IREE_NET_TCP_CONNECTION_STATE_OPEN;
+    iree_slim_mutex_unlock(&connection->mutex);
+    if (connection_is_open) {
+      iree_net_tcp_connection_record_terminal_error(connection, status);
+    } else {
+      iree_status_free(status);
+    }
+  } else {
+    IREE_ASSERT(wire_bytes_transferred == IREE_NET_TCP_FRAME_HEADER_SIZE,
+                "TCP ACTIVE completed %" PRIhsz " of %u wire bytes",
+                wire_bytes_transferred, IREE_NET_TCP_FRAME_HEADER_SIZE);
+    iree_status_free(status);
+  }
+
+  iree_net_tcp_activation_work_t work;
+  iree_slim_mutex_lock(&connection->mutex);
+  IREE_ASSERT(connection->activation_in_flight == endpoint->ordinal);
+  IREE_ASSERT(endpoint->activation_announcement_phase ==
+              IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_IN_FLIGHT);
+  connection->activation_in_flight = IREE_NET_TCP_INDEX_NONE;
+  endpoint->activation_announcement_phase =
+      IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_RETIRED;
+  iree_net_tcp_collect_activation_work_locked(connection, &work);
+  iree_slim_mutex_unlock(&connection->mutex);
+
+  iree_net_tcp_retire_activation_queue(connection, work.retire_head);
+  if (work.send_endpoint) {
+    iree_net_tcp_submit_activation_announcement(work.send_endpoint);
+  }
+  iree_net_tcp_retire_activation_announcement(endpoint);
+}
+
 static void iree_net_tcp_endpoint_activation_complete(
     void* user_data, iree_async_operation_t* operation, iree_status_t status,
     iree_async_completion_flags_t flags) {
@@ -652,48 +977,56 @@ static void iree_net_tcp_endpoint_activation_complete(
   iree_net_tcp_endpoint_t* endpoint = (iree_net_tcp_endpoint_t*)user_data;
   iree_net_tcp_connection_t* connection = endpoint->connection;
 
+  bool activation_succeeded = iree_status_is_ok(status);
   if (!iree_status_is_ok(status)) {
     iree_net_tcp_connection_record_terminal_error(connection, status);
   } else {
     iree_status_free(status);
-    while (true) {
-      iree_net_message_endpoint_callbacks_t callbacks = {0};
-      uint32_t frame_index = IREE_NET_TCP_INDEX_NONE;
-      iree_slim_mutex_lock(&connection->mutex);
-      if (endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING) {
-        frame_index =
-            iree_net_tcp_pop_pending_frame_locked(connection, endpoint);
-        if (frame_index == IREE_NET_TCP_INDEX_NONE) {
-          endpoint->phase = IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE;
-        } else {
-          callbacks = endpoint->callbacks;
-        }
-      }
-      iree_slim_mutex_unlock(&connection->mutex);
-      if (frame_index == IREE_NET_TCP_INDEX_NONE) {
-        break;
-      }
-
-      iree_net_tcp_pending_frame_t* pending_frame =
-          &connection->pending_frames[frame_index];
+    iree_net_tcp_pending_frame_t pending_frame;
+    iree_net_message_endpoint_callbacks_t callbacks = {0};
+    iree_slim_mutex_lock(&connection->mutex);
+    const bool has_pending_frame =
+        endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING &&
+        iree_net_tcp_take_pending_frame_locked(endpoint, &pending_frame);
+    if (has_pending_frame) {
+      callbacks = endpoint->callbacks;
+    }
+    iree_slim_mutex_unlock(&connection->mutex);
+    if (has_pending_frame) {
       iree_status_t callback_status = callbacks.on_message(
-          callbacks.user_data, pending_frame->payload, &pending_frame->lease);
-      iree_net_tcp_release_pending_frame(connection, frame_index);
+          callbacks.user_data, pending_frame.payload, &pending_frame.lease);
+      iree_net_tcp_release_pending_frame(&pending_frame);
       if (!iree_status_is_ok(callback_status)) {
+        activation_succeeded = false;
         iree_net_tcp_connection_record_terminal_error(connection,
                                                       callback_status);
-        break;
       }
     }
   }
 
+  iree_net_tcp_activation_work_t work = {
+      .retire_head = IREE_NET_TCP_INDEX_NONE,
+  };
+  bool announcement_queued = false;
   iree_slim_mutex_lock(&connection->mutex);
-  if (endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING) {
+  if (activation_succeeded &&
+      endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING &&
+      connection->state == IREE_NET_TCP_CONNECTION_STATE_OPEN &&
+      iree_status_is_ok(connection->terminal_status)) {
     endpoint->phase = IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE;
+    iree_net_tcp_enqueue_activation_announcement_locked(endpoint, &work);
+    announcement_queued = true;
   }
   iree_slim_mutex_unlock(&connection->mutex);
-  iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
-  iree_net_connection_release(&connection->base);
+
+  if (announcement_queued) {
+    if (work.send_endpoint) {
+      iree_net_tcp_submit_activation_announcement(work.send_endpoint);
+    }
+  } else {
+    iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
+    iree_net_connection_release(&connection->base);
+  }
 }
 
 static iree_status_t iree_net_tcp_endpoint_activate(void* self) {
@@ -766,6 +1099,7 @@ static iree_status_t iree_net_tcp_endpoint_deactivate(
     void* user_data) {
   iree_net_tcp_endpoint_t* endpoint = (iree_net_tcp_endpoint_t*)self;
   iree_net_tcp_connection_t* connection = endpoint->connection;
+  iree_net_tcp_send_state_t* send_state_to_cancel = NULL;
   iree_slim_mutex_lock(&connection->mutex);
   iree_net_endpoint_lifecycle_actions_t actions =
       IREE_NET_ENDPOINT_LIFECYCLE_ACTION_NONE;
@@ -776,13 +1110,21 @@ static iree_status_t iree_net_tcp_endpoint_deactivate(
     endpoint->phase = IREE_NET_TCP_ENDPOINT_PHASE_DRAINING;
     endpoint->deactivate_callback.fn = callback;
     endpoint->deactivate_callback.user_data = user_data;
+    send_state_to_cancel =
+        iree_net_tcp_claim_waiting_send_for_cancellation_locked(endpoint);
   }
   iree_slim_mutex_unlock(&connection->mutex);
   if (!iree_status_is_ok(status)) {
     return status;
   }
 
-  iree_net_tcp_clear_endpoint_pending_frames(endpoint);
+  if (send_state_to_cancel) {
+    iree_net_tcp_schedule_local_send_completion(
+        send_state_to_cancel,
+        iree_make_status(IREE_STATUS_CANCELLED,
+                         "TCP send cancelled during endpoint deactivation"));
+  }
+  iree_net_tcp_clear_endpoint_pending_frame(endpoint);
   IREE_ASSERT(
       iree_any_bit_set(actions,
                        IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION),
@@ -807,6 +1149,11 @@ static iree_status_t iree_net_tcp_endpoint_acquire_send_state(
     status =
         iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                          "TCP endpoint %u is not active", endpoint->ordinal);
+  } else if (!endpoint->peer_active && endpoint->preactivation_send_state) {
+    iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
+    status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "TCP endpoint %u is waiting for peer activation",
+                              endpoint->ordinal);
   } else {
     *out_send_state =
         iree_net_tcp_acquire_send_state_locked(connection, endpoint);
@@ -814,43 +1161,12 @@ static iree_status_t iree_net_tcp_endpoint_acquire_send_state(
       iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
       status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                                 "TCP connection send slots are exhausted");
+    } else if (!endpoint->peer_active) {
+      endpoint->preactivation_send_state = *out_send_state;
     }
   }
   iree_slim_mutex_unlock(&connection->mutex);
   return status;
-}
-
-static void iree_net_tcp_endpoint_reject_send_state(
-    iree_net_tcp_send_state_t* send_state) {
-  iree_net_tcp_endpoint_t* endpoint = send_state->endpoint;
-  iree_net_tcp_connection_t* connection = endpoint->connection;
-  iree_slim_mutex_lock(&connection->mutex);
-  iree_net_tcp_release_send_state_locked(connection, send_state);
-  iree_slim_mutex_unlock(&connection->mutex);
-  iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
-}
-
-static iree_status_t iree_net_tcp_endpoint_schedule_local_send_completion(
-    iree_net_tcp_send_state_t* send_state, iree_status_t status) {
-  IREE_ASSERT(!iree_status_is_ok(status));
-  iree_net_tcp_connection_t* connection = send_state->endpoint->connection;
-  send_state->local_completion_status = status;
-  iree_async_operation_zero(&send_state->local_completion_operation.base,
-                            sizeof(send_state->local_completion_operation));
-  iree_async_operation_initialize(
-      &send_state->local_completion_operation.base,
-      IREE_ASYNC_OPERATION_TYPE_NOP, IREE_ASYNC_OPERATION_FLAG_NONE,
-      iree_net_tcp_endpoint_local_send_complete, send_state);
-  iree_status_t submit_status = iree_async_proactor_submit_one(
-      connection->proactor, &send_state->local_completion_operation.base);
-  if (iree_status_is_ok(submit_status)) {
-    return iree_ok_status();
-  }
-
-  status = send_state->local_completion_status;
-  send_state->local_completion_status = iree_ok_status();
-  iree_net_tcp_endpoint_reject_send_state(send_state);
-  return iree_status_join(status, submit_status);
 }
 
 static iree_status_t iree_net_tcp_endpoint_send(
@@ -869,6 +1185,7 @@ static iree_status_t iree_net_tcp_endpoint_send(
   send_state->completion_callback = params->completion_callback;
 
   iree_net_tcp_frame_prefix_t frame_prefix = {
+      .flags = IREE_NET_TCP_FRAME_FLAG_NONE,
       .payload_length = (uint32_t)payload_length,
       .endpoint_ordinal = endpoint->ordinal,
       .message_prefix = params->generated_prefix,
@@ -892,8 +1209,12 @@ static iree_status_t iree_net_tcp_endpoint_send(
       iree_net_message_endpoint_send(connection->wire_endpoint, &wire_params);
 
   if (!iree_status_is_ok(status)) {
-    return iree_net_tcp_endpoint_schedule_local_send_completion(send_state,
-                                                                status);
+    iree_slim_mutex_lock(&connection->mutex);
+    IREE_ASSERT(send_state->phase ==
+                IREE_NET_TCP_SEND_STATE_PHASE_RAW_IN_FLIGHT);
+    send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_LOCAL_COMPLETION;
+    iree_slim_mutex_unlock(&connection->mutex);
+    iree_net_tcp_schedule_local_send_completion(send_state, status);
   }
   return iree_ok_status();
 }
@@ -904,12 +1225,16 @@ static iree_net_carrier_send_budget_t iree_net_tcp_endpoint_query_send_budget(
   iree_net_tcp_connection_t* connection = endpoint->connection;
   uint32_t free_send_state_count = 0;
   bool active = false;
+  bool peer_active = false;
+  bool preactivation_credit_available = false;
   iree_slim_mutex_lock(&connection->mutex);
   active = iree_status_is_ok(connection->terminal_status) &&
            (endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING ||
             endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE);
   if (active) {
     free_send_state_count = connection->free_send_state_count;
+    peer_active = endpoint->peer_active;
+    preactivation_credit_available = !endpoint->preactivation_send_state;
   }
   iree_slim_mutex_unlock(&connection->mutex);
   if (!active) {
@@ -919,6 +1244,10 @@ static iree_net_carrier_send_budget_t iree_net_tcp_endpoint_query_send_budget(
   iree_net_carrier_send_budget_t budget =
       iree_net_message_endpoint_query_send_budget(connection->wire_endpoint);
   budget.slots = iree_min(budget.slots, free_send_state_count);
+  if (!peer_active) {
+    budget.slots =
+        preactivation_credit_available ? iree_min(budget.slots, 1u) : 0u;
+  }
   const iree_host_size_t max_payload_size =
       connection->max_frame_size - IREE_NET_TCP_FRAME_HEADER_SIZE;
   if (budget.bytes != IREE_HOST_SIZE_MAX) {
@@ -963,6 +1292,7 @@ static void iree_net_tcp_connection_begin_endpoint_drain(
     iree_net_tcp_connection_t* connection) {
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
     iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[i];
+    iree_net_tcp_send_state_t* send_state_to_cancel = NULL;
     iree_slim_mutex_lock(&connection->mutex);
     iree_net_endpoint_lifecycle_actions_t actions =
         iree_net_endpoint_lifecycle_join_deactivation(&endpoint->lifecycle);
@@ -970,9 +1300,18 @@ static void iree_net_tcp_connection_begin_endpoint_drain(
             actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION)) {
       endpoint->phase = IREE_NET_TCP_ENDPOINT_PHASE_DRAINING;
     }
+    send_state_to_cancel =
+        iree_net_tcp_claim_waiting_send_for_cancellation_locked(endpoint);
     iree_slim_mutex_unlock(&connection->mutex);
 
-    iree_net_tcp_clear_endpoint_pending_frames(endpoint);
+    if (send_state_to_cancel) {
+      iree_net_tcp_schedule_local_send_completion(
+          send_state_to_cancel,
+          iree_make_status(
+              IREE_STATUS_CANCELLED,
+              "TCP send cancelled during connection deactivation"));
+    }
+    iree_net_tcp_clear_endpoint_pending_frame(endpoint);
     if (iree_any_bit_set(
             actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION)) {
       iree_net_endpoint_lifecycle_complete_deactivation(&endpoint->lifecycle);
@@ -1051,16 +1390,27 @@ static void iree_net_tcp_connection_destroy(
   IREE_ASSERT(connection->free_send_state_count == connection->send_state_count,
               "TCP connection destroyed with owned send states");
   IREE_ASSERT(
-      connection->free_pending_frame_count == connection->pending_frame_count,
-      "TCP connection destroyed with pending frames");
+      connection->activation_queue_head == IREE_NET_TCP_INDEX_NONE &&
+          connection->activation_queue_tail == IREE_NET_TCP_INDEX_NONE &&
+          connection->activation_in_flight == IREE_NET_TCP_INDEX_NONE,
+      "TCP connection destroyed with ACTIVE announcements");
 
   iree_allocator_t host_allocator = connection->base.host_allocator;
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
+    iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[i];
     IREE_ASSERT(
-        !connection->endpoints[i].terminal_error_callback_pending,
+        !endpoint->terminal_error_callback_pending,
         "TCP connection destroyed with terminal endpoint error pending");
-    iree_net_endpoint_lifecycle_deinitialize(
-        &connection->endpoints[i].lifecycle);
+    IREE_ASSERT(!endpoint->pending_frame_present,
+                "TCP connection destroyed with a retained frame");
+    IREE_ASSERT(!endpoint->preactivation_send_state,
+                "TCP connection destroyed with a rendezvous send");
+    IREE_ASSERT(endpoint->activation_announcement_phase !=
+                        IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_QUEUED &&
+                    endpoint->activation_announcement_phase !=
+                        IREE_NET_TCP_ACTIVATION_ANNOUNCEMENT_PHASE_IN_FLIGHT,
+                "TCP connection destroyed with endpoint ACTIVE pending");
+    iree_net_endpoint_lifecycle_deinitialize(&endpoint->lifecycle);
   }
   iree_status_free(connection->terminal_status);
   iree_net_framing_adapter_free(connection->framing_adapter);
@@ -1163,14 +1513,8 @@ static const iree_net_connection_vtable_t iree_net_tcp_connection_vtable = {
 // Public API
 //===----------------------------------------------------------------------===//
 
-typedef struct iree_net_tcp_connection_layout_t {
-  // Number of connection-wide pending-frame records.
-  iree_host_size_t pending_frame_count;
-} iree_net_tcp_connection_layout_t;
-
 static iree_status_t iree_net_tcp_connection_options_validate_impl(
-    const iree_net_tcp_connection_options_t* options,
-    iree_net_tcp_connection_layout_t* out_layout) {
+    const iree_net_tcp_connection_options_t* options) {
   if (!options) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "TCP connection options are required");
@@ -1186,41 +1530,22 @@ static iree_status_t iree_net_tcp_connection_options_validate_impl(
                             "TCP frame limit must exceed the %u-byte header",
                             IREE_NET_TCP_FRAME_HEADER_SIZE);
   }
-  if (options->max_pending_frames_per_endpoint == 0) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "TCP pending-frame limit per endpoint must be nonzero");
-  }
   if (options->carrier_options.max_send_operations == 0) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "TCP send operation limit must be nonzero");
   }
-  if (options->carrier_options.max_send_operations >= IREE_NET_TCP_INDEX_NONE) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "TCP send operation count exceeds index range");
-  }
-
-  iree_host_size_t pending_frame_count = 0;
-  if (!iree_host_size_checked_mul(options->max_endpoint_count,
-                                  options->max_pending_frames_per_endpoint,
-                                  &pending_frame_count) ||
-      pending_frame_count >= IREE_NET_TCP_INDEX_NONE) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "TCP pending-frame record count exceeds 32 bits");
-  }
-
-  if (out_layout) {
-    *out_layout = (iree_net_tcp_connection_layout_t){
-        .pending_frame_count = pending_frame_count,
-    };
+  if (options->carrier_options.max_send_operations >=
+      IREE_NET_TCP_INDEX_NONE - 1u) {
+    return iree_make_status(
+        IREE_STATUS_OUT_OF_RANGE,
+        "TCP send operation count leaves no internal ACTIVE slot");
   }
   return iree_ok_status();
 }
 
 iree_status_t iree_net_tcp_connection_options_validate(
     const iree_net_tcp_connection_options_t* options) {
-  return iree_net_tcp_connection_options_validate_impl(options,
-                                                       /*out_layout=*/NULL);
+  return iree_net_tcp_connection_options_validate_impl(options);
 }
 
 iree_status_t iree_net_tcp_connection_create(
@@ -1240,13 +1565,10 @@ iree_status_t iree_net_tcp_connection_create(
   if (!options) {
     options = &default_options;
   }
-  iree_net_tcp_connection_layout_t layout = {0};
-  IREE_RETURN_IF_ERROR(
-      iree_net_tcp_connection_options_validate_impl(options, &layout));
+  IREE_RETURN_IF_ERROR(iree_net_tcp_connection_options_validate_impl(options));
 
   iree_host_size_t endpoint_offset = 0;
   iree_host_size_t send_state_offset = 0;
-  iree_host_size_t pending_frame_offset = 0;
   iree_host_size_t allocation_size = 0;
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       sizeof(iree_net_tcp_connection_t), &allocation_size,
@@ -1256,10 +1578,7 @@ iree_status_t iree_net_tcp_connection_create(
       IREE_STRUCT_FIELD_ALIGNED(options->carrier_options.max_send_operations,
                                 iree_net_tcp_send_state_t,
                                 iree_alignof(iree_net_tcp_send_state_t),
-                                &send_state_offset),
-      IREE_STRUCT_ARRAY_FIELD_ALIGNED(
-          layout.pending_frame_count, 1, iree_net_tcp_pending_frame_t,
-          iree_alignof(iree_net_tcp_pending_frame_t), &pending_frame_offset)));
+                                &send_state_offset)));
 
   iree_net_tcp_connection_t* connection = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(host_allocator, allocation_size,
@@ -1274,8 +1593,6 @@ iree_status_t iree_net_tcp_connection_create(
   iree_async_proactor_retain(proactor);
   connection->state = IREE_NET_TCP_CONNECTION_STATE_OPEN;
   connection->max_frame_size = options->max_frame_size;
-  connection->max_pending_frames_per_endpoint =
-      options->max_pending_frames_per_endpoint;
   connection->terminal_status = iree_ok_status();
   connection->endpoints =
       (iree_net_tcp_endpoint_t*)((uint8_t*)connection + endpoint_offset);
@@ -1284,20 +1601,16 @@ iree_status_t iree_net_tcp_connection_create(
   connection->free_send_state_head = 0;
   connection->send_states =
       (iree_net_tcp_send_state_t*)((uint8_t*)connection + send_state_offset);
-  connection->pending_frame_count = (uint32_t)layout.pending_frame_count;
-  connection->free_pending_frame_count = connection->pending_frame_count;
-  connection->free_pending_frame_head = 0;
-  connection->pending_frames =
-      (iree_net_tcp_pending_frame_t*)((uint8_t*)connection +
-                                      pending_frame_offset);
+  connection->activation_queue_head = IREE_NET_TCP_INDEX_NONE;
+  connection->activation_queue_tail = IREE_NET_TCP_INDEX_NONE;
+  connection->activation_in_flight = IREE_NET_TCP_INDEX_NONE;
 
   for (uint32_t i = 0; i < options->max_endpoint_count; ++i) {
     iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[i];
     endpoint->connection = connection;
     endpoint->ordinal = (uint16_t)i;
     endpoint->phase = IREE_NET_TCP_ENDPOINT_PHASE_CREATED;
-    endpoint->pending_head = IREE_NET_TCP_INDEX_NONE;
-    endpoint->pending_tail = IREE_NET_TCP_INDEX_NONE;
+    endpoint->next_activation_ordinal = IREE_NET_TCP_INDEX_NONE;
     iree_net_endpoint_lifecycle_initialize(&connection->deactivation_barrier,
                                            &endpoint->lifecycle);
   }
@@ -1308,16 +1621,13 @@ iree_status_t iree_net_tcp_connection_create(
     send_state->next_free =
         i + 1 < connection->send_state_count ? i + 1 : IREE_NET_TCP_INDEX_NONE;
   }
-  for (uint32_t i = 0; i < connection->pending_frame_count; ++i) {
-    connection->pending_frames[i].next = i + 1 < connection->pending_frame_count
-                                             ? i + 1
-                                             : IREE_NET_TCP_INDEX_NONE;
-  }
 
+  iree_net_tcp_carrier_options_t carrier_options = options->carrier_options;
+  ++carrier_options.max_send_operations;
   iree_net_carrier_t* carrier = NULL;
-  iree_status_t status = iree_net_tcp_carrier_create(
-      proactor, socket, receive_pool, &options->carrier_options, host_allocator,
-      &carrier);
+  iree_status_t status =
+      iree_net_tcp_carrier_create(proactor, socket, receive_pool,
+                                  &carrier_options, host_allocator, &carrier);
   if (iree_status_is_ok(status)) {
     iree_net_frame_length_callback_t frame_length = {
         .fn = iree_net_tcp_resolve_frame_size,
