@@ -15,7 +15,8 @@ iree-bazel-test --config=asan --config=loom-importer-cxx \
 The manifest imports each kernel through an external facade include root, so
 the same test works with `--//loom/config/import/cxx:embed_includes=false`.
 Launch count bounds become normal config declarations; the runner supplies
-three workgroups through `--config`. All kernels use 64 threads per workgroup.
+three workgroups through `--config` for the numerical kernels. The source
+semantics kernels specify one workgroup. All use 64 threads per workgroup.
 The numerical tests explicitly permit approximate mathematical functions.
 They test correctness and source compatibility, not kernel performance or
 compatibility with complete upstream libraries.
@@ -26,6 +27,7 @@ compatibility with complete upstream libraries.
 | `llama_rms_norm.cpp` | Two 32-lane reductions, shared reduction storage, and columns of length 1, 33, and 129. | [llama.cpp norm.cu](https://github.com/ggml-org/llama.cpp/blob/972d2313bc0bf0a45f634f77d95c9fb03aeab12c/ggml/src/ggml-cuda/norm.cu), MIT. |
 | `aiter_swiglu_f16.cpp` | FP16 storage with f32 arithmetic, clamp extremes, reciprocal/exponential calls, and columns of length 1, 31, 65, and 129. | [aiter activation_kernels.cu](https://github.com/ROCm/aiter/blob/df95f04b703bfd7c520f072fcf2560092ec9d5ac/csrc/kernels/activation_kernels.cu), MIT. |
 | `control_flow.cpp` | Pre-test, post-test, and nested loops; final scalar values and effectful helper calls in conditions. Seven trip counts including zero are checked bitwise. | Original source-language semantics witness. |
+| `scheduled_sum.cpp` | Template-selected unroll factors 1/3 and pipeline depths 1/2 with linear ordering. Exact integer sums for 0, 1, 2, 5, 17, and 33 columns cover startup, tails, and drain under all four schedules. | Original scheduling-contract witness. |
 
 The llama.cpp extraction specializes `rms_norm_f32`, `block_reduce<SUM>` and
 `warp_reduce_sum` for contiguous rows, one channel/sample, block size 64, and

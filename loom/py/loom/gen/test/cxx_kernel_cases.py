@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Deterministic C++ kernel inputs and independent double-precision references."""
+"""C++ kernel inputs with independent floating-point and exact integer references."""
 
 import math
 import random
@@ -147,10 +147,26 @@ def control_flow(directory):
     return "kernel.decl @control_flow() launch(%counts: buffer, %output: buffer, %length: i32)\n\n" + case.finish(expected)
 
 
+def scheduled_sum(directory):
+    cases = []
+    rows = 7
+    for columns in [0, 1, 2, 5, 17, 33]:
+        rng = random.Random(1030 + columns)
+        values = [rng.randrange(-100, 101) for _ in range(rows * max(1, columns))]
+        expected = [sum(values[row * columns : (row + 1) * columns]) for row in range(rows)]
+        case = Case(directory, f"scheduled_sum_{columns}", "i32", rows)
+        case.array("input", values)
+        case.scalar("rows", rows, "i32")
+        case.scalar("columns", columns, "i32")
+        case.launch("scheduled_sum", "%input, %output, %rows, %columns", f"tensor<{len(values)}xi32>, tensor<{rows}xi32>, i32, i32")
+        cases.append(case.finish(expected))
+    return "kernel.decl @scheduled_sum() launch(%input: buffer, %output: buffer, %rows: i32, %columns: i32)\n\n" + "\n".join(cases)
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
-    for name, generator in [("flash_attention", attention), ("llama_rms_norm", rms_norm), ("aiter_swiglu_f16", swiglu), ("control_flow", control_flow)]:
+    for name, generator in [("flash_attention", attention), ("llama_rms_norm", rms_norm), ("aiter_swiglu_f16", swiglu), ("control_flow", control_flow), ("scheduled_sum", scheduled_sum)]:
         (directory / f"{name}.loom").write_text(generator(directory))
 
 

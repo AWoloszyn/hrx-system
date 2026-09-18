@@ -58,6 +58,32 @@ Contracts on leading function declarations carry to the definition; conflicting
 redeclarations and multiple contracts for the same dimension group are errors.
 Import does not guess launch dimensions or select a physical target.
 
+Counted unsigned `for` loops accept explicit scheduling attributes:
+
+```cpp
+[[loom::unroll(3), loom::pipeline(2), loom::schedule("linear")]]
+for (unsigned column = 0; column < columns; ++column) {
+  total += input[column];
+}
+```
+
+Factors and depths are positive i32 integer constant expressions, including
+concrete template parameters. They become ordinary SSA index operands of
+`scf.for`, so the imported program preserves the scheduling choice through
+Loom's existing transformations. Pipeline depth counts original iterations;
+unrolling follows pipelining. `loom::unroll` without arguments requests full
+unrolling, and schedule ordering is `linear`, `interleaved`, or `recurrence`.
+Depth or factor one explicitly keeps that part serial. An annotation on a
+loop that cannot be represented as a nonwrapping counted loop is a source
+error. The cleaned Loom can replace these constants with ordinary config
+values when exploring schedules without reimporting C++.
+
+Dynamic offset loops currently compile with linear body ordering. The core
+interleaved/recurrence tail construction uses index-only division and
+multiplication for those bounds and must preserve the offset domain before
+these combinations can lower. Import preserves the requested policy and the
+compiler reports the type mismatch; it does not substitute another schedule.
+
 The native API in `import.h` accepts a finalized Loom context and arena block
 pool and returns an owned module. Source rejection produces structured
 diagnostics and a null module; infrastructure failures return status. The API

@@ -266,6 +266,83 @@ TEST_F(ImportTest, PreAndPostTestLoopsPreserveScalarRecurrences) {
   EXPECT_EQ(diagnostic_count_, 0);
 }
 
+TEST_F(ImportTest, TemplateLoopSchedulesBecomeExplicitSSAOperands) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"cpp(
+    template <unsigned Factor, unsigned Depth>
+    static int sum(unsigned count) {
+      int total = 0;
+      [[loom::unroll(Factor), loom::pipeline(Depth + 1),
+        loom::schedule("interleaved")]]
+      for (unsigned index = 0; index < count; ++index) {
+        total += (int)index;
+      }
+      return total;
+    }
+    int entry(unsigned count) { return sum<3, 1>(count); }
+  )cpp")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("pipeline(%"), std::string::npos);
+  EXPECT_NE(text.find("unroll(%"), std::string::npos);
+  EXPECT_NE(text.find("schedule(interleaved)"), std::string::npos);
+  EXPECT_EQ(text.find("scf.while"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
+TEST_F(ImportTest, BareUnrollAndConstantExpressionSchedules) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"cpp(
+    int entry() {
+      constexpr unsigned depth = 1;
+      int total = 0;
+      [[using loom: unroll, pipeline(depth), schedule("recurrence")]]
+      for (unsigned index = 0; index < 4u; ++index) {
+        total += (int)index;
+      }
+      return total;
+    }
+  )cpp")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("unroll schedule(recurrence)"), std::string::npos);
+  EXPECT_NE(text.find("pipeline(%"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
+TEST_F(ImportTest, InvalidLoopSchedulesAreNotSilentlyDiscarded) {
+  for (const char* attributes :
+       {"loom::unroll(0)", "loom::unroll(-1)", "loom::unroll(2.5)",
+        "loom::unroll(2147483648u)", "loom::unroll()", "loom::unroll(2, 3)",
+        "loom::unroll, loom::unroll(2)", "loom::pipeline",
+        "loom::pipeline(count)", "loom::pipeline(1), loom::pipeline(2)",
+        "loom::schedule(3)", "loom::schedule(\"linear\")",
+        "loom::unroll(2), loom::schedule(\"unknown\")",
+        "loom::unroll(2), loom::schedule(\"linear\"), "
+        "loom::schedule(\"linear\")",
+        "loom::surprise(2)"}) {
+    SCOPED_TRACE(attributes);
+    auto source = std::string("int entry(unsigned count) { int total = 0; [[") +
+                  attributes +
+                  "]] for (unsigned i = 0; i < count; ++i) { total += (int)i; "
+                  "} return total; }";
+    int previous = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_string_view(source.data(), source.size())));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_EQ(diagnostic_count_, previous + 1);
+  }
+  for (const char* loop :
+       {"[[loom::unroll(2)]] while (count) { --count; }",
+        "[[loom::pipeline(2)]] do { --count; } while (count);",
+        "[[loom::unroll]] for (int i = 0; i < (int)count; ++i) {}"}) {
+    SCOPED_TRACE(loop);
+    auto source = std::string("unsigned entry(unsigned count) { ") + loop +
+                  " return count; }";
+    int previous = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_string_view(source.data(), source.size())));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_EQ(diagnostic_count_, previous + 1);
+  }
+}
+
 TEST_F(ImportTest, SinkFailurePropagates) {
   options_.diagnostic_sink = {[](void*, const loom_diagnostic_t*) {
                                 return iree_make_status(

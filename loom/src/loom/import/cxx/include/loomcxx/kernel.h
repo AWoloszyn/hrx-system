@@ -11,6 +11,12 @@
 // loom::workgroup_count(x, y, z). Unspecified dimensions remain Loom configs.
 // The corresponding *_range attributes take xmin, xmax, ymin, ymax, zmin, zmax
 // and constrain those required config values with inclusive positive bounds.
+// Counted unsigned for loops accept loom::unroll(factor),
+// loom::pipeline(depth), and
+// loom::schedule("linear"|"interleaved"|"recurrence"). Factors and depths are
+// positive integer constant expressions, including template parameters. Bare
+// loom::unroll requests full unrolling. Scheduling is an explicit compiler
+// contract; an unsupported loop form is diagnosed instead of ignoring it.
 #define LOOM_KERNEL [[loom::kernel]]
 #define LOOM_DEVICE [[loom::device]]
 #define LOOM_WORKGROUP [[loom::workgroup]]

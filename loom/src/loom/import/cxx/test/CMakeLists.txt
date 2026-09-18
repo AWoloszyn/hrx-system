@@ -29,6 +29,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/control_flow.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/flash_attention.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/llama_rms_norm.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/scheduled_sum.cpp"
   SANITIZER_SUPPRESSIONS
     lsan
     rocm

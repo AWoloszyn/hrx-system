@@ -119,6 +119,8 @@ loom_cc_library(
     "intrinsics.h"
     "launch.cc"
     "launch.h"
+    "loop_schedule.cc"
+    "loop_schedule.h"
     "mutations.h"
     "source.cc"
     "source.h"

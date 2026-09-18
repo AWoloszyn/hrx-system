@@ -212,6 +212,214 @@
           }
         }
       ]
+    },
+    {
+      "name": "scheduled_sum unroll 1 pipeline 1 executes exact sums and tails",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=UNROLL=1",
+              "--D=DEPTH=1",
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=scheduled_sum",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/scheduled_sum.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/scheduled_sum.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":6",
+                "\"sample_count\":6",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "scheduled_sum unroll 3 pipeline 1 executes exact sums and tails",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=UNROLL=3",
+              "--D=DEPTH=1",
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=scheduled_sum",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/scheduled_sum.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/scheduled_sum.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":6",
+                "\"sample_count\":6",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "scheduled_sum unroll 1 pipeline 2 executes exact sums and tails",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=UNROLL=1",
+              "--D=DEPTH=2",
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=scheduled_sum",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/scheduled_sum.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/scheduled_sum.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":6",
+                "\"sample_count\":6",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "scheduled_sum unroll 3 pipeline 2 executes exact sums and tails",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=UNROLL=3",
+              "--D=DEPTH=2",
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=scheduled_sum",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/scheduled_sum.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/scheduled_sum.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":6",
+                "\"sample_count\":6",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

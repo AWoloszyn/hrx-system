@@ -33,6 +33,7 @@
 #include "loom/import/cxx/failure.h"
 #include "loom/import/cxx/intrinsics.h"
 #include "loom/import/cxx/launch.h"
+#include "loom/import/cxx/loop_schedule.h"
 #include "loom/import/cxx/mutations.h"
 #include "loom/import/cxx/source.h"
 #include "loom/ir/context.h"
@@ -708,6 +709,9 @@ class Translator {
       throw std::runtime_error("missing expression");
     }
     auto source = location(ast);
+    if (auto* constant = cxx::ast_cast<cxx::ConstExpressionAST>(ast)) {
+      return constant_value(*constant->constValue, ast);
+    }
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
       return expression(nested->expression);
     }
@@ -1091,6 +1095,7 @@ class Translator {
       return;
     }
     if (auto* loop = cxx::ast_cast<cxx::ForStatementAST>(ast)) {
+      LoopSchedule schedule(unit_, diagnostics_, loop->attributeList);
       if (!loop->condition) {
         fail(ast, "for loops require a condition");
       }
@@ -1099,19 +1104,30 @@ class Translator {
       }
       unsigned counted_step = 1;
       if (auto* induction = counted_induction(loop, counted_step)) {
-        counted_loop(loop, induction, counted_step);
+        counted_loop(loop, induction, counted_step, schedule);
         return;
+      }
+      if (!schedule.empty()) {
+        fail(
+            ast,
+            "loop scheduling requires a nonwrapping unsigned counted for loop");
       }
       conditional_loop(ast, loop->condition, loop->statement, loop->expression,
                        LoopTest::BeforeBody);
       return;
     }
     if (auto* loop = cxx::ast_cast<cxx::WhileStatementAST>(ast)) {
+      if (!LoopSchedule(unit_, diagnostics_, loop->attributeList).empty()) {
+        fail(ast, "loop scheduling requires a counted for loop");
+      }
       conditional_loop(ast, loop->condition, loop->statement, nullptr,
                        LoopTest::BeforeBody);
       return;
     }
     if (auto* loop = cxx::ast_cast<cxx::DoStatementAST>(ast)) {
+      if (!LoopSchedule(unit_, diagnostics_, loop->attributeList).empty()) {
+        fail(ast, "loop scheduling requires a counted for loop");
+      }
       conditional_loop(ast, loop->expression, loop->statement, nullptr,
                        LoopTest::AfterBody);
       return;
@@ -1261,7 +1277,7 @@ class Translator {
   }
 
   void counted_loop(cxx::ForStatementAST* loop, cxx::Symbol* induction,
-                    unsigned step_value) {
+                    unsigned step_value, const LoopSchedule& schedule) {
     auto source = location(loop);
     auto* condition = cxx::ast_cast<cxx::BinaryExpressionAST>(loop->condition);
     auto lower = unsigned_offset(values_.at(induction), source);
@@ -1272,10 +1288,7 @@ class Translator {
     std::erase(written, induction);
     auto initial = current(written);
     auto outer_values = values_;
-    loom_op_t* op;
-    check(loom_scf_for_build(&builder_, 0, lower, upper, step, initial.data(),
-                             initial.size(), nullptr, 0, 0, 0, 0, 0, source,
-                             &op));
+    auto* op = schedule.build(&builder_, lower, upper, step, initial, source);
     auto* body = loom_scf_for_body(op);
     auto saved = loom_builder_enter_region(&builder_, op, body);
     auto iteration = name(loom_region_entry_arg_id(body, 0),
