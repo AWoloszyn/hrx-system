@@ -111,6 +111,12 @@ loom_test(
 )
 
 loom_test(
+    name = "unsigned_remainder_hardware_test",
+    srcs = ["//loom/src/loom/test/corpus/conformance:integer_unsigned_remainder.loom"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+)
+
+loom_test(
     name = "kernarg_access_test",
     srcs = ["amdgpu_unused_kernargs.loom"],
     execution_profile = AMDGPU_ACCESS_PROFILE,

@@ -22,6 +22,7 @@ iree_py_library(
     "dispatch_ownership.py"
     "dot.py"
     "integer.py"
+    "integer_division.py"
     "materializers.py"
     "matrix.py"
     "memory.py"
