@@ -75,6 +75,18 @@ struct MessageResult {
 
   // Status returned by message callbacks.
   iree_status_code_t message_status = IREE_STATUS_OK;
+
+  // Optional connection deactivated from the first error callback.
+  iree_net_connection_t* deactivate_connection = nullptr;
+
+  // Callback used when |deactivate_connection| begins draining.
+  iree_net_connection_deactivate_callback_t deactivate_callback = {};
+
+  // Optional trace receiving this endpoint's terminal callback identifier.
+  std::vector<int>* error_order = nullptr;
+
+  // Value appended to |error_order|.
+  int identifier = 0;
 };
 
 struct SendResult {
@@ -114,6 +126,12 @@ struct ConnectionDeactivateResult {
 
   // True after connection deactivation completes.
   bool completed = false;
+
+  // Optional callback-order trace.
+  std::vector<int>* callback_order = nullptr;
+
+  // Value appended to |callback_order|.
+  int identifier = 0;
 };
 
 enum class MalformedHeaderKind {
@@ -334,7 +352,15 @@ static void EndpointError(void* user_data, iree_status_t status) {
   if (result->error_count++ == 0) {
     result->error_code = iree_status_code(status);
   }
+  if (result->error_order) {
+    result->error_order->push_back(result->identifier);
+  }
   iree_status_free(status);
+  if (result->deactivate_connection) {
+    iree_net_connection_t* connection = result->deactivate_connection;
+    result->deactivate_connection = nullptr;
+    iree_net_connection_deactivate(connection, result->deactivate_callback);
+  }
 }
 
 static void SendCompleted(void* user_data, iree_status_t status,
@@ -362,6 +388,9 @@ static void ConnectionDeactivated(void* user_data) {
   auto* result = static_cast<ConnectionDeactivateResult*>(user_data);
   ++result->callback_count;
   result->completed = true;
+  if (result->callback_order) {
+    result->callback_order->push_back(result->identifier);
+  }
 }
 
 class TcpConnectionTest : public ::testing::Test {
@@ -1150,6 +1179,67 @@ TEST_F(TcpConnectionTest, SendReturnsDeferredMessageFailureBeforePrefixWrite) {
 
   DeactivateAndRelease(&server_connection_);
   EXPECT_EQ(rejected_result.callback_count, 0);
+}
+
+TEST_F(TcpConnectionTest,
+       TerminalErrorPinsCompleteFanoutBeforeCallbackDeactivation) {
+  iree_net_tcp_connection_options_t options =
+      iree_net_tcp_connection_options_default();
+  options.max_endpoint_count = 3;
+  CreateConnectionPair(options, options);
+
+  std::array<iree_net_message_endpoint_t, 3> client_endpoints;
+  std::array<iree_net_message_endpoint_t, 3> server_endpoints;
+  std::array<MessageResult*, 3> client_results;
+  std::array<MessageResult*, 3> server_results;
+  for (iree_host_size_t i = 0; i < client_endpoints.size(); ++i) {
+    client_endpoints[i] = OpenEndpoint(client_connection_);
+    server_endpoints[i] = OpenEndpoint(server_connection_);
+    client_results[i] = CreateMessageResult();
+    server_results[i] = CreateMessageResult();
+  }
+
+  std::vector<int> callback_order;
+  ConnectionDeactivateResult deactivate_result;
+  deactivate_result.callback_order = &callback_order;
+  deactivate_result.identifier = 3;
+  for (iree_host_size_t i = 0; i < server_results.size(); ++i) {
+    server_results[i]->error_order = &callback_order;
+    server_results[i]->identifier = static_cast<int>(i);
+  }
+  server_results[0]->deactivate_connection = server_connection_;
+  server_results[0]->deactivate_callback = {
+      ConnectionDeactivated,
+      &deactivate_result,
+  };
+  server_results[2]->message_status = IREE_STATUS_CANCELLED;
+
+  for (iree_host_size_t i = 0; i < client_endpoints.size(); ++i) {
+    ActivateEndpoint(client_endpoints[i], client_results[i]);
+    ActivateEndpoint(server_endpoints[i], server_results[i]);
+  }
+
+  uint8_t payload = 0x5A;
+  iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
+  SendResult send_result;
+  send_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(
+      client_endpoints[2], iree_async_span_list_make(&span, 1), &send_result));
+  PollUntil([&] {
+    return deactivate_result.completed && send_result.callback_count == 1;
+  });
+
+  EXPECT_EQ(server_results[2]->messages.size(), 1u);
+  EXPECT_EQ(send_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(deactivate_result.callback_count, 1);
+  for (MessageResult* result : server_results) {
+    EXPECT_EQ(result->error_count, 1);
+    EXPECT_EQ(result->error_code, IREE_STATUS_CANCELLED);
+  }
+  EXPECT_EQ(callback_order, (std::vector<int>{0, 1, 2, 3}));
+
+  iree_net_connection_release(server_connection_);
+  server_connection_ = nullptr;
 }
 
 TEST_F(TcpConnectionTest, InvalidScatterCompletesAcceptedEndpointSend) {

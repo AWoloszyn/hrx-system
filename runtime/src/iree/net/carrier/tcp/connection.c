@@ -116,6 +116,9 @@ struct iree_net_tcp_endpoint_t {
   // Message and terminal-error callbacks installed by the consumer.
   iree_net_message_endpoint_callbacks_t callbacks;
 
+  // True while terminal-error fanout owns a lifecycle operation hold.
+  bool terminal_error_callback_pending;
+
   // Coordinates endpoint operations with endpoint/connection drain.
   iree_net_endpoint_lifecycle_t lifecycle;
 
@@ -483,6 +486,21 @@ static void iree_net_tcp_connection_record_terminal_error(
   if (iree_status_is_ok(connection->terminal_status)) {
     connection->terminal_status = status;
     is_first_error = true;
+    // Admit the complete fanout before any callback can begin connection
+    // deactivation and change sibling endpoint phases.
+    for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
+      iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[i];
+      if ((endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING ||
+           endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE) &&
+          endpoint->callbacks.on_error &&
+          iree_net_endpoint_lifecycle_try_begin_operation(
+              &endpoint->lifecycle)) {
+        IREE_ASSERT(!endpoint->terminal_error_callback_pending,
+                    "TCP endpoint %u already has terminal error pending",
+                    endpoint->ordinal);
+        endpoint->terminal_error_callback_pending = true;
+      }
+    }
   }
   iree_slim_mutex_unlock(&connection->mutex);
   if (!is_first_error) {
@@ -495,15 +513,19 @@ static void iree_net_tcp_connection_record_terminal_error(
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
     iree_net_tcp_endpoint_t* endpoint = &connection->endpoints[i];
     iree_net_message_endpoint_callbacks_t callbacks = {0};
+    bool callback_pending = false;
     iree_slim_mutex_lock(&connection->mutex);
-    if ((endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING ||
-         endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE) &&
-        endpoint->callbacks.on_error &&
-        iree_net_endpoint_lifecycle_try_begin_operation(&endpoint->lifecycle)) {
+    // Admission, not the current phase, owns this callback. An earlier
+    // callback may already have moved the endpoint to DRAINING.
+    if (endpoint->terminal_error_callback_pending) {
+      endpoint->terminal_error_callback_pending = false;
       callbacks = endpoint->callbacks;
+      callback_pending = true;
     }
     iree_slim_mutex_unlock(&connection->mutex);
-    if (callbacks.on_error) {
+    if (callback_pending) {
+      IREE_ASSERT(callbacks.on_error,
+                  "admitted TCP terminal callback has no error handler");
       callbacks.on_error(callbacks.user_data,
                          iree_status_clone(connection->terminal_status));
       iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
@@ -1034,6 +1056,9 @@ static void iree_net_tcp_connection_destroy(
 
   iree_allocator_t host_allocator = connection->base.host_allocator;
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
+    IREE_ASSERT(
+        !connection->endpoints[i].terminal_error_callback_pending,
+        "TCP connection destroyed with terminal endpoint error pending");
     iree_net_endpoint_lifecycle_deinitialize(
         &connection->endpoints[i].lifecycle);
   }
