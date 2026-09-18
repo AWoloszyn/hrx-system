@@ -12,6 +12,7 @@
 #include <cxx/symbols.h>
 #include <cxx/types.h>
 
+#include "loom/import/cxx/attributes.h"
 #include "loom/import/cxx/failure.h"
 
 namespace loom::cxx_import {
@@ -20,47 +21,31 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
                              cxx::List<cxx::AttributeSpecifierAST*>* attributes,
                              cxx::AST* owner) {
   bool found = false;
-  for (auto* specifier : cxx::ListView{attributes}) {
-    auto* list = cxx::ast_cast<cxx::CxxAttributeAST>(specifier);
-    if (!list) {
-      continue;
-    }
-    auto* prefix = list->attributeUsingPrefix;
-    for (auto* attribute : cxx::ListView{list->attributeList}) {
-      const cxx::Identifier* space =
-          prefix ? unit_.identifier(prefix->attributeNamespaceLoc) : nullptr;
-      const cxx::Identifier* name = nullptr;
-      if (auto* scoped = cxx::ast_cast<cxx::ScopedAttributeTokenAST>(
-              attribute->attributeToken)) {
-        space = scoped->attributeNamespace;
-        name = scoped->identifier;
-      } else if (auto* simple = cxx::ast_cast<cxx::SimpleAttributeTokenAST>(
-                     attribute->attributeToken)) {
-        name = simple->identifier;
-      }
-      if (!space || !name || space->name() != "loom" || name->name() != "op") {
-        continue;
-      }
-      if (found || function->declaration()) {
-        diagnostics_.reject(
-            unit_, owner,
-            "an intrinsic requires one operation binding and no function body");
-      }
-      found = true;
-      auto* clause = attribute->attributeArgumentClause;
-      if (!clause || !clause->expressionList) {
-        diagnostics_.reject(unit_, owner,
-                            "loom::op requires a string operation name");
-      }
-      for (auto* argument : cxx::ListView{clause->expressionList}) {
-        if (!cxx::ast_cast<cxx::StringLiteralExpressionAST>(argument)) {
-          diagnostics_.reject(
-              unit_, argument,
-              "operation bindings accept only string arguments");
+  visit_loom_attributes(
+      unit_, attributes,
+      [&](std::string_view name, cxx::AttributeAST* attribute) {
+        if (name != "op") {
+          return;
         }
-      }
-    }
-  }
+        if (found || function->declaration()) {
+          diagnostics_.reject(unit_, owner,
+                              "an intrinsic requires one operation binding and "
+                              "no function body");
+        }
+        found = true;
+        auto* clause = attribute->attributeArgumentClause;
+        if (!clause || !clause->expressionList) {
+          diagnostics_.reject(unit_, owner,
+                              "loom::op requires a string operation name");
+        }
+        for (auto* argument : cxx::ListView{clause->expressionList}) {
+          if (!cxx::ast_cast<cxx::StringLiteralExpressionAST>(argument)) {
+            diagnostics_.reject(
+                unit_, argument,
+                "operation bindings accept only string arguments");
+          }
+        }
+      });
   const cxx::Attribute* selected = nullptr;
   if (function->attributes()) {
     for (const auto& attribute : *function->attributes()) {

@@ -108,10 +108,13 @@ iree_assert_dependency_boundary(
 loom_cc_library(
     name = "cxx",
     srcs = [
+        "attributes.h",
         "failure.h",
         "import.cc",
         "intrinsics.cc",
         "intrinsics.h",
+        "launch.cc",
+        "launch.h",
         "mutations.h",
         "source.cc",
         "source.h",
@@ -137,6 +140,7 @@ loom_cc_library(
         "//loom/src/loom/error:diagnostic",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/buffer",
         "//loom/src/loom/ops/config",
         "//loom/src/loom/ops/func",

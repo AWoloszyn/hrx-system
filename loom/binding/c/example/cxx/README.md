@@ -32,10 +32,13 @@ normal module and destroys the C++ frontend before compilation; source buffers
 can be released immediately. The API performs no cleanup pipeline during
 import. The target pipeline owns subsequent optimization and lowering.
 
-The kernels carry explicit workgroup dimensions. The compiler emits launch
-configuration bytecode, and the host evaluates that artifact before each
-dispatch. Upload, dispatch and download are ordered by semaphore dependencies,
-and every successful submission completes before its buffers are released.
+The kernels carry explicit workgroup dimensions. `affine` fixes both size and
+count; `residual` bounds its count and gets exact values from a normal Loom
+config module. Config validation rejects choices outside the source contract.
+The compiler emits launch configuration bytecode, and the host evaluates that
+artifact before each dispatch. Upload, dispatch and download are ordered by
+semaphore dependencies, and every successful submission completes before its
+buffers are released.
 
 Only the example depends on a GPU runtime. The importer extension itself has
 no target or runtime dependency and also accepts functions-only units for the

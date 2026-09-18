@@ -49,6 +49,8 @@ typedef struct jit_state_t {
   loomc_pass_program_t* pipeline;
   // Imported compilation unit containing both kernels.
   loomc_module_t* module;
+  // Exact launch choices, reusable across compilations of the source module.
+  loomc_module_t* config;
   // Current operation diagnostics and artifacts.
   loomc_result_t* result;
   // Evaluator for the source-authored launch contracts.
@@ -62,6 +64,7 @@ static void deinitialize(jit_state_t* state) {
   loomc_launch_config_program_release(state->launch_program);
   loomc_result_release(state->result);
   loomc_module_release(state->module);
+  loomc_module_release(state->config);
   loomc_pass_program_release(state->pipeline);
   loomc_compiler_release(state->compiler);
   loomc_target_profile_release(state->profile);
@@ -211,6 +214,28 @@ static iree_status_t compile_source(jit_state_t* state,
   IREE_RETURN_IF_ERROR(check_result(state));
   reset_result(state);
 
+  // Config modules supply specialization values through the ordinary compiler
+  // API. The imported range predicates validate these choices before lowering.
+  const char* config_text =
+      "config.def @residual.workgroup_count.x = 2 : index\n"
+      "config.def @residual.workgroup_count.y = 1 : index\n"
+      "config.def @residual.workgroup_count.z = 1 : index\n";
+  const loomc_source_options_t config_source_options = {
+      .format = LOOMC_SOURCE_FORMAT_TEXT,
+      .identifier = loomc_make_cstring_view("launch.loom"),
+      .contents = loomc_make_byte_span(config_text, strlen(config_text)),
+  };
+  source = NULL;
+  IREE_RETURN_IF_ERROR(iree_status_from_loomc(loomc_source_create(
+      &config_source_options, loomc_allocator_system(), &source)));
+  status = iree_status_from_loomc(loomc_module_deserialize_text_from_source(
+      state->context, state->workspace, source, NULL, loomc_allocator_system(),
+      &state->config, &state->result));
+  loomc_source_release(source);
+  IREE_RETURN_IF_ERROR(status);
+  IREE_RETURN_IF_ERROR(check_result(state));
+  reset_result(state);
+
   const loomc_target_specialization_t specializations[] = {
       {loomc_make_cstring_view("affine"), state->profile},
       {loomc_make_cstring_view("residual"), state->profile},
@@ -224,6 +249,8 @@ static iree_status_t compile_source(jit_state_t* state,
       .next = &target_options,
       .module_name = loomc_make_cstring_view("cxx_kernels"),
       .artifact_flags = LOOMC_COMPILE_ARTIFACT_FLAG_LAUNCH_CONFIG,
+      .config_flags = LOOMC_CONFIG_POLICY_FLAG_REQUIRE_RESOLVED,
+      .config_module = state->config,
   };
   IREE_RETURN_IF_ERROR(iree_status_from_loomc(loomc_compile_module(
       state->compiler, state->workspace, state->pipeline, state->module,

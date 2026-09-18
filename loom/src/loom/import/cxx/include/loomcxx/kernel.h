@@ -9,6 +9,8 @@
 
 // Launch geometry belongs on the entry with loom::workgroup_size(x, y, z) and
 // loom::workgroup_count(x, y, z). Unspecified dimensions remain Loom configs.
+// The corresponding *_range attributes take xmin, xmax, ymin, ymax, zmin, zmax
+// and constrain those required config values with inclusive positive bounds.
 #define LOOM_KERNEL [[loom::kernel]]
 #define LOOM_DEVICE [[loom::device]]
 #define LOOM_WORKGROUP [[loom::workgroup]]

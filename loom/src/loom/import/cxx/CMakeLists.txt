@@ -112,10 +112,13 @@ loom_cc_library(
   HDRS
     "import.h"
   SRCS
+    "attributes.h"
     "failure.h"
     "import.cc"
     "intrinsics.cc"
     "intrinsics.h"
+    "launch.cc"
+    "launch.h"
     "mutations.h"
     "source.cc"
     "source.h"
@@ -135,6 +138,7 @@ loom_cc_library(
     loom::ops::func
     loom::ops::index
     loom::ops::kernel
+    loom::ops::op_defs
     loom::ops::scalar
     loom::ops::scf
     loom::ops::view

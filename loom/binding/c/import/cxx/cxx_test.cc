@@ -300,6 +300,57 @@ TEST_F(CxxTest, InvalidOptionsClearOutputs) {
   EXPECT_EQ(module_, nullptr);
 }
 
+TEST_F(CxxTest, LaunchRangesUseNormalCompilationConfigValidation) {
+  auto source = Source("bounded.cpp", R"(
+    [[loom::kernel, loom::workgroup_count_range(1, 4, 1, 1, 1, 1),
+      loom::workgroup_size(64, 1, 1)]] void bounded() {}
+  )");
+  loomc_compiler_t* compiler = nullptr;
+  LOOMC_ASSERT_OK(loomc_compiler_create(context_.get(), nullptr,
+                                        loomc_allocator_system(), &compiler));
+  CompilerPtr compiler_owner(compiler);
+  loomc_pass_program_t* passes = nullptr;
+  loomc_result_t* result = nullptr;
+  LOOMC_ASSERT_OK(loomc_pass_program_create_from_pipeline_text(
+      context_.get(), loomc_make_cstring_view("canonicalize,cse,dce"), nullptr,
+      loomc_allocator_system(), &passes, &result));
+  PassPtr pass_owner(passes);
+  ResultPtr pass_result(result);
+  ExpectSuccess(result);
+  for (int count : {1, 4, 0, 5}) {
+    SCOPED_TRACE(count);
+    LOOMC_ASSERT_OK(Import(source.get()));
+    ExpectSuccess(result_.get());
+    const std::string text =
+        "config.def @bounded.workgroup_count.x = " + std::to_string(count) +
+        " : index\nconfig.def @bounded.workgroup_count.y = 1 : index\n"
+        "config.def @bounded.workgroup_count.z = 1 : index\n";
+    auto config_source = Source("config.loom", text.c_str());
+    loomc_module_t* config = nullptr;
+    LOOMC_ASSERT_OK(loomc_module_deserialize_text_from_source(
+        context_.get(), workspace_.get(), config_source.get(), nullptr,
+        loomc_allocator_system(), &config, &result));
+    ModulePtr config_owner(config);
+    ResultPtr config_result(result);
+    ExpectSuccess(result);
+    loomc_compile_options_t options = {};
+    options.config_module = config;
+    options.config_flags = LOOMC_CONFIG_POLICY_FLAG_REQUIRE_RESOLVED;
+    LOOMC_ASSERT_OK(loomc_compile_module(compiler, workspace_.get(), passes,
+                                         module_.get(), &options,
+                                         loomc_allocator_system(), &result));
+    ResultPtr compile_result(result);
+    if (count == 1 || count == 4) {
+      ExpectSuccess(result);
+    } else {
+      EXPECT_FALSE(loomc_result_succeeded(result));
+      ASSERT_GT(loomc_result_diagnostic_count(result), 0u);
+      EXPECT_EQ(ToString(loomc_result_diagnostic_at(result, 0)->code),
+                "CONFIG/INVALID");
+    }
+  }
+}
+
 TEST_F(CxxTest, ProviderFailureIsInfrastructureStatus) {
   auto source = Source("unit.cpp", "#include \"header.h\"\n");
   loomc_cxx_import_options_t options = {};

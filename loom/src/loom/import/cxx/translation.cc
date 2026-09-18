@@ -32,12 +32,12 @@
 #include "iree/base/internal/arena.h"
 #include "loom/import/cxx/failure.h"
 #include "loom/import/cxx/intrinsics.h"
+#include "loom/import/cxx/launch.h"
 #include "loom/import/cxx/mutations.h"
 #include "loom/import/cxx/source.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/buffer/ops.h"
-#include "loom/ops/config/ops.h"
 #include "loom/ops/func/ops.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/kernel/ops.h"
@@ -68,6 +68,7 @@ class Translator {
       : unit_(unit),
         diagnostics_(diagnostics),
         intrinsics_(unit, diagnostics),
+        launches_(unit, diagnostics),
         module_(module),
         options_(options),
         math_flags_(iree_any_bit_set(options.flags,
@@ -139,6 +140,7 @@ class Translator {
         if (!function->symbol->isTemplatePattern()) {
           intrinsics_.declaration(function->symbol, function->attributeList,
                                   function);
+          launches_.declaration(function->symbol, function->attributeList);
           definitions.push_back(function->symbol);
         }
       } else if (auto* space =
@@ -154,6 +156,7 @@ class Translator {
                   cxx::symbol_cast<cxx::FunctionSymbol>(declarator->symbol)) {
             intrinsics_.declaration(function, simple->attributeList,
                                     declarator);
+            launches_.declaration(function, simple->attributeList);
           }
           auto* variable =
               cxx::symbol_cast<cxx::VariableSymbol>(declarator->symbol);
@@ -476,6 +479,9 @@ class Translator {
     if (auto found = callees_.find(function); found != callees_.end()) {
       return found->second;
     }
+    if (!function->templateArguments().empty() && function->declaration()) {
+      launches_.declaration(function, function->declaration()->attributeList);
+    }
     std::string spelling = qualified_name(function);
     for (const auto& argument : function->templateArguments()) {
       spelling += "_" + cxx::to_string(argument);
@@ -530,14 +536,14 @@ class Translator {
                                   0, location(definition), &op));
       auto saved =
           loom_builder_enter_region(&builder_, op, loom_kernel_def_config(op));
-      auto groups = launch_dimensions(symbol, "workgroup_count");
-      auto size = launch_dimensions(symbol, "workgroup_size");
-      loom_op_t* launch;
-      check(loom_kernel_launch_config_build(
-          &builder_, 0, groups[0], groups[1], groups[2], size[0], size[1],
-          size[2], 0, 0, 0, location(definition), &launch));
+      auto name_id =
+          module_->symbols.entries[callees_.at(symbol).symbol_id].name_id;
+      auto spelling = module_->strings.entries[name_id];
+      launches_.build(symbol, {spelling.data, spelling.size}, &builder_,
+                      location(definition));
       loom_builder_restore(&builder_, saved);
     } else {
+      launches_.reject_ordinary_function(symbol);
       std::vector<loom_type_t> results;
       if (!returns_void) {
         results.push_back(type(signature->returnType(), definition));
@@ -604,59 +610,6 @@ class Translator {
       }
     }
     loom_builder_restore(&builder_, saved);
-  }
-
-  std::array<loom_value_id_t, 3> launch_dimensions(cxx::FunctionSymbol* symbol,
-                                                   std::string_view spelling) {
-    auto* definition = symbol->declaration();
-    const cxx::AttributeSpelling attribute_spelling = {
-        cxx::AttributeSyntax::kCxx, "loom", spelling};
-    auto attribute = cxx::findAttributeBySpelling(
-        &unit_, definition->attributeList, {&attribute_spelling, 1});
-    std::array<loom_value_id_t, 3> dimensions;
-    if (attribute) {
-      if (!attribute.argumentClause) {
-        fail(definition, "launch attribute requires three positive constants");
-      }
-      size_t axis = 0;
-      cxx::ASTInterpreter interpreter(&unit_);
-      for (auto* expression :
-           cxx::ListView{attribute.argumentClause->expressionList}) {
-        auto evaluated = interpreter.evaluate(expression);
-        auto value = evaluated ? interpreter.toInt(*evaluated) : std::nullopt;
-        if (axis == 3 || !value || *value <= 0 || *value > INT32_MAX) {
-          fail(definition,
-               "launch attribute requires three positive i32 constants");
-        }
-        dimensions[axis++] =
-            constant(*value, LOOM_SCALAR_TYPE_INDEX, location(definition));
-      }
-      if (axis != 3) {
-        fail(definition, "launch attribute requires exactly three dimensions");
-      }
-      return dimensions;
-    }
-    for (size_t axis = 0; axis < 3; ++axis) {
-      auto spelling_string = qualified_name(symbol) + "." +
-                             std::string(spelling) + "." + "xyz"[axis];
-      loom_symbol_id_t id;
-      check(loom_module_add_symbol(module_, string(spelling_string), &id));
-      loom_symbol_ref_t reference = {0, id};
-      loom_builder_t declaration_builder;
-      loom_builder_initialize(module_, &module_->arena,
-                              loom_module_block(module_), &declaration_builder);
-      loom_op_t* declaration;
-      check(loom_config_decl_build(&declaration_builder, 0, reference,
-                                   loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
-                                   nullptr, 0, nullptr, 0, location(definition),
-                                   &declaration));
-      loom_op_t* get;
-      check(loom_config_get_build(&builder_, reference,
-                                  loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
-                                  location(definition), &get));
-      dimensions[axis] = result(get, std::string(spelling) + "_" + "xyz"[axis]);
-    }
-    return dimensions;
   }
 
   struct Access {
@@ -1518,6 +1471,8 @@ class Translator {
   Diagnostics& diagnostics_;
   // Retained generated operation bindings for reached source declarations.
   Intrinsics intrinsics_;
+  // Admitted launch contracts, including bounds from function redeclarations.
+  LaunchContracts launches_;
   // Output arena owner.
   loom_module_t* module_;
   // Current insertion point in the structured output.

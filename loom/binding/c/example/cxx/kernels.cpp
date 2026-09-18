@@ -18,9 +18,11 @@ void affine(const float* input, float* output) {
   output[index] = transform<3>(input[index]);
 }
 
-__global__ [[loom::workgroup_size(64, 1, 1), loom::workgroup_count(2, 1, 1)]]
+__global__ [[loom::workgroup_size(64, 1, 1),
+             loom::workgroup_count_range(1, 4, 1, 1, 1, 1)]]
 void residual(const float* input, float* output) {
   unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
-  __builtin_assume(index < 128u);
-  output[index] = transform<3>(input[index]) + input[index];
+  if (index < 128u) {
+    output[index] = transform<3>(input[index]) + input[index];
+  }
 }

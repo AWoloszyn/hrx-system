@@ -132,6 +132,72 @@ TEST_F(ImportTest, MultipleKernelsAndSymbolicLaunch) {
   EXPECT_EQ(text.find("config.decl @first"), std::string::npos);
 }
 
+TEST_F(ImportTest, LaunchBoundsFromDeclarationsBecomeConfigPredicates) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    [[loom::kernel, loom::workgroup_count_range(1, 4, 1, 1, 1, 1)]]
+    void bounded();
+    [[using loom: workgroup_size_range(32, 128, 1, 1, 1, 1)]]
+    void bounded() {}
+  )")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("config.decl @bounded.workgroup_count.x"),
+            std::string::npos);
+  EXPECT_NE(text.find("config.decl @bounded.workgroup_size.x"),
+            std::string::npos);
+  EXPECT_NE(text.find(", 1, 4)]"), std::string::npos);
+  EXPECT_NE(text.find(", 32, 128)]"), std::string::npos);
+  EXPECT_NE(text.find("kernel.def @bounded"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
+TEST_F(ImportTest, OverloadedKernelsHaveDistinctConfigurationSymbols) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    namespace kernels {
+    [[loom::kernel]] void entry(float* output) {}
+    [[loom::kernel]] void entry(int* output) {}
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("config.decl @kernels__entry.workgroup_count.x"),
+            std::string::npos);
+  EXPECT_NE(text.find("config.decl @kernels__entry_1.workgroup_count.x"),
+            std::string::npos);
+}
+
+TEST_F(ImportTest, RejectsInvalidOrContradictoryLaunchContracts) {
+  for (const char* attributes : {
+           "loom::workgroup_size(64.5, 1, 1)",
+           "loom::workgroup_size(0, 1, 1)",
+           "loom::workgroup_size(2147483648u, 1, 1)",
+           "loom::workgroup_size(64, 1)",
+           "loom::workgroup_size",
+           "loom::workgroup_size(64, 1, 1), loom::workgroup_size(64, 1, 1)",
+           "loom::workgroup_size(64, 1, 1), "
+           "loom::workgroup_size_range(32, 128, 1, 1, 1, 1)",
+           "loom::workgroup_count_range(4, 1, 1, 1, 1, 1)",
+           "loom::workgroup_count_range(1, 4, 1, 1, 1)",
+           "loom::workgroup_count_range(1, 4, 1, 1, 1, 1, 1)",
+       }) {
+    SCOPED_TRACE(attributes);
+    auto source =
+        std::string("[[loom::kernel, ") + attributes + "]] void entry() {}";
+    int before = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_string_view(source.data(), source.size())));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_GT(diagnostic_count_, before);
+  }
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    [[loom::kernel, loom::workgroup_size(32, 1, 1)]] void entry();
+    [[loom::workgroup_size(64, 1, 1)]] void entry() {}
+  )")));
+  EXPECT_EQ(module_, nullptr);
+  IREE_ASSERT_OK(Import(IREE_SV(
+      "[[loom::workgroup_size(64, 1, 1)]] void ordinary_function() {}")));
+  EXPECT_EQ(module_, nullptr);
+}
+
 TEST_F(ImportTest, HeaderProviderUsesNormalIncludeSearch) {
   const iree_string_view_t paths[] = {IREE_SV("/overrides"),
                                       IREE_SV("/facade")};

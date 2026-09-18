@@ -38,10 +38,25 @@ void fill(float* output) {
 }
 ```
 
-Each launch attribute accepts three positive integer constants. An absent
-attribute produces three required config symbols, such as
-`fill.workgroup_count.x`; downstream config specialization supplies their
-values. Import does not guess launch dimensions or select a physical target.
+Each exact launch attribute accepts three positive i32 integer constant
+expressions. `loom::workgroup_count_range(xmin, xmax, ymin, ymax, zmin, zmax)`
+and `loom::workgroup_size_range(...)` instead constrain required config values
+with inclusive bounds. For example:
+
+```cpp
+[[loom::kernel, loom::workgroup_count_range(1, 4, 1, 1, 1, 1),
+  loom::workgroup_size(64, 1, 1)]]
+void configured(float* output) { output[0u] = 42.0f; }
+```
+
+The importer emits `config.decl @configured.workgroup_count.x` with a
+`range(%value, 1, 4)` predicate. Normal Loom config specialization supplies
+the exact value and rejects values outside the contract. An absent annotation
+also produces three required configs, with no additional range constraint.
+Config names use the imported kernel symbol, so overloads remain distinct.
+Contracts on leading function declarations carry to the definition; conflicting
+redeclarations and multiple contracts for the same dimension group are errors.
+Import does not guess launch dimensions or select a physical target.
 
 The native API in `import.h` accepts a finalized Loom context and arena block
 pool and returns an owned module. Source rejection produces structured
