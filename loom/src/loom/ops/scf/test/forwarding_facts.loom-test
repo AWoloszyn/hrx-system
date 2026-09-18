@@ -1,0 +1,1730 @@
+// RUN: pass canonicalize
+
+// Open queues retain each suffix range without one body evaluation per hop.
+func.def @counted_open(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = test.fact_divisor %slot11 : offset -> i64
+    test.use %before11_divisor : i64
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %injected : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @counted_open(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant 0 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 96 : i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = scalar.constant 8 : i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = scalar.constant 88 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 96 : i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = scalar.constant 8 : i64
+    test.use %before11_divisor : i64
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %injected : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant 0 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 96 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant 88 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 96 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Reversing the carried argument order preserves the same independent suffixes.
+func.def @counted_reverse(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out11, %out10, %out9, %out8, %out7, %out6, %out5, %out4, %out3, %out2, %out1, %out0 = scf.for %iv = [%begin to %count step %step](%slot11 = %seed11 : offset, %slot10 = %seed10 : offset, %slot9 = %seed9 : offset, %slot8 = %seed8 : offset, %slot7 = %seed7 : offset, %slot6 = %seed6 : offset, %slot5 = %seed5 : offset, %slot4 = %seed4 : offset, %slot3 = %seed3 : offset, %slot2 = %seed2 : offset, %slot1 = %seed1 : offset, %slot0 = %seed0 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = test.fact_divisor %slot11 : offset -> i64
+    test.use %before11_divisor : i64
+    scf.yield %injected, %slot11, %slot10, %slot9, %slot8, %slot7, %slot6, %slot5, %slot4, %slot3, %slot2, %slot1 : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @counted_reverse(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out11, %out10, %out9, %out8, %out7, %out6, %out5, %out4, %out3, %out2, %out1, %out0 = scf.for %iv = [%begin to %count step %step](%slot11 = %seed11 : offset, %slot10 = %seed10 : offset, %slot9 = %seed9 : offset, %slot8 = %seed8 : offset, %slot7 = %seed7 : offset, %slot6 = %seed6 : offset, %slot5 = %seed5 : offset, %slot4 = %seed4 : offset, %slot3 = %seed3 : offset, %slot2 = %seed2 : offset, %slot1 = %seed1 : offset, %slot0 = %seed0 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant 0 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 96 : i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = scalar.constant 8 : i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = scalar.constant 88 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 96 : i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = scalar.constant 8 : i64
+    test.use %before11_divisor : i64
+    scf.yield %injected, %slot11, %slot10, %slot9, %slot8, %slot7, %slot6, %slot5, %slot4, %slot3, %slot2, %slot1 : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant 0 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 96 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant 88 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 96 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Compose the reversed condition projection with body forwarding; exit order stays reversed.
+func.def @condition_permutation(%count: index, %repeat: i1, %choose: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.while(%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = test.fact_divisor %slot11 : offset -> i64
+    test.use %before11_divisor : i64
+    scf.condition %repeat, %slot11, %slot10, %slot9, %slot8, %slot7, %slot6, %slot5, %slot4, %slot3, %slot2, %slot1, %slot0 : i1, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  } do(%body0: offset, %body1: offset, %body2: offset, %body3: offset, %body4: offset, %body5: offset, %body6: offset, %body7: offset, %body8: offset, %body9: offset, %body10: offset, %body11: offset) {
+    %body0_range_lo = test.fact_range_lo %body0 : offset -> i64
+    test.use %body0_range_lo : i64
+    %body0_range_hi = test.fact_range_hi %body0 : offset -> i64
+    test.use %body0_range_hi : i64
+    %body0_divisor = test.fact_divisor %body0 : offset -> i64
+    test.use %body0_divisor : i64
+    %body11_range_lo = test.fact_range_lo %body11 : offset -> i64
+    test.use %body11_range_lo : i64
+    %body11_range_hi = test.fact_range_hi %body11 : offset -> i64
+    test.use %body11_range_hi : i64
+    %body11_divisor = test.fact_divisor %body11 : offset -> i64
+    test.use %body11_divisor : i64
+    scf.yield %body10, %body9, %body8, %body7, %body6, %body5, %body4, %body3, %body2, %body1, %body0, %injected : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @condition_permutation(%count: index, %repeat: i1, %choose: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.while(%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant 0 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 96 : i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = scalar.constant 8 : i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = scalar.constant 88 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 96 : i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = scalar.constant 8 : i64
+    test.use %before11_divisor : i64
+    scf.condition %repeat, %slot11, %slot10, %slot9, %slot8, %slot7, %slot6, %slot5, %slot4, %slot3, %slot2, %slot1, %slot0 : i1, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  } do(%body0: offset, %body1: offset, %body2: offset, %body3: offset, %body4: offset, %body5: offset, %body6: offset, %body7: offset, %body8: offset, %body9: offset, %body10: offset, %body11: offset) {
+    %body0_range_lo = scalar.constant 88 : i64
+    test.use %body0_range_lo : i64
+    %body0_range_hi = scalar.constant 96 : i64
+    test.use %body0_range_hi : i64
+    %body0_divisor = scalar.constant 8 : i64
+    test.use %body0_divisor : i64
+    %body11_range_lo = scalar.constant 0 : i64
+    test.use %body11_range_lo : i64
+    %body11_range_hi = scalar.constant 96 : i64
+    test.use %body11_range_hi : i64
+    %body11_divisor = scalar.constant 8 : i64
+    test.use %body11_divisor : i64
+    scf.yield %body10, %body9, %body8, %body7, %body6, %body5, %body4, %body3, %body2, %body1, %body0, %injected : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant 88 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 96 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant 0 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 96 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// A closed rotation crosses both while regions and contains only initial values.
+func.def @condition_rotation(%count: index, %repeat: i1, %choose: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.while(%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = test.fact_divisor %slot11 : offset -> i64
+    test.use %before11_divisor : i64
+    scf.condition %repeat, %slot11, %slot10, %slot9, %slot8, %slot7, %slot6, %slot5, %slot4, %slot3, %slot2, %slot1, %slot0 : i1, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  } do(%body0: offset, %body1: offset, %body2: offset, %body3: offset, %body4: offset, %body5: offset, %body6: offset, %body7: offset, %body8: offset, %body9: offset, %body10: offset, %body11: offset) {
+    %body0_range_lo = test.fact_range_lo %body0 : offset -> i64
+    test.use %body0_range_lo : i64
+    %body0_range_hi = test.fact_range_hi %body0 : offset -> i64
+    test.use %body0_range_hi : i64
+    %body0_divisor = test.fact_divisor %body0 : offset -> i64
+    test.use %body0_divisor : i64
+    %body11_range_lo = test.fact_range_lo %body11 : offset -> i64
+    test.use %body11_range_lo : i64
+    %body11_range_hi = test.fact_range_hi %body11 : offset -> i64
+    test.use %body11_range_hi : i64
+    %body11_divisor = test.fact_divisor %body11 : offset -> i64
+    test.use %body11_divisor : i64
+    scf.yield %body10, %body9, %body8, %body7, %body6, %body5, %body4, %body3, %body2, %body1, %body0, %body11 : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @condition_rotation(%count: index, %repeat: i1, %choose: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.while(%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant 0 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 88 : i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = scalar.constant 8 : i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = scalar.constant 0 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 88 : i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = scalar.constant 8 : i64
+    test.use %before11_divisor : i64
+    scf.condition %repeat, %slot11, %slot10, %slot9, %slot8, %slot7, %slot6, %slot5, %slot4, %slot3, %slot2, %slot1, %slot0 : i1, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  } do(%body0: offset, %body1: offset, %body2: offset, %body3: offset, %body4: offset, %body5: offset, %body6: offset, %body7: offset, %body8: offset, %body9: offset, %body10: offset, %body11: offset) {
+    %body0_range_lo = scalar.constant 0 : i64
+    test.use %body0_range_lo : i64
+    %body0_range_hi = scalar.constant 88 : i64
+    test.use %body0_range_hi : i64
+    %body0_divisor = scalar.constant 8 : i64
+    test.use %body0_divisor : i64
+    %body11_range_lo = scalar.constant 0 : i64
+    test.use %body11_range_lo : i64
+    %body11_range_hi = scalar.constant 88 : i64
+    test.use %body11_range_hi : i64
+    %body11_divisor = scalar.constant 8 : i64
+    test.use %body11_divisor : i64
+    scf.yield %body10, %body9, %body8, %body7, %body6, %body5, %body4, %body3, %body2, %body1, %body0, %body11 : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant 0 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 88 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant 0 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 88 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// A nested conditional supplies an external input to the forwarding graph.
+func.def @nested_producer(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %alternative = index.constant 104 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = test.fact_divisor %slot11 : offset -> i64
+    test.use %before11_divisor : i64
+    %produced = scf.if %choose -> (offset) {
+      scf.yield %injected : offset
+    } else {
+      scf.yield %alternative : offset
+    }
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %produced : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @nested_producer(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %alternative = index.constant 104 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant 0 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 104 : i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = scalar.constant 8 : i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = scalar.constant 88 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 104 : i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = scalar.constant 8 : i64
+    test.use %before11_divisor : i64
+    %produced = scf.select %choose, %injected, %alternative : offset
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %produced : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant 0 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 104 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant 88 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 104 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Arithmetic feedback still widens, while direct transport retains uniformity.
+func.def @counted_recurrence(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %increment = index.constant 8 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_cluster_uniform = test.fact_cluster_uniform %slot0 : offset -> i1
+    test.use %before0_cluster_uniform : i1
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_cluster_uniform = test.fact_cluster_uniform %slot11 : offset -> i1
+    test.use %before11_cluster_uniform : i1
+    %produced = index.add %slot0, %increment : offset
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %produced : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @counted_recurrence(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %increment = index.constant 8 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant -9223372036854775808 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 9223372036854775807 : i64
+    test.use %before0_range_hi : i64
+    %before0_cluster_uniform = scalar.constant true : i1
+    test.use %before0_cluster_uniform : i1
+    %before11_range_lo = scalar.constant -9223372036854775808 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 9223372036854775807 : i64
+    test.use %before11_range_hi : i64
+    %before11_cluster_uniform = scalar.constant true : i1
+    test.use %before11_cluster_uniform : i1
+    %produced = index.add %slot0, %increment : offset
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %produced : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant -9223372036854775808 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 9223372036854775807 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant -9223372036854775808 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 9223372036854775807 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Composed condition transport does not mistake arithmetic feedback for a rotation.
+func.def @condition_recurrence(%count: index, %repeat: i1, %choose: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %increment = index.constant 8 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.while(%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_cluster_uniform = test.fact_cluster_uniform %slot0 : offset -> i1
+    test.use %before0_cluster_uniform : i1
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_cluster_uniform = test.fact_cluster_uniform %slot11 : offset -> i1
+    test.use %before11_cluster_uniform : i1
+    scf.condition %repeat, %slot11, %slot10, %slot9, %slot8, %slot7, %slot6, %slot5, %slot4, %slot3, %slot2, %slot1, %slot0 : i1, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  } do(%body0: offset, %body1: offset, %body2: offset, %body3: offset, %body4: offset, %body5: offset, %body6: offset, %body7: offset, %body8: offset, %body9: offset, %body10: offset, %body11: offset) {
+    %body0_range_lo = test.fact_range_lo %body0 : offset -> i64
+    test.use %body0_range_lo : i64
+    %body0_range_hi = test.fact_range_hi %body0 : offset -> i64
+    test.use %body0_range_hi : i64
+    %body0_cluster_uniform = test.fact_cluster_uniform %body0 : offset -> i1
+    test.use %body0_cluster_uniform : i1
+    %body11_range_lo = test.fact_range_lo %body11 : offset -> i64
+    test.use %body11_range_lo : i64
+    %body11_range_hi = test.fact_range_hi %body11 : offset -> i64
+    test.use %body11_range_hi : i64
+    %body11_cluster_uniform = test.fact_cluster_uniform %body11 : offset -> i1
+    test.use %body11_cluster_uniform : i1
+    %produced = index.add %body11, %increment : offset
+    scf.yield %body10, %body9, %body8, %body7, %body6, %body5, %body4, %body3, %body2, %body1, %body0, %produced : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @condition_recurrence(%count: index, %repeat: i1, %choose: i1) {
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %increment = index.constant 8 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.while(%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant -9223372036854775808 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 9223372036854775807 : i64
+    test.use %before0_range_hi : i64
+    %before0_cluster_uniform = scalar.constant true : i1
+    test.use %before0_cluster_uniform : i1
+    %before11_range_lo = scalar.constant -9223372036854775808 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 9223372036854775807 : i64
+    test.use %before11_range_hi : i64
+    %before11_cluster_uniform = scalar.constant true : i1
+    test.use %before11_cluster_uniform : i1
+    scf.condition %repeat, %slot11, %slot10, %slot9, %slot8, %slot7, %slot6, %slot5, %slot4, %slot3, %slot2, %slot1, %slot0 : i1, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  } do(%body0: offset, %body1: offset, %body2: offset, %body3: offset, %body4: offset, %body5: offset, %body6: offset, %body7: offset, %body8: offset, %body9: offset, %body10: offset, %body11: offset) {
+    %body0_range_lo = scalar.constant -9223372036854775808 : i64
+    test.use %body0_range_lo : i64
+    %body0_range_hi = scalar.constant 9223372036854775807 : i64
+    test.use %body0_range_hi : i64
+    %body0_cluster_uniform = scalar.constant true : i1
+    test.use %body0_cluster_uniform : i1
+    %body11_range_lo = scalar.constant -9223372036854775808 : i64
+    test.use %body11_range_lo : i64
+    %body11_range_hi = scalar.constant 9223372036854775807 : i64
+    test.use %body11_range_hi : i64
+    %body11_cluster_uniform = scalar.constant true : i1
+    test.use %body11_cluster_uniform : i1
+    %produced = index.add %body11, %increment : offset
+    scf.yield %body10, %body9, %body8, %body7, %body6, %body5, %body4, %body3, %body2, %body1, %body0, %produced : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant -9223372036854775808 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 9223372036854775807 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant -9223372036854775808 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 9223372036854775807 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// A proven zero-trip queue exposes the exact initial value at each position.
+func.def @counted_zero_trip(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %begin step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %injected : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @counted_zero_trip(%count: index, %repeat: i1, %choose: i1) {
+  %result0_range_lo = scalar.constant 0 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 0 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant 88 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 88 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// A positive trip count excludes the first seed from the head and fixes the tail.
+func.def @counted_positive_trip(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %limit = index.constant 4 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %limit step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = test.fact_divisor %slot11 : offset -> i64
+    test.use %before11_divisor : i64
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %injected : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @counted_positive_trip(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %limit = index.constant 4 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %limit step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant 0 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 96 : i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = scalar.constant 8 : i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = scalar.constant 88 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 96 : i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = scalar.constant 8 : i64
+    test.use %before11_divisor : i64
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %injected : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant 8 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 96 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant 96 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 96 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Entry, body, and exit observations keep their declared execution scope.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @structured_lane() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %step = index.constant 1 : index
+  %selector = kernel.subgroup.lane.id : index
+  %injected = index.add %selector, %step : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  %for_out0, %for_out1, %for_out2, %for_out3, %for_out4, %for_out5, %for_out6, %for_out7, %for_out8, %for_out9, %for_out10, %for_out11 = scf.for %iv = [%seed to %selector step %step](%for_slot0 = %seed : index, %for_slot1 = %seed : index, %for_slot2 = %seed : index, %for_slot3 = %seed : index, %for_slot4 = %seed : index, %for_slot5 = %seed : index, %for_slot6 = %seed : index, %for_slot7 = %seed : index, %for_slot8 = %seed : index, %for_slot9 = %seed : index, %for_slot10 = %seed : index, %for_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %for_head_subgroup_uniform = test.fact_subgroup_uniform %for_slot0 : index -> i1
+    test.use %for_head_subgroup_uniform : i1
+    %for_head_workgroup_uniform = test.fact_workgroup_uniform %for_slot0 : index -> i1
+    test.use %for_head_workgroup_uniform : i1
+    %for_head_cluster_uniform = test.fact_cluster_uniform %for_slot0 : index -> i1
+    test.use %for_head_cluster_uniform : i1
+    %for_head_lane_varying = test.fact_lane_varying %for_slot0 : index -> i1
+    test.use %for_head_lane_varying : i1
+    scf.yield %for_slot1, %for_slot2, %for_slot3, %for_slot4, %for_slot5, %for_slot6, %for_slot7, %for_slot8, %for_slot9, %for_slot10, %for_slot11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %for_result_subgroup_uniform = test.fact_subgroup_uniform %for_out0 : index -> i1
+  test.use %for_result_subgroup_uniform : i1
+  %for_result_workgroup_uniform = test.fact_workgroup_uniform %for_out0 : index -> i1
+  test.use %for_result_workgroup_uniform : i1
+  %for_result_cluster_uniform = test.fact_cluster_uniform %for_out0 : index -> i1
+  test.use %for_result_cluster_uniform : i1
+  %for_result_lane_varying = test.fact_lane_varying %for_out0 : index -> i1
+  test.use %for_result_lane_varying : i1
+  %while_out0, %while_out1, %while_out2, %while_out3, %while_out4, %while_out5, %while_out6, %while_out7, %while_out8, %while_out9, %while_out10, %while_out11 = scf.while(%while_slot0 = %seed : index, %while_slot1 = %seed : index, %while_slot2 = %seed : index, %while_slot3 = %seed : index, %while_slot4 = %seed : index, %while_slot5 = %seed : index, %while_slot6 = %seed : index, %while_slot7 = %seed : index, %while_slot8 = %seed : index, %while_slot9 = %seed : index, %while_slot10 = %seed : index, %while_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %while_head_subgroup_uniform = test.fact_subgroup_uniform %while_slot0 : index -> i1
+    test.use %while_head_subgroup_uniform : i1
+    %while_head_workgroup_uniform = test.fact_workgroup_uniform %while_slot0 : index -> i1
+    test.use %while_head_workgroup_uniform : i1
+    %while_head_cluster_uniform = test.fact_cluster_uniform %while_slot0 : index -> i1
+    test.use %while_head_cluster_uniform : i1
+    %while_head_lane_varying = test.fact_lane_varying %while_slot0 : index -> i1
+    test.use %while_head_lane_varying : i1
+    scf.condition %repeat, %while_slot0, %while_slot1, %while_slot2, %while_slot3, %while_slot4, %while_slot5, %while_slot6, %while_slot7, %while_slot8, %while_slot9, %while_slot10, %while_slot11 : i1, index, index, index, index, index, index, index, index, index, index, index, index
+  } do(%while_body0: index, %while_body1: index, %while_body2: index, %while_body3: index, %while_body4: index, %while_body5: index, %while_body6: index, %while_body7: index, %while_body8: index, %while_body9: index, %while_body10: index, %while_body11: index) {
+    scf.yield %while_body1, %while_body2, %while_body3, %while_body4, %while_body5, %while_body6, %while_body7, %while_body8, %while_body9, %while_body10, %while_body11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %while_result_subgroup_uniform = test.fact_subgroup_uniform %while_out0 : index -> i1
+  test.use %while_result_subgroup_uniform : i1
+  %while_result_workgroup_uniform = test.fact_workgroup_uniform %while_out0 : index -> i1
+  test.use %while_result_workgroup_uniform : i1
+  %while_result_cluster_uniform = test.fact_cluster_uniform %while_out0 : index -> i1
+  test.use %while_result_cluster_uniform : i1
+  %while_result_lane_varying = test.fact_lane_varying %while_out0 : index -> i1
+  test.use %while_result_lane_varying : i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @structured_lane() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %step = index.constant 1 : index
+  %selector = kernel.subgroup.lane.id : index
+  %injected = index.add %selector, %step : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  %for_out0, %for_out1, %for_out2, %for_out3, %for_out4, %for_out5, %for_out6, %for_out7, %for_out8, %for_out9, %for_out10, %for_out11 = scf.for %iv = [%seed to %selector step %step](%for_slot0 = %seed : index, %for_slot1 = %seed : index, %for_slot2 = %seed : index, %for_slot3 = %seed : index, %for_slot4 = %seed : index, %for_slot5 = %seed : index, %for_slot6 = %seed : index, %for_slot7 = %seed : index, %for_slot8 = %seed : index, %for_slot9 = %seed : index, %for_slot10 = %seed : index, %for_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %for_head_subgroup_uniform = scalar.constant false : i1
+    test.use %for_head_subgroup_uniform : i1
+    %for_head_workgroup_uniform = scalar.constant false : i1
+    test.use %for_head_workgroup_uniform : i1
+    %for_head_cluster_uniform = scalar.constant false : i1
+    test.use %for_head_cluster_uniform : i1
+    %for_head_lane_varying = scalar.constant true : i1
+    test.use %for_head_lane_varying : i1
+    scf.yield %for_slot1, %for_slot2, %for_slot3, %for_slot4, %for_slot5, %for_slot6, %for_slot7, %for_slot8, %for_slot9, %for_slot10, %for_slot11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %for_result_subgroup_uniform = scalar.constant false : i1
+  test.use %for_result_subgroup_uniform : i1
+  %for_result_workgroup_uniform = scalar.constant false : i1
+  test.use %for_result_workgroup_uniform : i1
+  %for_result_cluster_uniform = scalar.constant false : i1
+  test.use %for_result_cluster_uniform : i1
+  %for_result_lane_varying = scalar.constant true : i1
+  test.use %for_result_lane_varying : i1
+  %while_out0, %while_out1, %while_out2, %while_out3, %while_out4, %while_out5, %while_out6, %while_out7, %while_out8, %while_out9, %while_out10, %while_out11 = scf.while(%while_slot0 = %seed : index, %while_slot1 = %seed : index, %while_slot2 = %seed : index, %while_slot3 = %seed : index, %while_slot4 = %seed : index, %while_slot5 = %seed : index, %while_slot6 = %seed : index, %while_slot7 = %seed : index, %while_slot8 = %seed : index, %while_slot9 = %seed : index, %while_slot10 = %seed : index, %while_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %while_head_subgroup_uniform = scalar.constant false : i1
+    test.use %while_head_subgroup_uniform : i1
+    %while_head_workgroup_uniform = scalar.constant false : i1
+    test.use %while_head_workgroup_uniform : i1
+    %while_head_cluster_uniform = scalar.constant false : i1
+    test.use %while_head_cluster_uniform : i1
+    %while_head_lane_varying = scalar.constant true : i1
+    test.use %while_head_lane_varying : i1
+    scf.condition %repeat, %while_slot0, %while_slot1, %while_slot2, %while_slot3, %while_slot4, %while_slot5, %while_slot6, %while_slot7, %while_slot8, %while_slot9, %while_slot10, %while_slot11 : i1, index, index, index, index, index, index, index, index, index, index, index, index
+  } do(%while_body0: index, %while_body1: index, %while_body2: index, %while_body3: index, %while_body4: index, %while_body5: index, %while_body6: index, %while_body7: index, %while_body8: index, %while_body9: index, %while_body10: index, %while_body11: index) {
+    scf.yield %while_body1, %while_body2, %while_body3, %while_body4, %while_body5, %while_body6, %while_body7, %while_body8, %while_body9, %while_body10, %while_body11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %while_result_subgroup_uniform = scalar.constant false : i1
+  test.use %while_result_subgroup_uniform : i1
+  %while_result_workgroup_uniform = scalar.constant false : i1
+  test.use %while_result_workgroup_uniform : i1
+  %while_result_cluster_uniform = scalar.constant false : i1
+  test.use %while_result_cluster_uniform : i1
+  %while_result_lane_varying = scalar.constant true : i1
+  test.use %while_result_lane_varying : i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Entry, body, and exit observations keep their declared execution scope.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @structured_subgroup() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %step = index.constant 1 : index
+  %selector = kernel.subgroup.id : index
+  %injected = index.add %selector, %step : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  %for_out0, %for_out1, %for_out2, %for_out3, %for_out4, %for_out5, %for_out6, %for_out7, %for_out8, %for_out9, %for_out10, %for_out11 = scf.for %iv = [%seed to %selector step %step](%for_slot0 = %seed : index, %for_slot1 = %seed : index, %for_slot2 = %seed : index, %for_slot3 = %seed : index, %for_slot4 = %seed : index, %for_slot5 = %seed : index, %for_slot6 = %seed : index, %for_slot7 = %seed : index, %for_slot8 = %seed : index, %for_slot9 = %seed : index, %for_slot10 = %seed : index, %for_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %for_head_subgroup_uniform = test.fact_subgroup_uniform %for_slot0 : index -> i1
+    test.use %for_head_subgroup_uniform : i1
+    %for_head_workgroup_uniform = test.fact_workgroup_uniform %for_slot0 : index -> i1
+    test.use %for_head_workgroup_uniform : i1
+    %for_head_cluster_uniform = test.fact_cluster_uniform %for_slot0 : index -> i1
+    test.use %for_head_cluster_uniform : i1
+    %for_head_lane_varying = test.fact_lane_varying %for_slot0 : index -> i1
+    test.use %for_head_lane_varying : i1
+    scf.yield %for_slot1, %for_slot2, %for_slot3, %for_slot4, %for_slot5, %for_slot6, %for_slot7, %for_slot8, %for_slot9, %for_slot10, %for_slot11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %for_result_subgroup_uniform = test.fact_subgroup_uniform %for_out0 : index -> i1
+  test.use %for_result_subgroup_uniform : i1
+  %for_result_workgroup_uniform = test.fact_workgroup_uniform %for_out0 : index -> i1
+  test.use %for_result_workgroup_uniform : i1
+  %for_result_cluster_uniform = test.fact_cluster_uniform %for_out0 : index -> i1
+  test.use %for_result_cluster_uniform : i1
+  %for_result_lane_varying = test.fact_lane_varying %for_out0 : index -> i1
+  test.use %for_result_lane_varying : i1
+  %while_out0, %while_out1, %while_out2, %while_out3, %while_out4, %while_out5, %while_out6, %while_out7, %while_out8, %while_out9, %while_out10, %while_out11 = scf.while(%while_slot0 = %seed : index, %while_slot1 = %seed : index, %while_slot2 = %seed : index, %while_slot3 = %seed : index, %while_slot4 = %seed : index, %while_slot5 = %seed : index, %while_slot6 = %seed : index, %while_slot7 = %seed : index, %while_slot8 = %seed : index, %while_slot9 = %seed : index, %while_slot10 = %seed : index, %while_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %while_head_subgroup_uniform = test.fact_subgroup_uniform %while_slot0 : index -> i1
+    test.use %while_head_subgroup_uniform : i1
+    %while_head_workgroup_uniform = test.fact_workgroup_uniform %while_slot0 : index -> i1
+    test.use %while_head_workgroup_uniform : i1
+    %while_head_cluster_uniform = test.fact_cluster_uniform %while_slot0 : index -> i1
+    test.use %while_head_cluster_uniform : i1
+    %while_head_lane_varying = test.fact_lane_varying %while_slot0 : index -> i1
+    test.use %while_head_lane_varying : i1
+    scf.condition %repeat, %while_slot0, %while_slot1, %while_slot2, %while_slot3, %while_slot4, %while_slot5, %while_slot6, %while_slot7, %while_slot8, %while_slot9, %while_slot10, %while_slot11 : i1, index, index, index, index, index, index, index, index, index, index, index, index
+  } do(%while_body0: index, %while_body1: index, %while_body2: index, %while_body3: index, %while_body4: index, %while_body5: index, %while_body6: index, %while_body7: index, %while_body8: index, %while_body9: index, %while_body10: index, %while_body11: index) {
+    scf.yield %while_body1, %while_body2, %while_body3, %while_body4, %while_body5, %while_body6, %while_body7, %while_body8, %while_body9, %while_body10, %while_body11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %while_result_subgroup_uniform = test.fact_subgroup_uniform %while_out0 : index -> i1
+  test.use %while_result_subgroup_uniform : i1
+  %while_result_workgroup_uniform = test.fact_workgroup_uniform %while_out0 : index -> i1
+  test.use %while_result_workgroup_uniform : i1
+  %while_result_cluster_uniform = test.fact_cluster_uniform %while_out0 : index -> i1
+  test.use %while_result_cluster_uniform : i1
+  %while_result_lane_varying = test.fact_lane_varying %while_out0 : index -> i1
+  test.use %while_result_lane_varying : i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @structured_subgroup() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %step = index.constant 1 : index
+  %selector = kernel.subgroup.id : index
+  %injected = index.add %selector, %step : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  %for_out0, %for_out1, %for_out2, %for_out3, %for_out4, %for_out5, %for_out6, %for_out7, %for_out8, %for_out9, %for_out10, %for_out11 = scf.for %iv = [%seed to %selector step %step](%for_slot0 = %seed : index, %for_slot1 = %seed : index, %for_slot2 = %seed : index, %for_slot3 = %seed : index, %for_slot4 = %seed : index, %for_slot5 = %seed : index, %for_slot6 = %seed : index, %for_slot7 = %seed : index, %for_slot8 = %seed : index, %for_slot9 = %seed : index, %for_slot10 = %seed : index, %for_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %for_head_subgroup_uniform = scalar.constant true : i1
+    test.use %for_head_subgroup_uniform : i1
+    %for_head_workgroup_uniform = scalar.constant false : i1
+    test.use %for_head_workgroup_uniform : i1
+    %for_head_cluster_uniform = scalar.constant false : i1
+    test.use %for_head_cluster_uniform : i1
+    %for_head_lane_varying = scalar.constant false : i1
+    test.use %for_head_lane_varying : i1
+    scf.yield %for_slot1, %for_slot2, %for_slot3, %for_slot4, %for_slot5, %for_slot6, %for_slot7, %for_slot8, %for_slot9, %for_slot10, %for_slot11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %for_result_subgroup_uniform = scalar.constant true : i1
+  test.use %for_result_subgroup_uniform : i1
+  %for_result_workgroup_uniform = scalar.constant false : i1
+  test.use %for_result_workgroup_uniform : i1
+  %for_result_cluster_uniform = scalar.constant false : i1
+  test.use %for_result_cluster_uniform : i1
+  %for_result_lane_varying = scalar.constant false : i1
+  test.use %for_result_lane_varying : i1
+  %while_out0, %while_out1, %while_out2, %while_out3, %while_out4, %while_out5, %while_out6, %while_out7, %while_out8, %while_out9, %while_out10, %while_out11 = scf.while(%while_slot0 = %seed : index, %while_slot1 = %seed : index, %while_slot2 = %seed : index, %while_slot3 = %seed : index, %while_slot4 = %seed : index, %while_slot5 = %seed : index, %while_slot6 = %seed : index, %while_slot7 = %seed : index, %while_slot8 = %seed : index, %while_slot9 = %seed : index, %while_slot10 = %seed : index, %while_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %while_head_subgroup_uniform = scalar.constant true : i1
+    test.use %while_head_subgroup_uniform : i1
+    %while_head_workgroup_uniform = scalar.constant false : i1
+    test.use %while_head_workgroup_uniform : i1
+    %while_head_cluster_uniform = scalar.constant false : i1
+    test.use %while_head_cluster_uniform : i1
+    %while_head_lane_varying = scalar.constant false : i1
+    test.use %while_head_lane_varying : i1
+    scf.condition %repeat, %while_slot0, %while_slot1, %while_slot2, %while_slot3, %while_slot4, %while_slot5, %while_slot6, %while_slot7, %while_slot8, %while_slot9, %while_slot10, %while_slot11 : i1, index, index, index, index, index, index, index, index, index, index, index, index
+  } do(%while_body0: index, %while_body1: index, %while_body2: index, %while_body3: index, %while_body4: index, %while_body5: index, %while_body6: index, %while_body7: index, %while_body8: index, %while_body9: index, %while_body10: index, %while_body11: index) {
+    scf.yield %while_body1, %while_body2, %while_body3, %while_body4, %while_body5, %while_body6, %while_body7, %while_body8, %while_body9, %while_body10, %while_body11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %while_result_subgroup_uniform = scalar.constant true : i1
+  test.use %while_result_subgroup_uniform : i1
+  %while_result_workgroup_uniform = scalar.constant false : i1
+  test.use %while_result_workgroup_uniform : i1
+  %while_result_cluster_uniform = scalar.constant false : i1
+  test.use %while_result_cluster_uniform : i1
+  %while_result_lane_varying = scalar.constant false : i1
+  test.use %while_result_lane_varying : i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Entry, body, and exit observations keep their declared execution scope.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @structured_workgroup() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %step = index.constant 1 : index
+  %selector = kernel.workgroup.id<x> : index
+  %injected = index.add %selector, %step : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  %for_out0, %for_out1, %for_out2, %for_out3, %for_out4, %for_out5, %for_out6, %for_out7, %for_out8, %for_out9, %for_out10, %for_out11 = scf.for %iv = [%seed to %selector step %step](%for_slot0 = %seed : index, %for_slot1 = %seed : index, %for_slot2 = %seed : index, %for_slot3 = %seed : index, %for_slot4 = %seed : index, %for_slot5 = %seed : index, %for_slot6 = %seed : index, %for_slot7 = %seed : index, %for_slot8 = %seed : index, %for_slot9 = %seed : index, %for_slot10 = %seed : index, %for_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %for_head_subgroup_uniform = test.fact_subgroup_uniform %for_slot0 : index -> i1
+    test.use %for_head_subgroup_uniform : i1
+    %for_head_workgroup_uniform = test.fact_workgroup_uniform %for_slot0 : index -> i1
+    test.use %for_head_workgroup_uniform : i1
+    %for_head_cluster_uniform = test.fact_cluster_uniform %for_slot0 : index -> i1
+    test.use %for_head_cluster_uniform : i1
+    %for_head_lane_varying = test.fact_lane_varying %for_slot0 : index -> i1
+    test.use %for_head_lane_varying : i1
+    scf.yield %for_slot1, %for_slot2, %for_slot3, %for_slot4, %for_slot5, %for_slot6, %for_slot7, %for_slot8, %for_slot9, %for_slot10, %for_slot11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %for_result_subgroup_uniform = test.fact_subgroup_uniform %for_out0 : index -> i1
+  test.use %for_result_subgroup_uniform : i1
+  %for_result_workgroup_uniform = test.fact_workgroup_uniform %for_out0 : index -> i1
+  test.use %for_result_workgroup_uniform : i1
+  %for_result_cluster_uniform = test.fact_cluster_uniform %for_out0 : index -> i1
+  test.use %for_result_cluster_uniform : i1
+  %for_result_lane_varying = test.fact_lane_varying %for_out0 : index -> i1
+  test.use %for_result_lane_varying : i1
+  %while_out0, %while_out1, %while_out2, %while_out3, %while_out4, %while_out5, %while_out6, %while_out7, %while_out8, %while_out9, %while_out10, %while_out11 = scf.while(%while_slot0 = %seed : index, %while_slot1 = %seed : index, %while_slot2 = %seed : index, %while_slot3 = %seed : index, %while_slot4 = %seed : index, %while_slot5 = %seed : index, %while_slot6 = %seed : index, %while_slot7 = %seed : index, %while_slot8 = %seed : index, %while_slot9 = %seed : index, %while_slot10 = %seed : index, %while_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %while_head_subgroup_uniform = test.fact_subgroup_uniform %while_slot0 : index -> i1
+    test.use %while_head_subgroup_uniform : i1
+    %while_head_workgroup_uniform = test.fact_workgroup_uniform %while_slot0 : index -> i1
+    test.use %while_head_workgroup_uniform : i1
+    %while_head_cluster_uniform = test.fact_cluster_uniform %while_slot0 : index -> i1
+    test.use %while_head_cluster_uniform : i1
+    %while_head_lane_varying = test.fact_lane_varying %while_slot0 : index -> i1
+    test.use %while_head_lane_varying : i1
+    scf.condition %repeat, %while_slot0, %while_slot1, %while_slot2, %while_slot3, %while_slot4, %while_slot5, %while_slot6, %while_slot7, %while_slot8, %while_slot9, %while_slot10, %while_slot11 : i1, index, index, index, index, index, index, index, index, index, index, index, index
+  } do(%while_body0: index, %while_body1: index, %while_body2: index, %while_body3: index, %while_body4: index, %while_body5: index, %while_body6: index, %while_body7: index, %while_body8: index, %while_body9: index, %while_body10: index, %while_body11: index) {
+    scf.yield %while_body1, %while_body2, %while_body3, %while_body4, %while_body5, %while_body6, %while_body7, %while_body8, %while_body9, %while_body10, %while_body11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %while_result_subgroup_uniform = test.fact_subgroup_uniform %while_out0 : index -> i1
+  test.use %while_result_subgroup_uniform : i1
+  %while_result_workgroup_uniform = test.fact_workgroup_uniform %while_out0 : index -> i1
+  test.use %while_result_workgroup_uniform : i1
+  %while_result_cluster_uniform = test.fact_cluster_uniform %while_out0 : index -> i1
+  test.use %while_result_cluster_uniform : i1
+  %while_result_lane_varying = test.fact_lane_varying %while_out0 : index -> i1
+  test.use %while_result_lane_varying : i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @structured_workgroup() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %step = index.constant 1 : index
+  %selector = kernel.workgroup.id<x> : index
+  %injected = index.add %selector, %step : index
+  %repeat = index.cmp ne, %selector, %seed : index
+  %for_out0, %for_out1, %for_out2, %for_out3, %for_out4, %for_out5, %for_out6, %for_out7, %for_out8, %for_out9, %for_out10, %for_out11 = scf.for %iv = [%seed to %selector step %step](%for_slot0 = %seed : index, %for_slot1 = %seed : index, %for_slot2 = %seed : index, %for_slot3 = %seed : index, %for_slot4 = %seed : index, %for_slot5 = %seed : index, %for_slot6 = %seed : index, %for_slot7 = %seed : index, %for_slot8 = %seed : index, %for_slot9 = %seed : index, %for_slot10 = %seed : index, %for_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %for_head_subgroup_uniform = scalar.constant true : i1
+    test.use %for_head_subgroup_uniform : i1
+    %for_head_workgroup_uniform = scalar.constant true : i1
+    test.use %for_head_workgroup_uniform : i1
+    %for_head_cluster_uniform = scalar.constant false : i1
+    test.use %for_head_cluster_uniform : i1
+    %for_head_lane_varying = scalar.constant false : i1
+    test.use %for_head_lane_varying : i1
+    scf.yield %for_slot1, %for_slot2, %for_slot3, %for_slot4, %for_slot5, %for_slot6, %for_slot7, %for_slot8, %for_slot9, %for_slot10, %for_slot11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %for_result_subgroup_uniform = scalar.constant true : i1
+  test.use %for_result_subgroup_uniform : i1
+  %for_result_workgroup_uniform = scalar.constant true : i1
+  test.use %for_result_workgroup_uniform : i1
+  %for_result_cluster_uniform = scalar.constant false : i1
+  test.use %for_result_cluster_uniform : i1
+  %for_result_lane_varying = scalar.constant false : i1
+  test.use %for_result_lane_varying : i1
+  %while_out0, %while_out1, %while_out2, %while_out3, %while_out4, %while_out5, %while_out6, %while_out7, %while_out8, %while_out9, %while_out10, %while_out11 = scf.while(%while_slot0 = %seed : index, %while_slot1 = %seed : index, %while_slot2 = %seed : index, %while_slot3 = %seed : index, %while_slot4 = %seed : index, %while_slot5 = %seed : index, %while_slot6 = %seed : index, %while_slot7 = %seed : index, %while_slot8 = %seed : index, %while_slot9 = %seed : index, %while_slot10 = %seed : index, %while_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %while_head_subgroup_uniform = scalar.constant true : i1
+    test.use %while_head_subgroup_uniform : i1
+    %while_head_workgroup_uniform = scalar.constant true : i1
+    test.use %while_head_workgroup_uniform : i1
+    %while_head_cluster_uniform = scalar.constant false : i1
+    test.use %while_head_cluster_uniform : i1
+    %while_head_lane_varying = scalar.constant false : i1
+    test.use %while_head_lane_varying : i1
+    scf.condition %repeat, %while_slot0, %while_slot1, %while_slot2, %while_slot3, %while_slot4, %while_slot5, %while_slot6, %while_slot7, %while_slot8, %while_slot9, %while_slot10, %while_slot11 : i1, index, index, index, index, index, index, index, index, index, index, index, index
+  } do(%while_body0: index, %while_body1: index, %while_body2: index, %while_body3: index, %while_body4: index, %while_body5: index, %while_body6: index, %while_body7: index, %while_body8: index, %while_body9: index, %while_body10: index, %while_body11: index) {
+    scf.yield %while_body1, %while_body2, %while_body3, %while_body4, %while_body5, %while_body6, %while_body7, %while_body8, %while_body9, %while_body10, %while_body11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %while_result_subgroup_uniform = scalar.constant true : i1
+  test.use %while_result_subgroup_uniform : i1
+  %while_result_workgroup_uniform = scalar.constant true : i1
+  test.use %while_result_workgroup_uniform : i1
+  %while_result_cluster_uniform = scalar.constant false : i1
+  test.use %while_result_cluster_uniform : i1
+  %while_result_lane_varying = scalar.constant false : i1
+  test.use %while_result_lane_varying : i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Entry, body, and exit observations keep their declared execution scope.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @structured_cluster() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %step = index.constant 1 : index
+  %injected = index.add %variant, %step : index
+  %repeat = index.cmp ne, %variant, %seed : index
+  %for_out0, %for_out1, %for_out2, %for_out3, %for_out4, %for_out5, %for_out6, %for_out7, %for_out8, %for_out9, %for_out10, %for_out11 = scf.for %iv = [%seed to %variant step %step](%for_slot0 = %seed : index, %for_slot1 = %seed : index, %for_slot2 = %seed : index, %for_slot3 = %seed : index, %for_slot4 = %seed : index, %for_slot5 = %seed : index, %for_slot6 = %seed : index, %for_slot7 = %seed : index, %for_slot8 = %seed : index, %for_slot9 = %seed : index, %for_slot10 = %seed : index, %for_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %for_head_subgroup_uniform = test.fact_subgroup_uniform %for_slot0 : index -> i1
+    test.use %for_head_subgroup_uniform : i1
+    %for_head_workgroup_uniform = test.fact_workgroup_uniform %for_slot0 : index -> i1
+    test.use %for_head_workgroup_uniform : i1
+    %for_head_cluster_uniform = test.fact_cluster_uniform %for_slot0 : index -> i1
+    test.use %for_head_cluster_uniform : i1
+    %for_head_lane_varying = test.fact_lane_varying %for_slot0 : index -> i1
+    test.use %for_head_lane_varying : i1
+    scf.yield %for_slot1, %for_slot2, %for_slot3, %for_slot4, %for_slot5, %for_slot6, %for_slot7, %for_slot8, %for_slot9, %for_slot10, %for_slot11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %for_result_subgroup_uniform = test.fact_subgroup_uniform %for_out0 : index -> i1
+  test.use %for_result_subgroup_uniform : i1
+  %for_result_workgroup_uniform = test.fact_workgroup_uniform %for_out0 : index -> i1
+  test.use %for_result_workgroup_uniform : i1
+  %for_result_cluster_uniform = test.fact_cluster_uniform %for_out0 : index -> i1
+  test.use %for_result_cluster_uniform : i1
+  %for_result_lane_varying = test.fact_lane_varying %for_out0 : index -> i1
+  test.use %for_result_lane_varying : i1
+  %while_out0, %while_out1, %while_out2, %while_out3, %while_out4, %while_out5, %while_out6, %while_out7, %while_out8, %while_out9, %while_out10, %while_out11 = scf.while(%while_slot0 = %seed : index, %while_slot1 = %seed : index, %while_slot2 = %seed : index, %while_slot3 = %seed : index, %while_slot4 = %seed : index, %while_slot5 = %seed : index, %while_slot6 = %seed : index, %while_slot7 = %seed : index, %while_slot8 = %seed : index, %while_slot9 = %seed : index, %while_slot10 = %seed : index, %while_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %while_head_subgroup_uniform = test.fact_subgroup_uniform %while_slot0 : index -> i1
+    test.use %while_head_subgroup_uniform : i1
+    %while_head_workgroup_uniform = test.fact_workgroup_uniform %while_slot0 : index -> i1
+    test.use %while_head_workgroup_uniform : i1
+    %while_head_cluster_uniform = test.fact_cluster_uniform %while_slot0 : index -> i1
+    test.use %while_head_cluster_uniform : i1
+    %while_head_lane_varying = test.fact_lane_varying %while_slot0 : index -> i1
+    test.use %while_head_lane_varying : i1
+    scf.condition %repeat, %while_slot0, %while_slot1, %while_slot2, %while_slot3, %while_slot4, %while_slot5, %while_slot6, %while_slot7, %while_slot8, %while_slot9, %while_slot10, %while_slot11 : i1, index, index, index, index, index, index, index, index, index, index, index, index
+  } do(%while_body0: index, %while_body1: index, %while_body2: index, %while_body3: index, %while_body4: index, %while_body5: index, %while_body6: index, %while_body7: index, %while_body8: index, %while_body9: index, %while_body10: index, %while_body11: index) {
+    scf.yield %while_body1, %while_body2, %while_body3, %while_body4, %while_body5, %while_body6, %while_body7, %while_body8, %while_body9, %while_body10, %while_body11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %while_result_subgroup_uniform = test.fact_subgroup_uniform %while_out0 : index -> i1
+  test.use %while_result_subgroup_uniform : i1
+  %while_result_workgroup_uniform = test.fact_workgroup_uniform %while_out0 : index -> i1
+  test.use %while_result_workgroup_uniform : i1
+  %while_result_cluster_uniform = test.fact_cluster_uniform %while_out0 : index -> i1
+  test.use %while_result_cluster_uniform : i1
+  %while_result_lane_varying = test.fact_lane_varying %while_out0 : index -> i1
+  test.use %while_result_lane_varying : i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @structured_cluster() {
+  %unit_extent = index.constant 1 : index
+  %grid_count = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%grid_count, %unit_extent, %unit_extent) workgroup_size(%size, %unit_extent, %unit_extent) : index
+} launch(%variant: index) {
+  %seed = index.constant 0 : index
+  %step = index.constant 1 : index
+  %injected = index.add %variant, %step : index
+  %repeat = index.cmp ne, %variant, %seed : index
+  %for_out0, %for_out1, %for_out2, %for_out3, %for_out4, %for_out5, %for_out6, %for_out7, %for_out8, %for_out9, %for_out10, %for_out11 = scf.for %iv = [%seed to %variant step %step](%for_slot0 = %seed : index, %for_slot1 = %seed : index, %for_slot2 = %seed : index, %for_slot3 = %seed : index, %for_slot4 = %seed : index, %for_slot5 = %seed : index, %for_slot6 = %seed : index, %for_slot7 = %seed : index, %for_slot8 = %seed : index, %for_slot9 = %seed : index, %for_slot10 = %seed : index, %for_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %for_head_subgroup_uniform = scalar.constant true : i1
+    test.use %for_head_subgroup_uniform : i1
+    %for_head_workgroup_uniform = scalar.constant true : i1
+    test.use %for_head_workgroup_uniform : i1
+    %for_head_cluster_uniform = scalar.constant true : i1
+    test.use %for_head_cluster_uniform : i1
+    %for_head_lane_varying = scalar.constant false : i1
+    test.use %for_head_lane_varying : i1
+    scf.yield %for_slot1, %for_slot2, %for_slot3, %for_slot4, %for_slot5, %for_slot6, %for_slot7, %for_slot8, %for_slot9, %for_slot10, %for_slot11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %for_result_subgroup_uniform = scalar.constant true : i1
+  test.use %for_result_subgroup_uniform : i1
+  %for_result_workgroup_uniform = scalar.constant true : i1
+  test.use %for_result_workgroup_uniform : i1
+  %for_result_cluster_uniform = scalar.constant true : i1
+  test.use %for_result_cluster_uniform : i1
+  %for_result_lane_varying = scalar.constant false : i1
+  test.use %for_result_lane_varying : i1
+  %while_out0, %while_out1, %while_out2, %while_out3, %while_out4, %while_out5, %while_out6, %while_out7, %while_out8, %while_out9, %while_out10, %while_out11 = scf.while(%while_slot0 = %seed : index, %while_slot1 = %seed : index, %while_slot2 = %seed : index, %while_slot3 = %seed : index, %while_slot4 = %seed : index, %while_slot5 = %seed : index, %while_slot6 = %seed : index, %while_slot7 = %seed : index, %while_slot8 = %seed : index, %while_slot9 = %seed : index, %while_slot10 = %seed : index, %while_slot11 = %seed : index) -> (index, index, index, index, index, index, index, index, index, index, index, index) {
+    %while_head_subgroup_uniform = scalar.constant true : i1
+    test.use %while_head_subgroup_uniform : i1
+    %while_head_workgroup_uniform = scalar.constant true : i1
+    test.use %while_head_workgroup_uniform : i1
+    %while_head_cluster_uniform = scalar.constant true : i1
+    test.use %while_head_cluster_uniform : i1
+    %while_head_lane_varying = scalar.constant false : i1
+    test.use %while_head_lane_varying : i1
+    scf.condition %repeat, %while_slot0, %while_slot1, %while_slot2, %while_slot3, %while_slot4, %while_slot5, %while_slot6, %while_slot7, %while_slot8, %while_slot9, %while_slot10, %while_slot11 : i1, index, index, index, index, index, index, index, index, index, index, index, index
+  } do(%while_body0: index, %while_body1: index, %while_body2: index, %while_body3: index, %while_body4: index, %while_body5: index, %while_body6: index, %while_body7: index, %while_body8: index, %while_body9: index, %while_body10: index, %while_body11: index) {
+    scf.yield %while_body1, %while_body2, %while_body3, %while_body4, %while_body5, %while_body6, %while_body7, %while_body8, %while_body9, %while_body10, %while_body11, %injected : index, index, index, index, index, index, index, index, index, index, index, index
+  }
+  %while_result_subgroup_uniform = scalar.constant true : i1
+  test.use %while_result_subgroup_uniform : i1
+  %while_result_workgroup_uniform = scalar.constant true : i1
+  test.use %while_result_workgroup_uniform : i1
+  %while_result_cluster_uniform = scalar.constant true : i1
+  test.use %while_result_cluster_uniform : i1
+  %while_result_lane_varying = scalar.constant false : i1
+  test.use %while_result_lane_varying : i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// The type-owned per-lane extension survives the complete forwarding chain.
+func.def @vector_for(%count: index, %repeat: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %ascending0 = scalar.constant 0 : i32
+  %descending0 = scalar.constant 100 : i32
+  %seed0 = vector.from_elements %ascending0, %descending0 : vector<2xi32>
+  %ascending1 = scalar.constant 1 : i32
+  %descending1 = scalar.constant 99 : i32
+  %seed1 = vector.from_elements %ascending1, %descending1 : vector<2xi32>
+  %ascending2 = scalar.constant 2 : i32
+  %descending2 = scalar.constant 98 : i32
+  %seed2 = vector.from_elements %ascending2, %descending2 : vector<2xi32>
+  %ascending3 = scalar.constant 3 : i32
+  %descending3 = scalar.constant 97 : i32
+  %seed3 = vector.from_elements %ascending3, %descending3 : vector<2xi32>
+  %ascending4 = scalar.constant 4 : i32
+  %descending4 = scalar.constant 96 : i32
+  %seed4 = vector.from_elements %ascending4, %descending4 : vector<2xi32>
+  %ascending5 = scalar.constant 5 : i32
+  %descending5 = scalar.constant 95 : i32
+  %seed5 = vector.from_elements %ascending5, %descending5 : vector<2xi32>
+  %ascending6 = scalar.constant 6 : i32
+  %descending6 = scalar.constant 94 : i32
+  %seed6 = vector.from_elements %ascending6, %descending6 : vector<2xi32>
+  %ascending7 = scalar.constant 7 : i32
+  %descending7 = scalar.constant 93 : i32
+  %seed7 = vector.from_elements %ascending7, %descending7 : vector<2xi32>
+  %ascending8 = scalar.constant 8 : i32
+  %descending8 = scalar.constant 92 : i32
+  %seed8 = vector.from_elements %ascending8, %descending8 : vector<2xi32>
+  %ascending9 = scalar.constant 9 : i32
+  %descending9 = scalar.constant 91 : i32
+  %seed9 = vector.from_elements %ascending9, %descending9 : vector<2xi32>
+  %ascending10 = scalar.constant 10 : i32
+  %descending10 = scalar.constant 90 : i32
+  %seed10 = vector.from_elements %ascending10, %descending10 : vector<2xi32>
+  %ascending11 = scalar.constant 11 : i32
+  %descending11 = scalar.constant 89 : i32
+  %seed11 = vector.from_elements %ascending11, %descending11 : vector<2xi32>
+  %ascending12 = scalar.constant 12 : i32
+  %descending12 = scalar.constant 88 : i32
+  %seed12 = vector.from_elements %ascending12, %descending12 : vector<2xi32>
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : vector<2xi32>, %slot1 = %seed1 : vector<2xi32>, %slot2 = %seed2 : vector<2xi32>, %slot3 = %seed3 : vector<2xi32>, %slot4 = %seed4 : vector<2xi32>, %slot5 = %seed5 : vector<2xi32>, %slot6 = %seed6 : vector<2xi32>, %slot7 = %seed7 : vector<2xi32>, %slot8 = %seed8 : vector<2xi32>, %slot9 = %seed9 : vector<2xi32>, %slot10 = %seed10 : vector<2xi32>, %slot11 = %seed11 : vector<2xi32>) -> (vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>) {
+    %element0_0 = vector.extract %slot0[0] : vector<2xi32> -> i32
+    %slot0_lane0_range_lo = test.fact_range_lo %element0_0 : i32 -> i64
+    test.use %slot0_lane0_range_lo : i64
+    %slot0_lane0_range_hi = test.fact_range_hi %element0_0 : i32 -> i64
+    test.use %slot0_lane0_range_hi : i64
+    %element0_1 = vector.extract %slot0[1] : vector<2xi32> -> i32
+    %slot0_lane1_range_lo = test.fact_range_lo %element0_1 : i32 -> i64
+    test.use %slot0_lane1_range_lo : i64
+    %slot0_lane1_range_hi = test.fact_range_hi %element0_1 : i32 -> i64
+    test.use %slot0_lane1_range_hi : i64
+    %element11_0 = vector.extract %slot11[0] : vector<2xi32> -> i32
+    %slot11_lane0_range_lo = test.fact_range_lo %element11_0 : i32 -> i64
+    test.use %slot11_lane0_range_lo : i64
+    %slot11_lane0_range_hi = test.fact_range_hi %element11_0 : i32 -> i64
+    test.use %slot11_lane0_range_hi : i64
+    %element11_1 = vector.extract %slot11[1] : vector<2xi32> -> i32
+    %slot11_lane1_range_lo = test.fact_range_lo %element11_1 : i32 -> i64
+    test.use %slot11_lane1_range_lo : i64
+    %slot11_lane1_range_hi = test.fact_range_hi %element11_1 : i32 -> i64
+    test.use %slot11_lane1_range_hi : i64
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %seed12 : vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>
+  }
+  %exit0 = vector.extract %out0[0] : vector<2xi32> -> i32
+  %result_lane0_range_lo = test.fact_range_lo %exit0 : i32 -> i64
+  test.use %result_lane0_range_lo : i64
+  %result_lane0_range_hi = test.fact_range_hi %exit0 : i32 -> i64
+  test.use %result_lane0_range_hi : i64
+  %exit1 = vector.extract %out0[1] : vector<2xi32> -> i32
+  %result_lane1_range_lo = test.fact_range_lo %exit1 : i32 -> i64
+  test.use %result_lane1_range_lo : i64
+  %result_lane1_range_hi = test.fact_range_hi %exit1 : i32 -> i64
+  test.use %result_lane1_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @vector_for(%count: index, %repeat: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %ascending0 = scalar.constant 0 : i32
+  %descending0 = scalar.constant 100 : i32
+  %seed0 = vector.from_elements %ascending0, %descending0 : vector<2xi32>
+  %ascending1 = scalar.constant 1 : i32
+  %descending1 = scalar.constant 99 : i32
+  %seed1 = vector.from_elements %ascending1, %descending1 : vector<2xi32>
+  %ascending2 = scalar.constant 2 : i32
+  %descending2 = scalar.constant 98 : i32
+  %seed2 = vector.from_elements %ascending2, %descending2 : vector<2xi32>
+  %ascending3 = scalar.constant 3 : i32
+  %descending3 = scalar.constant 97 : i32
+  %seed3 = vector.from_elements %ascending3, %descending3 : vector<2xi32>
+  %ascending4 = scalar.constant 4 : i32
+  %descending4 = scalar.constant 96 : i32
+  %seed4 = vector.from_elements %ascending4, %descending4 : vector<2xi32>
+  %ascending5 = scalar.constant 5 : i32
+  %descending5 = scalar.constant 95 : i32
+  %seed5 = vector.from_elements %ascending5, %descending5 : vector<2xi32>
+  %ascending6 = scalar.constant 6 : i32
+  %descending6 = scalar.constant 94 : i32
+  %seed6 = vector.from_elements %ascending6, %descending6 : vector<2xi32>
+  %ascending7 = scalar.constant 7 : i32
+  %descending7 = scalar.constant 93 : i32
+  %seed7 = vector.from_elements %ascending7, %descending7 : vector<2xi32>
+  %ascending8 = scalar.constant 8 : i32
+  %descending8 = scalar.constant 92 : i32
+  %seed8 = vector.from_elements %ascending8, %descending8 : vector<2xi32>
+  %ascending9 = scalar.constant 9 : i32
+  %descending9 = scalar.constant 91 : i32
+  %seed9 = vector.from_elements %ascending9, %descending9 : vector<2xi32>
+  %ascending10 = scalar.constant 10 : i32
+  %descending10 = scalar.constant 90 : i32
+  %seed10 = vector.from_elements %ascending10, %descending10 : vector<2xi32>
+  %ascending11 = scalar.constant 11 : i32
+  %descending11 = scalar.constant 89 : i32
+  %seed11 = vector.from_elements %ascending11, %descending11 : vector<2xi32>
+  %ascending12 = scalar.constant 12 : i32
+  %descending12 = scalar.constant 88 : i32
+  %seed12 = vector.from_elements %ascending12, %descending12 : vector<2xi32>
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : vector<2xi32>, %slot1 = %seed1 : vector<2xi32>, %slot2 = %seed2 : vector<2xi32>, %slot3 = %seed3 : vector<2xi32>, %slot4 = %seed4 : vector<2xi32>, %slot5 = %seed5 : vector<2xi32>, %slot6 = %seed6 : vector<2xi32>, %slot7 = %seed7 : vector<2xi32>, %slot8 = %seed8 : vector<2xi32>, %slot9 = %seed9 : vector<2xi32>, %slot10 = %seed10 : vector<2xi32>, %slot11 = %seed11 : vector<2xi32>) -> (vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>) {
+    %slot0_lane0_range_lo = scalar.constant 0 : i64
+    test.use %slot0_lane0_range_lo : i64
+    %slot0_lane0_range_hi = scalar.constant 12 : i64
+    test.use %slot0_lane0_range_hi : i64
+    %slot0_lane1_range_lo = scalar.constant 88 : i64
+    test.use %slot0_lane1_range_lo : i64
+    %slot0_lane1_range_hi = scalar.constant 100 : i64
+    test.use %slot0_lane1_range_hi : i64
+    %slot11_lane0_range_lo = scalar.constant 11 : i64
+    test.use %slot11_lane0_range_lo : i64
+    %slot11_lane0_range_hi = scalar.constant 12 : i64
+    test.use %slot11_lane0_range_hi : i64
+    %slot11_lane1_range_lo = scalar.constant 88 : i64
+    test.use %slot11_lane1_range_lo : i64
+    %slot11_lane1_range_hi = scalar.constant 89 : i64
+    test.use %slot11_lane1_range_hi : i64
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %seed12 : vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>
+  }
+  %result_lane0_range_lo = scalar.constant 0 : i64
+  test.use %result_lane0_range_lo : i64
+  %result_lane0_range_hi = scalar.constant 12 : i64
+  test.use %result_lane0_range_hi : i64
+  %result_lane1_range_lo = scalar.constant 88 : i64
+  test.use %result_lane1_range_lo : i64
+  %result_lane1_range_hi = scalar.constant 100 : i64
+  test.use %result_lane1_range_hi : i64
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// The type-owned per-lane extension survives the complete forwarding chain.
+func.def @vector_while(%count: index, %repeat: i1) {
+  %ascending0 = scalar.constant 0 : i32
+  %descending0 = scalar.constant 100 : i32
+  %seed0 = vector.from_elements %ascending0, %descending0 : vector<2xi32>
+  %ascending1 = scalar.constant 1 : i32
+  %descending1 = scalar.constant 99 : i32
+  %seed1 = vector.from_elements %ascending1, %descending1 : vector<2xi32>
+  %ascending2 = scalar.constant 2 : i32
+  %descending2 = scalar.constant 98 : i32
+  %seed2 = vector.from_elements %ascending2, %descending2 : vector<2xi32>
+  %ascending3 = scalar.constant 3 : i32
+  %descending3 = scalar.constant 97 : i32
+  %seed3 = vector.from_elements %ascending3, %descending3 : vector<2xi32>
+  %ascending4 = scalar.constant 4 : i32
+  %descending4 = scalar.constant 96 : i32
+  %seed4 = vector.from_elements %ascending4, %descending4 : vector<2xi32>
+  %ascending5 = scalar.constant 5 : i32
+  %descending5 = scalar.constant 95 : i32
+  %seed5 = vector.from_elements %ascending5, %descending5 : vector<2xi32>
+  %ascending6 = scalar.constant 6 : i32
+  %descending6 = scalar.constant 94 : i32
+  %seed6 = vector.from_elements %ascending6, %descending6 : vector<2xi32>
+  %ascending7 = scalar.constant 7 : i32
+  %descending7 = scalar.constant 93 : i32
+  %seed7 = vector.from_elements %ascending7, %descending7 : vector<2xi32>
+  %ascending8 = scalar.constant 8 : i32
+  %descending8 = scalar.constant 92 : i32
+  %seed8 = vector.from_elements %ascending8, %descending8 : vector<2xi32>
+  %ascending9 = scalar.constant 9 : i32
+  %descending9 = scalar.constant 91 : i32
+  %seed9 = vector.from_elements %ascending9, %descending9 : vector<2xi32>
+  %ascending10 = scalar.constant 10 : i32
+  %descending10 = scalar.constant 90 : i32
+  %seed10 = vector.from_elements %ascending10, %descending10 : vector<2xi32>
+  %ascending11 = scalar.constant 11 : i32
+  %descending11 = scalar.constant 89 : i32
+  %seed11 = vector.from_elements %ascending11, %descending11 : vector<2xi32>
+  %ascending12 = scalar.constant 12 : i32
+  %descending12 = scalar.constant 88 : i32
+  %seed12 = vector.from_elements %ascending12, %descending12 : vector<2xi32>
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.while(%slot0 = %seed0 : vector<2xi32>, %slot1 = %seed1 : vector<2xi32>, %slot2 = %seed2 : vector<2xi32>, %slot3 = %seed3 : vector<2xi32>, %slot4 = %seed4 : vector<2xi32>, %slot5 = %seed5 : vector<2xi32>, %slot6 = %seed6 : vector<2xi32>, %slot7 = %seed7 : vector<2xi32>, %slot8 = %seed8 : vector<2xi32>, %slot9 = %seed9 : vector<2xi32>, %slot10 = %seed10 : vector<2xi32>, %slot11 = %seed11 : vector<2xi32>) -> (vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>) {
+    %element0_0 = vector.extract %slot0[0] : vector<2xi32> -> i32
+    %slot0_lane0_range_lo = test.fact_range_lo %element0_0 : i32 -> i64
+    test.use %slot0_lane0_range_lo : i64
+    %slot0_lane0_range_hi = test.fact_range_hi %element0_0 : i32 -> i64
+    test.use %slot0_lane0_range_hi : i64
+    %element0_1 = vector.extract %slot0[1] : vector<2xi32> -> i32
+    %slot0_lane1_range_lo = test.fact_range_lo %element0_1 : i32 -> i64
+    test.use %slot0_lane1_range_lo : i64
+    %slot0_lane1_range_hi = test.fact_range_hi %element0_1 : i32 -> i64
+    test.use %slot0_lane1_range_hi : i64
+    %element11_0 = vector.extract %slot11[0] : vector<2xi32> -> i32
+    %slot11_lane0_range_lo = test.fact_range_lo %element11_0 : i32 -> i64
+    test.use %slot11_lane0_range_lo : i64
+    %slot11_lane0_range_hi = test.fact_range_hi %element11_0 : i32 -> i64
+    test.use %slot11_lane0_range_hi : i64
+    %element11_1 = vector.extract %slot11[1] : vector<2xi32> -> i32
+    %slot11_lane1_range_lo = test.fact_range_lo %element11_1 : i32 -> i64
+    test.use %slot11_lane1_range_lo : i64
+    %slot11_lane1_range_hi = test.fact_range_hi %element11_1 : i32 -> i64
+    test.use %slot11_lane1_range_hi : i64
+    scf.condition %repeat, %slot0, %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11 : i1, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>
+  } do(%body0: vector<2xi32>, %body1: vector<2xi32>, %body2: vector<2xi32>, %body3: vector<2xi32>, %body4: vector<2xi32>, %body5: vector<2xi32>, %body6: vector<2xi32>, %body7: vector<2xi32>, %body8: vector<2xi32>, %body9: vector<2xi32>, %body10: vector<2xi32>, %body11: vector<2xi32>) {
+    scf.yield %body1, %body2, %body3, %body4, %body5, %body6, %body7, %body8, %body9, %body10, %body11, %seed12 : vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>
+  }
+  %exit0 = vector.extract %out0[0] : vector<2xi32> -> i32
+  %result_lane0_range_lo = test.fact_range_lo %exit0 : i32 -> i64
+  test.use %result_lane0_range_lo : i64
+  %result_lane0_range_hi = test.fact_range_hi %exit0 : i32 -> i64
+  test.use %result_lane0_range_hi : i64
+  %exit1 = vector.extract %out0[1] : vector<2xi32> -> i32
+  %result_lane1_range_lo = test.fact_range_lo %exit1 : i32 -> i64
+  test.use %result_lane1_range_lo : i64
+  %result_lane1_range_hi = test.fact_range_hi %exit1 : i32 -> i64
+  test.use %result_lane1_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @vector_while(%count: index, %repeat: i1) {
+  %ascending0 = scalar.constant 0 : i32
+  %descending0 = scalar.constant 100 : i32
+  %seed0 = vector.from_elements %ascending0, %descending0 : vector<2xi32>
+  %ascending1 = scalar.constant 1 : i32
+  %descending1 = scalar.constant 99 : i32
+  %seed1 = vector.from_elements %ascending1, %descending1 : vector<2xi32>
+  %ascending2 = scalar.constant 2 : i32
+  %descending2 = scalar.constant 98 : i32
+  %seed2 = vector.from_elements %ascending2, %descending2 : vector<2xi32>
+  %ascending3 = scalar.constant 3 : i32
+  %descending3 = scalar.constant 97 : i32
+  %seed3 = vector.from_elements %ascending3, %descending3 : vector<2xi32>
+  %ascending4 = scalar.constant 4 : i32
+  %descending4 = scalar.constant 96 : i32
+  %seed4 = vector.from_elements %ascending4, %descending4 : vector<2xi32>
+  %ascending5 = scalar.constant 5 : i32
+  %descending5 = scalar.constant 95 : i32
+  %seed5 = vector.from_elements %ascending5, %descending5 : vector<2xi32>
+  %ascending6 = scalar.constant 6 : i32
+  %descending6 = scalar.constant 94 : i32
+  %seed6 = vector.from_elements %ascending6, %descending6 : vector<2xi32>
+  %ascending7 = scalar.constant 7 : i32
+  %descending7 = scalar.constant 93 : i32
+  %seed7 = vector.from_elements %ascending7, %descending7 : vector<2xi32>
+  %ascending8 = scalar.constant 8 : i32
+  %descending8 = scalar.constant 92 : i32
+  %seed8 = vector.from_elements %ascending8, %descending8 : vector<2xi32>
+  %ascending9 = scalar.constant 9 : i32
+  %descending9 = scalar.constant 91 : i32
+  %seed9 = vector.from_elements %ascending9, %descending9 : vector<2xi32>
+  %ascending10 = scalar.constant 10 : i32
+  %descending10 = scalar.constant 90 : i32
+  %seed10 = vector.from_elements %ascending10, %descending10 : vector<2xi32>
+  %ascending11 = scalar.constant 11 : i32
+  %descending11 = scalar.constant 89 : i32
+  %seed11 = vector.from_elements %ascending11, %descending11 : vector<2xi32>
+  %ascending12 = scalar.constant 12 : i32
+  %descending12 = scalar.constant 88 : i32
+  %seed12 = vector.from_elements %ascending12, %descending12 : vector<2xi32>
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.while(%slot0 = %seed0 : vector<2xi32>, %slot1 = %seed1 : vector<2xi32>, %slot2 = %seed2 : vector<2xi32>, %slot3 = %seed3 : vector<2xi32>, %slot4 = %seed4 : vector<2xi32>, %slot5 = %seed5 : vector<2xi32>, %slot6 = %seed6 : vector<2xi32>, %slot7 = %seed7 : vector<2xi32>, %slot8 = %seed8 : vector<2xi32>, %slot9 = %seed9 : vector<2xi32>, %slot10 = %seed10 : vector<2xi32>, %slot11 = %seed11 : vector<2xi32>) -> (vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>) {
+    %slot0_lane0_range_lo = scalar.constant 0 : i64
+    test.use %slot0_lane0_range_lo : i64
+    %slot0_lane0_range_hi = scalar.constant 12 : i64
+    test.use %slot0_lane0_range_hi : i64
+    %slot0_lane1_range_lo = scalar.constant 88 : i64
+    test.use %slot0_lane1_range_lo : i64
+    %slot0_lane1_range_hi = scalar.constant 100 : i64
+    test.use %slot0_lane1_range_hi : i64
+    %slot11_lane0_range_lo = scalar.constant 11 : i64
+    test.use %slot11_lane0_range_lo : i64
+    %slot11_lane0_range_hi = scalar.constant 12 : i64
+    test.use %slot11_lane0_range_hi : i64
+    %slot11_lane1_range_lo = scalar.constant 88 : i64
+    test.use %slot11_lane1_range_lo : i64
+    %slot11_lane1_range_hi = scalar.constant 89 : i64
+    test.use %slot11_lane1_range_hi : i64
+    scf.condition %repeat, %slot0, %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11 : i1, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>
+  } do(%body0: vector<2xi32>, %body1: vector<2xi32>, %body2: vector<2xi32>, %body3: vector<2xi32>, %body4: vector<2xi32>, %body5: vector<2xi32>, %body6: vector<2xi32>, %body7: vector<2xi32>, %body8: vector<2xi32>, %body9: vector<2xi32>, %body10: vector<2xi32>, %body11: vector<2xi32>) {
+    scf.yield %body1, %body2, %body3, %body4, %body5, %body6, %body7, %body8, %body9, %body10, %body11, %seed12 : vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>, vector<2xi32>
+  }
+  %result_lane0_range_lo = scalar.constant 0 : i64
+  test.use %result_lane0_range_lo : i64
+  %result_lane0_range_hi = scalar.constant 12 : i64
+  test.use %result_lane0_range_hi : i64
+  %result_lane1_range_lo = scalar.constant 88 : i64
+  test.use %result_lane1_range_lo : i64
+  %result_lane1_range_hi = scalar.constant 100 : i64
+  test.use %result_lane1_range_hi : i64
+  func.return
+}
+// ====
+
+// RUN: pass canonicalize
+
+// A nested counted loop supplies an external input to the forwarding graph.
+func.def @nested_counted_producer(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %limit = index.constant 4 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %alternative = index.constant 104 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = test.fact_range_lo %slot0 : offset -> i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = test.fact_range_hi %slot0 : offset -> i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = test.fact_range_lo %slot11 : offset -> i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = test.fact_range_hi %slot11 : offset -> i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = test.fact_divisor %slot11 : offset -> i64
+    test.use %before11_divisor : i64
+    %produced, %other = scf.for %inner_iv = [%begin to %limit step %step](%first = %injected : offset, %second = %alternative : offset) -> (offset, offset) {
+      scf.yield %second, %first : offset, offset
+    }
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %produced : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = test.fact_range_lo %out0 : offset -> i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = test.fact_range_hi %out0 : offset -> i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = test.fact_range_lo %out11 : offset -> i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = test.fact_range_hi %out11 : offset -> i64
+  test.use %result11_range_hi : i64
+  func.return
+}
+
+// ----
+func.def @nested_counted_producer(%count: index, %repeat: i1, %choose: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %limit = index.constant 4 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 8 : offset
+  %seed2 = index.constant 16 : offset
+  %seed3 = index.constant 24 : offset
+  %seed4 = index.constant 32 : offset
+  %seed5 = index.constant 40 : offset
+  %seed6 = index.constant 48 : offset
+  %seed7 = index.constant 56 : offset
+  %seed8 = index.constant 64 : offset
+  %seed9 = index.constant 72 : offset
+  %seed10 = index.constant 80 : offset
+  %seed11 = index.constant 88 : offset
+  %injected = index.constant 96 : offset
+  %alternative = index.constant 104 : offset
+  %out0, %out1, %out2, %out3, %out4, %out5, %out6, %out7, %out8, %out9, %out10, %out11 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset, %slot7 = %seed7 : offset, %slot8 = %seed8 : offset, %slot9 = %seed9 : offset, %slot10 = %seed10 : offset, %slot11 = %seed11 : offset) -> (offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset) {
+    %before0_range_lo = scalar.constant 0 : i64
+    test.use %before0_range_lo : i64
+    %before0_range_hi = scalar.constant 104 : i64
+    test.use %before0_range_hi : i64
+    %before0_divisor = scalar.constant 8 : i64
+    test.use %before0_divisor : i64
+    %before11_range_lo = scalar.constant 88 : i64
+    test.use %before11_range_lo : i64
+    %before11_range_hi = scalar.constant 104 : i64
+    test.use %before11_range_hi : i64
+    %before11_divisor = scalar.constant 8 : i64
+    test.use %before11_divisor : i64
+    %produced, %other = scf.for %inner_iv = [%begin to %limit step %step](%first = %injected : offset, %second = %alternative : offset) -> (offset, offset) {
+      scf.yield %second, %first : offset, offset
+    }
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot7, %slot8, %slot9, %slot10, %slot11, %produced : offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset, offset
+  }
+  %result0_range_lo = scalar.constant 0 : i64
+  test.use %result0_range_lo : i64
+  %result0_range_hi = scalar.constant 104 : i64
+  test.use %result0_range_hi : i64
+  %result11_range_lo = scalar.constant 88 : i64
+  test.use %result11_range_lo : i64
+  %result11_range_hi = scalar.constant 104 : i64
+  test.use %result11_range_hi : i64
+  func.return
+}

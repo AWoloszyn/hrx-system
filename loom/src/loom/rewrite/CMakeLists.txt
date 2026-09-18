@@ -57,6 +57,7 @@ loom_cc_test(
     loom::ops::buffer
     loom::ops::cfg
     loom::ops::op_defs
+    loom::ops::scf
     loom::ops::test
     loom::pass::value_facts
     loom::target::facts

@@ -1185,44 +1185,44 @@ static void loom_value_fact_loop_forget_state(uint16_t count,
   }
 }
 
-// The forwarding graph contains only direct carried-argument yields. A cycle
-// cannot introduce values beyond its initial inputs, regardless of trip count.
+// Direct state forwarding is solved in dependency order. Closed rotations
+// contain only their initial values; computed producers remain outer feedback.
 typedef struct loom_value_fact_loop_forwarding_t {
-  // Module providing the definition of each yielded value.
-  const loom_module_t* module;
-  // Block owning the carried arguments.
-  const loom_block_t* block;
-  // Terminator forwarding the next iteration's state.
-  const loom_op_t* yield;
-  // Index of the first carried argument after any induction variable.
-  uint16_t argument_offset;
-  // Number of carried arguments and yielded values.
-  uint16_t count;
+  // State-slot order, or NULL for a trivial or not-yet-built loop body.
+  uint16_t* order;
+  // Earlier solved source slot, or UINT16_MAX to consume the evaluated yield.
+  uint16_t* sources;
 } loom_value_fact_loop_forwarding_t;
+
+static uint16_t loom_value_fact_loop_forwarded_argument(
+    const loom_module_t* module, loom_value_id_t value_id,
+    const loom_block_t* block, uint16_t argument_offset, uint16_t count) {
+  const loom_value_t* value = loom_module_value(module, value_id);
+  if (!loom_value_is_block_arg(value) || loom_value_def_block(value) != block) {
+    return UINT16_MAX;
+  }
+  const uint16_t index = loom_value_def_index(value);
+  return index >= argument_offset && index - argument_offset < count
+             ? index - argument_offset
+             : UINT16_MAX;
+}
 
 static iree_status_t loom_value_fact_loop_visit_forwarded_argument(
     void* user_data, iree_host_size_t node,
     loom_scc_successor_callback_t successor) {
-  const loom_value_fact_loop_forwarding_t* forwarding = user_data;
-  const loom_value_t* value = loom_module_value(
-      forwarding->module, loom_op_const_operands(forwarding->yield)[node]);
-  if (!loom_value_is_block_arg(value) ||
-      loom_value_def_block(value) != forwarding->block) {
-    return iree_ok_status();
-  }
-  uint16_t index = loom_value_def_index(value);
-  if (index < forwarding->argument_offset ||
-      index - forwarding->argument_offset >= forwarding->count) {
-    return iree_ok_status();
-  }
-  return successor.fn(successor.user_data, index - forwarding->argument_offset);
+  const uint16_t* sources = user_data;
+  return sources[node] != UINT16_MAX
+             ? successor.fn(successor.user_data, sources[node])
+             : iree_ok_status();
 }
 
-static iree_status_t loom_value_fact_table_close_loop_forwarding(
+static iree_status_t loom_value_fact_table_initialize_loop_forwarding(
     loom_value_fact_table_t* table, const loom_module_t* module,
     loom_loop_like_t loop, const loom_type_t* types,
-    loom_value_facts_t* current_facts) {
-  uint16_t count = loom_value_fact_loop_state_count(loop);
+    loom_value_facts_t* current_facts,
+    loom_value_fact_loop_forwarding_t* out_forwarding) {
+  *out_forwarding = (loom_value_fact_loop_forwarding_t){0};
+  const uint16_t count = loom_value_fact_loop_state_count(loop);
   if (count < 2) {
     return iree_ok_status();
   }
@@ -1231,27 +1231,50 @@ static iree_status_t loom_value_fact_table_close_loop_forwarding(
   if (!yield || yield->operand_count < count) {
     return iree_ok_status();
   }
-  loom_value_fact_loop_forwarding_t forwarding = {
-      .module = module,
-      .block = loom_region_const_entry_block(body),
-      .yield = yield,
-      .argument_offset = loom_value_fact_loop_carried_arg_offset(loop),
-      .count = count,
-  };
+  loom_region_t* condition_region = loom_loop_like_condition_region(loop);
+  const loom_op_t* condition =
+      loom_value_fact_region_terminator(condition_region);
+  if (condition_region &&
+      (!condition || condition->operand_count < count + 1)) {
+    return iree_ok_status();
+  }
+  const loom_block_t* body_block = loom_region_const_entry_block(body);
+  const uint16_t argument_offset =
+      loom_value_fact_loop_carried_arg_offset(loop);
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      table->transient_arena, count, 2 * sizeof(uint16_t),
+      (void**)&out_forwarding->order));
+  out_forwarding->sources = out_forwarding->order + count;
+  for (uint16_t i = 0; i < count; ++i) {
+    uint16_t source = loom_value_fact_loop_forwarded_argument(
+        module, loom_op_const_operands(yield)[i], body_block, argument_offset,
+        count);
+    if (source != UINT16_MAX && condition) {
+      source = loom_value_fact_loop_forwarded_argument(
+          module, loom_op_const_operands(condition)[1 + source],
+          loom_region_const_entry_block(condition_region), 0, count);
+    }
+    out_forwarding->sources[i] = source;
+  }
   const loom_scc_graph_t graph = {
       .node_count = count,
       .visit_successors = loom_scc_visit_successors_callback_make(
-          loom_value_fact_loop_visit_forwarded_argument, &forwarding),
+          loom_value_fact_loop_visit_forwarded_argument,
+          out_forwarding->sources),
   };
   loom_scc_list_t components = {0};
   IREE_RETURN_IF_ERROR(
       loom_scc_compute(&graph, NULL, table->transient_arena, &components));
+  uint16_t ordinal = 0;
   for (iree_host_size_t i = 0; i < components.count; ++i) {
     const loom_scc_t* component = &components.values[i];
-    if (component->node_count < 2) {
+    for (iree_host_size_t j = 0; j < component->node_count; ++j) {
+      out_forwarding->order[ordinal++] = component->nodes[j];
+    }
+    if (!component->is_cycle) {
       continue;
     }
-    loom_type_t type = types[component->nodes[0]];
+    const loom_type_t type = types[component->nodes[0]];
     loom_value_facts_t facts = current_facts[component->nodes[0]];
     for (iree_host_size_t j = 1; j < component->node_count; ++j) {
       IREE_RETURN_IF_ERROR(loom_value_fact_table_meet_for_type(
@@ -1259,7 +1282,11 @@ static iree_status_t loom_value_fact_table_close_loop_forwarding(
           current_facts[component->nodes[j]], &facts));
     }
     for (iree_host_size_t j = 0; j < component->node_count; ++j) {
-      current_facts[component->nodes[j]] = facts;
+      const iree_host_size_t slot = component->nodes[j];
+      current_facts[slot] = facts;
+      // Every cycle member has the same complete invariant. Its yielded
+      // facts consume that invariant rather than a partially visited peer.
+      out_forwarding->sources[slot] = UINT16_MAX;
     }
   }
   return iree_ok_status();
@@ -1305,13 +1332,18 @@ static iree_status_t loom_value_fact_table_join_loop_backedge(
     loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_type_t* types, const loom_value_facts_t* init_facts,
     const loom_value_facts_t* yielded_facts, const loom_value_facts_t* current,
-    uint16_t count, uint32_t iteration, loom_value_facts_t* next,
-    bool* out_changed) {
+    uint16_t count, const loom_value_fact_loop_forwarding_t* forwarding,
+    uint32_t iteration, loom_value_facts_t* next, bool* out_changed) {
   *out_changed = false;
-  for (uint16_t i = 0; i < count; ++i) {
+  for (uint16_t ordinal = 0; ordinal < count; ++ordinal) {
+    const uint16_t i = forwarding->order ? forwarding->order[ordinal] : ordinal;
+    const uint16_t source =
+        forwarding->sources ? forwarding->sources[i] : UINT16_MAX;
+    const loom_value_facts_t yielded =
+        source != UINT16_MAX ? next[source] : yielded_facts[i];
     loom_value_facts_t joined = loom_value_facts_unknown();
     IREE_RETURN_IF_ERROR(loom_value_fact_table_meet_for_type(
-        table, module, types[i], table, init_facts[i], table, yielded_facts[i],
+        table, module, types[i], table, init_facts[i], table, yielded,
         &joined));
     IREE_RETURN_IF_ERROR(loom_value_fact_table_widen_for_type(
         table, module, types[i], table, current[i], table, joined, iteration,
@@ -1486,8 +1518,9 @@ static iree_status_t loom_value_fact_table_compute_counted_loop_summary(
   loom_type_t* types = NULL;
   IREE_RETURN_IF_ERROR(loom_value_fact_table_initialize_loop_state(
       table, module, loop, &init_facts, &current_facts, &types));
-  IREE_RETURN_IF_ERROR(loom_value_fact_table_close_loop_forwarding(
-      table, module, loop, types, current_facts));
+  loom_value_fact_loop_forwarding_t forwarding;
+  IREE_RETURN_IF_ERROR(loom_value_fact_table_initialize_loop_forwarding(
+      table, module, loop, types, current_facts, &forwarding));
 
   loom_value_facts_t* yielded_facts = NULL;
   loom_value_facts_t* next_facts = NULL;
@@ -1511,7 +1544,7 @@ static iree_status_t loom_value_fact_table_compute_counted_loop_summary(
     bool changed = false;
     IREE_RETURN_IF_ERROR(loom_value_fact_table_join_loop_backedge(
         table, module, types, init_facts, yielded_facts, current_facts, count,
-        iteration, next_facts, &changed));
+        &forwarding, iteration, next_facts, &changed));
     memcpy(current_facts, next_facts, count * sizeof(loom_value_facts_t));
     if (!changed) {
       converged = true;
@@ -1608,6 +1641,10 @@ static iree_status_t loom_value_fact_table_compute_condition_loop_summary(
   IREE_RETURN_IF_ERROR(loom_value_fact_table_initialize_loop_state(
       table, module, loop, &init_facts, &current_facts, &types));
 
+  loom_value_fact_loop_forwarding_t forwarding;
+  IREE_RETURN_IF_ERROR(loom_value_fact_table_initialize_loop_forwarding(
+      table, module, loop, types, current_facts, &forwarding));
+
   loom_value_facts_t* forwarded_facts = NULL;
   loom_value_facts_t* yielded_facts = NULL;
   loom_value_facts_t* next_facts = NULL;
@@ -1641,7 +1678,7 @@ static iree_status_t loom_value_fact_table_compute_condition_loop_summary(
     bool changed = false;
     IREE_RETURN_IF_ERROR(loom_value_fact_table_join_loop_backedge(
         table, module, types, init_facts, yielded_facts, current_facts, count,
-        iteration, next_facts, &changed));
+        &forwarding, iteration, next_facts, &changed));
     memcpy(current_facts, next_facts, count * sizeof(loom_value_facts_t));
     if (!changed) {
       converged = true;
