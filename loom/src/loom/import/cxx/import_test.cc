@@ -260,4 +260,21 @@ TEST_F(ImportTest, GlobalConstantsAndUnsupportedStorage) {
   EXPECT_EQ(diagnostic_count_, 1);
 }
 
+TEST_F(ImportTest, ExternalStorageCannotBecomeAnAutomaticBinding) {
+  IREE_ASSERT_OK(
+      Import(IREE_SV("extern int counter; void entry() { counter = 3; }")));
+  EXPECT_EQ(module_, nullptr);
+  EXPECT_EQ(diagnostic_count_, 1);
+}
+
+TEST_F(ImportTest, WideLoopComparisonRetainsInductionWraparound) {
+  IREE_ASSERT_OK(Import(IREE_SV(
+      "unsigned entry(unsigned long long upper) { unsigned sum = 0; "
+      "for (unsigned i = 0; i < upper; ++i) { sum += i; } return sum; }")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("scf.while"), std::string::npos);
+  EXPECT_EQ(text.find("scf.for"), std::string::npos);
+}
+
 }  // namespace

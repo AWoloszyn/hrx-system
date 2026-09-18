@@ -1222,8 +1222,9 @@ class Translator {
   }
 
   // The unit-step unsigned interval cannot wrap before its strict upper bound.
-  // A stable scalar/literal upper bound may be evaluated once. Other for loops
-  // retain their general while semantics, including mutation of their bounds.
+  // A stable scalar/literal upper bound in that same unsigned width may be
+  // evaluated once. Wider comparisons can observe induction wraparound and
+  // retain their general while semantics, as do mutable bounds.
   cxx::Symbol* counted_induction(cxx::ForStatementAST* loop,
                                  unsigned& step_value) {
     auto* declaration =
@@ -1271,7 +1272,10 @@ class Translator {
     if (!left || !increment || left->symbol != induction ||
         increment->symbol != induction ||
         unqualified(induction->type())->kind() != cxx::TypeKind::kUnsignedInt ||
-        !is_unsigned(condition->rightExpression->type) ||
+        unqualified(condition->leftExpression->type)->kind() !=
+            cxx::TypeKind::kUnsignedInt ||
+        unqualified(condition->rightExpression->type)->kind() !=
+            cxx::TypeKind::kUnsignedInt ||
         (!bound && !cxx::ast_cast<cxx::IntLiteralExpressionAST>(upper))) {
       return nullptr;
     }
@@ -1473,6 +1477,9 @@ class Translator {
       auto value = expression(assignment->rightExpression);
       if (auto* destination =
               cxx::ast_cast<cxx::IdExpressionAST>(assignment->leftExpression)) {
+        if (!values_.contains(destination->symbol)) {
+          fail(ast, "assignment requires an owned automatic source binding");
+        }
         values_[destination->symbol] =
             name(value, cxx::to_string(destination->symbol->name()));
         return;
