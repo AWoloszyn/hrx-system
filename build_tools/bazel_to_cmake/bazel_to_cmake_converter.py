@@ -1505,6 +1505,11 @@ class BuildFileFunctions(object):
             return
         raise NotImplementedError(f"sh_binary: {name}")
 
+    def sh_test(self, name, **kwargs):
+        if self._should_skip_target(**kwargs):
+            return
+        raise NotImplementedError(f"sh_test: {name}")
+
     def wasm_cc_library(
         self,
         name,
