@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/import/cxx/loop_schedule.h"
+#include "loom/import/cxx/binding/loop_schedule.h"
 
 #include <cxx/ast.h>
 #include <cxx/ast_interpreter.h>

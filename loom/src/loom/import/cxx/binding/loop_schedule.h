@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_LOOP_SCHEDULE_H_
-#define LOOM_IMPORT_CXX_LOOP_SCHEDULE_H_
+#ifndef LOOM_IMPORT_CXX_BINDING_LOOP_SCHEDULE_H_
+#define LOOM_IMPORT_CXX_BINDING_LOOP_SCHEDULE_H_
 
 #include <span>
 
@@ -46,4 +46,4 @@ class LoopSchedule {
 
 }  // namespace loom::cxx_import
 
-#endif  // LOOM_IMPORT_CXX_LOOP_SCHEDULE_H_
+#endif  // LOOM_IMPORT_CXX_BINDING_LOOP_SCHEDULE_H_

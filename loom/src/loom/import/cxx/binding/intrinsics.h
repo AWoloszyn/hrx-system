@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_INTRINSICS_H_
-#define LOOM_IMPORT_CXX_INTRINSICS_H_
+#ifndef LOOM_IMPORT_CXX_BINDING_INTRINSICS_H_
+#define LOOM_IMPORT_CXX_BINDING_INTRINSICS_H_
 
 #include <cxx/attributes.h>
 #include <cxx/symbols_fwd.h>
@@ -14,7 +14,7 @@
 #include <span>
 #include <unordered_map>
 
-#include "loom/import/cxx/scalar_bindings.h"
+#include "loom/import/cxx/binding/scalar_bindings.h"
 #include "loom/import/cxx/source/source.h"
 
 namespace loom::cxx_import {
@@ -60,4 +60,4 @@ class Intrinsics {
 
 }  // namespace loom::cxx_import
 
-#endif  // LOOM_IMPORT_CXX_INTRINSICS_H_
+#endif  // LOOM_IMPORT_CXX_BINDING_INTRINSICS_H_

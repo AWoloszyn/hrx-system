@@ -101,7 +101,7 @@ def generate_header(ops: Sequence[Op]) -> str:
 def generate_source(ops: Sequence[Op]) -> str:
     lines = [
         *line_comment_header("//", generator=_GENERATOR),
-        '#include "loom/import/cxx/scalar_bindings.h"',
+        '#include "loom/import/cxx/binding/scalar_bindings.h"',
         '#include "loom/ops/scalar/ops.h"',
         "",
     ]

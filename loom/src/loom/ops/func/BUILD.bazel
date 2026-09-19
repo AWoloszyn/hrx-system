@@ -24,6 +24,7 @@ _FUNC_VISIBILITY = [
     "//loom/src/loom/format/text:__pkg__",
     "//loom/src/loom/format/text/test:__pkg__",
     "//loom/src/loom/import/cxx:__pkg__",
+    "//loom/src/loom/import/cxx/symbol:__pkg__",
     "//loom/src/loom/link:__pkg__",
     "//loom/src/loom/ops:__pkg__",
     "//loom/src/loom/ops/encoding:__pkg__",

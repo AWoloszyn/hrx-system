@@ -8,7 +8,7 @@ load("//build_tools/bazel:python.bzl", "iree_py_binary", "iree_py_library")
 
 package(default_visibility = [
     "//loom/py/loom/gen:__subpackages__",
-    "//loom/src/loom/import/cxx:__pkg__",
+    "//loom/src/loom/import/cxx/binding:__pkg__",
 ])
 
 iree_py_library(

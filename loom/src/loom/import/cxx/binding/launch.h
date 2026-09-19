@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_LAUNCH_H_
-#define LOOM_IMPORT_CXX_LAUNCH_H_
+#ifndef LOOM_IMPORT_CXX_BINDING_LAUNCH_H_
+#define LOOM_IMPORT_CXX_BINDING_LAUNCH_H_
 
 #include <cxx/ast_fwd.h>
 #include <cxx/symbols_fwd.h>
@@ -87,4 +87,4 @@ class LaunchContracts {
 
 }  // namespace loom::cxx_import
 
-#endif  // LOOM_IMPORT_CXX_LAUNCH_H_
+#endif  // LOOM_IMPORT_CXX_BINDING_LAUNCH_H_

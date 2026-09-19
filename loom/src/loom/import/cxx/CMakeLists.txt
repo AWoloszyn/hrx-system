@@ -10,20 +10,6 @@
 iree_add_all_subdirs()
 
 if(LOOM_IMPORT_CXX)
-loom_generated_cc_library(
-  NAME
-    scalar_bindings
-  GENERATOR
-    loom::py::loom::gen::cxx::intrinsics_generator
-  HDRS
-    "scalar_bindings.h"
-  DEPS
-    loom::ops::op_defs
-    loom::ops::scalar
-)
-endif()
-
-if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
     import_test
@@ -49,21 +35,17 @@ loom_cc_library(
     "import.h"
   SRCS
     "import.cc"
-    "intrinsics.cc"
-    "intrinsics.h"
-    "launch.cc"
-    "launch.h"
-    "loop_schedule.cc"
-    "loop_schedule.h"
     "translation.cc"
     "translation.h"
   DEPS
-    ::scalar_bindings
     iree::base
     iree::base::internal::arena
     iree::third_party::cxx_parser
     loom::error::diagnostic
     loom::error::error_defs
+    loom::import::cxx::binding::intrinsics
+    loom::import::cxx::binding::launch
+    loom::import::cxx::binding::loop_schedule
     loom::import::cxx::control::analysis
     loom::import::cxx::source
     loom::import::cxx::source::attributes
@@ -71,11 +53,11 @@ loom_cc_library(
     loom::import::cxx::source::error
     loom::import::cxx::source::locations
     loom::import::cxx::source::options
+    loom::import::cxx::symbol::functions
     loom::import::cxx::value::scalar
     loom::import::cxx::value::storage
     loom::import::cxx::value::types
     loom::ir
-    loom::ops::config
     loom::ops::func
     loom::ops::index
     loom::ops::kernel

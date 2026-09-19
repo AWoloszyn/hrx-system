@@ -8,10 +8,29 @@
 #define LOOM_IMPORT_CXX_SOURCE_ATTRIBUTES_H_
 
 #include <cxx/ast.h>
+#include <cxx/attributes.h>
 #include <cxx/names.h>
+#include <cxx/symbols.h>
 #include <cxx/translation_unit.h>
 
+#include <string_view>
+
 namespace loom::cxx_import {
+
+// Queries a semantic Loom annotation attached to a resolved source symbol.
+inline bool annotated(cxx::Symbol* symbol, std::string_view spelling) {
+  if (!symbol || !symbol->attributes()) {
+    return false;
+  }
+  for (const auto& attribute : *symbol->attributes()) {
+    if (attribute.attributeNamespace && attribute.name &&
+        attribute.attributeNamespace->name() == "loom" &&
+        attribute.name->name() == spelling) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // Visits raw C++ Loom attributes, including duplicates and numeric arguments
 // that the frontend's semantic string-attribute map cannot preserve. Admission

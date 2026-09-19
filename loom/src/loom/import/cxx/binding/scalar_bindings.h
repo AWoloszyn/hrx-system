@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_SCALAR_BINDINGS_H_
-#define LOOM_IMPORT_CXX_SCALAR_BINDINGS_H_
+#ifndef LOOM_IMPORT_CXX_BINDING_SCALAR_BINDINGS_H_
+#define LOOM_IMPORT_CXX_BINDING_SCALAR_BINDINGS_H_
 
 #include "loom/ops/op_defs.h"
 
@@ -41,4 +41,4 @@ bool loom_cxx_scalar_flag_parse(iree_string_view_t name, uint8_t* out_flag);
 }
 #endif
 
-#endif  // LOOM_IMPORT_CXX_SCALAR_BINDINGS_H_
+#endif  // LOOM_IMPORT_CXX_BINDING_SCALAR_BINDINGS_H_

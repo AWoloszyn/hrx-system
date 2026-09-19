@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/import/cxx/intrinsics.h"
+#include "loom/import/cxx/binding/intrinsics.h"
 
 #include <cxx/ast.h>
 #include <cxx/attributes.h>
