@@ -58,6 +58,7 @@ loom_cc_library(
     loom::import::cxx::value::scalar
     loom::import::cxx::value::storage
     loom::import::cxx::value::types
+    loom::import::cxx::value::vector
     loom::ir
     loom::ops::func
     loom::ops::index
@@ -65,6 +66,7 @@ loom_cc_library(
     loom::ops::op_defs
     loom::ops::scalar
     loom::ops::scf
+    loom::ops::vector
     loom::ops::view
     loom::verify
   PUBLIC

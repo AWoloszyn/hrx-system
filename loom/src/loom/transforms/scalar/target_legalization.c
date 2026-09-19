@@ -562,7 +562,125 @@ static iree_status_t loom_scalar_legalize_fmai(
   return iree_ok_status();
 }
 
+// Targets with 32-bit arithmetic can implement byte and halfword operations by
+// widening their inputs and truncating each result. Keeping that truncation at
+// the original operation boundary preserves wrapping before a later shift,
+// division, or comparison consumes the value.
+static iree_status_t loom_scalar_legalize_narrow_binary(
+    const loom_target_legalizer_entry_t* entry,
+    loom_target_legalization_context_t* context, loom_op_t* op,
+    loom_target_legalizer_result_t* out_result) {
+  (void)entry;
+  *out_result = (loom_target_legalizer_result_t){
+      .action = LOOM_TARGET_LEGALIZER_ACTION_NO_COMMENT,
+  };
+  const loom_type_t result_type =
+      loom_module_value_type(context->module, loom_op_results(op)[0]);
+  const loom_scalar_type_t element_type = loom_type_element_type(result_type);
+  if (element_type != LOOM_SCALAR_TYPE_I8 &&
+      element_type != LOOM_SCALAR_TYPE_I16) {
+    return iree_ok_status();
+  }
+
+  const bool signed_operands = op->kind == LOOM_OP_SCALAR_DIVSI ||
+                               op->kind == LOOM_OP_SCALAR_REMSI ||
+                               op->kind == LOOM_OP_SCALAR_SHRSI;
+  const loom_type_t working_type = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_rewriter_t* rewriter = context->rewriter;
+  loom_builder_t* builder = &rewriter->builder;
+  loom_builder_set_before(builder, op);
+  const loom_value_id_t checkpoint = loom_rewriter_value_checkpoint(rewriter);
+  loom_value_id_t operands[2];
+  for (int i = 0; i < 2; ++i) {
+    loom_op_t* extension = NULL;
+    if (signed_operands) {
+      IREE_RETURN_IF_ERROR(
+          loom_scalar_extsi_build(builder, loom_op_operands(op)[i], result_type,
+                                  working_type, op->location, &extension));
+    } else {
+      IREE_RETURN_IF_ERROR(
+          loom_scalar_extui_build(builder, loom_op_operands(op)[i], result_type,
+                                  working_type, op->location, &extension));
+    }
+    operands[i] = loom_op_results(extension)[0];
+  }
+
+  // The registered binary families have no attributes. Narrow no-wrap flags
+  // do not describe the widened intermediate, so its flags remain empty.
+  loom_op_t* widened = NULL;
+  IREE_RETURN_IF_ERROR(loom_builder_allocate_op(builder, op->kind, 2, 1, 0, 0,
+                                                0, op->location, &widened));
+  loom_op_operands(widened)[0] = operands[0];
+  loom_op_operands(widened)[1] = operands[1];
+  IREE_RETURN_IF_ERROR(loom_builder_define_result(
+      builder, working_type, &loom_op_results(widened)[0]));
+  IREE_RETURN_IF_ERROR(loom_builder_finalize_op(builder, widened));
+  loom_op_t* truncation = NULL;
+  IREE_RETURN_IF_ERROR(loom_scalar_trunci_build(
+      builder, loom_op_results(widened)[0], working_type, result_type,
+      op->location, &truncation));
+  loom_value_id_t replacement = loom_scalar_trunci_result(truncation);
+  IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+      rewriter, op, &replacement, 1, checkpoint));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_replace_all_uses_and_erase(rewriter, op, &replacement, 1));
+  out_result->action = LOOM_TARGET_LEGALIZER_ACTION_REWRITTEN;
+  return iree_ok_status();
+}
+
 static const loom_target_legalizer_rule_t kScalarLegalizerRules[] = {
+    {
+        .root_kind = LOOM_OP_SCALAR_ADDI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_SUBI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_MULI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_DIVSI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_DIVUI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_REMSI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_REMUI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_ANDI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_ORI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_XORI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_SHLI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_SHRSI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_SHRUI,
+        .legalize = loom_scalar_legalize_narrow_binary,
+    },
     {
         .root_kind = LOOM_OP_SCALAR_BITFIELD_EXTRACTU,
         .legalize = loom_scalar_legalize_bitfield_extract,

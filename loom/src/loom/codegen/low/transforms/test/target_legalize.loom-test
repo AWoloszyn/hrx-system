@@ -480,3 +480,173 @@ func.def target(@test_target) @preserves_multidimensional_constructor(%e0: i32, 
   %result = vector.from_elements %e0, %e1, %e2, %e3 : vector<2x2xi32>
   func.return %result : vector<2x2xi32>
 }
+
+// ====
+// RUN: pass target-legalize{mode=final,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @predicate_masks(%predicate: vector<4xi1>) -> (vector<4xi32>, vector<4xi32>) {
+  %signed_mask = vector.extsi %predicate : vector<4xi1> to vector<4xi32>
+  %unsigned_mask = vector.extui %predicate : vector<4xi1> to vector<4xi32>
+  func.return %signed_mask, %unsigned_mask : vector<4xi32>, vector<4xi32>
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @predicate_masks(%predicate: vector<4xi1>) -> (vector<4xi32>, vector<4xi32>) {
+  %8 = vector.constant -1 : vector<4xi32>
+  %9 = vector.constant 0 : vector<4xi32>
+  %signed_mask = vector.select %predicate, %8, %9 : vector<4xi32>
+  %5 = vector.constant 1 : vector<4xi32>
+  %6 = vector.constant 0 : vector<4xi32>
+  %unsigned_mask = vector.select %predicate, %5, %6 : vector<4xi32>
+  func.return %signed_mask, %unsigned_mask : vector<4xi32>, vector<4xi32>
+}
+
+// ====
+// RUN: pass target-legalize{mode=final,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_wrap_before_shift(%left: i8, %right: i8, %shift: i8) -> (i8) {
+  %sum = scalar.addi %left, %right : i8
+  %shifted = scalar.shrui %sum, %shift : i8
+  func.return %shifted : i8
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_wrap_before_shift(%left: i8, %right: i8, %shift: i8) -> (i8) {
+  %10 = scalar.extui %left : i8 to i32
+  %11 = scalar.extui %right : i8 to i32
+  %12 = scalar.addi %10, %11 : i32
+  %sum = scalar.trunci %12 : i32 to i8
+  %6 = scalar.extui %sum : i8 to i32
+  %7 = scalar.extui %shift : i8 to i32
+  %8 = scalar.shrui %6, %7 : i32
+  %shifted = scalar.trunci %8 : i32 to i8
+  func.return %shifted : i8
+}
+
+// ====
+// RUN: pass target-legalize{mode=final,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_signed_operands(%left: i16, %right: i16, %shift: i16) -> (i16, i16, i16) {
+  %quotient = scalar.divsi %left, %right : i16
+  %remainder = scalar.remsi %left, %right : i16
+  %shifted = scalar.shrsi %left, %shift : i16
+  func.return %quotient, %remainder, %shifted : i16, i16, i16
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_signed_operands(%left: i16, %right: i16, %shift: i16) -> (i16, i16, i16) {
+  %17 = scalar.extsi %left : i16 to i32
+  %18 = scalar.extsi %right : i16 to i32
+  %19 = scalar.divsi %17, %18 : i32
+  %quotient = scalar.trunci %19 : i32 to i16
+  %13 = scalar.extsi %left : i16 to i32
+  %14 = scalar.extsi %right : i16 to i32
+  %15 = scalar.remsi %13, %14 : i32
+  %remainder = scalar.trunci %15 : i32 to i16
+  %9 = scalar.extsi %left : i16 to i32
+  %10 = scalar.extsi %shift : i16 to i32
+  %11 = scalar.shrsi %9, %10 : i32
+  %shifted = scalar.trunci %11 : i32 to i16
+  func.return %quotient, %remainder, %shifted : i16, i16, i16
+}
+
+// ====
+// RUN: pass target-legalize{mode=final,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_unsigned_operands(%left: i8, %right: i8, %shift: i8) -> (i8, i8, i8, i8, i8, i8, i8, i8) {
+  %difference = scalar.subi<nsw> %left, %right : i8
+  %product = scalar.muli<nuw> %left, %right : i8
+  %quotient = scalar.divui %left, %right : i8
+  %remainder = scalar.remui %left, %right : i8
+  %intersection = scalar.andi %left, %right : i8
+  %union = scalar.ori %left, %right : i8
+  %exclusive = scalar.xori %left, %right : i8
+  %shifted = scalar.shli<nuw> %left, %shift : i8
+  func.return %difference, %product, %quotient, %remainder, %intersection, %union, %exclusive, %shifted : i8, i8, i8, i8, i8, i8, i8, i8
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_unsigned_operands(%left: i8, %right: i8, %shift: i8) -> (i8, i8, i8, i8, i8, i8, i8, i8) {
+  %47 = scalar.extui %left : i8 to i32
+  %48 = scalar.extui %right : i8 to i32
+  %49 = scalar.subi %47, %48 : i32
+  %difference = scalar.trunci %49 : i32 to i8
+  %43 = scalar.extui %left : i8 to i32
+  %44 = scalar.extui %right : i8 to i32
+  %45 = scalar.muli %43, %44 : i32
+  %product = scalar.trunci %45 : i32 to i8
+  %39 = scalar.extui %left : i8 to i32
+  %40 = scalar.extui %right : i8 to i32
+  %41 = scalar.divui %39, %40 : i32
+  %quotient = scalar.trunci %41 : i32 to i8
+  %35 = scalar.extui %left : i8 to i32
+  %36 = scalar.extui %right : i8 to i32
+  %37 = scalar.remui %35, %36 : i32
+  %remainder = scalar.trunci %37 : i32 to i8
+  %31 = scalar.extui %left : i8 to i32
+  %32 = scalar.extui %right : i8 to i32
+  %33 = scalar.andi %31, %32 : i32
+  %intersection = scalar.trunci %33 : i32 to i8
+  %27 = scalar.extui %left : i8 to i32
+  %28 = scalar.extui %right : i8 to i32
+  %29 = scalar.ori %27, %28 : i32
+  %union = scalar.trunci %29 : i32 to i8
+  %23 = scalar.extui %left : i8 to i32
+  %24 = scalar.extui %right : i8 to i32
+  %25 = scalar.xori %23, %24 : i32
+  %exclusive = scalar.trunci %25 : i32 to i8
+  %19 = scalar.extui %left : i8 to i32
+  %20 = scalar.extui %shift : i8 to i32
+  %21 = scalar.shli %19, %20 : i32
+  %shifted = scalar.trunci %21 : i32 to i8
+  func.return %difference, %product, %quotient, %remainder, %intersection, %union, %exclusive, %shifted : i8, i8, i8, i8, i8, i8, i8, i8
+}
+
+// ====
+// RUN: pass target-legalize{mode=final,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @integer_vector_multiply_reference(%left: vector<4xi32>, %right: vector<4xi32>) -> (vector<4xi32>) {
+  %product = vector.muli %left, %right : vector<4xi32>
+  func.return %product : vector<4xi32>
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @integer_vector_multiply_reference(%left: vector<4xi32>, %right: vector<4xi32>) -> (vector<4xi32>) {
+  %4 = vector.extract %left[0] : vector<4xi32> -> i32
+  %5 = vector.extract %right[0] : vector<4xi32> -> i32
+  %6 = scalar.muli %4, %5 : i32
+  %7 = vector.extract %left[1] : vector<4xi32> -> i32
+  %8 = vector.extract %right[1] : vector<4xi32> -> i32
+  %9 = scalar.muli %7, %8 : i32
+  %10 = vector.extract %left[2] : vector<4xi32> -> i32
+  %11 = vector.extract %right[2] : vector<4xi32> -> i32
+  %12 = scalar.muli %10, %11 : i32
+  %13 = vector.extract %left[3] : vector<4xi32> -> i32
+  %14 = vector.extract %right[3] : vector<4xi32> -> i32
+  %15 = scalar.muli %13, %14 : i32
+  %17 = vector.splat %6 : vector<4xi32>
+  %18 = vector.insert %9 into %17[1] : i32, vector<4xi32>
+  %19 = vector.insert %12 into %18[2] : i32, vector<4xi32>
+  %product = vector.insert %15 into %19[3] : i32, vector<4xi32>
+  func.return %product : vector<4xi32>
+}

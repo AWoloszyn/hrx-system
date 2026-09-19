@@ -21,7 +21,10 @@ exports_files([
 
 iree_execution_test_suite(
     name = "functions_test",
-    data = ["integer_functions.cpp"],
+    data = [
+        "integer_functions.cpp",
+        "vector_values.cpp",
+    ],
     manifests = ["functions.test.json"],
     tags = ["hostonly"],
     target_compatible_with = loom_config_compatible_with([
@@ -31,6 +34,7 @@ iree_execution_test_suite(
     tools = {
         "generate-cases": "//loom/py/loom/gen/test:cxx_kernel_cases",
         "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+        "loom-compile": "//loom/src/loom/tools/loom-compile",
         "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
     },
 )
@@ -47,6 +51,8 @@ iree_execution_test_suite(
         "pointer_walk.cpp",
         "scheduled_sum.cpp",
         "short_circuit.cpp",
+        "vector_depth.cpp",
+        "vector_values.cpp",
         "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
         "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
         "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",

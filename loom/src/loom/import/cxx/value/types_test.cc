@@ -61,6 +61,30 @@ TEST(TypesTest, RejectsRepresentationsThatLoseSourceSemantics) {
   EXPECT_THROW(types.get(control->getLongDoubleType(), owner), SourceRejected);
 }
 
+TEST(TypesTest, VectorProjectionKeepsLaneShapeAndRejectsPackedBoolAndPadding) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV("int entry();"), IREE_SV("vectors.cpp"), options);
+  Types types(source.unit(), source.diagnostics());
+  auto* control = source.unit().control();
+  auto* owner = source.unit().ast();
+  auto* vector = control->getVectorType(control->getUnsignedIntType(), 16,
+                                        cxx::VectorKind::kGnu);
+  EXPECT_TRUE(loom_type_equal(
+      types.get(vector, owner),
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_I32, 16, 0)));
+  EXPECT_EQ(loom_type_kind(types.get(control->getPointerType(vector), owner)),
+            LOOM_TYPE_BUFFER);
+  EXPECT_THROW(types.get(control->getVectorType(control->getBoolType(), 16,
+                                                cxx::VectorKind::kExt),
+                         owner),
+               SourceRejected);
+  EXPECT_THROW(types.get(control->getVectorType(control->getFloatType(), 3,
+                                                cxx::VectorKind::kExt),
+                         owner),
+               SourceRejected);
+}
+
 TEST(TypesTest, MutationUsesTheObjectQualifierInsteadOfItsPointee) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);

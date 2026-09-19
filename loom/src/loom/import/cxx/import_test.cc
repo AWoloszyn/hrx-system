@@ -127,6 +127,77 @@ TEST_F(ImportTest, RejectsMutationOfConstObjectsAndBindings) {
   ASSERT_NE(module_, nullptr);
 }
 
+TEST_F(ImportTest, ExplicitVectorsRetainMasksAndStructuredValueTransport) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    typedef unsigned u32x16 __attribute__((vector_size(64)));
+    typedef int i32x16 __attribute__((vector_size(64)));
+    static u32x16 update(u32x16 value, u32x16 depth) {
+      return (value & 65535u) | (depth & 0xffff0000u);
+    }
+    void entry(const u32x16* input, u32x16* output, i32x16* masks,
+               unsigned count) {
+      u32x16 value = input[0];
+      for (unsigned i = 0; i < count; ++i) {
+        value = update(value, input[i]);
+      }
+      if (count > 1u) { value += 1u; }
+      output[0] = value;
+      masks[0] = value > input[0];
+      masks[1] = !value;
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("vector<16xi32>"), std::string::npos);
+  EXPECT_NE(text.find("vector.load"), std::string::npos);
+  EXPECT_NE(text.find("vector.store"), std::string::npos);
+  EXPECT_NE(text.find("vector.splat"), std::string::npos);
+  EXPECT_NE(text.find("vector.cmpi ugt"), std::string::npos);
+  EXPECT_NE(text.find("vector.extsi"), std::string::npos);
+  EXPECT_NE(text.find("scf.for"), std::string::npos);
+}
+
+TEST_F(ImportTest, VectorLanesAndBitCastsKeepSourceRepresentation) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    typedef unsigned U __attribute__((vector_size(16)));
+    typedef float F __attribute__((vector_size(16)));
+    unsigned lane(unsigned* input, unsigned index) {
+      U lanes = {1u, 2u};
+      const U* source = reinterpret_cast<const U*>(input);
+      U value = *source + lanes;
+      F bits = (F)value;
+      U recovered = __builtin_bit_cast(U, bits);
+      return recovered[index];
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("vector.from_elements"), std::string::npos);
+  EXPECT_NE(text.find("vector.extract"), std::string::npos);
+  EXPECT_NE(text.find("vector.bitcast"), std::string::npos);
+}
+
+TEST_F(ImportTest, UnsupportedVectorFormsDiagnoseAtSourceAdmission) {
+  for (auto source : {
+           "typedef bool V __attribute__((ext_vector_type(16))); V f(V x) { "
+           "return x; }",
+           "typedef float V __attribute__((ext_vector_type(3))); V f(V x) { "
+           "return x; }",
+           "typedef int V __attribute__((vector_size(16))); void f(V x) { x[0] "
+           "= 1; }",
+           "typedef int V __attribute__((vector_size(16))); V f(V x, V y) { "
+           "return x && y; }",
+           "typedef int V __attribute__((vector_size(16))); V f(V x, V y) { "
+           "return x ? x : y; }",
+       }) {
+    SCOPED_TRACE(source);
+    auto before = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_cstring_view(source)));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_GT(diagnostic_count_, before);
+  }
+}
+
 TEST_F(ImportTest, PointerOriginsCrossCallsBranchesAndLoops) {
   IREE_ASSERT_OK(Import(IREE_SV(R"(
     static int* advance(int* pointer, long long count) {

@@ -242,25 +242,29 @@ def integer_increment(directory, width, inputs):
     return f"kernel.decl @increment_u{width}() launch(%output: buffer, %input: i{argument_width})\n\n" + "\n".join(cases)
 
 
+def function_cases(name, argument_widths, result_width, samples):
+    types = ", ".join(f"i{width}" for width in argument_widths)
+    parameters = ", ".join(f"%arg{index}: i{width}" for index, width in enumerate(argument_widths))
+    cases = [f"func.decl @{name}({parameters}) -> (i{result_width})"]
+    for ordinal, (arguments, expected) in enumerate(samples):
+        lines = [f"check.case public @{name}_{ordinal} {{"]
+        for index, (value, width) in enumerate(zip(arguments, argument_widths, strict=True)):
+            lines.append(f"  %arg{index} = check.literal value({signed_bits(value, width)}) : i{width}")
+        operands = ", ".join(f"%arg{index}" for index in range(len(arguments)))
+        lines.append(f"  %actual = func.call @{name}({operands}) : ({types}) -> (i{result_width})")
+        lines.append(f"  %expected = check.literal value({signed_bits(expected, result_width)}) : i{result_width}")
+        lines.append(f"  check.expect.equal actual(%actual) expected(%expected) : i{result_width}")
+        lines.extend(["  check.return", "}"])
+        cases.append("\n".join(lines))
+    return "\n\n".join(cases)
+
+
 def integer_functions(directory):
     del directory
-    declarations = []
     cases = []
 
     def function(name, argument_widths, result_width, samples):
-        types = ", ".join(f"i{width}" for width in argument_widths)
-        parameters = ", ".join(f"%arg{index}: i{width}" for index, width in enumerate(argument_widths))
-        declarations.append(f"func.decl @{name}({parameters}) -> (i{result_width})")
-        for ordinal, (arguments, expected) in enumerate(samples):
-            lines = [f"check.case public @{name}_{ordinal} {{"]
-            for index, (value, width) in enumerate(zip(arguments, argument_widths, strict=True)):
-                lines.append(f"  %arg{index} = check.literal value({signed_bits(value, width)}) : i{width}")
-            operands = ", ".join(f"%arg{index}" for index in range(len(arguments)))
-            lines.append(f"  %actual = func.call @{name}({operands}) : ({types}) -> (i{result_width})")
-            lines.append(f"  %expected = check.literal value({signed_bits(expected, result_width)}) : i{result_width}")
-            lines.append(f"  check.expect.equal actual(%actual) expected(%expected) : i{result_width}")
-            lines.extend(["  check.return", "}"])
-            cases.append("\n".join(lines))
+        cases.append(function_cases(name, argument_widths, result_width, samples))
 
     products = [(0, -1), (65536, 65536), (-65537, 98304), (65537, -98304), (-(1 << 31), 65536), ((1 << 31) - 1, 65536), (12345, 6789)]
     function("fixed_multiply", [32, 32], 32, [(pair, pair[0] * pair[1] // 65536) for pair in products])
@@ -275,7 +279,7 @@ def integer_functions(directory):
     function("shift_left_wide", [64, 32], 64, [([value, count], value * (1 << count) % (1 << 64)) for value in wide_values for count in counts])
     function("shift_right_signed", [64, 32], 64, [([value, count], value // (1 << count)) for value in wide_values for count in counts])
     function("shift_right_unsigned", [64, 32], 64, [([value, count], (value % (1 << 64)) // (1 << count)) for value in wide_values for count in counts])
-    return "\n".join(declarations) + "\n\n" + "\n\n".join(cases) + "\n"
+    return "\n\n".join(cases) + "\n"
 
 
 def pointer_walk(directory):
@@ -318,6 +322,118 @@ def pointer_walk(directory):
     return "kernel.decl @pointer_walk() launch(%input: buffer, %counts: buffer, %output: buffer, %length: i32, %start: i64, %displacement: i64)\n\n" + "\n".join(cases)
 
 
+def vector_depth(directory):
+    cases = []
+    for blocks in [1, 3, 7]:
+        rng = random.Random(843 + blocks)
+        previous = [rng.getrandbits(32) for _ in range(blocks * 16)]
+        depth = [rng.getrandbits(32) for _ in previous]
+        previous[:4] = [0, 0xFFFFFFFF, 0x12345678, 0xFFFF0000]
+        depth[:4] = [0xFFFFFFFF, 0, 0x87654321, 0xFFFF]
+        expected = [signed_bits((a & 0xFFFF) | (b & 0xFFFF0000), 32) for a, b in zip(previous, depth, strict=True)]
+        case = Case(directory, f"vector_depth_{blocks}", "i32", len(previous))
+        case.array("previous", [signed_bits(value, 32) for value in previous])
+        case.array("depth", [signed_bits(value, 32) for value in depth])
+        case.scalar("count", blocks, "i32")
+        case.launch("vector_depth", "%previous, %depth, %output, %count", f"tensor<{len(previous)}xi32>, tensor<{len(depth)}xi32>, tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @vector_depth() launch(%previous: buffer, %depth: buffer, %output: buffer, %count: i32)\n\n" + "\n".join(cases)
+
+
+def vector_depth_span(directory):
+    cases = []
+    for count in [0, 1, 15, 16, 17, 31, 32, 129]:
+        rng = random.Random(281 + count)
+        previous = [rng.getrandbits(32) for _ in range(max(1, count))]
+        depth, step = 0xFFFF1234, 0x137CF
+        expected = [signed_bits((value & 0xFFFF) | ((depth + index * step) & 0xFFFF0000), 32) for index, value in enumerate(previous[:count])]
+        case = Case(directory, f"vector_depth_span_{count}", "i32", count)
+        case.array("previous", [signed_bits(value, 32) for value in previous])
+        for name, value in [("count", count), ("depth", depth), ("step", step)]:
+            case.scalar(name, signed_bits(value, 32), "i32")
+        case.launch("vector_depth_span", "%previous, %output, %count, %depth, %step", f"tensor<{len(previous)}xi32>, tensor<{count}xi32>, i32, i32, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @vector_depth_span() launch(%previous: buffer, %output: buffer, %count: i32, %depth: i32, %step: i32)\n\n" + "\n".join(cases)
+
+
+def vector_values(directory):
+    del directory
+    cases = []
+
+    def function(name, samples):
+        cases.append(function_cases(name, [32] * len(samples[0][0]), 32, samples))
+
+    function(
+        "vector_unsigned", [([value, lane], ((([value, 0x80000000, 0xFFFFFFFF, 7][lane] + 17) & 0xFFFFFFFF) >> 3) // 3) for value in [0, 1, 0x7FFFFFFF, 0xFFFFFFF0, 0xFFFFFFFF] for lane in range(4)]
+    )
+    pairs = [(0, 0), (0, 0xFFFFFFFF), (0xFFFFFFFF, 0), (0x80000000, 0x7FFFFFFF)]
+    function("vector_mask", [([a, b, lane], -int([a, 0xFFFFFFFF, 0, 0x80000000][lane] > [b, 0, 0, 0x7FFFFFFF][lane])) for a, b in pairs for lane in range(4)])
+    function("vector_narrow", [([value, lane], (([value & 255, 255, 128, 0] + [0] * 12)[lane] + 200 & 255) >> 1) for value in [0, 55, 56, 127, 255, 511] for lane in [0, 1, 2, 3, 8, 15]])
+
+    def signed_result(value, divisor):
+        quotient = abs(value) // abs(divisor) * (-1 if (value < 0) != (divisor < 0) else 1)
+        return (quotient >> 1) + value - quotient * divisor
+
+    for width, name in [(8, "vector_signed_byte"), (16, "vector_signed_short")]:
+        inputs = [-(1 << (width - 1)), -127, -1, 0, 1, (1 << (width - 1)) - 1]
+        function(name, [([value, divisor, lane], signed_result([value, -127, -1, 127][lane], [divisor, 3, -3, 3][lane])) for value in inputs for divisor in [-3, 3] for lane in range(4)])
+    function(
+        "vector_unsigned_short",
+        [([value, lane], ((([value & 65535, 65535, 32768, 0] + [0] * 4)[lane] * 257 + 60000) & 65535) >> 5) for value in [0, 1, 32767, 32768, 65535, 65536] for lane in [0, 1, 2, 3, 7]],
+    )
+    function(
+        "vector_bitcast", [([a, b, lane], [a, b, 0x3F800000, 0x80000000][lane] ^ 0x80000000) for a, b in [(0, 0x80000000), (0x3F000000, 0xBF800000), (0x7F800000, 0xFF800000)] for lane in range(4)]
+    )
+    float_pairs = [(0, 0x80000000), (0x7FC00000, 0x7FC00000), (0x3F800000, 0x40000000), (0x7F800000, 0x7F800000)]
+    function("vector_float_ne", [([a, b, lane], -int(f32_bits([a, 0x7FC00000, 0, 0x80000000][lane]) != f32_bits([b, 0x3F800000, 0x80000000, 0][lane]))) for a, b in float_pairs for lane in range(4)])
+    function("vector_ext_splat", [([value, lane], value) for value in [0, 1, 0xFFFFFFFF, 0x80000000, 17] for lane in range(4)])
+    return "\n\n".join(cases) + "\n"
+
+
+def vector_control(directory):
+    cases = []
+    for value in [0, 0xFFFFFFFF, 0x7FFFFFFF]:
+        for count in [0, 1, 3, 7]:
+            expected = [(initial + 4 * count) & 0xFFFFFFFF for initial in [value, 1, 0, 0]]
+            if count > 2:
+                expected = [~element for element in expected]
+            case = Case(directory, f"vector_control_{value}_{count}", "i32", 4)
+            case.scalar("input", signed_bits(value, 32), "i32")
+            case.scalar("count", count, "i32")
+            case.launch("vector_control_kernel", "%output, %input, %count", "tensor<4xi32>, i32, i32")
+            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+            cases.append(case.finish([signed_bits(element, 32) for element in expected]))
+    return "kernel.decl @vector_control_kernel() launch(%output: buffer, %input: i32, %count: i32)\n\n" + "\n".join(cases)
+
+
+def f32_bits(bits):
+    return struct.unpack("<f", struct.pack("<I", bits))[0]
+
+
+def vector_masks(directory):
+    cases = []
+    for ordinal, (left, right) in enumerate(
+        [
+            ([0, 0xFFFFFFFF, 0x80000000, 7], [0, 0, 0x7FFFFFFF, 7]),
+            ([0, 0x80000000, 0x7FC00000, 0x7F800000], [0x80000000, 0, 0x3F800000, 0x7F800000]),
+            ([0x3F800000, 0xFF800000, 0x7FC00000, 0xBF800000], [0x40000000, 0x7F800000, 0x7FC00000, 0xC0000000]),
+        ]
+    ):
+        expected = [-int(a < b) for a, b in zip(left, right, strict=True)]
+        expected += [-int(a == b) for a, b in zip(left, right, strict=True)]
+        expected += [-int(a == 0) for a in left]
+        expected += [-int(signed_bits(a, 32) < signed_bits(b, 32)) for a, b in zip(left, right, strict=True)]
+        expected += [-int(f32_bits(a) != f32_bits(b)) for a, b in zip(left, right, strict=True)]
+        case = Case(directory, f"vector_masks_{ordinal}", "i32", len(expected))
+        case.array("input", [signed_bits(value, 32) for value in left + right])
+        case.launch("vector_masks", "%input, %output", "tensor<8xi32>, tensor<20xi32>")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @vector_masks() launch(%input: buffer, %output: buffer)\n\n" + "\n".join(cases)
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
@@ -333,6 +449,11 @@ def main():
         ("increment_u64", lambda directory: integer_increment(directory, 64, WIDE_INPUTS)),
         ("integer_functions", integer_functions),
         ("pointer_walk", pointer_walk),
+        ("vector_depth", vector_depth),
+        ("vector_depth_span", vector_depth_span),
+        ("vector_values", vector_values),
+        ("vector_control", vector_control),
+        ("vector_masks", vector_masks),
     ]:
         (directory / f"{name}.loom").write_text(generator(directory))
 

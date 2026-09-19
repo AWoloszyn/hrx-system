@@ -35,6 +35,8 @@ class Types {
   void append(const cxx::Type* input, cxx::AST* owner,
               std::vector<loom_type_t>& output);
   const cxx::Type* unqualified(const cxx::Type* type);
+  // Returns the resolved vector representation, or null for a scalar/object.
+  const cxx::VectorType* vector(const cxx::Type* type);
   bool is_unsigned(const cxx::Type* type);
   bool is_float(const cxx::Type* type);
 

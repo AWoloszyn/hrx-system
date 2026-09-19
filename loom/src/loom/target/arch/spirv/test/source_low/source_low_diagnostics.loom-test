@@ -55,7 +55,10 @@ func.def target(@target) @unresolved_apply_rejected_at_source_low(%value: i32) -
 spirv.target<vulkan1_3> @target
 
 func.def target(@target) @unsigned_i16_requires_target_features(%lhs: i16, %rhs: i16) -> (i16) {
-  // ERROR@+1: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_udiv.u16", constraint_key="descriptor_available"}
+  // Reference widening still requires the source type's conversion features.
+  // ERROR@+3: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_u_convert.u16.u32", constraint_key="descriptor_available"}
+  // ERROR@+2: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_u_convert.u16.u32", constraint_key="descriptor_available"}
+  // ERROR@+1: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_s_convert.i32.i16", constraint_key="descriptor_available"}
   %quotient = scalar.divui %lhs, %rhs : i16
   func.return %quotient : i16
 }
@@ -280,7 +283,9 @@ func.def target(@target) @workgroup_i32_rejects_unaligned_byte_offset(%byte_offs
 spirv.target<vulkan1_3> @target
 
 func.def target(@target) @int8_operation_requires_target_feature(%lhs: i8, %rhs: i8) -> (i8) {
-  // ERROR@+1: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_bitwise_and.i8", constraint_key="descriptor_available"}
+  // ERROR@+3: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_u_convert.u8.u32", constraint_key="descriptor_available"}
+  // ERROR@+2: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_u_convert.u8.u32", constraint_key="descriptor_available"}
+  // ERROR@+1: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_s_convert.i32.i8", constraint_key="descriptor_available"}
   %result = scalar.andi %lhs, %rhs : i8
   func.return %result : i8
 }
@@ -290,7 +295,9 @@ func.def target(@target) @int8_operation_requires_target_feature(%lhs: i8, %rhs:
 spirv.target<vulkan1_3> @target
 
 func.def target(@target) @int16_operation_requires_target_feature(%lhs: i16, %rhs: i16) -> (i16) {
-  // ERROR@+1: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_bitwise_and.i16", constraint_key="descriptor_available"}
+  // ERROR@+3: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_u_convert.u16.u32", constraint_key="descriptor_available"}
+  // ERROR@+2: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_u_convert.u16.u32", constraint_key="descriptor_available"}
+  // ERROR@+1: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_s_convert.i32.i16", constraint_key="descriptor_available"}
   %result = scalar.andi %lhs, %rhs : i16
   func.return %result : i16
 }
