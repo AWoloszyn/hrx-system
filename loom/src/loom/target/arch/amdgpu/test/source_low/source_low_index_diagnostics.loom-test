@@ -3,7 +3,7 @@
 amdgpu.target<gfx11-generic> @target
 
 func.def target(@target) @i64_index_cast_unknown_range_rejected(%value: i64) -> (index) {
-  // ERROR@+1: AMDGPU/033 {source_type="i64", result_type="index", index_bitwidth="32", required_range_lo="-2147483648", required_range_hi="2147483647", accepted_proof_sources="[scalar.assume on the integer source before index.cast, config or kernel boundary facts on the integer source]"}
+  // ERROR@+1: AMDGPU/033 {source_type="i64", result_type="index", carrier_bitwidth="32", required_range_lo="-2147483648", required_range_hi="2147483647", accepted_proof_sources="[scalar.assume on the integer source before index.cast, config or kernel boundary facts on the integer source]"}
   %index = index.cast %value : i64 to index
   func.return %index : index
 }
@@ -14,7 +14,7 @@ amdgpu.target<gfx11-generic> @target
 
 func.def target(@target) @i64_index_cast_too_wide_range_rejected(%value: i64) -> (index) {
   %bounded = scalar.assume %value [range(%value, 0, 2147483648)] : i64
-  // ERROR@+1: AMDGPU/033 {source_range_lo="0", source_range_hi="2147483648", index_bitwidth="32", required_range_lo="-2147483648", required_range_hi="2147483647", accepted_proof_sources="[scalar.assume on the integer source before index.cast, config or kernel boundary facts on the integer source]"}
+  // ERROR@+1: AMDGPU/033 {source_range_lo="0", source_range_hi="2147483648", carrier_bitwidth="32", required_range_lo="-2147483648", required_range_hi="2147483647", accepted_proof_sources="[scalar.assume on the integer source before index.cast, config or kernel boundary facts on the integer source]"}
   %index = index.cast %bounded : i64 to index
   func.return %index : index
 }
@@ -24,7 +24,7 @@ func.def target(@target) @i64_index_cast_too_wide_range_rejected(%value: i64) ->
 amdgpu.target<gfx11-generic> @target
 
 func.def target(@target) @i64_index_cast_result_assume_rejected(%value: i64) -> (index) {
-  // ERROR@+1: AMDGPU/033 {source_type="i64", result_type="index", index_bitwidth="32", required_range_lo="-2147483648", required_range_hi="2147483647", accepted_proof_sources="[scalar.assume on the integer source before index.cast, config or kernel boundary facts on the integer source]"}
+  // ERROR@+1: AMDGPU/033 {source_type="i64", result_type="index", carrier_bitwidth="32", required_range_lo="-2147483648", required_range_hi="2147483647", accepted_proof_sources="[scalar.assume on the integer source before index.cast, config or kernel boundary facts on the integer source]"}
   %index0 = index.cast %value : i64 to index
   %index = index.assume %index0 [range(%index0, 0, 1023)] : index
   func.return %index : index
@@ -73,4 +73,15 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @address
   %22 = s_mov_b32 2147483647
   %wide_max = concat(%all_bits_set, %22) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   return %signed_min, %all_bits_set, %all_bits_set, %first_wide, %wide_max
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @i64_offset_negative_source_rejected(%value: i64) -> (offset) {
+  %bounded = scalar.assume %value [range(%value, -1, 4294967295)] : i64
+  // ERROR@+1: AMDGPU/033 {source_type="i64", result_type="offset", carrier_bitwidth="32", required_range_lo="0", required_range_hi="4294967295"}
+  %offset = index.cast %bounded : i64 to offset
+  func.return %offset : offset
 }

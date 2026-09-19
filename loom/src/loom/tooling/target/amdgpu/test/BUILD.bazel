@@ -94,6 +94,7 @@ loom_test(
     srcs = [
         "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
         "//loom/src/loom/test/corpus/conformance:address_selection.loom",
+        "//loom/src/loom/test/corpus/conformance:offset_integer_casts.loom",
     ],
     execution_profile = AMDGPU_HARDWARE_PROFILE,
 )
