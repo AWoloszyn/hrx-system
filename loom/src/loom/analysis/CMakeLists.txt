@@ -259,6 +259,7 @@ loom_cc_test(
     loom::ir
     loom::ops::index
     loom::ops::scalar
+    loom::target::facts
     loom::util::fact_table
 )
 
@@ -825,6 +826,7 @@ loom_cc_library(
     iree::base::internal
     iree::base::internal::arena
     loom::ir
+    loom::ops::op_defs
     loom::target::registers
     loom::util::adaptive_sort
     loom::util::cfg_graph

@@ -227,6 +227,7 @@ typedef struct loom_liveness_pressure_budget_violation_t {
 
 enum loom_liveness_analysis_flag_bits_e {
   // Intervals include values defined in recursively nested structured regions.
+  // Loop captures and counted control values remain live through backedges.
   LOOM_LIVENESS_ANALYSIS_FLAG_REGION_TREE = 1u << 0,
 };
 typedef uint16_t loom_liveness_analysis_flags_t;

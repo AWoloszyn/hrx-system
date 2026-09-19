@@ -8,7 +8,7 @@ low.func.def target<test.low.core>(@test_target) @structured_control_bytecode(%c
   } else {
     low.scf.yield %else_value : reg<test.i32 : i32>
   }
-  %for_result = low.scf.for [%lower to %upper step %step] iter_args(%init: reg<test.i32 : i32>) -> (reg<test.i32 : i32>) unroll do(%iv: reg<test.i32 : i32>, %acc: reg<test.i32 : i32>) {
+  %for_result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32 : i32>) -> (reg<test.i32 : i32>) unroll do(%iv: reg<test.i32 : i32>, %acc: reg<test.i32 : i32>) {
     low.scf.yield %acc : reg<test.i32 : i32>
   }
   %while_result = low.scf.while(%before = %init : reg<test.i32 : i32>) -> (reg<test.i32 : i32>) {
@@ -17,4 +17,14 @@ low.func.def target<test.low.core>(@test_target) @structured_control_bytecode(%c
     low.scf.yield %body : reg<test.i32 : i32>
   }
   return %if_result, %for_result, %while_result
+}
+
+// ====
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @unsigned_counter_bytecode(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>) asm {
+  low.scf.for unsigned [%lower to %upper step %step] do(%iv: reg<test.i32>) {
+  }
+  return
 }

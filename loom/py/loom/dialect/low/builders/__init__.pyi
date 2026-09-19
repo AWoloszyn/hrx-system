@@ -313,6 +313,7 @@ class LowBuilder(DialectBuilder):
     def for_(
         self,
         *,
+        signedness: str,
         lower_bound: ValueRef,
         upper_bound: ValueRef,
         step: ValueRef,

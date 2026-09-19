@@ -1820,3 +1820,57 @@ func.def @forwarded_carried_value_preserves_pipeline_policy(%input: view<64xf32>
   }
   func.return %result, %initial : f32, f32
 }
+
+// ====
+// RUN: with-checks pass canonicalize
+
+// The true edge proves zero; the original signed input remains available on
+// the other edge and after the conditional.
+func.def @unsigned_bound_proves_guarded_offset(%position: i64, %storage: buffer) -> (i64) {
+  %limit = scalar.constant 1 : i64
+  %inside = scalar.cmpi ult, %position, %limit : i64
+  scf.if %inside {
+    %offset = index.cast %position : i64 to offset
+    %value = scalar.constant 42 : i32
+    buffer.store.i8 %value, %storage[%offset]
+  }
+  func.return %position : i64
+}
+
+// ----
+CHECK: %offset = index.constant 0 : offset
+CHECK: scf.if %inside {
+CHECK: buffer.store.i8 %value, %storage[%offset]
+CHECK: func.return %position : i64
+CHECK-NOT: index.cast *
+
+// ====
+// RUN: with-checks pass canonicalize
+
+// A false greater-than edge and a swapped true greater-equal edge establish
+// the same nonnegative range without changing the unguarded source value.
+func.def @unsigned_inclusive_edges(%position: i64, %storage: buffer) -> (i64) {
+  %origin = scalar.constant 0 : i64
+  %value = scalar.constant 42 : i32
+  %above = scalar.cmpi ugt, %position, %origin : i64
+  scf.if %above {
+    %other_offset = index.constant 1 : offset
+    buffer.store.i8 %value, %storage[%other_offset]
+  } else {
+    %offset = index.cast %position : i64 to offset
+    buffer.store.i8 %value, %storage[%offset]
+  }
+  %inside = scalar.cmpi uge, %origin, %position : i64
+  scf.if %inside {
+    %offset = index.cast %position : i64 to offset
+    buffer.store.i8 %value, %storage[%offset]
+  }
+  func.return %position : i64
+}
+
+// ----
+CHECK: %offset = index.constant 0 : offset
+CHECK: scf.if %above {
+CHECK: scf.if %inside {
+CHECK: func.return %position : i64
+CHECK-NOT: index.cast *

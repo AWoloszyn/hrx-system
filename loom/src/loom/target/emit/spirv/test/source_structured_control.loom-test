@@ -154,23 +154,29 @@ func.def target(@target) @source_for(%start: index, %limit: index, %step: index,
        %step = OpLoad %int %19 Aligned 4
          %21 = OpAccessChain %_ptr_StorageBuffer_int %10 %int_0
        %seed = OpLoad %int %21 Aligned 4
-               OpBranch %23
-         %23 = OpLabel
-          %i = OpPhi %int %start %14 %27 %26
-        %acc = OpPhi %int %seed %14 %next %26
-         %32 = OpSLessThan %bool %i %limit
-               OpLoopMerge %25 %26 Unroll
-               OpBranchConditional %32 %24 %25
-         %24 = OpLabel
+         %24 = OpSLessThan %bool %start %limit
+         %25 = OpISub %int %limit %start
+         %26 = OpULessThan %bool %step %25
+         %27 = OpISub %int %limit %step
+         %28 = OpSelect %int %26 %27 %start
+               OpBranch %29
+         %29 = OpLabel
+          %i = OpPhi %int %start %14 %33 %32
+        %acc = OpPhi %int %seed %14 %next %32
+         %38 = OpPhi %bool %24 %14 %34 %32
+               OpLoopMerge %31 %32 Unroll
+               OpBranchConditional %38 %30 %31
+         %30 = OpLabel
        %next = OpIAdd %int %acc %i
-               OpBranch %26
-         %26 = OpLabel
-         %27 = OpIAdd %int %i %step
-               OpBranch %23
-         %25 = OpLabel
-     %result = OpPhi %int %acc %23
-         %34 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
-               OpStore %34 %result Aligned 4
+               OpBranch %32
+         %32 = OpLabel
+         %34 = OpSLessThan %bool %i %28
+         %33 = OpIAdd %int %i %step
+               OpBranch %29
+         %31 = OpLabel
+     %result = OpPhi %int %acc %29
+         %40 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
+               OpStore %40 %result Aligned 4
                OpReturn
                OpFunctionEnd
 
@@ -259,33 +265,39 @@ func.def target(@target) @source_for_if(%start: index, %limit: index, %step: ind
       %pivot = OpLoad %int %22 Aligned 4
          %24 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
        %seed = OpLoad %int %24 Aligned 4
-               OpBranch %26
-         %26 = OpLabel
-          %i = OpPhi %int %start %15 %30 %29
-        %acc = OpPhi %int %seed %15 %next %29
-         %35 = OpSLessThan %bool %i %limit
-               OpLoopMerge %28 %29 None
-               OpBranchConditional %35 %27 %28
-         %27 = OpLabel
+         %27 = OpSLessThan %bool %start %limit
+         %28 = OpISub %int %limit %start
+         %29 = OpULessThan %bool %step %28
+         %30 = OpISub %int %limit %step
+         %31 = OpSelect %int %29 %30 %start
+               OpBranch %32
+         %32 = OpLabel
+          %i = OpPhi %int %start %15 %36 %35
+        %acc = OpPhi %int %seed %15 %next %35
+         %41 = OpPhi %bool %27 %15 %37 %35
+               OpLoopMerge %34 %35 None
+               OpBranchConditional %41 %33 %34
+         %33 = OpLabel
      %before = OpSLessThan %bool %i %pivot
-               OpSelectionMerge %38 None
-               OpBranchConditional %before %37 %39
-         %37 = OpLabel
+               OpSelectionMerge %44 None
+               OpBranchConditional %before %43 %45
+         %43 = OpLabel
         %sum = OpIAdd %int %acc %i
-               OpBranch %38
-         %39 = OpLabel
+               OpBranch %44
+         %45 = OpLabel
  %difference = OpISub %int %acc %i
-               OpBranch %38
-         %38 = OpLabel
-       %next = OpPhi %int %sum %37 %difference %39
-               OpBranch %29
-         %29 = OpLabel
-         %30 = OpIAdd %int %i %step
-               OpBranch %26
-         %28 = OpLabel
-     %result = OpPhi %int %acc %26
-         %43 = OpAccessChain %_ptr_StorageBuffer_int %12 %int_0
-               OpStore %43 %result Aligned 4
+               OpBranch %44
+         %44 = OpLabel
+       %next = OpPhi %int %sum %43 %difference %45
+               OpBranch %35
+         %35 = OpLabel
+         %37 = OpSLessThan %bool %i %31
+         %36 = OpIAdd %int %i %step
+               OpBranch %32
+         %34 = OpLabel
+     %result = OpPhi %int %acc %32
+         %49 = OpAccessChain %_ptr_StorageBuffer_int %12 %int_0
+               OpStore %49 %result Aligned 4
                OpReturn
                OpFunctionEnd
 

@@ -1,0 +1,19 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test
+// RUN: with-checks emit source-low output=low
+
+x86.target<avx2> @target
+
+func.def target(@target) @offset_counter(%lower: offset, %upper: offset, %step: offset, %initial: i32) -> (i32) {
+  %positive_step = index.assume %step [range(%step, 1, 2147483647)] : offset
+  %increment = scalar.constant 1 : i32
+  %result = scf.for %iv = [%lower to %upper step %positive_step](%count = %initial : i32) -> (i32) {
+    %next = scalar.addi %count, %increment : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: * = cmp.ult.gpr64 %iv, %upper
+CHECK: low.cond_br *
+CHECK: * = lea %iv, %positive_step

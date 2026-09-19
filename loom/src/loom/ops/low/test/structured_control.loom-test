@@ -49,7 +49,7 @@ low.func.def target<test.low.core>(@test_target) @if_multi_result(%condition: re
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_carried(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>, %factor: reg<test.i32>) -> (reg<test.i32>) asm {
-  %result = low.scf.for [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) unroll(%factor) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
+  %result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) unroll(%factor) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
     low.scf.yield %acc : reg<test.i32>
   }
   return %result
@@ -74,7 +74,7 @@ low.func.def target<test.low.core>(@test_target) @while_carried(%condition: reg<
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_bare_unroll(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>) {
-  low.scf.for [%lower to %upper step %step] unroll do(%iv: reg<test.i32>) {
+  low.scf.for signed [%lower to %upper step %step] unroll do(%iv: reg<test.i32>) {
     low.scf.yield
   }
   low.return
@@ -84,7 +84,7 @@ low.func.def target<test.low.core>(@test_target) @for_bare_unroll(%lower: reg<te
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_bare_unroll(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>) asm {
-  low.scf.for [%lower to %upper step %step] unroll do(%iv: reg<test.i32>) {
+  low.scf.for signed [%lower to %upper step %step] unroll do(%iv: reg<test.i32>) {
   }
   return
 }
@@ -123,7 +123,7 @@ low.func.def target<test.low.core>(@test_target) @asm_nested_if(%condition: reg<
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @asm_nested_for(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>) -> (reg<test.i32>) asm {
-  %result = low.scf.for [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
+  %result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
     %next = test.add.i32 %acc, %iv
     low.scf.yield %next : reg<test.i32>
   }
@@ -134,7 +134,7 @@ low.func.def target<test.low.core>(@test_target) @asm_nested_for(%lower: reg<tes
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @asm_nested_for(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>) -> (reg<test.i32>) asm {
-  %result = low.scf.for [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
+  %result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
     %next = test.add.i32 %acc, %iv
     low.scf.yield %next : reg<test.i32>
   }
@@ -166,4 +166,16 @@ low.func.def target<test.low.core>(@test_target) @asm_nested_while(%condition: r
     low.scf.yield %body : reg<test.i32>
   }
   return %result
+}
+
+// ====
+
+// Signedness is independent of the register class or its payload type.
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @unsigned_counter(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %initial: reg<test.i32>) -> (reg<test.i32>) asm {
+  %last = low.scf.for unsigned [%lower to %upper step %step] iter_args(%initial: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %previous: reg<test.i32>) {
+    low.scf.yield %iv : reg<test.i32>
+  }
+  return %last
 }

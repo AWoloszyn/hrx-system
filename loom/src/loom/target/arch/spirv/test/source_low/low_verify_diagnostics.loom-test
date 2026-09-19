@@ -257,7 +257,7 @@ spirv.target<vulkan1_3> @target
 
 low.func.def target<spirv.logical.core>(@target) @scf_for_yield_type_mismatch(%start: reg<spirv.id : i32>, %limit: reg<spirv.id : i32>, %step: reg<spirv.id : i32>, %initial: reg<spirv.id : i32>, %wrong: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
   %wrong_unsigned = OpBitcast.i32.u32 %wrong : reg<spirv.id : i32>
-  %result = low.scf.for [%start to %limit step %step] iter_args(%initial: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%i: reg<spirv.id : i32>, %carried: reg<spirv.id : i32>) {
+  %result = low.scf.for signed [%start to %limit step %step] iter_args(%initial: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%i: reg<spirv.id : i32>, %carried: reg<spirv.id : i32>) {
     // ERROR@+1: SPIRV/020 {function_name="scf_for_yield_type_mismatch", source_value_name="wrong_unsigned", target_value_name="carried", expected_value_type="s32", actual_value_type="u32"}
     low.scf.yield %wrong_unsigned : reg<spirv.id : i32>
   }
@@ -271,7 +271,7 @@ low.func.def target<spirv.logical.core>(@target) @scf_for_yield_type_mismatch(%s
 spirv.target<vulkan1_3> @target
 
 low.func.def target<spirv.logical.core>(@target) @scf_for_body_packet_type_mismatch(%start: reg<spirv.id : i32>, %limit: reg<spirv.id : i32>, %step: reg<spirv.id : i32>, %initial: reg<spirv.id : i32>, %wrong: reg<spirv.id : f32>) asm {
-  %result = low.scf.for [%start to %limit step %step] iter_args(%initial: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%i: reg<spirv.id : i32>, %carried: reg<spirv.id : i32>) {
+  %result = low.scf.for signed [%start to %limit step %step] iter_args(%initial: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%i: reg<spirv.id : i32>, %carried: reg<spirv.id : i32>) {
     // ERROR@+1: SPIRV/013 {function_name="scf_for_body_packet_type_mismatch", descriptor_key="spirv.op_iadd.i32", field_kind="operand", field_index="0", value_name="wrong", expected_value_type="s32", actual_value_type="f32"}
     %next = OpIAdd %wrong, %i
     low.scf.yield %next : reg<spirv.id : i32>

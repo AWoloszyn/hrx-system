@@ -230,3 +230,70 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @entry_se
 
 // ----
 object emitted: target
+
+// ====
+
+// RUN: with-checks emit llvmir-bitcode
+// REQUIRES: llvm-dis
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+func.def public target(@target) @enabled() -> (i1) {
+  %enabled = scalar.constant true : i1
+  func.return %enabled : i1
+}
+
+// ----
+CHECK: define dso_local i1 @enabled() {
+CHECK: ret i1 true
+
+// ====
+
+// RUN: with-checks emit llvmir-bitcode
+// REQUIRES: llvm-dis
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+func.def public target(@target) @disabled() -> (i1) {
+  %disabled = scalar.constant false : i1
+  func.return %disabled : i1
+}
+
+// ----
+CHECK: define dso_local i1 @disabled() {
+CHECK: ret i1 false
+
+// ====
+
+// RUN: with-checks emit llvmir-bitcode
+// REQUIRES: llvm-dis
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+func.def public target(@target) @invert(%value: i1) -> (i1) {
+  %mask = scalar.constant true : i1
+  %result = scalar.xori %value, %mask : i1
+  func.return %result : i1
+}
+
+// ----
+CHECK: %result = xor i1 %value, true
+CHECK: ret i1 %result
+
+// ====
+
+// RUN: with-checks emit llvmir-bitcode
+// REQUIRES: llvm-dis
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+func.def public target(@target) @folded_predicate() -> (i1) {
+  %position = index.constant 7 : index
+  %limit = index.constant 11 : index
+  %before_limit = index.cmp slt, %position, %limit : index
+  func.return %before_limit : i1
+}
+
+// ----
+CHECK: define dso_local i1 @folded_predicate() {
+CHECK: ret i1 true

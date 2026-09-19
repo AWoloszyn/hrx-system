@@ -226,6 +226,7 @@ loom_cc_test(
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/index",
         "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/target:facts",
         "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
@@ -722,6 +723,7 @@ loom_cc_library(
     hdrs = ["liveness.h"],
     deps = [
         "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/target:registers",
         "//loom/src/loom/util:adaptive_sort",
         "//loom/src/loom/util:cfg_graph",

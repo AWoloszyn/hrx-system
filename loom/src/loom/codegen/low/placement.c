@@ -136,8 +136,6 @@ static bool loom_low_placement_cause_can_alias(
     case LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT:
     case LOOM_LOW_PLACEMENT_CAUSE_LOW_BRANCH:
     case LOOM_LOW_PLACEMENT_CAUSE_LOW_SCF_LOOP_ENTRY:
-    case LOOM_LOW_PLACEMENT_CAUSE_LOW_SCF_YIELD:
-    case LOOM_LOW_PLACEMENT_CAUSE_LOW_SCF_CONDITION:
       return true;
     default:
       return false;
@@ -386,7 +384,9 @@ static loom_value_id_t loom_low_placement_descriptor_operand_value_id(
 }
 
 static iree_status_t loom_low_placement_collect_op_relations(
-    loom_low_placement_build_state_t* state, const loom_op_t* op) {
+    loom_low_placement_build_state_t* state,
+    const loom_liveness_operation_point_t* operation_point) {
+  const loom_op_t* op = operation_point->op;
   const iree_host_size_t move_unit_start =
       state->packet_move_unit_count + state->branch_unit_count;
   loom_low_placement_move_group_flags_t move_group_flags = 0;
@@ -403,7 +403,7 @@ static iree_status_t loom_low_placement_collect_op_relations(
                                          storage_relation.source_value_id);
     loom_low_placement_assert_storage_relation_units(
         state, &storage_relation, result_ordinal, source_ordinal);
-    const loom_low_placement_relation_t placement_relation = {
+    loom_low_placement_relation_t placement_relation = {
         .op = storage_relation.op,
         .result_ordinal = result_ordinal,
         .source_ordinal = source_ordinal,
@@ -419,6 +419,19 @@ static iree_status_t loom_low_placement_collect_op_relations(
             storage_relation.flags),
         .priority = 1,
     };
+    if (placement_relation.cause == LOOM_LOW_PLACEMENT_CAUSE_LOW_SCF_YIELD ||
+        placement_relation.cause ==
+            LOOM_LOW_PLACEMENT_CAUSE_LOW_SCF_CONDITION) {
+      // A structured edge can forward a capture that remains observable after
+      // this handoff, including the next iteration of an enclosing loop.
+      // Only a consumed source permits ignoring its storage interference.
+      const loom_liveness_interval_t* source_interval =
+          loom_low_placement_interval_for_ordinal(state, source_ordinal);
+      if (source_interval->end_point <= operation_point->end_point) {
+        placement_relation.flags |=
+            LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE;
+      }
+    }
     IREE_RETURN_IF_ERROR(
         loom_low_placement_collect_relation(state, &placement_relation));
   }
@@ -668,33 +681,13 @@ static iree_status_t loom_low_placement_collect_pair_relations(
   return iree_ok_status();
 }
 
-static iree_status_t loom_low_placement_visit_region_ops(
-    loom_low_placement_build_state_t* state, const loom_region_t* region) {
-  const loom_block_t* block = NULL;
-  loom_region_for_each_block(region, block) {
-    const loom_op_t* op = NULL;
-    loom_block_for_each_op(block, op) {
-      IREE_RETURN_IF_ERROR(loom_low_placement_collect_op_relations(state, op));
-      if (!iree_any_bit_set(state->value_domain->flags,
-                            LOOM_LOCAL_VALUE_DOMAIN_FLAG_REGION_TREE)) {
-        continue;
-      }
-      loom_region_t* const* regions = loom_op_regions(op);
-      for (uint8_t i = 0; i < op->region_count; ++i) {
-        if (regions[i] == NULL) {
-          continue;
-        }
-        IREE_RETURN_IF_ERROR(
-            loom_low_placement_visit_region_ops(state, regions[i]));
-      }
-    }
-  }
-  return iree_ok_status();
-}
-
 static iree_status_t loom_low_placement_visit_ops(
     loom_low_placement_build_state_t* state) {
-  return loom_low_placement_visit_region_ops(state, state->region);
+  for (iree_host_size_t i = 0; i < state->liveness->operation_count; ++i) {
+    IREE_RETURN_IF_ERROR(loom_low_placement_collect_op_relations(
+        state, &state->liveness->operation_points[i]));
+  }
+  return iree_ok_status();
 }
 
 static iree_status_t loom_low_placement_build(

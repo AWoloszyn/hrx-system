@@ -293,6 +293,7 @@ loom_check_test_suite(
     "test/entry_point.loom-test"
     "test/index_conversion.loom-test"
     "test/integer_boolean.loom-test"
+    "test/loop_termination.loom-test"
     "test/ordinary_vector_bit_layout.loom-test"
     "test/ordinary_vector_float.loom-test"
     "test/ordinary_vector_integer.loom-test"

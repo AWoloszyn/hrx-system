@@ -1,5 +1,6 @@
 func.def public @create_host_buffer(%byte_length: i64, %pattern: i32) -> (buffer) {
-  %length = index.cast %byte_length : i64 to offset
+  %byte_length_input = scalar.assume %byte_length [range(%byte_length, 0, 9223372036854775807)] : i64
+  %length = index.cast %byte_length_input : i64 to offset
   %origin = index.constant 0 : offset
   %storage = buffer.alloca<private> align(1) %length : buffer
   buffer.fill %pattern, %storage[%origin], %length : i32
@@ -26,13 +27,15 @@ func.def public @host_buffer_aliases(%storage: buffer, %tag: i32) -> (buffer, i3
 }
 
 func.def public @host_buffer_store(%storage: buffer, %position: i64, %value: i32) {
-  %offset = index.cast %position : i64 to offset
+  %position_input = scalar.assume %position [range(%position, 0, 9223372036854775807)] : i64
+  %offset = index.cast %position_input : i64 to offset
   buffer.store.i8 %value, %storage[%offset]
   func.return
 }
 
 func.def public @host_buffer_load(%storage: buffer, %position: i64) -> (i32) {
-  %offset = index.cast %position : i64 to offset
+  %position_input = scalar.assume %position [range(%position, 0, 9223372036854775807)] : i64
+  %offset = index.cast %position_input : i64 to offset
   %result = buffer.load.i8.u %storage[%offset]
   func.return %result : i32
 }

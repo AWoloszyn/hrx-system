@@ -87,7 +87,7 @@ func.def target(@target) @spirv_index_counted_loop(%start: index, %limit: index,
 // ----
 low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_index_counted_loop(%start: reg<spirv.id : index>, %limit: reg<spirv.id : index>, %seed: reg<spirv.id : index>) -> (reg<spirv.id : index>) asm {
   %step = OpConstant.i32 1 : reg<spirv.id : index>
-  %sum = low.scf.for [%start to %limit step %step] iter_args(%seed: reg<spirv.id : index>) -> (reg<spirv.id : index>) do(%i: reg<spirv.id : index>, %acc: reg<spirv.id : index>) {
+  %sum = low.scf.for signed [%start to %limit step %step] iter_args(%seed: reg<spirv.id : index>) -> (reg<spirv.id : index>) do(%i: reg<spirv.id : index>, %acc: reg<spirv.id : index>) {
     %next = OpIAdd %acc, %i : reg<spirv.id : index>
     low.scf.yield %next : reg<spirv.id : index>
   }
@@ -812,7 +812,7 @@ low.kernel.def target<spirv.logical.core>(@hal_target_coop_f16) workgroup_size(3
   %rhs = OpCooperativeMatrixLoadKHR.rhs.f16.16x16x16.f32.subgroup.row_major %75 : reg<spirv.id : spirv.cooperative_matrix<16x16xf16, subgroup, matrix_b>>
   %77 = OpPtrAccessChain.storage_buffer.f32.byte_offset %init_aligned, %byte_offset_aligned
   %init = OpCooperativeMatrixLoadKHR.init.f16.16x16x16.f32.subgroup.row_major %77 : reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>
-  %result = low.scf.for [%loop_begin to %iteration_count step %loop_step] iter_args(%init: reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>) -> (reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>) {
+  %result = low.scf.for signed [%loop_begin to %iteration_count step %loop_step] iter_args(%init: reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>) -> (reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>) {
     %next = OpCooperativeMatrixMulAddKHR.f16.16x16x16.f32.subgroup %lhs, %rhs, %accumulator : reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>
     low.scf.yield %next : reg<spirv.id : spirv.cooperative_matrix<16x16xf32, subgroup, matrix_accumulator>>
   }

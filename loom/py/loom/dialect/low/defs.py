@@ -191,6 +191,15 @@ LowScheduleMode = EnumDef(
     doc="Instruction scheduling exactness mode for a low function. Absent means free.",
 )
 
+LowScfForSignedness = EnumDef(
+    "LowScfForSignedness",
+    [
+        EnumCase("signed", 1, doc="Interpret counter registers as signed integers."),
+        EnumCase("unsigned", 2, doc="Interpret counter registers as unsigned integers."),
+    ],
+    doc="Integer interpretation of low.scf.for bounds, step, and induction values, independent of the register class.",
+)
+
 LowScfForUnrollPolicy = EnumDef(
     "LowScfForUnrollPolicy",
     [
@@ -907,7 +916,14 @@ low_scf_for = Op(
     "low.scf.for",
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
-    doc="Bounded counted target-low loop with optional loop-carried register state.",
+    doc=(
+        "Bounded counted target-low loop with optional loop-carried register state. "
+        "The signedness explicitly determines the integer interpretation of counter registers. "
+        "For a positive step, the body visits lower_bound + n * step while that mathematical "
+        "value is below upper_bound. An unrepresentable unused terminal increment does not "
+        "wrap into another body iteration. Empty or reversed ranges return the initial "
+        "iter_args; nonempty ranges return the final yielded values."
+    ),
     verify="loom_low_scf_for_verify",
     operands=[
         Operand("lower_bound", REGISTER, doc="Inclusive lower bound register."),
@@ -927,6 +943,12 @@ low_scf_for = Op(
         ),
     ],
     attrs=[
+        AttrDef(
+            "signedness",
+            ATTR_TYPE_ENUM,
+            enum_def=LowScfForSignedness,
+            doc="Signed or unsigned integer interpretation of the counter domain.",
+        ),
         AttrDef(
             "unroll_policy",
             ATTR_TYPE_ENUM,
@@ -966,6 +988,7 @@ low_scf_for = Op(
     ],
     traits=[ImplicitTerminator("low.scf.yield"), STORAGE_RELATION],
     format=[
+        Attr("signedness"),
         LBRACKET,
         Ref("lower_bound"),
         kw("to"),
@@ -994,8 +1017,8 @@ low_scf_for = Op(
         Region("body", syntax="low.asm.optional"),
     ],
     examples=[
-        "low.scf.for [%lo to %hi step %step] do(%iv: reg<amdgpu.sgpr x1>) {\n  low.scf.yield\n}",
-        "%result = low.scf.for [%lo to %hi step %step] iter_args(%acc0: reg<amdgpu.vgpr x1>) -> (reg<amdgpu.vgpr x1>) do(%iv: reg<amdgpu.sgpr x1>, %acc: reg<amdgpu.vgpr x1>) {\n  low.scf.yield %acc : reg<amdgpu.vgpr x1>\n}",
+        "low.scf.for signed [%lo to %hi step %step] do(%iv: reg<amdgpu.sgpr x1>) {\n  low.scf.yield\n}",
+        "%result = low.scf.for unsigned [%lo to %hi step %step] iter_args(%acc0: reg<amdgpu.vgpr x1>) -> (reg<amdgpu.vgpr x1>) do(%iv: reg<amdgpu.sgpr x1>, %acc: reg<amdgpu.vgpr x1>) {\n  low.scf.yield %acc : reg<amdgpu.vgpr x1>\n}",
     ],
 )
 

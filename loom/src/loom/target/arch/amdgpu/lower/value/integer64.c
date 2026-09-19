@@ -814,7 +814,7 @@ iree_status_t loom_amdgpu_select_index_cast_plan(
       const bool is_offset = result_scalar_type == LOOM_SCALAR_TYPE_OFFSET;
       const int64_t required_lo = is_offset ? 0 : INT32_MIN;
       const int64_t required_hi = is_offset ? (int64_t)UINT32_MAX : INT32_MAX;
-      if (source_facts.range_lo < required_lo ||
+      if ((!is_offset && source_facts.range_lo < required_lo) ||
           source_facts.range_hi > required_hi) {
         IREE_RETURN_IF_ERROR(loom_amdgpu_emit_index_cast_range_diagnostic(
             context, source_op, source_type, result_type, source_facts,

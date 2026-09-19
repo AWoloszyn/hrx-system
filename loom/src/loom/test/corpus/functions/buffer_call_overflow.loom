@@ -5,7 +5,8 @@ func.def public noinline @reverse_buffer_pairs(%b0: buffer, %t0: i64, %b1: buffe
 }
 
 func.def public @overflow_buffer(%length: i64) -> (buffer) {
-  %size = index.cast %length : i64 to offset
+  %length_input = scalar.assume %length [range(%length, 0, 9223372036854775807)] : i64
+  %size = index.cast %length_input : i64 to offset
   %storage = buffer.alloca<private> align(8) %size : buffer
   func.return %storage : buffer
 }

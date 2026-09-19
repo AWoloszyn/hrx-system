@@ -15,6 +15,7 @@
 #include "loom/ir/module.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/scalar/ops.h"
+#include "loom/target/facts.h"
 #include "loom/util/fact_table.h"
 
 namespace loom {
@@ -89,9 +90,8 @@ class ConditionFactsTest : public ::testing::Test {
     return op;
   }
 
-  loom_op_t* BuildScalarI32Compare(loom_scalar_cmpi_predicate_t predicate,
-                                   loom_value_id_t left,
-                                   loom_value_id_t right) {
+  loom_op_t* BuildScalarCompare(loom_scalar_cmpi_predicate_t predicate,
+                                loom_value_id_t left, loom_value_id_t right) {
     loom_op_t* op = nullptr;
     IREE_CHECK_OK(loom_scalar_cmpi_build(&builder_, predicate, left, right,
                                          LOOM_LOCATION_UNKNOWN, &op));
@@ -356,11 +356,11 @@ TEST_F(ConditionFactsTest, EdgeFactsProveWiderScalarCompareTrue) {
   DefineFacts(outer_bound, loom_value_facts_exact_i64(8));
   DefineFacts(inner_bound, loom_value_facts_exact_i64(16));
   loom_op_t* outer =
-      BuildScalarI32Compare(LOOM_SCALAR_CMPI_PREDICATE_SLT, lane, outer_bound);
+      BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_SLT, lane, outer_bound);
   ASSERT_TRUE(Query(loom_scalar_cmpi_result(outer)));
 
   loom_op_t* inner =
-      BuildScalarI32Compare(LOOM_SCALAR_CMPI_PREDICATE_SLT, lane, inner_bound);
+      BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_SLT, lane, inner_bound);
   bool condition = false;
   bool proven = false;
   IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
@@ -398,11 +398,11 @@ TEST_F(ConditionFactsTest, SharedBooleanDagProofIsMemoized) {
   DefineFacts(outer_bound, loom_value_facts_exact_i64(8));
   DefineFacts(inner_bound, loom_value_facts_exact_i64(16));
   loom_op_t* outer =
-      BuildScalarI32Compare(LOOM_SCALAR_CMPI_PREDICATE_SLT, lane, outer_bound);
+      BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_SLT, lane, outer_bound);
   ASSERT_TRUE(Query(loom_scalar_cmpi_result(outer)));
 
   loom_op_t* inner =
-      BuildScalarI32Compare(LOOM_SCALAR_CMPI_PREDICATE_SLT, lane, inner_bound);
+      BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_SLT, lane, inner_bound);
   loom_value_id_t condition = loom_scalar_cmpi_result(inner);
   for (int i = 0; i < 64; ++i) {
     condition = loom_scalar_andi_result(BuildBoolAnd(condition, condition));
@@ -443,11 +443,99 @@ TEST_F(ConditionFactsTest, UnsignedCompareUsesSignedRelationWhenNonNegative) {
             LOOM_SYMBOLIC_INTEGER_RELATION_GE);
 }
 
+TEST_F(ConditionFactsTest, UnsignedBranchBoundsPreserveSignedBoundaryValues) {
+  const loom_index_cmp_predicate_t index_predicates[] = {
+      LOOM_INDEX_CMP_PREDICATE_ULT, LOOM_INDEX_CMP_PREDICATE_ULE,
+      LOOM_INDEX_CMP_PREDICATE_UGT, LOOM_INDEX_CMP_PREDICATE_UGE};
+  const loom_scalar_cmpi_predicate_t scalar_predicates[] = {
+      LOOM_SCALAR_CMPI_PREDICATE_ULT, LOOM_SCALAR_CMPI_PREDICATE_ULE,
+      LOOM_SCALAR_CMPI_PREDICATE_UGT, LOOM_SCALAR_CMPI_PREDICATE_UGE};
+  const int64_t samples[] = {INT64_MIN,     -2,       -1, 0, 1, 7, 8,
+                             INT64_MAX - 1, INT64_MAX};
+  const int64_t upper_ranges[][2] = {{0, 0},         {1, 1},   {0, 8},
+                                     {0, INT64_MAX}, {-2, -1}, {-2, 8}};
+  for (auto type : {LOOM_SCALAR_TYPE_I64, LOOM_SCALAR_TYPE_INDEX}) {
+    for (const auto& upper_range : upper_ranges) {
+      const loom_value_id_t value = DefineValue(loom_type_scalar(type));
+      const loom_value_id_t bound = DefineValue(loom_type_scalar(type));
+      DefineFacts(bound,
+                  loom_value_facts_make(upper_range[0], upper_range[1], 1));
+      for (int predicate = 0; predicate < 4; ++predicate) {
+        for (bool swapped : {false, true}) {
+          const loom_value_id_t left = swapped ? bound : value;
+          const loom_value_id_t right = swapped ? value : bound;
+          loom_op_t* compare =
+              type == LOOM_SCALAR_TYPE_INDEX
+                  ? BuildIndexCompare(index_predicates[predicate], left, right)
+                  : BuildScalarCompare(scalar_predicates[predicate], left,
+                                       right);
+          for (bool truth : {false, true}) {
+            SCOPED_TRACE(::testing::Message()
+                         << "type=" << type << ", predicate=" << predicate
+                         << ", swapped=" << swapped << ", truth=" << truth
+                         << ", range=" << upper_range[0] << ':'
+                         << upper_range[1]);
+            ASSERT_TRUE(Query(loom_op_const_results(compare)[0], truth));
+            loom_value_facts_t refined = loom_value_facts_unknown();
+            loom_condition_fact_set_apply_to_value_facts(
+                &condition_facts_, &fact_table_, value, &refined);
+            if (upper_range[0] == 0 && upper_range[1] == 8 &&
+                truth == ((predicate < 2) != swapped)) {
+              EXPECT_EQ(refined.range_lo, 0);
+              EXPECT_EQ(refined.range_hi,
+                        (predicate % 2 == 0) == truth ? 7 : 8);
+            }
+            for (int64_t input : samples) {
+              for (int64_t limit : samples) {
+                if (limit < upper_range[0] || limit > upper_range[1]) {
+                  continue;
+                }
+                const uint64_t a = (uint64_t)(swapped ? limit : input);
+                const uint64_t b = (uint64_t)(swapped ? input : limit);
+                const bool outcomes[] = {(a < b), (a <= b), (a > b), (a >= b)};
+                if (outcomes[predicate] == truth) {
+                  EXPECT_LE(refined.range_lo, input);
+                  EXPECT_GE(refined.range_hi, input);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(ConditionFactsTest, UnsignedBoundMustFitSignedTargetCarrier) {
+  loom_target_facts_t target_facts = {};
+  target_facts.storage.snapshot.index_bitwidth = 32;
+  fact_table_.context.target_facts = &target_facts;
+  const loom_value_id_t value = DefineIndexValue();
+  for (int64_t bound_value :
+       {INT64_C(2147483647), INT64_C(2147483648), INT64_C(4294967296)}) {
+    const loom_value_id_t bound = DefineIndexValue();
+    DefineFacts(bound, loom_value_facts_exact_i64(bound_value));
+    loom_op_t* compare =
+        BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_ULT, value, bound);
+    ASSERT_TRUE(Query(loom_index_cmp_result(compare)));
+    loom_value_facts_t refined = loom_value_facts_unknown();
+    loom_condition_fact_set_apply_to_value_facts(&condition_facts_,
+                                                 &fact_table_, value, &refined);
+    if (bound_value == INT32_MAX) {
+      EXPECT_EQ(refined.range_lo, 0);
+      EXPECT_EQ(refined.range_hi, INT32_MAX - 1);
+    } else {
+      EXPECT_EQ(refined.range_lo, INT64_MIN);
+      EXPECT_EQ(refined.range_hi, INT64_MAX);
+    }
+  }
+}
+
 TEST_F(ConditionFactsTest, ScalarCmpiProducesIntegerRelation) {
   loom_value_id_t left = DefineI32Value();
   loom_value_id_t right = DefineI32Value();
   loom_op_t* compare =
-      BuildScalarI32Compare(LOOM_SCALAR_CMPI_PREDICATE_EQ, left, right);
+      BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_EQ, left, right);
 
   Query(loom_scalar_cmpi_result(compare), false);
 
@@ -964,10 +1052,10 @@ TEST_F(ConditionFactsTest, DynamicRelationsProveComparisonConditions) {
           BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, left, right)),
       loom_index_cmp_result(
           BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SGE, left, right)),
-      loom_scalar_cmpi_result(BuildScalarI32Compare(
-          LOOM_SCALAR_CMPI_PREDICATE_SLT, scalar_left, scalar_right)),
-      loom_scalar_cmpi_result(BuildScalarI32Compare(
-          LOOM_SCALAR_CMPI_PREDICATE_SGE, scalar_left, scalar_right)),
+      loom_scalar_cmpi_result(BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_SLT,
+                                                 scalar_left, scalar_right)),
+      loom_scalar_cmpi_result(BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_SGE,
+                                                 scalar_left, scalar_right)),
   };
   for (int i = 0; i < 2; ++i) {
     condition_facts_.integer_relations[i] = {

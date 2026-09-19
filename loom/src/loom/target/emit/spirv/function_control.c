@@ -26,25 +26,6 @@ static iree_status_t loom_spirv_emit_branch_label(
       LOOM_SPIRV_OP_BRANCH, operands, IREE_ARRAYSIZE(operands));
 }
 
-static bool loom_spirv_emit_loop_counter_is_unsigned(
-    loom_spirv_value_type_t value_type) {
-  if (value_type.value_class == LOOM_SPIRV_VALUE_CLASS_OFFSET64) {
-    return true;
-  }
-  if (value_type.value_class != LOOM_SPIRV_VALUE_CLASS_SCALAR) {
-    IREE_CHECK_UNREACHABLE("verified SPIR-V low.scf.for counter type");
-    return false;
-  }
-  const loom_spirv_scalar_type_descriptor_t* descriptor =
-      loom_spirv_scalar_type_descriptor(value_type.scalar_type);
-  if (descriptor == NULL ||
-      descriptor->kind == LOOM_SPIRV_SCALAR_TYPE_KIND_FLOAT) {
-    IREE_CHECK_UNREACHABLE("verified SPIR-V low.scf.for counter type");
-    return false;
-  }
-  return descriptor->kind == LOOM_SPIRV_SCALAR_TYPE_KIND_UNSIGNED_INT;
-}
-
 static uint32_t loom_spirv_emit_for_loop_control(const loom_op_t* op) {
   if (loom_low_scf_for_unroll_factor_is_present(op) ||
       !loom_attr_is_absent(
@@ -230,12 +211,78 @@ iree_status_t loom_spirv_emit_scf_for(loom_spirv_emit_state_t* state,
   IREE_ASSERT(
       loom_spirv_value_type_equal(lower_bound.value_type, step.value_type));
 
+  uint32_t bool_type_id = 0;
+  IREE_RETURN_IF_ERROR(
+      loom_spirv_emit_type_bool(state->type_context, &bool_type_id));
+  const uint32_t compare_opcode =
+      loom_low_scf_for_signedness(op) == LOOM_LOW_SCF_FOR_SIGNEDNESS_UNSIGNED
+          ? LOOM_SPIRV_OP_U_LESS_THAN
+          : LOOM_SPIRV_OP_S_LESS_THAN;
+  const uint32_t entry_condition_id = loom_spirv_emit_allocate_id(state);
+  const uint32_t entry_compare_operands[] = {
+      bool_type_id,
+      entry_condition_id,
+      lower_bound.id,
+      upper_bound.id,
+  };
+  IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
+      loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_FUNCTION),
+      compare_opcode, entry_compare_operands,
+      IREE_ARRAYSIZE(entry_compare_operands)));
+
+  // In a nonempty domain unsigned(upper - lower) is the exact distance even
+  // across the signed zero boundary. Clamp upper - step to lower when the
+  // step spans that distance. The resulting threshold is representable and
+  // another iteration exists exactly when the current IV is below it.
+  const uint32_t distance_id = loom_spirv_emit_allocate_id(state);
+  const uint32_t distance_operands[] = {
+      lower_bound.type_id,
+      distance_id,
+      upper_bound.id,
+      lower_bound.id,
+  };
+  IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
+      loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_FUNCTION),
+      LOOM_SPIRV_OP_I_SUB, distance_operands,
+      IREE_ARRAYSIZE(distance_operands)));
+  const uint32_t spans_step_id = loom_spirv_emit_allocate_id(state);
+  const uint32_t spans_step_operands[] = {
+      bool_type_id,
+      spans_step_id,
+      step.id,
+      distance_id,
+  };
+  IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
+      loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_FUNCTION),
+      LOOM_SPIRV_OP_U_LESS_THAN, spans_step_operands,
+      IREE_ARRAYSIZE(spans_step_operands)));
+  const uint32_t limit_id = loom_spirv_emit_allocate_id(state);
+  const uint32_t limit_operands[] = {
+      lower_bound.type_id,
+      limit_id,
+      upper_bound.id,
+      step.id,
+  };
+  IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
+      loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_FUNCTION),
+      LOOM_SPIRV_OP_I_SUB, limit_operands, IREE_ARRAYSIZE(limit_operands)));
+  const uint32_t threshold_id = loom_spirv_emit_allocate_id(state);
+  const uint32_t threshold_operands[] = {
+      lower_bound.type_id, threshold_id, spans_step_id, limit_id,
+      lower_bound.id,
+  };
+  IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
+      loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_FUNCTION),
+      LOOM_SPIRV_OP_SELECT, threshold_operands,
+      IREE_ARRAYSIZE(threshold_operands)));
+
   const uint32_t preheader_label_id = state->current_label_id;
   const uint32_t header_label_id = loom_spirv_emit_allocate_id(state);
   const uint32_t body_label_id = loom_spirv_emit_allocate_id(state);
   const uint32_t merge_label_id = loom_spirv_emit_allocate_id(state);
   const uint32_t continue_label_id = loom_spirv_emit_allocate_id(state);
   const uint32_t next_iv_id = loom_spirv_emit_allocate_id(state);
+  const uint32_t next_condition_id = loom_spirv_emit_allocate_id(state);
   IREE_RETURN_IF_ERROR(loom_spirv_emit_branch_label(state, header_label_id));
 
   const loom_region_t* body_region = loom_low_scf_for_body(op);
@@ -341,23 +388,15 @@ iree_status_t loom_spirv_emit_scf_for(loom_spirv_emit_state_t* state,
         loom_spirv_emit_define_value(state, body_arg_id, body_arg_ref, true));
   }
 
-  uint32_t bool_type_id = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_spirv_emit_type_bool(state->type_context, &bool_type_id));
   const uint32_t condition_id = loom_spirv_emit_allocate_id(state);
-  const uint32_t compare_opcode =
-      loom_spirv_emit_loop_counter_is_unsigned(lower_bound.value_type)
-          ? LOOM_SPIRV_OP_U_LESS_THAN
-          : LOOM_SPIRV_OP_S_LESS_THAN;
-  const uint32_t compare_operands[] = {
-      bool_type_id,
-      condition_id,
-      iv_id,
-      upper_bound.id,
+  const uint32_t condition_phi_operands[] = {
+      bool_type_id,       condition_id,      entry_condition_id,
+      preheader_label_id, next_condition_id, continue_label_id,
   };
   IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
       loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_FUNCTION),
-      compare_opcode, compare_operands, IREE_ARRAYSIZE(compare_operands)));
+      LOOM_SPIRV_OP_PHI, condition_phi_operands,
+      IREE_ARRAYSIZE(condition_phi_operands)));
   const uint32_t loop_merge_operands[] = {
       merge_label_id,
       continue_label_id,
@@ -384,6 +423,17 @@ iree_status_t loom_spirv_emit_scf_for(loom_spirv_emit_state_t* state,
   IREE_RETURN_IF_ERROR(loom_spirv_emit_branch_label(state, continue_label_id));
 
   IREE_RETURN_IF_ERROR(loom_spirv_emit_label_id(state, continue_label_id));
+  const uint32_t compare_operands[] = {
+      bool_type_id,
+      next_condition_id,
+      iv_id,
+      threshold_id,
+  };
+  IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
+      loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_FUNCTION),
+      compare_opcode, compare_operands, IREE_ARRAYSIZE(compare_operands)));
+  // The terminal add may wrap, but its result cannot reach the body: the
+  // continuation predicate uses the last valid IV, before that addition.
   const uint32_t add_operands[] = {
       lower_bound.type_id,
       next_iv_id,

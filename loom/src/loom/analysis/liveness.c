@@ -11,6 +11,7 @@
 #include "iree/base/internal/math.h"
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
+#include "loom/ops/op_defs.h"
 #include "loom/target/registers.h"
 #include "loom/util/adaptive_sort.h"
 #include "loom/util/cfg_graph.h"
@@ -1139,6 +1140,31 @@ static iree_status_t loom_liveness_finalize_op_intervals(
       result_point = region_end_point;
       IREE_RETURN_IF_ERROR(
           loom_liveness_add_span(&result_point, 1, IREE_SV("nested region")));
+    }
+    const loom_loop_like_t loop =
+        loom_loop_like_cast(state->module, (loom_op_t*)op);
+    if (loom_loop_like_isa(loop)) {
+      // Captured values are read again on the next iteration. Their lexical
+      // last use cannot release storage before the implicit backedge.
+      const uint32_t backedge_point = result_point - 1;
+      for (uint32_t i = operation_point->direct_use_count;
+           i < operation_point->use_count; ++i) {
+        const loom_value_ordinal_t ordinal =
+            loom_liveness_operation_use_table_ordinal(
+                state->operation_uses, operation_point->use_start + i);
+        IREE_RETURN_IF_ERROR(loom_liveness_note_live_point(
+            state, state->value_ids[ordinal], backedge_point));
+      }
+      if (loom_loop_like_has_counted_range(loop)) {
+        // The loop itself reads these values after yielding the body state.
+        // The lower bound is only used on entry.
+        IREE_RETURN_IF_ERROR(loom_liveness_note_live_point(
+            state, loom_loop_like_iv(loop), backedge_point));
+        IREE_RETURN_IF_ERROR(loom_liveness_note_live_point(
+            state, loom_loop_like_upper_bound(loop), backedge_point));
+        IREE_RETURN_IF_ERROR(loom_liveness_note_live_point(
+            state, loom_loop_like_step(loop), backedge_point));
+      }
     }
   }
 

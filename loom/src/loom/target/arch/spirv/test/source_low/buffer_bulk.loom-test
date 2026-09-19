@@ -12,7 +12,7 @@ func.def target(@target) @copy(%source: buffer, %source_offset: offset, %target:
 low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @copy(%source: reg<spirv.ptr.storage_buffer>, %source_offset: reg<spirv.offset64>, %target: reg<spirv.ptr.storage_buffer>, %target_offset: reg<spirv.offset64>, %byte_length: reg<spirv.offset64>) asm {
   %16 = OpConstant.offset64 0
   %17 = OpConstant.offset64 1
-  low.scf.for [%16 to %byte_length step %17] do(%18: reg<spirv.offset64>) {
+  low.scf.for unsigned [%16 to %byte_length step %17] do(%18: reg<spirv.offset64>) {
     %19 = OpIAdd.offset64 %source_offset, %18
     %20 = OpPtrAccessChain.storage_buffer.raw_u8.byte_offset %source, %19
     %21 = OpLoad.storage_buffer.raw_u8 %20
@@ -43,7 +43,7 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @fill(%
   %20 = OpConstant.offset64 1
   %21 = OpConstant.i32 8
   %22 = OpConstant.i32 24
-  %25 = low.scf.for [%19 to %byte_length step %20] iter_args(%pattern: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%23: reg<spirv.offset64>, %24: reg<spirv.id : i32>) {
+  %25 = low.scf.for unsigned [%19 to %byte_length step %20] iter_args(%pattern: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%23: reg<spirv.offset64>, %24: reg<spirv.id : i32>) {
     %26 = OpIAdd.offset64 %target_offset, %23
     %27 = OpPtrAccessChain.storage_buffer.raw_u8.byte_offset %target, %26
     %28 = OpBitcast.i32.u32 %24

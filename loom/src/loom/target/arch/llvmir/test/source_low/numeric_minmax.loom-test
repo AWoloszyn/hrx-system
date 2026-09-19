@@ -465,7 +465,6 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scf_sele
 
 // ====
 
-// XFAIL: LLVMIR i1 scalar constants are unsupported
 llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
 
 func.def target(@target) @scf_select_i1_false_true_constants(%values: vector<2xi32>, %limit: i32, %true_value: f32, %false_value: f32) -> (f32) {
@@ -478,9 +477,19 @@ func.def target(@target) @scf_select_i1_false_true_constants(%values: vector<2xi
   func.return %result : f32
 }
 
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scf_select_i1_false_true_constants(%values: reg<llvmir.i32 x2>, %limit: reg<llvmir.i32>, %true_value: reg<llvmir.f32>, %false_value: reg<llvmir.f32>) -> (reg<llvmir.f32>) asm {
+  %lane = extract.v2i32 %values, 0
+  %lane_condition = cmp.slt.i32 %lane, %limit
+  %false = const.i1 0
+  %true = const.i1 1
+  %selected_condition = select.i1 %lane_condition, %false, %true
+  %result = select.f32 %selected_condition, %true_value, %false_value
+  return %result
+}
+
 // ====
 
-// XFAIL: LLVMIR i1 scalar constants are unsupported
 llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
 
 func.def target(@target) @scf_select_i1_true_payload(%values: vector<2xi32>, %limit: i32, %fallback_condition: i1, %true_value: f32, %false_value: f32) -> (f32) {
@@ -492,9 +501,18 @@ func.def target(@target) @scf_select_i1_true_payload(%values: vector<2xi32>, %li
   func.return %result : f32
 }
 
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scf_select_i1_true_payload(%values: reg<llvmir.i32 x2>, %limit: reg<llvmir.i32>, %fallback_condition: reg<llvmir.i1>, %true_value: reg<llvmir.f32>, %false_value: reg<llvmir.f32>) -> (reg<llvmir.f32>) asm {
+  %lane = extract.v2i32 %values, 0
+  %lane_condition = cmp.slt.i32 %lane, %limit
+  %true = const.i1 1
+  %selected_condition = select.i1 %lane_condition, %true, %fallback_condition
+  %result = select.f32 %selected_condition, %true_value, %false_value
+  return %result
+}
+
 // ====
 
-// XFAIL: LLVMIR i1 scalar constants are unsupported
 llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
 
 func.def target(@target) @scf_select_i1_false_payload(%values: vector<2xi32>, %limit: i32, %fallback_condition: i1, %true_value: f32, %false_value: f32) -> (f32) {
@@ -506,9 +524,18 @@ func.def target(@target) @scf_select_i1_false_payload(%values: vector<2xi32>, %l
   func.return %result : f32
 }
 
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scf_select_i1_false_payload(%values: reg<llvmir.i32 x2>, %limit: reg<llvmir.i32>, %fallback_condition: reg<llvmir.i1>, %true_value: reg<llvmir.f32>, %false_value: reg<llvmir.f32>) -> (reg<llvmir.f32>) asm {
+  %lane = extract.v2i32 %values, 0
+  %lane_condition = cmp.slt.i32 %lane, %limit
+  %false = const.i1 0
+  %selected_condition = select.i1 %lane_condition, %false, %fallback_condition
+  %result = select.f32 %selected_condition, %true_value, %false_value
+  return %result
+}
+
 // ====
 
-// XFAIL: LLVMIR i1 scalar constants are unsupported
 llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
 
 func.def target(@target) @scf_select_i1_true_fallback(%values: vector<2xi32>, %limit: i32, %fallback_condition: i1, %true_value: f32, %false_value: f32) -> (f32) {
@@ -520,9 +547,18 @@ func.def target(@target) @scf_select_i1_true_fallback(%values: vector<2xi32>, %l
   func.return %result : f32
 }
 
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scf_select_i1_true_fallback(%values: reg<llvmir.i32 x2>, %limit: reg<llvmir.i32>, %fallback_condition: reg<llvmir.i1>, %true_value: reg<llvmir.f32>, %false_value: reg<llvmir.f32>) -> (reg<llvmir.f32>) asm {
+  %lane = extract.v2i32 %values, 0
+  %lane_condition = cmp.slt.i32 %lane, %limit
+  %true = const.i1 1
+  %selected_condition = select.i1 %lane_condition, %fallback_condition, %true
+  %result = select.f32 %selected_condition, %true_value, %false_value
+  return %result
+}
+
 // ====
 
-// XFAIL: LLVMIR i1 scalar constants are unsupported
 llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
 
 func.def target(@target) @scf_select_i1_false_fallback(%values: vector<2xi32>, %limit: i32, %fallback_condition: i1, %true_value: f32, %false_value: f32) -> (f32) {
@@ -532,6 +568,16 @@ func.def target(@target) @scf_select_i1_false_fallback(%values: vector<2xi32>, %
   %selected_condition = scf.select %lane_condition, %fallback_condition, %false : i1
   %result = scf.select %selected_condition, %true_value, %false_value : f32
   func.return %result : f32
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scf_select_i1_false_fallback(%values: reg<llvmir.i32 x2>, %limit: reg<llvmir.i32>, %fallback_condition: reg<llvmir.i1>, %true_value: reg<llvmir.f32>, %false_value: reg<llvmir.f32>) -> (reg<llvmir.f32>) asm {
+  %lane = extract.v2i32 %values, 0
+  %lane_condition = cmp.slt.i32 %lane, %limit
+  %false = const.i1 0
+  %selected_condition = select.i1 %lane_condition, %fallback_condition, %false
+  %result = select.f32 %selected_condition, %true_value, %false_value
+  return %result
 }
 
 // ====

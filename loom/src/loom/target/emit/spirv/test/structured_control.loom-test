@@ -97,7 +97,7 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_
 spirv.target<vulkan1_3> @target
 
 low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_i32_structured_counted_loop(%start: reg<spirv.id : i32>, %limit: reg<spirv.id : i32>, %step: reg<spirv.id : i32>, %seed: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
-  %result = low.scf.for [%start to %limit step %step] iter_args(%seed: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) unroll do(%i: reg<spirv.id : i32>, %acc: reg<spirv.id : i32>) {
+  %result = low.scf.for signed [%start to %limit step %step] iter_args(%seed: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) unroll do(%i: reg<spirv.id : i32>, %acc: reg<spirv.id : i32>) {
     %next_acc = OpIAdd %acc, %i
     low.scf.yield %next_acc : reg<spirv.id : i32>
   }
@@ -158,26 +158,31 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_
        %step = OpLoad %int %19 Aligned 4
          %21 = OpAccessChain %_ptr_StorageBuffer_int %10 %int_0
        %seed = OpLoad %int %21 Aligned 4
-               OpBranch %23
-         %23 = OpLabel
-          %i = OpPhi %int %start %14 %27 %26
-        %acc = OpPhi %int %seed %14 %next_acc %26
-         %32 = OpSLessThan %bool %i %limit
-               OpLoopMerge %25 %26 Unroll
-               OpBranchConditional %32 %24 %25
-         %24 = OpLabel
+         %24 = OpSLessThan %bool %start %limit
+         %25 = OpISub %int %limit %start
+         %26 = OpULessThan %bool %step %25
+         %27 = OpISub %int %limit %step
+         %28 = OpSelect %int %26 %27 %start
+               OpBranch %29
+         %29 = OpLabel
+          %i = OpPhi %int %start %14 %33 %32
+        %acc = OpPhi %int %seed %14 %next_acc %32
+         %38 = OpPhi %bool %24 %14 %34 %32
+               OpLoopMerge %31 %32 Unroll
+               OpBranchConditional %38 %30 %31
+         %30 = OpLabel
    %next_acc = OpIAdd %int %acc %i
-               OpBranch %26
-         %26 = OpLabel
-         %27 = OpIAdd %int %i %step
-               OpBranch %23
-         %25 = OpLabel
-     %result = OpPhi %int %acc %23
-         %34 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
-               OpStore %34 %result Aligned 4
+               OpBranch %32
+         %32 = OpLabel
+         %34 = OpSLessThan %bool %i %28
+         %33 = OpIAdd %int %i %step
+               OpBranch %29
+         %31 = OpLabel
+     %result = OpPhi %int %acc %29
+         %40 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
+               OpStore %40 %result Aligned 4
                OpReturn
                OpFunctionEnd
-
 
 // ====
 
@@ -188,8 +193,8 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_
 spirv.target<vulkan1_3> @target
 
 low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_i32_structured_nested_loop_result(%start: reg<spirv.id : i32>, %limit: reg<spirv.id : i32>, %step: reg<spirv.id : i32>, %seed: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
-  %result = low.scf.for [%start to %limit step %step] iter_args(%seed: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%i: reg<spirv.id : i32>, %acc: reg<spirv.id : i32>) {
-    %inner = low.scf.for [%start to %limit step %step] iter_args(%acc: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%j: reg<spirv.id : i32>, %inner_acc: reg<spirv.id : i32>) {
+  %result = low.scf.for signed [%start to %limit step %step] iter_args(%seed: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%i: reg<spirv.id : i32>, %acc: reg<spirv.id : i32>) {
+    %inner = low.scf.for signed [%start to %limit step %step] iter_args(%acc: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%j: reg<spirv.id : i32>, %inner_acc: reg<spirv.id : i32>) {
       %next_inner = OpIAdd %inner_acc, %j
       low.scf.yield %next_inner : reg<spirv.id : i32>
     }
@@ -255,36 +260,48 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_
        %step = OpLoad %int %19 Aligned 4
          %21 = OpAccessChain %_ptr_StorageBuffer_int %10 %int_0
        %seed = OpLoad %int %21 Aligned 4
-               OpBranch %23
-         %23 = OpLabel
-          %i = OpPhi %int %start %14 %27 %26
-        %acc = OpPhi %int %seed %14 %inner %26
-         %32 = OpSLessThan %bool %i %limit
-               OpLoopMerge %25 %26 None
-               OpBranchConditional %32 %24 %25
-         %24 = OpLabel
-               OpBranch %33
-         %33 = OpLabel
-          %j = OpPhi %int %start %24 %37 %36
-  %inner_acc = OpPhi %int %acc %24 %next_inner %36
-         %41 = OpSLessThan %bool %j %limit
-               OpLoopMerge %35 %36 None
-               OpBranchConditional %41 %34 %35
-         %34 = OpLabel
+         %24 = OpSLessThan %bool %start %limit
+         %25 = OpISub %int %limit %start
+         %26 = OpULessThan %bool %step %25
+         %27 = OpISub %int %limit %step
+         %28 = OpSelect %int %26 %27 %start
+               OpBranch %29
+         %29 = OpLabel
+          %i = OpPhi %int %start %14 %33 %32
+        %acc = OpPhi %int %seed %14 %inner %32
+         %38 = OpPhi %bool %24 %14 %34 %32
+               OpLoopMerge %31 %32 None
+               OpBranchConditional %38 %30 %31
+         %30 = OpLabel
+         %39 = OpSLessThan %bool %start %limit
+         %40 = OpISub %int %limit %start
+         %41 = OpULessThan %bool %step %40
+         %42 = OpISub %int %limit %step
+         %43 = OpSelect %int %41 %42 %start
+               OpBranch %44
+         %44 = OpLabel
+          %j = OpPhi %int %start %30 %48 %47
+  %inner_acc = OpPhi %int %acc %30 %next_inner %47
+         %53 = OpPhi %bool %39 %30 %49 %47
+               OpLoopMerge %46 %47 None
+               OpBranchConditional %53 %45 %46
+         %45 = OpLabel
  %next_inner = OpIAdd %int %inner_acc %j
-               OpBranch %36
-         %36 = OpLabel
-         %37 = OpIAdd %int %j %step
-               OpBranch %33
-         %35 = OpLabel
-      %inner = OpPhi %int %inner_acc %33
-               OpBranch %26
-         %26 = OpLabel
-         %27 = OpIAdd %int %i %step
-               OpBranch %23
-         %25 = OpLabel
-     %result = OpPhi %int %acc %23
-         %43 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
-               OpStore %43 %result Aligned 4
+               OpBranch %47
+         %47 = OpLabel
+         %49 = OpSLessThan %bool %j %43
+         %48 = OpIAdd %int %j %step
+               OpBranch %44
+         %46 = OpLabel
+      %inner = OpPhi %int %inner_acc %44
+               OpBranch %32
+         %32 = OpLabel
+         %34 = OpSLessThan %bool %i %28
+         %33 = OpIAdd %int %i %step
+               OpBranch %29
+         %31 = OpLabel
+     %result = OpPhi %int %acc %29
+         %55 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
+               OpStore %55 %result Aligned 4
                OpReturn
                OpFunctionEnd

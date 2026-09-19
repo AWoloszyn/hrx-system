@@ -10,7 +10,8 @@ func.def public @rodata_table() -> (buffer) {
 }
 
 func.def public @rodata_byte(%table: buffer, %position: i64) -> (i32) {
-  %offset = index.cast %position : i64 to offset
+  %position_input = scalar.assume %position [range(%position, 0, 9223372036854775807)] : i64
+  %offset = index.cast %position_input : i64 to offset
   %value = buffer.load.i8.u %table[%offset]
   func.return %value : i32
 }
@@ -37,8 +38,10 @@ check.case @rodata_unsigned_byte {
 
 func.def public @rodata_copy(%start: i64, %count: i64) -> (i32, i32) {
   %source = global.load @table : buffer
-  %offset = index.cast %start : i64 to offset
-  %length = index.cast %count : i64 to offset
+  %start_input = scalar.assume %start [range(%start, 0, 9223372036854775807)] : i64
+  %offset = index.cast %start_input : i64 to offset
+  %count_input = scalar.assume %count [range(%count, 0, 9223372036854775807)] : i64
+  %length = index.cast %count_input : i64 to offset
   %target_offset = index.constant 0 : offset
   %target = buffer.alloca<private> align(8) %length : buffer
   buffer.copy %source[%offset], %target[%target_offset], %length

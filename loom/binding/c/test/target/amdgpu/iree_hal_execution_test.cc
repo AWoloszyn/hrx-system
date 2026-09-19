@@ -142,7 +142,9 @@ kernel.def @double_i32_at_scaled_offset() {
   %reloaded_words = template.apply<@spill_offset>(%offset_words) : (vector<2xi32>) -> (vector<2xi32>)
   %reloaded_value = vector.bitcast %reloaded_words : vector<2xi32> to vector<1xi64>
   %reloaded_bits = vector.extract %reloaded_value[0] : vector<1xi64> -> i64
-  %byte_offset = index.cast %reloaded_bits : i64 to offset
+  // The opaque spill provider preserves the scaled unsigned i32 payload.
+  %address_bits = scalar.assume %reloaded_bits [range(%reloaded_bits, 0, 17179869180)] : i64
+  %byte_offset = index.cast %address_bits : i64 to offset
   %input_view = buffer.view %input_aligned[%byte_offset] : buffer -> view<1xi32>
   %loaded = view.load %input_view[0] : view<1xi32> -> i32
   %doubled = scalar.addi %loaded, %loaded : i32

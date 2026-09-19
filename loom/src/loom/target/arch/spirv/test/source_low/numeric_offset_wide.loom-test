@@ -152,7 +152,7 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @offset
   %bytes = OpIMul.offset64 %18, %stride
   %begin = OpConstant.i32 0 : reg<spirv.id : index>
   %step = OpConstant.i32 1 : reg<spirv.id : index>
-  %result = low.scf.for [%begin to %count step %step] iter_args(%bytes: reg<spirv.offset64>) -> (reg<spirv.offset64>) do(%iteration: reg<spirv.id : index>, %current: reg<spirv.offset64>) {
+  %result = low.scf.for signed [%begin to %count step %step] iter_args(%bytes: reg<spirv.offset64>) -> (reg<spirv.offset64>) do(%iteration: reg<spirv.id : index>, %current: reg<spirv.offset64>) {
     %next = OpIAdd.offset64 %current, %stride
     low.scf.yield %next : reg<spirv.offset64>
   }

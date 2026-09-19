@@ -117,6 +117,8 @@ index_cast = cast_op(
         "fixed-width payloads as signed. Entering offset zero-extends the raw "
         "bits of narrower fixed-width payloads; an i64 payload must already "
         "be nonnegative because offset's source fact domain is [0, INT64_MAX]. A "
+        "range proof must describe the input; an assumption on the cast result "
+        "cannot justify the conversion. A "
         "target requiring a narrower address carrier accepts only values proven "
         "representable in that carrier. Leaving an address domain follows its "
         "signedness and preserves the low destination-width bits when "

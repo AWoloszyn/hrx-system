@@ -4,10 +4,10 @@ func.def public @indexed_view_bytes(%base_value: i64, %row_value: i64, %column_v
   %storage = buffer.alloca<private> align(8) %length : buffer
   %clear = scalar.constant 0 : i32
   buffer.fill %clear, %storage[%origin], %length : i32
-  %base_input = index.cast %base_value : i64 to offset
+  %base_input = scalar.assume %base_value [range(%base_value, 0, 13)] : i64
+  %base = index.cast %base_input : i64 to offset
   %row_input = index.cast %row_value : i64 to index
   %column_input = index.cast %column_value : i64 to index
-  %base = index.assume %base_input [range(%base_input, 0, 13)] : offset
   %row = index.assume %row_input [range(%row_input, 0, 2)] : index
   %column = index.assume %column_input [range(%column_input, 0, 3)] : index
   %matrix = buffer.view %storage[%base] : buffer -> view<3x4xi32>
