@@ -759,6 +759,26 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
     ),
     Descriptor(
+        key="x86.scalar.lea.add_scale.gpr32",
+        mnemonic="lea",
+        semantic_tag="integer.add.scale.disp.i64.trunc.i32",
+        operands=(
+            _gpr32_result(),
+            _gpr64_operand("base"),
+            _gpr64_operand("index"),
+        ),
+        immediates=(_DISP32_IMMEDIATE, _ADDRESS_SCALE_IMMEDIATE),
+        asm_forms=_asm(
+            mnemonic="lea.add_scale.gpr32",
+            results=("dst",),
+            operands=("base", "index"),
+            immediates=("disp32", "scale"),
+            named_immediates=True,
+        ),
+        schedule_class=_SCHEDULE_ADDRESS,
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    ),
+    Descriptor(
         key="x86.scalar.jmp",
         mnemonic="jmp",
         semantic_tag="control.branch",

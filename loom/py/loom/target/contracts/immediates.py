@@ -543,6 +543,8 @@ class ValueProject:
     source_node: str = ""
     target_bit_offset: int = 0
     word_index: int = 0
+    # Width retained from the reciprocal product before the projected shift.
+    product_bit_width: int = 32
 
     def in_source_node(self, source_node: str) -> Self:
         """Returns this projection scoped to a named descriptor-rule node."""
@@ -606,12 +608,22 @@ class ValueProject:
 
     @classmethod
     def u32_divisor_magic_shift(
-        cls, source_value: str, *, target_bit_offset: int = 0
+        cls,
+        source_value: str,
+        *,
+        product_bit_width: int,
+        target_bit_offset: int = 0,
     ) -> Self:
+        """Shifts a high-half (32) or full (64) reciprocal product.
+
+        The full-product form consumes an uncorrected 64-bit multiply. The
+        high-half form consumes the high 32 bits, after any required correction.
+        """
         return cls(
             kind=ValueProjectKind.U32_DIVISOR_MAGIC_SHIFT,
             source_value=source_value,
             target_bit_offset=target_bit_offset,
+            product_bit_width=product_bit_width,
         )
 
     @classmethod
@@ -683,6 +695,11 @@ class ValueProject:
             raise ValueError(
                 "signed reciprocal projection must not use target bit offset"
             )
+        if self.kind == ValueProjectKind.U32_DIVISOR_MAGIC_SHIFT:
+            if self.product_bit_width not in (32, 64):
+                raise ValueError("divisor magic product width must be 32 or 64")
+        elif self.product_bit_width != 32:
+            raise ValueError(f"{self.kind.value} projection must not set product width")
 
     def validate(
         self,

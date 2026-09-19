@@ -98,6 +98,46 @@ low.func.def target<x86.avx512.core>(@target) @zero_extend(%input: reg<x86.gpr32
 
 // ====
 
+// RUN: emit x86-asm @remainder3 fixed=%value:physical_register:7:1 fixed=%result:physical_register:0:1
+x86.target<scalar> @target
+
+low.func.def target<x86.scalar.core>(@target) @remainder3(%value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %wide = movzx.gpr64.gpr32 %value
+  %magic = mov.imm64 2863311531
+  %multiply = imul.gpr64 %wide, %magic
+  %quotient = shr.imm.gpr64 %multiply {shift = 33}
+  %product = lea.add_scale.gpr32 %quotient, %quotient {disp32 = 0, scale = 2}
+  %input_copy = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %result = sub.gpr32 %input_copy, %product
+  return %result
+}
+
+// ----
+  mov eax, edi
+  mov ecx, 2863311531
+  imul rax, rcx
+  shr rax, 33
+  lea ecx, [rax + rax * 2]
+  mov eax, edi
+  sub eax, ecx
+  ret
+
+// ====
+
+// RUN: emit x86-asm @lea_narrow fixed=%base:physical_register:8:1 fixed=%index:physical_register:9:1 fixed=%result:physical_register:8:1
+x86.target<avx512> @target
+
+low.func.def target<x86.avx512.core>(@target) @lea_narrow(%base: reg<x86.gpr64>, %index: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %result = lea.add_scale.gpr32 %base, %index {disp32 = -16, scale = 8}
+  return %result
+}
+
+// ----
+  lea r8d, [r8 + r9 * 8 - 16]
+  ret
+
+// ====
+
 // RUN: emit x86-asm @sign_extend fixed=%input:physical_register:0:1 fixed=%result:physical_register:0:1
 x86.target<scalar> @target
 

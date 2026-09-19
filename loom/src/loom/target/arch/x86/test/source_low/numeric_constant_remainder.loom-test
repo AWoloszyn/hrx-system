@@ -5,9 +5,22 @@ x86.target<avx2> @target
 
 func.def target(@target) @constant_remainder_uniform(%value: i32) -> (i32) {
   %divisor = scalar.constant 3 : i32
-  // ERROR@+1: TARGET/001 {op_name="scalar.remui"}
   %remainder = scalar.remui %value, %divisor : i32
   func.return %remainder : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @constant_remainder_uniform(%value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %6 = movzx.gpr64.gpr32 %value
+  %7 = mov.imm64 2863311531
+  %8 = copy %6 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %9 = imul.gpr64 %8, %7
+  %10 = copy %9 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %11 = shr.imm.gpr64 %10 {shift = 33}
+  %12 = lea.add_scale.gpr32 %11, %11 {disp32 = 0, scale = 2}
+  %13 = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %remainder = sub.gpr32 %13, %12
+  return %remainder
 }
 
 // ====
@@ -20,13 +33,37 @@ func.def target(@target) @constant_remainder_loaded(%input: buffer) -> (i32, ind
   %input_view = buffer.view %aligned_input[%base] : buffer -> view<1xi32>
   %value = view.load %input_view[0] : view<1xi32> -> i32
   %divisor = scalar.constant 3 : i32
-  // ERROR@+1: TARGET/001 {op_name="scalar.remui"}
   %remainder = scalar.remui %value, %divisor : i32
   %mask = scalar.constant 2147483647 : i32
   %nonnegative = scalar.andi %value, %mask : i32
   %position = index.cast %nonnegative : i32 to index
   %index_divisor = index.constant 3 : index
-  // ERROR@+1: TARGET/001 {op_name="index.rem"}
   %index_remainder = index.rem %position, %index_divisor : index
   func.return %remainder, %index_remainder : i32, index
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @constant_remainder_loaded(%input_view: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr64>) asm {
+  %value = mov.load.gpr32 %input_view {disp32 = 0}
+  %18 = movzx.gpr64.gpr32 %value
+  %19 = mov.imm64 2863311531
+  %20 = copy %18 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %21 = imul.gpr64 %20, %19
+  %22 = copy %21 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %23 = shr.imm.gpr64 %22 {shift = 33}
+  %24 = lea.add_scale.gpr32 %23, %23 {disp32 = 0, scale = 2}
+  %25 = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %remainder = sub.gpr32 %25, %24
+  %mask = mov.imm32 2147483647
+  %28 = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %nonnegative = and.gpr32 %28, %mask
+  %position = movzx.gpr64.gpr32 %nonnegative
+  %32 = copy %position : reg<x86.gpr64> -> reg<x86.gpr64>
+  %33 = imul.gpr64 %32, %19
+  %34 = copy %33 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %35 = shr.imm.gpr64 %34 {shift = 33}
+  %36 = lea.add_scale %35, %35 {disp32 = 0, scale = 2}
+  %37 = copy %position : reg<x86.gpr64> -> reg<x86.gpr64>
+  %index_remainder = sub.gpr64 %37, %36
+  return %remainder, %index_remainder
 }

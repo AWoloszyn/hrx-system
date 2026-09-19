@@ -59,7 +59,7 @@ def _magic_rule(
         quotient = program.binary("adjusted_quotient", "add.i32", half, quotient)
     shift = program.constant(
         "post_shift",
-        ValueProject.u32_divisor_magic_shift("rhs"),
+        ValueProject.u32_divisor_magic_shift("rhs", product_bit_width=32),
         descriptor_key="amd.xdna.aie2p.constant.i32.short",
     )
     zero = program.constant("zero", 0)

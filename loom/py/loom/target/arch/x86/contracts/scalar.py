@@ -24,6 +24,7 @@ from loom.dialect.scf import defs as scf
 from loom.dialect.view import ALL_VIEW_OPS
 from loom.dialect.view import defs as view
 from loom.dsl import Op
+from loom.target.arch.x86.contracts.integer_division import unsigned_remainder_rules
 from loom.target.arch.x86.descriptors import X86_SCALAR_DESCRIPTOR_SET
 from loom.target.contracts import (
     AttrProject,
@@ -1649,6 +1650,7 @@ def _cases() -> Sequence[ContractCase]:
         ),
         *_madd_address_rules(descriptor_lookup),
         *_memory_rules(descriptor_lookup),
+        *unsigned_remainder_rules(descriptor_lookup),
     )
 
 

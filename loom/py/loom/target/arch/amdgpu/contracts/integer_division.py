@@ -188,7 +188,11 @@ def _magic_division_sgpr_emits(
                 descriptor=move,
                 results={"dst": ValueRef.temporary("post_shift")},
                 result_types={"dst": _RESULT},
-                immediates={"imm32": ValueProject.u32_divisor_magic_shift("rhs")},
+                immediates={
+                    "imm32": ValueProject.u32_divisor_magic_shift(
+                        "rhs", product_bit_width=32
+                    )
+                },
             ),
             EmitDescriptorOp(
                 descriptor=shift,
@@ -296,7 +300,11 @@ def _magic_division_vgpr_emits(
             operands={"value": quotient_value},
             results={"dst": result},
             result_types={"dst": _RESULT},
-            immediates={"imm32": ValueProject.u32_divisor_magic_shift("rhs")},
+            immediates={
+                "imm32": ValueProject.u32_divisor_magic_shift(
+                    "rhs", product_bit_width=32
+                )
+            },
             form=DescriptorEmitForm.OP,
         )
     )

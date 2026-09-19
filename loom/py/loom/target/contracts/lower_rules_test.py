@@ -2384,6 +2384,45 @@ def test_compile_lower_rule_set_compiles_value_fact_immediate_emit() -> None:
     assert value_ref.index == 0
 
 
+def test_divisor_magic_shift_retains_product_width() -> None:
+    for width in (32, 64):
+        table = ContractFragment(
+            name="test.divisor-product-width",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=[
+                DescriptorRule(
+                    source_op=scalar_arithmetic.scalar_remui,
+                    descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                    emit=(
+                        EmitDescriptorOp(
+                            descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                            results={"dst": ValueRef.result("result")},
+                            immediates={
+                                "i32_value": ValueProject.u32_divisor_magic_shift(
+                                    "rhs", product_bit_width=width
+                                )
+                            },
+                        ),
+                    ),
+                )
+            ],
+        )
+        compiled = compile_lower_rule_set(table, dialect_ops={"scalar": ALL_SCALAR_OPS})
+        assert len(compiled.attr_copies) == 1
+        projected = compiled.attr_copies[0]
+        assert projected.kind == LowerAttrCopyKind.VALUE_U32_DIVISOR_MAGIC_SHIFT
+        assert projected.literal_i64 == width - 32
+        assert compiled.value_refs[projected.value_ref_index].index == 1
+    _expect_value_error(
+        lambda: ValueProject.u32_divisor_magic_shift("rhs", product_bit_width=16),
+        "product width must be 32 or 64",
+    )
+    _expect_value_error(
+        lambda: replace(ValueProject.exact_i64("rhs"), product_bit_width=64),
+        "projection must not set product width",
+    )
+
+
 def test_compile_lower_rule_set_compiles_exact_i64_i32_word() -> None:
     table = ContractFragment(
         name="test.value-i64-word-immediate",
