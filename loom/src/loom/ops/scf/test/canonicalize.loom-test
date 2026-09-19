@@ -1,5 +1,74 @@
 // RUN: pass canonicalize
 
+// An empty true arm becomes a single guard on the inverted condition. The
+// effectful load and store remain conditional and retain their source order.
+func.def @empty_then_guard(%stop: i1, %input: view<1xi32>, %output: view<1xi32>) {
+  scf.if %stop {
+  } else {
+    %value = view.load %input[0] : view<1xi32> -> i32
+    view.store %value, %output[0] : i32, view<1xi32>
+  }
+  func.return
+}
+
+// ----
+func.def @empty_then_guard(%stop: i1, %input: view<1xi32>, %output: view<1xi32>) {
+  %4 = scalar.constant false : i1
+  %5 = scalar.constant true : i1
+  %6 = scf.select %stop, %4, %5 : i1
+  scf.if %6 {
+    %value = view.load %input[0] : view<1xi32> -> i32
+    view.store %value, %output[0] : i32, view<1xi32>
+  }
+  func.return
+}
+
+// ====
+
+// A true arm that only yields a value still defines a result. Its alternate
+// load remains guarded and the result tuple retains both incoming values.
+func.def @yield_only_then_keeps_result(%stop: i1, %input: view<1xi32>, %fallback: i32) -> (i32) {
+  %result = scf.if %stop -> (i32) {
+    scf.yield %fallback : i32
+  } else {
+    %value = view.load %input[0] : view<1xi32> -> i32
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// Moving the live arm preserves nested region ownership and loop effects.
+func.def @empty_then_loop(%stop: i1, %output: view<1xi32>, %count: index, %value: i32) {
+  scf.if %stop {
+  } else {
+    %start = index.constant 0 : index
+    %step = index.constant 1 : index
+    scf.for %iteration = [%start to %count step %step] {
+      view.store %value, %output[0] : i32, view<1xi32>
+    }
+  }
+  func.return
+}
+
+// ----
+func.def @empty_then_loop(%stop: i1, %output: view<1xi32>, %count: index, %value: i32) {
+  %7 = scalar.constant false : i1
+  %8 = scalar.constant true : i1
+  %9 = scf.select %stop, %7, %8 : i1
+  scf.if %9 {
+    %start = index.constant 0 : index
+    %step = index.constant 1 : index
+    scf.for %iteration = [%start to %count step %step] {
+      view.store %value, %output[0] : i32, view<1xi32>
+    }
+  }
+  func.return
+}
+
+// ====
+
 // Constant-condition scf.if inlines the selected branch and erases the
 // unselected branch. Selected body ops keep their order and become ordinary
 // enclosing-block ops.

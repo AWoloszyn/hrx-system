@@ -1501,6 +1501,50 @@ static iree_status_t loom_scf_if_selectify_speculatable_values(
                                                   op->result_count);
 }
 
+// A resultless conditional with no true-arm work is a guard on the opposite
+// condition. Preserve the false-arm effects in one region and remove the
+// empty branch instead of exposing an asymmetric diamond to CFG consumers.
+static iree_status_t loom_scf_if_normalize_empty_then(
+    loom_op_t* op, loom_rewriter_t* rewriter) {
+  if (!loom_scf_if_else_region(op)) {
+    return iree_ok_status();
+  }
+  loom_block_t* then_block =
+      loom_region_entry_block(loom_scf_if_then_region(op));
+  if (then_block->first_op != then_block->last_op) {
+    return iree_ok_status();
+  }
+  loom_region_t* else_region = loom_scf_if_else_region(op);
+  loom_op_t* else_yield = loom_region_entry_block(else_region)->last_op;
+  loom_builder_set_before(&rewriter->builder, op);
+  loom_type_t boolean_type = loom_type_scalar(LOOM_SCALAR_TYPE_I1);
+  loom_value_id_t false_value = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t true_value = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_build_constant(rewriter, loom_value_facts_exact_i64(0),
+                                   boolean_type, op->location, &false_value));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_build_constant(rewriter, loom_value_facts_exact_i64(1),
+                                   boolean_type, op->location, &true_value));
+  loom_op_t* inverse = NULL;
+  IREE_RETURN_IF_ERROR(loom_scf_select_build(
+      &rewriter->builder, loom_scf_if_condition(op), false_value, true_value,
+      boolean_type, op->location, &inverse));
+  loom_op_t* replacement = NULL;
+  IREE_RETURN_IF_ERROR(loom_scf_if_build(&rewriter->builder, 0,
+                                         loom_op_results(inverse)[0], NULL, 0,
+                                         NULL, 0, op->location, &replacement));
+  loom_builder_ip_t saved = loom_builder_enter_region(
+      &rewriter->builder, replacement, loom_scf_if_then_region(replacement));
+  loom_op_t* yield = NULL;
+  IREE_RETURN_IF_ERROR(loom_scf_yield_build(&rewriter->builder, NULL, 0,
+                                            else_yield->location, &yield));
+  loom_builder_restore(&rewriter->builder, saved);
+  IREE_RETURN_IF_ERROR(loom_scf_move_region_body_before_op(
+      rewriter, else_region, else_yield, yield));
+  return loom_rewriter_erase(rewriter, op);
+}
+
 iree_status_t loom_scf_if_canonicalize(loom_op_t* op,
                                        loom_rewriter_t* rewriter) {
   bool condition = false;
@@ -1533,6 +1577,9 @@ iree_status_t loom_scf_if_canonicalize(loom_op_t* op,
     IREE_RETURN_IF_ERROR(loom_scf_if_selectify_yield_only(op, rewriter));
     if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
       return iree_ok_status();
+    }
+    if (op->result_count == 0) {
+      return loom_scf_if_normalize_empty_then(op, rewriter);
     }
     return loom_scf_if_selectify_speculatable_values(op, rewriter);
   }
