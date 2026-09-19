@@ -258,23 +258,34 @@ iree_status_t loom_index_sub_facts(loom_fact_context_t* context,
       loom_index_assumed_order(module, lhs, rhs);
   loom_index_assumed_order_flags_t rhs_order =
       loom_index_assumed_order(module, rhs, lhs);
-  if (iree_any_bit_set(lhs_order, LOOM_INDEX_ASSUMED_ORDER_GREATER) ||
-      iree_any_bit_set(rhs_order, LOOM_INDEX_ASSUMED_ORDER_LESS)) {
-    result_facts[0].range_lo = iree_max(result_facts[0].range_lo, INT64_C(1));
-  } else if (iree_any_bit_set(lhs_order,
-                              LOOM_INDEX_ASSUMED_ORDER_GREATER_OR_EQUAL) ||
-             iree_any_bit_set(rhs_order,
-                              LOOM_INDEX_ASSUMED_ORDER_LESS_OR_EQUAL)) {
-    result_facts[0].range_lo = iree_max(result_facts[0].range_lo, INT64_C(0));
+  // Operand order describes the mathematical difference. Its sign survives
+  // only when that ordered half of the difference cannot wrap the fact carrier.
+  // The opposite endpoint may overflow: the relation excludes that half.
+  int64_t difference_bound = 0;
+  if (iree_checked_sub_i64(operand_facts[0].range_hi, operand_facts[1].range_lo,
+                           &difference_bound)) {
+    if (iree_any_bit_set(lhs_order, LOOM_INDEX_ASSUMED_ORDER_GREATER) ||
+        iree_any_bit_set(rhs_order, LOOM_INDEX_ASSUMED_ORDER_LESS)) {
+      result_facts[0].range_lo = iree_max(result_facts[0].range_lo, INT64_C(1));
+    } else if (iree_any_bit_set(lhs_order,
+                                LOOM_INDEX_ASSUMED_ORDER_GREATER_OR_EQUAL) ||
+               iree_any_bit_set(rhs_order,
+                                LOOM_INDEX_ASSUMED_ORDER_LESS_OR_EQUAL)) {
+      result_facts[0].range_lo = iree_max(result_facts[0].range_lo, INT64_C(0));
+    }
   }
-  if (iree_any_bit_set(lhs_order, LOOM_INDEX_ASSUMED_ORDER_LESS) ||
-      iree_any_bit_set(rhs_order, LOOM_INDEX_ASSUMED_ORDER_GREATER)) {
-    result_facts[0].range_hi = iree_min(result_facts[0].range_hi, INT64_C(-1));
-  } else if (iree_any_bit_set(lhs_order,
-                              LOOM_INDEX_ASSUMED_ORDER_LESS_OR_EQUAL) ||
-             iree_any_bit_set(rhs_order,
-                              LOOM_INDEX_ASSUMED_ORDER_GREATER_OR_EQUAL)) {
-    result_facts[0].range_hi = iree_min(result_facts[0].range_hi, INT64_C(0));
+  if (iree_checked_sub_i64(operand_facts[0].range_lo, operand_facts[1].range_hi,
+                           &difference_bound)) {
+    if (iree_any_bit_set(lhs_order, LOOM_INDEX_ASSUMED_ORDER_LESS) ||
+        iree_any_bit_set(rhs_order, LOOM_INDEX_ASSUMED_ORDER_GREATER)) {
+      result_facts[0].range_hi =
+          iree_min(result_facts[0].range_hi, INT64_C(-1));
+    } else if (iree_any_bit_set(lhs_order,
+                                LOOM_INDEX_ASSUMED_ORDER_LESS_OR_EQUAL) ||
+               iree_any_bit_set(rhs_order,
+                                LOOM_INDEX_ASSUMED_ORDER_GREATER_OR_EQUAL)) {
+      result_facts[0].range_hi = iree_min(result_facts[0].range_hi, INT64_C(0));
+    }
   }
   loom_value_facts_recompute_flags(&result_facts[0]);
   return iree_ok_status();
