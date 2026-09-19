@@ -335,6 +335,63 @@ low.func.def target<test.low.core>(@test_target) @fences_do_not_satisfy_hazard_d
 }
 
 // ====
+// RUN: emit low-schedule-json @resource_stall_recovers_descriptor_storage_beyond_source_window strategy=resource-stall diagnostics=candidates output=none
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @resource_stall_recovers_descriptor_storage_beyond_source_window(%lhs: reg<test.i32>, %rhs: reg<test.i32>, %part0: reg<test.i32>, %part1: reg<test.i32>, %part2: reg<test.i32>, %part3: reg<test.i32>) -> (reg<test.i32 x4>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>) asm {
+  // Independent arithmetic fills the source-order nominee window. Once its
+  // issue resource is occupied, a ready descriptor-bound alias beyond that
+  // window can expose work for another resource without opening new storage.
+  // REMARK@+1: BACKEND/015
+  %independent0 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent1 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent2 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent3 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent4 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent5 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent6 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent7 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent8 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent9 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent10 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent11 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent12 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent13 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent14 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent15 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent16 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent17 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015
+  %independent18 = test.mul.i32 %lhs, %rhs
+  %independent19 = test.mul.i32 %lhs, %rhs
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="1", chosen_packet="low.concat", rejected_packet="test.mul.i32", chosen_effective_stall_cycles="0", rejected_effective_stall_cycles="1"}
+  %packed = concat(%part0, %part1, %part2, %part3) : (reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>) -> reg<test.i32 x4>
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="2", chosen_packet="test.add.v4i32", chosen_effective_stall_cycles="0"}
+  %first = test.add.v4i32 %packed, %packed
+  // REMARK@+1: BACKEND/015
+  %second = test.add.v4i32 %first, %first
+  return %second, %independent0, %independent1, %independent2, %independent3, %independent4, %independent5, %independent6, %independent7, %independent8, %independent9, %independent10, %independent11, %independent12, %independent13, %independent14, %independent15, %independent16, %independent17, %independent18, %independent19
+}
+
+// ====
 // RUN: emit low-schedule-json @resource_stall_fills_open_issue_lane_before_storage_compaction strategy=resource-stall diagnostics=candidates output=none
 
 test.target<low_core> @test_target
