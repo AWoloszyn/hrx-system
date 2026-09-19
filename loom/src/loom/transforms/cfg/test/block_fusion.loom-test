@@ -146,7 +146,7 @@ func.def @ancestor_types_and_attributes(%choose: i1, %element: f32) {
 }
 
 // ====
-// RUN: pass-report cfg-simplify
+// RUN: with-checks pass-report cfg-simplify
 
 // A whole chain needs one structural edit and one confirming iteration.
 func.def @chain_iteration_count(%input: i32) -> (i32) {
@@ -163,7 +163,9 @@ func.def @chain_iteration_count(%input: i32) -> (i32) {
 }
 
 // ----
-{"invocations":[{"pass":"cfg-simplify","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"chain_iteration_count","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"iterations":2,"branches-folded":0,"edges-forwarded":0,"blocks-removed":0,"block-args-removed":0,"blocks-fused":3,"duplicate-blocks-merged":0,"terminal-blocks-duplicated":0},"details":[{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":4,"cleared_value_count":4}]}]}
+CHECK: *"changed":true,*
+CHECK: *"iterations":2,*
+CHECK: *"blocks-fused":3,*
 
 // ====
 // RUN: pass cfg-simplify

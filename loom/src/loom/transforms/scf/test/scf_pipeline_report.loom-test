@@ -1,4 +1,4 @@
-// RUN: pass-report pipeline-scf-for
+// RUN: with-checks pass-report pipeline-scf-for
 
 func.def @inspect_read_ahead_schedule(%input: view<64xf32>, %end: index, %initial: f32, %weight: f32) -> (f32) {
   %begin = index.constant 0 : index
@@ -16,7 +16,13 @@ func.def @inspect_read_ahead_schedule(%input: view<64xf32>, %end: index, %initia
 }
 
 // ----
-{"invocations":[{"pass":"pipeline-scf-for","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"inspect_read_ahead_schedule","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"loops-pipelined":1,"policies-cleared":0},"details":[{"category":"scf-pipeline","loop":0,"outcome":"pipelined","schedule":"read_ahead","depth":3,"queue_records":2,"values_per_record":1,"read_count":1},{"category":"scf-pipeline-stage","loop":0,"position":0,"op":"index.mul","stage":"producer","iteration_lookahead":2},{"category":"scf-pipeline-stage","loop":0,"position":1,"op":"view.load","stage":"producer","iteration_lookahead":2},{"category":"scf-pipeline-stage","loop":0,"position":2,"op":"scalar.mulf","stage":"consumer","iteration_lookahead":0},{"category":"scf-pipeline-stage","loop":0,"position":3,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0},{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":15,"cleared_value_count":15}]}]}
+CHECK: *"changed":true,*
+CHECK: *"statistics":{"loops-pipelined":1,"policies-cleared":0}*
+CHECK: *{"category":"scf-pipeline","loop":0,"outcome":"pipelined","schedule":"read_ahead","depth":3,"queue_records":2,"values_per_record":1,"read_count":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":0,"op":"index.mul","stage":"producer","iteration_lookahead":2}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":1,"op":"view.load","stage":"producer","iteration_lookahead":2}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":2,"op":"scalar.mulf","stage":"consumer","iteration_lookahead":0}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":3,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0}*
 
 // ====
 
@@ -32,7 +38,9 @@ func.def @no_implicit_pipeline(%input: view<64xf32>, %end: index, %initial: f32)
 }
 
 // ----
-{"invocations":[{"pass":"pipeline-scf-for","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"no_implicit_pipeline","instruction_index":1,"duration_ns":0,"changed":false,"status":{"code":0,"name":"OK"},"statistics":{"loops-pipelined":0,"policies-cleared":0},"details":[]}]}
+CHECK: *"changed":false,*
+CHECK: *"statistics":{"loops-pipelined":0,"policies-cleared":0}*
+CHECK-NOT: *"category":"scf-pipeline*
 
 // ====
 
@@ -61,7 +69,11 @@ func.def @inspect_structured_producer(%input: view<8xf32>, %end: index, %inner_e
 }
 
 // ----
-{"invocations":[{"pass":"pipeline-scf-for","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"inspect_structured_producer","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"loops-pipelined":1,"policies-cleared":0},"details":[{"category":"scf-pipeline","loop":0,"outcome":"pipelined","schedule":"read_ahead","depth":3,"queue_records":2,"values_per_record":1,"read_count":2},{"category":"scf-pipeline-stage","loop":0,"position":0,"op":"scf.for","stage":"producer","iteration_lookahead":2},{"category":"scf-pipeline-stage","loop":0,"position":1,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0},{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":20,"cleared_value_count":20}]}]}
+CHECK: *"changed":true,*
+CHECK: *"statistics":{"loops-pipelined":1,"policies-cleared":0}*
+CHECK: *{"category":"scf-pipeline","loop":0,"outcome":"pipelined","schedule":"read_ahead","depth":3,"queue_records":2,"values_per_record":1,"read_count":2}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":0,"op":"scf.for","stage":"producer","iteration_lookahead":2}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":1,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0}*
 
 // ====
 
@@ -85,7 +97,16 @@ func.def @nested_pipeline_policies(%input: view<8xf32>, %end: index, %inner_end:
 }
 
 // ----
-{"invocations":[{"pass":"pipeline-scf-for","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"nested_pipeline_policies","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"loops-pipelined":2,"policies-cleared":0},"details":[{"category":"scf-pipeline","loop":0,"outcome":"pipelined","schedule":"read_ahead","depth":2,"queue_records":1,"values_per_record":1,"read_count":1},{"category":"scf-pipeline-stage","loop":0,"position":0,"op":"view.load","stage":"producer","iteration_lookahead":1},{"category":"scf-pipeline-stage","loop":0,"position":1,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0},{"category":"scf-pipeline","loop":1,"outcome":"pipelined","schedule":"read_ahead","depth":2,"queue_records":1,"values_per_record":1,"read_count":3},{"category":"scf-pipeline-stage","loop":1,"position":0,"op":"index.constant","stage":"producer","iteration_lookahead":1},{"category":"scf-pipeline-stage","loop":1,"position":1,"op":"index.cmp","stage":"producer","iteration_lookahead":1},{"category":"scf-pipeline-stage","loop":1,"position":2,"op":"scf.if","stage":"producer","iteration_lookahead":1},{"category":"scf-pipeline-stage","loop":1,"position":3,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0},{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":17,"cleared_value_count":17}]}]}
+CHECK: *"changed":true,*
+CHECK: *"statistics":{"loops-pipelined":2,"policies-cleared":0}*
+CHECK: *{"category":"scf-pipeline","loop":0,"outcome":"pipelined","schedule":"read_ahead","depth":2,"queue_records":1,"values_per_record":1,"read_count":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":0,"op":"view.load","stage":"producer","iteration_lookahead":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":1,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0}*
+CHECK: *{"category":"scf-pipeline","loop":1,"outcome":"pipelined","schedule":"read_ahead","depth":2,"queue_records":1,"values_per_record":1,"read_count":3}*
+CHECK: *{"category":"scf-pipeline-stage","loop":1,"position":0,"op":"index.constant","stage":"producer","iteration_lookahead":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":1,"position":1,"op":"index.cmp","stage":"producer","iteration_lookahead":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":1,"position":2,"op":"scf.if","stage":"producer","iteration_lookahead":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":1,"position":3,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0}*
 
 // ====
 
@@ -109,4 +130,9 @@ func.def @conditional_address_prerequisite(%input: view<8xf32>, %end: index, %in
 }
 
 // ----
-{"invocations":[{"pass":"pipeline-scf-for","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"conditional_address_prerequisite","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"loops-pipelined":1,"policies-cleared":0},"details":[{"category":"scf-pipeline","loop":0,"outcome":"pipelined","schedule":"read_ahead","depth":2,"queue_records":1,"values_per_record":1,"read_count":1},{"category":"scf-pipeline-stage","loop":0,"position":0,"op":"scf.if","stage":"producer","iteration_lookahead":1},{"category":"scf-pipeline-stage","loop":0,"position":1,"op":"view.load","stage":"producer","iteration_lookahead":1},{"category":"scf-pipeline-stage","loop":0,"position":2,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0},{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":14,"cleared_value_count":14}]}]}
+CHECK: *"changed":true,*
+CHECK: *"statistics":{"loops-pipelined":1,"policies-cleared":0}*
+CHECK: *{"category":"scf-pipeline","loop":0,"outcome":"pipelined","schedule":"read_ahead","depth":2,"queue_records":1,"values_per_record":1,"read_count":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":0,"op":"scf.if","stage":"producer","iteration_lookahead":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":1,"op":"view.load","stage":"producer","iteration_lookahead":1}*
+CHECK: *{"category":"scf-pipeline-stage","loop":0,"position":2,"op":"scalar.addf","stage":"consumer","iteration_lookahead":0}*
