@@ -1,0 +1,225 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64.loom-test
+// RUN: emit source-low output=low
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_bitwise_sgpr(%lhs: i64, %rhs: i64) -> (i64, i64, i64) {
+  // ERROR@+1: WASM/001 {op_name="scalar.andi", field_name="lhs", actual_type="i64", required_type="i32 scalar"}
+  %and = scalar.andi %lhs, %rhs : i64
+  %or = scalar.ori %and, %lhs : i64
+  %xor = scalar.xori %or, %rhs : i64
+  func.return %and, %or, %xor : i64, i64, i64
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_addi_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="scalar.addi", field_name="lhs", actual_type="i64", required_type="i32 scalar"}
+  %sum = scalar.addi %lhs, %rhs : i64
+  func.return %sum : i64
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_subi_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="scalar.subi", field_name="lhs", actual_type="i64", required_type="i32 scalar"}
+  %difference = scalar.subi %lhs, %rhs : i64
+  func.return %difference : i64
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_shli_vgpr(%value_values: vector<2xi64>, %shift_values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %value = vector.extract %value_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %shift = vector.extract %shift_values[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %shift : i64
+  func.return %shifted : i64
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_muli_bitwise_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>, %mask_values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %mask = vector.extract %mask_values[0] : vector<2xi64> -> i64
+  %product = scalar.muli %lhs, %rhs : i64
+  %mixed = scalar.xori %product, %mask : i64
+  func.return %mixed : i64
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_compare_eq_scc(%lhs: i64, %rhs: i64) -> (i1) {
+  // ERROR@+1: WASM/001 {op_name="scalar.cmpi", field_name="lhs", actual_type="i64", required_type="i32 scalar"}
+  %cmp = scalar.cmpi eq, %lhs, %rhs : i64
+  func.return %cmp : i1
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_compare_ne_scc(%lhs: i64, %rhs: i64) -> (i1) {
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %cmp = scalar.cmpi ne, %lhs, %rhs : i64
+  func.return %cmp : i1
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_compare_slt_return(%lhs: i64, %rhs: i64) -> (i1) {
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %cmp = scalar.cmpi slt, %lhs, %rhs : i64
+  func.return %cmp : i1
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_compare_slt_if(%lhs: i64, %rhs: i64, %then_value: i32, %else_value: i32) -> (i32) {
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %cmp = scalar.cmpi slt, %lhs, %rhs : i64
+  %result = scf.if %cmp -> (i32) {
+    scf.yield %then_value : i32
+  } else {
+    scf.yield %else_value : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_compare_constant_select(%lhs: i64, %true_value: f32, %false_value: f32) -> (f32) {
+  %limit = scalar.constant 4294967296 : i64
+  // ERROR@+1: WASM/001 {op_name="scalar.cmpi", field_name="lhs", actual_type="i64", required_type="i32 scalar"}
+  %cmp = scalar.cmpi ult, %lhs, %limit : i64
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %result = scf.select %cmp, %true_value, %false_value : f32
+  func.return %result : f32
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_compare_all_predicates_vgpr_select(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>, %true_value: f32, %false_value: f32) -> (f32, f32, f32, f32, f32, f32, f32, f32, f32, f32) {
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", required_type="vector<4xi32>"}
+  %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: WASM/001 {op_name="scalar.cmpi", field_name="lhs", actual_type="i64", required_type="i32 scalar"}
+  %eq = scalar.cmpi eq, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %ne = scalar.cmpi ne, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %slt = scalar.cmpi slt, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %sle = scalar.cmpi sle, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %sgt = scalar.cmpi sgt, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %sge = scalar.cmpi sge, %lhs, %rhs : i64
+  // ERROR@+1: WASM/001 {op_name="scalar.cmpi", field_name="lhs", actual_type="i64", required_type="i32 scalar"}
+  %ult = scalar.cmpi ult, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %ule = scalar.cmpi ule, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %ugt = scalar.cmpi ugt, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.cmpi", subject_role="field", subject_name="predicate", constraint_key="enum_case.eq"}
+  %uge = scalar.cmpi uge, %lhs, %rhs : i64
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %eq_result = scf.select %eq, %true_value, %false_value : f32
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %ne_result = scf.select %ne, %true_value, %false_value : f32
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %slt_result = scf.select %slt, %true_value, %false_value : f32
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %sle_result = scf.select %sle, %true_value, %false_value : f32
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %sgt_result = scf.select %sgt, %true_value, %false_value : f32
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %sge_result = scf.select %sge, %true_value, %false_value : f32
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %ult_result = scf.select %ult, %true_value, %false_value : f32
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f32", required_type="i32 scalar"}
+  %ule_result = scf.select %ule, %true_value, %false_value : f32
+  %ugt_result = scf.select %ugt, %true_value, %false_value : f32
+  %uge_result = scf.select %uge, %true_value, %false_value : f32
+  func.return %eq_result, %ne_result, %slt_result, %sle_result, %sgt_result, %sge_result, %ult_result, %ule_result, %ugt_result, %uge_result : f32, f32, f32, f32, f32, f32, f32, f32, f32, f32
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_addi_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  // ERROR@+1: WASM/001 {op_name="scalar.addi", field_name="lhs", actual_type="i64", required_type="i32 scalar"}
+  %result = scalar.addi %lhs, %rhs : i64
+  func.return %result : i64
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_muli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  // ERROR@+1: TARGET/001 {op_name="scalar.muli"}
+  %result = scalar.muli %lhs, %rhs : i64
+  func.return %result : i64
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_i64_shli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  %result = scalar.shli %lhs, %rhs : i64
+  func.return %result : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @scalar_i64_shli_uniform(%lhs: reg<wasm.i64>, %rhs: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %result = i64.shl %lhs, %rhs
+  return %result
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @scalar_f64_constant_select_bitcast(%condition: i1, %fallback: f64) -> (i64) {
+  // ERROR@+1: WASM/002 {op_name="scalar.constant", field_name="value"}
+  %constant = scalar.constant -1.1000000000000001 : f64
+  // ERROR@+1: WASM/001 {op_name="scf.select", field_name="true_value", actual_type="f64", required_type="i32 scalar"}
+  %selected = scf.select %condition, %constant, %fallback : f64
+  %bits = scalar.bitcast %selected : f64 to i64
+  func.return %bits : i64
+}

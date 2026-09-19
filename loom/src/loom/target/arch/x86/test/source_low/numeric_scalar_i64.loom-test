@@ -1,7 +1,7 @@
 // TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64.loom-test
-// RUN: emit source-low output=low control-flow=structured-low
+// RUN: emit source-low output=low
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_bitwise_sgpr(%lhs: i64, %rhs: i64) -> (i64, i64, i64) {
   %and = scalar.andi %lhs, %rhs : i64
@@ -11,21 +11,24 @@ func.def target(@target) @scalar_i64_bitwise_sgpr(%lhs: i64, %rhs: i64) -> (i64,
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_bitwise_sgpr(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>, reg<spirv.id : i64>, reg<spirv.id : i64>) asm {
-  %and = OpBitwiseAnd.i64 %lhs, %rhs
-  %or = OpBitwiseOr.i64 %and, %lhs
-  %xor = OpBitwiseXor.i64 %or, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_bitwise_sgpr(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %13 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %and = and.gpr64 %13, %rhs
+  %15 = copy %and : reg<x86.gpr64> -> reg<x86.gpr64>
+  %or = or.gpr64 %15, %lhs
+  %17 = copy %or : reg<x86.gpr64> -> reg<x86.gpr64>
+  %xor = xor.gpr64 %17, %rhs
   return %and, %or, %xor
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_addi_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
   %sum = scalar.addi %lhs, %rhs : i64
   func.return %sum : i64
@@ -33,12 +36,12 @@ func.def target(@target) @scalar_i64_addi_vgpr(%lhs_values: vector<2xi64>, %rhs_
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_subi_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
   %difference = scalar.subi %lhs, %rhs : i64
   func.return %difference : i64
@@ -46,27 +49,28 @@ func.def target(@target) @scalar_i64_subi_vgpr(%lhs_values: vector<2xi64>, %rhs_
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_shli_vgpr(%value_values: vector<2xi64>, %shift_values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %value = vector.extract %value_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %shift = vector.extract %shift_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.shli", subject_role="value_fact", subject_name="rhs", constraint_key="exact_i64"}
   %shifted = scalar.shli %value, %shift : i64
   func.return %shifted : i64
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+3: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_muli_bitwise_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>, %mask_values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %mask = vector.extract %mask_values[0] : vector<2xi64> -> i64
   %product = scalar.muli %lhs, %rhs : i64
   %mixed = scalar.xori %product, %mask : i64
@@ -75,7 +79,7 @@ func.def target(@target) @scalar_i64_muli_bitwise_vgpr(%lhs_values: vector<2xi64
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_eq_scc(%lhs: i64, %rhs: i64) -> (i1) {
   %cmp = scalar.cmpi eq, %lhs, %rhs : i64
@@ -83,14 +87,14 @@ func.def target(@target) @scalar_i64_compare_eq_scc(%lhs: i64, %rhs: i64) -> (i1
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_eq_scc(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i1>) asm {
-  %cmp = OpIEqual.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_compare_eq_scc(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %cmp = cmp.eq.gpr64 %lhs, %rhs
   return %cmp
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_ne_scc(%lhs: i64, %rhs: i64) -> (i1) {
   %cmp = scalar.cmpi ne, %lhs, %rhs : i64
@@ -98,14 +102,14 @@ func.def target(@target) @scalar_i64_compare_ne_scc(%lhs: i64, %rhs: i64) -> (i1
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_ne_scc(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i1>) asm {
-  %cmp = OpINotEqual.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_compare_ne_scc(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %cmp = cmp.ne.gpr64 %lhs, %rhs
   return %cmp
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_slt_return(%lhs: i64, %rhs: i64) -> (i1) {
   %cmp = scalar.cmpi slt, %lhs, %rhs : i64
@@ -113,14 +117,14 @@ func.def target(@target) @scalar_i64_compare_slt_return(%lhs: i64, %rhs: i64) ->
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_slt_return(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i1>) asm {
-  %cmp = OpSLessThan.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_compare_slt_return(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %cmp = cmp.slt.gpr64 %lhs, %rhs
   return %cmp
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_slt_if(%lhs: i64, %rhs: i64, %then_value: i32, %else_value: i32) -> (i32) {
   %cmp = scalar.cmpi slt, %lhs, %rhs : i64
@@ -133,41 +137,33 @@ func.def target(@target) @scalar_i64_compare_slt_if(%lhs: i64, %rhs: i64, %then_
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_slt_if(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>, %then_value: reg<spirv.id : i32>, %else_value: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
-  %cmp = OpSLessThan.i64 %lhs, %rhs
-  %result = OpSelect %cmp, %then_value, %else_value
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_compare_slt_if(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>, %then_value: reg<x86.gpr32>, %else_value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %cmp = cmp.slt.gpr64 %lhs, %rhs
+  %14 = copy %else_value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %result = select.gpr32 %cmp, %then_value, %14
   return %result
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_constant_select(%lhs: i64, %true_value: f32, %false_value: f32) -> (f32) {
   %limit = scalar.constant 4294967296 : i64
   %cmp = scalar.cmpi ult, %lhs, %limit : i64
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %result = scf.select %cmp, %true_value, %false_value : f32
   func.return %result : f32
 }
 
-// ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_constant_select(%lhs: reg<spirv.id : i64>, %true_value: reg<spirv.id : f32>, %false_value: reg<spirv.id : f32>) -> (reg<spirv.id : f32>) asm {
-  %limit = OpConstant.i64 4294967296
-  %12 = OpBitcast.i64.u64 %lhs
-  %13 = OpBitcast.i64.u64 %limit
-  %cmp = OpULessThan.u64 %12, %13
-  %result = OpSelect.f32 %cmp, %true_value, %false_value
-  return %result
-}
-
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_compare_all_predicates_vgpr_select(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>, %true_value: f32, %false_value: f32) -> (f32, f32, f32, f32, f32, f32, f32, f32, f32, f32) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
   %eq = scalar.cmpi eq, %lhs, %rhs : i64
   %ne = scalar.cmpi ne, %lhs, %rhs : i64
@@ -179,22 +175,32 @@ func.def target(@target) @scalar_i64_compare_all_predicates_vgpr_select(%lhs_val
   %ule = scalar.cmpi ule, %lhs, %rhs : i64
   %ugt = scalar.cmpi ugt, %lhs, %rhs : i64
   %uge = scalar.cmpi uge, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %eq_result = scf.select %eq, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %ne_result = scf.select %ne, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %slt_result = scf.select %slt, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %sle_result = scf.select %sle, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %sgt_result = scf.select %sgt, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %sge_result = scf.select %sge, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %ult_result = scf.select %ult, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %ule_result = scf.select %ule, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %ugt_result = scf.select %ugt, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %uge_result = scf.select %uge, %true_value, %false_value : f32
   func.return %eq_result, %ne_result, %slt_result, %sle_result, %sgt_result, %sge_result, %ult_result, %ule_result, %ugt_result, %uge_result : f32, f32, f32, f32, f32, f32, f32, f32, f32, f32
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_addi_uniform(%lhs: i64, %rhs: i64) -> (i64) {
   %result = scalar.addi %lhs, %rhs : i64
@@ -202,14 +208,15 @@ func.def target(@target) @scalar_i64_addi_uniform(%lhs: i64, %rhs: i64) -> (i64)
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_addi_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
-  %result = OpIAdd.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_addi_uniform(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr64>) asm {
+  %7 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %result = add.gpr64 %7, %rhs
   return %result
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_muli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
   %result = scalar.muli %lhs, %rhs : i64
@@ -217,36 +224,31 @@ func.def target(@target) @scalar_i64_muli_uniform(%lhs: i64, %rhs: i64) -> (i64)
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_muli_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
-  %result = OpIMul.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_muli_uniform(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr64>) asm {
+  %7 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %result = imul.gpr64 %7, %rhs
   return %result
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_shli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  // ERROR@+1: TARGET/003 {op_name="scalar.shli", subject_role="value_fact", subject_name="rhs", constraint_key="exact_i64"}
   %result = scalar.shli %lhs, %rhs : i64
   func.return %result : i64
 }
 
-// ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_shli_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
-  %result = OpShiftLeftLogical.i64 %lhs, %rhs
-  return %result
-}
-
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_f64_constant_select_bitcast(%condition: i1, %fallback: f64) -> (i64) {
-  // ERROR@+1: TARGET/003 {op_name="scalar.constant", subject_role="descriptor", subject_name="spirv.op_constant.f64", constraint_key="descriptor_available"}
+  // ERROR@+1: TARGET/003 {op_name="scalar.constant", subject_role="field", subject_name="value", constraint_key="attr_kind.i64"}
   %constant = scalar.constant -1.1000000000000001 : f64
-  // ERROR@+1: TARGET/003 {op_name="scf.select", subject_role="descriptor", subject_name="spirv.op_select.f64", constraint_key="descriptor_available"}
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f64", expected_type="i32"}
   %selected = scf.select %condition, %constant, %fallback : f64
-  // ERROR@+1: TARGET/003 {op_name="scalar.bitcast", subject_role="descriptor", subject_name="spirv.op_bitcast.f64.i64", constraint_key="descriptor_available"}
   %bits = scalar.bitcast %selected : f64 to i64
   func.return %bits : i64
 }

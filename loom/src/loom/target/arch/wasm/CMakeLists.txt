@@ -93,6 +93,7 @@ loom_check_test_suite(
     "test/source_low/carried_counter_store.loom-test"
     "test/source_low/loop_counter_offset.loom-test"
     "test/source_low/memory_wide_carriers.loom-test"
+    "test/source_low/numeric_scalar_i64.loom-test"
     "test/source_low/numeric_scalar_i64_subtract.loom-test"
     "test/source_low/source_low.loom-test"
     "test/source_low/source_low_diagnostics.loom-test"
@@ -104,6 +105,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_wide_carriers.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_scalar_i64.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_scalar_i64_subtract.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_v4.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
