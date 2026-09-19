@@ -42,7 +42,9 @@ struct uint3 {
 // accesses.
 [[loom::barrier]] void workgroup_barrier();
 
-// Declares a source contract on an unsigned binding and a positive upper bound.
+// Declares unsigned binding < bound contracts, optionally joined by &&. Bounds
+// are pure integer constant expressions in [1, INT32_MAX]. Conditions are not
+// evaluated at runtime; calls, mutation, and unsupported predicates diagnose.
 [[loom::assume]] void assume(bool condition);
 
 // Reads the target-selected subgroup width; no fixed wave size is implied.

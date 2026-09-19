@@ -127,6 +127,32 @@ TEST_F(ImportTest, RejectsMutationOfConstObjectsAndBindings) {
   ASSERT_NE(module_, nullptr);
 }
 
+TEST_F(ImportTest, RejectedAssumptionsPublishNoPartialModule) {
+  for (auto source : {
+           IREE_SV("[[loom::assume]] void assume(bool); "
+                   "void entry(unsigned value, unsigned limit) { "
+                   "assume(value < 256u && value < limit); }"),
+           IREE_SV("[[loom::assume]] void assume(bool); unsigned side(); "
+                   "void entry(unsigned value) { "
+                   "assume(value < 256u && value < (side(), 16u)); }"),
+           IREE_SV("[[loom::assume]] void assume(bool); struct Bound {}; "
+                   "bool operator&&(bool, Bound); "
+                   "void entry(unsigned value, Bound bound) { "
+                   "assume((value < 256u) && bound); }"),
+       }) {
+    IREE_ASSERT_OK(Import(source));
+    EXPECT_EQ(module_, nullptr);
+  }
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    [[loom::assume]] void assume(bool);
+    unsigned entry(unsigned value, unsigned other) {
+      assume(value < (1u << 8) && other < 256u);
+      return value + other;
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+}
+
 TEST_F(ImportTest, ExplicitVectorsRetainMasksAndStructuredValueTransport) {
   IREE_ASSERT_OK(Import(IREE_SV(R"(
     typedef unsigned u32x16 __attribute__((vector_size(64)));
@@ -189,6 +215,27 @@ TEST_F(ImportTest, UnsupportedVectorFormsDiagnoseAtSourceAdmission) {
            "return x && y; }",
            "typedef int V __attribute__((vector_size(16))); V f(V x, V y) { "
            "return x ? x : y; }",
+       }) {
+    SCOPED_TRACE(source);
+    auto before = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_cstring_view(source)));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_GT(diagnostic_count_, before);
+  }
+}
+
+TEST_F(ImportTest, BracedVectorConstructionRejectsInvalidInitializers) {
+  for (auto source : {
+           "typedef int V __attribute__((vector_size(16))); V f() { "
+           "return V{1, 2, 3, 4, 5}; }",
+           "typedef unsigned V __attribute__((ext_vector_type(4))); V f() { "
+           "return V{1u, 2u, 3u, 4u, 5u}; }",
+           "typedef unsigned char V __attribute__((vector_size(16))); V f() { "
+           "return V{256}; }",
+           "typedef int V __attribute__((vector_size(16))); V f(float x) { "
+           "return V{x, 0, 0, 0}; }",
+           "struct Value { int field; }; int f(int x) { "
+           "return Value{x}.field; }",
        }) {
     SCOPED_TRACE(source);
     auto before = diagnostic_count_;

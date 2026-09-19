@@ -22,10 +22,16 @@ exports_files([
 iree_execution_test_suite(
     name = "functions_test",
     data = [
+        "assumptions.cpp",
         "comparison_functions.cpp",
         "integer_functions.cpp",
         "shaped_intrinsics.cpp",
+        "vector_initializers.cpp",
         "vector_values.cpp",
+        "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/math.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/scalar.h",
     ],
     manifests = ["functions.test.json"],
     tags = ["hostonly"],
@@ -45,6 +51,7 @@ iree_execution_test_suite(
     name = "kernels_test",
     data = [
         "aiter_swiglu_f16.cpp",
+        "assumptions.cpp",
         "control_flow.cpp",
         "early_returns.cpp",
         "flash_attention.cpp",
@@ -55,6 +62,7 @@ iree_execution_test_suite(
         "shaped_intrinsics.cpp",
         "short_circuit.cpp",
         "vector_depth.cpp",
+        "vector_initializers.cpp",
         "vector_values.cpp",
         "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
         "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",

@@ -2,13 +2,124 @@
   "version": 1,
   "cases": [
     {
+      "name": "unsigned assumptions retain conjunctions, constants, promotions and scope",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=bound_pair",
+              "--root=bound_seven",
+              "--root=bound_repeated",
+              "--root=bound_capacity",
+              "--root=bound_cast",
+              "--root=bound_byte",
+              "--root=bound_wide",
+              "--root=bound_size",
+              "--root=bound_scoped",
+              "--to=bc",
+              "--output={tmp}/assumptions.loombc",
+              "{srcdir}/assumptions.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/assumption_functions.loom",
+              "--library={tmp}/assumptions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":335",
+                "\"sample_count\":335",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "typed vector temporaries preserve every initialized and zero-filled lane",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--root=constructor_return",
+              "--root=constructor_argument",
+              "--root=constructor_single",
+              "--root=constructor_narrow",
+              "--root=constructor_float",
+              "--root=constructor_nested",
+              "--to=bc",
+              "--output={tmp}/functions.loombc",
+              "{srcdir}/vector_initializers.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute on the VM",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_constructor_values.loom",
+              "--library={tmp}/functions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":288",
+                "\"sample_count\":288",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "comparison chains retain their unsigned bounds",
       "steps": [
         {
           "name": "fixtures",
           "run": {
             "tool": "generate-cases",
-            "args": ["{tmp}/fixtures"]
+            "args": [
+              "{tmp}/fixtures"
+            ]
           }
         },
         {

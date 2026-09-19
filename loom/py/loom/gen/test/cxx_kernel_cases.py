@@ -261,6 +261,52 @@ def function_cases(name, argument_widths, result_width, samples):
     return "\n\n".join(cases)
 
 
+def assumption_functions(directory):
+    del directory
+    values = [0, 1, 127, 128, 254, 255]
+    seven = [[0] * 7, [255] * 7] + [[255 if lane == active else 0 for lane in range(7)] for active in range(7)]
+    samples = [
+        ("bound_pair", [32, 32], [([a, b], a * 257 + b) for a in values for b in values]),
+        ("bound_seven", [32] * 7, [(args, sum(a * b for a, b in zip(args, [1, 2, 3, 5, 7, 11, 13], strict=True))) for args in seven]),
+        ("bound_repeated", [32], [([value], value * 17) for value in [0, 1, 15, 16, 31]]),
+        ("bound_capacity", [32], [([value], value * 16 + 336) for value in [0, 1, 255, 256, 426, 427]]),
+        ("bound_cast", [32], [([value], value + 5) for value in [0, 1, 7, 15]]),
+        ("bound_byte", [8], [([value], value + (1024 if value >= 128 else 0)) for value in range(256)]),
+        ("bound_wide", [64], [([value], value * 3) for value in values]),
+        ("bound_size", [32], [([value], value) for value in [0, 1, 7, 15]]),
+        ("bound_scoped", [32], [([value], value + (1 if value < 256 else 3)) for value in [0, 1, 127, 128, 255, 256, 427, 0x7FFFFFFF, 0xFFFFFFFF]]),
+    ]
+    return "\n".join(function_cases(name, widths, 32, cases) for name, widths, cases in samples)
+
+
+def assumption_kernel(directory):
+    cases = []
+    for input_value in [0, 1, 127, 128, 255, 256, 427, 0xFFFFFFC0, 0xFFFFFFFF]:
+        expected = []
+        for lane in range(64):
+            value = (input_value + lane) % (1 << 32)
+            byte = value % 256
+            expected.extend(
+                [
+                    byte * 257 + value // 256 % 256,
+                    byte + 278,
+                    value % 32 * 17,
+                    value % 428 * 16 + 336,
+                    value % 16 + 5,
+                    byte + (1024 if byte >= 128 else 0),
+                    byte * 3,
+                    value % 16,
+                    signed_bits(value + (1 if value < 256 else 3), 32),
+                ]
+            )
+        case = Case(directory, f"assumptions_{input_value}", "i32", len(expected))
+        case.scalar("input", signed_bits(input_value, 32), "i32")
+        case.launch("assumption_kernel", "%output, %input", f"tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @assumption_kernel() launch(%output: buffer, %input: i32)\n\n" + "\n".join(cases)
+
+
 def integer_functions(directory):
     del directory
     cases = []
@@ -424,6 +470,47 @@ def vector_control(directory):
     return "kernel.decl @vector_control_kernel() launch(%output: buffer, %input: i32, %count: i32)\n\n" + "\n".join(cases)
 
 
+CONSTRUCTOR_INPUTS = [0, 1, 127, 255, 256, 0xFFFFFF80, 0x7FFFFFFC, 0xFFFFFFFF]
+
+
+def constructor_references(value):
+    signed = signed_bits(value, 32)
+    floating = struct.unpack("<I", struct.pack("<f", float(signed)))[0]
+    return {
+        "constructor_return": [signed + lane for lane in range(4)],
+        "constructor_argument": [value, 7, 0, 0],
+        "constructor_single": [value, 0, 0, 0],
+        "constructor_narrow": [value & 255, 255, 128] + [0] * 13,
+        "constructor_float": [floating, 0x80000000, 0x3FC00000, 0],
+        "constructor_nested": [value + 9, 9, 9, 9],
+    }
+
+
+def vector_constructor_values(directory):
+    del directory
+    samples = {}
+    for value in CONSTRUCTOR_INPUTS:
+        for name, lanes in constructor_references(value).items():
+            samples.setdefault(name, []).extend(([value, lane], expected) for lane, expected in enumerate(lanes))
+    return "\n\n".join(function_cases(name, [32, 32], 32, values) for name, values in samples.items()) + "\n"
+
+
+def vector_initializers(directory):
+    cases = []
+    for value in CONSTRUCTOR_INPUTS:
+        expected = []
+        for name, lanes in constructor_references(value).items():
+            expected.extend(struct.unpack("<4I", bytes(lanes)) if name == "constructor_narrow" else lanes)
+        expected.extend(value + lane for lane in range(4))
+        expected.extend([1234, 0, 0, 0])
+        case = Case(directory, f"vector_initializers_{value}", "i32", len(expected))
+        case.scalar("input", signed_bits(value, 32), "i32")
+        case.launch("vector_initializers", "%output, %input", f"tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish([signed_bits(element, 32) for element in expected]))
+    return "kernel.decl @vector_initializers() launch(%output: buffer, %input: i32)\n\n" + "\n".join(cases)
+
+
 def f32_bits(bits):
     return struct.unpack("<f", struct.pack("<I", bits))[0]
 
@@ -533,11 +620,15 @@ def main():
         ("increment_u8", lambda directory: integer_increment(directory, 8, BYTE_INPUTS)),
         ("increment_u64", lambda directory: integer_increment(directory, 64, WIDE_INPUTS)),
         ("integer_functions", integer_functions),
+        ("assumption_functions", assumption_functions),
+        ("assumption_kernel", assumption_kernel),
         ("comparison_functions", comparison_functions),
         ("pointer_walk", pointer_walk),
         ("vector_depth", vector_depth),
         ("vector_depth_span", vector_depth_span),
         ("vector_values", vector_values),
+        ("vector_constructor_values", vector_constructor_values),
+        ("vector_initializers", vector_initializers),
         ("vector_control", vector_control),
         ("vector_masks", vector_masks),
         ("shaped_intrinsic_values", shaped_intrinsic_values),

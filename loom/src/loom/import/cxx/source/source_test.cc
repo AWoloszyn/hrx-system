@@ -136,6 +136,71 @@ TEST(SourceTest, ComparisonsDoNotSpeculateOnNonTemplateArguments) {
   EXPECT_FALSE(source.diagnostics().has_error());
 }
 
+TEST(SourceTest, IntegerConstantsPreserveDefinedArithmetic) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV(R"cpp(
+                  static_assert(2147483646 + 1 == 2147483647);
+                  static_assert(-2147483647 - 1 == (-2147483647 - 1));
+                  static_assert(-2147483647 * -1 == 2147483647);
+                  static_assert((-2147483647 - 1) * 0 == 0);
+                  static_assert((-2147483647 - 1) * 1 == (-2147483647 - 1));
+                  static_assert((-2147483647 - 1) / 1 == (-2147483647 - 1));
+                  static_assert((-2147483647 - 1) % 1 == 0);
+                  static_assert(9223372036854775806LL + 1 == 9223372036854775807LL);
+                  static_assert(-9223372036854775807LL * -1 == 9223372036854775807LL);
+                  static_assert(4294967295u + 17u == 16u);
+                  static_assert(0u - 1u == 4294967295u);
+                  static_assert(0x80000000u * 2u == 0u);
+                  static_assert(0xffffffffffffffffULL + 17ULL == 16ULL);
+                  static_assert(0x8000000000000000ULL * 2ULL == 0ULL);
+                  static_assert(-1 << 1 == -2);
+                  static_assert(1 << 31 == (-2147483647 - 1));
+                  static_assert(1LL << 63 == (-9223372036854775807LL - 1));
+                  static_assert(-2 >> 1 == -1);
+                  static_assert(0x80000000u >> 31 == 1u);
+                  static_assert(0x8000000000000000ULL >> 63 == 1ULL);
+                )cpp"),
+                IREE_SV("constants.cpp"), options);
+  EXPECT_FALSE(source.diagnostics().has_error());
+}
+
+TEST(SourceTest, InvalidIntegerConstantsProduceSourceDiagnostics) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  for (auto expression : {
+           "2147483647 + 1",
+           "(-2147483647 - 1) - 1",
+           "2147483647 * 2",
+           "(-2147483647 - 1) * -1",
+           "-(-2147483647 - 1)",
+           "(-2147483647 - 1) / -1",
+           "(-2147483647 - 1) % -1",
+           "9223372036854775807LL + 1",
+           "(-9223372036854775807LL - 1) - 1",
+           "9223372036854775807LL * 2",
+           "(-9223372036854775807LL - 1) * -1",
+           "-(-9223372036854775807LL - 1)",
+           "(-9223372036854775807LL - 1) / -1",
+           "(-9223372036854775807LL - 1) % -1",
+           "1 / 0",
+           "1u % 0u",
+           "1u << 32",
+           "1ULL << 64",
+           "1u >> 32",
+           "1ULL >> 64",
+           "1u << -1",
+           "1u >> -1",
+           "1u << (1ULL << 32)",
+       }) {
+    SCOPED_TRACE(expression);
+    std::string contents = "static_assert((" + std::string(expression) +
+                           ") == (" + expression + "));";
+    EXPECT_THROW(Source(view(contents), IREE_SV("constants.cpp"), options),
+                 SourceRejected);
+  }
+}
+
 TEST(SourceTest, TemplateLookaheadRetainsOverloadsCastsAndDependentNames) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);

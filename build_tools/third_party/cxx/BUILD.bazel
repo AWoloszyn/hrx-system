@@ -7,7 +7,9 @@
 # bazel-to-cmake: skip
 
 exports_files([
+    "braced_vector_initialization.patch",
     "cxx.BUILD.bazel",
+    "constant_arithmetic.patch",
     "include_continuation.patch",
     "include_paths.patch",
     "template_lookahead.patch",
