@@ -1,0 +1,724 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "compiles all address realizations for gfx11-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx11-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx11-generic\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx1100",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx1100",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx1100\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx1151",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx1151",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx1151\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx1170",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx1170",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx1170\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx12-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx12-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx12-generic\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx1200",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx1200",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx1200\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx12-5-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx12-5-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx12-5-generic\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx1250",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx1250",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx1250\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx1250-a0",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx1250-a0",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx1250-a0\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx1251",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx1251",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx1251\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx9-4-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx9-4-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx9-4-generic\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx942",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx942",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx942\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles all address realizations for gfx950",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_address_realizations.loom-test",
+          "--target=amdgpu:gfx950",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx950\"",
+              "\"entries\":{\"count\":8,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compiles supported global atomics for gfx9-4-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_add_i32",
+          "--root=@global_atomic_add_i64",
+          "--root=@global_atomic_dynamic_add_i64",
+          "--root=@global_atomic_add_f32",
+          "--root=@global_atomic_bitwise_i32",
+          "--root=@global_atomic_sub_i32",
+          "--root=@global_atomic_exchange_i32",
+          "--root=@global_atomic_exchange_i64",
+          "--root=@global_atomic_cmpxchg_i32",
+          "--root=@global_atomic_cmpxchg_i64",
+          "--root=@global_atomic_minmax_i32",
+          "--target=amdgpu:gfx9-4-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx9-4-generic\"",
+              "\"entries\":{\"count\":11,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rejects unsupported global_atomic_minnum_maxnum_f32 for gfx9-4-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_minnum_maxnum_f32",
+          "--target=amdgpu:gfx9-4-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/unsupported.hsaco"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "error [AMDGPU/023]",
+          "in '@global_atomic_minnum_maxnum_f32'",
+          "'atomic.descriptor_missing'"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/unsupported.hsaco",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "rejects unsupported global_atomic_dynamic_minnum_f32 for gfx9-4-generic",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_dynamic_minnum_f32",
+          "--target=amdgpu:gfx9-4-generic",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/unsupported.hsaco"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "error [AMDGPU/023]",
+          "in '@global_atomic_dynamic_minnum_f32'",
+          "'atomic.descriptor_missing'"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/unsupported.hsaco",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "compiles supported global atomics for gfx942",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_add_i32",
+          "--root=@global_atomic_add_i64",
+          "--root=@global_atomic_dynamic_add_i64",
+          "--root=@global_atomic_add_f32",
+          "--root=@global_atomic_bitwise_i32",
+          "--root=@global_atomic_sub_i32",
+          "--root=@global_atomic_exchange_i32",
+          "--root=@global_atomic_exchange_i64",
+          "--root=@global_atomic_cmpxchg_i32",
+          "--root=@global_atomic_cmpxchg_i64",
+          "--root=@global_atomic_minmax_i32",
+          "--target=amdgpu:gfx942",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx942\"",
+              "\"entries\":{\"count\":11,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rejects unsupported global_atomic_minnum_maxnum_f32 for gfx942",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_minnum_maxnum_f32",
+          "--target=amdgpu:gfx942",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/unsupported.hsaco"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "error [AMDGPU/023]",
+          "in '@global_atomic_minnum_maxnum_f32'",
+          "'atomic.descriptor_missing'"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/unsupported.hsaco",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "rejects unsupported global_atomic_dynamic_minnum_f32 for gfx942",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_dynamic_minnum_f32",
+          "--target=amdgpu:gfx942",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/unsupported.hsaco"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "error [AMDGPU/023]",
+          "in '@global_atomic_dynamic_minnum_f32'",
+          "'atomic.descriptor_missing'"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/unsupported.hsaco",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "compiles supported global atomics for gfx950",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_add_i32",
+          "--root=@global_atomic_add_i64",
+          "--root=@global_atomic_dynamic_add_i64",
+          "--root=@global_atomic_add_f32",
+          "--root=@global_atomic_bitwise_i32",
+          "--root=@global_atomic_sub_i32",
+          "--root=@global_atomic_exchange_i32",
+          "--root=@global_atomic_exchange_i64",
+          "--root=@global_atomic_cmpxchg_i32",
+          "--root=@global_atomic_cmpxchg_i64",
+          "--root=@global_atomic_minmax_i32",
+          "--target=amdgpu:gfx950",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/memory.hsaco",
+          "--compile-report=summary",
+          "--compile-report-output={tmp}/memory.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/memory.hsaco",
+          "non_empty": true
+        },
+        {
+          "path": "{tmp}/memory.json",
+          "contains": {
+            "unordered": [
+              "\"target_key\":\"gfx950\"",
+              "\"entries\":{\"count\":11,\"rows\":["
+            ]
+          },
+          "not_contains": [
+            "\"code_byte_count\":0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rejects unsupported global_atomic_minnum_maxnum_f32 for gfx950",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_minnum_maxnum_f32",
+          "--target=amdgpu:gfx950",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/unsupported.hsaco"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "error [AMDGPU/023]",
+          "in '@global_atomic_minnum_maxnum_f32'",
+          "'atomic.descriptor_missing'"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/unsupported.hsaco",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "rejects unsupported global_atomic_dynamic_minnum_f32 for gfx950",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/../../../../test/corpus/source_low/memory_global_atomic.loom-test",
+          "--root=@global_atomic_dynamic_minnum_f32",
+          "--target=amdgpu:gfx950",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/unsupported.hsaco"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "error [AMDGPU/023]",
+          "in '@global_atomic_dynamic_minnum_f32'",
+          "'atomic.descriptor_missing'"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/unsupported.hsaco",
+          "exists": false
+        }
+      ]
+    }
+  ]
+}

@@ -15,6 +15,7 @@ iree_execution_test_suite(
     loom_compile_execution_test
   MANIFESTS
     "loom-compile-amdgpu.test.json"
+    "memory-addresses.test.json"
     "wide-offsets.test.json"
   TOOLS
     "loom-compile=loom::tools::loom-compile"
@@ -23,6 +24,8 @@ iree_execution_test_suite(
     "loom-opt=loom::tools::loom-opt"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_scaling.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_address_realizations.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_global_atomic.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_wide_offsets.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/complete_authoring_module.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/loop_entry_wave32.loom"
