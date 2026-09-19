@@ -198,6 +198,32 @@ TEST_F(ImportTest, UnsupportedVectorFormsDiagnoseAtSourceAdmission) {
   }
 }
 
+TEST_F(ImportTest, ShapedIntrinsicsRetainHeterogeneousSignaturesAndKinds) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    typedef unsigned Table __attribute__((vector_size(64)));
+    typedef unsigned Indices __attribute__((vector_size(16)));
+    typedef signed char Coordinates __attribute__((vector_size(16)));
+    typedef unsigned char Weights __attribute__((vector_size(16)));
+    typedef int Result __attribute__((vector_size(16)));
+    [[loom::op("vector.table.lookup")]] Indices lookup(Table, Indices);
+    [[loom::op("vector.dot4i", "s8u8")]] Result dot(Coordinates, Weights, Result);
+    Indices lookup_row(Table table, Indices indices) {
+      return lookup(table, indices);
+    }
+    Result transform(Coordinates points, Weights rows, Result translation) {
+      return dot(points, rows, translation);
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("vector.table.lookup"), std::string::npos);
+  EXPECT_NE(text.find("vector<16xi32>, vector<4xi32> -> vector<4xi32>"),
+            std::string::npos);
+  EXPECT_NE(text.find("vector.dot4i<s8u8>"), std::string::npos);
+  EXPECT_NE(text.find("vector<16xi8>, vector<16xi8>, vector<4xi32>"),
+            std::string::npos);
+}
+
 TEST_F(ImportTest, PointerOriginsCrossCallsBranchesAndLoops) {
   IREE_ASSERT_OK(Import(IREE_SV(R"(
     static int* advance(int* pointer, long long count) {

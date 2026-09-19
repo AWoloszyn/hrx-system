@@ -21,7 +21,8 @@ TEST_F(IntrinsicsTest, CallsUseAnAdmittedBindingAndItsExplicitMathFlags) {
   auto declared = declarations(source, "custom");
   ASSERT_EQ(declared.size(), 1u);
   const auto& declaration = declared[0];
-  Intrinsics intrinsics(source.unit(), source.diagnostics());
+  Types types(source.unit(), source.diagnostics());
+  Intrinsics intrinsics(source.unit(), source.diagnostics(), types);
   intrinsics.declaration(declaration.function, declaration.attributes,
                          declaration.owner);
   loom_op_t* constant;
@@ -43,7 +44,8 @@ TEST_F(IntrinsicsTest, RejectsADeclarationWhoseTypesLoseTheOperationContract) {
   auto declared = declarations(source, "custom");
   ASSERT_EQ(declared.size(), 1u);
   const auto& declaration = declared[0];
-  Intrinsics intrinsics(source.unit(), source.diagnostics());
+  Types types(source.unit(), source.diagnostics());
+  Intrinsics intrinsics(source.unit(), source.diagnostics(), types);
   EXPECT_THROW(
       intrinsics.declaration(declaration.function, declaration.attributes,
                              declaration.owner),

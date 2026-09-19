@@ -27,6 +27,13 @@ iree_status_t loom_amdgpu_lower_vector_table_lookup(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_table_lookup_plan_t* plan);
 
+// Returns whether the current shapes, index facts and target descriptors admit
+// a native recipe. Shared legalization uses this same selection predicate to
+// preserve native lookup forms while expanding unsupported forms.
+bool loom_amdgpu_vector_table_lookup_is_supported(
+    const loom_module_t* module, const loom_value_fact_table_t* fact_table,
+    const loom_low_descriptor_set_t* descriptor_set, const loom_op_t* op);
+
 // Verifies source vector table op legality for AMDGPU target-low selection.
 iree_status_t loom_amdgpu_low_legality_verify_vector_table(
     const loom_target_low_legality_provider_t* provider,

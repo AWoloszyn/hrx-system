@@ -293,8 +293,12 @@ loom_check_test_suite(
     "test/control_flow.loom-test"
     "test/diagnostics.loom-test"
     "test/emit.loom-test"
+    "test/lookup_table.loom-test"
+    "test/numeric_index_conversion.loom-test"
     "test/target_low.loom-test"
     "test/toolchain.loom-test"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/lookup_table.loom-test"
 )
 endif()
 

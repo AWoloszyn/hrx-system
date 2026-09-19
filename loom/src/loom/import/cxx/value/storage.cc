@@ -65,6 +65,16 @@ Pointer Storage::advance(Pointer base, loom_value_id_t displacement,
   auto build = operation == cxx::TokenKind::T_MINUS ? loom_scalar_subi_build
                                                     : loom_scalar_addi_build;
   check(build(&builder_, 0, origin, delta, wide_type, source, &op));
+  auto byte_offset = loom_op_results(op)[0];
+  loom_predicate_t range = {
+      .kind = LOOM_PREDICATE_RANGE,
+      .arg_count = 3,
+      .arg_tags = {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST,
+                   LOOM_PRED_ARG_CONST},
+      .args = {byte_offset, 0, INT64_MAX},
+  };
+  check(loom_scalar_assume_build(&builder_, &byte_offset, 1, &range, 1,
+                                 &wide_type, 1, source, &op));
   check(loom_index_cast_build(&builder_, loom_op_results(op)[0], wide_type,
                               offset_type, source, &op));
   return {base.root, loom_op_results(op)[0]};
@@ -90,10 +100,26 @@ StorageAccess Storage::subscript(Pointer base, loom_value_id_t index,
   if (!unit_.typeTraits().is_integral(subscript_type)) {
     diagnostics_.reject(unit_, owner, "subscripts require integral offsets");
   }
-  if (cxx::type_cast<cxx::BoundedArrayType>(types_.unqualified(base_type))) {
+  if (auto* array = cxx::type_cast<cxx::BoundedArrayType>(
+          types_.unqualified(base_type))) {
     auto input_type = types_.get(subscript_type, owner);
     loom_op_t* cast;
     if (types_.is_unsigned(subscript_type)) {
+      if (loom_type_element_type(input_type) == LOOM_SCALAR_TYPE_I64) {
+        // A defined fixed-array access is within the declared extent. Publish
+        // that source precondition before entering the offset domain.
+        loom_predicate_t range = {
+            .kind = LOOM_PREDICATE_RANGE,
+            .arg_count = 3,
+            .arg_tags = {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST,
+                         LOOM_PRED_ARG_CONST},
+            .args = {index, 0, static_cast<int64_t>(array->size() - 1)},
+        };
+        check(loom_scalar_assume_build(&builder_, &index, 1, &range, 1,
+                                       &input_type, 1, locations_.get(owner),
+                                       &cast));
+        index = loom_op_results(cast)[0];
+      }
       auto offset_type = loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET);
       check(loom_index_cast_build(&builder_, index, input_type, offset_type,
                                   locations_.get(owner), &cast));

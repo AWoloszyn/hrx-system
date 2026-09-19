@@ -808,6 +808,17 @@ iree_status_t loom_amdgpu_lower_vector_table_lookup(
       context, source_op, plan->result, result_lanes, plan->result_lane_count);
 }
 
+bool loom_amdgpu_vector_table_lookup_is_supported(
+    const loom_module_t* module, const loom_value_fact_table_t* fact_table,
+    const loom_low_descriptor_set_t* descriptor_set, const loom_op_t* op) {
+  loom_amdgpu_table_lookup_plan_t unused_plan = {0};
+  const loom_amdgpu_table_lookup_strategy_row_t* row = NULL;
+  return loom_amdgpu_table_lookup_plan_from_op(module, fact_table, op, &row,
+                                               &unused_plan) &&
+         loom_amdgpu_table_lookup_strategy_descriptors_present(descriptor_set,
+                                                               row);
+}
+
 iree_status_t loom_amdgpu_low_legality_verify_vector_table(
     const loom_target_low_legality_provider_t* provider,
     loom_target_low_legality_context_t* context, const loom_op_t* op,
@@ -818,14 +829,10 @@ iree_status_t loom_amdgpu_low_legality_verify_vector_table(
   }
   *out_handled = true;
 
-  const loom_module_t* module = loom_target_low_legality_module(context);
-  loom_amdgpu_table_lookup_plan_t unused_plan = {0};
-  const loom_amdgpu_table_lookup_strategy_row_t* row = NULL;
-  if (loom_amdgpu_table_lookup_plan_from_op(
-          module, loom_target_low_legality_fact_table(context), op, &row,
-          &unused_plan) &&
-      loom_amdgpu_table_lookup_strategy_descriptors_present(
-          loom_target_low_legality_descriptor_set(context), row)) {
+  if (loom_amdgpu_vector_table_lookup_is_supported(
+          loom_target_low_legality_module(context),
+          loom_target_low_legality_fact_table(context),
+          loom_target_low_legality_descriptor_set(context), op)) {
     return iree_ok_status();
   }
   return loom_amdgpu_low_legality_reject(context, op,

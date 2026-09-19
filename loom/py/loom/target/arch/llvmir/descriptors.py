@@ -149,12 +149,20 @@ _FLOAT_PREDICATES = (
 _SCALAR_CAST_SPECS = (
     ("trunc", "i32", "i8"),
     ("trunc", "i32", "i16"),
+    ("trunc", "i64", "i1"),
+    ("trunc", "i64", "i8"),
+    ("trunc", "i64", "i16"),
     ("trunc", "i64", "i32"),
     ("sext", "i8", "i32"),
     ("sext", "i16", "i32"),
+    ("sext", "i8", "i64"),
+    ("sext", "i16", "i64"),
     ("sext", "i32", "i64"),
     ("zext", "i8", "i32"),
     ("zext", "i16", "i32"),
+    ("zext", "i1", "i64"),
+    ("zext", "i8", "i64"),
+    ("zext", "i16", "i64"),
     ("zext", "i32", "i64"),
     ("sitofp", "i8", "f32"),
     ("sitofp", "i32", "f32"),
@@ -1099,6 +1107,8 @@ def _select_descriptors() -> tuple[Descriptor, ...]:
             _select_descriptor(type_name, unit_count=unit_count)
             for type_name, unit_count in (
                 ("i1", 1),
+                ("i8", 1),
+                ("i16", 1),
                 ("i32", 1),
                 ("i64", 1),
                 ("f32", 1),
@@ -1233,6 +1243,27 @@ def _extract_descriptor(type_name: str, lane_count: int) -> Descriptor:
             results=("dst",),
             operands=("source",),
             immediates=("lane",),
+        ),
+        schedule_class=_SCHEDULE_ALU,
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    )
+
+
+def _dynamic_extract_descriptor(type_name: str, lane_count: int) -> Descriptor:
+    suffix = _descriptor_suffix(type_name, lane_count, vector=True)
+    return Descriptor(
+        key=f"llvmir.extract.dynamic.{suffix}",
+        mnemonic="extract.dynamic",
+        semantic_tag=f"llvmir.extract.dynamic.{suffix}",
+        operands=(
+            _result(type_name),
+            _operand(type_name, "source", unit_count=lane_count),
+            _operand("i64", "index"),
+        ),
+        asm_forms=_asm(
+            mnemonic=f"extract.dynamic.{suffix}",
+            results=("dst",),
+            operands=("source", "index"),
         ),
         schedule_class=_SCHEDULE_ALU,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
@@ -1376,6 +1407,7 @@ def _structural_vector_descriptors() -> tuple[Descriptor, ...]:
             descriptors.append(_splat_descriptor(type_name, lane_count))
             descriptors.append(_from_elements_descriptor(type_name, lane_count))
             descriptors.append(_extract_descriptor(type_name, lane_count))
+            descriptors.append(_dynamic_extract_descriptor(type_name, lane_count))
             descriptors.append(_insert_descriptor(type_name, lane_count))
             descriptors.append(_dynamic_insert_descriptor(type_name, lane_count))
             descriptors.append(_shuffle_descriptor(type_name, lane_count))
@@ -1390,6 +1422,10 @@ def _structural_vector_descriptors() -> tuple[Descriptor, ...]:
         )
     descriptors.extend(
         _extract_descriptor(type_name, lane_count)
+        for type_name, lane_count in _ADDITIONAL_STRUCTURAL_EXTRACTS
+    )
+    descriptors.extend(
+        _dynamic_extract_descriptor(type_name, lane_count)
         for type_name, lane_count in _ADDITIONAL_STRUCTURAL_EXTRACTS
     )
     return tuple(descriptors)

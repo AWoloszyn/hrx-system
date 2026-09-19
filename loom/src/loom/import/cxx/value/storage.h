@@ -52,7 +52,8 @@ class Storage {
   // Computes an object-relative byte origin using the source integer's width
   // and signedness. Subtraction is represented by T_MINUS; addition by T_PLUS.
   // Only the final origin enters offset, allowing negative displacements from
-  // interior pointers without forming negative offset values.
+  // interior pointers without forming negative offset values. Its nonnegative
+  // range is published from the source language's within-object precondition.
   Pointer advance(Pointer base, loom_value_id_t displacement,
                   const cxx::Type* base_type, const cxx::Type* index_type,
                   cxx::TokenKind operation, cxx::AST* owner);

@@ -12,6 +12,8 @@
 #include <cxx/symbols.h>
 #include <cxx/types.h>
 
+#include <type_traits>
+
 #include "loom/import/cxx/source/attributes.h"
 #include "loom/import/cxx/source/error.h"
 
@@ -68,9 +70,15 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
   auto binding = resolve(function, *selected, owner);
   auto [entry, inserted] =
       bindings_.try_emplace(function->canonical(), binding);
-  if (!inserted && (entry->second.scalar != binding.scalar ||
-                    entry->second.flags != binding.flags ||
-                    !loom_type_equal(entry->second.type, binding.type))) {
+  bool equivalent =
+      inserted || std::visit(
+                      [&](const auto& previous) {
+                        using T = std::decay_t<decltype(previous)>;
+                        auto* current = std::get_if<T>(&binding);
+                        return current && previous.equivalent(*current);
+                      },
+                      entry->second);
+  if (!equivalent) {
     diagnostics_.reject(unit_, owner, "conflicting intrinsic redeclarations");
   }
 }
@@ -78,25 +86,35 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
 Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
                                         const cxx::Attribute& attribute,
                                         cxx::AST* owner) {
-  Binding result;
-  result.scalar =
-      loom_cxx_scalar_binding_find(view(attribute.arguments[0]->name()));
-  if (!result.scalar) {
-    diagnostics_.reject(unit_, owner, "operation has no scalar C++ projection");
-  }
   auto* signature = cxx::type_cast<cxx::FunctionType>(function->type());
+  if (auto* scalar =
+          loom_cxx_scalar_binding_find(view(attribute.arguments[0]->name()))) {
+    return resolve_scalar(scalar, signature, attribute, owner);
+  }
+  if (auto shaped = ShapedIntrinsic::resolve(unit_, diagnostics_, types_,
+                                             signature, attribute, owner)) {
+    return *shaped;
+  }
+  diagnostics_.reject(unit_, owner, "operation has no C++ projection");
+}
+
+Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
+    const loom_cxx_scalar_binding_t* scalar, const cxx::FunctionType* signature,
+    const cxx::Attribute& attribute, cxx::AST* owner) {
+  ScalarBinding result;
+  result.scalar = scalar;
   const auto& traits = unit_.typeTraits();
   const auto* return_type = traits.remove_cv(signature->returnType());
-  loom_scalar_type_t scalar;
+  loom_scalar_type_t scalar_type;
   switch (return_type->kind()) {
     case cxx::TypeKind::kFloat16:
-      scalar = LOOM_SCALAR_TYPE_F16;
+      scalar_type = LOOM_SCALAR_TYPE_F16;
       break;
     case cxx::TypeKind::kFloat:
-      scalar = LOOM_SCALAR_TYPE_F32;
+      scalar_type = LOOM_SCALAR_TYPE_F32;
       break;
     case cxx::TypeKind::kDouble:
-      scalar = LOOM_SCALAR_TYPE_F64;
+      scalar_type = LOOM_SCALAR_TYPE_F64;
       break;
     default:
       diagnostics_.reject(
@@ -125,7 +143,7 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
     }
     result.flags |= flag;
   }
-  result.type = loom_type_scalar(scalar);
+  result.type = loom_type_scalar(scalar_type);
   return result;
 }
 
@@ -136,11 +154,14 @@ std::optional<loom_value_id_t> Intrinsics::call(
   if (entry == bindings_.end()) {
     return std::nullopt;
   }
-  const auto& binding = entry->second;
-  loom_op_t* op;
-  check(binding.scalar->build(builder, binding.flags | math_flags,
-                              arguments.data(), binding.type, location, &op));
-  return loom_op_results(op)[0];
+  if (auto* scalar = std::get_if<ScalarBinding>(&entry->second)) {
+    loom_op_t* op;
+    check(scalar->scalar->build(builder, scalar->flags | math_flags,
+                                arguments.data(), scalar->type, location, &op));
+    return loom_op_results(op)[0];
+  }
+  return std::get<ShapedIntrinsic>(entry->second)
+      .call(arguments, builder, location);
 }
 
 }  // namespace loom::cxx_import

@@ -1,0 +1,297 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/lookup_table.loom-test
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {triple = "amdgcn-amd-amdhsa"}
+
+kernel.def target(@target) @f32_table_lookup_i8_codes() {
+  %unit = index.constant 1 : index
+  %workgroup_size = index.constant 2 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%workgroup_size, %unit, %unit) : index
+} launch(%codes_buffer: buffer, %output: buffer) {
+  %lane = kernel.workitem.id<x> : index
+  %base_offset = index.constant 0 : offset
+  %code_stride = index.constant 4 : index
+  %base = index.mul %lane, %code_stride : index
+  %codes_view = buffer.view %codes_buffer[%base_offset] : buffer -> view<8xi8>
+  %output_view = buffer.view %output[%base_offset] : buffer -> view<8xf32>
+  %codes = vector.load %codes_view[%base] : view<8xi8> -> vector<4xi8>
+  %g0 = scalar.constant -1.0 : f32
+  %g1 = scalar.constant -0.5 : f32
+  %g2 = scalar.constant 0.5 : f32
+  %g3 = scalar.constant 1.5 : f32
+  %grid = vector.from_elements %g0, %g1, %g2, %g3 : vector<4xf32>
+  %decoded = vector.table.lookup %grid[%codes] : vector<4xf32>, vector<4xi8> -> vector<4xf32>
+  vector.store %decoded, %output_view[%base] : vector<4xf32>, view<8xf32>
+  kernel.return
+}
+
+// ----
+define amdgpu_kernel void @f32_table_lookup_i8_codes(ptr addrspace(1) inreg noundef %v0.codes_view, ptr addrspace(1) inreg noundef %v1.output_view) #0 !reqd_work_group_size !0 {
+bb0.entry:
+  %v5 = call i32 @llvm.amdgcn.workitem.id.x()
+  %v6.lane = zext i32 %v5 to i64
+  %v13 = insertelement <4 x float> poison, float 0x00000000BF800000, i64 0
+  %v15 = insertelement <4 x float> %v13, float 0x00000000BF000000, i64 1
+  %v17 = insertelement <4 x float> %v15, float 0x000000003F000000, i64 2
+  %v19.grid = insertelement <4 x float> %v17, float 0x000000003FC00000, i64 3
+  %v21 = mul i64 %v6.lane, 4
+  %v22 = getelementptr i8, ptr addrspace(1) %v0.codes_view, i64 %v21
+  %v23 = load i8, ptr addrspace(1) %v22
+  %v24 = sext i8 %v23 to i64
+  %v25 = extractelement <4 x float> %v19.grid, i64 %v24
+  %v27 = mul i64 %v6.lane, 4
+  %v29 = add i64 %v27, 1
+  %v30 = getelementptr i8, ptr addrspace(1) %v0.codes_view, i64 %v29
+  %v31 = load i8, ptr addrspace(1) %v30
+  %v32 = sext i8 %v31 to i64
+  %v33 = extractelement <4 x float> %v19.grid, i64 %v32
+  %v35 = mul i64 %v6.lane, 4
+  %v37 = add i64 %v35, 2
+  %v38 = getelementptr i8, ptr addrspace(1) %v0.codes_view, i64 %v37
+  %v39 = load i8, ptr addrspace(1) %v38
+  %v40 = sext i8 %v39 to i64
+  %v41 = extractelement <4 x float> %v19.grid, i64 %v40
+  %v43 = mul i64 %v6.lane, 4
+  %v45 = add i64 %v43, 3
+  %v46 = getelementptr i8, ptr addrspace(1) %v0.codes_view, i64 %v45
+  %v47 = load i8, ptr addrspace(1) %v46
+  %v48 = sext i8 %v47 to i64
+  %v49 = extractelement <4 x float> %v19.grid, i64 %v48
+  %v52 = insertelement <4 x float> poison, float %v25, i64 0
+  %v54 = insertelement <4 x float> %v52, float %v33, i64 1
+  %v56 = insertelement <4 x float> %v54, float %v41, i64 2
+  %v58.decoded = insertelement <4 x float> %v56, float %v49, i64 3
+  %v60 = mul i64 %v6.lane, 16
+  %v61 = getelementptr i8, ptr addrspace(1) %v1.output_view, i64 %v60
+  store <4 x float> %v58.decoded, ptr addrspace(1) %v61
+  ret void
+}
+
+declare i32 @llvm.amdgcn.workitem.id.x()
+
+attributes #0 = { alwaysinline "amdgpu-flat-work-group-size"="1,1024" "uniform-work-group-size" }
+
+!0 = !{i32 2, i32 1, i32 1}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @f32_table_lookup_i32_codes(%codes: vector<2xi32>) -> (vector<2xf32>) {
+  %g0 = scalar.constant 2.0 : f32
+  %g1 = scalar.constant -3.0 : f32
+  %g2 = scalar.constant 5.0 : f32
+  %grid = vector.from_elements %g0, %g1, %g2 : vector<3xf32>
+  %decoded = vector.table.lookup %grid[%codes] : vector<3xf32>, vector<2xi32> -> vector<2xf32>
+  func.return %decoded : vector<2xf32>
+}
+
+// ----
+define dso_local <2 x float> @f32_table_lookup_i32_codes(<2 x i32> %v0.codes) {
+bb0.entry:
+  %v6 = insertelement <3 x float> poison, float 0x0000000040000000, i64 0
+  %v8 = insertelement <3 x float> %v6, float 0x00000000C0400000, i64 1
+  %v10.grid = insertelement <3 x float> %v8, float 0x0000000040A00000, i64 2
+  %v12 = extractelement <2 x i32> %v0.codes, i64 0
+  %v13 = sext i32 %v12 to i64
+  %v14 = extractelement <3 x float> %v10.grid, i64 %v13
+  %v16 = extractelement <2 x i32> %v0.codes, i64 1
+  %v17 = sext i32 %v16 to i64
+  %v18 = extractelement <3 x float> %v10.grid, i64 %v17
+  %v21 = insertelement <2 x float> poison, float %v14, i64 0
+  %v23.decoded = insertelement <2 x float> %v21, float %v18, i64 1
+  ret <2 x float> %v23.decoded
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @f32_table_lookup_dynamic_grid(%grid: vector<3xf32>, %codes: vector<2xi32>) -> (vector<2xf32>) {
+  %decoded = vector.table.lookup %grid[%codes] : vector<3xf32>, vector<2xi32> -> vector<2xf32>
+  func.return %decoded : vector<2xf32>
+}
+
+// ----
+define dso_local <2 x float> @f32_table_lookup_dynamic_grid(<3 x float> %v0.grid, <2 x i32> %v1.codes) {
+bb0.entry:
+  %v3 = extractelement <2 x i32> %v1.codes, i64 0
+  %v4 = sext i32 %v3 to i64
+  %v5 = extractelement <3 x float> %v0.grid, i64 %v4
+  %v7 = extractelement <2 x i32> %v1.codes, i64 1
+  %v8 = sext i32 %v7 to i64
+  %v9 = extractelement <3 x float> %v0.grid, i64 %v8
+  %v12 = insertelement <2 x float> poison, float %v5, i64 0
+  %v14.decoded = insertelement <2 x float> %v12, float %v9, i64 1
+  ret <2 x float> %v14.decoded
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @i8_table_lookup_fact_known_codes(%grid: vector<4xi8>) -> (vector<4xi8>) {
+  %c0 = scalar.constant 0 : i8
+  %c1 = scalar.constant 1 : i8
+  %c2 = scalar.constant 2 : i8
+  %c3 = scalar.constant 3 : i8
+  %codes = vector.from_elements %c2, %c0, %c3, %c1 : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<4xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+define dso_local <4 x i8> @i8_table_lookup_fact_known_codes(<4 x i8> %v0.grid) {
+bb0.entry:
+  %v2 = extractelement <4 x i8> %v0.grid, i64 2
+  %v4 = extractelement <4 x i8> %v0.grid, i64 0
+  %v6 = extractelement <4 x i8> %v0.grid, i64 3
+  %v8 = extractelement <4 x i8> %v0.grid, i64 1
+  %v11 = insertelement <4 x i8> poison, i8 %v2, i64 0
+  %v13 = insertelement <4 x i8> %v11, i8 %v4, i64 1
+  %v15 = insertelement <4 x i8> %v13, i8 %v6, i64 2
+  %v17.decoded = insertelement <4 x i8> %v15, i8 %v8, i64 3
+  ret <4 x i8> %v17.decoded
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @i8_table_lookup_constant_table() -> (vector<4xi8>) {
+  %g0 = scalar.constant -4 : i8
+  %g1 = scalar.constant -1 : i8
+  %g2 = scalar.constant 2 : i8
+  %g3 = scalar.constant 7 : i8
+  %grid = vector.from_elements %g0, %g1, %g2, %g3 : vector<4xi8>
+  %c0 = scalar.constant 0 : i8
+  %c1 = scalar.constant 1 : i8
+  %c2 = scalar.constant 2 : i8
+  %c3 = scalar.constant 3 : i8
+  %codes = vector.from_elements %c3, %c2, %c1, %c0 : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<4xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+define dso_local <4 x i8> @i8_table_lookup_constant_table() {
+bb0.entry:
+  %v6 = insertelement <4 x i8> poison, i8 7, i64 0
+  %v8 = insertelement <4 x i8> %v6, i8 2, i64 1
+  %v10 = insertelement <4 x i8> %v8, i8 18446744073709551615, i64 2
+  %v12.decoded = insertelement <4 x i8> %v10, i8 18446744073709551612, i64 3
+  ret <4 x i8> %v12.decoded
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @i8_table_lookup_u4_dynamic_table(%grid: vector<16xi8>, %packed: vector<2xi8>) -> (vector<4xi8>) {
+  %codes = vector.bitunpacku<4> %packed : vector<2xi8> -> vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+define dso_local <4 x i8> @i8_table_lookup_u4_dynamic_table(<16 x i8> %v0.grid, <2 x i8> %v1.packed) {
+bb0.entry:
+  %v3 = extractelement <2 x i8> %v1.packed, i64 0
+  %v4 = zext i8 %v3 to i32
+  %v6 = and i32 %v4, 15
+  %v7 = trunc i32 %v6 to i8
+  %v8 = sext i8 %v7 to i64
+  %v9 = extractelement <16 x i8> %v0.grid, i64 %v8
+  %v11 = lshr i32 %v4, 4
+  %v12 = trunc i32 %v11 to i8
+  %v13 = sext i8 %v12 to i64
+  %v14 = extractelement <16 x i8> %v0.grid, i64 %v13
+  %v16 = extractelement <2 x i8> %v1.packed, i64 1
+  %v17 = zext i8 %v16 to i32
+  %v18 = and i32 %v17, 15
+  %v19 = trunc i32 %v18 to i8
+  %v20 = sext i8 %v19 to i64
+  %v21 = extractelement <16 x i8> %v0.grid, i64 %v20
+  %v22 = lshr i32 %v17, 4
+  %v23 = trunc i32 %v22 to i8
+  %v24 = sext i8 %v23 to i64
+  %v25 = extractelement <16 x i8> %v0.grid, i64 %v24
+  %v28 = insertelement <4 x i8> poison, i8 %v9, i64 0
+  %v30 = insertelement <4 x i8> %v28, i8 %v14, i64 1
+  %v32 = insertelement <4 x i8> %v30, i8 %v21, i64 2
+  %v34.decoded = insertelement <4 x i8> %v32, i8 %v25, i64 3
+  ret <4 x i8> %v34.decoded
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @i8_table_lookup_u4_constant_table(%packed: vector<2xi8>) -> (vector<4xi8>) {
+  %g0 = scalar.constant 0 : i8
+  %g1 = scalar.constant -1 : i8
+  %g2 = scalar.constant 2 : i8
+  %g3 = scalar.constant -3 : i8
+  %g4 = scalar.constant 4 : i8
+  %g5 = scalar.constant -5 : i8
+  %g6 = scalar.constant 6 : i8
+  %g7 = scalar.constant -7 : i8
+  %g8 = scalar.constant 8 : i8
+  %g9 = scalar.constant -9 : i8
+  %g10 = scalar.constant 10 : i8
+  %g11 = scalar.constant -11 : i8
+  %g12 = scalar.constant 12 : i8
+  %g13 = scalar.constant -13 : i8
+  %g14 = scalar.constant 14 : i8
+  %g15 = scalar.constant -15 : i8
+  %grid = vector.from_elements %g0, %g1, %g2, %g3, %g4, %g5, %g6, %g7, %g8, %g9, %g10, %g11, %g12, %g13, %g14, %g15 : vector<16xi8>
+  %codes = vector.bitunpacku<4> %packed : vector<2xi8> -> vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+define dso_local <4 x i8> @i8_table_lookup_u4_constant_table(<2 x i8> %v0.packed) {
+bb0.entry:
+  %v19 = insertelement <16 x i8> poison, i8 0, i64 0
+  %v21 = insertelement <16 x i8> %v19, i8 18446744073709551615, i64 1
+  %v23 = insertelement <16 x i8> %v21, i8 2, i64 2
+  %v25 = insertelement <16 x i8> %v23, i8 18446744073709551613, i64 3
+  %v27 = insertelement <16 x i8> %v25, i8 4, i64 4
+  %v29 = insertelement <16 x i8> %v27, i8 18446744073709551611, i64 5
+  %v31 = insertelement <16 x i8> %v29, i8 6, i64 6
+  %v33 = insertelement <16 x i8> %v31, i8 18446744073709551609, i64 7
+  %v35 = insertelement <16 x i8> %v33, i8 8, i64 8
+  %v37 = insertelement <16 x i8> %v35, i8 18446744073709551607, i64 9
+  %v39 = insertelement <16 x i8> %v37, i8 10, i64 10
+  %v41 = insertelement <16 x i8> %v39, i8 18446744073709551605, i64 11
+  %v43 = insertelement <16 x i8> %v41, i8 12, i64 12
+  %v45 = insertelement <16 x i8> %v43, i8 18446744073709551603, i64 13
+  %v47 = insertelement <16 x i8> %v45, i8 14, i64 14
+  %v49.grid = insertelement <16 x i8> %v47, i8 18446744073709551601, i64 15
+  %v51 = extractelement <2 x i8> %v0.packed, i64 0
+  %v52 = zext i8 %v51 to i32
+  %v54 = and i32 %v52, 15
+  %v55 = trunc i32 %v54 to i8
+  %v56 = sext i8 %v55 to i64
+  %v57 = extractelement <16 x i8> %v49.grid, i64 %v56
+  %v59 = lshr i32 %v52, 4
+  %v60 = trunc i32 %v59 to i8
+  %v61 = sext i8 %v60 to i64
+  %v62 = extractelement <16 x i8> %v49.grid, i64 %v61
+  %v64 = extractelement <2 x i8> %v0.packed, i64 1
+  %v65 = zext i8 %v64 to i32
+  %v66 = and i32 %v65, 15
+  %v67 = trunc i32 %v66 to i8
+  %v68 = sext i8 %v67 to i64
+  %v69 = extractelement <16 x i8> %v49.grid, i64 %v68
+  %v70 = lshr i32 %v65, 4
+  %v71 = trunc i32 %v70 to i8
+  %v72 = sext i8 %v71 to i64
+  %v73 = extractelement <16 x i8> %v49.grid, i64 %v72
+  %v76 = insertelement <4 x i8> poison, i8 %v57, i64 0
+  %v78 = insertelement <4 x i8> %v76, i8 %v62, i64 1
+  %v80 = insertelement <4 x i8> %v78, i8 %v69, i64 2
+  %v82.decoded = insertelement <4 x i8> %v80, i8 %v73, i64 3
+  ret <4 x i8> %v82.decoded
+}

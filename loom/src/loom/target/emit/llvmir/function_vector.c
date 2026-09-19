@@ -23,6 +23,11 @@ typedef enum loom_llvmir_emit_shuffle_kind_e {
   LOOM_LLVMIR_EMIT_SHUFFLE_KIND_SLICE = 1,
 } loom_llvmir_emit_shuffle_kind_t;
 
+typedef enum loom_llvmir_emit_extract_kind_e {
+  LOOM_LLVMIR_EMIT_EXTRACT_KIND_STATIC = 0,
+  LOOM_LLVMIR_EMIT_EXTRACT_KIND_DYNAMIC = 1,
+} loom_llvmir_emit_extract_kind_t;
+
 typedef struct loom_llvmir_emit_const_info_t {
   // Generated descriptor reference ordinal.
   uint32_t descriptor_ref;
@@ -142,6 +147,12 @@ static const uint32_t kFromElementsDescriptorRefs[] = {
 
 static const uint32_t kExtractDescriptorRefs[] = {
     LOOM_LLVMIR_ALL_STRUCTURAL_VECTOR_REFS(EXTRACT),
+    LOOM_LLVMIR_VECTOR_REF(EXTRACT, V64I8),
+};
+
+static const uint32_t kDynamicExtractDescriptorRefs[] = {
+    LOOM_LLVMIR_ALL_STRUCTURAL_VECTOR_REFS(EXTRACT_DYNAMIC),
+    LOOM_LLVMIR_VECTOR_REF(EXTRACT_DYNAMIC, V64I8),
 };
 
 static const uint32_t kInsertDescriptorRefs[] = {
@@ -511,12 +522,8 @@ static iree_status_t loom_llvmir_emit_concat(
 
 static iree_status_t loom_llvmir_emit_extract(
     loom_llvmir_emit_function_state_t* state,
-    const loom_low_descriptor_packet_t* packet) {
-  if (packet->op->operand_count != 1) {
-    return loom_llvmir_emit_shape_diagnostic(state, packet->op,
-                                             IREE_SV("packet_operand"),
-                                             packet->op->operand_count, 1);
-  }
+    const loom_low_descriptor_packet_t* packet,
+    loom_llvmir_emit_extract_kind_t kind) {
   loom_llvmir_type_id_t result_type = LOOM_LLVMIR_TYPE_ID_INVALID;
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
@@ -525,21 +532,32 @@ static iree_status_t loom_llvmir_emit_extract(
     return iree_ok_status();
   }
 
-  int64_t lane = 0;
-  bool has_lane = false;
-  IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
-      state, packet, IREE_SV("lane"), &has_lane, &lane));
-  if (!has_lane) {
-    return iree_ok_status();
-  }
-
   const loom_value_id_t* operands = loom_op_const_operands(packet->op);
+  loom_llvmir_value_id_t index = LOOM_LLVMIR_VALUE_ID_INVALID;
+  if (kind == LOOM_LLVMIR_EMIT_EXTRACT_KIND_DYNAMIC) {
+    index = loom_llvmir_emit_lookup_value(state, operands[1]);
+  } else {
+    int64_t lane = 0;
+    bool has_lane = false;
+    IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
+        state, packet, IREE_SV("lane"), &has_lane, &lane));
+    if (!has_lane) {
+      return iree_ok_status();
+    }
+    IREE_RETURN_IF_ERROR(loom_llvmir_emit_i64_constant(state, lane, &index));
+  }
   const loom_llvmir_value_id_t source =
       loom_llvmir_emit_lookup_value(state, operands[0]);
   loom_llvmir_value_id_t llvmir_result = LOOM_LLVMIR_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_llvmir_emit_extract_vector_lane(
-      state, result_type, source, (uint32_t)lane,
-      loom_llvmir_emit_value_name(state->module, result_value),
+  IREE_RETURN_IF_ERROR(loom_llvmir_build_extract_element(
+      state->llvmir_block,
+      &(loom_llvmir_extract_element_desc_t){
+          .result_name =
+              loom_llvmir_emit_value_name(state->module, result_value),
+          .result_type = result_type,
+          .vector = source,
+          .index = index,
+      },
       &llvmir_result));
   loom_llvmir_emit_define_value(state, result_value, llvmir_result);
   return iree_ok_status();
@@ -776,7 +794,15 @@ iree_status_t loom_llvmir_emit_vector_packet(
   if (loom_llvmir_emit_descriptor_ref_in(
           descriptor_ref, kExtractDescriptorRefs,
           IREE_ARRAYSIZE(kExtractDescriptorRefs))) {
-    return loom_llvmir_emit_extract(state, packet);
+    return loom_llvmir_emit_extract(state, packet,
+                                    LOOM_LLVMIR_EMIT_EXTRACT_KIND_STATIC);
+  }
+
+  if (loom_llvmir_emit_descriptor_ref_in(
+          descriptor_ref, kDynamicExtractDescriptorRefs,
+          IREE_ARRAYSIZE(kDynamicExtractDescriptorRefs))) {
+    return loom_llvmir_emit_extract(state, packet,
+                                    LOOM_LLVMIR_EMIT_EXTRACT_KIND_DYNAMIC);
   }
 
   if (loom_llvmir_emit_descriptor_ref_in(

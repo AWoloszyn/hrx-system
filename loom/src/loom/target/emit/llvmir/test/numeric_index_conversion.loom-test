@@ -1,0 +1,150 @@
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @i1_to_index(%input: i1) -> (index) {
+  %result = index.cast %input : i1 to index
+  func.return %result : index
+}
+
+func.def target(@target) @index_to_i1(%input: index) -> (i1) {
+  %result = index.cast %input : index to i1
+  func.return %result : i1
+}
+
+func.def target(@target) @i1_to_offset(%input: i1) -> (offset) {
+  %result = index.cast %input : i1 to offset
+  func.return %result : offset
+}
+
+func.def target(@target) @offset_to_i1(%input: offset) -> (i1) {
+  %result = index.cast %input : offset to i1
+  func.return %result : i1
+}
+
+// ----
+define dso_local i64 @i1_to_index(i1 %v0.input) {
+bb0.entry:
+  %v1.result = zext i1 %v0.input to i64
+  ret i64 %v1.result
+}
+
+define dso_local i1 @index_to_i1(i64 %v2.input) {
+bb0.entry:
+  %v3.result = trunc i64 %v2.input to i1
+  ret i1 %v3.result
+}
+
+define dso_local i64 @i1_to_offset(i1 %v4.input) {
+bb0.entry:
+  %v5.result = zext i1 %v4.input to i64
+  ret i64 %v5.result
+}
+
+define dso_local i1 @offset_to_i1(i64 %v6.input) {
+bb0.entry:
+  %v7.result = trunc i64 %v6.input to i1
+  ret i1 %v7.result
+}
+
+// ====
+
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @i8_to_index(%input: i8) -> (index) {
+  %result = index.cast %input : i8 to index
+  func.return %result : index
+}
+
+func.def target(@target) @index_to_i8(%input: index) -> (i8) {
+  %result = index.cast %input : index to i8
+  func.return %result : i8
+}
+
+func.def target(@target) @i8_to_offset(%input: i8) -> (offset) {
+  %result = index.cast %input : i8 to offset
+  func.return %result : offset
+}
+
+func.def target(@target) @offset_to_i8(%input: offset) -> (i8) {
+  %result = index.cast %input : offset to i8
+  func.return %result : i8
+}
+
+// ----
+define dso_local i64 @i8_to_index(i8 %v0.input) {
+bb0.entry:
+  %v1.result = sext i8 %v0.input to i64
+  ret i64 %v1.result
+}
+
+define dso_local i8 @index_to_i8(i64 %v2.input) {
+bb0.entry:
+  %v3.result = trunc i64 %v2.input to i8
+  ret i8 %v3.result
+}
+
+define dso_local i64 @i8_to_offset(i8 %v4.input) {
+bb0.entry:
+  %v5.result = zext i8 %v4.input to i64
+  ret i64 %v5.result
+}
+
+define dso_local i8 @offset_to_i8(i64 %v6.input) {
+bb0.entry:
+  %v7.result = trunc i64 %v6.input to i8
+  ret i8 %v7.result
+}
+
+// ====
+
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @i16_to_index(%input: i16) -> (index) {
+  %result = index.cast %input : i16 to index
+  func.return %result : index
+}
+
+func.def target(@target) @index_to_i16(%input: index) -> (i16) {
+  %result = index.cast %input : index to i16
+  func.return %result : i16
+}
+
+func.def target(@target) @i16_to_offset(%input: i16) -> (offset) {
+  %result = index.cast %input : i16 to offset
+  func.return %result : offset
+}
+
+func.def target(@target) @offset_to_i16(%input: offset) -> (i16) {
+  %result = index.cast %input : offset to i16
+  func.return %result : i16
+}
+
+// ----
+define dso_local i64 @i16_to_index(i16 %v0.input) {
+bb0.entry:
+  %v1.result = sext i16 %v0.input to i64
+  ret i64 %v1.result
+}
+
+define dso_local i16 @index_to_i16(i64 %v2.input) {
+bb0.entry:
+  %v3.result = trunc i64 %v2.input to i16
+  ret i16 %v3.result
+}
+
+define dso_local i64 @i16_to_offset(i16 %v4.input) {
+bb0.entry:
+  %v5.result = zext i16 %v4.input to i64
+  ret i64 %v5.result
+}
+
+define dso_local i16 @offset_to_i16(i64 %v6.input) {
+bb0.entry:
+  %v7.result = trunc i64 %v6.input to i16
+  ret i16 %v7.result
+}
