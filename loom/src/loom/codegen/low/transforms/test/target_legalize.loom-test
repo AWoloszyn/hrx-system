@@ -617,3 +617,36 @@ func.def target(@test_target) @narrow_unsigned_operands(%left: i8, %right: i8, %
   %shifted = scalar.trunci %21 : i32 to i8
   func.return %difference, %product, %quotient, %remainder, %intersection, %union, %exclusive, %shifted : i8, i8, i8, i8, i8, i8, i8, i8
 }
+
+// ====
+// RUN: pass target-legalize{mode=final,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @integer_vector_multiply_reference(%left: vector<4xi32>, %right: vector<4xi32>) -> (vector<4xi32>) {
+  %product = vector.muli %left, %right : vector<4xi32>
+  func.return %product : vector<4xi32>
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @integer_vector_multiply_reference(%left: vector<4xi32>, %right: vector<4xi32>) -> (vector<4xi32>) {
+  %4 = vector.extract %left[0] : vector<4xi32> -> i32
+  %5 = vector.extract %right[0] : vector<4xi32> -> i32
+  %6 = scalar.muli %4, %5 : i32
+  %7 = vector.extract %left[1] : vector<4xi32> -> i32
+  %8 = vector.extract %right[1] : vector<4xi32> -> i32
+  %9 = scalar.muli %7, %8 : i32
+  %10 = vector.extract %left[2] : vector<4xi32> -> i32
+  %11 = vector.extract %right[2] : vector<4xi32> -> i32
+  %12 = scalar.muli %10, %11 : i32
+  %13 = vector.extract %left[3] : vector<4xi32> -> i32
+  %14 = vector.extract %right[3] : vector<4xi32> -> i32
+  %15 = scalar.muli %13, %14 : i32
+  %17 = vector.splat %6 : vector<4xi32>
+  %18 = vector.insert %9 into %17[1] : i32, vector<4xi32>
+  %19 = vector.insert %12 into %18[2] : i32, vector<4xi32>
+  %product = vector.insert %15 into %19[3] : i32, vector<4xi32>
+  func.return %product : vector<4xi32>
+}
