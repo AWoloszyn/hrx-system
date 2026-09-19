@@ -208,3 +208,16 @@ func.def @captured_under_argument(%start: index, %end: index, %step: index) {
   }
   func.return
 }
+
+// ====
+
+// RUN: roundtrip
+
+// Projected signature arguments bind their own region's dimensions and encoding.
+test.split_func @projected_shape(%extent: index, %layout: encoding, %input: tile<[%extent]xf32, %layout>) {
+  test.use %input : tile<[%extent]xf32, %layout>
+  test.yield
+} launch {
+  test.use %input : tile<[%extent]xf32, %layout>
+  test.yield
+}

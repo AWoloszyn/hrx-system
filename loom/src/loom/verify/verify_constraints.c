@@ -1541,11 +1541,27 @@ static void loom_verify_relation_region_arg_match(
     }
   }
   uint16_t check_count = args.count < inputs.count ? args.count : inputs.count;
+  const loom_region_descriptor_t* region_descriptor =
+      loom_op_vtable_region_descriptor(
+          vtable, LOOM_FIELD_REF_INDEX(constraint->args[0]));
+  const bool project_arg_types =
+      constraint->property == LOOM_PROPERTY_TYPE && region_descriptor &&
+      iree_any_bit_set(region_descriptor->flags, LOOM_REGION_PROJECT_FUNC_ARGS);
+  const loom_type_value_remap_t argument_remap = {
+      .source_values = inputs.values,
+      .target_values = args.values,
+      .count = check_count,
+  };
   for (uint16_t i = 0; i < check_count; ++i) {
     loom_type_t block_arg_type = loom_verify_value_type(state, args.values[i]);
     loom_type_t input_type = loom_verify_value_type(state, inputs.values[i]);
-    if (loom_constraint_property_equals(block_arg_type, input_type,
-                                        constraint->property)) {
+    bool matches =
+        project_arg_types
+            ? loom_type_equal_after_value_remap(state->module, input_type,
+                                                block_arg_type, &argument_remap)
+            : loom_constraint_property_equals(block_arg_type, input_type,
+                                              constraint->property);
+    if (matches) {
       continue;
     }
     const loom_error_def_t* error =

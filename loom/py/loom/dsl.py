@@ -1033,7 +1033,8 @@ class RegionDef:
         per-position types seed entry block arguments in generated builders.
         Text parsing gets concrete names and types from BindingList or
         BlockArgs format elements for ordinary value fields, or clones the
-        FuncArgs signature names and types for projected FuncArgs regions.
+        FuncArgs signature names and types for projected FuncArgs regions,
+        remapping peer dimension and encoding bindings to the new arguments.
     buffer_arg_memory_space: Optional target-independent memory-space fact to
         seed for buffer entry block arguments in this region. This refines
         region boundary facts without parameterizing the buffer type itself.

@@ -416,6 +416,77 @@ def _test_cfg_interop(loom_format: Path) -> None:
         _assert_cfg_identities(parser.parse(printer.print_module(loaded), verify=True))
 
 
+def _test_region_argument_interop(loom_format: Path) -> None:
+    parser = Parser()
+    printer = Printer()
+    for format in (parser, printer):
+        format.register_types(ALL_BUILTIN_TYPES)
+        for operations in (ALL_FUNC_OPS, ALL_SCF_OPS, ALL_TEST_OPS):
+            format.register_ops(operations)
+    module = parser.parse(
+        "func.def @loop(%extent: index, %layout: encoding, "
+        "%input: tile<[%extent]xf32, %layout>, "
+        "%lower: index, %upper: index, %step: index) {\n"
+        "  %result = scf.for %iv = [%lower to %upper step %step]"
+        "(%iter = %input : tile<[%extent]xf32, %layout>) "
+        "-> (tile<[%extent]xf32, %layout>) {\n"
+        "    scf.yield %iter : tile<[%extent]xf32, %layout>\n"
+        "  }\n"
+        "  test.block_args %input : tile<[%extent]xf32, %layout> "
+        "do(%arg: tile<[%extent]xf32, %layout>) {\n"
+        "    test.use %arg : tile<[%extent]xf32, %layout>\n"
+        "    test.yield\n"
+        "  }\n"
+        "  func.return\n"
+        "}\n"
+        "test.split_func @projection(%extent: index, %alternate: index, %layout: encoding, "
+        "%input: tile<[%extent]xf32, %layout>) {\n"
+        "  test.use %input : tile<[%extent]xf32, %layout>\n"
+        "  test.yield\n"
+        "} launch {\n"
+        "  test.use %input : tile<[%extent]xf32, %layout>\n"
+        "  test.yield\n"
+        "}\n",
+        verify=True,
+    )
+    for source in (module, printer.print_module(module)):
+        loaded = _roundtrip_through_c(loom_format, source)
+        for candidate in (
+            loaded,
+            parser.parse(printer.print_module(loaded), verify=True),
+        ):
+            entry = candidate.body.ops[0].regions[0].blocks[0]
+            for op in entry.ops[:2]:
+                nested = op.regions[0].blocks[0]
+                argument_id = nested.arg_ids[-1]
+                argument = candidate.values[argument_id]
+                assert argument.dim_bindings == {0: entry.arg_ids[0]}
+                assert argument.encoding_binding == entry.arg_ids[1]
+                assert nested.ops[0].operands[0] == argument_id
+            config, body = candidate.body.ops[1].regions
+            assert set(config.blocks[0].arg_ids).isdisjoint(body.blocks[0].arg_ids)
+            for region in (config, body):
+                extent, _alternate, layout, input = region.blocks[0].arg_ids
+                assert candidate.values[input].dim_bindings == {0: extent}
+                assert candidate.values[input].encoding_binding == layout
+                assert region.blocks[0].ops[0].operands[0] == input
+
+    # Equal structural shapes must not hide a reference to the wrong peer.
+    config_args = module.body.ops[1].regions[0].blocks[0].arg_ids
+    module.values[config_args[3]].dim_bindings[0] = config_args[1]
+    with tempfile.TemporaryDirectory(prefix="loom-projected-argument-") as temp_dir:
+        source_path = Path(temp_dir) / "invalid.loombc"
+        source_path.write_bytes(write_module(module))
+        result = subprocess.run(
+            [loom_format, "--from=bc", "--to=text", source_path],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "error [TYPE/013]" in result.stderr
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise ValueError("expected the C loom-format binary path")
@@ -448,6 +519,7 @@ def main() -> None:
         text = printer.print_module(module)
         _assert_predicate_identities(parser.parse(text))
     _test_cfg_interop(Path(sys.argv[1]))
+    _test_region_argument_interop(Path(sys.argv[1]))
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ iree_py_test(
     "parser_regression_test.py"
     "parser_test.py"
     "printer_test.py"
+    "region_args_test.py"
     "signature_test.py"
     "tokenizer_test.py"
     "../../tools/pytest_style_runner.py"
@@ -45,6 +46,7 @@ iree_py_test(
     "loom.format.text.parser_regression_test"
     "loom.format.text.parser_test"
     "loom.format.text.printer_test"
+    "loom.format.text.region_args_test"
     "loom.format.text.signature_test"
     "loom.format.text.tokenizer_test"
   DEPS

@@ -20,7 +20,7 @@ blocks, and CFG successor edges reference their target blocks directly.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum, unique
 from itertools import pairwise
@@ -2140,6 +2140,37 @@ class Module:
         value_id = len(self.values)
         self.values.append(value)
         return value_id
+
+    def clone_func_signature_args(self, arg_ids: Sequence[int]) -> list[int]:
+        """Project signature arguments into an independent region entry.
+
+        Direct dimension and encoding references to peer arguments follow the
+        cloned identities. References outside the signature retain their IDs.
+        Definition ownership is assigned when the new region is attached.
+        """
+        first_id = len(self.values)
+        remap = {arg_id: first_id + index for index, arg_id in enumerate(arg_ids)}
+        cloned_ids: list[int] = []
+        for index, arg_id in enumerate(arg_ids):
+            source = self.values[arg_id]
+            cloned_ids.append(
+                self.add_value(
+                    Value(
+                        name=source.name,
+                        type=source.type,
+                        flags=source.flags,
+                        def_result_index=index,
+                        dim_bindings={
+                            position: remap.get(value_id, value_id)
+                            for position, value_id in source.dim_bindings.items()
+                        },
+                        encoding_binding=remap.get(
+                            source.encoding_binding, source.encoding_binding
+                        ),
+                    )
+                )
+            )
+        return cloned_ids
 
     def add_location(self, loc: LocationData) -> int:
         """Add a location, returning its ID. O(1) dedup."""

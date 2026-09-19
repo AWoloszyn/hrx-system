@@ -2370,7 +2370,7 @@ class Printer:
         parts: list[str] = []
         for i, operand_id in enumerate(operand_ids):
             operand_name = self._value_name(operand_id)
-            operand_type = print_type(module.values[operand_id].type)
+            operand_type = self._print_value_type(operand_id, module)
 
             if i < len(block_arg_names):
                 parts.append(f"{block_arg_names[i]} = {operand_name} : {operand_type}")
