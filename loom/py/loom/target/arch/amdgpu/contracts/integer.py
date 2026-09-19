@@ -73,6 +73,7 @@ _DESCRIPTOR_KEYS = (
     "amdgpu.v_sub_u32",
     "amdgpu.v_mul_lo_u32",
     "amdgpu.v_mul_hi_u32",
+    "amdgpu.v_lshl_add_u32.shift_imm",
     "amdgpu.v_min_i32",
     "amdgpu.v_max_i32",
     "amdgpu.v_min_u32",

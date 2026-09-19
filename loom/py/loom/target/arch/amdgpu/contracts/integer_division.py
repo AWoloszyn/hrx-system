@@ -412,16 +412,35 @@ def _magic_remainder_vgpr_rule(
     type_pattern: TypePattern,
     *,
     is_add: bool,
+    product_shift: int | None = None,
 ) -> DescriptorRule:
     materializer = (
         ADDRESS_VGPR_MATERIALIZER if type_pattern == _INDEX else I32_VGPR_MATERIALIZER
     )
-    multiply_lo = descriptor_by_key(descriptor_set, "amdgpu.v_mul_lo_u32")
+    quotient = ValueRef.temporary("quotient_final")
+    product_guards: tuple[Guard, ...] = ()
+    product_immediates: dict[str, int] = {}
+    if product_shift is None:
+        product_descriptor = descriptor_by_key(descriptor_set, "amdgpu.v_mul_lo_u32")
+        product_operands = {
+            "lhs": quotient,
+            "rhs": _materialized_operand("rhs", materializer),
+        }
+    else:
+        # q * (2^shift + 1) is (q << shift) + q modulo 2^32.
+        divisor = (1 << product_shift) + 1
+        product_guards = (Guard.value_i64_range("rhs", divisor, divisor),)
+        product_descriptor = descriptor_by_key(
+            descriptor_set, "amdgpu.v_lshl_add_u32.shift_imm"
+        )
+        product_operands = {"value": quotient, "addend": quotient}
+        product_immediates = {"shift": product_shift}
     subtract = descriptor_by_key(descriptor_set, "amdgpu.v_sub_u32")
     return DescriptorRule(
         source_op=source_op,
-        descriptor=multiply_lo,
+        descriptor=product_descriptor,
         guards=(
+            *product_guards,
             *_magic_division_guards(
                 type_pattern,
                 register_class="amdgpu.vgpr",
@@ -429,7 +448,7 @@ def _magic_remainder_vgpr_rule(
             ),
             *_descriptor_available_guards(
                 *_magic_division_vgpr_descriptors(descriptor_set, is_add=is_add),
-                multiply_lo,
+                product_descriptor,
                 subtract,
             ),
         ),
@@ -438,16 +457,14 @@ def _magic_remainder_vgpr_rule(
                 descriptor_set,
                 materializer=materializer,
                 is_add=is_add,
-                result=ValueRef.temporary("quotient_final"),
+                result=quotient,
             ),
             EmitDescriptorOp(
-                descriptor=multiply_lo,
-                operands={
-                    "lhs": ValueRef.temporary("quotient_final"),
-                    "rhs": _materialized_operand("rhs", materializer),
-                },
+                descriptor=product_descriptor,
+                operands=product_operands,
                 results={"dst": ValueRef.temporary("product")},
                 result_types={"dst": _RESULT},
+                immediates=product_immediates,
                 form=DescriptorEmitForm.OP,
             ),
             EmitDescriptorOp(
@@ -536,7 +553,15 @@ def _high_bit_remainder_rule(
 
 def integer_division_rules(descriptor_set: DescriptorSet) -> tuple[DescriptorRule, ...]:
     """Builds index division/remainder and scalar u32 constant remainder rules."""
-    rules: list[DescriptorRule] = []
+    rules = [
+        _magic_remainder_vgpr_rule(
+            descriptor_set, source_op, type_pattern, is_add=False, product_shift=1
+        )
+        for source_op, type_pattern in (
+            (index.index_rem, _INDEX),
+            (scalar_arithmetic.scalar_remui, _I32),
+        )
+    ]
     for is_add in (False, True):
         rules.extend(
             (

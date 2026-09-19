@@ -1,0 +1,40 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_constant_remainder.loom-test
+// RUN: with-checks emit source-low output=low
+
+amdgpu.target<gfx950> @target
+
+func.def target(@target) @constant_remainder_uniform(%value: i32) -> (i32) {
+  %divisor = scalar.constant 3 : i32
+  %remainder = scalar.remui %value, %divisor : i32
+  func.return %remainder : i32
+}
+
+// ----
+CHECK: * = s_mul_i32 *
+CHECK: %remainder = s_sub_u32 *
+CHECK-NOT: *v_lshl_add_u32*
+
+// ====
+
+amdgpu.target<gfx950> @target
+
+func.def target(@target) @constant_remainder_loaded(%input: buffer) -> (i32, index) {
+  %base = index.constant 0 : offset
+  %aligned_input = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %input_view = buffer.view %aligned_input[%base] : buffer -> view<1xi32>
+  %value = view.load %input_view[0] : view<1xi32> -> i32
+  %divisor = scalar.constant 3 : i32
+  %remainder = scalar.remui %value, %divisor : i32
+  %mask = scalar.constant 2147483647 : i32
+  %nonnegative = scalar.andi %value, %mask : i32
+  %position = index.cast %nonnegative : i32 to index
+  %index_divisor = index.constant 3 : index
+  %index_remainder = index.rem %position, %index_divisor : index
+  func.return %remainder, %index_remainder : i32, index
+}
+
+// ----
+CHECK: * = v_lshl_add_u32_shift_imm *, *, 1
+CHECK: %remainder = v_sub* *, *
+CHECK: %index_remainder = v_sub* *, *
+CHECK-NOT: *v_mul_lo_u32*
