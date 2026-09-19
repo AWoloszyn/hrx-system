@@ -6,7 +6,7 @@ test.target<low_core> @target
 // The carried state can still share storage with the branch result.
 low.func.def target<test.low.core>(@target) @counter_survives_yield(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %condition: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
   // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="state", decision="accepted"}
-  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+  %result = low.scf.for signed [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
     %chosen = low.scf.if %condition -> (reg<test.i32>) {
       // REMARK@+1: BACKEND/043 {source_value_name="iv", result_value_name="chosen", decision="rejected"}
       low.scf.yield %iv : reg<test.i32>
@@ -34,7 +34,7 @@ test.target<low_core> @target
 // The carried state can still share storage with the branch result.
 low.func.def target<test.low.core>(@target) @upper_survives_yield(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %condition: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
   // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="state", decision="accepted"}
-  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+  %result = low.scf.for signed [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
     %chosen = low.scf.if %condition -> (reg<test.i32>) {
       // REMARK@+1: BACKEND/043 {source_value_name="hi", result_value_name="chosen", decision="rejected"}
       low.scf.yield %hi : reg<test.i32>
@@ -62,7 +62,7 @@ test.target<low_core> @target
 // The carried state can still share storage with the branch result.
 low.func.def target<test.low.core>(@target) @step_survives_yield(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %condition: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
   // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="state", decision="accepted"}
-  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+  %result = low.scf.for signed [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
     %chosen = low.scf.if %condition -> (reg<test.i32>) {
       // REMARK@+1: BACKEND/043 {source_value_name="step", result_value_name="chosen", decision="rejected"}
       low.scf.yield %step : reg<test.i32>
@@ -90,7 +90,7 @@ test.target<low_core> @target
 // The carried state can still share storage with the branch result.
 low.func.def target<test.low.core>(@target) @capture_survives_yield(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %condition: reg<test.i32>, %seed: reg<test.i32>, %captured: reg<test.i32>) -> (reg<test.i32>) asm {
   // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="state", decision="accepted"}
-  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+  %result = low.scf.for signed [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
     %chosen = low.scf.if %condition -> (reg<test.i32>) {
       // REMARK@+1: BACKEND/043 {source_value_name="captured", result_value_name="chosen", decision="rejected"}
       low.scf.yield %captured : reg<test.i32>

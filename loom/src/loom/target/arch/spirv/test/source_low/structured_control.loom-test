@@ -100,3 +100,22 @@ func.def target(@target) @rejects_unsupported_structured_region_op(%selector: in
   }
   func.return %result : i32
 }
+
+// ====
+// RUN: with-checks emit source-low output=low control-flow=structured-low
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @offset_counter(%lower: offset, %upper: offset, %step: offset, %initial: i32) -> (i32) {
+  %increment = scalar.constant 1 : i32
+  %result = scf.for %iv = [%lower to %upper step %step](%count = %initial : i32) -> (i32) {
+    %next = scalar.addi %count, %increment : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: %result = low.scf.for unsigned [%lower to %upper step %step] iter_args(*) -> (*) do(*) {
+CHECK: low.scf.yield %next : *
+CHECK-NOT: *low.scf.for signed *

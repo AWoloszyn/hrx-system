@@ -139,14 +139,14 @@ Disassembly of section CODE:
 wasm.target<simd128> @target
 
 low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @for_without_iter_args(%lo: reg<wasm.i32>, %hi: reg<wasm.i32>, %step: reg<wasm.i32>, %lhs: reg<wasm.v128>, %rhs: reg<wasm.v128>) asm {
-  low.scf.for [%lo to %hi step %step] do(%iv: reg<wasm.i32>) {
+  low.scf.for signed [%lo to %hi step %step] do(%iv: reg<wasm.i32>) {
     %sum = i32x4.add %lhs, %rhs
   }
   return
 }
 
 low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @for_with_iter_args(%lo: reg<wasm.i32>, %hi: reg<wasm.i32>, %step: reg<wasm.i32>, %seed: reg<wasm.v128>, %bias: reg<wasm.v128>) -> (reg<wasm.v128>) asm {
-  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<wasm.v128>) -> (reg<wasm.v128>) do(%iv: reg<wasm.i32>, %acc: reg<wasm.v128>) {
+  %result = low.scf.for signed [%lo to %hi step %step] iter_args(%seed: reg<wasm.v128>) -> (reg<wasm.v128>) do(%iv: reg<wasm.i32>, %acc: reg<wasm.v128>) {
     %next = i32x4.add %acc, %bias
     low.scf.yield %next : reg<wasm.v128>
   }
@@ -161,18 +161,34 @@ Disassembly of section CODE:
         # 2 functions in section.
 
 <for_without_iter_args>:
-        .local v128
+        .local v128, i32
+  local.get  1
+  local.get  2
+  i32.sub
+  local.get  0
+  local.get  2
+  local.get  1
+  local.get  0
+  i32.sub
+  i32.lt_u
+  f32.select
+  local.set  6
   block
-  loop
   local.get  0
   local.get  1
   i32.lt_s
   i32.eqz
-  br_if     1
+  br_if     0
+  loop
   local.get  3
   local.get  4
   i32x4.add
   local.set  5
+  local.get  0
+  local.get  6
+  i32.lt_s
+  i32.eqz
+  br_if     1
   local.get  0
   local.get  2
   i32.add
@@ -184,20 +200,36 @@ Disassembly of section CODE:
   end
 
 <for_with_iter_args>:
-        .local v128
+        .local v128, i32
+  local.get  1
+  local.get  2
+  i32.sub
+  local.get  0
+  local.get  2
+  local.get  1
+  local.get  0
+  i32.sub
+  i32.lt_u
+  f32.select
+  local.set  6
   local.get  3
   local.set  5
   block
-  loop
   local.get  0
   local.get  1
   i32.lt_s
   i32.eqz
-  br_if     1
+  br_if     0
+  loop
   local.get  5
   local.get  4
   i32x4.add
   local.set  5
+  local.get  0
+  local.get  6
+  i32.lt_s
+  i32.eqz
+  br_if     1
   local.get  0
   local.get  2
   i32.add
@@ -235,7 +267,7 @@ low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @blend_i32x4(
 }
 
 low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @simd_memory_pipeline(%lo: reg<wasm.i32>, %hi: reg<wasm.i32>, %step: reg<wasm.i32>, %input_base: reg<wasm.i32>, %bias_base: reg<wasm.i32>, %output_base: reg<wasm.i32>, %control: reg<wasm.i32>) asm {
-  low.scf.for [%lo to %hi step %step] do(%offset: reg<wasm.i32>) {
+  low.scf.for signed [%lo to %hi step %step] do(%offset: reg<wasm.i32>) {
     %input_address = i32.add %input_base, %offset
     %bias_address = i32.add %bias_base, %offset
     %output_address = i32.add %output_base, %offset
@@ -287,14 +319,25 @@ Disassembly of section CODE:
   end
 
 <simd_memory_pipeline>:
-        .local i32, i32, i32, v128, v128
+        .local i32, i32, i32, v128, v128, i32
+  local.get  1
+  local.get  2
+  i32.sub
+  local.get  0
+  local.get  2
+  local.get  1
+  local.get  0
+  i32.sub
+  i32.lt_u
+  f32.select
+  local.set  12
   block
-  loop
   local.get  0
   local.get  1
   i32.lt_s
   i32.eqz
-  br_if     1
+  br_if     0
+  loop
   local.get  3
   local.get  0
   i32.add
@@ -322,6 +365,11 @@ Disassembly of section CODE:
   local.get  9
   local.get  10
   v128.store  0
+  local.get  0
+  local.get  12
+  i32.lt_s
+  i32.eqz
+  br_if     1
   local.get  0
   local.get  2
   i32.add

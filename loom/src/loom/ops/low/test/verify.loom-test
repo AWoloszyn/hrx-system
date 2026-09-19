@@ -600,7 +600,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_body_arg_count(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>) -> (reg<test.i32>) {
   // ERROR@+1: STRUCTURE/013 "body" "1" "1 + iter_args" "2"
-  %result = low.scf.for [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>) {
+  %result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>) {
     low.scf.yield %init : reg<test.i32>
   }
   low.return %result : reg<test.i32>
@@ -612,7 +612,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_body_arg_non_register(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>) {
   // ERROR@+1: TYPE/014
-  low.scf.for [%lower to %upper step %step] do(%iv: i32) {
+  low.scf.for signed [%lower to %upper step %step] do(%iv: i32) {
     low.scf.yield
   }
   low.return
@@ -624,7 +624,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_bound_type_mismatch(%lower: reg<test.i32>, %upper: reg<test.ptr>, %step: reg<test.i32>) {
   // ERROR@+1: TYPE/001 "lower_bound" "upper_bound"
-  low.scf.for [%lower to %upper step %step] do(%iv: reg<test.i32>) {
+  low.scf.for signed [%lower to %upper step %step] do(%iv: reg<test.i32>) {
     low.scf.yield
   }
   low.return
@@ -636,7 +636,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_iv_type_mismatch(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>) {
   // ERROR@+1: TYPE/001 "body[0]" "lower_bound"
-  low.scf.for [%lower to %upper step %step] do(%iv: reg<test.ptr>) {
+  low.scf.for signed [%lower to %upper step %step] do(%iv: reg<test.ptr>) {
     low.scf.yield
   }
   low.return
@@ -648,7 +648,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_body_arg_type_mismatch(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>) -> (reg<test.i32>) {
   // ERROR@+1: TYPE/001 "body[1]" "iter_args[0]"
-  %result = low.scf.for [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.ptr>) {
+  %result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.ptr>) {
     low.scf.yield %init : reg<test.i32>
   }
   low.return %result : reg<test.i32>
@@ -660,7 +660,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_yield_type_mismatch(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>, %wrong: reg<test.ptr>) -> (reg<test.i32>) {
   // ERROR@+1: TYPE/009
-  %result = low.scf.for [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
+  %result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
     low.scf.yield %wrong : reg<test.ptr>
   }
   low.return %result : reg<test.i32>
@@ -672,7 +672,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_unroll_policy_is_exclusive(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %factor: reg<test.i32>) {
   // ERROR@+1: STRUCTURE/014 {attr_name="unroll", actual_value="2", expected_constraint="either bare unroll or unroll factor, not both"}
-  low.scf.for [%lower to %upper step %step] unroll(%factor) unroll do(%iv: reg<test.i32>) {
+  low.scf.for signed [%lower to %upper step %step] unroll(%factor) unroll do(%iv: reg<test.i32>) {
   }
   low.return
 }

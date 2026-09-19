@@ -81,7 +81,8 @@ TEST_F(LowStorageRelationTest, ProjectsSharedLoopEdgesWithoutBypassAffinity) {
 
   loom_op_t* loop = nullptr;
   IREE_ASSERT_OK(loom_low_scf_for_build(
-      &builder_, /*build_flags=*/0, lower_bound, upper_bound, step, &initial, 1,
+      &builder_, /*build_flags=*/0, LOOM_LOW_SCF_FOR_SIGNEDNESS_SIGNED,
+      lower_bound, upper_bound, step, &initial, 1,
       /*tied_results=*/nullptr, /*tied_result_count=*/0, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, LOOM_LOCATION_UNKNOWN, &loop));
   const loom_value_id_t body_argument =

@@ -131,6 +131,7 @@ loom_check_test_suite(
     name = "loom_check_file_test",
     srcs = [
         "test/assembly.loom-test",
+        "test/loop_termination.loom-test",
         "test/schedule_scopes.loom-test",
     ],
     data = [

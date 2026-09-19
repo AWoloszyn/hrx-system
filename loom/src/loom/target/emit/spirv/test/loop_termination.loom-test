@@ -1,0 +1,62 @@
+// RUN: with-checks emit spirv-dis validate
+// REQUIRES: spirv-dis, spirv-val
+
+spirv.target<vulkan1_3> @target
+
+// Explicit unsigned interpretation also applies to signed payload registers.
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @unsigned_i32_counter(%lower: reg<spirv.id : i32>, %upper: reg<spirv.id : i32>, %step: reg<spirv.id : i32>, %seed: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
+  %result = low.scf.for unsigned [%lower to %upper step %step] iter_args(%seed: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) do(%iv: reg<spirv.id : i32>, %previous: reg<spirv.id : i32>) {
+    low.scf.yield %iv : reg<spirv.id : i32>
+  }
+  return %result
+}
+
+// ----
+CHECK: * = OpULessThan %bool %lower %upper
+CHECK: * = OpISub %int %upper %lower
+CHECK: * = OpULessThan %bool %step *
+CHECK: * = OpSelect %int * %lower
+CHECK: * = OpPhi %bool *
+CHECK: * = OpULessThan %bool %iv *
+CHECK: * = OpPhi %int %seed * %iv *
+CHECK-NOT: *OpSLessThan*
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @signed_i64_counter(%lower: reg<spirv.id : i64>, %upper: reg<spirv.id : i64>, %step: reg<spirv.id : i64>, %seed: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
+  %result = low.scf.for signed [%lower to %upper step %step] iter_args(%seed: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) unroll do(%iv: reg<spirv.id : i64>, %previous: reg<spirv.id : i64>) {
+    low.scf.yield %iv : reg<spirv.id : i64>
+  }
+  return %result
+}
+
+// ----
+CHECK: * = OpSLessThan %bool %lower %upper
+CHECK: * = OpISub %long %upper %lower
+CHECK: * = OpULessThan %bool %step *
+CHECK: * = OpSelect %long * %lower
+CHECK: * = OpPhi %bool *
+CHECK: * = OpSLessThan %bool %iv *
+CHECK: OpLoopMerge * Unroll
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @unsigned_i64_counter(%lower: reg<spirv.offset64>, %upper: reg<spirv.offset64>, %step: reg<spirv.offset64>, %seed: reg<spirv.offset64>) -> (reg<spirv.offset64>) asm {
+  %result = low.scf.for unsigned [%lower to %upper step %step] iter_args(%seed: reg<spirv.offset64>) -> (reg<spirv.offset64>) do(%iv: reg<spirv.offset64>, %previous: reg<spirv.offset64>) {
+    low.scf.yield %iv : reg<spirv.offset64>
+  }
+  return %result
+}
+
+// ----
+CHECK: * = OpULessThan %bool %lower %upper
+CHECK: * = OpISub %ulong %upper %lower
+CHECK: * = OpULessThan %bool %step *
+CHECK: * = OpSelect %ulong * %lower
+CHECK: * = OpPhi %bool *
+CHECK: * = OpULessThan %bool %iv *
+CHECK-NOT: *OpSLessThan*

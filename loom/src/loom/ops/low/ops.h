@@ -115,6 +115,13 @@ typedef enum loom_low_resource_import_kind_e {
   LOOM_LOW_RESOURCE_IMPORT_KIND_COUNT_ = 6,
 } loom_low_resource_import_kind_t;
 
+// Integer interpretation of low.scf.for bounds, step, and induction values, independent of the register class.
+typedef enum loom_low_scf_for_signedness_e {
+  LOOM_LOW_SCF_FOR_SIGNEDNESS_SIGNED = 1,
+  LOOM_LOW_SCF_FOR_SIGNEDNESS_UNSIGNED = 2,
+  LOOM_LOW_SCF_FOR_SIGNEDNESS_COUNT_ = 3,
+} loom_low_scf_for_signedness_t;
+
 // Local low.scf.for unroll policy.
 typedef enum loom_low_scf_for_unroll_policy_e {
   LOOM_LOW_SCF_FOR_UNROLL_POLICY_UNROLL = 1,
@@ -765,8 +772,8 @@ iree_status_t loom_low_scf_if_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter);
 
-// LOOM_OP_LOW_SCF_FOR: Bounded counted target-low loop with optional loop-carried register state.
-// low.scf.for [%lo to %hi step %step] do(%iv: reg<amdgpu.sgpr x1>) {
+// LOOM_OP_LOW_SCF_FOR: Bounded counted target-low loop with optional loop-carried register state. The signedness explicitly determines the integer interpretation of counter registers. For a positive step, the body visits lower_bound + n * step while that mathematical value is below upper_bound. An unrepresentable unused terminal increment does not wrap into another body iteration. Empty or reversed ranges return the initial iter_args; nonempty ranges return the final yielded values.
+// low.scf.for signed [%lo to %hi step %step] do(%iv: reg<amdgpu.sgpr x1>) {
 //   low.scf.yield
 // }
 LOOM_DEFINE_ISA(loom_low_scf_for_isa, LOOM_OP_LOW_SCF_FOR)
@@ -776,7 +783,8 @@ LOOM_DEFINE_SEGMENTED_OPERAND(loom_low_scf_for_step, 2)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_low_scf_for_iter_args, 3)
 LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_low_scf_for_unroll_factor, 4)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_scf_for_results, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_unroll_policy, 0, loom_low_scf_for_unroll_policy_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_signedness, 0, loom_low_scf_for_signedness_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_unroll_policy, 1, loom_low_scf_for_unroll_policy_t)
 LOOM_DEFINE_REGION(loom_low_scf_for_body, 0)
 enum loom_low_scf_for_build_flag_bits_e {
   LOOM_LOW_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR = 1u << 0,
@@ -786,6 +794,7 @@ typedef uint32_t loom_low_scf_for_build_flags_t;
 iree_status_t loom_low_scf_for_build(
     loom_builder_t* builder,
     loom_low_scf_for_build_flags_t build_flags,
+    loom_low_scf_for_signedness_t signedness,
     loom_may_consume loom_value_id_t lower_bound,
     loom_may_consume loom_value_id_t upper_bound,
     loom_may_consume loom_value_id_t step,

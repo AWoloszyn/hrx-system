@@ -714,7 +714,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @structured_for_storage_affinity(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>) -> (reg<test.i32>) asm {
   // REMARK@+1: BACKEND/043 {function_name="structured_for_storage_affinity", op_name="low.scf.for", source_value_name="init", result_value_name="acc", value_class="test.i32", placement_cause="low.scf loop entry", decision="accepted", reason_key="assigned-locations-match"}
-  %result = low.scf.for [%lo to %hi step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
+  %result = low.scf.for signed [%lo to %hi step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
     // REMARK@+1: BACKEND/043 {function_name="structured_for_storage_affinity", op_name="low.copy", source_value_name="acc", result_value_name="next", value_class="test.i32", placement_cause="low.copy", decision="accepted", reason_key="assigned-locations-match"}
     %next = copy %acc : reg<test.i32> -> reg<test.i32>
     // REMARK@+2: BACKEND/043 {function_name="structured_for_storage_affinity", op_name="low.scf.yield", source_value_name="next", result_value_name="acc", value_class="test.i32", placement_cause="low.scf.yield", decision="accepted", reason_key="assigned-locations-match"}
@@ -732,7 +732,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @structured_for_concat_backedge_destination_layout(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32 x4>, %a0: reg<test.i32>, %a1: reg<test.i32>, %a2: reg<test.i32>, %a3: reg<test.i32>) -> (reg<test.i32 x4>) asm {
   // REMARK@+1: BACKEND/043 {source_value_name="init", result_value_name="state", decision="accepted"}
-  %result = low.scf.for [%lo to %hi step %step] iter_args(%init: reg<test.i32 x4>) -> (reg<test.i32 x4>) do(%iv: reg<test.i32>, %state: reg<test.i32 x4>) {
+  %result = low.scf.for signed [%lo to %hi step %step] iter_args(%init: reg<test.i32 x4>) -> (reg<test.i32 x4>) do(%iv: reg<test.i32>, %state: reg<test.i32 x4>) {
     // REMARK@+1: BACKEND/043 {source_value_name="state", result_value_name="s0", source_unit_offset="0", decision="accepted"}
     %s0 = slice %state[0] : reg<test.i32 x4> -> reg<test.i32>
     // REMARK@+1: BACKEND/043 {source_value_name="state", result_value_name="s1", source_unit_offset="1", decision="accepted"}

@@ -96,7 +96,7 @@ low.func.def public target<spirv.logical.core>(@target) abi(shader_entry_point) 
   %72 = OpPtrAccessChain.storage_buffer.i32.byte_offset %storage, %offset3
   OpStore.storage_buffer.i32 %72, %initial3
   %unroll = OpConstant.i32 2 : reg<spirv.id : index>
-  %last0_offset, %last1_offset, %last2_offset, %last3_offset = low.scf.for [%begin to %count step %step] iter_args(%offset0: reg<spirv.offset64>, %offset1: reg<spirv.offset64>, %offset2: reg<spirv.offset64>, %offset3: reg<spirv.offset64>) -> (reg<spirv.offset64>, reg<spirv.offset64>, reg<spirv.offset64>, reg<spirv.offset64>) unroll(%unroll) do(%record: reg<spirv.id : index>, %current0_offset: reg<spirv.offset64>, %current1_offset: reg<spirv.offset64>, %current2_offset: reg<spirv.offset64>, %current3_offset: reg<spirv.offset64>) {
+  %last0_offset, %last1_offset, %last2_offset, %last3_offset = low.scf.for signed [%begin to %count step %step] iter_args(%offset0: reg<spirv.offset64>, %offset1: reg<spirv.offset64>, %offset2: reg<spirv.offset64>, %offset3: reg<spirv.offset64>) -> (reg<spirv.offset64>, reg<spirv.offset64>, reg<spirv.offset64>, reg<spirv.offset64>) unroll(%unroll) do(%record: reg<spirv.id : index>, %current0_offset: reg<spirv.offset64>, %current1_offset: reg<spirv.offset64>, %current2_offset: reg<spirv.offset64>, %current3_offset: reg<spirv.offset64>) {
     %number = OpCopyObject.i32 %record
     %future = OpIAdd %number, %depth
     %value = OpIAdd %seed, %future

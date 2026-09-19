@@ -152,37 +152,43 @@ kernel.def target(@target) @vector_float_rounding_snapshot() {
          %73 = OpLoad %float %72 Aligned 4
     %initial = OpCompositeConstruct %v4float %64 %67 %70 %73
                OpStore %46 %replacement Aligned 4
-               OpBranch %76
-         %76 = OpLabel
-  %iteration = OpPhi %int %begin %11 %80 %79
-%accumulator = OpPhi %v4float %initial %11 %next %79
-         %85 = OpSLessThan %bool %iteration %count
-               OpLoopMerge %78 %79 None
-               OpBranchConditional %85 %77 %78
-         %77 = OpLabel
+         %77 = OpSLessThan %bool %begin %count
+         %78 = OpISub %int %count %begin
+         %79 = OpULessThan %bool %step %78
+         %80 = OpISub %int %count %step
+         %81 = OpSelect %int %79 %80 %begin
+               OpBranch %82
+         %82 = OpLabel
+  %iteration = OpPhi %int %begin %11 %86 %85
+%accumulator = OpPhi %v4float %initial %11 %next %85
+         %91 = OpPhi %bool %77 %11 %87 %85
+               OpLoopMerge %84 %85 None
+               OpBranchConditional %91 %83 %84
+         %83 = OpLabel
     %product = OpFMul %v4float %loaded %loaded
        %next = OpFAdd %v4float %product %accumulator
-               OpBranch %79
-         %79 = OpLabel
-         %80 = OpIAdd %int %iteration %step
-               OpBranch %76
-         %78 = OpLabel
-      %total = OpPhi %v4float %accumulator %76
-         %88 = OpCompositeExtract %float %total 0
-         %89 = OpCompositeExtract %float %total 1
-         %90 = OpCompositeExtract %float %total 2
-         %91 = OpCompositeExtract %float %total 3
-         %92 = OpIAdd %ulong %output_aligned %ulong_0
-         %93 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_float %92
-               OpStore %93 %88 Aligned 4
-         %94 = OpIAdd %ulong %output_aligned %ulong_4
-         %95 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_float %94
-               OpStore %95 %89 Aligned 4
-         %96 = OpIAdd %ulong %output_aligned %ulong_8
-         %97 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_float %96
-               OpStore %97 %90 Aligned 4
-         %98 = OpIAdd %ulong %output_aligned %ulong_12
+               OpBranch %85
+         %85 = OpLabel
+         %87 = OpSLessThan %bool %iteration %81
+         %86 = OpIAdd %int %iteration %step
+               OpBranch %82
+         %84 = OpLabel
+      %total = OpPhi %v4float %accumulator %82
+         %94 = OpCompositeExtract %float %total 0
+         %95 = OpCompositeExtract %float %total 1
+         %96 = OpCompositeExtract %float %total 2
+         %97 = OpCompositeExtract %float %total 3
+         %98 = OpIAdd %ulong %output_aligned %ulong_0
          %99 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_float %98
-               OpStore %99 %91 Aligned 4
+               OpStore %99 %94 Aligned 4
+        %100 = OpIAdd %ulong %output_aligned %ulong_4
+        %101 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_float %100
+               OpStore %101 %95 Aligned 4
+        %102 = OpIAdd %ulong %output_aligned %ulong_8
+        %103 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_float %102
+               OpStore %103 %96 Aligned 4
+        %104 = OpIAdd %ulong %output_aligned %ulong_12
+        %105 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_float %104
+               OpStore %105 %97 Aligned 4
                OpReturn
                OpFunctionEnd

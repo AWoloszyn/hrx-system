@@ -1223,6 +1223,36 @@ static iree_status_t loom_wasm_emit_low_scf_for(loom_wasm_emit_state_t* state,
                  "verified Wasm low.scf.for yield must match iter args");
 
   const loom_value_id_t lower_bound = loom_low_scf_for_lower_bound(op);
+  const loom_value_id_t upper_bound = loom_low_scf_for_upper_bound(op);
+  const loom_value_id_t step = loom_low_scf_for_step(op);
+  const uint8_t compare_opcode =
+      loom_low_scf_for_signedness(op) == LOOM_LOW_SCF_FOR_SIGNEDNESS_UNSIGNED
+          ? LOOM_WASM_OPCODE_I32_LT_U
+          : LOOM_WASM_OPCODE_I32_LT_S;
+
+  // Compute the continuation threshold once. For a nonempty domain the
+  // unsigned distance upper - lower is exact, including signed zero crossings.
+  // Clamp upper - step to lower when the step spans that distance, so the
+  // threshold is representable and the loop can test before incrementing.
+  uint32_t threshold_local = 0;
+  IREE_RETURN_IF_ERROR(loom_wasm_local_layout_append_type(
+      &state->locals, LOOM_WASM_VALUE_TYPE_I32, &threshold_local));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, upper_bound));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, step));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_I32_SUB));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, lower_bound));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, step));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, upper_bound));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, lower_bound));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_I32_SUB));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_I32_LT_U));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_SELECT));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_set_index(state, threshold_local));
+
   const loom_value_id_t iv_value = loom_block_arg_id(body_block, 0);
   const loom_wasm_value_move_span_t initial_move_spans[] = {
       {
@@ -1243,20 +1273,19 @@ static iree_status_t loom_wasm_emit_low_scf_for(loom_wasm_emit_state_t* state,
       loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_BLOCK));
   IREE_RETURN_IF_ERROR(
       loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_BLOCK_TYPE_EMPTY));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, iv_value));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, upper_bound));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_u8(&state->writer, compare_opcode));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_I32_EQZ));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_emit_branch_depth(state, LOOM_WASM_OPCODE_BR_IF, /*depth=*/0));
+
   IREE_RETURN_IF_ERROR(
       loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_LOOP));
   IREE_RETURN_IF_ERROR(
       loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_BLOCK_TYPE_EMPTY));
-
-  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, iv_value));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_emit_local_get(state, loom_low_scf_for_upper_bound(op)));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_I32_LT_S));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_I32_EQZ));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_emit_branch_depth(state, LOOM_WASM_OPCODE_BR_IF, /*depth=*/1));
 
   IREE_RETURN_IF_ERROR(loom_wasm_emit_structured_region_before_terminator(
       state, body_region, yield));
@@ -1264,8 +1293,16 @@ static iree_status_t loom_wasm_emit_low_scf_for(loom_wasm_emit_state_t* state,
                                                   &body_block->arg_ids[1],
                                                   yielded_values.count));
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, iv_value));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get_index(state, threshold_local));
   IREE_RETURN_IF_ERROR(
-      loom_wasm_emit_local_get(state, loom_low_scf_for_step(op)));
+      loom_wasm_binary_write_u8(&state->writer, compare_opcode));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_I32_EQZ));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_emit_branch_depth(state, LOOM_WASM_OPCODE_BR_IF, /*depth=*/1));
+
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, iv_value));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, step));
   IREE_RETURN_IF_ERROR(
       loom_wasm_binary_write_u8(&state->writer, LOOM_WASM_OPCODE_I32_ADD));
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_set(state, iv_value));
@@ -1456,7 +1493,6 @@ static iree_status_t loom_wasm_emit_region(loom_wasm_emit_state_t* state,
 
 static iree_status_t loom_wasm_emit_function_body_payload(
     loom_wasm_emit_state_t* state) {
-  IREE_RETURN_IF_ERROR(loom_wasm_emit_local_declarations(state));
   const loom_region_t* body =
       loom_low_function_const_body(state->allocation->function_op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_region(state, body));
@@ -1528,6 +1564,13 @@ iree_status_t loom_wasm_emit_function_body(
   if (iree_status_is_ok(status)) {
     status = loom_wasm_emit_function_body_payload(&state);
   }
+  // Structured emission may allocate local temporaries. Append declarations
+  // after the instructions so that the complete local namespace is known,
+  // then serialize the two spans in Wasm's required declarations-first order.
+  const iree_host_size_t instruction_length = state.writer.length;
+  if (iree_status_is_ok(status)) {
+    status = loom_wasm_emit_local_declarations(&state);
+  }
 
   loom_wasm_binary_writer_t output_writer;
   loom_wasm_binary_writer_initialize(allocator, &output_writer);
@@ -1540,8 +1583,13 @@ iree_status_t loom_wasm_emit_function_body(
                                             (uint32_t)state.writer.length);
   }
   if (iree_status_is_ok(status)) {
+    status = loom_wasm_binary_write_bytes(
+        &output_writer, state.writer.data + instruction_length,
+        state.writer.length - instruction_length);
+  }
+  if (iree_status_is_ok(status)) {
     status = loom_wasm_binary_write_bytes(&output_writer, state.writer.data,
-                                          state.writer.length);
+                                          instruction_length);
   }
   if (iree_status_is_ok(status) && state.locals.local_type_count > UINT32_MAX) {
     status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,

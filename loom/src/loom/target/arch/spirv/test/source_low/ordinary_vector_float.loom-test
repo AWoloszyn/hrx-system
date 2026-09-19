@@ -74,7 +74,7 @@ func.def target(@target) @float_lanes_4(%lhs: f32, %rhs: f32, %count: index) -> 
 low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @float_lanes_1(%initial: reg<spirv.id : f32>, %divisor: reg<spirv.id : f32>, %count: reg<spirv.id : index>) -> (reg<spirv.id : f32>) asm {
   %begin = OpConstant.i32 0 : reg<spirv.id : index>
   %step = OpConstant.i32 1 : reg<spirv.id : index>
-  %result = low.scf.for [%begin to %count step %step] iter_args(%initial: reg<spirv.id : f32>) -> (reg<spirv.id : f32>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : f32>) {
+  %result = low.scf.for signed [%begin to %count step %step] iter_args(%initial: reg<spirv.id : f32>) -> (reg<spirv.id : f32>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : f32>) {
     %add = OpFAdd.f32 %accumulator, %divisor
     %sub = OpFSub.f32 %add, %divisor
     %mul = OpFMul.f32 %sub, %divisor
@@ -90,7 +90,7 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @float_
   %step = OpConstant.i32 1 : reg<spirv.id : index>
   %initial = OpCompositeConstruct.v2f32 %lhs, %lhs
   %divisor = OpCompositeConstruct.v2f32 %rhs, %rhs
-  %total = low.scf.for [%begin to %count step %step] iter_args(%initial: reg<spirv.id : vector<2xf32>>) -> (reg<spirv.id : vector<2xf32>>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : vector<2xf32>>) {
+  %total = low.scf.for signed [%begin to %count step %step] iter_args(%initial: reg<spirv.id : vector<2xf32>>) -> (reg<spirv.id : vector<2xf32>>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : vector<2xf32>>) {
     %add = OpFAdd.v2f32 %accumulator, %divisor
     %sub = OpFSub.v2f32 %add, %divisor
     %mul = OpFMul.v2f32 %sub, %divisor
@@ -107,7 +107,7 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @float_
   %step = OpConstant.i32 1 : reg<spirv.id : index>
   %initial = OpCompositeConstruct.v3f32 %lhs, %lhs, %lhs
   %divisor = OpCompositeConstruct.v3f32 %rhs, %rhs, %rhs
-  %total = low.scf.for [%begin to %count step %step] iter_args(%initial: reg<spirv.id : vector<3xf32>>) -> (reg<spirv.id : vector<3xf32>>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : vector<3xf32>>) {
+  %total = low.scf.for signed [%begin to %count step %step] iter_args(%initial: reg<spirv.id : vector<3xf32>>) -> (reg<spirv.id : vector<3xf32>>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : vector<3xf32>>) {
     %add = OpFAdd.v3f32 %accumulator, %divisor
     %sub = OpFSub.v3f32 %add, %divisor
     %mul = OpFMul.v3f32 %sub, %divisor
@@ -124,7 +124,7 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @float_
   %step = OpConstant.i32 1 : reg<spirv.id : index>
   %initial = OpCompositeConstruct.v4f32 %lhs, %lhs, %lhs, %lhs
   %divisor = OpCompositeConstruct.v4f32 %rhs, %rhs, %rhs, %rhs
-  %total = low.scf.for [%begin to %count step %step] iter_args(%initial: reg<spirv.id : vector<4xf32>>) -> (reg<spirv.id : vector<4xf32>>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : vector<4xf32>>) {
+  %total = low.scf.for signed [%begin to %count step %step] iter_args(%initial: reg<spirv.id : vector<4xf32>>) -> (reg<spirv.id : vector<4xf32>>) do(%iteration: reg<spirv.id : index>, %accumulator: reg<spirv.id : vector<4xf32>>) {
     %add = OpFAdd.v4f32 %accumulator, %divisor
     %sub = OpFSub.v4f32 %add, %divisor
     %mul = OpFMul.v4f32 %sub, %divisor
