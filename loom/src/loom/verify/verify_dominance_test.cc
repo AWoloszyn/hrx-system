@@ -40,7 +40,7 @@ class UnreachableDominanceTest : public ::testing::Test {
         nullptr, 0, LOOM_LOCATION_UNKNOWN, &function));
     region_ = loom_test_func_body(function);
     seed_ = Constant(loom_region_entry_block(region_), LOOM_SCALAR_TYPE_I32);
-    Yield();
+    AppendYield();
     IREE_ASSERT_OK(loom_region_append_block(module_, region_, &first_));
     IREE_ASSERT_OK(loom_region_append_block(module_, region_, &second_));
   }
@@ -61,7 +61,7 @@ class UnreachableDominanceTest : public ::testing::Test {
     return loom_test_constant_result(op);
   }
 
-  void Yield() {
+  void AppendYield() {
     loom_op_t* op = nullptr;
     IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
                                          LOOM_LOCATION_UNKNOWN, &op));
@@ -70,7 +70,7 @@ class UnreachableDominanceTest : public ::testing::Test {
   void Verify(uint16_t expected_diagnostic) {
     for (loom_block_t* block : {first_, second_}) {
       loom_builder_set_block(&builder_, block);
-      Yield();
+      AppendYield();
     }
     IREE_ASSERT_OK(loom_module_compute_uses(module_));
     testing::DiagnosticCapture capture;
