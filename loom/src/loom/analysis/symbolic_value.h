@@ -79,18 +79,6 @@ iree_status_t loom_symbolic_value_prove_scaled_static_assumption(
     loom_value_id_t positive_value, int64_t scale, int64_t constant,
     bool* out_matched, loom_symbolic_proof_result_t* out_result);
 
-// Returns the select condition directly controlling |value_id| when present.
-bool loom_symbolic_value_select_condition(
-    const loom_symbolic_expr_context_t* context, loom_value_id_t value_id,
-    loom_value_id_t* out_condition);
-
-// Appends unique select conditions referenced by predicates on the identity
-// chain beginning at |start_value|.
-void loom_symbolic_value_collect_identity_chain_select_conditions(
-    const loom_symbolic_expr_context_t* context, loom_value_id_t start_value,
-    loom_value_id_t* conditions, iree_host_size_t condition_capacity,
-    iree_host_size_t* inout_condition_count);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif

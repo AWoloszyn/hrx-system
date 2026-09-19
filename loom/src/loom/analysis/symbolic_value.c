@@ -15,7 +15,6 @@
 #include "loom/ops/kernel/launch_config.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/scalar/ops.h"
-#include "loom/ops/scf/ops.h"
 
 #define LOOM_SYMBOLIC_VALUE_CONDITION_FACT_INFER_DEPTH_LIMIT 16
 #define LOOM_SYMBOLIC_VALUE_CONDITION_FACT_STACK_VALUE_CAPACITY 8
@@ -1828,91 +1827,4 @@ iree_status_t loom_symbolic_value_prove_relation(
       context, relation, left_value, right_value, &remainder_bound_matched,
       out_result));
   return iree_ok_status();
-}
-
-//===----------------------------------------------------------------------===//
-// Select conditions
-//===----------------------------------------------------------------------===//
-
-bool loom_symbolic_value_select_condition(
-    const loom_symbolic_expr_context_t* context, loom_value_id_t value_id,
-    loom_value_id_t* out_condition) {
-  loom_value_id_t source_value =
-      loom_symbolic_expr_assumption_source_value(context, value_id);
-  const loom_op_t* defining_op =
-      loom_symbolic_expr_value_defining_op(context, source_value);
-  if (!defining_op || !loom_scf_select_isa(defining_op)) {
-    return false;
-  }
-  *out_condition = loom_scf_select_condition(defining_op);
-  return true;
-}
-
-static bool loom_symbolic_value_predicate_arg_select_condition(
-    const loom_symbolic_expr_context_t* context, loom_predicate_arg_tag_t tag,
-    int64_t arg, loom_value_id_t* out_condition) {
-  if (tag != LOOM_PRED_ARG_VALUE || arg < 0) {
-    return false;
-  }
-  return loom_symbolic_value_select_condition(context, (loom_value_id_t)arg,
-                                              out_condition);
-}
-
-static void loom_symbolic_value_append_select_condition(
-    loom_value_id_t condition, loom_value_id_t* conditions,
-    iree_host_size_t condition_capacity,
-    iree_host_size_t* inout_condition_count) {
-  if (condition == LOOM_VALUE_ID_INVALID ||
-      *inout_condition_count >= condition_capacity) {
-    return;
-  }
-  for (iree_host_size_t i = 0; i < *inout_condition_count; ++i) {
-    if (conditions[i] == condition) {
-      return;
-    }
-  }
-  conditions[(*inout_condition_count)++] = condition;
-}
-
-static void loom_symbolic_value_collect_predicate_select_conditions(
-    const loom_symbolic_expr_context_t* context,
-    const loom_predicate_t* predicate, loom_value_id_t* conditions,
-    iree_host_size_t condition_capacity,
-    iree_host_size_t* inout_condition_count) {
-  for (uint8_t i = 0; i < predicate->arg_count; ++i) {
-    loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
-    if (loom_symbolic_value_predicate_arg_select_condition(
-            context, (loom_predicate_arg_tag_t)predicate->arg_tags[i],
-            predicate->args[i], &condition)) {
-      loom_symbolic_value_append_select_condition(
-          condition, conditions, condition_capacity, inout_condition_count);
-    }
-  }
-}
-
-void loom_symbolic_value_collect_identity_chain_select_conditions(
-    const loom_symbolic_expr_context_t* context, loom_value_id_t start_value,
-    loom_value_id_t* conditions, iree_host_size_t condition_capacity,
-    iree_host_size_t* inout_condition_count) {
-  if (!context->module || start_value == LOOM_VALUE_ID_INVALID) {
-    return;
-  }
-
-  loom_value_id_t current_value = start_value;
-  uint8_t remaining_steps = LOOM_SYMBOLIC_VALUE_IDENTITY_CHAIN_LIMIT;
-  while (remaining_steps-- > 0 && *inout_condition_count < condition_capacity) {
-    loom_symbolic_expr_identity_chain_step_t step = {0};
-    if (!loom_symbolic_expr_identity_chain_step(
-            context, current_value,
-            LOOM_SYMBOLIC_EXPR_IDENTITY_CHAIN_FOLLOW_INDEX_CASTS, &step)) {
-      return;
-    }
-    const loom_attribute_t predicates_attr = step.predicates_attr;
-    for (uint16_t i = 0; i < predicates_attr.count; ++i) {
-      loom_symbolic_value_collect_predicate_select_conditions(
-          context, &predicates_attr.predicate_list[i], conditions,
-          condition_capacity, inout_condition_count);
-    }
-    current_value = step.next_value;
-  }
 }

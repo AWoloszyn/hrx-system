@@ -1791,6 +1791,8 @@ iree_status_t loom_value_fact_table_compute_op_and_report(
     *out_changed = false;
   }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
+  IREE_RETURN_IF_ERROR(loom_value_fact_table_propagate_select_dependencies(
+      table, module, op, vtable, out_changed));
   if (vtable && vtable->loop_like) {
     return loom_value_fact_table_compute_loop_like_summary(
         table, module, (loom_op_t*)op, out_changed);

@@ -37,6 +37,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/ir/facts.h"
 #include "loom/ir/ir.h"
+#include "loom/ir/type_dependencies.h"
 #include "loom/util/fact_extensions.h"
 
 #ifdef __cplusplus
@@ -248,6 +249,18 @@ struct loom_value_fact_table_t {
     iree_host_size_t origin_capacity;
   } contextual_query_origins;
 
+  // Canonical transitive select conditions keyed by SSA value ID. Both the
+  // index and dense roots have populated-scope lifetime and remain absent for
+  // scopes with no value-selecting operations.
+  struct {
+    // Canonical set storage allocated on the first nonempty dependency.
+    loom_value_set_index_t* index;
+    // Canonical set roots indexed by SSA value ID; zero is empty.
+    loom_value_set_id_t* roots;
+    // Allocated root entry count.
+    iree_host_size_t capacity;
+  } select_dependencies;
+
   // Reusable scratch buffers for fact inference calls. Allocated on first use,
   // grown only when an op needs more slots. Never shrinks. Old buffers are
   // abandoned in the arena and freed in bulk with the arena.
@@ -448,6 +461,23 @@ void loom_value_fact_table_contextual_query_values(
 // lifetime and mutation/recomputation contract as numeric facts.
 loom_value_id_t loom_value_fact_table_query_identity(
     const loom_value_fact_table_t* table, loom_value_id_t value_id);
+
+// Begins increasing-order iteration over select conditions transitively
+// controlling |value_id|. Returns the canonical set identity, or zero when
+// empty; identities may be compared within one fact-table scope. The cursor
+// and its results remain valid until the scope is cleared.
+loom_value_set_id_t loom_value_fact_table_select_dependencies_begin(
+    const loom_value_fact_table_t* table, loom_value_id_t value_id,
+    loom_value_set_cursor_t* out_cursor);
+
+// Publishes the transitive select-condition summary for each result of |op|.
+// Operand summaries, scalar Boolean selector roles, and predicate-list value
+// references on fact identities contribute to the canonical result set.
+// Summary changes set |inout_changed| when non-NULL without clearing an
+// existing change.
+iree_status_t loom_value_fact_table_propagate_select_dependencies(
+    loom_value_fact_table_t* table, const loom_module_t* module,
+    const loom_op_t* op, const loom_op_vtable_t* vtable, bool* inout_changed);
 
 // Borrowed subset of a fact table. The table and value IDs must remain valid
 // while the view is consumed. Value IDs are unique and may name unset entries.

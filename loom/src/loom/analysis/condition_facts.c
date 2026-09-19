@@ -789,9 +789,6 @@ static iree_status_t loom_condition_facts_query_impl(
         query, fact_table, &frame, out_facts, out_derivation, out_refinements,
         out_complete);
   }
-  if (iree_status_is_ok(status) && out_derivation != NULL) {
-    loom_condition_derivation_finalize(out_derivation);
-  }
   loom_condition_query_end(query);
   return status;
 }
@@ -812,10 +809,36 @@ iree_status_t loom_condition_facts_query_complete(
     loom_condition_derivation_t* out_derivation) {
   loom_condition_derivation_reset(out_derivation);
   bool complete = false;
-  return loom_condition_facts_query_impl(
+  iree_status_t status = loom_condition_facts_query_impl(
       query, fact_table, condition_value, assumed_truth,
       &out_derivation->integer_facts, out_derivation,
       /*out_refinements=*/NULL, &complete);
+  if (iree_status_is_ok(status)) {
+    loom_condition_derivation_finalize(out_derivation);
+  }
+  return status;
+}
+
+iree_status_t loom_condition_facts_query_conjunction_complete(
+    loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
+    const loom_condition_assumption_t* assumptions,
+    iree_host_size_t assumption_count,
+    loom_condition_derivation_t* out_derivation) {
+  loom_condition_derivation_reset(out_derivation);
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t i = 0;
+       i < assumption_count && iree_status_is_ok(status); ++i) {
+    bool complete = false;
+    status = loom_condition_facts_query_impl(
+        query, fact_table, assumptions[i].condition,
+        assumptions[i].assumed_truth, &out_derivation->integer_facts,
+        out_derivation,
+        /*out_refinements=*/NULL, &complete);
+  }
+  if (iree_status_is_ok(status)) {
+    loom_condition_derivation_finalize(out_derivation);
+  }
+  return status;
 }
 
 iree_status_t loom_condition_facts_query_edge(
