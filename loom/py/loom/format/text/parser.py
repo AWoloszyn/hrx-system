@@ -3472,99 +3472,81 @@ class Parser:
         self._scope = saved_scope
 
     def _parse_one_result_type(self, parsed: ParsedFields) -> None:
-        """Parse one result type entry: type, %name: type, or %operand as type."""
+        """Parse an optional result binder and operand tie before the type."""
         tok = self._tokenizer
-        # Result types use SIGNATURE mode (creating placeholders for
-        # unknown dims) only inside a Scope. Outside a Scope, unknown
-        # dim names are errors — same as the C parser's
-        # one-level declaration-scope state.
+        result_name = None
+        tied_operand = None
+        if tok.at(TokenKind.SSA_VALUE):
+            name_token = tok.next()
+            if tok.try_consume(TokenKind.COLON):
+                result_name = name_token
+                if tok.at(TokenKind.SSA_VALUE):
+                    tied_operand = tok.next()
+                    tok.expect(TokenKind.BARE_IDENT, "as")
+            else:
+                tok.expect(TokenKind.BARE_IDENT, "as")
+                tied_operand = name_token
+
+        if tied_operand is not None:
+            try:
+                operand_id = self._scope.lookup(tied_operand.text)
+            except KeyError:
+                operand_id = -1
+            if operand_id in parsed.func_arg_ids:
+                operand_index = parsed.func_arg_ids.index(operand_id)
+            elif operand_id in parsed.operand_ids:
+                operand_index = parsed.operand_ids.index(operand_id)
+            else:
+                raise ParseError(
+                    f"tied result {tied_operand.text!r} not found in args or operands",
+                    tied_operand.location,
+                    tok._filename,
+                )
+            parsed.tied_results.append(
+                IRTiedResult(
+                    result_index=len(parsed.result_types), operand_index=operand_index
+                )
+            )
+
+        # Signature-local placeholders follow the enclosing declaration scope;
+        # body result annotations retain immediate SSA lookup.
         result_mode = (
             TypeParseMode.SIGNATURE
             if self._definition_scope_active
             else TypeParseMode.BODY
         )
-        if tok.at(TokenKind.SSA_VALUE):
-            name_tok = tok.next()
-            if tok.try_consume(TokenKind.COLON):
-                # Named result: %name: type.
-                result_type, all_bindings = self._parse_type(
-                    tok, self._scope, result_mode
-                )
-                dim_bindings = {k: v for k, v in all_bindings.items() if k >= 0}
-                encoding_binding = all_bindings.get(-1, -1)
-                # Resolve placeholder or define new value.
-                try:
-                    value_id = self._scope.lookup(name_tok.text)
-                    value = self._module.values[value_id]
-                    if not isinstance(value.type, PlaceholderType):
-                        raise ParseError(
-                            f"SSA name '%{name_tok.text}' already defined",
-                            name_tok.location,
-                            tok._filename,
-                        )
-                    value.type = result_type
-                    value.dim_bindings = dim_bindings
-                    value.encoding_binding = encoding_binding
-                except KeyError:
-                    value_id = self._module.add_value(
-                        Value(
-                            name=name_tok.text,
-                            type=result_type,
-                            dim_bindings=dim_bindings,
-                            encoding_binding=encoding_binding,
-                        )
+        result_type, bindings = self._parse_type(tok, self._scope, result_mode)
+        value_id = None
+        if result_name is not None:
+            dim_bindings = {k: v for k, v in bindings.items() if k >= 0}
+            encoding_binding = bindings.get(-1, -1)
+            try:
+                value_id = self._scope.lookup(result_name.text)
+            except KeyError:
+                value_id = self._module.add_value(
+                    Value(
+                        name=result_name.text,
+                        type=result_type,
+                        dim_bindings=dim_bindings,
+                        encoding_binding=encoding_binding,
                     )
-                    self._scope.define(name_tok.text, value_id)
-                parsed.result_types.append(result_type)
-                parsed.result_bindings.append(all_bindings)
-                self._assign_reserved_binding_types(all_bindings)
-                parsed.result_ids.append(value_id)
-            elif tok.try_consume(TokenKind.BARE_IDENT, "as"):
-                # Tied result: %operand as type.
-                operand_name = name_tok.text
-                result_type, bindings = self._parse_type(
-                    tok, self._scope, TypeParseMode.BODY
                 )
-                parsed.result_types.append(result_type)
-                parsed.result_bindings.append(bindings)
-                self._assign_reserved_binding_types(bindings)
-                parsed.result_ids.append(None)
-                # Find the operand index.
-                try:
-                    operand_id = self._scope.lookup(operand_name)
-                except KeyError as exc:
-                    raise ParseError(
-                        f"tied result {operand_name!r} not found in args or operands",
-                        name_tok.location,
-                        tok._filename,
-                    ) from exc
-                if operand_id in parsed.func_arg_ids:
-                    operand_index = parsed.func_arg_ids.index(operand_id)
-                elif operand_id in parsed.operand_ids:
-                    operand_index = parsed.operand_ids.index(operand_id)
-                else:
-                    raise ParseError(
-                        f"tied result {operand_name!r} not found in args or operands",
-                        name_tok.location,
-                        tok._filename,
-                    )
-                result_index = len(parsed.result_types) - 1
-                parsed.tied_results.append(
-                    IRTiedResult(result_index=result_index, operand_index=operand_index)
-                )
+                self._scope.define(result_name.text, value_id)
             else:
-                raise ParseError(
-                    f"expected ':' or 'as' after result name {name_tok.text!r}",
-                    tok.peek().location,
-                    tok._filename,
-                )
-        else:
-            # Fresh result: type.
-            result_type, bindings = self._parse_type(tok, self._scope, result_mode)
-            parsed.result_types.append(result_type)
-            parsed.result_bindings.append(bindings)
-            self._assign_reserved_binding_types(bindings)
-            parsed.result_ids.append(None)
+                value = self._module.values[value_id]
+                if not isinstance(value.type, PlaceholderType):
+                    raise ParseError(
+                        f"SSA name '%{result_name.text}' already defined",
+                        result_name.location,
+                        tok._filename,
+                    )
+                value.type = result_type
+                value.dim_bindings = dim_bindings
+                value.encoding_binding = encoding_binding
+        parsed.result_types.append(result_type)
+        parsed.result_bindings.append(bindings)
+        self._assign_reserved_binding_types(bindings)
+        parsed.result_ids.append(value_id)
 
     # --- Index list ---
 

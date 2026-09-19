@@ -13,7 +13,7 @@ from loom.dialect.func import ALL_FUNC_OPS
 from loom.dialect.globals import ALL_GLOBAL_OPS
 from loom.dialect.scf import ALL_SCF_OPS
 from loom.dialect.test import ALL_TEST_OPS
-from loom.format.text.parser import Parser
+from loom.format.text.parser import ParseError, Parser
 from loom.format.text.printer import Printer
 from loom.ir import Module
 
@@ -173,6 +173,41 @@ def test_tied_result_uses_the_argument_name_plan() -> None:
     body = operation.regions[0].blocks[0]
     assert body.ops[0].regions[0].blocks[0].ops[1].operands[0] == body.arg_ids[1]
     assert body.ops[1].operands[0] == body.arg_ids[1]
+
+
+@pytest.mark.parametrize("result_name", ["extent", "", "input"])
+def test_tied_result_keeps_its_own_referenced_identity(result_name: str) -> None:
+    parser, printer = _formats()
+    module = parser.parse(
+        "func.decl @shape(%input: index) -> "
+        "(%extent: %input as index, tensor<[%extent]xf32>) "
+        "where [range(%extent, 1, 32)]\n",
+        verify=True,
+    )
+    module.values[module.body.ops[0].results[0]].name = result_name
+    text = printer.print_module(module)
+    loaded = parser.parse(text, verify=True)
+    assert printer.print_module(loaded) == text
+    op = loaded.body.ops[0]
+    extent = op.results[0]
+    assert extent != op.operands[0]
+    assert op.tied_results[0].operand_index == 0
+    assert op.tied_results[0].result_index == 0
+    assert loaded.values[op.results[1]].dim_bindings == {0: extent}
+    assert op.attributes["predicates"][0].args[0].value == extent
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "func.decl @missing() -> (%result: %missing as index)",
+        "func.decl @not_argument() -> (%first: index, %result: %first as index)",
+    ],
+)
+def test_tied_binder_requires_an_argument(text: str) -> None:
+    parser, _ = _formats()
+    with pytest.raises(ParseError, match="not found in args or operands"):
+        parser.parse(text)
 
 
 def test_projected_arguments_share_the_signature_spelling() -> None:

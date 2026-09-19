@@ -2281,20 +2281,14 @@ class Printer:
             if result_position in tied_map:
                 tied = tied_map[result_position]
                 operand_name = self._value_name(fields.operand_id_for_tied(tied))
-                parts.append(f"{operand_name} as {type_str}")
-            elif value.name or result_id in self._name_plan.referenced:
-                # Named result: %name: type.
-                # Omit the name if it matches the LHS result name (to avoid
-                # redundancy in func.call and other body ops).
-                # Symbol-defining ops have no LHS results in the printed format,
-                # so we always print the name there.
-                is_symbol = _is_symbol_define(op_decl)
-                if is_symbol:
-                    parts.append(f"{self._value_name(result_id)}: {type_str}")
-                else:
-                    parts.append(type_str)
-            else:
-                parts.append(type_str)
+                type_str = f"{operand_name} as {type_str}"
+            # Symbol results need their own binder, including when tied. Body
+            # operations already bind results on the left-hand side.
+            if _is_symbol_define(op_decl) and (
+                value.name or result_id in self._name_plan.referenced
+            ):
+                type_str = f"{self._value_name(result_id)}: {type_str}"
+            parts.append(type_str)
 
         text = ", ".join(parts)
         if parens:

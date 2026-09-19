@@ -487,6 +487,45 @@ def _test_region_argument_interop(loom_format: Path) -> None:
         assert "error [TYPE/013]" in result.stderr
 
 
+def _test_tied_signature_interop(loom_format: Path) -> None:
+    parser, printer = Parser(), Printer()
+    for format in (parser, printer):
+        format.register_types(ALL_BUILTIN_TYPES)
+        format.register_ops(ALL_FUNC_OPS)
+    module = parser.parse(
+        "func.decl @shape(%input: index) -> "
+        "(%extent: %input as index, tensor<[%extent]xf32>) "
+        "where [range(%extent, 1, 32)]\n"
+        "func.decl @window(%input: buffer) -> (%output: %input as view<16xf32>)\n"
+        "func.def @identity(%input: index) -> (%extent: %input as index) "
+        "where [range(%extent, 1, 32)] {\n"
+        "  func.return %input : index\n"
+        "}\n",
+        verify=True,
+    )
+    for op in module.body.ops:
+        module.values[op.results[0]].name = ""
+    for source in (module, printer.print_module(module)):
+        loaded = _roundtrip_through_c(loom_format, source)
+        for candidate in (
+            loaded,
+            parser.parse(printer.print_module(loaded), verify=True),
+        ):
+            shape, window, identity = candidate.body.ops
+            for op in (shape, window, identity):
+                assert op.tied_results[0].operand_index == 0
+                assert op.tied_results[0].result_index == 0
+            assert candidate.values[shape.results[1]].dim_bindings == {
+                0: shape.results[0]
+            }
+            for op in (shape, identity):
+                assert op.attributes["predicates"][0].args[0].value == op.results[0]
+            assert (
+                candidate.values[window.results[0]].type
+                != candidate.values[window.operands[0]].type
+            )
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise ValueError("expected the C loom-format binary path")
@@ -520,6 +559,7 @@ def main() -> None:
         _assert_predicate_identities(parser.parse(text))
     _test_cfg_interop(Path(sys.argv[1]))
     _test_region_argument_interop(Path(sys.argv[1]))
+    _test_tied_signature_interop(Path(sys.argv[1]))
 
 
 if __name__ == "__main__":
