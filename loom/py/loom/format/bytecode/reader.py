@@ -1127,7 +1127,7 @@ class BytecodeReader:
 
                 _tied_count, offset = decode_varint(sym_data, offset)
                 predicates, offset = self._read_predicate_list(
-                    sym_data, offset, module, signature_value_map
+                    sym_data, offset, signature_value_map
                 )
                 predicates_attr_name = self._function_predicates_attr_name(
                     op_name, flags, predicates
@@ -2072,9 +2072,7 @@ class BytecodeReader:
                 type_idx, offset = decode_varint(data, offset)
                 return self._resolve_prior_type(type_idx, "attribute type"), offset
             case 8:  # PREDICATE_LIST
-                predicates, offset = self._read_predicate_list(
-                    data, offset, module, value_map
-                )
+                predicates, offset = self._read_predicate_list(data, offset, value_map)
                 return predicates, offset
             case 9:  # DICT
                 if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
@@ -2384,7 +2382,6 @@ class BytecodeReader:
         self,
         data: bytes,
         offset: int,
-        module: Module | None = None,
         value_map: list[int] | None = None,
     ) -> tuple[list[Predicate], int]:
         """Read a predicate list: count + per-predicate data."""
@@ -2400,7 +2397,7 @@ class BytecodeReader:
             kind = self._PRED_KIND_NAMES[kind_byte]
             args: list[PredicateArg] = []
             for _ in range(arg_count):
-                arg, offset = self._read_predicate_arg(data, offset, module, value_map)
+                arg, offset = self._read_predicate_arg(data, offset, value_map)
                 args.append(arg)
             predicates.append(Predicate(kind=kind, args=tuple(args)))
         return predicates, offset
@@ -2409,7 +2406,6 @@ class BytecodeReader:
         self,
         data: bytes,
         offset: int,
-        module: Module | None = None,
         value_map: list[int] | None = None,
     ) -> tuple[PredicateArg, int]:
         """Read a single predicate argument: tag + value."""
@@ -2418,25 +2414,18 @@ class BytecodeReader:
         match tag_byte:
             case 1:  # VALUE
                 encoded_value, offset = decode_varint(data, offset)
-                if module is not None and value_map is not None:
-                    if encoded_value >= len(value_map):
-                        raise BytecodeError(
-                            "predicate value number "
-                            f"{encoded_value} out of range "
-                            f"(function has {len(value_map)} values so far)"
-                        )
-                    value_id = value_map[encoded_value]
-                    return (
-                        PredicateArg(tag="value", value=module.values[value_id].name),
-                        offset,
-                    )
-                if encoded_value >= len(self._strings):
+                if value_map is None:
                     raise BytecodeError(
-                        f"predicate value string_id {encoded_value} out of range "
-                        f"(string table has {len(self._strings)} entries)"
+                        "predicate value reference requires a value scope"
+                    )
+                if encoded_value >= len(value_map):
+                    raise BytecodeError(
+                        "predicate value number "
+                        f"{encoded_value} out of range "
+                        f"(function has {len(value_map)} values so far)"
                     )
                 return (
-                    PredicateArg(tag="value", value=self._strings[encoded_value]),
+                    PredicateArg(tag="value", value=value_map[encoded_value]),
                     offset,
                 )
             case 2:  # CONST

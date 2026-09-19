@@ -14,7 +14,10 @@ import tempfile
 from pathlib import Path
 
 from loom.builtin_types import ALL_BUILTIN_TYPES
+from loom.dialect.cfg import ALL_CFG_OPS
+from loom.dialect.func import ALL_FUNC_OPS
 from loom.dialect.low import ALL_LOW_OPS
+from loom.dialect.scf import ALL_SCF_OPS
 from loom.dialect.test import (
     ALL_TEST_OPS,
     ALL_TEST_PARAMETERIZED_ATTRS,
@@ -27,6 +30,7 @@ from loom.dialect.test import (
 from loom.format.bytecode.reader import read_module
 from loom.format.bytecode.writer import write_module
 from loom.format.text.parser import Parser
+from loom.format.text.printer import Printer
 from loom.ir import (
     BF16,
     Block,
@@ -124,20 +128,26 @@ def _interop_module() -> tuple[Module, RegisterType]:
     return module, register_types[0]
 
 
-def _roundtrip_through_c(loom_format: Path, module: Module) -> Module:
+def _roundtrip_through_c(loom_format: Path, source: Module | str) -> Module:
     with tempfile.TemporaryDirectory(prefix="loom-bytecode-interop-") as temp_dir:
         temp_path = Path(temp_dir)
-        python_bytecode_path = temp_path / "python.loombc"
+        source_format = "text" if isinstance(source, str) else "bc"
+        source_path = temp_path / (
+            "python.loom" if isinstance(source, str) else "python.loombc"
+        )
         c_bytecode_path = temp_path / "c.loombc"
-        python_bytecode_path.write_bytes(write_module(module))
+        if isinstance(source, str):
+            source_path.write_text(source)
+        else:
+            source_path.write_bytes(write_module(source))
 
         _run_loom_format(
             [
                 loom_format,
-                "--from=bc",
+                f"--from={source_format}",
                 "--to=bc",
                 f"--output={c_bytecode_path}",
-                python_bytecode_path,
+                source_path,
             ]
         )
         return read_module(
@@ -145,6 +155,42 @@ def _roundtrip_through_c(loom_format: Path, module: Module) -> Module:
             parameterized_attrs=ALL_TEST_PARAMETERIZED_ATTRS,
             type_defs=ALL_TEST_TYPES,
         )
+
+
+def _predicate_capture_module() -> Module:
+    parser = Parser()
+    for operations in (ALL_FUNC_OPS, ALL_SCF_OPS, ALL_TEST_OPS):
+        parser.register_ops(operations)
+    module = parser.parse(
+        "func.decl @first(%extent: index) where [ge(%extent, 1)]\n"
+        "func.def @capture(%condition: i1, %extent: index) "
+        "where [ge(%extent, 2)] {\n"
+        "  scf.if %condition {\n"
+        "    %inner = test.constant 4 : index\n"
+        "    %bounded = test.assume %condition "
+        "[eq(%extent, 7), eq(%inner, 4)] : i1\n"
+        "  }\n"
+        "  func.return\n"
+        "}\n"
+    )
+    nested = module.body.ops[1].regions[0].blocks[0].ops[0].regions[0].blocks[0]
+    # Changing a display name leaves the resolved outer and inner IDs intact.
+    module.values[nested.ops[0].results[0]].name = "extent"
+    return module
+
+
+def _assert_predicate_identities(module: Module) -> None:
+    first, capture = module.body.ops
+    assert first.attributes["predicates"][0].args[0].value == first.operands[0]
+    body = capture.regions[0].blocks[0]
+    extent = body.arg_ids[1]
+    assert capture.attributes["predicates"][0].args[0].value == extent
+    nested = body.ops[0].regions[0].blocks[0]
+    inner = nested.ops[0].results[0]
+    predicates = nested.ops[1].attributes["predicates"]
+    assert extent != inner
+    assert predicates[0].args[0].value == extent
+    assert predicates[1].args[0].value == inner
 
 
 def _assert_module_structure(module: Module, register_type: RegisterType) -> Block:
@@ -325,6 +371,161 @@ def _assert_symbol_payloads(module: Module) -> None:
         raise AssertionError("descriptor-backed types did not survive C bytecode")
 
 
+def _assert_cfg_identities(module: Module) -> None:
+    entry, forward, exit = module.body.ops[0].regions[0].blocks
+    assert entry.ops[0].successors[0] is forward
+    assert forward.ops[1].successors[0] is exit
+    assert entry.ops[0].operands[0] == entry.arg_ids[2]
+    assert forward.ops[0].operands[0] == forward.arg_ids[0]
+    assert exit.ops[0].operands[0] == forward.arg_ids[0]
+    argument = module.values[forward.arg_ids[0]]
+    assert argument.dim_bindings == {0: entry.arg_ids[0]}
+    assert argument.encoding_binding == entry.arg_ids[1]
+
+
+def _test_cfg_interop(loom_format: Path) -> None:
+    parser = Parser()
+    printer = Printer()
+    for format in (parser, printer):
+        format.register_types(ALL_BUILTIN_TYPES)
+        for operations in (ALL_FUNC_OPS, ALL_CFG_OPS, ALL_TEST_OPS):
+            format.register_ops(operations)
+    module = parser.parse(
+        "func.def @f(%extent: index, %layout: encoding, "
+        "%value: tile<[%extent]xf32, %layout>) {\n"
+        "  cfg.br ^forward(%value: tile<[%extent]xf32, %layout>)\n"
+        "^forward(%forwarded: tile<[%extent]xf32, %layout>):\n"
+        "  test.use %forwarded : tile<[%extent]xf32, %layout>\n"
+        "  cfg.br ^exit\n"
+        "^exit:\n"
+        "  test.use %forwarded : tile<[%extent]xf32, %layout>\n"
+        "  func.return\n"
+        "}\n",
+        verify=True,
+    )
+    _assert_cfg_identities(module)
+    region = module.body.ops[0].regions[0]
+    entry, forward, exit = region.blocks
+    region.blocks[:] = [entry, exit, forward]
+    for loaded in (
+        read_module(write_module(module)),
+        _roundtrip_through_c(loom_format, module),
+        _roundtrip_through_c(loom_format, printer.print_module(module)),
+    ):
+        _assert_cfg_identities(loaded)
+        _assert_cfg_identities(parser.parse(printer.print_module(loaded), verify=True))
+
+
+def _test_region_argument_interop(loom_format: Path) -> None:
+    parser = Parser()
+    printer = Printer()
+    for format in (parser, printer):
+        format.register_types(ALL_BUILTIN_TYPES)
+        for operations in (ALL_FUNC_OPS, ALL_SCF_OPS, ALL_TEST_OPS):
+            format.register_ops(operations)
+    module = parser.parse(
+        "func.def @loop(%extent: index, %layout: encoding, "
+        "%input: tile<[%extent]xf32, %layout>, "
+        "%lower: index, %upper: index, %step: index) {\n"
+        "  %result = scf.for %iv = [%lower to %upper step %step]"
+        "(%iter = %input : tile<[%extent]xf32, %layout>) "
+        "-> (tile<[%extent]xf32, %layout>) {\n"
+        "    scf.yield %iter : tile<[%extent]xf32, %layout>\n"
+        "  }\n"
+        "  test.block_args %input : tile<[%extent]xf32, %layout> "
+        "do(%arg: tile<[%extent]xf32, %layout>) {\n"
+        "    test.use %arg : tile<[%extent]xf32, %layout>\n"
+        "    test.yield\n"
+        "  }\n"
+        "  func.return\n"
+        "}\n"
+        "test.split_func @projection(%extent: index, %alternate: index, %layout: encoding, "
+        "%input: tile<[%extent]xf32, %layout>) {\n"
+        "  test.use %input : tile<[%extent]xf32, %layout>\n"
+        "  test.yield\n"
+        "} launch {\n"
+        "  test.use %input : tile<[%extent]xf32, %layout>\n"
+        "  test.yield\n"
+        "}\n",
+        verify=True,
+    )
+    for source in (module, printer.print_module(module)):
+        loaded = _roundtrip_through_c(loom_format, source)
+        for candidate in (
+            loaded,
+            parser.parse(printer.print_module(loaded), verify=True),
+        ):
+            entry = candidate.body.ops[0].regions[0].blocks[0]
+            for op in entry.ops[:2]:
+                nested = op.regions[0].blocks[0]
+                argument_id = nested.arg_ids[-1]
+                argument = candidate.values[argument_id]
+                assert argument.dim_bindings == {0: entry.arg_ids[0]}
+                assert argument.encoding_binding == entry.arg_ids[1]
+                assert nested.ops[0].operands[0] == argument_id
+            config, body = candidate.body.ops[1].regions
+            assert set(config.blocks[0].arg_ids).isdisjoint(body.blocks[0].arg_ids)
+            for region in (config, body):
+                extent, _alternate, layout, input = region.blocks[0].arg_ids
+                assert candidate.values[input].dim_bindings == {0: extent}
+                assert candidate.values[input].encoding_binding == layout
+                assert region.blocks[0].ops[0].operands[0] == input
+
+    # Equal structural shapes must not hide a reference to the wrong peer.
+    config_args = module.body.ops[1].regions[0].blocks[0].arg_ids
+    module.values[config_args[3]].dim_bindings[0] = config_args[1]
+    with tempfile.TemporaryDirectory(prefix="loom-projected-argument-") as temp_dir:
+        source_path = Path(temp_dir) / "invalid.loombc"
+        source_path.write_bytes(write_module(module))
+        result = subprocess.run(
+            [loom_format, "--from=bc", "--to=text", source_path],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "error [TYPE/013]" in result.stderr
+
+
+def _test_tied_signature_interop(loom_format: Path) -> None:
+    parser, printer = Parser(), Printer()
+    for format in (parser, printer):
+        format.register_types(ALL_BUILTIN_TYPES)
+        format.register_ops(ALL_FUNC_OPS)
+    module = parser.parse(
+        "func.decl @shape(%input: index) -> "
+        "(%extent: %input as index, tensor<[%extent]xf32>) "
+        "where [range(%extent, 1, 32)]\n"
+        "func.decl @window(%input: buffer) -> (%output: %input as view<16xf32>)\n"
+        "func.def @identity(%input: index) -> (%extent: %input as index) "
+        "where [range(%extent, 1, 32)] {\n"
+        "  func.return %input : index\n"
+        "}\n",
+        verify=True,
+    )
+    for op in module.body.ops:
+        module.values[op.results[0]].name = ""
+    for source in (module, printer.print_module(module)):
+        loaded = _roundtrip_through_c(loom_format, source)
+        for candidate in (
+            loaded,
+            parser.parse(printer.print_module(loaded), verify=True),
+        ):
+            shape, window, identity = candidate.body.ops
+            for op in (shape, window, identity):
+                assert op.tied_results[0].operand_index == 0
+                assert op.tied_results[0].result_index == 0
+            assert candidate.values[shape.results[1]].dim_bindings == {
+                0: shape.results[0]
+            }
+            for op in (shape, identity):
+                assert op.attributes["predicates"][0].args[0].value == op.results[0]
+            assert (
+                candidate.values[window.results[0]].type
+                != candidate.values[window.operands[0]].type
+            )
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise ValueError("expected the C loom-format binary path")
@@ -343,6 +544,22 @@ def main() -> None:
     _assert_parameterized_attrs(entry_block)
     _assert_parameterized_arrays(entry_block)
     _assert_symbol_payloads(loaded_module)
+    captured = _predicate_capture_module()
+    _assert_predicate_identities(captured)
+    _assert_predicate_identities(read_module(write_module(captured)))
+    captured_from_c = _roundtrip_through_c(Path(sys.argv[1]), captured)
+    _assert_predicate_identities(captured_from_c)
+    parser = Parser()
+    printer = Printer()
+    for operations in (ALL_FUNC_OPS, ALL_SCF_OPS, ALL_TEST_OPS):
+        parser.register_ops(operations)
+        printer.register_ops(operations)
+    for module in (captured, captured_from_c):
+        text = printer.print_module(module)
+        _assert_predicate_identities(parser.parse(text))
+    _test_cfg_interop(Path(sys.argv[1]))
+    _test_region_argument_interop(Path(sys.argv[1]))
+    _test_tied_signature_interop(Path(sys.argv[1]))
 
 
 if __name__ == "__main__":

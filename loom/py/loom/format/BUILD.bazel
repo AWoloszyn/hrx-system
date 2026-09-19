@@ -13,6 +13,12 @@ package(
 
 iree_py_library(
     name = "package",
-    srcs = ["__init__.py"],
-    deps = ["//loom/py/loom:package"],
+    srcs = [
+        "__init__.py",
+        "block_order.py",
+    ],
+    deps = [
+        "//loom/py/loom:core",
+        "//loom/py/loom:package",
+    ],
 )

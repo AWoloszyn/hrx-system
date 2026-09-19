@@ -389,7 +389,7 @@ def _make_predicate_function_module() -> Module:
     predicate = Predicate(
         kind="mul",
         args=(
-            PredicateArg(tag="value", value="M"),
+            PredicateArg(tag="value", value=argument_id),
             PredicateArg(tag="const", value=16),
         ),
     )

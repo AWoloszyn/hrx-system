@@ -60,7 +60,11 @@ iree_py_test(
     "$<TARGET_FILE:loom::tools::loom-format::loom-format>"
   DEPS
     loom::py::loom::format::bytecode::bytecode
+    loom::py::loom::dialect::cfg::cfg
+    loom::py::loom::dialect::func::func
     loom::py::loom::dialect::low::low
+    loom::py::loom::dialect::scf::scf
+    loom::py::loom::dialect::test::test
     loom::py::loom::format::text::text
     loom::py::loom::target::test::descriptors
   PACKAGE_DIRS

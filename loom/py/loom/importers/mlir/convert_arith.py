@@ -9,8 +9,9 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, cast
 
+from loom.builder import ValueRef
 from loom.importers.mlir.converter import ConverterRegistry
 from loom.importers.mlir.model import MlirConversionContext, SourceOp
 
@@ -77,9 +78,9 @@ CAST_OPS = {
 }
 
 UNARY_OPS = {
-    "arith.ctlz": ("scalar.ctlzi", "vector.ctlzi", "index.ctlzi"),
-    "arith.ctpop": ("scalar.ctpopi", "vector.ctpopi", "index.ctpopi"),
-    "arith.cttz": ("scalar.cttzi", "vector.cttzi", "index.cttzi"),
+    "math.ctlz": ("scalar.ctlzi", "vector.ctlzi", "index.ctlzi"),
+    "math.ctpop": ("scalar.ctpopi", "vector.ctpopi", "index.ctpopi"),
+    "math.cttz": ("scalar.cttzi", "vector.cttzi", "index.cttzi"),
 }
 
 
@@ -225,7 +226,7 @@ def convert_binary(op: SourceOp, context: MlirConversionContext) -> bool:
         target_op,
         mapped[0],
         mapped[1],
-        result_type,
+        context.type(result_type),
         context.result_name(op.result()),
     )
     context.map_result(op.result(), result, result_type)
@@ -254,11 +255,14 @@ def convert_unary(op: SourceOp, context: MlirConversionContext) -> bool:
         return True
     else:
         target_op = vector_op if result_type.startswith("vector<") else scalar_op
-    dialect_name, op_name = target_op.split(".", 1)
-    result = getattr(getattr(context.builder, dialect_name), op_name)(
-        input=mapped,
-        results=[context.type(result_type)],
-        name=context.result_name(op.result()),
+    result = cast(
+        ValueRef,
+        context.builder.ir.build(
+            target_op,
+            operands=[mapped],
+            results=[context.type(result_type)],
+            result_names=[context.result_name(op.result())],
+        ),
     )
     context.map_result(op.result(), result, result_type)
     context.record_converted(op.text, f"{context.ssa(result)} = {target_op} ...")

@@ -20,7 +20,7 @@ blocks, and CFG successor edges reference their target blocks directly.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum, unique
 from itertools import pairwise
@@ -912,12 +912,23 @@ class PredicateArg:
     """A single argument to a predicate.
 
     tag: "value" for SSA value references, "const" for integer constants.
-    value: For "value" tag, the bare SSA name as a string (no % prefix).
-           For "const" tag, the integer constant value.
+    value: For "value" tag, the resolved ID in the owning module's value table.
+           For "const" tag, the integer constant value. Names are presentation
+           metadata and never participate in predicate identity.
     """
 
-    tag: str  # "value", "const"
-    value: int | str
+    # Distinguishes an SSA reference from a literal integer.
+    tag: str
+    # Module value ID or integer constant, as selected by tag.
+    value: int
+
+    def __post_init__(self) -> None:
+        if self.tag not in ("value", "const"):
+            raise ValueError(f"unknown predicate arg tag: {self.tag!r}")
+        if type(self.value) is not int:
+            raise TypeError("predicate arguments require integer IDs or constants")
+        if self.tag == "value" and self.value < 0:
+            raise ValueError("predicate value IDs must be nonnegative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -936,28 +947,27 @@ class Predicate:
 
 
 def _resolve_predicate_arg(
-    arg: PredicateArg, values: dict[str, int | float]
+    arg: PredicateArg, values: dict[int, int | float]
 ) -> int | float | None:
     """Resolve a predicate argument to a concrete scalar.
 
-    Returns None if the value name is not in the values dict.
+    Returns None if the value ID is not in the values dict.
     """
     match arg.tag:
         case "const":
-            assert isinstance(arg.value, int)
             return arg.value
         case "value":
-            return values.get(str(arg.value))
+            return values.get(arg.value)
         case _:
             raise ValueError(f"unknown predicate arg tag: {arg.tag!r}")
 
 
-def evaluate_predicate(predicate: Predicate, values: dict[str, int | float]) -> bool:
+def evaluate_predicate(predicate: Predicate, values: dict[int, int | float]) -> bool:
     """Evaluate a predicate against concrete dimension values.
 
-    values maps bare SSA names ("M", "K") to their concrete scalar values.
+    values maps module value IDs to their concrete scalar values.
     Returns True if the predicate is satisfied or if any argument
-    cannot be resolved (value name not in the dict).
+    cannot be resolved (value ID not in the dict).
     """
     resolved = [_resolve_predicate_arg(a, values) for a in predicate.args]
     if any(v is None for v in resolved):
@@ -999,7 +1009,7 @@ def evaluate_predicate(predicate: Predicate, values: dict[str, int | float]) -> 
 
 
 def evaluate_predicates(
-    predicates: list[Predicate], values: dict[str, int | float]
+    predicates: list[Predicate], values: dict[int, int | float]
 ) -> bool:
     """Evaluate all predicates. Returns True iff all are satisfied."""
     return all(evaluate_predicate(p, values) for p in predicates)
@@ -2130,6 +2140,37 @@ class Module:
         value_id = len(self.values)
         self.values.append(value)
         return value_id
+
+    def clone_func_signature_args(self, arg_ids: Sequence[int]) -> list[int]:
+        """Project signature arguments into an independent region entry.
+
+        Direct dimension and encoding references to peer arguments follow the
+        cloned identities. References outside the signature retain their IDs.
+        Definition ownership is assigned when the new region is attached.
+        """
+        first_id = len(self.values)
+        remap = {arg_id: first_id + index for index, arg_id in enumerate(arg_ids)}
+        cloned_ids: list[int] = []
+        for index, arg_id in enumerate(arg_ids):
+            source = self.values[arg_id]
+            cloned_ids.append(
+                self.add_value(
+                    Value(
+                        name=source.name,
+                        type=source.type,
+                        flags=source.flags,
+                        def_result_index=index,
+                        dim_bindings={
+                            position: remap.get(value_id, value_id)
+                            for position, value_id in source.dim_bindings.items()
+                        },
+                        encoding_binding=remap.get(
+                            source.encoding_binding, source.encoding_binding
+                        ),
+                    )
+                )
+            )
+        return cloned_ids
 
     def add_location(self, loc: LocationData) -> int:
         """Add a location, returning its ID. O(1) dedup."""

@@ -435,13 +435,17 @@ class IRBuilder:
             projected_region = region_list[region_index]
             if not projected_region.blocks:
                 projected_region.blocks.append(
-                    Block(arg_ids=self._clone_func_signature_args(signature_arg_ids))
+                    Block(
+                        arg_ids=self._module.clone_func_signature_args(
+                            signature_arg_ids
+                        )
+                    )
                 )
                 continue
             projected_entry = projected_region.blocks[0]
             if not projected_entry.arg_ids:
                 projected_entry.arg_ids.extend(
-                    self._clone_func_signature_args(signature_arg_ids)
+                    self._module.clone_func_signature_args(signature_arg_ids)
                 )
                 continue
             self._validate_projected_region_args(
@@ -451,23 +455,6 @@ class IRBuilder:
                 projected_entry.arg_ids,
             )
         return signature_arg_ids
-
-    def _clone_func_signature_args(self, arg_ids: Sequence[int]) -> list[int]:
-        """Clone function signature values into another region's entry block."""
-        cloned_ids: list[int] = []
-        for arg_index, arg_id in enumerate(arg_ids):
-            source = self._module.values[arg_id]
-            cloned_ids.append(
-                self._module.add_value(
-                    Value(
-                        name=source.name,
-                        type=source.type,
-                        flags=source.flags,
-                        def_result_index=arg_index,
-                    )
-                )
-            )
-        return cloned_ids
 
     def _validate_projected_region_args(
         self,

@@ -19,6 +19,7 @@
 #include "loom/format/text/parser/scope.h"
 #include "loom/format/text/parser/types.h"
 #include "loom/ops/op_defs.h"
+#include "loom/rewrite/remap.h"
 #include "loom/util/stable_id.h"
 
 //===----------------------------------------------------------------------===//
@@ -749,18 +750,59 @@ static iree_status_t loom_parse_format_check_operand_type_annotation(
 
 static iree_status_t loom_parse_format_project_func_args(
     loom_parser_t* parser, uint16_t pending_func_arg_start, bool clone_values) {
-  for (uint16_t i = pending_func_arg_start; i < parser->pending_func_args.count;
-       ++i) {
-    loom_value_id_t value_id = parser->pending_func_args.entries[i].value_id;
-    if (clone_values) {
-      loom_type_t value_type = loom_module_value_type(parser->module, value_id);
-      IREE_RETURN_IF_ERROR(
-          loom_module_define_value(parser->module, value_type, &value_id));
+  if (!clone_values) {
+    for (uint16_t i = pending_func_arg_start;
+         i < parser->pending_func_args.count; ++i) {
+      IREE_RETURN_IF_ERROR(loom_parser_add_pending_block_arg(
+          parser, parser->pending_func_args.entries[i].value_id,
+          parser->pending_func_args.entries[i].name_token));
     }
-    IREE_RETURN_IF_ERROR(loom_parser_add_pending_block_arg(
-        parser, value_id, parser->pending_func_args.entries[i].name_token));
+    return iree_ok_status();
   }
-  return iree_ok_status();
+
+  // Projected arguments own a new SSA namespace. Install every peer mapping
+  // before remapping dependent types, including signature-local references to
+  // later arguments. Remap scratch ends here; pending parser storage survives.
+  iree_arena_allocator_t scratch_arena;
+  iree_arena_initialize(parser->parser_arena.block_pool, &scratch_arena);
+  const loom_ir_remap_options_t options = {.allow_unmapped_values = true};
+  loom_ir_remap_t remap;
+  iree_status_t status = loom_ir_remap_initialize(
+      parser->module, parser->module, &scratch_arena, &options, &remap);
+  const uint16_t pending_block_arg_start = parser->pending_block_args.count;
+  for (uint16_t i = pending_func_arg_start;
+       i < parser->pending_func_args.count && iree_status_is_ok(status); ++i) {
+    loom_value_id_t source_id = parser->pending_func_args.entries[i].value_id;
+    loom_value_id_t target_id = LOOM_VALUE_ID_INVALID;
+    status = loom_module_define_value(
+        parser->module, loom_module_value_type(parser->module, source_id),
+        &target_id);
+    if (iree_status_is_ok(status)) {
+      status = loom_ir_remap_map_value(&remap, source_id, target_id);
+    }
+    if (iree_status_is_ok(status)) {
+      status = loom_parser_add_pending_block_arg(
+          parser, target_id, parser->pending_func_args.entries[i].name_token);
+    }
+  }
+  for (uint16_t i = pending_func_arg_start;
+       i < parser->pending_func_args.count && iree_status_is_ok(status); ++i) {
+    loom_value_id_t source_id = parser->pending_func_args.entries[i].value_id;
+    loom_value_id_t target_id =
+        parser->pending_block_args
+            .entries[pending_block_arg_start + i - pending_func_arg_start]
+            .value_id;
+    loom_type_t target_type = {0};
+    status = loom_ir_remap_type(
+        &remap, loom_module_value_type(parser->module, source_id),
+        &target_type);
+    if (iree_status_is_ok(status)) {
+      status =
+          loom_module_set_value_type(parser->module, target_id, target_type);
+    }
+  }
+  iree_arena_deinitialize(&scratch_arena);
+  return status;
 }
 
 static iree_status_t loom_parse_format_bind_function_low_repr(

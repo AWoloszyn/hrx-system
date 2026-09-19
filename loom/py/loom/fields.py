@@ -34,10 +34,22 @@ remain one flat operand array for use-def and generic pass infrastructure.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum, unique
 from typing import Any, Protocol, runtime_checkable
 
+from loom.assembly import (
+    BindingList,
+    BlockArgs,
+    Clause,
+    FormatElement,
+    FuncArgs,
+    OptionalGroup,
+    Ref,
+    Scope,
+)
+from loom.assembly import Region as RegionFormat
 from loom.dsl import FuncLikeInterface, Op
 from loom.ir import (
     Block,
@@ -81,7 +93,7 @@ class FormatFields(Protocol):
     def region(self, name: str) -> Region | None: ...
     def regions(self, name: str) -> list[Region]: ...
     def tied_result_map(self) -> dict[int, TiedResult]: ...
-    def operand_name_for_tied(self, tied: TiedResult) -> str: ...
+    def operand_id_for_tied(self, tied: TiedResult) -> int: ...
     def value_id(self, name: str) -> int: ...
     def value_ids(self, name: str) -> list[int]: ...
     def type_of(self, name: str) -> Type: ...
@@ -164,6 +176,50 @@ class FieldLayout:
     variadic_region: str | None  # Name of the variadic region, if any.
     segmented_operands: bool = False
     func_body_region_index: int | None = None
+    # Regions whose entry arguments are declared in their parent's format.
+    entry_args_declared_by_parent: frozenset[str] = frozenset()
+
+
+def _entry_args_declared_by_parent(op_decl: Op) -> frozenset[str]:
+    declared: set[str] = set()
+    func_args: set[str] = set()
+    implicit_names = {
+        name for region in op_decl.regions for name, _type in region.implicit_args
+    }
+    pending = False
+
+    def walk(elements: Sequence[FormatElement]) -> None:
+        nonlocal pending
+        for element in elements:
+            match element:
+                case (
+                    Clause(elements=inner)
+                    | OptionalGroup(elements=inner)
+                    | Scope(elements=inner)
+                ):
+                    walk(inner)
+                case FuncArgs(field=name):
+                    func_args.add(name)
+                    pending = True
+                case BindingList():
+                    pending = True
+                case Ref(field=name) if name in implicit_names:
+                    pending = True
+                case BlockArgs(region=name):
+                    declared.add(name)
+                case RegionFormat(field=name):
+                    if pending:
+                        declared.add(name)
+                    pending = False
+
+    walk(op_decl.format)
+    for interface in op_decl.interfaces:
+        if isinstance(interface, FuncLikeInterface) and interface.body is not None:
+            declared.add(interface.body)
+    declared.update(
+        region.name for region in op_decl.regions if region.arg_source in func_args
+    )
+    return frozenset(declared)
 
 
 def compute_layout(op_decl: Op) -> FieldLayout:
@@ -339,6 +395,7 @@ def compute_layout(op_decl: Op) -> FieldLayout:
         variadic_region=variadic_region,
         segmented_operands=segmented_operands,
         func_body_region_index=_func_body_region_index(op_decl),
+        entry_args_declared_by_parent=_entry_args_declared_by_parent(op_decl),
     )
 
 
@@ -567,29 +624,18 @@ class ResolvedFields:
         """
         return {tr.result_index: tr for tr in self._op.tied_results}
 
-    def operand_name_for_tied(self, tied: TiedResult) -> str:
-        """Get the SSA name of the operand or func arg a result is tied to.
+    def operand_id_for_tied(self, tied: TiedResult) -> int:
+        """Get the value ID of the operand or func arg a result is tied to.
 
         For body ops, tied.operand_index indexes into op.operands. For
         func-like ops with a body region (func.def, template.def), there
         are no op-level operands — tied.operand_index indexes into the
         entry block's arguments instead.
         """
-        if tied.operand_index < len(self._op.operands):
-            value_id = self._op.operands[tied.operand_index]
-            name = self._module.values[value_id].name
-        elif self._op.regions:
-            entry = (
-                self._op.regions[0].blocks[0] if self._op.regions[0].blocks else None
-            )
-            if entry and tied.operand_index < len(entry.arg_ids):
-                value_id = entry.arg_ids[tied.operand_index]
-                name = self._module.values[value_id].name
-            else:
-                return f"%arg{tied.operand_index}"
-        else:
-            return f"%arg{tied.operand_index}"
-        return "%" + name
+        body_index = self._layout.func_body_region_index
+        if body_index is not None:
+            return self._op.regions[body_index].blocks[0].arg_ids[tied.operand_index]
+        return self._op.operands[tied.operand_index]
 
     # --- FuncArgs support for func-like ops ---
 

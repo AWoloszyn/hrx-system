@@ -6,9 +6,12 @@
 
 from dataclasses import dataclass
 
+import pytest
+
 import loom
 from loom.importers.core import SourceImportSession
-from loom.ir import I32
+from loom.ir import I32, INDEX, ShapedType, StaticDim, Type, TypeKind
+from loom.verify import verify_module
 
 
 @dataclass
@@ -53,3 +56,31 @@ def test_maps_hashable_foreign_source_objects_by_identity() -> None:
 
     assert session.mapped(source) is ref
     assert session.mapped(equalish_source) is None
+
+
+@pytest.mark.parametrize(
+    ("target", "value_type"),
+    [
+        ("index.andi", INDEX),
+        ("index.add", INDEX),
+        ("scalar.addi", I32),
+        ("vector.addi", ShapedType(TypeKind.VECTOR, I32, (StaticDim(4),))),
+    ],
+)
+def test_binary_import_preserves_resolved_types(target: str, value_type: Type) -> None:
+    module, builder = loom.module_builder()
+    lhs = builder.value("lhs", value_type)
+    rhs = builder.value("rhs", value_type)
+    body = builder.region()
+    builder.func.def_(callee="binary", args=[lhs, rhs], results=[], body=body)
+    session = SourceImportSession(builder=builder)
+
+    with builder.insertion_block(body.blocks[0]):
+        result = session.build_binary(target, lhs, rhs, value_type, "result")
+        builder.func.return_()
+
+    assert result.type == value_type
+    assert result.name == "result"
+    assert body.blocks[0].ops[0].operands == [lhs.id, rhs.id]
+    assert body.blocks[0].ops[0].results == [result.id]
+    verify_module(module, ops=loom.default_ops()).raise_if_errors()

@@ -188,19 +188,16 @@ class SourceImportSession:
         target_op: str,
         lhs: ValueRef,
         rhs: ValueRef,
-        result_type: str,
+        result_type: Type,
         name: str,
     ) -> ValueRef:
-        dialect_name, op_name = target_op.split(".", 1)
-        dialect = getattr(self.builder, dialect_name)
-        op_builder = getattr(dialect, op_name)
         return cast(
             ValueRef,
-            op_builder(
-                lhs=lhs,
-                rhs=rhs,
-                results=[self.type(result_type)],
-                name=name,
+            self.builder.ir.build(
+                target_op,
+                operands=[lhs, rhs],
+                results=[result_type],
+                result_names=[name],
             ),
         )
 

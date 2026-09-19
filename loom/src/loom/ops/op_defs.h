@@ -743,8 +743,9 @@ enum loom_region_flag_bits_e {
   // Region may be absent when it is part of a trailing optional suffix.
   LOOM_REGION_OPTIONAL = 1u << 1,
   // Region entry block arguments are projected from the op's FuncArgs
-  // signature. The projected values have matching names and types but remain
-  // distinct SSA values owned by this region.
+  // signature. Projected values have matching names and types, with type
+  // references to signature peers remapped to the corresponding region-owned
+  // arguments. Each region owns distinct SSA values.
   LOOM_REGION_PROJECT_FUNC_ARGS = 1u << 2,
   // Buffer entry block arguments seed target-independent global memory facts.
   // This is a region signature contract, not a property of the generic buffer

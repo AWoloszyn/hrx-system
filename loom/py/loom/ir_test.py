@@ -1436,211 +1436,218 @@ class TestContext:
 # ============================================================================
 
 
+class TestPredicateArg:
+    def test_rejects_unresolved_name(self) -> None:
+        with pytest.raises(TypeError, match="integer IDs or constants"):
+            PredicateArg("value", "extent")  # type: ignore[arg-type]
+
+    def test_rejects_invalid_value_id(self) -> None:
+        with pytest.raises(ValueError, match="nonnegative"):
+            PredicateArg("value", -1)
+        assert PredicateArg("const", -1).value == -1
+
+
 class TestPredicateEvaluation:
     """Tests for evaluate_predicate and evaluate_predicates."""
 
-    def _pred(self, kind: str, *args: tuple[str, int | str]) -> Predicate:
+    def _pred(self, kind: str, *args: tuple[str, int]) -> Predicate:
         """Build a predicate from (tag, value) pairs."""
         return Predicate(
             kind=kind,
             args=tuple(PredicateArg(tag=t, value=v) for t, v in args),
         )
 
-    def _vals(self, **kwargs: int | float) -> dict[str, int | float]:
-        """Build a values dict with bare name keys."""
-        return dict(kwargs)
-
     def test_eq_true(self) -> None:
         assert evaluate_predicate(
-            self._pred("eq", ("value", "M"), ("const", 16)),
-            self._vals(M=16),
+            self._pred("eq", ("value", 3), ("const", 16)),
+            {3: 16},
         )
 
     def test_eq_false(self) -> None:
         assert not evaluate_predicate(
-            self._pred("eq", ("value", "M"), ("const", 16)),
-            self._vals(M=17),
+            self._pred("eq", ("value", 3), ("const", 16)),
+            {3: 17},
         )
 
     def test_ne(self) -> None:
         assert evaluate_predicate(
-            self._pred("ne", ("value", "M"), ("const", 16)),
-            self._vals(M=17),
+            self._pred("ne", ("value", 3), ("const", 16)),
+            {3: 17},
         )
         assert not evaluate_predicate(
-            self._pred("ne", ("value", "M"), ("const", 16)),
-            self._vals(M=16),
+            self._pred("ne", ("value", 3), ("const", 16)),
+            {3: 16},
         )
 
     def test_lt_true(self) -> None:
         assert evaluate_predicate(
-            self._pred("lt", ("value", "K"), ("const", 1024)),
-            self._vals(K=512),
+            self._pred("lt", ("value", 7), ("const", 1024)),
+            {7: 512},
         )
 
     def test_lt_false(self) -> None:
         assert not evaluate_predicate(
-            self._pred("lt", ("value", "K"), ("const", 1024)),
-            self._vals(K=1024),
+            self._pred("lt", ("value", 7), ("const", 1024)),
+            {7: 1024},
         )
 
     def test_le_boundary(self) -> None:
         assert evaluate_predicate(
-            self._pred("le", ("value", "K"), ("const", 1024)),
-            self._vals(K=1024),
+            self._pred("le", ("value", 7), ("const", 1024)),
+            {7: 1024},
         )
 
     def test_gt(self) -> None:
         assert evaluate_predicate(
-            self._pred("gt", ("value", "M"), ("const", 0)),
-            self._vals(M=1),
+            self._pred("gt", ("value", 3), ("const", 0)),
+            {3: 1},
         )
 
     def test_ge(self) -> None:
         assert evaluate_predicate(
-            self._pred("ge", ("value", "M"), ("const", 16)),
-            self._vals(M=16),
+            self._pred("ge", ("value", 3), ("const", 16)),
+            {3: 16},
         )
 
     def test_mul_true(self) -> None:
         assert evaluate_predicate(
-            self._pred("mul", ("value", "M"), ("const", 16)),
-            self._vals(M=64),
+            self._pred("mul", ("value", 3), ("const", 16)),
+            {3: 64},
         )
 
     def test_mul_false(self) -> None:
         assert not evaluate_predicate(
-            self._pred("mul", ("value", "M"), ("const", 16)),
-            self._vals(M=17),
+            self._pred("mul", ("value", 3), ("const", 16)),
+            {3: 17},
         )
 
     def test_mul_zero_modulus(self) -> None:
         assert not evaluate_predicate(
-            self._pred("mul", ("value", "M"), ("const", 0)),
-            self._vals(M=42),
+            self._pred("mul", ("value", 3), ("const", 0)),
+            {3: 42},
         )
 
     def test_min(self) -> None:
         assert evaluate_predicate(
-            self._pred("min", ("value", "M"), ("const", 32)),
-            self._vals(M=32),
+            self._pred("min", ("value", 3), ("const", 32)),
+            {3: 32},
         )
         assert not evaluate_predicate(
-            self._pred("min", ("value", "M"), ("const", 32)),
-            self._vals(M=31),
+            self._pred("min", ("value", 3), ("const", 32)),
+            {3: 31},
         )
 
     def test_max(self) -> None:
         assert evaluate_predicate(
-            self._pred("max", ("value", "M"), ("const", 512)),
-            self._vals(M=512),
+            self._pred("max", ("value", 3), ("const", 512)),
+            {3: 512},
         )
         assert not evaluate_predicate(
-            self._pred("max", ("value", "M"), ("const", 512)),
-            self._vals(M=513),
+            self._pred("max", ("value", 3), ("const", 512)),
+            {3: 513},
         )
 
     def test_pow2_true(self) -> None:
         for n in [1, 2, 4, 8, 16, 32, 64, 128, 256, 1024]:
             assert evaluate_predicate(
-                self._pred("pow2", ("value", "N")),
-                self._vals(N=n),
+                self._pred("pow2", ("value", 11)),
+                {11: n},
             ), f"pow2({n}) should be true"
 
     def test_pow2_false(self) -> None:
         for n in [0, 3, 5, 6, 7, 9, 10, 15, 17, 100]:
             assert not evaluate_predicate(
-                self._pred("pow2", ("value", "N")),
-                self._vals(N=n),
+                self._pred("pow2", ("value", 11)),
+                {11: n},
             ), f"pow2({n}) should be false"
 
     def test_pow2_rejects_float(self) -> None:
         assert not evaluate_predicate(
-            self._pred("pow2", ("value", "N")),
-            self._vals(N=8.0),
+            self._pred("pow2", ("value", 11)),
+            {11: 8.0},
         )
 
     def test_range_inside(self) -> None:
         assert evaluate_predicate(
-            self._pred("range", ("value", "M"), ("const", 32), ("const", 512)),
-            self._vals(M=128),
+            self._pred("range", ("value", 3), ("const", 32), ("const", 512)),
+            {3: 128},
         )
 
     def test_range_boundaries(self) -> None:
-        pred = self._pred("range", ("value", "M"), ("const", 32), ("const", 512))
-        assert evaluate_predicate(pred, self._vals(M=32))
-        assert evaluate_predicate(pred, self._vals(M=512))
+        pred = self._pred("range", ("value", 3), ("const", 32), ("const", 512))
+        assert evaluate_predicate(pred, {3: 32})
+        assert evaluate_predicate(pred, {3: 512})
 
     def test_range_outside(self) -> None:
-        pred = self._pred("range", ("value", "M"), ("const", 32), ("const", 512))
-        assert not evaluate_predicate(pred, self._vals(M=31))
-        assert not evaluate_predicate(pred, self._vals(M=513))
+        pred = self._pred("range", ("value", 3), ("const", 32), ("const", 512))
+        assert not evaluate_predicate(pred, {3: 31})
+        assert not evaluate_predicate(pred, {3: 513})
 
     def test_not_nan(self) -> None:
         assert evaluate_predicate(
-            self._pred("not_nan", ("value", "X")),
-            self._vals(X=math.inf),
+            self._pred("not_nan", ("value", 15)),
+            {15: math.inf},
         )
         assert not evaluate_predicate(
-            self._pred("not_nan", ("value", "X")),
-            self._vals(X=math.nan),
+            self._pred("not_nan", ("value", 15)),
+            {15: math.nan},
         )
 
     def test_not_inf(self) -> None:
         assert evaluate_predicate(
-            self._pred("not_inf", ("value", "X")),
-            self._vals(X=math.nan),
+            self._pred("not_inf", ("value", 15)),
+            {15: math.nan},
         )
         assert not evaluate_predicate(
-            self._pred("not_inf", ("value", "X")),
-            self._vals(X=math.inf),
+            self._pred("not_inf", ("value", 15)),
+            {15: math.inf},
         )
 
     def test_finite(self) -> None:
         assert evaluate_predicate(
-            self._pred("finite", ("value", "X")),
-            self._vals(X=1.0),
+            self._pred("finite", ("value", 15)),
+            {15: 1.0},
         )
         assert not evaluate_predicate(
-            self._pred("finite", ("value", "X")),
-            self._vals(X=math.inf),
+            self._pred("finite", ("value", 15)),
+            {15: math.inf},
         )
         assert not evaluate_predicate(
-            self._pred("finite", ("value", "X")),
-            self._vals(X=math.nan),
+            self._pred("finite", ("value", 15)),
+            {15: math.nan},
         )
 
     def test_missing_value_always_true(self) -> None:
         """Missing values can't be evaluated — defer judgment."""
         assert evaluate_predicate(
-            self._pred("mul", ("value", "%UNKNOWN"), ("const", 16)),
-            self._vals(M=42),
+            self._pred("mul", ("value", 19), ("const", 16)),
+            {3: 42},
         )
 
     def test_evaluate_predicates_all_true(self) -> None:
         preds = [
-            self._pred("mul", ("value", "M"), ("const", 16)),
-            self._pred("lt", ("value", "K"), ("const", 1024)),
+            self._pred("mul", ("value", 3), ("const", 16)),
+            self._pred("lt", ("value", 7), ("const", 1024)),
         ]
-        assert evaluate_predicates(preds, self._vals(M=64, K=512))
+        assert evaluate_predicates(preds, {3: 64, 7: 512})
 
     def test_evaluate_predicates_one_false(self) -> None:
         preds = [
-            self._pred("mul", ("value", "M"), ("const", 16)),
-            self._pred("lt", ("value", "K"), ("const", 1024)),
+            self._pred("mul", ("value", 3), ("const", 16)),
+            self._pred("lt", ("value", 7), ("const", 1024)),
         ]
-        assert not evaluate_predicates(preds, self._vals(M=64, K=2048))
+        assert not evaluate_predicates(preds, {3: 64, 7: 2048})
 
     def test_evaluate_predicates_empty(self) -> None:
-        assert evaluate_predicates([], self._vals(M=42))
+        assert evaluate_predicates([], {3: 42})
 
     def test_eq_two_values(self) -> None:
         """eq(%M, %K) — compare two SSA values."""
         assert evaluate_predicate(
-            self._pred("eq", ("value", "M"), ("value", "K")),
-            self._vals(M=64, K=64),
+            self._pred("eq", ("value", 3), ("value", 7)),
+            {3: 64, 7: 64},
         )
         assert not evaluate_predicate(
-            self._pred("eq", ("value", "M"), ("value", "K")),
-            self._vals(M=64, K=32),
+            self._pred("eq", ("value", 3), ("value", 7)),
+            {3: 64, 7: 32},
         )
