@@ -3216,15 +3216,17 @@ static iree_status_t iree_async_proactor_posix_poll(
   completed_count += iree_async_proactor_posix_drain_completion_queue(proactor);
   iree_async_proactor_posix_drain_incoming_messages(proactor);
 
-  // Run registered progress callbacks (e.g., SHM carrier MPSC ring polling).
-  // Force non-blocking poll whenever progress callbacks are registered: they
-  // exist to be polled, and blocking in event_set_wait would prevent them from
-  // running until an unrelated fd becomes ready. The carrier's idle spin
-  // threshold naturally transitions back to sleep mode and removes the
-  // callback, bounding the busy-loop duration.
-  iree_host_size_t progress_count =
-      iree_async_proactor_run_progress(base_proactor);
+  // Run poll-owner work before waiting for native completions.
+  iree_host_size_t progress_count = 0;
+  iree_status_t progress_status =
+      iree_async_proactor_run_progress(base_proactor, &progress_count);
   completed_count += progress_count;
+  if (!iree_status_is_ok(progress_status)) {
+    if (out_completed_count) {
+      *out_completed_count = completed_count;
+    }
+    return progress_status;
+  }
 
   // Drain operations submitted by callbacks. Completion callbacks may submit
   // new operations (e.g., a notification scan re-posting NOTIFICATION_WAIT)
@@ -3259,6 +3261,9 @@ static iree_status_t iree_async_proactor_posix_poll(
   iree_status_t poll_status = iree_async_posix_event_set_wait(
       proactor->event_set, timeout_ms, &ready_count, &timed_out);
   if (!iree_status_is_ok(poll_status)) {
+    if (out_completed_count) {
+      *out_completed_count = completed_count;
+    }
     return poll_status;
   }
   if (timed_out) {

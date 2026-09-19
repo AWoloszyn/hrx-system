@@ -135,40 +135,39 @@ iree_async_event_source_callback_null(void) {
 // Progress callbacks (inline poll-loop work)
 //===----------------------------------------------------------------------===//
 //
-// Progress callbacks run every poll() iteration, enabling hot-path subsystems
-// to check for work without kernel-mediated wakeups. The canonical use case is
-// SHM carrier SPSC ring polling: when traffic is active, a progress callback
-// checks the ring position with an acquire-load (~50ns) instead of waiting for
-// a notification signal through the kernel (~1-5us).
+// Progress callbacks perform poll-owner work before the backend waits for
+// native completions. An entry stays registered only while it has work to
+// attempt on each poll; waiting for native readiness belongs in a native
+// operation or event source instead.
 //
 // Registration/unregistration are poll-thread-only operations: no
 // synchronization is needed because the same thread calls poll(). Callbacks
-// fire from within poll() before the blocking wait. If any callback returns > 0
-// completions, the backend forces a non-blocking poll (timeout=0) to avoid
-// blocking when user-space progress is available.
+// fire from within poll() before the blocking wait. The backend does not block
+// while any entry remains registered or after a callback reports completions.
+// A callback failure returns through poll() with all dispatched completions
+// counted. Failure alone neither removes an entry nor retires its native work.
 //
 // Callbacks may request their own removal by setting remove_requested=true.
 // The proactor removes the entry from the list after the callback returns,
 // avoiding list corruption during iteration.
 //
-// Typical lifecycle:
-//   1. Subsystem detects hot traffic (e.g., notification callback processes
-//      data above a threshold).
-//   2. Subsystem registers a progress callback and stops posting kernel waits.
-//   3. Progress callback polls user-space state each iteration.
-//   4. After N consecutive empty polls, callback transitions back to kernel
-//      waits and sets remove_requested=true.
-
+// Each entry runs at most once per poll, in unspecified order. Callbacks may
+// register new entries or unregister other entries. New registrations,
+// including re-registration from on_remove, first run on the next poll.
+//
 // Intrusive singly-linked list entry for per-poll-iteration progress checks.
-// Owned by the registrant (e.g., embedded in a carrier struct). The proactor
+// Owned by the registrant (e.g., embedded in a native I/O owner). The proactor
 // holds a linked list of these; all mutations happen on the poll thread only.
 typedef struct iree_async_progress_entry_t {
+  // Next registered entry, maintained by the proactor.
   struct iree_async_progress_entry_t* next;
 
-  // Called each poll() iteration. Returns the number of completions processed.
-  // Zero means no progress was made. The callback may set |remove_requested|
-  // to request removal after returning.
-  iree_host_size_t (*fn)(void* user_data);
+  // Called each poll() iteration. Reports dispatched completions through the
+  // non-NULL |out_completed_count|, initially zero, including on failure.
+  // Transfers any failure status to poll(). The entry remains registered unless
+  // |remove_requested| is set, independently of the returned status.
+  iree_status_t (*fn)(void* user_data, iree_host_size_t* out_completed_count);
+  // Borrowed context passed to fn and on_remove.
   void* user_data;
 
   // Set by the callback to request removal after fn returns. The proactor
@@ -742,7 +741,8 @@ IREE_API_EXPORT void iree_async_proactor_initialize(
 //
 // The entry is owned by the caller and must remain valid until unregistered
 // (either explicitly or via remove_requested). The entry's fn, user_data, and
-// remove_requested fields must be initialized before calling this function.
+// on_remove fields must be initialized before calling this function. The entry
+// must not already be registered. Registration clears remove_requested.
 //
 // Must be called from the poll thread only (from within poll() callbacks or
 // before the poll loop starts).
@@ -754,21 +754,26 @@ IREE_API_EXPORT void iree_async_proactor_register_progress(
 // called again.
 //
 // Must be called from the poll thread only. Must NOT be called from within
-// the entry's own fn callback — use remove_requested instead.
+// the entry's own fn callback; use remove_requested instead. Callbacks may
+// unregister other entries and immediately release their storage. Explicit
+// unregistration does not invoke on_remove.
 IREE_API_EXPORT void iree_async_proactor_unregister_progress(
     iree_async_proactor_t* proactor, iree_async_progress_entry_t* entry);
 
-// Runs all registered progress callbacks and returns the total number of
-// completions they processed. Entries with remove_requested set are removed
-// from the list after their callback returns.
+// Runs registered progress callbacks until all have run or one fails. Reports
+// all dispatched completions through non-NULL |out_completed_count|, including
+// on failure. Entries with remove_requested set are removed after their
+// callback returns, including on failure; all other entries remain owned and
+// registered. Registrations made during this pass are deferred until the next
+// pass.
 //
 // Called by backend poll() implementations before the blocking wait. Backends
 // must force a non-blocking poll whenever progress callbacks are registered
 // (progress_list is non-NULL), regardless of whether they returned progress
 // this iteration. Progress callbacks exist to be polled; blocking while they
 // are registered would starve them until an unrelated I/O event arrives.
-IREE_API_EXPORT iree_host_size_t
-iree_async_proactor_run_progress(iree_async_proactor_t* proactor);
+IREE_API_EXPORT iree_status_t iree_async_proactor_run_progress(
+    iree_async_proactor_t* proactor, iree_host_size_t* out_completed_count);
 
 // Retains a reference to the proactor.
 static inline void iree_async_proactor_retain(iree_async_proactor_t* proactor) {
@@ -864,6 +869,7 @@ static inline iree_status_t iree_async_proactor_submit_one(
 //
 //   NOT thread-safe with respect to other poll() calls. Thread-safe with
 //   respect to submit() and wake(), which may be called from any thread.
+//   Callbacks must not recursively poll the same proactor.
 //   Typical pattern: dedicated I/O thread owns the proactor and calls poll()
 //   in a loop while worker threads call submit().
 //

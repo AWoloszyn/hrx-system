@@ -139,29 +139,39 @@ IREE_API_EXPORT void iree_async_proactor_unregister_progress(
   }
 }
 
-IREE_API_EXPORT iree_host_size_t
-iree_async_proactor_run_progress(iree_async_proactor_t* proactor) {
-  iree_host_size_t total = 0;
-  iree_async_progress_entry_t** prev = &proactor->progress_list;
-  while (*prev) {
-    iree_async_progress_entry_t* entry = *prev;
-    iree_async_progress_entry_t* next = entry->next;
-    total += entry->fn(entry->user_data);
+IREE_API_EXPORT iree_status_t iree_async_proactor_run_progress(
+    iree_async_proactor_t* proactor, iree_host_size_t* out_completed_count) {
+  *out_completed_count = 0;
+  if (!proactor->progress_list) {
+    return iree_ok_status();
+  }
+
+  // Keep the unvisited suffix linked so callbacks may unregister and destroy
+  // other entries. New and retained entries go before this stack cursor and
+  // cannot run again in this pass. No caller-owned neighbor survives a callback
+  // as an iterator, and each entry runs at most once per poll.
+  iree_async_progress_entry_t cursor = {.next = proactor->progress_list};
+  proactor->progress_list = &cursor;
+  iree_status_t status = iree_ok_status();
+  while (cursor.next && iree_status_is_ok(status)) {
+    iree_async_progress_entry_t* entry = cursor.next;
+    cursor.next = entry->next;
+    entry->next = NULL;
+    iree_host_size_t completed_count = 0;
+    status = entry->fn(entry->user_data, &completed_count);
+    *out_completed_count += completed_count;
     if (entry->remove_requested) {
-      // Unlink from list before calling on_remove. After on_remove the entry
-      // may be freed (e.g., deactivation completion frees the owning object).
-      *prev = next;
       void (*on_remove)(void*) = entry->on_remove;
       void* on_remove_user_data = entry->user_data;
-      entry->next = NULL;
       entry->remove_requested = false;
       if (on_remove) {
         on_remove(on_remove_user_data);
       }
-      // Do not access entry after on_remove — it may be freed.
     } else {
-      prev = &entry->next;
+      entry->next = proactor->progress_list;
+      proactor->progress_list = entry;
     }
   }
-  return total;
+  iree_async_proactor_unregister_progress(proactor, &cursor);
+  return status;
 }

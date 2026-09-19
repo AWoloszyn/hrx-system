@@ -2100,15 +2100,18 @@ static iree_status_t iree_async_proactor_iocp_poll(
     return cancel_status;
   }
 
-  // Phase 2.7: Run registered progress callbacks (e.g., SHM carrier MPSC ring
-  // polling). Force non-blocking GQCS whenever progress callbacks are
-  // registered: they exist to be polled, and blocking in GQCS would prevent
-  // them from running until an unrelated completion arrives. The carrier's idle
-  // spin threshold naturally transitions back to sleep mode and removes the
-  // callback, bounding the busy-loop duration.
-  iree_host_size_t progress_count =
-      iree_async_proactor_run_progress(base_proactor);
+  // Phase 2.7: Run poll-owner work before waiting for native completions.
+  iree_host_size_t progress_count = 0;
+  iree_status_t progress_status =
+      iree_async_proactor_run_progress(base_proactor, &progress_count);
   completed_count += progress_count;
+  if (!iree_status_is_ok(progress_status)) {
+    if (out_completed_count) {
+      *out_completed_count = completed_count;
+    }
+    IREE_TRACE_ZONE_END(z0);
+    return progress_status;
+  }
 
   cancel_status = iree_async_proactor_iocp_drain_cancel_requests(
       proactor, &completed_count);

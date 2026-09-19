@@ -395,7 +395,15 @@ static iree_status_t iree_async_proactor_js_poll(
   iree_host_size_t completed_count = 0;
 
   // Run progress callbacks (shared infrastructure with other backends).
-  completed_count += iree_async_proactor_run_progress(proactor);
+  iree_status_t progress_status =
+      iree_async_proactor_run_progress(proactor, &completed_count);
+  if (!iree_status_is_ok(progress_status)) {
+    if (out_completed_count) {
+      *out_completed_count = completed_count;
+    }
+    IREE_TRACE_ZONE_END(z0);
+    return progress_status;
+  }
 
   // Drain poll-owned completions and sequence startup work.
   completed_count += iree_async_proactor_js_drain_pending(js_proactor);
@@ -404,7 +412,8 @@ static iree_status_t iree_async_proactor_js_poll(
   completed_count += iree_async_proactor_js_drain_ring(js_proactor);
 
   // If nothing completed and timeout is not immediate, block for completions.
-  if (completed_count == 0 && !iree_timeout_is_immediate(timeout)) {
+  if (completed_count == 0 && !proactor->progress_list &&
+      !iree_timeout_is_immediate(timeout)) {
     iree_time_t deadline_ns = iree_timeout_as_deadline_ns(timeout);
     uint32_t wait_result = iree_async_js_import_poll_wait(deadline_ns);
     if (wait_result == 0) {

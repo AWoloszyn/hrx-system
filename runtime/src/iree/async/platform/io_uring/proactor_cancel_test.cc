@@ -265,13 +265,15 @@ TEST_P(IoUringCancelTest, TargetWithdrawsQueuedKeyBeforeReusingAddress) {
     iree_async_progress_entry_t progress = {};
   } state{&completion, &operation.base};
   state.progress.user_data = &state;
-  state.progress.fn = [](void* user_data) -> iree_host_size_t {
+  state.progress.fn =
+      [](void* user_data,
+         iree_host_size_t* out_completed_count) -> iree_status_t {
     auto* state = static_cast<State*>(user_data);
-    IREE_CHECK_OK(iree_async_proactor_request_cancel(
-        state->completion->proactor, state->operation,
-        &state->completion->request));
+    *out_completed_count = 0;
     state->progress.remove_requested = true;
-    return 0;
+    return iree_async_proactor_request_cancel(state->completion->proactor,
+                                              state->operation,
+                                              &state->completion->request);
   };
   iree_async_proactor_register_progress(proactor_, &state.progress);
   allocations_enabled_ = false;

@@ -9,7 +9,6 @@
 
 iree_add_all_subdirs()
 
-if(IREE_ARCH STREQUAL "wasm_32")
 iree_cc_library(
   NAME
     backends
@@ -23,7 +22,23 @@ iree_cc_library(
   ALWAYSLINK
   PUBLIC
 )
+
+set(_progress_tests_platform_deps "")
+if(IREE_ARCH STREQUAL "wasm_32")
+  list(APPEND _progress_tests_platform_deps iree::async::platform::js::main)
 endif()
+iree_cc_test(
+  NAME
+    progress_tests
+  SRCS
+    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/test_main.cc"
+  DEPS
+    ::backends
+    iree::async::cts::core::progress_test
+    iree::async::cts::util::registry
+    iree::testing::gtest
+    ${_progress_tests_platform_deps}
+)
 
 if(IREE_ARCH STREQUAL "wasm_32")
 iree_cc_test(
@@ -109,6 +124,21 @@ iree_cc_test(
   DEPS
     ::backends
     iree::async::cts::core::nop_test
+    iree::async::cts::util::registry
+    iree::async::platform::js::inline_main
+    iree::testing::gtest
+)
+endif()
+
+if(IREE_ARCH STREQUAL "wasm_32")
+iree_cc_test(
+  NAME
+    inline_progress_tests
+  SRCS
+    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/test_main.cc"
+  DEPS
+    ::backends
+    iree::async::cts::core::progress_test
     iree::async::cts::util::registry
     iree::async::platform::js::inline_main
     iree::testing::gtest
