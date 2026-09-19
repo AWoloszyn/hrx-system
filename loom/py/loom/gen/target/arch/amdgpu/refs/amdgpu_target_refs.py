@@ -40,6 +40,7 @@ from loom.target.arch.amdgpu.descriptors.memory import (  # noqa: E402
     _FLAT_STORE_DESCRIPTOR_KEYS,
 )
 from loom.target.arch.amdgpu.encoding import (  # noqa: E402
+    AMDGPU_DPP_ENCODING_FORMAT_IDS,
     AMDGPU_ENCODING_FIELD_IDS,
     AMDGPU_ENCODING_FORMAT_FLAT,
     AMDGPU_ENCODING_FORMAT_IDS,
@@ -163,13 +164,6 @@ _TRANSCENDENTAL_DESCRIPTOR_KEYS = frozenset(
         "amdgpu.v_sqrt_f32",
         "amdgpu.v_rsq_f32",
         "amdgpu.v_rcp_f32",
-    )
-)
-
-_DPP_DESCRIPTOR_KEYS = frozenset(
-    (
-        "amdgpu.v_mov_b32_dpp",
-        "amdgpu.v_mov_b32_dpp16",
     )
 )
 
@@ -527,7 +521,7 @@ def _descriptor_trait_names(
         trait_names.append("LOOM_AMDGPU_DESCRIPTOR_TRAIT_VECTOR_MEMORY")
     if descriptor.key in _TRANSCENDENTAL_DESCRIPTOR_KEYS:
         trait_names.append("LOOM_AMDGPU_DESCRIPTOR_TRAIT_TRANSCENDENTAL")
-    if descriptor.key in _DPP_DESCRIPTOR_KEYS:
+    if descriptor.encoding_format_id in AMDGPU_DPP_ENCODING_FORMAT_IDS:
         trait_names.append("LOOM_AMDGPU_DESCRIPTOR_TRAIT_DPP")
     if descriptor.key in _READFIRSTLANE_DESCRIPTOR_KEYS:
         trait_names.append("LOOM_AMDGPU_DESCRIPTOR_TRAIT_READFIRSTLANE")
@@ -615,7 +609,7 @@ def _descriptor_address_offset_immediate_slot(
 
 def _validate_descriptor_trait_keys() -> None:
     descriptor_ref_keys = frozenset(amdgpu_descriptor_ref_keys())
-    trait_descriptor_keys = _TRANSCENDENTAL_DESCRIPTOR_KEYS | _DPP_DESCRIPTOR_KEYS | _READFIRSTLANE_DESCRIPTOR_KEYS
+    trait_descriptor_keys = _TRANSCENDENTAL_DESCRIPTOR_KEYS | _READFIRSTLANE_DESCRIPTOR_KEYS
     for descriptor_key in sorted(trait_descriptor_keys):
         if descriptor_key not in descriptor_ref_keys:
             raise ValueError(f"AMDGPU descriptor trait key '{descriptor_key}' is not listed as a descriptor ref")

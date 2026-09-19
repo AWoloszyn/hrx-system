@@ -196,6 +196,18 @@ AMDGPU_DPP_CONTROL_ENCODING_FORMAT_IDS = frozenset(
 )
 
 
+AMDGPU_DPP_ENCODING_FORMAT_IDS = AMDGPU_DPP_CONTROL_ENCODING_FORMAT_IDS | frozenset(
+    (
+        AMDGPU_ENCODING_FORMAT_VOP1_DPP8,
+        AMDGPU_ENCODING_FORMAT_VOP2_DPP8,
+        AMDGPU_ENCODING_FORMAT_VOP3P_DPP8,
+        AMDGPU_ENCODING_FORMAT_VOP3_SDST_DPP8,
+        AMDGPU_ENCODING_FORMAT_VOP3_DPP8,
+        AMDGPU_ENCODING_FORMAT_VOPC_DPP8,
+    )
+)
+
+
 def amdgpu_dpp_control_is_valid(value: int) -> bool:
     """Returns whether value is an architectural DPP control encoding."""
 
