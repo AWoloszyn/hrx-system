@@ -13,6 +13,7 @@ from typing import Any
 from loom.builder import ValueRef
 from loom.importers.mlir.converter import ConverterRegistry
 from loom.importers.mlir.model import MlirConversionContext, SourceOp
+from loom.ir import INDEX
 
 
 def register(registry: ConverterRegistry) -> None:
@@ -78,7 +79,7 @@ def convert_delinearize_index(op: SourceOp, context: MlirConversionContext) -> b
                 "index.div",
                 value,
                 divisor,
-                "index",
+                INDEX,
                 context.fresh_name(f"{linear.name or 'linear'}_div{tail_product}"),
             )
             emitted.append(f"{context.ssa(value)} = index.div ...")
@@ -90,7 +91,7 @@ def convert_delinearize_index(op: SourceOp, context: MlirConversionContext) -> b
                 "index.rem",
                 value,
                 modulus,
-                "index",
+                INDEX,
                 context.result_name(result_value),
             )
             emitted.append(f"{context.ssa(value)} = index.rem ...")
@@ -180,7 +181,7 @@ class AffineLowering:
             target_op,
             lhs,
             rhs,
-            "index",
+            INDEX,
             self.context.result_name(self.op.result(), name)
             if name == "row"
             else self.context.fresh_name(name),
