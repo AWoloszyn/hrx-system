@@ -15,8 +15,9 @@
 extern "C" {
 #endif
 
-// Prints a result type list, including tied result and named symbol result
-// spelling.
+// Prints a result type list, including tied results and local symbol-result
+// binders for explicit names or retained SSA references. Anonymous results
+// without references retain bare types or operand-as-type ties.
 iree_status_t loom_print_result_type_list(loom_print_context_t* ctx,
                                           const loom_op_t* op,
                                           const loom_op_vtable_t* vtable,

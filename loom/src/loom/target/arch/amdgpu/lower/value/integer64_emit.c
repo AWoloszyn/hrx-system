@@ -38,7 +38,6 @@ iree_status_t loom_amdgpu_lower_index_cast(
       return loom_low_lower_bind_value_alias(context, plan->source,
                                              plan->result);
     case LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_32: {
-      IREE_ASSERT_EQ(plan->index_bitwidth, 32u);
       loom_value_id_t low_source = LOOM_VALUE_ID_INVALID;
       IREE_RETURN_IF_ERROR(
           loom_low_lower_lookup_value(context, plan->source, &low_source));
@@ -52,7 +51,6 @@ iree_status_t loom_amdgpu_lower_index_cast(
       return loom_low_lower_bind_value(context, plan->result, low_result);
     }
     case LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32: {
-      IREE_ASSERT_EQ(plan->index_bitwidth, 32u);
       loom_value_id_t low_source = LOOM_VALUE_ID_INVALID;
       IREE_RETURN_IF_ERROR(
           loom_low_lower_lookup_value(context, plan->source, &low_source));

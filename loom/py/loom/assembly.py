@@ -280,7 +280,10 @@ class TypesOf:
 class ResultTypeList:
     """Result type list with tied-result handling.
 
-    Prints/parses: (type) or (%operand as type, type)
+    Prints/parses: (type) or (%operand as type, type).
+    Symbol definitions also allow local binders: (%result: type) or
+    (%result: %operand as type). A result binder preserves its identity
+    independently of the operand consumed by a tie.
 
     By default uses parentheses (even for single results). Pass
     parens=False for bare comma-separated types without parentheses,
@@ -290,10 +293,10 @@ class ResultTypeList:
     Each result is either a plain type (fresh allocation) or a tied
     reference (%operand_name as type, consuming the operand).
 
-    The element reads the Operation's tied_results list (sparse,
-    no sentinels) to determine which results are tied. The printer
-    builds a {result_index: TiedResult} lookup, then emits each
-    result in order.
+    The element reads the Operation's sparse tied_results list to determine
+    which results are tied. Symbol results retain explicit names and acquire
+    generated binders when referenced by types, predicates, or operands.
+    Unnamed, unreferenced results have no local binder.
 
     This element does NOT include the '->' arrow — that's a separate
     Keyword element in the format spec, so the arrow is visible and

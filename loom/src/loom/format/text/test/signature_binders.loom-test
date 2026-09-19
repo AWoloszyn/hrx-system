@@ -1,0 +1,55 @@
+// RUN: roundtrip
+
+// Result binders remain local to their symbol signature.
+config.decl @first : %extent: index where [range(%extent, 1, 4)]
+
+config.decl @second : %extent: index where [range(%extent, 8, 16)]
+
+func.decl @shape(%input: index) -> (%extent: %input as index, tensor<[%extent]xf32>) where [range(%extent, 1, 32)]
+
+// ====
+
+// RUN: roundtrip
+
+// A named tied result can change type without losing its operand identity.
+func.decl @window(%input: buffer) -> (%output: %input as view<16xf32>)
+
+// ====
+
+// RUN: roundtrip
+
+// Result types can refer forward to a named tied result in the same scope.
+func.decl @forward(%input: index) -> (tensor<[%extent]xf32>, %extent: %input as index)
+
+// ====
+
+// RUN: roundtrip
+
+// Body-backed signatures retain ties to entry arguments and result predicates.
+func.def @identity(%input: index) -> (%extent: %input as index) where [range(%extent, 1, 32)] {
+  func.return %input : index
+}
+
+// ====
+
+// RUN: verify
+
+// A binder does not make a missing argument available to a tied result.
+// ERROR@+1: PARSE/001 "missing"
+func.decl @missing() -> (%result: %missing as index)
+
+// ====
+
+// RUN: verify
+
+// The tie still requires its explicit separator.
+// ERROR@+1: PARSE/003
+func.decl @missing_separator(%input: index) -> (%result: %input index)
+
+// ====
+
+// RUN: verify
+
+// A previously bound result cannot substitute for a signature argument.
+// ERROR@+1: PARSE/001 "first"
+func.decl @result_is_not_argument() -> (%first: index, %second: %first as index)

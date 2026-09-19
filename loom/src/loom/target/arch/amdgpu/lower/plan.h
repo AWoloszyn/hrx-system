@@ -340,8 +340,6 @@ typedef struct loom_amdgpu_index_cast_plan_t {
   loom_value_id_t result;
   // Descriptor materializing the high zero lane for a widening cast.
   loom_amdgpu_descriptor_ref_t zero_descriptor_ref;
-  // Target index bit width used by width-changing casts.
-  uint32_t index_bitwidth;
 } loom_amdgpu_index_cast_plan_t;
 
 typedef enum loom_amdgpu_address_i64_alu_kind_e {

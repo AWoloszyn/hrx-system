@@ -94,6 +94,7 @@ loom_test(
     srcs = [
         "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
         "//loom/src/loom/test/corpus/conformance:address_selection.loom",
+        "//loom/src/loom/test/corpus/conformance:offset_integer_casts.loom",
     ],
     execution_profile = AMDGPU_HARDWARE_PROFILE,
 )
@@ -113,6 +114,12 @@ loom_test(
 loom_test(
     name = "unsigned_remainder_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:integer_unsigned_remainder.loom"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+)
+
+loom_test(
+    name = "sequential_loops_hardware_test",
+    srcs = ["//loom/src/loom/test/corpus/conformance:sequential_loop_slices.loom"],
     execution_profile = AMDGPU_HARDWARE_PROFILE,
 )
 

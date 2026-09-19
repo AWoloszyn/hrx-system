@@ -1,0 +1,169 @@
+// Separate loops keep an address slice live in a later loop region whose
+// program points precede the slice definition. Allocation must tolerate that
+// lifetime order and preserve every transfer left after optional coalescing.
+func.def public device inline @sequential_loop_store(%output: buffer, %output_byte_offset: offset, %index: i32, %value: i32) {
+  %element_wide = scalar.extui %index : i32 to i64
+  %byte_shift = scalar.constant 2 : i64
+  %element_bytes = scalar.shli %element_wide, %byte_shift : i64
+  %base_wide = index.cast %output_byte_offset : offset to i64
+  %address_wide = scalar.addi %base_wide, %element_bytes : i64
+  %address = index.cast %address_wide : i64 to offset
+  %destination = buffer.view %output[%address] : buffer -> view<1xi32>
+  view.store %value, %destination[0] : i32, view<1xi32>
+  func.return
+}
+
+func.def public device inline @sequential_loop_condition(%output: buffer, %output_byte_offset: offset, %index: i32, %count: i32) -> (i1) {
+  %element_wide = scalar.extui %index : i32 to i64
+  %byte_shift = scalar.constant 2 : i64
+  %element_bytes = scalar.shli %element_wide, %byte_shift : i64
+  %base_wide = index.cast %output_byte_offset : offset to i64
+  %address_wide = scalar.addi %base_wide, %element_bytes : i64
+  %address = index.cast %address_wide : i64 to offset
+  %destination = buffer.view %output[%address] : buffer -> view<1xi32>
+  %old_value = view.load %destination[0] : view<1xi32> -> i32
+  %c1 = scalar.constant 1 : i32
+  %next_value = scalar.addi %old_value, %c1 : i32
+  view.store %next_value, %destination[0] : i32, view<1xi32>
+  %stored_value = view.load %destination[0] : view<1xi32> -> i32
+  %continue_loop = scalar.cmpi ult, %stored_value, %count : i32
+  func.return %continue_loop : i1
+}
+
+kernel.def @sequential_loop_slices() {
+  %unit = index.constant 1 : index
+  %width = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%counts: buffer, %output: buffer, %length: i32) {
+  %output_byte_offset = index.constant 0 : offset
+  %workitem_id_x = kernel.workitem.id<x> : index
+  %lane = index.cast %workitem_id_x : index to i32
+  %active_lane = scalar.cmpi ult, %lane, %length : i32
+  scf.if %active_lane {
+    %lane_wide = scalar.extui %lane : i32 to i64
+    %byte_shift = scalar.constant 2 : i64
+    %lane_bytes = scalar.shli %lane_wide, %byte_shift : i64
+    %count_offset = index.cast %lane_bytes : i64 to offset
+    %count_view = buffer.view %counts[%count_offset] : buffer -> view<1xi32>
+    %count = view.load %count_view[0] : view<1xi32> -> i32
+    %record_width = scalar.constant 10 : i32
+    %base = scalar.muli %lane, %record_width : i32
+    %c0 = scalar.constant 0 : i32
+    %triangular_sum, %final_index = scf.while(%total = %c0 : i32, %index = %c0 : i32) -> (i32, i32) {
+      %has_next = scalar.cmpi ult, %index, %count : i32
+      scf.condition %has_next, %total, %index : i1, i32, i32
+    } do(%partial_sum: i32, %index: i32) {
+      %c1 = scalar.constant 1 : i32
+      %next_index = scalar.addi %index, %c1 : i32
+      %next_sum = scalar.addi %partial_sum, %next_index : i32
+      scf.yield %next_sum, %next_index : i32, i32
+    }
+    func.call @sequential_loop_store(%output, %output_byte_offset, %base, %triangular_sum) : (buffer, offset, i32, i32)
+    %c1 = scalar.constant 1 : i32
+    %index_slot = scalar.addi %base, %c1 : i32
+    func.call @sequential_loop_store(%output, %output_byte_offset, %index_slot, %final_index) : (buffer, offset, i32, i32)
+    %condition_slot_delta = scalar.constant 6 : i32
+    %condition_slot = scalar.addi %base, %condition_slot_delta : i32
+    func.call @sequential_loop_store(%output, %output_byte_offset, %condition_slot, %c0) : (buffer, offset, i32, i32)
+    %iterations = scf.while(%total = %c0 : i32) -> (i32) {
+      %has_next = func.call @sequential_loop_condition(%output, %output_byte_offset, %condition_slot, %count) : (buffer, offset, i32, i32) -> (i1)
+      scf.condition %has_next, %total : i1, i32
+    } do(%partial_count: i32) {
+      %next_count = scalar.addi %partial_count, %c1 : i32
+      scf.yield %next_count : i32
+    }
+    %iteration_slot_delta = scalar.constant 7 : i32
+    %iteration_slot = scalar.addi %base, %iteration_slot_delta : i32
+    func.call @sequential_loop_store(%output, %output_byte_offset, %iteration_slot, %iterations) : (buffer, offset, i32, i32)
+  }
+  kernel.return
+}
+
+// The closed-form reference has no loops or pointer helper calls. For count n,
+// the first loop yields n*(n+1)/2 and n. The second loop's condition performs
+// max(n,1) increments, while its body executes max(n-1,0) times.
+kernel.def @sequential_loop_reference() {
+  %unit = index.constant 1 : index
+  %width = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%counts: buffer, %output: buffer, %length: i32) {
+  %lane = kernel.workitem.id<x> : index
+  %lane_integer = index.cast %lane : index to i32
+  %active = scalar.cmpi ult, %lane_integer, %length : i32
+  scf.if %active {
+    %base = index.constant 0 : offset
+    %counts_view = buffer.view %counts[%base] : buffer -> view<64xi32>
+    %output_view = buffer.view %output[%base] : buffer -> view<640xi32>
+    %count = view.load %counts_view[%lane] : view<64xi32> -> i32
+    %c1 = scalar.constant 1 : i32
+    %c0 = scalar.constant 0 : i32
+    %successor = scalar.addi %count, %c1 : i32
+    %product = scalar.muli %count, %successor : i32
+    %sum = scalar.shrui %product, %c1 : i32
+    %nonempty = scalar.cmpi ugt, %count, %c0 : i32
+    %condition_count = scf.select %nonempty, %count, %c1 : i32
+    %predecessor = scalar.subi %count, %c1 : i32
+    %body_count = scf.select %nonempty, %predecessor, %c0 : i32
+    %record_width = index.constant 10 : index
+    %record = index.mul %lane, %record_width : index
+    %index_slot_delta = index.constant 1 : index
+    %condition_slot_delta = index.constant 6 : index
+    %body_slot_delta = index.constant 7 : index
+    %final_index_slot = index.add %record, %index_slot_delta : index
+    %condition_slot = index.add %record, %condition_slot_delta : index
+    %body_slot = index.add %record, %body_slot_delta : index
+    view.store %sum, %output_view[%record] : i32, view<640xi32>
+    view.store %count, %output_view[%final_index_slot] : i32, view<640xi32>
+    view.store %condition_count, %output_view[%condition_slot] : i32, view<640xi32>
+    view.store %body_count, %output_view[%body_slot] : i32, view<640xi32>
+  }
+  kernel.return
+}
+
+check.case public @sequential_loop_slices_length_0 {
+  %length = check.literal value(0) : i32
+  %counts_storage = check.generate.iota offset(-16) step(1) : tensor<96xi32>
+  %counts = check.tensor.view %counts_storage offset(64) : tensor<96xi32> -> tensor<64xi32>
+  %actual_storage = check.generate.fill value(-123) : tensor<672xi32>
+  %actual = check.tensor.view %actual_storage offset(64) : tensor<672xi32> -> tensor<640xi32>
+  kernel.launch @sequential_loop_slices(%counts, %actual, %length) : (tensor<64xi32>, tensor<640xi32>, i32)
+  %expected_storage = check.generate.fill value(-123) : tensor<672xi32>
+  %expected = check.tensor.view %expected_storage offset(64) : tensor<672xi32> -> tensor<640xi32>
+  kernel.launch @sequential_loop_reference(%counts, %expected, %length) : (tensor<64xi32>, tensor<640xi32>, i32)
+  check.expect.bitwise actual(%actual_storage) expected(%expected_storage) : tensor<672xi32>
+  %original_counts = check.generate.iota offset(-16) step(1) : tensor<96xi32>
+  check.expect.bitwise actual(%counts_storage) expected(%original_counts) : tensor<96xi32>
+  check.return
+}
+
+check.case public @sequential_loop_slices_length_37 {
+  %length = check.literal value(37) : i32
+  %counts_storage = check.generate.iota offset(-16) step(1) : tensor<96xi32>
+  %counts = check.tensor.view %counts_storage offset(64) : tensor<96xi32> -> tensor<64xi32>
+  %actual_storage = check.generate.fill value(-123) : tensor<672xi32>
+  %actual = check.tensor.view %actual_storage offset(64) : tensor<672xi32> -> tensor<640xi32>
+  kernel.launch @sequential_loop_slices(%counts, %actual, %length) : (tensor<64xi32>, tensor<640xi32>, i32)
+  %expected_storage = check.generate.fill value(-123) : tensor<672xi32>
+  %expected = check.tensor.view %expected_storage offset(64) : tensor<672xi32> -> tensor<640xi32>
+  kernel.launch @sequential_loop_reference(%counts, %expected, %length) : (tensor<64xi32>, tensor<640xi32>, i32)
+  check.expect.bitwise actual(%actual_storage) expected(%expected_storage) : tensor<672xi32>
+  %original_counts = check.generate.iota offset(-16) step(1) : tensor<96xi32>
+  check.expect.bitwise actual(%counts_storage) expected(%original_counts) : tensor<96xi32>
+  check.return
+}
+
+check.case public @sequential_loop_slices_length_64 {
+  %length = check.literal value(64) : i32
+  %counts_storage = check.generate.iota offset(-16) step(1) : tensor<96xi32>
+  %counts = check.tensor.view %counts_storage offset(64) : tensor<96xi32> -> tensor<64xi32>
+  %actual_storage = check.generate.fill value(-123) : tensor<672xi32>
+  %actual = check.tensor.view %actual_storage offset(64) : tensor<672xi32> -> tensor<640xi32>
+  kernel.launch @sequential_loop_slices(%counts, %actual, %length) : (tensor<64xi32>, tensor<640xi32>, i32)
+  %expected_storage = check.generate.fill value(-123) : tensor<672xi32>
+  %expected = check.tensor.view %expected_storage offset(64) : tensor<672xi32> -> tensor<640xi32>
+  kernel.launch @sequential_loop_reference(%counts, %expected, %length) : (tensor<64xi32>, tensor<640xi32>, i32)
+  check.expect.bitwise actual(%actual_storage) expected(%expected_storage) : tensor<672xi32>
+  %original_counts = check.generate.iota offset(-16) step(1) : tensor<96xi32>
+  check.expect.bitwise actual(%counts_storage) expected(%original_counts) : tensor<96xi32>
+  check.return
+}
