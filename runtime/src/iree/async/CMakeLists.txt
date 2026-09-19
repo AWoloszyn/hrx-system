@@ -69,6 +69,7 @@ iree_cc_library(
     "socket.c"
   DEPS
     ::types
+    iree::async::util::intrusive_list
     iree::base
     iree::base::internal
     iree::base::internal::atomic_freelist

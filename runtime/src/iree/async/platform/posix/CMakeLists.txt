@@ -40,6 +40,7 @@ iree_cc_library(
     "fence.c"
     "poll_set.c"
     "proactor.c"
+    "proactor_cancel.c"
     "relay.c"
     "signal.c"
     "socket.c"

@@ -57,6 +57,10 @@ enum iree_async_iocp_operation_internal_flags_e {
   // Set when an operation is cancelled via cancel(). The poll thread checks
   // this flag during pending_queue drain and timer expiration processing.
   IREE_ASYNC_IOCP_INTERNAL_FLAG_CANCELLED = (1u << 0),
+
+  // A handle wait's next pointer names its registered carrier, not pending
+  // queue linkage. Set only for waits; no socket I/O state or cost is added.
+  IREE_ASYNC_IOCP_INTERNAL_FLAG_WAIT_REGISTERED = (1u << 1),
 };
 
 //===----------------------------------------------------------------------===//
@@ -419,6 +423,25 @@ iree_status_t iree_async_proactor_iocp_acquire_carrier(
 // (proactor_submit.c)
 void iree_async_proactor_iocp_release_carrier(
     iree_async_proactor_iocp_t* proactor, iree_async_iocp_carrier_t* carrier);
+
+// Returns accepted operation resources and dispatches its callback on the
+// poll owner. The callback may destroy the operation.
+void iree_async_proactor_iocp_dispatch_completion(
+    iree_async_proactor_iocp_t* proactor, iree_async_operation_t* operation,
+    iree_status_t status, iree_async_completion_flags_t flags,
+    iree_host_size_t* completed_count);
+
+// Cancels a native wait registration and joins its publishing callback. A
+// withdrawn completion has no remaining carrier packet; otherwise the normal
+// completion path still owns the carrier. Failure preserves the registration.
+iree_status_t iree_async_proactor_iocp_cancel_wait(
+    iree_async_proactor_iocp_t* proactor, iree_async_iocp_carrier_t* carrier,
+    bool* out_withdrawn);
+
+// Issues a bounded batch of caller-owned cancellation work on the poll owner.
+// Native failures retain the queued request and return through poll.
+iree_status_t iree_async_proactor_iocp_drain_cancel_requests(
+    iree_async_proactor_iocp_t* proactor, iree_host_size_t* completed_count);
 
 // Submits one continuation chain head through the IOCP backend.
 // Matches iree_async_continuation_submit_fn_t. (proactor_submit.c)

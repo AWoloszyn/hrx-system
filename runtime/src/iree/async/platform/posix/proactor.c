@@ -63,7 +63,7 @@ static void iree_async_proactor_posix_signal_deinitialize(
 // Completes an operation directly from the poll thread when no completion pool
 // entry is available. Returns the exact number of user callbacks invoked,
 // including failed continuations.
-static iree_host_size_t iree_async_proactor_posix_complete_direct(
+iree_host_size_t iree_async_proactor_posix_complete_direct(
     iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation,
     iree_status_t status, iree_async_completion_flags_t flags) {
   iree_async_continuation_t continuation = {0};
@@ -465,7 +465,7 @@ static iree_async_poll_events_t iree_async_posix_translate_poll_events(
     short revents);
 
 // Returns the native readiness interests of an accepted operation.
-static short iree_async_proactor_posix_operation_poll_events(
+short iree_async_proactor_posix_operation_poll_events(
     const iree_async_operation_t* operation) {
   switch (operation->type) {
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
@@ -494,8 +494,7 @@ static short iree_async_proactor_posix_operation_poll_events(
 
 // Returns the fd to monitor for a pending operation.
 // Requires the operation to be a type that monitors a file descriptor.
-static int iree_async_proactor_posix_operation_fd(
-    iree_async_operation_t* operation) {
+int iree_async_proactor_posix_operation_fd(iree_async_operation_t* operation) {
   switch (operation->type) {
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
       return ((iree_async_socket_accept_operation_t*)operation)
@@ -3235,10 +3234,22 @@ static iree_status_t iree_async_proactor_posix_poll(
   completed_count += iree_async_proactor_posix_drain_pending_queue(proactor);
   completed_count += iree_async_proactor_posix_drain_completion_queue(proactor);
 
+  // Ready software completions withdraw unissued requests before native
+  // readiness is changed. Cancellation service never waits for the peer.
+  iree_status_t cancel_status = iree_async_proactor_posix_drain_cancel_requests(
+      proactor, &completed_count);
+  if (!iree_status_is_ok(cancel_status)) {
+    if (out_completed_count) {
+      *out_completed_count = completed_count;
+    }
+    return cancel_status;
+  }
+
   // Calculate timeout considering both user request and pending timers.
   int timeout_ms =
       iree_async_proactor_posix_calculate_timeout_ms(proactor, timeout);
-  if (completed_count > 0 || base_proactor->progress_list) {
+  if (completed_count > 0 || base_proactor->progress_list ||
+      base_proactor->cancellations.list.head) {
     timeout_ms = 0;
   }
 

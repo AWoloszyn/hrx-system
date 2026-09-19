@@ -37,6 +37,44 @@ struct Completion {
   }
 };
 
+struct OwnedCompletion {
+  // Owner of the request and target-retired notification.
+  iree_async_proactor_t* proactor;
+  // Caller storage held through the native key-retirement receipt.
+  iree_async_cancel_request_t request = {};
+  // Terminal target result, independent of request retirement.
+  Completion target;
+  // Number of receipts observed.
+  int receipts = 0;
+  // Request phase observed before reporting target retirement.
+  iree_async_cancel_request_phase_t phase_at_target =
+      IREE_ASYNC_CANCEL_REQUEST_PHASE_IDLE;
+
+  explicit OwnedCompletion(iree_async_proactor_t* proactor)
+      : proactor(proactor) {
+    iree_async_cancel_request_initialize(
+        {[](void* user_data) {
+           ++static_cast<OwnedCompletion*>(user_data)->receipts;
+         },
+         this},
+        &request);
+  }
+
+  static void Record(void* user_data, iree_async_operation_t* operation,
+                     iree_status_t status,
+                     iree_async_completion_flags_t flags) {
+    auto* self = static_cast<OwnedCompletion*>(user_data);
+    self->phase_at_target = self->request.phase;
+    Completion::Record(&self->target, operation, status, flags);
+    if (!self->receipts) {
+      iree_async_proactor_cancel_request_target_retired(self->proactor,
+                                                        &self->request);
+    }
+  }
+
+  bool done() const { return receipts == 1 && target.count == 1; }
+};
+
 enum class DispatchPhase { kFirstDrain, kLastDrain };
 
 class IoUringCancelTest : public ::testing::TestWithParam<DispatchPhase> {
@@ -190,6 +228,69 @@ TEST_P(IoUringCancelTest, OwnerCancelsPendingWaitWithFullSq) {
   EXPECT_EQ(completion.code, IREE_STATUS_CANCELLED);
 }
 
+TEST_P(IoUringCancelTest, OwnedCancellationJoinsWithFullSqWithoutAllocation) {
+  OwnedCompletion completion(proactor_);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializeWait(&operation, nullptr);
+  operation.base.completion_fn = OwnedCompletion::Record;
+  operation.base.user_data = &completion;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
+  allocations_enabled_ = false;
+  Dispatch([&] {
+    FillSubmissionQueue();
+    IREE_ASSERT_OK(iree_async_proactor_request_cancel(
+        proactor_, &operation.base, &completion.request));
+    EXPECT_EQ(completion.target.count, 0);
+    EXPECT_EQ(completion.receipts, 0);
+  });
+  PollUntil([&] { return completion.done(); });
+  EXPECT_EQ(completion.target.code, IREE_STATUS_CANCELLED);
+}
+
+TEST_P(IoUringCancelTest, TargetWithdrawsQueuedKeyBeforeReusingAddress) {
+  OwnedCompletion completion(proactor_);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializeWait(&operation, nullptr);
+  operation.base.completion_fn = OwnedCompletion::Record;
+  operation.base.user_data = &completion;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
+  uint64_t value = 1;
+  ASSERT_EQ(write(event_fd_, &value, sizeof(value)), sizeof(value));
+  struct State {
+    // Cancellation owner with a target CQE ready before control dispatch.
+    OwnedCompletion* completion;
+    // Existing target whose identity must be withdrawn without native issue.
+    iree_async_operation_t* operation;
+    // One-shot poll-owner hook preceding CQE dispatch.
+    iree_async_progress_entry_t progress = {};
+  } state{&completion, &operation.base};
+  state.progress.user_data = &state;
+  state.progress.fn = [](void* user_data) -> iree_host_size_t {
+    auto* state = static_cast<State*>(user_data);
+    IREE_CHECK_OK(iree_async_proactor_request_cancel(
+        state->completion->proactor, state->operation,
+        &state->completion->request));
+    state->progress.remove_requested = true;
+    return 0;
+  };
+  iree_async_proactor_register_progress(proactor_, &state.progress);
+  allocations_enabled_ = false;
+  PollUntil([&] { return completion.done(); });
+  EXPECT_EQ(completion.target.code, IREE_STATUS_OK);
+  EXPECT_EQ(completion.phase_at_target, IREE_ASYNC_CANCEL_REQUEST_PHASE_QUEUED);
+  ASSERT_EQ(read(event_fd_, &value, sizeof(value)), sizeof(value));
+
+  Completion replacement;
+  InitializeWait(&operation, &replacement);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
+  Dispatch([] {});
+  EXPECT_EQ(replacement.count, 0);
+  value = 1;
+  ASSERT_EQ(write(event_fd_, &value, sizeof(value)), sizeof(value));
+  PollUntil([&] { return replacement.count == 1; });
+  EXPECT_EQ(replacement.code, IREE_STATUS_OK);
+}
+
 TEST_P(IoUringCancelTest, RepeatedOwnerCancellationExceedsSqCapacity) {
   Completion completion;
   iree_async_handle_poll_operation_t operation = {};
@@ -318,7 +419,7 @@ TEST_P(IoUringCancelTest, TerminalCallbackCanDestroyCancelledOperation) {
   Dispatch([] {});
 }
 
-TEST_P(IoUringCancelTest, PendingConnectDrainsWithoutListenerProgress) {
+TEST_P(IoUringCancelTest, OwnedConnectDrainsWithoutListenerProgress) {
   iree_async_socket_t* listener = nullptr;
   IREE_ASSERT_OK(iree_async_socket_create(proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
                                           IREE_ASYNC_SOCKET_OPTION_NONE,
@@ -334,14 +435,18 @@ TEST_P(IoUringCancelTest, PendingConnectDrainsWithoutListenerProgress) {
   // third connect stays pending against a real, live, non-progressing peer.
   iree_async_socket_t* clients[3] = {};
   iree_async_socket_connect_operation_t operations[3] = {};
-  Completion completions[3];
+  Completion completions[2];
+  OwnedCompletion pending(proactor_);
   for (int i = 0; i < 3; ++i) {
     IREE_ASSERT_OK(
         iree_async_socket_create(proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
                                  IREE_ASYNC_SOCKET_OPTION_NONE, &clients[i]));
     iree_async_operation_initialize(
         &operations[i].base, IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT,
-        IREE_ASYNC_OPERATION_FLAG_NONE, Completion::Record, &completions[i]);
+        IREE_ASYNC_OPERATION_FLAG_NONE,
+        i < 2 ? Completion::Record : OwnedCompletion::Record,
+        i < 2 ? static_cast<void*>(&completions[i])
+              : static_cast<void*>(&pending));
     operations[i].socket = clients[i];
     operations[i].address = address;
     IREE_ASSERT_OK(
@@ -353,12 +458,13 @@ TEST_P(IoUringCancelTest, PendingConnectDrainsWithoutListenerProgress) {
   }
   allocations_enabled_ = false;
   Dispatch([&] {
-    ASSERT_EQ(completions[2].count, 0);
+    ASSERT_EQ(pending.target.count, 0);
     FillSubmissionQueue();
-    IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &operations[2].base));
+    IREE_ASSERT_OK(iree_async_proactor_request_cancel(
+        proactor_, &operations[2].base, &pending.request));
   });
-  PollUntil([&] { return completions[2].count == 1; });
-  EXPECT_EQ(completions[2].code, IREE_STATUS_CANCELLED);
+  PollUntil([&] { return pending.done(); });
+  EXPECT_EQ(pending.target.code, IREE_STATUS_CANCELLED);
   for (auto* client : clients) {
     iree_async_socket_release(client);
   }

@@ -83,6 +83,7 @@ iree_runtime_cc_library(
     ],
     deps = [
         ":types",
+        "//runtime/src/iree/async/util:intrusive_list",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal",
         "//runtime/src/iree/base/internal:atomic_freelist",

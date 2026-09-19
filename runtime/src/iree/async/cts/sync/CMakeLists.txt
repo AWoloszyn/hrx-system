@@ -44,6 +44,7 @@ iree_cc_library(
   NAME
     cancellation_test
   SRCS
+    "cancel_request_test.cc"
     "cancellation_test.cc"
   DEPS
     iree::async

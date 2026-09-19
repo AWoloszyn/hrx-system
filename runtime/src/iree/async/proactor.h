@@ -36,6 +36,7 @@
 #include "iree/async/slab.h"
 #include "iree/async/socket.h"
 #include "iree/async/types.h"
+#include "iree/async/util/intrusive_list.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/atomics.h"
 
@@ -547,6 +548,45 @@ struct iree_async_signal_subscription_t {
 };
 
 //===----------------------------------------------------------------------===//
+// Cancellation requests
+//===----------------------------------------------------------------------===//
+
+// Notifies the owner that a cancellation no longer references its target
+// identity. The target's terminal callback separately reports its outcome.
+typedef struct iree_async_cancel_callback_t {
+  // Invoked on the poll owner. May release the request storage.
+  void (*fn)(void* user_data);
+  // Borrowed until the callback returns.
+  void* user_data;
+} iree_async_cancel_callback_t;
+
+// Backend-owned phases of a caller-owned cancellation request.
+typedef enum iree_async_cancel_request_phase_e {
+  IREE_ASYNC_CANCEL_REQUEST_PHASE_IDLE = 0,
+  IREE_ASYNC_CANCEL_REQUEST_PHASE_QUEUED,
+  IREE_ASYNC_CANCEL_REQUEST_PHASE_ISSUED,
+} iree_async_cancel_request_phase_t;
+
+// Storage borrowed by request_cancel until its receipt callback. The owner
+// must also join the target's terminal callback before releasing or reusing
+// the target storage. Fields are private to the proactor after initialization.
+typedef struct iree_async_cancel_request_t {
+  // Owner-thread pending queue linkage. Must be first for backend casts.
+  iree_intrusive_list_entry_t pending_entry;
+  // Borrowed while queued; cleared once the native cancellation is issued.
+  iree_async_operation_t* target;
+  // Receipt returning the request storage to its owner.
+  iree_async_cancel_callback_t callback;
+  // Distinguishes withdrawable software work from an issued native request.
+  iree_async_cancel_request_phase_t phase;
+} iree_async_cancel_request_t;
+
+// Initializes idle caller storage. A request can be reused after its receipt.
+IREE_API_EXPORT void iree_async_cancel_request_initialize(
+    iree_async_cancel_callback_t callback,
+    iree_async_cancel_request_t* out_request);
+
+//===----------------------------------------------------------------------===//
 // Proactor vtable
 //===----------------------------------------------------------------------===//
 
@@ -678,6 +718,15 @@ typedef struct iree_async_proactor_t {
   // Head of the progress callback list. Poll-thread-only; no synchronization.
   // See "Progress callbacks" section above.
   iree_async_progress_entry_t* progress_list;
+
+  // Pending cancellation work only; not a registry of submitted operations.
+  // Mutated exclusively by the poll owner.
+  struct {
+    // FIFO head with O(1) removal when a target completes before issue.
+    iree_intrusive_list_t list;
+    // FIFO tail so callbacks cannot starve older requests by enqueueing work.
+    iree_intrusive_list_entry_t* tail;
+  } cancellations;
 } iree_async_proactor_t;
 
 // Initializes the base proactor fields. Called by backend create functions.
@@ -822,7 +871,10 @@ static inline iree_status_t iree_async_proactor_submit_one(
 //   timeout: Maximum time to block. Use iree_timeout_t (not raw duration) to
 //     avoid drift—absolute deadlines are converted to relative only at the
 //     syscall boundary. Use iree_immediate_timeout() for non-blocking poll.
-//   out_completed_count: Number of callbacks invoked (may be NULL).
+//   out_completed_count: Number of operation completions and independently
+//     dispatched cancellation receipts (may be NULL). Receipts withdrawn
+//     inline by target callbacks are part of that target's dispatch, not an
+//     additional completion.
 //
 // Returns:
 //   IREE_STATUS_OK: One or more completions were processed, an explicit wake
@@ -892,11 +944,13 @@ static inline void iree_async_proactor_wake(iree_async_proactor_t* proactor) {
   proactor->vtable->wake(proactor);
 }
 
-// Requests cancellation of a pending operation.
+// Attempts to admit cancellation of a pending operation.
 //
-// Cancellation is asynchronous: the request is submitted to the kernel and
-// the operation's callback will eventually fire with IREE_STATUS_CANCELLED.
-// The caller must not access the operation struct until the callback fires.
+// This API has no cancellation-retirement callback. The target's terminal
+// callback returns the target execution, not any outstanding cancellation key.
+// Callers must keep the identity from being reused while a cancellation can
+// still match it. Private connection setup and readiness owners should use
+// request_cancel below to explicitly join both lifetimes.
 //
 // Availability:
 //   generic | io_uring | IOCP | kqueue
@@ -907,16 +961,17 @@ static inline void iree_async_proactor_wake(iree_async_proactor_t* proactor) {
 //   is delivered via the normal poll() path on the poll thread.
 //
 // Callback expectations:
-//   The cancelled operation's callback fires with:
+//   When cancellation wins, the operation's terminal callback fires with:
 //     - status: IREE_STATUS_CANCELLED
 //     - flags: Does NOT include IREE_ASYNC_COMPLETION_FLAG_MORE
 //   For multishot operations, cancellation terminates the operation entirely;
 //   no further completions are delivered after the cancelled callback.
 //
 // Returns:
-//   IREE_STATUS_OK: Cancellation request submitted (callback will fire).
-//   IREE_STATUS_NOT_FOUND: Operation not pending (already completed or
-//     never submitted). The callback will NOT fire in this case.
+//   IREE_STATUS_OK: Cancellation admitted. The target may still complete
+//     naturally; this does not establish that it was pending or cancelled.
+//   IREE_STATUS_NOT_FOUND: The backend could not find a pending target. This
+//     does not return ownership; its terminal callback may already be queued.
 //   IREE_STATUS_RESOURCE_EXHAUSTED: Cancellation was not admitted. io_uring
 //     callers other than the established poll owner can encounter a full
 //     submission queue. After the first poll, cancellation on the poll owner
@@ -930,6 +985,50 @@ static inline iree_status_t iree_async_proactor_cancel(
     iree_async_proactor_t* proactor, iree_async_operation_t* operation) {
   return proactor->vtable->cancel(proactor, operation);
 }
+
+// Admits an owned cancellation request without allocating or issuing native
+// cancellation. Links the request and wakes the proactor. Only the poll owner
+// may call this (including before its first poll).
+// Native admission/completion errors are returned by poll(), not by the
+// receipt. Accepted requests remain owned across poll failures until their
+// receipt. No callback runs inline during admission.
+//
+// The target must have been successfully submitted to this proactor and must
+// not yet have delivered its terminal callback. Supported targets are private,
+// non-pooled SOCKET_CONNECT, SOCKET_ACCEPT (including multishot), and
+// HANDLE_POLL operations. Targets must not participate in LINKED chains or
+// sequences. The caller owns this precondition, including for the final link of
+// a chain. There must be at most one cancellation request for each target
+// execution; callers coalesce duplicate intent and must not mix this with
+// cancel().
+//
+// Until both the receipt and target terminal callback have run, the target's
+// storage must not be released or reused. In its terminal callback the owner
+// calls cancel_request_target_retired if the receipt is still pending. A MORE
+// completion is not terminal. The receipt itself returns request storage and
+// carries no operation result; cancellation may lose to natural completion.
+IREE_API_EXPORT iree_status_t iree_async_proactor_request_cancel(
+    iree_async_proactor_t* proactor, iree_async_operation_t* target,
+    iree_async_cancel_request_t* request);
+
+// Reports terminal target completion while the cancellation receipt is pending.
+// Poll-owner only. Withdraws an unissued request and runs its receipt inline;
+// an issued request remains owned through its native receipt. The callback may
+// release the owner's entire state, so callers must not access it afterward.
+IREE_API_EXPORT void iree_async_proactor_cancel_request_target_retired(
+    iree_async_proactor_t* proactor, iree_async_cancel_request_t* request);
+
+// Backend helpers for owner-thread native cancellation service. Issue unlinks a
+// queued request before native completion can refer to it. Complete resets an
+// issued request to idle and invokes its receipt; no access is permitted after
+// that callback. Neither helper accesses the target operation.
+void iree_async_proactor_issue_cancel_request(
+    iree_async_proactor_t* proactor, iree_async_cancel_request_t* request);
+void iree_async_cancel_request_complete(iree_async_cancel_request_t* request);
+
+// Maximum requests issued by one native service pass. Remaining work keeps its
+// FIFO ownership and wakes the next poll turn; this is not a lifetime bound.
+#define IREE_ASYNC_CANCEL_REQUEST_SERVICE_BUDGET 64
 
 //===----------------------------------------------------------------------===//
 // Buffer registration

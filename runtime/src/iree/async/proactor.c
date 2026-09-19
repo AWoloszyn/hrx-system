@@ -19,6 +19,8 @@ IREE_API_EXPORT void iree_async_proactor_initialize(
   out_proactor->vtable = vtable;
   out_proactor->allocator = allocator;
   out_proactor->progress_list = NULL;
+  out_proactor->cancellations.list = iree_intrusive_list_empty();
+  out_proactor->cancellations.tail = NULL;
   IREE_TRACE({
     iree_host_size_t copy_length =
         iree_min(debug_name.size, sizeof(out_proactor->debug_name) - 1);
@@ -27,6 +29,85 @@ IREE_API_EXPORT void iree_async_proactor_initialize(
     }
     out_proactor->debug_name[copy_length] = '\0';
   });
+}
+
+//===----------------------------------------------------------------------===//
+// Caller-owned cancellation
+//===----------------------------------------------------------------------===//
+
+IREE_API_EXPORT void iree_async_cancel_request_initialize(
+    iree_async_cancel_callback_t callback,
+    iree_async_cancel_request_t* out_request) {
+  memset(out_request, 0, sizeof(*out_request));
+  out_request->callback = callback;
+}
+
+IREE_API_EXPORT iree_status_t iree_async_proactor_request_cancel(
+    iree_async_proactor_t* proactor, iree_async_operation_t* target,
+    iree_async_cancel_request_t* request) {
+  if (!request->callback.fn) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "cancellation receipt callback is required");
+  }
+  if (request->phase != IREE_ASYNC_CANCEL_REQUEST_PHASE_IDLE) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "cancellation request is already pending");
+  }
+  if (target->pool ||
+      iree_any_bit_set(target->flags, IREE_ASYNC_OPERATION_FLAG_LINKED)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "owned cancellation requires a private, unlinked "
+                            "target operation");
+  }
+  switch (target->type) {
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT:
+    case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
+    case IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL:
+      break;
+    default:
+      return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                              "owned cancellation is unsupported for operation "
+                              "type %u",
+                              (unsigned)target->type);
+  }
+
+  request->target = target;
+  request->phase = IREE_ASYNC_CANCEL_REQUEST_PHASE_QUEUED;
+  request->pending_entry.prev = proactor->cancellations.tail;
+  request->pending_entry.next = NULL;
+  if (proactor->cancellations.tail) {
+    proactor->cancellations.tail->next = &request->pending_entry;
+  } else {
+    proactor->cancellations.list.head = &request->pending_entry;
+  }
+  proactor->cancellations.tail = &request->pending_entry;
+  iree_async_proactor_wake(proactor);
+  return iree_ok_status();
+}
+
+void iree_async_proactor_issue_cancel_request(
+    iree_async_proactor_t* proactor, iree_async_cancel_request_t* request) {
+  if (proactor->cancellations.tail == &request->pending_entry) {
+    proactor->cancellations.tail = request->pending_entry.prev;
+  }
+  iree_intrusive_list_remove(&proactor->cancellations.list,
+                             &request->pending_entry);
+  request->target = NULL;
+  request->phase = IREE_ASYNC_CANCEL_REQUEST_PHASE_ISSUED;
+}
+
+void iree_async_cancel_request_complete(iree_async_cancel_request_t* request) {
+  iree_async_cancel_callback_t callback = request->callback;
+  request->phase = IREE_ASYNC_CANCEL_REQUEST_PHASE_IDLE;
+  callback.fn(callback.user_data);
+}
+
+IREE_API_EXPORT void iree_async_proactor_cancel_request_target_retired(
+    iree_async_proactor_t* proactor, iree_async_cancel_request_t* request) {
+  if (request->phase == IREE_ASYNC_CANCEL_REQUEST_PHASE_QUEUED) {
+    iree_async_proactor_issue_cancel_request(proactor, request);
+    iree_async_cancel_request_complete(request);
+  }
 }
 
 //===----------------------------------------------------------------------===//

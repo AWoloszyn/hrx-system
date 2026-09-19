@@ -253,7 +253,7 @@ static iree_async_socket_t* iree_async_proactor_iocp_socket_from_io_operation(
 // linked continuation dispatch are skipped. The operation is still in flight:
 // resources must remain retained until the final completion, and linked
 // continuations should only fire once at the end of the multishot sequence.
-static void iree_async_proactor_iocp_dispatch_completion(
+void iree_async_proactor_iocp_dispatch_completion(
     iree_async_proactor_iocp_t* proactor, iree_async_operation_t* operation,
     iree_status_t status, iree_async_completion_flags_t flags,
     iree_host_size_t* completed_count) {
@@ -870,6 +870,9 @@ static void iree_async_proactor_iocp_submit_handle_wait(
     proactor->active_carriers->prev = carrier;
   }
   proactor->active_carriers = carrier;
+  operation->next = (iree_async_operation_t*)carrier;
+  iree_async_operation_set_internal_flags(
+      operation, IREE_ASYNC_IOCP_INTERNAL_FLAG_WAIT_REGISTERED);
 }
 
 // Drains the pending_queue and registers operations with the appropriate
@@ -1077,26 +1080,26 @@ static iree_host_size_t iree_async_proactor_iocp_drain_timer_cancellations(
 //
 // For each cancelled carrier, the cancellation method depends on the path:
 //   WaitCompletionPacket path: NtCancelWaitCompletionPacket + CloseHandle.
-//     NT_SUCCESS means the WCP was pending or its queued completion was removed
-//     from the IOCP. Failure means the completion was already dequeued.
+//     STATUS_SUCCESS withdraws the completion. STATUS_PENDING and
+//     STATUS_CANCELLED retain the carrier until the completion is dispatched.
 //   RegisterWaitForSingleObject path: blocking UnregisterWaitEx ensures no
 //     callback can still access the carrier. Its published state then tells us
 //     whether a completion was delivered.
 // When either path observes an already-delivered completion, carrier dispatch
 // checks the CANCELLED flag and reports cancellation.
-static iree_host_size_t iree_async_proactor_iocp_drain_event_wait_cancellations(
-    iree_async_proactor_iocp_t* proactor) {
+static iree_status_t iree_async_proactor_iocp_drain_event_wait_cancellations(
+    iree_async_proactor_iocp_t* proactor,
+    iree_host_size_t* direct_completions) {
   int32_t cancellation_count =
       iree_atomic_load(&proactor->pending_event_wait_cancellation_count,
                        iree_memory_order_acquire);
   if (cancellation_count == 0) {
-    return 0;
+    return iree_ok_status();
   }
 
-  iree_host_size_t direct_completions = 0;
-
+  iree_status_t status = iree_ok_status();
   iree_async_iocp_carrier_t* carrier = proactor->active_carriers;
-  while (carrier && cancellation_count > 0) {
+  while (carrier && cancellation_count > 0 && iree_status_is_ok(status)) {
     iree_async_iocp_carrier_t* next = carrier->next;
 
     if (carrier->type != IREE_ASYNC_IOCP_CARRIER_EVENT_WAIT ||
@@ -1110,31 +1113,10 @@ static iree_host_size_t iree_async_proactor_iocp_drain_event_wait_cancellations(
     // Attempt to cancel the outstanding wait and determine whether we can
     // free the carrier now or must let Phase 6 handle a dequeued completion.
     bool cancel_succeeded = false;
-    if (proactor->nt_wait_api.available) {
-      // RemoveSignaledPacket=TRUE also removes queued-but-undelivered
-      // completions from the IOCP port. Closing the handle is always safe:
-      // already-dequeued completions don't reference the WCP handle.
-      NTSTATUS cancel_status =
-          proactor->nt_wait_api.NtCancelWaitCompletionPacket(
-              carrier->data.event_wait.wait_handle, TRUE);
-      if (!CloseHandle(carrier->data.event_wait.wait_handle)) {
-        iree_abort();
-      }
-      carrier->data.event_wait.wait_handle = NULL;
-      cancel_succeeded = NT_SUCCESS(cancel_status);
-    } else {
-      // The callback posts or publishes fallback state without depending on
-      // poll progress, so blocking here cannot form a callback/poll deadlock.
-      // Recycling before this synchronization would race a queued callback.
-      if (!UnregisterWaitEx(carrier->data.event_wait.wait_handle,
-                            INVALID_HANDLE_VALUE)) {
-        iree_abort();
-      }
-      carrier->data.event_wait.wait_handle = NULL;
-      int32_t callback_state = iree_atomic_load(
-          &carrier->fallback_completion_state, iree_memory_order_acquire);
-      cancel_succeeded =
-          callback_state == IREE_ASYNC_IOCP_FALLBACK_COMPLETION_NONE;
+    status = iree_async_proactor_iocp_cancel_wait(proactor, carrier,
+                                                  &cancel_succeeded);
+    if (!iree_status_is_ok(status)) {
+      break;
     }
 
     if (cancel_succeeded) {
@@ -1156,7 +1138,7 @@ static iree_host_size_t iree_async_proactor_iocp_drain_event_wait_cancellations(
       --cancellation_count;
       iree_async_proactor_iocp_dispatch_completion(
           proactor, operation, iree_status_from_code(IREE_STATUS_CANCELLED),
-          IREE_ASYNC_COMPLETION_FLAG_NONE, &direct_completions);
+          IREE_ASYNC_COMPLETION_FLAG_NONE, direct_completions);
     } else {
       // Completion already delivered to IOCP queue or in-flight callback.
       // Phase 6 carrier dispatch will check the CANCELLED flag.
@@ -1167,7 +1149,7 @@ static iree_host_size_t iree_async_proactor_iocp_drain_event_wait_cancellations(
     carrier = next;
   }
 
-  return direct_completions;
+  return status;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2107,8 +2089,16 @@ static iree_status_t iree_async_proactor_iocp_poll(
       iree_async_proactor_iocp_drain_timer_cancellations(proactor);
 
   // Phase 2.5: Drain event wait cancellations.
-  completed_count +=
-      iree_async_proactor_iocp_drain_event_wait_cancellations(proactor);
+  iree_status_t cancel_status =
+      iree_async_proactor_iocp_drain_event_wait_cancellations(proactor,
+                                                              &completed_count);
+  if (!iree_status_is_ok(cancel_status)) {
+    if (out_completed_count) {
+      *out_completed_count = completed_count;
+    }
+    IREE_TRACE_ZONE_END(z0);
+    return cancel_status;
+  }
 
   // Phase 2.7: Run registered progress callbacks (e.g., SHM carrier MPSC ring
   // polling). Force non-blocking GQCS whenever progress callbacks are
@@ -2119,6 +2109,16 @@ static iree_status_t iree_async_proactor_iocp_poll(
   iree_host_size_t progress_count =
       iree_async_proactor_run_progress(base_proactor);
   completed_count += progress_count;
+
+  cancel_status = iree_async_proactor_iocp_drain_cancel_requests(
+      proactor, &completed_count);
+  if (!iree_status_is_ok(cancel_status)) {
+    if (out_completed_count) {
+      *out_completed_count = completed_count;
+    }
+    IREE_TRACE_ZONE_END(z0);
+    return cancel_status;
+  }
 
   // Freeze relative timeouts before a possible multi-wait loop.
   iree_convert_timeout_to_absolute(&timeout);
@@ -2144,7 +2144,8 @@ static iree_status_t iree_async_proactor_iocp_poll(
     DWORD timeout_ms =
         iree_async_proactor_iocp_calculate_timeout_ms(proactor, timeout);
     const bool force_nonblocking =
-        completed_count > 0 || base_proactor->progress_list || observed_wake;
+        completed_count > 0 || base_proactor->progress_list || observed_wake ||
+        base_proactor->cancellations.list.head;
     if (force_nonblocking) {
       timeout_ms = 0;
     }

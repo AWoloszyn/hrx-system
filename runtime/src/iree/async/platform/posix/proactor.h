@@ -188,6 +188,24 @@ void iree_async_proactor_posix_wake_poll_thread(
 iree_status_t iree_async_proactor_posix_submit_continuation(
     void* user_data, iree_async_operation_t* chain_head);
 
+// Returns the descriptor and readiness interests of an fd-based operation.
+int iree_async_proactor_posix_operation_fd(iree_async_operation_t* operation);
+short iree_async_proactor_posix_operation_poll_events(
+    const iree_async_operation_t* operation);
+
+// Returns accepted resources and dispatches a completion on the poll owner.
+// The operation may be destroyed by the callback.
+iree_host_size_t iree_async_proactor_posix_complete_direct(
+    iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation,
+    iree_status_t status, iree_async_completion_flags_t flags);
+
+// Retires a bounded batch of private fd cancellations through the existing
+// per-descriptor readiness chains. Native deregistration errors retain
+// ownership.
+iree_status_t iree_async_proactor_posix_drain_cancel_requests(
+    iree_async_proactor_posix_t* proactor,
+    iree_host_size_t* inout_completed_count);
+
 // Creates a threaded proactor using poll() + worker pool for I/O.
 // Uses the platform-default event backend (poll on most systems).
 iree_status_t iree_async_proactor_create_posix(

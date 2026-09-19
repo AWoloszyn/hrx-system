@@ -302,6 +302,16 @@ extern const iree_async_proactor_vtable_t iree_async_proactor_io_uring_vtable;
 iree_status_t iree_async_proactor_io_uring_cancel(
     iree_async_proactor_t* base_proactor, iree_async_operation_t* operation);
 
+// Issues a bounded FIFO batch of owned cancellations after ready target
+// callbacks had the opportunity to withdraw their unissued requests.
+iree_status_t iree_async_proactor_io_uring_submit_cancel_requests(
+    iree_async_proactor_io_uring_t* proactor);
+
+// Delivers an owned key-retirement receipt, counting its callback as progress.
+// Native cancellation errors return to poll independently of the receipt.
+iree_status_t iree_async_proactor_io_uring_complete_cancel_request(
+    const iree_io_uring_cqe_t* cqe, iree_host_size_t* out_completed_count);
+
 // Capability probing (called from create).
 // Probes the kernel for supported io_uring features and populates
 // |out_capabilities| with the detected capabilities.
