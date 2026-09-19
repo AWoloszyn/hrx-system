@@ -290,11 +290,11 @@ bool loom_condition_integer_relation_implies(
     const loom_condition_integer_relation_t* queried, bool* out_result);
 
 // Attempts to evaluate |queried| from the conjunction of edge-local relations
-// in |facts| over the same operands. Exact scalar values in |fact_table|
-// participate in operand identity, so a relation against an SSA constant can
-// prove the equivalent relation against a literal. Returns true when the
-// relation is proven either true or false and writes that result to
-// |out_result|. Contradictory relations leave the result unknown.
+// in |facts| over the same operands. Retained SSA identities and exact scalar
+// values in |fact_table| participate in operand equivalence, so aliases retain
+// path proofs and SSA constants match their literals. Returns true when proven
+// either true or false and writes that result to |out_result|. Contradictory
+// relations leave the result unknown.
 bool loom_condition_fact_set_proves_integer_relation(
     const loom_condition_fact_set_t* facts,
     const loom_value_fact_table_t* fact_table,

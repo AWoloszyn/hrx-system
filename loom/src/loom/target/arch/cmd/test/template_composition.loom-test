@@ -89,6 +89,44 @@ low.func.def public retain target<cmd.core> abi(command_program) abi_layout({ent
 
 // ====
 
+// Final selection expands a general provider when the public input cannot
+// prove the specialized provider's requirement.
+// RUN: emit command-program @fallback_schedule
+
+kernel.entry.decl @configured()
+
+template.decl @test.schedule(%count: index)
+
+template.def<@test.schedule> priority(10) @single(%count: index) where [eq(%count, 1)] {
+  %unit = index.constant 1 : index
+  kernel.dispatch @configured[%unit, %unit, %unit]() : [index, index, index]()
+  template.return
+}
+
+template.def<@test.schedule> priority(1) @general(%count: index) {
+  %groups = index.constant 8 : index
+  %unit = index.constant 1 : index
+  kernel.dispatch @configured[%groups, %unit, %unit]() : [index, index, index]()
+  template.return
+}
+
+command.program.def public @fallback_schedule(%count: index) launch() {
+  template.apply<@test.schedule>(%count) : (index)
+  command.return
+}
+
+// ----
+low.func.def public retain target<cmd.core> abi(command_program) abi_layout({entry_count = 1, executable_count = 1, fixed_buffer_count = 0, rebindable_binding_count = 0}) @fallback_schedule() asm {
+  %3 = resource<command_input> {index = 0, source_type = index} : reg<cmd.executable>
+  %4 = resource<command_input> {index = 0, source_type = index} : reg<cmd.entry>
+  %5 = cmd.constant.u32 8
+  %6 = cmd.constant.u32 1
+  cmd.dispatch.direct<%3, %4>[%5, %6, %6]()
+  return
+}
+
+// ====
+
 // An unresolved family is accepted as command source composition but cannot
 // cross the final specialization boundary.
 // RUN: emit command-program @unresolved_schedule
@@ -98,5 +136,24 @@ template.decl @test.missing_schedule(%storage: buffer)
 command.program.def public @unresolved_schedule() launch(%storage: buffer) {
   // ERROR@+1: LOWERING/045 {op_name="template.apply", phase_name="select-templates", contract_key="test.missing_schedule", failure_code="no_provider"}
   template.apply<@test.missing_schedule>(%storage) : (buffer)
+  command.return
+}
+
+// ====
+
+// Exact-only command source still establishes provider applicability before
+// the provider's commands can replace its call.
+// RUN: emit command-program @invalid_schedule
+
+template.decl @test.schedule(%count: index)
+
+template.def<@test.schedule> @several(%count: index) where [range(%count, 2, 8)] {
+  template.return
+}
+
+command.program.def public @invalid_schedule() launch() {
+  %out_of_range = index.constant 1 : index
+  // ERROR@+1: LOWERING/045 {op_name="template.call", phase_name="select-templates", contract_key="test.schedule", failure_code="exact_call_rejected"}
+  template.call @several(%out_of_range) : (index)
   command.return
 }

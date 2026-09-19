@@ -8,7 +8,7 @@ func.def @single_group_wait() {
 
 // ====
 
-// RUN: pass select-templates,inline-callables,kernel-async-legality
+// RUN: pass select-templates{rewrite=inline},kernel-async-legality
 
 template.decl @test.async.stage() -> (kernel.async.group)
 
@@ -43,7 +43,7 @@ func.def public @waits_selected_template_group() {
 
 // ====
 
-// RUN: pass select-templates,inline-callables,kernel-async-legality
+// RUN: pass select-templates{rewrite=inline},kernel-async-legality
 
 template.decl @test.async.duplicate() -> (kernel.async.group)
 
@@ -62,7 +62,7 @@ func.def public @rejects_duplicate_wait_after_template_inline() {
 
 // ====
 
-// RUN: pass select-templates,inline-callables,kernel-async-legality
+// RUN: pass select-templates{rewrite=inline},kernel-async-legality
 
 template.decl @test.async.dropped() -> (kernel.async.group)
 
@@ -79,7 +79,7 @@ func.def public @rejects_dropped_group_after_template_inline() {
 
 // ====
 
-// RUN: pass select-templates,inline-callables,kernel-async-legality
+// RUN: pass select-templates{rewrite=inline},kernel-async-legality
 
 template.decl @test.async.escape() -> (kernel.async.group)
 

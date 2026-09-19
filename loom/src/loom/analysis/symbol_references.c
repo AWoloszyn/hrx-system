@@ -86,8 +86,8 @@ typedef struct loom_symbol_reference_source_scope_t {
   // Root region slot on symbol_id plus one, or zero for its contract.
   uint8_t root_region_index_plus_one;
 
-  // True when the current region is nested under scf.if.
-  bool has_lexical_condition;
+  // True when an enclosing structured condition or CFG edge can supply facts.
+  bool has_path_condition;
 } loom_symbol_reference_source_scope_t;
 
 static void loom_symbol_reference_initialize_symbol_occurrences(
@@ -274,7 +274,7 @@ static iree_status_t loom_symbol_reference_append_template_demand(
       .source_symbol_id = source_scope.symbol_id,
       .source_root_region_index_plus_one =
           source_scope.root_region_index_plus_one,
-      .has_lexical_condition = source_scope.has_lexical_condition,
+      .has_path_condition = source_scope.has_path_condition,
       .apply_op = apply_op,
       .next_source_demand_id = source->first_template_demand_id,
   };
@@ -530,10 +530,13 @@ static iree_status_t loom_symbol_reference_visit_region(
   loom_region_for_each_block(region, block) {
     IREE_RETURN_IF_ERROR(loom_symbol_reference_visit_block_arg_types(
         builder, source_scope, block));
+    loom_symbol_reference_source_scope_t block_source_scope = source_scope;
+    block_source_scope.has_path_condition |= block->region_index != 0;
     const loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
       const loom_op_vtable_t* vtable = loom_op_vtable(builder->module, op);
-      loom_symbol_reference_source_scope_t nested_source_scope = source_scope;
+      loom_symbol_reference_source_scope_t nested_source_scope =
+          block_source_scope;
       const loom_symbol_id_t op_symbol_id =
           loom_op_defining_symbol_id(builder->module, op, vtable);
       if (op_symbol_id != LOOM_SYMBOL_ID_INVALID) {
@@ -556,7 +559,7 @@ static iree_status_t loom_symbol_reference_visit_region(
       for (uint8_t i = 0; i < op->region_count; ++i) {
         loom_symbol_reference_source_scope_t child_source_scope =
             nested_source_scope;
-        child_source_scope.has_lexical_condition |= loom_scf_if_isa(op);
+        child_source_scope.has_path_condition |= loom_scf_if_isa(op);
         if (op_symbol_id != LOOM_SYMBOL_ID_INVALID) {
           child_source_scope.root_region_index_plus_one = (uint8_t)(i + 1);
         }

@@ -141,6 +141,15 @@ struct loom_value_fact_table_t {
   // Context object passed to op-specific fact inference callbacks.
   loom_fact_context_t context;
 
+  // Canonical SSA identities retained while computing value facts. Only
+  // declared identity operations populate this map; numeric equality does not.
+  struct {
+    // Canonical value IDs, or LOOM_VALUE_ID_INVALID for a value's own identity.
+    loom_value_id_t* entries;
+    // Allocated entry count. Storage grows lazily on the first alias.
+    iree_host_size_t capacity;
+  } identities;
+
   // Region execution context and optional CFG structure retained by the fact
   // owner. Entries and buckets have transient scope lifetime.
   struct {
@@ -339,6 +348,22 @@ iree_status_t loom_value_fact_table_set_region_temporal_scope(
 loom_value_facts_t loom_value_fact_table_block_temporal_scope(
     const loom_value_fact_table_t* table, const loom_block_t* block);
 
+// Receives a borrowed graph from a populated fact scope. The callback must not
+// mutate that scope or its graphs; any retained pointer has the same lifetime
+// as lookup_cfg_graph. A failing callback terminates enumeration.
+typedef struct loom_value_fact_cfg_graph_callback_t {
+  // Callback state borrowed for the duration of enumeration.
+  void* user_data;
+  // Invoked once for each currently published graph, in unspecified order.
+  iree_status_t (*fn)(void* user_data, const loom_cfg_graph_t* graph);
+} loom_value_fact_cfg_graph_callback_t;
+
+// Enumerates existing graph snapshots without walking IR or constructing
+// graphs. Withdrawn snapshots are omitted. An empty scope invokes no callbacks.
+iree_status_t loom_value_fact_table_enumerate_cfg_graphs(
+    const loom_value_fact_table_t* table,
+    loom_value_fact_cfg_graph_callback_t callback);
+
 // Defines (or updates) facts for a value, growing the table if needed.
 iree_status_t loom_value_fact_table_define(loom_value_fact_table_t* table,
                                            loom_value_id_t value_id,
@@ -410,20 +435,40 @@ bool loom_value_fact_table_query_contextual_query_origin(
     loom_value_id_t value_id,
     loom_value_fact_contextual_query_origin_t* out_origin);
 
-// Clones all defined source entries into |target|. When |module| is provided,
+// Returns the canonical SSA identity retained for |value_id|, or |value_id|
+// itself when the table is NULL or no identity has been established. This is
+// an O(1) lookup, not an IR traversal. Identities have the same populated-scope
+// lifetime and mutation/recomputation contract as numeric facts.
+loom_value_id_t loom_value_fact_table_query_identity(
+    const loom_value_fact_table_t* table, loom_value_id_t value_id);
+
+// Borrowed subset of a fact table. The table and value IDs must remain valid
+// while the view is consumed. Value IDs are unique and may name unset entries.
+typedef struct loom_value_fact_table_view_t {
+  // Source table owning the facts and their extension payloads.
+  const loom_value_fact_table_t* table;
+  // Module-local value IDs selected by the producer of this scope.
+  const loom_value_id_t* value_ids;
+  // Number of entries in value_ids.
+  iree_host_size_t value_count;
+} loom_value_fact_table_view_t;
+
+// Clones the defined entries selected by |source|, with their identities and
+// origins, into |target| using the same value IDs. When |module| is provided,
 // extension payloads use the type-owned domain implied by each value ID.
 // Undefined entries remain unset in |target| so normal block-argument and op
 // fact seeding can fill them.
-iree_status_t loom_value_fact_table_clone_defined_facts(
-    loom_value_fact_table_t* target, const loom_value_fact_table_t* source,
+iree_status_t loom_value_fact_table_clone_values(
+    loom_value_fact_table_t* target, loom_value_fact_table_view_t source,
     const loom_module_t* module);
 
-// Propagates retained materialization and contextual origins through declared
-// value-alias and fact-identity operations. Numeric facts are computed
-// separately.
+// Propagates SSA identities and retained materialization and contextual origins
+// through declared value-alias and fact-identity operations. Numeric facts are
+// computed separately. Identity changes set |inout_changed| when non-NULL
+// without clearing changes already reported by numeric inference.
 iree_status_t loom_value_fact_table_propagate_origins(
     loom_value_fact_table_t* table, const loom_module_t* module,
-    const loom_op_t* op);
+    const loom_op_t* op, bool* inout_changed);
 
 // Computes facts for a single op. Ordinary ops call their vtable fact inference
 // function; LoopLike and RegionBranch ops visit their nested regions and

@@ -1140,6 +1140,8 @@ static void loom_link_cli_print_agents_markdown(FILE* stream) {
       "dependency and template-selection step. `--target` applies "
       "structured target facts at the same boundary, so target and shape "
       "predicates can prune unreachable provider templates.\n"
+      "Templates whose choice depends on later caller or target facts retain\n"
+      "their viable providers for compilation, even in a closed link.\n"
       "`--allow-unresolved` preserves unresolved declarations whose libraries\n"
       "were not supplied so the output can be linked again.\n");
 }

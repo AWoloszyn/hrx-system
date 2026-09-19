@@ -1,0 +1,357 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// An explicit branch supplies the same equality proof as scf.if.
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @equal(%left: index, %right: index) -> (index)
+
+template.def<@equal> @equal_case(%left: index, %right: index) -> (index) where [eq(%left, %right)] {
+  %value = index.constant 19 : index
+  template.return %value : index
+}
+
+func.def public @entry(%left: index, %right: index) -> (index) {
+  %condition = index.cmp eq, %left, %right : index
+  cfg.cond_br %condition, ^equal, ^different
+^equal:
+  %value = template.apply<@equal>(%left, %right) : (index, index) -> (index)
+  func.return %value : index
+^different:
+  %fallback = index.constant 0 : index
+  func.return %fallback : index
+}
+
+// ----
+func.def public @entry(%left: index, %right: index) -> (index) {
+  %condition = index.cmp eq, %left, %right : index
+  cfg.cond_br %condition, ^equal, ^different
+^equal:
+  %value = index.constant 19 : index
+  func.return %value : index
+^different:
+  %fallback = index.constant 0 : index
+  func.return %fallback : index
+}
+
+// ====
+
+// A false edge, forwarded arguments and a retained exact call share the same
+// block-entry proof. Facts from another function cannot leak into the last one.
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @equal(%left: index, %right: index) -> (index)
+
+template.def<@equal> @equal_case(%left: index, %right: index) -> (index) where [eq(%left, %right)] {
+  %value = index.constant 19 : index
+  template.return %value : index
+}
+
+template.def<@equal> priority(-1) @fallback(%left: index, %right: index) -> (index) {
+  %value = index.constant 31 : index
+  template.return %value : index
+}
+
+func.def public @false_edge(%left: index, %right: index) -> (index) {
+  %different = index.cmp ne, %left, %right : index
+  cfg.cond_br %different, ^not_equal, ^equal
+^equal:
+  %selected = template.apply<@equal>(%left, %right) : (index, index) -> (index)
+  func.return %selected : index
+^not_equal:
+  %other = template.apply<@equal>(%left, %right) : (index, index) -> (index)
+  func.return %other : index
+}
+
+func.def public @forwarded(%left: index, %right: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  cfg.br ^forward(%left: index, %right: index)
+^forward(%lhs: index, %rhs: index):
+  %selected = template.apply<@equal>(%lhs, %rhs) : (index, index) -> (index)
+  func.return %selected : index
+^other:
+  %result = index.constant 0 : index
+  func.return %result : index
+}
+
+func.def public @exact_call(%left: index, %right: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  %selected = template.call @equal_case(%left, %right) : (index, index) -> (index)
+  func.return %selected : index
+^other:
+  %result = index.constant 0 : index
+  func.return %result : index
+}
+
+func.def public @unconstrained(%left: index, %right: index) -> (index) {
+  %selected = template.apply<@equal>(%left, %right) : (index, index) -> (index)
+  func.return %selected : index
+}
+
+// ----
+func.def public @false_edge(%left: index, %right: index) -> (index) {
+  %different = index.cmp ne, %left, %right : index
+  cfg.cond_br %different, ^not_equal, ^equal
+^equal:
+  %value$40 = index.constant 19 : index
+  func.return %value$40 : index
+^not_equal:
+  %value$41 = index.constant 31 : index
+  func.return %value$41 : index
+}
+
+func.def public @forwarded(%left: index, %right: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  cfg.br ^forward(%left: index, %right: index)
+^forward(%lhs: index, %rhs: index):
+  %value = index.constant 19 : index
+  func.return %value : index
+^other:
+  %result = index.constant 0 : index
+  func.return %result : index
+}
+
+func.def public @exact_call(%left: index, %right: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  %value = index.constant 19 : index
+  func.return %value : index
+^other:
+  %result = index.constant 0 : index
+  func.return %result : index
+}
+
+func.def public @unconstrained(%left: index, %right: index) -> (index) {
+  %value = index.constant 31 : index
+  func.return %value : index
+}
+
+// ====
+
+// Entry facts intersect all reachable predecessors. The equality is lost when
+// both outcomes reach the application, but an unreachable predecessor does not
+// erase the true edge's proof.
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @equal(%left: index, %right: index) -> (index)
+
+template.def<@equal> @equal_case(%left: index, %right: index) -> (index) where [eq(%left, %right)] {
+  %value = index.constant 19 : index
+  template.return %value : index
+}
+
+template.def<@equal> priority(-1) @fallback(%left: index, %right: index) -> (index) {
+  %value = index.constant 31 : index
+  template.return %value : index
+}
+
+func.def public @join_loses_relation(%left: index, %right: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  cfg.br ^join
+^other:
+  cfg.br ^join
+^join:
+  %selected = template.apply<@equal>(%left, %right) : (index, index) -> (index)
+  func.return %selected : index
+}
+
+func.def public @unreachable_predecessor(%left: index, %right: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^unreachable:
+  cfg.br ^matched
+^matched:
+  %selected = template.apply<@equal>(%left, %right) : (index, index) -> (index)
+  func.return %selected : index
+^other:
+  %result = index.constant 0 : index
+  func.return %result : index
+}
+
+// ----
+func.def public @join_loses_relation(%left: index, %right: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  cfg.br ^join
+^other:
+  cfg.br ^join
+^join:
+  %value = index.constant 31 : index
+  func.return %value : index
+}
+
+func.def public @unreachable_predecessor(%left: index, %right: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^unreachable:
+  cfg.br ^matched
+^matched:
+  %value = index.constant 19 : index
+  func.return %value : index
+^other:
+  %result = index.constant 0 : index
+  func.return %result : index
+}
+
+// ====
+
+// A loop's backedge cannot make equality unconditional at the header. The
+// comparison establishes it anew inside the body on each iteration.
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @equal(%left: index, %right: index) -> (index)
+
+template.def<@equal> @equal_case(%left: index, %right: index) -> (index) where [eq(%left, %right)] {
+  %value = index.constant 19 : index
+  template.return %value : index
+}
+
+template.def<@equal> priority(-1) @fallback(%left: index, %right: index) -> (index) {
+  %value = index.constant 31 : index
+  template.return %value : index
+}
+
+func.def public @loop(%left: index, %right: index) -> (index, index) {
+  %initial = index.constant 0 : index
+  %step = index.constant 1 : index
+  cfg.br ^header(%left: index, %initial: index)
+^header(%current: index, %previous: index):
+  %before = template.apply<@equal>(%current, %right) : (index, index) -> (index)
+  %equal = index.cmp eq, %current, %right : index
+  cfg.cond_br %equal, ^body, ^exit
+^body:
+  %selected = template.apply<@equal>(%current, %right) : (index, index) -> (index)
+  %next = index.add %current, %step : index
+  cfg.br ^header(%next: index, %selected: index)
+^exit:
+  func.return %before, %previous : index, index
+}
+
+// ----
+func.def public @loop(%left: index, %right: index) -> (index, index) {
+  %initial = index.constant 0 : index
+  %step = index.constant 1 : index
+  cfg.br ^header(%left: index, %initial: index)
+^header(%current: index, %previous: index):
+  %value$10 = index.constant 31 : index
+  %equal = index.cmp eq, %current, %right : index
+  cfg.cond_br %equal, ^body, ^exit
+^body:
+  %value$6 = index.constant 19 : index
+  %next = index.add %current, %step : index
+  cfg.br ^header(%next: index, %value$6: index)
+^exit:
+  func.return %value$10, %previous : index, index
+}
+
+// ====
+
+// A compared value can be defined in an earlier CFG block and used inside a
+// nested structured region. Its definition must dominate the branch entry.
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @equal(%left: index, %right: index) -> (index)
+
+template.def<@equal> @equal_case(%left: index, %right: index) -> (index) where [eq(%left, %right)] {
+  %value = index.constant 19 : index
+  template.return %value : index
+}
+
+func.def public @nested(%left: index, %right: index, %offset: index, %gate: i1) -> (index) {
+  cfg.br ^calculate
+^calculate:
+  %adjusted = index.add %left, %offset : index
+  cfg.br ^choose
+^choose:
+  %equal = index.cmp eq, %adjusted, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  %result = scf.if %gate -> (index) {
+    %selected = template.apply<@equal>(%adjusted, %right) : (index, index) -> (index)
+    scf.yield %selected : index
+  } else {
+    %fallback = index.constant 0 : index
+    scf.yield %fallback : index
+  }
+  func.return %result : index
+^other:
+  %fallback = index.constant 0 : index
+  func.return %fallback : index
+}
+
+// ----
+func.def public @nested(%left: index, %right: index, %offset: index, %gate: i1) -> (index) {
+  cfg.br ^calculate
+^calculate:
+  %adjusted = index.add %left, %offset : index
+  cfg.br ^choose
+^choose:
+  %equal = index.cmp eq, %adjusted, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  %value = index.constant 19 : index
+  %fallback$16 = index.constant 0 : index
+  %result = scf.select %gate, %value, %fallback$16 : index
+  func.return %result : index
+^other:
+  %fallback$17 = index.constant 0 : index
+  func.return %fallback$17 : index
+}
+
+// ====
+
+// Structured and explicit conditions contribute to the same proof set.
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @bounded_equal(%left: index, %right: index, %limit: index) -> (index)
+
+template.def<@bounded_equal> @bounded_case(%left: index, %right: index, %limit: index) -> (index) where [eq(%left, %right), lt(%left, %limit)] {
+  %value = index.constant 19 : index
+  template.return %value : index
+}
+
+func.def public @mixed(%left: index, %right: index, %limit: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  %less = index.cmp slt, %left, %limit : index
+  %result = scf.if %less -> (index) {
+    %selected = template.apply<@bounded_equal>(%left, %right, %limit) : (index, index, index) -> (index)
+    scf.yield %selected : index
+  } else {
+    %fallback = index.constant 0 : index
+    scf.yield %fallback : index
+  }
+  func.return %result : index
+^other:
+  %fallback = index.constant 0 : index
+  func.return %fallback : index
+}
+
+// ----
+func.def public @mixed(%left: index, %right: index, %limit: index) -> (index) {
+  %equal = index.cmp eq, %left, %right : index
+  cfg.cond_br %equal, ^matched, ^other
+^matched:
+  %less = index.cmp slt, %left, %limit : index
+  %value = index.constant 19 : index
+  %fallback$17 = index.constant 0 : index
+  %result = scf.select %less, %value, %fallback$17 : index
+  func.return %result : index
+^other:
+  %fallback$18 = index.constant 0 : index
+  func.return %fallback$18 : index
+}

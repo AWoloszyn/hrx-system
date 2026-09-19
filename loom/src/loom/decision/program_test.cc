@@ -122,7 +122,7 @@ TEST(DecisionProgramTest, SelectsScalarPredicateChoiceFromSsaFacts) {
   EXPECT_EQ(live_actions[0], 9u);
 }
 
-TEST(DecisionProgramTest, PreservesSameSsaIdentityAcrossSignaturePositions) {
+TEST(DecisionProgramTest, PreservesSsaIdentityAcrossSignaturePositions) {
   const loom_decision_program_predicate_t predicate = {
       /*.kind=*/LOOM_PREDICATE_EQ,
       /*.operand_count=*/2,
@@ -152,30 +152,41 @@ TEST(DecisionProgramTest, PreservesSameSsaIdentityAcrossSignaturePositions) {
       /*.choice_count=*/1,
       /*.priority_group_count=*/1,
   };
-  loom_value_facts_t unknown_entry = loom_value_facts_unknown();
-  const loom_value_fact_table_t fact_table = {
-      /*.arena=*/{},
-      /*.transient_arena=*/{},
-      /*.entries=*/&unknown_entry,
-      /*.count=*/{},
-      /*.capacity=*/1,
-  };
-  const loom_value_id_t arguments[] = {0, 0};
-  const loom_decision_program_binding_t binding = {
-      /*.facts=*/&fact_table,
-      /*.argument_values=*/arguments,
-  };
-
-  uint32_t live_action = UINT32_MAX;
-  uint32_t live_action_count = 0;
-  loom_decision_program_result_t result = {};
-  loom_decision_program_evaluate(
-      &program, &binding, /*feature_evaluator=*/{},
-      loom_decision_program_predicate_refiner_empty(),
-      LOOM_DECISION_PROGRAM_DEFER_UNRESOLVED, &live_action, &live_action_count,
-      &result);
-  EXPECT_EQ(result.kind, LOOM_DECISION_PROGRAM_RESULT_SELECTED);
-  EXPECT_EQ(result.action_ordinal, 0u);
+  loom_value_facts_t entries[4];
+  for (auto& entry : entries) {
+    entry = loom_value_facts_unknown();
+  }
+  // Values 1 and 2 are aliases of value 0; value 3 is independent.
+  loom_value_id_t identities[] = {LOOM_VALUE_ID_INVALID, 0, 0,
+                                  LOOM_VALUE_ID_INVALID};
+  loom_value_fact_table_t fact_table = {};
+  fact_table.entries = entries;
+  fact_table.count = IREE_ARRAYSIZE(entries);
+  fact_table.capacity = IREE_ARRAYSIZE(entries);
+  fact_table.identities.entries = identities;
+  fact_table.identities.capacity = IREE_ARRAYSIZE(identities);
+  const loom_value_id_t arguments[][2] = {{0, 0}, {0, 1}, {1, 2}, {0, 3}};
+  for (const auto& pair : arguments) {
+    SCOPED_TRACE(::testing::Message() << pair[0] << ", " << pair[1]);
+    const loom_decision_program_binding_t binding = {
+        /*.facts=*/&fact_table,
+        /*.argument_values=*/pair,
+    };
+    uint32_t live_action = UINT32_MAX;
+    uint32_t live_action_count = 0;
+    loom_decision_program_result_t result = {};
+    loom_decision_program_evaluate(
+        &program, &binding, /*feature_evaluator=*/{},
+        loom_decision_program_predicate_refiner_empty(),
+        LOOM_DECISION_PROGRAM_DEFER_UNRESOLVED, &live_action,
+        &live_action_count, &result);
+    EXPECT_EQ(result.kind, pair[1] == 3
+                               ? LOOM_DECISION_PROGRAM_RESULT_UNRESOLVED
+                               : LOOM_DECISION_PROGRAM_RESULT_SELECTED);
+    if (pair[1] != 3) {
+      EXPECT_EQ(result.action_ordinal, 0u);
+    }
+  }
 }
 
 TEST(DecisionProgramTest, ResolutionPolicyControlsHigherUnknownChoice) {

@@ -165,8 +165,8 @@ TEST_F(FactTableTest, UndefinedEntriesRetainScopeMembershipAcrossGrowth) {
 
   loom_value_fact_table_t clone;
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&clone, &arena_, 4));
-  IREE_ASSERT_OK(
-      loom_value_fact_table_clone_defined_facts(&clone, &table, nullptr));
+  IREE_ASSERT_OK(loom_value_fact_table_clone_values(
+      &clone, {&table, table.touched_values, table.touched_count}, nullptr));
   EXPECT_FALSE(loom_value_fact_table_has_entry(&clone, 2));
   EXPECT_EQ(loom_value_fact_table_lookup(&clone, 129).range_lo, 9);
   IREE_ASSERT_OK(
@@ -744,7 +744,7 @@ TEST_F(FactTableTest, EncodingSummaryStridedLayoutInternsStrideFacts) {
   EXPECT_EQ(result.address_layout.strides[1].range_lo, 1);
 }
 
-TEST_F(FactTableTest, CloneDefinedFactsCopiesSparseFacts) {
+TEST_F(FactTableTest, CloneValuesCopiesOnlySelectedFacts) {
   loom_value_fact_table_t source = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &arena_, 0));
   IREE_ASSERT_OK(loom_value_fact_table_define(&source, 100,
@@ -758,18 +758,19 @@ TEST_F(FactTableTest, CloneDefinedFactsCopiesSparseFacts) {
   iree_arena_initialize(&block_pool_, &target_arena);
   loom_value_fact_table_t target = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&target, &target_arena, 0));
-  IREE_ASSERT_OK(
-      loom_value_fact_table_clone_defined_facts(&target, &source, nullptr));
+  const loom_value_id_t values[] = {100, 50};
+  IREE_ASSERT_OK(loom_value_fact_table_clone_values(
+      &target, {&source, values, IREE_ARRAYSIZE(values)}, nullptr));
 
   EXPECT_EQ(loom_value_fact_table_lookup(&target, 100).range_lo, 101);
-  EXPECT_EQ(loom_value_fact_table_lookup(&target, 2).range_lo, 2);
-  EXPECT_TRUE(
-      loom_value_facts_is_unknown(loom_value_fact_table_lookup(&target, 50)));
+  EXPECT_FALSE(loom_value_fact_table_has_entry(&target, 2));
+  EXPECT_FALSE(loom_value_fact_table_has_entry(&target, 50));
+  EXPECT_EQ(target.touched_count, 1u);
 
   iree_arena_deinitialize(&target_arena);
 }
 
-TEST_F(FactTableTest, CloneDefinedFactsReinternsExtensions) {
+TEST_F(FactTableTest, CloneValuesReinternsExtensions) {
   loom_value_fact_table_t source = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &arena_, 8));
 
@@ -796,8 +797,9 @@ TEST_F(FactTableTest, CloneDefinedFactsReinternsExtensions) {
   iree_arena_initialize(&block_pool_, &target_arena);
   loom_value_fact_table_t target = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&target, &target_arena, 8));
-  IREE_ASSERT_OK(
-      loom_value_fact_table_clone_defined_facts(&target, &source, nullptr));
+  IREE_ASSERT_OK(loom_value_fact_table_clone_values(
+      &target, {&source, source.touched_values, source.touched_count},
+      nullptr));
 
   loom_value_facts_t cloned_facts = loom_value_fact_table_lookup(&target, 7);
   EXPECT_NE(cloned_facts.extension_id, LOOM_VALUE_FACT_EXTENSION_ID_NONE);
@@ -814,7 +816,7 @@ TEST_F(FactTableTest, CloneDefinedFactsReinternsExtensions) {
   iree_arena_deinitialize(&target_arena);
 }
 
-TEST_F(FactTableTest, CloneDefinedFactsCopiesUniformElementOrigins) {
+TEST_F(FactTableTest, CloneValuesCopiesUniformElementOrigins) {
   loom_value_fact_table_t source = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &arena_, 8));
 
@@ -829,8 +831,9 @@ TEST_F(FactTableTest, CloneDefinedFactsCopiesUniformElementOrigins) {
   iree_arena_initialize(&block_pool_, &target_arena);
   loom_value_fact_table_t target = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&target, &target_arena, 8));
-  IREE_ASSERT_OK(
-      loom_value_fact_table_clone_defined_facts(&target, &source, nullptr));
+  IREE_ASSERT_OK(loom_value_fact_table_clone_values(
+      &target, {&source, source.touched_values, source.touched_count},
+      nullptr));
 
   EXPECT_TRUE(loom_value_facts_query_uniform_element(
       &target.context, loom_value_fact_table_lookup(&target, 7), nullptr));
@@ -840,7 +843,7 @@ TEST_F(FactTableTest, CloneDefinedFactsCopiesUniformElementOrigins) {
   iree_arena_deinitialize(&target_arena);
 }
 
-TEST_F(FactTableTest, CloneDefinedFactsCopiesUniformScaleOrigins) {
+TEST_F(FactTableTest, CloneValuesCopiesUniformScaleOrigins) {
   loom_value_fact_table_t source = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &arena_, 8));
 
@@ -855,8 +858,9 @@ TEST_F(FactTableTest, CloneDefinedFactsCopiesUniformScaleOrigins) {
   iree_arena_initialize(&block_pool_, &target_arena);
   loom_value_fact_table_t target = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&target, &target_arena, 8));
-  IREE_ASSERT_OK(
-      loom_value_fact_table_clone_defined_facts(&target, &source, nullptr));
+  IREE_ASSERT_OK(loom_value_fact_table_clone_values(
+      &target, {&source, source.touched_values, source.touched_count},
+      nullptr));
 
   ASSERT_GE(target.uniform_scale_origins.capacity, (iree_host_size_t)8);
   EXPECT_EQ(target.uniform_scale_origins.entries[7].source_value_id, 2u);
@@ -865,7 +869,7 @@ TEST_F(FactTableTest, CloneDefinedFactsCopiesUniformScaleOrigins) {
   iree_arena_deinitialize(&target_arena);
 }
 
-TEST_F(FactTableTest, CloneDefinedFactsCopiesContextualQueryOrigins) {
+TEST_F(FactTableTest, CloneValuesCopiesContextualQueryOrigins) {
   loom_value_fact_table_t source = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &arena_, 8));
 
@@ -880,8 +884,9 @@ TEST_F(FactTableTest, CloneDefinedFactsCopiesContextualQueryOrigins) {
   iree_arena_initialize(&block_pool_, &target_arena);
   loom_value_fact_table_t target = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&target, &target_arena, 8));
-  IREE_ASSERT_OK(
-      loom_value_fact_table_clone_defined_facts(&target, &source, nullptr));
+  IREE_ASSERT_OK(loom_value_fact_table_clone_values(
+      &target, {&source, source.touched_values, source.touched_count},
+      nullptr));
 
   ASSERT_GE(target.contextual_query_origins.capacity, (iree_host_size_t)8);
   const uint32_t origin_id = target.contextual_query_origins.entries[7];

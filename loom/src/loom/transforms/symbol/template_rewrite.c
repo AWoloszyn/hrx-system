@@ -12,7 +12,7 @@
 
 iree_status_t loom_template_rewrite_apply_as_exact_call(
     loom_rewriter_t* rewriter, loom_op_t* apply_op, loom_symbol_ref_t callee,
-    const loom_value_id_t* operands) {
+    const loom_value_id_t* operands, loom_op_t** out_call_op) {
   IREE_ASSERT(loom_template_apply_isa(apply_op));
   const loom_value_slice_t results = loom_template_apply_results(apply_op);
   loom_type_t* result_types = NULL;
@@ -49,6 +49,10 @@ iree_status_t loom_template_rewrite_apply_as_exact_call(
   IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
       rewriter, apply_op, call_results.values, call_results.count,
       value_checkpoint));
-  return loom_rewriter_replace_all_uses_and_erase(
-      rewriter, apply_op, call_results.values, call_results.count);
+  IREE_RETURN_IF_ERROR(loom_rewriter_replace_all_uses_and_erase(
+      rewriter, apply_op, call_results.values, call_results.count));
+  if (out_call_op) {
+    *out_call_op = call_op;
+  }
+  return iree_ok_status();
 }

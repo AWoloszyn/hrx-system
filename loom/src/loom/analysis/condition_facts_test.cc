@@ -459,6 +459,72 @@ TEST_F(ConditionFactsTest, ScalarCmpiProducesIntegerRelation) {
   EXPECT_EQ(relation.right.value_id, right);
 }
 
+TEST_F(ConditionFactsTest, RelationProofPreservesFactIdentityOperands) {
+  const loom_value_id_t left = DefineIndexValue();
+  const loom_value_id_t right = DefineIndexValue();
+  const loom_value_id_t other = DefineIndexValue();
+  const loom_type_t types[] = {loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+                               loom_type_scalar(LOOM_SCALAR_TYPE_INDEX)};
+  const loom_value_id_t values[] = {left, right};
+  loom_op_t* aliases = nullptr;
+  IREE_ASSERT_OK(loom_index_assume_build(&builder_, values, 2, nullptr, 0,
+                                         types, 2, LOOM_LOCATION_UNKNOWN,
+                                         &aliases));
+  IREE_ASSERT_OK(
+      loom_value_fact_table_compute_op(&fact_table_, module_, aliases));
+  loom_op_t* repeated_aliases = nullptr;
+  IREE_ASSERT_OK(loom_index_assume_build(
+      &builder_, loom_op_const_results(aliases), 2, nullptr, 0, types, 2,
+      LOOM_LOCATION_UNKNOWN, &repeated_aliases));
+  IREE_ASSERT_OK(loom_value_fact_table_compute_op(&fact_table_, module_,
+                                                  repeated_aliases));
+
+  const loom_op_t* compare =
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_EQ, left, right);
+  ASSERT_TRUE(Query(loom_index_cmp_result(compare)));
+  loom_condition_integer_relation_t queried =
+      condition_facts_.integer_relations[0];
+  queried.left.value_id = loom_op_const_results(repeated_aliases)[0];
+  queried.right.value_id = loom_op_const_results(repeated_aliases)[1];
+  bool result = false;
+  EXPECT_TRUE(loom_condition_fact_set_proves_integer_relation(
+      &condition_facts_, &fact_table_, &queried, &result));
+  EXPECT_TRUE(result);
+
+  queried.relation = LOOM_SYMBOLIC_INTEGER_RELATION_NE;
+  EXPECT_TRUE(loom_condition_fact_set_proves_integer_relation(
+      &condition_facts_, &fact_table_, &queried, &result));
+  EXPECT_FALSE(result);
+  queried.right.value_id = other;
+  EXPECT_FALSE(loom_condition_fact_set_proves_integer_relation(
+      &condition_facts_, &fact_table_, &queried, &result));
+}
+
+TEST_F(ConditionFactsTest, ScalarIdentityPreservesRangeRefinement) {
+  const loom_value_id_t input = DefineI32Value();
+  const loom_type_t type = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_op_t* alias = nullptr;
+  IREE_ASSERT_OK(loom_scalar_assume_build(&builder_, &input, 1, nullptr, 0,
+                                          &type, 1, LOOM_LOCATION_UNKNOWN,
+                                          &alias));
+  IREE_ASSERT_OK(
+      loom_value_fact_table_compute_op(&fact_table_, module_, alias));
+  const loom_value_id_t result = loom_op_const_results(alias)[0];
+  loom_condition_integer_relation_t relation = {};
+  relation.relation = LOOM_SYMBOLIC_INTEGER_RELATION_LT;
+  relation.left.kind = LOOM_CONDITION_INTEGER_OPERAND_VALUE;
+  relation.left.value_id = input;
+  relation.right.kind = LOOM_CONDITION_INTEGER_OPERAND_CONSTANT;
+  relation.right.constant = 16;
+  loom_value_facts_t facts = loom_value_facts_unknown();
+  EXPECT_TRUE(loom_condition_integer_relation_apply_to_value_facts(
+      &relation, &fact_table_, result, &facts));
+  EXPECT_EQ(facts.range_hi, 15);
+  // Edge-local refinement does not change the ambient source facts.
+  EXPECT_TRUE(loom_value_facts_is_unknown(
+      loom_value_fact_table_lookup(&fact_table_, input)));
+}
+
 TEST_F(ConditionFactsTest, BooleanAndTrueEdgeConjoinsRelations) {
   loom_value_id_t induction = DefineIndexValue();
   loom_value_id_t upper_bound = DefineIndexValue();

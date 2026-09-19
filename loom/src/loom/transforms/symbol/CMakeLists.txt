@@ -96,24 +96,49 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    template_application
+  HDRS
+    "template_application.h"
+  SRCS
+    "template_application.c"
+  DEPS
+    ::template_applicability
+    ::template_decision_model
+    iree::base
+    loom::analysis::symbol_facts
+    loom::error::emitter
+    loom::error::error_defs
+    loom::ir
+    loom::ops::func
+    loom::ops::op_defs
+    loom::ops::target
+    loom::ops::template
+    loom::util::bstring
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     template_selection
   HDRS
     "template_selection.h"
   SRCS
     "template_selection.c"
   DEPS
+    ::inline_callables
     ::symbol_pruning
     ::template_applicability
+    ::template_application
     ::template_decision_model
     ::template_rewrite
     iree::base
     iree::base::internal::arena
+    loom::analysis::cfg_condition_facts
     loom::analysis::condition_facts
     loom::analysis::symbol_facts
     loom::analysis::symbol_liveness
     loom::analysis::symbol_references
     loom::analysis::template_provider_catalog
-    loom::error::error_defs
     loom::ir
     loom::ir::facts
     loom::ops::func
@@ -131,7 +156,8 @@ loom_cc_library(
     loom::target::facts
     loom::target::function_version
     loom::target::pass_environment
-    loom::util::bstring
+    loom::util::dominance
+    loom::util::fact_table
   PUBLIC
 )
 
@@ -155,6 +181,7 @@ loom_cc_benchmark(
     "template_selection_benchmark.cc"
   DEPS
     ::template_decision_model
+    ::template_expansion_pipeline
     ::template_selection
     iree::base::internal::arena
     iree::testing::benchmark_main
@@ -163,6 +190,10 @@ loom_cc_benchmark(
     loom::analysis::template_provider_catalog
     loom::format::text::parser
     loom::ir
+    loom::pass::builder
+    loom::pass::builtin_registry
+    loom::pass::interpreter
+    loom::rewrite::module_projection
     loom::testing::module_ptr
     loom::tooling::context
     loom::verify

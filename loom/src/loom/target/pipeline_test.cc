@@ -27,6 +27,8 @@ typedef struct PipelineRunCounts {
   int final_template_selection = 0;
   // Lexical pass-run ordinal of final template selection.
   int final_template_selection_ordinal = 0;
+  // Rewrite mode completing the selected providers before source lowering.
+  iree_string_view_t final_template_rewrite = iree_string_view_empty();
   // Number of retained call-graph specialization pass runs.
   int target_callgraph_specialization = 0;
   // Lexical pass-run ordinal of retained call-graph specialization.
@@ -107,6 +109,8 @@ iree_status_t InspectPipelineRun(void* user_data, loom_op_t* op,
     ++counts->final_template_selection;
     counts->final_template_selection_ordinal =
         count_context->current_run_ordinal;
+    counts->final_template_rewrite = FindStringOption(
+        count_context->module, loom_pass_run_options(op), IREE_SV("rewrite"));
   } else if (iree_string_view_equal(key,
                                     IREE_SV("specialize-target-callgraph"))) {
     ++counts->target_callgraph_specialization;
@@ -210,6 +214,8 @@ TEST_F(TargetPipelineTest, ZeroChecksBuildsNoSanitizerPassSlots) {
 
   const PipelineRunCounts counts = CountPipelineRuns(module.get(), pipeline_op);
   EXPECT_EQ(counts.final_template_selection, 1);
+  EXPECT_TRUE(
+      iree_string_view_equal(counts.final_template_rewrite, IREE_SV("inline")));
   EXPECT_EQ(counts.target_callgraph_specialization, 1);
   EXPECT_EQ(counts.source_to_low, 1);
   EXPECT_EQ(counts.symbol_dce, 1);
@@ -237,6 +243,8 @@ TEST_F(TargetPipelineTest, ExpandedSourceStopsBeforeCallgraphSpecialization) {
 
   const PipelineRunCounts counts = CountPipelineRuns(module.get(), pipeline_op);
   EXPECT_EQ(counts.final_template_selection, 1);
+  EXPECT_TRUE(
+      iree_string_view_equal(counts.final_template_rewrite, IREE_SV("inline")));
   EXPECT_EQ(counts.target_callgraph_specialization, 0);
   EXPECT_EQ(counts.source_to_low, 0);
   EXPECT_EQ(counts.symbol_dce, 0);

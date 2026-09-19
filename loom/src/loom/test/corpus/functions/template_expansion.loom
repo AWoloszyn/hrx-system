@@ -1,0 +1,100 @@
+// Exact calls prove both the family and provider contracts. A runtime branch
+// supplies the provider relation while the public signature supplies the range.
+template.decl @bounded(%width: i32, %value: i32) -> (i32) where [range(%width, 0, 8)]
+
+template.def<@bounded> @seven_times(%width: i32, %value: i32) -> (i32) where [eq(%width, 7)] {
+  %result = scalar.muli %width, %value : i32
+  template.return %result : i32
+}
+
+func.def public @conditional_exact(%width: i32, %value: i32) -> (i32) where [range(%width, 0, 8)] {
+  %specialized_width = scalar.constant 7 : i32
+  %condition = scalar.cmpi eq, %width, %specialized_width : i32
+  %result = scf.if %condition -> (i32) {
+    %scaled = template.call @seven_times(%width, %value) : (i32, i32) -> (i32)
+    scf.yield %scaled : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+check.case @exact_call_uses_lexical_proof {
+  %specialized_width = check.literal value(7) : i32
+  %ordinary_width = check.literal value(8) : i32
+  %value = check.literal value(-3) : i32
+  %scaled = func.call @conditional_exact(%specialized_width, %value) : (i32, i32) -> (i32)
+  %unchanged = func.call @conditional_exact(%ordinary_width, %value) : (i32, i32) -> (i32)
+  %expected = check.literal value(-21) : i32
+  check.expect.equal actual(%scaled) expected(%expected) : i32
+  check.expect.equal actual(%unchanged) expected(%value) : i32
+  check.return
+}
+
+// Explicit CFG conditions establish the same provider contract as scf.if.
+func.def public @conditional_cfg_exact(%width: i32, %value: i32) -> (i32) where [range(%width, 0, 8)] {
+  %specialized_width = scalar.constant 7 : i32
+  %condition = scalar.cmpi eq, %width, %specialized_width : i32
+  cfg.cond_br %condition, ^specialized, ^ordinary
+^specialized:
+  %scaled = template.call @seven_times(%width, %value) : (i32, i32) -> (i32)
+  func.return %scaled : i32
+^ordinary:
+  func.return %value : i32
+}
+
+check.case @exact_call_uses_cfg_proof {
+  %specialized_width = check.literal value(7) : i32
+  %ordinary_width = check.literal value(8) : i32
+  %value = check.literal value(-3) : i32
+  %scaled = func.call @conditional_cfg_exact(%specialized_width, %value) : (i32, i32) -> (i32)
+  %unchanged = func.call @conditional_cfg_exact(%ordinary_width, %value) : (i32, i32) -> (i32)
+  %expected = check.literal value(-21) : i32
+  check.expect.equal actual(%scaled) expected(%expected) : i32
+  check.expect.equal actual(%unchanged) expected(%value) : i32
+  check.return
+}
+
+// A public runtime value cannot establish the specialized provider's
+// compile-time requirement. Final selection expands the general provider.
+template.decl @classify(%value: i32) -> (i32)
+
+template.def<@classify> priority(10) @specialized(%value: i32) -> (i32) where [eq(%value, 7)] {
+  %result = scalar.constant 107 : i32
+  template.return %result : i32
+}
+
+template.def<@classify> priority(1) @general(%value: i32) -> (i32) {
+  %result = scalar.constant 207 : i32
+  template.return %result : i32
+}
+
+func.def public @runtime_choice(%value: i32) -> (i32) {
+  %result = template.apply<@classify>(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+check.case @final_fallback_expands {
+  %specialized_value = check.literal value(7) : i32
+  %other_value = check.literal value(8) : i32
+  %first = func.call @runtime_choice(%specialized_value) : (i32) -> (i32)
+  %second = func.call @runtime_choice(%other_value) : (i32) -> (i32)
+  %expected = check.literal value(207) : i32
+  check.expect.equal actual(%first) expected(%expected) : i32
+  check.expect.equal actual(%second) expected(%expected) : i32
+  check.return
+}
+
+// An available caller constant still selects the specialized provider early.
+func.def public @constant_choice() -> (i32) {
+  %value = scalar.constant 7 : i32
+  %result = template.apply<@classify>(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+check.case @early_choice_still_expands {
+  %result = func.call @constant_choice() : () -> (i32)
+  %expected = check.literal value(107) : i32
+  check.expect.equal actual(%result) expected(%expected) : i32
+  check.return
+}

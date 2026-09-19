@@ -2,6 +2,44 @@
   "version": 1,
   "cases": [
     {
+      "name": "separates library availability from final template applicability",
+      "steps": [
+        {
+          "name": "link-family-contract",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/../../link/testdata/template_selection/missing_provider.loom",
+              "--root=@entry",
+              "--to=bc",
+              "--output={tmp}/linked.loombc"
+            ]
+          }
+        },
+        {
+          "name": "reject-live-unimplemented-application",
+          "run": {
+            "tool": "loom-opt",
+            "args": ["{tmp}/linked.loombc", "--pass=select-templates{mode=final}"]
+          },
+          "exit": {"nonzero": true},
+          "stderr": {"contains": {"unordered": ["no_provider", "unavailable"]}}
+        }
+      ]
+    },
+    {
+      "name": "still rejects missing ordinary definitions",
+      "run": {
+        "tool": "loom-link",
+        "args": [
+          "{srcdir}/../../link/testdata/template_selection/root.loom",
+          "--root=@entry"
+        ]
+      },
+      "exit": {"nonzero": true},
+      "stderr": {"contains": ["unresolved exact declaration '@choose'"]}
+    },
+    {
       "name": "prints agent documentation",
       "run": {
         "tool": "loom-link",

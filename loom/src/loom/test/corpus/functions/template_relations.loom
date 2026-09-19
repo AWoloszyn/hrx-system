@@ -1,0 +1,41 @@
+// The public function must compile for unknown inputs. Each selected body uses
+// a relation proved at runtime, after canonicalization has refined its inputs.
+template.decl @ordered(%left: i32, %right: i32) -> (i32)
+
+template.decl @reversed(%left: i32, %right: i32) -> (i32)
+
+template.def<@ordered> @less(%left: i32, %right: i32) -> (i32) where [lt(%left, %right)] {
+  %result = scalar.subi %right, %left : i32
+  template.return %result : i32
+}
+
+template.def<@reversed> @greater_equal(%left: i32, %right: i32) -> (i32) where [ge(%left, %right)] {
+  %result = scalar.subi %left, %right : i32
+  template.return %result : i32
+}
+
+func.def public @distance(%left: i32, %right: i32) -> (i32) {
+  %condition = scalar.cmpi slt, %left, %right : i32
+  %result = scf.if %condition -> (i32) {
+    %value = template.apply<@ordered>(%left, %right) : (i32, i32) -> (i32)
+    scf.yield %value : i32
+  } else {
+    %value = template.apply<@reversed>(%left, %right) : (i32, i32) -> (i32)
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+check.case @distance_both_edges_and_equality {
+  %left = check.literal value(-7) : i32
+  %right = check.literal value(12) : i32
+  %forward = func.call @distance(%left, %right) : (i32, i32) -> (i32)
+  %reverse = func.call @distance(%right, %left) : (i32, i32) -> (i32)
+  %equal = func.call @distance(%left, %left) : (i32, i32) -> (i32)
+  %distance = check.literal value(19) : i32
+  %zero = check.literal value(0) : i32
+  check.expect.equal actual(%forward) expected(%distance) : i32
+  check.expect.equal actual(%reverse) expected(%distance) : i32
+  check.expect.equal actual(%equal) expected(%zero) : i32
+  check.return
+}

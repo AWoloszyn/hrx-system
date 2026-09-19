@@ -57,7 +57,8 @@ iree_status_t loom_cse_run(loom_pass_t* pass, loom_module_t* module,
       }
       const uint32_t minimum_epoch =
           loom_expression_observe_barriers(&cursor, &barriers);
-      if (!loom_expression_is_reusable(&cursor)) {
+      if (!loom_expression_is_reusable(&cursor) ||
+          loom_op_requires_source_context(module, cursor.op)) {
         continue;
       }
       const uint32_t hash = loom_expression_hash(module, cursor.op);

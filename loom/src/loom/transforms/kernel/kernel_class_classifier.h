@@ -96,8 +96,8 @@ enum loom_kernel_class_decision_unavailable_reason_e {
   // Every material input is available at the kernel boundary.
   LOOM_KERNEL_CLASS_DECISION_AVAILABLE = 0,
 
-  // The application executes under a lexical condition not yet projected.
-  LOOM_KERNEL_CLASS_DECISION_LEXICAL_CONDITION = 1,
+  // The application's structured or CFG path conditions are not projected.
+  LOOM_KERNEL_CLASS_DECISION_PATH_CONDITION = 1,
 
   // At least one material scalar input has no boundary expression.
   LOOM_KERNEL_CLASS_DECISION_UNPROJECTABLE_INPUT = 2,
@@ -237,8 +237,8 @@ enum loom_kernel_class_decision_state_e {
   // The decision and its selected provider are present in every class trace.
   LOOM_KERNEL_CLASS_DECISION_ACCEPTED = 0,
 
-  // A lexically conditional decision retained its generic source form.
-  LOOM_KERNEL_CLASS_DECISION_SKIPPED_LEXICAL_CONDITION = 1,
+  // A path-dependent decision retained its generic source form.
+  LOOM_KERNEL_CLASS_DECISION_SKIPPED_PATH_CONDITION = 1,
 
   // An unprojectable decision retained its generic source form.
   LOOM_KERNEL_CLASS_DECISION_SKIPPED_UNPROJECTABLE_INPUT = 2,

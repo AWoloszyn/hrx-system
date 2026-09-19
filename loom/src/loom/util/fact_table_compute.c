@@ -1825,7 +1825,8 @@ iree_status_t loom_value_fact_table_compute_op_and_report(
           /*result_ids=*/NULL, /*result_count=*/0, /*result_facts=*/NULL,
           out_changed));
     }
-    return loom_value_fact_table_propagate_origins(table, module, op);
+    return loom_value_fact_table_propagate_origins(table, module, op,
+                                                   out_changed);
   }
 
   // Get scratch for operand + result facts.
@@ -1900,7 +1901,8 @@ iree_status_t loom_value_fact_table_compute_op_and_report(
     }
   }
 
-  return loom_value_fact_table_propagate_origins(table, module, op);
+  return loom_value_fact_table_propagate_origins(table, module, op,
+                                                 out_changed);
 }
 
 iree_status_t loom_value_fact_table_compute_region(

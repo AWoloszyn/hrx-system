@@ -117,7 +117,8 @@ static bool loom_template_applicability_resolve_application_value_arg(
   if (value_id >= application_module->values.count) {
     return false;
   }
-  out_arg->identity = value_id;
+  out_arg->identity =
+      loom_value_fact_table_query_identity(application_facts->values, value_id);
   if (application_facts->values) {
     out_arg->facts =
         loom_value_fact_table_lookup(application_facts->values, value_id);

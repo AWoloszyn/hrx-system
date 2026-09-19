@@ -173,6 +173,7 @@ loom_cc_test(
     loom::binding::c::loomc
     loom::format::bytecode::format
     loom::ir
+    loom::link::testdata::template_selection
 )
 
 loom_cc_test(

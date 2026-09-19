@@ -38,6 +38,7 @@ from loom.dsl import (
     ANY,
     ATTR_TYPE_PARAMETERIZED_ARRAY,
     COMMAND_EFFECT,
+    CONTEXTUAL,
     ISOLATED_FROM_ABOVE,
     POISON_BOUNDARY,
     SYMBOL_DEFINE,
@@ -324,7 +325,7 @@ template_apply = Op(
         AttrDef("temperature", "enum", enum_def=Temperature, optional=True),
     ],
     results=[Result("results", ANY, variadic=True)],
-    traits=[UNKNOWN_EFFECTS, COMMAND_EFFECT],
+    traits=[UNKNOWN_EFFECTS, COMMAND_EFFECT, CONTEXTUAL],
     verify="loom_template_apply_verify",
     canonicalize="loom_template_apply_canonicalize",
     effective_traits="loom_template_apply_effective_traits",
@@ -374,7 +375,7 @@ template_call = Op(
         AttrDef("temperature", "enum", enum_def=Temperature, optional=True),
     ],
     results=[Result("results", ANY, variadic=True)],
-    traits=[UNKNOWN_EFFECTS, COMMAND_EFFECT],
+    traits=[UNKNOWN_EFFECTS, COMMAND_EFFECT, CONTEXTUAL],
     interfaces=[
         CallLikeInterface(
             callee="callee",

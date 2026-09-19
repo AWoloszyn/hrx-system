@@ -602,19 +602,7 @@ static iree_status_t loom_rewriter_update_successor_facts(
 iree_status_t loom_rewriter_enable_region_analysis(
     loom_rewriter_t* rewriter, loom_func_like_t function, loom_region_t* region,
     loom_op_t* parent_op, loom_value_fact_table_t* facts) {
-  return loom_rewriter_enable_region_analysis_with_seed_facts(
-      rewriter, function, region, parent_op, facts, NULL);
-}
-
-iree_status_t loom_rewriter_enable_region_analysis_with_seed_facts(
-    loom_rewriter_t* rewriter, loom_func_like_t function, loom_region_t* region,
-    loom_op_t* parent_op, loom_value_fact_table_t* facts,
-    const loom_value_fact_table_t* seed_facts) {
   loom_rewriter_attach_value_facts(rewriter, facts);
-  if (seed_facts) {
-    IREE_RETURN_IF_ERROR(loom_value_fact_table_clone_defined_facts(
-        rewriter->fact_table, seed_facts, rewriter->module));
-  }
   return loom_value_fact_table_compute_region(
       rewriter->fact_table, rewriter->module, function, region, parent_op);
 }
@@ -622,16 +610,8 @@ iree_status_t loom_rewriter_enable_region_analysis_with_seed_facts(
 iree_status_t loom_rewriter_enable_analysis(loom_rewriter_t* rewriter,
                                             loom_func_like_t function,
                                             loom_value_fact_table_t* facts) {
-  return loom_rewriter_enable_analysis_with_seed_facts(rewriter, function,
-                                                       facts, NULL);
-}
-
-iree_status_t loom_rewriter_enable_analysis_with_seed_facts(
-    loom_rewriter_t* rewriter, loom_func_like_t function,
-    loom_value_fact_table_t* facts, const loom_value_fact_table_t* seed_facts) {
-  return loom_rewriter_enable_region_analysis_with_seed_facts(
-      rewriter, function, loom_func_like_body(function), function.op, facts,
-      seed_facts);
+  return loom_rewriter_enable_region_analysis(
+      rewriter, function, loom_func_like_body(function), function.op, facts);
 }
 
 iree_status_t loom_rewriter_build_constant(loom_rewriter_t* rewriter,

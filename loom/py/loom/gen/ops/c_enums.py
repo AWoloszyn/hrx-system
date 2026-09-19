@@ -146,6 +146,7 @@ TRAIT_MAP: dict[str, str] = {
     "MemoryFence": "LOOM_TRAIT_MEMORY_FENCE",
     "CompileTimeOnly": "LOOM_TRAIT_COMPILE_TIME_ONLY",
     "Convergent": "LOOM_TRAIT_CONVERGENT",
+    "Contextual": "LOOM_TRAIT_CONTEXTUAL",
     "UniqueIdentity": "LOOM_TRAIT_UNIQUE_IDENTITY",
     "Hint": "LOOM_TRAIT_HINT",
     "SafeToSpeculate": "LOOM_TRAIT_SAFE_TO_SPECULATE",

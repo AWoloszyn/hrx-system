@@ -126,31 +126,32 @@ static iree_status_t loom_cmd_program_plan_build_post_inline_body(
 
 static iree_status_t loom_cmd_program_plan_build_preparation_body(
     loom_builder_t* builder, void* user_data) {
-  const iree_host_size_t template_demand_count =
-      *(const iree_host_size_t*)user_data;
-  if (template_demand_count != 0) {
-    IREE_RETURN_IF_ERROR(loom_template_expansion_pipeline_build(
-        builder, loom_cmd_program_plan_build_post_inline_body, NULL));
-  }
+  const bool has_templates = *(const bool*)user_data;
   // Minimize pure calls while loops and control flow are still compact. This
   // lets CSE reuse equal configuration calls before inlining expands them.
   loom_op_t* for_op = NULL;
   IREE_RETURN_IF_ERROR(loom_pass_ir_build_for(
       builder, LOOM_PASS_ANCHOR_FUNC, loom_cmd_program_plan_build_cleanup_body,
       NULL, &for_op));
-  loom_op_t* run_op = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_pass_ir_build_run(builder, 0, IREE_SV("inline-callables"),
-                             loom_named_attr_slice_empty(), &run_op));
-  loom_op_t* if_changed_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_pass_ir_build_if_changed(
-      builder, loom_cmd_program_plan_build_post_inline_body, NULL,
-      &if_changed_op));
+  if (has_templates) {
+    IREE_RETURN_IF_ERROR(loom_template_expansion_pipeline_build(
+        builder, loom_cmd_program_plan_build_post_inline_body, NULL));
+  } else {
+    loom_op_t* run_op = NULL;
+    IREE_RETURN_IF_ERROR(
+        loom_pass_ir_build_run(builder, 0, IREE_SV("inline-callables"),
+                               loom_named_attr_slice_empty(), &run_op));
+    loom_op_t* if_changed_op = NULL;
+    IREE_RETURN_IF_ERROR(loom_pass_ir_build_if_changed(
+        builder, loom_cmd_program_plan_build_post_inline_body, NULL,
+        &if_changed_op));
+  }
   // Expand loops only after each remaining syntactic call has been inlined.
   // Per-function cleanup runs only when unrolling changed that function.
   IREE_RETURN_IF_ERROR(loom_pass_ir_build_for(
       builder, LOOM_PASS_ANCHOR_FUNC, loom_cmd_program_plan_build_unroll_body,
       NULL, &for_op));
+  loom_op_t* run_op = NULL;
   return loom_pass_ir_build_run(builder, 0, IREE_SV("symbol-dce"),
                                 loom_named_attr_slice_empty(), &run_op);
 }
@@ -163,8 +164,7 @@ static iree_status_t loom_cmd_program_plan_build_preparation_body(
 static iree_status_t loom_cmd_program_plan_prepare_roots(
     loom_module_t* module, const loom_pass_registry_t* pass_registry,
     iree_diagnostic_emitter_t diagnostic_emitter,
-    iree_arena_block_pool_t* block_pool, iree_host_size_t template_demand_count,
-    bool* out_valid) {
+    iree_arena_block_pool_t* block_pool, bool has_templates, bool* out_valid) {
   *out_valid = false;
 
   loom_module_t* pipeline_module = NULL;
@@ -176,7 +176,7 @@ static iree_status_t loom_cmd_program_plan_prepare_roots(
   iree_status_t status = loom_pass_ir_build_pipeline(
       pipeline_module, IREE_SV("__command_program_preparation"),
       LOOM_PASS_ANCHOR_MODULE, loom_cmd_program_plan_build_preparation_body,
-      &template_demand_count, &pipeline_op);
+      &has_templates, &pipeline_op);
 
   const loom_pass_program_compile_options_t compile_options = {
       .registry = pass_registry,
@@ -633,14 +633,15 @@ iree_status_t loom_cmd_program_plan_prepare_materialization(
 
   loom_symbol_reference_table_t references = {0};
   loom_kernel_launch_entry_table_t kernel_entry_table = {0};
-  iree_host_size_t template_demand_count = 0;
+  bool has_templates = false;
   bool valid = false;
   if (iree_status_is_ok(status)) {
     status = loom_symbol_reference_table_build(preparation_module,
                                                &scratch_arena, &references);
   }
   if (iree_status_is_ok(status)) {
-    template_demand_count = references.template_demands.count;
+    has_templates = references.template_demands.count != 0 ||
+                    references.template_providers.count != 0;
   }
   if (iree_status_is_ok(status)) {
     status = loom_kernel_resolve_launches(
@@ -656,7 +657,7 @@ iree_status_t loom_cmd_program_plan_prepare_materialization(
   if (valid && iree_status_is_ok(status)) {
     status = loom_cmd_program_plan_prepare_roots(
         preparation_module, pass_registry, diagnostic_emitter, block_pool,
-        template_demand_count, &valid);
+        has_templates, &valid);
   }
 
   iree_host_size_t entry_requirement_capacity = 0;

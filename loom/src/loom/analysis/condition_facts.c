@@ -1248,9 +1248,11 @@ static bool loom_condition_relation_to_predicate_kind(
 }
 
 static bool loom_condition_operand_matches_value(
+    const loom_value_fact_table_t* fact_table,
     loom_condition_integer_operand_t operand, loom_value_id_t value_id) {
   return operand.kind == LOOM_CONDITION_INTEGER_OPERAND_VALUE &&
-         operand.value_id == value_id;
+         loom_value_fact_table_query_identity(fact_table, operand.value_id) ==
+             loom_value_fact_table_query_identity(fact_table, value_id);
 }
 
 bool loom_condition_integer_relation_make_predicate_for_value(
@@ -1259,9 +1261,11 @@ bool loom_condition_integer_relation_make_predicate_for_value(
     loom_predicate_t* out_predicate) {
   loom_symbolic_integer_relation_t normalized_relation = relation->relation;
   loom_condition_integer_operand_t other = {0};
-  if (loom_condition_operand_matches_value(relation->left, value_id)) {
+  if (loom_condition_operand_matches_value(fact_table, relation->left,
+                                           value_id)) {
     other = relation->right;
-  } else if (loom_condition_operand_matches_value(relation->right, value_id)) {
+  } else if (loom_condition_operand_matches_value(fact_table, relation->right,
+                                                  value_id)) {
     other = relation->left;
     normalized_relation =
         loom_symbolic_integer_relation_swap(normalized_relation);
@@ -1355,6 +1359,12 @@ static bool loom_condition_integer_operands_equivalent_with_facts(
     loom_condition_integer_operand_t right,
     const loom_value_fact_table_t* fact_table) {
   if (loom_condition_integer_operands_equal(left, right)) {
+    return true;
+  }
+  if (left.kind == LOOM_CONDITION_INTEGER_OPERAND_VALUE &&
+      right.kind == LOOM_CONDITION_INTEGER_OPERAND_VALUE &&
+      loom_value_fact_table_query_identity(fact_table, left.value_id) ==
+          loom_value_fact_table_query_identity(fact_table, right.value_id)) {
     return true;
   }
   int64_t left_value = 0;

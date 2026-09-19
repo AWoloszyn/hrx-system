@@ -600,11 +600,6 @@ static loom_value_facts_t loom_refine_boundaries_scalar_fact(
   return facts;
 }
 
-static bool loom_refine_boundaries_table_has_entry(
-    const loom_value_fact_table_t* table, loom_value_id_t value_id) {
-  return value_id < table->count && table->entries[value_id].known_divisor != 0;
-}
-
 static iree_status_t loom_refine_boundaries_join_facts(
     loom_value_fact_table_t* target_table,
     const loom_value_fact_table_t* existing_table,
@@ -651,7 +646,7 @@ static iree_status_t loom_refine_boundaries_merge_fact(
     const loom_value_fact_table_t* source_table, loom_value_facts_t facts) {
   // An observed unknown input participates in the join. Keeping it distinct
   // from an unseen boundary prevents later callers from narrowing the result.
-  if (!loom_refine_boundaries_table_has_entry(table, value_id)) {
+  if (!loom_value_fact_table_has_entry(table, value_id)) {
     loom_value_facts_t cloned_facts = loom_value_facts_unknown();
     IREE_RETURN_IF_ERROR(loom_value_fact_table_clone_fact(
         table, source_table, facts, &cloned_facts));
@@ -758,12 +753,39 @@ typedef struct loom_refine_boundaries_apply_t {
   // Boundary facts from the current fixed-point round.
   const loom_value_fact_table_t* boundary_facts;
 
+  // Local boundary values supplied to function canonicalization.
+  struct {
+    // Walk storage kept alive until canonicalization consumes the seeds.
+    iree_arena_allocator_t* arena;
+    // Unique arguments and op results with boundary facts.
+    loom_value_id_t* values;
+    // Number of populated values.
+    iree_host_size_t count;
+    // Allocated capacity of values.
+    iree_host_size_t capacity;
+  } seeds;
+
   // Number of replacements applied while walking this function.
   int64_t* applied_count;
 
   // Number of constants materialized while walking this function.
   int64_t* materialized_count;
 } loom_refine_boundaries_apply_t;
+
+static iree_status_t loom_refine_boundaries_append_seed(
+    loom_refine_boundaries_apply_t* apply, loom_value_id_t value_id) {
+  if (!loom_value_fact_table_has_entry(apply->boundary_facts, value_id)) {
+    return iree_ok_status();
+  }
+  if (apply->seeds.count == apply->seeds.capacity) {
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        apply->seeds.arena, apply->seeds.count, apply->seeds.count + 1,
+        sizeof(*apply->seeds.values), &apply->seeds.capacity,
+        (void**)&apply->seeds.values));
+  }
+  apply->seeds.values[apply->seeds.count++] = value_id;
+  return iree_ok_status();
+}
 
 static iree_status_t loom_refine_boundaries_materialize_exact_value(
     loom_module_t* module, const loom_value_fact_table_t* boundary_facts,
@@ -773,7 +795,7 @@ static iree_status_t loom_refine_boundaries_materialize_exact_value(
   if (!loom_refine_boundaries_value_has_uses(module, old_value)) {
     return iree_ok_status();
   }
-  if (!loom_refine_boundaries_table_has_entry(boundary_facts, fact_value)) {
+  if (!loom_value_fact_table_has_entry(boundary_facts, fact_value)) {
     return iree_ok_status();
   }
   loom_value_facts_t facts =
@@ -810,6 +832,7 @@ static iree_status_t loom_refine_boundaries_apply_op_boundary_values(
 
   loom_value_id_t* results = loom_op_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
+    IREE_RETURN_IF_ERROR(loom_refine_boundaries_append_seed(apply, results[i]));
     IREE_RETURN_IF_ERROR(loom_refine_boundaries_apply_value_replacement(
         apply->module, apply->replacements, results[i], apply->applied_count));
     IREE_RETURN_IF_ERROR(loom_refine_boundaries_materialize_exact_value(
@@ -888,9 +911,11 @@ static iree_status_t loom_refine_boundaries_apply_function_boundary_values(
     const loom_value_fact_table_t* boundary_facts,
     loom_refine_boundaries_function_t* function_info,
     iree_arena_allocator_t* walk_arena, int64_t* out_applied_count,
-    int64_t* out_materialized_count) {
+    int64_t* out_materialized_count,
+    loom_value_fact_table_view_t* out_seed_facts) {
   *out_applied_count = 0;
   *out_materialized_count = 0;
+  *out_seed_facts = (loom_value_fact_table_view_t){0};
   loom_region_t* body = loom_func_like_body(function_info->function);
   if (!body) {
     return iree_ok_status();
@@ -904,16 +929,27 @@ static iree_status_t loom_refine_boundaries_apply_function_boundary_values(
       .module = module,
       .replacements = replacements,
       .boundary_facts = boundary_facts,
+      .seeds.arena = walk_arena,
       .applied_count = out_applied_count,
       .materialized_count = out_materialized_count,
   };
   loom_walk_result_t walk_result = LOOM_WALK_CONTINUE;
   iree_arena_reset(walk_arena);
-  return loom_walk_function(
+  for (uint16_t i = 0; i < function_info->argument_count; ++i) {
+    IREE_RETURN_IF_ERROR(loom_refine_boundaries_append_seed(
+        &apply, function_info->argument_ids[i]));
+  }
+  IREE_RETURN_IF_ERROR(loom_walk_function(
       module, function_info->function, LOOM_WALK_PRE_ORDER,
       (loom_walk_callback_t){loom_refine_boundaries_apply_op_boundary_values,
                              &apply},
-      walk_arena, &walk_result);
+      walk_arena, &walk_result));
+  *out_seed_facts = (loom_value_fact_table_view_t){
+      .table = boundary_facts,
+      .value_ids = apply.seeds.values,
+      .value_count = apply.seeds.count,
+  };
+  return iree_ok_status();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1162,7 +1198,7 @@ static iree_status_t loom_refine_boundaries_collect_call(
   IREE_RETURN_IF_ERROR(loom_refine_boundaries_collect_return_forwarding(
       collect, op, callee_info, operands, results));
 
-  if (callee_info->can_refine_boundary) {
+  if (callee_info->can_refine_argument_facts) {
     iree_host_size_t count = operands.count < callee_info->argument_count
                                  ? operands.count
                                  : callee_info->argument_count;
@@ -1274,13 +1310,11 @@ static iree_status_t loom_refine_boundaries_run_function(
       loom_refine_boundaries_statistics(pass);
   int64_t replacements_applied = 0;
   int64_t constants_materialized = 0;
+  loom_canonicalizer_options_t options = {0};
   IREE_RETURN_IF_ERROR(loom_refine_boundaries_apply_function_boundary_values(
       graph->module, seed_replacements, seed_facts, function_info,
-      graph->walk_arena, &replacements_applied, &constants_materialized));
-
-  loom_canonicalizer_options_t options = {
-      .seed_facts = seed_facts,
-  };
+      graph->walk_arena, &replacements_applied, &constants_materialized,
+      &options.seed_facts));
   loom_canonicalizer_result_t canonicalize_result = {0};
   loom_canonicalizer_result_t body_result = {0};
   IREE_RETURN_IF_ERROR(loom_canonicalizer_run_function(

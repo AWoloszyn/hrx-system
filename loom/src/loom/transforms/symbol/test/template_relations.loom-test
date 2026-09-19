@@ -1,0 +1,95 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Canonicalization refines both inputs with identity operations. Applicability
+// still sees the equality established by the surrounding branch.
+// RUN: pass canonicalize,select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @equal(%left: index, %right: index) -> (index)
+
+template.def<@equal> @equal_case(%left: index, %right: index) -> (index) where [eq(%left, %right)] {
+  %value = index.constant 19 : index
+  template.return %value : index
+}
+
+func.def public @entry(%left: index, %right: index) -> (index) {
+  %condition = index.cmp eq, %left, %right : index
+  %result = scf.if %condition -> (index) {
+    %value = template.apply<@equal>(%left, %right) : (index, index) -> (index)
+    scf.yield %value : index
+  } else {
+    %fallback = index.constant 0 : index
+    scf.yield %fallback : index
+  }
+  func.return %result : index
+}
+
+// ----
+func.def public @entry(%left: index, %right: index) -> (index) {
+  %condition = index.cmp eq, %left, %right : index
+  %value = index.constant 19 : index
+  %fallback = index.constant 0 : index
+  %result = scf.select %condition, %value, %fallback : index
+  func.return %result : index
+}
+
+// ====
+
+// Declared aliases have the same value even without a controlling branch.
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @same(%left: index, %right: index) -> (index)
+
+template.def<@same> @same_case(%left: index, %right: index) -> (index) where [eq(%left, %right)] {
+  %value = index.constant 19 : index
+  template.return %value : index
+}
+
+func.def public @alias_pair(%input: index) -> (index) {
+  %first = index.assume %input [ge(%input, 0)] : index
+  %second = index.assume %first [le(%first, 100)] : index
+  %result = template.apply<@same>(%input, %second) : (index, index) -> (index)
+  func.return %result : index
+}
+
+// ----
+func.def public @alias_pair(%input: index) -> (index) {
+  %value = index.constant 19 : index
+  func.return %value : index
+}
+
+// ====
+
+// Fixed-width scalar aliases preserve a strict relation through normalization.
+// RUN: pass canonicalize,select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @less(%left: i32, %right: i32) -> (i32)
+
+template.def<@less> priority(1) @less_case(%left: i32, %right: i32) -> (i32) where [lt(%left, %right)] {
+  %value = scalar.constant 5 : i32
+  template.return %value : i32
+}
+
+func.def public @strict_relation(%left: i32, %right: i32) -> (i32) {
+  %condition = scalar.cmpi slt, %left, %right : i32
+  %result = scf.if %condition -> (i32) {
+    %value = template.apply<@less>(%left, %right) : (i32, i32) -> (i32)
+    scf.yield %value : i32
+  } else {
+    %value = scalar.constant 9 : i32
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def public @strict_relation(%left: i32, %right: i32) -> (i32) {
+  %condition = scalar.cmpi slt, %left, %right : i32
+  %value$6 = scalar.constant 5 : i32
+  %value$13 = scalar.constant 9 : i32
+  %result = scf.select %condition, %value$6, %value$13 : i32
+  func.return %result : i32
+}

@@ -783,6 +783,11 @@ enum loom_trait_bits_e {
   // relocated. This does not itself imply a memory footprint, memory ordering,
   // non-determinism, or convergence; operations declare those independently.
   LOOM_TRAIT_OBSERVABLE_EFFECT = 1u << 29,
+  // Op's source expansion depends on facts at its control-flow position.
+  // Identical operands do not make applications in different contexts
+  // interchangeable. Motion and CSE preserve the context until expansion;
+  // runtime effects and erasure of unused pure results remain independent.
+  LOOM_TRAIT_CONTEXTUAL = 1u << 30,
 };
 typedef uint32_t loom_trait_flags_t;
 

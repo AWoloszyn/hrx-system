@@ -295,6 +295,14 @@ iree_status_t loom_value_fact_table_initialize_with_arenas(
 }
 
 void loom_value_fact_table_clear_scope(loom_value_fact_table_t* table) {
+  if (table->identities.capacity) {
+    for (iree_host_size_t i = 0; i < table->touched_count; ++i) {
+      const loom_value_id_t value_id = table->touched_values[i];
+      if (value_id < table->identities.capacity) {
+        table->identities.entries[value_id] = LOOM_VALUE_ID_INVALID;
+      }
+    }
+  }
   for (iree_host_size_t i = 0; i < table->touched_count; ++i) {
     loom_value_id_t value_id = table->touched_values[i];
     table->entries[value_id] = (loom_value_facts_t){0};
@@ -433,6 +441,19 @@ const loom_cfg_graph_t* loom_value_fact_table_lookup_cfg_graph(
   const loom_value_fact_region_entry_t* entry =
       loom_value_fact_table_lookup_region_entry(table, region);
   return entry && entry->structure ? &entry->structure->graph : NULL;
+}
+
+iree_status_t loom_value_fact_table_enumerate_cfg_graphs(
+    const loom_value_fact_table_t* table,
+    loom_value_fact_cfg_graph_callback_t callback) {
+  iree_status_t status = iree_ok_status();
+  for (const loom_value_fact_region_entry_t* entry = table->regions.entries;
+       entry && iree_status_is_ok(status); entry = entry->next_entry) {
+    if (entry->structure) {
+      status = callback.fn(callback.user_data, &entry->structure->graph);
+    }
+  }
+  return status;
 }
 
 static iree_status_t loom_value_fact_table_ensure_region_entry(
@@ -574,6 +595,44 @@ void loom_value_fact_table_undefine(loom_value_fact_table_t* table,
   if (value_id < table->capacity) {
     table->entries[value_id] = (loom_value_facts_t){0};
   }
+  if (value_id < table->identities.capacity) {
+    table->identities.entries[value_id] = LOOM_VALUE_ID_INVALID;
+  }
+}
+
+loom_value_id_t loom_value_fact_table_query_identity(
+    const loom_value_fact_table_t* table, loom_value_id_t value_id) {
+  if (!table || value_id >= table->identities.capacity) {
+    return value_id;
+  }
+  const loom_value_id_t identity = table->identities.entries[value_id];
+  return identity != LOOM_VALUE_ID_INVALID ? identity : value_id;
+}
+
+// The caller has already defined the result's numeric facts, which also owns
+// its touched-value membership for scope cleanup.
+static iree_status_t loom_value_fact_table_set_identity(
+    loom_value_fact_table_t* table, loom_value_id_t value_id,
+    loom_value_id_t identity) {
+  if (identity == value_id) {
+    if (value_id < table->identities.capacity) {
+      table->identities.entries[value_id] = LOOM_VALUE_ID_INVALID;
+    }
+    return iree_ok_status();
+  }
+  const iree_host_size_t old_capacity = table->identities.capacity;
+  if (value_id >= old_capacity) {
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        table->arena, old_capacity, (iree_host_size_t)value_id + 1,
+        sizeof(*table->identities.entries), &table->identities.capacity,
+        (void**)&table->identities.entries));
+    for (iree_host_size_t i = old_capacity; i < table->identities.capacity;
+         ++i) {
+      table->identities.entries[i] = LOOM_VALUE_ID_INVALID;
+    }
+  }
+  table->identities.entries[value_id] = identity;
+  return iree_ok_status();
 }
 
 static bool loom_value_fact_table_lookup_uniform_element_origin(
@@ -915,11 +974,12 @@ bool loom_value_fact_table_query_contextual_query_origin(
                                                               out_origin);
 }
 
-iree_status_t loom_value_fact_table_clone_defined_facts(
-    loom_value_fact_table_t* target, const loom_value_fact_table_t* source,
+iree_status_t loom_value_fact_table_clone_values(
+    loom_value_fact_table_t* target, loom_value_fact_table_view_t source_view,
     const loom_module_t* module) {
-  for (iree_host_size_t i = 0; i < source->touched_count; ++i) {
-    const loom_value_id_t value_id = source->touched_values[i];
+  const loom_value_fact_table_t* source = source_view.table;
+  for (iree_host_size_t i = 0; i < source_view.value_count; ++i) {
+    const loom_value_id_t value_id = source_view.value_ids[i];
     if (!loom_value_fact_table_has_entry(source, value_id)) {
       continue;
     }
@@ -934,6 +994,9 @@ iree_status_t loom_value_fact_table_clone_defined_facts(
     }
     IREE_RETURN_IF_ERROR(
         loom_value_fact_table_define(target, value_id, cloned_facts));
+    IREE_RETURN_IF_ERROR(loom_value_fact_table_set_identity(
+        target, value_id,
+        loom_value_fact_table_query_identity(source, value_id)));
     loom_value_id_t scalar_origin = LOOM_VALUE_ID_INVALID;
     if (loom_value_fact_table_lookup_uniform_element_origin(source, value_id,
                                                             &scalar_origin)) {
@@ -960,6 +1023,23 @@ iree_status_t loom_value_fact_table_clone_defined_facts(
       IREE_RETURN_IF_ERROR(loom_value_fact_table_define_contextual_query_origin(
           target, value_id, query_origin));
     }
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t loom_value_fact_table_forward_identity(
+    loom_value_fact_table_t* table, loom_value_id_t source_value_id,
+    loom_value_id_t result_value_id, bool* inout_changed) {
+  const loom_value_id_t identity =
+      loom_value_fact_table_query_identity(table, source_value_id);
+  if (identity ==
+      loom_value_fact_table_query_identity(table, result_value_id)) {
+    return iree_ok_status();
+  }
+  IREE_RETURN_IF_ERROR(
+      loom_value_fact_table_set_identity(table, result_value_id, identity));
+  if (inout_changed) {
+    *inout_changed = true;
   }
   return iree_ok_status();
 }
@@ -1051,12 +1131,14 @@ static iree_status_t loom_value_fact_table_forward_contextual_query_origin(
 
 iree_status_t loom_value_fact_table_propagate_origins(
     loom_value_fact_table_t* table, const loom_module_t* module,
-    const loom_op_t* op) {
+    const loom_op_t* op, bool* inout_changed) {
   const loom_trait_flags_t traits = loom_op_effective_traits(module, op);
   const loom_value_id_t* operands = loom_op_const_operands(op);
   const loom_value_id_t* results = loom_op_const_results(op);
   if (loom_traits_are_value_alias(traits) && op->operand_count >= 1 &&
       op->result_count >= 1) {
+    IREE_RETURN_IF_ERROR(loom_value_fact_table_forward_identity(
+        table, operands[0], results[0], inout_changed));
     IREE_RETURN_IF_ERROR(loom_value_fact_table_forward_uniform_origin(
         table, operands[0], results[0]));
     IREE_RETURN_IF_ERROR(loom_value_fact_table_forward_static_lane_origin(
@@ -1071,6 +1153,8 @@ iree_status_t loom_value_fact_table_propagate_origins(
                                     ? op->operand_count
                                     : op->result_count;
     for (uint16_t i = 0; i < pair_count; ++i) {
+      IREE_RETURN_IF_ERROR(loom_value_fact_table_forward_identity(
+          table, operands[i], results[i], inout_changed));
       IREE_RETURN_IF_ERROR(loom_value_fact_table_forward_uniform_origin(
           table, operands[i], results[i]));
       IREE_RETURN_IF_ERROR(loom_value_fact_table_forward_static_lane_origin(

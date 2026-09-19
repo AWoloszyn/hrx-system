@@ -322,7 +322,7 @@ static iree_status_t loom_kernel_class_rewrite_application(
         loom_ir_module_projection_target_symbol(projection,
                                                 provider->symbol.symbol_id);
     return loom_template_rewrite_apply_as_exact_call(
-        rewriter, target_apply_op, target_provider, call_operands);
+        rewriter, target_apply_op, target_provider, call_operands, NULL);
   }
 
   // Keep external providers as ordinary generic requests. The assumed

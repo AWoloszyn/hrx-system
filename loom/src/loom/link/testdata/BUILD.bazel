@@ -17,6 +17,8 @@ exports_files(
         "provider_roots/direct.loom",
         "provider_roots/transitive.loom",
         "provider_roots/unused.loom",
+        "template_selection/missing_provider.loom",
+        "template_selection/root.loom",
     ],
     visibility = ["//loom/src/loom/tools/loom-link:__pkg__"],
 )
@@ -29,6 +31,17 @@ iree_c_embed_data(
     flatten = True,
     h_file_output = "provider_roots_testdata.h",
     identifier = "loom_link_provider_roots_testdata",
+    visibility = ["//loom/binding/c/test:__pkg__"],
+)
+
+iree_c_embed_data(
+    name = "template_selection",
+    testonly = True,
+    srcs = glob(["template_selection/*.loom"]),
+    c_file_output = "template_selection_testdata.c",
+    flatten = True,
+    h_file_output = "template_selection_testdata.h",
+    identifier = "loom_link_template_selection_testdata",
     visibility = ["//loom/binding/c/test:__pkg__"],
 )
 

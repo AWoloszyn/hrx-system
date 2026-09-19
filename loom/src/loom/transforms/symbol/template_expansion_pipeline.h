@@ -15,11 +15,11 @@ extern "C" {
 #endif
 
 // Builds outside-in template selection and callable expansion pass IR.
-//
 // |cleanup_body| runs only after an iteration changes the module. It must
 // expose newly propagated constants and facts before the next nested template
-// predicate is evaluated. The expansion finishes with final selection so
-// unresolved reachable applications diagnose at the product boundary.
+// predicate is evaluated. Final selection diagnoses unresolved reachable
+// applications and expands selected providers, then runs |cleanup_body| if
+// anything changed. Consumers do not need a separate source inlining tail.
 iree_status_t loom_template_expansion_pipeline_build(
     loom_builder_t* builder, loom_pass_ir_body_build_fn_t cleanup_body,
     void* cleanup_user_data);

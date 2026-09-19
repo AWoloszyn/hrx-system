@@ -625,9 +625,8 @@ iree_status_t loom_kernel_class_classifier_build(
         /*live_action_ordinals=*/NULL, &generic_live_provider_count,
         &decision->generic_result);
 
-    if (decision->demand->has_lexical_condition) {
-      decision->unavailable_reason =
-          LOOM_KERNEL_CLASS_DECISION_LEXICAL_CONDITION;
+    if (decision->demand->has_path_condition) {
+      decision->unavailable_reason = LOOM_KERNEL_CLASS_DECISION_PATH_CONDITION;
     } else if (has_unprojectable_input) {
       decision->unavailable_reason =
           LOOM_KERNEL_CLASS_DECISION_UNPROJECTABLE_INPUT;
@@ -700,8 +699,8 @@ static loom_kernel_class_decision_state_t
 loom_kernel_class_skipped_decision_state(
     loom_kernel_class_decision_unavailable_reason_t reason) {
   switch (reason) {
-    case LOOM_KERNEL_CLASS_DECISION_LEXICAL_CONDITION:
-      return LOOM_KERNEL_CLASS_DECISION_SKIPPED_LEXICAL_CONDITION;
+    case LOOM_KERNEL_CLASS_DECISION_PATH_CONDITION:
+      return LOOM_KERNEL_CLASS_DECISION_SKIPPED_PATH_CONDITION;
     case LOOM_KERNEL_CLASS_DECISION_UNPROJECTABLE_INPUT:
       return LOOM_KERNEL_CLASS_DECISION_SKIPPED_UNPROJECTABLE_INPUT;
     case LOOM_KERNEL_CLASS_DECISION_UNRESOLVED_TARGET:

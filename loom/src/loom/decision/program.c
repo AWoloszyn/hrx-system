@@ -33,7 +33,8 @@ loom_decision_program_resolve_operand(
                                        : binding->argument_values[ordinal];
   return (loom_decision_predicate_operand_t){
       .facts = loom_value_fact_table_lookup(binding->facts, value_id),
-      .identity = value_id,
+      .identity =
+          loom_value_fact_table_query_identity(binding->facts, value_id),
   };
 }
 

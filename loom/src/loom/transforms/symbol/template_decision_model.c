@@ -886,7 +886,7 @@ loom_template_decision_model_application_fact_requirements(
       has_scalar_predicates ? LOOM_TEMPLATE_DECISION_FACT_REQUIREMENT_VALUES
                             : 0;
 
-  if (!demand->has_lexical_condition) {
+  if (!demand->has_path_condition) {
     return requirements;
   }
   if (has_scalar_predicates ||

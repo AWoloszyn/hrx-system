@@ -1181,8 +1181,8 @@ TEST(LinkTest, TargetSpecializationParticipatesInProviderSelection) {
   ASSERT_NE(portable_internal, nullptr);
   VerifyModule(portable_internal);
   EXPECT_TRUE(ModuleHasSymbol(portable_internal, "fallback_provider"));
-  EXPECT_FALSE(ModuleHasSymbol(portable_internal, "profile_provider"));
-  EXPECT_FALSE(ModuleHasSymbol(portable_internal, "incompatible_provider"));
+  EXPECT_TRUE(ModuleHasSymbol(portable_internal, "profile_provider"));
+  EXPECT_TRUE(ModuleHasSymbol(portable_internal, "incompatible_provider"));
 
   const loomc_target_specialization_t specialization = {
       /*.function_symbol=*/loomc_make_cstring_view("entry"),
@@ -1432,7 +1432,7 @@ template.def<@demo.capi_selected> priority(1) @fallback_provider(%value: i32) ->
 
   CompilerPtr compiler = CreateCompiler(context.get());
   PassProgramPtr pass_program = CreatePassProgramFromPipelineText(
-      context.get(), "select-templates,inline-callables,symbol-dce");
+      context.get(), "select-templates{rewrite=inline},symbol-dce");
   const loomc_target_specialization_t specialization = {
       /*.function_symbol=*/loomc_make_cstring_view("entry"),
       /*.target_profile=*/profile.get(),

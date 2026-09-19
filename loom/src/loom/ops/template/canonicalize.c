@@ -22,10 +22,11 @@ iree_status_t loom_template_call_canonicalize(loom_op_t* op,
 }
 
 loom_trait_flags_t loom_template_apply_effective_traits(const loom_op_t* op) {
-  return loom_callable_effects_traits(op,
-                                      loom_template_apply_purity_ATTR_INDEX);
+  return LOOM_TRAIT_CONTEXTUAL | loom_callable_effects_traits(
+                                     op, loom_template_apply_purity_ATTR_INDEX);
 }
 
 loom_trait_flags_t loom_template_call_effective_traits(const loom_op_t* op) {
-  return loom_callable_effects_traits(op, loom_template_call_purity_ATTR_INDEX);
+  return LOOM_TRAIT_CONTEXTUAL |
+         loom_callable_effects_traits(op, loom_template_call_purity_ATTR_INDEX);
 }

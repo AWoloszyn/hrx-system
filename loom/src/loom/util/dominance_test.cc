@@ -16,6 +16,7 @@
 #include "loom/ops/cfg/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/test/ops.h"
+#include "loom/util/cfg_graph.h"
 
 namespace loom {
 namespace {
@@ -512,14 +513,22 @@ TEST_F(DominanceTest, ScopedCfgDiamondDominanceUsesPredecessorGraph) {
   loom_op_t* merge_value = build_constant(i32, 3);
   finalize_region();
 
-  EXPECT_TRUE(loom_dominates_op(&dom_info_, entry_value, then_value));
-  EXPECT_TRUE(loom_dominates_op(&dom_info_, entry_value, else_value));
-  EXPECT_TRUE(loom_dominates_op(&dom_info_, entry_value, merge_value));
-  EXPECT_FALSE(loom_dominates_op(&dom_info_, then_value, merge_value));
-  EXPECT_FALSE(loom_dominates_op(&dom_info_, else_value, merge_value));
-  EXPECT_FALSE(loom_dominates_op(&dom_info_, then_value, else_value));
-  EXPECT_EQ(loom_dominance_immediate_dominator_block(&dom_info_, merge_block),
-            entry);
+  loom_cfg_graph_t graph = {};
+  IREE_ASSERT_OK(loom_cfg_graph_build(module_, body_, &dom_arena_, &graph));
+  loom_dominance_info_t borrowed = {};
+  borrowed.module = module_;
+  borrowed.arena = &dom_arena_;
+  IREE_ASSERT_OK(loom_dominance_info_add_cfg_graph(&borrowed, &graph));
+  for (const loom_dominance_info_t* info : {&dom_info_, &borrowed}) {
+    EXPECT_TRUE(loom_dominates_op(info, entry_value, then_value));
+    EXPECT_TRUE(loom_dominates_op(info, entry_value, else_value));
+    EXPECT_TRUE(loom_dominates_op(info, entry_value, merge_value));
+    EXPECT_FALSE(loom_dominates_op(info, then_value, merge_value));
+    EXPECT_FALSE(loom_dominates_op(info, else_value, merge_value));
+    EXPECT_FALSE(loom_dominates_op(info, then_value, else_value));
+    EXPECT_EQ(loom_dominance_immediate_dominator_block(info, merge_block),
+              entry);
+  }
 }
 
 TEST_F(DominanceTest, CfgImmediateDominatorsFollowLinearizedEdges) {

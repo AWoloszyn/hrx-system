@@ -17,8 +17,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
     }
   }
   repeat until_converged(max_iterations = 64) {
-    select-templates(mode = "early")
-    inline-callables
+    select-templates(mode = "early", rewrite = "inline")
     if changed {
       for func {
         where target {
@@ -27,7 +26,14 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
-  select-templates(mode = "final")
+  select-templates(mode = "final", rewrite = "inline")
+  if changed {
+    for func {
+      where target {
+        canonicalize(view-loads = "coalesce")
+      }
+    }
+  }
   specialize-target-callgraph
   for func {
     where target {

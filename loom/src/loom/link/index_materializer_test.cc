@@ -596,7 +596,7 @@ template.def<@demo.choose> priority(1) @fallback(%arg: hal.buffer) -> (hal.buffe
   loom_link_index_materialization_deinitialize(&materialization);
 }
 
-TEST_F(LinkIndexMaterializerTest, ClosedLinkRejectsUnresolvedApplication) {
+TEST_F(LinkIndexMaterializerTest, LinkPreservesUnsatisfiedTemplateApplication) {
   loom_module_t* root = Parse(IREE_SV(R"(
 template.decl @demo.missing(%x: i32) -> (i32)
 
@@ -612,12 +612,15 @@ func.def public @entry(%x: i32) -> (i32) {
                   LOOM_LINK_PROVIDER_ROLE_INPUT);
 
   loom_link_index_materialization_t materialization = {};
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_FAILED_PRECONDITION,
+  IREE_ASSERT_OK(
       TryMaterialize(index.get(), IREE_SV("@entry"), LOOM_LINK_PLAN_LINK,
                      LOOM_LINK_PLAN_UNRESOLVED_ERROR, &materialization));
-  EXPECT_EQ(materialization.plan, nullptr);
-  EXPECT_EQ(materialization.product.module, nullptr);
+  Verify(materialization.product.module);
+  EXPECT_NE(FindSymbol(materialization.product.module, IREE_SV("demo.missing")),
+            nullptr);
+  EXPECT_NE(FindSymbol(materialization.product.module, IREE_SV("entry")),
+            nullptr);
+  loom_link_index_materialization_deinitialize(&materialization);
 }
 
 TEST_F(LinkIndexMaterializerTest, MergeRetainsOnlyInputProviders) {
@@ -790,7 +793,7 @@ template.def<@demo.leaf> @leaf_impl(%x: i32) -> (i32) {
   loom_link_index_materialization_deinitialize(&materialization);
 }
 
-TEST_F(LinkIndexMaterializerTest, EarlyLinkRetainsViableNestedProviderSet) {
+TEST_F(LinkIndexMaterializerTest, LinkRetainsViableNestedProviderSet) {
   loom_module_t* root = Parse(IREE_SV(R"(
 template.decl @demo.outer(%x: i32) -> (i32)
 
@@ -819,23 +822,35 @@ template.def<@demo.inner> priority(1) @fallback(%x: i32) -> (i32) {
 )"),
                                  IREE_SV("library.loom"));
 
-  IndexPtr index = CreateIndex();
-  AddMaterialized(index.get(), root, IREE_SV("root"),
-                  LOOM_LINK_PROVIDER_ROLE_INPUT);
-  AddMaterialized(index.get(), library, IREE_SV("library"),
+  const std::vector<uint8_t> library_bytecode = WriteModule(library);
+  for (bool use_bytecode : {false, true}) {
+    SCOPED_TRACE(use_bytecode);
+    IndexPtr index = CreateIndex();
+    AddMaterialized(index.get(), root, IREE_SV("root"),
+                    LOOM_LINK_PROVIDER_ROLE_INPUT);
+    if (use_bytecode) {
+      AddBytecode(index.get(), library_bytecode, IREE_SV("library"),
                   LOOM_LINK_PROVIDER_ROLE_LIBRARY);
-
-  loom_link_index_materialization_t materialization = MaterializeWithPolicy(
-      index.get(), IREE_SV("@entry"), LOOM_LINK_PLAN_UNRESOLVED_ALLOW);
-  Verify(materialization.product.module);
-  EXPECT_NE(FindSymbol(materialization.product.module, IREE_SV("outer")),
-            nullptr);
-  EXPECT_NE(FindSymbol(materialization.product.module, IREE_SV("specialized")),
-            nullptr);
-  EXPECT_NE(FindSymbol(materialization.product.module, IREE_SV("fallback")),
-            nullptr);
-
-  loom_link_index_materialization_deinitialize(&materialization);
+    } else {
+      AddMaterialized(index.get(), library, IREE_SV("library"),
+                      LOOM_LINK_PROVIDER_ROLE_LIBRARY);
+    }
+    for (auto policy :
+         {LOOM_LINK_PLAN_UNRESOLVED_ERROR, LOOM_LINK_PLAN_UNRESOLVED_ALLOW}) {
+      SCOPED_TRACE(policy);
+      loom_link_index_materialization_t materialization =
+          MaterializeWithPolicy(index.get(), IREE_SV("@entry"), policy);
+      Verify(materialization.product.module);
+      EXPECT_NE(FindSymbol(materialization.product.module, IREE_SV("outer")),
+                nullptr);
+      EXPECT_NE(
+          FindSymbol(materialization.product.module, IREE_SV("specialized")),
+          nullptr);
+      EXPECT_NE(FindSymbol(materialization.product.module, IREE_SV("fallback")),
+                nullptr);
+      loom_link_index_materialization_deinitialize(&materialization);
+    }
+  }
 }
 
 TEST_F(LinkIndexMaterializerTest, LinkLinkInternalizesLibraryDependencies) {

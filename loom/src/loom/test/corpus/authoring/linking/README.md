@@ -34,11 +34,10 @@ and never uses a provider path as a matching rule. The provider library carries
 `amdgpu.target<gfx1100> @gfx1100` and `amdgpu.target<gfx1200> @gfx1200` records
 so target-specialized definitions can state their exact applicability.
 
-A closed link uses the facts available at that link boundary. With
-this targetless root, it chooses `@scale_i32_fallback` and omits the target
-records and target-specific alternatives. A merge of the root and provider
-modules preserves the full explicit universe. Compiling that module with
-`--target=amdgpu:gfx1100`
+A closed link resolves ordinary symbol dependencies while preserving template
+choices that need later facts. With this targetless root, it retains both
+target-specific implementations and `@scale_i32_fallback`. Compiling the linked
+module with `--target=amdgpu:gfx1100`
 then specializes the requested kernel to a materialized or reused `@gfx1100`
 target record and resolves `template.apply<@authoring.link.scale_i32>` against
 that durable target.
@@ -59,9 +58,10 @@ loom-link root.loom --library=providers.loom \
   --print-plan
 ```
 
-The plan keeps the root kernel, its family declaration, and the proven fallback
-selected for the targetless application. It does not retain the target-specific
-definitions, their target records, or the unrelated provider.
+The plan keeps the root kernel, its family declaration, all three still-viable
+implementations, and their target records. It omits the unrelated provider.
+When a link supplies sufficient target or value facts, it can retain only the
+proven choice instead.
 
 During correctness work, make the check case the root and provide the kernel
 and implementation library as libraries:
@@ -123,15 +123,15 @@ loom-link root.loom \
   --output=linked.loombc
 ```
 
-That link is closed for the facts currently available and therefore
-contains the portable fallback. It is the shape an embedding API mirrors when
-the current boundary has enough information to choose implementations: add
-root sources, add prebuilt `.loombc` libraries, name the roots, and link to text
-or bytecode depending on the next stage.
+That link closes ordinary symbol dependencies but retains every provider that
+later target specialization may select. An embedding API mirrors this flow:
+add root sources, add prebuilt `.loombc` libraries, name the roots, and link to
+text or bytecode depending on the next stage. The standalone result no longer
+depends on the original libraries.
 
-When target facts arrive only at compilation, merge the explicit input universe
-instead of prematurely selecting a targetless fallback. Both modules are
-positional because both should become part of the output:
+Merge mode instead packages the entire input catalog, including unrelated
+providers, for later root selection. Both modules are positional because both
+should become part of the output:
 
 ```bash
 loom-link root.loom providers.loombc \
@@ -143,10 +143,10 @@ loom-link root.loom providers.loombc \
 
 ## Compiling an AMDGPU Artifact
 
-Compile the merged bytecode with a function specialization target:
+Compile the linked bytecode with a function specialization target:
 
 ```bash
-loom-compile portable.loombc \
+loom-compile linked.loombc \
   --format=amdgpu-hsaco \
   --target=amdgpu:gfx1100 \
   --output=scale_i32.hal \
@@ -163,14 +163,14 @@ those functions before target-aware passes run. A module may still contain
 unrequested functions for other targets.
 
 The loomc C API expresses the same operation with
-`loomc_target_specialization_options_t` attached only to
+`loomc_target_specialization_options_t` attached to
 `loomc_compile_options_t.next`. A direct specialization row pairs one function
 symbol with one structured target profile. A target binding row instead pairs
 one authored `target.decl` symbol with a profile and seeds every function using
 that declaration; this is the compact form for heterogeneous command or VM
-programs with named target roles. Plain loading and linking preserve all
-authored targets and never accept a specialization option; emission consumes
-the durable targets in prepared IR and never accepts an override. Embedders can
+programs with named target roles. Linking preserves authored targets and may
+also accept target-specialization options when facts are available early.
+Emission consumes the durable targets in prepared IR. Embedders can
 therefore link a multi-target library once, clone or filter it as appropriate,
 and specialize different function versions in later compile invocations.
 

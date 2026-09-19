@@ -26,6 +26,23 @@ iree_c_embed_data(
   PUBLIC
 )
 
+file(GLOB _GLOB_TEMPLATE_SELECTION_X_LOOM LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS template_selection/*.loom)
+iree_c_embed_data(
+  NAME
+    template_selection
+  SRCS
+    "${_GLOB_TEMPLATE_SELECTION_X_LOOM}"
+  C_FILE_OUTPUT
+    "template_selection_testdata.c"
+  H_FILE_OUTPUT
+    "template_selection_testdata.h"
+  IDENTIFIER
+    "loom_link_template_selection_testdata"
+  TESTONLY
+  FLATTEN
+  PUBLIC
+)
+
 file(GLOB _GLOB_FUNC_CONTRACT_X_LOOM LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS func_contract/*.loom)
 iree_c_embed_data(
   NAME
