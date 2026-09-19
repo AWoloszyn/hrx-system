@@ -207,9 +207,9 @@ static bool loom_symbolic_term_less(const loom_symbolic_term_t* lhs,
 LOOM_DEFINE_ADAPTIVE_SORT(loom_symbolic_expr_sort_terms, loom_symbolic_term_t,
                           loom_symbolic_term_less)
 
-iree_status_t loom_symbolic_expr_context_lookup_facts(
+static iree_status_t loom_symbolic_expr_context_lookup_facts_and_selected_value(
     loom_symbolic_expr_context_t* context, loom_value_id_t value_id,
-    loom_value_facts_t* out_facts) {
+    loom_value_facts_t* out_facts, loom_value_id_t* out_selected_value) {
   loom_value_facts_t facts =
       context->fact_table
           ? loom_value_fact_table_lookup(context->fact_table, value_id)
@@ -243,7 +243,17 @@ iree_status_t loom_symbolic_expr_context_lookup_facts(
     }
   }
   *out_facts = facts;
+  if (out_selected_value) {
+    *out_selected_value = value_id;
+  }
   return iree_ok_status();
+}
+
+iree_status_t loom_symbolic_expr_context_lookup_facts(
+    loom_symbolic_expr_context_t* context, loom_value_id_t value_id,
+    loom_value_facts_t* out_facts) {
+  return loom_symbolic_expr_context_lookup_facts_and_selected_value(
+      context, value_id, out_facts, /*out_selected_value=*/NULL);
 }
 
 static bool loom_symbolic_expr_exact_integer_facts(loom_value_facts_t facts,
@@ -779,13 +789,22 @@ static iree_status_t loom_symbolic_expr_expansion_prepare_frame(
     loom_symbolic_expr_t* out_expression, bool* out_complete) {
   *out_complete = false;
   loom_value_facts_t facts = {0};
-  IREE_RETURN_IF_ERROR(loom_symbolic_expr_context_lookup_facts(
-      context, frame->value_id, &facts));
+  loom_value_id_t selected_value = frame->value_id;
+  IREE_RETURN_IF_ERROR(
+      loom_symbolic_expr_context_lookup_facts_and_selected_value(
+          context, frame->value_id, &facts, &selected_value));
   int64_t exact_value = 0;
   if (loom_symbolic_expr_exact_integer_facts(facts, &exact_value)) {
     loom_symbolic_expr_constant(exact_value, out_expression);
     out_expression->facts = facts;
     *out_complete = true;
+    return iree_ok_status();
+  }
+
+  if (selected_value != frame->value_id) {
+    frame->kind = LOOM_SYMBOLIC_EXPR_EXPANSION_SELECT;
+    frame->operand_values[0] = selected_value;
+    frame->stage = LOOM_SYMBOLIC_EXPR_EXPANSION_STAGE_SECOND_OPERAND;
     return iree_ok_status();
   }
 

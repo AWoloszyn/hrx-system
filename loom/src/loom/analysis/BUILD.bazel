@@ -1119,6 +1119,7 @@ loom_cc_test(
     name = "symbolic_expr_test",
     srcs = ["symbolic_expr_test.cc"],
     deps = [
+        ":condition_facts",
         ":symbolic_expr",
         ":symbolic_expr_test_fixture",
         "//loom/src/loom/ir",
