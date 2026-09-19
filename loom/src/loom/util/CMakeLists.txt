@@ -226,8 +226,10 @@ loom_cc_library(
     "reference_transfer.c"
   DEPS
     ::cfg_control
+    ::cfg_dominance
     ::cfg_graph
     ::cfg_loop_nest
+    ::cfg_regions
     ::fact_control
     ::numeric_format
     ::reference_facts
@@ -419,6 +421,35 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    cfg_regions
+  HDRS
+    "cfg_regions.h"
+  SRCS
+    "cfg_regions.c"
+  DEPS
+    ::cfg_dominance
+    ::cfg_graph
+    iree::base
+    iree::base::internal::arena
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    cfg_regions_test
+  SRCS
+    "cfg_regions_test.cc"
+  DEPS
+    ::cfg_dominance
+    ::cfg_graph_test_util
+    ::cfg_regions
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_library(
+  NAME
     cfg_loop_nest
   HDRS
     "cfg_loop_nest.h"
@@ -439,6 +470,7 @@ loom_cc_test(
   SRCS
     "cfg_loop_nest_test.cc"
   DEPS
+    ::cfg_dominance
     ::cfg_graph
     ::cfg_graph_test_util
     ::cfg_loop_nest
@@ -470,6 +502,7 @@ loom_cc_fuzz(
   SRCS
     "cfg_loop_nest_fuzz.cc"
   DEPS
+    ::cfg_dominance
     ::cfg_graph_test_util
     ::cfg_loop_nest
     ::cfg_loop_nest_test_util

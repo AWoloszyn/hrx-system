@@ -199,8 +199,10 @@ loom_cc_library(
     ],
     deps = [
         ":cfg_control",
+        ":cfg_dominance",
         ":cfg_graph",
         ":cfg_loop_nest",
+        ":cfg_regions",
         ":fact_control",
         ":numeric_format",
         ":reference_facts",
@@ -367,6 +369,31 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "cfg_regions",
+    srcs = ["cfg_regions.c"],
+    hdrs = ["cfg_regions.h"],
+    deps = [
+        ":cfg_dominance",
+        ":cfg_graph",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "cfg_regions_test",
+    srcs = ["cfg_regions_test.cc"],
+    deps = [
+        ":cfg_dominance",
+        ":cfg_graph_test_util",
+        ":cfg_regions",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
     name = "cfg_loop_nest",
     srcs = ["cfg_loop_nest.c"],
     hdrs = ["cfg_loop_nest.h"],
@@ -383,6 +410,7 @@ loom_cc_test(
     name = "cfg_loop_nest_test",
     srcs = ["cfg_loop_nest_test.cc"],
     deps = [
+        ":cfg_dominance",
         ":cfg_graph",
         ":cfg_graph_test_util",
         ":cfg_loop_nest",
@@ -410,6 +438,7 @@ loom_cc_fuzz(
     name = "cfg_loop_nest_fuzz",
     srcs = ["cfg_loop_nest_fuzz.cc"],
     deps = [
+        ":cfg_dominance",
         ":cfg_graph_test_util",
         ":cfg_loop_nest",
         ":cfg_loop_nest_test_util",

@@ -33,7 +33,7 @@
 #include "loom/sanitizer/options.h"
 #include "loom/target/low_legality.h"
 #include "loom/target/types.h"
-#include "loom/util/cfg_loop_nest.h"
+#include "loom/util/fact_cfg.h"
 #include "loom/util/fact_table.h"
 
 #ifdef __cplusplus
@@ -1079,10 +1079,11 @@ const loom_low_descriptor_set_t* loom_low_lower_context_descriptor_set(
 const loom_value_fact_table_t* loom_low_lower_context_fact_table(
     const loom_low_lower_context_t* context);
 
-// Returns retained natural-loop structure for the source function's CFG body.
-// The fact scope owns both the graph and its loop structure. Both remain valid
-// throughout this immutable source-function lowering.
-const loom_cfg_loop_nest_t* loom_low_lower_context_cfg_loops(
+// Returns the source function's retained CFG snapshot: adjacency, dominance,
+// region continuations, natural loops and control dependencies. The fact scope
+// owns this structure throughout immutable source-function lowering. Target
+// callbacks consume its indexed facts without rediscovering graph structure.
+const loom_value_fact_cfg_region_t* loom_low_lower_context_cfg(
     const loom_low_lower_context_t* context);
 
 // Returns reusable traversal state for condition-fact queries.

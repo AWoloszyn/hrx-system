@@ -116,9 +116,9 @@ static void loom_cfg_dominance_classify_entries(const loom_cfg_graph_t* graph,
   }
 }
 
-iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
-                                       iree_arena_allocator_t* arena,
-                                       loom_cfg_dominance_t* out_dominance) {
+static iree_status_t loom_cfg_dominance_build_impl(
+    const loom_cfg_graph_t* graph, iree_arena_allocator_t* scratch_arena,
+    iree_arena_allocator_t* arena, loom_cfg_dominance_t* out_dominance) {
   memset(out_dominance, 0, sizeof(*out_dominance));
   if (graph->malformed) {
     return iree_ok_status();
@@ -138,7 +138,7 @@ iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
   uint16_t* stack = NULL;
   uint16_t* order = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, block_count, sizeof(*records), (void**)&records));
+      scratch_arena, block_count, sizeof(*records), (void**)&records));
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, block_count, sizeof(*stack), (void**)&stack));
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -203,4 +203,15 @@ iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
   loom_cfg_dominance_classify_entries(graph, out_dominance, stack);
   out_dominance->available = true;
   return iree_ok_status();
+}
+
+iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
+                                       iree_arena_allocator_t* arena,
+                                       loom_cfg_dominance_t* out_dominance) {
+  iree_arena_allocator_t scratch_arena;
+  iree_arena_initialize(arena->block_pool, &scratch_arena);
+  iree_status_t status = loom_cfg_dominance_build_impl(graph, &scratch_arena,
+                                                       arena, out_dominance);
+  iree_arena_deinitialize(&scratch_arena);
+  return status;
 }

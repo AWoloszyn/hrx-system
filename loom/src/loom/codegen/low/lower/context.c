@@ -307,13 +307,11 @@ const loom_value_fact_table_t* loom_low_lower_context_fact_table(
   return context->lowering.fact_table;
 }
 
-const loom_cfg_loop_nest_t* loom_low_lower_context_cfg_loops(
+const loom_value_fact_cfg_region_t* loom_low_lower_context_cfg(
     const loom_low_lower_context_t* context) {
-  const loom_value_fact_cfg_region_t* region =
-      loom_value_fact_table_lookup_cfg_region(
-          context->lowering.fact_table,
-          loom_func_like_body(context->source_function));
-  return &region->loops;
+  return loom_value_fact_table_lookup_cfg_region(
+      context->lowering.fact_table,
+      loom_func_like_body(context->source_function));
 }
 
 loom_condition_query_t* loom_low_lower_context_condition_query(

@@ -32,8 +32,11 @@ class CfgLoopNestTest : public ::testing::Test {
 
   loom_cfg_loop_nest_t Build(const CfgGraph& fixture) {
     iree_arena_reset(&arena_);
+    loom_cfg_dominance_t dominance;
+    IREE_CHECK_OK(loom_cfg_dominance_build(fixture.get(), &arena_, &dominance));
     loom_cfg_loop_nest_t nest;
-    IREE_CHECK_OK(loom_cfg_loop_nest_build(fixture.get(), &arena_, &nest));
+    IREE_CHECK_OK(
+        loom_cfg_loop_nest_build(fixture.get(), &dominance, &arena_, &nest));
     return nest;
   }
 
