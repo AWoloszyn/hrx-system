@@ -431,3 +431,38 @@ iree_status_t loom_scf_for_canonicalize(loom_op_t* op,
   }
   return loom_scf_for_forward_loop_carried_results(op, rewriter);
 }
+
+//===----------------------------------------------------------------------===//
+// scf.while
+//===----------------------------------------------------------------------===//
+
+iree_status_t loom_scf_while_canonicalize(loom_op_t* op,
+                                          loom_rewriter_t* rewriter) {
+  loom_region_t* before = loom_scf_while_before(op);
+  loom_block_t* block = loom_region_entry_block(before);
+  loom_op_t* condition = block->last_op;
+  if (!condition || !loom_scf_condition_isa(condition)) {
+    return iree_ok_status();
+  }
+  bool continues = true;
+  if (!loom_value_facts_as_exact_bool(
+          loom_rewriter_value_facts(rewriter,
+                                    loom_scf_condition_condition(condition)),
+          &continues) ||
+      continues) {
+    return iree_ok_status();
+  }
+
+  // The before region executes once even when the body is unreachable. Its
+  // forwarded values can differ from the initial tuple or depend on effects.
+  const loom_value_slice_t initial = loom_scf_while_iter_args(op);
+  for (uint16_t i = 0; i < initial.count; ++i) {
+    IREE_RETURN_IF_ERROR(loom_rewriter_replace_all_uses_with(
+        rewriter, loom_block_arg_id(block, i), initial.values[i]));
+  }
+  IREE_RETURN_IF_ERROR(
+      loom_scf_move_region_body_before_op(rewriter, before, condition, op));
+  const loom_value_slice_t forwarded = loom_scf_condition_forwarded(condition);
+  return loom_scf_replace_results_and_erase(op, rewriter, forwarded.values,
+                                            forwarded.count);
+}
