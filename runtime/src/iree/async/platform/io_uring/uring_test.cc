@@ -8,6 +8,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <vector>
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -306,6 +307,47 @@ TEST_F(RingTest, WaitCqeWithFlushSubmitsPendingSqe) {
   EXPECT_EQ(cqe->user_data, 0xDEADBEEFu);
 
   iree_io_uring_ring_cq_advance(&ring_, 1);
+}
+
+TEST_F(RingTest, SubmitPendingLockedMakesRoomWithoutConsumingCompletions) {
+  for (uint32_t i = 0; i < ring_.sq_entries; ++i) {
+    iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&ring_);
+    ASSERT_NE(sqe, nullptr);
+    sqe->opcode = IREE_IORING_OP_NOP;
+    sqe->user_data = i;
+  }
+  EXPECT_EQ(iree_io_uring_ring_sq_space_left(&ring_), 0u);
+
+  // The poll owner holds the lock until it claims the slot needed for new
+  // control work. Submission must not consume any existing completion.
+  iree_io_uring_ring_sq_lock(&ring_);
+  iree_status_t status = iree_io_uring_ring_submit_pending_locked(&ring_);
+  iree_io_uring_sqe_t* control =
+      iree_status_is_ok(status) ? iree_io_uring_ring_get_sqe(&ring_) : nullptr;
+  if (control) {
+    control->opcode = IREE_IORING_OP_NOP;
+    control->user_data = ring_.sq_entries;
+  }
+  iree_io_uring_ring_sq_unlock(&ring_);
+  IREE_ASSERT_OK(status);
+  ASSERT_NE(control, nullptr);
+
+  IREE_ASSERT_OK(iree_io_uring_ring_submit(&ring_, ring_.sq_entries + 1,
+                                           IREE_IORING_ENTER_GETEVENTS));
+  ASSERT_EQ(iree_io_uring_ring_cq_count(&ring_), ring_.sq_entries + 1);
+  // Every filled slot and the control request must reach a distinct
+  // successful completion, without assuming completion order.
+  std::vector<bool> seen(ring_.sq_entries + 1);
+  for (uint32_t i = 0; i <= ring_.sq_entries; ++i) {
+    iree_io_uring_cqe_t* cqe = iree_io_uring_ring_peek_cqe(&ring_);
+    ASSERT_NE(cqe, nullptr);
+    ASSERT_LE(cqe->user_data, ring_.sq_entries);
+    EXPECT_FALSE(seen[cqe->user_data]);
+    seen[cqe->user_data] = true;
+    EXPECT_EQ(cqe->res, 0);
+    iree_io_uring_ring_cq_advance(&ring_, 1);
+  }
+  EXPECT_EQ(iree_io_uring_ring_sq_pending(&ring_), 0u);
 }
 
 TEST_F(RingTest, SubmitPreservesPublishedEntriesAfterPartialConsumption) {

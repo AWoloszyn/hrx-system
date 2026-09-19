@@ -249,6 +249,9 @@ iree_io_uring_sqe_t* iree_io_uring_ring_get_sqe(iree_io_uring_ring_t* ring);
 // Automatically calculates the number of SQEs to submit from ring state.
 // |min_complete| is the minimum number of CQEs to wait for (0 for non-blocking)
 // |flags| are IORING_ENTER_* flags.
+// On transient submission resource pressure, runs deferred kernel work without
+// waiting and reattempts admission once. Errors preserve published entries;
+// neither an error nor successful admission returns operation ownership.
 iree_status_t iree_io_uring_ring_submit(iree_io_uring_ring_t* ring,
                                         uint32_t min_complete, uint32_t flags);
 
@@ -305,7 +308,10 @@ static inline void iree_io_uring_ring_cq_advance(iree_io_uring_ring_t* ring,
 // |timeout_ns| is the timeout in nanoseconds (IREE_DURATION_ZERO for
 // non-blocking, IREE_DURATION_INFINITE for infinite wait).
 //
-// Returns OK if completions are available, DEADLINE_EXCEEDED on timeout.
+// Uses the same bounded admission recovery as submit without restarting the
+// timeout. Returns OK if completions are available, DEADLINE_EXCEEDED on
+// timeout, or a native submission/wait error without discarding published
+// entries.
 iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
                                           uint32_t min_complete,
                                           bool flush_pending,

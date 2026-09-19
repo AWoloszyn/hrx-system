@@ -426,6 +426,35 @@ static uint32_t iree_io_uring_ring_flush(iree_io_uring_ring_t* ring) {
   return tail;
 }
 
+// A submission allocation failure bypasses deferred task work in the kernel.
+// Run that work without allocating new requests, then reattempt the frozen
+// extent. Repeated failure is terminal to this attempt, never a busy retry.
+static iree_status_t iree_io_uring_ring_recover_submission(
+    iree_io_uring_ring_t* ring, uint32_t submission_tail, uint32_t min_complete,
+    uint32_t flags) {
+  int ret = 0;
+  do {
+    ret = iree_io_uring_enter(ring->ring_fd, 0, 0, IREE_IORING_ENTER_GETEVENTS,
+                              NULL, 0);
+  } while (ret < 0 && errno == EINTR);
+  if (ret < 0) {
+    return iree_make_status(iree_status_code_from_errno(errno),
+                            "io_uring recovery progress failed (%d)", errno);
+  }
+  do {
+    uint32_t head = iree_atomic_load((iree_atomic_int32_t*)ring->sq_head,
+                                     iree_memory_order_acquire);
+    ret = iree_io_uring_enter(ring->ring_fd, submission_tail - head,
+                              min_complete, flags, NULL, 0);
+  } while (ret < 0 && errno == EINTR);
+  if (ret < 0) {
+    return iree_make_status(iree_status_code_from_errno(errno),
+                            "io_uring admission failed after progress (%d)",
+                            errno);
+  }
+  return iree_ok_status();
+}
+
 static iree_status_t iree_io_uring_ring_submit_extent(
     iree_io_uring_ring_t* ring, uint32_t submission_tail, uint32_t min_complete,
     uint32_t flags) {
@@ -433,10 +462,11 @@ static iree_status_t iree_io_uring_ring_submit_extent(
   // Recompute the remaining extent on EINTR as well: the kernel may have
   // advanced its head before returning, or may not have consumed anything.
   int ret = 0;
+  uint32_t to_submit = 0;
   do {
     uint32_t head = iree_atomic_load((iree_atomic_int32_t*)ring->sq_head,
                                      iree_memory_order_acquire);
-    uint32_t to_submit = submission_tail - head;
+    to_submit = submission_tail - head;
     // GETEVENTS must run deferred task work even when no SQEs remain.
     if (to_submit == 0 && min_complete == 0 &&
         !iree_any_bit_set(flags, IREE_IORING_ENTER_GETEVENTS)) {
@@ -447,6 +477,10 @@ static iree_status_t iree_io_uring_ring_submit_extent(
   } while (ret < 0 && errno == EINTR);
 
   if (ret < 0) {
+    if (errno == EAGAIN && to_submit > 0) {
+      return iree_io_uring_ring_recover_submission(ring, submission_tail,
+                                                   min_complete, flags);
+    }
     return iree_make_status(iree_status_code_from_errno(errno),
                             "io_uring_enter failed (%d)", errno);
   }
@@ -551,6 +585,13 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
         return iree_ok_status();
       }
       // Loop retries with remaining time computed from the deadline.
+      continue;
+    }
+    if (errno == EAGAIN && to_submit > 0) {
+      // Recover admission without extending the caller's wait deadline. The
+      // next pass recomputes both the remaining extent and remaining time.
+      IREE_RETURN_IF_ERROR(iree_io_uring_ring_recover_submission(
+          ring, submission_tail, 0, IREE_IORING_ENTER_GETEVENTS));
       continue;
     }
     return iree_make_status(iree_status_code_from_errno(errno),
