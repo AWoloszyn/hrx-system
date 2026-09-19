@@ -97,6 +97,7 @@ loom_check_test_suite(
     "test/source_low/buffer_bulk.loom-test"
     "test/source_low/buffer_raw.loom-test"
     "test/source_low/index_addressing.loom-test"
+    "test/source_low/index_assume.loom-test"
     "test/source_low/lookup_table.loom-test"
     "test/source_low/memory_cache_policy_non_temporal.loom-test"
     "test/source_low/memory_cache_policy_scopes.loom-test"

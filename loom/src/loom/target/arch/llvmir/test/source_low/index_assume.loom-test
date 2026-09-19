@@ -1,0 +1,14 @@
+// RUN: emit source-low output=low
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+// Every result keeps its matching input, including mixed address domains.
+func.def target(@target) @bounded_addresses(%row: index, %column: index, %byte_offset: offset) -> (index, index, offset) {
+  %bounded_row, %bounded_column, %aligned_offset = index.assume %row, %column, %byte_offset [range(%row, 0, 31), range(%column, 0, 63), mul(%byte_offset, 16)] : index, index, offset
+  func.return %bounded_row, %bounded_column, %aligned_offset : index, index, offset
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @bounded_addresses(%bounded_row: reg<llvmir.i64>, %bounded_column: reg<llvmir.i64>, %aligned_offset: reg<llvmir.i64>) -> (reg<llvmir.i64>, reg<llvmir.i64>, reg<llvmir.i64>) asm {
+  return %bounded_row, %bounded_column, %aligned_offset
+}
