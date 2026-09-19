@@ -20,6 +20,7 @@ iree_cc_library(
     "notification.h"
     "proactor.c"
     "proactor.h"
+    "proactor_cancel.c"
     "proactor_probe.c"
     "proactor_registration.c"
     "proactor_submit.c"
@@ -215,6 +216,23 @@ iree_cc_test(
     iree::base::threading
     iree::testing::gtest
     iree::testing::gtest_main
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    proactor_cancel_test
+  SRCS
+    "proactor_cancel_test.cc"
+  DEPS
+    ::io_uring
+    iree::async
+    iree::async::types
+    iree::testing::gtest
+    iree::testing::gtest_main
+  RESOURCE_GROUP
+    io_uring
 )
 endif()
 

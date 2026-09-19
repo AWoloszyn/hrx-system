@@ -1665,10 +1665,10 @@ iree_status_t iree_async_proactor_io_uring_submit(
   // Phase 5: Flush or wake.
   //=========================================================================
 
-  int32_t poll_tid =
-      iree_atomic_load(&proactor->poll_tid, iree_memory_order_relaxed);
-  if (poll_tid != 0) {
-    if (poll_tid == (int32_t)syscall(__NR_gettid)) {
+  int32_t dispatch_tid = iree_atomic_load(&proactor->polling.dispatch_tid,
+                                          iree_memory_order_relaxed);
+  if (dispatch_tid != 0) {
+    if (dispatch_tid == (int32_t)syscall(__NR_gettid)) {
       // Poll thread during CQE processing: flush SQEs immediately for
       // latency. This gets SQEs to the kernel promptly so inline sends
       // (where the socket buffer has room) complete during io_uring_enter.

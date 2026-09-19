@@ -917,6 +917,11 @@ static inline void iree_async_proactor_wake(iree_async_proactor_t* proactor) {
 //   IREE_STATUS_OK: Cancellation request submitted (callback will fire).
 //   IREE_STATUS_NOT_FOUND: Operation not pending (already completed or
 //     never submitted). The callback will NOT fire in this case.
+//   IREE_STATUS_RESOURCE_EXHAUSTED: Cancellation was not admitted. io_uring
+//     callers other than the established poll owner can encounter a full
+//     submission queue. After the first poll, cancellation on the poll owner
+//     makes room without waiting for the target to complete. Platform
+//     submission failures still propagate; no failure returns ownership.
 //
 // Note: Even if cancel() returns OK, the operation may complete successfully
 // before the kernel processes the cancellation request. Check the callback

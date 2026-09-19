@@ -18,7 +18,9 @@
 //   during the entire get_sqe -> fill -> unlock sequence to prevent
 //   partially-filled SQEs from being flushed.
 //
-//   io_uring_enter is called OUTSIDE the lock and ONLY from the poll thread.
+//   io_uring_enter is called ONLY from the poll thread, normally outside the
+//   SQ lock. Cold-path cancellation may submit pending entries with the lock
+//   held to reserve a freed slot; that submission never waits for completions.
 //   This satisfies IORING_SETUP_SINGLE_ISSUER (only one thread may call
 //   io_uring_enter). Cross-thread submitters fill SQEs under the lock and wake
 //   the poll thread to flush via io_uring_enter.
@@ -111,7 +113,7 @@ typedef struct iree_io_uring_ring_t {
 //===----------------------------------------------------------------------===//
 
 // Acquires the SQ lock. Must be held during get_sqe, SQE fill, rollback, and
-// sq_flush sequences. The lock is NOT held during io_uring_enter.
+// sq_flush sequences. Waiting for completion must not hold the lock.
 static inline void iree_io_uring_ring_sq_lock(iree_io_uring_ring_t* ring) {
   while (iree_atomic_exchange(&ring->sq_lock, 1, iree_memory_order_acquire)) {
     while (iree_atomic_load(&ring->sq_lock, iree_memory_order_relaxed)) {
@@ -249,6 +251,14 @@ iree_io_uring_sqe_t* iree_io_uring_ring_get_sqe(iree_io_uring_ring_t* ring);
 // |flags| are IORING_ENTER_* flags.
 iree_status_t iree_io_uring_ring_submit(iree_io_uring_ring_t* ring,
                                         uint32_t min_complete, uint32_t flags);
+
+// Submits pending entries without waiting for completions or dispatching
+// callbacks. The poll owner must hold the SQ lock across this call and the
+// following get_sqe to prevent concurrent producers taking the freed slots.
+// Used by cold cancellation admission when the SQ is full. Platform failures
+// are returned without discarding published work.
+iree_status_t iree_io_uring_ring_submit_pending_locked(
+    iree_io_uring_ring_t* ring);
 
 //===----------------------------------------------------------------------===//
 // Completion queue operations

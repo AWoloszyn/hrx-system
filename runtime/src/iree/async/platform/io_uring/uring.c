@@ -426,16 +426,9 @@ static uint32_t iree_io_uring_ring_flush(iree_io_uring_ring_t* ring) {
   return tail;
 }
 
-iree_status_t iree_io_uring_ring_submit(iree_io_uring_ring_t* ring,
-                                        uint32_t min_complete, uint32_t flags) {
-  iree_io_uring_ring_sq_lock(ring);
-  uint32_t submission_tail = iree_io_uring_ring_flush(ring);
-  iree_io_uring_ring_sq_unlock(ring);
-
-  // io_uring_enter is called OUTSIDE the lock. Only the poll thread may call
-  // this (SINGLE_ISSUER constraint). Cross-thread submitters use wake() to
-  // trigger the poll thread's io_uring_enter instead.
-  //
+static iree_status_t iree_io_uring_ring_submit_extent(
+    iree_io_uring_ring_t* ring, uint32_t submission_tail, uint32_t min_complete,
+    uint32_t flags) {
   // A published entry still needs submission until the kernel consumes it.
   // Recompute the remaining extent on EINTR as well: the kernel may have
   // advanced its head before returning, or may not have consumed anything.
@@ -459,6 +452,21 @@ iree_status_t iree_io_uring_ring_submit(iree_io_uring_ring_t* ring,
   }
 
   return iree_ok_status();
+}
+
+iree_status_t iree_io_uring_ring_submit(iree_io_uring_ring_t* ring,
+                                        uint32_t min_complete, uint32_t flags) {
+  iree_io_uring_ring_sq_lock(ring);
+  uint32_t submission_tail = iree_io_uring_ring_flush(ring);
+  iree_io_uring_ring_sq_unlock(ring);
+  return iree_io_uring_ring_submit_extent(ring, submission_tail, min_complete,
+                                          flags);
+}
+
+iree_status_t iree_io_uring_ring_submit_pending_locked(
+    iree_io_uring_ring_t* ring) {
+  return iree_io_uring_ring_submit_extent(ring, iree_io_uring_ring_flush(ring),
+                                          /*min_complete=*/0, /*flags=*/0);
 }
 
 //===----------------------------------------------------------------------===//
