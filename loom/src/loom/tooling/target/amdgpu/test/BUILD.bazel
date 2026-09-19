@@ -105,6 +105,36 @@ loom_test(
 )
 
 loom_test(
+    name = "address_carrier_hardware_test",
+    srcs = [
+        "//loom/src/loom/test/corpus/conformance:address_carrier_casts.loom",
+        "//loom/src/loom/test/corpus/conformance:address_carrier_loops.loom",
+    ],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+)
+
+loom_test(
+    name = "address_carrier_access_test",
+    srcs = [
+        "//loom/src/loom/test/corpus/conformance:address_carrier_casts.loom",
+        "//loom/src/loom/test/corpus/conformance:address_carrier_loops.loom",
+    ],
+    execution_profile = AMDGPU_ACCESS_PROFILE,
+)
+
+loom_test(
+    name = "address_uniform_add_hardware_test",
+    srcs = ["//loom/src/loom/test/corpus/conformance:address_uniform_add.loom"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+)
+
+loom_test(
+    name = "address_uniform_add_access_test",
+    srcs = ["//loom/src/loom/test/corpus/conformance:address_uniform_add.loom"],
+    execution_profile = AMDGPU_ACCESS_PROFILE,
+)
+
+loom_test(
     name = "wide_shift_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:integer_wide_shifts.loom"],
     execution_profile = AMDGPU_HARDWARE_PROFILE,

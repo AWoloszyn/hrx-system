@@ -433,10 +433,10 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @paged_k
   %51, %52 = s_addc_u32 %47, %48, %50
   %53 = concat(%49, %51) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   %page = global_load_b32_saddr %42, %53
-  %60 = v_mov_b32_copy %lane
-  %61 = v_lshl_add_u32_shift_imm %page, %60, 9
-  %62 = v_lshlrev_b32_src0_inline %61, 3
-  %key_values = global_load_b64_saddr %62, %kv_view
+  %59 = v_mov_b32_copy %lane
+  %60 = v_lshl_add_u32_shift_imm %page, %59, 9
+  %61 = v_lshlrev_b32_src0_inline %60, 3
+  %key_values = global_load_b64_saddr %61, %kv_view
   return %page, %key_values
 }
 
