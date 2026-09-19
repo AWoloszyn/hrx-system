@@ -22,6 +22,7 @@
 #include "loom/target/arch/amdgpu/lower/encoding/vector_conversion.h"
 #include "loom/target/arch/amdgpu/lower/kinds.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
+#include "loom/target/arch/amdgpu/lower/table.h"
 #include "loom/target/arch/amdgpu/lower/value/vector_transform.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 #include "loom/target/arch/amdgpu/target_info_defs.h"
@@ -134,6 +135,24 @@ static iree_status_t loom_amdgpu_retain_native_vector_op(
   *out_result = (loom_target_legalizer_result_t){
       .action = LOOM_TARGET_LEGALIZER_ACTION_DEFER,
   };
+  return iree_ok_status();
+}
+
+static iree_status_t loom_amdgpu_legalize_vector_table_lookup(
+    const loom_target_legalizer_entry_t* entry,
+    loom_target_legalization_context_t* context, loom_op_t* op,
+    loom_target_legalizer_result_t* out_result) {
+  (void)entry;
+  *out_result = (loom_target_legalizer_result_t){
+      .action = LOOM_TARGET_LEGALIZER_ACTION_NO_COMMENT,
+  };
+  if (loom_amdgpu_legalizer_descriptor_set_is_amdgpu(context->descriptor_set) &&
+      (context->mode != LOOM_TARGET_LEGALIZATION_MODE_FINAL ||
+       loom_amdgpu_vector_table_lookup_is_supported(
+           context->module, context->fact_table, context->descriptor_set,
+           op))) {
+    out_result->action = LOOM_TARGET_LEGALIZER_ACTION_DEFER;
+  }
   return iree_ok_status();
 }
 
@@ -520,7 +539,7 @@ static const loom_target_legalizer_rule_t kAmdgpuLegalizerRules[] = {
     },
     {
         .root_kind = LOOM_OP_VECTOR_TABLE_LOOKUP,
-        .legalize = loom_amdgpu_retain_native_vector_op,
+        .legalize = loom_amdgpu_legalize_vector_table_lookup,
     },
     {
         .root_kind = LOOM_OP_VECTOR_DOTF,
