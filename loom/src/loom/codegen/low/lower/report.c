@@ -559,6 +559,14 @@ iree_status_t loom_low_lower_source_op_execution_count_plus_one(
   for (const loom_op_t *child = source_op,
                        *parent = source_op ? source_op->parent_op : NULL;
        parent; child = parent, parent = parent->parent_op) {
+    if (loom_region_branch_isa(
+            loom_region_branch_cast(context->module, (loom_op_t*)parent))) {
+      // Loop multiplicities do not prove entry into a conditional region.
+      // Surviving branches have no retained execution-frequency proof.
+      *out_execution_count_plus_one =
+          LOOM_LOW_LOWER_MEMORY_REPORT_EXECUTION_COUNT_PLUS_ONE_UNKNOWN;
+      return iree_ok_status();
+    }
     loom_loop_like_t loop =
         loom_loop_like_cast(context->module, (loom_op_t*)parent);
     if (!loom_loop_like_isa(loop)) {

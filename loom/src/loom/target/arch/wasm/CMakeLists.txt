@@ -92,6 +92,7 @@ loom_check_test_suite(
     "test/source_low/buffer_raw.loom-test"
     "test/source_low/carried_counter_store.loom-test"
     "test/source_low/condition_counter_store.loom-test"
+    "test/source_low/conditional_loop_counts.loom-test"
     "test/source_low/control_flow_legality.loom-test"
     "test/source_low/loop_counter_offset.loom-test"
     "test/source_low/memory_wide_carriers.loom-test"
@@ -106,9 +107,11 @@ loom_check_test_suite(
     "test/source_low/source_low_wasm32_address_boundary.loom-test"
     "test/source_low/structured_allocation.loom-test"
     "test/source_low/structured_control.loom-test"
+    "test/source_low/switch_loop_counts.loom-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/condition_counter_store.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/conditional_loop_counts.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_wide_carriers.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_constant_remainder.loom-test"
@@ -116,6 +119,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_scalar_i64_shift_counts.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_scalar_i64_subtract.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_unsigned_remainder.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/switch_loop_counts.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_v4.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
     "test/source_low/"

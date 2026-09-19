@@ -1,0 +1,38 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/conditional_loop_counts.loom-test
+// RUN: with-checks compile-report scf-to-cfg,source-to-low,low-dce
+
+x86.target<avx2> @target
+
+// Loop multiplicities do not prove branch entry in either nesting order.
+func.def target(@target) @conditional_loop_counts(%enabled: i1, %value: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %first = scf.for %iteration = [%begin to %end step %step](%accumulator = %value : i32) -> (i32) {
+    %unconditional = scalar.addi %accumulator, %value : i32
+    %sum = scf.if %enabled -> (i32) {
+      %conditional = scalar.addi %unconditional, %value : i32
+      scf.yield %conditional : i32
+    } else {
+      scf.yield %unconditional : i32
+    }
+    scf.yield %sum : i32
+  }
+  %result = scf.if %enabled -> (i32) {
+    %terminal, %total = scf.while(%before = %begin : index, %accumulator = %first : i32) -> (index, i32) {
+      %more = index.cmp ult, %before, %end : index
+      scf.condition %more, %before, %accumulator : i1, index, i32
+    } do(%position: index, %carried: i32) {
+      %sum = scalar.addi %carried, %value : i32
+      %next = index.add %position, %step : index
+      scf.yield %next, %sum : index, i32
+    }
+    scf.yield %total : i32
+  } else {
+    scf.yield %first : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: COMPILE-REPORT: source_low_selection[*] * source_op=scalar.addi * selected_ops=3 * exact_dynamic_ops=0 unknown_dynamic_ops=3 dynamic_selected_ops=0 *
