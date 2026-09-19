@@ -13,17 +13,22 @@
 #include "module.h"
 #include "result.h"
 
-static_assert((int)LOOMC_CXX_DATA_MODEL_LP64 == (int)LOOM_CXX_DATA_MODEL_LP64 &&
-                  (int)LOOMC_CXX_DATA_MODEL_LLP64 ==
-                      (int)LOOM_CXX_DATA_MODEL_LLP64 &&
-                  (int)LOOMC_CXX_DATA_MODEL_ILP32 ==
-                      (int)LOOM_CXX_DATA_MODEL_ILP32,
-              "public source layouts match the native importer");
-static_assert((int)LOOMC_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS ==
-                      (int)LOOM_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS &&
-                  (int)LOOMC_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES ==
-                      (int)LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES,
-              "public source flags match the native importer");
+IREE_STATIC_ASSERT_ENUM_EQ(LOOMC_CXX_DATA_MODEL_LP64, LOOM_CXX_DATA_MODEL_LP64,
+                           "public LP64 layout matches the native importer");
+IREE_STATIC_ASSERT_ENUM_EQ(LOOMC_CXX_DATA_MODEL_LLP64,
+                           LOOM_CXX_DATA_MODEL_LLP64,
+                           "public LLP64 layout matches the native importer");
+IREE_STATIC_ASSERT_ENUM_EQ(LOOMC_CXX_DATA_MODEL_ILP32,
+                           LOOM_CXX_DATA_MODEL_ILP32,
+                           "public ILP32 layout matches the native importer");
+IREE_STATIC_ASSERT_ENUM_EQ(
+    LOOMC_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS,
+    LOOM_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS,
+    "public approximate-functions flag matches the native importer");
+IREE_STATIC_ASSERT_ENUM_EQ(
+    LOOMC_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES,
+    LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES,
+    "public no-builtin-includes flag matches the native importer");
 
 // Invocation-local adaptation; no frontend state escapes the native import.
 typedef struct loomc_cxx_invocation_t {
