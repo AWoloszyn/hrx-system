@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "scf_for_termination.loom-test"
     "scf_index.loom-test"
     "scf_pipeline.loom-test"
     "scf_pipeline_bounds.loom-test"

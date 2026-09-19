@@ -15,6 +15,7 @@
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
 #include "loom/ops/cfg/ops.h"
+#include "loom/ops/index/carrier.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/scf/ops.h"
@@ -709,6 +710,56 @@ static iree_status_t loom_scf_to_cfg_build_for_iv_assume(
   return iree_ok_status();
 }
 
+// Consumes the structured IV range before moving the body. A unit stride or
+// aligned upper bound reaches the exclusive bound exactly; other loops need a
+// representable upper bound for the unused terminal increment.
+static bool loom_scf_to_cfg_for_increment_is_nonwrapping(
+    loom_scf_to_cfg_state_t* state, loom_op_t* op, loom_value_facts_t iv_facts,
+    loom_value_facts_t step_facts) {
+  int64_t exact_step = 0;
+  const bool step_is_exact =
+      loom_value_facts_as_exact_i64(step_facts, &exact_step);
+  if (step_is_exact && exact_step == 1) {
+    return true;
+  }
+  const loom_value_facts_t upper_facts = loom_value_fact_table_lookup(
+      state->fact_table, loom_scf_for_upper_bound(op));
+  const loom_scalar_type_t scalar_type = loom_type_element_type(
+      loom_module_value_type(state->module, loom_scf_for_lower_bound(op)));
+  // Signed intervals crossing zero do not prove a bound in an unsigned
+  // carrier.
+  if (scalar_type == LOOM_SCALAR_TYPE_OFFSET &&
+      (iv_facts.range_lo < 0 || upper_facts.range_lo < 0)) {
+    return false;
+  }
+  if (step_is_exact &&
+      (loom_value_facts_is_zero(iv_facts) ||
+       loom_value_facts_divisible_by(iv_facts, exact_step)) &&
+      (loom_value_facts_is_zero(upper_facts) ||
+       loom_value_facts_divisible_by(upper_facts, exact_step))) {
+    return true;
+  }
+  // Unsigned differences avoid host overflow when signed bounds cross zero.
+  const uint64_t maximum_step = (uint64_t)step_facts.range_hi;
+  if (iv_facts.range_hi <= upper_facts.range_lo &&
+      maximum_step <=
+          (uint64_t)upper_facts.range_lo - (uint64_t)iv_facts.range_hi) {
+    return true;
+  }
+  const int32_t bitwidth = loom_index_target_carrier_bitwidth(
+      &state->fact_table->context, scalar_type);
+  if (bitwidth <= 0) {
+    return false;
+  }
+  const uint64_t carrier_mask = UINT64_MAX >> (64 - bitwidth);
+  if (scalar_type == LOOM_SCALAR_TYPE_OFFSET) {
+    return (uint64_t)iv_facts.range_hi + maximum_step <= carrier_mask;
+  }
+  const int64_t maximum_iv = (int64_t)(carrier_mask >> 1);
+  return iv_facts.range_hi <= maximum_iv &&
+         maximum_step <= (uint64_t)maximum_iv - (uint64_t)iv_facts.range_hi;
+}
+
 static iree_status_t loom_scf_to_cfg_lower_for(
     loom_scf_to_cfg_state_t* state, loom_op_t* op,
     loom_scf_to_cfg_block_insertion_t* out_block_insertion) {
@@ -758,6 +809,8 @@ static iree_status_t loom_scf_to_cfg_lower_for(
       original_iv_name_id != LOOM_STRING_ID_INVALID &&
       loom_scf_to_cfg_for_iv_assume_is_materializable(state->fact_table, op,
                                                       original_iv_facts);
+  const bool guard_increment = !loom_scf_to_cfg_for_increment_is_nonwrapping(
+      state, op, original_iv_facts, step_facts);
 
   loom_block_t* source_block = op->parent_block;
   loom_scf_to_cfg_block_insertion_t insertion =
@@ -769,6 +822,16 @@ static iree_status_t loom_scf_to_cfg_lower_for(
   loom_block_t* body_block = NULL;
   IREE_RETURN_IF_ERROR(
       loom_scf_to_cfg_insert_block(state, &insertion, &body_block));
+  loom_block_t* advance_block = body_block;
+  loom_block_t* final_yield_block = NULL;
+  if (guard_increment) {
+    IREE_RETURN_IF_ERROR(
+        loom_scf_to_cfg_insert_block(state, &insertion, &advance_block));
+    if (op->result_count > 0) {
+      IREE_RETURN_IF_ERROR(
+          loom_scf_to_cfg_insert_block(state, &insertion, &final_yield_block));
+    }
+  }
   loom_block_t* exit_block = NULL;
   if (op->result_count > 0) {
     IREE_RETURN_IF_ERROR(
@@ -858,8 +921,42 @@ static iree_status_t loom_scf_to_cfg_lower_for(
         op->result_count, op->location));
   }
 
+  if (guard_increment) {
+    // The body guard proves a strictly positive mathematical distance to the
+    // upper bound. Its raw unsigned representation fits the carrier even when
+    // a signed domain crosses zero. Only a step strictly smaller than that
+    // distance reaches another body iteration without overflowing.
+    loom_builder_ip_t guard_ip =
+        loom_scf_to_cfg_set_block_end(state, body_block, op->parent_op);
+    loom_op_t* distance_op = NULL;
+    status = loom_index_sub_build(
+        &state->rewriter->builder, loom_scf_for_upper_bound(op), body_iv,
+        loom_module_value_type(state->module, body_iv), op->location,
+        &distance_op);
+    loom_op_t* continue_op = NULL;
+    if (iree_status_is_ok(status)) {
+      status = loom_index_cmp_build(
+          &state->rewriter->builder, LOOM_INDEX_CMP_PREDICATE_ULT,
+          loom_scf_for_step(op), loom_index_sub_result(distance_op),
+          op->location, &continue_op);
+    }
+    if (iree_status_is_ok(status)) {
+      status = loom_cfg_cond_br_build(
+          &state->rewriter->builder, loom_index_cmp_result(continue_op),
+          advance_block, final_yield_block ? final_yield_block : join_block,
+          yield_op->location, &continue_op);
+    }
+    loom_builder_restore(&state->rewriter->builder, guard_ip);
+    IREE_RETURN_IF_ERROR(status);
+    if (final_yield_block) {
+      IREE_RETURN_IF_ERROR(loom_scf_to_cfg_build_br(
+          state, final_yield_block, op->parent_op, join_block, yielded_values,
+          op->result_count, yield_op->location));
+    }
+  }
+
   loom_builder_ip_t body_ip =
-      loom_scf_to_cfg_set_block_end(state, body_block, op->parent_op);
+      loom_scf_to_cfg_set_block_end(state, advance_block, op->parent_op);
   loom_op_t* next_iv_op = NULL;
   status = loom_index_add_build(
       &state->rewriter->builder, body_iv, loom_scf_for_step(op),
@@ -877,7 +974,7 @@ static iree_status_t loom_scf_to_cfg_lower_for(
     backedge_values[i + 1] = yielded_values[i];
   }
   IREE_RETURN_IF_ERROR(loom_scf_to_cfg_build_br(
-      state, body_block, op->parent_op, header_block, backedge_values,
+      state, advance_block, op->parent_op, header_block, backedge_values,
       (uint16_t)(1 + iter_args.count), yield_op->location));
 
   IREE_RETURN_IF_ERROR(loom_scf_to_cfg_replace_results(state, op, join_args));

@@ -1,0 +1,199 @@
+// RUN: pass specialize-target-callgraph,scf-to-cfg
+
+test.target<quirky> @target
+
+func.def public target(@target) @preserves_final_yield_before_signed_wrap(%seed: i32) -> (i32) {
+  %begin = index.constant 2147483642 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %count_increment = scalar.constant 1 : i32
+  %result = scf.for %counter = [%begin to %end step %step](%count = %seed : i32) -> (i32) {
+    test.use %counter : index
+    %next_count = scalar.addi %count, %count_increment : i32
+    scf.yield %next_count : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+test.target<quirky> @target
+
+func.def public target(@target) @preserves_final_yield_before_signed_wrap(%seed: i32) -> (i32) {
+  %begin = index.constant 2147483642 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %count_increment = scalar.constant 1 : i32
+  cfg.br ^_bb1(%begin: index, %seed: i32)
+^_bb1(%11: index, %count: i32):
+  %14 = index.cmp slt, %11, %end : index
+  cfg.cond_br %14, ^_bb2, ^_bb5
+^_bb2:
+  %counter = index.assume %11 [range(%11, 2147483642, 2147483646), mul(%11, 2)] : index
+  test.use %counter : index
+  %next_count = scalar.addi %count, %count_increment : i32
+  %15 = index.sub %end, %counter : index
+  %16 = index.cmp ult, %step, %15 : index
+  cfg.cond_br %16, ^_bb3, ^_bb4
+^_bb3:
+  %17 = index.add %counter, %step : index
+  cfg.br ^_bb1(%17: index, %next_count: i32)
+^_bb4:
+  cfg.br ^_bb6(%next_count: i32)
+^_bb5:
+  cfg.br ^_bb6(%count: i32)
+^_bb6(%result: i32):
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: with-checks pass scf-to-cfg
+
+func.def @guards_unsigned_terminal_without_target(%seed: i32) -> (i32) {
+  %begin = index.constant 4294967290 : offset
+  %end = index.constant 4294967295 : offset
+  %step = index.constant 2 : offset
+  %count_increment = scalar.constant 1 : i32
+  %result = scf.for %counter = [%begin to %end step %step](%count = %seed : i32) -> (i32) {
+    test.use %counter : offset
+    %next_count = scalar.addi %count, %count_increment : i32
+    scf.yield %next_count : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *index.sub %end, %counter : offset
+CHECK: *index.cmp ult, %step, * : offset
+CHECK: *index.add %counter, %step : offset
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,scf-to-cfg
+
+test.target<quirky> @target
+
+func.def public target(@target) @guards_resultless_loop(%seed: i32) {
+  %begin = index.constant 2147483642 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  scf.for %counter = [%begin to %end step %step] {
+    test.use %counter : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *index.cmp slt, *
+CHECK: *index.cmp ult, %step, *
+CHECK: *index.add %counter, %step : index
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,scf-to-cfg
+
+test.target<low_core> @target
+
+func.def public target(@target) @keeps_fitting_wide_increment(%seed: i32) -> (i32) {
+  %begin = index.constant 2147483642 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %count_increment = scalar.constant 1 : i32
+  %result = scf.for %counter = [%begin to %end step %step](%count = %seed : i32) -> (i32) {
+    test.use %counter : index
+    %next_count = scalar.addi %count, %count_increment : i32
+    scf.yield %next_count : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *index.cmp slt, *
+CHECK: *index.add %counter, %step : index
+CHECK-NOT: *index.sub *
+CHECK-NOT: *index.cmp ult, *
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,scf-to-cfg
+
+test.target<low_core> @target
+
+func.def public target(@target) @guards_full_signed_distance(%seed: i32) -> (i32) {
+  %begin = index.constant -9223372036854775808 : index
+  %end = index.constant 9223372036854775807 : index
+  %step = index.constant 9223372036854775807 : index
+  %count_increment = scalar.constant 1 : i32
+  %result = scf.for %counter = [%begin to %end step %step](%count = %seed : i32) -> (i32) {
+    test.use %counter : index
+    %next_count = scalar.addi %count, %count_increment : i32
+    scf.yield %next_count : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *index.sub %end, * : index
+CHECK: *index.cmp ult, %step, *
+CHECK: *index.add * : index
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,scf-to-cfg
+
+test.target<quirky> @target
+
+func.def public target(@target) @keeps_aligned_terminal_bound(%seed: i32) -> (i32) {
+  %begin = index.constant 2147483640 : index
+  %end = index.constant 2147483646 : index
+  %step = index.constant 2 : index
+  %count_increment = scalar.constant 1 : i32
+  %result = scf.for %counter = [%begin to %end step %step](%count = %seed : i32) -> (i32) {
+    test.use %counter : index
+    %next_count = scalar.addi %count, %count_increment : i32
+    scf.yield %next_count : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *index.cmp slt, *
+CHECK-NOT: *index.sub *
+CHECK-NOT: *index.cmp ult, *
+
+// ====
+
+// RUN: with-checks pass scf-to-cfg
+
+func.def @keeps_unit_stride_without_target(%begin: index, %end: index) {
+  %step = index.constant 1 : index
+  scf.for %counter = [%begin to %end step %step] {
+    test.use %counter : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *index.cmp slt, *
+CHECK-NOT: *index.sub *
+CHECK-NOT: *index.cmp ult, *
+
+// ====
+
+// RUN: with-checks pass scf-to-cfg
+
+func.def @guards_dynamic_stride_without_target(%begin: index, %end: index, %stride: index, %seed: i32) -> (i32) {
+  %step = index.assume %stride [range(%stride, 1, 9223372036854775807)] : index
+  %count_increment = scalar.constant 1 : i32
+  %result = scf.for %counter = [%begin to %end step %step](%count = %seed : i32) -> (i32) {
+    test.use %counter : index
+    %next_count = scalar.addi %count, %count_increment : i32
+    scf.yield %next_count : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *index.sub %end, %counter : index
+CHECK: *index.cmp ult, %step, *
+CHECK: *index.add %counter, %step : index
