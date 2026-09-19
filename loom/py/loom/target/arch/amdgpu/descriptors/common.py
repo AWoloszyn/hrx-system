@@ -915,6 +915,7 @@ def _amdgpu_trans_schedule_classes(
 
 def _common_scalar_vector_memory_schedule_classes(
     *,
+    valu_latency_cycles: int,
     smem_load_hazards: tuple[Hazard, ...],
     smem_store_hazards: tuple[Hazard, ...],
     vmem_load_hazards: tuple[Hazard, ...],
@@ -944,7 +945,8 @@ def _common_scalar_vector_memory_schedule_classes(
         ScheduleClass(
             _SCHEDULE_VALU,
             latency_kind=LatencyKind.ESTIMATE,
-            latency_cycles=1,
+            latency_cycles=valu_latency_cycles,
+            minimum_issue_separation_cycles=valu_latency_cycles,
             issue_uses=(IssueUse(_RESOURCE_VALU, cycles=1, units=1),),
             hazards=_ALU_WAIT_HAZARDS,
             model_quality=ModelQuality.ESTIMATED,

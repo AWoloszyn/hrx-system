@@ -74,6 +74,9 @@ _AMDGPU_RDNA3_CORE_DESCRIPTOR_SET_BASE = _amdgpu_core_descriptor_set(
     ),
     schedule_classes=(
         *_common_scalar_vector_memory_schedule_classes(
+            # Result availability is distinct from the one-cycle issue rate.
+            # LLVM SISchedule.td's GFX11SpeedModel includes the VGPR read cost.
+            valu_latency_cycles=5,
             smem_load_hazards=_SMEM_WAIT_HAZARDS,
             smem_store_hazards=_SMEM_WAIT_HAZARDS,
             vmem_load_hazards=_VMEM_LOAD_WAIT_HAZARDS,

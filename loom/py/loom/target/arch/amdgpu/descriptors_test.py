@@ -968,6 +968,27 @@ def test_trans_schedule_classes_accept_descriptor_latency_overrides() -> None:
     )
 
 
+@pytest.mark.parametrize("descriptor_set", _amdgpu_core_descriptor_set_bases())
+def test_valu_schedule_class_separates_result_latency_from_issue_rate(
+    descriptor_set: DescriptorSet,
+) -> None:
+    cdna_contracts = {
+        "amdgpu.cdna3.core",
+        "amdgpu.cdna4.core",
+        "amdgpu.gfx9_4.generic.core",
+    }
+    expected_latency = 1 if descriptor_set.key in cdna_contracts else 5
+    schedule_class = next(
+        row for row in descriptor_set.schedule_classes if row.name == _SCHEDULE_VALU
+    )
+    assert schedule_class.latency_kind is LatencyKind.ESTIMATE
+    assert schedule_class.model_quality is ModelQuality.ESTIMATED
+    assert schedule_class.latency_cycles == expected_latency
+    assert schedule_class.minimum_issue_separation_cycles == expected_latency
+    assert schedule_class.schedule_distance_cycles == 0
+    assert schedule_class.issue_uses == (IssueUse(_RESOURCE_VALU, cycles=1, units=1),)
+
+
 def test_packed_dot_schedule_class_models_valu_latency() -> None:
     for descriptor_set in _amdgpu_core_descriptor_set_bases():
         schedule_classes = {
