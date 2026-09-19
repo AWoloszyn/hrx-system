@@ -472,6 +472,44 @@ TEST_F(ExecuteTest, RoundtripActualOutputPopulated) {
   loom_check_result_deinitialize(&result);
 }
 
+TEST_F(ExecuteTest, PrintedIRMustParseBeforeUpdating) {
+  loom_check_result_t result;
+  loom_check_result_initialize(iree_allocator_system(), &result);
+  const loom_text_print_options_t options = {
+      /*.flags=*/LOOM_TEXT_PRINT_DEFAULT,
+      /*.low_asm_environment=*/{},
+  };
+  bool valid = true;
+  IREE_ASSERT_OK(loom_check_validate_printed_ir(IREE_SV("%undefined\n"),
+                                                &context_, &block_pool_,
+                                                &options, &result, &valid));
+  EXPECT_FALSE(valid);
+  EXPECT_FALSE(result.has_actual_output);
+  EXPECT_GT(result.diagnostics.count, 0u);
+  EXPECT_NE(DetailString(result).find("printed IR failed to parse"),
+            std::string::npos);
+  loom_check_result_deinitialize(&result);
+}
+
+TEST_F(ExecuteTest, PrintedIRMustBeStableBeforeUpdating) {
+  loom_check_result_t result;
+  loom_check_result_initialize(iree_allocator_system(), &result);
+  const loom_text_print_options_t options = {
+      /*.flags=*/LOOM_TEXT_PRINT_DEFAULT,
+      /*.low_asm_environment=*/{},
+  };
+  bool valid = true;
+  IREE_ASSERT_OK(loom_check_validate_printed_ir(IREE_SV("func.def @f() {}"),
+                                                &context_, &block_pool_,
+                                                &options, &result, &valid));
+  EXPECT_FALSE(valid);
+  EXPECT_FALSE(result.has_actual_output);
+  EXPECT_GT(result.diff_hunks.count, 0u);
+  EXPECT_NE(DetailString(result).find("printed IR changed after reparsing"),
+            std::string::npos);
+  loom_check_result_deinitialize(&result);
+}
+
 //===----------------------------------------------------------------------===//
 // Verify tests
 //===----------------------------------------------------------------------===//

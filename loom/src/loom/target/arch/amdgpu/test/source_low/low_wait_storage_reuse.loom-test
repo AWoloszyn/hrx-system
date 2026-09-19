@@ -62,9 +62,8 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @carried_loads_reuse_address_p
 .Lbb2:
   s_waitcnt vmcnt(0) lgkmcnt(63)
   v_add_u32 v2, v2, v3
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_add_u32 v2, v2, v4
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_u32 v1, v2, v1
   global_load_b32 v2, v0, s[0:1] offset:12
   s_add_u32 s6, s0, s4
@@ -79,9 +78,8 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @carried_loads_reuse_address_p
 .Lbb3:
   v_add_u32 v0, v2, v3
   s_waitcnt vmcnt(0) lgkmcnt(63)
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_add_u32 v0, v0, v4
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_u32 v0, v0, v1
   s_endpgm
 

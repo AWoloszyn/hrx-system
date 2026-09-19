@@ -95,11 +95,10 @@ low.func.def target<amdgpu.rdna3.core>(@target) @new_producer_epoch(%a: reg<amdg
 
 // ----
   v_dual_add_f32 v4, v0, v1 :: v_dual_mul_f32 v5, v2, v3
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(SKIP_2) | instid1(VALU_DEP_1)
   v_readfirstlane_b32 s0, v4
   ds_write_b32 v0, v5 offset:0
   v_dual_add_f32 v6, v0, v1 :: v_dual_mul_f32 v7, v2, v3
-  s_delay_alu instid0(VALU_DEP_1)
   v_readfirstlane_b32 s1, v6
   v_add_f32 v0, v7, v7
   s_endpgm

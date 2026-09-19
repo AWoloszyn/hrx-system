@@ -14,6 +14,7 @@
 #include "loom/codegen/low/allocation.h"
 #include "loom/codegen/low/schedule/types.h"
 #include "loom/target/emit/native/amdgpu/branch_layout.h"
+#include "loom/target/emit/native/amdgpu/delay_layout.h"
 #include "loom/target/emit/native/amdgpu/storage_layout.h"
 #include "loom/target/emit/native/amdgpu/text_fixup.h"
 
@@ -75,14 +76,23 @@ typedef struct loom_amdgpu_encode_instruction_stream_options_t {
   loom_amdgpu_encode_instruction_stream_flags_t flags;
 } loom_amdgpu_encode_instruction_stream_options_t;
 
+// Native placement decisions shared by binary and assembly emission. The
+// encoder retains these while measuring the exact expansion of the same
+// schedule, allocation and packet plan used by each consumer.
+typedef struct loom_amdgpu_instruction_layout_t {
+  // Branch islands, or empty when every branch was directly encodable.
+  loom_amdgpu_branch_layout_t branches;
+  // Exact dependency-hint encoding indexed by the semantic wait-state plan.
+  loom_amdgpu_delay_layout_t delays;
+} loom_amdgpu_instruction_layout_t;
+
 typedef struct loom_amdgpu_encoded_instruction_stream_t {
   // Encoded executable text bytes.
   iree_const_byte_span_t text;
   // Number of native instructions encoded in |text|.
   uint64_t instruction_count;
-  // Exact branch-island layout applied to |text|, or empty when every branch
-  // was directly encodable.
-  loom_amdgpu_branch_layout_t branch_layout;
+  // Arena-owned native placement decisions applied to |text|.
+  loom_amdgpu_instruction_layout_t layout;
   // Text literal fixups resolved after final HSACO section layout.
   const loom_amdgpu_hsaco_text_fixup_t* text_fixups;
   // Number of entries in |text_fixups|.

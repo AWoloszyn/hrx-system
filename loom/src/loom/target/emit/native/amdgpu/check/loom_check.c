@@ -245,8 +245,17 @@ static iree_status_t loom_amdgpu_loom_check_emit_assembly(
   loom_amdgpu_packet_plan_t packet_plan = {0};
   IREE_RETURN_IF_ERROR(loom_amdgpu_packet_plan_build(
       &frame->schedule, &frame->allocation, arena, &packet_plan));
+  const loom_amdgpu_encode_instruction_stream_options_t encoding_options = {
+      .packet_plan = &packet_plan,
+  };
+  loom_amdgpu_encoded_instruction_stream_t stream = {0};
+  IREE_RETURN_IF_ERROR(
+      loom_amdgpu_encode_instruction_stream_result_with_options(
+          &frame->schedule, &frame->allocation, &encoding_options, &stream,
+          arena));
   const loom_amdgpu_assembly_fragment_options_t assembly_options = {
       .packet_plan = &packet_plan,
+      .instruction_layout = &stream.layout,
   };
   return loom_amdgpu_emit_assembly_fragment_with_options(
       &frame->schedule, &frame->allocation, &assembly_options, builder, arena);

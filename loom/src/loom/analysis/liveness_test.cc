@@ -315,6 +315,18 @@ func.def @sparse(%a: i32, %b: i32) -> (i32) {
   EXPECT_GE(args[0], analysis.value_count);
   ASSERT_NE(loom_liveness_interval_for_value(&analysis, args[0]), nullptr);
   ASSERT_NE(loom_liveness_interval_for_value(&analysis, args[1]), nullptr);
+
+  // The event sweep indexes intervals by region-local ordinals even when all
+  // module value IDs exceed the interval table size.
+  loom_liveness_analysis_t tree_analysis =
+      AnalyzeBodyRegionTree(module.get(), func);
+  ASSERT_GT(args[0], tree_analysis.value_count);
+  const loom_liveness_pressure_summary_t* pressure =
+      FindScalarPressure(tree_analysis, LOOM_SCALAR_TYPE_I32);
+  ASSERT_NE(pressure, nullptr);
+  EXPECT_EQ(pressure->peak_live_units, 2u);
+  EXPECT_EQ(pressure->peak_live_values, 2u);
+  EXPECT_EQ(pressure->peak_point, 0u);
 }
 
 TEST_F(LivenessTest, CfgLiveInOutUsesSuccessorEdgesAndBranchOperands) {
@@ -516,8 +528,11 @@ func.def @region_tree_pressure(%input: tile<4xf32>, %bias: f32) -> (tile<4xf32>)
   const loom_liveness_pressure_summary_t* pressure =
       FindScalarPressure(analysis, LOOM_SCALAR_TYPE_F32);
   ASSERT_NE(pressure, nullptr);
-  EXPECT_GE(pressure->peak_live_units, 1u);
-  EXPECT_GE(pressure->peak_live_values, 1u);
+  // The captured bias overlaps one nested temporary at a time. Successive
+  // temporary intervals meet at half-open boundaries without extra pressure.
+  EXPECT_EQ(pressure->peak_live_units, 2u);
+  EXPECT_EQ(pressure->peak_live_values, 2u);
+  EXPECT_EQ(pressure->peak_point, 1u);
 
   ASSERT_EQ(analysis.operation_count, 7u);
   const loom_liveness_operation_point_t& map_point =

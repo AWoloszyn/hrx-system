@@ -68,10 +68,9 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) @bf16_two_k_block_loads_
   v_mov_b32 v14, v8
   v_mov_b32 v15, v8
   s_waitcnt vmcnt(4) lgkmcnt(63)
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(SKIP_1) | instid1(VALU_DEP_1)
   v_wmma_f32_16x16x16_bf16 v[8:15], v[16:23], v[24:31], v[8:15]
   s_waitcnt vmcnt(0) lgkmcnt(63)
-  s_delay_alu instid0(VALU_DEP_1)
   v_wmma_f32_16x16x16_bf16 v[8:15], v[32:39], v[40:47], v[8:15]
   global_store_b32 v0, v8, s[4:5] offset:0
   global_store_b32 v0, v9, s[4:5] offset:128
@@ -294,71 +293,59 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @gfx1250_fp8_materialize
   s_wait_loadcnt loadcnt(1)
   v_lshrrev_b32 v3, 16, v4
   v_cvt_pk_f32_fp8 v[36:37], v4
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(NEXT) | instid1(VALU_DEP_2)
   v_cvt_pk_f32_fp8 v[38:39], v3
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v40, v36, v37
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(SKIP_2) | instid1(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v41, v38, v39
   v_lshrrev_b32 v3, 16, v5
   v_cvt_pk_f32_fp8 v[4:5], v5
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_f32_fp8 v[36:37], v3
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(NEXT) | instid1(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v42, v4, v5
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v43, v36, v37
   v_lshrrev_b32 v3, 16, v6
   v_cvt_pk_f32_fp8 v[4:5], v6
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(NEXT) | instid1(VALU_DEP_2)
   v_cvt_pk_f32_fp8 v[36:37], v3
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v44, v4, v5
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(SKIP_2) | instid1(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v45, v36, v37
   v_lshrrev_b32 v3, 16, v7
   v_cvt_pk_f32_fp8 v[4:5], v7
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_f32_fp8 v[6:7], v3
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(NEXT) | instid1(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v46, v4, v5
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v47, v6, v7
   s_delay_alu instid0(VALU_DEP_1) | instid1(VALU_DEP_2)
   v_wmma_f32_16x16x32_bf16 v[8:15], v[16:23], v[40:47], v[8:15]
   s_wait_loadcnt loadcnt(0)
   v_lshrrev_b32 v3, 16, v32
   v_cvt_pk_f32_fp8 v[4:5], v32
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(SKIP_1) | instid1(VALU_DEP_3)
   v_cvt_pk_f32_fp8 v[6:7], v3
   v_nop
-  s_delay_alu instid0(VALU_DEP_3)
   v_cvt_pk_bf16_f32 v16, v4, v5
-  s_delay_alu instid0(VALU_DEP_3)
+  s_delay_alu instid0(VALU_DEP_3) | instskip(SKIP_2) | instid1(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v17, v6, v7
   v_lshrrev_b32 v3, 16, v33
   v_cvt_pk_f32_fp8 v[4:5], v33
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_f32_fp8 v[6:7], v3
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(NEXT) | instid1(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v18, v4, v5
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v19, v6, v7
   v_lshrrev_b32 v3, 16, v34
   v_cvt_pk_f32_fp8 v[4:5], v34
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(NEXT) | instid1(VALU_DEP_2)
   v_cvt_pk_f32_fp8 v[6:7], v3
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v20, v4, v5
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(SKIP_2) | instid1(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v21, v6, v7
   v_lshrrev_b32 v3, 16, v35
   v_cvt_pk_f32_fp8 v[4:5], v35
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_f32_fp8 v[6:7], v3
-  s_delay_alu instid0(VALU_DEP_2)
+  s_delay_alu instid0(VALU_DEP_2) | instskip(NEXT) | instid1(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v22, v4, v5
-  s_delay_alu instid0(VALU_DEP_2)
   v_cvt_pk_bf16_f32 v23, v6, v7
   s_delay_alu instid0(VALU_DEP_1) | instid1(VALU_DEP_2)
   v_wmma_f32_16x16x32_bf16 v[8:15], v[24:31], v[16:23], v[8:15]
@@ -736,11 +723,10 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) @wmma_overlap(%workitem_
   v_mov_b32 v14, v8
   v_mov_b32 v15, v8
   s_waitcnt vmcnt(4) lgkmcnt(63)
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(SKIP_2) | instid1(VALU_DEP_2)
   v_wmma_f32_16x16x16_bf16 v[8:15], v[16:23], v[24:31], v[8:15]
   v_lshlrev_b32 v0, 2, v0
   s_waitcnt vmcnt(0) lgkmcnt(63)
-  s_delay_alu instid0(VALU_DEP_2)
   v_wmma_f32_16x16x16_bf16 v[8:15], v[32:39], v[40:47], v[8:15]
   global_store_b32 v0, v8, s[4:5] offset:0
   global_store_b32 v0, v9, s[4:5] offset:128

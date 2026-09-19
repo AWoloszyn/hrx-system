@@ -14,6 +14,8 @@ kernel.def target(@target) @reordered_counted_loop() {
   %base = index.constant 0 : offset
   %output_view = buffer.view %output[%base] : buffer -> view<4xi32>
   cfg.br ^preheader
+^preheader:
+  cfg.br ^header(%loop_begin: index)
 ^header(%position: index):
   %more = index.cmp slt, %position, %end : index
   cfg.cond_br %more, ^body, ^exit
@@ -24,8 +26,6 @@ kernel.def target(@target) @reordered_counted_loop() {
   cfg.br ^header(%next: index)
 ^exit:
   kernel.return
-^preheader:
-  cfg.br ^header(%loop_begin: index)
 }
 
 // ----

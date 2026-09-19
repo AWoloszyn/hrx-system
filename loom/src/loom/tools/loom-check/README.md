@@ -9,6 +9,10 @@ an explicit `// ----` expectation is present. Creating or updating an expectatio
 does not change the output representation. `with-locations` retains that
 assembly form while including source locations.
 
+Roundtrip mode and successful pass IR output are reparsed and printed again
+before comparison. An expectation can only be updated when the output parses
+and its canonical text remains stable.
+
 ## Choosing The Test Boundary
 
 C++ unit tests own API contracts and focused functionality. IR programs belong

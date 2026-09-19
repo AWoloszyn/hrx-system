@@ -14,6 +14,7 @@ loom_cc_library(
     printer_impl
   HDRS
     "atoms.h"
+    "block_order.h"
     "context.h"
     "format.h"
     "format_regions.h"
@@ -26,6 +27,7 @@ loom_cc_library(
     "regions.h"
   SRCS
     "atoms.c"
+    "block_order.c"
     "context.c"
     "format.c"
     "format_regions.c"
@@ -45,8 +47,25 @@ loom_cc_library(
     loom::ops::op_defs
     loom::ops::type_registry
     loom::target::registers
+    loom::util::cfg_dominance
+    loom::util::cfg_graph
     loom::util::stream
   PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    block_order_test
+  SRCS
+    "block_order_test.cc"
+  DEPS
+    ::printer_impl
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::cfg
+    loom::ops::test
 )
 
 loom_cc_test(

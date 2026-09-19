@@ -9,6 +9,7 @@
 #include <inttypes.h>
 
 #include "loom/format/text/printer/atoms.h"
+#include "loom/format/text/printer/block_order.h"
 #include "loom/format/text/printer/format_signatures.h"
 #include "loom/format/text/printer/regions.h"
 #include "loom/ir/context.h"
@@ -881,16 +882,16 @@ static iree_status_t loom_print_low_asm_statement(
   return iree_ok_status();
 }
 
-static iree_status_t loom_print_low_asm_region_body(
+static iree_status_t loom_print_low_asm_region_blocks(
     loom_print_context_t* ctx, const loom_region_t* region,
     const loom_region_descriptor_t* region_descriptor,
     const loom_text_low_asm_descriptor_set_t* descriptor_set,
-    bool entry_args_declared_by_parent) {
+    const loom_print_block_order_t* order, bool entry_args_declared_by_parent) {
   if (!region || region->block_count == 0) {
     return iree_ok_status();
   }
-  for (uint16_t block_index = 0; block_index < region->block_count;
-       ++block_index) {
+  for (uint16_t position = 0; position < region->block_count; ++position) {
+    uint16_t block_index = loom_print_block_order_index(order, position);
     const loom_block_t* block = loom_region_const_block(region, block_index);
     const bool entry_block = block_index == 0;
     const bool block_args_declared_by_parent =
@@ -939,6 +940,21 @@ static iree_status_t loom_print_low_asm_region_body(
     }
   }
   return iree_ok_status();
+}
+
+static iree_status_t loom_print_low_asm_region_body(
+    loom_print_context_t* ctx, const loom_region_t* region,
+    const loom_region_descriptor_t* region_descriptor,
+    const loom_text_low_asm_descriptor_set_t* descriptor_set,
+    bool entry_args_declared_by_parent) {
+  loom_print_block_order_t order = {0};
+  IREE_RETURN_IF_ERROR(
+      loom_print_block_order_initialize(ctx->module, region, &order));
+  iree_status_t status = loom_print_low_asm_region_blocks(
+      ctx, region, region_descriptor, descriptor_set, &order,
+      entry_args_declared_by_parent);
+  loom_print_block_order_deinitialize(&order);
+  return status;
 }
 
 static iree_status_t loom_print_low_asm_prepare_region(

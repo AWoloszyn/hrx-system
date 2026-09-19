@@ -487,48 +487,50 @@ low.func.def target<test.low.core>(@target) @machine(%value: reg<test.i32>) -> (
 // ====
 
 
-// CFG layout need not follow dominance. The definition at the end of the
-// region is visited before its users along the reverse-layout chain.
+// A non-entry definition remains available through a chain of blocks.
 // RUN: pass low-cse
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) @reverse_layout_dominance(%row: reg<test.i32>) -> (reg<test.i32>, reg<test.i32>) asm {
+low.func.def target<test.low.core>(@test_target) @chain_dominance(%row: reg<test.i32>) -> (reg<test.i32>, reg<test.i32>) asm {
   low.br ^define
-^finish:
-  %finish_bytes = test.add.i32 %row, %row
-  return %finish_bytes, %row
-^forward:
-  %forward_bytes = test.add.i32 %row, %row
-  low.br ^finish
 ^define:
   %row_bytes = test.add.i32 %row, %row
   low.br ^forward
+^forward:
+  %forward_bytes = test.add.i32 %row, %row
+  low.br ^finish
+^finish:
+  %finish_bytes = test.add.i32 %row, %row
+  return %finish_bytes, %row
 }
 
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) @reverse_layout_dominance(%row: reg<test.i32>) -> (reg<test.i32>, reg<test.i32>) asm {
+low.func.def target<test.low.core>(@test_target) @chain_dominance(%row: reg<test.i32>) -> (reg<test.i32>, reg<test.i32>) asm {
   low.br ^define
-^finish:
-  return %row_bytes, %row
-^forward:
-  low.br ^finish
 ^define:
   %row_bytes = test.add.i32 %row, %row
   low.br ^forward
+^forward:
+  low.br ^finish
+^finish:
+  return %row_bytes, %row
 }
 
 // ====
 
 
-// A loop header still dominates its body when source order puts the body
-// first. The backedge must neither skip the body nor schedule it repeatedly.
+// A loop header dominates its body. The backedge must neither skip the body
+// nor schedule it repeatedly.
 // RUN: pass low-cse
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) @nonlexical_loop_dominance(%cond: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
+low.func.def target<test.low.core>(@test_target) @loop_dominance(%cond: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
   low.br ^header
+^header:
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %cond, ^body, ^finish : reg<test.i32>
 ^body:
   %body_bytes = test.add.i32 %row, %row
   %body_result = test.add.i32 %body_bytes, %row
@@ -536,24 +538,21 @@ low.func.def target<test.low.core>(@test_target) @nonlexical_loop_dominance(%con
 ^finish:
   %finish_bytes = test.add.i32 %row, %row
   return %finish_bytes
-^header:
-  %row_bytes = test.add.i32 %row, %row
-  low.cond_br %cond, ^body, ^finish : reg<test.i32>
 }
 
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) @nonlexical_loop_dominance(%cond: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
+low.func.def target<test.low.core>(@test_target) @loop_dominance(%cond: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
   low.br ^header
+^header:
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %cond, ^body, ^finish : reg<test.i32>
 ^body:
   %body_result = test.add.i32 %row_bytes, %row
   low.br ^header
 ^finish:
   return %row_bytes
-^header:
-  %row_bytes = test.add.i32 %row, %row
-  low.cond_br %cond, ^body, ^finish : reg<test.i32>
 }
 
 // ====

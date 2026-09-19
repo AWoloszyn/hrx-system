@@ -328,6 +328,36 @@ TEST_F(NamePlanTest, StaticAtomsDoNotAllocateNamePlans) {
   EXPECT_EQ(allocation_count_, allocation_count);
 }
 
+TEST_F(NamePlanTest, CaptureScratchAllocationFailuresLeaveAnEmptyPlan) {
+  for (int i = 0; i < 512; ++i) {
+    Constant("extent");
+  }
+  for (int i = 0; i < 2048; ++i) {
+    const std::string name = "attribute_" + std::to_string(i);
+    loom_string_id_t name_id;
+    IREE_ASSERT_OK(loom_module_intern_string(
+        module_, iree_make_string_view(name.data(), name.size()), &name_id));
+  }
+  iree_arena_block_pool_trim(&pool_);
+  const size_t before = allocation_count_;
+  loom_print_name_plan_t plan = {};
+  IREE_ASSERT_OK(loom_print_name_plan_initialize(module_, &plan));
+  const size_t allocation_count = allocation_count_ - before;
+  loom_print_name_plan_deinitialize(&plan);
+  EXPECT_GE(allocation_count, 4u);
+  for (size_t successful_allocations = 0;
+       successful_allocations < allocation_count; ++successful_allocations) {
+    SCOPED_TRACE(successful_allocations);
+    iree_arena_block_pool_trim(&pool_);
+    allocations_until_failure_ = static_cast<int>(successful_allocations);
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                          loom_print_name_plan_initialize(module_, &plan));
+    EXPECT_EQ(plan.resolutions, nullptr);
+    EXPECT_EQ(plan.arena.block_pool, nullptr);
+    loom_print_name_plan_deinitialize(&plan);
+  }
+}
+
 TEST_F(NamePlanTest, StandaloneTypePropagatesNamePlanAllocationFailure) {
   auto dimension = Constant("extent");
   Constant("extent");

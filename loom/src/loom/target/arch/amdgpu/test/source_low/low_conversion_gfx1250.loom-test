@@ -51,9 +51,8 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @gfx1250_native_packed_f
   v_cvt_scale_pk8_bf16_bf8 v[8:11], v[4:5], v3, scale_sel:0
   v_cvt_scale_pk8_f32_bf8 v[8:15], v[4:5], v3, scale_sel:3
   v_pk_add_bf16 v1, v0, v3
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_pk_mul_bf16 v1, v1, v3
-  s_delay_alu instid0(VALU_DEP_1)
   v_pk_fma_bf16 v0, v0, v3, v1
   s_endpgm
 

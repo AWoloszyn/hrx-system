@@ -10,6 +10,9 @@
 // canonical textual IR. One generic function handles all ops — no per-op
 // code. The printer is read-only over the IR (unless location capture
 // is enabled, which updates op locations to point at the output).
+// Region bodies print reachable blocks in dominance order, followed by
+// unreachable blocks in physical order. Already ordered blocks retain their
+// order; serialization never rearranges the module's block tables.
 //
 // All output goes through a loom_output_stream_t. Anonymous SSA names require
 // no name-plan allocation. Explicit names are resolved once per invocation in

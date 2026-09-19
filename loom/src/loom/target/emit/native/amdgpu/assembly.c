@@ -15,6 +15,7 @@
 #include "loom/target/arch/amdgpu/planning/packet_plan.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 #include "loom/target/arch/amdgpu/target_info.h"
+#include "loom/target/emit/native/amdgpu/encoding.h"
 #include "loom/target/emit/native/amdgpu/register_class.h"
 #include "loom/target/emit/native/amdgpu/storage_layout.h"
 #include "loom/target/emit/native/assembly.h"
@@ -89,6 +90,8 @@ typedef struct loom_amdgpu_assembly_emit_state_t {
   loom_amdgpu_assembly_packet_plan_state_t packet_plan;
   // Function-local branch placement and emission cursors.
   loom_amdgpu_assembly_branch_state_t branches;
+  // Exact hint immediates indexed by the semantic wait-state plan.
+  const loom_amdgpu_delay_layout_t* delay_layout;
   // Packet traversal and simulated architectural state.
   loom_amdgpu_assembly_traversal_state_t traversal;
 } loom_amdgpu_assembly_emit_state_t;
@@ -2298,15 +2301,22 @@ static iree_status_t loom_amdgpu_append_s_nop_cycles(
 
 static iree_status_t loom_amdgpu_append_wait_state_action(
     const loom_native_assembly_packet_context_t* context,
-    const loom_amdgpu_wait_state_t* wait_state) {
+    const loom_amdgpu_wait_state_t* wait_state,
+    const loom_amdgpu_assembly_emit_state_t* state) {
   switch (wait_state->action) {
     case LOOM_AMDGPU_WAIT_STATE_ACTION_S_NOP:
       return loom_amdgpu_append_s_nop_cycles(context, wait_state->cycle_count);
     case LOOM_AMDGPU_WAIT_STATE_ACTION_S_DELAY_ALU: {
+      const uint16_t immediate =
+          state->delay_layout
+              ->immediates[state->packet_plan.next_wait_state_index];
+      if (immediate == 0) {
+        return iree_ok_status();
+      }
       IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(
           context->builder, "  s_delay_alu "));
-      IREE_RETURN_IF_ERROR(loom_amdgpu_append_delay_alu_immediate(
-          context, wait_state->delay_alu_immediate));
+      IREE_RETURN_IF_ERROR(
+          loom_amdgpu_append_delay_alu_immediate(context, immediate));
       return iree_string_builder_append_cstring(context->builder, "\n");
     }
     case LOOM_AMDGPU_WAIT_STATE_ACTION_V_NOP:
@@ -2340,7 +2350,7 @@ static iree_status_t loom_amdgpu_append_wait_states_before_packet(
       return iree_ok_status();
     }
     IREE_RETURN_IF_ERROR(
-        loom_amdgpu_append_wait_state_action(context, wait_state));
+        loom_amdgpu_append_wait_state_action(context, wait_state, state));
     ++state->packet_plan.next_wait_state_index;
   }
   return iree_ok_status();
@@ -3673,13 +3683,16 @@ iree_status_t loom_amdgpu_emit_assembly_fragment_with_options(
       packet_plan ? &packet_plan->wait_states : NULL;
   const loom_amdgpu_vopd_plan_t* vopd_plan =
       packet_plan ? &packet_plan->vopd_plan : NULL;
+  const loom_amdgpu_instruction_layout_t* instruction_layout =
+      options ? options->instruction_layout : NULL;
   const loom_amdgpu_branch_layout_t* branch_layout =
-      options && options->branch_layout && options->branch_layout->island_count
-          ? options->branch_layout
+      instruction_layout && instruction_layout->branches.island_count
+          ? &instruction_layout->branches
           : NULL;
 
   loom_amdgpu_assembly_emit_state_t emit_state = {
       .storage_layout = storage_layout,
+      .delay_layout = instruction_layout ? &instruction_layout->delays : NULL,
       .packet_plan =
           {
               .address_state = address_state,

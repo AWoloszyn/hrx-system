@@ -29,6 +29,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/codegen/low/verify.h"
 #include "loom/error/diagnostic.h"
+#include "loom/format/text/printer.h"
 #include "loom/ir/context.h"
 #include "loom/pass/registry.h"
 #include "loom/target/legalization.h"
@@ -451,8 +452,16 @@ iree_status_t loom_check_execute_case(
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);
 
-// Strips comments from input, parses, prints, and compares against the
-// expected section. On mismatch, appends a unified diff to result->detail
+// Reparses printed IR and checks that canonical printing is stable. Content
+// failures set |out_valid| to false and append diagnostics to |result|.
+iree_status_t loom_check_validate_printed_ir(
+    iree_string_view_t source, loom_context_t* context,
+    iree_arena_block_pool_t* block_pool,
+    const loom_text_print_options_t* print_options, loom_check_result_t* result,
+    bool* out_valid);
+
+// Strips comments from input, parses, prints, reparses, and compares against
+// the expected section. On mismatch, appends a unified diff to result->detail
 // and copies the printed output to result->actual_output for --update.
 iree_status_t loom_check_execute_roundtrip(
     const loom_test_case_t* test_case, iree_string_view_t filename,

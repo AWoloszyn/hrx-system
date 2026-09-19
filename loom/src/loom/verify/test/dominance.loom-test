@@ -1,32 +1,34 @@
-// A dominating definition may appear after its use in source block order.
-// CSE produces that layout from authored input with locally defined operands.
+// CSE reuses dominating definitions across blocks in canonical text order.
 // RUN: pass cse
-func.def @reverse_layout(%row: i32) -> (i32) {
+func.def @cross_block_reuse(%row: i32) -> (i32) {
   cfg.br ^define
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
 ^use:
   %local_bytes = test.addi %row, %row : i32
   func.return %local_bytes : i32
-^define:
-  %row_bytes = test.addi %row, %row : i32
-  cfg.br ^use
 }
 
 // ----
-func.def @reverse_layout(%row: i32) -> (i32) {
+func.def @cross_block_reuse(%row: i32) -> (i32) {
   cfg.br ^define
-^use:
-  func.return %row_bytes : i32
 ^define:
   %row_bytes = test.addi %row, %row : i32
   cfg.br ^use
+^use:
+  func.return %row_bytes : i32
 }
 
 // ====
 
 // Loop headers dominate their bodies regardless of source layout or backedges.
 // RUN: pass cse
-func.def @reverse_loop(%condition: i1, %row: i32) -> (i32) {
+func.def @loop_reuse(%condition: i1, %row: i32) -> (i32) {
   cfg.br ^header
+^header:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.cond_br %condition, ^body, ^exit
 ^body:
   %body_bytes = test.addi %row, %row : i32
   test.use %body_bytes : i32
@@ -34,22 +36,19 @@ func.def @reverse_loop(%condition: i1, %row: i32) -> (i32) {
 ^exit:
   %exit_bytes = test.addi %row, %row : i32
   func.return %exit_bytes : i32
-^header:
-  %row_bytes = test.addi %row, %row : i32
-  cfg.cond_br %condition, ^body, ^exit
 }
 
 // ----
-func.def @reverse_loop(%condition: i1, %row: i32) -> (i32) {
+func.def @loop_reuse(%condition: i1, %row: i32) -> (i32) {
   cfg.br ^header
+^header:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.cond_br %condition, ^body, ^exit
 ^body:
   test.use %row_bytes : i32
   cfg.br ^header
 ^exit:
   func.return %row_bytes : i32
-^header:
-  %row_bytes = test.addi %row, %row : i32
-  cfg.cond_br %condition, ^body, ^exit
 }
 
 // ====
@@ -116,8 +115,11 @@ func.def @join_argument(%condition: i1, %row: i32) -> (i32) {
 
 // Nested structured regions inherit the containing block's actual dominators.
 // RUN: pass cse
-func.def @nested_reverse_layout(%condition: i1, %row: i32) {
+func.def @nested_cross_block_reuse(%condition: i1, %row: i32) {
   cfg.br ^define
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
 ^use:
   scf.if %condition {
     %local_bytes = test.addi %row, %row : i32
@@ -126,14 +128,14 @@ func.def @nested_reverse_layout(%condition: i1, %row: i32) {
     test.use %row : i32
   }
   func.return
-^define:
-  %row_bytes = test.addi %row, %row : i32
-  cfg.br ^use
 }
 
 // ----
-func.def @nested_reverse_layout(%condition: i1, %row: i32) {
+func.def @nested_cross_block_reuse(%condition: i1, %row: i32) {
   cfg.br ^define
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
 ^use:
   scf.if %condition {
     test.use %row_bytes : i32
@@ -141,9 +143,6 @@ func.def @nested_reverse_layout(%condition: i1, %row: i32) {
     test.use %row : i32
   }
   func.return
-^define:
-  %row_bytes = test.addi %row, %row : i32
-  cfg.br ^use
 }
 
 // ====
@@ -162,6 +161,20 @@ func.def @nested_sibling_scope(%condition: i1, %row: i32) {
   } else {
   }
   func.return
+}
+
+// ====
+
+// A later producer cannot declare an SSA value for an earlier block in text.
+// RUN: verify
+func.def @forward_block_value(%row: i32) -> (i32) {
+  cfg.br ^define
+^use:
+  // ERROR@+1: PARSE/001
+  func.return %row_bytes : i32
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
 }
 
 // ====
@@ -189,7 +202,7 @@ func.def @unreachable_local(%row: i32) -> (i32) {
 // ====
 
 // Non-returning inlining may leave dead code using former live definitions.
-// Dead blocks retain region scope; inter-block dominance is vacuous there.
+// Dead blocks retain previously defined values from their region.
 // RUN: verify
 func.def @unreachable_capture(%row: i32) -> (i32) {
   func.return %row : i32
@@ -201,26 +214,26 @@ func.def @unreachable_capture(%row: i32) -> (i32) {
 
 // SSA references embedded in types obey the same CFG visibility as operands.
 // RUN: pass cse
-func.def @reverse_encoding(%buffer: buffer, %offset: offset) {
+func.def @cross_block_encoding(%buffer: buffer, %offset: offset) {
   cfg.br ^define
+^define:
+  %source_layout = encoding.layout.dense : encoding<layout>
+  cfg.br ^use
 ^use:
   %layout = encoding.layout.dense : encoding<layout>
   %view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %layout>
   func.return
-^define:
-  %source_layout = encoding.layout.dense : encoding<layout>
-  cfg.br ^use
 }
 
 // ----
-func.def @reverse_encoding(%buffer: buffer, %offset: offset) {
+func.def @cross_block_encoding(%buffer: buffer, %offset: offset) {
   cfg.br ^define
-^use:
-  %view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %source_layout>
-  func.return
 ^define:
   %source_layout = encoding.layout.dense : encoding<layout>
   cfg.br ^use
+^use:
+  %view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %source_layout>
+  func.return
 }
 
 // ====
@@ -241,14 +254,14 @@ func.def @sibling_encoding(%condition: i1, %buffer: buffer, %offset: offset) {
 
 // Dependent block arguments can reference their sibling layout argument.
 // RUN: verify
-func.def @reverse_dependent_arguments(%buffer: buffer, %offset: offset) {
+func.def @dependent_arguments(%buffer: buffer, %offset: offset) {
   cfg.br ^define
-^use(%layout: encoding<layout>, %view: view<4xf32, %layout>):
-  func.return
 ^define:
   %source_layout = encoding.layout.dense : encoding<layout>
   %source_view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %source_layout>
   cfg.br ^use(%source_layout: encoding<layout>, %source_view: view<4xf32, %source_layout>)
+^use(%layout: encoding<layout>, %view: view<4xf32, %layout>):
+  func.return
 }
 
 // ====
@@ -296,6 +309,21 @@ func.def @nested_dead_capture(%condition: i1, %row: i32) {
     test.use %dead_bytes : i32
   } else {
   }
+  func.return
+}
+
+// ====
+
+// Earlier dead definitions remain available in later block argument types.
+// RUN: verify
+func.def @dead_dependent_type(%row: i32) {
+  func.return
+^define:
+  %count = test.constant 4 : index
+  %tile = test.convert %row : i32 -> tile<[%count]xf32>
+  cfg.br ^use(%tile: tile<[%count]xf32>)
+^use(%argument: tile<[%count]xf32>):
+  test.use %argument : tile<[%count]xf32>
   func.return
 }
 

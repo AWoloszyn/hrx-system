@@ -98,9 +98,8 @@ low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_target) @gfx11_wmma_depend
 
 // ----
   v_wmma_f32_16x16x16_f16 v[0:7], v[8:15], v[16:23], v[0:7]
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_wmma_f32_16x16x16_f16 v[0:7], v[8:15], v[16:23], v[0:7]
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_f32 v0, v0, v24
   s_endpgm
 

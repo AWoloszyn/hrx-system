@@ -16,12 +16,12 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scalar_l
 ^body:
   %next = add.i64 %position, %one
   low.br ^header(%next: reg<llvmir.i64>, %updated: reg<llvmir.i32>)
+^exit:
+  return %sum
 ^dead:
   %unused = const.i64 99
   %unused_sum = const.i32 99
   low.br ^header(%unused: reg<llvmir.i64>, %unused_sum: reg<llvmir.i32>)
-^exit:
-  return %sum
 }
 
 // ----

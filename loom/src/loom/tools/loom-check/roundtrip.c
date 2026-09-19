@@ -11,6 +11,52 @@
 #include "loom/tools/loom-check/comparison.h"
 #include "loom/tools/loom-check/execute.h"
 
+iree_status_t loom_check_validate_printed_ir(
+    iree_string_view_t source, loom_context_t* context,
+    iree_arena_block_pool_t* block_pool,
+    const loom_text_print_options_t* print_options, loom_check_result_t* result,
+    bool* out_valid) {
+  *out_valid = false;
+  loom_check_diagnostic_capture_t diagnostic_capture = {
+      .detail = &result->detail,
+      .result = result,
+  };
+  const loom_text_parse_options_t parse_options = {
+      .diagnostic_sink = {.fn = loom_check_diagnostic_capture_sink,
+                          .user_data = &diagnostic_capture},
+      .max_errors = 20,
+      .low_asm_environment = print_options->low_asm_environment,
+  };
+  loom_module_t* module = NULL;
+  IREE_RETURN_IF_ERROR(loom_text_parse(source, IREE_SV("<printed IR>"), context,
+                                       block_pool, &parse_options, &module));
+  if (!module) {
+    return iree_string_builder_append_cstring(&result->detail,
+                                              "printed IR failed to parse\n");
+  }
+
+  iree_string_builder_t reprinted;
+  iree_string_builder_initialize(result->detail.allocator, &reprinted);
+  iree_status_t status = loom_text_print_module_to_builder_with_options(
+      module, &reprinted, print_options);
+  loom_module_free(module);
+  if (iree_status_is_ok(status)) {
+    *out_valid =
+        iree_string_view_equal(source, iree_string_builder_view(&reprinted));
+    if (!*out_valid) {
+      status = iree_string_builder_append_cstring(
+          &result->detail, "printed IR changed after reparsing\n");
+      if (iree_status_is_ok(status)) {
+        status = loom_check_result_record_diff(
+            source, iree_string_builder_view(&reprinted),
+            result->detail.allocator, result);
+      }
+    }
+  }
+  iree_string_builder_deinitialize(&reprinted);
+  return status;
+}
+
 static loom_text_print_flags_t loom_check_roundtrip_print_flags(
     const loom_test_case_t* test_case) {
   loom_text_print_flags_t flags =
@@ -81,6 +127,14 @@ iree_status_t loom_check_execute_roundtrip(
       module, &result->actual_output, &print_options);
   loom_module_free(module);
   IREE_RETURN_IF_ERROR(print_status);
+  bool valid_output = false;
+  IREE_RETURN_IF_ERROR(loom_check_validate_printed_ir(
+      iree_string_builder_view(&result->actual_output), context, block_pool,
+      &print_options, result, &valid_output));
+  if (!valid_output) {
+    result->raw_outcome = LOOM_CHECK_FAIL;
+    return iree_ok_status();
+  }
   result->has_actual_output = true;
 
   return loom_check_compare_output(test_case, allocator, result);

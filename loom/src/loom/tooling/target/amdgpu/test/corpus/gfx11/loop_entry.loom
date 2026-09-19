@@ -82,8 +82,8 @@ check.case public @loop_before_outer_guard_case {
   check.return
 }
 
-// The preheader follows both latches in textual order. Even lanes advance by
-// one, odd lanes by two; every lane reaches its even bound exactly.
+// Even lanes advance by one, odd lanes by two; every lane reaches its even
+// bound exactly through its selected latch.
 kernel.def target(@loop_entry_wave64) @reordered_loop_latches() {
   %unit = index.constant 1 : index
   %size = index.constant 64 : index
@@ -99,6 +99,8 @@ kernel.def target(@loop_entry_wave64) @reordered_loop_latches() {
   %odd = index.cmp ne, %parity, %loop_begin : index
   %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
   cfg.br ^preheader
+^preheader:
+  cfg.br ^header(%loop_begin: index)
 ^header(%counter: index):
   %more = index.cmp ult, %counter, %limit : index
   cfg.cond_br %more, ^choose_latch, ^exit
@@ -114,8 +116,6 @@ kernel.def target(@loop_entry_wave64) @reordered_loop_latches() {
   %result = index.cast %counter : index to i32
   view.store %result, %output_view[%lane] : i32, view<64xi32>
   kernel.return
-^preheader:
-  cfg.br ^header(%loop_begin: index)
 }
 
 check.case public @reordered_loop_latches_case {

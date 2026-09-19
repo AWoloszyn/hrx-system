@@ -141,6 +141,10 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1
   low.cond_br %49, ^_bb2, ^_bb5 : reg<amdgpu.scc>
 ^_bb2:
   low.br ^_bb1(%45: reg<amdgpu.vgpr>)
+^_bb5:
+  s_mov_b64_exec %47
+  %60 = s_mov_b64_exec_read
+  low.br ^_bb3(%36: reg<amdgpu.vgpr>)
 ^_bb3(%32: reg<amdgpu.vgpr>):
   %50 = v_add_f32_src0_inline %32, 1065353216
   %51 = v_mov_b32 0
@@ -163,10 +167,6 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1
   low.cond_br %62, ^_bb4, ^_bb6 : reg<amdgpu.scc>
 ^_bb4:
   low.br ^_bb3(%58: reg<amdgpu.vgpr>)
-^_bb5:
-  s_mov_b64_exec %47
-  %60 = s_mov_b64_exec_read
-  low.br ^_bb3(%36: reg<amdgpu.vgpr>)
 ^_bb6:
   s_mov_b64_exec %60
   return

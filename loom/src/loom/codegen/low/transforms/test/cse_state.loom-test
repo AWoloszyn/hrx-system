@@ -41,15 +41,15 @@ low.func.def target<test.low.core>(@test_target) @state_through_empty_scopes(%va
   %special = test.state.read.i32 %value
   %pair = test.state.read_pair.i32 %value
   low.br ^bridge
+^bridge:
+  low.br ^next_bridge
+^next_bridge:
+  low.br ^finish
 ^finish:
   %schedule_write = test.state.add.schedule_state %schedule, %schedule
   %special_copy = test.state.read.i32 %value
   %pair_after = test.state.read_pair.i32 %value
   return %special_copy, %pair_after
-^bridge:
-  low.br ^next_bridge
-^next_bridge:
-  low.br ^finish
 }
 
 // ----
@@ -59,14 +59,14 @@ low.func.def target<test.low.core>(@test_target) @state_through_empty_scopes(%va
   %special = test.state.read.i32 %value
   %pair = test.state.read_pair.i32 %value
   low.br ^bridge
-^finish:
-  %schedule_write = test.state.add.schedule_state %schedule, %schedule
-  %pair_after = test.state.read_pair.i32 %value
-  return %special, %pair_after
 ^bridge:
   low.br ^next_bridge
 ^next_bridge:
   low.br ^finish
+^finish:
+  %schedule_write = test.state.add.schedule_state %schedule, %schedule
+  %pair_after = test.state.read_pair.i32 %value
+  return %special, %pair_after
 }
 
 // ====

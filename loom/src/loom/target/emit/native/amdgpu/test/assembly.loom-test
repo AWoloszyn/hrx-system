@@ -3672,17 +3672,14 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_trans_result_expire
 // ----
   v_rsq_f32 v0, v0
   v_add_f32 v3, v1, v1
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_add_f32 v3, v3, v1
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_f32 v3, v3, v1
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_add_f32 v3, v3, v1
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_f32 v3, v3, v1
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(NEXT) | instid1(VALU_DEP_1)
   v_add_f32 v1, v3, v1
-  s_delay_alu instid0(VALU_DEP_1)
   v_mul_f32 v0, v0, v1
   buffer_store_dword v0, v2, s[0:3], s4 offen offset:0
   s_waitcnt_vscnt vscnt(0)
@@ -4004,11 +4001,10 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_convergent_exec_sta
 
 // ----
   v_add_f32 v0, v0, v1
-  s_delay_alu instid0(VALU_DEP_1)
+  s_delay_alu instid0(VALU_DEP_1) | instskip(SKIP_2) | instid1(VALU_DEP_1)
   v_add_f32 v1, v0, v1
   ds_bpermute_b32 v0, v2, v0 offset:0
   s_waitcnt vmcnt(63) lgkmcnt(0)
-  s_delay_alu instid0(VALU_DEP_1)
   v_add_f32 v0, v0, v1
   s_endpgm
 

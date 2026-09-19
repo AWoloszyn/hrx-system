@@ -695,6 +695,19 @@ static iree_status_t loom_check_execute_pass_with_output(
     };
     status = loom_text_print_module_to_builder_with_options(
         module, &result->actual_output, &print_options);
+    if (iree_status_is_ok(status) && run_result.error_count == 0) {
+      bool valid_output = false;
+      status = loom_check_validate_printed_ir(
+          iree_string_builder_view(&result->actual_output), context, block_pool,
+          &print_options, result, &valid_output);
+      if (iree_status_is_ok(status) && !valid_output) {
+        result->raw_outcome = LOOM_CHECK_FAIL;
+        loom_module_free(module);
+        loom_pass_report_deinitialize(&pass_report);
+        iree_arena_deinitialize(&diagnostic_arena);
+        return iree_ok_status();
+      }
+    }
   }
   loom_module_free(module);
   if (iree_status_is_ok(status)) {

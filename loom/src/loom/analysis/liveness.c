@@ -1296,11 +1296,16 @@ typedef struct loom_liveness_pressure_bucket_t {
 typedef struct loom_liveness_pressure_event_t {
   // Program point where the live set changes.
   uint32_t point;
-  // Interval entering or leaving the live set.
-  const loom_liveness_interval_t* interval;
+  // SSA identity used to order simultaneous events deterministically.
+  loom_value_id_t value_id;
+  // Retained index of the interval entering or leaving the live set.
+  loom_value_ordinal_t value_ordinal;
   // Signed value-count delta; negative end events sort before start events.
   int8_t value_delta;
 } loom_liveness_pressure_event_t;
+
+static_assert(sizeof(loom_liveness_pressure_event_t) == 16,
+              "pressure events must remain compact for sorting");
 
 static bool loom_liveness_pressure_event_less(
     const loom_liveness_pressure_event_t* lhs,
@@ -1311,7 +1316,7 @@ static bool loom_liveness_pressure_event_less(
   if (lhs->value_delta != rhs->value_delta) {
     return lhs->value_delta < rhs->value_delta;
   }
-  return lhs->interval->value_id < rhs->interval->value_id;
+  return lhs->value_id < rhs->value_id;
 }
 
 LOOM_DEFINE_ADAPTIVE_SORT(loom_liveness_pressure_event_sort,
@@ -1366,25 +1371,26 @@ static iree_status_t loom_liveness_pressure_sweep_bucket(
 static iree_status_t loom_liveness_pressure_sweep_apply_event(
     loom_liveness_pressure_sweep_t* sweep,
     const loom_liveness_pressure_event_t* event) {
+  const loom_liveness_interval_t* interval =
+      &sweep->build_state->interval_states[event->value_ordinal].interval;
   loom_liveness_pressure_bucket_t* bucket = NULL;
   IREE_RETURN_IF_ERROR(loom_liveness_pressure_sweep_bucket(
-      sweep, event->interval->value_class, &bucket));
+      sweep, interval->value_class, &bucket));
   if (event->value_delta < 0) {
-    if (bucket->live_units < event->interval->unit_count ||
-        bucket->live_values == 0) {
+    if (bucket->live_units < interval->unit_count || bucket->live_values == 0) {
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "liveness pressure sweep underflow");
     }
-    bucket->live_units -= event->interval->unit_count;
+    bucket->live_units -= interval->unit_count;
     --bucket->live_values;
     return iree_ok_status();
   }
-  if (bucket->live_units > UINT32_MAX - event->interval->unit_count ||
+  if (bucket->live_units > UINT32_MAX - interval->unit_count ||
       bucket->live_values == UINT32_MAX) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "liveness pressure sweep exceeds uint32_t");
   }
-  bucket->live_units += event->interval->unit_count;
+  bucket->live_units += interval->unit_count;
   ++bucket->live_values;
   return iree_ok_status();
 }
@@ -1453,7 +1459,8 @@ static iree_status_t loom_liveness_pressure_sweep_adjust_value_ordinal(
   IREE_RETURN_IF_ERROR(loom_liveness_ensure_interval_by_ordinal(
       state, value_ordinal, &interval_state));
   const loom_liveness_pressure_event_t event = {
-      .interval = &interval_state->interval,
+      .value_id = interval_state->interval.value_id,
+      .value_ordinal = value_ordinal,
       .value_delta = value_delta,
   };
   return loom_liveness_pressure_sweep_apply_event(sweep, &event);
@@ -1605,12 +1612,14 @@ static iree_status_t loom_liveness_compute_region_tree_pressure(
     const loom_liveness_interval_t* interval = &interval_state->interval;
     events[event_index++] = (loom_liveness_pressure_event_t){
         .point = segment->segment.end_point,
-        .interval = interval,
+        .value_id = interval->value_id,
+        .value_ordinal = segment->value_ordinal,
         .value_delta = -1,
     };
     events[event_index++] = (loom_liveness_pressure_event_t){
         .point = segment->segment.start_point,
-        .interval = interval,
+        .value_id = interval->value_id,
+        .value_ordinal = segment->value_ordinal,
         .value_delta = 1,
     };
   }

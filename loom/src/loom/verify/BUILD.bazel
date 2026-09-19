@@ -55,6 +55,19 @@ loom_cc_library(
 )
 
 loom_cc_test(
+    name = "verify_dominance_test",
+    srcs = ["verify_dominance_test.cc"],
+    deps = [
+        ":verify",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/test",
+        "//loom/src/loom/testing:diagnostic_matchers",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "verify_state_test",
     srcs = ["verify_state_test.cc"],
     deps = [
