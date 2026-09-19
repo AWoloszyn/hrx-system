@@ -145,6 +145,9 @@ _AMDGPU_RDNA4_CORE_DESCRIPTOR_SET_BASE = _amdgpu_core_descriptor_set(
     ),
     schedule_classes=(
         *_common_scalar_vector_memory_schedule_classes(
+            # GFX12SpeedModel and GFX125xCommonWriteRes use the same ordinary
+            # VALU result latency, independently of their matrix timings.
+            valu_latency_cycles=5,
             smem_load_hazards=_SMEM_WAIT_HAZARDS,
             smem_store_hazards=_SMEM_WAIT_HAZARDS,
             vmem_load_hazards=_VMEM_LOAD_WAIT_HAZARDS,

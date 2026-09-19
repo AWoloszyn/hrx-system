@@ -477,47 +477,6 @@ void loom_amdgpu_mark_source_memory_plan_root_storage_demands(
   loom_amdgpu_mark_source_memory_plan_dynamic_storage_demands(context, source);
 }
 
-void loom_amdgpu_memory_access_resolve_dynamic_terms(
-    const loom_low_lower_context_t* context,
-    const loom_low_source_memory_access_plan_t* source,
-    const loom_amdgpu_memory_dynamic_index_kind_t* dynamic_term_kinds,
-    loom_amdgpu_memory_dynamic_term_sequence_t* out_sequence) {
-  *out_sequence = (loom_amdgpu_memory_dynamic_term_sequence_t){0};
-  uint8_t term_index = 0;
-  uint8_t realization_index = 0;
-  while (term_index < source->dynamic_term_count) {
-    const loom_low_source_memory_dynamic_realization_t* realization = NULL;
-    if (realization_index < source->dynamic_realization_count &&
-        source->dynamic_realizations[realization_index].first_term ==
-            term_index) {
-      realization = &source->dynamic_realizations[realization_index++];
-    }
-
-    bool use_realization =
-        realization != NULL && loom_low_lower_source_value_has_low_mapping(
-                                   context, realization->term.index);
-    if (use_realization) {
-      const loom_amdgpu_memory_dynamic_index_kind_t realization_kind =
-          dynamic_term_kinds[term_index];
-      for (uint8_t i = 1; i < realization->term_count; ++i) {
-        use_realization &=
-            dynamic_term_kinds[term_index + i] == realization_kind;
-      }
-    }
-
-    const uint8_t sequence_index = out_sequence->count++;
-    if (use_realization) {
-      out_sequence->terms[sequence_index] = &realization->term;
-      out_sequence->kinds[sequence_index] = dynamic_term_kinds[term_index];
-      term_index = (uint8_t)(term_index + realization->term_count);
-    } else {
-      out_sequence->terms[sequence_index] = &source->dynamic_terms[term_index];
-      out_sequence->kinds[sequence_index] = dynamic_term_kinds[term_index];
-      ++term_index;
-    }
-  }
-}
-
 static loom_value_id_t loom_amdgpu_memory_access_payload_value(
     const loom_module_t* module, const loom_op_t* source_op) {
   const loom_memory_access_t access =
@@ -2689,6 +2648,7 @@ static bool loom_amdgpu_memory_access_plan_push_packet(
         LOOM_AMDGPU_MEMORY_ACCESS_REJECTION_VECTOR_TYPE;
     return false;
   }
+  loom_amdgpu_memory_access_select_vaddr_realizations(access);
   out_selection->packets[out_selection->packet_count++] =
       (loom_amdgpu_memory_packet_plan_t){
           .access = *access,

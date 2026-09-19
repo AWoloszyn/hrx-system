@@ -1289,9 +1289,12 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_shadow_entry_address(
   loom_amdgpu_sanitizer_race_shadow_address_t address = {0};
   address.workgroup_offset = dispatch->workgroup_shadow_record_offset;
 
+  loom_amdgpu_memory_dynamic_term_sequence_t sequence = {0};
+  loom_amdgpu_memory_access_resolve_dynamic_terms(context, access, &sequence);
   loom_value_id_t local_byte_offset = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_vaddr(
-      context, source_op, access, LOOM_VALUE_ID_INVALID, &local_byte_offset));
+  IREE_RETURN_IF_ERROR(
+      loom_amdgpu_emit_memory_vaddr(context, source_op, access, &sequence,
+                                    LOOM_VALUE_ID_INVALID, &local_byte_offset));
   address.memory_byte_offset = local_byte_offset;
   loom_value_id_t granule_shift = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_materialize_low_vgpr_b32(

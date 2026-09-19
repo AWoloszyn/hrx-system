@@ -17,6 +17,7 @@
 #include "loom/codegen/low/source_memory_plan.h"
 #include "loom/ir/facts.h"
 #include "loom/ir/ir.h"
+#include "loom/target/arch/amdgpu/lower/memory_address.h"
 #include "loom/target/arch/amdgpu/lower/plan.h"
 #include "loom/target/arch/amdgpu/target_info_defs.h"
 #include "loom/target/low_legality.h"
@@ -36,17 +37,6 @@ typedef struct loom_amdgpu_memory_access_selection_t {
   // Number of populated packet candidates.
   uint32_t packet_count;
 } loom_amdgpu_memory_access_selection_t;
-
-typedef struct loom_amdgpu_memory_dynamic_term_sequence_t {
-  // Dynamic terms selected for emission in address-expression order.
-  const loom_low_source_memory_dynamic_term_t*
-      terms[LOOM_LOW_SOURCE_MEMORY_DYNAMIC_TERM_CAPACITY];
-  // Target operand path selected for each emitted term.
-  loom_amdgpu_memory_dynamic_index_kind_t
-      kinds[LOOM_LOW_SOURCE_MEMORY_DYNAMIC_TERM_CAPACITY];
-  // Number of populated term and kind entries.
-  uint8_t count;
-} loom_amdgpu_memory_dynamic_term_sequence_t;
 
 typedef uint32_t loom_amdgpu_memory_access_rejection_flags_t;
 
@@ -227,30 +217,9 @@ bool loom_amdgpu_memory_access_select_dynamic_term_kinds(
     loom_amdgpu_memory_access_t* access,
     loom_amdgpu_memory_access_diagnostic_t* diagnostic);
 
-// Resolves canonical address terms to their emission sequence. An equivalent
-// source realization replaces its canonical term range only when the source
-// value is already materialized for another use.
-void loom_amdgpu_memory_access_resolve_dynamic_terms(
-    const loom_low_lower_context_t* context,
-    const loom_low_source_memory_access_plan_t* source,
-    const loom_amdgpu_memory_dynamic_index_kind_t* dynamic_term_kinds,
-    loom_amdgpu_memory_dynamic_term_sequence_t* out_sequence);
-
 // Routes all dynamic source terms through the VGPR byte-address operand.
 void loom_amdgpu_memory_access_route_dynamic_terms_through_vaddr(
     loom_amdgpu_memory_access_t* access);
-
-// Emits the VGPR address operand for a selected memory access.
-iree_status_t loom_amdgpu_emit_memory_vaddr(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    const loom_amdgpu_memory_access_t* access, loom_value_id_t low_base_addr,
-    loom_value_id_t* out_low_vaddr);
-
-// Emits the SGPR SADDR operand for a low HAL binding pointer.
-iree_status_t loom_amdgpu_emit_memory_saddr(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    const loom_amdgpu_memory_access_t* access, loom_value_id_t low_binding,
-    loom_value_id_t* out_low_saddr);
 
 // Emits the target buffer descriptor consumed by MUBUF-style packets from a low
 // HAL binding pointer. When the low resource has no explicit extent,
@@ -261,13 +230,6 @@ iree_status_t loom_amdgpu_emit_hal_buffer_descriptor(
     loom_value_id_t low_binding,
     const loom_low_source_memory_access_plan_t* source_access,
     loom_value_id_t* out_low_descriptor);
-
-// Emits the 64-bit flat VGPR address sliced from a low HAL binding pointer and
-// extended by the selected source memory byte offset.
-iree_status_t loom_amdgpu_emit_memory_flat_vaddr(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    const loom_amdgpu_memory_access_t* access, loom_value_id_t low_binding,
-    loom_value_id_t* out_low_vaddr);
 
 // Builds descriptor offset and cache-policy attrs for a memory packet.
 iree_status_t loom_amdgpu_make_memory_attrs(

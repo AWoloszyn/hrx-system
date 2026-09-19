@@ -470,6 +470,7 @@ loom_cc_library(
     loom::ir
     loom::ops::low
     loom::ops::op_defs
+    loom::target::reporting::report
     loom::tools::loom-check::execute
     loom::tools::loom-check::provider
   TESTONLY
@@ -530,8 +531,10 @@ loom_check_test_suite(
     "test/descriptors/scalar_nonlinear.loom-test"
     "test/descriptors/scalar_stream.loom-test"
     "test/leaf_allocation.loom-test"
+    "test/leaf_expansion_timing.loom-test"
     "test/leaf_interfaces.loom-test"
     "test/leaf_schedule.loom-test"
+    "test/leaf_state_read_timing.loom-test"
     "test/module_contracts.loom-test"
     "test/pipeline_composition.loom-test"
     "test/pipeline_ports.loom-test"

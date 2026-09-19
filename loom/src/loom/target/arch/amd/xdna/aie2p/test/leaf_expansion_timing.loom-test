@@ -1,0 +1,95 @@
+// Native issue-cycle counts include return delay slots. Independent load ports
+// coissue and retain their full latency when no generated moves fill the gap.
+// RUN: emit aie2p-leaf @vector_add report=emission
+
+low.func.def target<amd.xdna.aie2p.core> @vector_add(%left_pointer: reg<aie2p.ep>, %right_pointer: reg<aie2p.ep>, %output: reg<aie2p.ep>) asm {
+  %left = vlda.512.i32x16 %left_pointer, 0
+  %right = vldb.512.i32x16 %right_pointer, 0
+  %sum = vadd.32 %right, %left
+  vst.512.i32x16 %sum, %output, 0
+  return
+}
+
+// ----
+issue cycles: 13
+code bytes: 36
+coissued bundles: 2
+coissued components: 4
+
+// ====
+
+// Repeating the low half requires a generated register move. Its wait for the
+// loaded value and its own issue cycle consume the pending logical load gap.
+// RUN: emit aie2p-leaf @repeat_loaded_half report=emission
+
+low.func.def target<amd.xdna.aie2p.core> @repeat_loaded_half(%input: reg<aie2p.ep>, %output: reg<aie2p.ep>) asm {
+  %loaded = vlda.512.i32x16 %input, 0
+  %half = slice %loaded[0] : reg<aie2p.vec256 x2> -> reg<aie2p.vec256>
+  %repeated = concat(%half, %half) : (reg<aie2p.vec256>, reg<aie2p.vec256>) -> reg<aie2p.vec256 x2>
+  %sum = vadd.32 %repeated, %repeated
+  vst.512.i32x16 %sum, %output, 0
+  return
+}
+
+// ----
+issue cycles: 14
+code bytes: 38
+coissued bundles: 1
+coissued components: 2
+
+// ====
+
+// Each padded accumulator is realized with multiple native moves. Logical
+// separations remain anchored at the scheduled clear, move and add packets.
+// RUN: emit aie2p-leaf @padded_accumulators report=emission
+
+low.func.def target<amd.xdna.aie2p.core> @padded_accumulators(%left: reg<aie2p.vec256 x2>, %right: reg<aie2p.vec256 x2>, %output: reg<aie2p.ep>) asm {
+  %zeros = acc.clear.f32x64
+  %padding = slice %zeros[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %left_quarter = vmov.vector512.to.accumulator512 %left
+  %left_padded = concat(%left_quarter, %padding, %padding, %padding) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %right_quarter = vmov.vector512.to.accumulator512 %right
+  %right_padded = concat(%right_quarter, %padding, %padding, %padding) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %mode = mova.i32 60
+  %sum = vadd.f32x64 %left_padded, %right_padded, %mode
+  %quarter = slice %sum[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %result = vmov.accumulator512.to.vector512 %quarter
+  vst.512.f32x16 %result, %output, 0
+  return
+}
+
+// ----
+issue cycles: 27
+code bytes: 84
+coissued bundles: 2
+coissued components: 4
+
+// ====
+
+// A taken backedge retains its architectural delay window after generated
+// moves. The following block starts a fresh logical-to-physical mapping.
+// RUN: emit aie2p-leaf @repeat_loop report=emission
+
+low.func.def target<amd.xdna.aie2p.core> @repeat_loop(%input: reg<aie2p.ep>, %output: reg<aie2p.ep>, %count: reg<aie2p.er>) asm {
+  low.br ^loop(%count: reg<aie2p.er>)
+^loop(%remaining: reg<aie2p.er>):
+  %loaded = vlda.512.i32x16 %input, 0
+  %half = slice %loaded[0] : reg<aie2p.vec256 x2> -> reg<aie2p.vec256>
+  %repeated = concat(%half, %half) : (reg<aie2p.vec256>, reg<aie2p.vec256>) -> reg<aie2p.vec256 x2>
+  %sum = vadd.32 %repeated, %repeated
+  vst.512.i32x16 %sum, %output, 0
+  %next = add %remaining, -1
+  low.cond_br %next, ^backedge, ^exit : reg<aie2p.er>
+^backedge:
+  low.br ^loop(%next: reg<aie2p.er>)
+^exit:
+  %one = mov.i32 1
+  st %one, %output, 4
+  return
+}
+
+// ----
+issue cycles: 30
+code bytes: 86
+coissued bundles: 2
+coissued components: 4

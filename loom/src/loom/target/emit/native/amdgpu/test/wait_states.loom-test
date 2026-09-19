@@ -133,7 +133,7 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_valu_dependency_del
 
 // ----
 amdgpu.wait_state_plan states=1 progress=3 hazards=1
-state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n1/o1 producer=n0 consumer=n1 required=4 observed=1 residual=3 delay_alu=0x0001
+state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n1/o1 producer=n0 consumer=n1 required=5 observed=1 residual=4 delay_alu=0x0001
 
 // ====
 
@@ -152,7 +152,7 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_valu_dependency_del
 
 // ----
 amdgpu.wait_state_plan states=1 progress=6 hazards=1
-state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n4/o4 producer=n0 consumer=n4 required=4 observed=1 residual=3 delay_alu=0x0001
+state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n4/o4 producer=n0 consumer=n4 required=5 observed=1 residual=4 delay_alu=0x0001
 
 // ====
 
@@ -409,7 +409,7 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_packed_dot_dependen
 
 // ----
 amdgpu.wait_state_plan states=1 progress=4 hazards=1
-state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n2/o2 producer=n0 consumer=n2 required=5 observed=2 residual=3 delay_alu=0x0082
+state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n2/o2 producer=n1 consumer=n2 required=5 observed=1 residual=4 delay_alu=0x0101
 
 // ====
 
@@ -427,7 +427,7 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_vopd_delay_alu_bina
 
 // ----
 amdgpu.wait_state_plan states=1 progress=3 hazards=1
-state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n2/o2 producer=n0 consumer=n2 required=4 observed=1 residual=3 delay_alu=0x0001
+state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n2/o2 producer=n0 consumer=n2 required=5 observed=1 residual=4 delay_alu=0x0001
 
 // ====
 
@@ -625,7 +625,7 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_dpp_vgpr_read_wait_
 
 // ----
 amdgpu.wait_state_plan states=1 progress=3 hazards=1
-state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n1/o1 producer=n0 consumer=n1 required=4 observed=1 residual=3 delay_alu=0x0001
+state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n1/o1 producer=n0 consumer=n1 required=5 observed=1 residual=4 delay_alu=0x0001
 
 // ====
 
@@ -643,8 +643,8 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_dpp_vgpr_read_wait_
 
 // ----
 amdgpu.wait_state_plan states=2 progress=5 hazards=2
-state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n2/o2 producer=n0 consumer=n2 required=4 observed=2 residual=2 delay_alu=0x0002
-state[1] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n3/o3 producer=n2 consumer=n3 required=4 observed=1 residual=3 delay_alu=0x0101
+state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n2/o2 producer=n0 consumer=n2 required=5 observed=2 residual=3 delay_alu=0x0002
+state[1] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n3/o3 producer=n2 consumer=n3 required=5 observed=1 residual=4 delay_alu=0x0101
 
 // ====
 
@@ -731,5 +731,5 @@ low.func.def target<amdgpu.rdna3.core>(@target) @wait_records_across_empty_block
 
 // ----
 amdgpu.wait_state_plan states=2 progress=5 hazards=2
-state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n1/o1 producer=n0 consumer=n1 required=4 observed=1 residual=3 delay_alu=0x0001
-state[1] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b2:n5/o1 producer=n4 consumer=n5 required=4 observed=1 residual=3 delay_alu=0x0001
+state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n1/o1 producer=n0 consumer=n1 required=5 observed=1 residual=4 delay_alu=0x0001
+state[1] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b2:n5/o1 producer=n4 consumer=n5 required=5 observed=1 residual=4 delay_alu=0x0001

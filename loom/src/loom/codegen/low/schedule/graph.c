@@ -345,6 +345,18 @@ static iree_status_t loom_low_schedule_add_state_dependency(
       producer.endpoint, consumer.endpoint);
 }
 
+// A read fence orders observations of the same state without producing a new
+// state value. Its result latency is unrelated to a later reader's readiness.
+static iree_status_t loom_low_schedule_add_state_read_order(
+    loom_low_schedule_build_state_t* state,
+    loom_low_schedule_state_access_t producer,
+    loom_low_schedule_state_access_t consumer) {
+  return loom_low_schedule_add_dependency(
+      state, producer.node_index, consumer.node_index,
+      LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER, LOOM_LOW_ID_NONE, producer.endpoint,
+      consumer.endpoint);
+}
+
 static iree_status_t loom_low_schedule_descriptor_operand_reg_class_id(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor, uint16_t descriptor_operand_index,
@@ -1053,16 +1065,31 @@ static iree_status_t loom_low_schedule_note_storage_reads(
 
 static iree_status_t loom_low_schedule_add_state_read_dependencies(
     loom_low_schedule_build_state_t* state,
-    loom_low_schedule_state_access_t writer, uint16_t reg_class_id) {
+    loom_low_schedule_state_access_t consumer, uint16_t reg_class_id,
+    loom_low_schedule_dependency_kind_t kind) {
+  // Readers are prepended in source/node order. A fence already orders the
+  // older suffix transitively, but cannot retire its read-to-write timing.
+  // Stopping fence walks at that suffix keeps reader processing linear.
+  const uint32_t ordering_frontier_node =
+      kind == LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER
+          ? state->state_ordering_frontiers[reg_class_id].node_index
+          : LOOM_LOW_SCHEDULE_NODE_NONE;
   uint32_t read_record_index = state->state_read_heads[reg_class_id];
   while (read_record_index != LOOM_LOW_SCHEDULE_NODE_NONE) {
     const loom_low_schedule_state_read_record_t* read_record =
         &state->state_read_records[read_record_index];
-    IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_dependency(
-        state, read_record->access, writer, LOOM_LOW_ID_NONE));
+    if (ordering_frontier_node != LOOM_LOW_SCHEDULE_NODE_NONE &&
+        read_record->access.node_index <= ordering_frontier_node) {
+      break;
+    }
+    IREE_RETURN_IF_ERROR(loom_low_schedule_add_dependency(
+        state, read_record->access.node_index, consumer.node_index, kind,
+        LOOM_LOW_ID_NONE, read_record->access.endpoint, consumer.endpoint));
     read_record_index = read_record->next_record;
   }
-  state->state_read_heads[reg_class_id] = LOOM_LOW_SCHEDULE_NODE_NONE;
+  if (kind == LOOM_LOW_SCHEDULE_DEPENDENCY_STATE) {
+    state->state_read_heads[reg_class_id] = LOOM_LOW_SCHEDULE_NODE_NONE;
+  }
   return iree_ok_status();
 }
 
@@ -1084,8 +1111,8 @@ static iree_status_t loom_low_schedule_note_state_read(
       state->state_ordering_frontiers[reg_class_id];
   if (ordering_frontier.node_index != LOOM_LOW_SCHEDULE_NODE_NONE &&
       ordering_frontier.node_index != last_write.node_index) {
-    IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_dependency(
-        state, ordering_frontier, reader, LOOM_LOW_ID_NONE));
+    IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_read_order(
+        state, ordering_frontier, reader));
   }
   return loom_low_schedule_add_state_read(state, reader, reg_class_id);
 }
@@ -1110,7 +1137,7 @@ static iree_status_t loom_low_schedule_note_state_write(
         state, ordering_frontier, writer, LOOM_LOW_ID_NONE));
   }
   IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_read_dependencies(
-      state, writer, reg_class_id));
+      state, writer, reg_class_id, LOOM_LOW_SCHEDULE_DEPENDENCY_STATE));
   state->state_last_writes[reg_class_id] = writer;
   state->state_ordering_frontiers[reg_class_id] =
       loom_low_schedule_state_access_none();
@@ -1133,11 +1160,11 @@ static iree_status_t loom_low_schedule_note_state_fence(
       state->state_ordering_frontiers[reg_class_id];
   if (ordering_frontier.node_index != LOOM_LOW_SCHEDULE_NODE_NONE &&
       ordering_frontier.node_index != last_write.node_index) {
-    IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_dependency(
-        state, ordering_frontier, fence, LOOM_LOW_ID_NONE));
+    IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_read_order(
+        state, ordering_frontier, fence));
   }
   IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_read_dependencies(
-      state, fence, reg_class_id));
+      state, fence, reg_class_id, LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER));
   state->state_ordering_frontiers[reg_class_id] = fence;
   return iree_ok_status();
 }
@@ -1165,8 +1192,8 @@ static iree_status_t loom_low_schedule_note_explicit_state_value_read(
   const loom_low_schedule_state_access_t ordering_frontier =
       state->state_ordering_frontiers[reg_class_id];
   if (ordering_frontier.node_index != LOOM_LOW_SCHEDULE_NODE_NONE) {
-    IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_dependency(
-        state, ordering_frontier, reader, LOOM_LOW_ID_NONE));
+    IREE_RETURN_IF_ERROR(loom_low_schedule_add_state_read_order(
+        state, ordering_frontier, reader));
   }
   if (has_same_block_producer) {
     IREE_RETURN_IF_ERROR(

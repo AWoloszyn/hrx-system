@@ -8,6 +8,7 @@
 
 #include "loom/target/arch/amd/xdna/aie2p/emit/leaf_compile.h"
 #include "loom/target/arch/amd/xdna/aie2p/machine/machine.h"
+#include "loom/target/reporting/report.h"
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/tools/loom-check/low_emit.h"
 
@@ -33,6 +34,7 @@ static iree_status_t loom_aie2p_leaf_check_execute(
       fixed_specs[LOOM_CHECK_LOW_EMIT_MAX_ALLOCATION_FIXED_VALUES];
   iree_host_size_t fixed_spec_count = 0;
   iree_string_view_t registers = iree_string_view_empty();
+  bool emit_report = false;
   while (!iree_string_view_is_empty(iree_string_view_trim(remaining))) {
     iree_string_view_t token;
     iree_string_view_split(iree_string_view_trim(remaining), ' ', &token,
@@ -45,6 +47,9 @@ static iree_status_t loom_aie2p_leaf_check_execute(
           IREE_ARRAYSIZE(fixed_specs), &fixed_spec_count));
     } else if (iree_string_view_equal(name, IREE_SV("registers"))) {
       registers = value;
+    } else if (iree_string_view_equal(name, IREE_SV("report")) &&
+               iree_string_view_equal(value, IREE_SV("emission"))) {
+      emit_report = true;
     } else {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "unknown aie2p-leaf option '%.*s'",
@@ -81,9 +86,22 @@ static iree_status_t loom_aie2p_leaf_check_execute(
   if (!resolved) {
     return iree_ok_status();
   }
+  loom_target_compile_report_t report;
+  loom_target_compile_report_initialize(&report, iree_allocator_system());
+  options.compile_report = emit_report ? &report : NULL;
   loom_aie2p_leaf_contribution_t contribution = {0};
   iree_status_t status = loom_aie2p_leaf_compile(
       request->module, function, &options, request->case_arena, &contribution);
+  if (iree_status_is_ok(status) && emit_report) {
+    status = iree_string_builder_append_format(
+        &request->result->actual_output,
+        "issue cycles: %" PRIu64 "\ncode bytes: %" PRIu64
+        "\ncoissued bundles: %" PRIu64 "\ncoissued components: %" PRIu64 "\n",
+        report.emitted_instruction_count, report.emitted_code_byte_count,
+        report.emission_breakdown.coissued_instruction_count,
+        report.emission_breakdown.coissued_component_count);
+  }
+  loom_target_compile_report_deinitialize(&report);
   if (iree_status_is_failed_precondition(status) &&
       request->diagnostic_collector->count != 0) {
     // The structured allocation diagnostic is the checked result.

@@ -23,6 +23,9 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @compare_masks(%lhs: reg<amdgp
 // ====
 // RUN: emit amdgpu-assembly @read_lanes strategy=resource-stall
 
+// State-read fences preserve EXEC ordering without waiting for another lane
+// read's SGPR result. Independent lane reads fill that result-latency gap.
+
 amdgpu.target<gfx1151> @target
 
 low.func.def target<amdgpu.rdna3_5.core>(@target) @read_lanes(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>, %mask: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {

@@ -387,6 +387,77 @@ _GLOBAL_ATOMIC_GFX12_ROWS = (
 )
 
 _GLOBAL_ATOMIC_GFX940_ROWS = (
+    _atomic_row(
+        "add_u32",
+        "GLOBAL_ATOMIC_ADD",
+        "add.u32",
+        "FMT_NUM_U32",
+        mnemonic_suffix="add",
+    ),
+    _atomic_row(
+        "sub_u32",
+        "GLOBAL_ATOMIC_SUB",
+        "sub.u32",
+        "FMT_NUM_U32",
+        mnemonic_suffix="sub",
+    ),
+    _atomic_row(
+        "min_i32",
+        "GLOBAL_ATOMIC_SMIN",
+        "min.i32",
+        "FMT_NUM_I32",
+        mnemonic_suffix="smin",
+    ),
+    _atomic_row(
+        "max_i32",
+        "GLOBAL_ATOMIC_SMAX",
+        "max.i32",
+        "FMT_NUM_I32",
+        mnemonic_suffix="smax",
+    ),
+    _atomic_row(
+        "min_u32",
+        "GLOBAL_ATOMIC_UMIN",
+        "min.u32",
+        "FMT_NUM_U32",
+        mnemonic_suffix="umin",
+    ),
+    _atomic_row(
+        "max_u32",
+        "GLOBAL_ATOMIC_UMAX",
+        "max.u32",
+        "FMT_NUM_U32",
+        mnemonic_suffix="umax",
+    ),
+    _atomic_row(
+        "and_b32",
+        "GLOBAL_ATOMIC_AND",
+        "and.b32",
+        "FMT_NUM_B32",
+        mnemonic_suffix="and",
+    ),
+    _atomic_row(
+        "or_b32",
+        "GLOBAL_ATOMIC_OR",
+        "or.b32",
+        "FMT_NUM_B32",
+        mnemonic_suffix="or",
+    ),
+    _atomic_row(
+        "xor_b32",
+        "GLOBAL_ATOMIC_XOR",
+        "xor.b32",
+        "FMT_NUM_B32",
+        mnemonic_suffix="xor",
+    ),
+    _atomic_row(
+        "swap_b32",
+        "GLOBAL_ATOMIC_SWAP",
+        "exchange.b32",
+        "FMT_NUM_B32",
+        mnemonic_suffix="swap",
+        has_no_return_form=False,
+    ),
     _atomic_row("add_f32", "GLOBAL_ATOMIC_ADD_F32", "add.f32", "FMT_NUM_F32"),
     _atomic_row(
         "add_u64",

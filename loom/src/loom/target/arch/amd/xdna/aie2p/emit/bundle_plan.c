@@ -101,6 +101,8 @@ typedef struct loom_aie2p_bundle_plan_builder_t {
   uint32_t current_block_index;
   // Next physical issue cycle, including implicit NOP gaps.
   uint32_t next_issue_cycle;
+  // Physical origin of this block's logical cycles, rebased at descriptors.
+  uint32_t logical_issue_cycle_origin;
   // Shared physical event and resource admission state.
   loom_low_physical_issue_t issue;
   // Scratch native bindings per slot. Not retained by the final plan.
@@ -869,6 +871,16 @@ static iree_status_t loom_aie2p_bundle_plan_commit_bundle(
       &builder->issue, instructions, (uint16_t)slot_count,
       builder->next_issue_cycle, &issue_cycle));
   IREE_RETURN_IF_ERROR(loom_aie2p_bundle_plan_advance(builder, issue_cycle));
+  // Descriptor runs (including storage addresses) anchor logical time at
+  // their actual issue cycle. Moves and synthetic NOPs are standalone
+  // expansion bundles: their elapsed time can cover later logical gaps.
+  // Nondecreasing descriptor displacement preserves every logical separation.
+  if (!iree_any_bit_set(builder->slots[slot_start].flags,
+                        LOOM_AIE2P_PLANNED_SLOT_FLAG_SYNTHETIC_NOP |
+                            LOOM_AIE2P_PLANNED_SLOT_FLAG_STRUCTURAL_MOVE |
+                            LOOM_AIE2P_PLANNED_SLOT_FLAG_STRUCTURAL_CONTROL)) {
+    builder->logical_issue_cycle_origin = issue_cycle - logical_issue_cycle;
+  }
   if (builder->encoded_byte_length >
       LOOM_AIE2P_CORE_PROGRAM_MEMORY_SIZE - byte_length) {
     return iree_make_status(
@@ -1546,6 +1558,7 @@ static iree_status_t loom_aie2p_bundle_plan_build_impl(
           &builder, analysis.blocks[block_index - 1u].terminator_issue_cycle));
     }
     builder.current_block_index = block_index;
+    builder.logical_issue_cycle_origin = builder.next_issue_cycle;
     builder.block_byte_offsets[block_index] =
         (uint32_t)builder.encoded_byte_length;
     const iree_host_size_t block_bundle_start = builder.bundle_count;
@@ -1650,7 +1663,9 @@ static iree_status_t loom_aie2p_bundle_plan_build_impl(
             builder.slot_count - segment_slot_start));
       }
       if (builder.bundle_count == cycle_bundle_start &&
-          issue_cycle != block_analysis->terminator_issue_cycle) {
+          issue_cycle != block_analysis->terminator_issue_cycle &&
+          builder.next_issue_cycle <=
+              (uint64_t)builder.logical_issue_cycle_origin + issue_cycle) {
         IREE_RETURN_IF_ERROR(
             loom_aie2p_bundle_plan_append_nop_bundle(&builder, issue_cycle));
       }

@@ -1015,17 +1015,20 @@ iree_status_t loom_amdgpu_lower_kernel_async_gather(
        ++i) {
     access.dynamic_term_kinds[i] = plan->source_dynamic_term_kinds[i];
   }
+  loom_amdgpu_memory_dynamic_term_sequence_t sequence = {0};
+  loom_amdgpu_memory_access_resolve_dynamic_terms(context, &access, &sequence);
 
   loom_value_id_t low_vaddr = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_vaddr(
-      context, source_op, &access, LOOM_VALUE_ID_INVALID, &low_vaddr));
+  IREE_RETURN_IF_ERROR(
+      loom_amdgpu_emit_memory_vaddr(context, source_op, &access, &sequence,
+                                    LOOM_VALUE_ID_INVALID, &low_vaddr));
 
   loom_value_id_t low_resource = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_low_lower_lookup_value(
       context, plan->source.root_value_id, &low_resource));
   loom_value_id_t low_saddr = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_saddr(
-      context, source_op, &access, low_resource, &low_saddr));
+      context, source_op, &access, &sequence, low_resource, &low_saddr));
 
   loom_value_id_t low_m0 = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_m0_u32(
@@ -1049,22 +1052,29 @@ iree_status_t loom_amdgpu_lower_kernel_async_gather(
 iree_status_t loom_amdgpu_lower_kernel_async_cluster_gather(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_cluster_gather_plan_t* plan) {
+  loom_amdgpu_memory_dynamic_term_sequence_t dest_sequence = {0};
+  loom_amdgpu_memory_access_resolve_dynamic_terms(context, &plan->dest_address,
+                                                  &dest_sequence);
+  loom_amdgpu_memory_dynamic_term_sequence_t source_sequence = {0};
+  loom_amdgpu_memory_access_resolve_dynamic_terms(
+      context, &plan->source_address, &source_sequence);
   loom_value_id_t low_dest_addr = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(
-      loom_amdgpu_emit_memory_vaddr(context, source_op, &plan->dest_address,
-                                    LOOM_VALUE_ID_INVALID, &low_dest_addr));
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_vaddr(
+      context, source_op, &plan->dest_address, &dest_sequence,
+      LOOM_VALUE_ID_INVALID, &low_dest_addr));
 
   loom_value_id_t low_source_addr = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(
-      loom_amdgpu_emit_memory_vaddr(context, source_op, &plan->source_address,
-                                    LOOM_VALUE_ID_INVALID, &low_source_addr));
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_vaddr(
+      context, source_op, &plan->source_address, &source_sequence,
+      LOOM_VALUE_ID_INVALID, &low_source_addr));
 
   loom_value_id_t low_resource = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_low_lower_lookup_value(
       context, plan->source_address.source.root_value_id, &low_resource));
   loom_value_id_t low_saddr = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_saddr(
-      context, source_op, &plan->source_address, low_resource, &low_saddr));
+      context, source_op, &plan->source_address, &source_sequence, low_resource,
+      &low_saddr));
 
   loom_value_id_t low_m0 = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_m0_u32(

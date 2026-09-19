@@ -2809,13 +2809,6 @@ static iree_status_t loom_amdgpu_wait_plan_handle_physical_write_range(
                    allocation->storage_leases.record_count);
     const loom_low_storage_lease_record_t* record =
         &allocation->storage_leases.records[lease->lease_record_index];
-    if (record->kind == LOOM_LOW_STORAGE_LEASE_RESULT_WRITE &&
-        record->node_index == continuation_producer_node) {
-      // A storage continuation writes a disjoint register part into the tied
-      // source's allocation. It neither clobbers nor consumes the pending
-      // result write that populates the preserved part.
-      continue;
-    }
     const bool incoming_lease_active =
         loom_amdgpu_wait_frontier_storage_lease_is_active(&builder->frontier,
                                                           storage_lease_index);
@@ -2849,6 +2842,19 @@ static iree_status_t loom_amdgpu_wait_plan_handle_physical_write_range(
     };
     const loom_amdgpu_wait_plan_reason_t reason =
         loom_amdgpu_wait_plan_storage_release_reason(&action);
+    if (record->kind == LOOM_LOW_STORAGE_LEASE_RESULT_WRITE &&
+        record->node_index == continuation_producer_node &&
+        ((record->release_class_id == LOOM_AMDGPU_WAIT_COUNTER_LDS &&
+          builder->frontier_nodes[node_index].read_counter_mask ==
+              LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS) ||
+         loom_amdgpu_wait_plan_storage_release_is_ordered_vmem_reuse(
+             builder, &action, record, reason))) {
+      // Disjoint partial writes may overlap within one ordered result
+      // pipeline: completing the continuation also completes the preserved
+      // part. Other pipelines must release the old result before this write;
+      // storage identity alone proves neither completion nor safe overlap.
+      continue;
+    }
     if (incoming_lease_active &&
         loom_amdgpu_wait_plan_storage_release_is_ordered_vmem_reuse(
             builder, &action, record, reason)) {

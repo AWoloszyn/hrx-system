@@ -949,8 +949,10 @@ static iree_status_t loom_amdgpu_sanitizer_emit_repeat_fault_address(
   *out_fault_address = LOOM_VALUE_ID_INVALID;
   loom_amdgpu_memory_access_t access = {0};
   loom_amdgpu_sanitizer_access_plan_for_repeat(plan, repeat_ordinal, &access);
-  return loom_amdgpu_emit_memory_flat_vaddr(context, source_op, &access,
-                                            low_resource, out_fault_address);
+  loom_amdgpu_memory_dynamic_term_sequence_t sequence = {0};
+  loom_amdgpu_memory_access_resolve_dynamic_terms(context, &access, &sequence);
+  return loom_amdgpu_emit_memory_flat_vaddr(
+      context, source_op, &access, &sequence, low_resource, out_fault_address);
 }
 
 typedef uint32_t loom_amdgpu_sanitizer_repeat_failure_flags_t;

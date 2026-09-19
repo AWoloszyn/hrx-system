@@ -36,12 +36,17 @@ iree_execution_test_suite(
         "loom_opt_f32_arith.loom",
         "selected_root_amdgpu.loom",
         "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
+        "//loom/src/loom/test/corpus/source_low:memory_address_realizations.loom-test",
+        "//loom/src/loom/test/corpus/source_low:memory_global_atomic.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_wide_offsets.loom-test",
         "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/loop_entry_wave32.loom",
         "//loom/src/loom/tooling/target/amdgpu/test/corpus:gfx11/schedule_scopes.loom",
     ],
     manifests = [
         "loom-compile-amdgpu.test.json",
+        # Lowering goldens cover distinct behavior; native compilation covers
+        # each descriptor profile without duplicating those goldens.
+        "memory-addresses.test.json",
         "wide-offsets.test.json",
     ],
     tags = ["hostonly"],

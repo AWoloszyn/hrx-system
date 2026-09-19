@@ -1,0 +1,436 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Independent chains can issue while earlier VALU results are pending. Each
+// family uses its own timing model and shared wave issue capacity. These
+// operations cannot form VOPD pairs.
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx9-4-generic> @target
+
+low.func.def target<amdgpu.gfx9_4.generic.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx11-generic> @target
+
+low.func.def target<amdgpu.gfx11.generic.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx1170> @target
+
+low.func.def target<amdgpu.rdna4m.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx1200> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx12-generic> @target
+
+low.func.def target<amdgpu.gfx12.generic.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx1250-a0> @target
+
+low.func.def target<amdgpu.rdna4.gfx1250_a0.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx1251> @target
+
+low.func.def target<amdgpu.rdna4.gfx1251.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
+
+amdgpu.target<gfx12-5-generic> @target
+
+low.func.def target<amdgpu.gfx12_5.generic.core>(@target) @independent_chains(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %d: reg<amdgpu.vgpr>, %e: reg<amdgpu.vgpr>, %bias: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %a_sum = v_add3_u32 %a, %bias, %bias
+  %a_next = v_add3_u32 %a_sum, %bias, %bias
+  %b_sum = v_add3_u32 %b, %bias, %bias
+  %b_next = v_add3_u32 %b_sum, %bias, %bias
+  %c_sum = v_add3_u32 %c, %bias, %bias
+  %c_next = v_add3_u32 %c_sum, %bias, %bias
+  %d_sum = v_add3_u32 %d, %bias, %bias
+  %d_next = v_add3_u32 %d_sum, %bias, %bias
+  %e_sum = v_add3_u32 %e, %bias, %bias
+  %e_next = v_add3_u32 %e_sum, %bias, %bias
+  return %a_next, %b_next, %c_next, %d_next, %e_next
+}
+
+// ----
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
+  v_add3_u32 v4, v4, v5, v5
+  s_endpgm
