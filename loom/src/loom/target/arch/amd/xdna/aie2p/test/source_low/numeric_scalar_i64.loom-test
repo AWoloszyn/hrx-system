@@ -569,3 +569,35 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_i
   %selected = sel.nez %mixed, %product, %13
   return %selected
 }
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @scalar_i64_insert_dynamic(%values: vector<2xi64>, %replacement: i64, %lane: index) -> (vector<2xi64>) {
+  %updated = vector.insert %replacement into %values[%lane] : i64, vector<2xi64>
+  func.return %updated : vector<2xi64>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_i64_insert_dynamic(%values: reg<aie2p.vec256 x2>, %replacement: reg<aie2p.er x2>, %lane: reg<aie2p.er>) -> (reg<aie2p.vec256 x2>) asm {
+  %9 = copy %lane : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %updated = vinsert.64.reg %values, %9, %replacement
+  return %updated
+}
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @scalar_f64_insert_dynamic(%values: vector<2xf64>, %replacement: f64, %lane: index) -> (vector<2xf64>) {
+  %updated = vector.insert %replacement into %values[%lane] : f64, vector<2xf64>
+  func.return %updated : vector<2xf64>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_f64_insert_dynamic(%values: reg<aie2p.vec256 x2>, %replacement: reg<aie2p.er x2>, %lane: reg<aie2p.er>) -> (reg<aie2p.vec256 x2>) asm {
+  %9 = copy %lane : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %updated = vinsert.64.reg %values, %9, %replacement
+  return %updated
+}

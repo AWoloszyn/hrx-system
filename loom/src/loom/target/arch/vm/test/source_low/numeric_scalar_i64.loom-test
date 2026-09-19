@@ -350,3 +350,27 @@ low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i32_control(%lhs:
   %selected = value.select %less, %mixed, %product : reg<vm.value : i32>
   return %selected
 }
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @scalar_i64_insert_dynamic(%values: vector<2xi64>, %replacement: i64, %lane: index) -> (vector<2xi64>) {
+  // ERROR@+1: TARGET/001 {op_name="vector.insert"}
+  %updated = vector.insert %replacement into %values[%lane] : i64, vector<2xi64>
+  // ERROR@+1: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xi64>"}
+  func.return %updated : vector<2xi64>
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xf64>"}
+func.def target(@target) @scalar_f64_insert_dynamic(%values: vector<2xf64>, %replacement: f64, %lane: index) -> (vector<2xf64>) {
+  // ERROR@+1: TARGET/001 {op_name="vector.insert"}
+  %updated = vector.insert %replacement into %values[%lane] : f64, vector<2xf64>
+  // ERROR@+1: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xf64>"}
+  func.return %updated : vector<2xf64>
+}

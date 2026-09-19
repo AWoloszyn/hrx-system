@@ -329,3 +329,23 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar
   %selected = OpSelect %less, %mixed, %product
   return %selected
 }
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @scalar_i64_insert_dynamic(%values: vector<2xi64>, %replacement: i64, %lane: index) -> (vector<2xi64>) {
+  // ERROR@+1: TARGET/004 {op_name="vector.insert", subject_role="operand_segment", subject_name="indices", constraint_key="operand_segment_count", expected_count="0"}
+  %updated = vector.insert %replacement into %values[%lane] : i64, vector<2xi64>
+  func.return %updated : vector<2xi64>
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @scalar_f64_insert_dynamic(%values: vector<2xf64>, %replacement: f64, %lane: index) -> (vector<2xf64>) {
+  // ERROR@+1: TARGET/004 {op_name="vector.insert", subject_role="operand_segment", subject_name="indices", constraint_key="operand_segment_count", expected_count="0"}
+  %updated = vector.insert %replacement into %values[%lane] : f64, vector<2xf64>
+  func.return %updated : vector<2xf64>
+}

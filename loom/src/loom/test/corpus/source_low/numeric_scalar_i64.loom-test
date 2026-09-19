@@ -187,3 +187,17 @@ func.def @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
   %selected = scf.select %less, %mixed, %product : i32
   func.return %selected : i32
 }
+
+// ====
+
+func.def @scalar_i64_insert_dynamic(%values: vector<2xi64>, %replacement: i64, %lane: index) -> (vector<2xi64>) {
+  %updated = vector.insert %replacement into %values[%lane] : i64, vector<2xi64>
+  func.return %updated : vector<2xi64>
+}
+
+// ====
+
+func.def @scalar_f64_insert_dynamic(%values: vector<2xf64>, %replacement: f64, %lane: index) -> (vector<2xf64>) {
+  %updated = vector.insert %replacement into %values[%lane] : f64, vector<2xf64>
+  func.return %updated : vector<2xf64>
+}

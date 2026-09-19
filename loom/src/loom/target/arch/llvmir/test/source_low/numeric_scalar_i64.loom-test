@@ -393,3 +393,33 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scalar_i
   %selected = select.i32 %less, %mixed, %product
   return %selected
 }
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @scalar_i64_insert_dynamic(%values: vector<2xi64>, %replacement: i64, %lane: index) -> (vector<2xi64>) {
+  %updated = vector.insert %replacement into %values[%lane] : i64, vector<2xi64>
+  func.return %updated : vector<2xi64>
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scalar_i64_insert_dynamic(%values: reg<llvmir.i64 x2>, %replacement: reg<llvmir.i64>, %lane: reg<llvmir.i64>) -> (reg<llvmir.i64 x2>) asm {
+  %updated = insert.dynamic.v2i64 %values, %replacement, %lane
+  return %updated
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @scalar_f64_insert_dynamic(%values: vector<2xf64>, %replacement: f64, %lane: index) -> (vector<2xf64>) {
+  %updated = vector.insert %replacement into %values[%lane] : f64, vector<2xf64>
+  func.return %updated : vector<2xf64>
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scalar_f64_insert_dynamic(%values: reg<llvmir.f64 x2>, %replacement: reg<llvmir.f64>, %lane: reg<llvmir.i64>) -> (reg<llvmir.f64 x2>) asm {
+  %updated = insert.dynamic.v2f64 %values, %replacement, %lane
+  return %updated
+}
