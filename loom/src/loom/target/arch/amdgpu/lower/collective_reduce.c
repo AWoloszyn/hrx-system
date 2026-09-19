@@ -561,6 +561,7 @@ typedef uint8_t loom_amdgpu_workgroup_reduce_publication_rule_flags_t;
 enum loom_amdgpu_workgroup_reduce_publication_rule_flags_e {
   LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_MULTI_WAVE = 1u << 0,
   LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_SINGLE_REGISTER = 1u << 1,
+  LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_TAIL_CAPACITY = 1u << 2,
 };
 
 typedef struct loom_amdgpu_workgroup_reduce_publication_rule_t {
@@ -593,7 +594,8 @@ static const loom_amdgpu_workgroup_reduce_publication_rule_t
                 LOOM_AMDGPU_COLLECTIVE_RESULT_DEMAND_BIT_SUBGROUP_LEADER_LANE,
             .required_flags =
                 LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_MULTI_WAVE |
-                LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_SINGLE_REGISTER,
+                LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_SINGLE_REGISTER |
+                LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_TAIL_CAPACITY,
             .report_key = IREE_SVL("amdgpu.workgroup_reduce.publication."
                                    "redundant_subgroup_leader_lane"),
         },
@@ -604,7 +606,8 @@ static const loom_amdgpu_workgroup_reduce_publication_rule_t
                 LOOM_AMDGPU_COLLECTIVE_RESULT_DEMAND_BIT_ALL_WORKITEMS,
             .required_flags =
                 LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_MULTI_WAVE |
-                LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_SINGLE_REGISTER,
+                LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_SINGLE_REGISTER |
+                LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_TAIL_CAPACITY,
             .report_key = IREE_SVL("amdgpu.workgroup_reduce.publication."
                                    "redundant_subgroup"),
         },
@@ -670,12 +673,13 @@ static iree_status_t loom_amdgpu_collective_result_demand(
 }
 
 static iree_status_t loom_amdgpu_select_workgroup_reduce_publication_kind(
-    uint32_t flat_workgroup_size, uint32_t wavefront_size,
-    uint32_t register_count, loom_low_lower_context_t* context,
-    const loom_op_t* source_op,
+    const loom_amdgpu_workgroup_collective_shape_t* shape,
+    uint32_t wavefront_size, uint32_t register_count,
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_amdgpu_workgroup_reduce_publication_kind_t* out_publication_kind) {
   *out_publication_kind = LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_LDS;
-  if (flat_workgroup_size <= wavefront_size) {
+  if (!iree_any_bit_set(shape->flags,
+                        LOOM_AMDGPU_WORKGROUP_COLLECTIVE_SHAPE_MULTI_WAVE)) {
     return iree_ok_status();
   }
 
@@ -689,6 +693,13 @@ static iree_status_t loom_amdgpu_select_workgroup_reduce_publication_kind(
   if (register_count == 1) {
     available_flags |=
         LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_SINGLE_REGISTER;
+  }
+  // Replicated publication assigns one LDS partial to each live lane. Even
+  // the shortest wave must have room for every partial in its reduction tree.
+  const uint32_t tail_lane_count = shape->flat_workgroup_size % wavefront_size;
+  if (tail_lane_count == 0 || tail_lane_count >= shape->wave_count) {
+    available_flags |=
+        LOOM_AMDGPU_WORKGROUP_REDUCE_PUBLICATION_RULE_TAIL_CAPACITY;
   }
 
   const loom_amdgpu_collective_result_demand_bits_t demand_bits =
@@ -1066,8 +1077,8 @@ iree_status_t loom_amdgpu_select_kernel_workgroup_reduce_plan(
   out_plan->flat_workgroup_size = shape.flat_workgroup_size;
   out_plan->identity_bits = identity_bits;
   IREE_RETURN_IF_ERROR(loom_amdgpu_select_workgroup_reduce_publication_kind(
-      shape.flat_workgroup_size, partition_wavefront_size, register_count,
-      context, source_op, &out_plan->publication_kind));
+      &shape, partition_wavefront_size, register_count, context, source_op,
+      &out_plan->publication_kind));
   *out_selected = true;
   return iree_ok_status();
 }

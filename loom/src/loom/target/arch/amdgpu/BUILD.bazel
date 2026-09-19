@@ -582,6 +582,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:vector_mask_select.loom-test",
         "//loom/src/loom/test/corpus/source_low:vector_slice.loom-test",
         "//loom/src/loom/test/corpus/source_low:view_transport.loom-test",
+        "//loom/src/loom/test/corpus/source_low:workgroup_reduce_publication.loom-test",
     ],
     test_name_prefix_to_strip = "test/source_low/",
 )
