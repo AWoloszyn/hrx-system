@@ -136,6 +136,54 @@
           }
         }
       ]
+    },
+    {
+      "name": "shaped intrinsic calls preserve register lookup and widening dot semantics",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--root=lookup_lane",
+              "--root=dot_lane",
+              "--to=bc",
+              "--output={tmp}/functions.loombc",
+              "{srcdir}/shaped_intrinsics.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute on the VM",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/shaped_intrinsic_values.loom",
+              "--library={tmp}/functions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":264",
+                "\"sample_count\":264",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

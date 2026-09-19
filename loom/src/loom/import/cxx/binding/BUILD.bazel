@@ -24,15 +24,30 @@ loom_generated_cc_library(
 )
 
 loom_cc_library(
+    name = "shaped",
+    srcs = ["shaped.cc"],
+    hdrs = ["shaped.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/value:types",
+        "//loom/src/loom/ops/vector",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
     name = "intrinsics",
     srcs = ["intrinsics.cc"],
     hdrs = ["intrinsics.h"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = [
         ":scalar_bindings",
+        ":shaped",
         "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/import/cxx/source:attributes",
         "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/value:types",
         "//third_party:cxx_parser",
     ],
 )
@@ -81,6 +96,22 @@ loom_cc_library(
 )
 
 loom_cc_test(
+    name = "shaped_test",
+    srcs = ["shaped_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":declaration_test",
+        ":shaped",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/value:types",
+        "//loom/src/loom/ops/vector",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
     name = "intrinsics_test",
     srcs = ["intrinsics_test.cc"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
@@ -90,6 +121,7 @@ loom_cc_test(
         "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/import/cxx/source:error",
         "//loom/src/loom/import/cxx/value:builder_test",
+        "//loom/src/loom/import/cxx/value:types",
         "//loom/src/loom/ops/scalar",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
@@ -135,9 +167,11 @@ iree_cmake_extra_content(
     """
 foreach(_target IN ITEMS
     loom_import_cxx_binding_intrinsics.objects
+    loom_import_cxx_binding_shaped.objects
     loom_import_cxx_binding_launch.objects
     loom_import_cxx_binding_loop_schedule.objects
     loom_import_cxx_binding_intrinsics_test
+    loom_import_cxx_binding_shaped_test
     loom_import_cxx_binding_launch_test
     loom_import_cxx_binding_loop_schedule_test
 )

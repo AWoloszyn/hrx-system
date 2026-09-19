@@ -41,7 +41,7 @@ TEST_F(FunctionsTest, RootsQueueEachConcreteHelperOnceWithPrivateVisibility) {
                 IREE_SV("functions.cpp"), options());
   Types types(source.unit(), source.diagnostics());
   Locations locations(source.unit(), source.diagnostics(), module_);
-  Intrinsics intrinsics(source.unit(), source.diagnostics());
+  Intrinsics intrinsics(source.unit(), source.diagnostics(), types);
   LaunchContracts launches(source.unit(), source.diagnostics());
   Functions functions(source.unit(), source.diagnostics(), module_, intrinsics,
                       launches);
@@ -81,7 +81,7 @@ TEST_F(FunctionsTest,
                 IREE_SV("visibility.cpp"), options());
   Types types(source.unit(), source.diagnostics());
   Locations locations(source.unit(), source.diagnostics(), module_);
-  Intrinsics intrinsics(source.unit(), source.diagnostics());
+  Intrinsics intrinsics(source.unit(), source.diagnostics(), types);
   LaunchContracts launches(source.unit(), source.diagnostics());
   Functions functions(source.unit(), source.diagnostics(), module_, intrinsics,
                       launches);
@@ -108,7 +108,7 @@ TEST_F(FunctionsTest,
                 IREE_SV("pointers.cpp"), options());
   Types types(source.unit(), source.diagnostics());
   Locations locations(source.unit(), source.diagnostics(), module_);
-  Intrinsics intrinsics(source.unit(), source.diagnostics());
+  Intrinsics intrinsics(source.unit(), source.diagnostics(), types);
   LaunchContracts launches(source.unit(), source.diagnostics());
   Functions functions(source.unit(), source.diagnostics(), module_, intrinsics,
                       launches);
@@ -139,7 +139,8 @@ TEST_F(FunctionsTest, RejectsAmbiguousAndMissingRoots) {
     Source source(IREE_SV("int entry(int x) { return x; } float entry(float x) "
                           "{ return x; }"),
                   IREE_SV("overloads.cpp"), options());
-    Intrinsics intrinsics(source.unit(), source.diagnostics());
+    Types types(source.unit(), source.diagnostics());
+    Intrinsics intrinsics(source.unit(), source.diagnostics(), types);
     LaunchContracts launches(source.unit(), source.diagnostics());
     Functions functions(source.unit(), source.diagnostics(), module_,
                         intrinsics, launches);

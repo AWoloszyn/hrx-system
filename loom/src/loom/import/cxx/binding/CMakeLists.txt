@@ -26,6 +26,23 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    shaped
+  HDRS
+    "shaped.h"
+  SRCS
+    "shaped.cc"
+  DEPS
+    iree::third_party::cxx_parser
+    loom::import::cxx::source::error
+    loom::import::cxx::value::types
+    loom::ops::vector
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     intrinsics
   HDRS
     "intrinsics.h"
@@ -33,10 +50,12 @@ loom_cc_library(
     "intrinsics.cc"
   DEPS
     ::scalar_bindings
+    ::shaped
     iree::third_party::cxx_parser
     loom::import::cxx::source
     loom::import::cxx::source::attributes
     loom::import::cxx::source::error
+    loom::import::cxx::value::types
   PUBLIC
 )
 endif()
@@ -99,6 +118,26 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
+    shaped_test
+  SRCS
+    "shaped_test.cc"
+  DEPS
+    ::declaration_test
+    ::shaped
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+    loom::import::cxx::source::error
+    loom::import::cxx::value::types
+    loom::ops::vector
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
     intrinsics_test
   SRCS
     "intrinsics_test.cc"
@@ -111,6 +150,7 @@ loom_cc_test(
     loom::import::cxx::source
     loom::import::cxx::source::error
     loom::import::cxx::value::builder_test
+    loom::import::cxx::value::types
     loom::ops::scalar
   LABELS
     "iree-build-requirement=loom.import.cxx"
@@ -161,9 +201,11 @@ endif()
 
 foreach(_target IN ITEMS
     loom_import_cxx_binding_intrinsics.objects
+    loom_import_cxx_binding_shaped.objects
     loom_import_cxx_binding_launch.objects
     loom_import_cxx_binding_loop_schedule.objects
     loom_import_cxx_binding_intrinsics_test
+    loom_import_cxx_binding_shaped_test
     loom_import_cxx_binding_launch_test
     loom_import_cxx_binding_loop_schedule_test
 )

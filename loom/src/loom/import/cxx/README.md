@@ -159,9 +159,40 @@ binding entries. For example, `loom::scalar::expf(x)` imports `scalar.expf`;
 `__expf(x)` is an ordinary inline wrapper around that declaration. An explicit
 `[[loom::op("scalar.expf", "afn")]] float custom_exp(float);` declaration uses
 the same checked binding. Incorrect arity, types, flags, or attribute arguments
-produce source diagnostics. Projection currently covers fixed homogeneous
-floating-point operations; region, shaped-value and semantic-attribute
-projections need their corresponding source representations.
+produce source diagnostics.
+
+Register lookup and mixed-width integer dots use the same declaration binding,
+with independently typed operands and explicit dot signedness:
+
+```cpp
+typedef unsigned u32x16 __attribute__((vector_size(64)));
+typedef unsigned u32x4 __attribute__((vector_size(16)));
+typedef signed char i8x16 __attribute__((vector_size(16)));
+typedef int i32x4 __attribute__((vector_size(16)));
+
+[[loom::op("vector.table.lookup")]]
+u32x4 lookup(u32x16 table, u32x4 indices);
+[[loom::op("vector.dot4i", "s8s8")]]
+i32x4 dot(i8x16 coordinates, i8x16 rows, i32x4 translation);
+
+i32x4 transform_points(i8x16 coordinates, i8x16 rows, i32x4 translation) {
+  return dot(coordinates, rows, translation);
+}
+```
+
+The dot imports directly as `vector.dot4i<s8s8>` with `vector<16xi8>` inputs
+and a `vector<4xi32>` accumulator/result. Each result adds four adjacent byte
+products to its accumulator, wrapping to 32 bits. The `s8s8`, `u8s8`, `s8u8`,
+and `u8u8` kinds must match the declared byte signedness. Input vectors have
+equal lane counts, with four input lanes per accumulator/result lane.
+
+Lookup supports integer or floating-point tables and integer index vectors.
+Its result has the table's C++ element type and the index vector's lane count;
+each index must be in the table's range. Calls retain the shared register-table
+operation until target legalization chooses a native or portable recipe.
+Banked memory lookup needs a memory operation carrying pointer provenance,
+effects and placement; a register lookup declaration does not provide those
+contracts.
 
 Source standard, predefines, ABI triple, integer/pointer layout, and mathematical
 approximation permissions are explicit options. `--std` selects the pinned

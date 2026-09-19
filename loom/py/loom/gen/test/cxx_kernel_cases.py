@@ -434,6 +434,75 @@ def vector_masks(directory):
     return "kernel.decl @vector_masks() launch(%input: buffer, %output: buffer)\n\n" + "\n".join(cases)
 
 
+def shaped_intrinsic_values(directory):
+    del directory
+    lookups = []
+    for value in [0, 0x80000000, 0xFFFFFFFF]:
+        table = [value, 1, 0xFFFFFFFF, 0x80000000, *range(4, 16)]
+        for index in range(16):
+            lookups.extend(([value, index, lane], table[[index, 15 - index, 0, 15][lane]]) for lane in range(4))
+    dots = []
+    rhs = [-128, 127, -1, 1, 127, -128, 1, -1, -3, 5, -7, 11, 127, 127, 127, 127]
+    for value in [0, 1, 127, 128, 255, 511]:
+        lhs = [value & 255, 255, 128, 127, 0, 1, 255, 128, 23, 45, 67, 89, 255, 255, 255, 255]
+        for initial in [0, 0x7FFFFFFF, -0x80000000]:
+            accumulators = [initial, -1, 0x7FFFFFFF, -0x80000000]
+            for lane in range(4):
+                product = sum(lhs[index] * rhs[index] for index in range(4 * lane, 4 * lane + 4))
+                dots.append(([value, initial, lane], accumulators[lane] + product))
+    return function_cases("lookup_lane", [32, 32, 32], 32, lookups) + "\n" + function_cases("dot_lane", [32, 32, 32], 32, dots)
+
+
+def register_lookup(directory, *, floating=False):
+    name = "register_lookup_float" if floating else "register_lookup"
+    table = (
+        [0, 0x80000000, 0x7FC12345, 0x7F800000, 0xFF800000, 1, 0x80000001, 0x3F800000, 0xBF800000, 0x3F000000, 0x40000000, 0xC0000000, 0x7F7FFFFF, 0x00800000, 0x007FFFFF, 0xFFC12345]
+        if floating
+        else [signed_bits(0x9E3779B9 * index + 0x80000000, 32) for index in range(16)]
+    )
+    table = [signed_bits(value, 32) for value in table]
+    cases = []
+    for count in [0, 1, 4, 7]:
+        indices = [(index * 11 + 15) % 16 for index in range(max(4, count * 4))]
+        expected = [table[index] for index in indices[: count * 4]]
+        case = Case(directory, f"{name}_{count}", "i32", len(expected))
+        case.array("table", table)
+        case.array("indices", indices)
+        case.scalar("count", count, "i32")
+        case.launch(name, "%table, %indices, %output, %count", f"tensor<16xi32>, tensor<{len(indices)}xi32>, tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return f"kernel.decl @{name}() launch(%table: buffer, %indices: buffer, %output: buffer, %count: i32)\n\n" + "\n".join(cases)
+
+
+def mixed_dot(directory):
+    cases = []
+    for count in [0, 1, 3, 9]:
+        lhs = [([0, 127, 128, 255][index % 4] + index // 4) & 255 for index in range(max(16, count * 16))]
+        rhs = [(255 - index * 17) & 255 for index in range(len(lhs))]
+        accumulators = [[0, 0x7FFFFFFF, -0x80000000, -1][index % 4] for index in range(max(4, count * 4))]
+        expected = []
+        for group in range(count):
+            for lhs_signed, rhs_signed in [(True, True), (False, True), (True, False), (False, False)]:
+                for lane in range(4):
+                    products = []
+                    for index in range(16 * group + 4 * lane, 16 * group + 4 * lane + 4):
+                        a = signed_bits(lhs[index], 8) if lhs_signed else lhs[index]
+                        b = signed_bits(rhs[index], 8) if rhs_signed else rhs[index]
+                        products.append(a * b)
+                    expected.append(signed_bits(accumulators[4 * group + lane] + sum(products), 32))
+        case = Case(directory, f"mixed_dot_{count}", "i32", len(expected))
+        for name, values in [("lhs", lhs), ("rhs", rhs)]:
+            packed = struct.unpack(f"<{len(values) // 4}i", bytes(values))
+            case.array(name, packed)
+        case.array("acc", accumulators)
+        case.scalar("count", count, "i32")
+        case.launch("mixed_dot", "%lhs, %rhs, %acc, %output, %count", f"tensor<{len(lhs) // 4}xi32>, tensor<{len(rhs) // 4}xi32>, tensor<{len(accumulators)}xi32>, tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @mixed_dot() launch(%lhs: buffer, %rhs: buffer, %acc: buffer, %output: buffer, %count: i32)\n\n" + "\n".join(cases)
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
@@ -454,6 +523,10 @@ def main():
         ("vector_values", vector_values),
         ("vector_control", vector_control),
         ("vector_masks", vector_masks),
+        ("shaped_intrinsic_values", shaped_intrinsic_values),
+        ("register_lookup", register_lookup),
+        ("register_lookup_float", lambda directory: register_lookup(directory, floating=True)),
+        ("mixed_dot", mixed_dot),
     ]:
         (directory / f"{name}.loom").write_text(generator(directory))
 
