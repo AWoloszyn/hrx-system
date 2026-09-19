@@ -134,6 +134,7 @@ loom_check_test_suite(
     "test/compile_time_insertions.loom-test"
     "test/delay_alu.loom-test"
     "test/delay_layout.loom-test"
+    "test/dpp_wait_states.loom-test"
     "test/gfx1201_native.loom-test"
     "test/hal_kernel_library.loom-test"
     "test/packet.loom-test"

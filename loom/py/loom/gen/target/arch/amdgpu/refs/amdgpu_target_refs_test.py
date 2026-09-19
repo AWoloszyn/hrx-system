@@ -328,7 +328,7 @@ def test_target_ref_source_shares_exact_tables() -> None:
 def test_descriptor_trait_names_include_resource_and_encoding_facts() -> None:
     descriptor_set = _descriptor_set(
         _descriptor(
-            "amdgpu.v_mov_b32_dpp",
+            "amdgpu.v_mov_b32.sdwa",
             schedule_class=_SCHEDULE_VALU,
             encoding_format_id=AMDGPU_ENCODING_FORMAT_VOP1_SDWA,
         )
@@ -337,10 +337,25 @@ def test_descriptor_trait_names_include_resource_and_encoding_facts() -> None:
 
     assert amdgpu_target_refs._descriptor_trait_names(trait_context, descriptor_set.descriptors[0]) == (
         "LOOM_AMDGPU_DESCRIPTOR_TRAIT_VECTOR_ALU",
-        "LOOM_AMDGPU_DESCRIPTOR_TRAIT_DPP",
         "LOOM_AMDGPU_DESCRIPTOR_TRAIT_SDWA",
         "LOOM_AMDGPU_DESCRIPTOR_TRAIT_VECTOR_ISSUE",
     )
+
+
+def test_descriptor_trait_names_classify_dpp_encoding_families() -> None:
+    for format_name, format_id in AMDGPU_ENCODING_FORMAT_IDS.items():
+        if not format_name.endswith(("_DPP", "_DPP16", "_DPP8")):
+            continue
+        descriptor_set = _descriptor_set(
+            _descriptor(
+                f"amdgpu.test.{format_name.lower()}",
+                schedule_class=_SCHEDULE_VALU,
+                encoding_format_id=format_id,
+            )
+        )
+        trait_context = amdgpu_target_refs._descriptor_trait_context(descriptor_set)
+        traits = amdgpu_target_refs._descriptor_trait_names(trait_context, descriptor_set.descriptors[0])
+        assert "LOOM_AMDGPU_DESCRIPTOR_TRAIT_DPP" in traits, format_name
 
 
 def test_descriptor_trait_names_include_destination_selection_forwarding() -> None:

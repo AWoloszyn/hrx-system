@@ -1049,9 +1049,9 @@ typedef struct loom_amdgpu_subgroup_shuffle_plan_t {
 typedef enum loom_amdgpu_subgroup_reduce_crosslane_kind_e {
   // Use DS bpermute for every subgroup tree exchange.
   LOOM_AMDGPU_SUBGROUP_REDUCE_CROSSLANE_BPERMUTE = 0,
-  // Use DPP row moves within 16-lane rows and DS bpermute between rows.
+  // Use DPP within 16-lane rows and DS bpermute between rows.
   LOOM_AMDGPU_SUBGROUP_REDUCE_CROSSLANE_DPP_ROW_BPERMUTE = 1,
-  // Use DPP row moves within 16-lane rows and permlanex16 between row pairs.
+  // Use DPP within 16-lane rows and permlanex16 between row pairs.
   LOOM_AMDGPU_SUBGROUP_REDUCE_CROSSLANE_DPP_ROW_PERMLANEX16 = 2,
 } loom_amdgpu_subgroup_reduce_crosslane_kind_t;
 
@@ -1210,8 +1210,13 @@ typedef struct loom_amdgpu_workgroup_reduce_plan_t {
   uint32_t flat_workgroup_size;
   // 32-bit identity element bit pattern used for inactive source lanes.
   uint32_t identity_bits;
-  // Cross-lane exchange strategy selected for full-wave subgroup trees.
-  loom_amdgpu_subgroup_reduce_crosslane_kind_t crosslane_kind;
+  // Cross-lane strategies selected for the two reduction stages.
+  struct {
+    // Exchange strategy for the partial reduction within each wave.
+    loom_amdgpu_subgroup_reduce_crosslane_kind_t per_wave;
+    // Exchange strategy for combining the LDS-published wave partials.
+    loom_amdgpu_subgroup_reduce_crosslane_kind_t cross_wave;
+  } crosslane;
   // Strategy used to publish the final reduced value to all workitems.
   loom_amdgpu_workgroup_reduce_publication_kind_t publication_kind;
 } loom_amdgpu_workgroup_reduce_plan_t;
