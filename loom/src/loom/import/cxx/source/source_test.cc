@@ -9,7 +9,9 @@
 #include <cxx/ast.h>
 #include <cxx/control.h>
 #include <cxx/memory_layout.h>
+#include <cxx/preprocessor.h>
 
+#include <filesystem>
 #include <map>
 #include <optional>
 #include <string>
@@ -95,6 +97,20 @@ TEST(SourceTest, RejectedSourceLeavesTheNextInvocationIndependent) {
   Source source(IREE_SV("int valid = 7;"), IREE_SV("good.cpp"), options);
   EXPECT_FALSE(source.diagnostics().has_error());
   ASSERT_NE(source.unit().ast(), nullptr);
+}
+
+TEST(SourceTest, IncludeDirectoryRetainsFilesystemRoot) {
+  const auto root = std::filesystem::current_path().root_path();
+  const auto directory = root.string();
+  const auto include_path = view(directory);
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  options.include_paths = &include_path;
+  options.include_path_count = 1;
+  Source source(IREE_SV("int value = 1;"), IREE_SV("source.cpp"), options);
+  const auto& paths = source.unit().preprocessor()->userIncludePaths();
+  ASSERT_EQ(paths.size(), 1u);
+  EXPECT_EQ(paths.front(), root.generic_string());
 }
 
 TEST(SourceTest, DiagnosticSinkFailureCrossesTheParserSafeBoundary) {

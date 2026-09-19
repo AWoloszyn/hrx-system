@@ -10,7 +10,8 @@ function(iree_configure_cxx)
   if(TARGET iree::third_party::cxx_parser)
     return()
   endif()
-  # The importer uses the pinned semantic API and its include lifetime patch.
+  # The importer uses the pinned semantic API and its include ownership/path
+  # contracts.
   # An arbitrary installed parser package cannot establish that contract.
   iree_dependency_require_pinned_source_allowed("cxx")
   iree_populate_locked_fetch_content(cxx _cxx_source_dir)

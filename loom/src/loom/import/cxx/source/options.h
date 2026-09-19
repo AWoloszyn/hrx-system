@@ -33,7 +33,8 @@ typedef uint32_t loom_cxx_import_flags_t;
 // Returned bytes are borrowed until the next provider call or import returns.
 // The importer copies each found header into its per-invocation frontend;
 // providers may share immutable storage between concurrent imports. Paths
-// follow the preprocessor's quote, user, system, and include_next search rules.
+// follow the preprocessor's quote, user, system, and include_next search rules
+// and use generic '/' separators on every host.
 typedef iree_status_t (*loom_cxx_source_provider_fn_t)(
     void* user_data, iree_string_view_t path, bool* out_found,
     iree_string_view_t* out_source);

@@ -47,6 +47,7 @@ typedef uint32_t loomc_cxx_import_flags_t;
 /// Resolves a candidate include path to immutable source bytes.
 ///
 /// Paths follow ordinary quote, user, system, and include_next search rules.
+/// Candidate paths use generic '/' separators on every host.
 /// Return OK with a NULL output for a missing candidate. Other failures return
 /// status with a NULL output. A found source uses UNKNOWN format; its contents
 /// supply the header and the candidate path determines include identity.

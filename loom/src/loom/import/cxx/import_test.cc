@@ -6,6 +6,7 @@
 
 #include "loom/import/cxx/import.h"
 
+#include <filesystem>
 #include <map>
 #include <string>
 
@@ -290,8 +291,12 @@ TEST_F(ImportTest, RejectsInvalidOrContradictoryLaunchContracts) {
 }
 
 TEST_F(ImportTest, HeaderProviderUsesNormalIncludeSearch) {
-  const iree_string_view_t paths[] = {IREE_SV("/overrides"),
-                                      IREE_SV("/facade")};
+  const auto overrides =
+      std::filesystem::path("/overrides/").make_preferred().string();
+  const auto facade =
+      std::filesystem::path("/facade/").make_preferred().string();
+  const iree_string_view_t paths[] = {iree_make_cstring_view(overrides.c_str()),
+                                      iree_make_cstring_view(facade.c_str())};
   options_.include_paths = paths;
   options_.include_path_count = IREE_ARRAYSIZE(paths);
   options_.source_provider = {ProvideSource, this};
