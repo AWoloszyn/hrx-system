@@ -9,21 +9,489 @@
 #include <string.h>
 
 #include "loom/ir/parameterized_type.h"
+#include "loom/util/segmented_storage.h"
 
 //===----------------------------------------------------------------------===//
-// Stable records and exact canonical indexes
+// Canonical value sets
+//===----------------------------------------------------------------------===//
+
+enum {
+  LOOM_VALUE_SET_SEGMENT_SHIFT = 7,
+  LOOM_VALUE_SET_SEGMENT_CAPACITY = 128,
+  LOOM_VALUE_SET_SEGMENT_MASK = 127,
+  LOOM_VALUE_SET_BITMAP_SHIFT = 6,
+  LOOM_VALUE_SET_BITMAP_MASK = 63,
+};
+
+// Immutable membership node. Branch children are disjoint; a leaf has bit -1.
+typedef struct loom_value_set_node_t {
+  // Lower and upper membership subtrees; both zero for a singleton.
+  loom_value_set_id_t children[2];
+  // Smallest member, also the compressed-prefix representative.
+  loom_value_id_t value;
+  // Highest differing value-ID bit, or -1 for a singleton.
+  int32_t bit;
+  // Members in one aligned 64-ID block when bit < 6; zero otherwise.
+  uint64_t members;
+} loom_value_set_node_t;
+
+// One-based records. Radix-map edges tag the low bit of an ID, leaving 31
+// bits for record identities. Record addresses never move.
+typedef struct loom_value_set_records_t {
+  // Published records; prepared capacity is not included.
+  uint32_t count;
+  // Fixed-capacity pages allocated from the index arena.
+  loom_segmented_storage_t segments;
+} loom_value_set_records_t;
+
+typedef struct loom_value_set_union_t {
+  // Ordered pair of input set IDs; each pair is evaluated once.
+  uint64_t key;
+  // Canonical result of the union.
+  loom_value_set_id_t result;
+} loom_value_set_union_t;
+
+// A compressed sixteen-way exact map over 64-bit keys has at most 16 levels.
+// Leaves name canonical records; branches have the low bit set. Empty is zero.
+typedef struct loom_value_set_radix_t {
+  // Representative key supplying the compressed low-bit prefix.
+  uint64_t key;
+  // Tagged edges selected by the key nibble at shift.
+  uint32_t children[16];
+  // Nibble-aligned bit offset, increasing along a branch path.
+  uint32_t shift;
+} loom_value_set_radix_t;
+
+struct loom_value_set_index_t {
+  // Arena owning the index and all stable record pages.
+  iree_arena_allocator_t* arena;
+  // Immutable canonical membership nodes.
+  loom_value_set_records_t nodes;
+  // Memoized composite unions; singleton insertion needs no memo entry.
+  loom_value_set_records_t unions;
+  // Shared branch storage for both exact maps.
+  loom_value_set_records_t branches;
+  // Canonical membership map keyed by child pair or singleton value.
+  uint32_t node_root;
+  // Composite-union map keyed by ordered input pair.
+  uint32_t union_root;
+  // Owner bytes stored parallel to each membership node.
+  iree_host_size_t node_payload_size;
+};
+
+static void loom_value_set_records_initialize(
+    iree_host_size_t record_size, loom_value_set_records_t* records) {
+  loom_segmented_storage_initialize(
+      record_size * LOOM_VALUE_SET_SEGMENT_CAPACITY, iree_alignof(uint64_t),
+      &records->segments);
+}
+
+static void* loom_value_set_record(const loom_value_set_records_t* records,
+                                   uint32_t id, iree_host_size_t record_size) {
+  uint8_t* segment = (uint8_t*)loom_segmented_storage_const_segment(
+      &records->segments, (id - 1) >> LOOM_VALUE_SET_SEGMENT_SHIFT);
+  return segment + ((id - 1) & LOOM_VALUE_SET_SEGMENT_MASK) * record_size;
+}
+
+// Reserves a stable slot without publishing it. A failed later reserve leaves
+// reusable page capacity, never a half-published record.
+static iree_status_t loom_value_set_records_prepare(
+    loom_value_set_index_t* index, loom_value_set_records_t* records,
+    iree_host_size_t record_size, void** out_record) {
+  if (records->count == INT32_MAX) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "value set index exhausted its 31-bit IDs");
+  }
+  const uint32_t segment_index = records->count >> LOOM_VALUE_SET_SEGMENT_SHIFT;
+  if (segment_index == records->segments.segment_count) {
+    void* segment = NULL;
+    IREE_RETURN_IF_ERROR(loom_segmented_storage_append(&records->segments,
+                                                       index->arena, &segment));
+  }
+  *out_record = loom_value_set_record(records, records->count + 1, record_size);
+  return iree_ok_status();
+}
+
+static loom_value_set_union_t* loom_value_set_union_record(
+    const loom_value_set_index_t* index, uint32_t id) {
+  return (loom_value_set_union_t*)loom_value_set_record(
+      &index->unions, id, sizeof(loom_value_set_union_t));
+}
+
+static loom_value_set_radix_t* loom_value_set_radix(
+    const loom_value_set_index_t* index, uint32_t id) {
+  return (loom_value_set_radix_t*)loom_value_set_record(
+      &index->branches, id, sizeof(loom_value_set_radix_t));
+}
+
+static iree_status_t loom_value_set_index_allocate_with_payload(
+    iree_arena_allocator_t* arena, iree_host_size_t node_payload_size,
+    loom_value_set_index_t** out_index) {
+  *out_index = NULL;
+  iree_host_size_t node_segment_size = 0;
+  if (!iree_host_size_checked_add(sizeof(loom_value_set_node_t),
+                                  node_payload_size, &node_segment_size) ||
+      !iree_host_size_checked_mul(node_segment_size,
+                                  LOOM_VALUE_SET_SEGMENT_CAPACITY,
+                                  &node_segment_size)) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "value set node payload is too large");
+  }
+  loom_value_set_index_t* index = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate(arena, sizeof(*index), (void**)&index));
+  memset(index, 0, sizeof(*index));
+  index->arena = arena;
+  index->node_payload_size = node_payload_size;
+  loom_segmented_storage_initialize(node_segment_size, iree_alignof(uint64_t),
+                                    &index->nodes.segments);
+  loom_value_set_records_initialize(sizeof(loom_value_set_union_t),
+                                    &index->unions);
+  loom_value_set_records_initialize(sizeof(loom_value_set_radix_t),
+                                    &index->branches);
+  *out_index = index;
+  return iree_ok_status();
+}
+
+iree_status_t loom_value_set_index_allocate(
+    iree_arena_allocator_t* arena, loom_value_set_index_t** out_index) {
+  return loom_value_set_index_allocate_with_payload(arena, 0, out_index);
+}
+
+static const loom_value_set_node_t* loom_value_set_index_node(
+    const loom_value_set_index_t* index, loom_value_set_id_t set) {
+  IREE_ASSERT(set > 0 && set <= index->nodes.count);
+  return (const loom_value_set_node_t*)loom_value_set_record(
+      &index->nodes, set, sizeof(loom_value_set_node_t));
+}
+
+static void* loom_value_set_index_node_payload(
+    const loom_value_set_index_t* index, loom_value_set_id_t set) {
+  if (index->node_payload_size == 0) {
+    return NULL;
+  }
+  IREE_ASSERT(set > 0 && set <= index->nodes.count);
+  uint8_t* segment = (uint8_t*)loom_segmented_storage_const_segment(
+      &index->nodes.segments, (set - 1) >> LOOM_VALUE_SET_SEGMENT_SHIFT);
+  return segment +
+         sizeof(loom_value_set_node_t) * LOOM_VALUE_SET_SEGMENT_CAPACITY +
+         ((set - 1) & LOOM_VALUE_SET_SEGMENT_MASK) * index->node_payload_size;
+}
+
+bool loom_value_set_index_contains(const loom_value_set_index_t* index,
+                                   loom_value_set_id_t set,
+                                   loom_value_id_t value) {
+  if (!set) {
+    return false;
+  }
+  const loom_value_set_node_t* node = loom_value_set_index_node(index, set);
+  while (node->bit >= 0) {
+    node = loom_value_set_index_node(index,
+                                     node->children[(value >> node->bit) & 1]);
+  }
+  return node->value == value;
+}
+
+typedef enum loom_value_set_key_kind_e {
+  LOOM_VALUE_SET_KEY_NODE,
+  LOOM_VALUE_SET_KEY_UNION,
+} loom_value_set_key_kind_t;
+
+static uint64_t loom_value_set_key(const loom_value_set_index_t* index,
+                                   loom_value_set_key_kind_t kind,
+                                   uint32_t id) {
+  if (kind == LOOM_VALUE_SET_KEY_UNION) {
+    return loom_value_set_union_record(index, id)->key;
+  }
+  const loom_value_set_node_t* node = loom_value_set_index_node(index, id);
+  return node->bit < 0
+             ? (uint64_t)node->value << 32
+             : ((uint64_t)node->children[0] << 32) | node->children[1];
+}
+
+// A probe result is valid until the next insertion in this map. Stable page
+// storage allows intervening capacity growth without invalidating its edge.
+typedef struct loom_value_set_position_t {
+  // Existing leaf or subtree edge to replace on insertion.
+  uint32_t* edge;
+  // Matching record, or zero on a miss.
+  uint32_t existing;
+  // Branch nibble required when replacing a nonempty edge.
+  uint32_t shift;
+  // New key.
+  uint64_t key;
+  // Representative key of the replaced edge.
+  uint64_t old_key;
+} loom_value_set_position_t;
+
+static loom_value_set_position_t loom_value_set_probe(
+    loom_value_set_index_t* index, loom_value_set_key_kind_t kind,
+    uint32_t* root, uint64_t key) {
+  uint32_t* edge = root;
+  while (*edge & 1) {
+    loom_value_set_radix_t* branch = loom_value_set_radix(index, *edge >> 1);
+    const uint64_t difference =
+        (key ^ branch->key) & ((UINT64_C(1) << branch->shift) - 1);
+    if (difference) {
+      return (loom_value_set_position_t){
+          .edge = edge,
+          .shift =
+              (uint32_t)iree_math_count_trailing_zeros_u64(difference) & ~3u,
+          .key = key,
+          .old_key = branch->key,
+      };
+    }
+    edge = &branch->children[(key >> branch->shift) & 15];
+  }
+  if (!*edge) {
+    return (loom_value_set_position_t){.edge = edge, .key = key};
+  }
+  const uint64_t old_key = loom_value_set_key(index, kind, *edge >> 1);
+  if (old_key == key) {
+    return (loom_value_set_position_t){.edge = edge, .existing = *edge >> 1};
+  }
+  return (loom_value_set_position_t){
+      .edge = edge,
+      .shift =
+          (uint32_t)iree_math_count_trailing_zeros_u64(key ^ old_key) & ~3u,
+      .key = key,
+      .old_key = old_key,
+  };
+}
+
+static iree_status_t loom_value_set_insert(loom_value_set_index_t* index,
+                                           loom_value_set_position_t position,
+                                           uint32_t record_id) {
+  if (!*position.edge) {
+    *position.edge = record_id << 1;
+    return iree_ok_status();
+  }
+  loom_value_set_radix_t* branch = NULL;
+  IREE_RETURN_IF_ERROR(loom_value_set_records_prepare(
+      index, &index->branches, sizeof(*branch), (void**)&branch));
+  *branch = (loom_value_set_radix_t){
+      .key = position.old_key,
+      .shift = position.shift,
+  };
+  branch->children[(position.old_key >> position.shift) & 15] = *position.edge;
+  branch->children[(position.key >> position.shift) & 15] = record_id << 1;
+  *position.edge = (++index->branches.count << 1) | 1;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_value_set_intern_node(
+    loom_value_set_index_t* index, uint64_t key,
+    const loom_value_set_node_t* candidate, loom_value_set_id_t* out_set) {
+  loom_value_set_position_t position = loom_value_set_probe(
+      index, LOOM_VALUE_SET_KEY_NODE, &index->node_root, key);
+  if (position.existing) {
+    *out_set = position.existing;
+    return iree_ok_status();
+  }
+  loom_value_set_node_t* node = NULL;
+  IREE_RETURN_IF_ERROR(loom_value_set_records_prepare(
+      index, &index->nodes, sizeof(*node), (void**)&node));
+  IREE_RETURN_IF_ERROR(
+      loom_value_set_insert(index, position, index->nodes.count + 1));
+  *node = *candidate;
+  *out_set = ++index->nodes.count;
+  if (index->node_payload_size != 0) {
+    memset(loom_value_set_index_node_payload(index, *out_set), 0,
+           index->node_payload_size);
+  }
+  return iree_ok_status();
+}
+
+static int32_t loom_value_set_highest_bit(uint32_t value) {
+  return 31 - iree_math_count_leading_zeros_u32(value);
+}
+
+static iree_status_t loom_value_set_join(loom_value_set_index_t* index,
+                                         loom_value_set_id_t left,
+                                         loom_value_set_id_t right,
+                                         loom_value_set_id_t* out_set) {
+  if (!left || left == right) {
+    *out_set = right;
+    return iree_ok_status();
+  }
+  if (!right) {
+    *out_set = left;
+    return iree_ok_status();
+  }
+  const loom_value_id_t left_value =
+      loom_value_set_index_node(index, left)->value;
+  const loom_value_id_t right_value =
+      loom_value_set_index_node(index, right)->value;
+  const int32_t bit = loom_value_set_highest_bit(left_value ^ right_value);
+  IREE_ASSERT(loom_value_set_index_node(index, left)->bit < bit &&
+              loom_value_set_index_node(index, right)->bit < bit);
+  if ((left_value >> bit) & 1) {
+    loom_value_set_id_t temporary = left;
+    left = right;
+    right = temporary;
+  }
+  const loom_value_set_node_t candidate = {
+      .children = {left, right},
+      .value = loom_value_set_index_node(index, left)->value,
+      .bit = bit,
+      .members = bit < LOOM_VALUE_SET_BITMAP_SHIFT
+                     ? loom_value_set_index_node(index, left)->members |
+                           loom_value_set_index_node(index, right)->members
+                     : 0,
+  };
+  return loom_value_set_intern_node(index, ((uint64_t)left << 32) | right,
+                                    &candidate, out_set);
+}
+
+iree_status_t loom_value_set_index_union_nonempty(
+    loom_value_set_index_t* index, loom_value_set_id_t first,
+    loom_value_set_id_t second, loom_value_set_id_t* out_set) {
+  if (first > second) {
+    loom_value_set_id_t temporary = first;
+    first = second;
+    second = temporary;
+  }
+  const loom_value_set_node_t* a = loom_value_set_index_node(index, first);
+  const loom_value_set_node_t* b = loom_value_set_index_node(index, second);
+  const uint64_t key = ((uint64_t)first << 32) | second;
+  const bool memoize = a->bit >= 0 && b->bit >= 0;
+  if (memoize) {
+    loom_value_set_position_t position = loom_value_set_probe(
+        index, LOOM_VALUE_SET_KEY_UNION, &index->union_root, key);
+    if (position.existing) {
+      *out_set = loom_value_set_union_record(index, position.existing)->result;
+      return iree_ok_status();
+    }
+  }
+  loom_value_set_id_t result = 0;
+  if (loom_value_set_highest_bit(a->value ^ b->value) >
+      iree_max(a->bit, b->bit)) {
+    IREE_RETURN_IF_ERROR(loom_value_set_join(index, first, second, &result));
+  } else if (a->bit == b->bit) {
+    loom_value_set_id_t left = 0;
+    loom_value_set_id_t right = 0;
+    IREE_RETURN_IF_ERROR(loom_value_set_index_union(index, a->children[0],
+                                                    b->children[0], &left));
+    IREE_RETURN_IF_ERROR(loom_value_set_index_union(index, a->children[1],
+                                                    b->children[1], &right));
+    IREE_RETURN_IF_ERROR(loom_value_set_join(index, left, right, &result));
+  } else {
+    const loom_value_set_node_t* higher = a->bit > b->bit ? a : b;
+    const loom_value_set_node_t* lower = a->bit > b->bit ? b : a;
+    const uint32_t side = (lower->value >> higher->bit) & 1;
+    loom_value_set_id_t changed = 0;
+    IREE_RETURN_IF_ERROR(
+        loom_value_set_index_union(index, higher->children[side],
+                                   a->bit > b->bit ? second : first, &changed));
+    if (changed == higher->children[side]) {
+      result = a->bit > b->bit ? first : second;
+    } else {
+      IREE_RETURN_IF_ERROR(
+          loom_value_set_join(index, side ? higher->children[0] : changed,
+                              side ? changed : higher->children[1], &result));
+    }
+  }
+  if (memoize) {
+    const loom_value_set_position_t position = loom_value_set_probe(
+        index, LOOM_VALUE_SET_KEY_UNION, &index->union_root, key);
+    loom_value_set_union_t* entry = NULL;
+    IREE_RETURN_IF_ERROR(loom_value_set_records_prepare(
+        index, &index->unions, sizeof(*entry), (void**)&entry));
+    IREE_RETURN_IF_ERROR(
+        loom_value_set_insert(index, position, index->unions.count + 1));
+    *entry = (loom_value_set_union_t){.key = key, .result = result};
+    ++index->unions.count;
+  }
+  *out_set = result;
+  return iree_ok_status();
+}
+
+iree_status_t loom_value_set_index_add(loom_value_set_index_t* index,
+                                       loom_value_set_id_t set,
+                                       loom_value_id_t value,
+                                       loom_value_set_id_t* out_set) {
+  const loom_value_set_node_t candidate = {
+      .value = value,
+      .bit = -1,
+      .members = UINT64_C(1) << (value & LOOM_VALUE_SET_BITMAP_MASK),
+  };
+  loom_value_set_id_t singleton = 0;
+  IREE_RETURN_IF_ERROR(loom_value_set_intern_node(index, (uint64_t)value << 32,
+                                                  &candidate, &singleton));
+  return loom_value_set_index_union(index, set, singleton, out_set);
+}
+
+iree_status_t loom_value_set_index_prefix(loom_value_set_index_t* index,
+                                          loom_value_set_id_t set,
+                                          uint64_t limit,
+                                          loom_value_set_id_t* out_set) {
+  if (!set) {
+    *out_set = 0;
+    return iree_ok_status();
+  }
+  const loom_value_set_node_t* node = loom_value_set_index_node(index, set);
+  if (node->value >= limit) {
+    *out_set = 0;
+    return iree_ok_status();
+  }
+  if (node->bit < 0) {
+    *out_set = set;
+    return iree_ok_status();
+  }
+  const uint64_t mask = (UINT64_C(1) << (node->bit + 1)) - 1;
+  if (((uint64_t)node->value | mask) < limit) {
+    *out_set = set;
+    return iree_ok_status();
+  }
+  const uint64_t boundary =
+      ((uint64_t)node->value & ~mask) | (UINT64_C(1) << node->bit);
+  if (limit <= boundary) {
+    return loom_value_set_index_prefix(index, node->children[0], limit,
+                                       out_set);
+  }
+  loom_value_set_id_t right = 0;
+  IREE_RETURN_IF_ERROR(
+      loom_value_set_index_prefix(index, node->children[1], limit, &right));
+  return loom_value_set_join(index, node->children[0], right, out_set);
+}
+
+void loom_value_set_cursor_begin(const loom_value_set_index_t* index,
+                                 loom_value_set_id_t set,
+                                 loom_value_set_cursor_t* out_cursor) {
+  *out_cursor = (loom_value_set_cursor_t){.index = index};
+  if (set) {
+    out_cursor->pending[out_cursor->pending_count++] = set;
+  }
+}
+
+bool loom_value_set_cursor_advance(loom_value_set_cursor_t* cursor) {
+  if (!cursor->pending_count) {
+    return false;
+  }
+  const loom_value_set_node_t* node = loom_value_set_index_node(
+      cursor->index, cursor->pending[--cursor->pending_count]);
+  while (node->bit >= LOOM_VALUE_SET_BITMAP_SHIFT) {
+    cursor->pending[cursor->pending_count++] = node->children[1];
+    node = loom_value_set_index_node(cursor->index, node->children[0]);
+  }
+  cursor->members = node->members;
+  cursor->base = node->value & ~LOOM_VALUE_SET_BITMAP_MASK;
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
+// Active dependency ownership
 //===----------------------------------------------------------------------===//
 
 enum {
   LOOM_TYPE_DEPENDENCY_SEGMENT_SHIFT = 7,
   LOOM_TYPE_DEPENDENCY_SEGMENT_CAPACITY = 128,
   LOOM_TYPE_DEPENDENCY_SEGMENT_MASK = 127,
-  LOOM_TYPE_DEPENDENCY_BITMAP_SHIFT = 6,
-  LOOM_TYPE_DEPENDENCY_BITMAP_MASK = 63,
+  LOOM_VALUE_DEPENDENCY_BITMAP_SHIFT = 6,
+  LOOM_VALUE_DEPENDENCY_BITMAP_MASK = 63,
 };
 
-// One-based records. Both parent edges and radix-map edges tag a record ID's
-// low bit, leaving 31 bits for identities. Record addresses never move.
+// One-based carrier records. Record addresses never move.
 typedef struct loom_dependency_records_t {
   // Published records; prepared capacity is not included.
   uint32_t count;
@@ -52,27 +520,6 @@ typedef struct loom_dependency_ownership_t {
   } edges[2];
 } loom_dependency_ownership_t;
 
-typedef struct loom_dependency_node_t {
-  // Disjoint lower and upper membership subtrees; both zero for a singleton.
-  uint32_t children[2];
-  // Smallest member of the set, also its compressed-prefix representative.
-  loom_value_id_t provider;
-  // Highest differing provider bit, or -1 for a singleton.
-  int32_t bit;
-  // Provider bits within one aligned 64-ID block when bit < 6; zero otherwise.
-  uint64_t members;
-} loom_dependency_node_t;
-
-// Outgoing queries read membership only. Keeping it dense avoids pulling both
-// ownership channels into cache while traversing a retained set.
-typedef struct loom_dependency_node_page_t {
-  // Immutable membership, addressed by the low seven bits of a node ordinal.
-  loom_dependency_node_t nodes[LOOM_TYPE_DEPENDENCY_SEGMENT_CAPACITY];
-  // Independent reverse paths for value-type and attribute consumers.
-  loom_dependency_ownership_t ownership[LOOM_TYPE_DEPENDENCY_SEGMENT_CAPACITY]
-                                       [2];
-} loom_dependency_node_page_t;
-
 typedef struct loom_dependency_carrier_t {
   // Full declared membership, including providers not yet defined.
   uint32_t declared;
@@ -97,37 +544,11 @@ typedef struct loom_dependency_carrier_t {
   } owner;
 } loom_dependency_carrier_t;
 
-typedef struct loom_dependency_union_t {
-  // Ordered pair of input set IDs; each pair is evaluated once.
-  uint64_t key;
-  // Canonical result of the union.
-  uint32_t result;
-} loom_dependency_union_t;
-
-// A compressed sixteen-way exact map over 64-bit keys has at most 16 levels.
-// Leaves name canonical records; branches have the low bit set. Empty is zero.
-typedef struct loom_dependency_radix_t {
-  // Representative key supplying the compressed low-bit prefix.
-  uint64_t key;
-  // Tagged edges selected by the key nibble at shift.
-  uint32_t children[16];
-  // Nibble-aligned bit offset, increasing along a branch path.
-  uint32_t shift;
-} loom_dependency_radix_t;
-
 struct loom_type_dependency_index_t {
-  // Immutable membership with active reverse links.
-  loom_dependency_records_t nodes;
+  // Canonical immutable value-set membership.
+  loom_value_set_index_t* membership;
   // Value and attribute owners, recycled when declared membership is empty.
   loom_dependency_records_t carriers;
-  // Memoized composite unions; singleton insertion needs no memo entry.
-  loom_dependency_records_t unions;
-  // Shared branch storage for both exact maps.
-  loom_dependency_records_t branches;
-  // Canonical membership map keyed by child pair or singleton provider.
-  uint32_t node_root;
-  // Composite-union map keyed by ordered input pair.
-  uint32_t union_root;
   // First reusable carrier, or zero when none is available.
   uint32_t free_carrier;
 };
@@ -147,13 +568,13 @@ static void* loom_dependency_record(const loom_dependency_records_t* records,
 }
 
 // Reserves a stable slot without publishing a record. A failed later reserve
-// leaves only reusable page capacity, never a half-interned node.
+// leaves only reusable page capacity, never a half-published carrier.
 static iree_status_t loom_dependency_records_prepare(
     iree_arena_allocator_t* arena, loom_dependency_records_t* records,
     iree_host_size_t record_size, void** out_record) {
   if (records->count == INT32_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "type dependency index exhausted its 31-bit IDs");
+                            "type dependency carrier index exhausted");
   }
   const uint32_t segment_index =
       records->count >> LOOM_TYPE_DEPENDENCY_SEGMENT_SHIFT;
@@ -167,52 +588,23 @@ static iree_status_t loom_dependency_records_prepare(
   return iree_ok_status();
 }
 
-static loom_dependency_node_t* loom_dependency_node(
+static const loom_value_set_node_t* loom_dependency_node(
     const loom_type_dependency_index_t* index, uint32_t id) {
-  return (loom_dependency_node_t*)loom_dependency_record(
-      &index->nodes, id, sizeof(loom_dependency_node_t));
+  return loom_value_set_index_node(index->membership, id);
 }
 
 static loom_dependency_ownership_t* loom_dependency_ownership(
     const loom_type_dependency_index_t* index, uint32_t id,
     loom_dependency_owner_kind_t kind) {
-  loom_dependency_node_page_t* page =
-      (loom_dependency_node_page_t*)loom_segmented_storage_const_segment(
-          &index->nodes.segments,
-          (id - 1) >> LOOM_TYPE_DEPENDENCY_SEGMENT_SHIFT);
-  return &page->ownership[(id - 1) & LOOM_TYPE_DEPENDENCY_SEGMENT_MASK][kind];
-}
-
-bool loom_type_dependencies_contains(const loom_type_use_table_t* table,
-                                     loom_type_dependency_id_t root,
-                                     loom_value_id_t provider) {
-  if (!root) {
-    return false;
-  }
-  const loom_dependency_node_t* node = loom_dependency_node(table->index, root);
-  while (node->bit >= 0) {
-    node = loom_dependency_node(table->index,
-                                node->children[(provider >> node->bit) & 1]);
-  }
-  return node->provider == provider;
+  loom_dependency_ownership_t* ownership =
+      loom_value_set_index_node_payload(index->membership, id);
+  return &ownership[kind];
 }
 
 static loom_dependency_carrier_t* loom_dependency_carrier(
     const loom_type_dependency_index_t* index, uint32_t id) {
   return (loom_dependency_carrier_t*)loom_dependency_record(
       &index->carriers, id, sizeof(loom_dependency_carrier_t));
-}
-
-static loom_dependency_union_t* loom_dependency_union(
-    const loom_type_dependency_index_t* index, uint32_t id) {
-  return (loom_dependency_union_t*)loom_dependency_record(
-      &index->unions, id, sizeof(loom_dependency_union_t));
-}
-
-static loom_dependency_radix_t* loom_dependency_radix(
-    const loom_type_dependency_index_t* index, uint32_t id) {
-  return (loom_dependency_radix_t*)loom_dependency_record(
-      &index->branches, id, sizeof(loom_dependency_radix_t));
 }
 
 static iree_status_t loom_type_dependencies_allocate_index(
@@ -224,236 +616,27 @@ static iree_status_t loom_type_dependencies_allocate_index(
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate(&table->arena, sizeof(*index), (void**)&index));
   memset(index, 0, sizeof(*index));
-  loom_segmented_storage_initialize(sizeof(loom_dependency_node_page_t),
-                                    iree_alignof(uint64_t),
-                                    &index->nodes.segments);
+  IREE_RETURN_IF_ERROR(loom_value_set_index_allocate_with_payload(
+      &table->arena, 2 * sizeof(loom_dependency_ownership_t),
+      &index->membership));
   loom_dependency_records_initialize(sizeof(loom_dependency_carrier_t),
                                      &index->carriers);
-  loom_dependency_records_initialize(sizeof(loom_dependency_union_t),
-                                     &index->unions);
-  loom_dependency_records_initialize(sizeof(loom_dependency_radix_t),
-                                     &index->branches);
   table->index = index;
   return iree_ok_status();
 }
 
-typedef enum loom_dependency_key_kind_e {
-  LOOM_DEPENDENCY_KEY_NODE,
-  LOOM_DEPENDENCY_KEY_UNION,
-} loom_dependency_key_kind_t;
-
-static uint64_t loom_dependency_key(const loom_type_dependency_index_t* index,
-                                    loom_dependency_key_kind_t kind,
-                                    uint32_t id) {
-  if (kind == LOOM_DEPENDENCY_KEY_UNION) {
-    return loom_dependency_union(index, id)->key;
-  }
-  const loom_dependency_node_t* node = loom_dependency_node(index, id);
-  return node->bit < 0
-             ? (uint64_t)node->provider << 32
-             : ((uint64_t)node->children[0] << 32) | node->children[1];
-}
-
-// A probe result is valid until the next insertion in this map. Stable page
-// storage allows intervening capacity growth without invalidating its edge.
-typedef struct loom_dependency_position_t {
-  // Existing leaf or subtree edge to replace on insertion.
-  uint32_t* edge;
-  // Matching record, or zero on a miss.
-  uint32_t existing;
-  // Branch nibble required when replacing a nonempty edge.
-  uint32_t shift;
-  // New key.
-  uint64_t key;
-  // Representative key of the replaced edge.
-  uint64_t old_key;
-} loom_dependency_position_t;
-
-static loom_dependency_position_t loom_dependency_probe(
-    loom_type_dependency_index_t* index, loom_dependency_key_kind_t kind,
-    uint32_t* root, uint64_t key) {
-  uint32_t* edge = root;
-  while (*edge & 1) {
-    loom_dependency_radix_t* branch = loom_dependency_radix(index, *edge >> 1);
-    const uint64_t difference =
-        (key ^ branch->key) & ((UINT64_C(1) << branch->shift) - 1);
-    if (difference) {
-      return (loom_dependency_position_t){
-          .edge = edge,
-          .shift =
-              (uint32_t)iree_math_count_trailing_zeros_u64(difference) & ~3u,
-          .key = key,
-          .old_key = branch->key,
-      };
-    }
-    edge = &branch->children[(key >> branch->shift) & 15];
-  }
-  if (!*edge) {
-    return (loom_dependency_position_t){.edge = edge, .key = key};
-  }
-  const uint64_t old_key = loom_dependency_key(index, kind, *edge >> 1);
-  if (old_key == key) {
-    return (loom_dependency_position_t){.edge = edge, .existing = *edge >> 1};
-  }
-  return (loom_dependency_position_t){
-      .edge = edge,
-      .shift =
-          (uint32_t)iree_math_count_trailing_zeros_u64(key ^ old_key) & ~3u,
-      .key = key,
-      .old_key = old_key,
-  };
-}
-
-static iree_status_t loom_dependency_insert(loom_type_use_table_t* table,
-                                            loom_dependency_position_t position,
-                                            uint32_t record_id) {
-  if (!*position.edge) {
-    *position.edge = record_id << 1;
-    return iree_ok_status();
-  }
-  loom_dependency_radix_t* branch = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_dependency_records_prepare(&table->arena, &table->index->branches,
-                                      sizeof(*branch), (void**)&branch));
-  *branch = (loom_dependency_radix_t){
-      .key = position.old_key,
-      .shift = position.shift,
-  };
-  branch->children[(position.old_key >> position.shift) & 15] = *position.edge;
-  branch->children[(position.key >> position.shift) & 15] = record_id << 1;
-  *position.edge = (++table->index->branches.count << 1) | 1;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_dependency_intern_node(
-    loom_type_use_table_t* table, uint64_t key,
-    const loom_dependency_node_t* candidate, uint32_t* out_id) {
-  loom_dependency_position_t position = loom_dependency_probe(
-      table->index, LOOM_DEPENDENCY_KEY_NODE, &table->index->node_root, key);
-  if (position.existing) {
-    *out_id = position.existing;
-    return iree_ok_status();
-  }
-  loom_dependency_node_t* node = NULL;
-  IREE_RETURN_IF_ERROR(loom_dependency_records_prepare(
-      &table->arena, &table->index->nodes, sizeof(*node), (void**)&node));
-  IREE_RETURN_IF_ERROR(
-      loom_dependency_insert(table, position, table->index->nodes.count + 1));
-  *node = *candidate;
-  *out_id = ++table->index->nodes.count;
-  memset(loom_dependency_ownership(table->index, *out_id,
-                                   LOOM_DEPENDENCY_OWNER_VALUE),
-         0, 2 * sizeof(loom_dependency_ownership_t));
-  return iree_ok_status();
-}
-
-static int32_t loom_dependency_highest_bit(uint32_t value) {
-  return 31 - iree_math_count_leading_zeros_u32(value);
-}
-
-static iree_status_t loom_dependency_join(loom_type_use_table_t* table,
-                                          uint32_t left, uint32_t right,
-                                          uint32_t* out_root) {
-  if (!left || left == right) {
-    *out_root = right;
-    return iree_ok_status();
-  }
-  if (!right) {
-    *out_root = left;
-    return iree_ok_status();
-  }
-  const uint32_t left_provider =
-      loom_dependency_node(table->index, left)->provider;
-  const uint32_t right_provider =
-      loom_dependency_node(table->index, right)->provider;
-  const int32_t bit =
-      loom_dependency_highest_bit(left_provider ^ right_provider);
-  // Disjoint children are the uniqueness proof for both directions of query.
-  IREE_ASSERT(loom_dependency_node(table->index, left)->bit < bit &&
-              loom_dependency_node(table->index, right)->bit < bit);
-  if ((left_provider >> bit) & 1) {
-    uint32_t temporary = left;
-    left = right;
-    right = temporary;
-  }
-  const loom_dependency_node_t candidate = {
-      .children = {left, right},
-      .provider = loom_dependency_node(table->index, left)->provider,
-      .bit = bit,
-      .members = bit < LOOM_TYPE_DEPENDENCY_BITMAP_SHIFT
-                     ? loom_dependency_node(table->index, left)->members |
-                           loom_dependency_node(table->index, right)->members
-                     : 0,
-  };
-  return loom_dependency_intern_node(table, ((uint64_t)left << 32) | right,
-                                     &candidate, out_root);
+bool loom_type_dependencies_contains(const loom_type_use_table_t* table,
+                                     loom_type_dependency_id_t root,
+                                     loom_value_id_t provider) {
+  return root && loom_value_set_index_contains(table->index->membership, root,
+                                               provider);
 }
 
 iree_status_t loom_type_dependencies_union_nonempty(
     loom_type_use_table_t* table, loom_type_dependency_id_t first,
     loom_type_dependency_id_t second, loom_type_dependency_id_t* out_root) {
-  if (first > second) {
-    uint32_t temporary = first;
-    first = second;
-    second = temporary;
-  }
-  const loom_dependency_node_t* a = loom_dependency_node(table->index, first);
-  const loom_dependency_node_t* b = loom_dependency_node(table->index, second);
-  const uint64_t key = ((uint64_t)first << 32) | second;
-  const bool memoize = a->bit >= 0 && b->bit >= 0;
-  if (memoize) {
-    loom_dependency_position_t position =
-        loom_dependency_probe(table->index, LOOM_DEPENDENCY_KEY_UNION,
-                              &table->index->union_root, key);
-    if (position.existing) {
-      *out_root =
-          loom_dependency_union(table->index, position.existing)->result;
-      return iree_ok_status();
-    }
-  }
-  uint32_t result = 0;
-  if (loom_dependency_highest_bit(a->provider ^ b->provider) >
-      iree_max(a->bit, b->bit)) {
-    IREE_RETURN_IF_ERROR(loom_dependency_join(table, first, second, &result));
-  } else if (a->bit == b->bit) {
-    uint32_t left = 0;
-    uint32_t right = 0;
-    IREE_RETURN_IF_ERROR(loom_type_dependencies_union(table, a->children[0],
-                                                      b->children[0], &left));
-    IREE_RETURN_IF_ERROR(loom_type_dependencies_union(table, a->children[1],
-                                                      b->children[1], &right));
-    IREE_RETURN_IF_ERROR(loom_dependency_join(table, left, right, &result));
-  } else {
-    const loom_dependency_node_t* higher = a->bit > b->bit ? a : b;
-    const loom_dependency_node_t* lower = a->bit > b->bit ? b : a;
-    const uint32_t side = (lower->provider >> higher->bit) & 1;
-    uint32_t changed = 0;
-    IREE_RETURN_IF_ERROR(loom_type_dependencies_union(
-        table, higher->children[side], a->bit > b->bit ? second : first,
-        &changed));
-    if (changed == higher->children[side]) {
-      result = a->bit > b->bit ? first : second;
-    } else {
-      IREE_RETURN_IF_ERROR(
-          loom_dependency_join(table, side ? higher->children[0] : changed,
-                               side ? changed : higher->children[1], &result));
-    }
-  }
-  if (memoize) {
-    // Recursive unions may have changed this map since the initial miss.
-    const loom_dependency_position_t position =
-        loom_dependency_probe(table->index, LOOM_DEPENDENCY_KEY_UNION,
-                              &table->index->union_root, key);
-    loom_dependency_union_t* entry = NULL;
-    IREE_RETURN_IF_ERROR(loom_dependency_records_prepare(
-        &table->arena, &table->index->unions, sizeof(*entry), (void**)&entry));
-    IREE_RETURN_IF_ERROR(loom_dependency_insert(
-        table, position, table->index->unions.count + 1));
-    *entry = (loom_dependency_union_t){.key = key, .result = result};
-    ++table->index->unions.count;
-  }
-  *out_root = result;
-  return iree_ok_status();
+  return loom_value_set_index_union_nonempty(table->index->membership, first,
+                                             second, out_root);
 }
 
 iree_status_t loom_type_dependencies_add(loom_type_use_table_t* table,
@@ -461,48 +644,15 @@ iree_status_t loom_type_dependencies_add(loom_type_use_table_t* table,
                                          loom_value_id_t provider,
                                          loom_type_dependency_id_t* out_root) {
   IREE_RETURN_IF_ERROR(loom_type_dependencies_allocate_index(table));
-  const loom_dependency_node_t candidate = {
-      .provider = provider,
-      .bit = -1,
-      .members = UINT64_C(1) << (provider & LOOM_TYPE_DEPENDENCY_BITMAP_MASK),
-  };
-  uint32_t singleton = 0;
-  IREE_RETURN_IF_ERROR(loom_dependency_intern_node(
-      table, (uint64_t)provider << 32, &candidate, &singleton));
-  return loom_type_dependencies_union(table, root, singleton, out_root);
+  return loom_value_set_index_add(table->index->membership, root, provider,
+                                  out_root);
 }
 
-// Intersects membership with [0, limit) along at most one 32-bit boundary path.
 static iree_status_t loom_dependency_prefix(loom_type_use_table_t* table,
                                             uint32_t root, uint64_t limit,
                                             uint32_t* out_root) {
-  if (!root) {
-    *out_root = 0;
-    return iree_ok_status();
-  }
-  const loom_dependency_node_t* node = loom_dependency_node(table->index, root);
-  if (node->provider >= limit) {
-    *out_root = 0;
-    return iree_ok_status();
-  }
-  if (node->bit < 0) {
-    *out_root = root;
-    return iree_ok_status();
-  }
-  const uint64_t mask = (UINT64_C(1) << (node->bit + 1)) - 1;
-  if (((uint64_t)node->provider | mask) < limit) {
-    *out_root = root;
-    return iree_ok_status();
-  }
-  const uint64_t boundary =
-      ((uint64_t)node->provider & ~mask) | (UINT64_C(1) << node->bit);
-  if (limit <= boundary) {
-    return loom_dependency_prefix(table, node->children[0], limit, out_root);
-  }
-  uint32_t right = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_dependency_prefix(table, node->children[1], limit, &right));
-  return loom_dependency_join(table, node->children[0], right, out_root);
+  return loom_value_set_index_prefix(table->index->membership, root, limit,
+                                     out_root);
 }
 
 //===----------------------------------------------------------------------===//
@@ -598,17 +748,17 @@ iree_status_t loom_type_dependencies_collect_immediate(
 
 static void loom_dependency_acquire(loom_type_use_table_t* table, uint32_t id,
                                     loom_dependency_owner_kind_t kind) {
-  loom_dependency_node_t* node = loom_dependency_node(table->index, id);
+  const loom_value_set_node_t* node = loom_dependency_node(table->index, id);
   loom_dependency_ownership_t* ownership =
       loom_dependency_ownership(table->index, id, kind);
   if (ownership->active_owners++) {
     return;
   }
   if (node->bit < 0) {
-    loom_value_table_type_use_heads(table->value_table, node->provider)
-        ->provider = id;
+    loom_value_table_type_use_heads(table->value_table, node->value)->provider =
+        id;
     if (kind == LOOM_DEPENDENCY_OWNER_ATTRIBUTE) {
-      loom_value_table_value(table->value_table, node->provider)->flags |=
+      loom_value_table_value(table->value_table, node->value)->flags |=
           LOOM_VALUE_FLAG_ATTRIBUTE_USES;
     }
     return;
@@ -631,7 +781,7 @@ static void loom_dependency_acquire(loom_type_use_table_t* table, uint32_t id,
 
 static void loom_dependency_release(loom_type_use_table_t* table, uint32_t id,
                                     loom_dependency_owner_kind_t kind) {
-  loom_dependency_node_t* node = loom_dependency_node(table->index, id);
+  const loom_value_set_node_t* node = loom_dependency_node(table->index, id);
   loom_dependency_ownership_t* ownership =
       loom_dependency_ownership(table->index, id, kind);
   if (--ownership->active_owners) {
@@ -639,7 +789,7 @@ static void loom_dependency_release(loom_type_use_table_t* table, uint32_t id,
   }
   if (node->bit < 0) {
     if (kind == LOOM_DEPENDENCY_OWNER_ATTRIBUTE) {
-      loom_value_table_value(table->value_table, node->provider)->flags &=
+      loom_value_table_value(table->value_table, node->value)->flags &=
           ~LOOM_VALUE_FLAG_ATTRIBUTE_USES;
     }
     return;
@@ -939,16 +1089,16 @@ bool loom_type_dependencies_advance(loom_type_use_iterator_t* iterator) {
   if (!iterator->pending_count) {
     return false;
   }
-  const loom_dependency_node_t* node = loom_dependency_node(
+  const loom_value_set_node_t* node = loom_dependency_node(
       iterator->index, iterator->pending[--iterator->pending_count]);
-  while (node->bit >= LOOM_TYPE_DEPENDENCY_BITMAP_SHIFT) {
+  while (node->bit >= LOOM_VALUE_DEPENDENCY_BITMAP_SHIFT) {
     // Only later siblings need continuations. Small subtrees already retain
     // their complete membership in one bitmap.
     iterator->pending[iterator->pending_count++] = node->children[1];
     node = loom_dependency_node(iterator->index, node->children[0]);
   }
   iterator->members = node->members;
-  iterator->base = node->provider & ~LOOM_TYPE_DEPENDENCY_BITMAP_MASK;
+  iterator->base = node->value & ~LOOM_VALUE_DEPENDENCY_BITMAP_MASK;
   return true;
 }
 

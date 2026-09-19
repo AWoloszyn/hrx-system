@@ -212,6 +212,18 @@ loom_cc_test(
     iree::testing::gtest_main
 )
 
+loom_cc_test(
+  NAME
+    type_dependency_set_test
+  SRCS
+    "type_dependency_set_test.cc"
+  DEPS
+    ::ir
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
 loom_cc_library(
   NAME
     symbol_map
