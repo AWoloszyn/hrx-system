@@ -87,6 +87,8 @@ iree_cc_library(
   PUBLIC
 )
 
+if(TARGET iree::hal::drivers::task::registration)
+
 iree_cc_test(
   NAME
     parameter_index_provider_test
@@ -105,6 +107,8 @@ iree_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
 )
+
+endif()
 
 iree_cc_library(
   NAME

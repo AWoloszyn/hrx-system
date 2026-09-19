@@ -4,6 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+load("//build_tools/bazel:cmake.bzl", "iree_cmake_extra_content")
 load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
 load("//runtime/build_tools/bazel:cc_test.bzl", "iree_runtime_cc_test")
 
@@ -83,6 +84,13 @@ iree_runtime_cc_library(
     ],
 )
 
+iree_cmake_extra_content(
+    content = """
+if(TARGET iree::hal::drivers::task::registration)
+""",
+    inline = True,
+)
+
 iree_runtime_cc_test(
     name = "parameter_index_provider_test",
     srcs = ["parameter_index_provider_test.cc"],
@@ -99,6 +107,13 @@ iree_runtime_cc_test(
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
+)
+
+iree_cmake_extra_content(
+    content = """
+endif()
+""",
+    inline = True,
 )
 
 iree_runtime_cc_library(
