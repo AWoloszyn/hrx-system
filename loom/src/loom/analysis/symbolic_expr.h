@@ -171,9 +171,6 @@ typedef struct loom_symbolic_expr_context_t {
 
   // Allocated scratch term count.
   iree_host_size_t scratch_term_capacity;
-
-  // Recursive select-case proof depth, capped to keep proof work bounded.
-  uint8_t condition_proof_depth;
 } loom_symbolic_expr_context_t;
 
 static inline bool loom_symbolic_expr_is_linear(

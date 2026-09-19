@@ -10,6 +10,7 @@
 #include "iree/testing/status_matchers.h"
 #include "loom/analysis/symbolic_expr_test_fixture.h"
 #include "loom/ops/index/ops.h"
+#include "loom/ops/op_defs.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/ops/scf/ops.h"
 
@@ -248,6 +249,45 @@ TEST_F(SymbolicExprTest, DeepProducerChainExpandsIteratively) {
   IREE_ASSERT_OK(loom_symbolic_expr_from_value(&expression_context_, value,
                                                &memoized_expression));
   EXPECT_EQ(memoized_expression.terms, expression.terms);
+}
+
+TEST_F(SymbolicExprTest, ErasedProducerChainRetainsMultiResultSemantics) {
+  const loom_value_id_t first = DefineIndexValue();
+  const loom_value_id_t second = DefineIndexValue();
+  const loom_value_id_t inputs[] = {first, second};
+  const loom_type_t result_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+  };
+  loom_op_t* assume_op = nullptr;
+  IREE_ASSERT_OK(loom_index_assume_build(
+      &builder_, inputs, IREE_ARRAYSIZE(inputs), /*predicates=*/nullptr,
+      /*predicate_count=*/0, result_types, IREE_ARRAYSIZE(result_types),
+      LOOM_LOCATION_UNKNOWN, &assume_op));
+
+  loom_op_t* constant_op = BuildIndexConstant(4);
+  loom_op_t* add_op = nullptr;
+  IREE_ASSERT_OK(loom_index_add_build(
+      &builder_, loom_index_assume_results(assume_op).values[1],
+      loom_index_constant_result(constant_op),
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_UNKNOWN,
+      &add_op));
+  const loom_value_id_t result = loom_index_add_result(add_op);
+
+  IREE_ASSERT_OK(loom_op_erase(module_, add_op));
+  IREE_ASSERT_OK(loom_op_erase(module_, assume_op));
+  IREE_ASSERT_OK(loom_op_erase(module_, constant_op));
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_symbolic_expr_context_reset(&expression_context_);
+
+  loom_symbolic_expr_t expression = {};
+  IREE_ASSERT_OK(
+      loom_symbolic_expr_from_value(&expression_context_, result, &expression));
+  ASSERT_TRUE(loom_symbolic_expr_is_linear(&expression));
+  ASSERT_EQ(expression.term_count, 1);
+  EXPECT_EQ(expression.constant, 4);
+  EXPECT_EQ(expression.terms[0].coefficient, 1);
+  EXPECT_EQ(expression.terms[0].value_id, second);
 }
 
 TEST_F(SymbolicExprTest, ExpandsIndexMaddWithConstantMultiplier) {

@@ -82,8 +82,20 @@ class SymbolicExprTest : public ::testing::Test {
     return value_id;
   }
 
+  loom_value_id_t DefineI1Value() {
+    loom_value_id_t value_id = LOOM_VALUE_ID_INVALID;
+    IREE_CHECK_OK(loom_builder_define_value(
+        &builder_, loom_type_scalar(LOOM_SCALAR_TYPE_I1), &value_id));
+    return value_id;
+  }
+
   void DefineFacts(loom_value_id_t value_id, loom_value_facts_t facts) {
     IREE_CHECK_OK(loom_value_fact_table_define(&fact_table_, value_id, facts));
+    loom_symbolic_expr_context_reset(&expression_context_);
+  }
+
+  void ComputeFacts(loom_op_t* op) {
+    IREE_CHECK_OK(loom_value_fact_table_compute_op(&fact_table_, module_, op));
     loom_symbolic_expr_context_reset(&expression_context_);
   }
 

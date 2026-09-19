@@ -1123,6 +1123,7 @@ loom_cc_test(
         ":symbolic_expr",
         ":symbolic_expr_test_fixture",
         "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/index",
         "//loom/src/loom/ops/scalar",
         "//loom/src/loom/ops/scf",

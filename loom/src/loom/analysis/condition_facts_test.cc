@@ -683,6 +683,45 @@ TEST_F(ConditionFactsTest, CompleteQueryDeduplicatesEquivalentRelations) {
   EXPECT_EQ(derivation.boolean_fact_count, kCompareCount * 2 - 1);
 }
 
+TEST_F(ConditionFactsTest, CompleteConjunctionQueryCanonicalizesAllOutcomes) {
+  const loom_value_id_t left = DefineIndexValue();
+  const loom_value_id_t middle = DefineIndexValue();
+  const loom_value_id_t right = DefineIndexValue();
+  const loom_value_id_t less = loom_index_cmp_result(
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, left, middle));
+  const loom_value_id_t equal = loom_index_cmp_result(
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_EQ, middle, right));
+  const loom_condition_assumption_t assumptions[] = {
+      {/*.condition=*/less, /*.assumed_truth=*/true},
+      {/*.condition=*/equal, /*.assumed_truth=*/false},
+      {/*.condition=*/less, /*.assumed_truth=*/true},
+  };
+  loom_condition_derivation_t derivation;
+  loom_condition_derivation_initialize(&analysis_arena_, &derivation);
+
+  IREE_ASSERT_OK(loom_condition_facts_query_conjunction_complete(
+      &condition_query_, &fact_table_, assumptions, IREE_ARRAYSIZE(assumptions),
+      &derivation));
+
+  ASSERT_EQ(derivation.integer_facts.integer_relation_count, 2u);
+  bool found_less = false;
+  bool found_not_equal = false;
+  for (iree_host_size_t i = 0;
+       i < derivation.integer_facts.integer_relation_count; ++i) {
+    found_less |= derivation.integer_facts.integer_relations[i].relation ==
+                  LOOM_SYMBOLIC_INTEGER_RELATION_LT;
+    found_not_equal |= derivation.integer_facts.integer_relations[i].relation ==
+                       LOOM_SYMBOLIC_INTEGER_RELATION_NE;
+  }
+  EXPECT_TRUE(found_less);
+  EXPECT_TRUE(found_not_equal);
+  ASSERT_EQ(derivation.boolean_fact_count, 2u);
+  EXPECT_EQ(derivation.boolean_facts[0].value_id, less);
+  EXPECT_TRUE(derivation.boolean_facts[0].value);
+  EXPECT_EQ(derivation.boolean_facts[1].value_id, equal);
+  EXPECT_FALSE(derivation.boolean_facts[1].value);
+}
+
 TEST_F(ConditionFactsTest, OpaqueBooleanConditionProducesEdgeFact) {
   loom_value_id_t condition =
       DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));

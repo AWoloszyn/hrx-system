@@ -409,7 +409,8 @@ typedef iree_alignas(64) struct loom_value_t {
   // --- 32 bytes ---
 
   // Tagged pointer to the defining site. For op results, stores the
-  // loom_op_t* and result index. For block arguments, stores the
+  // loom_op_t* and result index for the module lifetime, including after the
+  // operation is erased. For block arguments, stores the
   // loom_block_t* and arg index. Use loom_value_def_op/block/index
   // to extract (checking LOOM_VALUE_FLAG_BLOCK_ARG first).
   // Set by loom_builder_finalize_op (op results) or
@@ -510,6 +511,9 @@ static inline const loom_use_t* loom_value_single_use(
 // Returns the operation that defines this value. The value must be an
 // op result or declaration argument (not a block argument). Returns NULL for
 // declaration arguments and values whose result definition is not wired yet.
+// Erased operations remain arena-owned until module destruction and are
+// returned as immutable producer provenance even though they are no longer
+// part of the live IR.
 //
 // Usage (pattern matching — "is this value defined by a constant?"):
 //   loom_op_t* def_op = loom_value_def_op(value);
@@ -521,8 +525,9 @@ static inline loom_op_t* loom_value_def_op(const loom_value_t* value) {
 
 // Returns the owning operation of a result or declaration argument in stable
 // constructed IR. The value must not be a block argument. Returns NULL for an
-// unowned value before finalization or after erasure. Unlike def_op, this is an
-// ownership query, not a query for the operation computing a result.
+// unowned value before finalization. Result ownership remains available as
+// provenance after erasure; declaration argument ownership exists only while
+// the declaration retains its definition-site use.
 //
 // A declaration argument's sole ordinary operand link is its definition site.
 // Signature-local type and attribute references use separate indices, so this

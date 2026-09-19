@@ -22,6 +22,101 @@
 extern "C" {
 #endif
 
+//===----------------------------------------------------------------------===//
+// Canonical value sets
+//===----------------------------------------------------------------------===//
+
+// Immutable compressed radix sets share existing subtrees, and every
+// structurally equal set has one canonical identity within its index.
+//
+// Canonical set identity within one loom_value_set_index_t. Zero is empty.
+typedef uint32_t loom_value_set_id_t;
+
+typedef struct loom_value_set_index_t loom_value_set_index_t;
+
+// Allocates an empty index in |arena|. The arena must outlive the index and
+// every set ID it produces.
+iree_status_t loom_value_set_index_allocate(iree_arena_allocator_t* arena,
+                                            loom_value_set_index_t** out_index);
+
+// Tests membership in at most 32 compressed radix branches.
+bool loom_value_set_index_contains(const loom_value_set_index_t* index,
+                                   loom_value_set_id_t set,
+                                   loom_value_id_t value);
+
+// Unions two distinct nonempty canonical sets.
+iree_status_t loom_value_set_index_union_nonempty(loom_value_set_index_t* index,
+                                                  loom_value_set_id_t first,
+                                                  loom_value_set_id_t second,
+                                                  loom_value_set_id_t* out_set);
+
+// Unions two canonical sets. Empty and identical inputs allocate nothing.
+static inline iree_status_t loom_value_set_index_union(
+    loom_value_set_index_t* index, loom_value_set_id_t first,
+    loom_value_set_id_t second, loom_value_set_id_t* out_set) {
+  if (!first || first == second) {
+    *out_set = second;
+    return iree_ok_status();
+  }
+  if (!second) {
+    *out_set = first;
+    return iree_ok_status();
+  }
+  return loom_value_set_index_union_nonempty(index, first, second, out_set);
+}
+
+// Adds |value| to |set| and returns its canonical union.
+iree_status_t loom_value_set_index_add(loom_value_set_index_t* index,
+                                       loom_value_set_id_t set,
+                                       loom_value_id_t value,
+                                       loom_value_set_id_t* out_set);
+
+// Intersects |set| with value IDs in [0, limit). At most one 32-bit boundary
+// path is rebuilt.
+iree_status_t loom_value_set_index_prefix(loom_value_set_index_t* index,
+                                          loom_value_set_id_t set,
+                                          uint64_t limit,
+                                          loom_value_set_id_t* out_set);
+
+// Bounded increasing-order membership cursor. Immutable sets and live cursors
+// remain valid as the index grows and are invalidated when its arena resets.
+typedef struct loom_value_set_cursor_t {
+  // Immutable index borrowed for the cursor lifetime.
+  const loom_value_set_index_t* index;
+  // Pending upper subtrees, at most one per value-ID bit.
+  loom_value_set_id_t pending[33];
+  // Number of initialized pending entries.
+  uint32_t pending_count;
+  // Remaining members within the current aligned 64-ID block.
+  uint64_t members;
+  // First value ID in the current bitmap's block.
+  loom_value_id_t base;
+} loom_value_set_cursor_t;
+
+// Begins iterating |set|. Empty sets produce an empty range.
+void loom_value_set_cursor_begin(const loom_value_set_index_t* index,
+                                 loom_value_set_id_t set,
+                                 loom_value_set_cursor_t* out_cursor);
+
+// Loads the next nonempty 64-value bitmap, or returns false at the end.
+bool loom_value_set_cursor_advance(loom_value_set_cursor_t* cursor);
+
+// Returns the next value ID or LOOM_VALUE_ID_INVALID at the end.
+static inline loom_value_id_t loom_value_set_cursor_next(
+    loom_value_set_cursor_t* cursor) {
+  if (!cursor->members && !loom_value_set_cursor_advance(cursor)) {
+    return LOOM_VALUE_ID_INVALID;
+  }
+  const loom_value_id_t value =
+      cursor->base + iree_math_count_trailing_zeros_u64(cursor->members);
+  cursor->members &= cursor->members - 1;
+  return value;
+}
+
+//===----------------------------------------------------------------------===//
+// Type and attribute dependency ownership
+//===----------------------------------------------------------------------===//
+
 // Combines distinct, nonempty canonical sets. The inline union handles empty
 // and identical roots before entering recursive membership construction.
 iree_status_t loom_type_dependencies_union_nonempty(

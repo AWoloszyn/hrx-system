@@ -2512,13 +2512,14 @@ static iree_status_t loom_op_erase_subtree(loom_module_t* module, loom_op_t* op,
       IREE_RETURN_IF_ERROR(loom_value_remove_use(module, operands[i], op, i));
     }
   }
-  // Clear def pointers on result values (the op is being erased, so
-  // the pointers would dangle).
+  // Drop type references carried by result values. Result definition pointers
+  // remain valid for the module lifetime because operations and values share
+  // the module arena. Keeping the definition preserves immutable producer
+  // semantics for analyses after the operation leaves the live IR.
   loom_value_id_t* results = loom_op_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
     if (results[i] != LOOM_VALUE_ID_INVALID) {
       loom_module_drop_value_type_uses(module, results[i]);
-      loom_module_value(module, results[i])->def = loom_value_def_make_none();
     }
   }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
@@ -3476,13 +3477,22 @@ iree_status_t loom_module_compute_uses(loom_module_t* module) {
   loom_module_reset_attribute_uses(module);
   loom_region_reset_summaries(module->body);
   module->poison_op_count = 0;
-  // Clear all use and def data on every value.
+  // Clear all use data and live definition data on every value. Definition
+  // pointers to erased operations retain immutable producer semantics.
   for (iree_host_size_t i = 0; i < module->values.count; ++i) {
     loom_value_t* value = loom_module_value(module, (loom_value_id_t)i);
     value->use_count = 0;
     value->flags &=
         ~(LOOM_VALUE_FLAG_OVERFLOW_USES | LOOM_VALUE_FLAG_ATTRIBUTE_USES);
-    value->def = loom_value_def_make_none();
+    if (loom_value_is_block_arg(value)) {
+      value->def = loom_value_def_make_none();
+    } else {
+      loom_op_t* defining_op = loom_value_def_op(value);
+      if (!defining_op ||
+          !iree_any_bit_set(defining_op->flags, LOOM_OP_FLAG_DEAD)) {
+        value->def = loom_value_def_make_none();
+      }
+    }
     memset(value->inline_uses, 0,
            LOOM_VALUE_INLINE_USE_COUNT * sizeof(loom_use_t));
   }

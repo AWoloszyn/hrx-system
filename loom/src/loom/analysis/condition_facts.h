@@ -117,6 +117,15 @@ typedef struct loom_condition_derivation_t {
   iree_arena_allocator_t* arena;
 } loom_condition_derivation_t;
 
+// One Boolean outcome in a conjunction of path assumptions.
+typedef struct loom_condition_assumption_t {
+  // Boolean SSA value whose outcome is assumed.
+  loom_value_id_t condition;
+
+  // Assumed Boolean outcome.
+  bool assumed_truth;
+} loom_condition_assumption_t;
+
 // One dialect-owned operand refinement guaranteed on a selected condition
 // edge. The descriptor and condition op are borrowed from immutable compiler
 // state; source is the descriptor-selected condition operand.
@@ -232,6 +241,15 @@ iree_status_t loom_condition_facts_query(
 iree_status_t loom_condition_facts_query_complete(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
     loom_value_id_t condition_value, bool assumed_truth,
+    loom_condition_derivation_t* out_derivation);
+
+// Derives the conjunction of |assumption_count| Boolean outcomes into one
+// canonical complete result. The output is reset before construction and may
+// contain contradictory facts when the conjunction is infeasible.
+iree_status_t loom_condition_facts_query_conjunction_complete(
+    loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
+    const loom_condition_assumption_t* assumptions,
+    iree_host_size_t assumption_count,
     loom_condition_derivation_t* out_derivation);
 
 // Derives integer relations and dialect-owned semantic refinements in one

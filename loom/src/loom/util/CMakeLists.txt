@@ -263,6 +263,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::ir
     loom::ops::index
+    loom::ops::scf
 )
 
 loom_cc_library(

@@ -214,6 +214,17 @@ loom_cc_test(
     ],
 )
 
+loom_cc_test(
+    name = "type_dependency_set_test",
+    srcs = ["type_dependency_set_test.cc"],
+    deps = [
+        ":ir",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
 loom_cc_library(
     name = "symbol_map",
     srcs = ["symbol_map.c"],

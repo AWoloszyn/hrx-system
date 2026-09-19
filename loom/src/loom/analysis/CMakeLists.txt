@@ -1269,6 +1269,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::ir
     loom::ops::index
+    loom::ops::op_defs
     loom::ops::scalar
     loom::ops::scf
 )
