@@ -135,6 +135,18 @@ static const loom_amdgpu_descriptor_requirement_t
 };
 
 static const loom_amdgpu_descriptor_requirement_t
+    kAmdgpuScalarI64SubSgprDescriptorRequirements[] = {
+        {
+            .constraint_key = IREE_SVL("descriptor.s_sub_co_u32"),
+            .descriptor_ref = LOOM_AMDGPU_DESCRIPTOR_REF_S_SUB_CO_U32,
+        },
+        {
+            .constraint_key = IREE_SVL("descriptor.s_subb_u32"),
+            .descriptor_ref = LOOM_AMDGPU_DESCRIPTOR_REF_S_SUBB_U32,
+        },
+};
+
+static const loom_amdgpu_descriptor_requirement_t
     kAmdgpuScalarI64SubVgprDescriptorRequirements[] = {
         {
             .constraint_key = IREE_SVL("descriptor.v_mov_b32"),
@@ -266,7 +278,7 @@ static const loom_amdgpu_descriptor_requirement_t
 
 static const loom_amdgpu_i64_alu_descriptor_requirement_row_t
     kAmdgpuScalarI64AluDescriptorRequirementRows
-        [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SHL + 1] = {
+        [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SUB + 1] = {
             [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_ADD] =
                 {
                     .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
@@ -281,6 +293,11 @@ static const loom_amdgpu_i64_alu_descriptor_requirement_row_t
                 {
                     .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
                         kAmdgpuScalarI64ShlSgprDescriptorRequirements),
+                },
+            [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SUB] =
+                {
+                    .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
+                        kAmdgpuScalarI64SubSgprDescriptorRequirements),
                 },
             [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_ADD] =
                 {
@@ -1376,7 +1393,7 @@ static loom_amdgpu_scalar_i64_alu_kind_t loom_amdgpu_scalar_i64_alu_sgpr_kind(
       [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_ADD] =
           LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_ADD,
       [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_SUB] =
-          LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE,
+          LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SUB,
       [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_MUL_LO] =
           LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_MUL_LO,
       [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_SHL] =

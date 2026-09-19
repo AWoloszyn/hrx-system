@@ -25,6 +25,15 @@ iree_status_t loom_amdgpu_lookup_or_materialize_address_i64_operand(
     loom_value_id_t source_value, uint32_t register_class_id,
     loom_value_id_t* out_low_value);
 
+// Emits a two-word scalar carry or borrow chain. The low descriptor produces
+// the low result and SCC; the high descriptor consumes that SCC and produces
+// the high result and SCC. Both inputs and the result are SGPR pairs.
+iree_status_t loom_amdgpu_emit_sgpr64_binary_carry(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_amdgpu_descriptor_ref_t low_descriptor_ref,
+    loom_amdgpu_descriptor_ref_t high_descriptor_ref, loom_value_id_t low_lhs,
+    loom_value_id_t low_rhs, loom_value_id_t* out_low_result);
+
 // Emits the low 64 bits of a product. Both inputs use the same two-unit SGPR
 // or VGPR carrier, which is also the result carrier.
 iree_status_t loom_amdgpu_emit_i64_mul_lo(loom_low_lower_context_t* context,

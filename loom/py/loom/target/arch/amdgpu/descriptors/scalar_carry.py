@@ -12,7 +12,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from .alu import _s_add_u32_overlay, _s_add_u32_rhs_inline_overlay
+from .alu import (
+    _s_add_u32_overlay,
+    _s_add_u32_rhs_inline_overlay,
+    _s_sub_u32_overlay,
+)
 from .common import *
 
 _SYMBOL_BYTE_OFFSET_IMMEDIATE = Immediate(
@@ -106,6 +110,103 @@ def _s_add_u32_rhs_symbol_rel32_lo_overlay() -> AmdgpuDescriptorOverlay:
     )
 
 
+def _s_sub_co_u32_overlay() -> AmdgpuDescriptorOverlay:
+    return replace(
+        _s_sub_u32_overlay(),
+        descriptor_key="amdgpu.s_sub_co_u32",
+        mnemonic="s_sub_co_u32",
+        semantic_tag="integer.sub.borrow_out.u32",
+        implicit_operands=(_scc_output(_scc_result("borrow")),),
+        asm_forms=_asm(
+            native_assembly_mnemonic="s_sub_u32",
+            results=("dst", "borrow"),
+            operands=("lhs", "rhs"),
+        ),
+        operand_forms=tuple(
+            _literal_operand_form(
+                replacement_descriptor=f"amdgpu.s_sub_co_u32.{source}_inline",
+                source_operand=source,
+            )
+            for source in ("lhs", "rhs")
+        ),
+    )
+
+
+def _s_borrow_inline_overlay(
+    descriptor: AmdgpuDescriptorOverlay, source_operand: str
+) -> AmdgpuDescriptorOverlay:
+    source_field = {"lhs": "SSRC0", "rhs": "SSRC1"}[source_operand]
+    form = descriptor.asm_forms[0]
+    return replace(
+        descriptor,
+        descriptor_key=f"{descriptor.descriptor_key}.{source_operand}_inline",
+        operands=tuple(
+            operand
+            for operand in descriptor.operands
+            if operand.xml_field_name != source_field
+        ),
+        immediate_fields=(source_field,),
+        immediates=(_SOURCE_INLINE_U32_IMMEDIATE,),
+        asm_forms=_asm(
+            mnemonic=f"{descriptor.mnemonic}_{source_operand}_inline",
+            native_assembly_mnemonic=descriptor.instruction_name.lower(),
+            results=form.results,
+            operands=tuple(name for name in form.operands if name != source_operand),
+            immediates=("imm32",),
+            native_assembly_values=(
+                _native_result(form.results[0]),
+                *(
+                    _native_i64_immediate("imm32")
+                    if source == source_operand
+                    else _native_operand(source)
+                    for source in ("lhs", "rhs")
+                ),
+            ),
+        ),
+        operand_forms=(),
+    )
+
+
+def _s_sub_co_u32_inline_overlay(source_operand: str) -> AmdgpuDescriptorOverlay:
+    return _s_borrow_inline_overlay(_s_sub_co_u32_overlay(), source_operand)
+
+
+def _s_subb_u32_overlay() -> AmdgpuDescriptorOverlay:
+    return AmdgpuDescriptorOverlay(
+        descriptor_key="amdgpu.s_subb_u32",
+        instruction_name="S_SUBB_U32",
+        mnemonic="s_subb_u32",
+        encoding_name="ENC_SOP2",
+        semantic_tag="integer.sub.borrow_in_out.u32",
+        schedule_class=_SCHEDULE_SALU,
+        operands=(
+            AmdgpuOperandOverlay("SDST", _sgpr_result("difference")),
+            AmdgpuOperandOverlay("SSRC0", _sgpr_operand("lhs")),
+            AmdgpuOperandOverlay("SSRC1", _sgpr_operand("rhs")),
+        ),
+        implicit_operands=(
+            _scc_output(_scc_result("borrow")),
+            _scc_input(_scc_predicate("borrow_in")),
+        ),
+        asm_forms=_asm(
+            results=("difference", "borrow"),
+            operands=("lhs", "rhs", "borrow_in"),
+        ),
+        operand_forms=tuple(
+            _literal_operand_form(
+                replacement_descriptor=f"amdgpu.s_subb_u32.{source}_inline",
+                source_operand=source,
+            )
+            for source in ("lhs", "rhs")
+        ),
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    )
+
+
+def _s_subb_u32_inline_overlay(source_operand: str) -> AmdgpuDescriptorOverlay:
+    return _s_borrow_inline_overlay(_s_subb_u32_overlay(), source_operand)
+
+
 def _s_addc_u32_overlay() -> AmdgpuDescriptorOverlay:
     return AmdgpuDescriptorOverlay(
         descriptor_key="amdgpu.s_addc_u32",
@@ -168,4 +269,8 @@ __all__ = [
     "_s_add_u32_rhs_symbol_rel32_lo_overlay",
     "_s_addc_u32_overlay",
     "_s_addc_u32_rhs_symbol_rel32_hi_overlay",
+    "_s_sub_co_u32_overlay",
+    "_s_sub_co_u32_inline_overlay",
+    "_s_subb_u32_overlay",
+    "_s_subb_u32_inline_overlay",
 ]

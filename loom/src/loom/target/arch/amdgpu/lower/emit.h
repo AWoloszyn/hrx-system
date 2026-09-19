@@ -308,13 +308,6 @@ iree_status_t loom_amdgpu_emit_lane_mask_equal_scc(
     loom_value_id_t low_lhs, loom_value_id_t low_rhs, uint32_t wavefront_size,
     loom_value_id_t* out_low_scc);
 
-// Emits an SGPR x2 add using the target carry-chain instructions.
-iree_status_t loom_amdgpu_emit_sgpr64_add(loom_low_lower_context_t* context,
-                                          const loom_op_t* source_op,
-                                          loom_value_id_t low_lhs,
-                                          loom_value_id_t low_rhs,
-                                          loom_value_id_t* out_low_sum);
-
 // Emits an SGPR x2 base plus one-unit SGPR unsigned byte offset.
 iree_status_t loom_amdgpu_emit_sgpr64_add_u32_offset(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
