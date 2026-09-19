@@ -24,6 +24,17 @@ loom_generated_cc_library(
 )
 
 loom_cc_library(
+    name = "assumptions",
+    srcs = ["assumptions.cc"],
+    hdrs = ["assumptions.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        "//loom/src/loom/import/cxx/source",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
     name = "shaped",
     srcs = ["shaped.cc"],
     hdrs = ["shaped.h"],
@@ -91,6 +102,20 @@ loom_cc_library(
     hdrs = ["declaration_test.h"],
     deps = [
         "//loom/src/loom/import/cxx/value:builder_test",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "assumptions_test",
+    srcs = ["assumptions_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":assumptions",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
         "//third_party:cxx_parser",
     ],
 )
@@ -166,6 +191,7 @@ loom_cc_test(
 iree_cmake_extra_content(
     """
 foreach(_target IN ITEMS
+    loom_import_cxx_binding_assumptions.objects
     loom_import_cxx_binding_intrinsics.objects
     loom_import_cxx_binding_shaped.objects
     loom_import_cxx_binding_launch.objects
@@ -174,6 +200,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_binding_shaped_test
     loom_import_cxx_binding_launch_test
     loom_import_cxx_binding_loop_schedule_test
+    loom_import_cxx_binding_assumptions_test
 )
   if(TARGET ${_target})
     target_compile_features(${_target} PRIVATE cxx_std_23)

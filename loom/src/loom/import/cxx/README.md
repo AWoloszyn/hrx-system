@@ -94,6 +94,24 @@ Contracts on leading function declarations carry to the definition; conflicting
 redeclarations and multiple contracts for the same dimension group are errors.
 Import does not guess launch dimensions or select a physical target.
 
+`loom::assume`, also exposed as HIP's `__builtin_assume`, carries unsigned
+integer bounds into Loom's value analysis:
+
+```cpp
+constexpr unsigned capacity = 28672;
+loom::assume(count < ((capacity / sizeof(unsigned) - 16u - 320u) / 16u + 1u) &&
+             channel < 256u);
+```
+
+Each `binding < bound` becomes a `scalar.assume` range on the current value.
+Parentheses and repeated bindings preserve the same refinements as separate
+calls. Narrow unsigned bindings retain their C++ integer promotions before
+refinement. Bounds are pure integer constant expressions in `[1, INT32_MAX]`,
+including named constants, concrete template arguments, integral casts and
+`sizeof`. Source conditions generate no runtime comparisons or branches.
+Calls, mutation, volatile reads, overloaded operators and unsupported predicates
+produce source diagnostics. The program must satisfy every declared bound.
+
 Counted unsigned `for` loops accept explicit scheduling attributes:
 
 ```cpp

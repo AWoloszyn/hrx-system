@@ -43,6 +43,7 @@ loom_cc_library(
     iree::third_party::cxx_parser
     loom::error::diagnostic
     loom::error::error_defs
+    loom::import::cxx::binding::assumptions
     loom::import::cxx::binding::intrinsics
     loom::import::cxx::binding::launch
     loom::import::cxx::binding::loop_schedule

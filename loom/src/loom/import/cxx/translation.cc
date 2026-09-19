@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "iree/base/api.h"
+#include "loom/import/cxx/binding/assumptions.h"
 #include "loom/import/cxx/binding/intrinsics.h"
 #include "loom/import/cxx/binding/launch.h"
 #include "loom/import/cxx/binding/loop_schedule.h"
@@ -1053,44 +1054,26 @@ class Translator {
     if (auto* call = cxx::ast_cast<cxx::CallExpressionAST>(ast)) {
       auto* id = cxx::ast_cast<cxx::IdExpressionAST>(call->baseExpression);
       if (id && annotated(id->symbol, "assume")) {
-        auto* condition = call->expressionList && !call->expressionList->next
-                              ? cxx::ast_cast<cxx::BinaryExpressionAST>(
-                                    call->expressionList->value)
-                              : nullptr;
-        auto* binding = condition ? cxx::ast_cast<cxx::IdExpressionAST>(
-                                        cxx::Initializer::stripImplicitCasts(
-                                            condition->leftExpression))
-                                  : nullptr;
-        if (!condition || condition->symbol ||
-            condition->op != cxx::TokenKind::T_LESS || !binding ||
-            !types_.is_unsigned(binding->type) ||
-            !cxx::ast_cast<cxx::IntLiteralExpressionAST>(
-                condition->rightExpression)) {
-          fail(ast,
-               "assume requires an unsigned scalar binding < positive i32 "
-               "literal");
+        auto bounds = assumption_bounds(unit_, diagnostics_, call);
+        for (const auto& bound : bounds) {
+          auto value = expression(bound.value).ssa();
+          auto value_type = types_.get(bound.value->type, ast);
+          loom_predicate_t predicate = {
+              .kind = LOOM_PREDICATE_RANGE,
+              .arg_count = 3,
+              .arg_tags = {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST,
+                           LOOM_PRED_ARG_CONST},
+              .args = {value, 0, bound.upper_bound - 1},
+          };
+          loom_op_t* op;
+          check(loom_scalar_assume_build(&builder_, &value, 1, &predicate, 1,
+                                         &value_type, 1, locations_.get(ast),
+                                         &op));
+          values_[bound.binding->symbol] =
+              name(numeric_convert(result(op), bound.value->type,
+                                   bound.binding->type, ast),
+                   cxx::to_string(bound.binding->symbol->name()));
         }
-        cxx::ASTInterpreter interpreter(&unit_);
-        auto bound = interpreter.toInt(
-            *interpreter.evaluate(condition->rightExpression));
-        if (!bound || *bound <= 0 || *bound > INT32_MAX) {
-          fail(ast, "assume upper bound must fit positive signed i32");
-        }
-        auto value = expression(binding).ssa();
-        auto value_type = types_.get(binding->type, ast);
-        loom_predicate_t predicate = {
-            .kind = LOOM_PREDICATE_RANGE,
-            .arg_count = 3,
-            .arg_tags = {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST,
-                         LOOM_PRED_ARG_CONST},
-            .args = {value, 0, *bound - 1},
-        };
-        loom_op_t* op;
-        check(loom_scalar_assume_build(&builder_, &value, 1, &predicate, 1,
-                                       &value_type, 1, locations_.get(ast),
-                                       &op));
-        values_[binding->symbol] =
-            name(result(op), cxx::to_string(binding->symbol->name()));
         return;
       }
       if (!id || !annotated(id->symbol, "barrier")) {

@@ -127,6 +127,32 @@ TEST_F(ImportTest, RejectsMutationOfConstObjectsAndBindings) {
   ASSERT_NE(module_, nullptr);
 }
 
+TEST_F(ImportTest, RejectedAssumptionsPublishNoPartialModule) {
+  for (auto source : {
+           IREE_SV("[[loom::assume]] void assume(bool); "
+                   "void entry(unsigned value, unsigned limit) { "
+                   "assume(value < 256u && value < limit); }"),
+           IREE_SV("[[loom::assume]] void assume(bool); unsigned side(); "
+                   "void entry(unsigned value) { "
+                   "assume(value < 256u && value < (side(), 16u)); }"),
+           IREE_SV("[[loom::assume]] void assume(bool); struct Bound {}; "
+                   "bool operator&&(bool, Bound); "
+                   "void entry(unsigned value, Bound bound) { "
+                   "assume((value < 256u) && bound); }"),
+       }) {
+    IREE_ASSERT_OK(Import(source));
+    EXPECT_EQ(module_, nullptr);
+  }
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    [[loom::assume]] void assume(bool);
+    unsigned entry(unsigned value, unsigned other) {
+      assume(value < (1u << 8) && other < 256u);
+      return value + other;
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+}
+
 TEST_F(ImportTest, ExplicitVectorsRetainMasksAndStructuredValueTransport) {
   IREE_ASSERT_OK(Import(IREE_SV(R"(
     typedef unsigned u32x16 __attribute__((vector_size(64)));

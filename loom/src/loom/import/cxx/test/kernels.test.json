@@ -2,6 +2,80 @@
   "version": 1,
   "cases": [
     {
+      "name": "unsigned assumptions retain conjunctions, constants, promotions and scope",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=assumption_kernel",
+              "--to=bc",
+              "--output={tmp}/assumptions.loombc",
+              "{srcdir}/assumptions.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/assumption_kernel.loom",
+              "--library={tmp}/assumptions.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":9",
+                "\"sample_count\":9",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check stores with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/assumption_kernel.loom",
+              "--library={tmp}/assumptions.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":9",
+                "\"sample_count\":9",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "vector_initializers preserves complete vectors and ordered initializer effects",
       "steps": [
         {

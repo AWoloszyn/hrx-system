@@ -26,6 +26,21 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    assumptions
+  HDRS
+    "assumptions.h"
+  SRCS
+    "assumptions.cc"
+  DEPS
+    iree::third_party::cxx_parser
+    loom::import::cxx::source
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     shaped
   HDRS
     "shaped.h"
@@ -118,6 +133,24 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
+    assumptions_test
+  SRCS
+    "assumptions_test.cc"
+  DEPS
+    ::assumptions
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+    loom::import::cxx::source
+    loom::import::cxx::source::error
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
     shaped_test
   SRCS
     "shaped_test.cc"
@@ -200,6 +233,7 @@ loom_cc_test(
 endif()
 
 foreach(_target IN ITEMS
+    loom_import_cxx_binding_assumptions.objects
     loom_import_cxx_binding_intrinsics.objects
     loom_import_cxx_binding_shaped.objects
     loom_import_cxx_binding_launch.objects
@@ -208,6 +242,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_binding_shaped_test
     loom_import_cxx_binding_launch_test
     loom_import_cxx_binding_loop_schedule_test
+    loom_import_cxx_binding_assumptions_test
 )
   if(TARGET ${_target})
     target_compile_features(${_target} PRIVATE cxx_std_23)

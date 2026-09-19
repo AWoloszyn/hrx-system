@@ -58,6 +58,7 @@ loom_cc_library(
     deps = [
         "//loom/src/loom/error:diagnostic",
         "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/import/cxx/binding:assumptions",
         "//loom/src/loom/import/cxx/binding:intrinsics",
         "//loom/src/loom/import/cxx/binding:launch",
         "//loom/src/loom/import/cxx/binding:loop_schedule",
