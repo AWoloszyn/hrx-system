@@ -27,6 +27,7 @@ iree_execution_test_suite(
         "flash_attention.cpp",
         "llama_rms_norm.cpp",
         "scheduled_sum.cpp",
+        "short_circuit.cpp",
         "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
         "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
         "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",

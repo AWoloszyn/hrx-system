@@ -136,15 +136,25 @@ conformance. LP64, LLP64 and ILP32 source layouts are independent of the machine
 running the importer.
 
 The current translation surface covers scalar arithmetic and conversions,
-scalar-pointer indexing, local SSA values, conditional regions, counted and
-general `for` loops, `while` and `do/while` loops, fixed workgroup arrays, and
-direct calls. Unsupported reachable types and statements produce source
+scalar-pointer indexing, local SSA values, conditional regions, short-circuit
+`&&` and `||`, counted and general `for` loops, `while` and `do/while` loops,
+fixed workgroup arrays, and direct calls. Unsupported reachable types and
+statements produce source
 diagnostics. Pointer indexing
 currently requires unsigned 32-bit source indices; extending it requires
 preserving signedness and source pointer arithmetic in the address projection.
 Objects with constructors, arbitrary pointer manipulation, general early
 returns, exceptions and indirect calls need additional storage and control-flow
 projections before they can be imported.
+
+Logical operators preserve contextual boolean conversions and evaluate their
+right operand only in the selected `scf.if` region. Guarded loads and effectful
+helpers are checked by native execution and device access sanitization. Some
+compositions still reach core AMDGPU control-flow restrictions: a guarded
+`while` condition can produce multiple loop exit edges, and `(a && b) || c`
+can produce a shared continuation that the current masked-branch planner
+rejects. Import preserves those source semantics; target compilation reports
+the unsupported control-flow shape.
 
 ## Implementation boundaries
 

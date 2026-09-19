@@ -431,6 +431,29 @@ TEST_F(ImportTest, SourceDataModelControlsLongWidth) {
   EXPECT_NE(Print().find("%x: i32"), std::string::npos);
 }
 
+TEST_F(ImportTest, ShortCircuitOperandsUseContextualBooleanConversions) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    bool conjunction(int left, float right) { return left && right; }
+    bool disjunction(double left, unsigned long long right) {
+      return left || right;
+    }
+    bool nested(int a, int b, int c) { return a && (b || !c); }
+    bool guarded(const int* input, unsigned index, unsigned length) {
+      return index < length && input[index];
+    }
+    unsigned scan(const int* input, unsigned length) {
+      unsigned index = 0;
+      while (index < length && input[index]) { ++index; }
+      return index;
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+  EXPECT_EQ(diagnostic_count_, 0);
+  auto text = Print();
+  EXPECT_NE(text.find("scf.if"), std::string::npos);
+  EXPECT_NE(text.find("scalar.cmpf une"), std::string::npos);
+}
+
 TEST_F(ImportTest, VoidHelpersAndVisibility) {
   IREE_ASSERT_OK(
       Import(IREE_SV("[[gnu::visibility(\"hidden\")]] void helper(float* p) { "

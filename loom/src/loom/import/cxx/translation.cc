@@ -344,6 +344,32 @@ class Translator {
         fail(ast, "overloaded arithmetic is not admitted");
       }
       auto left = expression(binary->leftExpression);
+      if (binary->op == cxx::TokenKind::T_AMP_AMP ||
+          binary->op == cxx::TokenKind::T_BAR_BAR) {
+        // The semantic AST supplies both contextual boolean conversions.
+        // The skipped arm forwards the left value without evaluating the
+        // right operand, including its memory accesses and helper calls.
+        auto output = types_.get(ast->type, ast);
+        loom_op_t* op;
+        check(loom_scf_if_build(&builder_,
+                                LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION, left,
+                                &output, 1, nullptr, 0, source, &op));
+        auto* right_region = binary->op == cxx::TokenKind::T_AMP_AMP
+                                 ? loom_scf_if_then_region(op)
+                                 : loom_scf_if_else_region(op);
+        auto* skipped_region = binary->op == cxx::TokenKind::T_AMP_AMP
+                                   ? loom_scf_if_else_region(op)
+                                   : loom_scf_if_then_region(op);
+        auto saved = loom_builder_enter_region(&builder_, op, right_region);
+        auto right = expression(binary->rightExpression);
+        loom_op_t* yield;
+        check(loom_scf_yield_build(&builder_, &right, 1, source, &yield));
+        loom_builder_restore(&builder_, saved);
+        saved = loom_builder_enter_region(&builder_, op, skipped_region);
+        check(loom_scf_yield_build(&builder_, &left, 1, source, &yield));
+        loom_builder_restore(&builder_, saved);
+        return result(op);
+      }
       auto right = expression(binary->rightExpression);
       // C++ promotes shift operands independently. Loom's shift operands have
       // one width. Every defined source shift count fits the promoted left
@@ -725,6 +751,17 @@ class Translator {
   }
 
   void effect(cxx::ExpressionAST* ast) {
+    if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
+      effect(nested->expression);
+      return;
+    }
+    if (auto* binary = cxx::ast_cast<cxx::BinaryExpressionAST>(ast)) {
+      if (binary->op == cxx::TokenKind::T_AMP_AMP ||
+          binary->op == cxx::TokenKind::T_BAR_BAR) {
+        expression(ast);
+        return;
+      }
+    }
     if (auto* call = cxx::ast_cast<cxx::CallExpressionAST>(ast)) {
       auto* id = cxx::ast_cast<cxx::IdExpressionAST>(call->baseExpression);
       if (id && annotated(id->symbol, "assume")) {

@@ -28,6 +28,7 @@ compatibility with complete upstream libraries.
 | `aiter_swiglu_f16.cpp` | FP16 storage with f32 arithmetic, clamp extremes, reciprocal/exponential calls, and columns of length 1, 31, 65, and 129. | [aiter activation_kernels.cu](https://github.com/ROCm/aiter/blob/df95f04b703bfd7c520f072fcf2560092ec9d5ac/csrc/kernels/activation_kernels.cu), MIT. |
 | `control_flow.cpp` | Pre-test, post-test, and nested loops; final scalar values and effectful helper calls in conditions. Seven trip counts including zero are checked bitwise. | Original source-language semantics witness. |
 | `scheduled_sum.cpp` | Template-selected unroll factors 1/3 and pipeline depths 1/2 with linear ordering. Exact integer sums for 0, 1, 2, 5, 17, and 33 columns cover startup, tails, and drain under all four schedules. | Original scheduling-contract witness. |
+| `short_circuit.cpp` | Bounds-guarded reads, exact conditional call-order traces, discarded boolean expressions and scalar truth conversions across 64 lanes. Lengths 0, 1, 17, 33 and 64 run normally and with device access sanitization and zero expected access reports. | Original source-language semantics witness. |
 
 The llama.cpp extraction specializes `rms_norm_f32`, `block_reduce<SUM>` and
 `warp_reduce_sum` for contiguous rows, one channel/sample, block size 64, and

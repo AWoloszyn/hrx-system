@@ -163,10 +163,50 @@ def scheduled_sum(directory):
     return "kernel.decl @scheduled_sum() launch(%input: buffer, %output: buffer, %rows: i32, %columns: i32)\n\n" + "\n".join(cases)
 
 
+def short_circuit(directory):
+    cases = []
+    for length in [0, 1, 17, 33, 64]:
+        values = [((index * 7) % 9) - 3 for index in range(max(1, length))]
+        expected = []
+        for lane in range(64):
+            present = lane < length
+            truth = present and values[lane] != 0
+            first = (lane & 1) != 0
+            second = (lane & 2) != 0
+            expected.extend(
+                [
+                    int(present),
+                    int(truth),
+                    2 * int(present),
+                    int(not present or truth),
+                    12 if first else 1,
+                    int(first and second),
+                    1 if first else 12,
+                    int(first or second),
+                    4 * int((lane & 8) != 0),
+                    int(lane != 31 and lane != 32),
+                ]
+            )
+        case = Case(directory, f"short_circuit_{length}", "i32", len(expected))
+        case.array("input", values)
+        case.scalar("length", length, "i32")
+        case.launch("short_circuit", "%input, %output, %length", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @short_circuit() launch(%input: buffer, %output: buffer, %length: i32)\n\n" + "\n".join(cases)
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
-    for name, generator in [("flash_attention", attention), ("llama_rms_norm", rms_norm), ("aiter_swiglu_f16", swiglu), ("control_flow", control_flow), ("scheduled_sum", scheduled_sum)]:
+    for name, generator in [
+        ("flash_attention", attention),
+        ("llama_rms_norm", rms_norm),
+        ("aiter_swiglu_f16", swiglu),
+        ("control_flow", control_flow),
+        ("scheduled_sum", scheduled_sum),
+        ("short_circuit", short_circuit),
+    ]:
         (directory / f"{name}.loom").write_text(generator(directory))
 
 
