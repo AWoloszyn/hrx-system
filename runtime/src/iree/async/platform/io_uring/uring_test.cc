@@ -6,6 +6,7 @@
 
 #include "iree/async/platform/io_uring/uring.h"
 
+#include <cerrno>
 #include <cstring>
 
 #include "iree/testing/gtest.h"
@@ -33,6 +34,19 @@ class RingTest : public ::testing::Test {
     if (ring_initialized_) {
       iree_io_uring_ring_deinitialize(&ring_);
     }
+  }
+
+  void SubmitPartialBatch() {
+    // Without SUBMIT_ALL, a preparation failure stops consumption after the
+    // failed entry. The final NOP is published but still needs submission.
+    for (uint32_t i = 0; i < 3; ++i) {
+      iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&ring_);
+      ASSERT_NE(sqe, nullptr);
+      sqe->opcode = i == 1 ? UINT8_MAX : IREE_IORING_OP_NOP;
+      sqe->user_data = i + 1;
+    }
+    IREE_ASSERT_OK(iree_io_uring_ring_submit(&ring_, /*min_complete=*/0,
+                                             IREE_IORING_ENTER_GETEVENTS));
   }
 
   iree_io_uring_ring_t ring_;
@@ -291,6 +305,52 @@ TEST_F(RingTest, WaitCqeWithFlushSubmitsPendingSqe) {
   ASSERT_NE(cqe, nullptr);
   EXPECT_EQ(cqe->user_data, 0xDEADBEEFu);
 
+  iree_io_uring_ring_cq_advance(&ring_, 1);
+}
+
+TEST_F(RingTest, SubmitPreservesPublishedEntriesAfterPartialConsumption) {
+  SubmitPartialBatch();
+  ASSERT_EQ(*ring_.sq_head, 2u);
+  ASSERT_EQ(*ring_.sq_tail, 3u);
+  ASSERT_EQ(iree_io_uring_ring_sq_pending(&ring_), 1u);
+
+  // No new SQE is prepared between submissions.
+  IREE_ASSERT_OK(iree_io_uring_ring_submit(&ring_, /*min_complete=*/0,
+                                           IREE_IORING_ENTER_GETEVENTS));
+  EXPECT_EQ(iree_io_uring_ring_sq_pending(&ring_), 0u);
+  ASSERT_EQ(iree_io_uring_ring_cq_count(&ring_), 3u);
+  bool seen[3] = {};
+  for (uint32_t i = 0; i < 3; ++i) {
+    iree_io_uring_cqe_t* cqe = iree_io_uring_ring_peek_cqe(&ring_);
+    ASSERT_NE(cqe, nullptr);
+    ASSERT_GE(cqe->user_data, 1u);
+    ASSERT_LE(cqe->user_data, 3u);
+    EXPECT_FALSE(seen[cqe->user_data - 1]);
+    seen[cqe->user_data - 1] = true;
+    EXPECT_EQ(cqe->res, cqe->user_data == 2 ? -EINVAL : 0);
+    iree_io_uring_ring_cq_advance(&ring_, 1);
+  }
+}
+
+TEST_F(RingTest, WaitPreservesPublishedEntriesAfterPartialConsumption) {
+  SubmitPartialBatch();
+  ASSERT_EQ(*ring_.sq_head, 2u);
+  ASSERT_EQ(*ring_.sq_tail, 3u);
+  ASSERT_EQ(iree_io_uring_ring_sq_pending(&ring_), 1u);
+  ASSERT_EQ(iree_io_uring_ring_cq_count(&ring_), 2u);
+  iree_io_uring_ring_cq_advance(&ring_, 2);
+
+  // The wait must submit the remaining entry even though the published tail
+  // does not advance. Otherwise it waits forever for work not yet issued.
+  IREE_ASSERT_OK(iree_io_uring_ring_wait_cqe(&ring_, /*min_complete=*/1,
+                                             /*flush_pending=*/true,
+                                             IREE_DURATION_INFINITE));
+  EXPECT_EQ(iree_io_uring_ring_sq_pending(&ring_), 0u);
+  ASSERT_EQ(iree_io_uring_ring_cq_count(&ring_), 1u);
+  iree_io_uring_cqe_t* cqe = iree_io_uring_ring_peek_cqe(&ring_);
+  ASSERT_NE(cqe, nullptr);
+  EXPECT_EQ(cqe->user_data, 3u);
+  EXPECT_EQ(cqe->res, 0);
   iree_io_uring_ring_cq_advance(&ring_, 1);
 }
 

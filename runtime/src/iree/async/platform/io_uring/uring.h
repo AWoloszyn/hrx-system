@@ -86,8 +86,8 @@ typedef struct iree_io_uring_ring_t {
 
   // Local SQ tail for two-phase commit. get_sqe() increments this locally;
   // submit() flushes it to the kernel-visible *sq_tail.
-  // This separation allows rollback on encoding failure and ensures we always
-  // know how many SQEs are pending submission.
+  // This separation allows rollback on encoding failure. The kernel SQ head,
+  // not the published tail, determines which entries still need submission.
   // Protected by sq_lock.
   uint32_t sq_local_tail;
 
@@ -222,10 +222,13 @@ static inline uint32_t iree_io_uring_ring_sq_space_left(
   return ring->sq_entries - (ring->sq_local_tail - head);
 }
 
-// Returns the number of SQEs prepared but not yet submitted to kernel.
+// Returns the number of prepared SQEs not yet consumed by the kernel,
+// including published entries left over from a partial submission.
 static inline uint32_t iree_io_uring_ring_sq_pending(
     iree_io_uring_ring_t* ring) {
-  return ring->sq_local_tail - *ring->sq_tail;
+  uint32_t head = iree_atomic_load((iree_atomic_int32_t*)ring->sq_head,
+                                   iree_memory_order_acquire);
+  return ring->sq_local_tail - head;
 }
 
 // Rolls back |count| uncommitted SQEs from the local tail.
