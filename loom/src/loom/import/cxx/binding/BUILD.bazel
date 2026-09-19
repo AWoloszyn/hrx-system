@@ -30,6 +30,7 @@ loom_cc_library(
     cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = [
         "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:constants",
         "//third_party:cxx_parser",
     ],
 )

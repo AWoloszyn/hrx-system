@@ -34,6 +34,7 @@ loom_cc_library(
   DEPS
     iree::third_party::cxx_parser
     loom::import::cxx::source
+    loom::import::cxx::source::constants
   PUBLIC
 )
 endif()
