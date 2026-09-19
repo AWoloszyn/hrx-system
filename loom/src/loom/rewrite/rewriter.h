@@ -349,7 +349,9 @@ iree_status_t loom_rewriter_move_region_blocks(
     uint16_t target_block_index, loom_op_t* target_parent_op,
     loom_block_t** out_moved_entry_block);
 
-// Replaces one operand of an op. Adds the op to the worklist.
+// Replaces one operand of an op. Adds the op and all users of its results to
+// the worklist because producer semantics can change without changing the
+// direct result facts.
 iree_status_t loom_rewriter_set_operand(loom_rewriter_t* rewriter,
                                         loom_op_t* op, uint16_t operand_index,
                                         loom_value_id_t new_value);
