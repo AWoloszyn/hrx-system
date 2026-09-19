@@ -1,0 +1,38 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64_shift_counts.loom-test
+// RUN: emit source-low output=low
+
+x86.target<avx2> @target
+
+func.def target(@target) @wide_shift_constant(%values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @wide_shift_uniform(%values: vector<2xi64>, %count: i64) -> (i64) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.shli", subject_role="value_fact", subject_name="rhs", constraint_key="exact_i64"}
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @wide_shift_varying(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
+  %count = vector.extract %counts[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.shli", subject_role="value_fact", subject_name="rhs", constraint_key="exact_i64"}
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}

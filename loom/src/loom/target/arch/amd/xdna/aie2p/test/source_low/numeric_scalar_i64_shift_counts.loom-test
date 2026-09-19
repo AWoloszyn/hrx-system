@@ -1,0 +1,105 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64_shift_counts.loom-test
+// RUN: emit source-low output=low
+
+aie2p.target<core> @target
+
+func.def target(@target) @wide_shift_constant(%values: vector<2xi64>) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @wide_shift_constant(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.er x2>) asm {
+  %value = vextract.64.imm %values, 0
+  %8 = mov.i32 31
+  %11 = slice %value[0] : reg<aie2p.er x2> -> reg<aie2p.er>
+  %12 = slice %value[1] : reg<aie2p.er x2> -> reg<aie2p.er>
+  %14 = mov.short 0
+  %15 = mov.short 31
+  %16 = mov.short 32
+  %17 = and %8, %15
+  %18 = add %17, -32
+  %19 = lshl %11, %17
+  %20 = lshl %12, %17
+  %21 = lshl %11, %18
+  %22 = or %20, %21
+  %24 = ltu %8, %16
+  %25 = copy %24 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %26 = sel.nez %19, %14, %25
+  %27 = copy %24 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %28 = sel.nez %22, %19, %27
+  %shifted = concat(%26, %28) : (reg<aie2p.er>, reg<aie2p.er>) -> reg<aie2p.er x2>
+  return %shifted
+}
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @wide_shift_uniform(%values: vector<2xi64>, %count: i64) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @wide_shift_uniform(%values: reg<aie2p.vec256 x2>, %count: reg<aie2p.er x2>) -> (reg<aie2p.er x2>) asm {
+  %value = vextract.64.imm %values, 0
+  %9 = slice %value[0] : reg<aie2p.er x2> -> reg<aie2p.er>
+  %10 = slice %value[1] : reg<aie2p.er x2> -> reg<aie2p.er>
+  %11 = slice %count[0] : reg<aie2p.er x2> -> reg<aie2p.er>
+  %12 = mov.short 0
+  %13 = mov.short 31
+  %14 = mov.short 32
+  %15 = and %11, %13
+  %16 = add %15, -32
+  %17 = lshl %9, %15
+  %18 = lshl %10, %15
+  %19 = lshl %9, %16
+  %20 = or %18, %19
+  %22 = ltu %11, %14
+  %23 = copy %22 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %24 = sel.nez %17, %12, %23
+  %25 = copy %22 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %26 = sel.nez %20, %17, %25
+  %shifted = concat(%24, %26) : (reg<aie2p.er>, reg<aie2p.er>) -> reg<aie2p.er x2>
+  return %shifted
+}
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @wide_shift_varying(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = vector.extract %counts[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @wide_shift_varying(%values: reg<aie2p.vec256 x2>, %counts: reg<aie2p.vec256 x2>) -> (reg<aie2p.er x2>) asm {
+  %value = vextract.64.imm %values, 0
+  %count = vextract.64.imm %counts, 0
+  %11 = slice %value[0] : reg<aie2p.er x2> -> reg<aie2p.er>
+  %12 = slice %value[1] : reg<aie2p.er x2> -> reg<aie2p.er>
+  %13 = slice %count[0] : reg<aie2p.er x2> -> reg<aie2p.er>
+  %14 = mov.short 0
+  %15 = mov.short 31
+  %16 = mov.short 32
+  %17 = and %13, %15
+  %18 = add %17, -32
+  %19 = lshl %11, %17
+  %20 = lshl %12, %17
+  %21 = lshl %11, %18
+  %22 = or %20, %21
+  %24 = ltu %13, %16
+  %25 = copy %24 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %26 = sel.nez %19, %14, %25
+  %27 = copy %24 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %28 = sel.nez %22, %19, %27
+  %shifted = concat(%26, %28) : (reg<aie2p.er>, reg<aie2p.er>) -> reg<aie2p.er x2>
+  return %shifted
+}

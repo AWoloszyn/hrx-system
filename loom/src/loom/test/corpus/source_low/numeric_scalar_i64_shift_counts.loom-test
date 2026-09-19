@@ -1,0 +1,25 @@
+// RUN: roundtrip
+
+func.def @wide_shift_constant(%values: vector<2xi64>) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ====
+
+func.def @wide_shift_uniform(%values: vector<2xi64>, %count: i64) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ====
+
+func.def @wide_shift_varying(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = vector.extract %counts[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}

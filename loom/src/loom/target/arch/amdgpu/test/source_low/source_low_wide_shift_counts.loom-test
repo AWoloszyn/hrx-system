@@ -1,3 +1,4 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64_shift_counts.loom-test
 // RUN: emit source-low output=low
 
 amdgpu.target<gfx1151> @target
