@@ -413,6 +413,8 @@ TEST_F(ImportTest, PromotionsAndAssignmentConversionsProduceVerifiedIR) {
       "unsigned long long shift(unsigned long long x, unsigned count) { return "
       "x << count; }\n"
       "unsigned char narrow(unsigned char x) { x += 300; ++x; return x; }\n"
+      "unsigned char retreat(unsigned char x) { x--; return x; }\n"
+      "short signed_retreat(short x) { --x; return x; }\n"
       "unsigned long long increment(unsigned long long x) { ++x; return x; }\n"
       "bool truth(double x) { return bool(x); }\n"
       "double widen(bool x) { return double(x); }\n")));

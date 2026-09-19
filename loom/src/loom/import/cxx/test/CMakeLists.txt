@@ -9,6 +9,23 @@
 
 iree_add_all_subdirs()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+iree_execution_test_suite(
+  NAME
+    functions_test
+  MANIFESTS
+    "functions.test.json"
+  TOOLS
+    "generate-cases=loom::py::loom::gen::test::cxx_kernel_cases"
+    "iree-test-loom=loom::tools::iree-test-loom"
+    "loom-import-cxx=loom::tools::loom-import-cxx"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
+  LABELS
+    "hostonly"
+)
+endif()
+
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 iree_execution_test_suite(
   NAME
@@ -29,6 +46,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/control_flow.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/early_returns.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/flash_attention.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_increment.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/llama_rms_norm.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/scheduled_sum.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/short_circuit.cpp"

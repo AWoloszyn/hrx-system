@@ -1,15 +1,20 @@
-# Standalone C++ kernels
+# Standalone C++ programs
 
 These programs exercise the full source path: C++ import, ordinary Loom
 bytecode linking, config specialization, AMDGPU compilation, and GPU execution.
 The existing `iree-test-loom` runner compares outputs against independent
-double-precision references and checks both output guards bitwise.
+double-precision references and checks both output guards bitwise. Ordinary
+integer functions also execute through the VM with exact scalar references.
 
 ```sh
 iree-bazel-test --config=asan --config=loom-importer-cxx \
   --//runtime/config/hal:drivers=amdgpu,task \
   --//loom/config/emit:enable=amdgpu \
   //loom/src/loom/import/cxx/test:kernels_test
+
+iree-bazel-test --config=asan --config=loom-importer-cxx \
+  --//loom/config/target:enable=vm \
+  //loom/src/loom/import/cxx/test:functions_test
 ```
 
 The manifest imports each kernel through an external facade include root, so
@@ -30,6 +35,8 @@ compatibility with complete upstream libraries.
 | `scheduled_sum.cpp` | Template-selected unroll factors 1/3 and pipeline depths 1/2 with linear ordering. Exact integer sums for 0, 1, 2, 5, 17, and 33 columns cover startup, tails, and drain under all four schedules. | Original scheduling-contract witness. |
 | `short_circuit.cpp` | Bounds-guarded reads, exact conditional call-order traces, discarded boolean expressions and scalar truth conversions across 64 lanes. Lengths 0, 1, 17, 33 and 64 run normally and with device access sanitization and zero expected access reports. | Original source-language semantics witness. |
 | `early_returns.cpp` | Per-lane kernel exits, guarded helper returns inside a counted loop, nested return trees, void calls in returns, and local state across continuing paths. Lengths 0, 1, 17, 33 and 64 run normally and with device access sanitization; exited lanes retain their sentinel values. | Original source-language semantics witness. |
+| `integer_functions.cpp` | Exact VM results for fixed-point multiply/rescale, byte increment/decrement, signed short decrement, 64-bit wrap and independently promoted shift counts. The 162 cases include negative rescaling, sign boundaries and counts 0/31/32/63. | Original source-language semantics witness using ordinary exported functions. |
+| `integer_increment.cpp` | Uniform and lane-varying byte/64-bit increments execute on AMDGPU, including byte wrap, low-word carry, bit 63 and full-width wrap. Fifteen input cases check all 64 lanes and both output guards. | Original source-language semantics witness. |
 
 The llama.cpp extraction specializes `rms_norm_f32`, `block_reduce<SUM>` and
 `warp_reduce_sum` for contiguous rows, one channel/sample, block size 64, and
@@ -52,3 +59,9 @@ uses a materialized score matrix and double-precision softmax reference; RMSNorm
 uses a direct row sum of squares. These references are independent of the
 source kernels' reduction and staging algorithms. Python runs only to prepare
 test fixtures; the importer, CLI, and public C extension are native.
+
+The integer references use unbounded integer multiplication/division and
+explicit modular conversion into the source width. Shift counts remain within
+the promoted left operand's width, and signed arithmetic inputs stay in their
+defined domain. Arithmetic i64 right shifts are exercised on the VM; AMDGPU
+currently rejects that operation and requires an additional target recipe.

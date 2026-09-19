@@ -8,7 +8,9 @@
           "name": "fixtures",
           "run": {
             "tool": "generate-cases",
-            "args": ["{tmp}/fixtures"]
+            "args": [
+              "{tmp}/fixtures"
+            ]
           }
         },
         {
@@ -80,7 +82,9 @@
           "name": "fixtures",
           "run": {
             "tool": "generate-cases",
-            "args": ["{tmp}/fixtures"]
+            "args": [
+              "{tmp}/fixtures"
+            ]
           }
         },
         {
@@ -556,6 +560,106 @@
               "unordered": [
                 "\"case_count\":6",
                 "\"sample_count\":6",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "increment_u8 preserves uniform and varying unsigned wrap",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=increment_u8",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/integer_increment.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/increment_u8.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":6",
+                "\"sample_count\":6",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "increment_u64 preserves uniform and varying unsigned wrap",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=increment_u64",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/integer_increment.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/increment_u64.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":9",
+                "\"sample_count\":9",
                 "\"failed_sample_count\":0",
                 "\"skipped_case_count\":0",
                 "\"planning_issue_count\":0"

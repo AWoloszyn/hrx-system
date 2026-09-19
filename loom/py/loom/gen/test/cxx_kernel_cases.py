@@ -12,7 +12,15 @@ import struct
 import sys
 from pathlib import Path
 
-ELEMENTS = {"f16": ("e", "<f2", 2), "f32": ("f", "<f4", 4), "i32": ("i", "<i4", 4)}
+ELEMENTS = {"f16": ("e", "<f2", 2), "f32": ("f", "<f4", 4), "i8": ("b", "|i1", 1), "i32": ("i", "<i4", 4), "i64": ("q", "<i8", 8)}
+
+BYTE_INPUTS = [0, 127, 128, 254, 255, 511]
+WIDE_INPUTS = [0, 126, 254, 255, (1 << 32) - 1, 1 << 32, (1 << 63) - 1, 1 << 63, (1 << 64) - 1]
+
+
+def signed_bits(value, width):
+    """Represent an integer bit pattern in signed literal/NumPy storage."""
+    return (value + (1 << (width - 1))) % (1 << width) - (1 << (width - 1))
 
 
 def rounded(value, element):
@@ -33,7 +41,7 @@ class Case:
         self.name = name
         self.element = element
         self.count = count
-        self.guard = "-123" if element == "i32" else "-123.0"
+        self.guard = "-123" if element.startswith("i") else "-123.0"
         self.lines = [f"check.case public @{name} {{"]
         self.lines.append(f"  %storage = check.generate.fill value({self.guard}) : tensor<{count + 32}x{element}>")
         _, _, width = ELEMENTS[element]
@@ -220,6 +228,56 @@ def early_returns(directory):
     return "kernel.decl @early_returns() launch(%input: buffer, %output: buffer, %length: i32)\n\n" + "\n".join(cases)
 
 
+def integer_increment(directory, width, inputs):
+    cases = []
+    argument_width = 32 if width == 8 else 64
+    for input_value in inputs:
+        expected = []
+        for lane in range(64):
+            expected.extend([signed_bits(input_value + 1, width), signed_bits(input_value + lane + 1, width)])
+        case = Case(directory, f"increment_u{width}_{input_value}", f"i{width}", len(expected))
+        case.scalar("input", signed_bits(input_value, argument_width), f"i{argument_width}")
+        case.launch(f"increment_u{width}", "%output, %input", f"tensor<{len(expected)}xi{width}>, i{argument_width}")
+        cases.append(case.finish(expected))
+    return f"kernel.decl @increment_u{width}() launch(%output: buffer, %input: i{argument_width})\n\n" + "\n".join(cases)
+
+
+def integer_functions(directory):
+    del directory
+    declarations = []
+    cases = []
+
+    def function(name, argument_widths, result_width, samples):
+        types = ", ".join(f"i{width}" for width in argument_widths)
+        parameters = ", ".join(f"%arg{index}: i{width}" for index, width in enumerate(argument_widths))
+        declarations.append(f"func.decl @{name}({parameters}) -> (i{result_width})")
+        for ordinal, (arguments, expected) in enumerate(samples):
+            lines = [f"check.case public @{name}_{ordinal} {{"]
+            for index, (value, width) in enumerate(zip(arguments, argument_widths, strict=True)):
+                lines.append(f"  %arg{index} = check.literal value({signed_bits(value, width)}) : i{width}")
+            operands = ", ".join(f"%arg{index}" for index in range(len(arguments)))
+            lines.append(f"  %actual = func.call @{name}({operands}) : ({types}) -> (i{result_width})")
+            lines.append(f"  %expected = check.literal value({signed_bits(expected, result_width)}) : i{result_width}")
+            lines.append(f"  check.expect.equal actual(%actual) expected(%expected) : i{result_width}")
+            lines.extend(["  check.return", "}"])
+            cases.append("\n".join(lines))
+
+    products = [(0, -1), (65536, 65536), (-65537, 98304), (65537, -98304), (-(1 << 31), 65536), ((1 << 31) - 1, 65536), (12345, 6789)]
+    function("fixed_multiply", [32, 32], 32, [(pair, pair[0] * pair[1] // 65536) for pair in products])
+    function("byte_increment", [32], 32, [([value], (value + 1) % 256) for value in BYTE_INPUTS])
+    function("byte_decrement", [32], 32, [([value], (value - 1) % 256) for value in BYTE_INPUTS])
+    function("short_decrement", [32], 32, [([value], value - 1) for value in [-32767, -129, -1, 0, 1, 32767]])
+    function("wide_increment", [64], 64, [([value], (value + 1) % (1 << 64)) for value in WIDE_INPUTS])
+    narrow_values = [0, 1, 0x12345678, (1 << 31), (1 << 32) - 1]
+    function("shift_left_narrow", [32, 64], 32, [([value, count], value * (1 << count) % (1 << 32)) for value in narrow_values for count in [0, 1, 16, 31]])
+    wide_values = [0, 1, -1, -65537, 0x123456789ABCDEF, -(1 << 63)]
+    counts = [0, 1, 16, 31, 32, 63]
+    function("shift_left_wide", [64, 32], 64, [([value, count], value * (1 << count) % (1 << 64)) for value in wide_values for count in counts])
+    function("shift_right_signed", [64, 32], 64, [([value, count], value // (1 << count)) for value in wide_values for count in counts])
+    function("shift_right_unsigned", [64, 32], 64, [([value, count], (value % (1 << 64)) // (1 << count)) for value in wide_values for count in counts])
+    return "\n".join(declarations) + "\n\n" + "\n\n".join(cases) + "\n"
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
@@ -231,6 +289,9 @@ def main():
         ("scheduled_sum", scheduled_sum),
         ("short_circuit", short_circuit),
         ("early_returns", early_returns),
+        ("increment_u8", lambda directory: integer_increment(directory, 8, BYTE_INPUTS)),
+        ("increment_u64", lambda directory: integer_increment(directory, 64, WIDE_INPUTS)),
+        ("integer_functions", integer_functions),
     ]:
         (directory / f"{name}.loom").write_text(generator(directory))
 

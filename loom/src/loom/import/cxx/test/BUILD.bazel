@@ -20,12 +20,29 @@ exports_files([
 ])
 
 iree_execution_test_suite(
+    name = "functions_test",
+    data = ["integer_functions.cpp"],
+    manifests = ["functions.test.json"],
+    tags = ["hostonly"],
+    target_compatible_with = loom_config_compatible_with([
+        "//loom/config/import:cxx",
+        "//loom/config/target/arch:vm",
+    ]),
+    tools = {
+        "generate-cases": "//loom/py/loom/gen/test:cxx_kernel_cases",
+        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+        "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
+    },
+)
+
+iree_execution_test_suite(
     name = "kernels_test",
     data = [
         "aiter_swiglu_f16.cpp",
         "control_flow.cpp",
         "early_returns.cpp",
         "flash_attention.cpp",
+        "integer_increment.cpp",
         "llama_rms_norm.cpp",
         "scheduled_sum.cpp",
         "short_circuit.cpp",

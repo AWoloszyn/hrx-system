@@ -1015,14 +1015,17 @@ class Translator {
         fail(ast, "increment requires an integer local");
       }
       auto old = expression(id);
+      // Builtin ++/-- performs promoted arithmetic before converting back to
+      // the lvalue type, just like compound assignment with an integer one.
+      auto* promoted = unit_.typeTraits().promoted_integer_type(id->type);
+      old = scalars_.convert(old, id->type, promoted, ast);
       auto one = scalars_.integer(1, loom_type_element_type(value_type(old)),
                                   locations_.get(ast));
-      loom_op_t* op;
-      auto build = decrement ? loom_scalar_subi_build : loom_scalar_addi_build;
-      check(build(&builder_, 0, old, one, value_type(old), locations_.get(ast),
-                  &op));
-      values_[id->symbol] =
-          name(result(op), cxx::to_string(id->symbol->name()));
+      auto updated = scalars_.binary(
+          decrement ? cxx::TokenKind::T_MINUS : cxx::TokenKind::T_PLUS, old,
+          one, promoted, promoted, ast);
+      updated = scalars_.convert(updated, promoted, id->type, ast);
+      values_[id->symbol] = name(updated, cxx::to_string(id->symbol->name()));
       return;
     }
     fail(ast, "unsupported effect expression: " +
