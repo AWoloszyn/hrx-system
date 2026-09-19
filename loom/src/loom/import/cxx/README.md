@@ -139,13 +139,20 @@ The current translation surface covers scalar arithmetic and conversions,
 scalar-pointer indexing, local SSA values, conditional regions, short-circuit
 `&&` and `||`, counted and general `for` loops, `while` and `do/while` loops,
 fixed workgroup arrays, and direct calls. Unsupported reachable types and
-statements produce source
-diagnostics. Pointer indexing
-currently requires unsigned 32-bit source indices; extending it requires
-preserving signedness and source pointer arithmetic in the address projection.
-Objects with constructors, arbitrary pointer manipulation, general early
-returns, exceptions and indirect calls need additional storage and control-flow
-projections before they can be imported.
+statements produce source diagnostics. Pointer indexing currently requires
+unsigned 32-bit source indices; extending it requires preserving signedness
+and source pointer arithmetic in the address projection.
+Objects with constructors, arbitrary pointer manipulation, exceptions and
+indirect calls need additional storage and control-flow projections before
+they can be imported.
+
+Kernels and ordinary functions can return early through guard chains, nested
+blocks and returning `if`/`else` trees. A returning conditional must have at
+least one arm that always returns. The remaining source then executes only on
+the path that continues, without copying that source into both arms. Returning
+helpers retain structured bodies and can inline inside ordinary loops. A return
+from within a loop, or a returning conditional with two continuing arms, is
+diagnosed: those forms require a shared continuation or scoped exit contract.
 
 Logical operators preserve contextual boolean conversions and evaluate their
 right operand only in the selected `scf.if` region. Guarded loads and effectful
@@ -165,7 +172,7 @@ header APIs, and direct API tests that do not link the aggregate importer.
 | --- | --- |
 | `source/` | One configured frontend invocation, provider and diagnostic handling, immutable facade lookup, and source locations copied into the output module. |
 | `value/` | Source type/layout projection, scalar conversions and arithmetic, and memory access construction from already evaluated operands. |
-| `control/` | An immutable analysis of ordered source writes and nonwrapping counted-loop eligibility. This package has no IR dependency. |
+| `control/` | An immutable analysis of ordered source writes, return/fallthrough outcomes and nonwrapping counted-loop eligibility. This package has no IR dependency. |
 | `binding/` | Admission and construction for generated operation bindings, kernel launch contracts, and explicit loop schedules. |
 | `symbol/` | Root selection, reachable function identities, deterministic naming, and native function definitions with explicit body contracts. |
 

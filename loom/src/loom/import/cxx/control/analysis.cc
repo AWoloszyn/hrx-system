@@ -33,6 +33,11 @@ const CountedLoop* ControlFlow::counted(cxx::ForStatementAST* loop) const {
   return found == counted_.end() ? nullptr : &found->second;
 }
 
+ReturnFlow ControlFlow::returns(cxx::StatementAST* statement) const {
+  auto found = returns_.find(statement);
+  return found == returns_.end() ? ReturnFlow::None : found->second;
+}
+
 bool ControlFlow::preVisit(cxx::AST* ast) {
   if (structured(ast)) {
     owners_.push_back(ast);
@@ -41,6 +46,12 @@ bool ControlFlow::preVisit(cxx::AST* ast) {
 }
 
 void ControlFlow::postVisit(cxx::AST* ast) {
+  if (auto* statement = cxx::ast_cast<cxx::StatementAST>(ast)) {
+    auto flow = classify_returns(statement);
+    if (flow != ReturnFlow::None) {
+      returns_.emplace(statement, flow);
+    }
+  }
   if (auto* loop = cxx::ast_cast<cxx::ForStatementAST>(ast)) {
     if (auto counted = classify(loop)) {
       counted_.emplace(loop, *counted);
@@ -49,6 +60,40 @@ void ControlFlow::postVisit(cxx::AST* ast) {
   if (structured(ast)) {
     owners_.pop_back();
   }
+}
+
+ReturnFlow ControlFlow::classify_returns(cxx::StatementAST* statement) const {
+  if (cxx::ast_cast<cxx::ReturnStatementAST>(statement)) {
+    return ReturnFlow::All;
+  }
+  if (auto* compound = cxx::ast_cast<cxx::CompoundStatementAST>(statement)) {
+    auto flow = ReturnFlow::None;
+    for (auto* child : cxx::ListView{compound->statementList}) {
+      auto child_flow = returns(child);
+      if (child_flow == ReturnFlow::All) {
+        return ReturnFlow::All;
+      }
+      if (child_flow == ReturnFlow::Some) {
+        flow = ReturnFlow::Some;
+      }
+    }
+    return flow;
+  }
+  if (auto* branch = cxx::ast_cast<cxx::IfStatementAST>(statement)) {
+    auto then_flow = returns(branch->statement);
+    auto else_flow = returns(branch->elseStatement);
+    return then_flow == else_flow ? then_flow : ReturnFlow::Some;
+  }
+  cxx::StatementAST* body = nullptr;
+  if (auto* loop = cxx::ast_cast<cxx::ForStatementAST>(statement)) {
+    body = loop->statement;
+  } else if (auto* loop = cxx::ast_cast<cxx::WhileStatementAST>(statement)) {
+    body = loop->statement;
+  } else if (auto* loop = cxx::ast_cast<cxx::DoStatementAST>(statement)) {
+    return returns(loop->statement);
+  }
+  return returns(body) == ReturnFlow::None ? ReturnFlow::None
+                                           : ReturnFlow::Some;
 }
 
 void ControlFlow::visit(cxx::AssignmentExpressionAST* ast) {

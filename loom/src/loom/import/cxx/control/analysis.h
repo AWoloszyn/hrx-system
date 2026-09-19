@@ -29,9 +29,14 @@ struct CountedLoop {
   unsigned step;
 };
 
+// Source paths through a statement that reach a function return. Fallthrough
+// remains possible for None and Some; All terminates every syntactic path.
+enum class ReturnFlow { None, Some, All };
+
 // One traversal owns control facts for an immutable source function body.
 // Ordered writes include nested constructs and preserve source symbol identity.
-// Counted-loop classification happens after those writes are complete. Queries
+// Return outcomes aggregate each statement's already visited children, and
+// counted-loop classification happens after its writes are complete. Queries
 // only consume retained facts; they do not traverse source or output IR.
 // The source unit and body outlive this object and every returned reference.
 class ControlFlow final : private cxx::ASTVisitor {
@@ -44,6 +49,8 @@ class ControlFlow final : private cxx::ASTVisitor {
   std::span<cxx::Symbol* const> written(cxx::AST* owner) const;
   // Null retains ordinary while semantics; a result permits scf.for lowering.
   const CountedLoop* counted(cxx::ForStatementAST* loop) const;
+  // Retained return/fallthrough summary, including nested statements.
+  ReturnFlow returns(cxx::StatementAST* statement) const;
 
  private:
   bool preVisit(cxx::AST* ast) override;
@@ -55,6 +62,7 @@ class ControlFlow final : private cxx::ASTVisitor {
   static bool structured(cxx::AST* ast);
   void record(cxx::ExpressionAST* expression);
   std::optional<CountedLoop> classify(cxx::ForStatementAST* loop);
+  ReturnFlow classify_returns(cxx::StatementAST* statement) const;
 
   // Resolved source types and literal interpretation for loop admission.
   cxx::TranslationUnit& unit_;
@@ -64,6 +72,8 @@ class ControlFlow final : private cxx::ASTVisitor {
   std::unordered_map<cxx::AST*, std::vector<cxx::Symbol*>> writes_;
   // Proven intervals retained after each source loop's children are visited.
   std::unordered_map<cxx::ForStatementAST*, CountedLoop> counted_;
+  // Sparse summaries retain only statements with function-return paths.
+  std::unordered_map<cxx::StatementAST*, ReturnFlow> returns_;
 };
 
 }  // namespace loom::cxx_import

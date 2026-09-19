@@ -24,6 +24,7 @@ iree_execution_test_suite(
     data = [
         "aiter_swiglu_f16.cpp",
         "control_flow.cpp",
+        "early_returns.cpp",
         "flash_attention.cpp",
         "llama_rms_norm.cpp",
         "scheduled_sum.cpp",

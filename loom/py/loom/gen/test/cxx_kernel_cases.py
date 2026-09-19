@@ -196,6 +196,30 @@ def short_circuit(directory):
     return "kernel.decl @short_circuit() launch(%input: buffer, %output: buffer, %length: i32)\n\n" + "\n".join(cases)
 
 
+def early_returns(directory):
+    cases = []
+    for length in [0, 1, 17, 33, 64]:
+        values = [((index * 7) % 9) - 3 for index in range(max(1, length))]
+        expected = [-123] * (64 * 6)
+        for lane in range(length):
+            value = values[lane]
+            next_value = values[lane + 1] if lane + 1 < length else None
+            classified = -7 if next_value is None else abs(next_value) if next_value < 0 else 3 if next_value == 0 else next_value + 4
+            trace = 1 if next_value is None else 3 if next_value == 0 else 2
+            total = sum(values[lane : min(lane + 3, length)]) - 7 * max(0, lane + 3 - length)
+            chosen = (-11 if lane & 1 else -13) if value < 0 else (17 if lane & 1 else 19)
+            published = 11 if value < 0 else value
+            state = value + 1 if value < 0 else 5 if value == 0 else value + 7
+            expected[lane * 6 : (lane + 1) * 6] = [classified, trace, total, chosen, published, state]
+        case = Case(directory, f"early_returns_{length}", "i32", len(expected))
+        case.array("input", values)
+        case.scalar("length", length, "i32")
+        case.launch("early_returns", "%input, %output, %length", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @early_returns() launch(%input: buffer, %output: buffer, %length: i32)\n\n" + "\n".join(cases)
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
@@ -206,6 +230,7 @@ def main():
         ("control_flow", control_flow),
         ("scheduled_sum", scheduled_sum),
         ("short_circuit", short_circuit),
+        ("early_returns", early_returns),
     ]:
         (directory / f"{name}.loom").write_text(generator(directory))
 

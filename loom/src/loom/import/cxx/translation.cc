@@ -111,15 +111,30 @@ class Translator {
     return hint.empty() ? value : name(value, hint);
   }
 
+  // Source tails are borrowed stack frames. A returning branch consumes its
+  // remaining source in at most one arm, so no continuation is duplicated.
+  struct ReturnSequence {
+    // Remaining statements in the current lexical block.
+    cxx::List<cxx::StatementAST*>* remaining;
+    // Enclosing block's tail, or null at the function boundary.
+    const ReturnSequence* continuation;
+  };
+
+  struct Returned {
+    // Native return operands; empty for a void source function.
+    std::vector<loom_value_id_t> values;
+    // Return or branch whose source location owns the resulting exit.
+    cxx::AST* source;
+  };
+
   void function(cxx::FunctionSymbol* symbol) {
-    auto defined = functions_.define(symbol, types_, locations_, &builder_);
-    auto* definition = defined.source;
+    current_function_ =
+        functions_.define(symbol, types_, locations_, &builder_);
+    const auto& defined = current_function_;
     auto* body = defined.body;
     auto* op = defined.operation;
     auto* region = defined.region;
     auto parameters = symbol->parameters();
-    bool returns_void = defined.return_type->kind() == cxx::TypeKind::kVoid;
-    kernel_ = defined.kind == FunctionKind::Kernel;
     control_.emplace(unit_, body);
     auto saved = loom_builder_enter_region(&builder_, op, region);
     values_.clear();
@@ -128,44 +143,120 @@ class Translator {
           name(loom_region_entry_arg_id(region, index),
                cxx::to_string(parameters[index]->name()));
     }
-    bool returned = false;
-    for (auto* child : cxx::ListView{body->statementList}) {
-      if (returned) {
-        fail(child, "statements after return are not supported");
-      }
-      if (auto* ret = cxx::ast_cast<cxx::ReturnStatementAST>(child)) {
-        std::vector<loom_value_id_t> returns;
-        if (ret->expression) {
-          returns.push_back(expression(ret->expression));
-        }
-        loom_op_t* terminator;
-        if (kernel_) {
-          check(loom_kernel_return_build(&builder_, locations_.get(ret),
-                                         &terminator));
-        } else {
-          check(loom_func_return_build(&builder_, returns.data(),
-                                       returns.size(), locations_.get(ret),
-                                       &terminator));
-        }
-        returned = true;
-      } else {
-        statement(child);
-      }
-    }
-    if (!returned) {
-      if (!returns_void) {
-        fail(definition, "non-void helper needs a final return");
-      }
-      loom_op_t* terminator;
-      if (kernel_) {
-        check(loom_kernel_return_build(&builder_, locations_.get(definition),
-                                       &terminator));
-      } else {
-        check(loom_func_return_build(&builder_, nullptr, 0,
-                                     locations_.get(definition), &terminator));
-      }
+    auto returned = return_sequence({body->statementList, nullptr});
+    loom_op_t* terminator;
+    if (defined.kind == FunctionKind::Kernel) {
+      check(loom_kernel_return_build(&builder_, locations_.get(returned.source),
+                                     &terminator));
+    } else {
+      check(loom_func_return_build(
+          &builder_, returned.values.data(), returned.values.size(),
+          locations_.get(returned.source), &terminator));
     }
     loom_builder_restore(&builder_, saved);
+  }
+
+  Returned return_sequence(ReturnSequence sequence) {
+    for (;;) {
+      if (!sequence.remaining) {
+        if (sequence.continuation) {
+          sequence = *sequence.continuation;
+          continue;
+        }
+        if (current_function_.return_type->kind() != cxx::TypeKind::kVoid) {
+          fail(current_function_.source,
+               "non-void function can reach its end without returning a value");
+        }
+        return {{}, current_function_.source};
+      }
+      auto* child = sequence.remaining->value;
+      sequence.remaining = sequence.remaining->next;
+      if (control_->returns(child) != ReturnFlow::None) {
+        return returning_statement(child, sequence);
+      }
+      statement(child);
+    }
+  }
+
+  Returned returning_statement(cxx::StatementAST* ast,
+                               const ReturnSequence& continuation) {
+    if (auto* ret = cxx::ast_cast<cxx::ReturnStatementAST>(ast)) {
+      bool returns_void =
+          current_function_.return_type->kind() == cxx::TypeKind::kVoid;
+      if (!ret->expression) {
+        if (!returns_void) {
+          fail(ast, "non-void return requires a value");
+        }
+        return {{}, ret};
+      }
+      if (ret->expression->type->kind() == cxx::TypeKind::kVoid) {
+        if (!returns_void) {
+          fail(ast, "non-void return requires a value");
+        }
+        effect(ret->expression);
+        return {{}, ret};
+      }
+      if (returns_void) {
+        fail(ast, "void return cannot carry a value");
+      }
+      return {{convert(ret->expression, current_function_.return_type, ret)},
+              ret};
+    }
+    if (auto* compound = cxx::ast_cast<cxx::CompoundStatementAST>(ast)) {
+      return return_sequence({compound->statementList, &continuation});
+    }
+    if (auto* branch = cxx::ast_cast<cxx::IfStatementAST>(ast);
+        branch && control_->returns(branch) != ReturnFlow::None) {
+      if (branch->initializer || branch->constexprLoc) {
+        fail(ast, "if initializer/constexpr is outside this slice");
+      }
+      if (control_->returns(branch->statement) != ReturnFlow::All &&
+          control_->returns(branch->elseStatement) != ReturnFlow::All) {
+        fail(ast,
+             "conditional returns require at most one fallthrough arm; "
+             "shared continuations need a scoped exit projection");
+      }
+      auto condition = expression(branch->condition);
+      auto outer_values = values_;
+      std::vector<loom_type_t> result_types;
+      if (current_function_.return_type->kind() != cxx::TypeKind::kVoid) {
+        result_types.push_back(types_.get(current_function_.return_type, ast));
+      }
+      loom_op_t* op;
+      auto source = locations_.get(ast);
+      check(loom_scf_if_build(&builder_, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,
+                              condition, result_types.data(),
+                              result_types.size(), nullptr, 0, source, &op));
+      auto saved =
+          loom_builder_enter_region(&builder_, op, loom_scf_if_then_region(op));
+      auto returned = returning_statement(branch->statement, continuation);
+      loom_op_t* yield;
+      check(loom_scf_yield_build(&builder_, returned.values.data(),
+                                 returned.values.size(),
+                                 locations_.get(returned.source), &yield));
+      loom_builder_restore(&builder_, saved);
+      values_ = outer_values;
+      saved =
+          loom_builder_enter_region(&builder_, op, loom_scf_if_else_region(op));
+      returned = returning_statement(branch->elseStatement, continuation);
+      check(loom_scf_yield_build(&builder_, returned.values.data(),
+                                 returned.values.size(),
+                                 locations_.get(returned.source), &yield));
+      loom_builder_restore(&builder_, saved);
+      values_ = outer_values;
+      returned.values.assign(loom_op_results(op),
+                             loom_op_results(op) + result_types.size());
+      returned.source = ast;
+      return returned;
+    }
+    if (control_->returns(ast) != ReturnFlow::None) {
+      fail(ast,
+           "returns inside loops require a structured loop-exit projection");
+    }
+    if (ast) {
+      statement(ast);
+    }
+    return return_sequence(continuation);
   }
 
   StorageAccess address(cxx::SubscriptExpressionAST* ast) {
@@ -506,7 +597,8 @@ class Translator {
         if (variable->symbol && annotated(variable->symbol, "workgroup")) {
           auto* array = cxx::type_cast<cxx::BoundedArrayType>(
               types_.unqualified(variable->symbol->type()));
-          if (!array || variable->initializer || !kernel_) {
+          if (!array || variable->initializer ||
+              current_function_.kind != FunctionKind::Kernel) {
             fail(ast,
                  "shared storage must be an uninitialized fixed scalar array "
                  "in the kernel");
@@ -963,8 +1055,8 @@ class Translator {
   const loom_cxx_import_options_t& options_;
   // Explicit source-level permission for approximate math function results.
   uint8_t math_flags_;
-  // Whether the current function has a kernel launch contract.
-  bool kernel_ = false;
+  // Source and native definition contracts for the body being translated.
+  FunctionBody current_function_ = {};
   // Bound symbols, never identifier spellings, key source-to-SSA mappings.
   std::unordered_map<cxx::Symbol*, loom_value_id_t> values_;
   // Immutable control facts for the function currently being translated.

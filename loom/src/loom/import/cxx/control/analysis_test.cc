@@ -112,5 +112,41 @@ TEST(ControlFlowTest, NestedWritesPreserveOrderAndShadowedSymbolIdentity) {
   EXPECT_TRUE(analysis.written(branch->condition).empty());
 }
 
+TEST(ControlFlowTest, ReturnSummariesRetainFallthroughAndNestedExits) {
+  struct Case {
+    // Source body whose nested outcomes are aggregated once.
+    const char* body;
+    // Expected function-body return summary.
+    ReturnFlow flow;
+  };
+  const Case cases[] = {
+      {"", ReturnFlow::None},
+      {"return;", ReturnFlow::All},
+      {"if (x) return;", ReturnFlow::Some},
+      {"if (x) return; else return;", ReturnFlow::All},
+      {"if (x) { if (y) return; }", ReturnFlow::Some},
+      {"if (x) { if (y) return; } return;", ReturnFlow::All},
+      {"while (x) { return; }", ReturnFlow::Some},
+      {"do { return; } while (x);", ReturnFlow::All},
+      {"for (unsigned i=0; i<4u; ++i) { if (y) return; }", ReturnFlow::Some},
+      {"while (x) { --x; }", ReturnFlow::None},
+  };
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  for (const auto& test : cases) {
+    SCOPED_TRACE(test.body);
+    std::string text =
+        std::string("void entry(int x, int y) {") + test.body + "}";
+    Source source(view(text), IREE_SV("returns.cpp"), options);
+    auto* function = definition(source);
+    ASSERT_NE(function, nullptr);
+    auto* body = cxx::ast_cast<cxx::CompoundStatementFunctionBodyAST>(
+                     function->functionBody)
+                     ->statement;
+    ControlFlow analysis(source.unit(), body);
+    EXPECT_EQ(analysis.returns(body), test.flow);
+  }
+}
+
 }  // namespace
 }  // namespace loom::cxx_import

@@ -454,6 +454,66 @@ TEST_F(ImportTest, ShortCircuitOperandsUseContextualBooleanConversions) {
   EXPECT_NE(text.find("scalar.cmpf une"), std::string::npos);
 }
 
+TEST_F(ImportTest, ConditionalReturnsKeepOneStructuredFunctionExit) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    int guarded(const int* input, unsigned length) {
+      if (length == 0u) { return 3; }
+      return input[0u];
+    }
+    int nested(int x, int y) {
+      if (x) { if (y) return 2; return 3; }
+      else { return 4; }
+    }
+    int partial(int x, int y) {
+      if (x) { if (y) return 2; }
+      else { return 4; }
+      return 3;
+    }
+    int state(int x, int y) {
+      if (x < 0) { y += 10; return y; }
+      else { y += 4; }
+      { if (x == 0) return y; y += 2; }
+      return y;
+    }
+    int convert_result(bool choose, float value) {
+      if (choose) return value;
+      return 7.5;
+    }
+    void store(int* output) { output[0u] = 7; }
+    void effect(int* output, bool choose) {
+      if (choose) return store(output);
+      output[0u] = 9;
+    }
+    void unreachable(int* output) { return; output[0u] = 10; }
+  )")));
+  ASSERT_NE(module_, nullptr);
+  EXPECT_EQ(diagnostic_count_, 0);
+  auto text = Print();
+  EXPECT_NE(text.find("scf.if"), std::string::npos);
+  EXPECT_EQ(text.find("cfg."), std::string::npos);
+  EXPECT_EQ(text.find("scalar.poison"), std::string::npos);
+}
+
+TEST_F(ImportTest, RejectsIncompleteReturnsAndUnprojectedExitJoins) {
+  for (const char* source : {
+           "int entry(int x) { if (x) return 1; }",
+           "int entry() { return; }",
+           "void entry() { return 1; }",
+           "int entry(int x, int y) { if (x) { if (y) return 1; x = 2; } "
+           "return x; }",
+           "int entry(int x) { while (x) { return x; } return 0; }",
+           "int entry(int x) { do { return x; } while (x); }",
+           "int entry() { for (unsigned i=0; i<4u; ++i) { return 1; } "
+           "return 0; }",
+       }) {
+    SCOPED_TRACE(source);
+    auto before = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_cstring_view(source)));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_GT(diagnostic_count_, before);
+  }
+}
+
 TEST_F(ImportTest, VoidHelpersAndVisibility) {
   IREE_ASSERT_OK(
       Import(IREE_SV("[[gnu::visibility(\"hidden\")]] void helper(float* p) { "
