@@ -1067,16 +1067,29 @@ static iree_status_t loom_low_schedule_add_state_read_dependencies(
     loom_low_schedule_build_state_t* state,
     loom_low_schedule_state_access_t consumer, uint16_t reg_class_id,
     loom_low_schedule_dependency_kind_t kind) {
+  // Readers are prepended in source/node order. A fence already orders the
+  // older suffix transitively, but cannot retire its read-to-write timing.
+  // Stopping fence walks at that suffix keeps reader processing linear.
+  const uint32_t ordering_frontier_node =
+      kind == LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER
+          ? state->state_ordering_frontiers[reg_class_id].node_index
+          : LOOM_LOW_SCHEDULE_NODE_NONE;
   uint32_t read_record_index = state->state_read_heads[reg_class_id];
   while (read_record_index != LOOM_LOW_SCHEDULE_NODE_NONE) {
     const loom_low_schedule_state_read_record_t* read_record =
         &state->state_read_records[read_record_index];
+    if (ordering_frontier_node != LOOM_LOW_SCHEDULE_NODE_NONE &&
+        read_record->access.node_index <= ordering_frontier_node) {
+      break;
+    }
     IREE_RETURN_IF_ERROR(loom_low_schedule_add_dependency(
         state, read_record->access.node_index, consumer.node_index, kind,
         LOOM_LOW_ID_NONE, read_record->access.endpoint, consumer.endpoint));
     read_record_index = read_record->next_record;
   }
-  state->state_read_heads[reg_class_id] = LOOM_LOW_SCHEDULE_NODE_NONE;
+  if (kind == LOOM_LOW_SCHEDULE_DEPENDENCY_STATE) {
+    state->state_read_heads[reg_class_id] = LOOM_LOW_SCHEDULE_NODE_NONE;
+  }
   return iree_ok_status();
 }
 

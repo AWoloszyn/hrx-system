@@ -73,7 +73,7 @@ typedef struct loom_low_schedule_hazard_state_t {
 typedef struct loom_low_schedule_state_read_record_t {
   // Architectural-state read retained until a later write subsumes it.
   loom_low_schedule_state_access_t access;
-  // Next outstanding read record for the same descriptor register class.
+  // Next outstanding read for the same class, in reverse source/node order.
   uint32_t next_record;
 } loom_low_schedule_state_read_record_t;
 
@@ -318,7 +318,8 @@ typedef struct loom_low_schedule_build_state_t {
   loom_low_schedule_state_access_t* state_first_writes;
   // Most recent non-writing state-ordering access, dense by register class.
   loom_low_schedule_state_access_t* state_ordering_frontiers;
-  // Outstanding architectural-state read lists, dense by register class.
+  // Readers retained until the next actual writer, dense by register class.
+  // Ordering fences cover older readers transitively without retiring them.
   uint32_t* state_read_heads;
   // Outstanding state-read records used by state_read_heads.
   loom_low_schedule_state_read_record_t* state_read_records;

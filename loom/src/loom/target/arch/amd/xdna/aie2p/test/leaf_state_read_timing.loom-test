@@ -1,0 +1,84 @@
+// A read-only fence orders observations without completing earlier reads.
+// The load observes saturation at stage 7, the store at stage 1. A later
+// saturation write must retain the load's six-cycle read-to-write separation.
+// RUN: with-checks emit low-schedule-json @state_read_fence strategy=source
+
+low.func.def target<amd.xdna.aie2p.core> @state_read_fence(%input: reg<aie2p.ep>, %output: reg<aie2p.ep>, %value: reg<aie2p.mbms>, %shift: reg<aie2p.es>) -> (reg<aie2p.mbms>) asm {
+  set.saturation 0
+  %loaded = vlda.ups.2x.w-to-b.unsigned %shift, %input, 0
+  vst.srs.2x.b-to-w.unsigned.volatile %value, %shift, %output, 0
+  set.saturation 1
+  return %loaded
+}
+
+// ----
+CHECK: *"index":1,"block":0,"source_ordinal":1,"scheduled_ordinal":1,"issue_cycle":1,*
+CHECK: *"index":2,"block":0,"source_ordinal":2,"scheduled_ordinal":2,"issue_cycle":2,*
+CHECK: *"index":3,"block":0,"source_ordinal":3,"scheduled_ordinal":3,"issue_cycle":7,*
+CHECK: *{"from":1,"to":2,"kind":"order",*"minimum_issue_separation_cycles":0,"separation_source":"structural"*
+CHECK: *{"from":1,"to":3,"kind":"state",*"producer_event":"amd.xdna.aie2p.operand.read.c7.none",*"consumer_event":"amd.xdna.aie2p.operand.write.c1.none","minimum_issue_separation_cycles":6,*
+
+// ====
+
+// A state value need not have a same-block writer for its readers to retain
+// their timing across a fence. The first write still follows every live read.
+// RUN: with-checks emit low-schedule-json @live_in_state_read_fence strategy=source
+
+low.func.def target<amd.xdna.aie2p.core> @live_in_state_read_fence(%input: reg<aie2p.ep>, %output: reg<aie2p.ep>, %value: reg<aie2p.mbms>, %shift: reg<aie2p.es>) -> (reg<aie2p.mbms>) asm {
+  %loaded = vlda.ups.2x.w-to-b.unsigned %shift, %input, 0
+  vst.srs.2x.b-to-w.unsigned.volatile %value, %shift, %output, 0
+  set.saturation 1
+  return %loaded
+}
+
+// ----
+CHECK: *"index":0,"block":0,"source_ordinal":0,"scheduled_ordinal":0,"issue_cycle":0,*
+CHECK: *"index":2,"block":0,"source_ordinal":2,"scheduled_ordinal":2,"issue_cycle":6,*
+CHECK: *{"from":0,"to":2,"kind":"state",*"producer_event":"amd.xdna.aie2p.operand.read.c7.none",*"consumer_event":"amd.xdna.aie2p.operand.write.c1.none","minimum_issue_separation_cycles":6,*
+
+// ====
+
+// Each fence orders only readers since the previous fence. Earlier readers
+// retain timing edges to the writer, not all-to-all order edges to fences.
+// RUN: with-checks emit low-schedule-json @successive_state_read_fences strategy=source
+
+low.func.def target<amd.xdna.aie2p.core> @successive_state_read_fences(%input: reg<aie2p.ep>, %output: reg<aie2p.ep>, %value: reg<aie2p.mbms>, %shift: reg<aie2p.es>) -> (reg<aie2p.mbms>, reg<aie2p.vec256>) asm {
+  set.saturation 0
+  %loaded = vlda.ups.2x.w-to-b.unsigned %shift, %input, 0
+  vst.srs.2x.b-to-w.unsigned.volatile %value, %shift, %output, 0
+  %narrowed = vsrs.2x.b-to-w.unsigned %value, %shift
+  vst.srs.2x.b-to-w.unsigned.volatile %value, %shift, %output, 32
+  vst.srs.2x.b-to-w.unsigned.volatile %value, %shift, %output, 64
+  set.saturation 1
+  return %loaded, %narrowed
+}
+
+// ----
+CHECK: *{"from":1,"to":6,"kind":"state",*"producer_event":"amd.xdna.aie2p.operand.read.c7.none",*"consumer_event":"amd.xdna.aie2p.operand.write.c1.none","minimum_issue_separation_cycles":6,*
+CHECK: *{"from":3,"to":4,"kind":"order",*"minimum_issue_separation_cycles":0,"separation_source":"structural"*
+CHECK: *{"from":4,"to":5,"kind":"order",*"minimum_issue_separation_cycles":0,"separation_source":"structural"*
+CHECK-NOT: *{"from":1,"to":4,"kind":"order",*
+CHECK-NOT: *{"from":1,"to":5,"kind":"order",*
+CHECK-NOT: *{"from":2,"to":5,"kind":"order",*
+CHECK-NOT: *{"from":3,"to":5,"kind":"order",*
+
+// ====
+
+// An actual write retires the reader list. Later fences and writes describe
+// the new state version without adding edges from an already consumed reader.
+// RUN: with-checks emit low-schedule-json @state_write_retires_readers strategy=source
+
+low.func.def target<amd.xdna.aie2p.core> @state_write_retires_readers(%input: reg<aie2p.ep>, %output: reg<aie2p.ep>, %value: reg<aie2p.mbms>, %shift: reg<aie2p.es>) -> (reg<aie2p.mbms>) asm {
+  set.saturation 0
+  %loaded = vlda.ups.2x.w-to-b.unsigned %shift, %input, 0
+  vst.srs.2x.b-to-w.unsigned.volatile %value, %shift, %output, 0
+  set.saturation 1
+  vst.srs.2x.b-to-w.unsigned.volatile %value, %shift, %output, 32
+  set.saturation 0
+  return %loaded
+}
+
+// ----
+CHECK: *{"from":1,"to":3,"kind":"state",*"minimum_issue_separation_cycles":6,*
+CHECK: *{"from":4,"to":5,"kind":"state",*"producer_event":"amd.xdna.aie2p.operand.read.c1.none",*"consumer_event":"amd.xdna.aie2p.operand.write.c1.none","minimum_issue_separation_cycles":0,*
+CHECK-NOT: *{"from":1,"to":5,"kind":"state",*

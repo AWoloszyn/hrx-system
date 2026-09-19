@@ -457,6 +457,7 @@ loom_check_test_suite(
         "test/leaf_expansion_timing.loom-test",
         "test/leaf_interfaces.loom-test",
         "test/leaf_schedule.loom-test",
+        "test/leaf_state_read_timing.loom-test",
         "test/module_contracts.loom-test",
         "test/pipeline_composition.loom-test",
         "test/pipeline_ports.loom-test",
