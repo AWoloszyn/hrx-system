@@ -396,6 +396,7 @@ typedef enum loom_amdgpu_scalar_i64_alu_kind_e {
   LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_ADD = 6,
   LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_MUL_LO = 7,
   LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SHL = 8,
+  LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SUB = 9,
 } loom_amdgpu_scalar_i64_alu_kind_t;
 
 typedef struct loom_amdgpu_scalar_i64_alu_plan_t {

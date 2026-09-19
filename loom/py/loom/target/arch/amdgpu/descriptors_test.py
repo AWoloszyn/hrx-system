@@ -2469,6 +2469,53 @@ def test_scalar_carry_forms_preserve_native_unsigned_addition() -> None:
         assert OperandFlag.STATE_READ in carry_in.flags
 
 
+def test_scalar_borrow_forms_preserve_scc_dependencies() -> None:
+    for overlays in (
+        _gfx940_core_overlays(),
+        _gfx950_core_overlays(),
+        _gfx11_core_overlays(),
+        _gfx12_core_overlays(),
+        _gfx125x_core_overlays(),
+    ):
+        descriptors = {row.descriptor_key: row for row in overlays}
+        for mnemonic, instruction in (
+            ("s_sub_co_u32", "S_SUB_U32"),
+            ("s_subb_u32", "S_SUBB_U32"),
+        ):
+            base = descriptors[f"amdgpu.{mnemonic}"]
+            for suffix in ("", ".lhs_inline", ".rhs_inline"):
+                descriptor = descriptors[f"amdgpu.{mnemonic}{suffix}"]
+                assert descriptor.instruction_name == instruction
+                assert descriptor.implicit_operands == base.implicit_operands
+                assert descriptor.asm_forms[0].results == base.asm_forms[0].results
+                borrow = descriptor.implicit_operands[0].descriptor_operand
+                assert borrow.role is OperandRole.RESULT
+                assert OperandFlag.STATE_WRITE in borrow.flags
+                if mnemonic == "s_subb_u32":
+                    borrow_in = descriptor.implicit_operands[1].descriptor_operand
+                    assert borrow_in.role is OperandRole.PREDICATE
+                    assert OperandFlag.STATE_READ in borrow_in.flags
+                    assert "borrow_in" in descriptor.asm_forms[0].operands
+                if suffix:
+                    assert (
+                        descriptor.asm_forms[0].native_assembly_mnemonic
+                        == instruction.lower()
+                    )
+                    inline_field = "SSRC0" if suffix == ".lhs_inline" else "SSRC1"
+                    assert descriptor.immediate_fields == (inline_field,)
+                    assert tuple(
+                        operand.xml_field_name for operand in descriptor.operands
+                    ) == tuple(
+                        operand.xml_field_name
+                        for operand in base.operands
+                        if operand.xml_field_name != inline_field
+                    )
+            assert {form.replacement_descriptor for form in base.operand_forms} == {
+                f"amdgpu.{mnemonic}.lhs_inline",
+                f"amdgpu.{mnemonic}.rhs_inline",
+            }
+
+
 def test_symbol_relative_salu_descriptors_have_lossless_low_asm_forms() -> None:
     pc_relative_effect = (Effect(EffectKind.CONVERGENT, flags=(EffectFlag.ORDERED,)),)
 

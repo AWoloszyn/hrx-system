@@ -731,8 +731,10 @@ iree_status_t loom_amdgpu_emit_memory_saddr(
       low_offset = low_term;
       continue;
     }
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_add(
-        context, source_op, low_offset, low_term, &low_offset));
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_binary_carry(
+        context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_CO_U32,
+        LOOM_AMDGPU_DESCRIPTOR_REF_S_ADDC_U32, low_offset, low_term,
+        &low_offset));
   }
   if (static_byte_offset != 0) {
     loom_value_id_t low_static_offset = LOOM_VALUE_ID_INVALID;
@@ -741,15 +743,19 @@ iree_status_t loom_amdgpu_emit_memory_saddr(
     if (low_offset == LOOM_VALUE_ID_INVALID) {
       low_offset = low_static_offset;
     } else {
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_add(
-          context, source_op, low_offset, low_static_offset, &low_offset));
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_binary_carry(
+          context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_CO_U32,
+          LOOM_AMDGPU_DESCRIPTOR_REF_S_ADDC_U32, low_offset, low_static_offset,
+          &low_offset));
     }
   }
   if (low_offset == LOOM_VALUE_ID_INVALID) {
     return iree_ok_status();
   }
-  return loom_amdgpu_emit_sgpr64_add(context, source_op, low_binding,
-                                     low_offset, out_low_saddr);
+  return loom_amdgpu_emit_sgpr64_binary_carry(
+      context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_CO_U32,
+      LOOM_AMDGPU_DESCRIPTOR_REF_S_ADDC_U32, low_binding, low_offset,
+      out_low_saddr);
 }
 
 // Preserves full-width operands and products. Narrow complete products and
@@ -1006,9 +1012,10 @@ iree_status_t loom_amdgpu_emit_memory_flat_vaddr(
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_constant_u64(
         context, source_op, access->vaddr_static_byte_offset,
         &low_static_offset));
-    IREE_RETURN_IF_ERROR(
-        loom_amdgpu_emit_sgpr64_add(context, source_op, low_scalar_base,
-                                    low_static_offset, &low_scalar_base));
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_binary_carry(
+        context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_CO_U32,
+        LOOM_AMDGPU_DESCRIPTOR_REF_S_ADDC_U32, low_scalar_base,
+        low_static_offset, &low_scalar_base));
   }
 
   loom_type_t vgpr_type = loom_type_none();
@@ -1032,9 +1039,10 @@ iree_status_t loom_amdgpu_emit_memory_flat_vaddr(
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_flat_scalar_dynamic_term(
         context, source_op, term, &low_scalar_term, &scalar_term_emitted));
     if (scalar_term_emitted && low_vaddr_lo == LOOM_VALUE_ID_INVALID) {
-      IREE_RETURN_IF_ERROR(
-          loom_amdgpu_emit_sgpr64_add(context, source_op, low_scalar_base,
-                                      low_scalar_term, &low_scalar_base));
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_binary_carry(
+          context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_CO_U32,
+          LOOM_AMDGPU_DESCRIPTOR_REF_S_ADDC_U32, low_scalar_base,
+          low_scalar_term, &low_scalar_base));
       continue;
     }
 

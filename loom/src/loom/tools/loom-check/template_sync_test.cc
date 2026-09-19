@@ -238,6 +238,96 @@ TEST_F(TemplateSyncTest, PreservesTargetAnnotationsAtAnchoredInputLines) {
             std::string::npos);
 }
 
+TEST_F(TemplateSyncTest, PreservesAnnotationsOnBoundDefinition) {
+  const char* template_source =
+      "// RUN: roundtrip\n"
+      "\n"
+      "func.def @entry(%value: i64) {\n"
+      "}\n";
+  for (bool follows_definition : {false, true}) {
+    std::string target_source =
+        "// TEMPLATE: loom/src/loom/test/corpus/source_low/example.loom-test\n"
+        "// RUN: emit source-low output=low\n"
+        "\n"
+        "func.decl @target()\n";
+    if (!follows_definition) {
+      target_source += "// ERROR@+1: TARGET/033 {actual_type=\"i64\"}\n";
+    }
+    target_source += "func.def target(@target) @entry(%value: i64) {\n";
+    if (follows_definition) {
+      target_source += "// ERROR@-1: TARGET/033 {actual_type=\"i64\"}\n";
+    }
+    target_source += "}\n";
+    SCOPED_TRACE(target_source);
+
+    std::string result;
+    bool changed = true;
+    IREE_ASSERT_OK(
+        Build(target_source.c_str(), template_source, &result, &changed));
+    EXPECT_FALSE(changed);
+    EXPECT_EQ(result, target_source);
+  }
+}
+
+TEST_F(TemplateSyncTest, KeepsPreludeAnnotationsLocalToTheirCase) {
+  const char* target_source =
+      "// TEMPLATE: loom/src/loom/test/corpus/source_low/example.loom-test\n"
+      "// RUN: emit source-low output=low\n"
+      "\n"
+      "// REMARK@+1: \"target declaration\"\n"
+      "func.decl @target()\n"
+      "// ERROR@+1: TARGET/033 {actual_type=\"i64\"}\n"
+      "func.def target(@target) @entry(%value: i64) {\n"
+      "}\n";
+  const char* template_source =
+      "// RUN: roundtrip\n"
+      "\n"
+      "func.def @entry(%value: i64) {\n"
+      "}\n"
+      "\n"
+      "// ====\n"
+      "\n"
+      "func.def @new_entry() {\n"
+      "}\n";
+
+  std::string first_result;
+  bool changed = false;
+  IREE_ASSERT_OK(
+      Build(target_source, template_source, &first_result, &changed));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(first_result, std::string(target_source) +
+                              "\n// ====\n\n"
+                              "func.decl @target()\n"
+                              "func.def target(@target) @new_entry() {\n"
+                              "}\n");
+
+  std::string second_result;
+  IREE_ASSERT_OK(
+      Build(first_result.c_str(), template_source, &second_result, &changed));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(second_result, first_result);
+}
+
+TEST_F(TemplateSyncTest, RejectsAnnotationOnChangedSignature) {
+  std::string result;
+  bool changed = false;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      Build("// TEMPLATE: "
+            "loom/src/loom/test/corpus/source_low/example.loom-test\n"
+            "// RUN: emit source-low output=low\n"
+            "\n"
+            "func.decl @target()\n"
+            "// ERROR@+1: TARGET/033 {actual_type=\"i64\"}\n"
+            "func.def target(@target) @entry(%value: i64) {\n"
+            "}\n",
+            "// RUN: roundtrip\n"
+            "\n"
+            "func.def @entry(%value: i32) {\n"
+            "}\n",
+            &result, &changed));
+}
+
 TEST_F(TemplateSyncTest, PreservesTargetDeclarationOverlay) {
   std::string result;
   bool changed = false;

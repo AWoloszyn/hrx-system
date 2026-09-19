@@ -1,0 +1,172 @@
+// RUN: emit amdgpu-native-words @subtract_gfx942 strategy=source
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @subtract_gfx942(%lhs_low: reg<amdgpu.sgpr>, %lhs_high: reg<amdgpu.sgpr>, %rhs_low: reg<amdgpu.sgpr>, %rhs_high: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %difference_low, %borrow = s_sub_co_u32 %lhs_low, %rhs_low
+  %difference_high, %borrow_out = s_subb_u32 %lhs_high, %rhs_high, %borrow
+  %negated_low, %negation_borrow = s_sub_co_u32_lhs_inline %lhs_low, 0
+  %negated_high, %negation_borrow_out = s_subb_u32_lhs_inline %lhs_high, %negation_borrow, 0
+  %decremented_low, %decrement_borrow = s_sub_co_u32_rhs_inline %rhs_low, 1
+  %decremented_high, %decrement_borrow_out = s_subb_u32_rhs_inline %rhs_high, %decrement_borrow, 0
+  return %difference_low, %difference_high, %negated_low, %negated_high, %decremented_low, %decremented_high
+}
+
+// ----
+0x80840200
+0x82850301
+0x80800080
+0x82810180
+0x80828102
+0x82838003
+0xBF810000
+
+// ====
+
+// RUN: emit amdgpu-native-words @subtract_gfx950 strategy=source
+
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @subtract_gfx950(%lhs_low: reg<amdgpu.sgpr>, %lhs_high: reg<amdgpu.sgpr>, %rhs_low: reg<amdgpu.sgpr>, %rhs_high: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %difference_low, %borrow = s_sub_co_u32 %lhs_low, %rhs_low
+  %difference_high, %borrow_out = s_subb_u32 %lhs_high, %rhs_high, %borrow
+  %negated_low, %negation_borrow = s_sub_co_u32_lhs_inline %lhs_low, 0
+  %negated_high, %negation_borrow_out = s_subb_u32_lhs_inline %lhs_high, %negation_borrow, 0
+  %decremented_low, %decrement_borrow = s_sub_co_u32_rhs_inline %rhs_low, 1
+  %decremented_high, %decrement_borrow_out = s_subb_u32_rhs_inline %rhs_high, %decrement_borrow, 0
+  return %difference_low, %difference_high, %negated_low, %negated_high, %decremented_low, %decremented_high
+}
+
+// ----
+0x80840200
+0x82850301
+0x80800080
+0x82810180
+0x80828102
+0x82838003
+0xBF810000
+
+// ====
+
+// RUN: emit amdgpu-native-words @subtract_gfx1100 strategy=source
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @subtract_gfx1100(%lhs_low: reg<amdgpu.sgpr>, %lhs_high: reg<amdgpu.sgpr>, %rhs_low: reg<amdgpu.sgpr>, %rhs_high: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %difference_low, %borrow = s_sub_co_u32 %lhs_low, %rhs_low
+  %difference_high, %borrow_out = s_subb_u32 %lhs_high, %rhs_high, %borrow
+  %negated_low, %negation_borrow = s_sub_co_u32_lhs_inline %lhs_low, 0
+  %negated_high, %negation_borrow_out = s_subb_u32_lhs_inline %lhs_high, %negation_borrow, 0
+  %decremented_low, %decrement_borrow = s_sub_co_u32_rhs_inline %rhs_low, 1
+  %decremented_high, %decrement_borrow_out = s_subb_u32_rhs_inline %rhs_high, %decrement_borrow, 0
+  return %difference_low, %difference_high, %negated_low, %negated_high, %decremented_low, %decremented_high
+}
+
+// ----
+0x80840200
+0x82850301
+0x80800080
+0x82810180
+0x80828102
+0x82838003
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @subtract_gfx1151 strategy=source
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @subtract_gfx1151(%lhs_low: reg<amdgpu.sgpr>, %lhs_high: reg<amdgpu.sgpr>, %rhs_low: reg<amdgpu.sgpr>, %rhs_high: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %difference_low, %borrow = s_sub_co_u32 %lhs_low, %rhs_low
+  %difference_high, %borrow_out = s_subb_u32 %lhs_high, %rhs_high, %borrow
+  %negated_low, %negation_borrow = s_sub_co_u32_lhs_inline %lhs_low, 0
+  %negated_high, %negation_borrow_out = s_subb_u32_lhs_inline %lhs_high, %negation_borrow, 0
+  %decremented_low, %decrement_borrow = s_sub_co_u32_rhs_inline %rhs_low, 1
+  %decremented_high, %decrement_borrow_out = s_subb_u32_rhs_inline %rhs_high, %decrement_borrow, 0
+  return %difference_low, %difference_high, %negated_low, %negated_high, %decremented_low, %decremented_high
+}
+
+// ----
+0x80840200
+0x82850301
+0x80800080
+0x82810180
+0x80828102
+0x82838003
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @subtract_gfx1201 strategy=source
+
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @subtract_gfx1201(%lhs_low: reg<amdgpu.sgpr>, %lhs_high: reg<amdgpu.sgpr>, %rhs_low: reg<amdgpu.sgpr>, %rhs_high: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %difference_low, %borrow = s_sub_co_u32 %lhs_low, %rhs_low
+  %difference_high, %borrow_out = s_subb_u32 %lhs_high, %rhs_high, %borrow
+  %negated_low, %negation_borrow = s_sub_co_u32_lhs_inline %lhs_low, 0
+  %negated_high, %negation_borrow_out = s_subb_u32_lhs_inline %lhs_high, %negation_borrow, 0
+  %decremented_low, %decrement_borrow = s_sub_co_u32_rhs_inline %rhs_low, 1
+  %decremented_high, %decrement_borrow_out = s_subb_u32_rhs_inline %rhs_high, %decrement_borrow, 0
+  return %difference_low, %difference_high, %negated_low, %negated_high, %decremented_low, %decremented_high
+}
+
+// ----
+0x80840200
+0x82850301
+0x80800080
+0x82810180
+0x80828102
+0x82838003
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @subtract_gfx1250 strategy=source
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @subtract_gfx1250(%lhs_low: reg<amdgpu.sgpr>, %lhs_high: reg<amdgpu.sgpr>, %rhs_low: reg<amdgpu.sgpr>, %rhs_high: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %difference_low, %borrow = s_sub_co_u32 %lhs_low, %rhs_low
+  %difference_high, %borrow_out = s_subb_u32 %lhs_high, %rhs_high, %borrow
+  %negated_low, %negation_borrow = s_sub_co_u32_lhs_inline %lhs_low, 0
+  %negated_high, %negation_borrow_out = s_subb_u32_lhs_inline %lhs_high, %negation_borrow, 0
+  %decremented_low, %decrement_borrow = s_sub_co_u32_rhs_inline %rhs_low, 1
+  %decremented_high, %decrement_borrow_out = s_subb_u32_rhs_inline %rhs_high, %decrement_borrow, 0
+  return %difference_low, %difference_high, %negated_low, %negated_high, %decremented_low, %decremented_high
+}
+
+// ----
+0x80840200
+0x82850301
+0x80800080
+0x82810180
+0x80828102
+0x82838003
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-assembly @subtract_gfx1151 strategy=source
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @subtract_gfx1151(%lhs_low: reg<amdgpu.sgpr>, %lhs_high: reg<amdgpu.sgpr>, %rhs_low: reg<amdgpu.sgpr>, %rhs_high: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %difference_low, %borrow = s_sub_co_u32 %lhs_low, %rhs_low
+  %difference_high, %borrow_out = s_subb_u32 %lhs_high, %rhs_high, %borrow
+  %negated_low, %negation_borrow = s_sub_co_u32_lhs_inline %lhs_low, 0
+  %negated_high, %negation_borrow_out = s_subb_u32_lhs_inline %lhs_high, %negation_borrow, 0
+  %decremented_low, %decrement_borrow = s_sub_co_u32_rhs_inline %rhs_low, 1
+  %decremented_high, %decrement_borrow_out = s_subb_u32_rhs_inline %rhs_high, %decrement_borrow, 0
+  return %difference_low, %difference_high, %negated_low, %negated_high, %decremented_low, %decremented_high
+}
+
+// ----
+  s_sub_u32 s4, s0, s2
+  s_subb_u32 s5, s1, s3
+  s_sub_u32 s0, 0, s0
+  s_subb_u32 s1, 0, s1
+  s_sub_u32 s2, s2, 1
+  s_subb_u32 s3, s3, 0
+  s_endpgm
