@@ -432,7 +432,15 @@ def selected_bazel_test_targets(paths: list[str]) -> list[str] | None:
     # Starlark load edges are not ordinary target dependencies, so package-local
     # selection cannot represent their impact. The same is true of repository
     # configuration and presubmit machinery covered by is_global_trigger.
-    if any(is_global_trigger(path) or path.endswith(".bzl") for path in paths):
+    # Shared corpus packages own source libraries; their tests live in target
+    # consumers. Those edits need cross-target coverage rather than a test
+    # invocation on a library-only package.
+    if any(
+        is_global_trigger(path)
+        or path.endswith(".bzl")
+        or path.startswith("loom/src/loom/test/corpus/")
+        for path in paths
+    ):
         return None
     targets = set()
     for path in paths:

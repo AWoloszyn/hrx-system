@@ -92,6 +92,15 @@ class LoomPresubmitTest(unittest.TestCase):
             )
         )
 
+    def test_shared_corpus_changes_select_cross_target_suite(self):
+        for path in (
+            "loom/src/loom/test/corpus/conformance/loop_termination.loom",
+            "loom/src/loom/test/corpus/source_low/numeric_i32_memory.loom-test",
+            "loom/src/loom/test/corpus/text/operations.loom",
+        ):
+            with self.subTest(path=path):
+                self.assertIsNone(self.presubmit.selected_bazel_test_targets([path]))
+
     def test_leaf_changes_select_each_owning_package_once(self):
         with mock.patch.object(
             self.presubmit,
