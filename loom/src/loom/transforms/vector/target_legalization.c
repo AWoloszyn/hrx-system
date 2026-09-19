@@ -385,7 +385,58 @@ static iree_status_t loom_vector_legalize_extract(
   return iree_ok_status();
 }
 
+static iree_status_t loom_vector_legalize_predicate_extension(
+    const loom_target_legalizer_entry_t* entry,
+    loom_target_legalization_context_t* context, loom_op_t* op,
+    loom_target_legalizer_result_t* out_result) {
+  (void)entry;
+  *out_result = (loom_target_legalizer_result_t){
+      .action = LOOM_TARGET_LEGALIZER_ACTION_NO_COMMENT,
+  };
+  loom_value_id_t input = loom_op_operands(op)[0];
+  if (loom_type_element_type(loom_module_value_type(context->module, input)) !=
+      LOOM_SCALAR_TYPE_I1) {
+    return iree_ok_status();
+  }
+  loom_rewriter_t* rewriter = context->rewriter;
+  loom_builder_set_before(&rewriter->builder, op);
+  const loom_value_id_t checkpoint = loom_rewriter_value_checkpoint(rewriter);
+  loom_type_t result_type =
+      loom_module_value_type(context->module, loom_op_results(op)[0]);
+  loom_op_t* true_op = NULL;
+  IREE_RETURN_IF_ERROR(loom_vector_constant_build(
+      &rewriter->builder,
+      loom_attr_i64(op->kind == LOOM_OP_VECTOR_EXTSI ? -1 : 1), result_type,
+      op->location, &true_op));
+  loom_op_t* false_op = NULL;
+  IREE_RETURN_IF_ERROR(loom_vector_constant_build(&rewriter->builder,
+                                                  loom_attr_i64(0), result_type,
+                                                  op->location, &false_op));
+  loom_op_t* select_op = NULL;
+  IREE_RETURN_IF_ERROR(loom_vector_select_build(
+      &rewriter->builder, input, loom_vector_constant_result(true_op),
+      loom_vector_constant_result(false_op), result_type, op->location,
+      &select_op));
+  loom_value_id_t replacement = loom_vector_select_result(select_op);
+  IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+      rewriter, op, &replacement, 1, checkpoint));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_replace_all_uses_and_erase(rewriter, op, &replacement, 1));
+  *out_result = (loom_target_legalizer_result_t){
+      .action = LOOM_TARGET_LEGALIZER_ACTION_REWRITTEN,
+  };
+  return iree_ok_status();
+}
+
 static const loom_target_legalizer_rule_t kVectorLegalizerRules[] = {
+    {
+        .root_kind = LOOM_OP_VECTOR_EXTSI,
+        .legalize = loom_vector_legalize_predicate_extension,
+    },
+    {
+        .root_kind = LOOM_OP_VECTOR_EXTUI,
+        .legalize = loom_vector_legalize_predicate_extension,
+    },
     {
         .root_kind = LOOM_OP_SCF_SELECT,
         .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION,
