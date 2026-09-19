@@ -10,6 +10,7 @@
 #include <cxx/ast_interpreter.h>
 #include <cxx/attributes.h>
 #include <cxx/control.h>
+#include <cxx/initialization.h>
 #include <cxx/memory_layout.h>
 #include <cxx/names.h>
 #include <cxx/preprocessor.h>
@@ -21,6 +22,7 @@
 #include <array>
 #include <cctype>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -29,10 +31,10 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
+#include "loom/import/cxx/control/analysis.h"
 #include "loom/import/cxx/intrinsics.h"
 #include "loom/import/cxx/launch.h"
 #include "loom/import/cxx/loop_schedule.h"
-#include "loom/import/cxx/mutations.h"
 #include "loom/import/cxx/source/error.h"
 #include "loom/import/cxx/source/locations.h"
 #include "loom/import/cxx/source/source.h"
@@ -268,7 +270,7 @@ class Translator {
     if (!body) {
       fail(definition, "unsupported function body");
     }
-    mutations_.accept(body->statement);
+    control_.emplace(unit_, body->statement);
     auto parameters = symbol->parameters();
     std::vector<loom_type_t> arguments;
     for (auto* parameter : parameters) {
@@ -758,9 +760,8 @@ class Translator {
       if (loop->initializer) {
         statement(loop->initializer);
       }
-      unsigned counted_step = 1;
-      if (auto* induction = counted_induction(loop, counted_step)) {
-        counted_loop(loop, induction, counted_step, schedule);
+      if (auto* counted = control_->counted(loop)) {
+        counted_loop(loop, *counted, schedule);
         return;
       }
       if (!schedule.empty()) {
@@ -848,82 +849,6 @@ class Translator {
     }
   }
 
-  cxx::ExpressionAST* without_cast(cxx::ExpressionAST* ast) {
-    while (auto* cast = cxx::ast_cast<cxx::ImplicitCastExpressionAST>(ast)) {
-      ast = cast->expression;
-    }
-    return ast;
-  }
-
-  // The unit-step unsigned interval cannot wrap before its strict upper bound.
-  // A stable scalar/literal upper bound in that same unsigned width may be
-  // evaluated once. Wider comparisons can observe induction wraparound and
-  // retain their general while semantics, as do mutable bounds.
-  cxx::Symbol* counted_induction(cxx::ForStatementAST* loop,
-                                 unsigned& step_value) {
-    auto* declaration =
-        cxx::ast_cast<cxx::DeclarationStatementAST>(loop->initializer);
-    auto* initial =
-        declaration
-            ? cxx::ast_cast<cxx::SimpleDeclarationAST>(declaration->declaration)
-            : nullptr;
-    auto* condition = cxx::ast_cast<cxx::BinaryExpressionAST>(loop->condition);
-    auto* step = cxx::ast_cast<cxx::UnaryExpressionAST>(loop->expression);
-    auto* compound =
-        cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(loop->expression);
-    if (!initial || !initial->initDeclaratorList ||
-        initial->initDeclaratorList->next || !condition || condition->symbol ||
-        condition->op != cxx::TokenKind::T_LESS ||
-        !cxx::ast_cast<cxx::CompoundStatementAST>(loop->statement)) {
-      return nullptr;
-    }
-    auto* induction = initial->initDeclaratorList->value->symbol;
-    auto* left = cxx::ast_cast<cxx::IdExpressionAST>(
-        without_cast(condition->leftExpression));
-    cxx::IdExpressionAST* increment = nullptr;
-    if (step && !step->symbol && step->op == cxx::TokenKind::T_PLUS_PLUS) {
-      increment = cxx::ast_cast<cxx::IdExpressionAST>(step->expression);
-    } else if (compound && !compound->symbol &&
-               compound->op == cxx::TokenKind::T_PLUS_EQUAL &&
-               cxx::ast_cast<cxx::IntLiteralExpressionAST>(
-                   compound->rightExpression) &&
-               cxx::ast_cast<cxx::IntLiteralExpressionAST>(
-                   condition->rightExpression)) {
-      cxx::ASTInterpreter interpreter(&unit_);
-      auto amount =
-          interpreter.toInt(*interpreter.evaluate(compound->rightExpression));
-      auto upper =
-          interpreter.toInt(*interpreter.evaluate(condition->rightExpression));
-      if (amount && upper && *amount > 0 && *amount <= UINT32_MAX &&
-          *upper >= 0 && *upper <= UINT32_MAX - *amount + 1) {
-        step_value = static_cast<unsigned>(*amount);
-        increment =
-            cxx::ast_cast<cxx::IdExpressionAST>(compound->targetExpression);
-      }
-    }
-    auto* upper = without_cast(condition->rightExpression);
-    auto* bound = cxx::ast_cast<cxx::IdExpressionAST>(upper);
-    if (!left || !increment || left->symbol != induction ||
-        increment->symbol != induction ||
-        types_.unqualified(induction->type())->kind() !=
-            cxx::TypeKind::kUnsignedInt ||
-        types_.unqualified(condition->leftExpression->type)->kind() !=
-            cxx::TypeKind::kUnsignedInt ||
-        types_.unqualified(condition->rightExpression->type)->kind() !=
-            cxx::TypeKind::kUnsignedInt ||
-        (!bound && !cxx::ast_cast<cxx::IntLiteralExpressionAST>(upper))) {
-      return nullptr;
-    }
-    const auto& body_writes = mutations_.written(loop->statement);
-    const auto& loop_writes = mutations_.written(loop);
-    if (std::ranges::find(body_writes, induction) != body_writes.end() ||
-        (bound &&
-         std::ranges::find(loop_writes, bound->symbol) != loop_writes.end())) {
-      return nullptr;
-    }
-    return induction;
-  }
-
   loom_value_id_t unsigned_offset(loom_value_id_t value,
                                   loom_location_id_t source) {
     loom_op_t* cast;
@@ -933,14 +858,13 @@ class Translator {
     return result(cast);
   }
 
-  void counted_loop(cxx::ForStatementAST* loop, cxx::Symbol* induction,
-                    unsigned step_value, const LoopSchedule& schedule) {
+  void counted_loop(cxx::ForStatementAST* loop, const CountedLoop& counted,
+                    const LoopSchedule& schedule) {
     auto source = locations_.get(loop);
-    auto* condition = cxx::ast_cast<cxx::BinaryExpressionAST>(loop->condition);
+    auto* induction = counted.induction;
     auto lower = unsigned_offset(values_.at(induction), source);
-    auto upper =
-        unsigned_offset(expression(condition->rightExpression), source);
-    auto step = scalars_.integer(step_value, LOOM_SCALAR_TYPE_OFFSET, source);
+    auto upper = unsigned_offset(expression(counted.upper), source);
+    auto step = scalars_.integer(counted.step, LOOM_SCALAR_TYPE_OFFSET, source);
     auto written = live_mutations(loop);
     std::erase(written, induction);
     auto initial = current(written);
@@ -975,7 +899,7 @@ class Translator {
 
   std::vector<cxx::Symbol*> live_mutations(cxx::AST* owner) {
     std::vector<cxx::Symbol*> result;
-    for (auto* symbol : mutations_.written(owner)) {
+    for (auto* symbol : control_->written(owner)) {
       if (values_.contains(symbol)) {
         if (loom_type_kind(value_type(values_.at(symbol))) !=
             LOOM_TYPE_SCALAR) {
@@ -1010,7 +934,8 @@ class Translator {
                                     call->expressionList->value)
                               : nullptr;
         auto* binding = condition ? cxx::ast_cast<cxx::IdExpressionAST>(
-                                        without_cast(condition->leftExpression))
+                                        cxx::Initializer::stripImplicitCasts(
+                                            condition->leftExpression))
                                   : nullptr;
         if (!condition || condition->symbol ||
             condition->op != cxx::TokenKind::T_LESS || !binding ||
@@ -1210,8 +1135,8 @@ class Translator {
   std::unordered_map<std::string, unsigned> symbol_names_;
   // Source qualification is computed once for each discovered function.
   std::unordered_map<cxx::FunctionSymbol*, std::string> qualified_names_;
-  // Source-owned mutation facts retained for all reached function bodies.
-  Mutations mutations_;
+  // Immutable control facts for the function currently being translated.
+  std::optional<ControlFlow> control_;
 };
 }  // namespace
 

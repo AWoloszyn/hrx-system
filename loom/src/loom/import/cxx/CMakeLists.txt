@@ -55,7 +55,6 @@ loom_cc_library(
     "launch.h"
     "loop_schedule.cc"
     "loop_schedule.h"
-    "mutations.h"
     "translation.cc"
     "translation.h"
   DEPS
@@ -65,6 +64,7 @@ loom_cc_library(
     iree::third_party::cxx_parser
     loom::error::diagnostic
     loom::error::error_defs
+    loom::import::cxx::control::analysis
     loom::import::cxx::source
     loom::import::cxx::source::attributes
     loom::import::cxx::source::catalog
