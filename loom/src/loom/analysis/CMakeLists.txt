@@ -1262,6 +1262,7 @@ loom_cc_test(
   SRCS
     "symbolic_expr_test.cc"
   DEPS
+    ::condition_facts
     ::symbolic_expr
     ::symbolic_expr_test_fixture
     iree::testing::gtest

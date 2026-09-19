@@ -409,5 +409,45 @@ TEST_F(SymbolicExprTest, SelectUsesConstantConditionExpression) {
   EXPECT_EQ(expression.terms[0].value_id, false_value);
 }
 
+TEST_F(SymbolicExprTest, SelectUsesScopedComparisonTruth) {
+  loom_value_id_t compared = DefineIndexValue();
+  loom_value_id_t zero = loom_index_constant_result(BuildIndexConstant(0));
+  loom_op_t* condition_op = nullptr;
+  IREE_ASSERT_OK(loom_index_cmp_build(&builder_, LOOM_INDEX_CMP_PREDICATE_EQ,
+                                      compared, zero, LOOM_LOCATION_UNKNOWN,
+                                      &condition_op));
+  loom_value_id_t condition = loom_index_cmp_result(condition_op);
+  loom_value_id_t true_value = DefineIndexValue();
+  loom_value_id_t false_value = DefineIndexValue();
+  loom_op_t* select_op = nullptr;
+  IREE_ASSERT_OK(loom_scf_select_build(&builder_, condition, true_value,
+                                       false_value,
+                                       loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+                                       LOOM_LOCATION_UNKNOWN, &select_op));
+
+  loom_condition_derivation_t derivation = {};
+  loom_condition_derivation_initialize(&analysis_arena_, &derivation);
+  loom_condition_fact_scope_t condition_scope = {};
+  for (bool assumed_truth : {false, true}) {
+    IREE_ASSERT_OK(loom_condition_facts_query_complete(
+        &expression_context_.condition_query, &fact_table_, condition,
+        assumed_truth, &derivation));
+    loom_condition_fact_scope_initialize_local(nullptr, &derivation,
+                                               &condition_scope);
+    expression_context_.condition_scope = &condition_scope;
+    loom_symbolic_expr_context_reset(&expression_context_);
+
+    loom_symbolic_expr_t expression = {};
+    IREE_ASSERT_OK(loom_symbolic_expr_from_value(
+        &expression_context_, loom_scf_select_result(select_op), &expression));
+
+    ASSERT_EQ(expression.term_count, 1);
+    EXPECT_EQ(expression.terms[0].value_id,
+              assumed_truth ? true_value : false_value);
+  }
+  expression_context_.condition_scope = nullptr;
+  loom_symbolic_expr_context_reset(&expression_context_);
+}
+
 }  // namespace
 }  // namespace loom

@@ -300,3 +300,126 @@ func.def @reversed_equality_rejects_excess_extent_cfg(%storage: buffer, %raw: in
   }
   func.return
 }
+
+// ====
+
+// RUN: pass vector-memory-footprint
+
+// A recognized comparison remains exact in its selected structured regions.
+// The same selection is unknown under an unrelated condition and after the
+// region join.
+func.def @comparison_truth_selects_structured_indices(%storage: buffer, %choice: index, %left_raw: index, %right_raw: index, %unrelated: i1) {
+  %base = index.constant 0 : offset
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %left = index.assume %left_raw [range(%left_raw, 0, 63)] : index
+  %right = index.assume %right_raw [range(%right_raw, 0, 63)] : index
+  %left_bound = index.add %left, %c1 : index
+  %right_bound = index.add %right, %c1 : index
+  %first = index.cmp eq, %choice, %c0 : index
+  %selected = scf.select %first, %left, %right : index
+  %left_view = buffer.view %storage[%base] : buffer -> view<[%left_bound]xi32>
+  %right_view = buffer.view %storage[%base] : buffer -> view<[%right_bound]xi32>
+  scf.if %first {
+    %left_value = vector.load %left_view[%selected] : view<[%left_bound]xi32> -> vector<1xi32>
+    test.use %left_value : vector<1xi32>
+    // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1"}
+    %wrong_value = vector.load %right_view[%selected] : view<[%right_bound]xi32> -> vector<1xi32>
+    test.use %wrong_value : vector<1xi32>
+  } else {
+    %right_value = vector.load %right_view[%selected] : view<[%right_bound]xi32> -> vector<1xi32>
+    test.use %right_value : vector<1xi32>
+  }
+  scf.if %unrelated {
+    // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1"}
+    %unrelated_value = vector.load %left_view[%selected] : view<[%left_bound]xi32> -> vector<1xi32>
+    test.use %unrelated_value : vector<1xi32>
+  }
+  // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1"}
+  %joined_value = vector.load %left_view[%selected] : view<[%left_bound]xi32> -> vector<1xi32>
+  test.use %joined_value : vector<1xi32>
+  func.return
+}
+
+// ====
+
+// RUN: pass vector-memory-footprint
+
+// Truth derived through a compound condition selects the same comparison arm.
+// A false conjunction does not imply that the comparison itself is false.
+func.def @compound_truth_selects_structured_index(%storage: buffer, %choice: index, %left_raw: index, %right_raw: index, %gate: i1) {
+  %base = index.constant 0 : offset
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %left = index.assume %left_raw [range(%left_raw, 0, 63)] : index
+  %right = index.assume %right_raw [range(%right_raw, 0, 63)] : index
+  %left_bound = index.add %left, %c1 : index
+  %right_bound = index.add %right, %c1 : index
+  %first = index.cmp eq, %choice, %c0 : index
+  %both = scalar.andi %first, %gate : i1
+  %selected = scf.select %first, %left, %right : index
+  %left_view = buffer.view %storage[%base] : buffer -> view<[%left_bound]xi32>
+  %right_view = buffer.view %storage[%base] : buffer -> view<[%right_bound]xi32>
+  scf.if %both {
+    %left_value = vector.load %left_view[%selected] : view<[%left_bound]xi32> -> vector<1xi32>
+    test.use %left_value : vector<1xi32>
+  } else {
+    // ERROR@+1: SUBRANGE/011 {op_name="vector.load", vector_extent="1"}
+    %right_value = vector.load %right_view[%selected] : view<[%right_bound]xi32> -> vector<1xi32>
+    test.use %right_value : vector<1xi32>
+  }
+  func.return
+}
+
+// ====
+
+// RUN: pass scf-to-cfg,vector-memory-footprint
+
+// CFG lowering retains the recognized condition truth on both selected edges.
+func.def @comparison_truth_selects_cfg_indices(%storage: buffer, %choice: index, %left_raw: index, %right_raw: index) {
+  %base = index.constant 0 : offset
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %left = index.assume %left_raw [range(%left_raw, 0, 63)] : index
+  %right = index.assume %right_raw [range(%right_raw, 0, 63)] : index
+  %left_bound = index.add %left, %c1 : index
+  %right_bound = index.add %right, %c1 : index
+  %first = index.cmp eq, %choice, %c0 : index
+  %selected = scf.select %first, %left, %right : index
+  %left_view = buffer.view %storage[%base] : buffer -> view<[%left_bound]xi32>
+  %right_view = buffer.view %storage[%base] : buffer -> view<[%right_bound]xi32>
+  scf.if %first {
+    %left_value = vector.load %left_view[%selected] : view<[%left_bound]xi32> -> vector<1xi32>
+    test.use %left_value : vector<1xi32>
+  } else {
+    %right_value = vector.load %right_view[%selected] : view<[%right_bound]xi32> -> vector<1xi32>
+    test.use %right_value : vector<1xi32>
+  }
+  func.return
+}
+
+// ----
+func.def @comparison_truth_selects_cfg_indices(%storage: buffer, %choice: index, %left_raw: index, %right_raw: index) {
+  %base = index.constant 0 : offset
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %left = index.assume %left_raw [range(%left_raw, 0, 63)] : index
+  %right = index.assume %right_raw [range(%right_raw, 0, 63)] : index
+  %left_bound = index.add %left, %c1 : index
+  %right_bound = index.add %right, %c1 : index
+  %first = index.cmp eq, %choice, %c0 : index
+  %selected = scf.select %first, %left, %right : index
+  %left_view = buffer.view %storage[%base] : buffer -> view<[%left_bound]xi32>
+  %right_view = buffer.view %storage[%base] : buffer -> view<[%right_bound]xi32>
+  cfg.cond_br %first, ^_bb1, ^_bb2
+^_bb1:
+  %left_value = vector.load %left_view[%selected] : view<[%left_bound]xi32> -> vector<1xi32>
+  test.use %left_value : vector<1xi32>
+  cfg.br ^_bb3
+^_bb2:
+  %right_value = vector.load %right_view[%selected] : view<[%right_bound]xi32> -> vector<1xi32>
+  test.use %right_value : vector<1xi32>
+  cfg.br ^_bb3
+^_bb3:
+  func.return
+}
