@@ -6,10 +6,14 @@
 
 #include "loom/import/cxx/value/storage.h"
 
+#include <cxx/token.h>
+
 #include "loom/import/cxx/source/error.h"
 #include "loom/import/cxx/value/builder_test.h"
+#include "loom/import/cxx/value/representation.h"
 #include "loom/ops/buffer/ops.h"
 #include "loom/ops/index/ops.h"
+#include "loom/ops/scalar/ops.h"
 
 namespace loom::cxx_import {
 namespace {
@@ -25,9 +29,10 @@ TEST_F(StorageTest, RetainsArrayShapeAndExplicitAlignment) {
   auto* owner = source_.unit().ast();
   auto* array_type = control->getBoundedArrayType(control->getFloatType(), 64);
   auto allocation = storage.workgroup(array_type, 64, owner);
-  EXPECT_EQ(loom_buffer_alloca_base_alignment(producer(allocation.buffer)), 64);
+  EXPECT_EQ(
+      loom_buffer_alloca_base_alignment(producer(allocation.pointer.root)), 64);
   auto index = scalars.integer(17, LOOM_SCALAR_TYPE_I32);
-  auto access = storage.subscript(allocation.buffer, index, array_type,
+  auto access = storage.subscript(allocation.pointer, index, array_type,
                                   control->getUnsignedIntType(), owner);
   EXPECT_EQ(access.view, allocation.view);
   ASSERT_TRUE(access.index.has_value());
@@ -37,7 +42,7 @@ TEST_F(StorageTest, RetainsArrayShapeAndExplicitAlignment) {
       loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32, 64, 0)));
 }
 
-TEST_F(StorageTest, PointerProjectionPreservesUnsignedIndexBeforeByteScaling) {
+TEST_F(StorageTest, InteriorPointersRetainSignedDisplacementsAndRootIdentity) {
   Locations locations(source_.unit(), source_.diagnostics(), module_);
   Scalars scalars(source_.unit(), source_.diagnostics(), types_, locations,
                   builder_);
@@ -46,28 +51,67 @@ TEST_F(StorageTest, PointerProjectionPreservesUnsignedIndexBeforeByteScaling) {
   auto* control = source_.unit().control();
   auto* owner = source_.unit().ast();
   auto allocation = storage.workgroup(
-      control->getBoundedArrayType(control->getFloatType(), 4), 0, owner);
-  auto index = scalars.integer(-1, LOOM_SCALAR_TYPE_I32);
+      control->getBoundedArrayType(control->getFloatType(), 64), 0, owner);
   auto* pointer_type = control->getPointerType(control->getFloatType());
-  auto access = storage.subscript(allocation.buffer, index, pointer_type,
-                                  control->getUnsignedIntType(), owner);
+  auto interior = storage.advance(allocation.pointer,
+                                  scalars.integer(17, LOOM_SCALAR_TYPE_I64),
+                                  pointer_type, control->getLongLongIntType(),
+                                  cxx::TokenKind::T_PLUS, owner);
+  auto retreat = scalars.integer(-1, LOOM_SCALAR_TYPE_I32);
+  auto access = storage.subscript(interior, retreat, pointer_type,
+                                  control->getIntType(), owner);
   EXPECT_FALSE(access.index.has_value());
   auto* view = producer(access.view);
   ASSERT_TRUE(loom_buffer_view_isa(view));
-  auto* scale = producer(loom_buffer_view_byte_offset(view));
-  ASSERT_TRUE(loom_index_scale_isa(scale));
-  auto* signed_index = producer(loom_op_operands(scale)[0]);
-  auto* unsigned_offset = producer(loom_op_operands(signed_index)[0]);
-  EXPECT_EQ(loom_type_element_type(loom_module_value_type(
-                module_, loom_op_results(signed_index)[0])),
-            LOOM_SCALAR_TYPE_INDEX);
-  EXPECT_EQ(loom_type_element_type(loom_module_value_type(
-                module_, loom_op_results(unsigned_offset)[0])),
-            LOOM_SCALAR_TYPE_OFFSET);
-  EXPECT_EQ(loom_op_operands(unsigned_offset)[0], index);
-  EXPECT_THROW(storage.subscript(allocation.buffer, index, pointer_type,
-                                 control->getIntType(), owner),
-               SourceRejected);
+  EXPECT_EQ(loom_buffer_view_buffer(view), allocation.pointer.root);
+  auto* offset = producer(loom_buffer_view_byte_offset(view));
+  ASSERT_TRUE(loom_index_cast_isa(offset));
+  auto* sum = producer(loom_op_operands(offset)[0]);
+  ASSERT_TRUE(loom_scalar_addi_isa(sum));
+  auto* scale = producer(loom_op_operands(sum)[1]);
+  ASSERT_TRUE(loom_scalar_muli_isa(scale));
+  auto* extension = producer(loom_op_operands(scale)[0]);
+  EXPECT_TRUE(loom_scalar_extsi_isa(extension));
+  EXPECT_EQ(loom_op_operands(extension)[0], retreat);
+  EXPECT_EQ(loom_type_element_type(
+                loom_module_value_type(module_, loom_op_results(scale)[0])),
+            LOOM_SCALAR_TYPE_I64);
+
+  // Two aliases share their root but retain independent origins when flattened
+  // for calls and control-flow edges.
+  Value first(allocation.pointer);
+  Value second(interior);
+  std::vector<loom_value_id_t> arguments;
+  first.append_to(arguments);
+  second.append_to(arguments);
+  Value restored(std::span<const loom_value_id_t>(arguments).subspan(2));
+  EXPECT_EQ(restored.pointer().root, first.pointer().root);
+  EXPECT_EQ(restored.pointer().byte_offset, interior.byte_offset);
+  EXPECT_NE(restored.pointer().byte_offset, first.pointer().byte_offset);
+}
+
+TEST_F(StorageTest, UnsignedDisplacementsExtendBeforeScaling) {
+  Locations locations(source_.unit(), source_.diagnostics(), module_);
+  Scalars scalars(source_.unit(), source_.diagnostics(), types_, locations,
+                  builder_);
+  Storage storage(source_.unit(), source_.diagnostics(), types_, scalars,
+                  locations, builder_);
+  auto* control = source_.unit().control();
+  auto* owner = source_.unit().ast();
+  auto allocation = storage.workgroup(
+      control->getBoundedArrayType(control->getFloatType(), 64), 0, owner);
+  auto* pointer = control->getPointerType(control->getFloatType());
+  auto advanced = storage.advance(
+      allocation.pointer, scalars.integer(17, LOOM_SCALAR_TYPE_I32), pointer,
+      control->getUnsignedIntType(), cxx::TokenKind::T_PLUS, owner);
+  auto* sum = producer(loom_op_operands(producer(advanced.byte_offset))[0]);
+  auto* scale = producer(loom_op_operands(sum)[1]);
+  EXPECT_TRUE(loom_scalar_extui_isa(producer(loom_op_operands(scale)[0])));
+  auto invalid = scalars.integer(1, LOOM_SCALAR_TYPE_I32);
+  EXPECT_THROW(
+      storage.advance(allocation.pointer, invalid, pointer,
+                      control->getIntType(), cxx::TokenKind::T_STAR, owner),
+      SourceRejected);
 }
 
 }  // namespace

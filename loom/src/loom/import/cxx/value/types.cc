@@ -89,6 +89,15 @@ void Types::require_mutable(const cxx::Type* input, cxx::AST* owner) {
   }
 }
 
+void Types::append(const cxx::Type* input, cxx::AST* owner,
+                   std::vector<loom_type_t>& output) {
+  auto type = get(input, owner);
+  output.push_back(type);
+  if (loom_type_kind(type) == LOOM_TYPE_BUFFER) {
+    output.push_back(loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET));
+  }
+}
+
 bool Types::is_float(const cxx::Type* input) {
   auto kind = unqualified(input)->kind();
   return kind == cxx::TypeKind::kFloat || kind == cxx::TypeKind::kFloat16 ||

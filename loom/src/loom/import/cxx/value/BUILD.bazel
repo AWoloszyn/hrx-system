@@ -14,6 +14,12 @@ package(
 )
 
 loom_cc_library(
+    name = "representation",
+    hdrs = ["representation.h"],
+    deps = ["//loom/src/loom/ir"],
+)
+
+loom_cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
@@ -48,6 +54,7 @@ loom_cc_library(
     hdrs = ["storage.h"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = [
+        ":representation",
         ":scalar",
         ":types",
         "//loom/src/loom/import/cxx/source",
@@ -56,6 +63,7 @@ loom_cc_library(
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/buffer",
         "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scalar",
         "//third_party:cxx_parser",
     ],
 )
@@ -117,6 +125,7 @@ loom_cc_test(
     cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = [
         ":builder_test",
+        ":representation",
         ":storage",
         "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/import/cxx/source:error",

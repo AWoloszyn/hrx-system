@@ -69,6 +69,7 @@ loom_cc_library(
         "//loom/src/loom/import/cxx/source:locations",
         "//loom/src/loom/import/cxx/source:options",
         "//loom/src/loom/import/cxx/symbol:functions",
+        "//loom/src/loom/import/cxx/value:representation",
         "//loom/src/loom/import/cxx/value:scalar",
         "//loom/src/loom/import/cxx/value:storage",
         "//loom/src/loom/import/cxx/value:types",

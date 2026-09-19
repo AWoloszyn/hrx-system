@@ -126,6 +126,71 @@ TEST_F(ImportTest, RejectsMutationOfConstObjectsAndBindings) {
   ASSERT_NE(module_, nullptr);
 }
 
+TEST_F(ImportTest, PointerOriginsCrossCallsBranchesAndLoops) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    static int* advance(int* pointer, long long count) {
+      if (count == 0) return pointer;
+      return pointer + count;
+    }
+    [[loom::kernel, loom::workgroup_size(1, 1, 1),
+      loom::workgroup_count(1, 1, 1)]]
+    void entry(int* input, int* output, long long start, unsigned count) {
+      int* row = advance(input, start);
+      int* selected = count ? row : row + 1;
+      if (count > 3) { selected += 2; }
+      for (unsigned index = 0; index < count; ++index) {
+        selected = advance(selected, 1);
+      }
+      while (count > 0) { selected -= 1; --count; }
+      do { --selected; } while (count > 0);
+      output[0] = selected[-1];
+      (*output) = *advance(&2[row], -1);
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("kernel.def @entry"), std::string::npos);
+  EXPECT_NE(text.find("-> (buffer, offset)"), std::string::npos);
+  EXPECT_NE(text.find("%pointer_byte_offset: offset"), std::string::npos);
+  EXPECT_NE(text.find("scf.while"), std::string::npos);
+  EXPECT_NE(text.find("scf.for"), std::string::npos);
+}
+
+TEST_F(ImportTest, PointerSubscriptsPreserveSourceIntegerWidths) {
+  for (auto layout : {LOOM_CXX_DATA_MODEL_LP64, LOOM_CXX_DATA_MODEL_LLP64,
+                      LOOM_CXX_DATA_MODEL_ILP32}) {
+    options_.data_model = layout;
+    IREE_ASSERT_OK(Import(IREE_SV(R"(
+      int read(const int* input, long index, unsigned large, unsigned long long wide) {
+        return input[index] + input[large] + input[wide];
+      }
+    )")));
+    ASSERT_NE(module_, nullptr);
+    auto text = Print();
+    EXPECT_NE(text.find("scalar.extui"), std::string::npos);
+    EXPECT_EQ(text.find("to index"), std::string::npos);
+  }
+}
+
+TEST_F(ImportTest, PointerUnaryPlusPreservesRootAndOrigin) {
+  IREE_ASSERT_OK(Import(IREE_SV("int* identity(int* p) { return +p; }")));
+  ASSERT_NE(module_, nullptr);
+  EXPECT_NE(Print().find("func.return %p, %p_byte_offset : buffer, offset"),
+            std::string::npos);
+}
+
+TEST_F(ImportTest, UnsupportedPointerOperationsProduceSourceDiagnostics) {
+  for (auto source : {IREE_SV("long diff(int* a, int* b) { return a - b; }"),
+                      IREE_SV("bool equal(int* a, int* b) { return a == b; }"),
+                      IREE_SV("bool truth(int* a) { return a; }"),
+                      IREE_SV("int* increment(int* a) { return ++a; }"),
+                      IREE_SV("int* local() { int x = 1; return &x; }")}) {
+    IREE_EXPECT_OK(Import(source));
+    EXPECT_EQ(module_, nullptr);
+  }
+  EXPECT_GE(diagnostic_count_, 5);
+}
+
 TEST_F(ImportTest, FunctionsAndRootsOutliveSource) {
   std::string source =
       "static int helper(int x) { return x + 1; }\n"

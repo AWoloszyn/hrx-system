@@ -12,6 +12,18 @@ iree_add_all_subdirs()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    representation
+  HDRS
+    "representation.h"
+  DEPS
+    loom::ir
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     types
   HDRS
     "types.h"
@@ -55,6 +67,7 @@ loom_cc_library(
   SRCS
     "storage.cc"
   DEPS
+    ::representation
     ::scalar
     ::types
     iree::third_party::cxx_parser
@@ -64,6 +77,7 @@ loom_cc_library(
     loom::ir
     loom::ops::buffer
     loom::ops::index
+    loom::ops::scalar
   PUBLIC
 )
 endif()
@@ -139,6 +153,7 @@ loom_cc_test(
     "storage_test.cc"
   DEPS
     ::builder_test
+    ::representation
     ::storage
     iree::testing::gtest
     iree::testing::gtest_main

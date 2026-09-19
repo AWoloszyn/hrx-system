@@ -10,6 +10,7 @@
 #include <optional>
 #include <unordered_map>
 
+#include "loom/import/cxx/value/representation.h"
 #include "loom/import/cxx/value/scalar.h"
 
 namespace loom::cxx_import {
@@ -24,8 +25,8 @@ struct StorageAccess {
 };
 
 struct StorageAllocation {
-  // Buffer owning the declared workgroup allocation.
-  loom_value_id_t buffer;
+  // Pointer to the beginning of the declared workgroup allocation.
+  Pointer pointer;
   // Typed view retaining its element type and fixed extent.
   loom_value_id_t view;
 };
@@ -46,12 +47,25 @@ class Storage {
         locations_(locations),
         builder_(builder) {}
 
-  // Constructs addressing for the admitted unsigned-int subscript contract.
+  // Forms the source pointer for a kernel buffer binding.
+  Pointer root(loom_value_id_t buffer, cxx::AST* owner);
+  // Computes an object-relative byte origin using the source integer's width
+  // and signedness. Subtraction is represented by T_MINUS; addition by T_PLUS.
+  // Only the final origin enters offset, allowing negative displacements from
+  // interior pointers without forming negative offset values.
+  Pointer advance(Pointer base, loom_value_id_t displacement,
+                  const cxx::Type* base_type, const cxx::Type* index_type,
+                  cxx::TokenKind operation, cxx::AST* owner);
+  // Constructs addressing for an integral subscript without narrowing pointer
+  // byte arithmetic through target-selected index.
   // Unsupported source types are diagnosed at owner. The C++ driver separately
   // admits builtin indexing and evaluates base before index.
-  StorageAccess subscript(loom_value_id_t root, loom_value_id_t index,
+  StorageAccess subscript(Pointer base, loom_value_id_t index,
                           const cxx::Type* base_type,
                           const cxx::Type* subscript_type, cxx::AST* owner);
+  // Projects a scalar element at the pointer's current origin.
+  StorageAccess dereference(Pointer base, const cxx::Type* element_type,
+                            cxx::AST* owner);
   // Allocates a fixed workgroup scalar array using its source layout and any
   // explicit alignment. The driver admits the declaration's storage duration,
   // initialization and enclosing kernel contract before calling this method.

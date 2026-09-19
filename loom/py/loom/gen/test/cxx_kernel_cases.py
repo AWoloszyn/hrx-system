@@ -278,6 +278,46 @@ def integer_functions(directory):
     return "\n".join(declarations) + "\n\n" + "\n\n".join(cases) + "\n"
 
 
+def pointer_walk(directory):
+    cases = []
+    counts = [0, 1, 2, 5, 17, 33, 47]
+    for start, displacement in [(1, -1), (7, -2), (31, 3)]:
+        values = [(index * 97 + 13) % 257 - 128 for index in range(7 * 64 + 64)]
+        expected = []
+        for lane, count in enumerate(counts):
+            base = start + lane * 64
+            selected = base + (2 if lane & 1 else 4)
+            trips = max(1, count)
+            total = sum(values[base : base + count])
+            expected.extend(
+                [
+                    values[selected - 1],
+                    values[selected + displacement],
+                    values[base + 2],
+                    total,
+                    values[base + count],
+                    total,
+                    values[base],
+                    values[base + trips],
+                    values[base + trips - 1],
+                    values[base + trips - 2],
+                ]
+            )
+        case = Case(directory, f"pointer_walk_{start}_{abs(displacement)}", "i32", len(expected))
+        case.array("input", values)
+        case.array("counts", counts)
+        case.scalar("length", len(counts), "i32")
+        case.scalar("start", start, "i64")
+        case.scalar("displacement", displacement, "i64")
+        case.launch("pointer_walk", "%input, %counts, %output, %length, %start, %displacement", f"tensor<{len(values)}xi32>, tensor<{len(counts)}xi32>, tensor<{len(expected)}xi32>, i32, i64, i64")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        for name, original in [("input", values), ("counts", counts)]:
+            case.array(name + "_expected", original)
+            case.lines.append(f"  check.expect.bitwise actual(%{name}) expected(%{name}_expected) : tensor<{len(original)}xi32>")
+        cases.append(case.finish(expected))
+    return "kernel.decl @pointer_walk() launch(%input: buffer, %counts: buffer, %output: buffer, %length: i32, %start: i64, %displacement: i64)\n\n" + "\n".join(cases)
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
@@ -292,6 +332,7 @@ def main():
         ("increment_u8", lambda directory: integer_increment(directory, 8, BYTE_INPUTS)),
         ("increment_u64", lambda directory: integer_increment(directory, 64, WIDE_INPUTS)),
         ("integer_functions", integer_functions),
+        ("pointer_walk", pointer_walk),
     ]:
         (directory / f"{name}.loom").write_text(generator(directory))
 

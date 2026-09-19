@@ -173,9 +173,14 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
     diagnostics_.reject(unit_, definition, "unsupported function body");
   }
   auto parameters = symbol->parameters();
+  bool kernel = annotated(symbol, "kernel");
   std::vector<loom_type_t> arguments;
   for (auto* parameter : parameters) {
-    arguments.push_back(types.get(parameter->type(), definition));
+    if (kernel) {
+      arguments.push_back(types.get(parameter->type(), definition));
+    } else {
+      types.append(parameter->type(), definition, arguments);
+    }
   }
   auto* signature = cxx::type_cast<cxx::FunctionType>(symbol->type());
   if (!signature || signature->isVariadic()) {
@@ -183,7 +188,6 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
                         "variadic functions are not admitted");
   }
   bool returns_void = signature->returnType()->kind() == cxx::TypeKind::kVoid;
-  bool kernel = annotated(symbol, "kernel");
   loom_op_t* op;
   if (kernel) {
     if (!returns_void) {
@@ -204,7 +208,7 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
     launches_.reject_ordinary_function(symbol);
     std::vector<loom_type_t> results;
     if (!returns_void) {
-      results.push_back(types.get(signature->returnType(), definition));
+      types.append(signature->returnType(), definition, results);
     }
     check(loom_func_def_build(
         builder,

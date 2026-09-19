@@ -25,13 +25,13 @@ loom_value_id_t Scalars::convert(loom_value_id_t value,
                                  cxx::AST* owner) {
   auto input = types_.get(input_type, owner);
   auto output = types_.get(output_type, owner);
-  if (loom_type_equal(input, output)) {
-    return value;
-  }
   if (loom_type_kind(input) != LOOM_TYPE_SCALAR ||
       loom_type_kind(output) != LOOM_TYPE_SCALAR) {
-    diagnostics_.reject(
-        unit_, owner, "conversion must preserve pointer/array representation");
+    diagnostics_.reject(unit_, owner,
+                        "scalar conversion requires numeric source types");
+  }
+  if (loom_type_equal(input, output)) {
+    return value;
   }
   loom_op_t* op;
   if (loom_type_element_type(output) == LOOM_SCALAR_TYPE_I1) {
@@ -175,6 +175,9 @@ loom_value_id_t Scalars::constant(const cxx::ConstValue& value,
   cxx::ASTInterpreter interpreter(&unit_);
   auto source = locations_.get(ast);
   auto target = types_.get(source_type, ast);
+  if (loom_type_kind(target) != LOOM_TYPE_SCALAR) {
+    diagnostics_.reject(unit_, ast, "constants require a numeric scalar type");
+  }
   loom_attribute_t attribute;
   if (types_.is_float(source_type)) {
     auto number = interpreter.toDouble(value);

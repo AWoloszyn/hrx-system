@@ -54,6 +54,7 @@ loom_cc_library(
     loom::import::cxx::source::locations
     loom::import::cxx::source::options
     loom::import::cxx::symbol::functions
+    loom::import::cxx::value::representation
     loom::import::cxx::value::scalar
     loom::import::cxx::value::storage
     loom::import::cxx::value::types

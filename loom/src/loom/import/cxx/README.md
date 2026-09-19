@@ -136,15 +136,25 @@ conformance. LP64, LLP64 and ILP32 source layouts are independent of the machine
 running the importer.
 
 The current translation surface covers scalar arithmetic and conversions,
-scalar-pointer indexing, local SSA values, conditional regions, short-circuit
-`&&` and `||`, counted and general `for` loops, `while` and `do/while` loops,
-fixed workgroup arrays, and direct calls. Unsupported reachable types and
-statements produce source diagnostics. Pointer indexing currently requires
-unsigned 32-bit source indices; extending it requires preserving signedness
-and source pointer arithmetic in the address projection.
-Objects with constructors, arbitrary pointer manipulation, exceptions and
-indirect calls need additional storage and control-flow projections before
-they can be imported.
+scalar-pointer indexing and arithmetic, local SSA values, conditional regions,
+short-circuit `&&` and `||`, counted and general `for` loops, `while` and
+`do/while` loops, fixed workgroup arrays, and direct calls. Unsupported reachable
+types and statements produce source diagnostics. Integral subscripts preserve
+their source width and signedness. Interior pointers carry a buffer root and an
+object-relative byte offset through helper arguments, returns, conditional
+regions, and loop-carried values. Kernel pointer parameters retain their
+single-buffer binding ABI. Signed displacements are combined with the current
+origin before entering the nonnegative offset domain, so an interior pointer
+can move backward within its allocation.
+
+Pointer addition, subtraction by an integer, unary plus, dereference, address-of
+an existing storage element, and increments used as statements are admitted.
+Pointer differences, comparisons, truth conversions, value-producing increments,
+and addresses of automatic scalar locals produce source diagnostics.
+Distinct-root choices import as ordinary buffer values; executing them requires
+the selected Loom target to support buffer transport through those control-flow
+edges. Objects with constructors, exceptions and indirect calls need additional
+storage and control-flow projections before they can be imported.
 
 Kernels and ordinary functions can return early through guard chains, nested
 blocks and returning `if`/`else` trees. A returning conditional must have at
@@ -171,7 +181,7 @@ header APIs, and direct API tests that do not link the aggregate importer.
 | Package | Contract |
 | --- | --- |
 | `source/` | One configured frontend invocation, provider and diagnostic handling, immutable facade lookup, and source locations copied into the output module. |
-| `value/` | Source type/layout projection, scalar conversions and arithmetic, and memory access construction from already evaluated operands. |
+| `value/` | Source type/layout projection, scalar and buffer/origin representations, arithmetic, and memory access construction from already evaluated operands. |
 | `control/` | An immutable analysis of ordered source writes, return/fallthrough outcomes and nonwrapping counted-loop eligibility. This package has no IR dependency. |
 | `binding/` | Admission and construction for generated operation bindings, kernel launch contracts, and explicit loop schedules. |
 | `symbol/` | Root selection, reachable function identities, deterministic naming, and native function definitions with explicit body contracts. |
