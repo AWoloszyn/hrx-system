@@ -29,13 +29,14 @@ struct CountedLoop {
   unsigned step;
 };
 
-// Source paths through a statement that reach a function return. Fallthrough
-// remains possible for None and Some; All terminates every syntactic path.
-enum class ReturnFlow { None, Some, All };
+// Syntactic paths through a statement that take a particular exit. Other
+// outcomes remain possible for None and Some; All takes that exit on every
+// path.
+enum class ExitFlow { None, Some, All };
 
 // One traversal owns control facts for an immutable source function body.
 // Ordered writes include nested constructs and preserve source symbol identity.
-// Return outcomes aggregate each statement's already visited children, and
+// Exit outcomes aggregate each statement's already visited children, and
 // counted-loop classification happens after its writes are complete. Queries
 // only consume retained facts; they do not traverse source or output IR.
 // The source unit and body outlive this object and every returned reference.
@@ -51,9 +52,14 @@ class ControlFlow final : private cxx::ASTVisitor {
   // Null retains ordinary while semantics; a result permits scf.for lowering.
   const CountedLoop* counted(cxx::ForStatementAST* loop) const;
   // Retained return/fallthrough summary, including nested statements.
-  ReturnFlow returns(cxx::StatementAST* statement) const;
+  ExitFlow returns(cxx::StatementAST* statement) const;
+  // Continues escaping this statement to its enclosing loop. A nested loop
+  // consumes its own continues rather than propagating them to its parent.
+  ExitFlow continues(cxx::StatementAST* statement) const;
 
  private:
+  enum Path : unsigned { Fallthrough = 1, Return = 2, Continue = 4 };
+
   bool preVisit(cxx::AST* ast) override;
   void postVisit(cxx::AST* ast) override;
   void visit(cxx::AssignmentExpressionAST* ast) override;
@@ -63,7 +69,9 @@ class ControlFlow final : private cxx::ASTVisitor {
   static bool structured(cxx::AST* ast);
   void record(cxx::ExpressionAST* expression);
   std::optional<CountedLoop> classify(cxx::ForStatementAST* loop);
-  ReturnFlow classify_returns(cxx::StatementAST* statement) const;
+  unsigned paths(cxx::StatementAST* statement) const;
+  unsigned classify_paths(cxx::StatementAST* statement) const;
+  ExitFlow exits(cxx::StatementAST* statement, Path path) const;
 
   // Resolved source types and literal interpretation for loop admission.
   cxx::TranslationUnit& unit_;
@@ -73,8 +81,8 @@ class ControlFlow final : private cxx::ASTVisitor {
   std::unordered_map<cxx::AST*, std::vector<cxx::Symbol*>> writes_;
   // Proven intervals retained after each source loop's children are visited.
   std::unordered_map<cxx::ForStatementAST*, CountedLoop> counted_;
-  // Sparse summaries retain only statements with function-return paths.
-  std::unordered_map<cxx::StatementAST*, ReturnFlow> returns_;
+  // Sparse path sets retain statements with function or iteration exits.
+  std::unordered_map<cxx::StatementAST*, unsigned> paths_;
 };
 
 }  // namespace loom::cxx_import

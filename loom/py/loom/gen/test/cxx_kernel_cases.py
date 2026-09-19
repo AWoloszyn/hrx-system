@@ -384,6 +384,132 @@ def increment_pointers(directory):
     return "kernel.decl @increment_pointers() launch(%input: buffer, %output: buffer, %length: i32, %choose: i32)\n\n" + "\n".join(cases)
 
 
+def continue_references(count, choose):
+    indices = range(count)
+    selected = [index for index in indices if not index & choose]
+    post_selected = [index for index in range(1, count + 1) if not index & choose]
+    branch_total = sum(1 + (2 if index & choose else 8) for index in indices)
+    branch_total += sum((4 if index & choose else 16) + 32 + index for index in indices if not index & (2 if index & choose else 4))
+    post_count = max(1, count)
+    nested = sum(outer * 7 + inner for outer in indices for inner in range(5) if (outer + inner) % 2 == 0)
+    scoped = [index + (11 if index & choose else 23) for index in indices if not (index + (11 if index & choose else 23)) & (1 if index & choose else 2)]
+    return {
+        "continue_branches": branch_total,
+        "continue_for_step": sum(post_selected) + count * 257 + (count + 1) * 65537,
+        "continue_while": sum(post_selected) + (count + 1) * 257,
+        "continue_do": sum(index for index in range(post_count) if not index & choose) + post_count * (257 + 65537),
+        "continue_nested": nested + 100 * len(selected),
+        "continue_all": count * (count - 1) // 2 + (count + 2) * 257,
+        "continue_scopes": sum(scoped) + len(scoped) * (len(scoped) + 1) // 2 + (len(scoped) + 1) * 257,
+        "continue_byte": (250 + count + 7 * len(selected)) % 256,
+    }
+
+
+def continue_functions(directory):
+    del directory
+    counts = [0, 1, 2, 3, 7, 16, 31]
+    cases = []
+    for name in continue_references(0, 0):
+        if name == "continue_all":
+            samples = [([count], continue_references(count, 0)[name]) for count in counts]
+            widths = [32]
+        else:
+            samples = [([count, choose], continue_references(count, choose)[name]) for count in counts for choose in [0, 1, 2, 3, 5, 7, 31]]
+            widths = [32, 32]
+        cases.append(function_cases(name, widths, 32, samples))
+    return "\n".join(cases)
+
+
+def continue_values(directory):
+    cases = []
+    for count in [0, 1, 7, 31]:
+        for choose in [0, 3, 7]:
+            expected = []
+            for lane in range(64):
+                length, mask = count + lane % 4, choose ^ (lane % 8)
+                expected.extend(continue_references(length, mask).values())
+            case = Case(directory, f"continue_values_{count}_{choose}", "i32", len(expected))
+            case.scalar("count", count, "i32")
+            case.scalar("choose", choose, "i32")
+            case.launch("continue_values", "%output, %count, %choose", f"tensor<{len(expected)}xi32>, i32, i32")
+            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+            cases.append(case.finish(expected))
+    return "kernel.decl @continue_values() launch(%output: buffer, %count: i32, %choose: i32)\n\n" + "\n".join(cases)
+
+
+def continue_scheduled(directory):
+    cases = []
+    for count in [0, 1, 2, 5, 17, 33]:
+        for choose in [0, 3]:
+            values = [(index * 17 + 7) % 251 for index in range(max(1, count * 64))]
+            expected = []
+            for lane in range(64):
+                selected = sum(values[lane * count + index] for index in range(count) if not index & (choose ^ (lane % 8)))
+                expected.extend([selected] * 4)
+            case = Case(directory, f"continue_scheduled_{count}_{choose}", "i32", len(expected))
+            case.array("input", values)
+            case.array("original", values)
+            case.scalar("count", count, "i32")
+            case.scalar("choose", choose, "i32")
+            case.launch("continue_scheduled", "%input, %output, %count, %choose", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32, i32")
+            case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
+            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+            cases.append(case.finish(expected))
+    return "kernel.decl @continue_scheduled() launch(%input: buffer, %output: buffer, %count: i32, %choose: i32)\n\n" + "\n".join(cases)
+
+
+def continue_copy(directory):
+    values = [index * 7 + 3 for index in range(64 * 16)]
+    expected = [value if index % 2 else -123 for index, value in enumerate(values)]
+    case = Case(directory, "copy_odd_indices", "i32", len(expected))
+    case.array("input", values)
+    case.array("original", values)
+    case.launch("continue_copy", "%input, %output", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>")
+    case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
+    case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+    return "kernel.decl @continue_copy() launch(%input: buffer, %output: buffer)\n\n" + case.finish(expected)
+
+
+def continue_pointers(directory):
+    cases = []
+    for length in [0, 1, 17, 32, 33]:
+        for choose in [0, 1, 7]:
+            values = [(index * 7) % 37 for index in range(max(1, length * 64))]
+            expected = [-123] * (34 * 64)
+            for lane in range(64):
+                selected = [value for value in values[lane * length : (lane + 1) * length] if value & choose]
+                expected[lane * 34 : lane * 34 + len(selected)] = selected
+                expected[lane * 34 + 33] = len(selected)
+            case = Case(directory, f"continue_pointers_{length}_{choose}", "i32", len(expected))
+            case.array("input", values)
+            case.array("original", values)
+            case.scalar("length", length, "i32")
+            case.scalar("choose", choose, "i32")
+            case.launch("continue_pointers", "%input, %output, %length, %choose", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32, i32")
+            case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
+            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+            cases.append(case.finish(expected))
+    return "kernel.decl @continue_pointers() launch(%input: buffer, %output: buffer, %length: i32, %choose: i32)\n\n" + "\n".join(cases)
+
+
+def continue_vectors(directory):
+    cases = []
+    for count in [0, 1, 2, 7, 31]:
+        for choose in [0, 1, 7]:
+            expected = [1, 2, 3, 4]
+            for index in range(count):
+                expected = [value + index * (lane + 1) for lane, value in enumerate(expected)]
+                if not index & choose:
+                    expected = [value ^ mask for value, mask in zip(expected, [17, 31, 63, 127], strict=True)]
+            case = Case(directory, f"continue_vectors_{count}_{choose}", "i32", len(expected))
+            case.scalar("count", count, "i32")
+            case.scalar("choose", choose, "i32")
+            case.launch("continue_vectors", "%output, %count, %choose", "tensor<4xi32>, i32, i32")
+            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+            cases.append(case.finish(expected))
+    return "kernel.decl @continue_vectors() launch(%output: buffer, %count: i32, %choose: i32)\n\n" + "\n".join(cases)
+
+
 def assumption_functions(directory):
     del directory
     values = [0, 1, 127, 128, 254, 255]
@@ -746,6 +872,12 @@ def main():
         ("increment_functions", increment_functions),
         ("increment_values", increment_values),
         ("increment_pointers", increment_pointers),
+        ("continue_functions", continue_functions),
+        ("continue_values", continue_values),
+        ("continue_scheduled", continue_scheduled),
+        ("continue_copy", continue_copy),
+        ("continue_pointers", continue_pointers),
+        ("continue_vectors", continue_vectors),
         ("assumption_functions", assumption_functions),
         ("assumption_kernel", assumption_kernel),
         ("comparison_functions", comparison_functions),

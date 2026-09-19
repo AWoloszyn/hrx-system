@@ -33,9 +33,24 @@ const CountedLoop* ControlFlow::counted(cxx::ForStatementAST* loop) const {
   return found == counted_.end() ? nullptr : &found->second;
 }
 
-ReturnFlow ControlFlow::returns(cxx::StatementAST* statement) const {
-  auto found = returns_.find(statement);
-  return found == returns_.end() ? ReturnFlow::None : found->second;
+unsigned ControlFlow::paths(cxx::StatementAST* statement) const {
+  auto found = paths_.find(statement);
+  return found == paths_.end() ? unsigned(Fallthrough) : found->second;
+}
+
+ExitFlow ControlFlow::exits(cxx::StatementAST* statement, Path path) const {
+  auto outcomes = paths(statement);
+  return !(outcomes & path) ? ExitFlow::None
+         : outcomes == path ? ExitFlow::All
+                            : ExitFlow::Some;
+}
+
+ExitFlow ControlFlow::returns(cxx::StatementAST* statement) const {
+  return exits(statement, Return);
+}
+
+ExitFlow ControlFlow::continues(cxx::StatementAST* statement) const {
+  return exits(statement, Continue);
 }
 
 bool ControlFlow::preVisit(cxx::AST* ast) {
@@ -47,9 +62,9 @@ bool ControlFlow::preVisit(cxx::AST* ast) {
 
 void ControlFlow::postVisit(cxx::AST* ast) {
   if (auto* statement = cxx::ast_cast<cxx::StatementAST>(ast)) {
-    auto flow = classify_returns(statement);
-    if (flow != ReturnFlow::None) {
-      returns_.emplace(statement, flow);
+    auto outcomes = classify_paths(statement);
+    if (outcomes != Fallthrough) {
+      paths_.emplace(statement, outcomes);
     }
   }
   if (auto* loop = cxx::ast_cast<cxx::ForStatementAST>(ast)) {
@@ -62,27 +77,25 @@ void ControlFlow::postVisit(cxx::AST* ast) {
   }
 }
 
-ReturnFlow ControlFlow::classify_returns(cxx::StatementAST* statement) const {
+unsigned ControlFlow::classify_paths(cxx::StatementAST* statement) const {
   if (cxx::ast_cast<cxx::ReturnStatementAST>(statement)) {
-    return ReturnFlow::All;
+    return Return;
+  }
+  if (cxx::ast_cast<cxx::ContinueStatementAST>(statement)) {
+    return Continue;
   }
   if (auto* compound = cxx::ast_cast<cxx::CompoundStatementAST>(statement)) {
-    auto flow = ReturnFlow::None;
+    unsigned outcomes = Fallthrough;
     for (auto* child : cxx::ListView{compound->statementList}) {
-      auto child_flow = returns(child);
-      if (child_flow == ReturnFlow::All) {
-        return ReturnFlow::All;
+      if (!(outcomes & Fallthrough)) {
+        break;
       }
-      if (child_flow == ReturnFlow::Some) {
-        flow = ReturnFlow::Some;
-      }
+      outcomes = (outcomes & ~Fallthrough) | paths(child);
     }
-    return flow;
+    return outcomes;
   }
   if (auto* branch = cxx::ast_cast<cxx::IfStatementAST>(statement)) {
-    auto then_flow = returns(branch->statement);
-    auto else_flow = returns(branch->elseStatement);
-    return then_flow == else_flow ? then_flow : ReturnFlow::Some;
+    return paths(branch->statement) | paths(branch->elseStatement);
   }
   cxx::StatementAST* body = nullptr;
   if (auto* loop = cxx::ast_cast<cxx::ForStatementAST>(statement)) {
@@ -90,10 +103,11 @@ ReturnFlow ControlFlow::classify_returns(cxx::StatementAST* statement) const {
   } else if (auto* loop = cxx::ast_cast<cxx::WhileStatementAST>(statement)) {
     body = loop->statement;
   } else if (auto* loop = cxx::ast_cast<cxx::DoStatementAST>(statement)) {
-    return returns(loop->statement);
+    auto body_paths = paths(loop->statement);
+    return (body_paths & Return) |
+           (body_paths & (Fallthrough | Continue) ? unsigned(Fallthrough) : 0);
   }
-  return returns(body) == ReturnFlow::None ? ReturnFlow::None
-                                           : ReturnFlow::Some;
+  return Fallthrough | (paths(body) & Return);
 }
 
 void ControlFlow::visit(cxx::AssignmentExpressionAST* ast) {

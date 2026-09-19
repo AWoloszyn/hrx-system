@@ -118,19 +118,19 @@ TEST(ControlFlowTest, ReturnSummariesRetainFallthroughAndNestedExits) {
     // Source body whose nested outcomes are aggregated once.
     const char* body;
     // Expected function-body return summary.
-    ReturnFlow flow;
+    ExitFlow flow;
   };
   const Case cases[] = {
-      {"", ReturnFlow::None},
-      {"return;", ReturnFlow::All},
-      {"if (x) return;", ReturnFlow::Some},
-      {"if (x) return; else return;", ReturnFlow::All},
-      {"if (x) { if (y) return; }", ReturnFlow::Some},
-      {"if (x) { if (y) return; } return;", ReturnFlow::All},
-      {"while (x) { return; }", ReturnFlow::Some},
-      {"do { return; } while (x);", ReturnFlow::All},
-      {"for (unsigned i=0; i<4u; ++i) { if (y) return; }", ReturnFlow::Some},
-      {"while (x) { --x; }", ReturnFlow::None},
+      {"", ExitFlow::None},
+      {"return;", ExitFlow::All},
+      {"if (x) return;", ExitFlow::Some},
+      {"if (x) return; else return;", ExitFlow::All},
+      {"if (x) { if (y) return; }", ExitFlow::Some},
+      {"if (x) { if (y) return; } return;", ExitFlow::All},
+      {"while (x) { return; }", ExitFlow::Some},
+      {"do { return; } while (x);", ExitFlow::All},
+      {"for (unsigned i=0; i<4u; ++i) { if (y) return; }", ExitFlow::Some},
+      {"while (x) { --x; }", ExitFlow::None},
   };
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);
@@ -184,6 +184,57 @@ TEST(ControlFlowTest, ConditionalValuesRetainOrderedBindingMutations) {
     ASSERT_EQ(arm_writes.size(), 2u);
     EXPECT_EQ(arm_writes[0], parameters[0]);
     EXPECT_EQ(arm_writes[1], parameters[1]);
+  }
+}
+
+TEST(ControlFlowTest, IterationExitsStopAtTheirLoopAndExcludeUnreachablePaths) {
+  struct Case {
+    // Statements inside the outer counted loop's body.
+    const char* body;
+    // Paths that continue the outer loop.
+    ExitFlow continues;
+    // Paths that return from the enclosing function.
+    ExitFlow returns;
+  };
+  const Case cases[] = {
+      {"", ExitFlow::None, ExitFlow::None},
+      {"continue;", ExitFlow::All, ExitFlow::None},
+      {"if (x) continue;", ExitFlow::Some, ExitFlow::None},
+      {"if (x) continue; else continue;", ExitFlow::All, ExitFlow::None},
+      {"if (x) { if (y) continue; } else { if (y) continue; }", ExitFlow::Some,
+       ExitFlow::None},
+      {"if (x) continue; return;", ExitFlow::Some, ExitFlow::Some},
+      {"continue; return;", ExitFlow::All, ExitFlow::None},
+      {"return; continue;", ExitFlow::None, ExitFlow::All},
+      {"while (x) { --x; continue; }", ExitFlow::None, ExitFlow::None},
+      {"do { --x; continue; } while (x);", ExitFlow::None, ExitFlow::None},
+      {"for (unsigned j=0; j<4u; ++j) { if (y) continue; }", ExitFlow::None,
+       ExitFlow::None},
+      {"while (x) { continue; return; }", ExitFlow::None, ExitFlow::None},
+      {"do { if (x) continue; return; } while (y);", ExitFlow::None,
+       ExitFlow::Some},
+  };
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  for (const auto& test : cases) {
+    SCOPED_TRACE(test.body);
+    std::string text = std::string("void entry(int x, int y) { ") +
+                       "for (unsigned i=0; i<4u; ++i) { " + test.body + " } }";
+    Source source(view(text), IREE_SV("continue.cpp"), options);
+    auto* function = definition(source);
+    ASSERT_NE(function, nullptr);
+    auto* body = cxx::ast_cast<cxx::CompoundStatementFunctionBodyAST>(
+                     function->functionBody)
+                     ->statement;
+    auto* loop =
+        cxx::ast_cast<cxx::ForStatementAST>(body->statementList->value);
+    ASSERT_NE(loop, nullptr);
+    ControlFlow analysis(source.unit(), body);
+    EXPECT_EQ(analysis.continues(loop->statement), test.continues);
+    EXPECT_EQ(analysis.returns(loop->statement), test.returns);
+    EXPECT_EQ(analysis.continues(loop), ExitFlow::None);
+    EXPECT_EQ(analysis.continues(body), ExitFlow::None);
+    EXPECT_NE(analysis.counted(loop), nullptr);
   }
 }
 

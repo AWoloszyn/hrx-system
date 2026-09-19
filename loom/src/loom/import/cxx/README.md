@@ -246,6 +246,15 @@ the selected Loom target to support buffer transport through those control-flow
 edges. Objects with constructors, exceptions and indirect calls need additional
 storage and control-flow projections before they can be imported.
 
+`continue` skips the remaining body of the innermost `for`, `while`, or
+`do/while`. Updates before the exit survive; a `for` increment and a `do/while`
+condition still execute. Nested blocks and conditionals may continue from
+either arm, while a shared source tail appears only once in the imported IR.
+Counted loops retain `scf.for` and their explicit unroll/pipeline schedules.
+This includes sparse copies, filtered pointer streams, and scalar or vector
+recurrences. Each iteration uses ordinary conditional regions; there is no
+extra loop-carried exit state.
+
 Kernels and ordinary functions can return early through guard chains, nested
 blocks and returning `if`/`else` trees. A returning conditional must have at
 least one arm that always returns. The remaining source then executes only on
@@ -272,7 +281,7 @@ header APIs, and direct API tests that do not link the aggregate importer.
 | --- | --- |
 | `source/` | One configured frontend invocation, provider and diagnostic handling, immutable facade lookup, and source locations copied into the output module. |
 | `value/` | Source type/layout projection, scalar/vector SSA and buffer/origin representations, arithmetic, and memory access construction from already evaluated operands. |
-| `control/` | An immutable analysis of ordered source writes, return/fallthrough outcomes and nonwrapping counted-loop eligibility. This package has no IR dependency. |
+| `control/` | An immutable analysis of ordered source writes, function/iteration exits and fallthrough, and nonwrapping counted-loop eligibility. This package has no IR dependency. |
 | `binding/` | Admission and construction for generated operation bindings, kernel launch contracts, and explicit loop schedules. |
 | `symbol/` | Root selection, reachable function identities, deterministic naming, and native function definitions with explicit body contracts. |
 
