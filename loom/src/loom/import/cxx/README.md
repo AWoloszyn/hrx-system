@@ -145,3 +145,35 @@ preserving signedness and source pointer arithmetic in the address projection.
 Objects with constructors, arbitrary pointer manipulation, general early
 returns, exceptions and indirect calls need additional storage and control-flow
 projections before they can be imported.
+
+## Implementation boundaries
+
+The importer composes five native packages. Each owns declared library targets,
+header APIs, and direct API tests that do not link the aggregate importer.
+
+| Package | Contract |
+| --- | --- |
+| `source/` | One configured frontend invocation, provider and diagnostic handling, immutable facade lookup, and source locations copied into the output module. |
+| `value/` | Source type/layout projection, scalar conversions and arithmetic, and memory access construction from already evaluated operands. |
+| `control/` | An immutable analysis of ordered source writes and nonwrapping counted-loop eligibility. This package has no IR dependency. |
+| `binding/` | Admission and construction for generated operation bindings, kernel launch contracts, and explicit loop schedules. |
+| `symbol/` | Root selection, reachable function identities, deterministic naming, and native function definitions with explicit body contracts. |
+
+`import.cc` owns the native API's validation, exception boundary, module
+ownership, and final verification. `translation.cc` composes the packages: it
+evaluates expressions, maintains source-symbol-to-SSA bindings, and constructs
+structured regions. Projection APIs consume resolved source identities and
+explicit native builders; they do not call back into the translation driver.
+
+For example, a cast first evaluates its operand in the driver and then calls
+`Scalars::convert` with the SSA value, source and destination types, and source
+owner for diagnostics. Function translation consumes `Functions::define`'s
+body contract and builds one `ControlFlow` analysis. Loop construction queries
+its retained writes and counted-loop proof instead of traversing the body again.
+Workgroup allocation similarly retains its typed array view for later accesses.
+
+The source owns AST, symbol, token, and layout storage until translation ends.
+The module owns emitted IR, interned names, and copied locations independently
+of that source. The public C adapter copies diagnostic source contents before
+releasing the frontend. These ownership boundaries also apply when headers come
+from a caller-supplied provider.

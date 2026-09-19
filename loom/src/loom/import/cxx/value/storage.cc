@@ -10,6 +10,8 @@
 #include <cxx/memory_layout.h>
 #include <cxx/types.h>
 
+#include <algorithm>
+
 #include "loom/import/cxx/source/error.h"
 #include "loom/ir/module.h"
 #include "loom/ops/buffer/ops.h"
