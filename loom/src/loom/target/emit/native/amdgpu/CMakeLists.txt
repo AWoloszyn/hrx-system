@@ -124,6 +124,7 @@ loom_check_test_suite(
     "test/assembly.loom-test"
     "test/assembly_allocation.loom-test"
     "test/assembly_cluster.loom-test"
+    "test/assembly_integer_multiply.loom-test"
     "test/assembly_q8.loom-test"
     "test/assembly_vopd_profiles.loom-test"
     "test/assembly_wmma.loom-test"

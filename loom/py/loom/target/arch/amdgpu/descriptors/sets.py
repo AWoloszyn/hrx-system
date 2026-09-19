@@ -35,6 +35,7 @@ from .atomic import *
 from .cdna import *
 from .common import *
 from .control import *
+from .integer_multiply import *
 from .matrix import *
 from .memory import *
 from .rdna3 import *
@@ -382,8 +383,7 @@ def _cdna_core_overlays(
         _v_mov_b32_dpp_legacy_overlay(),
         _v_mov_b32_dpp_masked_legacy_overlay(),
         _v_mov_b32_sdwa_overlay(),
-        _v_mul_lo_u32_overlay(),
-        _v_mul_hi_u32_overlay(),
+        *_v_mul_u32_overlays(include_literal_forms=False),
         _v_mul_u32_u24_overlay(),
         _v_mul_u32_u24_src0_inline_overlay(),
         _v_mul_u32_u24_literal_overlay(),
@@ -1015,8 +1015,7 @@ def _gfx11_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
         _v_mov_b32_copy_overlay(),
         _v_mov_b32_dpp16_overlay(),
         _v_mov_b32_dpp16_masked_overlay(),
-        _v_mul_lo_u32_overlay(),
-        _v_mul_hi_u32_overlay(),
+        *_v_mul_u32_overlays(),
         _v_mul_u32_u24_overlay(),
         _v_mul_u32_u24_src0_inline_overlay(),
         _v_mul_u32_u24_literal_overlay(),
@@ -1827,8 +1826,7 @@ def _rdna4_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
         _v_mov_b32_copy_overlay(),
         _v_mov_b32_dpp16_overlay(),
         _v_mov_b32_dpp16_masked_overlay(),
-        _v_mul_lo_u32_overlay(),
-        _v_mul_hi_u32_overlay(),
+        *_v_mul_u32_overlays(),
         _v_mul_u32_u24_overlay(),
         _v_mul_u32_u24_src0_inline_overlay(),
         _v_mul_u32_u24_literal_overlay(),

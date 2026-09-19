@@ -1170,42 +1170,6 @@ def _v_binary_u32_overlay(
     )
 
 
-def _v_mul_lo_u32_overlay() -> AmdgpuDescriptorOverlay:
-    return AmdgpuDescriptorOverlay(
-        descriptor_key="amdgpu.v_mul_lo_u32",
-        instruction_name="V_MUL_LO_U32",
-        mnemonic="v_mul_lo_u32",
-        encoding_name="ENC_VOP3",
-        semantic_tag="integer.mul.lo.u32",
-        schedule_class=_SCHEDULE_VALU,
-        operands=(
-            AmdgpuOperandOverlay("VDST", _vgpr_result()),
-            AmdgpuOperandOverlay("SRC0", _sgpr_vgpr_operand("lhs")),
-            AmdgpuOperandOverlay("SRC1", _vgpr_operand("rhs")),
-        ),
-        constraints=_REMATERIALIZABLE_RESULT_CONSTRAINTS,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
-    )
-
-
-def _v_mul_hi_u32_overlay() -> AmdgpuDescriptorOverlay:
-    return AmdgpuDescriptorOverlay(
-        descriptor_key="amdgpu.v_mul_hi_u32",
-        instruction_name="V_MUL_HI_U32",
-        mnemonic="v_mul_hi_u32",
-        encoding_name="ENC_VOP3",
-        semantic_tag="integer.mul.hi.u32",
-        schedule_class=_SCHEDULE_VALU,
-        operands=(
-            AmdgpuOperandOverlay("VDST", _vgpr_result()),
-            AmdgpuOperandOverlay("SRC0", _sgpr_vgpr_operand("lhs")),
-            AmdgpuOperandOverlay("SRC1", _vgpr_operand("rhs")),
-        ),
-        constraints=_REMATERIALIZABLE_RESULT_CONSTRAINTS,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
-    )
-
-
 def _v_mul_u32_u24_overlay() -> AmdgpuDescriptorOverlay:
     return _v_binary_u32_overlay(
         descriptor_key="amdgpu.v_mul_u32_u24",
@@ -6999,8 +6963,6 @@ __all__ = (
     "_v_mul_f32_literal_overlay",
     "_v_mul_f32_overlay",
     "_v_mul_f32_src0_inline_overlay",
-    "_v_mul_hi_u32_overlay",
-    "_v_mul_lo_u32_overlay",
     "_v_mul_u32_u24_literal_overlay",
     "_v_mul_u32_u24_overlay",
     "_v_mul_u32_u24_src0_inline_overlay",
