@@ -862,35 +862,6 @@ iree_cc_test(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
-iree_cc_test(
-  NAME
-    hip_launch_validation_api_test
-  SRCS
-    "${LIBHRX_SOURCE_DIR}/cts/core/amdgpu_executable_test_data.hpp"
-    "${LIBHRX_SOURCE_DIR}/cts/core/amdgpu_test_data.hpp"
-    "hip_launch_validation_api_test.cc"
-  DATA
-    ::amdhip64
-  DEPS
-    ${CMAKE_DL_LIBS}
-    ::hip_dso_test_util
-    ::launch_params
-    iree::testing::gtest
-    iree::testing::gtest_main
-    libhrx::cts::amdgpu_executable_test_kernels
-    libhrx_defs
-  ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
-  LABELS
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_test(
   NAME
