@@ -2057,11 +2057,27 @@ def _bitcast_alias_rule(
 
 
 def _index_cast_rules() -> tuple[DescriptorRule | ValueAliasRule, ...]:
+    narrow_rules = tuple(
+        rule
+        for payload_type, suffix in (
+            (_I1, "i1"),
+            (_I8, "i8"),
+            (_I16, "i16"),
+            (_I32, "i32"),
+        )
+        for rule in (
+            _index_cast_rule(
+                payload_type,
+                _INDEX,
+                f"llvmir.{'zext' if suffix == 'i1' else 'sext'}.{suffix}.i64",
+            ),
+            _index_cast_rule(payload_type, _OFFSET, f"llvmir.zext.{suffix}.i64"),
+            _index_cast_rule(_INDEX, payload_type, f"llvmir.trunc.i64.{suffix}"),
+            _index_cast_rule(_OFFSET, payload_type, f"llvmir.trunc.i64.{suffix}"),
+        )
+    )
     return (
-        _index_cast_rule(_I32, _INDEX, "llvmir.sext.i32.i64"),
-        _index_cast_rule(_I32, _OFFSET, "llvmir.zext.i32.i64"),
-        _index_cast_rule(_INDEX, _I32, "llvmir.trunc.i64.i32"),
-        _index_cast_rule(_OFFSET, _I32, "llvmir.trunc.i64.i32"),
+        *narrow_rules,
         _index_cast_alias_rule(_I64, _INDEX),
         _index_cast_alias_rule(_I64, _OFFSET),
         _index_cast_alias_rule(_INDEX, _I64),
@@ -2084,6 +2100,8 @@ def _select_rules() -> tuple[DescriptorRule, ...]:
                 (_INDEX, "i64"),
                 (_OFFSET, "i64"),
                 (_I1, "i1"),
+                (_I8, "i8"),
+                (_I16, "i16"),
                 (_I32, "i32"),
                 (_I64, "i64"),
                 (_F32, "f32"),
@@ -2475,6 +2493,39 @@ def _extract_rule(element: str, lane_count: int) -> DescriptorRule:
     )
 
 
+def _dynamic_extract_rule(element: str, lane_count: int) -> DescriptorRule:
+    descriptor = _descriptor(
+        f"llvmir.extract.dynamic.{_vector_suffix(element, lane_count)}"
+    )
+    return DescriptorRule(
+        source_op=vector.vector_extract,
+        descriptor=descriptor,
+        guards=(
+            Guard.value_type("source", _vector_type(element, lane_count)),
+            Guard.value_type("indices", _INDEX),
+            Guard.value_type("result", Scalar(element)),
+            Guard.operand_segment_count("indices", 1),
+            Guard.i64_array_count("static_indices", 1),
+            Guard.i64_array_element_range(
+                "static_indices",
+                element=0,
+                minimum=_DYNAMIC_INDEX,
+                maximum=_DYNAMIC_INDEX,
+            ),
+        ),
+        emit=(
+            _op_emit(
+                descriptor=descriptor,
+                operands={
+                    "source": ValueRef.operand("source"),
+                    "index": ValueRef.operand("indices"),
+                },
+                results={"dst": ValueRef.result("result")},
+            ),
+        ),
+    )
+
+
 def _one_lane_insert_rule(element: str) -> ValueAliasRule:
     vector_type = _vector_type(element, 1)
     return ValueAliasRule(
@@ -2712,6 +2763,7 @@ def _structural_vector_rules() -> tuple[DescriptorRule | ValueAliasRule, ...]:
             rules.append(_splat_rule(element, lane_count))
             rules.append(_from_elements_rule(element, lane_count))
             rules.append(_extract_rule(element, lane_count))
+            rules.append(_dynamic_extract_rule(element, lane_count))
             rules.append(_insert_rule(element, lane_count))
             rules.append(_dynamic_insert_rule(element, lane_count))
             rules.append(_shuffle_rule(element, lane_count))
@@ -2735,6 +2787,10 @@ def _structural_vector_rules() -> tuple[DescriptorRule | ValueAliasRule, ...]:
         rules.append(_one_lane_insert_rule(element))
     rules.extend(
         _extract_rule(element, lane_count)
+        for element, lane_count in _ADDITIONAL_STRUCTURAL_EXTRACTS
+    )
+    rules.extend(
+        _dynamic_extract_rule(element, lane_count)
         for element, lane_count in _ADDITIONAL_STRUCTURAL_EXTRACTS
     )
     return tuple(rules)

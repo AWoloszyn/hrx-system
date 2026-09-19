@@ -486,3 +486,61 @@ bb0.entry:
   %v10.previous = extractvalue { i32, i1 } %v9, 0
   ret i32 %v10.previous
 }
+
+// ====
+
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_byte_extract_static(%table: reg<llvmir.i8 x64>) -> (reg<llvmir.i8>) asm {
+  %last = extract.v64i8 %table, 63
+  return %last
+}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_byte_extract_dynamic(%table: reg<llvmir.i8 x64>, %index: reg<llvmir.i64>) -> (reg<llvmir.i8>) asm {
+  %selected = extract.dynamic.v64i8 %table, %index
+  return %selected
+}
+
+// ----
+define dso_local i8 @wide_byte_extract_static(<64 x i8> %v0.table) {
+bb0.entry:
+  %v2.last = extractelement <64 x i8> %v0.table, i64 63
+  ret i8 %v2.last
+}
+
+define dso_local i8 @wide_byte_extract_dynamic(<64 x i8> %v3.table, i64 %v4.index) {
+bb0.entry:
+  %v5.selected = extractelement <64 x i8> %v3.table, i64 %v4.index
+  ret i8 %v5.selected
+}
+
+// ====
+
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @byte_select(%flag: i1, %left: i8, %right: i8) -> (i8) {
+  %selected = scf.select %flag, %left, %right : i8
+  func.return %selected : i8
+}
+
+func.def target(@target) @half_select(%flag: i1, %left: i16, %right: i16) -> (i16) {
+  %selected = scf.select %flag, %left, %right : i16
+  func.return %selected : i16
+}
+
+// ----
+define dso_local i8 @byte_select(i1 %v0.flag, i8 %v1.left, i8 %v2.right) {
+bb0.entry:
+  %v3.selected = select i1 %v0.flag, i8 %v1.left, i8 %v2.right
+  ret i8 %v3.selected
+}
+
+define dso_local i16 @half_select(i1 %v4.flag, i16 %v5.left, i16 %v6.right) {
+bb0.entry:
+  %v7.selected = select i1 %v4.flag, i16 %v5.left, i16 %v6.right
+  ret i16 %v7.selected
+}
