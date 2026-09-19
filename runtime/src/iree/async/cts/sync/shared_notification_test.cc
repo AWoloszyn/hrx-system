@@ -17,7 +17,7 @@
 //   - Destroy does not close the wake/signal primitives (caller owns them)
 //   - On Linux: futex calls omit FUTEX_PRIVATE_FLAG (physical page hashing)
 //   - On macOS: sync waiters use poll() instead of condvar (process-local)
-//   - On Windows: WakeByAddress works cross-process natively
+//   - On Windows: cross-process async wake uses the supplied Event HANDLE
 
 #include <atomic>
 #include <future>
@@ -390,6 +390,62 @@ TEST_P(SharedNotificationTest, TwoNotificationsOneEpoch) {
 
   iree_async_notification_release(notification_a);
   iree_async_notification_release(notification_b);
+  DestroySharedState(&state);
+}
+
+// Advisory signals must reach observers on a separate notification handle.
+// Each handle has its own observer count, as in independent processes.
+TEST_P(SharedNotificationTest, AdvisorySignalWakesOtherHandle) {
+  SharedState state;
+  IREE_ASSERT_OK(CreateSharedState(&state));
+  auto waiter_options = MakeSharedOptions(&state);
+  auto signaler_options = MakeSharedOptions(&state);
+#if defined(IREE_PLATFORM_WINDOWS)
+  signaler_options.wake_primitive = waiter_options.signal_primitive;
+  signaler_options.signal_primitive = waiter_options.wake_primitive;
+#endif  // IREE_PLATFORM_WINDOWS
+
+  IREE_ASSERT_OK_AND_ASSIGN(
+      iree_async_proactor_t * signaler_proactor,
+      GetParam().factory(iree_async_proactor_options_default()));
+  iree_async_notification_t* waiter = nullptr;
+  iree_async_notification_t* signaler = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create_shared(
+      proactor_, &waiter_options, &waiter));
+  IREE_ASSERT_OK(iree_async_notification_create_shared(
+      signaler_proactor, &signaler_options, &signaler));
+
+  CompletionTracker tracker;
+  iree_async_notification_wait_operation_t wait_operation = {};
+  iree_async_operation_initialize(
+      &wait_operation.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
+  wait_operation.notification = waiter;
+  wait_operation.wait_flags = IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN;
+  wait_operation.wait_token = iree_async_notification_begin_observe(waiter);
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &wait_operation.base));
+  iree_async_notification_end_observe(waiter);
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  EXPECT_EQ(tracker.call_count, 0);
+
+  const bool signaled = iree_async_notification_signal_if_observed(signaler, 1);
+  EXPECT_TRUE(signaled);
+  // A failed signal assertion still has to drain the submitted wait before
+  // releasing its notification and caller-owned primitives.
+  if (!signaled) {
+    IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait_operation.base));
+  }
+  PollUntilCondition([&] { return tracker.call_count == 1; });
+  if (signaled) {
+    IREE_EXPECT_OK(tracker.ConsumeStatus());
+  }
+  EXPECT_EQ(iree_async_notification_query_epoch(waiter), 1u);
+
+  iree_async_notification_release(signaler);
+  iree_async_notification_release(waiter);
+  iree_async_proactor_release(signaler_proactor);
   DestroySharedState(&state);
 }
 

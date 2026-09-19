@@ -89,9 +89,13 @@ IREE_API_EXPORT bool iree_async_notification_signal_if_observed(
     iree_async_notification_t* notification, int32_t wake_count) {
   // Always advance the epoch so a waiter that has observed the token and is
   // between condition re-check and platform wait cannot miss the release. The
-  // expensive platform wake is conditional on a known observer.
+  // expensive platform wake is conditional on a known observer for local
+  // notifications. Shared peers have independent observer counts, so their
+  // absence cannot be established from this handle.
   iree_atomic_fetch_add(notification->epoch_ptr, 1, iree_memory_order_release);
-  if (iree_atomic_load(&notification->observer_count,
+  if (!iree_any_bit_set(notification->flags,
+                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED) &&
+      iree_atomic_load(&notification->observer_count,
                        iree_memory_order_acquire) <= 0) {
     return false;
   }

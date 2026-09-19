@@ -103,9 +103,10 @@ typedef struct iree_async_notification_t {
   // memory (e.g., an mmap'd region shared between processes).
   iree_atomic_int32_t* epoch_ptr;
 
-  // Number of active observe-check-wait scopes. This includes synchronous
-  // notification waits, explicit observation scopes, and submitted async
-  // notification waits that carry a caller-provided wait token.
+  // Number of active observe-check-wait scopes on this handle. This includes
+  // synchronous waits, explicit observation scopes, and submitted async waits
+  // that carry a caller-provided wait token. Shared peers have independent
+  // counts; this does not count their observers.
   iree_atomic_int32_t observer_count;
 
   // Creation flags stored at creation time for runtime branching on SHARED.
@@ -299,8 +300,8 @@ IREE_API_EXPORT void iree_async_notification_release(
 //   Atomically increments the notification's epoch, then wakes waiters via
 //   the platform primitive (futex_wake, eventfd write, etc.).
 //
-// Idempotent: Multiple signals before any waiter observes them coalesce into
-// a single epoch advance. This is intentional for level-triggered semantics.
+// Each signal advances the epoch. Waiters observe whether the epoch changed,
+// so multiple signals can coalesce into one wait completion.
 IREE_API_EXPORT void iree_async_notification_signal(
     iree_async_notification_t* notification, int32_t wake_count);
 
@@ -312,6 +313,9 @@ IREE_API_EXPORT void iree_async_notification_signal(
 // its platform wait. Returns true when a platform wake was performed; returns
 // false when there were no active observe-check-wait scopes and wake work was
 // skipped.
+//
+// Shared notifications always perform the platform wake: observers on other
+// handles or in other processes are not represented by the local count.
 //
 // This must only be used for protocols where notification waits are advisory
 // wakeups over a separately checked condition. It is not a replacement for
