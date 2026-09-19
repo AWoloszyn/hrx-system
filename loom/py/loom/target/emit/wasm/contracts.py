@@ -254,12 +254,14 @@ def _binary_rule(
     source_op: Op,
     type_pattern: TypePattern,
     descriptor_key: str,
+    *,
+    guards: tuple[Guard, ...] = (),
 ) -> DescriptorRule:
     descriptor = _descriptor(descriptor_key)
     return DescriptorRule(
         source_op=source_op,
         descriptor=descriptor,
-        guards=_typed_guards(("lhs", "rhs", "result"), type_pattern),
+        guards=(*_typed_guards(("lhs", "rhs", "result"), type_pattern), *guards),
         emit=(
             EmitDescriptorOp(
                 descriptor=descriptor,
@@ -808,6 +810,7 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
                 (scalar_arithmetic.scalar_addi, "add"),
                 (scalar_arithmetic.scalar_subi, "sub"),
                 (scalar_arithmetic.scalar_muli, "mul"),
+                (scalar_arithmetic.scalar_remui, "rem_u"),
                 (scalar_bitwise.scalar_andi, "and"),
                 (scalar_bitwise.scalar_ori, "or"),
                 (scalar_bitwise.scalar_xori, "xor"),
@@ -921,6 +924,15 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         _binary_rule(index.index_sub, _INDEX, "wasm.i32.sub"),
         _binary_rule(index.index_sub, _OFFSET, "wasm.i32.sub"),
         _binary_rule(index.index_mul, _INDEX, "wasm.i32.mul"),
+        _binary_rule(
+            index.index_rem,
+            _INDEX,
+            "wasm.i32.rem_u",
+            guards=tuple(
+                Guard.value_i64_range(field, 0, (1 << 32) - 1)
+                for field in ("lhs", "rhs")
+            ),
+        ),
         _extract_rule(_V4I32, _I32, "wasm.i32x4.extract_lane"),
         _extract_rule(_V4F32, _F32, "wasm.f32x4.extract_lane"),
         _extract_rule(_V2I64, _I64, "wasm.i64x2.extract_lane"),

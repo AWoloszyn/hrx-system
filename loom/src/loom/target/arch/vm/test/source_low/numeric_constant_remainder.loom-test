@@ -1,0 +1,50 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_constant_remainder.loom-test
+// RUN: emit source-low output=low
+
+vm.target<core> @target
+
+func.def target(@target) @constant_remainder_uniform(%value: i32) -> (i32) {
+  %divisor = scalar.constant 3 : i32
+  %remainder = scalar.remui %value, %divisor : i32
+  func.return %remainder : i32
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @constant_remainder_uniform(%value: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %divisor = constant.i32 3
+  %remainder = integer.rem.u32 %value, %divisor
+  return %remainder
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @constant_remainder_loaded(%input: buffer) -> (i32, index) {
+  %base = index.constant 0 : offset
+  %aligned_input = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %input_view = buffer.view %aligned_input[%base] : buffer -> view<1xi32>
+  %value = view.load %input_view[0] : view<1xi32> -> i32
+  %divisor = scalar.constant 3 : i32
+  %remainder = scalar.remui %value, %divisor : i32
+  %mask = scalar.constant 2147483647 : i32
+  %nonnegative = scalar.andi %value, %mask : i32
+  %position = index.cast %nonnegative : i32 to index
+  %index_divisor = index.constant 3 : index
+  %index_remainder = index.rem %position, %index_divisor : index
+  func.return %remainder, %index_remainder : i32, index
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @constant_remainder_loaded(%input_view: reg<vm.ref : buffer>) -> (reg<vm.value : i32>, reg<vm.value : i64>) asm {
+  %17 = constant.i64 0
+  %value = buffer.load %input_view, %17, %17, 0, 8 : reg<vm.value : i32>
+  %divisor = constant.i32 3
+  %remainder = integer.rem.u32 %value, %divisor
+  %mask = constant.i32 2147483647
+  %nonnegative = integer.and.i32 %value, %mask
+  %position = conversion.integer %nonnegative, 18
+  %index_divisor = constant.i64 3
+  %index_remainder = integer.rem.u64 %position, %index_divisor
+  return %remainder, %index_remainder
+}

@@ -14,6 +14,48 @@ low.func.def target<x86.scalar.core>(@x86_target) @x86_fragment(%source: reg<x86
 
 // ====
 
+// RUN: emit x86-asm @zero_extend fixed=%input:physical_register:0:1 fixed=%result:physical_register:0:1
+x86.target<scalar> @target
+
+low.func.def target<x86.scalar.core>(@target) @zero_extend(%input: reg<x86.gpr32>) -> (reg<x86.gpr64>) asm {
+  %result = movzx.gpr64.gpr32 %input
+  return %result
+}
+
+// ----
+  mov eax, eax
+  ret
+
+// ====
+
+// RUN: emit x86-asm @zero_extend fixed=%input:physical_register:8:1 fixed=%result:physical_register:9:1
+x86.target<avx512> @target
+
+low.func.def target<x86.avx512.core>(@target) @zero_extend(%input: reg<x86.gpr32>) -> (reg<x86.gpr64>) asm {
+  %result = movzx.gpr64.gpr32 %input
+  return %result
+}
+
+// ----
+  mov r9d, r8d
+  ret
+
+// ====
+
+// RUN: emit x86-asm @sign_extend fixed=%input:physical_register:0:1 fixed=%result:physical_register:0:1
+x86.target<scalar> @target
+
+low.func.def target<x86.scalar.core>(@target) @sign_extend(%input: reg<x86.gpr32>) -> (reg<x86.gpr64>) asm {
+  %result = movsxd.gpr64.gpr32 %input
+  return %result
+}
+
+// ----
+  movsxd rax, eax
+  ret
+
+// ====
+
 x86.target<avx2> @x86_target
 
 low.func.def target<x86.avx2.core>(@x86_target) @x86_fragment(%input: reg<x86.xmm>) -> (reg<x86.gpr32>) asm {

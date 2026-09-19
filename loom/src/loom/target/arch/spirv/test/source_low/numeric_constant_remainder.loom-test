@@ -1,0 +1,60 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_constant_remainder.loom-test
+// RUN: emit source-low output=low control-flow=structured-low
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @constant_remainder_uniform(%value: i32) -> (i32) {
+  %divisor = scalar.constant 3 : i32
+  %remainder = scalar.remui %value, %divisor : i32
+  func.return %remainder : i32
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @constant_remainder_uniform(%value: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
+  %divisor = OpConstant.i32 3
+  %7 = OpBitcast.i32.u32 %value
+  %8 = OpBitcast.i32.u32 %divisor
+  %9 = OpUMod.u32 %7, %8
+  %remainder = OpBitcast.u32.i32 %9
+  return %remainder
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @constant_remainder_loaded(%input: buffer) -> (i32, index) {
+  %base = index.constant 0 : offset
+  %aligned_input = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %input_view = buffer.view %aligned_input[%base] : buffer -> view<1xi32>
+  %value = view.load %input_view[0] : view<1xi32> -> i32
+  %divisor = scalar.constant 3 : i32
+  %remainder = scalar.remui %value, %divisor : i32
+  %mask = scalar.constant 2147483647 : i32
+  %nonnegative = scalar.andi %value, %mask : i32
+  %position = index.cast %nonnegative : i32 to index
+  %index_divisor = index.constant 3 : index
+  %index_remainder = index.rem %position, %index_divisor : index
+  func.return %remainder, %index_remainder : i32, index
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @constant_remainder_loaded(%aligned_input: reg<spirv.ptr.storage_buffer>) -> (reg<spirv.id : i32>, reg<spirv.id : index>) asm {
+  %17 = OpConstant.offset64 0
+  %18 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned_input, %17
+  %value = OpLoad.storage_buffer.i32 %18
+  %divisor = OpConstant.i32 3
+  %21 = OpBitcast.i32.u32 %value
+  %22 = OpBitcast.i32.u32 %divisor
+  %23 = OpUMod.u32 %21, %22
+  %remainder = OpBitcast.u32.i32 %23
+  %mask = OpConstant.i32 2147483647
+  %nonnegative = OpBitwiseAnd %value, %mask
+  %position = OpCopyObject.i32 %nonnegative : reg<spirv.id : index>
+  %index_divisor = OpConstant.i32 3 : reg<spirv.id : index>
+  %29 = OpBitcast.i32.u32 %position
+  %30 = OpBitcast.i32.u32 %index_divisor
+  %31 = OpUMod.u32 %29, %30
+  %index_remainder = OpBitcast.u32.i32 %31 : reg<spirv.id : index>
+  return %remainder, %index_remainder
+}

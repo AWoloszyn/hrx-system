@@ -226,6 +226,7 @@ _OP_I64_GE_U = 0x5A
 _OP_I32_ADD = 0x6A
 _OP_I32_SUB = 0x6B
 _OP_I32_MUL = 0x6C
+_OP_I32_REM_U = 0x70
 _OP_I32_AND = 0x71
 _OP_I32_OR = 0x72
 _OP_I32_XOR = 0x73
@@ -235,6 +236,7 @@ _OP_I32_SHR_U = 0x76
 _OP_I64_ADD = 0x7C
 _OP_I64_SUB = 0x7D
 _OP_I64_MUL = 0x7E
+_OP_I64_REM_U = 0x82
 _OP_I64_AND = 0x83
 _OP_I64_OR = 0x84
 _OP_I64_XOR = 0x85
@@ -621,6 +623,7 @@ WASM_CORE_SIMD128_DESCRIPTOR_SET = DescriptorSet(
                 ("add", "add", _OP_I32_ADD),
                 ("sub", "sub", _OP_I32_SUB),
                 ("mul", "mul", _OP_I32_MUL),
+                ("rem_u", "remu", _OP_I32_REM_U),
                 ("and", "and", _OP_I32_AND),
                 ("or", "or", _OP_I32_OR),
                 ("xor", "xor", _OP_I32_XOR),
@@ -654,6 +657,7 @@ WASM_CORE_SIMD128_DESCRIPTOR_SET = DescriptorSet(
                 ("add", "add", _OP_I64_ADD),
                 ("sub", "sub", _OP_I64_SUB),
                 ("mul", "mul", _OP_I64_MUL),
+                ("rem_u", "remu", _OP_I64_REM_U),
                 ("and", "and", _OP_I64_AND),
                 ("or", "or", _OP_I64_OR),
                 ("xor", "xor", _OP_I64_XOR),

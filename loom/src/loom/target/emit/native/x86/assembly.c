@@ -675,19 +675,15 @@ static iree_status_t loom_x86_append_cmp_setcc_packet(
   return loom_x86_append_gpr8_result(context, 0);
 }
 
-static iree_status_t loom_x86_append_truncate_packet(
+static iree_status_t loom_x86_append_gpr32_move_packet(
     const loom_native_assembly_packet_context_t* context) {
-  const loom_op_t* op = context->packet->node->op;
-  if (op->result_count != 1 || op->operand_count != 1) {
-    const iree_string_view_t key = loom_x86_descriptor_key(context);
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "x86 truncate descriptor '%.*s' has an unsupported "
-                            "operand shape",
-                            (int)key.size, key.data);
-  }
+  // A 32-bit MOV both truncates a wide source and clears the destination's
+  // upper half. The write is required even when both values share a register.
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, "mov "));
-  IREE_RETURN_IF_ERROR(loom_x86_append_result(context, 0));
+  IREE_RETURN_IF_ERROR(loom_x86_append_gpr32_assignment(
+      context, loom_low_packet_result_assignment(context->allocation,
+                                                 context->packet, 0)));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, ", "));
   return loom_x86_append_gpr32_operand(context, 0);
@@ -1186,8 +1182,10 @@ static iree_status_t loom_x86_append_descriptor_packet(
   if (iree_string_view_starts_with(mnemonic, IREE_SV("cmp.set"))) {
     return loom_x86_append_cmp_setcc_packet(context);
   }
-  if (iree_string_view_equal(mnemonic, IREE_SV("mov.trunc"))) {
-    return loom_x86_append_truncate_packet(context);
+  if (iree_string_view_equal(mnemonic, IREE_SV("mov.trunc")) ||
+      iree_string_view_equal(loom_x86_descriptor_key(context),
+                             IREE_SV("x86.scalar.movzx.gpr64.gpr32"))) {
+    return loom_x86_append_gpr32_move_packet(context);
   }
   if (iree_string_view_equal(mnemonic, IREE_SV("select.cmovne"))) {
     return loom_x86_append_select_packet(context);
