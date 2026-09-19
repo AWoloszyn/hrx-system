@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "loom/ir/context.h"
+#include "loom/ops/index/carrier.h"
 #include "loom/ops/index/compare.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/scalar/compare.h"
@@ -469,9 +470,9 @@ static bool loom_condition_facts_exact_bool(loom_value_facts_t facts,
 }
 
 static bool loom_condition_index_predicate_relation(
-    uint8_t predicate, const loom_value_fact_table_t* fact_table,
-    loom_value_id_t left_value, loom_value_id_t right_value,
-    loom_symbolic_integer_relation_t* out_relation) {
+    uint8_t predicate, loom_symbolic_integer_relation_t* out_relation,
+    bool* out_unsigned_order) {
+  *out_unsigned_order = false;
   switch ((loom_index_cmp_predicate_t)predicate) {
     case LOOM_INDEX_CMP_PREDICATE_EQ:
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_EQ;
@@ -492,31 +493,19 @@ static bool loom_condition_index_predicate_relation(
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_GE;
       return true;
     case LOOM_INDEX_CMP_PREDICATE_ULT:
-      if (!loom_condition_values_are_non_negative(fact_table, left_value,
-                                                  right_value)) {
-        return false;
-      }
+      *out_unsigned_order = true;
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_LT;
       return true;
     case LOOM_INDEX_CMP_PREDICATE_ULE:
-      if (!loom_condition_values_are_non_negative(fact_table, left_value,
-                                                  right_value)) {
-        return false;
-      }
+      *out_unsigned_order = true;
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_LE;
       return true;
     case LOOM_INDEX_CMP_PREDICATE_UGT:
-      if (!loom_condition_values_are_non_negative(fact_table, left_value,
-                                                  right_value)) {
-        return false;
-      }
+      *out_unsigned_order = true;
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_GT;
       return true;
     case LOOM_INDEX_CMP_PREDICATE_UGE:
-      if (!loom_condition_values_are_non_negative(fact_table, left_value,
-                                                  right_value)) {
-        return false;
-      }
+      *out_unsigned_order = true;
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_GE;
       return true;
     default:
@@ -525,9 +514,9 @@ static bool loom_condition_index_predicate_relation(
 }
 
 static bool loom_condition_scalar_cmpi_predicate_relation(
-    uint8_t predicate, const loom_value_fact_table_t* fact_table,
-    loom_value_id_t left_value, loom_value_id_t right_value,
-    loom_symbolic_integer_relation_t* out_relation) {
+    uint8_t predicate, loom_symbolic_integer_relation_t* out_relation,
+    bool* out_unsigned_order) {
+  *out_unsigned_order = false;
   switch ((loom_scalar_cmpi_predicate_t)predicate) {
     case LOOM_SCALAR_CMPI_PREDICATE_EQ:
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_EQ;
@@ -548,31 +537,19 @@ static bool loom_condition_scalar_cmpi_predicate_relation(
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_GE;
       return true;
     case LOOM_SCALAR_CMPI_PREDICATE_ULT:
-      if (!loom_condition_values_are_non_negative(fact_table, left_value,
-                                                  right_value)) {
-        return false;
-      }
+      *out_unsigned_order = true;
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_LT;
       return true;
     case LOOM_SCALAR_CMPI_PREDICATE_ULE:
-      if (!loom_condition_values_are_non_negative(fact_table, left_value,
-                                                  right_value)) {
-        return false;
-      }
+      *out_unsigned_order = true;
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_LE;
       return true;
     case LOOM_SCALAR_CMPI_PREDICATE_UGT:
-      if (!loom_condition_values_are_non_negative(fact_table, left_value,
-                                                  right_value)) {
-        return false;
-      }
+      *out_unsigned_order = true;
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_GT;
       return true;
     case LOOM_SCALAR_CMPI_PREDICATE_UGE:
-      if (!loom_condition_values_are_non_negative(fact_table, left_value,
-                                                  right_value)) {
-        return false;
-      }
+      *out_unsigned_order = true;
       *out_relation = LOOM_SYMBOLIC_INTEGER_RELATION_GE;
       return true;
     default:
@@ -581,24 +558,62 @@ static bool loom_condition_scalar_cmpi_predicate_relation(
 }
 
 static iree_status_t loom_condition_facts_query_integer_compare(
+    const loom_module_t* module, const loom_op_t* op,
     loom_condition_fact_set_t* facts,
     loom_condition_derivation_t* out_derivation,
-    const loom_value_fact_table_t* fact_table, loom_value_id_t left_value,
-    loom_value_id_t right_value, uint8_t predicate, bool assumed_truth,
-    bool (*predicate_relation)(uint8_t, const loom_value_fact_table_t*,
-                               loom_value_id_t, loom_value_id_t,
-                               loom_symbolic_integer_relation_t*),
+    const loom_value_fact_table_t* fact_table, bool assumed_truth,
     bool* out_complete) {
+  const loom_value_id_t left_value = loom_op_const_operands(op)[0];
+  const loom_value_id_t right_value = loom_op_const_operands(op)[1];
   loom_symbolic_integer_relation_t relation = LOOM_SYMBOLIC_INTEGER_RELATION_EQ;
-  if (!predicate_relation(predicate, fact_table, left_value, right_value,
-                          &relation)) {
+  bool unsigned_order = false;
+  const bool has_relation =
+      loom_index_cmp_isa(op)
+          ? loom_condition_index_predicate_relation(
+                loom_index_cmp_predicate(op), &relation, &unsigned_order)
+          : loom_condition_scalar_cmpi_predicate_relation(
+                loom_scalar_cmpi_predicate(op), &relation, &unsigned_order);
+  if (!has_relation) {
     return iree_ok_status();
   }
   if (!assumed_truth) {
     relation = loom_symbolic_integer_relation_invert(relation);
   }
 
-  loom_condition_integer_relation_t assertion = {
+  if (unsigned_order && !loom_condition_values_are_non_negative(
+                            fact_table, left_value, right_value)) {
+    const bool ascending = relation == LOOM_SYMBOLIC_INTEGER_RELATION_LT ||
+                           relation == LOOM_SYMBOLIC_INTEGER_RELATION_LE;
+    const loom_value_id_t lower = ascending ? left_value : right_value;
+    const loom_value_id_t upper = ascending ? right_value : left_value;
+    const loom_value_facts_t upper_facts =
+        loom_condition_lookup_facts(fact_table, upper);
+    if (!loom_value_facts_is_non_negative(upper_facts)) {
+      return iree_ok_status();
+    }
+    // A bound with the carrier's sign bit set admits negative signed values.
+    // Targetless address facts retain their mathematical i64 source domain.
+    if (loom_index_cmp_isa(op) &&
+        !loom_index_value_facts_fit_signed_target_carrier(
+            fact_table ? &fact_table->context : NULL,
+            loom_type_element_type(loom_module_value_type(module, upper)),
+            upper_facts)) {
+      return iree_ok_status();
+    }
+    // On this edge lower <=u upper, where upper has no sign bit. Therefore
+    // lower is nonnegative and the retained signed order is equivalent.
+    const loom_condition_integer_relation_t nonnegative = {
+        .relation = LOOM_SYMBOLIC_INTEGER_RELATION_GE,
+        .left = loom_condition_value_operand(lower),
+        .right = {.kind = LOOM_CONDITION_INTEGER_OPERAND_CONSTANT,
+                  .value_id = LOOM_VALUE_ID_INVALID,
+                  .constant = 0},
+    };
+    IREE_RETURN_IF_ERROR(loom_condition_fact_set_append_integer_relation(
+        facts, out_derivation, nonnegative, out_complete));
+  }
+
+  const loom_condition_integer_relation_t assertion = {
       .relation = relation,
       .left = loom_condition_value_operand(left_value),
       .right = loom_condition_value_operand(right_value),
@@ -671,17 +686,10 @@ static iree_status_t loom_condition_facts_process_derivation(
 
   switch (defining_op->kind) {
     case LOOM_OP_INDEX_CMP:
-      return loom_condition_facts_query_integer_compare(
-          out_facts, out_derivation, fact_table,
-          loom_index_cmp_lhs(defining_op), loom_index_cmp_rhs(defining_op),
-          loom_index_cmp_predicate(defining_op), frame->assumed_truth,
-          loom_condition_index_predicate_relation, out_complete);
     case LOOM_OP_SCALAR_CMPI:
       return loom_condition_facts_query_integer_compare(
-          out_facts, out_derivation, fact_table,
-          loom_scalar_cmpi_lhs(defining_op), loom_scalar_cmpi_rhs(defining_op),
-          loom_scalar_cmpi_predicate(defining_op), frame->assumed_truth,
-          loom_condition_scalar_cmpi_predicate_relation, out_complete);
+          module, defining_op, out_facts, out_derivation, fact_table,
+          frame->assumed_truth, out_complete);
     case LOOM_OP_SCALAR_ANDI: {
       const loom_value_id_t lhs = loom_scalar_andi_lhs(defining_op);
       const loom_value_id_t rhs = loom_scalar_andi_rhs(defining_op);
@@ -889,9 +897,12 @@ static bool loom_condition_fact_resolver_proves_index_cmp(
       .left = loom_condition_value_operand(lhs),
       .right = loom_condition_value_operand(rhs),
   };
+  bool unsigned_order = false;
   if (loom_condition_index_predicate_relation(
-          loom_index_cmp_predicate(defining_op), fact_table, lhs, rhs,
-          &relation.relation) &&
+          loom_index_cmp_predicate(defining_op), &relation.relation,
+          &unsigned_order) &&
+      (!unsigned_order ||
+       loom_condition_values_are_non_negative(fact_table, lhs, rhs)) &&
       resolver != NULL && resolver->proves_integer_relation != NULL &&
       resolver->proves_integer_relation(resolver->user_data, fact_table,
                                         &relation, out_condition)) {
@@ -929,9 +940,12 @@ static bool loom_condition_fact_resolver_proves_scalar_cmpi(
       .left = loom_condition_value_operand(lhs),
       .right = loom_condition_value_operand(rhs),
   };
+  bool unsigned_order = false;
   if (loom_condition_scalar_cmpi_predicate_relation(
-          loom_scalar_cmpi_predicate(defining_op), fact_table, lhs, rhs,
-          &relation.relation) &&
+          loom_scalar_cmpi_predicate(defining_op), &relation.relation,
+          &unsigned_order) &&
+      (!unsigned_order ||
+       loom_condition_values_are_non_negative(fact_table, lhs, rhs)) &&
       resolver != NULL && resolver->proves_integer_relation != NULL &&
       resolver->proves_integer_relation(resolver->user_data, fact_table,
                                         &relation, out_condition)) {

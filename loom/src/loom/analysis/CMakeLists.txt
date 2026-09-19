@@ -259,6 +259,7 @@ loom_cc_test(
     loom::ir
     loom::ops::index
     loom::ops::scalar
+    loom::target::facts
     loom::util::fact_table
 )
 
