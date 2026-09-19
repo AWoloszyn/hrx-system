@@ -1,0 +1,154 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//loom/build_tools/bazel:build_defs.bzl", "iree_cmake_extra_content", "loom_cc_library", "loom_cc_test")
+load("//loom/src/loom/import/cxx:build_defs.bzl", "CXX_COMPILER_OPTIONS")
+
+package(
+    default_visibility = ["//loom/src/loom/import/cxx:__subpackages__"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+loom_cc_library(
+    name = "types",
+    srcs = ["types.cc"],
+    hdrs = ["types.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/ir",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
+    name = "scalar",
+    srcs = ["scalar.cc"],
+    hdrs = ["scalar.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":types",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/source:locations",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scalar",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
+    name = "storage",
+    srcs = ["storage.cc"],
+    hdrs = ["storage.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":scalar",
+        ":types",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/source:locations",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/buffer",
+        "//loom/src/loom/ops/index",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
+    name = "builder_test",
+    testonly = True,
+    hdrs = ["builder_test.h"],
+    deps = [
+        ":scalar",
+        ":types",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:locations",
+        "//loom/src/loom/import/cxx/source:options",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_registry",
+        "//runtime/src/iree/testing:gtest",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "types_test",
+    srcs = ["types_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":types",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/source:options",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "scalar_test",
+    srcs = ["scalar_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":builder_test",
+        ":scalar",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/source:options",
+        "//loom/src/loom/ops/buffer",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scalar",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "storage_test",
+    srcs = ["storage_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":builder_test",
+        ":storage",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/source:options",
+        "//loom/src/loom/ops/buffer",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scalar",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+iree_cmake_extra_content(
+    """
+foreach(_target IN ITEMS
+    loom_import_cxx_value_types.objects
+    loom_import_cxx_value_types_test
+    loom_import_cxx_value_scalar.objects
+    loom_import_cxx_value_scalar_test
+    loom_import_cxx_value_storage.objects
+    loom_import_cxx_value_storage_test
+    )
+  if(TARGET ${_target})
+    target_compile_features(${_target} PRIVATE cxx_std_23)
+    if(MSVC)
+      target_compile_options(${_target} PRIVATE /EHsc /GR)
+    else()
+      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
+    endif()
+  endif()
+endforeach()
+""",
+    inline = True,
+)

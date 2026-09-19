@@ -19,7 +19,6 @@
 #include <cxx/types.h>
 
 #include <array>
-#include <bit>
 #include <cctype>
 #include <limits>
 #include <stdexcept>
@@ -37,9 +36,11 @@
 #include "loom/import/cxx/source/error.h"
 #include "loom/import/cxx/source/locations.h"
 #include "loom/import/cxx/source/source.h"
+#include "loom/import/cxx/value/scalar.h"
+#include "loom/import/cxx/value/storage.h"
+#include "loom/import/cxx/value/types.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
-#include "loom/ops/buffer/ops.h"
 #include "loom/ops/func/ops.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/kernel/ops.h"
@@ -69,10 +70,13 @@ class Translator {
              loom_module_t* module, const loom_cxx_import_options_t& options)
       : unit_(unit),
         diagnostics_(diagnostics),
+        module_(module),
         locations_(unit, diagnostics, module),
+        types_(unit, diagnostics),
+        scalars_(unit, diagnostics, types_, locations_, builder_),
+        storage_(unit, diagnostics, types_, scalars_, locations_, builder_),
         intrinsics_(unit, diagnostics),
         launches_(unit, diagnostics),
-        module_(module),
         options_(options),
         math_flags_(iree_any_bit_set(options.flags,
                                      LOOM_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS)
@@ -196,219 +200,10 @@ class Translator {
     diagnostics_.reject(unit_, ast, message);
   }
 
-  const cxx::Type* unqualified(const cxx::Type* type) {
-    return unit_.typeTraits().remove_cv(type);
-  }
-
-  loom_type_t type(const cxx::Type* input, cxx::AST* ast) {
-    if (!input) {
-      fail(ast, "expression has no resolved C++ type");
-    }
-    if (unit_.typeTraits().is_volatile(input)) {
-      fail(ast, "volatile access is not supported");
-    }
-    switch (unqualified(input)->kind()) {
-      case cxx::TypeKind::kBool:
-        return loom_type_scalar(LOOM_SCALAR_TYPE_I1);
-      case cxx::TypeKind::kInt:
-      case cxx::TypeKind::kUnsignedInt:
-        return loom_type_scalar(LOOM_SCALAR_TYPE_I32);
-      case cxx::TypeKind::kChar:
-      case cxx::TypeKind::kSignedChar:
-      case cxx::TypeKind::kUnsignedChar:
-        return loom_type_scalar(LOOM_SCALAR_TYPE_I8);
-      case cxx::TypeKind::kShortInt:
-      case cxx::TypeKind::kUnsignedShortInt:
-        return loom_type_scalar(LOOM_SCALAR_TYPE_I16);
-      case cxx::TypeKind::kLongInt:
-      case cxx::TypeKind::kUnsignedLongInt:
-        return loom_type_scalar(unit_.control()->memoryLayout()->sizeOfLong() ==
-                                        4
-                                    ? LOOM_SCALAR_TYPE_I32
-                                    : LOOM_SCALAR_TYPE_I64);
-      case cxx::TypeKind::kLongLongInt:
-      case cxx::TypeKind::kUnsignedLongLongInt:
-        return loom_type_scalar(LOOM_SCALAR_TYPE_I64);
-      case cxx::TypeKind::kFloat:
-        return loom_type_scalar(LOOM_SCALAR_TYPE_F32);
-      case cxx::TypeKind::kDouble:
-        return loom_type_scalar(LOOM_SCALAR_TYPE_F64);
-      case cxx::TypeKind::kFloat16:
-        return loom_type_scalar(LOOM_SCALAR_TYPE_F16);
-      case cxx::TypeKind::kBoundedArray: {
-        auto* array = cxx::type_cast<cxx::BoundedArrayType>(unqualified(input));
-        auto element = type(array->elementType(), ast);
-        if (loom_type_kind(element) != LOOM_TYPE_SCALAR ||
-            loom_type_element_type(element) == LOOM_SCALAR_TYPE_I1) {
-          fail(ast, "arrays require a supported non-boolean scalar element");
-        }
-        return loom_type_buffer();
-      }
-      case cxx::TypeKind::kPointer: {
-        auto* pointer = cxx::type_cast<cxx::PointerType>(unqualified(input));
-        auto element = type(pointer->elementType(), ast);
-        if (loom_type_kind(element) != LOOM_TYPE_SCALAR ||
-            loom_type_element_type(element) == LOOM_SCALAR_TYPE_I1) {
-          fail(ast, "pointers require a supported non-boolean scalar element");
-        }
-        return loom_type_buffer();
-      }
-      default:
-        fail(ast, "unsupported C++ type: " + cxx::to_string(input));
-    }
-  }
-
-  bool is_unsigned(const cxx::Type* type) {
-    return unit_.typeTraits().is_unsigned(type);
-  }
-
-  bool is_float(const cxx::Type* input) {
-    auto kind = unqualified(input)->kind();
-    return kind == cxx::TypeKind::kFloat || kind == cxx::TypeKind::kFloat16 ||
-           kind == cxx::TypeKind::kDouble;
-  }
-
   loom_value_id_t convert(cxx::ExpressionAST* input_ast,
                           const cxx::Type* output_type, cxx::AST* owner) {
-    return convert_value(expression(input_ast), input_ast->type, output_type,
-                         owner);
-  }
-
-  loom_value_id_t convert_value(loom_value_id_t value,
-                                const cxx::Type* input_type,
-                                const cxx::Type* output_type, cxx::AST* owner) {
-    auto input = type(input_type, owner);
-    auto output = type(output_type, owner);
-    if (loom_type_equal(input, output)) {
-      return value;
-    }
-    if (loom_type_kind(input) != LOOM_TYPE_SCALAR ||
-        loom_type_kind(output) != LOOM_TYPE_SCALAR) {
-      fail(owner, "conversion must preserve pointer/array representation");
-    }
-    loom_op_t* op;
-    if (loom_type_element_type(output) == LOOM_SCALAR_TYPE_I1) {
-      loom_op_t* zero;
-      check(loom_scalar_constant_build(
-          &builder_,
-          is_float(input_type) ? loom_attr_f64(0.0) : loom_attr_i64(0), input,
-          locations_.get(owner), &zero));
-      if (is_float(input_type)) {
-        check(loom_scalar_cmpf_build(&builder_, 0,
-                                     LOOM_SCALAR_CMPF_PREDICATE_UNE, value,
-                                     result(zero), locations_.get(owner), &op));
-      } else {
-        check(loom_scalar_cmpi_build(&builder_, LOOM_SCALAR_CMPI_PREDICATE_NE,
-                                     value, result(zero), locations_.get(owner),
-                                     &op));
-      }
-      return result(op);
-    }
-    bool unsigned_input = is_unsigned(input_type) ||
-                          loom_type_element_type(input) == LOOM_SCALAR_TYPE_I1;
-    auto* layout = unit_.control()->memoryLayout();
-    bool narrows = layout->sizeOf(input_type) > layout->sizeOf(output_type);
-    auto build =
-        is_float(output_type)
-            ? (is_float(input_type)
-                   ? (narrows ? loom_scalar_fptrunc_build
-                              : loom_scalar_extf_build)
-                   : (unsigned_input ? loom_scalar_uitofp_build
-                                     : loom_scalar_sitofp_build))
-            : (is_float(input_type)
-                   ? (is_unsigned(output_type) ? loom_scalar_fptoui_build
-                                               : loom_scalar_fptosi_build)
-                   : (narrows ? loom_scalar_trunci_build
-                              : (unsigned_input ? loom_scalar_extui_build
-                                                : loom_scalar_extsi_build)));
-    check(build(&builder_, value, input, output, locations_.get(owner), &op));
-    return result(op);
-  }
-
-  loom_value_id_t binary_value(cxx::TokenKind token, loom_value_id_t left,
-                               loom_value_id_t right,
-                               const cxx::Type* input_type,
-                               const cxx::Type* output_type, cxx::AST* ast) {
-    auto source = locations_.get(ast);
-    bool floating = is_float(input_type);
-    bool unsigned_input = is_unsigned(input_type);
-    loom_op_t* op;
-    int predicate = -1;
-    switch (token) {
-      case cxx::TokenKind::T_EQUAL_EQUAL:
-        predicate = 0;
-        break;
-      case cxx::TokenKind::T_EXCLAIM_EQUAL:
-        predicate = 1;
-        break;
-      case cxx::TokenKind::T_LESS:
-        predicate = 2;
-        break;
-      case cxx::TokenKind::T_LESS_EQUAL:
-        predicate = 3;
-        break;
-      case cxx::TokenKind::T_GREATER:
-        predicate = 4;
-        break;
-      case cxx::TokenKind::T_GREATER_EQUAL:
-        predicate = 5;
-        break;
-      default:
-        break;
-    }
-    if (predicate >= 0) {
-      if (floating) {
-        const loom_scalar_cmpf_predicate_t predicates[] = {
-            LOOM_SCALAR_CMPF_PREDICATE_OEQ, LOOM_SCALAR_CMPF_PREDICATE_UNE,
-            LOOM_SCALAR_CMPF_PREDICATE_OLT, LOOM_SCALAR_CMPF_PREDICATE_OLE,
-            LOOM_SCALAR_CMPF_PREDICATE_OGT, LOOM_SCALAR_CMPF_PREDICATE_OGE};
-        check(loom_scalar_cmpf_build(&builder_, 0, predicates[predicate], left,
-                                     right, source, &op));
-      } else {
-        auto selected = static_cast<loom_scalar_cmpi_predicate_t>(
-            predicate >= 2 && unsigned_input ? predicate + 4 : predicate);
-        check(loom_scalar_cmpi_build(&builder_, selected, left, right, source,
-                                     &op));
-      }
-      return result(op);
-    }
-    if (!floating) {
-      auto build = token == cxx::TokenKind::T_SLASH
-                       ? (unsigned_input ? loom_scalar_divui_build
-                                         : loom_scalar_divsi_build)
-                   : token == cxx::TokenKind::T_PERCENT
-                       ? (unsigned_input ? loom_scalar_remui_build
-                                         : loom_scalar_remsi_build)
-                   : token == cxx::TokenKind::T_AMP   ? loom_scalar_andi_build
-                   : token == cxx::TokenKind::T_BAR   ? loom_scalar_ori_build
-                   : token == cxx::TokenKind::T_CARET ? loom_scalar_xori_build
-                   : token == cxx::TokenKind::T_GREATER_GREATER
-                       ? (unsigned_input ? loom_scalar_shrui_build
-                                         : loom_scalar_shrsi_build)
-                       : nullptr;
-      if (build) {
-        check(
-            build(&builder_, left, right, type(output_type, ast), source, &op));
-        return result(op);
-      }
-    }
-    auto build =
-        token == cxx::TokenKind::T_PLUS
-            ? (floating ? loom_scalar_addf_build : loom_scalar_addi_build)
-        : token == cxx::TokenKind::T_MINUS
-            ? (floating ? loom_scalar_subf_build : loom_scalar_subi_build)
-        : token == cxx::TokenKind::T_STAR
-            ? (floating ? loom_scalar_mulf_build : loom_scalar_muli_build)
-        : token == cxx::TokenKind::T_SLASH && floating ? loom_scalar_divf_build
-        : token == cxx::TokenKind::T_LESS_LESS && !floating
-            ? loom_scalar_shli_build
-            : nullptr;
-    if (!build) {
-      fail(ast, "unsupported binary operator");
-    }
-    check(
-        build(&builder_, 0, left, right, type(output_type, ast), source, &op));
-    return result(op);
+    return scalars_.convert(expression(input_ast), input_ast->type, output_type,
+                            owner);
   }
 
   loom_type_t value_type(loom_value_id_t value) {
@@ -433,18 +228,6 @@ class Translator {
   loom_value_id_t result(loom_op_t* op, const std::string& hint = "") {
     auto value = loom_op_results(op)[0];
     return hint.empty() ? value : name(value, hint);
-  }
-
-  loom_value_id_t constant(int64_t value, loom_scalar_type_t scalar,
-                           loom_location_id_t source = LOOM_LOCATION_UNKNOWN) {
-    loom_op_t* op;
-    auto* build =
-        scalar == LOOM_SCALAR_TYPE_INDEX || scalar == LOOM_SCALAR_TYPE_OFFSET
-            ? loom_index_constant_build
-            : loom_scalar_constant_build;
-    check(build(&builder_, loom_attr_i64(value), loom_type_scalar(scalar),
-                source, &op));
-    return result(op);
   }
 
   loom_symbol_ref_t declare(cxx::FunctionSymbol* function) {
@@ -489,7 +272,7 @@ class Translator {
     auto parameters = symbol->parameters();
     std::vector<loom_type_t> arguments;
     for (auto* parameter : parameters) {
-      arguments.push_back(type(parameter->type(), definition));
+      arguments.push_back(types_.get(parameter->type(), definition));
     }
     auto* signature = cxx::type_cast<cxx::FunctionType>(symbol->type());
     if (!signature || signature->isVariadic()) {
@@ -518,7 +301,7 @@ class Translator {
       launches_.reject_ordinary_function(symbol);
       std::vector<loom_type_t> results;
       if (!returns_void) {
-        results.push_back(type(signature->returnType(), definition));
+        results.push_back(types_.get(signature->returnType(), definition));
       }
       check(loom_func_def_build(
           &builder_,
@@ -584,95 +367,14 @@ class Translator {
     loom_builder_restore(&builder_, saved);
   }
 
-  struct Access {
-    // Typed view containing this memory access.
-    loom_value_id_t view;
-    // Full-rank dynamic index for a known array, absent for a scalar
-    // projection.
-    std::optional<loom_value_id_t> index;
-  };
-
-  Access address(cxx::SubscriptExpressionAST* ast) {
+  StorageAccess address(cxx::SubscriptExpressionAST* ast) {
     if (ast->symbol) {
       fail(ast, "overloaded indexing is not admitted");
     }
-    auto* pointer = cxx::type_cast<cxx::PointerType>(
-        unqualified(ast->baseExpression->type));
-    auto* array = cxx::type_cast<cxx::BoundedArrayType>(
-        unqualified(ast->baseExpression->type));
-    if (!pointer && !array) {
-      fail(ast, "subscript base must be a scalar pointer or shared array");
-    }
-    if (unqualified(ast->indexExpression->type)->kind() !=
-        cxx::TypeKind::kUnsignedInt) {
-      fail(ast, "pointer subscripts require unsigned int offsets");
-    }
     auto root = expression(ast->baseExpression);
     auto index = expression(ast->indexExpression);
-    auto* element_type =
-        pointer ? pointer->elementType() : array->elementType();
-    auto element = type(element_type, ast);
-    auto bytes = unit_.control()->memoryLayout()->sizeOf(element_type);
-    if (!bytes) {
-      fail(ast, "unknown element size");
-    }
-    auto offset_type = loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET);
-    auto index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
-    loom_op_t* cast;
-    // Enter offset first: fixed-width inputs zero-extend there, whereas a
-    // direct i32-to-index conversion would interpret unsigned C++ bits as
-    // signed.
-    check(loom_index_cast_build(&builder_, index, value_type(index),
-                                offset_type, locations_.get(ast), &cast));
-    auto wide_index = result(cast);
-    check(loom_index_cast_build(&builder_, wide_index, offset_type, index_type,
-                                locations_.get(ast), &cast));
-    if (array) {
-      return {array_views_.at(root), result(cast)};
-    }
-    auto size = constant(*bytes, LOOM_SCALAR_TYPE_OFFSET, locations_.get(ast));
-    loom_op_t* offset;
-    check(loom_index_scale_build(&builder_, result(cast), size, offset_type,
-                                 locations_.get(ast), &offset));
-    loom_op_t* view;
-    auto view_type = loom_type_shaped_1d(LOOM_TYPE_VIEW,
-                                         loom_type_element_type(element), 1, 0);
-    check(loom_buffer_view_build(&builder_, root, result(offset), view_type,
-                                 locations_.get(ast), &view));
-    return {result(view), std::nullopt};
-  }
-
-  loom_value_id_t constant_value(const cxx::ConstValue& value,
-                                 cxx::ExpressionAST* ast) {
-    cxx::ASTInterpreter interpreter(&unit_);
-    auto source = locations_.get(ast);
-    auto target = type(ast->type, ast);
-    loom_attribute_t attribute;
-    if (is_float(ast->type)) {
-      auto number = interpreter.toDouble(value);
-      if (!number) {
-        fail(ast, "invalid floating literal");
-      }
-      attribute = loom_attr_f64(*number);
-    } else {
-      auto number = interpreter.toInt(value);
-      if (!number) {
-        fail(ast, "invalid integer literal");
-      }
-      // Literals are represented in the signed storage width of their IR
-      // scalar type; signedness remains a source fact at each operation.
-      auto bytes = *unit_.control()->memoryLayout()->sizeOf(ast->type);
-      int64_t stored =
-          bytes == 1   ? std::bit_cast<int8_t>(static_cast<uint8_t>(*number))
-          : bytes == 2 ? std::bit_cast<int16_t>(static_cast<uint16_t>(*number))
-          : bytes == 4 ? std::bit_cast<int32_t>(static_cast<uint32_t>(*number))
-                       : *number;
-      attribute = loom_attr_i64(stored);
-    }
-    loom_op_t* op;
-    check(
-        loom_scalar_constant_build(&builder_, attribute, target, source, &op));
-    return result(op);
+    return storage_.subscript(root, index, ast->baseExpression->type,
+                              ast->indexExpression->type, ast);
   }
 
   loom_value_id_t expression(cxx::ExpressionAST* ast) {
@@ -681,7 +383,7 @@ class Translator {
     }
     auto source = locations_.get(ast);
     if (auto* constant = cxx::ast_cast<cxx::ConstExpressionAST>(ast)) {
-      return constant_value(*constant->constValue, ast);
+      return scalars_.constant(*constant->constValue, ast->type, ast);
     }
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
       return expression(nested->expression);
@@ -700,8 +402,8 @@ class Translator {
       return convert(cast->expression, cast->type, ast);
     }
     if (auto* cast = cxx::ast_cast<cxx::BuiltinBitCastExpressionAST>(ast)) {
-      auto input = type(cast->expression->type, ast);
-      auto output = type(cast->type, ast);
+      auto input = types_.get(cast->expression->type, ast);
+      auto output = types_.get(cast->type, ast);
       if (loom_type_kind(input) != LOOM_TYPE_SCALAR ||
           loom_type_kind(output) != LOOM_TYPE_SCALAR ||
           unit_.control()->memoryLayout()->sizeOf(cast->expression->type) !=
@@ -715,8 +417,8 @@ class Translator {
       return result(op);
     }
     if (auto* cast = cxx::ast_cast<cxx::CastExpressionAST>(ast)) {
-      if (loom_type_kind(type(cast->type, ast)) != LOOM_TYPE_SCALAR ||
-          loom_type_kind(type(cast->expression->type, ast)) !=
+      if (loom_type_kind(types_.get(cast->type, ast)) != LOOM_TYPE_SCALAR ||
+          loom_type_kind(types_.get(cast->expression->type, ast)) !=
               LOOM_TYPE_SCALAR) {
         fail(ast, "explicit casts are restricted to numeric scalar values");
       }
@@ -724,15 +426,15 @@ class Translator {
     }
     if (auto* cast = cxx::ast_cast<cxx::CppCastExpressionAST>(ast)) {
       if (cast->castOp != cxx::TokenKind::T_STATIC_CAST ||
-          loom_type_kind(type(cast->type, ast)) != LOOM_TYPE_SCALAR ||
-          loom_type_kind(type(cast->expression->type, ast)) !=
+          loom_type_kind(types_.get(cast->type, ast)) != LOOM_TYPE_SCALAR ||
+          loom_type_kind(types_.get(cast->expression->type, ast)) !=
               LOOM_TYPE_SCALAR) {
         fail(ast, "only numeric static_cast is admitted");
       }
       return convert(cast->expression, cast->type, ast);
     }
     if (auto* cast = cxx::ast_cast<cxx::TypeConstructionAST>(ast)) {
-      auto output = type(ast->type, ast);
+      auto output = types_.get(ast->type, ast);
       if (cast->constructorSymbol ||
           loom_type_kind(output) != LOOM_TYPE_SCALAR ||
           (cast->expressionList && cast->expressionList->next)) {
@@ -744,12 +446,12 @@ class Translator {
       loom_op_t* op;
       check(loom_scalar_constant_build(
           &builder_,
-          is_float(ast->type) ? loom_attr_f64(0.0) : loom_attr_i64(0), output,
-          source, &op));
+          types_.is_float(ast->type) ? loom_attr_f64(0.0) : loom_attr_i64(0),
+          output, source, &op));
       return result(op);
     }
     if (auto* select = cxx::ast_cast<cxx::ConditionalExpressionAST>(ast)) {
-      auto output = type(select->type, ast);
+      auto output = types_.get(select->type, ast);
       if (loom_type_kind(output) != LOOM_TYPE_SCALAR) {
         fail(ast, "conditional expressions require scalar results");
       }
@@ -778,15 +480,16 @@ class Translator {
         if (variable->constValue() &&
             (variable->isConstexpr() ||
              unit_.typeTraits().is_const(variable->type()))) {
-          return name(constant_value(*variable->constValue(), ast),
-                      cxx::to_string(variable->name()));
+          return name(
+              scalars_.constant(*variable->constValue(), ast->type, ast),
+              cxx::to_string(variable->name()));
         }
       }
       fail(ast, "unbound source value: " +
                     cxx::to_string(id->symbol ? id->symbol->name() : nullptr));
     }
     if (auto* literal = cxx::ast_cast<cxx::BoolLiteralExpressionAST>(ast)) {
-      return constant(literal->isTrue, LOOM_SCALAR_TYPE_I1, source);
+      return scalars_.integer(literal->isTrue, LOOM_SCALAR_TYPE_I1, source);
     }
     if (cxx::ast_cast<cxx::IntLiteralExpressionAST>(ast) ||
         cxx::ast_cast<cxx::FloatLiteralExpressionAST>(ast)) {
@@ -795,7 +498,7 @@ class Translator {
       if (!value) {
         fail(ast, "literal has no constant value");
       }
-      return constant_value(*value, ast);
+      return scalars_.constant(*value, ast->type, ast);
     }
     if (auto* member = cxx::ast_cast<cxx::MemberExpressionAST>(ast)) {
       auto* base = cxx::ast_cast<cxx::IdExpressionAST>(member->baseExpression);
@@ -832,7 +535,7 @@ class Translator {
       auto value =
           name(result(op), cxx::to_string(base->symbol->name()) + "_" + axis);
       check(loom_index_cast_build(&builder_, value, coordinate,
-                                  type(ast->type, ast), source, &op));
+                                  types_.get(ast->type, ast), source, &op));
       return result(op);
     }
     if (auto* binary = cxx::ast_cast<cxx::BinaryExpressionAST>(ast)) {
@@ -846,11 +549,11 @@ class Translator {
       // width; normalize that count without changing any defined execution.
       if (binary->op == cxx::TokenKind::T_LESS_LESS ||
           binary->op == cxx::TokenKind::T_GREATER_GREATER) {
-        right = convert_value(right, binary->rightExpression->type,
-                              binary->leftExpression->type, ast);
+        right = scalars_.convert(right, binary->rightExpression->type,
+                                 binary->leftExpression->type, ast);
       }
-      return binary_value(binary->op, left, right, binary->leftExpression->type,
-                          ast->type, ast);
+      return scalars_.binary(binary->op, left, right,
+                             binary->leftExpression->type, ast->type, ast);
     }
     if (auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast)) {
       if (unary->symbol) {
@@ -861,13 +564,14 @@ class Translator {
         return value;
       }
       loom_op_t* op;
-      auto output = type(ast->type, ast);
+      auto output = types_.get(ast->type, ast);
       if (unary->op == cxx::TokenKind::T_MINUS) {
-        if (is_float(ast->type)) {
+        if (types_.is_float(ast->type)) {
           check(
               loom_scalar_negf_build(&builder_, 0, value, output, source, &op));
         } else {
-          auto zero = constant(0, loom_type_element_type(output), source);
+          auto zero =
+              scalars_.integer(0, loom_type_element_type(output), source);
           check(loom_scalar_subi_build(&builder_, 0, zero, value, output,
                                        source, &op));
         }
@@ -875,8 +579,10 @@ class Translator {
       }
       if (unary->op == cxx::TokenKind::T_TILDE ||
           unary->op == cxx::TokenKind::T_EXCLAIM) {
-        value = convert_value(value, unary->expression->type, ast->type, ast);
-        auto mask = constant(unary->op == cxx::TokenKind::T_EXCLAIM ? 1 : -1,
+        value =
+            scalars_.convert(value, unary->expression->type, ast->type, ast);
+        auto mask =
+            scalars_.integer(unary->op == cxx::TokenKind::T_EXCLAIM ? 1 : -1,
                              loom_type_element_type(output), source);
         check(loom_scalar_xori_build(&builder_, value, mask, output, source,
                                      &op));
@@ -891,7 +597,7 @@ class Translator {
       check(loom_view_load_build(&builder_, 0, 0, access.view,
                                  access.index ? &*access.index : nullptr,
                                  access.index ? 1 : 0, &selector, 1, 0, 0,
-                                 type(ast->type, ast), source, &op));
+                                 types_.get(ast->type, ast), source, &op));
       return result(op);
     }
     if (auto* call = cxx::ast_cast<cxx::CallExpressionAST>(ast)) {
@@ -906,7 +612,7 @@ class Translator {
       for (auto* argument : cxx::ListView{call->expressionList}) {
         arguments.push_back(expression(argument));
       }
-      auto result_type = type(ast->type, ast);
+      auto result_type = types_.get(ast->type, ast);
       loom_op_t* op;
       if (annotated(function, "subgroup_size")) {
         if (!arguments.empty() ||
@@ -972,50 +678,27 @@ class Translator {
         }
         if (variable->symbol && annotated(variable->symbol, "workgroup")) {
           auto* array = cxx::type_cast<cxx::BoundedArrayType>(
-              unqualified(variable->symbol->type()));
+              types_.unqualified(variable->symbol->type()));
           if (!array || variable->initializer || !kernel_) {
             fail(ast,
                  "shared storage must be an uninitialized fixed scalar array "
                  "in the kernel");
           }
-          type(array, variable);
-          auto* layout = unit_.control()->memoryLayout();
-          auto bytes = layout->sizeOf(array);
-          auto alignment = layout->alignmentOf(array);
-          if (!bytes || !alignment) {
-            fail(ast, "unknown shared array layout");
-          }
-          auto length = constant(*bytes, LOOM_SCALAR_TYPE_OFFSET,
-                                 locations_.get(variable));
-          loom_op_t* op;
-          check(loom_buffer_alloca_build(
-              &builder_, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP,
-              std::max<int64_t>(*alignment,
-                                source_variable->explicitAlignment()),
-              length, loom_type_buffer(), locations_.get(variable), &op));
-          auto root =
-              name(result(op), cxx::to_string(variable->symbol->name()));
-          values_[variable->symbol] = root;
-          auto base =
-              constant(0, LOOM_SCALAR_TYPE_OFFSET, locations_.get(variable));
-          auto element = type(array->elementType(), variable);
-          auto view_type = loom_type_shaped_1d(LOOM_TYPE_VIEW,
-                                               loom_type_element_type(element),
-                                               array->size(), 0);
-          check(loom_buffer_view_build(&builder_, root, base, view_type,
-                                       locations_.get(variable), &op));
-          array_views_[root] = name(
-              result(op), cxx::to_string(variable->symbol->name()) + "_view");
+          auto allocation = storage_.workgroup(
+              array, source_variable->explicitAlignment(), variable);
+          auto spelling = cxx::to_string(variable->symbol->name());
+          values_[variable->symbol] = name(allocation.buffer, spelling);
+          name(allocation.view, spelling + "_view");
           continue;
         }
         if (!variable->initializer || !variable->symbol) {
           fail(ast, "locals require initializers");
         }
         if (cxx::type_cast<cxx::BoundedArrayType>(
-                unqualified(variable->symbol->type()))) {
+                types_.unqualified(variable->symbol->type()))) {
           fail(ast, "local arrays require __shared__ in this slice");
         }
-        type(variable->symbol->type(), variable);
+        types_.get(variable->symbol->type(), variable);
         values_[variable->symbol] =
             name(expression(variable->initializer),
                  cxx::to_string(variable->symbol->name()));
@@ -1222,10 +905,11 @@ class Translator {
     auto* bound = cxx::ast_cast<cxx::IdExpressionAST>(upper);
     if (!left || !increment || left->symbol != induction ||
         increment->symbol != induction ||
-        unqualified(induction->type())->kind() != cxx::TypeKind::kUnsignedInt ||
-        unqualified(condition->leftExpression->type)->kind() !=
+        types_.unqualified(induction->type())->kind() !=
             cxx::TypeKind::kUnsignedInt ||
-        unqualified(condition->rightExpression->type)->kind() !=
+        types_.unqualified(condition->leftExpression->type)->kind() !=
+            cxx::TypeKind::kUnsignedInt ||
+        types_.unqualified(condition->rightExpression->type)->kind() !=
             cxx::TypeKind::kUnsignedInt ||
         (!bound && !cxx::ast_cast<cxx::IntLiteralExpressionAST>(upper))) {
       return nullptr;
@@ -1256,7 +940,7 @@ class Translator {
     auto lower = unsigned_offset(values_.at(induction), source);
     auto upper =
         unsigned_offset(expression(condition->rightExpression), source);
-    auto step = constant(step_value, LOOM_SCALAR_TYPE_OFFSET, source);
+    auto step = scalars_.integer(step_value, LOOM_SCALAR_TYPE_OFFSET, source);
     auto written = live_mutations(loop);
     std::erase(written, induction);
     auto initial = current(written);
@@ -1268,7 +952,8 @@ class Translator {
                           cxx::to_string(induction->name()));
     loom_op_t* cast;
     check(loom_index_cast_build(&builder_, iteration, value_type(iteration),
-                                type(induction->type(), loop), source, &cast));
+                                types_.get(induction->type(), loop), source,
+                                &cast));
     values_[induction] = result(cast);
     for (size_t index = 0; index < written.size(); ++index) {
       values_[written[index]] = name(loom_region_entry_arg_id(body, index + 1),
@@ -1329,7 +1014,7 @@ class Translator {
                                   : nullptr;
         if (!condition || condition->symbol ||
             condition->op != cxx::TokenKind::T_LESS || !binding ||
-            !is_unsigned(binding->type) ||
+            !types_.is_unsigned(binding->type) ||
             !cxx::ast_cast<cxx::IntLiteralExpressionAST>(
                 condition->rightExpression)) {
           fail(ast,
@@ -1343,7 +1028,7 @@ class Translator {
           fail(ast, "assume upper bound must fit positive signed i32");
         }
         auto value = expression(binding);
-        auto value_type = type(binding->type, ast);
+        auto value_type = types_.get(binding->type, ast);
         loom_predicate_t predicate = {
             .kind = LOOM_PREDICATE_RANGE,
             .arg_count = 3,
@@ -1360,7 +1045,7 @@ class Translator {
         return;
       }
       if (!id || !annotated(id->symbol, "barrier")) {
-        if (unqualified(ast->type)->kind() != cxx::TypeKind::kVoid) {
+        if (types_.unqualified(ast->type)->kind() != cxx::TypeKind::kVoid) {
           expression(ast);
           return;
         }
@@ -1409,12 +1094,13 @@ class Translator {
       auto old = expression(destination);
       auto value = expression(assignment->rightExpression);
       auto* promoted = assignment->leftExpression->type;
-      old = convert_value(old, destination->type, promoted, ast);
-      value = convert_value(value, assignment->rightExpression->type, promoted,
-                            ast);
-      auto updated = binary_value(cxx::get_underlying_binary_op(assignment->op),
-                                  old, value, promoted, promoted, ast);
-      updated = convert_value(updated, promoted, destination->type, ast);
+      old = scalars_.convert(old, destination->type, promoted, ast);
+      value = scalars_.convert(value, assignment->rightExpression->type,
+                               promoted, ast);
+      auto updated =
+          scalars_.binary(cxx::get_underlying_binary_op(assignment->op), old,
+                          value, promoted, promoted, ast);
+      updated = scalars_.convert(updated, promoted, destination->type, ast);
       values_[destination->symbol] =
           name(updated, cxx::to_string(destination->symbol->name()));
       return;
@@ -1468,12 +1154,12 @@ class Translator {
     }
     if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(destination)) {
       if (!unit_.typeTraits().is_integral(id->type) ||
-          unqualified(id->type)->kind() == cxx::TypeKind::kBool) {
+          types_.unqualified(id->type)->kind() == cxx::TypeKind::kBool) {
         fail(ast, "increment requires an integer local");
       }
       auto old = expression(id);
-      auto one = constant(1, loom_type_element_type(value_type(old)),
-                          locations_.get(ast));
+      auto one = scalars_.integer(1, loom_type_element_type(value_type(old)),
+                                  locations_.get(ast));
       loom_op_t* op;
       auto build = decrement ? loom_scalar_subi_build : loom_scalar_addi_build;
       check(build(&builder_, 0, old, one, value_type(old), locations_.get(ast),
@@ -1490,16 +1176,22 @@ class Translator {
   cxx::TranslationUnit& unit_;
   // Source diagnostics share frontend byte ranges and the caller sink.
   Diagnostics& diagnostics_;
-  // Retained source ranges copied into the output module.
-  Locations locations_;
-  // Retained generated operation bindings for reached source declarations.
-  Intrinsics intrinsics_;
-  // Admitted launch contracts, including bounds from function redeclarations.
-  LaunchContracts launches_;
   // Output arena owner.
   loom_module_t* module_;
   // Current insertion point in the structured output.
   loom_builder_t builder_ = {};
+  // Retained source ranges copied into the output module.
+  Locations locations_;
+  // Source type and scalar representation contracts.
+  Types types_;
+  // Numeric builders consume evaluated operands without AST callbacks.
+  Scalars scalars_;
+  // Memory representations retain declared array extents and access shape.
+  Storage storage_;
+  // Retained generated operation bindings for reached source declarations.
+  Intrinsics intrinsics_;
+  // Admitted launch contracts, including bounds from function redeclarations.
+  LaunchContracts launches_;
   // Borrowed source configuration for this invocation.
   const loom_cxx_import_options_t& options_;
   // Explicit source-level permission for approximate math function results.
@@ -1520,8 +1212,6 @@ class Translator {
   std::unordered_map<cxx::FunctionSymbol*, std::string> qualified_names_;
   // Source-owned mutation facts retained for all reached function bodies.
   Mutations mutations_;
-  // Fixed array extents become named views at their declarations.
-  std::unordered_map<loom_value_id_t, loom_value_id_t> array_views_;
 };
 }  // namespace
 
