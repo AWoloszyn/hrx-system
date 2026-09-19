@@ -668,15 +668,12 @@ class Translator {
           fail(ast, "vector logical operators require lane-wise evaluation");
         }
         // The semantic AST supplies both contextual boolean conversions.
-        // The skipped arm has a known boolean result and never evaluates the
-        // right operand, including its memory accesses and binding updates.
+        // The skipped arm forwards the left value, preserving its identity
+        // without evaluating right-side memory accesses or binding updates.
         auto evaluate_right = [&] {
           return expression(binary->rightExpression);
         };
-        auto skipped = [&] {
-          return Value(scalars_.integer(binary->op == cxx::TokenKind::T_BAR_BAR,
-                                        LOOM_SCALAR_TYPE_I1, source));
-        };
+        auto skipped = [&] { return left; };
         return binary->op == cxx::TokenKind::T_AMP_AMP
                    ? conditional_value(ast, left.ssa(), evaluate_right, skipped)
                    : conditional_value(ast, left.ssa(), skipped,
