@@ -144,3 +144,66 @@ low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @
   %value0 = global_load_b32_saddr %109, %163
   return %value0
 }
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @correlated_duplicate_rotation(%input: buffer, %count_input: index, %first_offset_input: offset, %second_offset_input: offset) -> (i32) {
+  %count = index.assume %count_input [range(%count_input, 0, 257)] : index
+  %first_offset = index.assume %first_offset_input [range(%first_offset_input, 0, 4092), mul(%first_offset_input, 4)] : offset
+  %second_offset = index.assume %second_offset_input [range(%second_offset_input, 0, 4092), mul(%second_offset_input, 4)] : offset
+  %storage = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %first_view = buffer.view %storage[%first_offset] : buffer -> view<1xi32>
+  %second_view = buffer.view %storage[%second_offset] : buffer -> view<1xi32>
+  %last_a_offset, %last_a_view, %last_a_duplicate, %last_b_offset, %last_b_view = scf.for %i = [%begin to %count step %step](%a_offset = %first_offset : offset, %a_view = %first_view : view<1xi32>, %a_duplicate = %first_view : view<1xi32>, %b_offset = %second_offset : offset, %b_view = %second_view : view<1xi32>) -> (offset, view<1xi32>, view<1xi32>, offset, view<1xi32>) {
+    scf.yield %b_offset, %b_view, %b_view, %a_offset, %a_view : offset, view<1xi32>, view<1xi32>, offset, view<1xi32>
+  }
+  %last_a_offset_view = buffer.view %storage[%last_a_offset] : buffer -> view<1xi32>
+  %a_offset_value = view.load %last_a_offset_view[0] : view<1xi32> -> i32
+  %a_view_value = view.load %last_a_view[0] : view<1xi32> -> i32
+  %a_duplicate_value = view.load %last_a_duplicate[0] : view<1xi32> -> i32
+  %last_b_offset_view = buffer.view %storage[%last_b_offset] : buffer -> view<1xi32>
+  %b_offset_value = view.load %last_b_offset_view[0] : view<1xi32> -> i32
+  %b_view_value = view.load %last_b_view[0] : view<1xi32> -> i32
+  %sum0 = scalar.addi %a_offset_value, %a_view_value : i32
+  %sum1 = scalar.addi %sum0, %a_duplicate_value : i32
+  %sum2 = scalar.addi %sum1, %b_offset_value : i32
+  %sum3 = scalar.addi %sum2, %b_view_value : i32
+  func.return %sum3 : i32
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @correlated_duplicate_rotation(%count: reg<amdgpu.sgpr>, %first_offset: reg<amdgpu.sgpr x2>, %second_offset: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %last_a_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %begin = s_mov_b32 0
+  %step = s_mov_b32 1
+  %71 = slice %first_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %72 = slice %second_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  low.br ^_bb1(%begin: reg<amdgpu.sgpr>, %71: reg<amdgpu.sgpr>, %72: reg<amdgpu.sgpr>)
+^_bb1(%i: reg<amdgpu.sgpr>, %a_offset: reg<amdgpu.sgpr>, %b_offset: reg<amdgpu.sgpr>):
+  %73 = s_cmp_lt_i32 %i, %count
+  low.cond_br %73, ^_bb2, ^_bb3 : reg<amdgpu.scc>
+^_bb2:
+  %74 = s_add_u32 %i, %step
+  low.br ^_bb1(%74: reg<amdgpu.sgpr>, %b_offset: reg<amdgpu.sgpr>, %a_offset: reg<amdgpu.sgpr>)
+^_bb3:
+  %75 = v_mov_b32 0
+  %76 = slice %last_a_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %77 = slice %last_a_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %79, %80 = s_add_co_u32 %76, %a_offset
+  %81, %82 = s_addc_u32 %77, %begin, %80
+  %83 = concat(%79, %81) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %a_offset_value = global_load_b32_saddr %75, %83
+  %89, %90 = s_add_co_u32 %76, %b_offset
+  %91, %92 = s_addc_u32 %77, %begin, %90
+  %93 = concat(%89, %91) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %b_offset_value = global_load_b32_saddr %75, %93
+  %sum0 = v_add_u32 %a_offset_value, %a_offset_value
+  %sum1 = v_add_u32 %sum0, %a_offset_value
+  %sum2 = v_add_u32 %sum1, %b_offset_value
+  %sum3 = v_add_u32 %sum2, %b_offset_value
+  return %sum3
+}

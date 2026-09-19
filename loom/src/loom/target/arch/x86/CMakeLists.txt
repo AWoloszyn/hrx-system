@@ -146,6 +146,7 @@ loom_check_test_suite(
     "test/source_low/source_low_schedule_scopes.loom-test"
     "test/source_low/source_low_v4.loom-test"
     "test/source_low/vector_large_insert.loom-test"
+    "test/source_low/view_transport.loom-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"
@@ -164,6 +165,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_large_insert.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_v16.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_v4.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/view_transport.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
     "test/source_low/"
 )

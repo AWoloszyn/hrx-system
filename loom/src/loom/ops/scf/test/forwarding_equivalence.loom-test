@@ -1,0 +1,197 @@
+// RUN: pass canonicalize
+
+// A runtime loop can execute zero, one, or many trips. Five authored columns
+// describe two exact recurrence states, so canonicalization retains one column
+// for each state without specializing the trip count.
+func.def @two_class_rotation(%count: index, %first: offset, %second: offset) -> (offset, offset, offset, offset, offset) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r1, %r2, %r3, %r4 = scf.for %i = [%begin to %count step %step](%a0 = %first : offset, %a1 = %first : offset, %a2 = %first : offset, %b0 = %second : offset, %b1 = %second : offset) -> (offset, offset, offset, offset, offset) {
+    scf.yield %b0, %b1, %b1, %a0, %a1 : offset, offset, offset, offset, offset
+  }
+  func.return %r0, %r1, %r2, %r3, %r4 : offset, offset, offset, offset, offset
+}
+
+// ----
+func.def @two_class_rotation(%count: index, %first: offset, %second: offset) -> (offset, offset, offset, offset, offset) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r3 = scf.for %i = [%begin to %count step %step](%a0 = %first : offset, %b0 = %second : offset) -> (offset, offset) {
+    scf.yield %b0, %a0 : offset, offset
+  }
+  func.return %r0, %r0, %r0, %r3, %r3 : offset, offset, offset, offset, offset
+}
+
+// ====
+
+// Equal opaque terminal identities merge without interpreting their producer.
+// A different terminal remains a separate state even though all initial values
+// are equal.
+func.def @opaque_terminal_classes(%count: index, %seed: i32, %first: i32, %second: i32) -> (i32, i32, i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r1, %r2 = scf.for %i = [%begin to %count step %step](%a0 = %seed : i32, %a1 = %seed : i32, %b = %seed : i32) -> (i32, i32, i32) {
+    scf.yield %first, %first, %second : i32, i32, i32
+  }
+  func.return %r0, %r1, %r2 : i32, i32, i32
+}
+
+// ----
+func.def @opaque_terminal_classes(%count: index, %seed: i32, %first: i32, %second: i32) -> (i32, i32, i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r2 = scf.for %i = [%begin to %count step %step](%a0 = %seed : i32, %b = %seed : i32) -> (i32, i32) {
+    scf.yield %first, %second : i32, i32
+  }
+  func.return %r0, %r0, %r2 : i32, i32, i32
+}
+
+// ====
+
+// Equal transition structure does not merge states with different zero-trip
+// values.
+func.def @distinct_initial_rotation(%count: index, %first: i32, %second: i32) -> (i32, i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r1 = scf.for %i = [%begin to %count step %step](%a = %first : i32, %b = %second : i32) -> (i32, i32) {
+    scf.yield %b, %a : i32, i32
+  }
+  func.return %r0, %r1 : i32, i32
+}
+
+// ====
+
+// Exact identities established by scalar.assume color initial and terminal
+// values alike. The kept tied result originally names the removed duplicate
+// operand and must be retied to the representative operand atomically.
+func.def @identity_alias_retargets_tied_operand(%count: index, %initial: f32) -> (f32, f32) {
+  %alias = scalar.assume %initial [] : f32
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r1 = scf.for %i = [%begin to %count step %step](%a = %initial : f32, %b = %alias : f32) -> (%alias as f32, f32) {
+    %next = scalar.addf %a, %b : f32
+    scf.yield %next, %next : f32, f32
+  }
+  func.return %r0, %r1 : f32, f32
+}
+
+// ----
+func.def @identity_alias_retargets_tied_operand(%count: index, %initial: f32) -> (f32, f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0 = scf.for %i = [%begin to %count step %step](%a = %initial : f32) -> (%initial as f32) {
+    %next = scalar.addf %a, %a : f32
+    scf.yield %next : f32
+  }
+  func.return %r0, %r0 : f32, f32
+}
+
+// ====
+
+// A tie attached only to the removed duplicate result transfers to the kept
+// representative instead of disappearing with the duplicate column.
+func.def @removed_duplicate_transfers_tied_result(%count: index, %initial: f32) -> (f32, f32) {
+  %alias = scalar.assume %initial [] : f32
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r1 = scf.for %i = [%begin to %count step %step](%a = %initial : f32, %b = %alias : f32) -> (f32, %alias as f32) {
+    %next = scalar.addf %a, %b : f32
+    scf.yield %next, %next : f32, f32
+  }
+  func.return %r0, %r1 : f32, f32
+}
+
+// ----
+func.def @removed_duplicate_transfers_tied_result(%count: index, %initial: f32) -> (f32, f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0 = scf.for %i = [%begin to %count step %step](%a = %initial : f32) -> (%initial as f32) {
+    %next = scalar.addf %a, %a : f32
+    scf.yield %next : f32
+  }
+  func.return %r0, %r0 : f32, f32
+}
+
+// ====
+
+// Optional policy operands follow the carried tuple in flat operand storage.
+// They and a valid bound-operand tie survive rebuilding a smaller tuple.
+func.def @policy_operands_survive_compaction(%lower: index, %upper: index, %seed: index, %depth: index, %factor: index) -> (index, index) {
+  %step = index.constant 1 : index
+  %r0, %r1 = scf.for %i = [%lower to %upper step %step](%a = %seed : index, %b = %seed : index) -> (index, %lower as index) pipeline(%depth) unroll(%factor) {
+    %next = index.add %a, %step : index
+    scf.yield %next, %next : index, index
+  }
+  func.return %r0, %r1 : index, index
+}
+
+// ----
+func.def @policy_operands_survive_compaction(%lower: index, %upper: index, %seed: index, %depth: index, %factor: index) -> (index, index) {
+  %step = index.constant 1 : index
+  %r0 = scf.for %i = [%lower to %upper step %step](%a = %seed : index) -> (%lower as index) pipeline(%depth) unroll(%factor) {
+    %next = index.add %a, %step : index
+    scf.yield %next : index
+  }
+  func.return %r0, %r0 : index, index
+}
+
+// ====
+
+// Two equivalent results tied to different surviving operands cannot become a
+// single valid tie. The tuple remains intact rather than discarding ownership.
+func.def @conflicting_ties_prevent_compaction(%lower: index, %upper: index, %seed: index) -> (index, index) {
+  %step = index.constant 1 : index
+  %r0, %r1 = scf.for %i = [%lower to %upper step %step](%a = %seed : index, %b = %seed : index) -> (%lower as index, %upper as index) {
+    %next = index.add %a, %step : index
+    scf.yield %next, %next : index, index
+  }
+  func.return %r0, %r1 : index, index
+}
+
+// ====
+
+// Rebuilding an outer tuple remaps duplicate body arguments used by a nested
+// region while retaining the two real rotation states.
+func.def @nested_region_uses_duplicate_columns(%outer_count: index, %inner_count: index, %first: i32, %second: i32) -> (i32, i32, i32, i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r1, %r2, %r3 = scf.for %outer = [%begin to %outer_count step %step](%a0 = %first : i32, %a1 = %first : i32, %b0 = %second : i32, %b1 = %second : i32) -> (i32, i32, i32, i32) {
+    scf.for %inner = [%begin to %inner_count step %step] {
+      test.use %a1, %b1 : i32, i32
+    }
+    scf.yield %b0, %b1, %a0, %a1 : i32, i32, i32, i32
+  }
+  func.return %r0, %r1, %r2, %r3 : i32, i32, i32, i32
+}
+
+// ----
+func.def @nested_region_uses_duplicate_columns(%outer_count: index, %inner_count: index, %first: i32, %second: i32) -> (i32, i32, i32, i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r2 = scf.for %outer = [%begin to %outer_count step %step](%a0 = %first : i32, %b0 = %second : i32) -> (i32, i32) {
+    scf.for %inner = [%begin to %inner_count step %step] {
+      test.use %a0, %b0 : i32, i32
+    }
+    scf.yield %b0, %a0 : i32, i32
+  }
+  func.return %r0, %r0, %r2, %r2 : i32, i32, i32, i32
+}
+
+// ====
+
+// Fact-equivalent values with different structural types remain separate.
+// Replacing either column with the other would invalidate the carried view
+// contract even though both values denote the same underlying view.
+func.def @different_view_types_do_not_merge(%buffer: buffer, %offset: offset, %count: index) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = buffer.view %buffer[%offset] : buffer -> view<4xf32, %layout>
+  %refined = view.refine %base : view<4xf32, %layout> -> view<4xf32>
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %r0, %r1 = scf.for %i = [%begin to %count step %step](%a = %base : view<4xf32, %layout>, %b = %refined : view<4xf32>) -> (view<4xf32, %layout>, view<4xf32>) {
+    test.use %a, %b : view<4xf32, %layout>, view<4xf32>
+    scf.yield %base, %refined : view<4xf32, %layout>, view<4xf32>
+  }
+  test.use %r0, %r1 : view<4xf32, %layout>, view<4xf32>
+  func.return
+}
