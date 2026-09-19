@@ -435,6 +435,13 @@ bool loom_value_fact_table_query_contextual_query_origin(
     loom_value_id_t value_id,
     loom_value_fact_contextual_query_origin_t* out_origin);
 
+// Returns the sparse value index for retained contextual query origins. The
+// borrowed values are unique, appear in first-definition order and remain valid
+// until the fact-table scope is cleared.
+void loom_value_fact_table_contextual_query_values(
+    const loom_value_fact_table_t* table, const loom_value_id_t** out_value_ids,
+    iree_host_size_t* out_value_count);
+
 // Returns the canonical SSA identity retained for |value_id|, or |value_id|
 // itself when the table is NULL or no identity has been established. This is
 // an O(1) lookup, not an IR traversal. Identities have the same populated-scope

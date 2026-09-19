@@ -991,7 +991,8 @@ static loom_decision_program_predicate_refiner_t
 loom_template_decision_site_predicate_refiner(
     const loom_template_decision_site_t* site,
     loom_template_decision_evaluation_context_t* context) {
-  if (site->application_facts->path.integer_relation_count == 0) {
+  if (!loom_condition_fact_scope_has_integer_relations(
+          site->application_facts->path)) {
     return loom_decision_program_predicate_refiner_empty();
   }
   return (loom_decision_program_predicate_refiner_t){

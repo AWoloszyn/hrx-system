@@ -168,15 +168,13 @@ static void loom_print_name_check_capture(
 
 static void loom_print_name_check_type_captures(
     loom_print_name_capture_state_t* state, loom_value_id_t value_id) {
-  if (value_id >= state->module->values.count) {
-    return;
-  }
-  for (loom_type_use_id_t use_id =
-           loom_module_value_first_outgoing_type_use(state->module, value_id);
-       use_id != LOOM_TYPE_USE_ID_INVALID;) {
-    const loom_type_use_t* use = &state->module->type_uses.records[use_id];
-    loom_print_name_check_capture(state, use->referenced_value_id);
-    use_id = use->next_outgoing_use_id;
+  loom_type_use_iterator_t dependencies;
+  loom_module_value_type_dependencies(state->module, value_id, &dependencies);
+  for (loom_value_id_t referenced_id =
+           loom_type_dependencies_next(&dependencies);
+       referenced_id != LOOM_VALUE_ID_INVALID;
+       referenced_id = loom_type_dependencies_next(&dependencies)) {
+    loom_print_name_check_capture(state, referenced_id);
   }
 }
 
@@ -245,13 +243,15 @@ static void loom_print_name_check_region_captures(
       for (uint16_t i = 0; i < op->result_count; ++i) {
         loom_print_name_check_type_captures(state, results[i]);
       }
-      const loom_attribute_use_id_t* heads = loom_op_attribute_use_heads(op);
       for (uint8_t i = 0; i < op->attribute_count; ++i) {
-        for (loom_attribute_use_id_t use_id = heads[i]; use_id;) {
-          const loom_attribute_use_t* use =
-              &state->module->attribute_uses.records[use_id - 1];
-          loom_print_name_check_capture(state, use->value_id);
-          use_id = use->next_outgoing;
+        loom_type_use_iterator_t dependencies;
+        loom_attribute_dependencies_begin(&state->module->type_uses, op, i,
+                                          &dependencies);
+        for (loom_value_id_t referenced_id =
+                 loom_type_dependencies_next(&dependencies);
+             referenced_id != LOOM_VALUE_ID_INVALID;
+             referenced_id = loom_type_dependencies_next(&dependencies)) {
+          loom_print_name_check_capture(state, referenced_id);
         }
       }
       loom_print_name_restore(state, signature_watermark);

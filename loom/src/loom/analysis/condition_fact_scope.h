@@ -81,6 +81,15 @@ bool loom_condition_fact_scope_for_each_anchored_while(
     iree_host_size_t anchor_count, loom_cfg_condition_relation_visit_fn_t visit,
     void* user_data);
 
+// Visits every local relation once and indexed relations incident to any value
+// in |value_ids|. Repeated indexed relations across values may be visited more
+// than once. Returns false when |visit| stops.
+bool loom_condition_fact_scope_for_each_value_anchored_while(
+    const loom_condition_fact_scope_t* scope,
+    const loom_value_fact_table_t* fact_table, const loom_value_id_t* value_ids,
+    iree_host_size_t value_count, loom_cfg_condition_relation_visit_fn_t visit,
+    void* user_data);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -17,6 +17,7 @@ loom_cc_library(
     srcs = ["template_applicability.c"],
     hdrs = ["template_applicability.h"],
     deps = [
+        "//loom/src/loom/analysis:condition_fact_scope",
         "//loom/src/loom/analysis:condition_facts",
         "//loom/src/loom/analysis:template_provider_catalog",
         "//loom/src/loom/decision:predicate",
@@ -119,6 +120,8 @@ loom_cc_library(
         ":template_decision_model",
         ":template_rewrite",
         "//loom/src/loom/analysis:cfg_condition_facts",
+        "//loom/src/loom/analysis:cfg_value_identity",
+        "//loom/src/loom/analysis:condition_fact_scope",
         "//loom/src/loom/analysis:condition_facts",
         "//loom/src/loom/analysis:symbol_facts",
         "//loom/src/loom/analysis:symbol_liveness",

@@ -122,8 +122,8 @@ static bool loom_template_applicability_resolve_application_value_arg(
   if (application_facts->values) {
     out_arg->facts =
         loom_value_fact_table_lookup(application_facts->values, value_id);
-    (void)loom_condition_fact_set_apply_to_value_facts(
-        &application_facts->path, application_facts->values, value_id,
+    (void)loom_condition_fact_scope_apply_to_value_facts(
+        application_facts->path, application_facts->values, value_id,
         &out_arg->facts);
   }
   return true;
@@ -282,8 +282,8 @@ loom_template_applicability_evaluate_relation(
       loom_template_predicate_arg_as_condition_operand(
           rhs, &queried_relation.right)) {
     bool relation_result = false;
-    if (loom_condition_fact_set_proves_integer_relation(
-            &application_facts->path, application_facts->values,
+    if (loom_condition_fact_scope_proves_integer_relation(
+            application_facts->path, application_facts->values,
             &queried_relation, &relation_result)) {
       return relation_result ? LOOM_TEMPLATE_PROVIDER_MATCH
                              : LOOM_TEMPLATE_PROVIDER_REJECT;
@@ -342,8 +342,8 @@ loom_decision_truth_t loom_template_applicability_refine_predicate(
     if (refined_operands[i].identity == LOOM_DECISION_OPERAND_IDENTITY_NONE) {
       continue;
     }
-    (void)loom_condition_fact_set_apply_to_value_facts(
-        &application_facts->path, application_facts->values,
+    (void)loom_condition_fact_scope_apply_to_value_facts(
+        application_facts->path, application_facts->values,
         refined_operands[i].identity, &refined_operands[i].facts);
   }
   return loom_template_applicability_truth_from_feasibility(
@@ -461,38 +461,68 @@ loom_template_applicability_evaluate_target_condition_query_value(
       application_module, application_facts, &predicate);
 }
 
+typedef struct loom_template_target_condition_query_state_t {
+  // Module containing contextual query values.
+  const loom_module_t* application_module;
+
+  // Static condition being evaluated.
+  const loom_target_condition_t* condition;
+
+  // Function and lexical facts at the application site.
+  const loom_template_applicability_facts_t* application_facts;
+
+  // True when one relevant query proves the condition.
+  bool has_match;
+
+  // True when one relevant query disproves the condition.
+  bool has_reject;
+} loom_template_target_condition_query_state_t;
+
+static bool loom_template_applicability_evaluate_contextual_query_relation(
+    void* user_data, const loom_condition_integer_relation_t* relation) {
+  loom_template_target_condition_query_state_t* state =
+      (loom_template_target_condition_query_state_t*)user_data;
+  for (uint8_t operand_index = 0; operand_index < 2; ++operand_index) {
+    const loom_condition_integer_operand_t operand =
+        operand_index == 0 ? relation->left : relation->right;
+    if (operand.kind != LOOM_CONDITION_INTEGER_OPERAND_VALUE) {
+      continue;
+    }
+    const loom_template_provider_feasibility_t feasibility =
+        loom_template_applicability_evaluate_target_condition_query_value(
+            state->application_module, state->condition,
+            state->application_facts, operand.value_id);
+    state->has_match |= feasibility == LOOM_TEMPLATE_PROVIDER_MATCH;
+    state->has_reject |= feasibility == LOOM_TEMPLATE_PROVIDER_REJECT;
+  }
+  return !(state->has_match && state->has_reject);
+}
+
 static loom_template_provider_feasibility_t
 loom_template_applicability_evaluate_target_condition_queries(
     const loom_module_t* application_module,
     const loom_target_condition_t* condition,
     const loom_template_applicability_facts_t* application_facts) {
-  bool has_match = false;
-  bool has_reject = false;
-  for (iree_host_size_t i = 0;
-       i < application_facts->path.integer_relation_count; ++i) {
-    const loom_condition_integer_relation_t* relation =
-        &application_facts->path.integer_relations[i];
-    for (uint8_t operand_index = 0; operand_index < 2; ++operand_index) {
-      const loom_condition_integer_operand_t operand =
-          operand_index == 0 ? relation->left : relation->right;
-      if (operand.kind != LOOM_CONDITION_INTEGER_OPERAND_VALUE) {
-        continue;
-      }
-      const loom_template_provider_feasibility_t feasibility =
-          loom_template_applicability_evaluate_target_condition_query_value(
-              application_module, condition, application_facts,
-              operand.value_id);
-      has_match |= feasibility == LOOM_TEMPLATE_PROVIDER_MATCH;
-      has_reject |= feasibility == LOOM_TEMPLATE_PROVIDER_REJECT;
-    }
-  }
-  if (has_match && has_reject) {
+  loom_template_target_condition_query_state_t state = {
+      .application_module = application_module,
+      .condition = condition,
+      .application_facts = application_facts,
+  };
+  const loom_value_id_t* query_values = NULL;
+  iree_host_size_t query_value_count = 0;
+  loom_value_fact_table_contextual_query_values(
+      application_facts->values, &query_values, &query_value_count);
+  (void)loom_condition_fact_scope_for_each_value_anchored_while(
+      application_facts->path, application_facts->values, query_values,
+      query_value_count,
+      loom_template_applicability_evaluate_contextual_query_relation, &state);
+  if (state.has_match && state.has_reject) {
     return LOOM_TEMPLATE_PROVIDER_MAYBE;
   }
-  if (has_match) {
+  if (state.has_match) {
     return LOOM_TEMPLATE_PROVIDER_MATCH;
   }
-  if (has_reject) {
+  if (state.has_reject) {
     return LOOM_TEMPLATE_PROVIDER_REJECT;
   }
   return LOOM_TEMPLATE_PROVIDER_MAYBE;

@@ -11,6 +11,8 @@
 #include <string.h>
 
 #include "loom/analysis/cfg_condition_facts.h"
+#include "loom/analysis/cfg_value_identity.h"
+#include "loom/analysis/condition_fact_scope.h"
 #include "loom/analysis/condition_facts.h"
 #include "loom/analysis/symbol_facts.h"
 #include "loom/analysis/symbol_liveness.h"
@@ -18,6 +20,7 @@
 #include "loom/analysis/template_provider_catalog.h"
 #include "loom/ir/context.h"
 #include "loom/ir/facts.h"
+#include "loom/ir/local_value_domain.h"
 #include "loom/ir/module.h"
 #include "loom/ops/func/ops.h"
 #include "loom/ops/op_defs.h"
@@ -38,6 +41,7 @@
 #include "loom/transforms/symbol/template_decision_model.h"
 #include "loom/transforms/symbol/template_rewrite.h"
 #include "loom/util/dominance.h"
+#include "loom/util/fact_cfg.h"
 #include "loom/util/fact_table.h"
 
 //===----------------------------------------------------------------------===//
@@ -243,8 +247,8 @@ typedef struct loom_template_selection_entry_t {
 typedef struct loom_template_selection_cfg_facts_t {
   // Graph borrowed from the active function's value-fact scope.
   const loom_cfg_graph_t* graph;
-  // Entry relations indexed by the graph's dense block order.
-  loom_cfg_condition_fact_table_t conditions;
+  // Complete condition relations indexed by block and stable edge.
+  loom_cfg_condition_relation_table_t conditions;
   // Next CFG region in the same function fact scope.
   struct loom_template_selection_cfg_facts_t* next;
 } loom_template_selection_cfg_facts_t;
@@ -340,13 +344,22 @@ typedef struct loom_template_selection_state_t {
     iree_host_size_t origin_count;
   } required_origins;
 
-  // Reusable branch-relation storage for the apply site being classified.
+  // Reusable structured branch relations for the apply site being classified.
   struct {
-    // Relations implied by enclosing structured and explicit control flow.
+    // Relations implied by enclosing structured control flow.
     loom_condition_integer_relation_t* relations;
 
     // Allocated relation count.
-    iree_host_size_t capacity;
+    iree_host_size_t relation_capacity;
+
+    // Reusable complete-result wrapper over relations.
+    loom_condition_derivation_t local_derivation;
+
+    // Lexical scope nodes for indexed CFG views and local relations.
+    loom_condition_fact_scope_t* scopes;
+
+    // Allocated scope-node count.
+    iree_host_size_t scope_capacity;
   } application_path_scratch;
 
   // Reusable ranked-selection storage sized to the largest family.
@@ -356,11 +369,15 @@ typedef struct loom_template_selection_state_t {
   // selection. Only this transaction changes the fact owner before rewriting.
   struct {
     // Function of the most recent fact acquisition, including value-only uses.
-    const loom_op_t* function;
+    loom_op_t* function;
     // Target context used by that function's fact computation.
     const loom_target_facts_t* target_facts;
     // Borrowed active fact scope, shared by all applications in the function.
     loom_value_fact_table_t* values;
+    // Function-local value index borrowed by retained CFG relation tables.
+    loom_local_value_domain_t value_domain;
+    // Exact CFG forwarding identities borrowed by retained relation tables.
+    loom_cfg_value_identity_table_t value_identities;
     // CFG entry facts, populated on the first path-dependent application.
     loom_template_selection_cfg_facts_t* cfg_facts;
   } application_scope;
@@ -625,6 +642,14 @@ static iree_status_t loom_template_selection_prepare_cfg_facts(
       value_facts->regions.cfg_count == 0) {
     return iree_ok_status();
   }
+  const loom_func_like_t function =
+      loom_func_like_cast(state->module, state->application_scope.function);
+  IREE_RETURN_IF_ERROR(loom_local_value_domain_acquire_for_region_tree(
+      state->module, loom_func_like_body(function),
+      value_facts->transient_arena, &state->application_scope.value_domain));
+  IREE_RETURN_IF_ERROR(loom_cfg_value_identity_table_initialize(
+      &state->application_scope.value_domain, value_facts->transient_arena,
+      &state->application_scope.value_identities));
   loom_template_selection_cfg_builder_t builder = {
       .dominance =
           {
@@ -637,16 +662,32 @@ static iree_status_t loom_template_selection_prepare_cfg_facts(
                        .user_data = &builder,
                        .fn = loom_template_selection_add_cfg_graph,
                    }));
-  // All regions' dominators are available before entry relations are derived,
-  // including outer CFG blocks that define values used by nested regions.
+  // Complete the shared canonical identity table before publishing any
+  // relation domain that borrows it.
   iree_status_t status = iree_ok_status();
   for (loom_template_selection_cfg_facts_t* entry = builder.entries;
        entry && iree_status_is_ok(status); entry = entry->next) {
-    status = loom_cfg_condition_fact_table_compute(
+    const loom_value_fact_cfg_region_t* region =
+        loom_value_fact_table_lookup_cfg_region(value_facts,
+                                                entry->graph->region);
+    IREE_ASSERT(region != NULL);
+    status = loom_cfg_value_identity_table_update(
+        &state->application_scope.value_identities, region, &builder.dominance,
+        value_facts->transient_arena);
+  }
+  // All regions' dominators and identities are available before entry
+  // relations are derived, including values used by nested regions.
+  for (loom_template_selection_cfg_facts_t* entry = builder.entries;
+       entry && iree_status_is_ok(status); entry = entry->next) {
+    status = loom_cfg_condition_relation_table_compute(
         state->module, entry->graph, value_facts, &builder.dominance,
+        &state->application_scope.value_domain,
+        &state->application_scope.value_identities,
         value_facts->transient_arena, &entry->conditions);
   }
-  state->application_scope.cfg_facts = builder.entries;
+  if (iree_status_is_ok(status)) {
+    state->application_scope.cfg_facts = builder.entries;
+  }
   return status;
 }
 
@@ -654,8 +695,12 @@ static iree_status_t loom_template_selection_collect_application_path_facts(
     const loom_template_selection_cfg_facts_t* cfg_facts,
     loom_condition_query_t* condition_query,
     const loom_value_fact_table_t* value_facts, const loom_op_t* apply_op,
-    loom_condition_fact_set_t* out_path, bool* out_complete) {
+    loom_condition_derivation_t* local_derivation,
+    loom_condition_fact_scope_t* scope_storage, iree_host_size_t scope_capacity,
+    const loom_condition_fact_scope_t** out_scope, bool* out_complete) {
+  *out_scope = NULL;
   *out_complete = true;
+  iree_host_size_t scope_count = 0;
   for (const loom_op_t* child = apply_op; child && child->parent_block;
        child = child->parent_op) {
     const loom_block_t* block = child->parent_block;
@@ -665,22 +710,13 @@ static iree_status_t loom_template_selection_collect_application_path_facts(
       if (entry->graph->region != child_region) {
         continue;
       }
-      const loom_cfg_block_entry_condition_facts_t* facts =
-          loom_cfg_condition_fact_table_block(&entry->conditions,
-                                              block->region_index);
-      if (!facts) {
-        break;
-      }
-      if (facts->integer_relation_count >
-          out_path->integer_relation_capacity -
-              out_path->integer_relation_count) {
-        *out_complete = false;
-      } else if (facts->integer_relation_count != 0) {
-        memcpy(
-            out_path->integer_relations + out_path->integer_relation_count,
-            facts->integer_relations,
-            facts->integer_relation_count * sizeof(*facts->integer_relations));
-        out_path->integer_relation_count += facts->integer_relation_count;
+      const loom_cfg_condition_relation_view_t* view =
+          loom_cfg_condition_relation_table_block(&entry->conditions,
+                                                  block->region_index);
+      if (view != NULL) {
+        IREE_ASSERT_LT(scope_count, scope_capacity);
+        loom_condition_fact_scope_initialize_indexed(
+            NULL, &entry->conditions, view, &scope_storage[scope_count++]);
       }
       break;
     }
@@ -697,20 +733,51 @@ static iree_status_t loom_template_selection_collect_application_path_facts(
     bool edge_complete = false;
     IREE_RETURN_IF_ERROR(loom_condition_facts_query_into(
         condition_query, value_facts, loom_scf_if_condition(ancestor),
-        assumed_truth, out_path, &edge_complete));
+        assumed_truth, &local_derivation->integer_facts, &edge_complete));
     *out_complete &= edge_complete;
+  }
+  for (iree_host_size_t i = scope_count; i > 0; --i) {
+    scope_storage[i - 1].parent = *out_scope;
+    *out_scope = &scope_storage[i - 1];
+  }
+  if (local_derivation->integer_facts.integer_relation_count != 0) {
+    IREE_ASSERT_LT(scope_count, scope_capacity);
+    loom_condition_fact_scope_initialize_local(*out_scope, local_derivation,
+                                               &scope_storage[scope_count]);
+    *out_scope = &scope_storage[scope_count];
   }
   return iree_ok_status();
 }
 
-static iree_status_t loom_template_selection_grow_application_path_scratch(
+static iree_status_t
+loom_template_selection_grow_application_path_relation_scratch(
     loom_template_selection_state_t* state, iree_host_size_t minimum_capacity) {
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
-      state->arena, state->application_path_scratch.capacity, minimum_capacity,
-      sizeof(*state->application_path_scratch.relations),
-      &state->application_path_scratch.capacity,
+      state->arena, state->application_path_scratch.relation_capacity,
+      minimum_capacity, sizeof(*state->application_path_scratch.relations),
+      &state->application_path_scratch.relation_capacity,
       (void**)&state->application_path_scratch.relations));
   return iree_ok_status();
+}
+
+static iree_status_t loom_template_selection_grow_application_path_scopes(
+    loom_template_selection_state_t* state, iree_host_size_t minimum_capacity) {
+  IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+      state->arena, state->application_path_scratch.scope_capacity,
+      minimum_capacity, sizeof(*state->application_path_scratch.scopes),
+      &state->application_path_scratch.scope_capacity,
+      (void**)&state->application_path_scratch.scopes));
+  return iree_ok_status();
+}
+
+static iree_host_size_t loom_template_selection_application_scope_bound(
+    const loom_op_t* apply_op) {
+  iree_host_size_t scope_count = 1;
+  for (const loom_op_t* child = apply_op; child && child->parent_block;
+       child = child->parent_op) {
+    ++scope_count;
+  }
+  return scope_count;
 }
 
 static iree_status_t loom_template_selection_prepare_application_path_facts(
@@ -719,25 +786,51 @@ static iree_status_t loom_template_selection_prepare_application_path_facts(
     loom_template_applicability_facts_t* out_facts) {
   IREE_RETURN_IF_ERROR(
       loom_template_selection_prepare_cfg_facts(state, value_facts));
-  if (state->application_path_scratch.capacity == 0) {
+  if (state->application_path_scratch.relation_capacity == 0) {
     IREE_RETURN_IF_ERROR(
-        loom_template_selection_grow_application_path_scratch(state, 16));
+        loom_template_selection_grow_application_path_relation_scratch(state,
+                                                                       16));
+  }
+  const iree_host_size_t scope_bound =
+      loom_template_selection_application_scope_bound(apply_op);
+  if (scope_bound > state->application_path_scratch.scope_capacity) {
+    IREE_RETURN_IF_ERROR(loom_template_selection_grow_application_path_scopes(
+        state, scope_bound));
   }
 
   for (;;) {
+    state->application_path_scratch.local_derivation =
+        (loom_condition_derivation_t){0};
     loom_condition_fact_set_initialize(
         state->application_path_scratch.relations,
-        state->application_path_scratch.capacity, &out_facts->path);
+        state->application_path_scratch.relation_capacity,
+        &state->application_path_scratch.local_derivation.integer_facts);
     bool path_complete = false;
     IREE_RETURN_IF_ERROR(loom_template_selection_collect_application_path_facts(
         state->application_scope.cfg_facts, &state->condition_query,
-        value_facts, apply_op, &out_facts->path, &path_complete));
+        value_facts, apply_op,
+        &state->application_path_scratch.local_derivation,
+        state->application_path_scratch.scopes,
+        state->application_path_scratch.scope_capacity, &out_facts->path,
+        &path_complete));
     if (path_complete) {
       return iree_ok_status();
     }
-    IREE_RETURN_IF_ERROR(loom_template_selection_grow_application_path_scratch(
-        state, state->application_path_scratch.capacity));
+    IREE_RETURN_IF_ERROR(
+        loom_template_selection_grow_application_path_relation_scratch(
+            state, state->application_path_scratch.relation_capacity));
   }
+}
+
+static void loom_template_selection_reset_application_scope(
+    loom_template_selection_state_t* state) {
+  loom_local_value_domain_release(&state->application_scope.value_domain);
+  state->application_scope.function = NULL;
+  state->application_scope.target_facts = NULL;
+  state->application_scope.values = NULL;
+  state->application_scope.value_identities =
+      (loom_cfg_value_identity_table_t){0};
+  state->application_scope.cfg_facts = NULL;
 }
 
 static iree_status_t loom_template_selection_prepare_application_facts(
@@ -748,7 +841,6 @@ static iree_status_t loom_template_selection_prepare_application_facts(
     loom_template_decision_fact_requirements_t requirements,
     loom_template_applicability_facts_t* out_facts) {
   *out_facts = (loom_template_applicability_facts_t){0};
-  loom_condition_fact_set_initialize(NULL, 0, &out_facts->path);
   if (!context || !context->source_symbol ||
       !context->source_symbol->defining_op) {
     return iree_ok_status();
@@ -761,20 +853,21 @@ static iree_status_t loom_template_selection_prepare_application_facts(
   }
   if (state->application_scope.function != source_function.op ||
       state->application_scope.target_facts != apply_target->facts) {
+    loom_template_selection_reset_application_scope(state);
     const loom_pass_value_fact_scope_t scope =
         loom_pass_value_fact_scope_function_for_target(source_function,
                                                        apply_target->facts);
+    loom_value_fact_table_t* values = NULL;
     if (state->pass != NULL) {
       IREE_RETURN_IF_ERROR(loom_pass_value_facts_acquire(
-          state->pass, state->module, scope, &state->application_scope.values));
+          state->pass, state->module, scope, &values));
     } else {
       IREE_RETURN_IF_ERROR(loom_pass_value_fact_owner_acquire(
-          state->value_fact_owner, state->module, scope,
-          &state->application_scope.values));
+          state->value_fact_owner, state->module, scope, &values));
     }
     state->application_scope.function = source_function.op;
     state->application_scope.target_facts = apply_target->facts;
-    state->application_scope.cfg_facts = NULL;
+    state->application_scope.values = values;
   }
   const loom_value_fact_table_t* table = state->application_scope.values;
   out_facts->values = table;
@@ -879,7 +972,6 @@ static iree_status_t loom_template_selection_analyze_apply(
       loom_template_decision_model_lookup(&state->decision_models, family);
 
   loom_template_applicability_facts_t application_facts = {0};
-  loom_condition_fact_set_initialize(NULL, 0, &application_facts.path);
   const loom_template_decision_fact_requirements_t fact_requirements =
       model ? loom_template_decision_model_application_fact_requirements(model,
                                                                          demand)
@@ -954,7 +1046,6 @@ static iree_status_t loom_template_selection_analyze_exact_call(
       state, context, &apply_target));
 
   loom_template_applicability_facts_t application_facts = {0};
-  loom_condition_fact_set_initialize(NULL, 0, &application_facts.path);
   if (loom_template_applicability_requires_application_facts(
           call_op, &call.family_contract, apply_target.facts) ||
       loom_template_applicability_requires_application_facts(
@@ -1290,6 +1381,7 @@ iree_status_t loom_template_selection_query(
   if (iree_status_is_ok(status)) {
     status = loom_template_selection_analyze_exact_calls(&state);
   }
+  loom_template_selection_reset_application_scope(&state);
   loom_pass_value_fact_owner_deinitialize(&value_fact_owner);
   if (!iree_status_is_ok(status)) {
     return status;
@@ -1337,15 +1429,18 @@ iree_status_t loom_template_selection_run(loom_pass_t* pass,
   loom_symbol_fact_table_initialize(&state.fact_table, pass->arena);
   loom_template_provider_catalog_initialize(&catalog, pass->arena);
 
-  IREE_RETURN_IF_ERROR(loom_target_function_version_snapshot_build(
+  iree_status_t status = loom_target_function_version_snapshot_build(
       module, loom_target_pass_capability_function_versions(target_capability),
-      pass->arena, &target_versions));
-  IREE_RETURN_IF_ERROR(loom_template_provider_catalog_build_local(
-      &catalog, module, &state.fact_table));
-  IREE_RETURN_IF_ERROR(
-      loom_template_selection_compute(&state, /*origin_count=*/0));
+      pass->arena, &target_versions);
+  if (iree_status_is_ok(status)) {
+    status = loom_template_provider_catalog_build_local(&catalog, module,
+                                                        &state.fact_table);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_template_selection_compute(&state, /*origin_count=*/0);
+  }
 
-  if (state.inline_calls) {
+  if (iree_status_is_ok(status) && state.inline_calls) {
     const loom_inline_callables_plan_options_t options = {
         .references = &state.references,
         .target_versions = &target_versions,
@@ -1358,11 +1453,13 @@ iree_status_t loom_template_selection_run(loom_pass_t* pass,
             },
         .additional_call_capacity = state.statistics->selected_sites,
     };
-    IREE_RETURN_IF_ERROR(loom_inline_callables_plan_create(
-        pass, module, &options, &state.inline_plan));
-  } else {
-    IREE_RETURN_IF_ERROR(loom_template_selection_analyze_exact_calls(&state));
+    status = loom_inline_callables_plan_create(pass, module, &options,
+                                               &state.inline_plan);
+  } else if (iree_status_is_ok(status)) {
+    status = loom_template_selection_analyze_exact_calls(&state);
   }
+  loom_template_selection_reset_application_scope(&state);
+  IREE_RETURN_IF_ERROR(status);
 
   if (state.mode == LOOM_TEMPLATE_SELECTION_MODE_FINAL) {
     IREE_RETURN_IF_ERROR(loom_template_selection_emit_blockers(&state));

@@ -18,6 +18,7 @@ loom_cc_library(
     "template_applicability.c"
   DEPS
     iree::base
+    loom::analysis::condition_fact_scope
     loom::analysis::condition_facts
     loom::analysis::template_provider_catalog
     loom::decision::predicate
@@ -134,6 +135,8 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     loom::analysis::cfg_condition_facts
+    loom::analysis::cfg_value_identity
+    loom::analysis::condition_fact_scope
     loom::analysis::condition_facts
     loom::analysis::symbol_facts
     loom::analysis::symbol_liveness

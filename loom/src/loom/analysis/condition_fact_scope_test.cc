@@ -100,5 +100,38 @@ TEST(ConditionFactScopeTest, ContradictoryFragmentsRemainUnknown) {
       &child_scope, nullptr, &query, &result));
 }
 
+static bool CountVisitedRelation(
+    void* user_data, const loom_condition_integer_relation_t* relation) {
+  (void)relation;
+  ++*(iree_host_size_t*)user_data;
+  return true;
+}
+
+TEST(ConditionFactScopeTest, VisitsLocalRelationsOnceAcrossValueAnchors) {
+  loom_condition_integer_relation_t relations[] = {
+      {
+          /*.relation=*/LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+          /*.left=*/ValueOperand(1),
+          /*.right=*/ValueOperand(2),
+      },
+      {
+          /*.relation=*/LOOM_SYMBOLIC_INTEGER_RELATION_NE,
+          /*.left=*/ValueOperand(2),
+          /*.right=*/ValueOperand(3),
+      },
+  };
+  const loom_condition_derivation_t derivation =
+      Derivation(relations, IREE_ARRAYSIZE(relations));
+  loom_condition_fact_scope_t scope = {};
+  loom_condition_fact_scope_initialize_local(nullptr, &derivation, &scope);
+  const loom_value_id_t anchors[] = {1, 2, 3};
+
+  iree_host_size_t visit_count = 0;
+  EXPECT_TRUE(loom_condition_fact_scope_for_each_value_anchored_while(
+      &scope, nullptr, anchors, IREE_ARRAYSIZE(anchors), CountVisitedRelation,
+      &visit_count));
+  EXPECT_EQ(visit_count, IREE_ARRAYSIZE(relations));
+}
+
 }  // namespace
 }  // namespace loom
