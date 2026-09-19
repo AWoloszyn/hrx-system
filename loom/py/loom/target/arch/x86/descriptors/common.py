@@ -336,6 +336,20 @@ _LANE_I32X4_IMMEDIATE = Immediate(
     unsigned_max=3,
 )
 
+_LANE_I64X2_IMMEDIATE = Immediate(
+    "lane",
+    ImmediateKind.UNSIGNED,
+    bit_width=8,
+    unsigned_max=1,
+)
+
+_SHUFFLE_2X1_CONTROL_IMMEDIATE = Immediate(
+    "control",
+    ImmediateKind.UNSIGNED,
+    bit_width=8,
+    unsigned_max=3,
+)
+
 _SHUFFLE_4X2_CONTROL_IMMEDIATE = Immediate(
     "control",
     ImmediateKind.UNSIGNED,

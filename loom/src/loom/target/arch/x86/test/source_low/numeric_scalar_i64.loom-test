@@ -1,7 +1,7 @@
 // TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64.loom-test
-// RUN: emit source-low output=low control-flow=structured-low
+// RUN: emit source-low output=low
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_bitwise_sgpr(%lhs: i64, %rhs: i64) -> (i64, i64, i64) {
   %and = scalar.andi %lhs, %rhs : i64
@@ -11,19 +11,20 @@ func.def target(@target) @scalar_i64_bitwise_sgpr(%lhs: i64, %rhs: i64) -> (i64,
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_bitwise_sgpr(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>, reg<spirv.id : i64>, reg<spirv.id : i64>) asm {
-  %and = OpBitwiseAnd.i64 %lhs, %rhs
-  %or = OpBitwiseOr.i64 %and, %lhs
-  %xor = OpBitwiseXor.i64 %or, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_bitwise_sgpr(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %13 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %and = and.gpr64 %13, %rhs
+  %15 = copy %and : reg<x86.gpr64> -> reg<x86.gpr64>
+  %or = or.gpr64 %15, %lhs
+  %17 = copy %or : reg<x86.gpr64> -> reg<x86.gpr64>
+  %xor = xor.gpr64 %17, %rhs
   return %and, %or, %xor
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_addi_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>) -> (i64) {
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
@@ -31,12 +32,19 @@ func.def target(@target) @scalar_i64_addi_vgpr(%lhs_values: vector<2xi64>, %rhs_
   func.return %sum : i64
 }
 
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_addi_vgpr(%lhs_values: reg<x86.xmm>, %rhs_values: reg<x86.xmm>) -> (reg<x86.gpr64>) asm {
+  %lhs = vpextrq.xmm %lhs_values, 0
+  %rhs = vpextrq.xmm %rhs_values, 0
+  %11 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %sum = add.gpr64 %11, %rhs
+  return %sum
+}
+
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_subi_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>) -> (i64) {
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
@@ -44,26 +52,31 @@ func.def target(@target) @scalar_i64_subi_vgpr(%lhs_values: vector<2xi64>, %rhs_
   func.return %difference : i64
 }
 
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_subi_vgpr(%lhs_values: reg<x86.xmm>, %rhs_values: reg<x86.xmm>) -> (reg<x86.gpr64>) asm {
+  %lhs = vpextrq.xmm %lhs_values, 0
+  %rhs = vpextrq.xmm %rhs_values, 0
+  %11 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %difference = sub.gpr64 %11, %rhs
+  return %difference
+}
+
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_shli_vgpr(%value_values: vector<2xi64>, %shift_values: vector<2xi64>) -> (i64) {
   %value = vector.extract %value_values[0] : vector<2xi64> -> i64
   %shift = vector.extract %shift_values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/003 {op_name="scalar.shli", subject_role="value_fact", subject_name="rhs", constraint_key="exact_i64"}
   %shifted = scalar.shli %value, %shift : i64
   func.return %shifted : i64
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+3: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_muli_bitwise_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>, %mask_values: vector<2xi64>) -> (i64) {
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
@@ -73,9 +86,21 @@ func.def target(@target) @scalar_i64_muli_bitwise_vgpr(%lhs_values: vector<2xi64
   func.return %mixed : i64
 }
 
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_muli_bitwise_vgpr(%lhs_values: reg<x86.xmm>, %rhs_values: reg<x86.xmm>, %mask_values: reg<x86.xmm>) -> (reg<x86.gpr64>) asm {
+  %lhs = vpextrq.xmm %lhs_values, 0
+  %rhs = vpextrq.xmm %rhs_values, 0
+  %mask = vpextrq.xmm %mask_values, 0
+  %16 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %product = imul.gpr64 %16, %rhs
+  %18 = copy %product : reg<x86.gpr64> -> reg<x86.gpr64>
+  %mixed = xor.gpr64 %18, %mask
+  return %mixed
+}
+
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_eq_scc(%lhs: i64, %rhs: i64) -> (i1) {
   %cmp = scalar.cmpi eq, %lhs, %rhs : i64
@@ -83,14 +108,14 @@ func.def target(@target) @scalar_i64_compare_eq_scc(%lhs: i64, %rhs: i64) -> (i1
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_eq_scc(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i1>) asm {
-  %cmp = OpIEqual.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_compare_eq_scc(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %cmp = cmp.eq.gpr64 %lhs, %rhs
   return %cmp
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_ne_scc(%lhs: i64, %rhs: i64) -> (i1) {
   %cmp = scalar.cmpi ne, %lhs, %rhs : i64
@@ -98,14 +123,14 @@ func.def target(@target) @scalar_i64_compare_ne_scc(%lhs: i64, %rhs: i64) -> (i1
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_ne_scc(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i1>) asm {
-  %cmp = OpINotEqual.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_compare_ne_scc(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %cmp = cmp.ne.gpr64 %lhs, %rhs
   return %cmp
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_slt_return(%lhs: i64, %rhs: i64) -> (i1) {
   %cmp = scalar.cmpi slt, %lhs, %rhs : i64
@@ -113,14 +138,14 @@ func.def target(@target) @scalar_i64_compare_slt_return(%lhs: i64, %rhs: i64) ->
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_slt_return(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i1>) asm {
-  %cmp = OpSLessThan.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_compare_slt_return(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %cmp = cmp.slt.gpr64 %lhs, %rhs
   return %cmp
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_slt_if(%lhs: i64, %rhs: i64, %then_value: i32, %else_value: i32) -> (i32) {
   %cmp = scalar.cmpi slt, %lhs, %rhs : i64
@@ -133,39 +158,29 @@ func.def target(@target) @scalar_i64_compare_slt_if(%lhs: i64, %rhs: i64, %then_
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_slt_if(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>, %then_value: reg<spirv.id : i32>, %else_value: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
-  %cmp = OpSLessThan.i64 %lhs, %rhs
-  %result = OpSelect %cmp, %then_value, %else_value
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_compare_slt_if(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>, %then_value: reg<x86.gpr32>, %else_value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %cmp = cmp.slt.gpr64 %lhs, %rhs
+  %14 = copy %else_value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %result = select.gpr32 %cmp, %then_value, %14
   return %result
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_constant_select(%lhs: i64, %true_value: f32, %false_value: f32) -> (f32) {
   %limit = scalar.constant 4294967296 : i64
   %cmp = scalar.cmpi ult, %lhs, %limit : i64
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %result = scf.select %cmp, %true_value, %false_value : f32
   func.return %result : f32
 }
 
-// ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_compare_constant_select(%lhs: reg<spirv.id : i64>, %true_value: reg<spirv.id : f32>, %false_value: reg<spirv.id : f32>) -> (reg<spirv.id : f32>) asm {
-  %limit = OpConstant.i64 4294967296
-  %12 = OpBitcast.i64.u64 %lhs
-  %13 = OpBitcast.i64.u64 %limit
-  %cmp = OpULessThan.u64 %12, %13
-  %result = OpSelect.f32 %cmp, %true_value, %false_value
-  return %result
-}
-
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_compare_all_predicates_vgpr_select(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>, %true_value: f32, %false_value: f32) -> (f32, f32, f32, f32, f32, f32, f32, f32, f32, f32) {
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
@@ -179,22 +194,32 @@ func.def target(@target) @scalar_i64_compare_all_predicates_vgpr_select(%lhs_val
   %ule = scalar.cmpi ule, %lhs, %rhs : i64
   %ugt = scalar.cmpi ugt, %lhs, %rhs : i64
   %uge = scalar.cmpi uge, %lhs, %rhs : i64
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %eq_result = scf.select %eq, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %ne_result = scf.select %ne, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %slt_result = scf.select %slt, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %sle_result = scf.select %sle, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %sgt_result = scf.select %sgt, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %sge_result = scf.select %sge, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %ult_result = scf.select %ult, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %ule_result = scf.select %ule, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %ugt_result = scf.select %ugt, %true_value, %false_value : f32
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f32", expected_type="i32"}
   %uge_result = scf.select %uge, %true_value, %false_value : f32
   func.return %eq_result, %ne_result, %slt_result, %sle_result, %sgt_result, %sge_result, %ult_result, %ule_result, %ugt_result, %uge_result : f32, f32, f32, f32, f32, f32, f32, f32, f32, f32
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_addi_uniform(%lhs: i64, %rhs: i64) -> (i64) {
   %result = scalar.addi %lhs, %rhs : i64
@@ -202,14 +227,15 @@ func.def target(@target) @scalar_i64_addi_uniform(%lhs: i64, %rhs: i64) -> (i64)
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_addi_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
-  %result = OpIAdd.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_addi_uniform(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr64>) asm {
+  %7 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %result = add.gpr64 %7, %rhs
   return %result
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_muli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
   %result = scalar.muli %lhs, %rhs : i64
@@ -217,74 +243,80 @@ func.def target(@target) @scalar_i64_muli_uniform(%lhs: i64, %rhs: i64) -> (i64)
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_muli_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
-  %result = OpIMul.i64 %lhs, %rhs
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_muli_uniform(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr64>) asm {
+  %7 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %result = imul.gpr64 %7, %rhs
   return %result
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_shli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  // ERROR@+1: TARGET/003 {op_name="scalar.shli", subject_role="value_fact", subject_name="rhs", constraint_key="exact_i64"}
   %result = scalar.shli %lhs, %rhs : i64
   func.return %result : i64
 }
 
-// ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_shli_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
-  %result = OpShiftLeftLogical.i64 %lhs, %rhs
-  return %result
-}
-
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_f64_constant_select_bitcast(%condition: i1, %fallback: f64) -> (i64) {
-  // ERROR@+1: TARGET/003 {op_name="scalar.constant", subject_role="descriptor", subject_name="spirv.op_constant.f64", constraint_key="descriptor_available"}
+  // ERROR@+1: TARGET/003 {op_name="scalar.constant", subject_role="field", subject_name="value", constraint_key="attr_kind.i64"}
   %constant = scalar.constant -1.1000000000000001 : f64
-  // ERROR@+1: TARGET/003 {op_name="scf.select", subject_role="descriptor", subject_name="spirv.op_select.f64", constraint_key="descriptor_available"}
+  // ERROR@+1: TARGET/002 {op_name="scf.select", field_name="true_value", actual_type="f64", expected_type="i32"}
   %selected = scf.select %condition, %constant, %fallback : f64
-  // ERROR@+1: TARGET/003 {op_name="scalar.bitcast", subject_role="descriptor", subject_name="spirv.op_bitcast.f64.i64", constraint_key="descriptor_available"}
   %bits = scalar.bitcast %selected : f64 to i64
   func.return %bits : i64
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
 func.def target(@target) @scalar_i64_lanes(%values: vector<2xi64>, %replacement: i64) -> (i64, i64, vector<2xi64>, vector<2xi64>) {
   %first = vector.extract %values[0] : vector<2xi64> -> i64
   %second = vector.extract %values[1] : vector<2xi64> -> i64
   %replace_first = vector.insert %replacement into %values[0] : i64, vector<2xi64>
   %replace_second = vector.insert %replacement into %values[1] : i64, vector<2xi64>
-  // ERROR@+2: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xi64>"}
-  // ERROR@+1: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xi64>"}
   func.return %first, %second, %replace_first, %replace_second : i64, i64, vector<2xi64>, vector<2xi64>
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_lanes(%values: reg<x86.xmm>, %replacement: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.xmm>, reg<x86.xmm>) asm {
+  %first = vpextrq.xmm %values, 0
+  %second = vpextrq.xmm %values, 1
+  %replace_first = vpinsrq.xmm %values, %replacement, 0
+  %replace_second = vpinsrq.xmm %values, %replacement, 1
+  return %first, %second, %replace_first, %replace_second
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_f64_lanes(%values: vector<2xf64>, %replacement: f64) -> (f64, f64, vector<2xf64>, vector<2xf64>) {
-  // ERROR@+1: TARGET/003 {op_name="vector.extract", subject_role="descriptor", subject_name="spirv.op_composite_extract.v2f64.f64", constraint_key="descriptor_available"}
   %first = vector.extract %values[0] : vector<2xf64> -> f64
-  // ERROR@+1: TARGET/003 {op_name="vector.extract", subject_role="descriptor", subject_name="spirv.op_composite_extract.v2f64.f64", constraint_key="descriptor_available"}
   %second = vector.extract %values[1] : vector<2xf64> -> f64
-  // ERROR@+1: TARGET/003 {op_name="vector.insert", subject_role="descriptor", subject_name="spirv.op_composite_insert.f64.v2f64", constraint_key="descriptor_available"}
   %replace_first = vector.insert %replacement into %values[0] : f64, vector<2xf64>
-  // ERROR@+1: TARGET/003 {op_name="vector.insert", subject_role="descriptor", subject_name="spirv.op_composite_insert.f64.v2f64", constraint_key="descriptor_available"}
   %replace_second = vector.insert %replacement into %values[1] : f64, vector<2xf64>
   func.return %first, %second, %replace_first, %replace_second : f64, f64, vector<2xf64>, vector<2xf64>
 }
 
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_f64_lanes(%values: reg<x86.xmm>, %replacement: reg<x86.xmm>) -> (reg<x86.xmm>, reg<x86.xmm>, reg<x86.xmm>, reg<x86.xmm>) asm {
+  %first = vpermilpd.xmm %values, 0
+  %second = vpermilpd.xmm %values, 1
+  %replace_first = vshufpd.xmm %replacement, %values, 2
+  %replace_second = vshufpd.xmm %values, %replacement, 0
+  return %first, %second, %replace_first, %replace_second
+}
+
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_right_shift_select(%value: i64, %condition: i1) -> (i64, i64, i64, i64, i64) {
   %word_count = scalar.constant 32 : i64
@@ -298,20 +330,23 @@ func.def target(@target) @scalar_i64_right_shift_select(%value: i64, %condition:
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_right_shift_select(%value: reg<spirv.id : i64>, %condition: reg<spirv.id : i1>) -> (reg<spirv.id : i64>, reg<spirv.id : i64>, reg<spirv.id : i64>, reg<spirv.id : i64>, reg<spirv.id : i64>) asm {
-  %word_count = OpConstant.i64 32
-  %sign_count = OpConstant.i64 63
-  %logical_word = OpShiftRightLogical.i64 %value, %word_count
-  %signed_word = OpShiftRightArithmetic.i64 %value, %word_count
-  %logical_sign = OpShiftRightLogical.i64 %value, %sign_count
-  %signed_sign = OpShiftRightArithmetic.i64 %value, %sign_count
-  %selected = OpSelect.i64 %condition, %logical_word, %signed_word
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_right_shift_select(%value: reg<x86.gpr64>, %condition: reg<x86.gpr32>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %21 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %logical_word = shr.imm.gpr64 %21 {shift = 32}
+  %23 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %signed_word = sar.imm.gpr64 %23 {shift = 32}
+  %25 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %logical_sign = shr.imm.gpr64 %25 {shift = 63}
+  %27 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %signed_sign = sar.imm.gpr64 %27 {shift = 63}
+  %29 = copy %signed_word : reg<x86.gpr64> -> reg<x86.gpr64>
+  %selected = select.gpr64 %condition, %logical_word, %29
   return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
   %product = scalar.muli %lhs, %rhs : i32
@@ -322,17 +357,20 @@ func.def target(@target) @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i32_control(%lhs: reg<spirv.id : i32>, %rhs: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
-  %product = OpIMul %lhs, %rhs
-  %mixed = OpBitwiseXor %product, %rhs
-  %less = OpSLessThan %lhs, %rhs
-  %selected = OpSelect %less, %mixed, %product
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i32_control(%lhs: reg<x86.gpr32>, %rhs: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %10 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
+  %product = imul.gpr32 %10, %rhs
+  %12 = copy %product : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mixed = xor.gpr32 %12, %rhs
+  %less = cmp.slt.gpr32 %lhs, %rhs
+  %15 = copy %product : reg<x86.gpr32> -> reg<x86.gpr32>
+  %selected = select.gpr32 %less, %mixed, %15
   return %selected
 }
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_insert_dynamic(%values: vector<2xi64>, %replacement: i64, %lane: index) -> (vector<2xi64>) {
   // ERROR@+1: TARGET/004 {op_name="vector.insert", subject_role="operand_segment", subject_name="indices", constraint_key="operand_segment_count", expected_count="0"}
@@ -342,7 +380,7 @@ func.def target(@target) @scalar_i64_insert_dynamic(%values: vector<2xi64>, %rep
 
 // ====
 
-spirv.target<vulkan1_3> @target
+x86.target<avx2> @target
 
 func.def target(@target) @scalar_f64_insert_dynamic(%values: vector<2xf64>, %replacement: f64, %lane: index) -> (vector<2xf64>) {
   // ERROR@+1: TARGET/004 {op_name="vector.insert", subject_role="operand_segment", subject_name="indices", constraint_key="operand_segment_count", expected_count="0"}

@@ -132,6 +132,7 @@ loom_check_test_suite(
     srcs = [
         "test/assembly.loom-test",
         "test/loop_termination.loom-test",
+        "test/numeric.loom-test",
         "test/schedule_scopes.loom-test",
     ],
     data = [

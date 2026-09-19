@@ -403,3 +403,176 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_
   %bits = concat(%14, %17) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   return %bits
 }
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @scalar_i64_lanes(%values: vector<2xi64>, %replacement: i64) -> (i64, i64, vector<2xi64>, vector<2xi64>) {
+  %first = vector.extract %values[0] : vector<2xi64> -> i64
+  %second = vector.extract %values[1] : vector<2xi64> -> i64
+  %replace_first = vector.insert %replacement into %values[0] : i64, vector<2xi64>
+  %replace_second = vector.insert %replacement into %values[1] : i64, vector<2xi64>
+  func.return %first, %second, %replace_first, %replace_second : i64, i64, vector<2xi64>, vector<2xi64>
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_i64_lanes(%values: reg<amdgpu.vgpr x4>, %replacement: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) asm {
+  %16 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %17 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %first = concat(%16, %17) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %19 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %20 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %second = concat(%19, %20) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %22 = slice %replacement[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %23 = v_mov_b32_copy %22
+  %24 = slice %replacement[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %25 = v_mov_b32_copy %24
+  %replace_first = concat(%23, %25, %19, %20) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
+  %replace_second = concat(%16, %17, %23, %25) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
+  return %first, %second, %replace_first, %replace_second
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @scalar_f64_lanes(%values: vector<2xf64>, %replacement: f64) -> (f64, f64, vector<2xf64>, vector<2xf64>) {
+  %first = vector.extract %values[0] : vector<2xf64> -> f64
+  %second = vector.extract %values[1] : vector<2xf64> -> f64
+  %replace_first = vector.insert %replacement into %values[0] : f64, vector<2xf64>
+  %replace_second = vector.insert %replacement into %values[1] : f64, vector<2xf64>
+  func.return %first, %second, %replace_first, %replace_second : f64, f64, vector<2xf64>, vector<2xf64>
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_f64_lanes(%values: reg<amdgpu.vgpr x4>, %replacement: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) asm {
+  %16 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %17 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %first = concat(%16, %17) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %19 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %20 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %second = concat(%19, %20) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %22 = slice %replacement[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %23 = slice %replacement[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %replace_first = concat(%22, %23, %19, %20) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
+  %replace_second = concat(%16, %17, %22, %23) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
+  return %first, %second, %replace_first, %replace_second
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @scalar_i64_right_shift_select(%value: i64, %condition: i1) -> (i64, i64, i64, i64, i64) {
+  %word_count = scalar.constant 32 : i64
+  %sign_count = scalar.constant 63 : i64
+  %logical_word = scalar.shrui %value, %word_count : i64
+  %signed_word = scalar.shrsi %value, %word_count : i64
+  %logical_sign = scalar.shrui %value, %sign_count : i64
+  %signed_sign = scalar.shrsi %value, %sign_count : i64
+  %selected = scf.select %condition, %logical_word, %signed_word : i64
+  func.return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected : i64, i64, i64, i64, i64
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_i64_right_shift_select(%value: reg<amdgpu.sgpr x2>, %condition: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) asm {
+  %21 = s_mov_b32 32
+  %24 = s_mov_b32 63
+  %logical_word = s_lshr_b64 %value, %21
+  %signed_word = s_ashr_i64 %value, %21
+  %logical_sign = s_lshr_b64 %value, %24
+  %signed_sign = s_ashr_i64 %value, %24
+  %35 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %36 = slice %logical_word[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %37 = slice %signed_word[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %38 = s_cselect_b32 %36, %37, %35
+  %39 = slice %logical_word[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %40 = slice %signed_word[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %41 = s_cselect_b32 %39, %40, %35
+  %selected = concat(%38, %41) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
+  %product = scalar.muli %lhs, %rhs : i32
+  %mixed = scalar.xori %product, %rhs : i32
+  %less = scalar.cmpi slt, %lhs, %rhs : i32
+  %selected = scf.select %less, %mixed, %product : i32
+  func.return %selected : i32
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_i32_control(%lhs: reg<amdgpu.sgpr>, %rhs: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %product = s_mul_i32 %lhs, %rhs
+  %mixed = s_xor_b32 %product, %rhs
+  %less = s_cmp_lt_i32 %lhs, %rhs
+  %selected = s_cselect_b32 %mixed, %product, %less
+  return %selected
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @scalar_i64_insert_dynamic(%values: vector<2xi64>, %replacement: i64, %lane: index) -> (vector<2xi64>) {
+  %updated = vector.insert %replacement into %values[%lane] : i64, vector<2xi64>
+  func.return %updated : vector<2xi64>
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_i64_insert_dynamic(%values: reg<amdgpu.vgpr x4>, %replacement: reg<amdgpu.sgpr x2>, %lane: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr x4>) asm {
+  %9 = slice %replacement[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %10 = v_mov_b32_copy %9
+  %11 = slice %replacement[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %12 = v_mov_b32_copy %11
+  %14 = v_mov_b32_copy %lane
+  %17 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %18 = v_mov_b32 0
+  %19 = v_cmp_eq_i32 %14, %18
+  %20 = v_cndmask_b32 %17, %10, %19
+  %21 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %22 = v_cndmask_b32 %21, %12, %19
+  %23 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %24 = v_mov_b32 1
+  %25 = v_cmp_eq_i32 %14, %24
+  %26 = v_cndmask_b32 %23, %10, %25
+  %27 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %28 = v_cndmask_b32 %27, %12, %25
+  %updated = concat(%20, %22, %26, %28) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
+  return %updated
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @scalar_f64_insert_dynamic(%values: vector<2xf64>, %replacement: f64, %lane: index) -> (vector<2xf64>) {
+  %updated = vector.insert %replacement into %values[%lane] : f64, vector<2xf64>
+  func.return %updated : vector<2xf64>
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_f64_insert_dynamic(%values: reg<amdgpu.vgpr x4>, %replacement: reg<amdgpu.vgpr x2>, %lane: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr x4>) asm {
+  %9 = v_mov_b32_copy %lane
+  %10 = slice %replacement[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %11 = slice %replacement[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %12 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %13 = v_mov_b32 0
+  %14 = v_cmp_eq_i32 %9, %13
+  %15 = v_cndmask_b32 %12, %10, %14
+  %16 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %17 = v_cndmask_b32 %16, %11, %14
+  %18 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %19 = v_mov_b32 1
+  %20 = v_cmp_eq_i32 %9, %19
+  %21 = v_cndmask_b32 %18, %10, %20
+  %22 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %23 = v_cndmask_b32 %22, %11, %20
+  %updated = concat(%15, %17, %21, %23) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
+  return %updated
+}

@@ -314,7 +314,7 @@ def test_vector_construct_rules_publish_contract_only_storage_rows() -> None:
     expected_rule_counts = {
         vector.vector_from_elements: 12,
         vector.vector_iota: 2,
-        vector.vector_insert: 6,
+        vector.vector_insert: 8,
         vector.vector_splat: 11,
     }
     for source_op, expected_rule_count in expected_rule_counts.items():

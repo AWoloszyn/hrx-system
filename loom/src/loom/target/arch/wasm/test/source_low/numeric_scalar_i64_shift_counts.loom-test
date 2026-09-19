@@ -1,0 +1,133 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64_shift_counts.loom-test
+// RUN: emit source-low output=low
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_constant(%values: vector<2xi64>) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_constant(%values: reg<wasm.v128>) -> (reg<wasm.i64>) asm {
+  %value = i64x2.extract_lane %values, 0
+  %count = i64.const 31
+  %shifted = i64.shl %value, %count
+  return %shifted
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_uniform(%values: vector<2xi64>, %count: i64) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_uniform(%values: reg<wasm.v128>, %count: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %value = i64x2.extract_lane %values, 0
+  %shifted = i64.shl %value, %count
+  return %shifted
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_varying(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = vector.extract %counts[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_varying(%values: reg<wasm.v128>, %counts: reg<wasm.v128>) -> (reg<wasm.i64>) asm {
+  %value = i64x2.extract_lane %values, 0
+  %count = i64x2.extract_lane %counts, 0
+  %shifted = i64.shl %value, %count
+  return %shifted
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_right_shift_uniform(%value: i64, %count: i64) -> (i64, i64) {
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_right_shift_uniform(%value: reg<wasm.i64>, %count: reg<wasm.i64>) -> (reg<wasm.i64>, reg<wasm.i64>) asm {
+  %logical = i64.shr_u %value, %count
+  %signed = i64.shr_s %value, %count
+  return %logical, %signed
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_right_shift_uniform_count(%values: vector<2xi64>, %count: i64) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_right_shift_uniform_count(%values: reg<wasm.v128>, %count: reg<wasm.i64>) -> (reg<wasm.i64>, reg<wasm.i64>) asm {
+  %value = i64x2.extract_lane %values, 1
+  %logical = i64.shr_u %value, %count
+  %signed = i64.shr_s %value, %count
+  return %logical, %signed
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_right_shift_varying_count(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %count = vector.extract %counts[1] : vector<2xi64> -> i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_right_shift_varying_count(%values: reg<wasm.v128>, %counts: reg<wasm.v128>) -> (reg<wasm.i64>, reg<wasm.i64>) asm {
+  %value = i64x2.extract_lane %values, 1
+  %count = i64x2.extract_lane %counts, 1
+  %logical = i64.shr_u %value, %count
+  %signed = i64.shr_s %value, %count
+  return %logical, %signed
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_right_shift_constant(%values: vector<2xi64>) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_right_shift_constant(%values: reg<wasm.v128>) -> (reg<wasm.i64>, reg<wasm.i64>) asm {
+  %value = i64x2.extract_lane %values, 1
+  %count = i64.const 31
+  %logical = i64.shr_u %value, %count
+  %signed = i64.shr_s %value, %count
+  return %logical, %signed
+}

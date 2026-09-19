@@ -1968,13 +1968,13 @@ def _v_lshlrev_b32_vop3_immediate_overlay() -> AmdgpuDescriptorOverlay:
     )
 
 
-def _v_lshlrev_b64_overlay() -> AmdgpuDescriptorOverlay:
+def _v_shift_b64_overlay(mnemonic: str, semantic_tag: str) -> AmdgpuDescriptorOverlay:
     return AmdgpuDescriptorOverlay(
-        descriptor_key="amdgpu.v_lshlrev_b64",
-        instruction_name="V_LSHLREV_B64",
-        mnemonic="v_lshlrev_b64",
+        descriptor_key=f"amdgpu.{mnemonic}",
+        instruction_name=mnemonic.upper(),
+        mnemonic=mnemonic,
         encoding_name="ENC_VOP3",
-        semantic_tag="integer.shl.u64",
+        semantic_tag=semantic_tag,
         schedule_class=_SCHEDULE_VALU,
         operands=(
             AmdgpuOperandOverlay("VDST", _vgpr_result(units=2)),
@@ -1983,7 +1983,7 @@ def _v_lshlrev_b64_overlay() -> AmdgpuDescriptorOverlay:
         ),
         operand_forms=(
             _literal_operand_form(
-                replacement_descriptor="amdgpu.v_lshlrev_b64.src0_inline",
+                replacement_descriptor=f"amdgpu.{mnemonic}.src0_inline",
                 source_operand="shift",
             ),
         ),
@@ -1991,20 +1991,22 @@ def _v_lshlrev_b64_overlay() -> AmdgpuDescriptorOverlay:
     )
 
 
-def _v_lshlrev_b64_src0_inline_overlay() -> AmdgpuDescriptorOverlay:
+def _v_shift_b64_src0_inline_overlay(
+    mnemonic: str, semantic_tag: str
+) -> AmdgpuDescriptorOverlay:
     return AmdgpuDescriptorOverlay(
-        descriptor_key="amdgpu.v_lshlrev_b64.src0_inline",
-        instruction_name="V_LSHLREV_B64",
-        mnemonic="v_lshlrev_b64",
+        descriptor_key=f"amdgpu.{mnemonic}.src0_inline",
+        instruction_name=mnemonic.upper(),
+        mnemonic=mnemonic,
         encoding_name="ENC_VOP3",
-        semantic_tag="integer.shl.u64",
+        semantic_tag=semantic_tag,
         schedule_class=_SCHEDULE_VALU,
         operands=(
             AmdgpuOperandOverlay("VDST", _vgpr_result(units=2)),
             AmdgpuOperandOverlay("SRC1", _vgpr_operand("value", units=2)),
         ),
         asm_forms=_asm(
-            mnemonic="v_lshlrev_b64_src0_inline",
+            mnemonic=f"{mnemonic}_src0_inline",
             results=("dst",),
             operands=("value",),
             immediates=("imm32",),
@@ -2443,6 +2445,12 @@ def _integer_bitwise_shift_overlays(
         _s_lshr_b32_overlay(),
         _s_lshr_b32_rhs_inline_overlay(),
         _s_lshr_b64_overlay(),
+        _s_shift_u64_overlay(
+            descriptor_key="amdgpu.s_ashr_i64",
+            instruction_name="S_ASHR_I64",
+            mnemonic="s_ashr_i64",
+            semantic_tag="integer.shr.s64",
+        ),
         *(_s_lshl_add_u32_overlay(shift) for shift in range(1, 5)),
         _s_ashr_i32_overlay(),
         _s_ashr_i32_rhs_inline_overlay(),
@@ -2464,8 +2472,18 @@ def _integer_bitwise_shift_overlays(
         _v_lshlrev_b32_src0_16_low16_overlay(),
         _v_lshlrev_b32_literal_overlay(),
         _v_lshlrev_b32_vop3_immediate_overlay(),
-        _v_lshlrev_b64_overlay(),
-        _v_lshlrev_b64_src0_inline_overlay(),
+        *(
+            overlay
+            for mnemonic, semantic_tag in (
+                ("v_lshlrev_b64", "integer.shl.u64"),
+                ("v_lshrrev_b64", "integer.shr.u64"),
+                ("v_ashrrev_i64", "integer.shr.s64"),
+            )
+            for overlay in (
+                _v_shift_b64_overlay(mnemonic, semantic_tag),
+                _v_shift_b64_src0_inline_overlay(mnemonic, semantic_tag),
+            )
+        ),
         _v_lshl_add_u32_shift_immediate_overlay(
             include_literal_operand_form=include_vop3_literal_forms
         ),
@@ -6954,8 +6972,8 @@ __all__ = (
     "_v_lshlrev_b32_src0_16_low16_overlay",
     "_v_lshlrev_b32_src0_inline_overlay",
     "_v_lshlrev_b32_vop3_immediate_overlay",
-    "_v_lshlrev_b64_overlay",
-    "_v_lshlrev_b64_src0_inline_overlay",
+    "_v_shift_b64_overlay",
+    "_v_shift_b64_src0_inline_overlay",
     "_v_lshrrev_b32_literal_overlay",
     "_v_lshrrev_b32_overlay",
     "_v_lshrrev_b32_src0_inline_overlay",

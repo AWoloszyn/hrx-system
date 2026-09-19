@@ -235,3 +235,249 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @wide_shifts_gfx1250(%va
 0xD51F0000
 0x02020102
 0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_right_shifts_gfx942 strategy=source
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @wide_right_shifts_gfx942(%value: reg<amdgpu.vgpr x2>, %uniform_value: reg<amdgpu.sgpr x2>, %uniform_count: reg<amdgpu.sgpr>, %varying_count: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
+  %scalar_logical = s_lshr_b64 %uniform_value, %uniform_count
+  %scalar_signed = s_ashr_i64 %uniform_value, %uniform_count
+  %logical_uniform = v_lshrrev_b64 %uniform_count, %value
+  %logical_varying = v_lshrrev_b64 %varying_count, %value
+  %signed_uniform = v_ashrrev_i64 %uniform_count, %value
+  %signed_varying = v_ashrrev_i64 %varying_count, %value
+  %logical_first = v_lshrrev_b64_src0_inline %value, 0
+  %logical_last = v_lshrrev_b64_src0_inline %value, 63
+  %signed_first = v_ashrrev_i64_src0_inline %value, 0
+  %signed_last = v_ashrrev_i64_src0_inline %value, 63
+  return %scalar_logical, %scalar_signed, %logical_uniform, %logical_varying, %signed_uniform, %signed_varying, %logical_first, %logical_last, %signed_first, %signed_last
+}
+
+// ----
+0x8F840200
+0x90800200
+0xD2900004
+0x00020402
+0xD2900006
+0x00020500
+0xD2910008
+0x00020402
+0xD2910000
+0x00020500
+0xD290000A
+0x00020480
+0xD290000C
+0x000204BF
+0xD291000E
+0x00020480
+0xD2910002
+0x000204BF
+0xBF810000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_right_shifts_gfx950 strategy=source
+
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @wide_right_shifts_gfx950(%value: reg<amdgpu.vgpr x2>, %uniform_value: reg<amdgpu.sgpr x2>, %uniform_count: reg<amdgpu.sgpr>, %varying_count: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
+  %scalar_logical = s_lshr_b64 %uniform_value, %uniform_count
+  %scalar_signed = s_ashr_i64 %uniform_value, %uniform_count
+  %logical_uniform = v_lshrrev_b64 %uniform_count, %value
+  %logical_varying = v_lshrrev_b64 %varying_count, %value
+  %signed_uniform = v_ashrrev_i64 %uniform_count, %value
+  %signed_varying = v_ashrrev_i64 %varying_count, %value
+  %logical_first = v_lshrrev_b64_src0_inline %value, 0
+  %logical_last = v_lshrrev_b64_src0_inline %value, 63
+  %signed_first = v_ashrrev_i64_src0_inline %value, 0
+  %signed_last = v_ashrrev_i64_src0_inline %value, 63
+  return %scalar_logical, %scalar_signed, %logical_uniform, %logical_varying, %signed_uniform, %signed_varying, %logical_first, %logical_last, %signed_first, %signed_last
+}
+
+// ----
+0x8F840200
+0x90800200
+0xD2900004
+0x00020402
+0xD2900006
+0x00020500
+0xD2910008
+0x00020402
+0xD2910000
+0x00020500
+0xD290000A
+0x00020480
+0xD290000C
+0x000204BF
+0xD291000E
+0x00020480
+0xD2910002
+0x000204BF
+0xBF810000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_right_shifts_gfx1100 strategy=source
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @wide_right_shifts_gfx1100(%value: reg<amdgpu.vgpr x2>, %uniform_value: reg<amdgpu.sgpr x2>, %uniform_count: reg<amdgpu.sgpr>, %varying_count: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
+  %scalar_logical = s_lshr_b64 %uniform_value, %uniform_count
+  %scalar_signed = s_ashr_i64 %uniform_value, %uniform_count
+  %logical_uniform = v_lshrrev_b64 %uniform_count, %value
+  %logical_varying = v_lshrrev_b64 %varying_count, %value
+  %signed_uniform = v_ashrrev_i64 %uniform_count, %value
+  %signed_varying = v_ashrrev_i64 %varying_count, %value
+  %logical_first = v_lshrrev_b64_src0_inline %value, 0
+  %logical_last = v_lshrrev_b64_src0_inline %value, 63
+  %signed_first = v_ashrrev_i64_src0_inline %value, 0
+  %signed_last = v_ashrrev_i64_src0_inline %value, 63
+  return %scalar_logical, %scalar_signed, %logical_uniform, %logical_varying, %signed_uniform, %signed_varying, %logical_first, %logical_last, %signed_first, %signed_last
+}
+
+// ----
+0x85840200
+0x86800200
+0xD73D0004
+0x02020402
+0xD73D0006
+0x02020500
+0xD73E0008
+0x02020402
+0xD73E0000
+0x02020500
+0xD73D000A
+0x02020480
+0xD73D000C
+0x020204BF
+0xD73E000E
+0x02020480
+0xD73E0002
+0x020204BF
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_right_shifts_gfx1151 strategy=source
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @wide_right_shifts_gfx1151(%value: reg<amdgpu.vgpr x2>, %uniform_value: reg<amdgpu.sgpr x2>, %uniform_count: reg<amdgpu.sgpr>, %varying_count: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
+  %scalar_logical = s_lshr_b64 %uniform_value, %uniform_count
+  %scalar_signed = s_ashr_i64 %uniform_value, %uniform_count
+  %logical_uniform = v_lshrrev_b64 %uniform_count, %value
+  %logical_varying = v_lshrrev_b64 %varying_count, %value
+  %signed_uniform = v_ashrrev_i64 %uniform_count, %value
+  %signed_varying = v_ashrrev_i64 %varying_count, %value
+  %logical_first = v_lshrrev_b64_src0_inline %value, 0
+  %logical_last = v_lshrrev_b64_src0_inline %value, 63
+  %signed_first = v_ashrrev_i64_src0_inline %value, 0
+  %signed_last = v_ashrrev_i64_src0_inline %value, 63
+  return %scalar_logical, %scalar_signed, %logical_uniform, %logical_varying, %signed_uniform, %signed_varying, %logical_first, %logical_last, %signed_first, %signed_last
+}
+
+// ----
+0x85840200
+0x86800200
+0xD73D0004
+0x02020402
+0xD73D0006
+0x02020500
+0xD73E0008
+0x02020402
+0xD73E0000
+0x02020500
+0xD73D000A
+0x02020480
+0xD73D000C
+0x020204BF
+0xD73E000E
+0x02020480
+0xD73E0002
+0x020204BF
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_right_shifts_gfx1201 strategy=source
+
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @wide_right_shifts_gfx1201(%value: reg<amdgpu.vgpr x2>, %uniform_value: reg<amdgpu.sgpr x2>, %uniform_count: reg<amdgpu.sgpr>, %varying_count: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
+  %scalar_logical = s_lshr_b64 %uniform_value, %uniform_count
+  %scalar_signed = s_ashr_i64 %uniform_value, %uniform_count
+  %logical_uniform = v_lshrrev_b64 %uniform_count, %value
+  %logical_varying = v_lshrrev_b64 %varying_count, %value
+  %signed_uniform = v_ashrrev_i64 %uniform_count, %value
+  %signed_varying = v_ashrrev_i64 %varying_count, %value
+  %logical_first = v_lshrrev_b64_src0_inline %value, 0
+  %logical_last = v_lshrrev_b64_src0_inline %value, 63
+  %signed_first = v_ashrrev_i64_src0_inline %value, 0
+  %signed_last = v_ashrrev_i64_src0_inline %value, 63
+  return %scalar_logical, %scalar_signed, %logical_uniform, %logical_varying, %signed_uniform, %signed_varying, %logical_first, %logical_last, %signed_first, %signed_last
+}
+
+// ----
+0x85840200
+0x86800200
+0xD73D0004
+0x02020402
+0xD73D0006
+0x02020500
+0xD73E0008
+0x02020402
+0xD73E0000
+0x02020500
+0xD73D000A
+0x02020480
+0xD73D000C
+0x020204BF
+0xD73E000E
+0x02020480
+0xD73E0002
+0x020204BF
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_right_shifts_gfx1250 strategy=source
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @wide_right_shifts_gfx1250(%value: reg<amdgpu.vgpr x2>, %uniform_value: reg<amdgpu.sgpr x2>, %uniform_count: reg<amdgpu.sgpr>, %varying_count: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
+  %scalar_logical = s_lshr_b64 %uniform_value, %uniform_count
+  %scalar_signed = s_ashr_i64 %uniform_value, %uniform_count
+  %logical_uniform = v_lshrrev_b64 %uniform_count, %value
+  %logical_varying = v_lshrrev_b64 %varying_count, %value
+  %signed_uniform = v_ashrrev_i64 %uniform_count, %value
+  %signed_varying = v_ashrrev_i64 %varying_count, %value
+  %logical_first = v_lshrrev_b64_src0_inline %value, 0
+  %logical_last = v_lshrrev_b64_src0_inline %value, 63
+  %signed_first = v_ashrrev_i64_src0_inline %value, 0
+  %signed_last = v_ashrrev_i64_src0_inline %value, 63
+  return %scalar_logical, %scalar_signed, %logical_uniform, %logical_varying, %signed_uniform, %signed_varying, %logical_first, %logical_last, %signed_first, %signed_last
+}
+
+// ----
+0x85840200
+0x86800200
+0xD73D0004
+0x02020402
+0xD73D0006
+0x02020500
+0xD73E0008
+0x02020402
+0xD73E0000
+0x02020500
+0xD73D000A
+0x02020480
+0xD73D000C
+0x020204BF
+0xD73E000E
+0x02020480
+0xD73E0002
+0x020204BF
+0xBFB00000

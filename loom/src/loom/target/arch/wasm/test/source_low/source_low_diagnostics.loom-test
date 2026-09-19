@@ -32,16 +32,6 @@ func.def target(@target) @unsupported_vector_shape(%lhs: vector<8xi32>, %rhs: ve
 
 wasm.target<simd128> @target
 
-func.def target(@target) @unsupported_source_op(%lhs: i32, %rhs: i32) -> (i32) {
-  // ERROR@+1: TARGET/001 {op_name="scalar.muli"}
-  %product = scalar.muli %lhs, %rhs : i32
-  func.return %product : i32
-}
-
-// ====
-
-wasm.target<simd128> @target
-
 func.def target(@target) @rejects_wasm32_address_overflow(%input: buffer, %i: index) -> (vector<4xi32>) {
   %bounded_i = index.assume %i [range(%i, 0, 1073741824)] : index
   %input_base = index.constant 0 : offset

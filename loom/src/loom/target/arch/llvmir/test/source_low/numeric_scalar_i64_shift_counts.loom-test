@@ -1,0 +1,133 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64_shift_counts.loom-test
+// RUN: emit source-low output=low
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @wide_shift_constant(%values: vector<2xi64>) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_shift_constant(%values: reg<llvmir.i64 x2>) -> (reg<llvmir.i64>) asm {
+  %value = extract.v2i64 %values, 0
+  %count = const.i64 31
+  %shifted = shl.i64 %value, %count
+  return %shifted
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @wide_shift_uniform(%values: vector<2xi64>, %count: i64) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_shift_uniform(%values: reg<llvmir.i64 x2>, %count: reg<llvmir.i64>) -> (reg<llvmir.i64>) asm {
+  %value = extract.v2i64 %values, 0
+  %shifted = shl.i64 %value, %count
+  return %shifted
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @wide_shift_varying(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64) {
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = vector.extract %counts[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_shift_varying(%values: reg<llvmir.i64 x2>, %counts: reg<llvmir.i64 x2>) -> (reg<llvmir.i64>) asm {
+  %value = extract.v2i64 %values, 0
+  %count = extract.v2i64 %counts, 0
+  %shifted = shl.i64 %value, %count
+  return %shifted
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @wide_right_shift_uniform(%value: i64, %count: i64) -> (i64, i64) {
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_right_shift_uniform(%value: reg<llvmir.i64>, %count: reg<llvmir.i64>) -> (reg<llvmir.i64>, reg<llvmir.i64>) asm {
+  %logical = lshr.i64 %value, %count
+  %signed = ashr.i64 %value, %count
+  return %logical, %signed
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @wide_right_shift_uniform_count(%values: vector<2xi64>, %count: i64) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_right_shift_uniform_count(%values: reg<llvmir.i64 x2>, %count: reg<llvmir.i64>) -> (reg<llvmir.i64>, reg<llvmir.i64>) asm {
+  %value = extract.v2i64 %values, 1
+  %logical = lshr.i64 %value, %count
+  %signed = ashr.i64 %value, %count
+  return %logical, %signed
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @wide_right_shift_varying_count(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %count = vector.extract %counts[1] : vector<2xi64> -> i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_right_shift_varying_count(%values: reg<llvmir.i64 x2>, %counts: reg<llvmir.i64 x2>) -> (reg<llvmir.i64>, reg<llvmir.i64>) asm {
+  %value = extract.v2i64 %values, 1
+  %count = extract.v2i64 %counts, 1
+  %logical = lshr.i64 %value, %count
+  %signed = ashr.i64 %value, %count
+  return %logical, %signed
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @wide_right_shift_constant(%values: vector<2xi64>) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_right_shift_constant(%values: reg<llvmir.i64 x2>) -> (reg<llvmir.i64>, reg<llvmir.i64>) asm {
+  %value = extract.v2i64 %values, 1
+  %count = const.i64 31
+  %logical = lshr.i64 %value, %count
+  %signed = ashr.i64 %value, %count
+  return %logical, %signed
+}

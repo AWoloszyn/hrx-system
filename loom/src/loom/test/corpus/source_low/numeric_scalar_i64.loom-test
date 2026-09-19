@@ -144,3 +144,60 @@ func.def @scalar_f64_constant_select_bitcast(%condition: i1, %fallback: f64) -> 
   %bits = scalar.bitcast %selected : f64 to i64
   func.return %bits : i64
 }
+
+// ====
+
+func.def @scalar_i64_lanes(%values: vector<2xi64>, %replacement: i64) -> (i64, i64, vector<2xi64>, vector<2xi64>) {
+  %first = vector.extract %values[0] : vector<2xi64> -> i64
+  %second = vector.extract %values[1] : vector<2xi64> -> i64
+  %replace_first = vector.insert %replacement into %values[0] : i64, vector<2xi64>
+  %replace_second = vector.insert %replacement into %values[1] : i64, vector<2xi64>
+  func.return %first, %second, %replace_first, %replace_second : i64, i64, vector<2xi64>, vector<2xi64>
+}
+
+// ====
+
+func.def @scalar_f64_lanes(%values: vector<2xf64>, %replacement: f64) -> (f64, f64, vector<2xf64>, vector<2xf64>) {
+  %first = vector.extract %values[0] : vector<2xf64> -> f64
+  %second = vector.extract %values[1] : vector<2xf64> -> f64
+  %replace_first = vector.insert %replacement into %values[0] : f64, vector<2xf64>
+  %replace_second = vector.insert %replacement into %values[1] : f64, vector<2xf64>
+  func.return %first, %second, %replace_first, %replace_second : f64, f64, vector<2xf64>, vector<2xf64>
+}
+
+// ====
+
+func.def @scalar_i64_right_shift_select(%value: i64, %condition: i1) -> (i64, i64, i64, i64, i64) {
+  %word_count = scalar.constant 32 : i64
+  %sign_count = scalar.constant 63 : i64
+  %logical_word = scalar.shrui %value, %word_count : i64
+  %signed_word = scalar.shrsi %value, %word_count : i64
+  %logical_sign = scalar.shrui %value, %sign_count : i64
+  %signed_sign = scalar.shrsi %value, %sign_count : i64
+  %selected = scf.select %condition, %logical_word, %signed_word : i64
+  func.return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected : i64, i64, i64, i64, i64
+}
+
+// ====
+
+func.def @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
+  %product = scalar.muli %lhs, %rhs : i32
+  %mixed = scalar.xori %product, %rhs : i32
+  %less = scalar.cmpi slt, %lhs, %rhs : i32
+  %selected = scf.select %less, %mixed, %product : i32
+  func.return %selected : i32
+}
+
+// ====
+
+func.def @scalar_i64_insert_dynamic(%values: vector<2xi64>, %replacement: i64, %lane: index) -> (vector<2xi64>) {
+  %updated = vector.insert %replacement into %values[%lane] : i64, vector<2xi64>
+  func.return %updated : vector<2xi64>
+}
+
+// ====
+
+func.def @scalar_f64_insert_dynamic(%values: vector<2xf64>, %replacement: f64, %lane: index) -> (vector<2xf64>) {
+  %updated = vector.insert %replacement into %values[%lane] : f64, vector<2xf64>
+  func.return %updated : vector<2xf64>
+}

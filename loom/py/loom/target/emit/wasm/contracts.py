@@ -48,6 +48,7 @@ from loom.target.contracts import (
     SourceMemoryRootKind,
     TypePattern,
     ValueAliasRule,
+    ValueProject,
     ValueRef,
     Vector,
     descriptor_by_key,
@@ -78,6 +79,8 @@ _OFFSET = Scalar("offset")
 _V4I1 = Vector("i1", lanes=4)
 _V4I32 = Vector("i32", lanes=4)
 _V4F32 = Vector("f32", lanes=4)
+_V2I64 = Vector("i64", lanes=2)
+_V2F64 = Vector("f64", lanes=2)
 
 _I64_ATTR_DIAGNOSTIC = GuardDiagnostic(
     ref=target_diagnostic(
@@ -148,6 +151,10 @@ def _type_text(type_pattern: TypePattern) -> str:
         return "vector<4xi32>"
     if type_pattern == _V4F32:
         return "vector<4xf32>"
+    if type_pattern == _V2I64:
+        return "vector<2xi64>"
+    if type_pattern == _V2F64:
+        return "vector<2xf64>"
     raise ValueError(f"unknown Wasm type pattern: {type_pattern!r}")
 
 
@@ -217,6 +224,26 @@ def _const_i64_rule(source_op: Op, result_type: TypePattern) -> DescriptorRule:
                 descriptor=descriptor,
                 results={"dst": ValueRef.result("result")},
                 immediates={"i64_value": AttrProject.direct("value")},
+                form=DescriptorEmitForm.CONST,
+            ),
+        ),
+    )
+
+
+def _const_float_rule(result_type: TypePattern, descriptor_key: str) -> DescriptorRule:
+    descriptor = _descriptor(descriptor_key)
+    return DescriptorRule(
+        source_op=scalar_conversion.scalar_constant,
+        descriptor=descriptor,
+        guards=(
+            _value_type("result", result_type),
+            Guard.value_exact_float("result"),
+        ),
+        emit=(
+            EmitDescriptorOp(
+                descriptor=descriptor,
+                results={"dst": ValueRef.result("result")},
+                immediates={"bits": ValueProject.float_bits("result")},
                 form=DescriptorEmitForm.CONST,
             ),
         ),
@@ -319,14 +346,16 @@ def _masked_extui_rule(
     )
 
 
-def _splat_rule() -> DescriptorRule:
-    descriptor = _descriptor("wasm.i32x4.splat")
+def _splat_rule(
+    value_type: TypePattern, result_type: TypePattern, descriptor_key: str
+) -> DescriptorRule:
+    descriptor = _descriptor(descriptor_key)
     return DescriptorRule(
         source_op=vector.vector_splat,
         descriptor=descriptor,
         guards=(
-            _value_type("scalar", _I32),
-            _value_type("result", _V4I32),
+            _value_type("scalar", value_type),
+            _value_type("result", result_type),
         ),
         emit=(
             EmitDescriptorOp(
@@ -363,16 +392,16 @@ def _select_rule(value_type: TypePattern) -> DescriptorRule:
     )
 
 
-def _scalar_select_rule() -> DescriptorRule:
-    descriptor = _descriptor("wasm.i32.select")
+def _scalar_select_rule(value_type: TypePattern, descriptor_key: str) -> DescriptorRule:
+    descriptor = _descriptor(descriptor_key)
     return DescriptorRule(
         source_op=scf.scf_select,
         descriptor=descriptor,
         guards=(
             _value_type("condition", _I1),
-            _value_type("true_value", _I32),
-            _value_type("false_value", _I32),
-            _value_type("result", _I32),
+            _value_type("true_value", value_type),
+            _value_type("false_value", value_type),
+            _value_type("result", value_type),
         ),
         emit=(
             EmitDescriptorOp(
@@ -460,7 +489,9 @@ def _extract_rule(
             _value_type("result", result_type),
             Guard.operand_segment_count("indices", 0),
             Guard.i64_array_count("static_indices", 1),
-            Guard.i64_array_element_range("static_indices", 0, 0, 3),
+            Guard.i64_array_element_range(
+                "static_indices", 0, 0, source_type.lanes - 1
+            ),
         ),
         emit=(
             EmitDescriptorOp(
@@ -493,7 +524,7 @@ def _insert_rule(
             _value_type("result", dest_type),
             Guard.operand_segment_count("indices", 0),
             Guard.i64_array_count("static_indices", 1),
-            Guard.i64_array_element_range("static_indices", 0, 0, 3),
+            Guard.i64_array_element_range("static_indices", 0, 0, dest_type.lanes - 1),
         ),
         emit=(
             EmitDescriptorOp(
@@ -770,20 +801,43 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         _buffer_view_rule(),
         _buffer_load_i8_u_rule(),
         _buffer_store_i8_rule(),
-        _binary_rule(scalar_arithmetic.scalar_addi, _I32, "wasm.i32.add"),
-        _binary_rule(scalar_arithmetic.scalar_subi, _I32, "wasm.i32.sub"),
-        _binary_rule(scalar_bitwise.scalar_andi, _I32, "wasm.i32.and"),
+        *(
+            _binary_rule(source_op, value_type, f"wasm.{type_name}.{operation}")
+            for value_type, type_name in ((_I32, "i32"), (_I64, "i64"))
+            for source_op, operation in (
+                (scalar_arithmetic.scalar_addi, "add"),
+                (scalar_arithmetic.scalar_subi, "sub"),
+                (scalar_arithmetic.scalar_muli, "mul"),
+                (scalar_bitwise.scalar_andi, "and"),
+                (scalar_bitwise.scalar_ori, "or"),
+                (scalar_bitwise.scalar_xori, "xor"),
+                (scalar_bitwise.scalar_shli, "shl"),
+                (scalar_bitwise.scalar_shrsi, "shr_s"),
+                (scalar_bitwise.scalar_shrui, "shr_u"),
+            )
+        ),
         _binary_rule(scalar_bitwise.scalar_andi, _I1, "wasm.i32.and"),
-        _binary_rule(scalar_bitwise.scalar_ori, _I32, "wasm.i32.or"),
-        _binary_rule(scalar_bitwise.scalar_shli, _I32, "wasm.i32.shl"),
-        _binary_rule(scalar_bitwise.scalar_shrui, _I32, "wasm.i32.shr_u"),
-        _binary_rule(scalar_bitwise.scalar_ori, _I64, "wasm.i64.or"),
-        _binary_rule(scalar_bitwise.scalar_shli, _I64, "wasm.i64.shl"),
-        _binary_rule(scalar_bitwise.scalar_shrui, _I64, "wasm.i64.shr_u"),
         _binary_rule(scalar_arithmetic.scalar_addf, _F32, "wasm.f32.add"),
-        _scalar_compare_rule(scalar_comparison.scalar_cmpi, "eq", _I32, "wasm.i32.eq"),
-        _scalar_compare_rule(
-            scalar_comparison.scalar_cmpi, "ult", _I32, "wasm.i32.lt_u"
+        *(
+            _scalar_compare_rule(
+                scalar_comparison.scalar_cmpi,
+                predicate,
+                value_type,
+                f"wasm.{type_name}.{operation}",
+            )
+            for value_type, type_name in ((_I32, "i32"), (_I64, "i64"))
+            for predicate, operation in (
+                ("eq", "eq"),
+                ("ne", "ne"),
+                ("slt", "lt_s"),
+                ("sle", "le_s"),
+                ("sgt", "gt_s"),
+                ("sge", "ge_s"),
+                ("ult", "lt_u"),
+                ("ule", "le_u"),
+                ("ugt", "gt_u"),
+                ("uge", "ge_u"),
+            )
         ),
         _conversion_rule(
             scalar_conversion.scalar_bitcast,
@@ -803,6 +857,12 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
             _I32,
             "wasm.i32.wrap_i64",
         ),
+        _conversion_rule(
+            scalar_conversion.scalar_bitcast, _I32, _F32, "wasm.f32.reinterpret_i32"
+        ),
+        _conversion_rule(
+            scalar_conversion.scalar_bitcast, _I64, _F64, "wasm.f64.reinterpret_i64"
+        ),
         _conversion_alias_rule(scalar_conversion.scalar_bitcast, _F8E4M3, _I8),
         _conversion_alias_rule(scalar_conversion.scalar_bitcast, _F8E5M2, _I8),
         _conversion_alias_rule(scalar_conversion.scalar_bitcast, _F16, _I16),
@@ -812,8 +872,24 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         _masked_extui_rule(_I16, 0xFFFF),
         _const_i32_rule(scalar_conversion.scalar_constant, _I32),
         _const_i64_rule(scalar_conversion.scalar_constant, _I64),
-        _scalar_select_rule(),
-        _splat_rule(),
+        _const_float_rule(_F32, "wasm.f32.const"),
+        _const_float_rule(_F64, "wasm.f64.const"),
+        *(
+            _scalar_select_rule(value_type, f"wasm.{type_name}.select")
+            for value_type, type_name in (
+                (_I1, "i32"),
+                (_I32, "i32"),
+                (_I64, "i64"),
+                (_F32, "f32"),
+                (_F64, "f64"),
+                (_INDEX, "i32"),
+                (_OFFSET, "i32"),
+            )
+        ),
+        _splat_rule(_I32, _V4I32, "wasm.i32x4.splat"),
+        _splat_rule(_I64, _V2I64, "wasm.i64x2.splat"),
+        _splat_rule(_F32, _V4F32, "wasm.f32x4.splat"),
+        _splat_rule(_F64, _V2F64, "wasm.f64x2.splat"),
         _select_rule(_V4I32),
         _select_rule(_V4F32),
         _compare_rule(vector.vector_cmpi, "eq", _V4I32, "wasm.i32x4.eq"),
@@ -847,8 +923,12 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         _binary_rule(index.index_mul, _INDEX, "wasm.i32.mul"),
         _extract_rule(_V4I32, _I32, "wasm.i32x4.extract_lane"),
         _extract_rule(_V4F32, _F32, "wasm.f32x4.extract_lane"),
+        _extract_rule(_V2I64, _I64, "wasm.i64x2.extract_lane"),
+        _extract_rule(_V2F64, _F64, "wasm.f64x2.extract_lane"),
         _insert_rule(_I32, _V4I32, "wasm.i32x4.replace_lane"),
         _insert_rule(_F32, _V4F32, "wasm.f32x4.replace_lane"),
+        _insert_rule(_I64, _V2I64, "wasm.i64x2.replace_lane"),
+        _insert_rule(_F64, _V2F64, "wasm.f64x2.replace_lane"),
         _shuffle_rule(_V4I32),
         _shuffle_rule(_V4F32),
         _shuffle_rule(_V4I1),

@@ -53,6 +53,35 @@ enum {
   LOOM_WASM_OPCODE_I32_WRAP_I64 = 0xA7,
   LOOM_WASM_OPCODE_I32_REINTERPRET_F32 = 0xBC,
   LOOM_WASM_OPCODE_I64_REINTERPRET_F64 = 0xBD,
+  LOOM_WASM_OPCODE_F32_CONST = 0x43,
+  LOOM_WASM_OPCODE_F64_CONST = 0x44,
+  LOOM_WASM_OPCODE_I32_XOR = 0x73,
+  LOOM_WASM_OPCODE_I32_SHR_S = 0x75,
+  LOOM_WASM_OPCODE_I64_ADD = 0x7C,
+  LOOM_WASM_OPCODE_I64_SUB = 0x7D,
+  LOOM_WASM_OPCODE_I64_MUL = 0x7E,
+  LOOM_WASM_OPCODE_I64_AND = 0x83,
+  LOOM_WASM_OPCODE_I64_XOR = 0x85,
+  LOOM_WASM_OPCODE_I64_SHR_S = 0x87,
+  LOOM_WASM_OPCODE_F32_REINTERPRET_I32 = 0xBE,
+  LOOM_WASM_OPCODE_F64_REINTERPRET_I64 = 0xBF,
+  LOOM_WASM_OPCODE_I32_NE = 0x47,
+  LOOM_WASM_OPCODE_I32_GT_S = 0x4A,
+  LOOM_WASM_OPCODE_I32_GT_U = 0x4B,
+  LOOM_WASM_OPCODE_I32_LE_S = 0x4C,
+  LOOM_WASM_OPCODE_I32_LE_U = 0x4D,
+  LOOM_WASM_OPCODE_I32_GE_S = 0x4E,
+  LOOM_WASM_OPCODE_I32_GE_U = 0x4F,
+  LOOM_WASM_OPCODE_I64_EQ = 0x51,
+  LOOM_WASM_OPCODE_I64_NE = 0x52,
+  LOOM_WASM_OPCODE_I64_LT_S = 0x53,
+  LOOM_WASM_OPCODE_I64_LT_U = 0x54,
+  LOOM_WASM_OPCODE_I64_GT_S = 0x55,
+  LOOM_WASM_OPCODE_I64_GT_U = 0x56,
+  LOOM_WASM_OPCODE_I64_LE_S = 0x57,
+  LOOM_WASM_OPCODE_I64_LE_U = 0x58,
+  LOOM_WASM_OPCODE_I64_GE_S = 0x59,
+  LOOM_WASM_OPCODE_I64_GE_U = 0x5A,
   LOOM_WASM_OPCODE_SIMD_PREFIX = 0xFD,
 };
 
@@ -70,6 +99,13 @@ enum {
   LOOM_WASM_SIMD_SUBOPCODE_I32X4_REPLACE_LANE = 0x1C,
   LOOM_WASM_SIMD_SUBOPCODE_F32X4_EXTRACT_LANE = 0x1F,
   LOOM_WASM_SIMD_SUBOPCODE_F32X4_REPLACE_LANE = 0x20,
+  LOOM_WASM_SIMD_SUBOPCODE_I64X2_SPLAT = 0x12,
+  LOOM_WASM_SIMD_SUBOPCODE_F32X4_SPLAT = 0x13,
+  LOOM_WASM_SIMD_SUBOPCODE_F64X2_SPLAT = 0x14,
+  LOOM_WASM_SIMD_SUBOPCODE_I64X2_EXTRACT_LANE = 0x1D,
+  LOOM_WASM_SIMD_SUBOPCODE_I64X2_REPLACE_LANE = 0x1E,
+  LOOM_WASM_SIMD_SUBOPCODE_F64X2_EXTRACT_LANE = 0x21,
+  LOOM_WASM_SIMD_SUBOPCODE_F64X2_REPLACE_LANE = 0x22,
   LOOM_WASM_SIMD_SUBOPCODE_I32X4_EQ = 0x37,
   LOOM_WASM_SIMD_SUBOPCODE_I32X4_NE = 0x38,
   LOOM_WASM_SIMD_SUBOPCODE_I32X4_LT_S = 0x39,
@@ -116,6 +152,24 @@ enum {
   LOOM_WASM_ENCODING_F32X4_REPLACE_LANE =
       (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) |
       LOOM_WASM_SIMD_SUBOPCODE_F32X4_REPLACE_LANE,
+  LOOM_WASM_ENCODING_I64X2_SPLAT = (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) |
+                                   LOOM_WASM_SIMD_SUBOPCODE_I64X2_SPLAT,
+  LOOM_WASM_ENCODING_F32X4_SPLAT = (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) |
+                                   LOOM_WASM_SIMD_SUBOPCODE_F32X4_SPLAT,
+  LOOM_WASM_ENCODING_F64X2_SPLAT = (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) |
+                                   LOOM_WASM_SIMD_SUBOPCODE_F64X2_SPLAT,
+  LOOM_WASM_ENCODING_I64X2_EXTRACT_LANE =
+      (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) |
+      LOOM_WASM_SIMD_SUBOPCODE_I64X2_EXTRACT_LANE,
+  LOOM_WASM_ENCODING_I64X2_REPLACE_LANE =
+      (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) |
+      LOOM_WASM_SIMD_SUBOPCODE_I64X2_REPLACE_LANE,
+  LOOM_WASM_ENCODING_F64X2_EXTRACT_LANE =
+      (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) |
+      LOOM_WASM_SIMD_SUBOPCODE_F64X2_EXTRACT_LANE,
+  LOOM_WASM_ENCODING_F64X2_REPLACE_LANE =
+      (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) |
+      LOOM_WASM_SIMD_SUBOPCODE_F64X2_REPLACE_LANE,
   LOOM_WASM_ENCODING_I32X4_EQ =
       (LOOM_WASM_OPCODE_SIMD_PREFIX << 8) | LOOM_WASM_SIMD_SUBOPCODE_I32X4_EQ,
   LOOM_WASM_ENCODING_I32X4_NE =
@@ -206,11 +260,13 @@ typedef struct loom_wasm_attr_name_ids_t {
   loom_string_id_t i32_value;
   // Module string ID for wasm.i64.const's immediate payload.
   loom_string_id_t i64_value;
+  // Module string ID for scalar floating-point constant bit patterns.
+  loom_string_id_t bits;
   // Module string ID for wasm.v128.const's low 64-bit immediate payload.
   loom_string_id_t lo64;
   // Module string ID for wasm.v128.const's high 64-bit immediate payload.
   loom_string_id_t hi64;
-  // Module string ID for i32x4 lane-immediate payloads.
+  // Module string ID for SIMD lane-immediate payloads.
   loom_string_id_t lane;
   // Module string IDs for i8x16.shuffle byte-lane immediate payloads.
   loom_string_id_t shuffle_lanes[16];
@@ -233,6 +289,7 @@ typedef struct loom_wasm_emit_state_t {
 
 static const iree_string_view_t kWasmAttrI32ValueName = IREE_SVL("i32_value");
 static const iree_string_view_t kWasmAttrI64ValueName = IREE_SVL("i64_value");
+static const iree_string_view_t kWasmAttrBitsName = IREE_SVL("bits");
 static const iree_string_view_t kWasmAttrLo64Name = IREE_SVL("lo64");
 static const iree_string_view_t kWasmAttrHi64Name = IREE_SVL("hi64");
 static const iree_string_view_t kWasmAttrLaneName = IREE_SVL("lane");
@@ -250,6 +307,7 @@ static void loom_wasm_attr_name_ids_initialize(
   *out_attr_names = (loom_wasm_attr_name_ids_t){
       .i32_value = loom_module_lookup_string(module, kWasmAttrI32ValueName),
       .i64_value = loom_module_lookup_string(module, kWasmAttrI64ValueName),
+      .bits = loom_module_lookup_string(module, kWasmAttrBitsName),
       .lo64 = loom_module_lookup_string(module, kWasmAttrLo64Name),
       .hi64 = loom_module_lookup_string(module, kWasmAttrHi64Name),
       .lane = loom_module_lookup_string(module, kWasmAttrLaneName),
@@ -739,6 +797,23 @@ static iree_status_t loom_wasm_emit_i64_const(
   return loom_wasm_emit_local_set(state, loom_low_const_result(op));
 }
 
+static iree_status_t loom_wasm_emit_float_const(
+    loom_wasm_emit_state_t* state, const loom_op_t* op,
+    const loom_low_descriptor_t* descriptor) {
+  const loom_named_attr_t* bits = loom_wasm_find_named_attr_by_id(
+      loom_low_const_attrs(op), state->attr_names.bits);
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
+  if (descriptor->encoding_id == LOOM_WASM_OPCODE_F32_CONST) {
+    IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u32_le(
+        &state->writer, (uint32_t)bits->value.i64));
+  } else {
+    IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u64_le(
+        &state->writer, (uint64_t)bits->value.i64));
+  }
+  return loom_wasm_emit_local_set(state, loom_low_const_result(op));
+}
+
 static iree_status_t loom_wasm_emit_v128_const(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
@@ -814,20 +889,8 @@ static iree_status_t loom_wasm_emit_ternary_stack_op(
 static iree_status_t loom_wasm_emit_lane_stack_op(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  const bool extracts_lane =
-      descriptor->encoding_id == LOOM_WASM_ENCODING_I32X4_EXTRACT_LANE ||
-      descriptor->encoding_id == LOOM_WASM_ENCODING_F32X4_EXTRACT_LANE;
-  const uint16_t expected_operand_count = extracts_lane ? 1 : 2;
-  if (!loom_low_op_isa(op) || op->operand_count != expected_operand_count ||
-      op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "Wasm lane packet shape is invalid");
-  }
-  loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-  uint8_t lane = 0;
-  IREE_RETURN_IF_ERROR(loom_wasm_read_u8_attr(attrs, kWasmAttrLaneName,
-                                              state->attr_names.lane,
-                                              /*maximum_value=*/3, &lane));
+  const loom_named_attr_t* lane = loom_wasm_find_named_attr_by_id(
+      loom_low_op_attrs(op), state->attr_names.lane);
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   for (iree_host_size_t i = 0; i < operands.count; ++i) {
@@ -835,7 +898,8 @@ static iree_status_t loom_wasm_emit_lane_stack_op(
   }
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u8(&state->writer, lane));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_u8(&state->writer, (uint8_t)lane->value.i64));
   return loom_wasm_emit_local_set(state, results.values[0]);
 }
 
@@ -904,6 +968,9 @@ static iree_status_t loom_wasm_emit_descriptor_packet(
       return loom_wasm_emit_i32_const(state, op, descriptor);
     case LOOM_WASM_OPCODE_I64_CONST:
       return loom_wasm_emit_i64_const(state, op, descriptor);
+    case LOOM_WASM_OPCODE_F32_CONST:
+    case LOOM_WASM_OPCODE_F64_CONST:
+      return loom_wasm_emit_float_const(state, op, descriptor);
     case LOOM_WASM_ENCODING_V128_CONST:
       return loom_wasm_emit_v128_const(state, op, descriptor);
     case LOOM_WASM_OPCODE_I32_ADD:
@@ -918,6 +985,32 @@ static iree_status_t loom_wasm_emit_descriptor_packet(
     case LOOM_WASM_OPCODE_I64_SHR_U:
     case LOOM_WASM_OPCODE_I32_EQ:
     case LOOM_WASM_OPCODE_I32_LT_U:
+    case LOOM_WASM_OPCODE_I32_XOR:
+    case LOOM_WASM_OPCODE_I32_SHR_S:
+    case LOOM_WASM_OPCODE_I64_ADD:
+    case LOOM_WASM_OPCODE_I64_SUB:
+    case LOOM_WASM_OPCODE_I64_MUL:
+    case LOOM_WASM_OPCODE_I64_AND:
+    case LOOM_WASM_OPCODE_I64_XOR:
+    case LOOM_WASM_OPCODE_I64_SHR_S:
+    case LOOM_WASM_OPCODE_I32_NE:
+    case LOOM_WASM_OPCODE_I32_LT_S:
+    case LOOM_WASM_OPCODE_I32_GT_S:
+    case LOOM_WASM_OPCODE_I32_GT_U:
+    case LOOM_WASM_OPCODE_I32_LE_S:
+    case LOOM_WASM_OPCODE_I32_LE_U:
+    case LOOM_WASM_OPCODE_I32_GE_S:
+    case LOOM_WASM_OPCODE_I32_GE_U:
+    case LOOM_WASM_OPCODE_I64_EQ:
+    case LOOM_WASM_OPCODE_I64_NE:
+    case LOOM_WASM_OPCODE_I64_LT_S:
+    case LOOM_WASM_OPCODE_I64_LT_U:
+    case LOOM_WASM_OPCODE_I64_GT_S:
+    case LOOM_WASM_OPCODE_I64_GT_U:
+    case LOOM_WASM_OPCODE_I64_LE_S:
+    case LOOM_WASM_OPCODE_I64_LE_U:
+    case LOOM_WASM_OPCODE_I64_GE_S:
+    case LOOM_WASM_OPCODE_I64_GE_U:
     case LOOM_WASM_OPCODE_F32_ADD:
     case LOOM_WASM_ENCODING_I32X4_EQ:
     case LOOM_WASM_ENCODING_I32X4_NE:
@@ -942,6 +1035,8 @@ static iree_status_t loom_wasm_emit_descriptor_packet(
       return loom_wasm_emit_binary_stack_op(state, op, descriptor);
     case LOOM_WASM_OPCODE_SELECT:
       return loom_wasm_emit_ternary_stack_op(state, op, descriptor);
+    case LOOM_WASM_OPCODE_F32_REINTERPRET_I32:
+    case LOOM_WASM_OPCODE_F64_REINTERPRET_I64:
     case LOOM_WASM_OPCODE_I32_WRAP_I64:
     case LOOM_WASM_OPCODE_I32_REINTERPRET_F32:
     case LOOM_WASM_OPCODE_I64_REINTERPRET_F64:
@@ -950,8 +1045,15 @@ static iree_status_t loom_wasm_emit_descriptor_packet(
       return loom_wasm_emit_ternary_stack_op(state, op, descriptor);
     case LOOM_WASM_ENCODING_I8X16_SHUFFLE:
       return loom_wasm_emit_i8x16_shuffle(state, op, descriptor);
+    case LOOM_WASM_ENCODING_I64X2_SPLAT:
+    case LOOM_WASM_ENCODING_F32X4_SPLAT:
+    case LOOM_WASM_ENCODING_F64X2_SPLAT:
     case LOOM_WASM_ENCODING_I32X4_SPLAT:
       return loom_wasm_emit_unary_stack_op(state, op, descriptor);
+    case LOOM_WASM_ENCODING_I64X2_EXTRACT_LANE:
+    case LOOM_WASM_ENCODING_I64X2_REPLACE_LANE:
+    case LOOM_WASM_ENCODING_F64X2_EXTRACT_LANE:
+    case LOOM_WASM_ENCODING_F64X2_REPLACE_LANE:
     case LOOM_WASM_ENCODING_I32X4_EXTRACT_LANE:
     case LOOM_WASM_ENCODING_F32X4_EXTRACT_LANE:
     case LOOM_WASM_ENCODING_I32X4_REPLACE_LANE:

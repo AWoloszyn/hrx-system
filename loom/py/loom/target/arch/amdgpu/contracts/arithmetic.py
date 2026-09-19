@@ -1026,7 +1026,9 @@ def _vector_iota_recipe_rules() -> tuple[RecipeRule, ...]:
 def _vector_insert_recipe_rules() -> tuple[RecipeRule, ...]:
     supported_type_pairs = (
         (_I32, _VEC_I32_STATIC),
+        (_I64, _VEC_I64_STATIC),
         (_F32, _VEC_F32_STATIC),
+        (_F64, _VEC_F64_STATIC),
         (_F16, _VEC_F16_PACKED_STORAGE),
         (_BF16, _VEC_BF16_PACKED_STORAGE),
         (_I8, _VEC_I8_PACKED),

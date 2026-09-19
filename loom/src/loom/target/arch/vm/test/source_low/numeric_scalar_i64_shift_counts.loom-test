@@ -1,0 +1,100 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64_shift_counts.loom-test
+// RUN: emit source-low output=low
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @wide_shift_constant(%values: vector<2xi64>) -> (i64) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @wide_shift_uniform(%values: vector<2xi64>, %count: i64) -> (i64) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @wide_shift_varying(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %count = vector.extract %counts[0] : vector<2xi64> -> i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @wide_right_shift_uniform(%value: i64, %count: i64) -> (i64, i64) {
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @wide_right_shift_uniform(%value: reg<vm.value : i64>, %count: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  %logical = integer.shift.right.u64 %value, %count
+  %signed = integer.shift.right.s64 %value, %count
+  return %logical, %signed
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @wide_right_shift_uniform_count(%values: vector<2xi64>, %count: i64) -> (i64, i64) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+2: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @wide_right_shift_varying_count(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64, i64) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %count = vector.extract %counts[1] : vector<2xi64> -> i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @wide_right_shift_constant(%values: vector<2xi64>) -> (i64, i64) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}

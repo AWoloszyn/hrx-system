@@ -41,15 +41,3 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @literal
   %s63 = concat(%57, %61) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   return %value, %s8, %s31, %s32, %s33, %s63
 }
-
-// ====
-
-amdgpu.target<gfx11-generic> @target
-
-func.def target(@target) @dynamic_logical_right_shift(%values: vector<2xi64>, %shifts: vector<2xi64>) -> (i64) {
-  %value = vector.extract %values[0] : vector<2xi64> -> i64
-  %shift = vector.extract %shifts[0] : vector<2xi64> -> i64
-  // ERROR@+1: AMDGPU/023 {op_name="scalar.shrui", constraint_key="rhs.literal_shift_0_63"}
-  %result = scalar.shrui %value, %shift : i64
-  func.return %result : i64
-}

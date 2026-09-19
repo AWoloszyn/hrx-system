@@ -46,6 +46,8 @@ _I32 = Scalar("i32")
 _I64 = Scalar("i64")
 _F32 = Scalar("f32")
 _F64 = Scalar("f64")
+_V2I64 = Vector("i64", lanes=2)
+_V2F64 = Vector("f64", lanes=2)
 _V4I32 = Vector("i32", lanes=4)
 _V4F32 = Vector("f32", lanes=4)
 _V8I32 = Vector("i32", lanes=8)
@@ -200,7 +202,9 @@ def _extract_rule(
             Guard.value_type("result", result_type),
             Guard.operand_segment_count("indices", 0),
             Guard.i64_array_count("static_indices", 1),
-            Guard.i64_array_element_range("static_indices", 0, 0, 3),
+            Guard.i64_array_element_range(
+                "static_indices", 0, 0, source_type.lanes - 1
+            ),
         ),
         emit=(
             _op_emit(
@@ -208,7 +212,7 @@ def _extract_rule(
                 operands={"source": ValueRef.operand("source")},
                 results={"dst": ValueRef.result("result")},
                 immediates={
-                    "lane" if result_type == _I32 else "control": (
+                    "lane" if result_type in (_I32, _I64) else "control": (
                         AttrProject.i64_array_element(
                             "static_indices",
                             element=0,
@@ -229,7 +233,7 @@ def _insert_rule(
     descriptor = descriptor_lookup(descriptor_key)
     immediate = (
         AttrProject.i64_array_element("static_indices", element=0)
-        if value_type == _I32
+        if value_type in (_I32, _I64)
         else AttrProject.i64_array_element(
             "static_indices",
             element=0,
@@ -245,7 +249,7 @@ def _insert_rule(
             Guard.value_type("result", dest_type),
             Guard.operand_segment_count("indices", 0),
             Guard.i64_array_count("static_indices", 1),
-            Guard.i64_array_element_range("static_indices", 0, 0, 3),
+            Guard.i64_array_element_range("static_indices", 0, 0, dest_type.lanes - 1),
         ),
         emit=(
             _op_emit(
@@ -256,8 +260,37 @@ def _insert_rule(
                 },
                 results={"dst": ValueRef.result("result")},
                 immediates={
-                    "lane" if value_type == _I32 else "control": immediate,
+                    "lane" if value_type in (_I32, _I64) else "control": immediate,
                 },
+            ),
+        ),
+    )
+
+
+def _insert_f64_rule(lane: int, descriptor_lookup: _DescriptorLookup) -> DescriptorRule:
+    descriptor = descriptor_lookup("x86.avx2.vshufpd.xmm")
+    # Each output lane comes from a different input. The scalar occupies the
+    # low lane, so insertion selects its input order and the retained dest lane.
+    return DescriptorRule(
+        source_op=vector.vector_insert,
+        descriptor=descriptor,
+        guards=(
+            Guard.value_type("value", _F64),
+            Guard.value_type("dest", _V2F64),
+            Guard.value_type("result", _V2F64),
+            Guard.operand_segment_count("indices", 0),
+            Guard.i64_array_count("static_indices", 1),
+            Guard.i64_array_element_range("static_indices", 0, lane, lane),
+        ),
+        emit=(
+            _op_emit(
+                descriptor=descriptor,
+                operands={
+                    "lhs": ValueRef.operand("value" if lane == 0 else "dest"),
+                    "rhs": ValueRef.operand("dest" if lane == 0 else "value"),
+                },
+                results={"dst": ValueRef.result("result")},
+                immediates={"control": 2 if lane == 0 else 0},
             ),
         ),
     )
@@ -448,8 +481,13 @@ def _cases() -> Sequence[ContractCase]:
             descriptor_lookup,
         ),
         _extract_rule(_V4F32, _F32, "x86.avx2.vpermilps.xmm", descriptor_lookup),
+        _extract_rule(_V2I64, _I64, "x86.avx2.vpextrq.gpr64.xmm", descriptor_lookup),
+        _extract_rule(_V2F64, _F64, "x86.avx2.vpermilpd.xmm", descriptor_lookup),
         _insert_rule(_I32, _V4I32, "x86.avx2.vpinsrd.xmm", descriptor_lookup),
         _insert_rule(_F32, _V4F32, "x86.avx2.vinsertps.xmm", descriptor_lookup),
+        _insert_rule(_I64, _V2I64, "x86.avx2.vpinsrq.xmm", descriptor_lookup),
+        _insert_f64_rule(0, descriptor_lookup),
+        _insert_f64_rule(1, descriptor_lookup),
         _shuffle_rule(_V4I32, "x86.avx2.vpshufd.xmm", descriptor_lookup),
         _shuffle_rule(_V4F32, "x86.avx2.vpermilps.xmm", descriptor_lookup),
         _binary_rule(
