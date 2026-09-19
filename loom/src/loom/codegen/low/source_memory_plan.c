@@ -960,6 +960,30 @@ static bool loom_low_source_memory_access_add_view_region_byte_offset(
         LOOM_LOW_SOURCE_MEMORY_ACCESS_REJECTION_VIEW_BASE;
     return false;
   }
+  if (view_region->base_view_value_id != LOOM_VALUE_ID_INVALID) {
+    plan->base_view_value_id = view_region->base_view_value_id;
+  }
+  // As with logical indices, keep a negative affine constant in the existing
+  // SSA origin. Extracting it would violate the nonnegative static-addend
+  // contract even when the complete root-relative address is nonnegative.
+  if (view_region->begin_byte_offset.constant < 0 &&
+      view_region->begin_value_id != LOOM_VALUE_ID_INVALID) {
+    loom_low_source_memory_dynamic_term_t term = {
+        .index = view_region->begin_value_id,
+        .axis = LOOM_LOW_SOURCE_MEMORY_DYNAMIC_TERM_AXIS_NONE,
+        .byte_stride = 1,
+        .byte_shift = 0,
+        .byte_facts = view_region->begin_byte_offset.facts,
+    };
+    loom_low_source_memory_access_dynamic_index_source(
+        fact_table, term.index, &term.source, &term.dimension);
+    plan->static_view_base_byte_offset = 0;
+    plan->dynamic_view_base_term_count = 1;
+    plan->dynamic_view_base_value_id = term.index;
+    plan->dynamic_view_base_value_static_byte_offset = 0;
+    return loom_low_source_memory_access_append_dynamic_term(plan, &term,
+                                                             diagnostic);
+  }
   int64_t static_byte_offset = 0;
   if (!iree_checked_add_i64(*inout_static_byte_offset,
                             view_region->begin_byte_offset.constant,
@@ -1002,9 +1026,6 @@ static bool loom_low_source_memory_access_add_view_region_byte_offset(
   const uint8_t dynamic_view_base_count =
       (uint8_t)(plan->dynamic_term_count - dynamic_view_base_begin);
   plan->dynamic_view_base_term_count = dynamic_view_base_count;
-  if (view_region->base_view_value_id != LOOM_VALUE_ID_INVALID) {
-    plan->base_view_value_id = view_region->base_view_value_id;
-  }
   if (can_refine_dynamic_view_base_facts) {
     // The canonical static contribution is already represented separately in
     // the access plan, so retain only the analyzed dynamic contribution.
