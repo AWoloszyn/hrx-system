@@ -65,6 +65,7 @@ loom_cc_library(
     loom::target::low_descriptor_registry
     loom::target::low_legality
     loom::target::reporting::report
+    loom::util::adaptive_sort
     loom::util::walk
   PUBLIC
 )

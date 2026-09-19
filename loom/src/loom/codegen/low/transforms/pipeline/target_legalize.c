@@ -27,6 +27,7 @@
 #include "loom/target/low_descriptor_registry.h"
 #include "loom/target/low_legality.h"
 #include "loom/target/reporting/report.h"
+#include "loom/util/adaptive_sort.h"
 #include "loom/util/walk.h"
 
 typedef struct loom_low_target_legalize_pass_state_t {
@@ -283,6 +284,21 @@ typedef struct loom_low_target_legalize_final_rejection_t {
   struct loom_low_target_legalize_final_rejection_t* next;
 } loom_low_target_legalize_final_rejection_t;
 
+// One original source operation's decision, retained across greedy revisits.
+// Operation addresses remain stable through erasure until module destruction.
+typedef struct loom_low_target_legalize_report_decision_t {
+  // Original operation, retained after erasure with its DEAD flag set.
+  const loom_op_t* op;
+  // Latest decision, or NONE until a legalizer reports an intervention.
+  loom_target_compile_report_legalization_action_t action;
+  // Provider strategy for the latest decision.
+  loom_target_compile_report_legalizer_strategy_t strategy;
+  // Optional detailed row in the function arena, absent for summary collection.
+  loom_target_compile_report_legalization_row_t* row;
+  // Next decision in first-observation order, independent of pointer ordering.
+  struct loom_low_target_legalize_report_decision_t* next;
+} loom_low_target_legalize_report_decision_t;
+
 typedef struct loom_low_target_legalize_function_state_t {
   // Pass invocation being executed.
   loom_pass_t* pass;
@@ -310,12 +326,19 @@ typedef struct loom_low_target_legalize_function_state_t {
   loom_target_legalization_context_t legalization_context;
   // Optional compile report receiving cold legalization decision rows.
   loom_target_compile_report_t* compile_report;
-  // Legalizer-rooted operations present before this pass mutates the function.
-  loom_op_t** report_source_ops;
-  // Number of entries in report_source_ops.
-  iree_host_size_t report_source_op_count;
-  // Allocated entry capacity of report_source_ops.
-  iree_host_size_t report_source_op_capacity;
+  // Original source decisions, indexed once before the function is mutated.
+  struct {
+    // Entries sorted by stable operation address for binary lookup.
+    loom_low_target_legalize_report_decision_t* entries;
+    // Number of original legalizer-rooted operations.
+    iree_host_size_t count;
+    // Allocated entry capacity during source capture.
+    iree_host_size_t capacity;
+    // First observed decision, or NULL when no intervention was needed.
+    loom_low_target_legalize_report_decision_t* first;
+    // Last observed decision for constant-time append.
+    loom_low_target_legalize_report_decision_t* last;
+  } report_decisions;
   // First final legalizer rejection retained for final legality diagnostics.
   loom_low_target_legalize_final_rejection_t* final_rejections;
   // User IR topology range diagnostics emitted before legalizer dispatch.
@@ -826,36 +849,50 @@ static bool loom_low_target_legalize_report_wants_rows(
       LOOM_TARGET_COMPILE_REPORT_DETAIL_TARGET_LEGALIZATION_ROWS);
 }
 
-static bool loom_low_target_legalize_report_covers_op(
+static bool loom_low_target_legalize_report_source_less(
+    const loom_low_target_legalize_report_decision_t* lhs,
+    const loom_low_target_legalize_report_decision_t* rhs) {
+  return (uintptr_t)lhs->op < (uintptr_t)rhs->op;
+}
+
+LOOM_DEFINE_ADAPTIVE_SORT(loom_low_target_legalize_sort_report_sources,
+                          loom_low_target_legalize_report_decision_t,
+                          loom_low_target_legalize_report_source_less)
+
+static loom_low_target_legalize_report_decision_t*
+loom_low_target_legalize_report_decision(
     const loom_low_target_legalize_function_state_t* state,
     const loom_op_t* op) {
-  if (state->compile_report == NULL) {
-    return false;
-  }
-  for (iree_host_size_t i = 0; i < state->report_source_op_count; ++i) {
-    if (state->report_source_ops[i] == op) {
-      return true;
+  iree_host_size_t begin = 0;
+  iree_host_size_t end = state->report_decisions.count;
+  while (begin < end) {
+    const iree_host_size_t middle = begin + (end - begin) / 2;
+    loom_low_target_legalize_report_decision_t* decision =
+        &state->report_decisions.entries[middle];
+    if (decision->op == op) {
+      return decision;
+    }
+    if ((uintptr_t)decision->op < (uintptr_t)op) {
+      begin = middle + 1;
+    } else {
+      end = middle;
     }
   }
-  return false;
+  return NULL;
 }
 
 static iree_status_t loom_low_target_legalize_record_report_source_op(
     loom_low_target_legalize_function_state_t* state, loom_op_t* op) {
-  if (state->report_source_op_count >= state->report_source_op_capacity) {
-    iree_host_size_t minimum_capacity = state->report_source_op_count + 1;
-    iree_host_size_t new_capacity = state->report_source_op_capacity == 0
-                                        ? 16
-                                        : state->report_source_op_capacity * 2;
-    if (new_capacity < minimum_capacity) {
-      new_capacity = minimum_capacity;
-    }
+  if (state->report_decisions.count == state->report_decisions.capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
-        state->query_scope_arena, state->report_source_op_count, new_capacity,
-        sizeof(*state->report_source_ops), &state->report_source_op_capacity,
-        (void**)&state->report_source_ops));
+        state->query_scope_arena, state->report_decisions.count,
+        iree_max((iree_host_size_t)16, state->report_decisions.count + 1),
+        sizeof(*state->report_decisions.entries),
+        &state->report_decisions.capacity,
+        (void**)&state->report_decisions.entries));
   }
-  state->report_source_ops[state->report_source_op_count++] = op;
+  state->report_decisions.entries[state->report_decisions.count++] =
+      (loom_low_target_legalize_report_decision_t){.op = op};
   return iree_ok_status();
 }
 
@@ -881,32 +918,47 @@ static iree_status_t loom_low_target_legalize_capture_report_source_ops(
     return iree_ok_status();
   }
   loom_walk_result_t walk_result = LOOM_WALK_CONTINUE;
-  return loom_walk_function(
+  IREE_RETURN_IF_ERROR(loom_walk_function(
       state->module, state->selection->func, LOOM_WALK_PRE_ORDER,
       (loom_walk_callback_t){
           .fn = loom_low_target_legalize_capture_report_source_op,
           .user_data = state,
       },
-      state->query_scope_arena, &walk_result);
+      state->query_scope_arena, &walk_result));
+  loom_low_target_legalize_sort_report_sources(state->report_decisions.entries,
+                                               state->report_decisions.count);
+  return iree_ok_status();
 }
 
-static iree_status_t loom_low_target_legalize_record_report_row(
+static iree_status_t loom_low_target_legalize_retain_report_decision(
     loom_low_target_legalize_function_state_t* state,
+    loom_low_target_legalize_report_decision_t* decision,
     iree_string_view_t source_op_name, uint32_t source_op_kind,
     loom_target_compile_report_legalization_action_t action,
     const loom_target_contract_query_result_t* query_result,
     const loom_target_legalizer_entry_t* legalizer_entry,
     uint64_t created_op_count, uint64_t erased_op_count) {
-  if (state->compile_report == NULL) {
-    return iree_ok_status();
+  if (loom_low_target_legalize_report_wants_rows(state) && !decision->row) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate(state->query_scope_arena,
+                                             sizeof(*decision->row),
+                                             (void**)&decision->row));
+    memset(decision->row, 0, sizeof(*decision->row));
+  }
+  if (decision->action == LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_NONE) {
+    if (state->report_decisions.last) {
+      state->report_decisions.last->next = decision;
+    } else {
+      state->report_decisions.first = decision;
+    }
+    state->report_decisions.last = decision;
   }
   const loom_target_compile_report_legalizer_strategy_t legalizer_strategy =
       legalizer_entry ? loom_low_target_legalize_report_legalizer_strategy(
                             legalizer_entry->provider_strategy)
                       : LOOM_TARGET_COMPILE_REPORT_LEGALIZER_STRATEGY_NONE;
-  if (!loom_low_target_legalize_report_wants_rows(state)) {
-    loom_target_compile_report_record_legalization_summary(
-        state->compile_report, action, legalizer_strategy);
+  decision->action = action;
+  decision->strategy = legalizer_strategy;
+  if (!decision->row) {
     return iree_ok_status();
   }
 
@@ -944,8 +996,46 @@ static iree_status_t loom_low_target_legalize_record_report_row(
       .created_op_count = created_op_count,
       .erased_op_count = erased_op_count,
   };
-  return loom_target_compile_report_record_legalization_row(
-      state->compile_report, &row);
+  *decision->row = row;
+  return iree_ok_status();
+}
+
+// Native acceptance supersedes a tentative decision. A successful in-place
+// rewrite still describes work performed on the original source operation.
+static void loom_low_target_legalize_report_accept_native(
+    loom_low_target_legalize_report_decision_t* decision) {
+  if (decision &&
+      decision->action != LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_NONE &&
+      decision->action !=
+          LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_REWRITTEN) {
+    decision->action = LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_LEGAL;
+  }
+}
+
+static iree_status_t loom_low_target_legalize_publish_report(
+    const loom_low_target_legalize_function_state_t* state) {
+  iree_status_t status = iree_ok_status();
+  for (const loom_low_target_legalize_report_decision_t* decision =
+           state->report_decisions.first;
+       iree_status_is_ok(status) && decision; decision = decision->next) {
+    // DCE and enclosing rewrites can erase a pending source without revisiting
+    // it. Only its own successful legalizer rewrite remains reportable.
+    if (decision->action ==
+            LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_LEGAL ||
+        (iree_any_bit_set(decision->op->flags, LOOM_OP_FLAG_DEAD) &&
+         decision->action !=
+             LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_REWRITTEN)) {
+      continue;
+    }
+    if (decision->row) {
+      status = loom_target_compile_report_record_legalization_row(
+          state->compile_report, decision->row);
+    } else {
+      loom_target_compile_report_record_legalization_summary(
+          state->compile_report, decision->action, decision->strategy);
+    }
+  }
+  return status;
 }
 
 static loom_target_contract_query_result_t
@@ -1303,10 +1393,10 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
   if (loom_target_legalizer_op_entry_is_empty(op_entry)) {
     return iree_ok_status();
   }
-  const bool report_covers_op =
-      loom_low_target_legalize_report_covers_op(state, op);
+  loom_low_target_legalize_report_decision_t* report_decision =
+      loom_low_target_legalize_report_decision(state, op);
   const bool report_wants_rows =
-      report_covers_op && loom_low_target_legalize_report_wants_rows(state);
+      report_decision && loom_low_target_legalize_report_wants_rows(state);
   const iree_string_view_t source_op_name =
       report_wants_rows ? loom_op_name(state->module, op)
                         : iree_string_view_empty();
@@ -1321,13 +1411,14 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
       &state->legalization_context, op, &query_result));
   if (query_result.outcome == LOOM_TARGET_CONTRACT_QUERY_LEGAL &&
       loom_low_target_legalize_should_accept_legal_contract(state, op_entry)) {
+    loom_low_target_legalize_report_accept_native(report_decision);
     ++state->statistics->ops_legal;
     return iree_ok_status();
   }
   if (query_result.outcome == LOOM_TARGET_CONTRACT_QUERY_INVALID_IR) {
-    if (report_covers_op) {
-      IREE_RETURN_IF_ERROR(loom_low_target_legalize_record_report_row(
-          state, source_op_name, source_op_kind,
+    if (report_decision) {
+      IREE_RETURN_IF_ERROR(loom_low_target_legalize_retain_report_decision(
+          state, report_decision, source_op_name, source_op_kind,
           LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_REJECT_INVALID_IR,
           &query_result, /*legalizer_entry=*/NULL, /*created_op_count=*/0,
           /*erased_op_count=*/0));
@@ -1390,9 +1481,9 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
         const loom_target_contract_query_result_t rewritten_report_result =
             loom_low_target_legalize_result_for_legalizer_report(
                 &query_result, &legalizer_result);
-        if (report_covers_op) {
-          IREE_RETURN_IF_ERROR(loom_low_target_legalize_record_report_row(
-              state, source_op_name, source_op_kind,
+        if (report_decision) {
+          IREE_RETURN_IF_ERROR(loom_low_target_legalize_retain_report_decision(
+              state, report_decision, source_op_name, source_op_kind,
               LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_REWRITTEN,
               &rewritten_report_result, entry,
               driver->rewriter.created_op_count - created_op_count_before,
@@ -1406,9 +1497,9 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
         const loom_target_contract_query_result_t deferred_report_result =
             loom_low_target_legalize_result_for_legalizer_report(
                 &query_result, &legalizer_result);
-        if (report_covers_op) {
-          IREE_RETURN_IF_ERROR(loom_low_target_legalize_record_report_row(
-              state, source_op_name, source_op_kind,
+        if (report_decision) {
+          IREE_RETURN_IF_ERROR(loom_low_target_legalize_retain_report_decision(
+              state, report_decision, source_op_name, source_op_kind,
               LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_DEFERRED,
               &deferred_report_result, entry,
               /*created_op_count=*/0, /*erased_op_count=*/0));
@@ -1422,9 +1513,9 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
         const loom_target_contract_query_result_t invalid_report_result =
             loom_low_target_legalize_result_for_legalizer_report(
                 &query_result, &legalizer_result);
-        if (report_covers_op) {
-          IREE_RETURN_IF_ERROR(loom_low_target_legalize_record_report_row(
-              state, source_op_name, source_op_kind,
+        if (report_decision) {
+          IREE_RETURN_IF_ERROR(loom_low_target_legalize_retain_report_decision(
+              state, report_decision, source_op_name, source_op_kind,
               LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_REJECT_INVALID_IR,
               &invalid_report_result, entry,
               /*created_op_count=*/0, /*erased_op_count=*/0));
@@ -1438,9 +1529,9 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
         const loom_target_contract_query_result_t unsupported_report_result =
             loom_low_target_legalize_result_for_legalizer_report(
                 &query_result, &legalizer_result);
-        if (report_covers_op) {
-          IREE_RETURN_IF_ERROR(loom_low_target_legalize_record_report_row(
-              state, source_op_name, source_op_kind,
+        if (report_decision) {
+          IREE_RETURN_IF_ERROR(loom_low_target_legalize_retain_report_decision(
+              state, report_decision, source_op_name, source_op_kind,
               LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_REJECT_UNSUPPORTED_FINAL,
               &unsupported_report_result, entry,
               /*created_op_count=*/0, /*erased_op_count=*/0));
@@ -1456,14 +1547,15 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
   }
 
   if (query_result.outcome == LOOM_TARGET_CONTRACT_QUERY_LEGAL) {
+    loom_low_target_legalize_report_accept_native(report_decision);
     ++state->statistics->ops_legal;
     return iree_ok_status();
   }
 
   ++state->statistics->ops_deferred;
-  if (report_covers_op) {
-    IREE_RETURN_IF_ERROR(loom_low_target_legalize_record_report_row(
-        state, source_op_name, source_op_kind,
+  if (report_decision) {
+    IREE_RETURN_IF_ERROR(loom_low_target_legalize_retain_report_decision(
+        state, report_decision, source_op_name, source_op_kind,
         LOOM_TARGET_COMPILE_REPORT_LEGALIZATION_ACTION_UNHANDLED, &query_result,
         /*legalizer_entry=*/NULL, /*created_op_count=*/0,
         /*erased_op_count=*/0));
@@ -1605,6 +1697,11 @@ static iree_status_t loom_low_target_legalize_function(
   if (iree_status_is_ok(status) && rewrite_result.changed) {
     loom_pass_mark_changed(pass);
   }
+
+  // Publish source decisions once, including completed decisions from a run
+  // that failed. Report allocation failures join the original failure.
+  status =
+      iree_status_join(status, loom_low_target_legalize_publish_report(&state));
 
   // Source legality describes the input to source-to-low. Low functions also
   // participate in rewriting (for example, to discharge assumptions), but their
