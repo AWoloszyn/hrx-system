@@ -103,6 +103,14 @@ iree_cc_test(
     iree::testing::gtest_main
 )
 
+set(_factory_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+  list(APPEND _factory_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _factory_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  list(APPEND _factory_test_platform_deps iree::async::platform::posix)
+endif()
 iree_cc_test(
   NAME
     factory_test
@@ -114,9 +122,11 @@ iree_cc_test(
     iree::async::platform
     iree::base
     iree::net::connection
+    iree::net::session
     iree::net::transport_factory
     iree::testing::gtest
     iree::testing::gtest_main
+    ${_factory_test_platform_deps}
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

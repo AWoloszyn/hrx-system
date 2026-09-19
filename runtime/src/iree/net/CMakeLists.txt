@@ -141,9 +141,12 @@ iree_cc_library(
     transport_factory
   HDRS
     "transport_factory.h"
+  SRCS
+    "transport_factory.c"
   DEPS
     iree::async
     iree::base
+    iree::base::threading
   PUBLIC
 )
 

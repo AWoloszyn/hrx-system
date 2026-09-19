@@ -24,6 +24,13 @@ typedef enum iree_net_tcp_listener_state_e {
   IREE_NET_TCP_LISTENER_STATE_STOPPED = 2,
 } iree_net_tcp_listener_state_t;
 
+typedef enum iree_net_tcp_listener_flag_bits_e {
+  IREE_NET_TCP_LISTENER_FLAG_ACCEPT_PENDING = 1u << 0,
+  IREE_NET_TCP_LISTENER_FLAG_CONTROL_PENDING = 1u << 1,
+  IREE_NET_TCP_LISTENER_FLAG_CANCELLATION_PENDING = 1u << 2,
+} iree_net_tcp_listener_flag_bits_t;
+typedef uint32_t iree_net_tcp_listener_flags_t;
+
 struct iree_net_tcp_factory_t {
   // Public transport factory base; must be first.
   iree_net_transport_factory_t base;
@@ -54,11 +61,8 @@ struct iree_net_tcp_listener_t {
   // Current listener lifecycle phase.
   iree_net_tcp_listener_state_t state;
 
-  // True while the proactor owns |accept_operation|.
-  bool accept_pending;
-
-  // True while the quiescent stop NOP is pending.
-  bool stop_operation_pending;
+  // Independent accept/control/cancellation ownership, protected by mutex.
+  iree_net_tcp_listener_flags_t flags;
 
   // Flags selecting multishot or emulated single-shot acceptance.
   iree_async_operation_flags_t accept_operation_flags;
@@ -67,9 +71,13 @@ struct iree_net_tcp_listener_t {
   // after an unexpected terminal accept result.
   iree_async_socket_accept_operation_t accept_operation;
 
-  // Embedded fallback used only when an accept error left no operation to
-  // cancel and drain.
-  iree_async_nop_operation_t stop_operation;
+  // One monotonic stop handoff followed by native cancellation if needed.
+  union {
+    // Software-only dispatch onto the accept's poll owner.
+    iree_async_nop_operation_t control;
+    // Independent accept-identity retirement, after the handoff retires.
+    iree_async_cancel_request_t cancellation;
+  } stop;
 
   // Callback receiving accepted connections and listener errors.
   iree_net_listener_accept_callback_t accept_callback;
@@ -81,9 +89,35 @@ struct iree_net_tcp_listener_t {
   iree_allocator_t host_allocator;
 };
 
+typedef enum iree_net_tcp_connect_flag_bits_e {
+  IREE_NET_TCP_CONNECT_FLAG_CONTROL_PENDING = 1u << 0,
+  IREE_NET_TCP_CONNECT_FLAG_NATIVE_PENDING = 1u << 1,
+  IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_REQUESTED = 1u << 2,
+  IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_PENDING = 1u << 3,
+} iree_net_tcp_connect_flag_bits_t;
+typedef uint32_t iree_net_tcp_connect_flags_t;
+
 typedef struct iree_net_tcp_connect_state_t {
   // Operation establishing the outbound socket connection.
   iree_async_socket_connect_operation_t operation;
+
+  // Caller storage protecting cancellation intent and terminal publication.
+  iree_net_transport_connect_operation_t* connect_operation;
+
+  // Independent owner/native obligations protected by connect_operation->mutex.
+  iree_net_tcp_connect_flags_t flags;
+
+  // Native result retained until all admitted ownership has retired.
+  iree_status_t result_status;
+
+  // Owner handoff storage is reusable once its callback begins.
+  union {
+    // Kickoff, then at most one cancellation handoff from an application
+    // thread.
+    iree_async_nop_operation_t control;
+    // Native identity borrow issued after the cancellation handoff retires.
+    iree_async_cancel_request_t cancellation;
+  } dispatch;
 
   // Factory retained through connection publication.
   iree_net_tcp_factory_t* factory;
@@ -178,7 +212,7 @@ static void iree_net_tcp_listener_finish_stop(
   iree_net_listener_stopped_callback_t callback = {0};
   iree_slim_mutex_lock(&listener->mutex);
   if (listener->state == IREE_NET_TCP_LISTENER_STATE_STOPPING &&
-      !listener->accept_pending && !listener->stop_operation_pending) {
+      !listener->flags) {
     listener->state = IREE_NET_TCP_LISTENER_STATE_STOPPED;
     callback = listener->stopped_callback;
   }
@@ -191,7 +225,8 @@ static void iree_net_tcp_listener_finish_stop(
 static iree_status_t iree_net_tcp_listener_submit_accept_locked(
     iree_net_tcp_listener_t* listener,
     iree_async_completion_fn_t completion_fn) {
-  IREE_ASSERT(!listener->accept_pending,
+  IREE_ASSERT(!iree_any_bit_set(listener->flags,
+                                IREE_NET_TCP_LISTENER_FLAG_ACCEPT_PENDING),
               "TCP listener already has an accept pending");
   iree_async_operation_zero(&listener->accept_operation.base,
                             sizeof(listener->accept_operation));
@@ -202,7 +237,7 @@ static iree_status_t iree_net_tcp_listener_submit_accept_locked(
   iree_status_t status = iree_async_proactor_submit_one(
       listener->proactor, &listener->accept_operation.base);
   if (iree_status_is_ok(status)) {
-    listener->accept_pending = true;
+    listener->flags |= IREE_NET_TCP_LISTENER_FLAG_ACCEPT_PENDING;
   }
   return status;
 }
@@ -211,10 +246,7 @@ static void iree_net_tcp_listener_free(iree_net_listener_t* base_listener) {
   iree_net_tcp_listener_t* listener = (iree_net_tcp_listener_t*)base_listener;
   IREE_ASSERT(listener->state == IREE_NET_TCP_LISTENER_STATE_STOPPED,
               "TCP listener freed before it stopped");
-  IREE_ASSERT(!listener->accept_pending,
-              "TCP listener freed with an accept pending");
-  IREE_ASSERT(!listener->stop_operation_pending,
-              "TCP listener freed with a stop operation pending");
+  IREE_ASSERT(!listener->flags, "TCP listener freed with pending ownership");
 
   iree_net_tcp_factory_t* factory = listener->factory;
   iree_allocator_t host_allocator = listener->host_allocator;
@@ -223,6 +255,14 @@ static void iree_net_tcp_listener_free(iree_net_listener_t* base_listener) {
   iree_slim_mutex_deinitialize(&listener->mutex);
   iree_allocator_free(host_allocator, listener);
   iree_net_transport_factory_release(&factory->base);
+}
+
+static void iree_net_tcp_listener_cancellation_complete(void* user_data) {
+  iree_net_tcp_listener_t* listener = user_data;
+  iree_slim_mutex_lock(&listener->mutex);
+  listener->flags &= ~IREE_NET_TCP_LISTENER_FLAG_CANCELLATION_PENDING;
+  iree_slim_mutex_unlock(&listener->mutex);
+  iree_net_tcp_listener_finish_stop(listener);
 }
 
 static void iree_net_tcp_listener_stop_complete(
@@ -234,9 +274,20 @@ static void iree_net_tcp_listener_stop_complete(
   iree_net_tcp_listener_t* listener = (iree_net_tcp_listener_t*)user_data;
 
   iree_slim_mutex_lock(&listener->mutex);
-  IREE_ASSERT(listener->stop_operation_pending,
-              "TCP listener stop NOP completed without ownership");
-  listener->stop_operation_pending = false;
+  listener->flags &= ~IREE_NET_TCP_LISTENER_FLAG_CONTROL_PENDING;
+  if (iree_any_bit_set(listener->flags,
+                       IREE_NET_TCP_LISTENER_FLAG_ACCEPT_PENDING)) {
+    listener->flags |= IREE_NET_TCP_LISTENER_FLAG_CANCELLATION_PENDING;
+    iree_async_cancel_request_initialize(
+        (iree_async_cancel_callback_t){
+            .fn = iree_net_tcp_listener_cancellation_complete,
+            .user_data = listener,
+        },
+        &listener->stop.cancellation);
+    IREE_CHECK_OK(iree_async_proactor_request_cancel(
+        listener->proactor, &listener->accept_operation.base,
+        &listener->stop.cancellation));
+  }
   iree_slim_mutex_unlock(&listener->mutex);
 
   if (!iree_status_is_ok(status)) {
@@ -265,9 +316,10 @@ static void iree_net_tcp_listener_accept_complete(
   iree_status_t rearm_status = iree_ok_status();
   if (is_final) {
     iree_slim_mutex_lock(&listener->mutex);
-    IREE_ASSERT(listener->accept_pending,
+    IREE_ASSERT(iree_any_bit_set(listener->flags,
+                                 IREE_NET_TCP_LISTENER_FLAG_ACCEPT_PENDING),
                 "TCP accept completed without listener ownership");
-    listener->accept_pending = false;
+    listener->flags &= ~IREE_NET_TCP_LISTENER_FLAG_ACCEPT_PENDING;
     if (listener->state == IREE_NET_TCP_LISTENER_STATE_LISTENING &&
         !is_cancelled) {
       rearm_status = iree_net_tcp_listener_submit_accept_locked(
@@ -319,6 +371,17 @@ static void iree_net_tcp_listener_accept_complete(
                                  rearm_status, NULL);
   }
   if (is_final) {
+    // Retire the target only after accepted sockets and claimed callbacks are
+    // done: withdrawal may publish stopped and destroy the entire listener.
+    iree_slim_mutex_lock(&listener->mutex);
+    const bool cancellation_pending = iree_any_bit_set(
+        listener->flags, IREE_NET_TCP_LISTENER_FLAG_CANCELLATION_PENDING);
+    iree_slim_mutex_unlock(&listener->mutex);
+    if (cancellation_pending) {
+      iree_async_proactor_cancel_request_target_retired(
+          listener->proactor, &listener->stop.cancellation);
+      return;
+    }
     iree_net_tcp_listener_finish_stop(listener);
   }
 }
@@ -336,28 +399,15 @@ static iree_status_t iree_net_tcp_listener_stop(
   } else {
     listener->state = IREE_NET_TCP_LISTENER_STATE_STOPPING;
     listener->stopped_callback = callback;
-    if (listener->accept_pending) {
-      status = iree_async_proactor_cancel(listener->proactor,
-                                          &listener->accept_operation.base);
-      if (iree_status_is_not_found(status)) {
-        iree_status_free(status);
-        status = iree_ok_status();
-      }
-    } else {
-      iree_async_operation_initialize(
-          &listener->stop_operation.base, IREE_ASYNC_OPERATION_TYPE_NOP,
-          IREE_ASYNC_OPERATION_FLAG_NONE, iree_net_tcp_listener_stop_complete,
-          listener);
-      status = iree_async_proactor_submit_one(listener->proactor,
-                                              &listener->stop_operation.base);
-      if (iree_status_is_ok(status)) {
-        listener->stop_operation_pending = true;
-      }
-    }
-    if (!iree_status_is_ok(status)) {
-      listener->state = IREE_NET_TCP_LISTENER_STATE_LISTENING;
-      listener->stopped_callback = (iree_net_listener_stopped_callback_t){0};
-    }
+    listener->flags |= IREE_NET_TCP_LISTENER_FLAG_CONTROL_PENDING;
+    iree_async_operation_initialize(
+        &listener->stop.control.base, IREE_ASYNC_OPERATION_TYPE_NOP,
+        IREE_ASYNC_OPERATION_FLAG_NONE, iree_net_tcp_listener_stop_complete,
+        listener);
+    // A retained proactor admits this private software-only NOP without
+    // allocation or native queue capacity. Native cancellation is owner work.
+    IREE_CHECK_OK(iree_async_proactor_submit_one(listener->proactor,
+                                                 &listener->stop.control.base));
   }
   iree_slim_mutex_unlock(&listener->mutex);
   return status;
@@ -405,6 +455,46 @@ static void iree_net_tcp_connect_state_destroy(
   iree_net_transport_factory_release(&factory->base);
 }
 
+static void iree_net_tcp_connect_finish(iree_net_tcp_connect_state_t* state) {
+  iree_net_transport_connect_operation_t* operation = state->connect_operation;
+  iree_slim_mutex_lock(&operation->mutex);
+  if (iree_any_bit_set(state->flags,
+                       IREE_NET_TCP_CONNECT_FLAG_CONTROL_PENDING |
+                           IREE_NET_TCP_CONNECT_FLAG_NATIVE_PENDING |
+                           IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_PENDING)) {
+    iree_slim_mutex_unlock(&operation->mutex);
+    return;
+  }
+  operation->binding.cancel_fn = NULL;
+  operation->binding.user_data = NULL;
+  iree_status_t status = state->result_status;
+  if (iree_status_is_ok(status) &&
+      iree_any_bit_set(state->flags,
+                       IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_REQUESTED)) {
+    status = iree_status_from_code(IREE_STATUS_CANCELLED);
+  }
+  iree_slim_mutex_unlock(&operation->mutex);
+
+  iree_net_transport_connect_callback_t callback = state->callback;
+  iree_net_connection_t* connection = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_net_tcp_connection_create(
+        state->proactor, state->socket, state->receive_pool,
+        &state->factory->options.connection_options,
+        state->factory->host_allocator, &connection);
+  }
+  iree_net_tcp_connect_state_destroy(state);
+  callback.fn(callback.user_data, status, connection);
+}
+
+static void iree_net_tcp_connect_cancellation_complete(void* user_data) {
+  iree_net_tcp_connect_state_t* state = user_data;
+  iree_slim_mutex_lock(&state->connect_operation->mutex);
+  state->flags &= ~IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_PENDING;
+  iree_slim_mutex_unlock(&state->connect_operation->mutex);
+  iree_net_tcp_connect_finish(state);
+}
+
 static void iree_net_tcp_connect_complete(void* user_data,
                                           iree_async_operation_t* operation,
                                           iree_status_t status,
@@ -414,17 +504,94 @@ static void iree_net_tcp_connect_complete(void* user_data,
               "TCP connect produced a nonterminal completion");
   iree_net_tcp_connect_state_t* state =
       (iree_net_tcp_connect_state_t*)user_data;
-  iree_net_transport_connect_callback_t callback = state->callback;
-
-  iree_net_connection_t* connection = NULL;
-  if (iree_status_is_ok(status)) {
-    status = iree_net_tcp_connection_create(
-        state->proactor, state->socket, state->receive_pool,
-        &state->factory->options.connection_options,
-        state->factory->host_allocator, &connection);
+  iree_slim_mutex_lock(&state->connect_operation->mutex);
+  state->result_status = iree_status_join(state->result_status, status);
+  state->flags &= ~IREE_NET_TCP_CONNECT_FLAG_NATIVE_PENDING;
+  const bool cancellation_pending = iree_any_bit_set(
+      state->flags, IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_PENDING);
+  iree_slim_mutex_unlock(&state->connect_operation->mutex);
+  if (cancellation_pending) {
+    // Withdrawal can finish the join inline and destroy state.
+    iree_async_proactor_cancel_request_target_retired(
+        state->proactor, &state->dispatch.cancellation);
+    return;
   }
-  callback.fn(callback.user_data, status, connection);
-  iree_net_tcp_connect_state_destroy(state);
+  iree_net_tcp_connect_finish(state);
+}
+
+static void iree_net_tcp_connect_cancel_dispatch(
+    void* user_data, iree_async_operation_t* operation, iree_status_t status,
+    iree_async_completion_flags_t flags) {
+  (void)operation;
+  (void)flags;
+  iree_net_tcp_connect_state_t* state = user_data;
+  iree_slim_mutex_lock(&state->connect_operation->mutex);
+  state->result_status = iree_status_join(state->result_status, status);
+  state->flags &= ~IREE_NET_TCP_CONNECT_FLAG_CONTROL_PENDING;
+  if (iree_any_bit_set(state->flags,
+                       IREE_NET_TCP_CONNECT_FLAG_NATIVE_PENDING)) {
+    state->flags |= IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_PENDING;
+    iree_async_cancel_request_initialize(
+        (iree_async_cancel_callback_t){
+            .fn = iree_net_tcp_connect_cancellation_complete,
+            .user_data = state,
+        },
+        &state->dispatch.cancellation);
+    // This private unlinked target and idle request satisfy admission's only
+    // fallible preconditions. Native errors are owned by the poll result.
+    IREE_CHECK_OK(iree_async_proactor_request_cancel(
+        state->proactor, &state->operation.base,
+        &state->dispatch.cancellation));
+  }
+  iree_slim_mutex_unlock(&state->connect_operation->mutex);
+  iree_net_tcp_connect_finish(state);
+}
+
+// Called with the public operation mutex held. The software-only NOP requires
+// no native submission slot or allocation on a retained proactor.
+static void iree_net_tcp_connect_cancel(void* user_data) {
+  iree_net_tcp_connect_state_t* state = user_data;
+  if (iree_any_bit_set(state->flags,
+                       IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_REQUESTED)) {
+    return;
+  }
+  state->flags |= IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_REQUESTED;
+  if (iree_any_bit_set(state->flags,
+                       IREE_NET_TCP_CONNECT_FLAG_CONTROL_PENDING) ||
+      !iree_any_bit_set(state->flags,
+                        IREE_NET_TCP_CONNECT_FLAG_NATIVE_PENDING)) {
+    return;
+  }
+  state->flags |= IREE_NET_TCP_CONNECT_FLAG_CONTROL_PENDING;
+  iree_async_operation_initialize(&state->dispatch.control.base,
+                                  IREE_ASYNC_OPERATION_TYPE_NOP,
+                                  IREE_ASYNC_OPERATION_FLAG_NONE,
+                                  iree_net_tcp_connect_cancel_dispatch, state);
+  IREE_CHECK_OK(iree_async_proactor_submit_one(state->proactor,
+                                               &state->dispatch.control.base));
+}
+
+static void iree_net_tcp_connect_start(void* user_data,
+                                       iree_async_operation_t* operation,
+                                       iree_status_t status,
+                                       iree_async_completion_flags_t flags) {
+  (void)operation;
+  (void)flags;
+  iree_net_tcp_connect_state_t* state = user_data;
+  iree_slim_mutex_lock(&state->connect_operation->mutex);
+  state->flags &= ~IREE_NET_TCP_CONNECT_FLAG_CONTROL_PENDING;
+  if (iree_status_is_ok(status) &&
+      !iree_any_bit_set(state->flags,
+                        IREE_NET_TCP_CONNECT_FLAG_CANCELLATION_REQUESTED)) {
+    status =
+        iree_async_proactor_submit_one(state->proactor, &state->operation.base);
+    if (iree_status_is_ok(status)) {
+      state->flags |= IREE_NET_TCP_CONNECT_FLAG_NATIVE_PENDING;
+    }
+  }
+  state->result_status = status;
+  iree_slim_mutex_unlock(&state->connect_operation->mutex);
+  iree_net_tcp_connect_finish(state);
 }
 
 static void iree_net_tcp_factory_destroy(
@@ -445,7 +612,8 @@ iree_net_tcp_factory_query_capabilities(
 static iree_status_t iree_net_tcp_factory_connect(
     iree_net_transport_factory_t* base_factory, iree_string_view_t address,
     iree_async_proactor_t* proactor, iree_async_buffer_pool_t* receive_pool,
-    iree_net_transport_connect_callback_t callback) {
+    iree_net_transport_connect_callback_t callback,
+    iree_net_transport_connect_operation_t* operation) {
   (void)receive_pool;
   iree_net_tcp_factory_t* factory = (iree_net_tcp_factory_t*)base_factory;
   if (!proactor) {
@@ -467,6 +635,7 @@ static iree_status_t iree_net_tcp_factory_connect(
   state->proactor = proactor;
   iree_async_proactor_retain(proactor);
   state->callback = callback;
+  state->connect_operation = operation;
 
   iree_status_t status = iree_net_tcp_receive_pool_create(
       &factory->options, proactor, factory->host_allocator,
@@ -482,7 +651,14 @@ static iree_status_t iree_net_tcp_factory_connect(
         IREE_ASYNC_OPERATION_FLAG_NONE, iree_net_tcp_connect_complete, state);
     state->operation.socket = state->socket;
     state->operation.address = remote_address;
-    status = iree_async_proactor_submit_one(proactor, &state->operation.base);
+    operation->binding.cancel_fn = iree_net_tcp_connect_cancel;
+    operation->binding.user_data = state;
+    state->flags = IREE_NET_TCP_CONNECT_FLAG_CONTROL_PENDING;
+    iree_async_operation_initialize(
+        &state->dispatch.control.base, IREE_ASYNC_OPERATION_TYPE_NOP,
+        IREE_ASYNC_OPERATION_FLAG_NONE, iree_net_tcp_connect_start, state);
+    status =
+        iree_async_proactor_submit_one(proactor, &state->dispatch.control.base);
   }
   if (!iree_status_is_ok(status)) {
     iree_net_tcp_connect_state_destroy(state);

@@ -101,8 +101,14 @@ iree_runtime_cc_test(
         "//runtime/src/iree/async:platform",
         "//runtime/src/iree/base",
         "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:session",
         "//runtime/src/iree/net:transport_factory",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
-    ],
+    ] + select({
+        "@platforms//os:android": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:linux": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:macos": ["//runtime/src/iree/async/platform/posix"],
+        "//conditions:default": [],
+    }),
 )

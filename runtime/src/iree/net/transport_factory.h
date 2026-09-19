@@ -28,6 +28,7 @@
 #include "iree/async/api.h"
 #include "iree/async/buffer_pool.h"
 #include "iree/base/api.h"
+#include "iree/base/threading/mutex.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -76,6 +77,39 @@ typedef struct iree_net_transport_connect_callback_t {
   // Opaque value passed to |fn|.
   void* user_data;
 } iree_net_transport_connect_callback_t;
+
+// Caller-owned storage for one connection attempt. Initialize before passing
+// to factory_connect and keep at a stable address through its terminal callback
+// and the initiating call's return. Cancellation callers must also join before
+// storage is reused or deinitialized. No connection or native operation is
+// exposed through this object.
+typedef struct iree_net_transport_connect_operation_t {
+  // Serializes factory binding, cancellation intent, and result publication.
+  iree_slim_mutex_t mutex;
+  // Factory-private access detached before the terminal callback.
+  struct {
+    // Records cancellation with mutex held; never invokes a user callback.
+    void (*cancel_fn)(void* user_data);
+    // Borrowed factory state kept alive until the binding is detached.
+    void* user_data;
+  } binding;
+} iree_net_transport_connect_operation_t;
+
+// Initializes idle connection-attempt storage. No allocation is performed.
+IREE_API_EXPORT void iree_net_transport_connect_operation_initialize(
+    iree_net_transport_connect_operation_t* operation);
+
+// Deinitializes storage after the attempt and all caller accesses have joined.
+IREE_API_EXPORT void iree_net_transport_connect_operation_deinitialize(
+    iree_net_transport_connect_operation_t* operation);
+
+// Requests cancellation after successful admission. Thread-safe and idempotent
+// for that attempt; records intent without waiting for native or peer progress.
+// The existing terminal connect callback joins all admitted work. Cancellation
+// can lose to result publication; after publication this is a no-op. This is
+// not a pre-cancel token for a future attempt. No user callback runs inline.
+IREE_API_EXPORT void iree_net_transport_connect_operation_cancel(
+    iree_net_transport_connect_operation_t* operation);
 
 // Callback invoked when a listener accepts a new incoming connection.
 //
@@ -229,12 +263,16 @@ struct iree_net_transport_factory_vtable_t {
   // Queries connection properties available from this factory.
   iree_net_transport_capabilities_t (*query_capabilities)(
       iree_net_transport_factory_t* factory);
-  // Begins asynchronously connecting to a peer address.
+  // Begins asynchronously connecting with operation->mutex held. Attach the
+  // private cancellation binding before admitting owner work. On failure the
+  // public wrapper clears the binding and no callback is owed. On success the
+  // implementation detaches under that mutex before its terminal callback.
   iree_status_t (*connect)(iree_net_transport_factory_t* factory,
                            iree_string_view_t address,
                            iree_async_proactor_t* proactor,
                            iree_async_buffer_pool_t* receive_pool,
-                           iree_net_transport_connect_callback_t callback);
+                           iree_net_transport_connect_callback_t callback,
+                           iree_net_transport_connect_operation_t* operation);
   // Creates a listener and begins accepting peer connections.
   iree_status_t (*create_listener)(
       iree_net_transport_factory_t* factory, iree_string_view_t bind_address,
@@ -302,19 +340,43 @@ iree_net_transport_factory_query_capabilities(
 // synchronously from this call. On success, the callback receives a new
 // connection that the caller owns.
 //
+// The caller supplies initialized, stable |operation| storage for cancellation
+// and lifetime. The callback may run on the proactor before this call returns;
+// callers join both before releasing storage. No factory references the
+// operation after its callback begins. Reuse also requires joining concurrent
+// cancellation callers; a late cancel must not reach a new attempt.
+//
 // Returns synchronous errors immediately (e.g., invalid address format,
 // allocation failure). Asynchronous errors (connection refused, timeout) are
 // delivered via the callback.
 static inline iree_status_t iree_net_transport_factory_connect(
     iree_net_transport_factory_t* factory, iree_string_view_t address,
     iree_async_proactor_t* proactor, iree_async_buffer_pool_t* receive_pool,
-    iree_net_transport_connect_callback_t callback) {
+    iree_net_transport_connect_callback_t callback,
+    iree_net_transport_connect_operation_t* operation) {
   if (!callback.fn) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "transport connect callback is required");
   }
-  return factory->vtable->connect(factory, address, proactor, receive_pool,
-                                  callback);
+  if (!operation) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "transport connect operation is required");
+  }
+  iree_slim_mutex_lock(&operation->mutex);
+  iree_status_t status = iree_ok_status();
+  if (operation->binding.cancel_fn) {
+    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "transport connect operation is already pending");
+  } else {
+    status = factory->vtable->connect(factory, address, proactor, receive_pool,
+                                      callback, operation);
+    if (!iree_status_is_ok(status)) {
+      operation->binding.cancel_fn = NULL;
+      operation->binding.user_data = NULL;
+    }
+  }
+  iree_slim_mutex_unlock(&operation->mutex);
+  return status;
 }
 
 // Creates a listener that accepts incoming connections on the given address.

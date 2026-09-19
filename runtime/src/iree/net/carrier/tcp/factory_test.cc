@@ -15,15 +15,35 @@
 #include <vector>
 
 #include "iree/async/address.h"
+#include "iree/async/operations/net.h"
+#include "iree/async/operations/scheduling.h"
 #include "iree/async/proactor_platform.h"
+#include "iree/async/slab.h"
 #include "iree/net/connection.h"
+#include "iree/net/session.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+
+#if !defined(IREE_PLATFORM_WINDOWS) && !defined(IREE_PLATFORM_WASM)
+#include "iree/async/platform/posix/api.h"
+#endif
 
 namespace iree {
 namespace {
 
 struct ConnectState {
+  // Stable caller-owned attempt, kept through callback and initiation return.
+  iree_net_transport_connect_operation_t operation;
+
+  ConnectState() {
+    iree_net_transport_connect_operation_initialize(&operation);
+  }
+  ~ConnectState() {
+    iree_net_transport_connect_operation_deinitialize(&operation);
+  }
+  ConnectState(const ConnectState&) = delete;
+  ConnectState& operator=(const ConnectState&) = delete;
+
   int callback_count = 0;
   std::vector<iree_status_code_t> status_codes;
   std::vector<iree_net_connection_t*> connections;
@@ -59,6 +79,26 @@ struct StopState {
     return {/*.fn=*/OnStopped, /*.user_data=*/this};
   }
 };
+
+#if defined(IREE_PLATFORM_LINUX)
+// A real non-accepting listener. Linux backlog one holds two completed peers;
+// a third connect remains pending until cancellation or accept-side progress.
+struct SilentPeer {
+  // Socket with a deliberately full native accept queue.
+  iree_async_socket_t* listener = nullptr;
+  // Completed peers occupying the queue, retained through the experiment.
+  std::array<iree_async_socket_t*, 2> clients = {};
+  // Address formatted for the public transport factory.
+  std::string address;
+
+  ~SilentPeer() {
+    for (auto* client : clients) {
+      iree_async_socket_release(client);
+    }
+    iree_async_socket_release(listener);
+  }
+};
+#endif  // IREE_PLATFORM_LINUX
 
 struct AcceptState {
   iree_net_listener_t* listener = nullptr;
@@ -173,12 +213,23 @@ struct ControlledAllocator {
   iree_allocator_t value() { return {/*.self=*/this, /*.ctl=*/Control}; }
 };
 
-class TcpFactoryTest : public ::testing::Test {
+enum class ProactorBackend { kPlatform, kPosix };
+
+class TcpFactoryTest : public ::testing::TestWithParam<ProactorBackend> {
  protected:
   void SetUp() override {
-    IREE_ASSERT_OK(iree_async_proactor_create_platform(
-        iree_async_proactor_options_default(), iree_allocator_system(),
-        &proactor_));
+#if !defined(IREE_PLATFORM_WINDOWS) && !defined(IREE_PLATFORM_WASM)
+    if (GetParam() == ProactorBackend::kPosix) {
+      IREE_ASSERT_OK(iree_async_proactor_create_posix(
+          iree_async_proactor_options_default(), iree_allocator_system(),
+          &proactor_));
+    } else
+#endif
+    {
+      IREE_ASSERT_OK(iree_async_proactor_create_platform(
+          iree_async_proactor_options_default(), iree_allocator_system(),
+          &proactor_));
+    }
     IREE_ASSERT_OK(iree_net_tcp_factory_create(
         /*options=*/nullptr, iree_allocator_system(), &factory_));
   }
@@ -202,6 +253,66 @@ class TcpFactoryTest : public ::testing::Test {
       Poll();
     }
   }
+
+  void Dispatch(const std::function<void()>& callback) {
+    struct State {
+      // Action executed by the existing proactor owner.
+      const std::function<void()>* callback;
+      // Set after the action returns, not merely when the NOP is admitted.
+      bool completed = false;
+    } state{&callback};
+    iree_async_nop_operation_t operation = {};
+    iree_async_operation_initialize(
+        &operation.base, IREE_ASYNC_OPERATION_TYPE_NOP, 0,
+        [](void* user_data, iree_async_operation_t*, iree_status_t status,
+           iree_async_completion_flags_t) {
+          IREE_EXPECT_OK(status);
+          auto* state = static_cast<State*>(user_data);
+          (*state->callback)();
+          state->completed = true;
+        },
+        &state);
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
+    PollUntil([&] { return state.completed; });
+  }
+
+#if defined(IREE_PLATFORM_LINUX)
+  void CreateSilentPeer(SilentPeer* peer) {
+    IREE_ASSERT_OK(iree_async_socket_create(
+        proactor_, IREE_ASYNC_SOCKET_TYPE_TCP, 0, &peer->listener));
+    iree_async_address_t address;
+    IREE_ASSERT_OK(
+        iree_async_address_from_string(IREE_SV("127.0.0.1:0"), &address));
+    IREE_ASSERT_OK(iree_async_socket_bind(peer->listener, &address));
+    IREE_ASSERT_OK(iree_async_socket_listen(peer->listener, 1));
+    IREE_ASSERT_OK(
+        iree_async_socket_query_local_address(peer->listener, &address));
+    for (auto& client : peer->clients) {
+      IREE_ASSERT_OK(iree_async_socket_create(
+          proactor_, IREE_ASYNC_SOCKET_TYPE_TCP, 0, &client));
+      bool connected = false;
+      iree_async_socket_connect_operation_t operation = {};
+      iree_async_operation_initialize(
+          &operation.base, IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT, 0,
+          [](void* user_data, iree_async_operation_t*, iree_status_t status,
+             iree_async_completion_flags_t) {
+            IREE_EXPECT_OK(status);
+            *static_cast<bool*>(user_data) = true;
+          },
+          &connected);
+      operation.socket = client;
+      operation.address = address;
+      IREE_ASSERT_OK(
+          iree_async_proactor_submit_one(proactor_, &operation.base));
+      PollUntil([&] { return connected; });
+    }
+    std::array<char, IREE_ASYNC_ADDRESS_MAX_FORMAT_LENGTH> storage = {};
+    iree_string_view_t formatted;
+    IREE_ASSERT_OK(iree_async_address_format(&address, storage.size(),
+                                             storage.data(), &formatted));
+    peer->address.assign(formatted.data, formatted.size);
+  }
+#endif  // IREE_PLATFORM_LINUX
 
   std::string CreateListener(
       iree_net_listener_accept_callback_t accept_callback,
@@ -259,7 +370,7 @@ class TcpFactoryTest : public ::testing::Test {
   std::vector<iree_net_connection_t*> connections_;
 };
 
-TEST_F(TcpFactoryTest, ValidatesOptions) {
+TEST_P(TcpFactoryTest, ValidatesOptions) {
   iree_net_tcp_factory_options_t options =
       iree_net_tcp_factory_options_default();
   iree_net_transport_factory_t* invalid_factory = nullptr;
@@ -305,23 +416,24 @@ TEST_F(TcpFactoryTest, ValidatesOptions) {
   EXPECT_EQ(invalid_factory, nullptr);
 }
 
-TEST_F(TcpFactoryTest, RejectsInvalidAddressesSynchronously) {
+TEST_P(TcpFactoryTest, RejectsInvalidAddressesSynchronously) {
   ConnectState connect_state;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      iree_net_transport_factory_connect(
-          factory_, IREE_SV("localhost:1234"), proactor_,
-          /*receive_pool=*/nullptr, connect_state.callback()));
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      iree_net_transport_factory_connect(
-          factory_, IREE_SV("127.0.0.1:99999"), proactor_,
-          /*receive_pool=*/nullptr, connect_state.callback()));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        iree_net_transport_factory_connect(
+                            factory_, IREE_SV("localhost:1234"), proactor_,
+                            /*receive_pool=*/nullptr, connect_state.callback(),
+                            &connect_state.operation));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        iree_net_transport_factory_connect(
+                            factory_, IREE_SV("127.0.0.1:99999"), proactor_,
+                            /*receive_pool=*/nullptr, connect_state.callback(),
+                            &connect_state.operation));
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       iree_net_transport_factory_connect(
           factory_, IREE_SV("unix:tcp-is-not-unix"), proactor_,
-          /*receive_pool=*/nullptr, connect_state.callback()));
+          /*receive_pool=*/nullptr, connect_state.callback(),
+          &connect_state.operation));
   EXPECT_EQ(connect_state.callback_count, 0);
 
   AcceptState accept_state;
@@ -334,7 +446,7 @@ TEST_F(TcpFactoryTest, RejectsInvalidAddressesSynchronously) {
   EXPECT_EQ(invalid_listener, nullptr);
 }
 
-TEST_F(TcpFactoryTest, ReportsEphemeralBoundAddress) {
+TEST_P(TcpFactoryTest, ReportsEphemeralBoundAddress) {
   AcceptState accept_state;
   std::string address = CreateListener(&accept_state);
   EXPECT_FALSE(address.empty());
@@ -352,7 +464,7 @@ TEST_F(TcpFactoryTest, ReportsEphemeralBoundAddress) {
   EXPECT_TRUE(iree_string_view_is_empty(tiny_address));
 }
 
-TEST_F(TcpFactoryTest, RepeatedAcceptAndStopFromCallback) {
+TEST_P(TcpFactoryTest, RepeatedAcceptAndStopFromCallback) {
   int sequence = 0;
   StopState stop_state;
   stop_state.sequence = &sequence;
@@ -365,17 +477,20 @@ TEST_F(TcpFactoryTest, RepeatedAcceptAndStopFromCallback) {
   ConnectState connect_state;
   iree_string_view_t address_view =
       iree_make_string_view(address.data(), address.size());
+  iree_net_transport_connect_operation_t second_operation;
+  iree_net_transport_connect_operation_initialize(&second_operation);
   IREE_ASSERT_OK(iree_net_transport_factory_connect(
       factory_, address_view, proactor_, /*receive_pool=*/nullptr,
-      connect_state.callback()));
+      connect_state.callback(), &connect_state.operation));
   IREE_ASSERT_OK(iree_net_transport_factory_connect(
       factory_, address_view, proactor_, /*receive_pool=*/nullptr,
-      connect_state.callback()));
+      connect_state.callback(), &second_operation));
 
   PollUntil([&] {
     return connect_state.callback_count == 2 &&
            accept_state.callback_count == 2 && stop_state.completed;
   });
+  iree_net_transport_connect_operation_deinitialize(&second_operation);
   EXPECT_EQ(accept_state.stop_status_code, IREE_STATUS_OK);
   EXPECT_LT(accept_state.last_accept_sequence, stop_state.completed_sequence);
   ASSERT_EQ(connect_state.connections.size(), 2u);
@@ -399,7 +514,7 @@ TEST_F(TcpFactoryTest, RepeatedAcceptAndStopFromCallback) {
   listener_ = nullptr;
 }
 
-TEST_F(TcpFactoryTest, StopRacesWithAcceptCallbackAcrossThreads) {
+TEST_P(TcpFactoryTest, StopRacesWithAcceptCallbackAcrossThreads) {
   ConcurrentStopState stop_state;
   std::string address = CreateListener(stop_state.accept_callback());
   stop_state.listener = listener_;
@@ -407,7 +522,8 @@ TEST_F(TcpFactoryTest, StopRacesWithAcceptCallbackAcrossThreads) {
   ConnectState connect_state;
   IREE_ASSERT_OK(iree_net_transport_factory_connect(
       factory_, iree_make_string_view(address.data(), address.size()),
-      proactor_, /*receive_pool=*/nullptr, connect_state.callback()));
+      proactor_, /*receive_pool=*/nullptr, connect_state.callback(),
+      &connect_state.operation));
 
   std::thread stop_thread([&] {
     {
@@ -450,7 +566,7 @@ TEST_F(TcpFactoryTest, StopRacesWithAcceptCallbackAcrossThreads) {
   listener_ = nullptr;
 }
 
-TEST_F(TcpFactoryTest, ConnectAllocationFailureIsSynchronous) {
+TEST_P(TcpFactoryTest, ConnectAllocationFailureIsSynchronous) {
   iree_net_transport_factory_release(factory_);
   ControlledAllocator allocator;
   IREE_ASSERT_OK(iree_net_tcp_factory_create(
@@ -458,17 +574,17 @@ TEST_F(TcpFactoryTest, ConnectAllocationFailureIsSynchronous) {
   allocator.allocations_before_failure = 0;
 
   ConnectState connect_state;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_RESOURCE_EXHAUSTED,
-      iree_net_transport_factory_connect(
-          factory_, IREE_SV("127.0.0.1:1"), proactor_,
-          /*receive_pool=*/nullptr, connect_state.callback()));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_net_transport_factory_connect(
+                            factory_, IREE_SV("127.0.0.1:1"), proactor_,
+                            /*receive_pool=*/nullptr, connect_state.callback(),
+                            &connect_state.operation));
   EXPECT_EQ(connect_state.callback_count, 0);
   iree_net_transport_factory_release(factory_);
   factory_ = nullptr;
 }
 
-TEST_F(TcpFactoryTest, AcceptedConnectionAllocationFailureLeavesListenerLive) {
+TEST_P(TcpFactoryTest, AcceptedConnectionAllocationFailureLeavesListenerLive) {
   ControlledAllocator listener_allocator;
   AcceptState accept_state;
   std::string address =
@@ -478,7 +594,8 @@ TEST_F(TcpFactoryTest, AcceptedConnectionAllocationFailureLeavesListenerLive) {
   ConnectState connect_state;
   IREE_ASSERT_OK(iree_net_transport_factory_connect(
       factory_, iree_make_string_view(address.data(), address.size()),
-      proactor_, /*receive_pool=*/nullptr, connect_state.callback()));
+      proactor_, /*receive_pool=*/nullptr, connect_state.callback(),
+      &connect_state.operation));
   PollUntil([&] {
     return connect_state.callback_count == 1 &&
            accept_state.callback_count == 1;
@@ -494,6 +611,143 @@ TEST_F(TcpFactoryTest, AcceptedConnectionAllocationFailureLeavesListenerLive) {
 
   StopAndFreeListener();
 }
+
+TEST_P(TcpFactoryTest, StopCallbackCanDestroySilentListener) {
+  AcceptState accepted;
+  CreateListener(&accepted);
+  bool stopped = false;
+  struct State {
+    // Listener storage is returned by the final stopped callback.
+    iree_net_listener_t* listener;
+    // Completion witness outside listener storage.
+    bool* stopped;
+  } state{listener_, &stopped};
+  IREE_ASSERT_OK(iree_net_listener_stop(
+      listener_, {[](void* user_data) {
+                    auto* state = static_cast<State*>(user_data);
+                    iree_net_listener_free(state->listener);
+                    *state->stopped = true;
+                  },
+                  &state}));
+  listener_ = nullptr;
+  PollUntil([&] { return stopped; });
+  EXPECT_EQ(accepted.callback_count, 0);
+  Dispatch([] {});
+}
+
+#if defined(IREE_PLATFORM_LINUX)
+TEST_P(TcpFactoryTest, CancelsNativeConnectWithSilentPeerAndNoAllocation) {
+  SilentPeer peer;
+  CreateSilentPeer(&peer);
+  ControlledAllocator allocator;
+  iree_net_transport_factory_release(factory_);
+  IREE_ASSERT_OK(
+      iree_net_tcp_factory_create(nullptr, allocator.value(), &factory_));
+
+  struct Owner {
+    // Attempt storage freed at the final callback after native retirement.
+    iree_net_transport_connect_operation_t operation;
+    // Completion witness outside the destroyed caller object.
+    bool* destroyed;
+  };
+  bool destroyed = false;
+  auto* owner = new Owner{{}, &destroyed};
+  iree_net_transport_connect_operation_initialize(&owner->operation);
+  IREE_ASSERT_OK(iree_net_transport_factory_connect(
+      factory_, iree_make_string_view(peer.address.data(), peer.address.size()),
+      proactor_, nullptr,
+      {[](void* user_data, iree_status_t status,
+          iree_net_connection_t* connection) {
+         auto* owner = static_cast<Owner*>(user_data);
+         IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED, status);
+         EXPECT_EQ(connection, nullptr);
+         iree_net_transport_connect_operation_deinitialize(&owner->operation);
+         *owner->destroyed = true;
+         delete owner;
+       },
+       owner},
+      &owner->operation));
+  allocator.allocations_before_failure = 0;
+  Dispatch([&] {
+    ASSERT_FALSE(destroyed);
+    std::thread canceller([&] {
+      iree_net_transport_connect_operation_cancel(&owner->operation);
+      iree_net_transport_connect_operation_cancel(&owner->operation);
+    });
+    canceller.join();
+  });
+  PollUntil([&] { return destroyed; });
+  Dispatch([] {});
+  iree_net_transport_factory_release(factory_);
+  factory_ = nullptr;
+}
+
+TEST_P(TcpFactoryTest, SessionDeactivationJoinsSilentNativeConnect) {
+  SilentPeer peer;
+  CreateSilentPeer(&peer);
+  iree_async_slab_t* slab = nullptr;
+  iree_async_slab_options_t slab_options = {};
+  slab_options.buffer_size = 1024;
+  slab_options.buffer_count = 4;
+  IREE_ASSERT_OK(
+      iree_async_slab_create(slab_options, iree_allocator_system(), &slab));
+  iree_async_region_t* region = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_register_slab(
+      proactor_, slab, IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE, &region));
+  iree_async_buffer_pool_t* pool = nullptr;
+  IREE_ASSERT_OK(
+      iree_async_buffer_pool_create(region, iree_allocator_system(), &pool));
+  iree_async_region_release(region);
+  iree_async_slab_release(slab);
+
+  bool deactivated = false;
+  iree_net_session_callbacks_t callbacks = {};
+  callbacks.on_ready = [](void*, iree_net_session_t*,
+                          const iree_net_bootstrap_peer_info_view_t*,
+                          iree_net_bootstrap_capabilities_t) {
+    ADD_FAILURE() << "Silent peer cannot complete session bootstrap";
+  };
+  callbacks.on_control_data =
+      [](void*, iree_net_session_t*, iree_net_control_data_flags_t,
+         iree_const_byte_span_t, iree_async_buffer_lease_t*) {
+        ADD_FAILURE() << "Silent peer cannot send control data";
+        return iree_ok_status();
+      };
+  callbacks.on_goaway = [](void*, iree_net_session_t*, uint32_t) {
+    ADD_FAILURE() << "Silent peer cannot send GOAWAY";
+  };
+  callbacks.on_error = [](void*, iree_net_session_t*, iree_status_t status) {
+    IREE_EXPECT_OK(status);
+  };
+  callbacks.on_deactivated = [](void* user_data, iree_net_session_t* session) {
+    EXPECT_EQ(iree_net_session_state(session),
+              IREE_NET_SESSION_STATE_DEACTIVATED);
+    iree_net_session_release(session);
+    *static_cast<bool*>(user_data) = true;
+  };
+  callbacks.user_data = &deactivated;
+  auto options = iree_net_session_options_default();
+  iree_net_session_t* session = nullptr;
+  IREE_ASSERT_OK(iree_net_session_connect(
+      factory_, iree_make_string_view(peer.address.data(), peer.address.size()),
+      proactor_, pool, &options, callbacks, iree_allocator_system(), &session));
+  iree_async_buffer_pool_release(pool);
+  Dispatch([&] {
+    ASSERT_FALSE(deactivated);
+    std::thread canceller([&] { iree_net_session_deactivate(session); });
+    canceller.join();
+  });
+  PollUntil([&] { return deactivated; });
+  Dispatch([] {});
+}
+#endif  // IREE_PLATFORM_LINUX
+
+INSTANTIATE_TEST_SUITE_P(Platform, TcpFactoryTest,
+                         ::testing::Values(ProactorBackend::kPlatform));
+#if !defined(IREE_PLATFORM_WINDOWS) && !defined(IREE_PLATFORM_WASM)
+INSTANTIATE_TEST_SUITE_P(Posix, TcpFactoryTest,
+                         ::testing::Values(ProactorBackend::kPosix));
+#endif
 
 }  // namespace
 }  // namespace iree

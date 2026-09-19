@@ -32,7 +32,8 @@ static iree_net_transport_capabilities_t mock_factory_query_capabilities(
 static iree_status_t mock_factory_connect(
     iree_net_transport_factory_t* factory, iree_string_view_t address,
     iree_async_proactor_t* proactor, iree_async_buffer_pool_t* receive_pool,
-    iree_net_transport_connect_callback_t callback) {
+    iree_net_transport_connect_callback_t callback,
+    iree_net_transport_connect_operation_t* operation) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "mock");
 }
 

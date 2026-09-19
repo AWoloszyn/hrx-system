@@ -38,6 +38,8 @@ struct iree_net_session_t {
   iree_net_session_callbacks_t callbacks;
   // Role-specific bootstrap state and encoded local peer message.
   iree_net_session_bootstrap_t bootstrap;
+  // Client factory attempt, detached before on_connect; idle for servers.
+  iree_net_transport_connect_operation_t connect_operation;
   // Owned connection after accept or successful client connect.
   iree_net_connection_t* connection;
   // Borrowed endpoint ordinal zero owned by |connection|.
@@ -54,6 +56,8 @@ static void iree_net_session_destroy(iree_net_session_t* session) {
   iree_net_control_channel_free(session->control_channel);
   iree_net_connection_release(session->connection);
   iree_net_session_bootstrap_deinitialize(&session->bootstrap);
+  iree_net_transport_connect_operation_deinitialize(
+      &session->connect_operation);
   iree_slim_mutex_deinitialize(&session->mutex);
   iree_allocator_free(session->host_allocator, session);
 }
@@ -130,6 +134,14 @@ static void iree_net_session_drive_deactivation(iree_net_session_t* session) {
   iree_net_connection_t* connection = NULL;
   bool finalize = false;
   iree_slim_mutex_lock(&session->mutex);
+  if (iree_all_bits_set(session->lifecycle_flags,
+                        IREE_NET_SESSION_LIFECYCLE_FLAG_DEACTIVATION_REQUESTED |
+                            IREE_NET_SESSION_LIFECYCLE_FLAG_SETUP_PENDING) &&
+      !session->connection) {
+    // The factory detaches before invoking on_connect, so it never acquires
+    // the session mutex while holding the operation mutex.
+    iree_net_transport_connect_operation_cancel(&session->connect_operation);
+  }
   if (iree_any_bit_set(
           session->lifecycle_flags,
           IREE_NET_SESSION_LIFECYCLE_FLAG_DEACTIVATION_REQUESTED) &&
@@ -510,6 +522,7 @@ static iree_status_t iree_net_session_create(
   iree_atomic_ref_count_init(&session->ref_count);
   session->host_allocator = host_allocator;
   iree_slim_mutex_initialize(&session->mutex);
+  iree_net_transport_connect_operation_initialize(&session->connect_operation);
   iree_atomic_store(&session->state, IREE_NET_SESSION_STATE_BOOTSTRAPPING,
                     iree_memory_order_relaxed);
   session->lifecycle_flags = IREE_NET_SESSION_LIFECYCLE_FLAG_SETUP_PENDING;
@@ -519,6 +532,8 @@ static iree_status_t iree_net_session_create(
       role, &options->local_peer, options->required_capabilities,
       host_allocator, &session->bootstrap);
   if (!iree_status_is_ok(status)) {
+    iree_net_transport_connect_operation_deinitialize(
+        &session->connect_operation);
     iree_slim_mutex_deinitialize(&session->mutex);
     iree_allocator_free(host_allocator, session);
     return status;
@@ -562,7 +577,8 @@ iree_status_t iree_net_session_connect(
       (iree_net_transport_connect_callback_t){
           .fn = iree_net_session_on_connect,
           .user_data = session,
-      });
+      },
+      &session->connect_operation);
   if (!iree_status_is_ok(status)) {
     iree_net_session_abort_creation(session);
     return status;

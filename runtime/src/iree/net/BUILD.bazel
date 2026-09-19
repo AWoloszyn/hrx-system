@@ -136,10 +136,12 @@ iree_runtime_cc_library(
 
 iree_runtime_cc_library(
     name = "transport_factory",
+    srcs = ["transport_factory.c"],
     hdrs = ["transport_factory.h"],
     deps = [
         "//runtime/src/iree/async",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
     ],
 )
 

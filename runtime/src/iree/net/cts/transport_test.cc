@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "iree/async/buffer_pool.h"
@@ -33,6 +34,18 @@ enum PollSide {
 };
 
 struct ConnectState {
+  // Stable caller-owned attempt, kept through callback and initiation return.
+  iree_net_transport_connect_operation_t operation;
+
+  ConnectState() {
+    iree_net_transport_connect_operation_initialize(&operation);
+  }
+  ~ConnectState() {
+    iree_net_transport_connect_operation_deinitialize(&operation);
+  }
+  ConnectState(const ConnectState&) = delete;
+  ConnectState& operator=(const ConnectState&) = delete;
+
   int* current_poll_side = nullptr;
   PollSide expected_poll_side = kNotPolling;
   bool submitted = false;
@@ -670,7 +683,7 @@ class TransportTest : public ::testing::Test {
   void SubmitConnect(iree_string_view_t address) {
     IREE_ASSERT_OK(iree_net_transport_factory_connect(
         factory_, address, client_proactor_, client_receive_pool_.pool,
-        connect_state_.callback()));
+        connect_state_.callback(), &connect_state_.operation));
     connect_state_.submitted = true;
   }
 
@@ -846,6 +859,106 @@ TEST_F(TransportTest, ListenerStopIsAsynchronousAndRefusesConnections) {
             [&] { return connect_state_.callback_count == 1; });
   EXPECT_NE(connect_state_.status_code, IREE_STATUS_OK);
   EXPECT_EQ(connect_state_.connection, nullptr);
+}
+
+TEST_F(TransportTest, CancelBeforeKickoffAllowsReuseAfterJoin) {
+  CreateListener();
+  const auto address =
+      iree_make_string_view(connect_address_.data(), connect_address_.size());
+  SubmitConnect(address);
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      iree_net_transport_factory_connect(
+          factory_, address, client_proactor_, client_receive_pool_.pool,
+          connect_state_.callback(), &connect_state_.operation));
+  iree_net_transport_connect_operation_cancel(&connect_state_.operation);
+  iree_net_transport_connect_operation_cancel(&connect_state_.operation);
+  EXPECT_EQ(connect_state_.callback_count, 0);
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return connect_state_.callback_count == 1; });
+  EXPECT_EQ(connect_state_.status_code, IREE_STATUS_CANCELLED);
+  EXPECT_EQ(connect_state_.connection, nullptr);
+  PollImmediate(server_proactor_, kServerPolling);
+  EXPECT_EQ(accept_state_.callback_count, 0);
+
+  // A detached operation is not a pre-cancel token for its next execution.
+  iree_net_transport_connect_operation_cancel(&connect_state_.operation);
+  SubmitConnect(address);
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return connect_state_.callback_count == 2; });
+  ASSERT_EQ(connect_state_.status_code, IREE_STATUS_OK);
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return accept_state_.callback_count == 1; });
+  EXPECT_EQ(accept_state_.status_code, IREE_STATUS_OK);
+}
+
+TEST_F(TransportTest, CancelledConnectCallbackDestroysOperationOwner) {
+  CreateListener();
+  struct Owner {
+    // Stable attempt storage destroyed by its terminal callback.
+    iree_net_transport_connect_operation_t operation;
+    // Completion witness outside the destroyed object.
+    bool* destroyed;
+  };
+  bool destroyed = false;
+  auto* owner = new Owner{{}, &destroyed};
+  iree_net_transport_connect_operation_initialize(&owner->operation);
+  IREE_ASSERT_OK(iree_net_transport_factory_connect(
+      factory_,
+      iree_make_string_view(connect_address_.data(), connect_address_.size()),
+      client_proactor_, client_receive_pool_.pool,
+      {[](void* user_data, iree_status_t status,
+          iree_net_connection_t* connection) {
+         auto* owner = static_cast<Owner*>(user_data);
+         IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED, status);
+         EXPECT_EQ(connection, nullptr);
+         // Detachment precedes publication and the callback holds no mutex.
+         iree_net_transport_connect_operation_cancel(&owner->operation);
+         iree_net_transport_connect_operation_deinitialize(&owner->operation);
+         *owner->destroyed = true;
+         delete owner;
+       },
+       owner},
+      &owner->operation));
+  iree_net_transport_connect_operation_cancel(&owner->operation);
+  EXPECT_FALSE(destroyed);
+  PollUntil(client_proactor_, kClientPolling, [&] { return destroyed; });
+  StopAndFreeListener();
+  EXPECT_EQ(accept_state_.callback_count, 0);
+}
+
+TEST_F(TransportTest, ConcurrentCancellationJoinsBeforeCallerStorageReuse) {
+  CreateListener();
+  SubmitConnect(
+      iree_make_string_view(connect_address_.data(), connect_address_.size()));
+  std::thread canceller([&] {
+    for (int i = 0; i < 64; ++i) {
+      iree_net_transport_connect_operation_cancel(&connect_state_.operation);
+    }
+  });
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return connect_state_.callback_count == 1; });
+  canceller.join();
+  EXPECT_TRUE(connect_state_.status_code == IREE_STATUS_OK ||
+              connect_state_.status_code == IREE_STATUS_CANCELLED);
+  if (connect_state_.status_code == IREE_STATUS_OK) {
+    PollUntil(server_proactor_, kServerPolling,
+              [&] { return accept_state_.callback_count == 1; });
+  }
+  // Cancellation can lose after the peer accepted but before client
+  // publication. Stop joins any such claimed server callback as well.
+  StopAndFreeListener();
+  server_connection_ = accept_state_.connection;
+  accept_state_.connection = nullptr;
+}
+
+TEST_F(TransportTest, CancellationAfterPublicationLeavesConnectionUsable) {
+  EstablishConnection();
+  iree_net_transport_connect_operation_cancel(&connect_state_.operation);
+  auto endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  EXPECT_NE(endpoint.self, nullptr);
+  EXPECT_EQ(connect_state_.callback_count, 1);
 }
 
 TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {

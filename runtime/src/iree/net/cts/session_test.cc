@@ -723,11 +723,37 @@ TEST_F(SessionTest, DeactivatesBeforeConnectCompletes) {
   iree_net_session_deactivate(client_session_);
   EXPECT_EQ(iree_net_session_state(client_session_),
             IREE_NET_SESSION_STATE_DRAINING);
-  PollBothUntil([&] { return client_state_.deactivated_count == 1; });
+  while (client_state_.deactivated_count == 0) {
+    Poll(client_proactor_, kSessionClientPolling);
+  }
+  EXPECT_EQ(accept_state_.callback_count, 0);
   EXPECT_EQ(client_state_.ready_count, 0);
   EXPECT_EQ(client_state_.error_count, 0);
   EXPECT_EQ(iree_net_session_state(client_session_),
             IREE_NET_SESSION_STATE_DEACTIVATED);
+}
+
+TEST_F(SessionTest, DeactivatedCallbackReleasesPendingConnectSession) {
+  CreateListener();
+  auto options = iree_net_session_options_default();
+  auto callbacks = client_state_.callbacks();
+  callbacks.on_deactivated = [](void* user_data, iree_net_session_t* session) {
+    SessionCallbackState::OnDeactivated(user_data, session);
+    iree_net_session_release(session);
+  };
+  iree_net_session_t* session = nullptr;
+  IREE_ASSERT_OK(iree_net_session_connect(
+      factory_,
+      iree_make_string_view(connect_address_.data(), connect_address_.size()),
+      client_proactor_, client_receive_pool_.pool, &options, callbacks,
+      iree_allocator_system(), &session));
+  iree_net_session_deactivate(session);
+  while (client_state_.deactivated_count == 0) {
+    Poll(client_proactor_, kSessionClientPolling);
+  }
+  EXPECT_EQ(client_state_.ready_count, 0);
+  EXPECT_EQ(client_state_.error_count, 0);
+  EXPECT_EQ(accept_state_.callback_count, 0);
 }
 
 TEST_F(SessionTest, DeactivatesWhileControlEndpointIsOpening) {

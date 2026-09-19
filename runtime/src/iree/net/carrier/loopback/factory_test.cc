@@ -24,6 +24,18 @@ enum PollSide {
 };
 
 struct ConnectState {
+  // Stable caller-owned attempt, kept through callback and initiation return.
+  iree_net_transport_connect_operation_t operation;
+
+  ConnectState() {
+    iree_net_transport_connect_operation_initialize(&operation);
+  }
+  ~ConnectState() {
+    iree_net_transport_connect_operation_deinitialize(&operation);
+  }
+  ConnectState(const ConnectState&) = delete;
+  ConnectState& operator=(const ConnectState&) = delete;
+
   int* current_poll_side = nullptr;
   PollSide expected_poll_side = kNotPolling;
   int callback_count = 0;
@@ -247,11 +259,11 @@ TEST_F(LoopbackFactoryTest,
   ConnectState connect_state;
   connect_state.current_poll_side = &current_poll_side_;
   connect_state.expected_poll_side = kClientPolling;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_RESOURCE_EXHAUSTED,
-      iree_net_transport_factory_connect(
-          factory_, IREE_SV("failure"), client_proactor_,
-          /*receive_pool=*/nullptr, connect_state.callback()));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_net_transport_factory_connect(
+                            factory_, IREE_SV("failure"), client_proactor_,
+                            /*receive_pool=*/nullptr, connect_state.callback(),
+                            &connect_state.operation));
   EXPECT_EQ(connect_state.callback_count, 0);
 
   StopAndFreeListener();
@@ -286,7 +298,8 @@ TEST_F(LoopbackFactoryTest, StopWaitsForClaimedAcceptAndRejectsLaterConnects) {
   accepted_connect.expected_poll_side = kClientPolling;
   IREE_ASSERT_OK(iree_net_transport_factory_connect(
       factory_, IREE_SV("drain"), client_proactor_,
-      /*receive_pool=*/nullptr, accepted_connect.callback()));
+      /*receive_pool=*/nullptr, accepted_connect.callback(),
+      &accepted_connect.operation));
 
   StopState stop_state;
   stop_state.current_poll_side = &current_poll_side_;
@@ -300,7 +313,8 @@ TEST_F(LoopbackFactoryTest, StopWaitsForClaimedAcceptAndRejectsLaterConnects) {
   rejected_connect.expected_poll_side = kClientPolling;
   IREE_ASSERT_OK(iree_net_transport_factory_connect(
       factory_, IREE_SV("drain"), client_proactor_,
-      /*receive_pool=*/nullptr, rejected_connect.callback()));
+      /*receive_pool=*/nullptr, rejected_connect.callback(),
+      &rejected_connect.operation));
 
   PollUntil(client_proactor_, kClientPolling, [&] {
     return accepted_connect.callback_count == 1 &&
@@ -321,6 +335,32 @@ TEST_F(LoopbackFactoryTest, StopWaitsForClaimedAcceptAndRejectsLaterConnects) {
 
   client_connections_.push_back(accepted_connect.connection);
   server_connections_.push_back(accept_state.connections[0]);
+  iree_net_listener_free(listener_);
+  listener_ = nullptr;
+}
+
+TEST_F(LoopbackFactoryTest, CancelledConnectRetiresStoppingListenerClaim) {
+  AcceptState accepted;
+  CreateListener(IREE_SV("cancel"), &accepted);
+  ConnectState connected;
+  connected.current_poll_side = &current_poll_side_;
+  connected.expected_poll_side = kClientPolling;
+  IREE_ASSERT_OK(iree_net_transport_factory_connect(
+      factory_, IREE_SV("cancel"), client_proactor_, nullptr,
+      connected.callback(), &connected.operation));
+  StopState stopped;
+  stopped.current_poll_side = &current_poll_side_;
+  stopped.expected_poll_side = kServerPolling;
+  IREE_ASSERT_OK(iree_net_listener_stop(listener_, stopped.callback()));
+  iree_net_transport_connect_operation_cancel(&connected.operation);
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return connected.callback_count == 1; });
+  EXPECT_EQ(connected.status_code, IREE_STATUS_CANCELLED);
+  EXPECT_EQ(connected.connection, nullptr);
+  EXPECT_FALSE(stopped.completed);
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return stopped.completed; });
+  EXPECT_TRUE(accepted.connections.empty());
   iree_net_listener_free(listener_);
   listener_ = nullptr;
 }
