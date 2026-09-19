@@ -232,22 +232,3 @@ low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @scalar_i32_s
   %result = i32.select %true_value, %false_value, %condition
   return %result
 }
-
-// ====
-// RUN: with-checks emit source-low output=low control-flow=structured-low
-
-wasm.target<simd128> @target
-
-func.def target(@target) @offset_counter(%lower: offset, %upper: offset, %step: offset, %initial: i32) -> (i32) {
-  %increment = scalar.constant 1 : i32
-  %result = scf.for %iv = [%lower to %upper step %step](%count = %initial : i32) -> (i32) {
-    %next = scalar.addi %count, %increment : i32
-    scf.yield %next : i32
-  }
-  func.return %result : i32
-}
-
-// ----
-CHECK: %result = low.scf.for unsigned [%lower to %upper step %step] iter_args(*) -> (*) do(*) {
-CHECK: low.scf.yield %next : *
-CHECK-NOT: *low.scf.for signed *

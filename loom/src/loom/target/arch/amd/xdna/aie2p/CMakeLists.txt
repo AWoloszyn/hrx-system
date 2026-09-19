@@ -543,6 +543,7 @@ loom_check_test_suite(
     "test/source_low/fused_packet_memory.loom-test"
     "test/source_low/index_conversion.loom-test"
     "test/source_low/lookup_table.loom-test"
+    "test/source_low/loop_counter_offset.loom-test"
     "test/source_low/matrix_bfp.loom-test"
     "test/source_low/matrix_multiply.loom-test"
     "test/source_low/matrix_store.loom-test"
@@ -578,6 +579,7 @@ loom_check_test_suite(
     ::loom-check
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/lookup_table.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/matrix_multiply.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_scalar_addressing.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_scalar_wide_offsets.loom-test"
