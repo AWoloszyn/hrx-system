@@ -1,0 +1,185 @@
+// RUN: with-checks emit low-allocation @counter_survives_yield diagnostics=placement-decisions
+
+test.target<low_core> @target
+
+// The implicit increment still reads the counter after the nested branch.
+// The carried state can still share storage with the branch result.
+low.func.def target<test.low.core>(@target) @counter_survives_yield(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %condition: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="state", decision="accepted"}
+  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+    %chosen = low.scf.if %condition -> (reg<test.i32>) {
+      // REMARK@+1: BACKEND/043 {source_value_name="iv", result_value_name="chosen", decision="rejected"}
+      low.scf.yield %iv : reg<test.i32>
+    } else {
+      // REMARK@+1: BACKEND/043 {source_value_name="state", result_value_name="chosen", decision="accepted"}
+      low.scf.yield %state : reg<test.i32>
+    }
+    // REMARK@+2: BACKEND/043 {source_value_name="chosen", result_value_name="state", decision="accepted"}
+    // REMARK@+1: BACKEND/043 {source_value_name="chosen", result_value_name="result", decision="accepted"}
+    low.scf.yield %chosen : reg<test.i32>
+  }
+  return %result
+}
+
+// ----
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @upper_survives_yield diagnostics=placement-decisions
+
+test.target<low_core> @target
+
+// The upper bound is read again when deciding whether to enter the next iteration.
+// The carried state can still share storage with the branch result.
+low.func.def target<test.low.core>(@target) @upper_survives_yield(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %condition: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="state", decision="accepted"}
+  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+    %chosen = low.scf.if %condition -> (reg<test.i32>) {
+      // REMARK@+1: BACKEND/043 {source_value_name="hi", result_value_name="chosen", decision="rejected"}
+      low.scf.yield %hi : reg<test.i32>
+    } else {
+      // REMARK@+1: BACKEND/043 {source_value_name="state", result_value_name="chosen", decision="accepted"}
+      low.scf.yield %state : reg<test.i32>
+    }
+    // REMARK@+2: BACKEND/043 {source_value_name="chosen", result_value_name="state", decision="accepted"}
+    // REMARK@+1: BACKEND/043 {source_value_name="chosen", result_value_name="result", decision="accepted"}
+    low.scf.yield %chosen : reg<test.i32>
+  }
+  return %result
+}
+
+// ----
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @step_survives_yield diagnostics=placement-decisions
+
+test.target<low_core> @target
+
+// The step remains an input to every implicit counter increment.
+// The carried state can still share storage with the branch result.
+low.func.def target<test.low.core>(@target) @step_survives_yield(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %condition: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="state", decision="accepted"}
+  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+    %chosen = low.scf.if %condition -> (reg<test.i32>) {
+      // REMARK@+1: BACKEND/043 {source_value_name="step", result_value_name="chosen", decision="rejected"}
+      low.scf.yield %step : reg<test.i32>
+    } else {
+      // REMARK@+1: BACKEND/043 {source_value_name="state", result_value_name="chosen", decision="accepted"}
+      low.scf.yield %state : reg<test.i32>
+    }
+    // REMARK@+2: BACKEND/043 {source_value_name="chosen", result_value_name="state", decision="accepted"}
+    // REMARK@+1: BACKEND/043 {source_value_name="chosen", result_value_name="result", decision="accepted"}
+    low.scf.yield %chosen : reg<test.i32>
+  }
+  return %result
+}
+
+// ----
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @capture_survives_yield diagnostics=placement-decisions
+
+test.target<low_core> @target
+
+// The capture is read again when the next iteration reaches this branch.
+// The carried state can still share storage with the branch result.
+low.func.def target<test.low.core>(@target) @capture_survives_yield(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %condition: reg<test.i32>, %seed: reg<test.i32>, %captured: reg<test.i32>) -> (reg<test.i32>) asm {
+  // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="state", decision="accepted"}
+  %result = low.scf.for [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+    %chosen = low.scf.if %condition -> (reg<test.i32>) {
+      // REMARK@+1: BACKEND/043 {source_value_name="captured", result_value_name="chosen", decision="rejected"}
+      low.scf.yield %captured : reg<test.i32>
+    } else {
+      // REMARK@+1: BACKEND/043 {source_value_name="state", result_value_name="chosen", decision="accepted"}
+      low.scf.yield %state : reg<test.i32>
+    }
+    // REMARK@+2: BACKEND/043 {source_value_name="chosen", result_value_name="state", decision="accepted"}
+    // REMARK@+1: BACKEND/043 {source_value_name="chosen", result_value_name="result", decision="accepted"}
+    low.scf.yield %chosen : reg<test.i32>
+  }
+  return %result
+}
+
+// ----
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @if_live_out diagnostics=placement-decisions
+
+test.target<low_core> @target
+
+// A yield does not consume an external value needed after the enclosing if.
+low.func.def target<test.low.core>(@target) @if_live_out(%condition: reg<test.i32>, %captured: reg<test.i32>, %alternate: reg<test.i32>) -> (reg<test.i32>) asm {
+  %chosen = low.scf.if %condition -> (reg<test.i32>) {
+    // REMARK@+1: BACKEND/043 {source_value_name="captured", result_value_name="chosen", decision="rejected"}
+    low.scf.yield %captured : reg<test.i32>
+  } else {
+    // REMARK@+1: BACKEND/043 {source_value_name="alternate", result_value_name="chosen", decision="accepted"}
+    low.scf.yield %alternate : reg<test.i32>
+  }
+  %result = test.add.i32 %chosen, %captured
+  return %result
+}
+
+// ----
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @while_capture diagnostics=placement-decisions
+
+test.target<low_core> @target
+
+// The before region's capture must survive both regions and the backedge.
+low.func.def target<test.low.core>(@target) @while_capture(%condition: reg<test.i32>, %captured: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="before", decision="accepted"}
+  %result = low.scf.while(%before = %seed : reg<test.i32>) -> (reg<test.i32>) {
+    %chosen = low.scf.if %condition -> (reg<test.i32>) {
+      // REMARK@+1: BACKEND/043 {source_value_name="captured", result_value_name="chosen", decision="rejected"}
+      low.scf.yield %captured : reg<test.i32>
+    } else {
+      // REMARK@+1: BACKEND/043 {source_value_name="before", result_value_name="chosen", decision="accepted"}
+      low.scf.yield %before : reg<test.i32>
+    }
+    // REMARK@+2: BACKEND/043 {source_value_name="chosen", result_value_name="body", decision="accepted"}
+    // REMARK@+1: BACKEND/043 {source_value_name="chosen", result_value_name="result", decision="accepted"}
+    low.scf.condition %condition, %chosen : reg<test.i32>, reg<test.i32>
+  } do(%body: reg<test.i32>) {
+    // REMARK@+1: BACKEND/043 {source_value_name="body", result_value_name="before", decision="accepted"}
+    low.scf.yield %body : reg<test.i32>
+  }
+  return %result
+}
+
+// ----
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @while_condition_capture diagnostics=placement-decisions
+
+test.target<low_core> @target
+
+// Forwarding an invariant through condition must not let the after region
+// overwrite it before the next condition evaluation.
+low.func.def target<test.low.core>(@target) @while_condition_capture(%condition: reg<test.i32>, %captured: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  // REMARK@+1: BACKEND/043 {source_value_name="seed", result_value_name="before", decision="accepted"}
+  %result = low.scf.while(%before = %seed : reg<test.i32>) -> (reg<test.i32>) {
+    // REMARK@+2: BACKEND/043 {source_value_name="captured", result_value_name="body", decision="rejected"}
+    // REMARK@+1: BACKEND/043 {source_value_name="captured", result_value_name="result", decision="rejected"}
+    low.scf.condition %condition, %captured : reg<test.i32>, reg<test.i32>
+  } do(%body: reg<test.i32>) {
+    // REMARK@+1: BACKEND/043 {source_value_name="body", result_value_name="before", decision="accepted"}
+    low.scf.yield %body : reg<test.i32>
+  }
+  return %result
+}
+
+// ----
+CHECK: spills: 0

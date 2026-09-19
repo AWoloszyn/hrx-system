@@ -239,9 +239,8 @@ static iree_status_t loom_low_allocation_unit_liveness_note_unit_use_at_point(
   if (end_point > interval->end_point) {
     // This storage use extends beyond the value's semantic SSA interval, so
     // its sparse semantic segments no longer fully describe storage
-    // conflicts. Structured-loop backedges are the common case: captures are
-    // semantically used by the parent op but their storage must survive until
-    // the next nested-region iteration.
+    // conflicts. Loop-carried storage can outlive its old SSA value while
+    // awaiting the parallel move that starts the next iteration.
     iree_bitmap_set(unit_liveness->values_with_incomplete_storage_segments,
                     value_ordinal);
   }
@@ -691,7 +690,7 @@ static iree_status_t loom_low_allocation_unit_liveness_note_operation_unit_uses(
         IREE_RETURN_IF_ERROR(
             loom_low_allocation_unit_liveness_note_low_scf_loop_backedge_uses(
                 unit_liveness, value_domain, liveness, parent_point,
-                operation_point->start_point));
+                parent_point->end_point - 1));
       }
     }
   }

@@ -825,6 +825,7 @@ loom_cc_library(
     iree::base::internal
     iree::base::internal::arena
     loom::ir
+    loom::ops::op_defs
     loom::target::registers
     loom::util::adaptive_sort
     loom::util::cfg_graph
