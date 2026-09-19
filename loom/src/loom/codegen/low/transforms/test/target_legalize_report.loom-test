@@ -1,4 +1,4 @@
-// RUN: compile-report target-legalize
+// RUN: with-checks compile-report target-legalize
 
 test.target<low_core> @test_target
 
@@ -8,12 +8,11 @@ func.def target(@test_target) @unanswered_select_contract_preserves_native_selec
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=0 unhandled=1 rows=1
-COMPILE-REPORT: target_legalization[0] function=unanswered_select_contract_preserves_native_selection source_op=scf.select mode=eager policy=prefer-native action=unhandled outcome=unhandled contract=unhandled legalizer=- strategy=none bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=0 erased_ops=0
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=0 unhandled=1 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=scf.select mode=eager policy=prefer-native action=unhandled outcome=unhandled contract=unhandled legalizer=- strategy=none * source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize{policy=require-native}
+// RUN: with-checks compile-report target-legalize{policy=require-native}
 
 test.target<low_core> @test_target
 
@@ -23,12 +22,11 @@ func.def target(@test_target) @unanswered_select_contract_does_not_reject_native
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=0 unhandled=1 rows=1
-COMPILE-REPORT: target_legalization[0] function=unanswered_select_contract_does_not_reject_native_selection source_op=scf.select mode=eager policy=require-native action=unhandled outcome=unhandled contract=unhandled legalizer=- strategy=none bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=0 erased_ops=0
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=0 unhandled=1 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=scf.select mode=eager policy=require-native action=unhandled outcome=unhandled contract=unhandled legalizer=- strategy=none * source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize{policy=reference-only}
+// RUN: with-checks compile-report target-legalize{policy=reference-only}
 
 test.target<low_core> @test_target
 
@@ -38,12 +36,11 @@ func.def target(@test_target) @reference_policy_requests_whole_vector_scalarizat
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
-COMPILE-REPORT: target_legalization[0] function=reference_policy_requests_whole_vector_scalarization source_op=scf.select mode=eager policy=reference-only action=rewritten outcome=reference-fallback contract=unhandled legalizer=vector strategy=reference bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=7 erased_ops=1
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=scf.select mode=eager policy=reference-only action=rewritten outcome=reference-fallback contract=unhandled legalizer=vector strategy=reference * source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize
+// RUN: with-checks compile-report target-legalize
 
 test.target<low_core> @test_target
 
@@ -53,12 +50,11 @@ func.def target(@test_target) @records_reduce_axes_reference_rewrite(%v: vector<
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
-COMPILE-REPORT: target_legalization[0] function=records_reduce_axes_reference_rewrite source_op=vector.reduce.axes mode=eager policy=prefer-native action=rewritten outcome=reference-fallback contract=unhandled legalizer=vector strategy=reference bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=8 erased_ops=1
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.reduce.axes mode=eager policy=prefer-native action=rewritten outcome=reference-fallback contract=unhandled legalizer=vector strategy=reference * source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize
+// RUN: with-checks compile-report target-legalize
 
 test.target<low_core> @test_target
 
@@ -69,12 +65,11 @@ func.def target(@test_target) @records_decode_reference_rewrite(%payload: vector
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
-COMPILE-REPORT: target_legalization[0] function=records_decode_reference_rewrite source_op=vector.decode mode=eager policy=prefer-native action=rewritten outcome=reference-fallback contract=unhandled legalizer=vector strategy=reference bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=9 erased_ops=1
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.decode mode=eager policy=prefer-native action=rewritten outcome=reference-fallback contract=unhandled legalizer=vector strategy=reference * source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize
+// RUN: with-checks compile-report target-legalize
 
 test.target<low_core> @test_target
 
@@ -87,12 +82,11 @@ func.def target(@test_target) @reports_vector_store_deferred_to_later_phase(%out
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=1 invalid_ir=0 unsupported=0 unhandled=0 rows=1
-COMPILE-REPORT: target_legalization[0] function=reports_vector_store_deferred_to_later_phase source_op=vector.store mode=eager policy=prefer-native action=deferred outcome=deferred contract=unsupported legalizer=vector strategy=reference bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=0 erased_ops=0
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=1 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.store mode=eager policy=prefer-native action=deferred outcome=deferred contract=unsupported legalizer=vector strategy=reference * source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize{mode=final,policy=require-native}
+// RUN: with-checks compile-report target-legalize{mode=final,policy=require-native}
 
 test.target<low_core> @test_target
 
@@ -103,12 +97,11 @@ func.def target(@test_target) @reports_require_native_reduce_axes_reference_reje
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=1 unhandled=0 rows=1
-COMPILE-REPORT: target_legalization[0] function=reports_require_native_reduce_axes_reference_rejection source_op=vector.reduce.axes mode=final policy=require-native action=reject-unsupported-final outcome=reject-unsupported contract=unhandled legalizer=vector strategy=reference bundle=test_target config=test_target source_rejections=0x00000040 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=0 erased_ops=0
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=1 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.reduce.axes mode=final policy=require-native action=reject-unsupported-final outcome=reject-unsupported contract=unhandled legalizer=vector strategy=reference * source_rejections=0x00000040 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize{mode=final}
+// RUN: with-checks compile-report target-legalize{mode=final}
 
 test.target<low_core> @test_target
 
@@ -125,12 +118,11 @@ func.def target(@test_target) @reports_target_shaped_mma_fragment_rejection(%lhs
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=1 unhandled=0 rows=1
-COMPILE-REPORT: target_legalization[0] function=reports_target_shaped_mma_fragment_rejection source_op=vector.mma mode=final policy=prefer-native action=reject-unsupported-final outcome=reject-unsupported contract=unhandled legalizer=vector strategy=reference bundle=test_target config=test_target source_rejections=0x00000010 source_rejection_detail=1 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=0 erased_ops=0
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=1 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.mma mode=final policy=prefer-native action=reject-unsupported-final outcome=reject-unsupported contract=unhandled legalizer=vector strategy=reference * source_rejections=0x00000010 source_rejection_detail=1 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize{mode=final}
+// RUN: with-checks compile-report target-legalize{mode=final}
 
 test.target<low_core> @test_target
 
@@ -146,12 +138,11 @@ func.def target(@test_target) @reports_matrix_descriptor_reference_fallback(%lhs
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
-COMPILE-REPORT: target_legalization[0] function=reports_matrix_descriptor_reference_fallback source_op=vector.mma mode=final policy=prefer-native action=rewritten outcome=reference-fallback contract=unsupported legalizer=vector strategy=reference bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=30 erased_ops=1
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.mma mode=final policy=prefer-native action=rewritten outcome=reference-fallback contract=unsupported legalizer=vector strategy=reference * source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
 
 // ====
-// RUN: compile-report target-legalize{mode=final,policy=reference-only}
+// RUN: with-checks compile-report target-legalize{mode=final,policy=reference-only}
 
 test.target<quirky> @test_target
 
@@ -167,6 +158,5 @@ func.def target(@test_target) @reports_reference_only_matrix_override(%lhs_data:
 }
 
 // ----
-COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
-COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
-COMPILE-REPORT: target_legalization[0] function=reports_reference_only_matrix_override source_op=vector.mma mode=final policy=reference-only action=rewritten outcome=reference-fallback contract=legal legalizer=vector strategy=reference bundle=test_target config=test_target descriptor_key=test.mma.i32.2x2x2 source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=30 erased_ops=1
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.mma mode=final policy=reference-only action=rewritten outcome=reference-fallback contract=legal legalizer=vector strategy=reference * descriptor_key=test.mma.i32.2x2x2 source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 *
