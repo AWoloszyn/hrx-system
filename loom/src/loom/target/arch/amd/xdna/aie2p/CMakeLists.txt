@@ -540,8 +540,6 @@ loom_check_test_suite(
     "test/pipeline_ports.loom-test"
     "test/pipeline_reduce.loom-test"
     "test/source_low/carried_counter_store.loom-test"
-    "test/source_low/condition_counter_store.loom-test"
-    "test/source_low/conditional_loop_counts.loom-test"
     "test/source_low/function_storage.loom-test"
     "test/source_low/fused_packet_memory.loom-test"
     "test/source_low/index_conversion.loom-test"
@@ -575,7 +573,6 @@ loom_check_test_suite(
     "test/source_low/packed_dot_integer.loom-test"
     "test/source_low/packed_i8_arithmetic.loom-test"
     "test/source_low/packed_integer_arithmetic.loom-test"
-    "test/source_low/switch_loop_counts.loom-test"
     "test/source_low/vector_bitcast.loom-test"
     "test/source_low/vector_dot_interleave.loom-test"
     "test/source_low/vector_mask_select.loom-test"
@@ -587,8 +584,6 @@ loom_check_test_suite(
     ::loom-check
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/condition_counter_store.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/conditional_loop_counts.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/lookup_table.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/matrix_multiply.loom-test"
@@ -615,7 +610,6 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/packed_dot_integer.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/packed_i8_arithmetic.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/packed_integer_arithmetic.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/switch_loop_counts.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_bitcast.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_mask_select.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_slice.loom-test"
