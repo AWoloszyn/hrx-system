@@ -1,0 +1,55 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64_subtract.loom-test
+// RUN: emit source-low output=low
+
+x86.target<avx2> @target
+
+func.def target(@target) @uniform_subtract(%lhs: i64, %rhs: i64) -> (i64) {
+  %difference = scalar.subi %lhs, %rhs : i64
+  func.return %difference : i64
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @uniform_subtract(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>) -> (reg<x86.gpr64>) asm {
+  %7 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %difference = sub.gpr64 %7, %rhs
+  return %difference
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @constant_subtract(%value: i64) -> (i64, i64, i64) {
+  %c0 = scalar.constant 0 : i64
+  %wide = scalar.constant 4294967297 : i64
+  %negated = scalar.subi %c0, %value : i64
+  %constant_left = scalar.subi %wide, %value : i64
+  %constant_right = scalar.subi %value, %wide : i64
+  func.return %negated, %constant_left, %constant_right : i64, i64, i64
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @constant_subtract(%value: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %c0 = mov.imm64 0
+  %wide = mov.imm64 4294967297
+  %17 = copy %c0 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %negated = sub.gpr64 %17, %value
+  %19 = copy %wide : reg<x86.gpr64> -> reg<x86.gpr64>
+  %constant_left = sub.gpr64 %19, %value
+  %21 = mov.imm64 -4294967297
+  %22 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %constant_right = add.gpr64 %22, %21
+  return %negated, %constant_left, %constant_right
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @mixed_subtract(%uniform: i64, %values: vector<2xi64>) -> (i64, i64) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
+  %varying = vector.extract %values[0] : vector<2xi64> -> i64
+  %uniform_left = scalar.subi %uniform, %varying : i64
+  %uniform_right = scalar.subi %varying, %uniform : i64
+  func.return %uniform_left, %uniform_right : i64, i64
+}

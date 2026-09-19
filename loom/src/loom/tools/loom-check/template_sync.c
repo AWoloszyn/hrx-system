@@ -721,13 +721,33 @@ static iree_status_t loom_check_template_sync_append_template_input_line(
 }
 
 static iree_status_t loom_check_template_sync_append_target_overlay_prelude(
+    iree_string_view_t target_source,
     const loom_check_template_sync_target_overlay_t* overlay,
     iree_string_builder_t* builder) {
   if (overlay == NULL || iree_string_view_is_empty(overlay->case_prelude)) {
     return iree_ok_status();
   }
-  return loom_check_template_sync_append_with_trailing_newline(
-      builder, overlay->case_prelude);
+  // Annotations are inserted by their anchors after the complete target-bound
+  // input is assembled. They are not part of the reusable target prelude.
+  const loom_test_case_t* target_case = overlay->source_record->test_case;
+  iree_string_view_t remaining = overlay->case_prelude;
+  iree_status_t status = iree_ok_status();
+  while (iree_status_is_ok(status) && !iree_string_view_is_empty(remaining)) {
+    iree_string_view_t line = loom_check_template_sync_consume_line(&remaining);
+    const iree_host_size_t start_byte =
+        (iree_host_size_t)(line.data - target_source.data);
+    bool is_annotation = false;
+    for (iree_host_size_t i = 0; i < target_case->annotation_count; ++i) {
+      if (target_case->annotations[i].source_range.start_byte == start_byte) {
+        is_annotation = true;
+        break;
+      }
+    }
+    if (!is_annotation) {
+      status = loom_check_template_sync_append_line(builder, line);
+    }
+  }
+  return status;
 }
 
 static iree_status_t loom_check_template_sync_collect_annotation_anchors(
@@ -800,34 +820,48 @@ static iree_status_t loom_check_template_sync_append_input_with_annotations(
       default_overlay) {
     overlay = *default_overlay;
   }
-  IREE_RETURN_IF_ERROR(loom_check_template_sync_append_target_overlay_prelude(
-      &overlay, builder));
-
+  // Match anchors against the fully bound input. In particular, definition
+  // diagnostics refer to a header containing target-owned clauses, and prelude
+  // diagnostics refer to definitions that are absent from the template.
+  iree_string_builder_t bound_input;
+  iree_string_builder_initialize(builder->allocator, &bound_input);
+  iree_status_t status = loom_check_template_sync_append_target_overlay_prelude(
+      target_source, &overlay, &bound_input);
   iree_string_view_t remaining =
       loom_check_template_sync_trim_trailing_blank_lines(template_case->input);
   iree_host_size_t line_number = 1;
-  while (!iree_string_view_is_empty(remaining)) {
+  while (iree_status_is_ok(status) && !iree_string_view_is_empty(remaining)) {
+    iree_string_view_t line = loom_check_template_sync_consume_line(&remaining);
+    status = loom_check_template_sync_append_template_input_line(
+        line, line_number++, template_record, &overlay, &bound_input);
+  }
+  remaining = iree_string_builder_view(&bound_input);
+  while (iree_status_is_ok(status) && !iree_string_view_is_empty(remaining)) {
     iree_string_view_t line = loom_check_template_sync_consume_line(&remaining);
     loom_check_template_sync_advance_annotation_line_matches(
         anchors, anchor_count, line);
-    IREE_RETURN_IF_ERROR(loom_check_template_sync_append_target_annotations(
+    status = loom_check_template_sync_append_target_annotations(
         target_source, anchors, anchor_count, line,
-        /*insert_after_target_line=*/false, builder));
-    IREE_RETURN_IF_ERROR(loom_check_template_sync_append_template_input_line(
-        line, line_number, template_record, &overlay, builder));
-    IREE_RETURN_IF_ERROR(loom_check_template_sync_append_target_annotations(
-        target_source, anchors, anchor_count, line,
-        /*insert_after_target_line=*/true, builder));
-    ++line_number;
+        /*insert_after_target_line=*/false, builder);
+    if (iree_status_is_ok(status)) {
+      status = loom_check_template_sync_append_line(builder, line);
+    }
+    if (iree_status_is_ok(status)) {
+      status = loom_check_template_sync_append_target_annotations(
+          target_source, anchors, anchor_count, line,
+          /*insert_after_target_line=*/true, builder);
+    }
   }
-  for (iree_host_size_t i = 0; i < anchor_count; ++i) {
+  for (iree_host_size_t i = 0; i < anchor_count && iree_status_is_ok(status);
+       ++i) {
     if (!anchors[i].emitted) {
-      return iree_make_status(
+      status = iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
           "template sync could not anchor target annotation in template case");
     }
   }
-  return iree_ok_status();
+  iree_string_builder_deinitialize(&bound_input);
+  return status;
 }
 
 static iree_status_t loom_check_template_sync_append_case(

@@ -1,0 +1,58 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_scalar_i64_subtract.loom-test
+// RUN: emit source-low output=low
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @uniform_subtract(%lhs: i64, %rhs: i64) -> (i64) {
+  %difference = scalar.subi %lhs, %rhs : i64
+  func.return %difference : i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @uniform_subtract(%lhs: reg<llvmir.i64>, %rhs: reg<llvmir.i64>) -> (reg<llvmir.i64>) asm {
+  %difference = sub.i64 %lhs, %rhs
+  return %difference
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @constant_subtract(%value: i64) -> (i64, i64, i64) {
+  %c0 = scalar.constant 0 : i64
+  %wide = scalar.constant 4294967297 : i64
+  %negated = scalar.subi %c0, %value : i64
+  %constant_left = scalar.subi %wide, %value : i64
+  %constant_right = scalar.subi %value, %wide : i64
+  func.return %negated, %constant_left, %constant_right : i64, i64, i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @constant_subtract(%value: reg<llvmir.i64>) -> (reg<llvmir.i64>, reg<llvmir.i64>, reg<llvmir.i64>) asm {
+  %c0 = const.i64 0
+  %wide = const.i64 4294967297
+  %negated = sub.i64 %c0, %value
+  %constant_left = sub.i64 %wide, %value
+  %19 = const.i64 -4294967297
+  %constant_right = add.i64 %value, %19
+  return %negated, %constant_left, %constant_right
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @mixed_subtract(%uniform: i64, %values: vector<2xi64>) -> (i64, i64) {
+  %varying = vector.extract %values[0] : vector<2xi64> -> i64
+  %uniform_left = scalar.subi %uniform, %varying : i64
+  %uniform_right = scalar.subi %varying, %uniform : i64
+  func.return %uniform_left, %uniform_right : i64, i64
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @mixed_subtract(%uniform: reg<llvmir.i64>, %values: reg<llvmir.i64 x2>) -> (reg<llvmir.i64>, reg<llvmir.i64>) asm {
+  %varying = extract.v2i64 %values, 0
+  %uniform_left = sub.i64 %uniform, %varying
+  %uniform_right = sub.i64 %varying, %uniform
+  return %uniform_left, %uniform_right
+}

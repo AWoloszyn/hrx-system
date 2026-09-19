@@ -273,6 +273,15 @@ run through `loom-check`. This keeps IR available to the formatter and migration
 tools, and lets program tests share one runner instead of linking a compiler
 stack into each unit-test executable.
 
+Positive source-lowering regressions with a shared source contract belong in
+the [common corpus](src/loom/test/corpus/source_low/README.md). Target fixtures
+consume them through `TEMPLATE`, retaining their own profiles, lowering modes,
+and output assertions. A bug discovered on one backend contributes coverage to
+every backend: supported lowering or an exercised, precise unsupported
+diagnostic. Architectural non-applicability needs an explicit contract reason;
+missing implementation is a coverage gap. Authored Low IR, target-specific
+configuration, and rejection semantics stay with their owning subsystem.
+
 A new `format/text:parser` dependency in a C++ unit-test target is a boundary
 review signal. Parsing is appropriate when the parser API itself is the subject;
 it is not setup for testing an allocator, analysis, or transform. Large IR
