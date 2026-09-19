@@ -30,6 +30,7 @@ loom_check_test_suite(
     "target_legalize_diagnostics.loom-test"
     "target_legalize_matrix.loom-test"
     "target_legalize_report.loom-test"
+    "target_legalize_report_revisits.loom-test"
     "target_legalize_structure.loom-test"
 )
 

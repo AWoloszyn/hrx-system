@@ -1,0 +1,174 @@
+// RUN: with-checks compile-report target-legalize
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @counts_distinct_selections_once_after_dce(%condition: i1, %a: vector<2xf32>, %b: vector<2xf32>) -> (vector<2xf32>, vector<2xf32>) {
+  // Removing this unused operation forces another greedy iteration.
+  %unused = index.constant 47 : index
+  %selected = scf.select %condition, %a, %b : vector<2xf32>
+  %second = scf.select %condition, %b, %a : vector<2xf32>
+  func.return %selected, %second : vector<2xf32>, vector<2xf32>
+}
+
+// ----
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=0 unhandled=2 rows=2
+CHECK: COMPILE-REPORT: target_legalization[0] * source_op=scf.select * action=unhandled *
+CHECK: COMPILE-REPORT: target_legalization[1] * source_op=scf.select * action=unhandled *
+
+// ====
+
+// RUN: with-checks compile-report target-legalize
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @counts_deferred_store_once_after_dce(%out_buffer: buffer, %value: vector<4xf32>) {
+  %unused = index.constant 47 : index
+  %base = index.constant 0 : offset
+  %origin = index.constant 0 : index
+  %view = buffer.view %out_buffer[%base] : buffer -> view<4xf32>
+  vector.store %value, %view[%origin] : vector<4xf32>, view<4xf32>
+  func.return
+}
+
+// ----
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=1 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.store * action=deferred *
+
+// ====
+
+// RUN: with-checks compile-report target-legalize{mode=final,policy=require-native}
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @counts_policy_rejection_once_after_dce(%v: vector<4xi32>, %init: i32) -> (i32) {
+  %unused = index.constant 47 : index
+  // ERROR@+1: TARGET/039 {source_contract="target.reference", matrix_constraint="reference.policy"}
+  %r = vector.reduce.axes<addi> %v, %init axes [0] : vector<4xi32>, i32
+  func.return %r : i32
+}
+
+// ----
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=1 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.reduce.axes * action=reject-unsupported-final *
+
+// ====
+
+// RUN: with-checks compile-report target-legalize{mode=final}
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @counts_fragment_rejection_once_after_dce(%lhs_data: vector<16xf16>, %rhs_data: vector<16xf16>, %init_data: vector<8xf32>) -> (vector<8xf32>) {
+  %unused = index.constant 47 : index
+  %m = index.constant 16 : index
+  %n = index.constant 16 : index
+  %k = index.constant 16 : index
+  %lhs = vector.fragment<lhs> %lhs_data shape [%m, %k] : vector<16xf16>
+  %rhs = vector.fragment<rhs> %rhs_data shape [%k, %n] : vector<16xf16>
+  %init = vector.fragment<init> %init_data shape [%m, %n] : vector<8xf32>
+  // ERROR@+1: TARGET/039 {source_contract="target.reference", matrix_constraint="reference.lhs_fragment_ownership"}
+  %result = vector.mma %lhs, %rhs, %init : vector<16xf16>, vector<16xf16>, vector<8xf32>
+  func.return %result : vector<8xf32>
+}
+
+// ----
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=1 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.mma * action=reject-unsupported-final *
+
+// ====
+
+// RUN: with-checks compile-report target-legalize{mode=final}
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @retains_source_rewrite_and_omits_generated_operations(%lhs_data: vector<4xi32>, %rhs_data: vector<4xi32>, %init_data: vector<4xi32>) -> (vector<4xi32>) {
+  %unused = index.constant 47 : index
+  %m = index.constant 2 : index
+  %n = index.constant 2 : index
+  %k = index.constant 2 : index
+  %lhs = vector.fragment<lhs> %lhs_data shape [%m, %k] : vector<4xi32>
+  %rhs = vector.fragment<rhs> %rhs_data shape [%k, %n] : vector<4xi32>
+  %init = vector.fragment<init> %init_data shape [%m, %n] : vector<4xi32>
+  %result = vector.mma %lhs, %rhs, %init : vector<4xi32>, vector<4xi32>, vector<4xi32>
+  func.return %result : vector<4xi32>
+}
+
+// ----
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+CHECK: COMPILE-REPORT: target_legalization[*] * source_op=vector.mma * action=rewritten *
+CHECK-NOT: COMPILE-REPORT: target_legalization[*] * source_op=scalar.fmai *
+CHECK-NOT: COMPILE-REPORT: target_legalization[*] * source_op=vector.extract *
+
+// ====
+
+// RUN: with-checks compile-report target-legalize
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @counts_original_sources_in_nested_regions(%condition: i1, %a: vector<2xf32>, %b: vector<2xf32>) -> (vector<2xf32>) {
+  %unused = index.constant 47 : index
+  %result = scf.if %condition -> (vector<2xf32>) {
+    %selected = scf.select %condition, %a, %b : vector<2xf32>
+    scf.yield %selected : vector<2xf32>
+  } else {
+    %selected = scf.select %condition, %b, %a : vector<2xf32>
+    scf.yield %selected : vector<2xf32>
+  }
+  func.return %result : vector<2xf32>
+}
+
+// ----
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=0 unhandled=2 rows=2
+CHECK: COMPILE-REPORT: target_legalization[0] * source_op=scf.select * action=unhandled *
+CHECK: COMPILE-REPORT: target_legalization[1] * source_op=scf.select * action=unhandled *
+
+// ====
+
+// RUN: with-checks compile-report target-legalize,target-legalize{policy=reference-only}
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @retains_independent_pass_decisions(%condition: i1, %a: vector<2xf32>, %b: vector<2xf32>) -> (vector<2xf32>) {
+  %selected = scf.select %condition, %a, %b : vector<2xf32>
+  func.return %selected : vector<2xf32>
+}
+
+// ----
+CHECK: COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=1 rows=2
+CHECK: COMPILE-REPORT: target_legalization[0] * source_op=scf.select * action=unhandled *
+CHECK: COMPILE-REPORT: target_legalization[1] * source_op=scf.select * action=rewritten *
+
+// ====
+
+// RUN: with-checks compile-report target-legalize
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @omits_dead_candidates(%condition: i1, %a: vector<2xf32>, %b: vector<2xf32>) {
+  %selected = scf.select %condition, %a, %b : vector<2xf32>
+  func.return
+}
+
+// ----
+CHECK: COMPILE-REPORT: summary * status=OK *
+CHECK-NOT: COMPILE-REPORT: target_legalization*
+
+// ====
+
+// RUN: with-checks compile-report target-legalize{mode=final}
+
+test.target<quirky> @test_target
+
+func.def target(@test_target) @omits_native_candidates(%lhs_data: vector<4xi32>, %rhs_data: vector<4xi32>, %init_data: vector<4xi32>) -> (vector<4xi32>) {
+  %m = index.constant 2 : index
+  %n = index.constant 2 : index
+  %k = index.constant 2 : index
+  %lhs = vector.fragment<lhs> %lhs_data shape [%m, %k] : vector<4xi32>
+  %rhs = vector.fragment<rhs> %rhs_data shape [%k, %n] : vector<4xi32>
+  %init = vector.fragment<init> %init_data shape [%m, %n] : vector<4xi32>
+  %result = vector.mma %lhs, %rhs, %init : vector<4xi32>, vector<4xi32>, vector<4xi32>
+  func.return %result : vector<4xi32>
+}
+
+// ----
+CHECK: COMPILE-REPORT: summary * status=OK *
+CHECK-NOT: COMPILE-REPORT: target_legalization*

@@ -66,6 +66,7 @@ loom_cc_library(
         "//loom/src/loom/target:low_descriptor_registry",
         "//loom/src/loom/target:low_legality",
         "//loom/src/loom/target/reporting:report",
+        "//loom/src/loom/util:adaptive_sort",
         "//loom/src/loom/util:walk",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
