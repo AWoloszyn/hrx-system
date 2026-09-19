@@ -23,70 +23,6 @@ loom_generated_cc_library(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_IMPORT_CXX_EMBED_INCLUDES)
-iree_c_embed_data(
-  NAME
-    embedded_loomcxx_headers
-  SRCS
-    "include/loomcxx/kernel.h"
-    "include/loomcxx/math.h"
-    "include/loomcxx/scalar.h"
-  C_FILE_OUTPUT
-    "embedded_loomcxx_headers.c"
-  H_FILE_OUTPUT
-    "embedded_loomcxx_headers.h"
-  IDENTIFIER
-    "loom_cxx_embedded_loomcxx_headers"
-  FLATTEN
-  PUBLIC
-)
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_IMPORT_CXX_EMBED_INCLUDES)
-iree_c_embed_data(
-  NAME
-    embedded_hip_headers
-  SRCS
-    "include/hip/hip_fp16.h"
-    "include/hip/hip_runtime.h"
-  C_FILE_OUTPUT
-    "embedded_hip_headers.c"
-  H_FILE_OUTPUT
-    "embedded_hip_headers.h"
-  IDENTIFIER
-    "loom_cxx_embedded_hip_headers"
-  FLATTEN
-  PUBLIC
-)
-endif()
-
-if(LOOM_IMPORT_CXX)
-set(_include_catalog_platform_defines "")
-if(LOOM_IMPORT_CXX_EMBED_INCLUDES)
-  list(APPEND _include_catalog_platform_defines "LOOM_CXX_EMBED_INCLUDES=1")
-else()
-  list(APPEND _include_catalog_platform_defines "LOOM_CXX_EMBED_INCLUDES=0")
-endif()
-set(_include_catalog_platform_deps "")
-if(LOOM_IMPORT_CXX_EMBED_INCLUDES)
-  list(APPEND _include_catalog_platform_deps ::embedded_hip_headers)
-  list(APPEND _include_catalog_platform_deps ::embedded_loomcxx_headers)
-endif()
-loom_cc_library(
-  NAME
-    include_catalog
-  HDRS
-    "include_catalog.h"
-  SRCS
-    "include_catalog.cc"
-  DEPS
-    ${_include_catalog_platform_deps}
-  DEFINES
-    ${_include_catalog_platform_defines}
-  PUBLIC
-)
-endif()
-
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
@@ -95,10 +31,10 @@ loom_cc_test(
     "import_test.cc"
   DEPS
     ::cxx
-    ::include_catalog
     iree::testing::gtest
     iree::testing::gtest_main
     loom::format::text::printer
+    loom::import::cxx::source::catalog
     loom::ops::op_registry
   LABELS
     "iree-build-requirement=loom.import.cxx"
@@ -112,8 +48,6 @@ loom_cc_library(
   HDRS
     "import.h"
   SRCS
-    "attributes.h"
-    "failure.h"
     "import.cc"
     "intrinsics.cc"
     "intrinsics.h"
@@ -122,18 +56,21 @@ loom_cc_library(
     "loop_schedule.cc"
     "loop_schedule.h"
     "mutations.h"
-    "source.cc"
-    "source.h"
     "translation.cc"
     "translation.h"
   DEPS
-    ::include_catalog
     ::scalar_bindings
     iree::base
     iree::base::internal::arena
     iree::third_party::cxx_parser
     loom::error::diagnostic
     loom::error::error_defs
+    loom::import::cxx::source
+    loom::import::cxx::source::attributes
+    loom::import::cxx::source::catalog
+    loom::import::cxx::source::error
+    loom::import::cxx::source::locations
+    loom::import::cxx::source::options
     loom::ir
     loom::ops::buffer
     loom::ops::config

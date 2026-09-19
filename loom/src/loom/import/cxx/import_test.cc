@@ -12,7 +12,7 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/format/text/printer.h"
-#include "loom/import/cxx/include_catalog.h"
+#include "loom/import/cxx/source/catalog.h"
 #include "loom/ops/op_registry.h"
 
 namespace {

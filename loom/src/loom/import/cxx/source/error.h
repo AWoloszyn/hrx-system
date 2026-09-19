@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_FAILURE_H_
-#define LOOM_IMPORT_CXX_FAILURE_H_
+#ifndef LOOM_IMPORT_CXX_SOURCE_ERROR_H_
+#define LOOM_IMPORT_CXX_SOURCE_ERROR_H_
 
 #include <utility>
 
@@ -40,4 +40,4 @@ inline void check(iree_status_t status) {
 
 }  // namespace loom::cxx_import
 
-#endif  // LOOM_IMPORT_CXX_FAILURE_H_
+#endif  // LOOM_IMPORT_CXX_SOURCE_ERROR_H_

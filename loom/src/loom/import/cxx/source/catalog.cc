@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/import/cxx/include_catalog.h"
+#include "loom/import/cxx/source/catalog.h"
 
 #if LOOM_CXX_EMBED_INCLUDES
-#include "loom/import/cxx/embedded_hip_headers.h"
-#include "loom/import/cxx/embedded_loomcxx_headers.h"
+#include "loom/import/cxx/source/embedded_hip_headers.h"
+#include "loom/import/cxx/source/embedded_loomcxx_headers.h"
 #endif
 
 namespace loom::cxx_import {

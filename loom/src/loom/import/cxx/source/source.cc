@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/import/cxx/source.h"
+#include "loom/import/cxx/source/source.h"
 
 #include <cxx/ast.h>
 #include <cxx/memory_layout.h>
@@ -17,8 +17,8 @@
 #include <unordered_map>
 
 #include "loom/error/error_catalog.h"
-#include "loom/import/cxx/failure.h"
-#include "loom/import/cxx/include_catalog.h"
+#include "loom/import/cxx/source/catalog.h"
+#include "loom/import/cxx/source/error.h"
 
 namespace loom::cxx_import {
 
@@ -215,13 +215,10 @@ class Sources {
 
 }  // namespace
 
-std::unique_ptr<cxx::Toolchain> parse_source(
-    cxx::TranslationUnit& unit, Diagnostics& diagnostics,
-    iree_string_view_t source, iree_string_view_t filename,
-    const loom_cxx_import_options_t& options) {
+static void parse_source(cxx::TranslationUnit& unit, Diagnostics& diagnostics,
+                         iree_string_view_t source, iree_string_view_t filename,
+                         const loom_cxx_import_options_t& options) {
   auto* preprocessor = unit.preprocessor();
-  diagnostics.bind(preprocessor);
-  auto toolchain = std::make_unique<SourceToolchain>(preprocessor, options);
   preprocessor->setCanResolveFiles(false);
   for (size_t i = 0; i < options.include_path_count; ++i) {
     preprocessor->addUserIncludePath(string(options.include_paths[i]));
@@ -278,7 +275,14 @@ std::unique_ptr<cxx::Toolchain> parse_source(
   diagnostics.finish();
   unit.parse({.checkTypes = true, .validateAst = true});
   diagnostics.finish();
-  return toolchain;
+}
+
+Source::Source(iree_string_view_t contents, iree_string_view_t filename,
+               const loom_cxx_import_options_t& options)
+    : diagnostics_(options.diagnostic_sink), unit_(&diagnostics_) {
+  diagnostics_.bind(unit_.preprocessor());
+  toolchain_ = std::make_unique<SourceToolchain>(unit_.preprocessor(), options);
+  parse_source(unit_, diagnostics_, contents, filename, options);
 }
 
 }  // namespace loom::cxx_import

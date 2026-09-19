@@ -1,0 +1,163 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
+load("//loom/build_tools/bazel:build_defs.bzl", "iree_cmake_extra_content", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with")
+load("//loom/src/loom/import/cxx:build_defs.bzl", "CXX_COMPILER_OPTIONS")
+
+package(
+    default_visibility = ["//loom/src/loom/import/cxx:__subpackages__"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+_EMBED_COMPATIBLE_WITH = loom_config_compatible_with([
+    "//loom/config/import:cxx",
+    "//loom/config/import/cxx:embed_includes_enabled",
+])
+
+iree_c_embed_data(
+    name = "embedded_loomcxx_headers",
+    srcs = [
+        "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/math.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/scalar.h",
+    ],
+    c_file_output = "embedded_loomcxx_headers.c",
+    flatten = True,
+    h_file_output = "embedded_loomcxx_headers.h",
+    identifier = "loom_cxx_embedded_loomcxx_headers",
+    target_compatible_with = _EMBED_COMPATIBLE_WITH,
+)
+
+iree_c_embed_data(
+    name = "embedded_hip_headers",
+    srcs = [
+        "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
+        "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
+    ],
+    c_file_output = "embedded_hip_headers.c",
+    flatten = True,
+    h_file_output = "embedded_hip_headers.h",
+    identifier = "loom_cxx_embedded_hip_headers",
+    target_compatible_with = _EMBED_COMPATIBLE_WITH,
+)
+
+loom_cc_library(
+    name = "catalog",
+    srcs = ["catalog.cc"],
+    hdrs = ["catalog.h"],
+    defines = select({
+        "//loom/config/import/cxx:embed_includes_enabled": ["LOOM_CXX_EMBED_INCLUDES=1"],
+        "//conditions:default": ["LOOM_CXX_EMBED_INCLUDES=0"],
+    }),
+    deps = select({
+        "//loom/config/import/cxx:embed_includes_enabled": [
+            ":embedded_hip_headers",
+            ":embedded_loomcxx_headers",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+loom_cc_library(
+    name = "options",
+    srcs = ["options.c"],
+    hdrs = ["options.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//loom/src/loom/error:diagnostic"],
+)
+
+loom_cc_library(
+    name = "error",
+    hdrs = ["error.h"],
+    deps = ["//runtime/src/iree/base"],
+)
+
+loom_cc_library(
+    name = "source",
+    srcs = ["source.cc"],
+    hdrs = ["source.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":catalog",
+        ":error",
+        ":options",
+        "//loom/src/loom/error:error_defs",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
+    name = "locations",
+    srcs = ["locations.cc"],
+    hdrs = ["locations.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":error",
+        ":source",
+        "//loom/src/loom/ir",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
+    name = "attributes",
+    hdrs = ["attributes.h"],
+    deps = ["//third_party:cxx_parser"],
+)
+
+loom_cc_test(
+    name = "source_test",
+    srcs = ["source_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":error",
+        ":options",
+        ":source",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "locations_test",
+    srcs = ["locations_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":error",
+        ":locations",
+        ":options",
+        ":source",
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+iree_cmake_extra_content(
+    """
+# Parser-facing sources use the same scoped language and unwind contract as
+# their Bazel targets. The C options and facade catalog retain normal flags.
+foreach(_target IN ITEMS
+    loom_import_cxx_source_source.objects
+    loom_import_cxx_source_locations.objects
+    loom_import_cxx_source_source_test
+    loom_import_cxx_source_locations_test)
+  if(TARGET ${_target})
+    target_compile_features(${_target} PRIVATE cxx_std_23)
+    if(MSVC)
+      target_compile_options(${_target} PRIVATE /EHsc /GR)
+    else()
+      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
+    endif()
+  endif()
+endforeach()
+""",
+    inline = True,
+)

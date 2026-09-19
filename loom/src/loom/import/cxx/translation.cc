@@ -30,12 +30,13 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
-#include "loom/import/cxx/failure.h"
 #include "loom/import/cxx/intrinsics.h"
 #include "loom/import/cxx/launch.h"
 #include "loom/import/cxx/loop_schedule.h"
 #include "loom/import/cxx/mutations.h"
-#include "loom/import/cxx/source.h"
+#include "loom/import/cxx/source/error.h"
+#include "loom/import/cxx/source/locations.h"
+#include "loom/import/cxx/source/source.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/buffer/ops.h"
@@ -68,6 +69,7 @@ class Translator {
              loom_module_t* module, const loom_cxx_import_options_t& options)
       : unit_(unit),
         diagnostics_(diagnostics),
+        locations_(unit, diagnostics, module),
         intrinsics_(unit, diagnostics),
         launches_(unit, diagnostics),
         module_(module),
@@ -194,37 +196,6 @@ class Translator {
     diagnostics_.reject(unit_, ast, message);
   }
 
-  loom_location_id_t location(cxx::AST* ast) {
-    if (auto found = locations_.find(ast); found != locations_.end()) {
-      return found->second;
-    }
-    auto first = unit_.tokenStartPosition(ast->firstSourceLocation());
-    auto last = unit_.tokenEndPosition(ast->lastSourceLocation().previous());
-    // Instantiation can synthesize literals without source tokens. Keep those
-    // locations unknown instead of inventing an empty filename at line zero.
-    if (first.fileName.empty() || !first.line || !first.column) {
-      locations_[ast] = LOOM_LOCATION_UNKNOWN;
-      return LOOM_LOCATION_UNKNOWN;
-    }
-    if (first.line > UINT16_MAX || last.line > UINT16_MAX ||
-        first.column > UINT16_MAX || last.column > UINT16_MAX) {
-      fail(ast, "source range exceeds Loom's location representation");
-    }
-    loom_source_id_t source;
-    check(loom_module_register_source(
-        module_,
-        iree_make_string_view(first.fileName.data(), first.fileName.size()),
-        &source));
-    loom_location_id_t result;
-    check(loom_module_add_location(
-        module_,
-        loom_location_file_range(source, first.line, first.column, last.line,
-                                 last.column),
-        &result));
-    locations_[ast] = result;
-    return result;
-  }
-
   const cxx::Type* unqualified(const cxx::Type* type) {
     return unit_.typeTraits().remove_cv(type);
   }
@@ -321,14 +292,14 @@ class Translator {
       check(loom_scalar_constant_build(
           &builder_,
           is_float(input_type) ? loom_attr_f64(0.0) : loom_attr_i64(0), input,
-          location(owner), &zero));
+          locations_.get(owner), &zero));
       if (is_float(input_type)) {
         check(loom_scalar_cmpf_build(&builder_, 0,
                                      LOOM_SCALAR_CMPF_PREDICATE_UNE, value,
-                                     result(zero), location(owner), &op));
+                                     result(zero), locations_.get(owner), &op));
       } else {
         check(loom_scalar_cmpi_build(&builder_, LOOM_SCALAR_CMPI_PREDICATE_NE,
-                                     value, result(zero), location(owner),
+                                     value, result(zero), locations_.get(owner),
                                      &op));
       }
       return result(op);
@@ -350,7 +321,7 @@ class Translator {
                    : (narrows ? loom_scalar_trunci_build
                               : (unsigned_input ? loom_scalar_extui_build
                                                 : loom_scalar_extsi_build)));
-    check(build(&builder_, value, input, output, location(owner), &op));
+    check(build(&builder_, value, input, output, locations_.get(owner), &op));
     return result(op);
   }
 
@@ -358,7 +329,7 @@ class Translator {
                                loom_value_id_t right,
                                const cxx::Type* input_type,
                                const cxx::Type* output_type, cxx::AST* ast) {
-    auto source = location(ast);
+    auto source = locations_.get(ast);
     bool floating = is_float(input_type);
     bool unsigned_input = is_unsigned(input_type);
     loom_op_t* op;
@@ -534,14 +505,14 @@ class Translator {
       check(loom_kernel_def_build(&builder_, 0, 0, {}, 0, 0,
                                   callees_.at(symbol), nullptr, 0,
                                   arguments.data(), arguments.size(), nullptr,
-                                  0, location(definition), &op));
+                                  0, locations_.get(definition), &op));
       auto saved =
           loom_builder_enter_region(&builder_, op, loom_kernel_def_config(op));
       auto name_id =
           module_->symbols.entries[callees_.at(symbol).symbol_id].name_id;
       auto spelling = module_->strings.entries[name_id];
       launches_.build(symbol, {spelling.data, spelling.size}, &builder_,
-                      location(definition));
+                      locations_.get(definition));
       loom_builder_restore(&builder_, saved);
     } else {
       launches_.reject_ordinary_function(symbol);
@@ -563,7 +534,7 @@ class Translator {
           annotated(symbol, "force_inline") ? LOOM_INLINE_POLICY_INLINE : 0, {},
           0, {}, 0, {}, callees_.at(symbol), arguments.data(), arguments.size(),
           results.data(), results.size(), nullptr, 0, nullptr, 0,
-          location(definition), &op));
+          locations_.get(definition), &op));
     }
     auto* region = kernel_ ? loom_kernel_def_body(op) : loom_func_def_body(op);
     auto saved = loom_builder_enter_region(&builder_, op, region);
@@ -585,11 +556,11 @@ class Translator {
         }
         loom_op_t* terminator;
         if (kernel_) {
-          check(
-              loom_kernel_return_build(&builder_, location(ret), &terminator));
+          check(loom_kernel_return_build(&builder_, locations_.get(ret),
+                                         &terminator));
         } else {
           check(loom_func_return_build(&builder_, returns.data(),
-                                       returns.size(), location(ret),
+                                       returns.size(), locations_.get(ret),
                                        &terminator));
         }
         returned = true;
@@ -603,11 +574,11 @@ class Translator {
       }
       loom_op_t* terminator;
       if (kernel_) {
-        check(loom_kernel_return_build(&builder_, location(definition),
+        check(loom_kernel_return_build(&builder_, locations_.get(definition),
                                        &terminator));
       } else {
         check(loom_func_return_build(&builder_, nullptr, 0,
-                                     location(definition), &terminator));
+                                     locations_.get(definition), &terminator));
       }
     }
     loom_builder_restore(&builder_, saved);
@@ -652,29 +623,29 @@ class Translator {
     // direct i32-to-index conversion would interpret unsigned C++ bits as
     // signed.
     check(loom_index_cast_build(&builder_, index, value_type(index),
-                                offset_type, location(ast), &cast));
+                                offset_type, locations_.get(ast), &cast));
     auto wide_index = result(cast);
     check(loom_index_cast_build(&builder_, wide_index, offset_type, index_type,
-                                location(ast), &cast));
+                                locations_.get(ast), &cast));
     if (array) {
       return {array_views_.at(root), result(cast)};
     }
-    auto size = constant(*bytes, LOOM_SCALAR_TYPE_OFFSET, location(ast));
+    auto size = constant(*bytes, LOOM_SCALAR_TYPE_OFFSET, locations_.get(ast));
     loom_op_t* offset;
     check(loom_index_scale_build(&builder_, result(cast), size, offset_type,
-                                 location(ast), &offset));
+                                 locations_.get(ast), &offset));
     loom_op_t* view;
     auto view_type = loom_type_shaped_1d(LOOM_TYPE_VIEW,
                                          loom_type_element_type(element), 1, 0);
     check(loom_buffer_view_build(&builder_, root, result(offset), view_type,
-                                 location(ast), &view));
+                                 locations_.get(ast), &view));
     return {result(view), std::nullopt};
   }
 
   loom_value_id_t constant_value(const cxx::ConstValue& value,
                                  cxx::ExpressionAST* ast) {
     cxx::ASTInterpreter interpreter(&unit_);
-    auto source = location(ast);
+    auto source = locations_.get(ast);
     auto target = type(ast->type, ast);
     loom_attribute_t attribute;
     if (is_float(ast->type)) {
@@ -708,7 +679,7 @@ class Translator {
     if (!ast) {
       throw std::runtime_error("missing expression");
     }
-    auto source = location(ast);
+    auto source = locations_.get(ast);
     if (auto* constant = cxx::ast_cast<cxx::ConstExpressionAST>(ast)) {
       return constant_value(*constant->constValue, ast);
     }
@@ -1014,24 +985,25 @@ class Translator {
           if (!bytes || !alignment) {
             fail(ast, "unknown shared array layout");
           }
-          auto length =
-              constant(*bytes, LOOM_SCALAR_TYPE_OFFSET, location(variable));
+          auto length = constant(*bytes, LOOM_SCALAR_TYPE_OFFSET,
+                                 locations_.get(variable));
           loom_op_t* op;
           check(loom_buffer_alloca_build(
               &builder_, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP,
               std::max<int64_t>(*alignment,
                                 source_variable->explicitAlignment()),
-              length, loom_type_buffer(), location(variable), &op));
+              length, loom_type_buffer(), locations_.get(variable), &op));
           auto root =
               name(result(op), cxx::to_string(variable->symbol->name()));
           values_[variable->symbol] = root;
-          auto base = constant(0, LOOM_SCALAR_TYPE_OFFSET, location(variable));
+          auto base =
+              constant(0, LOOM_SCALAR_TYPE_OFFSET, locations_.get(variable));
           auto element = type(array->elementType(), variable);
           auto view_type = loom_type_shaped_1d(LOOM_TYPE_VIEW,
                                                loom_type_element_type(element),
                                                array->size(), 0);
           check(loom_buffer_view_build(&builder_, root, base, view_type,
-                                       location(variable), &op));
+                                       locations_.get(variable), &op));
           array_views_[root] = name(
               result(op), cxx::to_string(variable->symbol->name()) + "_view");
           continue;
@@ -1066,14 +1038,15 @@ class Translator {
                        ? LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION
                        : 0;
       check(loom_scf_if_build(&builder_, flags, condition, types.data(),
-                              types.size(), nullptr, 0, location(ast), &op));
+                              types.size(), nullptr, 0, locations_.get(ast),
+                              &op));
       auto saved =
           loom_builder_enter_region(&builder_, op, loom_scf_if_then_region(op));
       statement(branch->statement);
       loom_op_t* yield;
       auto yielded = current(written);
       check(loom_scf_yield_build(&builder_, yielded.data(), yielded.size(),
-                                 location(ast), &yield));
+                                 locations_.get(ast), &yield));
       values_ = saved_values;
       loom_builder_restore(&builder_, saved);
       if (flags) {
@@ -1084,7 +1057,7 @@ class Translator {
         }
         yielded = current(written);
         check(loom_scf_yield_build(&builder_, yielded.data(), yielded.size(),
-                                   location(ast), &yield));
+                                   locations_.get(ast), &yield));
         values_ = saved_values;
         loom_builder_restore(&builder_, saved);
       }
@@ -1155,7 +1128,7 @@ class Translator {
     auto written = live_mutations(ast);
     auto initial = current(written);
     auto outer_values = values_;
-    auto source = location(ast);
+    auto source = locations_.get(ast);
     loom_op_t* op;
     check(loom_scf_while_build(&builder_, initial.data(), initial.size(),
                                nullptr, 0, source, &op));
@@ -1278,7 +1251,7 @@ class Translator {
 
   void counted_loop(cxx::ForStatementAST* loop, cxx::Symbol* induction,
                     unsigned step_value, const LoopSchedule& schedule) {
-    auto source = location(loop);
+    auto source = locations_.get(loop);
     auto* condition = cxx::ast_cast<cxx::BinaryExpressionAST>(loop->condition);
     auto lower = unsigned_offset(values_.at(induction), source);
     auto upper =
@@ -1380,7 +1353,8 @@ class Translator {
         };
         loom_op_t* op;
         check(loom_scalar_assume_build(&builder_, &value, 1, &predicate, 1,
-                                       &value_type, 1, location(ast), &op));
+                                       &value_type, 1, locations_.get(ast),
+                                       &op));
         values_[binding->symbol] =
             name(result(op), cxx::to_string(binding->symbol->name()));
         return;
@@ -1406,7 +1380,7 @@ class Translator {
         loom_op_t* op;
         check(loom_func_call_build(&builder_, 0, 0, 0, 0, callee,
                                    arguments.data(), arguments.size(), nullptr,
-                                   0, nullptr, 0, location(ast), &op));
+                                   0, nullptr, 0, locations_.get(ast), &op));
         return;
       }
       if (call->expressionList) {
@@ -1418,11 +1392,11 @@ class Translator {
       check(loom_kernel_barrier_build(
           &builder_, LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL,
           LOOM_ATOMIC_SCOPE_WORKGROUP, LOOM_ATOMIC_ORDERING_ACQ_REL,
-          location(ast), &op));
+          locations_.get(ast), &op));
       check(loom_kernel_barrier_build(
           &builder_, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP,
           LOOM_ATOMIC_SCOPE_WORKGROUP, LOOM_ATOMIC_ORDERING_ACQ_REL,
-          location(ast), &op));
+          locations_.get(ast), &op));
       return;
     }
     if (auto* assignment =
@@ -1470,7 +1444,7 @@ class Translator {
       check(loom_view_store_build(&builder_, 0, 0, value, access.view,
                                   access.index ? &*access.index : nullptr,
                                   access.index ? 1 : 0, &selector, 1, 0, 0,
-                                  location(ast), &op));
+                                  locations_.get(ast), &op));
       return;
     }
     cxx::ExpressionAST* destination = nullptr;
@@ -1498,11 +1472,12 @@ class Translator {
         fail(ast, "increment requires an integer local");
       }
       auto old = expression(id);
-      auto one =
-          constant(1, loom_type_element_type(value_type(old)), location(ast));
+      auto one = constant(1, loom_type_element_type(value_type(old)),
+                          locations_.get(ast));
       loom_op_t* op;
       auto build = decrement ? loom_scalar_subi_build : loom_scalar_addi_build;
-      check(build(&builder_, 0, old, one, value_type(old), location(ast), &op));
+      check(build(&builder_, 0, old, one, value_type(old), locations_.get(ast),
+                  &op));
       values_[id->symbol] =
           name(result(op), cxx::to_string(id->symbol->name()));
       return;
@@ -1515,6 +1490,8 @@ class Translator {
   cxx::TranslationUnit& unit_;
   // Source diagnostics share frontend byte ranges and the caller sink.
   Diagnostics& diagnostics_;
+  // Retained source ranges copied into the output module.
+  Locations locations_;
   // Retained generated operation bindings for reached source declarations.
   Intrinsics intrinsics_;
   // Admitted launch contracts, including bounds from function redeclarations.
@@ -1541,8 +1518,6 @@ class Translator {
   std::unordered_map<std::string, unsigned> symbol_names_;
   // Source qualification is computed once for each discovered function.
   std::unordered_map<cxx::FunctionSymbol*, std::string> qualified_names_;
-  // Retained source provenance avoids reconstructing repeated AST locations.
-  std::unordered_map<cxx::AST*, loom_location_id_t> locations_;
   // Source-owned mutation facts retained for all reached function bodies.
   Mutations mutations_;
   // Fixed array extents become named views at their declarations.

@@ -9,7 +9,7 @@
 
 #include <span>
 
-#include "loom/import/cxx/source.h"
+#include "loom/import/cxx/source/source.h"
 #include "loom/ops/scf/ops.h"
 
 namespace loom::cxx_import {

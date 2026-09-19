@@ -7,7 +7,7 @@
 #ifndef LOOM_IMPORT_CXX_TRANSLATION_H_
 #define LOOM_IMPORT_CXX_TRANSLATION_H_
 
-#include "loom/import/cxx/source.h"
+#include "loom/import/cxx/source/source.h"
 
 namespace loom::cxx_import {
 

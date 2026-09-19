@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_SOURCE_H_
-#define LOOM_IMPORT_CXX_SOURCE_H_
+#ifndef LOOM_IMPORT_CXX_SOURCE_SOURCE_H_
+#define LOOM_IMPORT_CXX_SOURCE_SOURCE_H_
 
 #include <cxx/diagnostics_client.h>
 #include <cxx/toolchain.h>
@@ -14,7 +14,7 @@
 #include <string>
 #include <string_view>
 
-#include "loom/import/cxx/import.h"
+#include "loom/import/cxx/source/options.h"
 
 namespace loom::cxx_import {
 
@@ -55,13 +55,30 @@ class Diagnostics final : public cxx::DiagnosticsClient {
   iree_status_t status_ = iree_ok_status();
 };
 
-// Preprocesses and type-checks one source configuration. The unit owns all
-// mutable AST state; the returned toolchain owns its borrowed memory layout.
-std::unique_ptr<cxx::Toolchain> parse_source(
-    cxx::TranslationUnit& unit, Diagnostics& diagnostics,
-    iree_string_view_t source, iree_string_view_t filename,
-    const loom_cxx_import_options_t& options);
+// Owns one fully preprocessed and type-checked source configuration. The
+// translation unit and its mutable semantic state belong exclusively to this
+// object. Borrowed AST, symbol, token and layout references expire with it.
+// Construction throws SourceRejected after delivering source diagnostics or
+// StatusError for provider, option or diagnostic-sink failures.
+class Source {
+ public:
+  Source(iree_string_view_t contents, iree_string_view_t filename,
+         const loom_cxx_import_options_t& options);
+  Source(const Source&) = delete;
+  Source& operator=(const Source&) = delete;
+
+  cxx::TranslationUnit& unit() { return unit_; }
+  Diagnostics& diagnostics() { return diagnostics_; }
+
+ private:
+  // Outlives the frontend that can deliver diagnostics during teardown.
+  Diagnostics diagnostics_;
+  // Owns the memory layout borrowed by the translation unit.
+  std::unique_ptr<cxx::Toolchain> toolchain_;
+  // Destroyed before its borrowed layout and diagnostic client.
+  cxx::TranslationUnit unit_;
+};
 
 }  // namespace loom::cxx_import
 
-#endif  // LOOM_IMPORT_CXX_SOURCE_H_
+#endif  // LOOM_IMPORT_CXX_SOURCE_SOURCE_H_

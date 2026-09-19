@@ -15,7 +15,7 @@
 #include <unordered_map>
 
 #include "loom/import/cxx/scalar_bindings.h"
-#include "loom/import/cxx/source.h"
+#include "loom/import/cxx/source/source.h"
 
 namespace loom::cxx_import {
 

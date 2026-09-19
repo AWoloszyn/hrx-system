@@ -9,16 +9,10 @@
 #include <memory>
 #include <new>
 
-#include "loom/import/cxx/failure.h"
-#include "loom/import/cxx/source.h"
+#include "loom/import/cxx/source/error.h"
+#include "loom/import/cxx/source/source.h"
 #include "loom/import/cxx/translation.h"
 #include "loom/verify/verify.h"
-
-void loom_cxx_import_options_initialize(loom_cxx_import_options_t* options) {
-  memset(options, 0, sizeof(*options));
-  options->standard = IREE_SV("c++26");
-  options->data_model = LOOM_CXX_DATA_MODEL_LP64;
-}
 
 iree_status_t loom_cxx_import(iree_string_view_t source,
                               iree_string_view_t filename,
@@ -50,16 +44,13 @@ iree_status_t loom_cxx_import(iree_string_view_t source,
   }
   using namespace loom::cxx_import;
   try {
-    Diagnostics diagnostics(options->diagnostic_sink);
-    std::unique_ptr<cxx::Toolchain> toolchain;
-    cxx::TranslationUnit unit(&diagnostics);
-    toolchain = parse_source(unit, diagnostics, source, filename, *options);
+    Source parsed(source, filename, *options);
     loom_module_t* raw_module = nullptr;
     check(loom_module_allocate(context, filename, block_pool, nullptr,
                                host_allocator, &raw_module));
     std::unique_ptr<loom_module_t, decltype(&loom_module_free)> module(
         raw_module, loom_module_free);
-    translate(unit, diagnostics, module.get(), *options);
+    translate(parsed.unit(), parsed.diagnostics(), module.get(), *options);
     loom_verify_options_t verification_options = {};
     verification_options.sink = options->diagnostic_sink;
     loom_verify_result_t verification = {};

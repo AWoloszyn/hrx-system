@@ -15,7 +15,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "loom/import/cxx/source.h"
+#include "loom/import/cxx/source/source.h"
 #include "loom/ops/op_defs.h"
 
 namespace loom::cxx_import {

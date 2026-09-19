@@ -12,8 +12,8 @@
 #include <cxx/symbols.h>
 #include <cxx/types.h>
 
-#include "loom/import/cxx/attributes.h"
-#include "loom/import/cxx/failure.h"
+#include "loom/import/cxx/source/attributes.h"
+#include "loom/import/cxx/source/error.h"
 
 namespace loom::cxx_import {
 

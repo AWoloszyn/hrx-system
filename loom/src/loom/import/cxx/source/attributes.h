@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_ATTRIBUTES_H_
-#define LOOM_IMPORT_CXX_ATTRIBUTES_H_
+#ifndef LOOM_IMPORT_CXX_SOURCE_ATTRIBUTES_H_
+#define LOOM_IMPORT_CXX_SOURCE_ATTRIBUTES_H_
 
 #include <cxx/ast.h>
 #include <cxx/names.h>
@@ -47,4 +47,4 @@ void visit_loom_attributes(cxx::TranslationUnit& unit,
 
 }  // namespace loom::cxx_import
 
-#endif  // LOOM_IMPORT_CXX_ATTRIBUTES_H_
+#endif  // LOOM_IMPORT_CXX_SOURCE_ATTRIBUTES_H_

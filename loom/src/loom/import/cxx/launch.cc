@@ -9,8 +9,9 @@
 #include <cxx/ast_interpreter.h>
 #include <cxx/symbols.h>
 
-#include "loom/import/cxx/attributes.h"
-#include "loom/import/cxx/failure.h"
+#include "loom/import/cxx/source/attributes.h"
+#include "loom/import/cxx/source/error.h"
+#include "loom/ir/module.h"
 #include "loom/ops/config/ops.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/kernel/ops.h"

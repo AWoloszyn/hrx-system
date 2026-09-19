@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_INCLUDE_CATALOG_H_
-#define LOOM_IMPORT_CXX_INCLUDE_CATALOG_H_
+#ifndef LOOM_IMPORT_CXX_SOURCE_CATALOG_H_
+#define LOOM_IMPORT_CXX_SOURCE_CATALOG_H_
 
 #include <optional>
 #include <string_view>
@@ -22,4 +22,4 @@ std::optional<std::string_view> builtin_include(std::string_view path);
 
 }  // namespace loom::cxx_import
 
-#endif  // LOOM_IMPORT_CXX_INCLUDE_CATALOG_H_
+#endif  // LOOM_IMPORT_CXX_SOURCE_CATALOG_H_
