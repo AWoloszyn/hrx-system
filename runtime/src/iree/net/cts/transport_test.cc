@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -801,6 +802,21 @@ class TransportTest : public ::testing::Test {
     connection = nullptr;
   }
 
+  // Keeps test-local callback targets alive through drain, including when a
+  // fatal assertion returns early from the test body.
+  struct ScopedConnectionDrain {
+    // Fixture owning the connections and their poll owners.
+    TransportTest* test;
+
+    ~ScopedConnectionDrain() {
+      test->StopAndFreeListener();
+      test->DeactivateAndRelease(test->client_connection_,
+                                 test->client_proactor_, kClientPolling);
+      test->DeactivateAndRelease(test->server_connection_,
+                                 test->server_proactor_, kServerPolling);
+    }
+  };
+
   const TransportBackend* backend_ = nullptr;
   int current_poll_side_ = kNotPolling;
   bool owns_client_proactor_ = true;
@@ -1505,6 +1521,247 @@ TEST_F(TransportTest, GeneratesLargeTransientPrefixWithoutSizeCliff) {
   PollUntil(client_proactor_, kClientPolling,
             [&] { return send_state.callback_count == 1; });
   EXPECT_EQ(send_state.status_code, IREE_STATUS_OK);
+}
+
+TEST_F(TransportTest, SaturatedAdmissionResumesFromCompletion) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  client_messages_.current_poll_side = &current_poll_side_;
+  client_messages_.expected_poll_side = kClientPolling;
+  server_messages_.current_poll_side = &current_poll_side_;
+  server_messages_.expected_poll_side = kServerPolling;
+  iree_net_message_endpoint_set_callbacks(client_endpoint,
+                                          client_messages_.callbacks());
+  iree_net_message_endpoint_set_callbacks(server_endpoint,
+                                          server_messages_.callbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+  // Qualify ordinary multi-send admission, not the single preactivation slot
+  // a transport may expose while the reciprocal endpoint becomes ready.
+  WaitForSendSlots(client_endpoint, 2);
+
+  struct Producer {
+    // Endpoint receiving a retry only from an accepted send's completion.
+    iree_net_message_endpoint_t endpoint;
+    // Current poll owner, checked by every completion callback.
+    int* poll_side;
+    // Prefix invocations are an observable admission witness.
+    size_t writes = 0;
+    // Number of terminal callbacks received.
+    size_t completions = 0;
+    // Whether the rejected send still needs a completion-driven retry.
+    bool retry_pending = false;
+    // A missing retry edge terminates the witness as a failure, not a hang.
+    bool failed = false;
+
+    static iree_status_t Write(void* user_data, iree_byte_span_t target) {
+      ++static_cast<Producer*>(user_data)->writes;
+      memset(target.data, 'p', target.data_length);
+      return iree_ok_status();
+    }
+
+    static void Complete(void* user_data, iree_status_t status,
+                         iree_host_size_t length) {
+      auto* self = static_cast<Producer*>(user_data);
+      EXPECT_EQ(*self->poll_side, kClientPolling);
+      EXPECT_EQ(length, 32u);
+      self->failed |= !iree_status_is_ok(status);
+      IREE_EXPECT_OK(status);
+      ++self->completions;
+      if (!self->retry_pending) {
+        return;
+      }
+      self->retry_pending = false;
+      auto budget = iree_net_message_endpoint_query_send_budget(self->endpoint);
+      if (!budget.slots || budget.bytes < 32) {
+        ADD_FAILURE() << "completion did not restore send admission";
+        self->failed = true;
+        return;
+      }
+      status = self->Send();
+      self->failed |= !iree_status_is_ok(status);
+      IREE_EXPECT_OK(status);
+    }
+
+    iree_status_t Send() {
+      iree_net_message_endpoint_send_params_t params = {
+          /*.generated_prefix=*/{32, Write, this},
+          /*.data=*/iree_async_span_list_empty(),
+          /*.completion_callback=*/{Complete, this},
+      };
+      return iree_net_message_endpoint_send(endpoint, &params);
+    }
+  } producer{client_endpoint, &current_poll_side_};
+  ScopedConnectionDrain drain{this};
+
+  const auto initial =
+      iree_net_message_endpoint_query_send_budget(client_endpoint);
+  ASSERT_GT(initial.slots, 0u);
+  ASSERT_GE(initial.bytes, 32u);
+  // No polling means accepted operations cannot return their local slots.
+  for (uint32_t i = 0; i < initial.slots; ++i) {
+    IREE_ASSERT_OK(producer.Send());
+  }
+  EXPECT_EQ(producer.writes, initial.slots);
+  EXPECT_EQ(producer.completions, 0u);
+  EXPECT_EQ(iree_net_message_endpoint_query_send_budget(client_endpoint).slots,
+            0u);
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, producer.Send());
+  EXPECT_EQ(producer.writes, initial.slots);
+  EXPECT_EQ(producer.completions, 0u);
+  producer.retry_pending = true;
+  const size_t expected_count = (size_t)initial.slots + 1;
+  PollBothUntil([&] {
+    return producer.failed ||
+           (producer.completions == expected_count &&
+            server_messages_.messages.size() == expected_count);
+  });
+  EXPECT_FALSE(producer.failed);
+  EXPECT_FALSE(producer.retry_pending);
+  EXPECT_EQ(producer.writes, expected_count);
+  EXPECT_EQ(producer.completions, expected_count);
+  ASSERT_EQ(server_messages_.messages.size(), expected_count);
+  for (const auto& message : server_messages_.messages) {
+    EXPECT_EQ(message, std::string(32, 'p'));
+  }
+  EXPECT_GE(iree_net_message_endpoint_query_send_budget(client_endpoint).slots,
+            initial.slots);
+  EXPECT_EQ(client_messages_.error_count, 0);
+  EXPECT_EQ(server_messages_.error_count, 0);
+}
+
+TEST_F(TransportTest, MovedMessagesSurviveConnectionTeardown) {
+  struct RetainedMessages {
+    // Original callback views, never replaced with test-owned message copies.
+    std::vector<iree_const_byte_span_t> messages;
+    // Movable leases owning the corresponding original byte views.
+    std::vector<iree_async_buffer_lease_t> leases;
+    // Terminal notification count; peer teardown may report its closure.
+    int errors = 0;
+
+    ~RetainedMessages() {
+      for (auto& lease : leases) {
+        iree_async_buffer_lease_release(&lease);
+      }
+    }
+
+    static iree_status_t Receive(void* user_data,
+                                 iree_const_byte_span_t message,
+                                 iree_async_buffer_lease_t* lease) {
+      auto* self = static_cast<RetainedMessages*>(user_data);
+      self->messages.push_back(message);
+      self->leases.push_back(*lease);
+      *lease = {};
+      return iree_ok_status();
+    }
+
+    static void Error(void* user_data, iree_status_t status) {
+      ++static_cast<RetainedMessages*>(user_data)->errors;
+      iree_status_free(status);
+    }
+  } retained;
+
+  // The largest message exceeds the fixture's entire receive slab. Retained
+  // messages exercise both intact receive storage and fragmented assembly.
+  std::array<std::string, 4> payloads = {
+      std::string(31, 'a'), std::string(65535, 'b'), std::string(65537, 'c'),
+      std::string(1024 * 1024 + 1, 'd')};
+  std::array<SendState, 4> sends;
+  SendState independent_send;
+  ScopedConnectionDrain drain{this};
+
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  client_messages_.current_poll_side = &current_poll_side_;
+  client_messages_.expected_poll_side = kClientPolling;
+  iree_net_message_endpoint_set_callbacks(client_endpoint,
+                                          client_messages_.callbacks());
+  iree_net_message_endpoint_set_callbacks(
+      server_endpoint,
+      {RetainedMessages::Receive, RetainedMessages::Error, &retained});
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+  WaitForSendSlots(client_endpoint, 4);
+
+  for (size_t i = 0; i < payloads.size(); ++i) {
+    sends[i].current_poll_side = &current_poll_side_;
+    sends[i].expected_poll_side = kClientPolling;
+    sends[i].expected_bytes = payloads[i].size();
+    iree_async_span_t span =
+        iree_async_span_from_ptr(payloads[i].data(), payloads[i].size());
+    iree_net_message_endpoint_send_params_t params = {
+        /*.generated_prefix=*/iree_net_send_prefix_empty(),
+        /*.data=*/iree_async_span_list_make(&span, 1),
+        /*.completion_callback=*/sends[i].callback(),
+    };
+    IREE_ASSERT_OK(iree_net_message_endpoint_send(client_endpoint, &params));
+  }
+  PollBothUntil([&] { return retained.messages.size() == payloads.size(); });
+  EXPECT_EQ(retained.errors, 0);
+
+  // A separate endpoint must progress while the first retains its messages.
+  iree_net_message_endpoint_t other_client =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t other_server =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  server_messages_.current_poll_side = &current_poll_side_;
+  server_messages_.expected_poll_side = kServerPolling;
+  iree_net_message_endpoint_set_callbacks(other_client,
+                                          client_messages_.callbacks());
+  iree_net_message_endpoint_set_callbacks(other_server,
+                                          server_messages_.callbacks());
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(other_client));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(other_server));
+  WaitForSendSlots(other_client, 1);
+  independent_send.current_poll_side = &current_poll_side_;
+  independent_send.expected_poll_side = kClientPolling;
+  independent_send.expected_bytes = 7;
+  iree_net_message_endpoint_send_params_t params = {
+      /*.generated_prefix=*/iree_net_send_prefix_from_bytes(
+          iree_make_const_byte_span("control", 7)),
+      /*.data=*/iree_async_span_list_empty(),
+      /*.completion_callback=*/independent_send.callback(),
+  };
+  IREE_ASSERT_OK(iree_net_message_endpoint_send(other_client, &params));
+  PollBothUntil([&] {
+    return independent_send.callback_count == 1 &&
+           server_messages_.messages.size() == 1;
+  });
+  EXPECT_EQ(server_messages_.messages[0], "control");
+  EXPECT_EQ(retained.errors, 0);
+
+  StopAndFreeListener();
+  DeactivateAndRelease(client_connection_, client_proactor_, kClientPolling);
+  DeactivateAndRelease(server_connection_, server_proactor_, kServerPolling);
+  iree_net_transport_factory_release(factory_);
+  factory_ = nullptr;
+
+  // No connection or endpoint remains. Lease-backed native registrations may
+  // still need the poll owner for final release, even after connection drain.
+  std::atomic<bool> consumer_done = false;
+  std::thread consumer([&] {
+    for (size_t i : {2u, 0u, 3u, 1u}) {
+      EXPECT_EQ(retained.messages[i].data_length, payloads[i].size());
+      EXPECT_EQ(memcmp(retained.messages[i].data, payloads[i].data(),
+                       payloads[i].size()),
+                0);
+      iree_async_buffer_lease_release(&retained.leases[i]);
+    }
+    consumer_done.store(true, std::memory_order_release);
+    iree_async_proactor_wake(server_proactor_);
+  });
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return consumer_done.load(std::memory_order_acquire); });
+  consumer.join();
+  for (const auto& send : sends) {
+    EXPECT_EQ(send.callback_count, 1);
+  }
 }
 
 TEST_F(TransportTest, DeactivationCancelsPendingEndpointReadyCallback) {
