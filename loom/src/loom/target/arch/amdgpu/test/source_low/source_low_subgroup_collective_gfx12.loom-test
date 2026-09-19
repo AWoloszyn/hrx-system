@@ -51,15 +51,12 @@ low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 
   %39 = v_lshlrev_b32_src0_inline %19, 2
   %40 = v_add_u32 %21, %39
   %41 = ds_read_b32 %40
-  %42 = v_xor_b32_src0_inline %19, 1
-  %43 = v_lshlrev_b32_src0_inline %42, 2
-  %44 = ds_bpermute_b32 %43, %41
-  %45 = v_add_f32 %41, %44
+  %42 = v_add_f32_dpp16 %41, %41 {dpp_ctrl = 177}
   s_mov_b64_exec %37
-  %46 = v_mov_b32 0
-  %result = ds_bpermute_b32 %46, %45
-  %48 = v_lshlrev_b32_src0_inline %tid, 2
-  global_store_b32_saddr %48, %result, %output_view
+  %43 = v_mov_b32 0
+  %result = ds_bpermute_b32 %43, %42
+  %45 = v_lshlrev_b32_src0_inline %tid, 2
+  global_store_b32_saddr %45, %result, %output_view
   return
 }
 

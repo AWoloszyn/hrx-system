@@ -1,0 +1,168 @@
+kernel.def @workgroup_tree_float_leader() {
+  %unit = index.constant 1 : index
+  %size = index.constant 256 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer) {
+  %tid = kernel.workitem.id<x> : index
+  %start = index.constant 0 : offset
+  %input_view = buffer.view %input[%start] : buffer -> view<256xf32>
+  %output_view = buffer.view %output[%start] : buffer -> view<1xf32>
+  %value = view.load %input_view[%tid] : view<256xf32> -> f32
+  %reduced = kernel.workgroup.reduce<addf> %value : f32
+  %leader_index = index.constant 0 : index
+  %is_leader = index.cmp eq, %tid, %leader_index : index
+  scf.if %is_leader {
+    view.store %reduced, %output_view[%leader_index] : f32, view<1xf32>
+  }
+  kernel.return
+}
+
+check.case public @workgroup_tree_float_leader_case {
+  %input = check.generate.iota offset(1.0) step(1.0) : tensor<256xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %expected = check.generate.fill value(32896.0) : tensor<1xf32>
+  kernel.launch @workgroup_tree_float_leader(%input, %output) : (tensor<256xf32>, tensor<1xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+kernel.def @workgroup_tree_integer_leader() {
+  %unit = index.constant 1 : index
+  %size = index.constant 256 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer) {
+  %tid = kernel.workitem.id<x> : index
+  %start = index.constant 0 : offset
+  %input_view = buffer.view %input[%start] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%start] : buffer -> view<1xi32>
+  %value = view.load %input_view[%tid] : view<256xi32> -> i32
+  %reduced = kernel.workgroup.reduce<minui> %value : i32
+  %leader_index = index.constant 0 : index
+  %is_leader = index.cmp eq, %tid, %leader_index : index
+  scf.if %is_leader {
+    view.store %reduced, %output_view[%leader_index] : i32, view<1xi32>
+  }
+  kernel.return
+}
+
+check.case public @workgroup_tree_integer_leader_case {
+  %input = check.generate.iota offset(-2147483393) step(-1) : tensor<256xi32>
+  %output = check.generate.fill value(-1) : tensor<1xi32>
+  %expected = check.generate.fill value(-2147483648) : tensor<1xi32>
+  kernel.launch @workgroup_tree_integer_leader(%input, %output) : (tensor<256xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+kernel.def @workgroup_tree_vector_all() {
+  %unit = index.constant 1 : index
+  %size = index.constant 256 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer) {
+  %tid = kernel.workitem.id<x> : index
+  %start = index.constant 0 : offset
+  %input_view = buffer.view %input[%start] : buffer -> view<256x2xf32>
+  %output_view = buffer.view %output[%start] : buffer -> view<256x2xf32>
+  %value = vector.load %input_view[%tid, 0] : view<256x2xf32> -> vector<2xf32>
+  %reduced = kernel.workgroup.reduce<addf> %value : vector<2xf32>
+  vector.store %reduced, %output_view[%tid, 0] : vector<2xf32>, view<256x2xf32>
+  kernel.return
+}
+
+check.case public @workgroup_tree_vector_all_case {
+  %input = check.generate.iota offset(1.0) step(1.0) : tensor<256x2xf32>
+  %output = check.generate.fill value(-1.0) : tensor<256x2xf32>
+  %expected = check.generate.iota offset(65536.0) step(256.0) period(2) : tensor<256x2xf32>
+  kernel.launch @workgroup_tree_vector_all(%input, %output) : (tensor<256x2xf32>, tensor<256x2xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<256x2xf32>
+  check.return
+}
+
+kernel.def @workgroup_tree_three_waves() {
+  %unit = index.constant 1 : index
+  %size = index.constant 96 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer) {
+  %tid = kernel.workitem.id<x> : index
+  %start = index.constant 0 : offset
+  %input_view = buffer.view %input[%start] : buffer -> view<96xf32>
+  %output_view = buffer.view %output[%start] : buffer -> view<1xf32>
+  %value = view.load %input_view[%tid] : view<96xf32> -> f32
+  %reduced = kernel.workgroup.reduce<addf> %value : f32
+  %leader_index = index.constant 0 : index
+  %is_leader = index.cmp eq, %tid, %leader_index : index
+  scf.if %is_leader {
+    view.store %reduced, %output_view[%leader_index] : f32, view<1xf32>
+  }
+  kernel.return
+}
+
+check.case public @workgroup_tree_three_waves_case {
+  %input = check.generate.iota offset(1.0) step(1.0) : tensor<96xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %expected = check.generate.fill value(4656.0) : tensor<1xf32>
+  kernel.launch @workgroup_tree_three_waves(%input, %output) : (tensor<96xf32>, tensor<1xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+kernel.def @workgroup_tree_row_exchange() {
+  %unit = index.constant 1 : index
+  %size = index.constant 1024 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer) {
+  %tid = kernel.workitem.id<x> : index
+  %start = index.constant 0 : offset
+  %input_view = buffer.view %input[%start] : buffer -> view<1024xf32>
+  %output_view = buffer.view %output[%start] : buffer -> view<1xf32>
+  %value = view.load %input_view[%tid] : view<1024xf32> -> f32
+  %reduced = kernel.workgroup.reduce<maxnumf> %value : f32
+  %leader_index = index.constant 0 : index
+  %is_leader = index.cmp eq, %tid, %leader_index : index
+  scf.if %is_leader {
+    view.store %reduced, %output_view[%leader_index] : f32, view<1xf32>
+  }
+  kernel.return
+}
+
+check.case public @workgroup_tree_row_exchange_case {
+  %input = check.generate.iota offset(1.0) step(1.0) : tensor<1024xf32>
+  %output = check.generate.fill value(-1.0) : tensor<1xf32>
+  %expected = check.generate.fill value(1024.0) : tensor<1xf32>
+  kernel.launch @workgroup_tree_row_exchange(%input, %output) : (tensor<1024xf32>, tensor<1xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xf32>
+  check.return
+}
+
+kernel.def @workgroup_tree_float_all() {
+  %unit = index.constant 1 : index
+  %size = index.constant 256 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer) {
+  %tid = kernel.workitem.id<x> : index
+  %start = index.constant 0 : offset
+  %input_view = buffer.view %input[%start] : buffer -> view<256xf32>
+  %output_view = buffer.view %output[%start] : buffer -> view<256xf32>
+  %value = view.load %input_view[%tid] : view<256xf32> -> f32
+  %reduced = kernel.workgroup.reduce<addf> %value : f32
+  view.store %reduced, %output_view[%tid] : f32, view<256xf32>
+  kernel.return
+}
+
+check.case public @workgroup_tree_float_all_case {
+  %input = check.generate.iota offset(1.0) step(1.0) : tensor<256xf32>
+  %output = check.generate.fill value(-1.0) : tensor<256xf32>
+  %expected = check.generate.fill value(32896.0) : tensor<256xf32>
+  kernel.launch @workgroup_tree_float_all(%input, %output) : (tensor<256xf32>, tensor<256xf32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<256xf32>
+  check.return
+}
+
+check.case public @workgroup_tree_integer_unsigned_boundary_case {
+  %input = check.generate.iota offset(-1) step(2) period(2) : tensor<256xi32>
+  %output = check.generate.fill value(-1) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @workgroup_tree_integer_leader(%input, %output) : (tensor<256xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
