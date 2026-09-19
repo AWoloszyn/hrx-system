@@ -279,6 +279,7 @@ iree_cc_test(
   DEPS
     ::io_uring
     iree::async
+    iree::async::util::proactor_thread
     iree::base
     iree::testing::gtest
     iree::testing::gtest_main

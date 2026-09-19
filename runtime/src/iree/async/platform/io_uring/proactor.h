@@ -125,6 +125,8 @@ typedef struct iree_async_proactor_io_uring_t {
     // submit() flushes inline on this task or skips waking from other tasks.
     // Cleared before the final software drain so callbacks in that drain wake
     // the next poll if they enqueue more software work.
+    // Cross-thread submitters publish work with an RMW before suppressing a
+    // wake; the owner's exchange to zero acquires it before the final drain.
     iree_atomic_int32_t dispatch_tid;
   } polling;
 

@@ -1693,10 +1693,15 @@ iree_status_t iree_async_proactor_io_uring_submit(
       }
       return iree_ok_status();
     }
-    // Cross-thread submit while the poll thread is actively processing CQEs.
-    // The SQEs are in the ring; the poll thread's drain loop will flush them.
-    // Skip wake — the poll thread is already awake.
-    return iree_ok_status();
+    // Publish queued work to the active dispatch interval before suppressing
+    // the wake. This RMW pairs with the owner's exchange to idle: either its
+    // final drain observes our work or we observe idle and wake it below.
+    // A load alone can observe active while the final drain misses our work.
+    if (iree_atomic_compare_exchange_strong(
+            &proactor->polling.dispatch_tid, &dispatch_tid, dispatch_tid,
+            iree_memory_order_acq_rel, iree_memory_order_relaxed)) {
+      return iree_ok_status();
+    }
   }
 
   // Poll thread idle. Only the poll thread may call io_uring_enter

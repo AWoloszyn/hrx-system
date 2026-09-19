@@ -1557,8 +1557,10 @@ static iree_status_t iree_async_proactor_io_uring_poll(
 
   // The final drains can enqueue software work for the next poll. Preserve
   // their normal wake path, including when kernel submission failed.
-  iree_atomic_store(&proactor->polling.dispatch_tid, 0,
-                    iree_memory_order_relaxed);
+  // Acquire submissions from producers that suppressed their wake while this
+  // dispatch interval was active. Later producers observe idle and wake us.
+  iree_atomic_exchange(&proactor->polling.dispatch_tid, 0,
+                       iree_memory_order_acq_rel);
 
   if (iree_status_is_ok(status)) {
     // Drain pending messages from the fallback MPSC queue.
