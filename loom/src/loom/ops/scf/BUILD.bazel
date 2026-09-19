@@ -30,10 +30,14 @@ loom_generated_cc_library(
     name = "scf",
     srcs = [
         "canonicalize.c",
+        "canonicalize_loop.c",
         "facts.c",
         "verify.c",
     ],
-    hdrs = ["ops.h"],
+    hdrs = [
+        "canonicalize.h",
+        "ops.h",
+    ],
     args = ["--dialect=scf"],
     generated_src_flags = [
         "--builders",

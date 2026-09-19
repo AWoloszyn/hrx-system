@@ -31,6 +31,7 @@ loom_generated_cc_library(
     loom::py::loom::gen::ops::c_tables_scf_generator
   SRCS
     "canonicalize.c"
+    "canonicalize_loop.c"
     "facts.c"
     "verify.c"
   GENERATED_SRC_FLAGS
@@ -40,6 +41,7 @@ loom_generated_cc_library(
     "builders.c"
     "tables.c"
   HDRS
+    "canonicalize.h"
     "ops.h"
   ARGS
     "--dialect=scf"
