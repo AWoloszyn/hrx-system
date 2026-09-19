@@ -14,6 +14,7 @@
 #include "common/fat_binary.h"
 #include "common/function_attributes.h"
 #include "common/hrx_bridge.h"
+#include "common/memory.h"
 #include "common/stream.h"
 #include "common/stream_value.h"
 #include "iree/async/frontier_tracker.h"
@@ -29,7 +30,6 @@
 extern "C" {
 #endif
 
-typedef uint64_t iree_hal_streaming_deviceptr_t;
 typedef iree_host_size_t iree_hal_streaming_device_ordinal_t;
 
 typedef struct iree_hal_streaming_buffer_t iree_hal_streaming_buffer_t;
@@ -642,6 +642,13 @@ typedef enum iree_hal_streaming_stream_flag_bits_e {
   IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING = 1ull << 0,
 } iree_hal_streaming_stream_flags_t;
 
+// Stream membership lifecycle in its parent context registry.
+typedef enum iree_hal_streaming_stream_registration_state_e {
+  IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_UNREGISTERED = 0,
+  IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED = 1,
+  IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_DETACHING = 2,
+} iree_hal_streaming_stream_registration_state_t;
+
 // Stream capture status enum.
 typedef enum iree_hal_streaming_capture_status_e {
   IREE_HAL_STREAMING_CAPTURE_STATUS_NONE = 0,
@@ -681,6 +688,10 @@ typedef struct iree_hal_streaming_stream_t {
   // serialized by |mutex| and operations retain it with
   // iree_hal_streaming_stream_retain_context before dereferencing it.
   iree_hal_streaming_context_t* context;
+  // Membership in |context->streams|. REGISTERED -> DETACHING ->
+  // UNREGISTERED transitions are serialized by context stream-list -> stream
+  // locking, nested below the capture graph mutex when a session is active.
+  iree_hal_streaming_stream_registration_state_t registration_state;
 
   // HIP stream creation flags.
   iree_hal_streaming_stream_flags_t flags;
@@ -726,9 +737,6 @@ typedef struct iree_hal_streaming_stream_t {
   bool capture_graph_owned;
   // True when this stream began the capture and is allowed to end it.
   bool capture_origin;
-  // True when this stream's current captured frontier has been joined to the
-  // origin stream by an event wait.
-  bool capture_joined_to_origin;
   unsigned long long capture_id;
   // Host thread that began this capture sequence.
   uintptr_t capture_owner_thread_id;
@@ -1032,33 +1040,20 @@ typedef struct iree_hal_streaming_event_t {
   // queryable after the stream or graph executable that carried it is gone.
   iree_hal_streaming_recorded_point_t recorded_point;
 
-  // Stream that last recorded this event through the stream API, retained, or
-  // NULL before any such record. Consumed only by stream capture, which picks
-  // the capture mode, id and owning thread up from here; a graph launch leaves
-  // it alone. Exchanged under |mutex| but read by the capture paths without it,
-  // which is sound only because a capture sequence is driven by one thread.
-  iree_hal_streaming_stream_t* recording_stream;
   // Context that created the event, retained.
   iree_hal_streaming_context_t* context;
 
   // Platform-specific IPC handle, if the event is IPC enabled.
   void* ipc_handle;
 
-  // Graph a capture-time record last associated this event with, retained, or
-  // NULL when the event's last record was submitted. Guarded by |mutex|.
+  // Graph and exact session a capture-time record last associated this event
+  // with, retained, or NULL/zero when the last record was submitted. The graph,
+  // session ID, dependency pointer/count/capacity, and dependency contents are
+  // one value guarded by |mutex|.
   iree_hal_streaming_graph_t* capture_graph;
-  // Captured dependency frontier stored by the last captured record. Not
-  // guarded by |mutex|, unlike the association above it: the capture-time
-  // record writes this array with no lock held and the capture-time wait that
-  // joins the frontier reads it the same way, so what orders them is the
-  // capture protocol's requirement that one thread drive a capture sequence,
-  // not this mutex.
+  unsigned long long capture_id;
   iree_hal_streaming_graph_node_t** capture_dependencies;
-  // Number of entries in |capture_dependencies| currently valid. Written and
-  // read with the array it counts, outside |mutex| and ordered the same way.
   iree_host_size_t capture_dependency_count;
-  // Allocated capacity of |capture_dependencies|. Written by the capture-time
-  // record that grows the array, outside |mutex| like the array itself.
   iree_host_size_t capture_dependency_capacity;
 
   // Host allocator.
@@ -2097,18 +2092,6 @@ iree_hal_streaming_event_commit_recorded_point(
     iree_hal_streaming_event_t* event,
     iree_hal_streaming_recorded_point_t point);
 
-// Makes |stream| the stream whose capture state |event| belongs to, taking a
-// reference to it, and transfers the previously referenced stream to the
-// caller. Returns NULL when |stream| was already the recording stream.
-//
-// Releasing the returned stream can run its teardown, which re-enters the
-// streaming layer to synchronize and unregister the stream, so callers holding
-// a stream mutex must drop the reference after unlocking.
-// Synchronization: event (event mutex held while exchanging).
-IREE_MUST_USE_RESULT iree_hal_streaming_stream_t*
-iree_hal_streaming_event_exchange_recording_stream(
-    iree_hal_streaming_event_t* event, iree_hal_streaming_stream_t* stream);
-
 // Returns whether a capture-time record last associated |event| with a graph.
 // An event names none once its last record has been submitted, and none before
 // any record has been made.
@@ -2121,28 +2104,16 @@ iree_hal_streaming_event_exchange_recording_stream(
 bool iree_hal_streaming_event_has_capture_graph(
     iree_hal_streaming_event_t* event);
 
-// Returns a retained reference to the graph a capture-time record last
-// associated |event| with, or NULL when the event names no capture: once its
-// last record has been submitted, and before any record has been made.
+// Returns a retained reference to the graph and exact session a capture-time
+// record last associated |event| with, or NULL/zero when the event names no
+// capture. Both outputs are acquired atomically under the event mutex.
 // Releasing the returned graph can free the allocations it owns, which
 // synchronizes every context and relocks streams, so callers holding a stream
 // mutex must release it after unlocking.
 // Synchronization: event (event mutex held while retaining).
 IREE_MUST_USE_RESULT iree_hal_streaming_graph_t*
 iree_hal_streaming_event_acquire_capture_graph(
-    iree_hal_streaming_event_t* event);
-
-// Makes |graph| the graph |event|'s capture-time record belongs to, taking a
-// reference to it, and transfers the reference the event held to the caller.
-// Returns NULL when |graph| was already the capture graph.
-//
-// Releasing the returned graph can free the allocations it owns, which
-// synchronizes every context and relocks streams, so callers holding a stream
-// mutex must release it after unlocking.
-// Synchronization: event (event mutex held while exchanging).
-IREE_MUST_USE_RESULT iree_hal_streaming_graph_t*
-iree_hal_streaming_event_exchange_capture_graph(
-    iree_hal_streaming_event_t* event, iree_hal_streaming_graph_t* graph);
+    iree_hal_streaming_event_t* event, unsigned long long* out_capture_id);
 
 // Records |event| after the current tails of every stream in |streams|. Each
 // stream must belong to the context that created |event| and none may be
@@ -2344,6 +2315,10 @@ iree_status_t iree_hal_streaming_memory_allocate_device_pitched(
 iree_status_t iree_hal_streaming_memory_free_device(
     iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t ptr);
 
+// Discards an unpublished device allocation that has never been referenced by
+// queue work. The caller must provide that exclusive-lifetime guarantee.
+iree_status_t iree_hal_streaming_memory_discard_unpublished_device(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t ptr);
 // Synchronization: stream-ordered (releases allocation when |stream| reaches
 // the free operation).
 iree_status_t iree_hal_streaming_memory_free_device_async(
@@ -2452,21 +2427,18 @@ iree_status_t iree_hal_streaming_memcpy_host_to_device(
     const void* src, iree_device_size_t size,
     iree_hal_streaming_stream_t* stream);
 
+// Copies immediate value bytes into graph-owned storage during capture so the
+// caller storage need not outlive this call.
+iree_status_t iree_hal_streaming_memcpy_value_to_device(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t dst,
+    const void* src, iree_device_size_t size,
+    iree_hal_streaming_stream_t* stream);
+
 // Synchronization: stream or blocking (async if stream, sync if NULL stream).
 iree_status_t iree_hal_streaming_memcpy_device_to_host(
     iree_hal_streaming_context_t* context, void* dst,
     iree_hal_streaming_deviceptr_t src, iree_device_size_t size,
     iree_hal_streaming_stream_t* stream);
-
-// Enqueues a pitched D2H copy through queue-visible staging. A stream-ordered
-// host call scatters the packed staging rows into |dst| after the device copies
-// complete.
-// Synchronization: stream-ordered.
-iree_status_t iree_hal_streaming_memcpy_device_to_host_2d(
-    iree_hal_streaming_context_t* context, void* dst,
-    iree_device_size_t dst_pitch, iree_hal_streaming_deviceptr_t src,
-    iree_device_size_t src_pitch, iree_device_size_t width,
-    iree_host_size_t height, iree_hal_streaming_stream_t* stream);
 
 // Synchronization: stream or blocking (async if stream, sync if NULL stream).
 iree_status_t iree_hal_streaming_memcpy_device_to_device(
@@ -2756,25 +2728,6 @@ iree_status_t iree_hal_streaming_update_capture_dependencies(
     iree_hal_streaming_graph_node_t** dependencies,
     iree_host_size_t dependency_count,
     iree_hal_streaming_capture_dependencies_mode_t mode);
-
-// Ensures capture-frontier storage for |required_capacity| entries. The caller
-// must hold |stream->mutex|.
-iree_status_t iree_hal_streaming_capture_reserve_dependencies_locked(
-    iree_hal_streaming_stream_t* stream, iree_host_size_t required_capacity);
-
-// Replaces the active capture frontier with |node|. The caller must hold
-// |stream->mutex| and must reserve at least one dependency slot before adding
-// the node to the graph.
-iree_status_t iree_hal_streaming_capture_set_last_node_locked(
-    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_node_t* node);
-
-iree_status_t iree_hal_streaming_capture_set_last_node(
-    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_node_t* node);
-
-// Updates the stream capture frontier to |node|. The caller must hold
-// |stream->mutex| and the stream must be actively capturing.
-iree_status_t iree_hal_streaming_capture_set_last_node_locked(
-    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_node_t* node);
 
 //===----------------------------------------------------------------------===//
 // Symbol registry

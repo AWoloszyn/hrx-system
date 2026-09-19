@@ -17,6 +17,10 @@ typedef struct iree_hal_streaming_stream_t iree_hal_streaming_stream_t;
 typedef struct iree_hal_streaming_context_t iree_hal_streaming_context_t;
 typedef struct iree_hal_streaming_symbol_t iree_hal_streaming_symbol_t;
 
+// Synchronous host work executed at a reserved stream timeline point.
+typedef iree_status_t (*iree_hal_streaming_host_operation_fn_t)(
+    void* user_data);
+
 // Dispatch flags for kernel launches.
 typedef enum iree_hal_streaming_dispatch_flag_bits_e {
   IREE_HAL_STREAMING_DISPATCH_FLAG_NONE = 0ull,
@@ -68,6 +72,11 @@ IREE_MUST_USE_RESULT iree_status_t
 iree_hal_streaming_stream_select_cooperative_queue_locked(
     iree_hal_streaming_stream_t* stream, iree_hal_queue_t** out_queue);
 
+// Submits the stream's pending command buffer, if any.
+// Synchronization: caller must hold |stream->mutex|.
+IREE_MUST_USE_RESULT iree_status_t
+iree_hal_streaming_stream_flush_locked(iree_hal_streaming_stream_t* stream);
+
 // Retains the stream's context for one operation. Returns false after context
 // teardown has detached the stream. The caller releases |*out_context|.
 bool iree_hal_streaming_stream_retain_context(
@@ -103,6 +112,17 @@ iree_status_t iree_hal_streaming_stream_wait_semaphores(
 iree_status_t iree_hal_streaming_queue_host_call(
     iree_hal_streaming_stream_t* stream, iree_hal_host_call_t call,
     const uint64_t args[4], iree_hal_host_call_flags_t flags);
+
+// Executes blocking host work in stream order. The caller waits for all prior
+// work, invokes |fn|, and publishes success or failure to a timeline point
+// reserved before the wait. Concurrent later submissions therefore remain
+// ordered after the operation. Intended only for cold fallback paths that
+// cannot be represented by one device queue. |fn| executes without the stream
+// mutex held and must not submit to or wait on |stream| because its reserved
+// point remains unsignaled until |fn| returns.
+iree_status_t iree_hal_streaming_execute_host_operation(
+    iree_hal_streaming_stream_t* stream,
+    iree_hal_streaming_host_operation_fn_t fn, void* user_data);
 
 // Enqueues one kernel launch on |stream| without waiting for completion.
 // Pointer-array arguments are copied into an owned native argument image before

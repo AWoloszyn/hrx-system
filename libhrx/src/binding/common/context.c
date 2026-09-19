@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#include "common/graph.h"
 #include "common/internal.h"
 #include "common/stream.h"
 #include "common/stream_value.h"
@@ -287,24 +288,26 @@ static void iree_hal_streaming_context_destroy(
   // is therefore stable for the walk below.
   iree_slim_mutex_lock(&context->stream_list_mutex);
   const iree_host_size_t detached_stream_count = context->stream_count;
+  for (iree_host_size_t i = 0; i < detached_stream_count; ++i) {
+    iree_hal_streaming_stream_t* stream = context->streams[i];
+    iree_slim_mutex_lock(&stream->mutex);
+    if (stream->context == context) {
+      stream->registration_state =
+          IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_DETACHING;
+    }
+    iree_slim_mutex_unlock(&stream->mutex);
+  }
   context->stream_count = 0;
   iree_hal_fence_t* stream_wait_frontier = context->stream_wait_frontier;
   context->stream_wait_frontier = NULL;
   iree_slim_mutex_unlock(&context->stream_list_mutex);
 
-  // Detach under each stream's own mutex, which is the lock
-  // iree_hal_streaming_stream_retain_context reads the context under, so no
-  // reader can be part way through that read when the field is cleared. A
-  // reader that gets there first is refused anyway: it retains through
-  // iree_hal_streaming_context_try_retain, which fails once the last reference
-  // is gone, and an unpublished context has no such reader to refuse. The list
-  // mutex is not held: end_capture holds a stream mutex while walking the list,
-  // and taking these in the other order deadlocks against it. The list still
-  // holds its reference to every stream, so none can be destroyed while the
-  // loop runs; those references are released afterwards, outside both locks,
-  // because the last one destroys the stream. Queue references are released
-  // during detachment so a dynamically acquired queue cannot outlive the HAL
-  // device retained by this context.
+  // Each entry was marked DETACHING while the stream-list mutex was held, so
+  // adoption and new capture publication reject it before the empty registry
+  // becomes visible. A live capture graph retains this context, making last-ref
+  // teardown mutually exclusive with a graph-backed capture transaction. Clear
+  // the unowned context and queue fields under the stream mutex; list
+  // references remain live until the separate release pass below.
   for (iree_host_size_t i = 0; i < detached_stream_count; ++i) {
     iree_hal_streaming_stream_t* stream = context->streams[i];
     iree_hal_queue_t* queue = NULL;
@@ -315,6 +318,8 @@ static void iree_hal_streaming_context_destroy(
       cooperative_queue = stream->cooperative_queue;
       stream->queue = NULL;
       stream->cooperative_queue = NULL;
+      stream->registration_state =
+          IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_UNREGISTERED;
       stream->context = NULL;
     }
     iree_slim_mutex_unlock(&stream->mutex);
@@ -746,6 +751,19 @@ iree_status_t iree_hal_streaming_context_register_stream(
   }
 
   if (iree_status_is_ok(status)) {
+    iree_slim_mutex_lock(&stream->mutex);
+    if (stream->context != context ||
+        stream->registration_state !=
+            IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_UNREGISTERED) {
+      status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                "stream is already registered");
+    } else {
+      stream->registration_state =
+          IREE_HAL_STREAMING_STREAM_REGISTRATION_STATE_REGISTERED;
+    }
+    iree_slim_mutex_unlock(&stream->mutex);
+  }
+  if (iree_status_is_ok(status)) {
     // Retain the stream - the context's stream list owns a reference.
     iree_hal_streaming_stream_retain(stream);
     context->streams[context->stream_count++] = stream;
@@ -793,25 +811,9 @@ void iree_hal_streaming_context_unregister_stream(
   }
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  bool found = false;
-  iree_slim_mutex_lock(&context->stream_list_mutex);
-
-  for (iree_host_size_t i = 0; i < context->stream_count; ++i) {
-    if (context->streams[i] == stream) {
-      // Swap with last and remove.
-      context->streams[i] = context->streams[context->stream_count - 1];
-      --context->stream_count;
-      found = true;
-      break;
-    }
-  }
-
-  iree_slim_mutex_unlock(&context->stream_list_mutex);
-
-  // Release the list's reference after unlinking. The caller holds another
-  // reference while requesting unregister, so the stream cannot be destroyed
-  // out from under this operation.
-  if (found) {
+  // Capture detachment and registry removal are one lifecycle transaction;
+  // releasing the list reference remains outside all capture locks.
+  if (iree_hal_streaming_capture_unregister_stream(context, stream)) {
     iree_hal_streaming_stream_release(stream);
   }
 
@@ -1138,33 +1140,120 @@ iree_status_t iree_hal_streaming_context_flush_all(void) {
   return status;
 }
 
+// Drains the finite set of streams registered when this fallback begins
+// without allocating snapshot storage. Stream IDs are process-wide monotonic,
+// so streams registered later are excluded by |max_stream_id|. A stream that
+// unregisters before this scan retains it is safe to omit: ordinary stream
+// destruction synchronizes before unlinking, and construction rollback ends in
+// that same destruction path after unregistering. Context destruction does not
+// unlink streams concurrently with its own synchronization.
+static iree_status_t
+iree_hal_streaming_context_synchronize_streams_without_snapshot(
+    iree_hal_streaming_context_t* context, bool include_non_blocking_streams,
+    bool flush_before_wait, iree_status_t status) {
+  unsigned long long max_stream_id = 0;
+  iree_slim_mutex_lock(&context->stream_list_mutex);
+  for (iree_host_size_t i = 0; i < context->stream_count; ++i) {
+    if (context->streams[i]) {
+      max_stream_id = iree_max(max_stream_id, context->streams[i]->stream_id);
+    }
+  }
+  iree_slim_mutex_unlock(&context->stream_list_mutex);
+
+  unsigned long long stream_id = 0;
+  for (;;) {
+    iree_hal_streaming_stream_t* stream = NULL;
+    unsigned long long next_stream_id = UINT64_MAX;
+    iree_slim_mutex_lock(&context->stream_list_mutex);
+    for (iree_host_size_t i = 0; i < context->stream_count; ++i) {
+      iree_hal_streaming_stream_t* candidate = context->streams[i];
+      if (candidate && candidate->stream_id > stream_id &&
+          candidate->stream_id <= max_stream_id &&
+          candidate->stream_id < next_stream_id) {
+        stream = candidate;
+        next_stream_id = candidate->stream_id;
+      }
+    }
+    iree_hal_streaming_stream_retain(stream);
+    iree_slim_mutex_unlock(&context->stream_list_mutex);
+    if (!stream) {
+      break;
+    }
+    stream_id = next_stream_id;
+    if (flush_before_wait) {
+      status =
+          iree_status_join(status, iree_hal_streaming_stream_flush(stream));
+    }
+    if (include_non_blocking_streams ||
+        !(stream->flags & IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING)) {
+      status = iree_status_join(
+          status, iree_hal_streaming_stream_synchronize_flushed(stream));
+    }
+    iree_hal_streaming_stream_release(stream);
+  }
+
+  if (context->default_stream) {
+    if (flush_before_wait) {
+      status = iree_status_join(
+          status, iree_hal_streaming_stream_flush(context->default_stream));
+    }
+    status = iree_status_join(
+        status,
+        iree_hal_streaming_stream_synchronize_flushed(context->default_stream));
+  }
+  if (include_non_blocking_streams) {
+    status = iree_status_join(
+        status, iree_hal_streaming_context_synchronize_event_records(context));
+  }
+  return status;
+}
+
 static iree_status_t iree_hal_streaming_context_synchronize_streams(
     iree_hal_streaming_context_t* context, bool include_non_blocking_streams,
     bool flush_before_wait) {
   IREE_ASSERT_ARGUMENT(context);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  if (flush_before_wait) {
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_context_flush(context));
-  }
-
+  // Retain one stable stream set for both submission and draining. This keeps
+  // accepted work alive across a post-accept flush failure and gives the
+  // synchronization operation a finite target set; streams registered later
+  // are outside this call.
   iree_hal_streaming_stream_t** streams_copy = NULL;
   iree_host_size_t count = 0;
-  iree_status_t status = iree_hal_streaming_context_snapshot_streams(
+  iree_status_t snapshot_status = iree_hal_streaming_context_snapshot_streams(
       context, &streams_copy, &count);
-  if (!iree_status_is_ok(status)) {
+  if (!iree_status_is_ok(snapshot_status)) {
+    // Preserve the allocation failure while still draining every stream that
+    // can own an accepted tail before cleanup releases borrowed resources.
+    iree_status_t status =
+        iree_hal_streaming_context_synchronize_streams_without_snapshot(
+            context, include_non_blocking_streams, flush_before_wait,
+            snapshot_status);
     IREE_TRACE_ZONE_END(z0);
     return status;
   }
 
-  // Synchronize streams from the retained snapshot. Legacy default stream
-  // ordering excludes non-blocking streams, while device/context-wide
-  // synchronization includes them.
-  for (iree_host_size_t i = 0; i < count; ++i) {
-    if (!iree_status_is_ok(status)) {
-      break;
+  iree_status_t status = iree_ok_status();
+  if (flush_before_wait) {
+    // Attempt every flush. A stream may publish its accepted tail before its
+    // queue reports a flush failure, and a failure on one stream must not
+    // prevent other retained streams from being submitted or drained.
+    for (iree_host_size_t i = 0; i < count; ++i) {
+      if (streams_copy[i]) {
+        status = iree_status_join(
+            status, iree_hal_streaming_stream_flush(streams_copy[i]));
+      }
     }
+    if (context->default_stream) {
+      status = iree_status_join(
+          status, iree_hal_streaming_stream_flush(context->default_stream));
+    }
+  }
+
+  // Drain every selected stream even when a preceding flush or wait failed.
+  // Legacy default-stream ordering intentionally excludes non-blocking streams;
+  // device/context-wide synchronization includes them.
+  for (iree_host_size_t i = 0; i < count; ++i) {
     iree_hal_streaming_stream_t* stream = streams_copy[i];
     if (!stream) {
       continue;
@@ -1173,32 +1262,26 @@ static iree_status_t iree_hal_streaming_context_synchronize_streams(
         (stream->flags & IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING)) {
       continue;
     }
-    status = iree_hal_streaming_stream_synchronize_flushed(stream);
+    status = iree_status_join(
+        status, iree_hal_streaming_stream_synchronize_flushed(stream));
+  }
+
+  // The default stream may not be in the registered stream list and always
+  // participates in its own ordering.
+  if (context->default_stream) {
+    status = iree_status_join(
+        status,
+        iree_hal_streaming_stream_synchronize_flushed(context->default_stream));
+  }
+  if (include_non_blocking_streams) {
+    status = iree_status_join(
+        status, iree_hal_streaming_context_synchronize_event_records(context));
   }
 
   iree_hal_streaming_context_release_stream_snapshot(context, streams_copy,
                                                      count);
-
-  if (!iree_status_is_ok(status)) {
-    IREE_TRACE_ZONE_END(z0);
-    return status;
-  }
-
-  // Also synchronize the default stream, which may not be in the streams list.
-  // The legacy default stream always participates in its own ordering.
-  if (context->default_stream) {
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0,
-        iree_hal_streaming_stream_synchronize_flushed(context->default_stream));
-  }
-
-  if (include_non_blocking_streams) {
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_context_synchronize_event_records(context));
-  }
-
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 iree_status_t iree_hal_streaming_context_synchronize_event_records(
@@ -1283,15 +1366,14 @@ iree_status_t iree_hal_streaming_context_synchronize_all(void) {
   }
   iree_slim_mutex_unlock(&device_registry->context_list.mutex);
 
-  for (iree_host_size_t i = 0; iree_status_is_ok(status) && i < context_count;
-       ++i) {
-    status = iree_hal_streaming_context_flush(contexts[i]);
-  }
-  for (iree_host_size_t i = 0; iree_status_is_ok(status) && i < context_count;
-       ++i) {
-    status = iree_hal_streaming_context_synchronize_streams(
-        contexts[i], /*include_non_blocking_streams=*/true,
-        /*flush_before_wait=*/false);
+  // Preserve the first failure, but every retained context must still publish
+  // and drain its accepted tails before a caller can use this as a quiescence
+  // boundary for unretained resources.
+  for (iree_host_size_t i = 0; i < context_count; ++i) {
+    status = iree_status_join(
+        status, iree_hal_streaming_context_synchronize_streams(
+                    contexts[i], /*include_non_blocking_streams=*/true,
+                    /*flush_before_wait=*/true));
   }
 
   for (iree_host_size_t i = 0; i < context_count; ++i) {
@@ -1327,9 +1409,18 @@ iree_status_t iree_hal_streaming_context_wait_blocking_streams(
     if (!source_stream || source_stream == stream ||
         source_stream == context->default_stream ||
         iree_any_bit_set(source_stream->flags,
-                         IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING) ||
-        source_stream->capture_status !=
-            IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
+                         IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING)) {
+      continue;
+    }
+    iree_hal_streaming_capture_status_t capture_status =
+        IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+    status =
+        iree_hal_streaming_capture_status(source_stream, &capture_status, NULL);
+    if (!iree_status_is_ok(status) ||
+        capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       continue;
     }
     // Partition selected sources into the front while preserving every

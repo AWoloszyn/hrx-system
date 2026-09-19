@@ -74,7 +74,9 @@ void iree_hal_streaming_value_wait_lanes_deinitialize(
 // containing a wait use an independently progressing context-owned queue that
 // is recycled only after every accepted lane submission reaches its own
 // terminal completion record.
-// Synchronization: flushes pending stream commands before enqueueing.
+// Synchronization: the caller must hold ordinary capture admission while
+// deciding capture disposition and calling this function. Flushes pending
+// stream commands before enqueueing.
 iree_status_t iree_hal_streaming_queue_value_operations(
     iree_hal_streaming_stream_t* stream, iree_host_size_t operation_count,
     const iree_hal_streaming_value_operation_t* operations);

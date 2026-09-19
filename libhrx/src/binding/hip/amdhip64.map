@@ -629,6 +629,7 @@ HRX_0.1 {
   global:
     hipHALDeinit;
     hipHRXSetDeviceEventSink;
+    hipHRXSetArrayLeaseObserverForTesting;
   local:
     *;
 };

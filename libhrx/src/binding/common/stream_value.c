@@ -1133,8 +1133,6 @@ static iree_status_t iree_hal_streaming_validate_value_stream_locked(
   if (IREE_UNLIKELY(stream->capture_status !=
                     IREE_HAL_STREAMING_CAPTURE_STATUS_NONE)) {
     if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-      iree_hal_streaming_stream_set_capture_status(
-          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
       return iree_make_status(
           IREE_STATUS_ABORTED,
           "stream capture began before value operation submission");
@@ -1295,9 +1293,9 @@ iree_status_t iree_hal_streaming_queue_value_operations(
     status = iree_hal_streaming_value_operation_validate(&operations[i]);
   }
 
-  // Snapshot an attached stream and reject known capture state before doing
-  // fallible preparation. Capture is rechecked at the submission point because
-  // it may begin while a flush is in progress.
+  // Snapshot an attached stream and verify the caller's capture decision before
+  // doing fallible preparation. Capture admission keeps that decision stable
+  // through queue acceptance; the submission path checks it again defensively.
   iree_slim_mutex_lock(&stream->mutex);
   if (iree_status_is_ok(status)) {
     if (IREE_UNLIKELY(
@@ -1313,8 +1311,6 @@ iree_status_t iree_hal_streaming_queue_value_operations(
       IREE_UNLIKELY(stream->capture_status !=
                     IREE_HAL_STREAMING_CAPTURE_STATUS_NONE)) {
     if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-      iree_hal_streaming_stream_set_capture_status(
-          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
       status =
           iree_make_status(IREE_STATUS_ABORTED,
                            "stream capture does not support value operation");
