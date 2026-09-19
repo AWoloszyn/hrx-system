@@ -12,6 +12,7 @@
 #include "loom/ir/facts.h"
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
+#include "loom/ops/index/carrier.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/ops/scf/ops.h"
@@ -20,6 +21,7 @@
 #include "loom/rewrite/materialize.h"
 #include "loom/rewrite/remap.h"
 #include "loom/rewrite/rewriter.h"
+#include "loom/target/function_version.h"
 #include "loom/target/pass_environment.h"
 #include "loom/transforms/scf/scf_pipeline_plan.h"
 #include "loom/util/fact_table.h"
@@ -67,6 +69,8 @@ typedef struct loom_scf_pipeline_loop_t {
   loom_value_facts_t step;
   // Source lower-bound facts used to construct the overflow-safe guard.
   loom_value_facts_t lower_bound;
+  // Largest source-domain value representable by the selected address carrier.
+  int64_t maximum_value;
 } loom_scf_pipeline_loop_t;
 
 typedef struct loom_scf_pipeline_loop_list_t {
@@ -108,7 +112,11 @@ static iree_status_t loom_scf_pipeline_resolve_facts(
     loom_scf_pipeline_loop_list_t* loops) {
   loom_value_fact_table_t* facts = NULL;
   IREE_RETURN_IF_ERROR(loom_pass_value_facts_acquire(
-      pass, module, loom_pass_value_fact_scope_function(function), &facts));
+      pass, module,
+      loom_pass_value_fact_scope_function_for_target(
+          function,
+          loom_target_function_version_target_facts(pass->function_version)),
+      &facts));
   for (iree_host_size_t i = 0; i < loops->count; ++i) {
     loom_scf_pipeline_loop_t* loop = &loops->values[i];
     loop->depth = loom_value_fact_table_lookup(
@@ -117,6 +125,17 @@ static iree_status_t loom_scf_pipeline_resolve_facts(
         loom_value_fact_table_lookup(facts, loom_scf_for_step(loop->source));
     loop->lower_bound = loom_value_fact_table_lookup(
         facts, loom_scf_for_lower_bound(loop->source));
+    const loom_scalar_type_t scalar_type = loom_type_element_type(
+        loom_module_value_type(module, loom_scf_for_lower_bound(loop->source)));
+    const int32_t bitwidth =
+        loom_index_target_carrier_bitwidth(&facts->context, scalar_type);
+    loop->maximum_value = INT64_MAX;
+    if (bitwidth > 0 && bitwidth < 64) {
+      const uint64_t maximum = (UINT64_C(1) << bitwidth) - 1;
+      loop->maximum_value = scalar_type == LOOM_SCALAR_TYPE_OFFSET
+                                ? (int64_t)maximum
+                                : (int64_t)(maximum >> 1);
+    }
     // Only scalar ranges and exactness are consumed. Table-local extension
     // identities do not cross the invalidation boundary.
     loop->depth.extension_id = 0;
@@ -362,12 +381,14 @@ static iree_status_t loom_scf_pipeline_constant(
 // future-index comparison proves every startup load is in the source domain.
 static iree_status_t loom_scf_pipeline_build_guard(
     loom_scf_pipeline_context_t* context, const loom_op_t* source,
-    int64_t advance, loom_value_facts_t lower_facts,
+    int64_t advance, int64_t maximum_value, loom_value_facts_t lower_facts,
     loom_value_id_t* out_main_lower, loom_value_id_t* out_condition) {
   loom_builder_t* builder = &context->rewriter->builder;
   const loom_value_id_t lower = loom_scf_for_lower_bound(source);
   const loom_type_t type = loom_module_value_type(context->module, lower);
-  const bool lower_fits = lower_facts.range_hi <= INT64_MAX - advance;
+  const bool is_offset =
+      loom_type_element_type(type) == LOOM_SCALAR_TYPE_OFFSET;
+  const bool lower_fits = lower_facts.range_hi <= maximum_value - advance;
   int64_t exact_lower = 0;
   loom_value_id_t fits_value = LOOM_VALUE_ID_INVALID;
   loom_value_id_t maximum_lower = LOOM_VALUE_ID_INVALID;
@@ -379,16 +400,25 @@ static iree_status_t loom_scf_pipeline_build_guard(
     loom_value_id_t bounded_lower = lower;
     if (!lower_fits) {
       IREE_RETURN_IF_ERROR(loom_scf_pipeline_constant(
-          context, source, INT64_MAX - advance, type, &maximum_lower));
-      loom_op_t* clamp = NULL;
-      IREE_RETURN_IF_ERROR(loom_index_min_build(builder, lower, maximum_lower,
-                                                source->location, &clamp));
-      bounded_lower = loom_index_min_result(clamp);
+          context, source, maximum_value - advance, type, &maximum_lower));
       loom_op_t* fits = NULL;
       IREE_RETURN_IF_ERROR(
-          loom_index_cmp_build(builder, LOOM_INDEX_CMP_PREDICATE_SLE, lower,
-                               maximum_lower, source->location, &fits));
+          loom_index_cmp_build(builder,
+                               is_offset ? LOOM_INDEX_CMP_PREDICATE_ULE
+                                         : LOOM_INDEX_CMP_PREDICATE_SLE,
+                               lower, maximum_lower, source->location, &fits));
       fits_value = loom_index_cmp_result(fits);
+      loom_op_t* clamp = NULL;
+      if (is_offset) {
+        IREE_RETURN_IF_ERROR(loom_scf_select_build(builder, fits_value, lower,
+                                                   maximum_lower, type,
+                                                   source->location, &clamp));
+        bounded_lower = loom_scf_select_result(clamp);
+      } else {
+        IREE_RETURN_IF_ERROR(loom_index_min_build(builder, lower, maximum_lower,
+                                                  source->location, &clamp));
+        bounded_lower = loom_index_min_result(clamp);
+      }
     }
     IREE_RETURN_IF_ERROR(loom_scf_pipeline_constant(context, source, advance,
                                                     type, &advance_value));
@@ -400,8 +430,10 @@ static iree_status_t loom_scf_pipeline_build_guard(
   }
   loom_op_t* nonempty = NULL;
   IREE_RETURN_IF_ERROR(loom_index_cmp_build(
-      builder, LOOM_INDEX_CMP_PREDICATE_SLT, *out_main_lower,
-      loom_scf_for_upper_bound(source), source->location, &nonempty));
+      builder,
+      is_offset ? LOOM_INDEX_CMP_PREDICATE_ULT : LOOM_INDEX_CMP_PREDICATE_SLT,
+      *out_main_lower, loom_scf_for_upper_bound(source), source->location,
+      &nonempty));
   if (lower_fits) {
     *out_condition = loom_index_cmp_result(nonempty);
     return iree_ok_status();
@@ -503,7 +535,8 @@ static iree_status_t loom_scf_pipeline_emit_long_path(
 static iree_status_t loom_scf_pipeline_reconstruct(
     loom_scf_pipeline_context_t* context, loom_op_t* source,
     const loom_scf_pipeline_plan_t* plan, uint32_t depth, int64_t step,
-    uint16_t state_count, loom_value_facts_t lower_facts) {
+    uint16_t state_count, int64_t maximum_value,
+    loom_value_facts_t lower_facts) {
   loom_builder_t* builder = &context->rewriter->builder;
   loom_builder_set_before(builder, source);
   const loom_value_id_t checkpoint =
@@ -516,8 +549,8 @@ static iree_status_t loom_scf_pipeline_reconstruct(
     loom_value_id_t main_lower = LOOM_VALUE_ID_INVALID;
     loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_scf_pipeline_build_guard(
-        context, source, (int64_t)(depth - 1) * step, lower_facts, &main_lower,
-        &condition));
+        context, source, (int64_t)(depth - 1) * step, maximum_value,
+        lower_facts, &main_lower, &condition));
     loom_type_t* result_types = NULL;
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         context->arena, source->result_count, sizeof(*result_types),
@@ -585,10 +618,11 @@ static iree_status_t loom_scf_pipeline_process_loop(
       return loom_scf_pipeline_reject(context->pass, source, depth,
                                       IREE_SV("a positive exact static step"));
     }
-    if ((uint64_t)(depth - 1) > (uint64_t)INT64_MAX / (uint64_t)step) {
+    if ((uint64_t)(depth - 1) >
+        (uint64_t)loop->maximum_value / (uint64_t)step) {
       return loom_scf_pipeline_reject(
           context->pass, source, depth,
-          IREE_SV("(depth - 1) * step representable as a signed address"));
+          IREE_SV("(depth - 1) * step representable in the address carrier"));
     }
     loom_scf_pipeline_rejection_t rejection = {0};
     IREE_RETURN_IF_ERROR(loom_scf_pipeline_plan_build(
@@ -611,7 +645,7 @@ static iree_status_t loom_scf_pipeline_process_loop(
       loom_scf_pipeline_report(context, loop_ordinal, (uint32_t)depth, &plan));
   IREE_RETURN_IF_ERROR(loom_scf_pipeline_reconstruct(
       context, source, &plan, (uint32_t)depth, step, (uint16_t)state_count,
-      loop->lower_bound));
+      loop->maximum_value, loop->lower_bound));
   loom_scf_pipeline_statistics_t* statistics =
       loom_scf_pipeline_statistics(context->pass);
   if (depth == 1) {

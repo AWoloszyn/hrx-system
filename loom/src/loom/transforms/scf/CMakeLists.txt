@@ -65,6 +65,7 @@ loom_cc_library(
     loom::rewrite::materialize
     loom::rewrite::remap
     loom::rewrite::rewriter
+    loom::target::function_version
     loom::target::pass_environment
     loom::util::fact_table
     loom::util::walk

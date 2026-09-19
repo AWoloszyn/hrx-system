@@ -1,0 +1,90 @@
+// RUN: with-checks pass specialize-target-callgraph,pipeline-scf-for
+
+test.target<quirky> @target
+
+func.def public target(@target) @clamps_narrow_startup(%begin: index, %end: index, %values: view<32xi32>, %initial: i32) -> (i32) {
+  %step = index.constant 2 : index
+  %depth = index.constant 3 : index
+  %mask = index.constant 31 : index
+  %result = scf.for %counter = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %position = index.andi %counter, %mask : index
+    %value = view.load %values[%position] : view<32xi32> -> i32
+    %next = scalar.addi %sum, %value : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *index.constant 2147483643 : index
+CHECK: *index.min %begin, *
+CHECK: *index.cmp sle, %begin, *
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,pipeline-scf-for
+
+test.target<low_core> @target
+
+func.def public target(@target) @clamps_wide_startup(%begin: index, %end: index, %values: view<32xi32>, %initial: i32) -> (i32) {
+  %step = index.constant 2 : index
+  %depth = index.constant 3 : index
+  %mask = index.constant 31 : index
+  %result = scf.for %counter = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %position = index.andi %counter, %mask : index
+    %value = view.load %values[%position] : view<32xi32> -> i32
+    %next = scalar.addi %sum, %value : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *index.constant 9223372036854775803 : index
+CHECK: *index.min %begin, *
+CHECK: *index.cmp sle, %begin, *
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,pipeline-scf-for
+
+test.target<quirky> @target
+
+func.def public target(@target) @clamps_offset_startup(%begin: offset, %end: offset, %input: buffer, %initial: i32) -> (i32) {
+  %step = index.constant 2 : offset
+  %depth = index.constant 3 : index
+  %result = scf.for %counter = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %values = buffer.view %input[%counter] : buffer -> view<1xi32>
+    %value = view.load %values[0] : view<1xi32> -> i32
+    %next = scalar.addi %sum, %value : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *index.constant 9223372036854775803 : offset
+CHECK: *index.cmp ule, %begin, *
+CHECK: *scf.select * : offset
+CHECK: *index.cmp ult, * : offset
+CHECK-NOT: *index.min *
+
+// ====
+
+// RUN: pass specialize-target-callgraph,pipeline-scf-for
+
+test.target<quirky> @target
+
+func.def public target(@target) @rejects_unrepresentable_lookahead(%begin: index, %end: index, %values: view<32xi32>, %initial: i32) -> (i32) {
+  %step = index.constant 1073741824 : index
+  %depth = index.constant 3 : index
+  %mask = index.constant 31 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="(depth - 1) * step representable in the address carrier"}
+  %result = scf.for %counter = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %position = index.andi %counter, %mask : index
+    %value = view.load %values[%position] : view<32xi32> -> i32
+    %next = scalar.addi %sum, %value : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
