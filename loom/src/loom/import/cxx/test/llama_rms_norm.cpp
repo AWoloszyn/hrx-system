@@ -20,12 +20,15 @@ __global__ [[loom::workgroup_size(64, 1, 1),
 llama_rms_norm(const float* input, float* output, unsigned ncols, float eps) {
   __shared__ float sums[2];
   unsigned row = blockIdx.x;
+  unsigned long long row_offset = (unsigned long long)row * ncols;
+  const float* row_input = input + row_offset;
+  float* row_output = row_offset + output;
   unsigned tid = threadIdx.x;
   unsigned lane = tid % 32u;
   unsigned warp = tid / 32u;
   float total = 0.0f;
   for (unsigned col = tid; col < ncols; col += 64u) {
-    float value = input[row * ncols + col];
+    float value = row_input[col];
     total += value * value;
   }
   total = warp_sum(total);
@@ -40,6 +43,6 @@ llama_rms_norm(const float* input, float* output, unsigned ncols, float eps) {
   total = warp_sum(total);
   float scale = rsqrtf(total / (float)ncols + eps);
   for (unsigned col = tid; col < ncols; col += 64u) {
-    output[row * ncols + col] = scale * input[row * ncols + col];
+    row_output[col] = scale * row_input[col];
   }
 }

@@ -42,15 +42,17 @@ compatibility with complete upstream libraries.
 The llama.cpp extraction specializes `rms_norm_f32`, `block_reduce<SUM>` and
 `warp_reduce_sum` for contiguous rows, one channel/sample, block size 64, and
 no multiply/add fusion. Two shared values replace dynamic shared allocation.
-The HIP PDL hooks are empty and omitted. The source states the reduction loop's
-`offset < 32` invariant explicitly for subgroup index analysis.
+The HIP PDL hooks are empty and omitted. A 64-bit row displacement forms input
+and output row pointers before the reduction and normalization loops. The source
+states the reduction loop's `offset < 32` invariant explicitly for subgroup index
+analysis.
 
 The aiter extraction specializes `swiglu_act_and_mul_kernel` for scalar vector
 width and equal input/output types. It keeps the original clamp/arithmetic
 order, AMD reciprocal, and OCML exponential spellings. `_Float16` storage and
-explicit casts retain the input/output rounding points. Both extractions use
-unsigned flat element indices in place of row pointer adjustment; surrounding
-framework dispatch and vector memory wrappers are omitted. Launch annotations
+explicit casts retain the input/output rounding points. This extraction uses
+unsigned flat element indices; surrounding framework dispatch and vector memory
+wrappers are omitted from both extractions. Launch annotations
 supply the Loom configuration contract. The upstream licenses are included
 beside the source files.
 
