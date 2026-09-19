@@ -128,16 +128,20 @@ typedef struct loom_aie2p_bundle_plan_t {
 // Descriptor runs use the minimum contiguous partition of exact physical
 // bundle formats because AIE2P's format domain is not downward closed.
 // Allocation-planned structural moves split a logical schedule cycle into
-// ordered physical bundles; later logical cycles retain or increase every
-// scheduled separation. Shared physical issue admission includes these moves,
+// ordered physical bundles. Each scheduled descriptor anchors logical time at
+// its physical issue cycle, preserving all descriptor-to-descriptor scheduled
+// separations. Generated moves consume that timeline without rebasing it, so
+// their issue cycles and stalls can cover later empty logical cycles instead
+// of duplicating the waiting. Shared physical issue admission includes moves,
 // concrete register aliases and collective bundle resource occupancy. Gaps
 // occupy code bytes without allocating per-cycle bundle or slot records.
 // Every control-flow edge reaches a quiescent event/resource boundary before
 // successor entry, including fallthrough and backedges. Native branch-delay
 // cycles contribute to this boundary. Prebound live-ins and resource imports
 // anchor physical assignments without occupying an instruction slot. Empty
-// non-terminator issue cycles are materialized as NOP bundles. The returned
-// plan borrows |frame| and owns its tables in |arena|.
+// non-terminator logical cycles not already covered by native expansion are
+// materialized as NOP bundles. The returned plan borrows |frame| and owns its
+// tables in |arena|.
 iree_status_t loom_aie2p_bundle_plan_build(
     const loom_low_emission_frame_t* frame, iree_arena_allocator_t* arena,
     loom_aie2p_bundle_plan_t* out_plan);
