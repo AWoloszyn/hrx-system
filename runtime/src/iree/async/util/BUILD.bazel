@@ -58,6 +58,36 @@ iree_runtime_cc_library(
 )
 
 iree_runtime_cc_library(
+    name = "local_stream",
+    srcs = ["local_stream.c"],
+    hdrs = ["local_stream.h"],
+    deps = [
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "local_stream_process_test",
+    srcs = ["local_stream_process_test.cc"],
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "@platforms//os:macos": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":local_stream",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/base/internal:shm",
+        "//runtime/src/iree/testing:coordinated_test",
+        "//runtime/src/iree/testing:coordinated_test_main",
+        "//runtime/src/iree/testing:gtest",
+    ],
+)
+
+iree_runtime_cc_library(
     name = "message_pool",
     srcs = ["message_pool.c"],
     hdrs = ["message_pool.h"],

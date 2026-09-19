@@ -52,6 +52,18 @@ iree_runtime_cc_test(
 )
 
 iree_runtime_cc_test(
+    name = "local_stream_tests",
+    srcs = ["//runtime/src/iree/async/cts/util:test_main.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":backends",
+        "//runtime/src/iree/async/cts/stream:local_stream_test",
+        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/testing:gtest",
+    ],
+)
+
+iree_runtime_cc_test(
     name = "core_tests",
     srcs = ["//runtime/src/iree/async/cts/util:test_main.cc"],
     target_compatible_with = ["@platforms//os:linux"],

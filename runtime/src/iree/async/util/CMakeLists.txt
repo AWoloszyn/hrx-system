@@ -62,6 +62,36 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    local_stream
+  HDRS
+    "local_stream.h"
+  SRCS
+    "local_stream.c"
+  DEPS
+    iree::async
+    iree::base
+  PUBLIC
+)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+iree_cc_test(
+  NAME
+    local_stream_process_test
+  SRCS
+    "local_stream_process_test.cc"
+  DEPS
+    ::local_stream
+    iree::async
+    iree::async::platform
+    iree::base::internal::shm
+    iree::testing::coordinated_test
+    iree::testing::coordinated_test_main
+    iree::testing::gtest
+)
+endif()
+
+iree_cc_library(
+  NAME
     message_pool
   HDRS
     "message_pool.h"
