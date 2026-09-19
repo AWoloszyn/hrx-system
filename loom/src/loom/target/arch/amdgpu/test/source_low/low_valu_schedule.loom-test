@@ -4,9 +4,9 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Independent chains can issue while earlier VALU results are pending. RDNA
-// interleaves their instructions to cover its result latency; CDNA retains
-// its distinct schedule model. These operations cannot form VOPD pairs.
+// Independent chains can issue while earlier VALU results are pending. Each
+// family uses its own timing model and shared wave issue capacity. These
+// operations cannot form VOPD pairs.
 
 // RUN: emit amdgpu-assembly @independent_chains strategy=resource-stall
 
@@ -28,14 +28,14 @@ low.func.def target<amdgpu.cdna3.core>(@target) @independent_chains(%a: reg<amdg
 
 // ----
   v_add3_u32 v0, v0, v5, v5
-  v_add3_u32 v0, v0, v5, v5
-  v_add3_u32 v1, v1, v5, v5
   v_add3_u32 v1, v1, v5, v5
   v_add3_u32 v2, v2, v5, v5
-  v_add3_u32 v2, v2, v5, v5
-  v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v4, v4, v5, v5
   s_endpgm
 
@@ -61,14 +61,14 @@ low.func.def target<amdgpu.cdna4.core>(@target) @independent_chains(%a: reg<amdg
 
 // ----
   v_add3_u32 v0, v0, v5, v5
-  v_add3_u32 v0, v0, v5, v5
-  v_add3_u32 v1, v1, v5, v5
   v_add3_u32 v1, v1, v5, v5
   v_add3_u32 v2, v2, v5, v5
-  v_add3_u32 v2, v2, v5, v5
-  v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v4, v4, v5, v5
   s_endpgm
 
@@ -94,14 +94,14 @@ low.func.def target<amdgpu.gfx9_4.generic.core>(@target) @independent_chains(%a:
 
 // ----
   v_add3_u32 v0, v0, v5, v5
-  v_add3_u32 v0, v0, v5, v5
-  v_add3_u32 v1, v1, v5, v5
   v_add3_u32 v1, v1, v5, v5
   v_add3_u32 v2, v2, v5, v5
-  v_add3_u32 v2, v2, v5, v5
-  v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v4, v4, v5, v5
+  v_add3_u32 v0, v0, v5, v5
+  v_add3_u32 v1, v1, v5, v5
+  v_add3_u32 v2, v2, v5, v5
+  v_add3_u32 v3, v3, v5, v5
   v_add3_u32 v4, v4, v5, v5
   s_endpgm
 

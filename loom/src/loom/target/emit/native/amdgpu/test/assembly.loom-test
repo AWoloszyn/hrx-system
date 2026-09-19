@@ -10,8 +10,8 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_constants(%resource
 }
 
 // ----
-  s_mov_b32 s4, 7
   v_mov_b32 v1, 9
+  s_mov_b32 s4, 7
   v_add_u32 v1, 123, v1
   buffer_store_dword v1, v0, s[0:3], s4 offen offset:12
   s_endpgm
@@ -1865,10 +1865,10 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_scheduled_liveness_
 
 // ----
   s_load_dwordx2 s[4:5], s[0:1], s2 offset:0
+  v_mov_b32 v1, 1
   s_mov_b32 s6, 256
   s_mov_b32 s7, 822173696
   s_mov_b32 s0, 65535
-  v_mov_b32 v1, 1
   s_waitcnt vmcnt(63) lgkmcnt(0)
   s_and_b32 s5, s5, s0
   buffer_store_dword v1, v0, s[4:7], s2 offen offset:0
@@ -1905,8 +1905,8 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_concat_source_exist
 }
 
 // ----
-  s_mov_b32 s9, 0
   v_mov_b32 v1, 0
+  s_mov_b32 s9, 0
   s_mov_b32 s3, 2
   s_add_u32 s0, s0, s2
   s_add_u32 s0, s0, s4
@@ -2323,10 +2323,12 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@gfx1250_target) @gfx1250_vgpr_ms
 // ----
   s_set_vgpr_msb 142
   v_add_u32 v1, v0, v0
-  s_delay_alu instid0(VALU_DEP_1)
-  v_add_u32 v2, v1, v0
   s_set_vgpr_msb 36352
   v_add_u32 v2, v0, v1
+  s_set_vgpr_msb 142
+  s_delay_alu instid0(VALU_DEP_2)
+  v_add_u32 v2, v1, v0
+  s_set_vgpr_msb 36352
   s_endpgm
 
 // ====
@@ -2428,10 +2430,10 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_scc_selects_with_in
   s_cselect_b32 s0, s4, s5
   s_cmp_lt_i32 s2, s3
   v_mov_b32_copy v1, s0
-  buffer_store_dword v1, v0, s[8:11], s6 offen offset:0
   s_cselect_b32 s0, s4, s5
-  v_mov_b32_copy v1, s0
-  buffer_store_dword v1, v0, s[8:11], s6 offen offset:4
+  v_mov_b32_copy v2, s0
+  buffer_store_dword v1, v0, s[8:11], s6 offen offset:0
+  buffer_store_dword v2, v0, s[8:11], s6 offen offset:4
   s_endpgm
 
 // ====
@@ -2656,10 +2658,10 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_predicated_tile_swe
 }
 
 // ----
+  v_mov_b32 v1, 0
   s_mov_b32 s6, 16
   s_mov_b32 s7, 128
   s_mov_b32 s8, 0
-  v_mov_b32 v1, 0
   global_load_d16_b16 v2, v1, s[0:1] offset:0
   v_cvt_f32_f16 v2, v2
   v_mov_b32 v3, v2
@@ -3244,8 +3246,8 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_stress_fragment(%s0
   buffer_load_b128 v[12:15], v10, s[4:7], s8 offen offset:16
   s_load_dwordx2 s[10:11], s[0:1], s8 offset:16
   s_buffer_load_dword s0, s[4:7], s8 offset:0
-  s_add_u32 s1, s2, s3
   v_add_u32 v8, v8, v9
+  s_add_u32 s1, s2, s3
   s_add_u32 s0, s1, s0
   v_add_u32 v8, v8, v11
   buffer_store_dword v8, v10, s[4:7], s0 offen offset:8
