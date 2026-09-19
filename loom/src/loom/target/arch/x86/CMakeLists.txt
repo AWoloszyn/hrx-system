@@ -126,6 +126,7 @@ loom_check_test_suite(
     "test/source_low/numeric_scalar_i64_subtract.loom-test"
     "test/source_low/numeric_unsigned_constant_division.loom-test"
     "test/source_low/numeric_unsigned_remainder.loom-test"
+    "test/source_low/shared_conditional_values.loom-test"
     "test/source_low/source_low.loom-test"
     "test/source_low/source_low_avx2.loom-test"
     "test/source_low/source_low_avx512_packed_dot.loom-test"
@@ -158,6 +159,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_unsigned_constant_division.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_unsigned_remainder.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/packed_dot_wide.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/shared_conditional_values.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_v16.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_v4.loom-test"
   TEST_NAME_PREFIX_TO_STRIP

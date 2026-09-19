@@ -1,0 +1,495 @@
+// RUN: pass cfg-converge,cfg-converge
+
+// Only the decision moves; each short-circuit observation remains conditional.
+func.def @and_or(%outer: i1, %inner: i1, %last: i1) -> (i1) {
+  %selected = scalar.constant true : i1
+  test.use %outer : i1
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  test.use %inner : i1
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  cfg.br ^merge(%selected: i1)
+^fallback:
+  test.use %last : i1
+  cfg.br ^merge(%last: i1)
+^merge(%result: i1):
+  func.return %result : i1
+}
+
+// ----
+func.def @and_or(%outer: i1, %inner: i1, %last: i1) -> (i1) {
+  %selected = scalar.constant true : i1
+  test.use %outer : i1
+  cfg.cond_br %outer, ^evaluate, ^_bb2
+^evaluate:
+  test.use %inner : i1
+  cfg.br ^_bb3(%inner: i1)
+^_bb2:
+  %7 = scalar.constant 0 : i1
+  cfg.br ^_bb3(%7: i1)
+^_bb3(%6: i1):
+  cfg.cond_br %6, ^selected, ^fallback
+^selected:
+  cfg.br ^merge(%selected: i1)
+^fallback:
+  test.use %last : i1
+  cfg.br ^merge(%last: i1)
+^merge(%result: i1):
+  func.return %result : i1
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// The opposite nesting order carries a true incoming predicate.
+func.def @or_and(%outer: i1, %inner: i1, %last: i1) -> (i1) {
+  %rejected = scalar.constant false : i1
+  test.use %outer : i1
+  cfg.cond_br %outer, ^fallback, ^evaluate
+^evaluate:
+  test.use %inner : i1
+  cfg.cond_br %inner, ^fallback, ^rejected
+^rejected:
+  cfg.br ^merge(%rejected: i1)
+^fallback:
+  test.use %last : i1
+  cfg.br ^merge(%last: i1)
+^merge(%result: i1):
+  func.return %result : i1
+}
+
+// ----
+func.def @or_and(%outer: i1, %inner: i1, %last: i1) -> (i1) {
+  %rejected = scalar.constant false : i1
+  test.use %outer : i1
+  cfg.cond_br %outer, ^_bb2, ^evaluate
+^evaluate:
+  test.use %inner : i1
+  cfg.br ^_bb3(%inner: i1)
+^_bb2:
+  %7 = scalar.constant 1 : i1
+  cfg.br ^_bb3(%7: i1)
+^_bb3(%6: i1):
+  cfg.cond_br %6, ^fallback, ^rejected
+^rejected:
+  cfg.br ^merge(%rejected: i1)
+^fallback:
+  test.use %last : i1
+  cfg.br ^merge(%last: i1)
+^merge(%result: i1):
+  func.return %result : i1
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// Shared publication executes once after mutually exclusive predecessors.
+func.def @shared_tail(%publish: i1, %active: i1, %value: i32) {
+  cfg.cond_br %publish, ^publish, ^guard
+^publish:
+  test.use %value : i32
+  cfg.br ^shared
+^guard:
+  cfg.cond_br %active, ^shared, ^exit
+^shared:
+  test.use %value : i32
+  cfg.br ^exit
+^exit:
+  test.use %active : i1
+  func.return
+}
+
+// ----
+func.def @shared_tail(%publish: i1, %active: i1, %value: i32) {
+  cfg.cond_br %publish, ^publish, ^guard
+^publish:
+  test.use %value : i32
+  cfg.br ^_bb3
+^guard:
+  cfg.br ^_bb4(%active: i1)
+^_bb3:
+  %4 = scalar.constant 1 : i1
+  cfg.br ^_bb4(%4: i1)
+^_bb4(%3: i1):
+  cfg.cond_br %3, ^shared, ^exit
+^shared:
+  test.use %value : i32
+  cfg.br ^exit
+^exit:
+  test.use %active : i1
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// A loaded live-in gains a scalar carrier; the bypass supplies defined zero.
+func.def @scalar_live_in(%outer: i1, %inner: i1, %input: view<1xi32>, %output: view<1xi32>, %fallback: i32) -> (i32) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %loaded = view.load %input[0] : view<1xi32> -> i32
+  view.store %loaded, %output[0] : i32, view<1xi32>
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %sum = scalar.addi %loaded, %loaded : i32
+  cfg.br ^merge(%sum: i32)
+^fallback:
+  test.use %fallback : i32
+  cfg.br ^merge(%fallback: i32)
+^merge(%result: i32):
+  func.return %result : i32
+}
+
+// ----
+func.def @scalar_live_in(%outer: i1, %inner: i1, %input: view<1xi32>, %output: view<1xi32>, %fallback: i32) -> (i32) {
+  cfg.cond_br %outer, ^evaluate, ^_bb2
+^evaluate:
+  %loaded = view.load %input[0] : view<1xi32> -> i32
+  view.store %loaded, %output[0] : i32, view<1xi32>
+  cfg.br ^_bb3(%inner: i1, %loaded: i32)
+^_bb2:
+  %11 = scalar.constant 0 : i1
+  %12 = scalar.constant 0 : i32
+  cfg.br ^_bb3(%11: i1, %12: i32)
+^_bb3(%9: i1, %10: i32):
+  cfg.cond_br %9, ^selected, ^fallback
+^selected:
+  %sum = scalar.addi %10, %10 : i32
+  cfg.br ^merge(%sum: i32)
+^fallback:
+  test.use %fallback : i32
+  cfg.br ^merge(%fallback: i32)
+^merge(%result: i32):
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// Nested-region uses inherit the containing CFG block availability.
+func.def @nested_capture(%outer: i1, %inner: i1, %input: f32) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %value = scalar.addf %input, %input : f32
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  scf.if %inner {
+    test.use %value : f32
+  } else {
+  }
+  cfg.br ^exit
+^fallback:
+  test.use %input : f32
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @nested_capture(%outer: i1, %inner: i1, %input: f32) {
+  cfg.cond_br %outer, ^evaluate, ^_bb2
+^evaluate:
+  %value = scalar.addf %input, %input : f32
+  cfg.br ^_bb3(%inner: i1, %value: f32)
+^_bb2:
+  %6 = scalar.constant 0 : i1
+  %7 = scalar.constant 0.0 : f32
+  cfg.br ^_bb3(%6: i1, %7: f32)
+^_bb3(%4: i1, %5: f32):
+  cfg.cond_br %4, ^selected, ^fallback
+^selected:
+  scf.if %inner {
+    test.use %5 : f32
+  } else {
+  }
+  cfg.br ^exit
+^fallback:
+  test.use %input : f32
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// Opaque live-ins retain their valid original CFG and ownership.
+func.def @opaque_capture(%outer: i1, %inner: i1, %input: buffer, %output: view<1xi32>) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %base = index.constant 0 : offset
+  %view = buffer.view %input[%base] : buffer -> view<1xi32>
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %value = view.load %view[0] : view<1xi32> -> i32
+  view.store %value, %output[0] : i32, view<1xi32>
+  cfg.br ^exit
+^fallback:
+  test.use %input : buffer
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @opaque_capture(%outer: i1, %inner: i1, %input: buffer, %output: view<1xi32>) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %base = index.constant 0 : offset
+  %view = buffer.view %input[%base] : buffer -> view<1xi32>
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %value = view.load %view[0] : view<1xi32> -> i32
+  view.store %value, %output[0] : i32, view<1xi32>
+  cfg.br ^exit
+^fallback:
+  test.use %input : buffer
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// Branch-local type identities cannot be replaced by scalar placeholders.
+func.def @type_capture(%outer: i1, %inner: i1, %size: index, %seed: i32) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %extent = index.add %size, %size : index
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %tile = test.convert %seed : i32 -> tile<[%extent]xf32>
+  test.use %tile : tile<[%extent]xf32>
+  cfg.br ^exit
+^fallback:
+  test.use %seed : i32
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @type_capture(%outer: i1, %inner: i1, %size: index, %seed: i32) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %extent = index.add %size, %size : index
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %tile = test.convert %seed : i32 -> tile<[%extent]xf32>
+  test.use %tile : tile<[%extent]xf32>
+  cfg.br ^exit
+^fallback:
+  test.use %seed : i32
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// References hidden in metadata participate in the same preflight.
+func.def @attribute_capture(%outer: i1, %inner: i1, %size: index, %input: f32) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %extent = index.add %size, %size : index
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %annotated = test.attrs %input {shape = #test.options<mode = fast, element_type = vector<[%extent]xf32>>} : f32
+  test.use %annotated : f32
+  cfg.br ^exit
+^fallback:
+  test.use %input : f32
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @attribute_capture(%outer: i1, %inner: i1, %size: index, %input: f32) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %extent = index.add %size, %size : index
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %annotated = test.attrs %input {shape = #test.options<mode = fast, element_type = vector<[%extent]xf32>>} : f32
+  test.use %annotated : f32
+  cfg.br ^exit
+^fallback:
+  test.use %input : f32
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// Transparent shared fallback already has an explicit value continuation.
+func.def @transparent_fallback(%outer: i1, %inner: i1, %input: i32, %fallback: i32) -> (i32) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %value = scalar.addi %input, %input : i32
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  cfg.br ^merge(%value: i32)
+^fallback:
+  cfg.br ^merge(%fallback: i32)
+^merge(%result: i32):
+  func.return %result : i32
+}
+
+// ----
+func.def @transparent_fallback(%outer: i1, %inner: i1, %input: i32, %fallback: i32) -> (i32) {
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %value = scalar.addi %input, %input : i32
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  cfg.br ^merge(%value: i32)
+^fallback:
+  cfg.br ^merge(%fallback: i32)
+^merge(%result: i32):
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// Cyclic decisions remain owned by loop lowering.
+func.def @loop_decision(%outer: i1, %inner: i1, %repeat: i1) {
+  cfg.br ^header
+^header:
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  test.use %inner : i1
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  test.use %outer : i1
+  cfg.br ^latch
+^fallback:
+  test.use %repeat : i1
+  cfg.br ^latch
+^latch:
+  cfg.cond_br %repeat, ^header, ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @loop_decision(%outer: i1, %inner: i1, %repeat: i1) {
+  cfg.br ^header
+^header:
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  test.use %inner : i1
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  test.use %outer : i1
+  cfg.br ^latch
+^fallback:
+  test.use %repeat : i1
+  cfg.br ^latch
+^latch:
+  cfg.cond_br %repeat, ^header, ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// A uniform selector still joins bypassed lanes from varying participation.
+func.def @uniform_selector_with_partial_participation(%outer: i1, %last: i1) -> (i1) {
+  %selected = scalar.constant true : i1
+  %inner = scalar.constant true : i1
+  test.use %outer : i1
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  test.use %inner : i1
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  cfg.br ^merge(%selected: i1)
+^fallback:
+  test.use %last : i1
+  cfg.br ^merge(%last: i1)
+^merge(%result: i1):
+  func.return %result : i1
+}
+
+// ----
+func.def @uniform_selector_with_partial_participation(%outer: i1, %last: i1) -> (i1) {
+  %selected = scalar.constant true : i1
+  %inner = scalar.constant true : i1
+  test.use %outer : i1
+  cfg.cond_br %outer, ^evaluate, ^_bb2
+^evaluate:
+  test.use %inner : i1
+  cfg.br ^_bb3(%inner: i1)
+^_bb2:
+  %7 = scalar.constant 0 : i1
+  cfg.br ^_bb3(%7: i1)
+^_bb3(%6: i1):
+  cfg.cond_br %6, ^selected, ^fallback
+^selected:
+  cfg.br ^merge(%selected: i1)
+^fallback:
+  test.use %last : i1
+  cfg.br ^merge(%last: i1)
+^merge(%result: i1):
+  func.return %result : i1
+}
+
+// ====
+
+// RUN: pass cfg-converge,cfg-converge
+
+// Uniform participation and selection retain direct scalar control.
+func.def @fully_uniform_decisions(%last: i1) -> (i1) {
+  %selected = scalar.constant true : i1
+  %inner = scalar.constant true : i1
+  %outer = scalar.constant true : i1
+  test.use %outer : i1
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  test.use %inner : i1
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  cfg.br ^merge(%selected: i1)
+^fallback:
+  test.use %last : i1
+  cfg.br ^merge(%last: i1)
+^merge(%result: i1):
+  func.return %result : i1
+}
+
+// ----
+func.def @fully_uniform_decisions(%last: i1) -> (i1) {
+  %selected = scalar.constant true : i1
+  %inner = scalar.constant true : i1
+  %outer = scalar.constant true : i1
+  test.use %outer : i1
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  test.use %inner : i1
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  cfg.br ^merge(%selected: i1)
+^fallback:
+  test.use %last : i1
+  cfg.br ^merge(%last: i1)
+^merge(%result: i1):
+  func.return %result : i1
+}

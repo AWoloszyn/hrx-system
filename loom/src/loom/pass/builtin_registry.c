@@ -24,6 +24,7 @@
 #include "loom/target/pass_requirements.h"
 #include "loom/transforms/cfg/branch_fusion.h"
 #include "loom/transforms/cfg/branch_sink.h"
+#include "loom/transforms/cfg/cfg_converge.h"
 #include "loom/transforms/cfg/cfg_simplify.h"
 #include "loom/transforms/cleanup/canonicalize.h"
 #include "loom/transforms/cleanup/cse.h"
@@ -359,6 +360,11 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .create = loom_canonicalize_create,
         .option_schema = kCanonicalizeOptionSchema,
         .option_schema_count = IREE_ARRAYSIZE(kCanonicalizeOptionSchema),
+    },
+    {
+        .key = IREE_SVL("cfg-converge"),
+        .info = loom_cfg_converge_pass_info,
+        .function_run = loom_cfg_converge_run,
     },
     {
         .key = IREE_SVL("cfg-simplify"),

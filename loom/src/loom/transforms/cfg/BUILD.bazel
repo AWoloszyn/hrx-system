@@ -89,6 +89,25 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "cfg_converge",
+    srcs = ["cfg_converge.c"],
+    hdrs = ["cfg_converge.h"],
+    deps = [
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:special_values",
+        "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/pass:types",
+        "//loom/src/loom/pass:value_facts",
+        "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/target:function_version",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "cfg_simplify",
     srcs = ["cfg_simplify.c"],
     hdrs = ["cfg_simplify.h"],

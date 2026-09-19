@@ -1,0 +1,63 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/shared_conditional_values.loom-test
+// RUN: emit source-low output=low
+
+vm.target<core> @target
+
+func.def target(@target) @shared_conditional_values(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %completed = scalar.constant 1 : i32
+  %aligned_input = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %aligned_output = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %in = buffer.view %aligned_input[%base] : buffer -> view<3xi32>
+  %out = buffer.view %aligned_output[%base] : buffer -> view<3xi32>
+  %outer_value = view.load %in[0] : view<3xi32> -> i32
+  %outer = scalar.cmpi ne, %outer_value, %c0 : i32
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %loaded = view.load %in[1] : view<3xi32> -> i32
+  view.store %loaded, %out[0] : i32, view<3xi32>
+  %inner = scalar.cmpi ne, %loaded, %c0 : i32
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %result = scalar.addi %loaded, %loaded : i32
+  view.store %result, %out[1] : i32, view<3xi32>
+  cfg.br ^exit
+^fallback:
+  %fallback = view.load %in[2] : view<3xi32> -> i32
+  view.store %fallback, %out[1] : i32, view<3xi32>
+  cfg.br ^exit
+^exit:
+  view.store %completed, %out[2] : i32, view<3xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @shared_conditional_values(%in: reg<vm.ref : buffer>, %out: reg<vm.ref : buffer>) asm {
+  %c0 = constant.i32 0
+  %completed = constant.i32 1
+  %19 = constant.i64 0
+  %outer_value = buffer.load %in, %19, %19, 0, 8 : reg<vm.value : i32>
+  %outer = integer.compare.i32 %outer_value, %c0, 1
+  low.cond_br %outer, ^evaluate, ^fallback : reg<vm.value : i1>
+^evaluate:
+  %22 = constant.i64 4
+  %loaded = buffer.load %in, %22, %22, 0, 8 : reg<vm.value : i32>
+  buffer.store %out, %19, %19, %loaded, 0, 8
+  %inner = integer.compare.i32 %loaded, %c0, 1
+  low.cond_br %inner, ^selected, ^fallback : reg<vm.value : i1>
+^selected:
+  %result = integer.add.i32 %loaded, %loaded
+  buffer.store %out, %22, %22, %result, 0, 8
+  low.br ^exit
+^fallback:
+  %28 = constant.i64 8
+  %fallback = buffer.load %in, %28, %28, 0, 8 : reg<vm.value : i32>
+  %30 = constant.i64 4
+  buffer.store %out, %30, %30, %fallback, 0, 8
+  low.br ^exit
+^exit:
+  %31 = constant.i64 8
+  buffer.store %out, %31, %31, %completed, 0, 8
+  return
+}
