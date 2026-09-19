@@ -13,16 +13,17 @@
 #include "module.h"
 #include "result.h"
 
-_Static_assert(
-    (int)LOOMC_CXX_DATA_MODEL_LP64 == (int)LOOM_CXX_DATA_MODEL_LP64 &&
-        (int)LOOMC_CXX_DATA_MODEL_LLP64 == (int)LOOM_CXX_DATA_MODEL_LLP64 &&
-        (int)LOOMC_CXX_DATA_MODEL_ILP32 == (int)LOOM_CXX_DATA_MODEL_ILP32,
-    "public source layouts match the native importer");
-_Static_assert((int)LOOMC_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS ==
-                       (int)LOOM_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS &&
-                   (int)LOOMC_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES ==
-                       (int)LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES,
-               "public source flags match the native importer");
+static_assert((int)LOOMC_CXX_DATA_MODEL_LP64 == (int)LOOM_CXX_DATA_MODEL_LP64 &&
+                  (int)LOOMC_CXX_DATA_MODEL_LLP64 ==
+                      (int)LOOM_CXX_DATA_MODEL_LLP64 &&
+                  (int)LOOMC_CXX_DATA_MODEL_ILP32 ==
+                      (int)LOOM_CXX_DATA_MODEL_ILP32,
+              "public source layouts match the native importer");
+static_assert((int)LOOMC_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS ==
+                      (int)LOOM_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS &&
+                  (int)LOOMC_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES ==
+                      (int)LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES,
+              "public source flags match the native importer");
 
 // Invocation-local adaptation; no frontend state escapes the native import.
 typedef struct loomc_cxx_invocation_t {
