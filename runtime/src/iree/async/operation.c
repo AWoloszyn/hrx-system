@@ -98,6 +98,12 @@ void iree_async_operation_acquire_resources(iree_async_operation_t* operation) {
       iree_async_event_retain(event_wait->event);
       break;
     }
+    case IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL:
+      // Reset at acceptance, including linked polls cancelled before native
+      // admission. The primitive remains borrowed, with no resource to retain.
+      ((iree_async_handle_poll_operation_t*)operation)->result_events =
+          IREE_ASYNC_POLL_EVENT_NONE;
+      return;
     case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT: {
       iree_async_notification_wait_operation_t* notification_wait =
           (iree_async_notification_wait_operation_t*)operation;

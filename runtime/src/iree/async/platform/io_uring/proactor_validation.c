@@ -579,6 +579,11 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
             IREE_STATUS_INVALID_ARGUMENT,
             "HANDLE_POLL requires a valid POSIX descriptor");
       }
+      if (!poll->events || (poll->events & ~(IREE_ASYNC_POLL_EVENT_IN |
+                                             IREE_ASYNC_POLL_EVENT_OUT))) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "HANDLE_POLL requires IN and/or OUT interests");
+      }
       return iree_ok_status();
     }
 

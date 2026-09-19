@@ -289,12 +289,17 @@ static inline void iree_async_sequence_operation_initialize(
 // Handle poll
 //===----------------------------------------------------------------------===//
 
-// One-shot readiness poll on a raw system handle (fd, HANDLE, mach_port).
+// One-shot readiness poll on a raw POSIX descriptor or Windows waitable HANDLE.
 //
-// Completes when the handle becomes ready for the requested events (readable,
-// writable, error, hangup). This is the async equivalent of poll()/select()
-// on a single handle. Unlike EVENT_WAIT, this does not drain or reset the
-// handle — it only detects readiness.
+// POSIX completes when any requested direction becomes ready, or an error or
+// hangup occurs. Readiness is advisory: a subsequent nonblocking I/O attempt
+// may still report would-block. The operation does not consume descriptor data.
+//
+// Windows supports IN only, meaning that the HANDLE became signaled. Native
+// wait semantics apply, including consumption of an auto-reset event signal.
+// This does not provide read/write readiness for a pipe or socket. Overlapped
+// I/O must observe its own terminal completion before releasing native storage;
+// cancelling this poll cancels only the wait, not the I/O being observed.
 //
 // Availability:
 //   generic | io_uring | IOCP | kqueue
@@ -317,11 +322,17 @@ static inline void iree_async_sequence_operation_initialize(
 //   On success, |result_events| is populated with the events that fired
 //   (IN, ERR, HUP, OUT). On cancellation or error, |result_events| is 0.
 typedef struct iree_async_handle_poll_operation_t {
+  // Common operation state and completion callback.
   iree_async_operation_t base;
 
   // The platform handle to poll. Must remain valid until the operation
   // completes. Caller-owned; the proactor does not close or retain it.
   iree_async_primitive_t primitive;
+
+  // Nonempty mask of IN and/or OUT interests. ERR and HUP are result-only
+  // conditions and are reported regardless of the requested directions.
+  // Windows accepts IN only; requesting OUT returns UNAVAILABLE.
+  iree_async_poll_events_t events;
 
   // Bitmask of events that triggered completion. Populated before the
   // completion callback fires. Zero on cancellation or error.

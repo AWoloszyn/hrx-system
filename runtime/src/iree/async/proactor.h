@@ -82,7 +82,7 @@ typedef enum iree_async_poll_event_e {
   IREE_ASYNC_POLL_EVENT_HUP = 1u << 2,
   // Ready for writing / send buffer available (POLLOUT equivalent).
   // Used for backpressure handling in non-blocking write loops.
-  // kqueue: EVFILT_WRITE, IOCP: FD_WRITE.
+  // POSIX: POLLOUT/EVFILT_WRITE. Not applicable to Windows waitable HANDLEs.
   IREE_ASYNC_POLL_EVENT_OUT = 1u << 3,
 } iree_async_poll_event_t;
 // Bitmask of poll events.

@@ -464,17 +464,25 @@ static iree_status_t iree_async_proactor_posix_enqueue_for_execution(
 static iree_async_poll_events_t iree_async_posix_translate_poll_events(
     short revents);
 
-// Returns the poll event mask for an operation type.
-static short iree_async_operation_type_to_poll_events(
-    iree_async_operation_type_t type) {
-  switch (type) {
+// Returns the native readiness interests of an accepted operation.
+static short iree_async_proactor_posix_operation_poll_events(
+    const iree_async_operation_t* operation) {
+  switch (operation->type) {
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV:
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL:
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM:
     case IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT:
-    case IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL:
       return POLLIN;
+    case IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL: {
+      const iree_async_handle_poll_operation_t* poll =
+          (const iree_async_handle_poll_operation_t*)operation;
+      return (iree_any_bit_set(poll->events, IREE_ASYNC_POLL_EVENT_IN) ? POLLIN
+                                                                       : 0) |
+             (iree_any_bit_set(poll->events, IREE_ASYNC_POLL_EVENT_OUT)
+                  ? POLLOUT
+                  : 0);
+    }
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT:
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND:
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO:
@@ -562,7 +570,7 @@ static short iree_async_proactor_posix_compute_chain_events(
     iree_async_operation_t* chain_head) {
   short combined_events = 0;
   for (iree_async_operation_t* op = chain_head; op != NULL; op = op->next) {
-    combined_events |= iree_async_operation_type_to_poll_events(op->type);
+    combined_events |= iree_async_proactor_posix_operation_poll_events(op);
   }
   return combined_events;
 }
@@ -576,7 +584,7 @@ static short iree_async_proactor_posix_compute_chain_events(
 static iree_status_t iree_async_proactor_posix_register_fd_operation(
     iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation,
     int fd) {
-  short events = iree_async_operation_type_to_poll_events(operation->type);
+  short events = iree_async_proactor_posix_operation_poll_events(operation);
   if (events == 0) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "invalid fd operation type %d",
@@ -1719,6 +1727,11 @@ static iree_status_t iree_async_proactor_posix_validate_operation(
             IREE_STATUS_INVALID_ARGUMENT,
             "HANDLE_POLL requires a valid POSIX descriptor");
       }
+      if (!poll->events || (poll->events & ~(IREE_ASYNC_POLL_EVENT_IN |
+                                             IREE_ASYNC_POLL_EVENT_OUT))) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "HANDLE_POLL requires IN and/or OUT interests");
+      }
       return iree_ok_status();
     }
 
@@ -2618,13 +2631,14 @@ static iree_status_t iree_async_proactor_posix_execute_fd_operation(
       iree_async_handle_poll_operation_t* handle_poll =
           (iree_async_handle_poll_operation_t*)operation;
       *out_result = IREE_ASYNC_IO_COMPLETE;
-      handle_poll->result_events =
-          iree_async_posix_translate_poll_events(revents);
-      if (iree_any_bit_set(revents, POLLERR | POLLNVAL)) {
-        return iree_make_status(IREE_STATUS_INTERNAL,
-                                "handle poll error (revents=0x%x)",
-                                (int)revents);
+      if (iree_any_bit_set(revents, POLLNVAL)) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "handle poll descriptor is invalid");
       }
+      handle_poll->result_events =
+          iree_async_posix_translate_poll_events(revents) &
+          (handle_poll->events | IREE_ASYNC_POLL_EVENT_ERR |
+           IREE_ASYNC_POLL_EVENT_HUP);
       return iree_ok_status();
     }
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
@@ -2734,7 +2748,7 @@ static iree_host_size_t iree_async_proactor_posix_process_operation_chain(
 
   while (current != NULL) {
     iree_async_operation_t* next = current->next;
-    short op_events = iree_async_operation_type_to_poll_events(current->type);
+    short op_events = iree_async_proactor_posix_operation_poll_events(current);
 
     // Skip operations whose events haven't fired.
     // POLLERR and POLLHUP are always delivered by poll() regardless of the

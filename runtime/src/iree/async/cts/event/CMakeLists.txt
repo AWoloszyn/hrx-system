@@ -23,6 +23,22 @@ iree_cc_library(
   PUBLIC
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+iree_cc_library(
+  NAME
+    handle_poll_test
+  SRCS
+    "handle_poll_test.cc"
+  DEPS
+    iree::async
+    iree::async::cts::util::registry
+    iree::async::cts::util::test_base
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_library(
   NAME
@@ -58,8 +74,12 @@ endif()
 set(_all_tests_platform_deps "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND _all_tests_platform_deps ::event_source_posix_test)
+  list(APPEND _all_tests_platform_deps ::handle_poll_test)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  list(APPEND _all_tests_platform_deps ::handle_poll_test)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   list(APPEND _all_tests_platform_deps ::event_source_windows_test)
+  list(APPEND _all_tests_platform_deps ::handle_poll_test)
 endif()
 iree_cc_library(
   NAME

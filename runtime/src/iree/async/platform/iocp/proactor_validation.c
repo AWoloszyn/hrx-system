@@ -497,6 +497,17 @@ iree_status_t iree_async_proactor_iocp_validate_operation(
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "HANDLE_POLL requires a valid Windows handle");
       }
+      if (!poll->events || (poll->events & ~(IREE_ASYNC_POLL_EVENT_IN |
+                                             IREE_ASYNC_POLL_EVENT_OUT))) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "HANDLE_POLL requires IN and/or OUT interests");
+      }
+      if (iree_any_bit_set(poll->events, IREE_ASYNC_POLL_EVENT_OUT)) {
+        return iree_make_status(
+            IREE_STATUS_UNAVAILABLE,
+            "HANDLE_POLL on Windows supports signaled handles, not writable "
+            "readiness");
+      }
       return iree_ok_status();
     }
 

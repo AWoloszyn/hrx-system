@@ -107,7 +107,12 @@ static void iree_async_proactor_io_uring_fill_handle_poll(
   memset(sqe, 0, sizeof(*sqe));
   sqe->opcode = IREE_IORING_OP_POLL_ADD;
   sqe->fd = handle_poll->primitive.value.fd;
-  sqe->poll32_events = POLLIN;
+  sqe->poll32_events =
+      (iree_any_bit_set(handle_poll->events, IREE_ASYNC_POLL_EVENT_IN) ? POLLIN
+                                                                       : 0) |
+      (iree_any_bit_set(handle_poll->events, IREE_ASYNC_POLL_EVENT_OUT)
+           ? POLLOUT
+           : 0);
   sqe->user_data = (uint64_t)(uintptr_t)base_operation;
 }
 

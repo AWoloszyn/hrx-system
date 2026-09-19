@@ -31,6 +31,24 @@ iree_runtime_cc_library(
     alwayslink = True,
 )
 
+iree_runtime_cc_library(
+    name = "handle_poll_test",
+    testonly = True,
+    srcs = ["handle_poll_test.cc"],
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "@platforms//os:macos": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/async/cts/util:test_base",
+    ],
+    alwayslink = True,
+)
+
 # Event source tests: persistent fd monitoring with callbacks (POSIX-only).
 iree_runtime_cc_library(
     name = "event_source_posix_test",
@@ -73,8 +91,15 @@ iree_runtime_cc_library(
     deps = [
         ":event_test",
     ] + select({
-        "@platforms//os:linux": [":event_source_posix_test"],
-        "@platforms//os:windows": [":event_source_windows_test"],
+        "@platforms//os:linux": [
+            ":event_source_posix_test",
+            ":handle_poll_test",
+        ],
+        "@platforms//os:macos": [":handle_poll_test"],
+        "@platforms//os:windows": [
+            ":event_source_windows_test",
+            ":handle_poll_test",
+        ],
         "//conditions:default": [],
     }),
 )
