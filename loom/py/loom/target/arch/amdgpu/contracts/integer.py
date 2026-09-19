@@ -348,6 +348,9 @@ def _narrow_address_vgpr_binary_rule(
     type_pattern: TypePattern,
     descriptor: Descriptor,
     *,
+    source_lhs: str = "lhs",
+    source_rhs: str = "rhs",
+    lhs_materializer: ValueMaterializer = ADDRESS_VGPR_MATERIALIZER,
     signed_bit_count: int | None = None,
     signed_diagnostic: GuardDiagnostic | None = None,
     unsigned_bit_count: int | None = None,
@@ -366,16 +369,16 @@ def _narrow_address_vgpr_binary_rule(
             ),
             Guard.low_value_register_class("result", "amdgpu.vgpr"),
             Guard.low_value_register_unit_count("result", 1),
-            Guard.value_materializable("lhs", ADDRESS_VGPR_MATERIALIZER.name),
-            Guard.value_materializable("rhs", ADDRESS_VGPR_MATERIALIZER.name),
+            Guard.value_materializable(source_lhs, lhs_materializer.name),
+            Guard.value_materializable(source_rhs, ADDRESS_VGPR_MATERIALIZER.name),
             Guard.descriptor_available(descriptor),
         ),
         emit=(
             EmitDescriptorOp(
                 descriptor=descriptor,
                 operands={
-                    "lhs": _materialized_operand("lhs", ADDRESS_VGPR_MATERIALIZER),
-                    "rhs": _materialized_operand("rhs", ADDRESS_VGPR_MATERIALIZER),
+                    "lhs": _materialized_operand(source_lhs, lhs_materializer),
+                    "rhs": _materialized_operand(source_rhs, ADDRESS_VGPR_MATERIALIZER),
                 },
                 results={"dst": _RESULT},
             ),
@@ -840,6 +843,7 @@ def _narrow_address_binary_rules(
     sgpr_descriptor_key: str,
     vgpr_descriptor_key: str,
     *,
+    sgpr_operand_orders: tuple[tuple[str, str], ...] = (),
     unsigned_bit_count: int | None = None,
     unsigned_diagnostic: GuardDiagnostic | None = None,
 ) -> tuple[DescriptorRule, ...]:
@@ -852,6 +856,19 @@ def _narrow_address_binary_rules(
             sgpr_descriptor,
             unsigned_bit_count=unsigned_bit_count,
             unsigned_diagnostic=unsigned_diagnostic,
+        ),
+        *(
+            _narrow_address_vgpr_binary_rule(
+                source_op,
+                type_pattern,
+                vgpr_descriptor,
+                source_lhs=source_lhs,
+                source_rhs=source_rhs,
+                lhs_materializer=ADDRESS_SGPR_MATERIALIZER,
+                unsigned_bit_count=unsigned_bit_count,
+                unsigned_diagnostic=unsigned_diagnostic,
+            )
+            for source_lhs, source_rhs in sgpr_operand_orders
         ),
         _narrow_address_vgpr_binary_rule(
             source_op,
@@ -867,6 +884,8 @@ def _address_binary_rules(
     source_op: Op,
     sgpr_descriptor_key: str,
     vgpr_descriptor_key: str,
+    *,
+    sgpr_operand_orders: tuple[tuple[str, str], ...] = (),
 ) -> tuple[DescriptorRule, ...]:
     return (
         *_narrow_address_binary_rules(
@@ -874,12 +893,14 @@ def _address_binary_rules(
             _INDEX,
             sgpr_descriptor_key,
             vgpr_descriptor_key,
+            sgpr_operand_orders=sgpr_operand_orders,
         ),
         *_narrow_address_binary_rules(
             source_op,
             _OFFSET,
             sgpr_descriptor_key,
             vgpr_descriptor_key,
+            sgpr_operand_orders=sgpr_operand_orders,
             unsigned_bit_count=32,
             unsigned_diagnostic=_ADDRESS_U32_DIAGNOSTIC,
         ),
@@ -1501,7 +1522,14 @@ def _rules() -> tuple[DescriptorRule, ...]:
         )
     )
     rules.extend(
-        _address_binary_rules(index.index_add, "amdgpu.s_add_u32", "amdgpu.v_add_u32")
+        _address_binary_rules(
+            index.index_add,
+            "amdgpu.s_add_u32",
+            "amdgpu.v_add_u32",
+            # VOP2 addition admits a uniform SRC0 and commutes its sources.
+            # Keeping that operand scalar also exposes its immediate forms.
+            sgpr_operand_orders=(("lhs", "rhs"), ("rhs", "lhs")),
+        )
     )
     rules.extend(
         _address_binary_rules(index.index_sub, "amdgpu.s_sub_u32", "amdgpu.v_sub_u32")

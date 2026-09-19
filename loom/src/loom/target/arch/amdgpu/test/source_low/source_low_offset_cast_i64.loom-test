@@ -80,16 +80,15 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   %uniform_offset = slice %uniform_bounded[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %increment = s_mov_b32 1
   %uniform_next = s_add_u32 %uniform_offset, %increment
-  %48 = v_mov_b32 1
-  %varying_next = v_add_u32 %39, %48
-  %50 = s_mov_b32 0
-  %52 = v_mov_b32 0
-  %varying_result = concat(%varying_next, %52) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %55 = v_mov_b32_copy %uniform_next
-  %57 = v_mov_b32_copy %50
-  %58 = concat(%55, %57) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %59 = v_lshlrev_b32_src0_inline %lane, 3
-  global_store_b64_saddr %59, %58, %uniform_view
-  global_store_b64_saddr %59, %varying_result, %varying_view
+  %varying_next = v_add_u32 %increment, %39
+  %49 = s_mov_b32 0
+  %51 = v_mov_b32 0
+  %varying_result = concat(%varying_next, %51) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %54 = v_mov_b32_copy %uniform_next
+  %56 = v_mov_b32_copy %49
+  %57 = concat(%54, %56) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %58 = v_lshlrev_b32_src0_inline %lane, 3
+  global_store_b64_saddr %58, %57, %uniform_view
+  global_store_b64_saddr %58, %varying_result, %varying_view
   return
 }
