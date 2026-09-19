@@ -13,6 +13,7 @@
 #include "loom/ops/index/ops.h"
 #include "loom/ops/scalar/compare.h"
 #include "loom/ops/scalar/ops.h"
+#include "loom/util/adaptive_sort.h"
 
 #define LOOM_CONDITION_QUERY_INITIAL_CAPACITY 16
 
@@ -148,6 +149,19 @@ void loom_condition_fact_set_reset(loom_condition_fact_set_t* facts) {
   facts->integer_relation_count = 0;
 }
 
+void loom_condition_derivation_initialize(
+    iree_arena_allocator_t* arena,
+    loom_condition_derivation_t* out_derivation) {
+  *out_derivation = (loom_condition_derivation_t){
+      .arena = arena,
+  };
+}
+
+void loom_condition_derivation_reset(loom_condition_derivation_t* derivation) {
+  loom_condition_fact_set_reset(&derivation->integer_facts);
+  derivation->boolean_fact_count = 0;
+}
+
 void loom_condition_edge_refinement_set_initialize(
     loom_condition_edge_refinement_t* refinement_storage,
     iree_host_size_t refinement_capacity,
@@ -230,9 +244,85 @@ static loom_condition_integer_operand_t loom_condition_value_operand(
   };
 }
 
-static bool loom_condition_fact_set_append_integer_relation(
-    loom_condition_fact_set_t* facts,
+static int loom_condition_integer_operand_compare(
+    loom_condition_integer_operand_t left,
+    loom_condition_integer_operand_t right) {
+  if (left.kind != right.kind) {
+    return left.kind < right.kind ? -1 : 1;
+  }
+  if (left.kind == LOOM_CONDITION_INTEGER_OPERAND_VALUE) {
+    return (left.value_id > right.value_id) - (left.value_id < right.value_id);
+  }
+  return (left.constant > right.constant) - (left.constant < right.constant);
+}
+
+static loom_condition_integer_relation_t
+loom_condition_integer_relation_canonicalize(
     loom_condition_integer_relation_t relation) {
+  if (loom_condition_integer_operand_compare(relation.right, relation.left) <
+      0) {
+    const loom_condition_integer_operand_t left = relation.left;
+    relation.left = relation.right;
+    relation.right = left;
+    relation.relation = loom_symbolic_integer_relation_swap(relation.relation);
+  }
+  return relation;
+}
+
+static bool loom_condition_integer_relation_less(
+    const loom_condition_integer_relation_t* left,
+    const loom_condition_integer_relation_t* right) {
+  int comparison =
+      loom_condition_integer_operand_compare(left->left, right->left);
+  if (comparison != 0) {
+    return comparison < 0;
+  }
+  comparison =
+      loom_condition_integer_operand_compare(left->right, right->right);
+  return comparison != 0 ? comparison < 0 : left->relation < right->relation;
+}
+
+LOOM_DEFINE_ADAPTIVE_SORT(loom_condition_sort_integer_relations,
+                          loom_condition_integer_relation_t,
+                          loom_condition_integer_relation_less)
+
+static bool loom_condition_boolean_fact_less(
+    const loom_condition_boolean_fact_t* left,
+    const loom_condition_boolean_fact_t* right) {
+  return left->value_id < right->value_id ||
+         (left->value_id == right->value_id && left->value < right->value);
+}
+
+LOOM_DEFINE_ADAPTIVE_SORT(loom_condition_sort_boolean_facts,
+                          loom_condition_boolean_fact_t,
+                          loom_condition_boolean_fact_less)
+
+static iree_status_t loom_condition_fact_set_reserve_integer_relations(
+    loom_condition_derivation_t* derivation) {
+  loom_condition_fact_set_t* facts = &derivation->integer_facts;
+  if (facts->integer_relation_count < facts->integer_relation_capacity) {
+    return iree_ok_status();
+  }
+  const iree_host_size_t minimum_capacity =
+      facts->integer_relation_capacity == 0
+          ? LOOM_CONDITION_QUERY_INITIAL_CAPACITY
+          : facts->integer_relation_count + 1;
+  return iree_arena_grow_array(
+      derivation->arena, facts->integer_relation_count, minimum_capacity,
+      sizeof(*facts->integer_relations), &facts->integer_relation_capacity,
+      (void**)&facts->integer_relations);
+}
+
+static iree_status_t loom_condition_fact_set_append_integer_relation(
+    loom_condition_fact_set_t* facts, loom_condition_derivation_t* derivation,
+    loom_condition_integer_relation_t relation, bool* out_complete) {
+  if (derivation != NULL) {
+    IREE_RETURN_IF_ERROR(
+        loom_condition_fact_set_reserve_integer_relations(derivation));
+    facts->integer_relations[facts->integer_relation_count++] =
+        loom_condition_integer_relation_canonicalize(relation);
+    return iree_ok_status();
+  }
   for (iree_host_size_t i = 0; i < facts->integer_relation_count; ++i) {
     const loom_condition_integer_relation_t* existing =
         &facts->integer_relations[i];
@@ -240,15 +330,70 @@ static bool loom_condition_fact_set_append_integer_relation(
         loom_condition_integer_operands_equal(existing->left, relation.left) &&
         loom_condition_integer_operands_equal(existing->right,
                                               relation.right)) {
-      return true;
+      return iree_ok_status();
     }
   }
   if (!facts->integer_relations ||
       facts->integer_relation_count >= facts->integer_relation_capacity) {
-    return false;
+    *out_complete = false;
+    return iree_ok_status();
   }
   facts->integer_relations[facts->integer_relation_count++] = relation;
-  return true;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_condition_fact_set_append_boolean_fact(
+    loom_condition_derivation_t* derivation, loom_value_id_t value_id,
+    bool value) {
+  if (derivation == NULL) {
+    return iree_ok_status();
+  }
+  if (derivation->boolean_fact_count >= derivation->boolean_fact_capacity) {
+    const iree_host_size_t minimum_capacity =
+        derivation->boolean_fact_capacity == 0
+            ? LOOM_CONDITION_QUERY_INITIAL_CAPACITY
+            : derivation->boolean_fact_count + 1;
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        derivation->arena, derivation->boolean_fact_count, minimum_capacity,
+        sizeof(*derivation->boolean_facts), &derivation->boolean_fact_capacity,
+        (void**)&derivation->boolean_facts));
+  }
+  derivation->boolean_facts[derivation->boolean_fact_count++] =
+      (loom_condition_boolean_fact_t){
+          .value_id = value_id,
+          .value = value,
+      };
+  return iree_ok_status();
+}
+
+static void loom_condition_derivation_finalize(
+    loom_condition_derivation_t* derivation) {
+  loom_condition_fact_set_t* facts = &derivation->integer_facts;
+  loom_condition_sort_integer_relations(facts->integer_relations,
+                                        facts->integer_relation_count);
+  iree_host_size_t relation_count = 0;
+  for (iree_host_size_t i = 0; i < facts->integer_relation_count; ++i) {
+    if (relation_count == 0 ||
+        loom_condition_integer_relation_less(
+            &facts->integer_relations[relation_count - 1],
+            &facts->integer_relations[i])) {
+      facts->integer_relations[relation_count++] = facts->integer_relations[i];
+    }
+  }
+  facts->integer_relation_count = relation_count;
+
+  loom_condition_sort_boolean_facts(derivation->boolean_facts,
+                                    derivation->boolean_fact_count);
+  iree_host_size_t boolean_fact_count = 0;
+  for (iree_host_size_t i = 0; i < derivation->boolean_fact_count; ++i) {
+    const loom_condition_boolean_fact_t fact = derivation->boolean_facts[i];
+    if (boolean_fact_count == 0 ||
+        loom_condition_boolean_fact_less(
+            &derivation->boolean_facts[boolean_fact_count - 1], &fact)) {
+      derivation->boolean_facts[boolean_fact_count++] = fact;
+    }
+  }
+  derivation->boolean_fact_count = boolean_fact_count;
 }
 
 static loom_value_facts_t loom_condition_lookup_facts(
@@ -289,11 +434,12 @@ static bool loom_condition_value_is_i1(const loom_module_t* module,
          loom_type_element_type(type) == LOOM_SCALAR_TYPE_I1;
 }
 
-static bool loom_condition_facts_query_opaque_boolean(
+static iree_status_t loom_condition_facts_query_opaque_boolean(
     const loom_module_t* module, loom_value_id_t condition_value,
-    bool assumed_truth, loom_condition_fact_set_t* out_facts) {
+    bool assumed_truth, loom_condition_fact_set_t* out_facts,
+    loom_condition_derivation_t* out_derivation, bool* out_complete) {
   if (!loom_condition_value_is_i1(module, condition_value)) {
-    return true;
+    return iree_ok_status();
   }
   const loom_condition_integer_relation_t assertion = {
       .relation = LOOM_SYMBOLIC_INTEGER_RELATION_EQ,
@@ -305,7 +451,8 @@ static bool loom_condition_facts_query_opaque_boolean(
               .constant = assumed_truth ? 1 : 0,
           },
   };
-  return loom_condition_fact_set_append_integer_relation(out_facts, assertion);
+  return loom_condition_fact_set_append_integer_relation(
+      out_facts, out_derivation, assertion, out_complete);
 }
 
 static bool loom_condition_facts_exact_bool(loom_value_facts_t facts,
@@ -433,17 +580,19 @@ static bool loom_condition_scalar_cmpi_predicate_relation(
   }
 }
 
-static bool loom_condition_facts_query_integer_compare(
-    loom_condition_fact_set_t* facts, const loom_value_fact_table_t* fact_table,
-    loom_value_id_t left_value, loom_value_id_t right_value, uint8_t predicate,
-    bool assumed_truth,
+static iree_status_t loom_condition_facts_query_integer_compare(
+    loom_condition_fact_set_t* facts,
+    loom_condition_derivation_t* out_derivation,
+    const loom_value_fact_table_t* fact_table, loom_value_id_t left_value,
+    loom_value_id_t right_value, uint8_t predicate, bool assumed_truth,
     bool (*predicate_relation)(uint8_t, const loom_value_fact_table_t*,
                                loom_value_id_t, loom_value_id_t,
-                               loom_symbolic_integer_relation_t*)) {
+                               loom_symbolic_integer_relation_t*),
+    bool* out_complete) {
   loom_symbolic_integer_relation_t relation = LOOM_SYMBOLIC_INTEGER_RELATION_EQ;
   if (!predicate_relation(predicate, fact_table, left_value, right_value,
                           &relation)) {
-    return true;
+    return iree_ok_status();
   }
   if (!assumed_truth) {
     relation = loom_symbolic_integer_relation_invert(relation);
@@ -454,7 +603,8 @@ static bool loom_condition_facts_query_integer_compare(
       .left = loom_condition_value_operand(left_value),
       .right = loom_condition_value_operand(right_value),
   };
-  return loom_condition_fact_set_append_integer_relation(facts, assertion);
+  return loom_condition_fact_set_append_integer_relation(
+      facts, out_derivation, assertion, out_complete);
 }
 
 enum {
@@ -496,19 +646,24 @@ static iree_status_t loom_condition_facts_process_derivation(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
     const loom_condition_query_frame_t* frame,
     loom_condition_fact_set_t* out_facts,
+    loom_condition_derivation_t* out_derivation,
     loom_condition_edge_refinement_set_t* out_refinements, bool* out_complete) {
   const loom_module_t* module = query->module;
+  if (loom_condition_value_is_i1(module, frame->value_id)) {
+    IREE_RETURN_IF_ERROR(loom_condition_fact_set_append_boolean_fact(
+        out_derivation, frame->value_id, frame->assumed_truth));
+  }
   const loom_value_t* value = loom_module_value(module, frame->value_id);
   if (loom_value_is_block_arg(value)) {
-    *out_complete &= loom_condition_facts_query_opaque_boolean(
-        module, frame->value_id, frame->assumed_truth, out_facts);
-    return iree_ok_status();
+    return loom_condition_facts_query_opaque_boolean(
+        module, frame->value_id, frame->assumed_truth, out_facts,
+        out_derivation, out_complete);
   }
   const loom_op_t* defining_op = loom_value_def_op(value);
   if (!defining_op) {
-    *out_complete &= loom_condition_facts_query_opaque_boolean(
-        module, frame->value_id, frame->assumed_truth, out_facts);
-    return iree_ok_status();
+    return loom_condition_facts_query_opaque_boolean(
+        module, frame->value_id, frame->assumed_truth, out_facts,
+        out_derivation, out_complete);
   }
 
   *out_complete &= loom_condition_edge_refinement_set_append(
@@ -516,19 +671,17 @@ static iree_status_t loom_condition_facts_process_derivation(
 
   switch (defining_op->kind) {
     case LOOM_OP_INDEX_CMP:
-      *out_complete &= loom_condition_facts_query_integer_compare(
-          out_facts, fact_table, loom_index_cmp_lhs(defining_op),
-          loom_index_cmp_rhs(defining_op),
+      return loom_condition_facts_query_integer_compare(
+          out_facts, out_derivation, fact_table,
+          loom_index_cmp_lhs(defining_op), loom_index_cmp_rhs(defining_op),
           loom_index_cmp_predicate(defining_op), frame->assumed_truth,
-          loom_condition_index_predicate_relation);
-      return iree_ok_status();
+          loom_condition_index_predicate_relation, out_complete);
     case LOOM_OP_SCALAR_CMPI:
-      *out_complete &= loom_condition_facts_query_integer_compare(
-          out_facts, fact_table, loom_scalar_cmpi_lhs(defining_op),
-          loom_scalar_cmpi_rhs(defining_op),
+      return loom_condition_facts_query_integer_compare(
+          out_facts, out_derivation, fact_table,
+          loom_scalar_cmpi_lhs(defining_op), loom_scalar_cmpi_rhs(defining_op),
           loom_scalar_cmpi_predicate(defining_op), frame->assumed_truth,
-          loom_condition_scalar_cmpi_predicate_relation);
-      return iree_ok_status();
+          loom_condition_scalar_cmpi_predicate_relation, out_complete);
     case LOOM_OP_SCALAR_ANDI: {
       const loom_value_id_t lhs = loom_scalar_andi_lhs(defining_op);
       const loom_value_id_t rhs = loom_scalar_andi_rhs(defining_op);
@@ -604,9 +757,9 @@ static iree_status_t loom_condition_facts_process_derivation(
       return iree_ok_status();
     }
     default:
-      *out_complete &= loom_condition_facts_query_opaque_boolean(
-          module, frame->value_id, frame->assumed_truth, out_facts);
-      return iree_ok_status();
+      return loom_condition_facts_query_opaque_boolean(
+          module, frame->value_id, frame->assumed_truth, out_facts,
+          out_derivation, out_complete);
   }
 }
 
@@ -614,6 +767,7 @@ static iree_status_t loom_condition_facts_query_impl(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
     loom_value_id_t condition_value, bool assumed_truth,
     loom_condition_fact_set_t* out_facts,
+    loom_condition_derivation_t* out_derivation,
     loom_condition_edge_refinement_set_t* out_refinements, bool* out_complete) {
   *out_complete = true;
   loom_condition_query_begin(query);
@@ -625,14 +779,18 @@ static iree_status_t loom_condition_facts_query_impl(
         .assumed_truth = assumed_truth,
     };
     status = loom_condition_facts_process_derivation(
-        query, fact_table, &root_frame, out_facts, out_refinements,
-        out_complete);
+        query, fact_table, &root_frame, out_facts, out_derivation,
+        out_refinements, out_complete);
   }
   while (iree_status_is_ok(status) && query->frame_count > 0) {
     const loom_condition_query_frame_t frame =
         query->frames[--query->frame_count];
     status = loom_condition_facts_process_derivation(
-        query, fact_table, &frame, out_facts, out_refinements, out_complete);
+        query, fact_table, &frame, out_facts, out_derivation, out_refinements,
+        out_complete);
+  }
+  if (iree_status_is_ok(status) && out_derivation != NULL) {
+    loom_condition_derivation_finalize(out_derivation);
   }
   loom_condition_query_end(query);
   return status;
@@ -645,7 +803,19 @@ iree_status_t loom_condition_facts_query(
   loom_condition_fact_set_reset(out_facts);
   return loom_condition_facts_query_impl(
       query, fact_table, condition_value, assumed_truth, out_facts,
-      /*out_refinements=*/NULL, out_complete);
+      /*out_derivation=*/NULL, /*out_refinements=*/NULL, out_complete);
+}
+
+iree_status_t loom_condition_facts_query_complete(
+    loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
+    loom_value_id_t condition_value, bool assumed_truth,
+    loom_condition_derivation_t* out_derivation) {
+  loom_condition_derivation_reset(out_derivation);
+  bool complete = false;
+  return loom_condition_facts_query_impl(
+      query, fact_table, condition_value, assumed_truth,
+      &out_derivation->integer_facts, out_derivation,
+      /*out_refinements=*/NULL, &complete);
 }
 
 iree_status_t loom_condition_facts_query_edge(
@@ -655,9 +825,9 @@ iree_status_t loom_condition_facts_query_edge(
     loom_condition_edge_refinement_set_t* out_refinements, bool* out_complete) {
   loom_condition_fact_set_reset(out_facts);
   loom_condition_edge_refinement_set_reset(out_refinements);
-  return loom_condition_facts_query_impl(query, fact_table, condition_value,
-                                         assumed_truth, out_facts,
-                                         out_refinements, out_complete);
+  return loom_condition_facts_query_impl(
+      query, fact_table, condition_value, assumed_truth, out_facts,
+      /*out_derivation=*/NULL, out_refinements, out_complete);
 }
 
 iree_status_t loom_condition_facts_query_into(
@@ -666,25 +836,25 @@ iree_status_t loom_condition_facts_query_into(
     loom_condition_fact_set_t* inout_facts, bool* out_complete) {
   return loom_condition_facts_query_impl(
       query, fact_table, condition_value, assumed_truth, inout_facts,
-      /*out_refinements=*/NULL, out_complete);
+      /*out_derivation=*/NULL, /*out_refinements=*/NULL, out_complete);
 }
 
 static loom_value_facts_t loom_condition_edge_value_facts(
     const loom_value_fact_table_t* fact_table,
-    const loom_condition_fact_set_t* edge_facts, loom_value_id_t value_id) {
+    const loom_condition_fact_resolver_t* resolver, loom_value_id_t value_id) {
   loom_value_facts_t value_facts =
       loom_condition_lookup_facts(fact_table, value_id);
-  if (edge_facts != NULL) {
-    (void)loom_condition_fact_set_apply_to_value_facts(edge_facts, fact_table,
-                                                       value_id, &value_facts);
+  if (resolver != NULL && resolver->apply_to_value_facts != NULL) {
+    (void)resolver->apply_to_value_facts(resolver->user_data, fact_table,
+                                         value_id, &value_facts);
   }
   return value_facts;
 }
 
-static bool loom_condition_fact_set_proves_index_cmp(
+static bool loom_condition_fact_resolver_proves_index_cmp(
     const loom_module_t* module, const loom_value_fact_table_t* fact_table,
-    const loom_condition_fact_set_t* edge_facts, const loom_op_t* defining_op,
-    bool* out_condition) {
+    const loom_condition_fact_resolver_t* resolver,
+    const loom_op_t* defining_op, bool* out_condition) {
   const loom_value_id_t lhs = loom_index_cmp_lhs(defining_op);
   const loom_value_id_t rhs = loom_index_cmp_rhs(defining_op);
   if (lhs == rhs && loom_index_cmp_same_value_result(
@@ -699,15 +869,16 @@ static bool loom_condition_fact_set_proves_index_cmp(
   if (loom_condition_index_predicate_relation(
           loom_index_cmp_predicate(defining_op), fact_table, lhs, rhs,
           &relation.relation) &&
-      loom_condition_fact_set_proves_integer_relation(
-          edge_facts, fact_table, &relation, out_condition)) {
+      resolver != NULL && resolver->proves_integer_relation != NULL &&
+      resolver->proves_integer_relation(resolver->user_data, fact_table,
+                                        &relation, out_condition)) {
     return true;
   }
 
   const loom_value_facts_t lhs_facts =
-      loom_condition_edge_value_facts(fact_table, edge_facts, lhs);
+      loom_condition_edge_value_facts(fact_table, resolver, lhs);
   const loom_value_facts_t rhs_facts =
-      loom_condition_edge_value_facts(fact_table, edge_facts, rhs);
+      loom_condition_edge_value_facts(fact_table, resolver, rhs);
   loom_type_t operand_type = loom_module_value_type(module, lhs);
   if (!loom_type_is_scalar(operand_type)) {
     return false;
@@ -719,10 +890,10 @@ static bool loom_condition_fact_set_proves_index_cmp(
       out_condition);
 }
 
-static bool loom_condition_fact_set_proves_scalar_cmpi(
+static bool loom_condition_fact_resolver_proves_scalar_cmpi(
     const loom_value_fact_table_t* fact_table,
-    const loom_condition_fact_set_t* edge_facts, const loom_op_t* defining_op,
-    bool* out_condition) {
+    const loom_condition_fact_resolver_t* resolver,
+    const loom_op_t* defining_op, bool* out_condition) {
   const loom_value_id_t lhs = loom_scalar_cmpi_lhs(defining_op);
   const loom_value_id_t rhs = loom_scalar_cmpi_rhs(defining_op);
   if (lhs == rhs &&
@@ -738,15 +909,16 @@ static bool loom_condition_fact_set_proves_scalar_cmpi(
   if (loom_condition_scalar_cmpi_predicate_relation(
           loom_scalar_cmpi_predicate(defining_op), fact_table, lhs, rhs,
           &relation.relation) &&
-      loom_condition_fact_set_proves_integer_relation(
-          edge_facts, fact_table, &relation, out_condition)) {
+      resolver != NULL && resolver->proves_integer_relation != NULL &&
+      resolver->proves_integer_relation(resolver->user_data, fact_table,
+                                        &relation, out_condition)) {
     return true;
   }
 
   const loom_value_facts_t lhs_facts =
-      loom_condition_edge_value_facts(fact_table, edge_facts, lhs);
+      loom_condition_edge_value_facts(fact_table, resolver, lhs);
   const loom_value_facts_t rhs_facts =
-      loom_condition_edge_value_facts(fact_table, edge_facts, rhs);
+      loom_condition_edge_value_facts(fact_table, resolver, rhs);
   return loom_scalar_cmpi_result_from_facts(
       loom_scalar_cmpi_predicate(defining_op), &lhs_facts, &rhs_facts,
       out_condition);
@@ -842,12 +1014,16 @@ static bool loom_condition_query_boolean_operands(
 static loom_condition_proof_state_t loom_condition_query_evaluate_direct_proof(
     const loom_condition_query_t* query,
     const loom_value_fact_table_t* fact_table,
-    const loom_condition_fact_set_t* edge_facts, loom_value_id_t value_id,
+    const loom_condition_fact_resolver_t* resolver, loom_value_id_t value_id,
     bool* out_requires_composition) {
   *out_requires_composition = false;
   bool condition = false;
+  if (resolver != NULL && resolver->query_boolean != NULL &&
+      resolver->query_boolean(resolver->user_data, value_id, &condition)) {
+    return condition ? LOOM_CONDITION_PROOF_TRUE : LOOM_CONDITION_PROOF_FALSE;
+  }
   if (loom_condition_facts_exact_bool(
-          loom_condition_edge_value_facts(fact_table, edge_facts, value_id),
+          loom_condition_edge_value_facts(fact_table, resolver, value_id),
           &condition)) {
     return condition ? LOOM_CONDITION_PROOF_TRUE : LOOM_CONDITION_PROOF_FALSE;
   }
@@ -861,12 +1037,12 @@ static loom_condition_proof_state_t loom_condition_query_evaluate_direct_proof(
   bool proven = false;
   switch (defining_op->kind) {
     case LOOM_OP_INDEX_CMP:
-      proven = loom_condition_fact_set_proves_index_cmp(
-          query->module, fact_table, edge_facts, defining_op, &condition);
+      proven = loom_condition_fact_resolver_proves_index_cmp(
+          query->module, fact_table, resolver, defining_op, &condition);
       break;
     case LOOM_OP_SCALAR_CMPI:
-      proven = loom_condition_fact_set_proves_scalar_cmpi(
-          fact_table, edge_facts, defining_op, &condition);
+      proven = loom_condition_fact_resolver_proves_scalar_cmpi(
+          fact_table, resolver, defining_op, &condition);
       break;
     default: {
       loom_value_id_t lhs = LOOM_VALUE_ID_INVALID;
@@ -883,15 +1059,14 @@ static loom_condition_proof_state_t loom_condition_query_evaluate_direct_proof(
 
 static iree_status_t loom_condition_query_enter_proof_frame(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
-    const loom_condition_fact_set_t* edge_facts) {
+    const loom_condition_fact_resolver_t* resolver) {
   loom_condition_query_frame_t* frame = &query->frames[query->frame_count - 1];
   const loom_op_t* defining_op =
       loom_condition_query_proof_defining_op(query, frame->value_id);
   bool requires_composition = false;
   const loom_condition_proof_state_t direct_state =
-      loom_condition_query_evaluate_direct_proof(query, fact_table, edge_facts,
-                                                 frame->value_id,
-                                                 &requires_composition);
+      loom_condition_query_evaluate_direct_proof(
+          query, fact_table, resolver, frame->value_id, &requires_composition);
   if (!requires_composition) {
     loom_condition_query_finish_proof_frame(query, direct_state);
     return iree_ok_status();
@@ -974,17 +1149,17 @@ static iree_status_t loom_condition_query_continue_proof_frame(
   return iree_ok_status();
 }
 
-iree_status_t loom_condition_fact_set_proves_condition(
+iree_status_t loom_condition_fact_resolver_proves_condition(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
-    const loom_condition_fact_set_t* facts, loom_value_id_t condition_value,
-    bool* out_condition, bool* out_proven) {
+    const loom_condition_fact_resolver_t* resolver,
+    loom_value_id_t condition_value, bool* out_condition, bool* out_proven) {
   *out_condition = false;
   *out_proven = false;
   loom_condition_query_begin(query);
   bool requires_composition = false;
   const loom_condition_proof_state_t direct_state =
       loom_condition_query_evaluate_direct_proof(
-          query, fact_table, facts, condition_value, &requires_composition);
+          query, fact_table, resolver, condition_value, &requires_composition);
   if (!requires_composition) {
     *out_proven =
         loom_condition_proof_state_is_known(direct_state, out_condition);
@@ -997,7 +1172,8 @@ iree_status_t loom_condition_fact_set_proves_condition(
     const loom_condition_query_frame_phase_t phase =
         query->frames[query->frame_count - 1].phase;
     if (phase == LOOM_CONDITION_QUERY_FRAME_PROVE_ENTER) {
-      status = loom_condition_query_enter_proof_frame(query, fact_table, facts);
+      status =
+          loom_condition_query_enter_proof_frame(query, fact_table, resolver);
     } else {
       status = loom_condition_query_continue_proof_frame(query);
     }
@@ -1012,6 +1188,37 @@ iree_status_t loom_condition_fact_set_proves_condition(
   }
   loom_condition_query_end(query);
   return status;
+}
+
+static bool loom_condition_flat_facts_apply_to_value_facts(
+    const void* user_data, const loom_value_fact_table_t* fact_table,
+    loom_value_id_t value_id, loom_value_facts_t* inout_facts) {
+  return loom_condition_fact_set_apply_to_value_facts(
+      (const loom_condition_fact_set_t*)user_data, fact_table, value_id,
+      inout_facts);
+}
+
+static bool loom_condition_flat_facts_prove_integer_relation(
+    const void* user_data, const loom_value_fact_table_t* fact_table,
+    const loom_condition_integer_relation_t* queried, bool* out_result) {
+  return loom_condition_fact_set_proves_integer_relation(
+      (const loom_condition_fact_set_t*)user_data, fact_table, queried,
+      out_result);
+}
+
+iree_status_t loom_condition_fact_set_proves_condition(
+    loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
+    const loom_condition_fact_set_t* facts, loom_value_id_t condition_value,
+    bool* out_condition, bool* out_proven) {
+  const loom_condition_fact_resolver_t resolver = {
+      .user_data = facts,
+      .apply_to_value_facts = loom_condition_flat_facts_apply_to_value_facts,
+      .proves_integer_relation =
+          loom_condition_flat_facts_prove_integer_relation,
+  };
+  return loom_condition_fact_resolver_proves_condition(
+      query, fact_table, facts != NULL ? &resolver : NULL, condition_value,
+      out_condition, out_proven);
 }
 
 static bool loom_condition_relation_to_predicate_kind(

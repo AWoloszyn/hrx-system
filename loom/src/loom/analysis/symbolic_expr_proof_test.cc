@@ -31,13 +31,16 @@ class ScopedConditionFacts {
  public:
   ScopedConditionFacts(loom_symbolic_expr_context_t* context,
                        const loom_condition_fact_set_t* facts)
-      : context_(*context), previous_facts_(context->condition_facts) {
-    context_.condition_facts = facts;
+      : context_(*context), previous_scope_(context->condition_scope) {
+    derivation_.integer_facts = *facts;
+    loom_condition_fact_scope_initialize_local(previous_scope_, &derivation_,
+                                               &scope_);
+    context_.condition_scope = &scope_;
     loom_symbolic_expr_context_reset(&context_);
   }
 
   ~ScopedConditionFacts() {
-    context_.condition_facts = previous_facts_;
+    context_.condition_scope = previous_scope_;
     loom_symbolic_expr_context_reset(&context_);
   }
 
@@ -47,8 +50,12 @@ class ScopedConditionFacts {
  private:
   // Fixture context borrowing the active facts.
   loom_symbolic_expr_context_t& context_;
-  // Enclosing facts restored before the scoped facts leave their lifetime.
-  const loom_condition_fact_set_t* previous_facts_;
+  // Local derivation adapting the test's flat fact storage.
+  loom_condition_derivation_t derivation_ = {};
+  // Local scope installed while the test facts are active.
+  loom_condition_fact_scope_t scope_ = {};
+  // Enclosing scope restored before the local facts leave their lifetime.
+  const loom_condition_fact_scope_t* previous_scope_;
 };
 
 static bool QueryConditionFacts(

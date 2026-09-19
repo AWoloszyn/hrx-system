@@ -13,6 +13,53 @@ package(
 )
 
 loom_cc_library(
+    name = "condition_relation_set",
+    srcs = ["condition_relation_set.c"],
+    hdrs = ["condition_relation_set.h"],
+    deps = [
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "condition_relation_matrix",
+    srcs = ["condition_relation_matrix.c"],
+    hdrs = ["condition_relation_matrix.h"],
+    deps = [
+        ":condition_relation_set",
+        "//loom/src/loom/util:adaptive_sort",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "condition_relation_matrix_test",
+    srcs = ["condition_relation_matrix_test.cc"],
+    deps = [
+        ":condition_relation_matrix",
+        ":condition_relation_set",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "condition_relation_set_test",
+    srcs = ["condition_relation_set_test.cc"],
+    deps = [
+        ":condition_relation_set",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
     name = "control_uniformity",
     srcs = ["control_uniformity.c"],
     hdrs = ["control_uniformity.h"],
@@ -164,6 +211,7 @@ loom_cc_library(
         "//loom/src/loom/ir:facts",
         "//loom/src/loom/ops/index",
         "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/util:adaptive_sort",
         "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
@@ -185,6 +233,28 @@ loom_cc_test(
     ],
 )
 
+loom_cc_library(
+    name = "condition_fact_scope",
+    srcs = ["condition_fact_scope.c"],
+    hdrs = ["condition_fact_scope.h"],
+    deps = [
+        ":cfg_condition_facts",
+        ":condition_facts",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_test(
+    name = "condition_fact_scope_test",
+    srcs = ["condition_fact_scope_test.cc"],
+    deps = [
+        ":condition_fact_scope",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
 loom_cc_benchmark(
     name = "condition_facts_benchmark",
     srcs = ["condition_facts_benchmark.cc"],
@@ -200,12 +270,23 @@ loom_cc_benchmark(
 
 loom_cc_library(
     name = "cfg_condition_facts",
-    srcs = ["cfg_condition_facts.c"],
-    hdrs = ["cfg_condition_facts.h"],
+    srcs = [
+        "cfg_condition_facts.c",
+        "cfg_condition_operand_domain.c",
+        "cfg_condition_relation_table.c",
+    ],
+    hdrs = [
+        "cfg_condition_facts.h",
+        "cfg_condition_operand_domain.h",
+        "cfg_condition_relation_table.h",
+    ],
     deps = [
+        ":cfg_value_identity",
         ":condition_facts",
+        ":condition_relation_matrix",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/util:adaptive_sort",
         "//loom/src/loom/util:cfg_graph",
         "//loom/src/loom/util:dominance",
         "//loom/src/loom/util:fact_table",
@@ -233,6 +314,7 @@ loom_cc_test(
     srcs = ["cfg_condition_facts_test.cc"],
     deps = [
         ":cfg_condition_facts",
+        ":condition_fact_scope",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/cfg",
         "//loom/src/loom/ops/index",
@@ -501,6 +583,7 @@ loom_cc_library(
     deps = [
         ":cfg_condition_facts",
         ":cfg_value_identity",
+        ":condition_fact_scope",
         ":condition_facts",
         ":symbolic_expr",
         "//loom/src/loom/error:emitter",
@@ -930,6 +1013,7 @@ loom_cc_library(
     ],
     deps = [
         ":cfg_value_identity",
+        ":condition_fact_scope",
         ":condition_facts",
         ":integer_relation",
         "//loom/src/loom/ir",

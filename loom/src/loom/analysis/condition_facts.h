@@ -58,6 +58,15 @@ typedef struct loom_condition_integer_relation_t {
   loom_condition_integer_operand_t right;
 } loom_condition_integer_relation_t;
 
+// Exact Boolean truth derived while traversing a condition expression.
+typedef struct loom_condition_boolean_fact_t {
+  // Boolean SSA value whose result is known.
+  loom_value_id_t value_id;
+
+  // Exact result of the Boolean SSA value.
+  bool value;
+} loom_condition_boolean_fact_t;
+
 typedef struct loom_condition_fact_set_t {
   // Caller-owned storage for integer relations. Query APIs append each exact
   // relation at most once.
@@ -67,6 +76,46 @@ typedef struct loom_condition_fact_set_t {
   // Allocated entry count for integer_relations.
   iree_host_size_t integer_relation_capacity;
 } loom_condition_fact_set_t;
+
+// Infallible queries over one immutable source of active condition facts.
+// Implementations may use flat local facts or an indexed retained analysis.
+typedef struct loom_condition_fact_resolver_t {
+  // Resolver-owned immutable query state.
+  const void* user_data;
+
+  // Queries retained exact truth for one Boolean SSA value.
+  bool (*query_boolean)(const void* user_data, loom_value_id_t value_id,
+                        bool* out_value);
+
+  // Applies anchored integer relations to one scalar value's facts.
+  bool (*apply_to_value_facts)(const void* user_data,
+                               const loom_value_fact_table_t* fact_table,
+                               loom_value_id_t value_id,
+                               loom_value_facts_t* inout_facts);
+
+  // Proves one normalized integer relation true or false.
+  bool (*proves_integer_relation)(
+      const void* user_data, const loom_value_fact_table_t* fact_table,
+      const loom_condition_integer_relation_t* queried, bool* out_result);
+} loom_condition_fact_resolver_t;
+
+// Complete arena-backed result of deriving one condition expression.
+typedef struct loom_condition_derivation_t {
+  // All integer relations implied by the selected condition outcome.
+  loom_condition_fact_set_t integer_facts;
+
+  // Exact truth for every visited Boolean SSA value.
+  loom_condition_boolean_fact_t* boolean_facts;
+
+  // Number of populated entries in boolean_facts.
+  iree_host_size_t boolean_fact_count;
+
+  // Allocated entry count for boolean_facts.
+  iree_host_size_t boolean_fact_capacity;
+
+  // Arena owning relation and Boolean storage.
+  iree_arena_allocator_t* arena;
+} loom_condition_derivation_t;
 
 // One dialect-owned operand refinement guaranteed on a selected condition
 // edge. The descriptor and condition op are borrowed from immutable compiler
@@ -143,6 +192,14 @@ void loom_condition_fact_set_initialize(
 // Resets a fact set while retaining caller-owned storage.
 void loom_condition_fact_set_reset(loom_condition_fact_set_t* facts);
 
+// Initializes a complete derivation whose storage grows in |arena|. Repeated
+// resets and queries reuse the allocated high-water capacity.
+void loom_condition_derivation_initialize(
+    iree_arena_allocator_t* arena, loom_condition_derivation_t* out_derivation);
+
+// Resets a complete derivation while retaining its arena-backed storage.
+void loom_condition_derivation_reset(loom_condition_derivation_t* derivation);
+
 // Initializes caller-owned semantic refinement storage.
 void loom_condition_edge_refinement_set_initialize(
     loom_condition_edge_refinement_t* refinement_storage,
@@ -167,6 +224,15 @@ iree_status_t loom_condition_facts_query(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
     loom_value_id_t condition_value, bool assumed_truth,
     loom_condition_fact_set_t* out_facts, bool* out_complete);
+
+// Derives every integer relation and exact Boolean truth implied by assuming
+// |condition_value| evaluates to |assumed_truth|. The returned facts are
+// canonicalized and deduplicated. Allocation failure is the only reason a
+// valid query cannot produce a complete result.
+iree_status_t loom_condition_facts_query_complete(
+    loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
+    loom_value_id_t condition_value, bool assumed_truth,
+    loom_condition_derivation_t* out_derivation);
 
 // Derives integer relations and dialect-owned semantic refinements in one
 // traversal of a boolean condition expression. Either output may use empty
@@ -258,6 +324,14 @@ iree_status_t loom_condition_fact_set_proves_condition(
     loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
     const loom_condition_fact_set_t* facts, loom_value_id_t condition_value,
     bool* out_condition, bool* out_proven);
+
+// Attempts to prove that |condition_value| is exact using facts supplied by
+// |resolver|. The resolver callbacks are infallible queries over trusted
+// analysis state; allocation while traversing the condition remains fallible.
+iree_status_t loom_condition_fact_resolver_proves_condition(
+    loom_condition_query_t* query, const loom_value_fact_table_t* fact_table,
+    const loom_condition_fact_resolver_t* resolver,
+    loom_value_id_t condition_value, bool* out_condition, bool* out_proven);
 
 #ifdef __cplusplus
 }  // extern "C"

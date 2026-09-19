@@ -16,7 +16,9 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
+#include "loom/analysis/cfg_value_identity.h"
 #include "loom/analysis/condition_facts.h"
+#include "loom/analysis/condition_relation_matrix.h"
 #include "loom/ir/ir.h"
 #include "loom/util/cfg_graph.h"
 #include "loom/util/dominance.h"
@@ -26,61 +28,99 @@
 extern "C" {
 #endif
 
-#define LOOM_CFG_CONDITION_FACT_RELATION_CAPACITY 32
+typedef struct loom_cfg_condition_operand_domain_t
+    loom_cfg_condition_operand_domain_t;
 
-typedef struct loom_cfg_block_entry_condition_facts_t {
-  // SSA condition proven by every reachable predecessor edge into the block.
-  loom_value_id_t condition;
-  // Boolean value proven for condition at block entry.
-  bool condition_value;
-  // True when condition and condition_value contain a usable entry fact.
-  bool condition_known;
-  // Integer relations proven by every reachable predecessor edge.
-  const loom_condition_integer_relation_t* integer_relations;
-  // Number of valid entries in integer_relations.
-  iree_host_size_t integer_relation_count;
-} loom_cfg_block_entry_condition_facts_t;
+// Immutable condition facts at one block entry or along one CFG edge.
+typedef struct loom_cfg_condition_relation_view_t {
+  // Factorized integer relation rows over the table's operand domain.
+  loom_condition_relation_matrix_view_t integer_relations;
 
-typedef struct loom_cfg_condition_fact_table_t {
-  // Per-block facts in the same dense order as graph->blocks.
-  loom_cfg_block_entry_condition_facts_t* block_facts;
-  // Number of entries in block_facts.
-  iree_host_size_t block_count;
-} loom_cfg_condition_fact_table_t;
+  // Exact-false and exact-true Boolean value sets.
+  loom_condition_relation_set_id_t boolean_values[2];
+} loom_cfg_condition_relation_view_t;
 
-// Computes the facts implied at the entry of |block| along one predecessor
-// edge, after the incoming payload binds the block arguments. Facts about a
-// previous execution's arguments survive only through explicit forwarding in
-// that payload, including self-forwarding and argument permutations.
-//
-// |current_facts| may be NULL, or it may point at a block-indexed fact table
-// from a previous fixed-point iteration. |relation_storage| is caller-owned
-// scratch storage that remains owned by the caller; out_fact references it
-// until the caller copies the relations elsewhere.
-iree_status_t loom_cfg_condition_facts_compute_predecessor_edge(
-    loom_condition_query_t* condition_query,
-    const loom_value_fact_table_t* fact_table,
-    const loom_dominance_info_t* dominance, const loom_block_t* block,
-    const loom_op_t* predecessor_terminator, uint16_t predecessor_index,
-    const loom_cfg_block_entry_condition_facts_t* current_facts,
-    loom_condition_integer_relation_t* relation_storage,
-    iree_host_size_t relation_capacity,
-    loom_cfg_block_entry_condition_facts_t* out_fact);
+// Complete finite condition facts for one immutable CFG snapshot.
+typedef struct loom_cfg_condition_relation_table_t {
+  // Compact operand domain shared by every relation view.
+  const loom_cfg_condition_operand_domain_t* operand_domain;
 
-// Computes a fixed-point table of block-entry condition facts for |graph|.
-//
-// Malformed graphs and empty regions produce an empty table so verifiers can
-// own user-facing CFG diagnostics.
-iree_status_t loom_cfg_condition_fact_table_compute(
+  // Immutable set nodes shared by every relation and Boolean root.
+  loom_condition_relation_set_index_t set_index;
+
+  // Block views followed by separately retained predecessor-edge views.
+  const loom_cfg_condition_relation_view_t* views;
+
+  // View ordinal for each stable CFG edge, or UINT32_MAX when unavailable.
+  const uint32_t* edge_view_indices;
+
+  // Number of entries in views.
+  uint32_t view_count;
+
+  // Number of leading block views in views.
+  uint32_t block_count;
+
+  // Number of entries in edge_view_indices.
+  uint32_t edge_count;
+} loom_cfg_condition_relation_table_t;
+
+// Visits one strongest retained relation incident to an anchored operand.
+// Returning false stops iteration.
+typedef bool (*loom_cfg_condition_relation_visit_fn_t)(
+    void* user_data, const loom_condition_integer_relation_t* relation);
+
+// Computes complete block-entry and predecessor-edge condition facts for
+// |graph| with finite monotone propagation. The local value domain and exact
+// identity table must cover the graph and remain valid for the returned table
+// lifetime. Construction scratch is released before returning; only compact
+// immutable views remain in |arena|.
+iree_status_t loom_cfg_condition_relation_table_compute(
     const loom_module_t* module, const loom_cfg_graph_t* graph,
     const loom_value_fact_table_t* fact_table,
-    const loom_dominance_info_t* dominance, iree_arena_allocator_t* arena,
-    loom_cfg_condition_fact_table_t* out_table);
+    const loom_dominance_info_t* dominance,
+    loom_local_value_domain_t* value_domain,
+    const loom_cfg_value_identity_table_t* identities,
+    iree_arena_allocator_t* arena,
+    loom_cfg_condition_relation_table_t* out_table);
 
-// Returns the condition fact set for |block_index|, or NULL if unavailable.
-const loom_cfg_block_entry_condition_facts_t*
-loom_cfg_condition_fact_table_block(
-    const loom_cfg_condition_fact_table_t* table, uint16_t block_index);
+// Returns the immutable facts at |block_index|, or NULL when unavailable.
+const loom_cfg_condition_relation_view_t*
+loom_cfg_condition_relation_table_block(
+    const loom_cfg_condition_relation_table_t* table, uint16_t block_index);
+
+// Returns the immutable facts along |edge_index| after payload projection, or
+// NULL when unavailable.
+const loom_cfg_condition_relation_view_t*
+loom_cfg_condition_relation_table_edge(
+    const loom_cfg_condition_relation_table_t* table,
+    loom_cfg_edge_index_t edge_index);
+
+// Returns true when |value_id| has one exact Boolean result in |view|.
+bool loom_cfg_condition_relation_view_query_boolean(
+    const loom_cfg_condition_relation_table_t* table,
+    const loom_cfg_condition_relation_view_t* view, loom_value_id_t value_id,
+    bool* out_value);
+
+// Returns the comparison outcomes excluded by |view| for an ordered operand
+// pair. Exact ambient integer facts participate in operand identity so an SSA
+// constant and its literal value query the same retained relation.
+loom_condition_relation_outcome_bits_t
+loom_cfg_condition_relation_view_query_excluded_outcomes(
+    const loom_cfg_condition_relation_table_t* table,
+    const loom_cfg_condition_relation_view_t* view,
+    const loom_value_fact_table_t* fact_table,
+    loom_condition_integer_operand_t left,
+    loom_condition_integer_operand_t right);
+
+// Visits retained relations incident to |anchor| without scanning unrelated
+// rows. Exact ambient integer facts participate in operand identity. Returns
+// false when |visit| stops iteration.
+bool loom_cfg_condition_relation_view_for_each_while(
+    const loom_cfg_condition_relation_table_t* table,
+    const loom_cfg_condition_relation_view_t* view,
+    const loom_value_fact_table_t* fact_table,
+    loom_condition_integer_operand_t anchor,
+    loom_cfg_condition_relation_visit_fn_t visit, void* user_data);
 
 #ifdef __cplusplus
 }

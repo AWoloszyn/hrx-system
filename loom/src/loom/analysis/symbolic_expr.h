@@ -33,7 +33,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
-#include "loom/analysis/condition_facts.h"
+#include "loom/analysis/condition_fact_scope.h"
 #include "loom/ir/facts.h"
 #include "loom/ir/ir.h"
 #include "loom/ir/module.h"
@@ -123,9 +123,9 @@ typedef struct loom_symbolic_expr_context_t {
   // Optional direct CFG representatives for block argument expansion.
   const loom_cfg_value_identity_table_t* value_identities;
 
-  // Optional edge-local facts applied during branch-sensitive proofs. Reset
-  // the context after changing this pointer or the facts it references.
-  const loom_condition_fact_set_t* condition_facts;
+  // Optional lexical condition scope applied during branch-sensitive proofs.
+  // Reset the context after changing this pointer or referenced facts.
+  const loom_condition_fact_scope_t* condition_scope;
 
   // Reusable traversal state for branch-sensitive fact queries.
   loom_condition_query_t condition_query;

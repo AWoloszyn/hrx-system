@@ -113,7 +113,8 @@ loom_cc_library(
     ::block_fusion
     iree::base
     loom::analysis::cfg_condition_facts
-    loom::analysis::condition_facts
+    loom::analysis::cfg_value_identity
+    loom::analysis::condition_fact_scope
     loom::ir
     loom::ir::facts
     loom::ops::cfg

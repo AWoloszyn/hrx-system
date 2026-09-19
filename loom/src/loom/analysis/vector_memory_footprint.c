@@ -13,6 +13,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/analysis/cfg_condition_facts.h"
 #include "loom/analysis/cfg_value_identity.h"
+#include "loom/analysis/condition_fact_scope.h"
 #include "loom/analysis/condition_facts.h"
 #include "loom/analysis/memory_root_bounds.h"
 #include "loom/analysis/symbolic_expr.h"
@@ -1589,95 +1590,36 @@ static iree_status_t loom_vector_memory_footprint_ensure_dominance(
   return iree_ok_status();
 }
 
-static void loom_vector_memory_footprint_append_condition_facts(
-    const loom_condition_fact_set_t* source,
-    loom_condition_fact_set_t* destination) {
-  if (!source) {
-    return;
-  }
-  for (iree_host_size_t i = 0; i < source->integer_relation_count &&
-                               destination->integer_relation_count <
-                                   destination->integer_relation_capacity;
-       ++i) {
-    destination->integer_relations[destination->integer_relation_count++] =
-        source->integer_relations[i];
-  }
-}
-
-static iree_status_t loom_vector_memory_footprint_condition_facts_copy(
-    loom_vector_memory_footprint_state_t* state,
-    const loom_condition_fact_set_t* base,
-    const loom_condition_fact_set_t* additional,
-    const loom_condition_fact_set_t** out_facts) {
-  *out_facts = base;
-  iree_host_size_t base_relation_count =
-      base ? base->integer_relation_count : 0;
-  iree_host_size_t additional_relation_count =
-      additional ? additional->integer_relation_count : 0;
-  if (additional_relation_count == 0) {
-    *out_facts = base_relation_count == 0 ? NULL : base;
-    return iree_ok_status();
-  }
-  iree_host_size_t relation_count =
-      base_relation_count + additional_relation_count;
-  if (relation_count == 0) {
-    *out_facts = NULL;
-    return iree_ok_status();
-  }
-
-  loom_condition_fact_set_t* facts = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate(state->arena, sizeof(*facts), (void**)&facts));
-  loom_condition_integer_relation_t* relations = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      state->arena, relation_count, sizeof(*relations), (void**)&relations));
-  loom_condition_fact_set_initialize(relations, relation_count, facts);
-  loom_vector_memory_footprint_append_condition_facts(base, facts);
-  loom_vector_memory_footprint_append_condition_facts(additional, facts);
-  *out_facts = facts;
-  return iree_ok_status();
-}
-
 static iree_status_t
-loom_vector_memory_footprint_condition_facts_for_assumption(
+loom_vector_memory_footprint_condition_scope_for_assumption(
     loom_vector_memory_footprint_state_t* state,
-    const loom_condition_fact_set_t* base, loom_value_id_t condition,
-    bool assumed_truth, const loom_condition_fact_set_t** out_facts) {
-  loom_condition_integer_relation_t relation_storage[32];
-  loom_condition_fact_set_t additional;
-  loom_condition_fact_set_initialize(
-      relation_storage, IREE_ARRAYSIZE(relation_storage), &additional);
-  if (state->fact_table) {
-    bool complete = false;
-    IREE_RETURN_IF_ERROR(loom_condition_facts_query(
-        &state->expression_context.condition_query, state->fact_table,
-        condition, assumed_truth, &additional, &complete));
-    // An incomplete result still contains sound consequences of the guard.
-    // Retain them when the guard has more relations than the output capacity.
-    (void)complete;
+    const loom_condition_fact_scope_t* parent, loom_value_id_t condition,
+    bool assumed_truth, const loom_condition_fact_scope_t** out_scope) {
+  *out_scope = parent;
+  if (!state->fact_table) {
+    return iree_ok_status();
   }
-  return loom_vector_memory_footprint_condition_facts_copy(
-      state, base, &additional, out_facts);
-}
-
-static iree_status_t loom_vector_memory_footprint_condition_facts_for_cfg_block(
-    loom_vector_memory_footprint_state_t* state,
-    const loom_condition_fact_set_t* base,
-    const loom_cfg_block_entry_condition_facts_t* block_facts,
-    const loom_condition_fact_set_t** out_facts) {
-  loom_condition_fact_set_t additional = {
-      .integer_relations =
-          (loom_condition_integer_relation_t*)(block_facts
-                                                   ? block_facts
-                                                         ->integer_relations
-                                                   : NULL),
-      .integer_relation_count =
-          block_facts ? block_facts->integer_relation_count : 0,
-      .integer_relation_capacity =
-          block_facts ? block_facts->integer_relation_count : 0,
-  };
-  return loom_vector_memory_footprint_condition_facts_copy(
-      state, base, &additional, out_facts);
+  loom_condition_derivation_t derivation;
+  loom_condition_derivation_initialize(state->arena, &derivation);
+  IREE_RETURN_IF_ERROR(loom_condition_facts_query_complete(
+      &state->expression_context.condition_query, state->fact_table, condition,
+      assumed_truth, &derivation));
+  if (derivation.integer_facts.integer_relation_count == 0 &&
+      derivation.boolean_fact_count == 0) {
+    return iree_ok_status();
+  }
+  loom_condition_derivation_t* retained_derivation = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(state->arena,
+                                           sizeof(*retained_derivation),
+                                           (void**)&retained_derivation));
+  *retained_derivation = derivation;
+  loom_condition_fact_scope_t* scope = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate(state->arena, sizeof(*scope), (void**)&scope));
+  loom_condition_fact_scope_initialize_local(parent, retained_derivation,
+                                             scope);
+  *out_scope = scope;
+  return iree_ok_status();
 }
 
 typedef enum loom_vector_memory_footprint_frame_kind_e {
@@ -1688,8 +1630,8 @@ typedef enum loom_vector_memory_footprint_frame_kind_e {
 typedef struct loom_vector_memory_footprint_frame_t {
   // Frame category.
   loom_vector_memory_footprint_frame_kind_t kind;
-  // Path facts active while processing this frame.
-  const loom_condition_fact_set_t* condition_facts;
+  // Lexical condition facts active while processing this frame.
+  const loom_condition_fact_scope_t* condition_scope;
   union {
     // Region waiting to expand into block frames.
     loom_region_t* region;
@@ -1749,7 +1691,7 @@ static void loom_vector_memory_footprint_stack_pop(
 static iree_status_t loom_vector_memory_footprint_push_region(
     loom_vector_memory_footprint_state_t* state,
     loom_vector_memory_footprint_stack_t* stack, loom_region_t* region,
-    const loom_condition_fact_set_t* condition_facts) {
+    const loom_condition_fact_scope_t* condition_scope) {
   if (!region) {
     return iree_ok_status();
   }
@@ -1757,7 +1699,7 @@ static iree_status_t loom_vector_memory_footprint_push_region(
       state->arena, stack,
       (loom_vector_memory_footprint_frame_t){
           .kind = LOOM_VECTOR_MEMORY_FOOTPRINT_FRAME_REGION,
-          .condition_facts = condition_facts,
+          .condition_scope = condition_scope,
           .region = region,
       });
 }
@@ -1765,7 +1707,7 @@ static iree_status_t loom_vector_memory_footprint_push_region(
 static iree_status_t loom_vector_memory_footprint_push_block(
     loom_vector_memory_footprint_state_t* state,
     loom_vector_memory_footprint_stack_t* stack, loom_block_t* block,
-    const loom_condition_fact_set_t* condition_facts) {
+    const loom_condition_fact_scope_t* condition_scope) {
   if (!block) {
     return iree_ok_status();
   }
@@ -1773,7 +1715,7 @@ static iree_status_t loom_vector_memory_footprint_push_block(
       state->arena, stack,
       (loom_vector_memory_footprint_frame_t){
           .kind = LOOM_VECTOR_MEMORY_FOOTPRINT_FRAME_BLOCK,
-          .condition_facts = condition_facts,
+          .condition_scope = condition_scope,
           .block =
               {
                   .block = block,
@@ -1785,11 +1727,11 @@ static iree_status_t loom_vector_memory_footprint_push_block(
 static iree_status_t loom_vector_memory_footprint_push_structured_blocks(
     loom_vector_memory_footprint_state_t* state,
     loom_vector_memory_footprint_stack_t* stack, loom_region_t* region,
-    const loom_condition_fact_set_t* condition_facts) {
+    const loom_condition_fact_scope_t* condition_scope) {
   for (iree_host_size_t i = region->block_count; i > 0; --i) {
     IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_push_block(
         state, stack, loom_region_block(region, (uint16_t)(i - 1)),
-        condition_facts));
+        condition_scope));
   }
   return iree_ok_status();
 }
@@ -1797,7 +1739,7 @@ static iree_status_t loom_vector_memory_footprint_push_structured_blocks(
 static iree_status_t loom_vector_memory_footprint_push_cfg_blocks(
     loom_vector_memory_footprint_state_t* state,
     loom_vector_memory_footprint_stack_t* stack, loom_region_t* region,
-    const loom_condition_fact_set_t* condition_facts) {
+    const loom_condition_fact_scope_t* condition_scope) {
   IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_ensure_dominance(state));
 
   const loom_value_fact_cfg_region_t* retained_region =
@@ -1806,16 +1748,19 @@ static iree_status_t loom_vector_memory_footprint_push_cfg_blocks(
   const loom_cfg_graph_t* graph = &retained_region->graph;
   if (graph->malformed) {
     return loom_vector_memory_footprint_push_structured_blocks(
-        state, stack, region, condition_facts);
+        state, stack, region, condition_scope);
   }
   IREE_RETURN_IF_ERROR(loom_cfg_value_identity_table_update(
       &state->value_identities, retained_region, &state->dominance,
       state->arena));
 
-  loom_cfg_condition_fact_table_t condition_fact_table = {0};
-  IREE_RETURN_IF_ERROR(loom_cfg_condition_fact_table_compute(
-      state->module, graph, state->fact_table, &state->dominance, state->arena,
-      &condition_fact_table));
+  loom_cfg_condition_relation_table_t* condition_table = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(
+      state->arena, sizeof(*condition_table), (void**)&condition_table));
+  IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_table_compute(
+      state->module, graph, state->fact_table, &state->dominance,
+      state->value_domain, &state->value_identities, state->arena,
+      condition_table));
   for (iree_host_size_t i = graph->block_count; i > 0; --i) {
     uint16_t block_index = (uint16_t)(i - 1);
     if (!loom_cfg_graph_block_is_reachable(graph, block_index)) {
@@ -1825,15 +1770,23 @@ static iree_status_t loom_vector_memory_footprint_push_cfg_blocks(
     if (!block) {
       continue;
     }
-    const loom_condition_fact_set_t* block_condition_facts = NULL;
-    IREE_RETURN_IF_ERROR(
-        loom_vector_memory_footprint_condition_facts_for_cfg_block(
-            state, condition_facts,
-            loom_cfg_condition_fact_table_block(&condition_fact_table,
-                                                block_index),
-            &block_condition_facts));
+    const loom_cfg_condition_relation_view_t* block_view =
+        loom_cfg_condition_relation_table_block(condition_table, block_index);
+    if (block_view == NULL ||
+        (block_view->integer_relations.entry_count == 0 &&
+         block_view->boolean_values[0] == LOOM_CONDITION_RELATION_SET_EMPTY &&
+         block_view->boolean_values[1] == LOOM_CONDITION_RELATION_SET_EMPTY)) {
+      IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_push_block(
+          state, stack, block, condition_scope));
+      continue;
+    }
+    loom_condition_fact_scope_t* block_scope = NULL;
+    IREE_RETURN_IF_ERROR(iree_arena_allocate(state->arena, sizeof(*block_scope),
+                                             (void**)&block_scope));
+    loom_condition_fact_scope_initialize_indexed(
+        condition_scope, condition_table, block_view, block_scope);
     IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_push_block(
-        state, stack, block, block_condition_facts));
+        state, stack, block, block_scope));
   }
   return iree_ok_status();
 }
@@ -1841,51 +1794,51 @@ static iree_status_t loom_vector_memory_footprint_push_cfg_blocks(
 static iree_status_t loom_vector_memory_footprint_expand_region(
     loom_vector_memory_footprint_state_t* state,
     loom_vector_memory_footprint_stack_t* stack, loom_region_t* region,
-    const loom_condition_fact_set_t* condition_facts) {
+    const loom_condition_fact_scope_t* condition_scope) {
   if (iree_any_bit_set(region->flags, LOOM_REGION_INSTANCE_FLAG_CFG)) {
     return loom_vector_memory_footprint_push_cfg_blocks(state, stack, region,
-                                                        condition_facts);
+                                                        condition_scope);
   }
   return loom_vector_memory_footprint_push_structured_blocks(
-      state, stack, region, condition_facts);
+      state, stack, region, condition_scope);
 }
 
 static iree_status_t loom_vector_memory_footprint_push_op_regions(
     loom_vector_memory_footprint_state_t* state,
     loom_vector_memory_footprint_stack_t* stack, loom_op_t* op,
-    const loom_condition_fact_set_t* condition_facts) {
+    const loom_condition_fact_scope_t* condition_scope) {
   if (loom_scf_if_isa(op)) {
-    const loom_condition_fact_set_t* else_facts = NULL;
+    const loom_condition_fact_scope_t* else_scope = NULL;
     IREE_RETURN_IF_ERROR(
-        loom_vector_memory_footprint_condition_facts_for_assumption(
-            state, condition_facts, loom_scf_if_condition(op),
-            /*assumed_truth=*/false, &else_facts));
+        loom_vector_memory_footprint_condition_scope_for_assumption(
+            state, condition_scope, loom_scf_if_condition(op),
+            /*assumed_truth=*/false, &else_scope));
     IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_push_region(
-        state, stack, loom_scf_if_else_region(op), else_facts));
-    const loom_condition_fact_set_t* then_facts = NULL;
+        state, stack, loom_scf_if_else_region(op), else_scope));
+    const loom_condition_fact_scope_t* then_scope = NULL;
     IREE_RETURN_IF_ERROR(
-        loom_vector_memory_footprint_condition_facts_for_assumption(
-            state, condition_facts, loom_scf_if_condition(op),
-            /*assumed_truth=*/true, &then_facts));
+        loom_vector_memory_footprint_condition_scope_for_assumption(
+            state, condition_scope, loom_scf_if_condition(op),
+            /*assumed_truth=*/true, &then_scope));
     return loom_vector_memory_footprint_push_region(
-        state, stack, loom_scf_if_then_region(op), then_facts);
+        state, stack, loom_scf_if_then_region(op), then_scope);
   }
 
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = op->region_count; i > 0; --i) {
     IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_push_region(
-        state, stack, regions[i - 1], condition_facts));
+        state, stack, regions[i - 1], condition_scope));
   }
   return iree_ok_status();
 }
 
-static void loom_vector_memory_footprint_activate_condition_facts(
+static void loom_vector_memory_footprint_activate_condition_scope(
     loom_vector_memory_footprint_state_t* state,
-    const loom_condition_fact_set_t* condition_facts) {
-  if (state->expression_context.condition_facts == condition_facts) {
+    const loom_condition_fact_scope_t* condition_scope) {
+  if (state->expression_context.condition_scope == condition_scope) {
     return;
   }
-  state->expression_context.condition_facts = condition_facts;
+  state->expression_context.condition_scope = condition_scope;
   loom_symbolic_expr_context_reset(&state->expression_context);
 }
 
@@ -1895,7 +1848,7 @@ static iree_status_t loom_vector_memory_footprint_check_with_stack(
   IREE_RETURN_IF_ERROR(
       loom_vector_memory_footprint_stack_initialize(state->arena, &stack));
   IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_push_region(
-      state, &stack, root_region, /*condition_facts=*/NULL));
+      state, &stack, root_region, /*condition_scope=*/NULL));
 
   while (stack.count > 0) {
     if (loom_vector_memory_footprint_should_suppress_error(state)) {
@@ -1905,10 +1858,11 @@ static iree_status_t loom_vector_memory_footprint_check_with_stack(
         loom_vector_memory_footprint_stack_top(&stack);
     if (frame->kind == LOOM_VECTOR_MEMORY_FOOTPRINT_FRAME_REGION) {
       loom_region_t* region = frame->region;
-      const loom_condition_fact_set_t* condition_facts = frame->condition_facts;
+      const loom_condition_fact_scope_t* condition_scope =
+          frame->condition_scope;
       loom_vector_memory_footprint_stack_pop(&stack);
       IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_expand_region(
-          state, &stack, region, condition_facts));
+          state, &stack, region, condition_scope));
       continue;
     }
 
@@ -1918,8 +1872,8 @@ static iree_status_t loom_vector_memory_footprint_check_with_stack(
       continue;
     }
     frame->block.op = op->next_op;
-    loom_vector_memory_footprint_activate_condition_facts(
-        state, frame->condition_facts);
+    loom_vector_memory_footprint_activate_condition_scope(
+        state, frame->condition_scope);
 
     loom_vector_memory_footprint_access_t access = {0};
     if (loom_vector_memory_footprint_describe_op(state, op, &access)) {
@@ -1930,7 +1884,7 @@ static iree_status_t loom_vector_memory_footprint_check_with_stack(
       }
     }
     IREE_RETURN_IF_ERROR(loom_vector_memory_footprint_push_op_regions(
-        state, &stack, op, frame->condition_facts));
+        state, &stack, op, frame->condition_scope));
   }
   return iree_ok_status();
 }

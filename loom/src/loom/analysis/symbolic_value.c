@@ -156,7 +156,7 @@ static iree_status_t loom_symbolic_expr_condition_fact_frame_begin(
     uint8_t remaining_depth, loom_value_facts_t* out_facts,
     loom_symbolic_expr_condition_fact_frame_t* out_frame, bool* out_pending) {
   *out_pending = false;
-  if (!context->condition_facts || !context->module || !context->fact_table ||
+  if (!context->condition_scope || !context->module || !context->fact_table ||
       remaining_depth == 0 || value_id >= context->module->values.count) {
     return loom_symbolic_expr_context_lookup_facts(context, value_id,
                                                    out_facts);
@@ -294,8 +294,8 @@ static iree_status_t loom_symbolic_value_lookup_condition_refined_facts_bounded(
     }
 
     loom_value_facts_t inferred_facts = result_facts[frame->result_index];
-    loom_condition_fact_set_apply_to_value_facts(
-        context->condition_facts, context->fact_table, frame->value_id,
+    loom_condition_fact_scope_apply_to_value_facts(
+        context->condition_scope, context->fact_table, frame->value_id,
         &inferred_facts);
     status = loom_symbolic_value_apply_identity_chain_predicates_to_facts(
         context, frame->value_id, &inferred_facts);
@@ -1785,8 +1785,8 @@ iree_status_t loom_symbolic_value_prove_relation(
           },
   };
   bool condition_result = false;
-  if (loom_condition_fact_set_proves_integer_relation(
-          context->condition_facts, context->fact_table, &queried_relation,
+  if (loom_condition_fact_scope_proves_integer_relation(
+          context->condition_scope, context->fact_table, &queried_relation,
           &condition_result)) {
     *out_result =
         condition_result ? LOOM_SYMBOLIC_PROOF_TRUE : LOOM_SYMBOLIC_PROOF_FALSE;
