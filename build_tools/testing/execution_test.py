@@ -177,6 +177,72 @@ class ExecutionUnitTest(unittest.TestCase):
                     [{"path": str(actual_path), "equals": str(expected_path)}],
                 )
 
+    def test_file_content_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "report.json"
+            path.write_text('{"count":5,"unknown":false}\n', encoding="utf-8")
+            runner = execution.ExecutionRunner(tools={})
+            for expectation in (
+                {"contains": ['"count":5', {"regex": '"unknown":false'}]},
+                {"not_contains": ['"count":0', {"regex": '"unknown":true'}]},
+                {"contains": {"unordered": ['"unknown":false', '"count":5']}},
+                {
+                    "normalize": [
+                        {"kind": "regex", "pattern": "5", "replacement": "N"}
+                    ],
+                    "contains": ['"count":N'],
+                },
+            ):
+                with self.subTest(expectation=expectation):
+                    runner._check_files(
+                        "case", "step", [{"path": str(path), **expectation}]
+                    )
+            for expectation in (
+                {"contains": ['"count":0']},
+                {"contains": [{"regex": '"unknown":true'}]},
+                {"not_contains": ['"count":5']},
+                {"not_contains": [{"regex": '"unknown":false'}]},
+                {"contains": ['"unknown":false', '"count":5']},
+                {"empty": True},
+            ):
+                with self.subTest(expectation=expectation):
+                    with self.assertRaises(execution.CaseFailure):
+                        runner._check_files(
+                            "case", "step", [{"path": str(path), **expectation}]
+                        )
+
+    def test_file_checks_reject_unknown_expectations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "report.json"
+            path.write_text("{}", encoding="utf-8")
+            runner = execution.ExecutionRunner(tools={})
+            with self.assertRaisesRegex(execution.SchemaError, "unknown.*contain"):
+                runner._check_files(
+                    "case", "step", [{"path": str(path), "contain": ["count"]}]
+                )
+
+    def test_file_existence_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "artifact.bin"
+            runner = execution.ExecutionRunner(tools={})
+            runner._check_files("case", "step", [{"path": str(path), "exists": False}])
+            with self.assertRaisesRegex(execution.CaseFailure, "to exist"):
+                runner._check_files("case", "step", [{"path": str(path)}])
+            path.write_bytes(b"\x00\xff")
+            runner._check_files(
+                "case", "step", [{"path": str(path), "non_empty": True}]
+            )
+            with self.assertRaisesRegex(execution.CaseFailure, "not to exist"):
+                runner._check_files(
+                    "case", "step", [{"path": str(path), "exists": False}]
+                )
+            with self.assertRaisesRegex(execution.SchemaError, "content.*absent"):
+                runner._check_files(
+                    "case",
+                    "step",
+                    [{"path": str(path), "exists": False, "contains": ["count"]}],
+                )
+
     def test_sanitizer_env_resolves_suppressions_runfile(self):
         with tempfile.TemporaryDirectory() as directory:
             runfiles_dir = Path(directory)

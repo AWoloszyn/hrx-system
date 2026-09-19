@@ -56,6 +56,7 @@ loom_cc_library(
     loom::analysis::condition_facts
     loom::analysis::contract_vector
     loom::analysis::kernel_async_legality
+    loom::analysis::loop_domain
     loom::analysis::native_layout
     loom::analysis::symbol_facts
     loom::analysis::symbolic_expr

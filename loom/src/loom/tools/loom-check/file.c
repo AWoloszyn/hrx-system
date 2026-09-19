@@ -218,7 +218,8 @@ static iree_status_t loom_check_process_file(
         (options->json_output_mode == LOOM_CHECK_JSON_OUTPUT_ALL ||
          (options->json_output_mode == LOOM_CHECK_JSON_OUTPUT_FAILURES &&
           results[i].final_outcome == LOOM_CHECK_FAIL));
-    if ((wants_json_case || updates) && results[i].has_actual_output) {
+    if ((wants_json_case || updates) && results[i].has_actual_output &&
+        !iree_all_bits_set(test_case->output_flags, LOOM_TEST_OUTPUT_CHECKS)) {
       iree_string_view_t stripped_expected_trimmed =
           iree_string_view_trim(test_case->expected);
       iree_string_view_t actual_output =

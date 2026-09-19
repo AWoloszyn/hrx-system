@@ -146,6 +146,7 @@ loom_cc_library(
     iree::base
     iree::base::internal
     loom::analysis::liveness
+    loom::analysis::loop_domain
     loom::codegen::low::descriptors
     loom::codegen::low::diagnostics
     loom::codegen::low::frame

@@ -13,8 +13,10 @@ loom_check_test_suite(
   NAME
     core_test
   SRCS
+    "checks.loom-test"
     "emit.loom-test"
     "low_asm.loom-test"
+    "low_report.loom-test"
     "pass.loom-test"
     "requires.loom-test"
     "roundtrip.loom-test"

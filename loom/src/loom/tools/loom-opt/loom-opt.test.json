@@ -229,7 +229,7 @@
         {
           "path": "{tmp}/pass.repro",
           "contains": [
-            "\"status\": {\"code\":",
+            {"regex": "\"status\"\\s*:\\s*\\{\\s*\"code\":"},
             "\"name\":"
           ]
         },

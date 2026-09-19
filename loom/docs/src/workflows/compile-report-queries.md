@@ -416,6 +416,12 @@ Top-level economics separate authored logical traffic from target-Low issued
 traffic. Dynamic counts and interval envelopes appear only when the compiler
 proves their multiplicity and address coverage.
 
+Counts for raw CFG loops preserve comparison signedness and the target's
+independent `index` and `offset` widths. An exact count requires the counter to
+reach the exit test without wrapping, including its final increment. When that
+proof is unavailable, the dynamic count is unknown; it does not mean zero
+traffic. A proven zero-trip loop has zero body traffic.
+
 `economics.memory.per_workitem_issued` and
 `economics.memory.dispatch_issued` estimate target-Low dynamic issued traffic.
 They count modeled operation effects and descriptor widths rather than cache

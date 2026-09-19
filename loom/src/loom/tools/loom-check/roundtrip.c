@@ -8,6 +8,7 @@
 #include "loom/format/text/parser.h"
 #include "loom/format/text/printer.h"
 #include "loom/ir/module.h"
+#include "loom/tools/loom-check/comparison.h"
 #include "loom/tools/loom-check/execute.h"
 
 static loom_text_print_flags_t loom_check_roundtrip_print_flags(
@@ -82,30 +83,5 @@ iree_status_t loom_check_execute_roundtrip(
   IREE_RETURN_IF_ERROR(print_status);
   result->has_actual_output = true;
 
-  // Remove comments from the expected section for comparison. Comment lines
-  // are omitted instead of replaced with blank placeholders: source-line
-  // fidelity matters while parsing, but canonical output owns its spacing.
-  iree_string_builder_t stripped_expected;
-  iree_string_builder_initialize(allocator, &stripped_expected);
-  IREE_RETURN_IF_ERROR(
-      loom_test_file_remove_comments(test_case->expected, &stripped_expected));
-
-  // Compare printed output against expected (trimmed to ignore trailing
-  // whitespace differences).
-  iree_string_view_t actual_trimmed =
-      iree_string_view_trim(iree_string_builder_view(&result->actual_output));
-  iree_string_view_t expected_trimmed =
-      iree_string_view_trim(iree_string_builder_view(&stripped_expected));
-
-  iree_status_t status = iree_ok_status();
-  if (iree_string_view_equal(actual_trimmed, expected_trimmed)) {
-    result->raw_outcome = LOOM_CHECK_PASS;
-  } else {
-    result->raw_outcome = LOOM_CHECK_FAIL;
-    status = loom_check_result_record_diff(expected_trimmed, actual_trimmed,
-                                           allocator, result);
-  }
-
-  iree_string_builder_deinitialize(&stripped_expected);
-  return status;
+  return loom_check_compare_output(test_case, allocator, result);
 }

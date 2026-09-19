@@ -1,0 +1,262 @@
+// RUN: with-checks emit low-compile-report @signed_inclusive
+
+// Signed inclusive bounds execute three body stores and one exit store.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @signed_inclusive(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 4294967295
+  %end = s_mov_b32 1
+  %step = s_mov_b32 1
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_le_i32 %counter, %end
+  low.cond_br %more, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: dynamic_instruction_mix * global_store=4 *
+
+// ====
+
+// RUN: with-checks emit low-compile-report @equality_guard
+
+// Equality is not an upper-bound guard; the recognizer must leave it unknown.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @equality_guard(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 0
+  %end = s_mov_b32 0
+  %step = s_mov_b32 1
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_eq_i32 %counter, %end
+  low.cond_br %more, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: static_instruction_mix * global_store=2 *
+CHECK-NOT: COMPILE-REPORT: dynamic_instruction_mix *
+
+// ====
+
+// RUN: with-checks emit low-compile-report @unsigned_empty
+
+// The first unsigned guard is false; only the exit store executes.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @unsigned_empty(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 4294967295
+  %end = s_mov_b32 4
+  %step = s_mov_b32 1
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_lt_u32 %counter, %end
+  low.cond_br %more, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: dynamic_instruction_mix * global_store=1 *
+
+// ====
+
+// RUN: with-checks emit low-compile-report @signed_negative
+
+// The signed guard executes five body stores and one exit store.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @signed_negative(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 4294967295
+  %end = s_mov_b32 4
+  %step = s_mov_b32 1
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_lt_i32 %counter, %end
+  low.cond_br %more, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: dynamic_instruction_mix * global_store=6 *
+
+// ====
+
+// RUN: with-checks emit low-compile-report @unsigned_sign_crossing
+
+// Unsigned progress crosses the sign bit and includes a partial final step.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @unsigned_sign_crossing(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 2147483646
+  %end = s_mov_b32 2147483651
+  %step = s_mov_b32 2
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_lt_u32 %counter, %end
+  low.cond_br %more, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: dynamic_instruction_mix * global_store=4 *
+
+// ====
+
+// RUN: with-checks emit low-compile-report @inverted_guard
+
+// A true edge to the exit must not be interpreted as a counted loop body.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @inverted_guard(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 0
+  %end = s_mov_b32 4
+  %step = s_mov_b32 1
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_lt_u32 %counter, %end
+  low.cond_br %more, ^exit, ^body : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: static_instruction_mix * global_store=2 *
+CHECK-NOT: COMPILE-REPORT: dynamic_instruction_mix *
+
+// ====
+
+// RUN: with-checks emit low-compile-report @signed_terminal_fits
+
+// The terminal increment fits exactly; one body store and one exit store.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @signed_terminal_fits(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 2147483645
+  %end = s_mov_b32 2147483647
+  %step = s_mov_b32 2
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_lt_i32 %counter, %end
+  low.cond_br %more, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: dynamic_instruction_mix * global_store=2 *
+
+// ====
+
+// RUN: with-checks emit low-compile-report @signed_terminal_wraps
+
+// Signed terminal overflow cannot establish a finite execution count.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @signed_terminal_wraps(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 2147483646
+  %end = s_mov_b32 2147483647
+  %step = s_mov_b32 2
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_lt_i32 %counter, %end
+  low.cond_br %more, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: static_instruction_mix * global_store=2 *
+CHECK-NOT: COMPILE-REPORT: dynamic_instruction_mix *
+
+// ====
+
+// RUN: with-checks emit low-compile-report @unsigned_inclusive_maximum
+
+// An inclusive unsigned maximum guard stays true after the counter wraps.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @unsigned_inclusive_maximum(%address: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
+  %begin = s_mov_b32 4294967294
+  %end = s_mov_b32 4294967295
+  %step = s_mov_b32 1
+  low.br ^header(%begin: reg<amdgpu.sgpr>)
+^header(%counter: reg<amdgpu.sgpr>):
+  %more = s_cmp_le_u32 %counter, %end
+  low.cond_br %more, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %value = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %value, %output
+  %next = s_add_u32 %counter, %step
+  low.br ^header(%next: reg<amdgpu.sgpr>)
+^exit:
+  %final = v_mov_b32_copy %counter
+  global_store_b32_saddr %address, %final, %output
+  return
+}
+
+// ----
+CHECK: COMPILE-REPORT: static_instruction_mix * global_store=2 *
+CHECK-NOT: COMPILE-REPORT: dynamic_instruction_mix *

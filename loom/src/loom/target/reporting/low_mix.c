@@ -8,6 +8,7 @@
 
 #include <string.h>
 
+#include "loom/analysis/loop_domain.h"
 #include "loom/codegen/low/diagnostics.h"
 #include "loom/codegen/low/function.h"
 #include "loom/codegen/low/packet.h"
@@ -598,8 +599,7 @@ static bool loom_target_compile_report_low_header_upper_bound(
     const loom_low_schedule_table_t* schedule,
     const loom_value_fact_table_t* fact_table, const loom_module_t* module,
     const loom_op_t* cond_br_op, loom_value_id_t iv_id,
-    int64_t* out_upper_bound, bool* out_inclusive_bound) {
-  *out_inclusive_bound = false;
+    int64_t* out_upper_bound, loom_loop_bound_flags_t* out_bound_flags) {
   const loom_value_id_t condition = loom_low_cond_br_condition(cond_br_op);
   if (condition >= module->values.count) {
     return false;
@@ -614,13 +614,15 @@ static bool loom_target_compile_report_low_header_upper_bound(
   }
   const iree_string_view_t tag =
       loom_target_compile_report_low_op_semantic_tag(schedule, compare_op);
-  const bool exclusive_upper =
-      iree_string_view_equal(tag, IREE_SV("integer.compare.slt.i32")) ||
-      iree_string_view_equal(tag, IREE_SV("integer.compare.ult.i32"));
-  const bool inclusive_upper =
-      iree_string_view_equal(tag, IREE_SV("integer.compare.sle.i32")) ||
-      iree_string_view_equal(tag, IREE_SV("integer.compare.ule.i32"));
-  if (!exclusive_upper && !inclusive_upper) {
+  if (iree_string_view_equal(tag, IREE_SV("integer.compare.slt.i32"))) {
+    *out_bound_flags = LOOM_LOOP_BOUND_SIGNED;
+  } else if (iree_string_view_equal(tag, IREE_SV("integer.compare.ult.i32"))) {
+    *out_bound_flags = LOOM_LOOP_BOUND_NONE;
+  } else if (iree_string_view_equal(tag, IREE_SV("integer.compare.sle.i32"))) {
+    *out_bound_flags = LOOM_LOOP_BOUND_SIGNED | LOOM_LOOP_BOUND_INCLUSIVE;
+  } else if (iree_string_view_equal(tag, IREE_SV("integer.compare.ule.i32"))) {
+    *out_bound_flags = LOOM_LOOP_BOUND_INCLUSIVE;
+  } else {
     return false;
   }
   loom_value_slice_t operands = loom_low_op_operands(compare_op);
@@ -631,33 +633,6 @@ static bool loom_target_compile_report_low_header_upper_bound(
           fact_table, operands.values[1], out_upper_bound)) {
     return false;
   }
-  *out_inclusive_bound = inclusive_upper;
-  return true;
-}
-
-static bool loom_target_compile_report_low_compute_trip_count(
-    int64_t lower_bound, int64_t upper_bound, bool inclusive_upper_bound,
-    int64_t step, uint64_t* out_trip_count) {
-  *out_trip_count = 0;
-  if (step <= 0) {
-    return false;
-  }
-  if (inclusive_upper_bound) {
-    if (upper_bound == INT64_MAX) {
-      return false;
-    }
-    ++upper_bound;
-  }
-  if (upper_bound <= lower_bound) {
-    return true;
-  }
-  int64_t span = 0;
-  if (!iree_checked_sub_i64(upper_bound, lower_bound, &span)) {
-    return false;
-  }
-  const uint64_t unsigned_span = (uint64_t)span;
-  const uint64_t unsigned_step = (uint64_t)step;
-  *out_trip_count = ((unsigned_span - 1) / unsigned_step) + 1;
   return true;
 }
 
@@ -681,6 +656,18 @@ static bool loom_target_compile_report_low_try_counted_loop(
   const loom_block_t* header = graph->blocks[interval->header_index].block;
   if (header == NULL || header->arg_count == 0 || header->last_op == NULL ||
       !loom_low_cond_br_isa(header->last_op)) {
+    return false;
+  }
+  const uint32_t true_block_index = loom_low_packet_block_index(
+      schedule, loom_low_cond_br_true_dest(header->last_op));
+  const uint32_t false_block_index = loom_low_packet_block_index(
+      schedule, loom_low_cond_br_false_dest(header->last_op));
+  // The recognized comparison must continue the loop on true and leave on
+  // false. The retained interval supplies membership in constant time.
+  if (true_block_index < interval->header_index ||
+      true_block_index > interval->latch_index ||
+      (false_block_index >= interval->header_index &&
+       false_block_index <= interval->latch_index)) {
     return false;
   }
   const loom_value_id_t iv_id = loom_block_arg_id(header, 0);
@@ -728,17 +715,19 @@ static bool loom_target_compile_report_low_try_counted_loop(
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
   int64_t step = 0;
-  bool inclusive_upper_bound = false;
-  bool lower_ok = loom_target_compile_report_value_exact_i64(
-      fact_table, initial_arg, &lower_bound);
-  bool step_ok = loom_target_compile_report_low_add_step(
-      schedule, fact_table, module, body_backedge_arg, iv_id, &step);
-  bool upper_ok = loom_target_compile_report_low_header_upper_bound(
-      schedule, fact_table, module, header->last_op, iv_id, &upper_bound,
-      &inclusive_upper_bound);
-  bool trip_ok = loom_target_compile_report_low_compute_trip_count(
-      lower_bound, upper_bound, inclusive_upper_bound, step, out_trip_count);
-  return lower_ok && step_ok && upper_ok && trip_ok;
+  loom_loop_bound_flags_t bound_flags = LOOM_LOOP_BOUND_NONE;
+  if (!loom_target_compile_report_value_exact_i64(fact_table, initial_arg,
+                                                  &lower_bound) ||
+      !loom_target_compile_report_low_add_step(
+          schedule, fact_table, module, body_backedge_arg, iv_id, &step) ||
+      !loom_target_compile_report_low_header_upper_bound(
+          schedule, fact_table, module, header->last_op, iv_id, &upper_bound,
+          &bound_flags)) {
+    return false;
+  }
+  return loom_loop_domain_trip_count(
+      bound_flags, /*bitwidth=*/32, (uint64_t)lower_bound,
+      (uint64_t)upper_bound, (uint64_t)step, out_trip_count);
 }
 
 static iree_status_t loom_target_compile_report_low_block_multipliers(

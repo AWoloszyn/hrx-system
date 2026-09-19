@@ -99,6 +99,25 @@ TEST_F(LoomTestFileFormatTest, FormatsInputAndPreservesExpectedOutput) {
             "purposefully noncanonical expected output\n");
 }
 
+TEST_F(LoomTestFileFormatTest, FormatsInputAndPreservesChecks) {
+  const iree_string_view_t source = IREE_SV(
+      "// RUN: with-checks pass cse\n\n"
+      "func.def @identity(%value:index)->(index){\n"
+      "func.return %value:index\n}\n\n// ----\n"
+      "// The result matters; operation numbering does not.\n"
+      "CHECK: func.return * : index\nCHECK-NOT: *index.add*\n");
+  const std::string formatted = Format(source);
+  EXPECT_THAT(formatted,
+              HasSubstr("func.def @identity(%value: index) -> (index) {\n"));
+  EXPECT_THAT(
+      formatted,
+      HasSubstr("// ----\n"
+                "// The result matters; operation numbering does not.\n"
+                "CHECK: func.return * : index\nCHECK-NOT: *index.add*\n"));
+  EXPECT_EQ(Format(iree_make_string_view(formatted.data(), formatted.size())),
+            formatted);
+}
+
 TEST_F(LoomTestFileFormatTest, PreservesSourceConversionInputSpelling) {
   const iree_string_view_t source = IREE_SV(
       "// RUN: roundtrip\n"

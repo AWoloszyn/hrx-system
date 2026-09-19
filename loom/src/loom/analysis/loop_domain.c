@@ -82,3 +82,35 @@ bool loom_loop_domain_proven_nonempty(const loom_value_fact_table_t* fact_table,
   }
   return lower_bound.range_hi < upper_bound.range_lo;
 }
+
+bool loom_loop_domain_trip_count(loom_loop_bound_flags_t bound_flags,
+                                 uint8_t bitwidth, uint64_t initial_value,
+                                 uint64_t upper_bound, uint64_t step,
+                                 uint64_t* out_trip_count) {
+  *out_trip_count = 0;
+  const bool is_signed = iree_any_bit_set(bound_flags, LOOM_LOOP_BOUND_SIGNED);
+  const bool is_inclusive =
+      iree_any_bit_set(bound_flags, LOOM_LOOP_BOUND_INCLUSIVE);
+
+  // Flipping the sign bit maps signed order to unsigned order. Modular addition
+  // is unchanged by this rotation, so both comparison domains share one proof.
+  const uint64_t mask = UINT64_MAX >> (64 - bitwidth);
+  const uint64_t sign_bit = is_signed ? UINT64_C(1) << (bitwidth - 1) : 0;
+  const uint64_t initial = (initial_value & mask) ^ sign_bit;
+  const uint64_t upper = (upper_bound & mask) ^ sign_bit;
+  const uint64_t increment = step & mask;
+  if (initial > upper || (initial == upper && !is_inclusive)) {
+    return true;
+  }
+  if (increment == 0 || (is_inclusive && upper == mask)) {
+    return false;
+  }
+
+  const uint64_t distance = upper - initial + (is_inclusive ? 1 : 0);
+  const uint64_t trip_count = (distance - 1) / increment + 1;
+  if (trip_count > (mask - initial) / increment) {
+    return false;
+  }
+  *out_trip_count = trip_count;
+  return true;
+}

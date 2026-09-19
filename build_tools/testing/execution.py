@@ -577,18 +577,54 @@ class ExecutionRunner:
             _as_sequence(value, f"{case_name}:{step_name}.files")
         ):
             spec = _as_mapping(entry, f"{case_name}:{step_name}.files[{index}]")
+            unknown_fields = spec.keys() - {
+                "path",
+                "exists",
+                "equals",
+                "empty",
+                "non_empty",
+                "contains",
+                "not_contains",
+                "normalize",
+            }
+            if unknown_fields:
+                raise SchemaError(
+                    f"{case_name}:{step_name}.files[{index}]: "
+                    f"unknown fields: {', '.join(sorted(unknown_fields))}"
+                )
             path = Path(
                 _as_string(
                     spec.get("path"), f"{case_name}:{step_name}.files[{index}].path"
                 )
             )
-            if spec.get("exists", True) and not path.exists():
+            content_spec = {
+                key: value
+                for key, value in spec.items()
+                if key not in ("path", "exists", "equals")
+            }
+            if spec.get("exists", True) is False:
+                if content_spec or "equals" in spec:
+                    raise SchemaError(
+                        f"{case_name}:{step_name}: cannot check contents of "
+                        f"expected absent file {path}"
+                    )
+                if path.exists():
+                    raise CaseFailure(
+                        f"{case_name}:{step_name}: expected file {path} not to exist"
+                    )
+                continue
+            if not path.exists():
                 raise CaseFailure(
                     f"{case_name}:{step_name}: expected file {path} to exist"
                 )
-            if spec.get("non_empty") is True and path.stat().st_size == 0:
-                raise CaseFailure(
-                    f"{case_name}:{step_name}: expected file {path} to be non-empty"
+            if content_spec:
+                self._check_stream(
+                    case_name,
+                    step_name,
+                    [],
+                    str(path),
+                    path.read_bytes(),
+                    content_spec,
                 )
             if "equals" in spec:
                 expected_path = Path(

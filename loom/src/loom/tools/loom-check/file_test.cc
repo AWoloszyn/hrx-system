@@ -139,6 +139,45 @@ TEST_F(FileTest, FreshTemplatePassesWithoutMutation) {
   EXPECT_EQ(ReadFile(target_path.path()), target_source);
 }
 
+TEST_F(FileTest, UpdatePreservesPassingAndFailingChecks) {
+  iree::testing::TempFilePath path("loom_check_patterns", ".loom-test");
+  const std::string source =
+      "// RUN: with-checks roundtrip\nfunc.def @alpha() {}\n"
+      "// ----\nCHECK: func.def @alpha() {\n"
+      "// ====\nfunc.def @beta() {}\n"
+      "// ----\nCHECK: func.def @wrong() {\n";
+  IREE_ASSERT_OK(WriteFile(path.path(), source));
+  CaseCounts counts;
+  IREE_ASSERT_OK(
+      Process(path.path(), template_root_, /*update=*/true, &counts));
+  EXPECT_EQ(counts.pass_count, 1u);
+  EXPECT_EQ(counts.fail_count, 1u);
+  EXPECT_EQ(ReadFile(path.path()), source);
+}
+
+TEST_F(FileTest, JsonDoesNotSuggestReplacingChecksWithGoldens) {
+  iree::testing::TempFilePath path("loom_check_patterns_json", ".loom-test");
+  const std::string source =
+      "// RUN: with-checks roundtrip\nfunc.def @alpha() {}\n"
+      "// ----\nCHECK: func.def @wrong() {\n";
+  IREE_ASSERT_OK(WriteFile(path.path(), source));
+  loom_check_process_options_t options = {};
+  options.json_enabled = true;
+  options.json_output_mode = LOOM_CHECK_JSON_OUTPUT_ALL;
+  CaseCounts counts;
+  ::testing::internal::CaptureStdout();
+  iree_status_t status = loom_check_read_and_process(
+      StringView(path.path()), &options, &environment_, &context_, &block_pool_,
+      iree_allocator_system(), &counts.pass_count, &counts.fail_count,
+      &counts.skip_count);
+  const std::string output = ::testing::internal::GetCapturedStdout();
+  IREE_ASSERT_OK(status);
+  EXPECT_EQ(counts.fail_count, 1u);
+  EXPECT_THAT(output, HasSubstr("did not match"));
+  EXPECT_THAT(output, HasSubstr("\"update_edit\":null"));
+  EXPECT_EQ(ReadFile(path.path()), source);
+}
+
 TEST_F(FileTest, StaleTemplateFailsBeforeXfailCaseExecution) {
   iree::testing::TempFilePath template_path("loom_check_template",
                                             ".loom-test");

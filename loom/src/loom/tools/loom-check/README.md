@@ -34,6 +34,41 @@ case separators, and expected output.
 
 ## Running And Updating Fixtures
 
+### Focused Output Checks
+
+When only a few properties matter, `with-checks` keeps assertions beside the IR
+without pinning the rest of a report or transformed program:
+
+```text
+// RUN: with-checks compile-report source-to-low,low-dce
+...
+// ----
+CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_write_bytes=20 *
+CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=5
+CHECK-NOT: COMPILE-REPORT: source_low[*] * execution_count=0
+```
+
+Each `CHECK:` must match a whole output line after trimming outer whitespace;
+`CHECK-NOT:` rejects any matching line. Checks are independent and unordered.
+`*` matches any sequence within a line and `?` matches one character. Other
+characters are literal. A terminal `count=5` cannot match `count=50`. Blank lines
+and standalone `//` comments are ignored. At least one positive check is required;
+empty patterns and unknown directives are errors.
+
+This modifier works with every textual-output mode; `verify` uses diagnostic
+annotations. Exact goldens remain useful for canonical formatting and complete
+output contracts. Formatting preserves check text, and `--update` leaves both
+passing and failing checks unchanged. Machine-readable update suggestions also
+omit them: changing an assertion requires an intentional edit.
+
+`compile-report <pipeline>` checks reports from source compilation passes.
+For authored Low assembly, `emit low-compile-report @function` builds the shared
+emission frame and prints its normal report summary, including static and dynamic
+instruction counts. This uses the runner's linked target descriptors and the
+same report collector as native emission.
+
+### Running Fixtures
+
 Use checked-in Bazel test targets for normal verification:
 
 ```bash

@@ -143,6 +143,7 @@ loom_cc_library(
     deps = [
         ":report",
         "//loom/src/loom/analysis:liveness",
+        "//loom/src/loom/analysis:loop_domain",
         "//loom/src/loom/codegen/low:descriptors",
         "//loom/src/loom/codegen/low:diagnostics",
         "//loom/src/loom/codegen/low:frame",

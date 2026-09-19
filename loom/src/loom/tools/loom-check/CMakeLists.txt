@@ -29,15 +29,19 @@ loom_cc_library(
   NAME
     execute
   HDRS
+    "comparison.h"
     "diagnostics.h"
     "execute.h"
     "low_emit.h"
+    "low_report.h"
     "requirements.h"
   SRCS
+    "comparison.c"
     "diagnostics.c"
     "emit.c"
     "execute.c"
     "low_emit.c"
+    "low_report.c"
     "requirements.c"
     "roundtrip.c"
     "verify.c"
@@ -95,6 +99,7 @@ loom_cc_library(
     loom::target::pipeline
     loom::target::predicate
     loom::target::reporting::format
+    loom::target::reporting::low
     loom::target::types
     loom::testing::test_diagnostic
     loom::testing::test_file
@@ -533,6 +538,19 @@ loom_cc_binary(
     loom::target::arch::cmd::check::check_provider
     ${_loom_check_test_platform_deps}
   TESTONLY
+)
+
+loom_cc_test(
+  NAME
+    comparison_test
+  SRCS
+    "comparison_test.cc"
+  DEPS
+    ::execute
+    iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::testing::test_file
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
