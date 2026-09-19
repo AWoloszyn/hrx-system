@@ -18,6 +18,7 @@
 #include "loom/ops/buffer/ops.h"
 #include "loom/ops/cfg/ops.h"
 #include "loom/ops/func/ops.h"
+#include "loom/ops/index/ops.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
@@ -172,9 +173,9 @@ static iree_status_t loom_target_low_legality_emit_target_context_error(
     loom_target_low_legality_context_t* context, const loom_op_t* op,
     const loom_error_def_t* error, const loom_diagnostic_param_t* extra_params,
     iree_host_size_t extra_param_count) {
-  IREE_ASSERT_LE(extra_param_count, 4);
+  IREE_ASSERT_LE(extra_param_count, 5);
   loom_diagnostic_param_t
-      params[LOOM_TARGET_LOW_LEGALITY_CONTEXT_PARAM_COUNT + 4];
+      params[LOOM_TARGET_LOW_LEGALITY_CONTEXT_PARAM_COUNT + 5];
   loom_target_low_legality_make_context_params(context, op, params);
   for (iree_host_size_t i = 0; i < extra_param_count; ++i) {
     params[LOOM_TARGET_LOW_LEGALITY_CONTEXT_PARAM_COUNT + i] = extra_params[i];
@@ -900,6 +901,35 @@ static iree_status_t loom_target_low_legality_verify_op_class(
 
 static iree_status_t loom_target_low_legality_verify_op(
     loom_target_low_legality_context_t* context, const loom_op_t* op) {
+  // Address-domain preconditions apply before target representation selection,
+  // including casts that a target implements as a storage alias. Narrow fixed
+  // integers enter offset by zero extension; i64 and index retain their numeric
+  // value and must already be nonnegative at the source boundary.
+  if (loom_index_cast_isa(op)) {
+    const loom_value_id_t input = loom_index_cast_input(op);
+    const loom_scalar_type_t input_type =
+        loom_type_element_type(loom_module_value_type(context->module, input));
+    const loom_scalar_type_t result_type = loom_type_element_type(
+        loom_module_value_type(context->module, loom_index_cast_result(op)));
+    if (result_type == LOOM_SCALAR_TYPE_OFFSET &&
+        (input_type == LOOM_SCALAR_TYPE_I64 ||
+         input_type == LOOM_SCALAR_TYPE_INDEX)) {
+      const loom_value_facts_t input_facts = loom_value_fact_table_lookup(
+          loom_target_low_legality_fact_table(context), input);
+      if (input_facts.range_lo < 0) {
+        const loom_diagnostic_param_t params[] = {
+            loom_param_string(IREE_SV("operand")),
+            loom_param_string(IREE_SV("input")),
+            loom_param_string(IREE_SV("index_cast.offset_non_negative")),
+            loom_param_i64(0),
+            loom_param_i64(INT64_MAX),
+        };
+        return loom_target_low_legality_emit_target_context_error(
+            context, op, LOOM_ERR_TARGET_005, params, IREE_ARRAYSIZE(params));
+      }
+    }
+  }
+
   // Target contracts and providers own their shape-specific legality. Let them
   // emit precise diagnostics before the generic executable type gate runs.
   bool contract_handled = false;

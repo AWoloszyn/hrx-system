@@ -123,6 +123,7 @@ loom_check_test_suite(
     "test/source_low/packed_payload_offsets.loom-test"
     "test/source_low/rodata.loom-test"
     "test/source_low/scalar_selection.loom-test"
+    "test/source_low/source_low_diagnostics.loom-test"
     "test/source_low/vector_selection.loom-test"
     "test/source_low/view_access.loom-test"
     "test/storage.loom-test"

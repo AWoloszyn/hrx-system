@@ -95,8 +95,8 @@ kernel.def @offset_uniform_add() {
   %base = index.constant 0 : offset
   %inputs = buffer.view %input[%base] : buffer -> view<64xi64>
   %value = view.load %inputs[%lane] : view<64xi64> -> i64
-  %raw_position = index.cast %value : i64 to offset
-  %position = index.assume %raw_position [range(%raw_position, 0, 4294967040)] : offset
+  %raw_position = scalar.assume %value [range(%value, 0, 4294967040)] : i64
+  %position = index.cast %raw_position : i64 to offset
   %step = index.assume %raw_step [range(%raw_step, 0, 255)] : offset
   %increment = index.constant 128 : offset
   %sum_right = index.add %position, %step : offset

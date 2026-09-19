@@ -920,7 +920,6 @@ def _buffer_store_i8_rule(
 def _index_cast_alias_rule(
     input_type: TypePattern,
     result_type: TypePattern,
-    value_guards: tuple[Guard, ...] = (),
 ) -> ValueAliasRule:
     return ValueAliasRule(
         source_op=index.index_cast,
@@ -929,7 +928,6 @@ def _index_cast_alias_rule(
         guards=(
             Guard.value_type("input", input_type),
             Guard.value_type("result", result_type),
-            *value_guards,
         ),
     )
 
@@ -1574,18 +1572,8 @@ def _cases() -> Sequence[ContractCase]:
         _index_cast_alias_rule(_INDEX, _I64),
         _index_cast_alias_rule(_OFFSET, _I64),
         _index_cast_alias_rule(_OFFSET, _INDEX),
-        *(
-            _index_cast_alias_rule(
-                input_type,
-                _OFFSET,
-                (
-                    Guard.value_i64_range(
-                        "input", 0, _I64_MAX, diagnostic=_INDEX_CAST_DIAGNOSTIC
-                    ),
-                ),
-            )
-            for input_type in (_I64, _INDEX)
-        ),
+        _index_cast_alias_rule(_I64, _OFFSET),
+        _index_cast_alias_rule(_INDEX, _OFFSET),
         _conversion_rule(
             index.index_cast,
             _I32,

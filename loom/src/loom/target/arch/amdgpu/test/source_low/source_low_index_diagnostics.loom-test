@@ -81,7 +81,50 @@ amdgpu.target<gfx11-generic> @target
 
 func.def target(@target) @i64_offset_negative_source_rejected(%value: i64) -> (offset) {
   %bounded = scalar.assume %value [range(%value, -1, 4294967295)] : i64
-  // ERROR@+1: AMDGPU/033 {source_type="i64", result_type="offset", carrier_bitwidth="32", required_range_lo="0", required_range_hi="4294967295"}
+  // ERROR@+1: TARGET/005 {op_name="index.cast", subject_role="operand", subject_name="input", constraint_key="index_cast.offset_non_negative", minimum="0", maximum="9223372036854775807"}
   %offset = index.cast %bounded : i64 to offset
   func.return %offset : offset
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @negative_i64_offset() -> (offset) {
+  %source = scalar.constant -6 : i64
+  // ERROR@+1: TARGET/005 {op_name="index.cast", subject_role="operand", subject_name="input", constraint_key="index_cast.offset_non_negative", minimum="0", maximum="9223372036854775807"}
+  %result = index.cast %source : i64 to offset
+  func.return %result : offset
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @offset_requires_source_proof(%input: i64) -> (offset) {
+  // ERROR@+1: TARGET/005 {op_name="index.cast", subject_role="operand", subject_name="input", constraint_key="index_cast.offset_non_negative", minimum="0", maximum="9223372036854775807"}
+  %result = index.cast %input : i64 to offset
+  func.return %result : offset
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @result_assumption_does_not_prove_source(%input: i64) -> (offset) {
+  // ERROR@+1: TARGET/005 {op_name="index.cast", subject_role="operand", subject_name="input", constraint_key="index_cast.offset_non_negative", minimum="0", maximum="9223372036854775807"}
+  %converted = index.cast %input : i64 to offset
+  %result = index.assume %converted [range(%converted, 0, 1023)] : offset
+  func.return %result : offset
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @negative_index_offset(%input: index) -> (offset) {
+  %negative = index.assume %input [range(%input, -7, -1)] : index
+  // ERROR@+1: TARGET/005 {op_name="index.cast", subject_role="operand", subject_name="input", constraint_key="index_cast.offset_non_negative", minimum="0", maximum="9223372036854775807"}
+  %result = index.cast %negative : index to offset
+  func.return %result : offset
 }

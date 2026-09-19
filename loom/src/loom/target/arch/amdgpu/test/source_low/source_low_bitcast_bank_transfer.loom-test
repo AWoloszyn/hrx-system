@@ -36,7 +36,8 @@ amdgpu.target<gfx11-generic> @target
 func.def target(@target) @wide_offset_from_words(%words: vector<2xi32>) -> (offset) {
   %packed = vector.bitcast %words : vector<2xi32> to vector<1xi64>
   %bits = vector.extract %packed[0] : vector<1xi64> -> i64
-  %bytes = index.cast %bits : i64 to offset
+  %address_bits = scalar.assume %bits [range(%bits, 0, 9223372036854775807)] : i64
+  %bytes = index.cast %address_bits : i64 to offset
   func.return %bytes : offset
 }
 

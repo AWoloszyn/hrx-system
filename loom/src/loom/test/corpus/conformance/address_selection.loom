@@ -6,9 +6,10 @@ kernel.def @select_wide_offsets() {
   %width = index.constant 4 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
 } launch(%wide_input: i64, %narrow_input: i64, %choice: i32, %uniform_output: buffer, %varying_output: buffer) {
-  %wide = index.cast %wide_input : i64 to offset
-  %narrow0 = index.cast %narrow_input : i64 to offset
-  %narrow = index.assume %narrow0 [range(%narrow0, 0, 4294967295)] : offset
+  %wide_bits = scalar.assume %wide_input [range(%wide_input, 0, 9223372036854775807)] : i64
+  %wide = index.cast %wide_bits : i64 to offset
+  %narrow_bits = scalar.assume %narrow_input [range(%narrow_input, 0, 4294967295)] : i64
+  %narrow = index.cast %narrow_bits : i64 to offset
   %false_selector = scalar.constant 0 : i32
   %condition = scalar.cmpi ne, %choice, %false_selector : i32
   %selected = scf.select %condition, %wide, %narrow : offset

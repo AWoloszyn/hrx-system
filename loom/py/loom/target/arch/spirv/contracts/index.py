@@ -49,7 +49,6 @@ _OFFSET = Scalar("offset")
 _S32_MIN = -(2**31)
 _S32_MAX = (2**31) - 1
 _U32_MAX = (2**32) - 1
-_I64_MAX = (2**63) - 1
 
 
 def _descriptor(key: str) -> Descriptor:
@@ -401,18 +400,6 @@ def _payload_offset_cast_rules() -> tuple[DescriptorRule, ...]:
                     payload_type,
                     _OFFSET,
                     "spirv.op_bitcast.i64.offset64",
-                    range_guard=Guard.value_i64_range(
-                        "input",
-                        0,
-                        _I64_MAX,
-                        diagnostic=_conversion_range_diagnostic(
-                            "input",
-                            "result",
-                            0,
-                            _I64_MAX,
-                            "index_cast.offset_non_negative",
-                        ),
-                    ),
                 )
             )
             rules.append(
