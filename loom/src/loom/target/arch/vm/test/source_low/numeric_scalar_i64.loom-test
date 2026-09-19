@@ -264,3 +264,89 @@ low.func.def target<vm.core>(@target) abi(vm_function) @scalar_f64_constant_sele
   %bits = value.copy %selected
   return %bits
 }
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @scalar_i64_lanes(%values: vector<2xi64>, %replacement: i64) -> (i64, i64, vector<2xi64>, vector<2xi64>) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %first = vector.extract %values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %second = vector.extract %values[1] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/001 {op_name="vector.insert"}
+  %replace_first = vector.insert %replacement into %values[0] : i64, vector<2xi64>
+  // ERROR@+1: TARGET/001 {op_name="vector.insert"}
+  %replace_second = vector.insert %replacement into %values[1] : i64, vector<2xi64>
+  // ERROR@+2: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xi64>"}
+  // ERROR@+1: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xi64>"}
+  func.return %first, %second, %replace_first, %replace_second : i64, i64, vector<2xi64>, vector<2xi64>
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xf64>"}
+func.def target(@target) @scalar_f64_lanes(%values: vector<2xf64>, %replacement: f64) -> (f64, f64, vector<2xf64>, vector<2xf64>) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %first = vector.extract %values[0] : vector<2xf64> -> f64
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %second = vector.extract %values[1] : vector<2xf64> -> f64
+  // ERROR@+1: TARGET/001 {op_name="vector.insert"}
+  %replace_first = vector.insert %replacement into %values[0] : f64, vector<2xf64>
+  // ERROR@+1: TARGET/001 {op_name="vector.insert"}
+  %replace_second = vector.insert %replacement into %values[1] : f64, vector<2xf64>
+  // ERROR@+2: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xf64>"}
+  // ERROR@+1: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xf64>"}
+  func.return %first, %second, %replace_first, %replace_second : f64, f64, vector<2xf64>, vector<2xf64>
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @scalar_i64_right_shift_select(%value: i64, %condition: i1) -> (i64, i64, i64, i64, i64) {
+  %word_count = scalar.constant 32 : i64
+  %sign_count = scalar.constant 63 : i64
+  %logical_word = scalar.shrui %value, %word_count : i64
+  %signed_word = scalar.shrsi %value, %word_count : i64
+  %logical_sign = scalar.shrui %value, %sign_count : i64
+  %signed_sign = scalar.shrsi %value, %sign_count : i64
+  %selected = scf.select %condition, %logical_word, %signed_word : i64
+  func.return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected : i64, i64, i64, i64, i64
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i64_right_shift_select(%value: reg<vm.value : i64>, %condition: reg<vm.value : i1>) -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  %word_count = constant.i64 32
+  %sign_count = constant.i64 63
+  %logical_word = integer.shift.right.u64 %value, %word_count
+  %signed_word = integer.shift.right.s64 %value, %word_count
+  %logical_sign = integer.shift.right.u64 %value, %sign_count
+  %signed_sign = integer.shift.right.s64 %value, %sign_count
+  %selected = value.select %condition, %logical_word, %signed_word
+  return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
+  %product = scalar.muli %lhs, %rhs : i32
+  %mixed = scalar.xori %product, %rhs : i32
+  %less = scalar.cmpi slt, %lhs, %rhs : i32
+  %selected = scf.select %less, %mixed, %product : i32
+  func.return %selected : i32
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i32_control(%lhs: reg<vm.value : i32>, %rhs: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %product = integer.mul.i32 %lhs, %rhs
+  %mixed = integer.xor.i32 %product, %rhs
+  %less = integer.compare.i32 %lhs, %rhs, 2
+  %selected = value.select %less, %mixed, %product : reg<vm.value : i32>
+  return %selected
+}

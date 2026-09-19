@@ -482,3 +482,90 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_f
   %bits = concat(%17, %19) : (reg<aie2p.er>, reg<aie2p.er>) -> reg<aie2p.er x2>
   return %bits
 }
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @scalar_i64_lanes(%values: vector<2xi64>, %replacement: i64) -> (i64, i64, vector<2xi64>, vector<2xi64>) {
+  %first = vector.extract %values[0] : vector<2xi64> -> i64
+  %second = vector.extract %values[1] : vector<2xi64> -> i64
+  %replace_first = vector.insert %replacement into %values[0] : i64, vector<2xi64>
+  %replace_second = vector.insert %replacement into %values[1] : i64, vector<2xi64>
+  func.return %first, %second, %replace_first, %replace_second : i64, i64, vector<2xi64>, vector<2xi64>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_i64_lanes(%values: reg<aie2p.vec256 x2>, %replacement: reg<aie2p.er x2>) -> (reg<aie2p.er x2>, reg<aie2p.er x2>, reg<aie2p.vec256 x2>, reg<aie2p.vec256 x2>) asm {
+  %first = vextract.64.imm %values, 0
+  %second = vextract.64.imm %values, 1
+  %replace_first = vinsert.64.zero %values, %replacement
+  %19 = mov.short 1
+  %20 = copy %19 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %replace_second = vinsert.64.reg %values, %20, %replacement
+  return %first, %second, %replace_first, %replace_second
+}
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @scalar_f64_lanes(%values: vector<2xf64>, %replacement: f64) -> (f64, f64, vector<2xf64>, vector<2xf64>) {
+  %first = vector.extract %values[0] : vector<2xf64> -> f64
+  %second = vector.extract %values[1] : vector<2xf64> -> f64
+  %replace_first = vector.insert %replacement into %values[0] : f64, vector<2xf64>
+  %replace_second = vector.insert %replacement into %values[1] : f64, vector<2xf64>
+  func.return %first, %second, %replace_first, %replace_second : f64, f64, vector<2xf64>, vector<2xf64>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_f64_lanes(%values: reg<aie2p.vec256 x2>, %replacement: reg<aie2p.er x2>) -> (reg<aie2p.er x2>, reg<aie2p.er x2>, reg<aie2p.vec256 x2>, reg<aie2p.vec256 x2>) asm {
+  %first = vextract.64.imm %values, 0
+  %second = vextract.64.imm %values, 1
+  %replace_first = vinsert.64.zero %values, %replacement
+  %19 = mov.short 1
+  %20 = copy %19 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %replace_second = vinsert.64.reg %values, %20, %replacement
+  return %first, %second, %replace_first, %replace_second
+}
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @scalar_i64_right_shift_select(%value: i64, %condition: i1) -> (i64, i64, i64, i64, i64) {
+  %word_count = scalar.constant 32 : i64
+  %sign_count = scalar.constant 63 : i64
+  // ERROR@+1: TARGET/002 {op_name="scalar.shrui", field_name="lhs", actual_type="i64", expected_type="i32"}
+  %logical_word = scalar.shrui %value, %word_count : i64
+  // ERROR@+1: TARGET/002 {op_name="scalar.shrsi", field_name="lhs", actual_type="i64", expected_type="i32"}
+  %signed_word = scalar.shrsi %value, %word_count : i64
+  // ERROR@+1: TARGET/002 {op_name="scalar.shrui", field_name="lhs", actual_type="i64", expected_type="i32"}
+  %logical_sign = scalar.shrui %value, %sign_count : i64
+  // ERROR@+1: TARGET/002 {op_name="scalar.shrsi", field_name="lhs", actual_type="i64", expected_type="i32"}
+  %signed_sign = scalar.shrsi %value, %sign_count : i64
+  %selected = scf.select %condition, %logical_word, %signed_word : i64
+  func.return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected : i64, i64, i64, i64, i64
+}
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
+  %product = scalar.muli %lhs, %rhs : i32
+  %mixed = scalar.xori %product, %rhs : i32
+  %less = scalar.cmpi slt, %lhs, %rhs : i32
+  %selected = scf.select %less, %mixed, %product : i32
+  func.return %selected : i32
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_i32_control(%lhs: reg<aie2p.er>, %rhs: reg<aie2p.er>) -> (reg<aie2p.er>) asm {
+  %product = mul %lhs, %rhs
+  %mixed = xor %product, %rhs
+  %less = lt %lhs, %rhs
+  %13 = copy %less : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %selected = sel.nez %mixed, %product, %13
+  return %selected
+}

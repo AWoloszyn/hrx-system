@@ -111,6 +111,17 @@ iree_status_t loom_wasm_binary_write_i64_leb(loom_wasm_binary_writer_t* writer,
   return iree_ok_status();
 }
 
+iree_status_t loom_wasm_binary_write_u32_le(loom_wasm_binary_writer_t* writer,
+                                            uint32_t value) {
+  uint8_t data[4] = {
+      (uint8_t)value,
+      (uint8_t)(value >> 8),
+      (uint8_t)(value >> 16),
+      (uint8_t)(value >> 24),
+  };
+  return loom_wasm_binary_write_bytes(writer, data, sizeof(data));
+}
+
 iree_status_t loom_wasm_binary_write_u64_le(loom_wasm_binary_writer_t* writer,
                                             uint64_t value) {
   uint8_t data[8] = {

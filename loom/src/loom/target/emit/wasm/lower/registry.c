@@ -60,25 +60,23 @@ static bool loom_wasm_source_type_supported(void* user_data,
          scalar_type == LOOM_SCALAR_TYPE_F8E5M2;
 }
 
-static bool loom_wasm_type_is_vector_4xi32(loom_type_t type) {
-  return loom_type_is_vector(type) && loom_type_rank(type) == 1 &&
-         loom_type_is_all_static(type) &&
-         loom_type_element_type(type) == LOOM_SCALAR_TYPE_I32 &&
-         loom_type_dim_static_size_at(type, 0) == 4;
-}
-
-static bool loom_wasm_type_is_vector_4xi1(loom_type_t type) {
-  return loom_type_is_vector(type) && loom_type_rank(type) == 1 &&
-         loom_type_is_all_static(type) &&
-         loom_type_element_type(type) == LOOM_SCALAR_TYPE_I1 &&
-         loom_type_dim_static_size_at(type, 0) == 4;
-}
-
-static bool loom_wasm_type_is_vector_4xf32(loom_type_t type) {
-  return loom_type_is_vector(type) && loom_type_rank(type) == 1 &&
-         loom_type_is_all_static(type) &&
-         loom_type_element_type(type) == LOOM_SCALAR_TYPE_F32 &&
-         loom_type_dim_static_size_at(type, 0) == 4;
+static bool loom_wasm_type_is_v128_register(loom_type_t type) {
+  if (!loom_type_is_vector(type) || loom_type_rank(type) != 1 ||
+      !loom_type_is_all_static(type)) {
+    return false;
+  }
+  const int64_t lane_count = loom_type_dim_static_size_at(type, 0);
+  switch (loom_type_element_type(type)) {
+    case LOOM_SCALAR_TYPE_I1:
+    case LOOM_SCALAR_TYPE_I32:
+    case LOOM_SCALAR_TYPE_F32:
+      return lane_count == 4;
+    case LOOM_SCALAR_TYPE_I64:
+    case LOOM_SCALAR_TYPE_F64:
+      return lane_count == 2;
+    default:
+      return false;
+  }
 }
 
 static iree_status_t loom_wasm_make_i32_register_type(
@@ -129,13 +127,7 @@ static iree_status_t loom_wasm_map_type(void* user_data,
   if (loom_wasm_type_is_scalar_f64(source_type)) {
     return loom_wasm_make_f64_register_type(context, out_low_type);
   }
-  if (loom_wasm_type_is_vector_4xi32(source_type)) {
-    return loom_wasm_make_v128_register_type(context, out_low_type);
-  }
-  if (loom_wasm_type_is_vector_4xi1(source_type)) {
-    return loom_wasm_make_v128_register_type(context, out_low_type);
-  }
-  if (loom_wasm_type_is_vector_4xf32(source_type)) {
+  if (loom_wasm_type_is_v128_register(source_type)) {
     return loom_wasm_make_v128_register_type(context, out_low_type);
   }
   return iree_ok_status();

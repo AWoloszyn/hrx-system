@@ -252,3 +252,89 @@ func.def target(@target) @scalar_f64_constant_select_bitcast(%condition: i1, %fa
   %bits = scalar.bitcast %selected : f64 to i64
   func.return %bits : i64
 }
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_i64_lanes(%values: vector<2xi64>, %replacement: i64) -> (i64, i64, vector<2xi64>, vector<2xi64>) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
+  %first = vector.extract %values[0] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
+  %second = vector.extract %values[1] : vector<2xi64> -> i64
+  // ERROR@+1: TARGET/002 {op_name="vector.insert", field_name="value", actual_type="i64", expected_type="i32"}
+  %replace_first = vector.insert %replacement into %values[0] : i64, vector<2xi64>
+  // ERROR@+1: TARGET/002 {op_name="vector.insert", field_name="value", actual_type="i64", expected_type="i32"}
+  %replace_second = vector.insert %replacement into %values[1] : i64, vector<2xi64>
+  func.return %first, %second, %replace_first, %replace_second : i64, i64, vector<2xi64>, vector<2xi64>
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_f64_lanes(%values: vector<2xf64>, %replacement: f64) -> (f64, f64, vector<2xf64>, vector<2xf64>) {
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xf64>", expected_type="vector<4xi32>"}
+  %first = vector.extract %values[0] : vector<2xf64> -> f64
+  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xf64>", expected_type="vector<4xi32>"}
+  %second = vector.extract %values[1] : vector<2xf64> -> f64
+  // ERROR@+1: TARGET/002 {op_name="vector.insert", field_name="value", actual_type="f64", expected_type="i32"}
+  %replace_first = vector.insert %replacement into %values[0] : f64, vector<2xf64>
+  // ERROR@+1: TARGET/002 {op_name="vector.insert", field_name="value", actual_type="f64", expected_type="i32"}
+  %replace_second = vector.insert %replacement into %values[1] : f64, vector<2xf64>
+  func.return %first, %second, %replace_first, %replace_second : f64, f64, vector<2xf64>, vector<2xf64>
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_i64_right_shift_select(%value: i64, %condition: i1) -> (i64, i64, i64, i64, i64) {
+  %word_count = scalar.constant 32 : i64
+  %sign_count = scalar.constant 63 : i64
+  %logical_word = scalar.shrui %value, %word_count : i64
+  %signed_word = scalar.shrsi %value, %word_count : i64
+  %logical_sign = scalar.shrui %value, %sign_count : i64
+  %signed_sign = scalar.shrsi %value, %sign_count : i64
+  %selected = scf.select %condition, %logical_word, %signed_word : i64
+  func.return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected : i64, i64, i64, i64, i64
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_right_shift_select(%value: reg<x86.gpr64>, %condition: reg<x86.gpr32>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %21 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %logical_word = shr.imm.gpr64 %21 {shift = 32}
+  %23 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %signed_word = sar.imm.gpr64 %23 {shift = 32}
+  %25 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %logical_sign = shr.imm.gpr64 %25 {shift = 63}
+  %27 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
+  %signed_sign = sar.imm.gpr64 %27 {shift = 63}
+  %29 = copy %signed_word : reg<x86.gpr64> -> reg<x86.gpr64>
+  %selected = select.gpr64 %condition, %logical_word, %29
+  return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
+  %product = scalar.muli %lhs, %rhs : i32
+  %mixed = scalar.xori %product, %rhs : i32
+  %less = scalar.cmpi slt, %lhs, %rhs : i32
+  %selected = scf.select %less, %mixed, %product : i32
+  func.return %selected : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i32_control(%lhs: reg<x86.gpr32>, %rhs: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %10 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
+  %product = imul.gpr32 %10, %rhs
+  %12 = copy %product : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mixed = xor.gpr32 %12, %rhs
+  %less = cmp.slt.gpr32 %lhs, %rhs
+  %15 = copy %product : reg<x86.gpr32> -> reg<x86.gpr32>
+  %selected = select.gpr32 %less, %mixed, %15
+  return %selected
+}

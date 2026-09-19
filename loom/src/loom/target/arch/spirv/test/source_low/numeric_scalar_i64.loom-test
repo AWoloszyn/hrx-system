@@ -250,3 +250,82 @@ func.def target(@target) @scalar_f64_constant_select_bitcast(%condition: i1, %fa
   %bits = scalar.bitcast %selected : f64 to i64
   func.return %bits : i64
 }
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<2xi64>"}
+func.def target(@target) @scalar_i64_lanes(%values: vector<2xi64>, %replacement: i64) -> (i64, i64, vector<2xi64>, vector<2xi64>) {
+  %first = vector.extract %values[0] : vector<2xi64> -> i64
+  %second = vector.extract %values[1] : vector<2xi64> -> i64
+  %replace_first = vector.insert %replacement into %values[0] : i64, vector<2xi64>
+  %replace_second = vector.insert %replacement into %values[1] : i64, vector<2xi64>
+  // ERROR@+2: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xi64>"}
+  // ERROR@+1: TARGET/033 {op_name="func.return", field_name="source", actual_type="vector<2xi64>"}
+  func.return %first, %second, %replace_first, %replace_second : i64, i64, vector<2xi64>, vector<2xi64>
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @scalar_f64_lanes(%values: vector<2xf64>, %replacement: f64) -> (f64, f64, vector<2xf64>, vector<2xf64>) {
+  // ERROR@+1: TARGET/003 {op_name="vector.extract", subject_role="descriptor", subject_name="spirv.op_composite_extract.v2f64.f64", constraint_key="descriptor_available"}
+  %first = vector.extract %values[0] : vector<2xf64> -> f64
+  // ERROR@+1: TARGET/003 {op_name="vector.extract", subject_role="descriptor", subject_name="spirv.op_composite_extract.v2f64.f64", constraint_key="descriptor_available"}
+  %second = vector.extract %values[1] : vector<2xf64> -> f64
+  // ERROR@+1: TARGET/003 {op_name="vector.insert", subject_role="descriptor", subject_name="spirv.op_composite_insert.f64.v2f64", constraint_key="descriptor_available"}
+  %replace_first = vector.insert %replacement into %values[0] : f64, vector<2xf64>
+  // ERROR@+1: TARGET/003 {op_name="vector.insert", subject_role="descriptor", subject_name="spirv.op_composite_insert.f64.v2f64", constraint_key="descriptor_available"}
+  %replace_second = vector.insert %replacement into %values[1] : f64, vector<2xf64>
+  func.return %first, %second, %replace_first, %replace_second : f64, f64, vector<2xf64>, vector<2xf64>
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @scalar_i64_right_shift_select(%value: i64, %condition: i1) -> (i64, i64, i64, i64, i64) {
+  %word_count = scalar.constant 32 : i64
+  %sign_count = scalar.constant 63 : i64
+  %logical_word = scalar.shrui %value, %word_count : i64
+  %signed_word = scalar.shrsi %value, %word_count : i64
+  %logical_sign = scalar.shrui %value, %sign_count : i64
+  %signed_sign = scalar.shrsi %value, %sign_count : i64
+  %selected = scf.select %condition, %logical_word, %signed_word : i64
+  func.return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected : i64, i64, i64, i64, i64
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_right_shift_select(%value: reg<spirv.id : i64>, %condition: reg<spirv.id : i1>) -> (reg<spirv.id : i64>, reg<spirv.id : i64>, reg<spirv.id : i64>, reg<spirv.id : i64>, reg<spirv.id : i64>) asm {
+  %word_count = OpConstant.i64 32
+  %sign_count = OpConstant.i64 63
+  %logical_word = OpShiftRightLogical.i64 %value, %word_count
+  %signed_word = OpShiftRightArithmetic.i64 %value, %word_count
+  %logical_sign = OpShiftRightLogical.i64 %value, %sign_count
+  %signed_sign = OpShiftRightArithmetic.i64 %value, %sign_count
+  %selected = OpSelect.i64 %condition, %logical_word, %signed_word
+  return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
+  %product = scalar.muli %lhs, %rhs : i32
+  %mixed = scalar.xori %product, %rhs : i32
+  %less = scalar.cmpi slt, %lhs, %rhs : i32
+  %selected = scf.select %less, %mixed, %product : i32
+  func.return %selected : i32
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i32_control(%lhs: reg<spirv.id : i32>, %rhs: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
+  %product = OpIMul %lhs, %rhs
+  %mixed = OpBitwiseXor %product, %rhs
+  %less = OpSLessThan %lhs, %rhs
+  %selected = OpSelect %less, %mixed, %product
+  return %selected
+}

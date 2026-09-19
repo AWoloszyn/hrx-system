@@ -154,6 +154,7 @@ loom_check_test_suite(
   SRCS
     "test/assembly.loom-test"
     "test/loop_termination.loom-test"
+    "test/numeric.loom-test"
     "test/schedule_scopes.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
     "test/"

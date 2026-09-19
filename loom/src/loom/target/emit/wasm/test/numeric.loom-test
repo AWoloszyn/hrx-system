@@ -1,0 +1,210 @@
+// RUN: with-checks emit wasm-dis
+// REQUIRES: wasm-objdump
+
+wasm.target<simd128> @target
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @arithmetic32(%lhs: reg<wasm.i32>, %rhs: reg<wasm.i32>, %count: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>) asm {
+  %add = i32.add %lhs, %rhs
+  %sub = i32.sub %lhs, %rhs
+  %mul = i32.mul %lhs, %rhs
+  %and = i32.and %lhs, %rhs
+  %or = i32.or %lhs, %rhs
+  %xor = i32.xor %lhs, %rhs
+  %shl = i32.shl %lhs, %count
+  %shr_s = i32.shr_s %lhs, %count
+  %shr_u = i32.shr_u %lhs, %count
+  return %add, %sub, %mul, %and, %or, %xor, %shl, %shr_s, %shr_u
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @compare32(%lhs: reg<wasm.i32>, %rhs: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>) asm {
+  %eq = i32.eq %lhs, %rhs
+  %ne = i32.ne %lhs, %rhs
+  %lt_s = i32.lt_s %lhs, %rhs
+  %lt_u = i32.lt_u %lhs, %rhs
+  %gt_s = i32.gt_s %lhs, %rhs
+  %gt_u = i32.gt_u %lhs, %rhs
+  %le_s = i32.le_s %lhs, %rhs
+  %le_u = i32.le_u %lhs, %rhs
+  %ge_s = i32.ge_s %lhs, %rhs
+  %ge_u = i32.ge_u %lhs, %rhs
+  return %eq, %ne, %lt_s, %lt_u, %gt_s, %gt_u, %le_s, %le_u, %ge_s, %ge_u
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @arithmetic64(%lhs: reg<wasm.i64>, %rhs: reg<wasm.i64>, %count: reg<wasm.i64>) -> (reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>) asm {
+  %add = i64.add %lhs, %rhs
+  %sub = i64.sub %lhs, %rhs
+  %mul = i64.mul %lhs, %rhs
+  %and = i64.and %lhs, %rhs
+  %or = i64.or %lhs, %rhs
+  %xor = i64.xor %lhs, %rhs
+  %shl = i64.shl %lhs, %count
+  %shr_s = i64.shr_s %lhs, %count
+  %shr_u = i64.shr_u %lhs, %count
+  return %add, %sub, %mul, %and, %or, %xor, %shl, %shr_s, %shr_u
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @compare64(%lhs: reg<wasm.i64>, %rhs: reg<wasm.i64>) -> (reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>) asm {
+  %eq = i64.eq %lhs, %rhs
+  %ne = i64.ne %lhs, %rhs
+  %lt_s = i64.lt_s %lhs, %rhs
+  %lt_u = i64.lt_u %lhs, %rhs
+  %gt_s = i64.gt_s %lhs, %rhs
+  %gt_u = i64.gt_u %lhs, %rhs
+  %le_s = i64.le_s %lhs, %rhs
+  %le_u = i64.le_u %lhs, %rhs
+  %ge_s = i64.ge_s %lhs, %rhs
+  %ge_u = i64.ge_u %lhs, %rhs
+  return %eq, %ne, %lt_s, %lt_u, %gt_s, %gt_u, %le_s, %le_u, %ge_s, %ge_u
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @lanes_i32(%first: reg<wasm.i32>, %last: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>) asm {
+  %splat = i32x4.splat %first
+  %inserted = i32x4.replace_lane %splat, %last, 3
+  %low = i32x4.extract_lane %inserted, 0
+  %high = i32x4.extract_lane %inserted, 3
+  return %low, %high
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @select_i32(%condition: reg<wasm.i32>, %yes: reg<wasm.i32>, %no: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %result = i32.select %yes, %no, %condition
+  return %result
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @lanes_i64(%first: reg<wasm.i64>, %last: reg<wasm.i64>) -> (reg<wasm.i64>, reg<wasm.i64>) asm {
+  %splat = i64x2.splat %first
+  %inserted = i64x2.replace_lane %splat, %last, 1
+  %low = i64x2.extract_lane %inserted, 0
+  %high = i64x2.extract_lane %inserted, 1
+  return %low, %high
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @select_i64(%condition: reg<wasm.i32>, %yes: reg<wasm.i64>, %no: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %result = i64.select %yes, %no, %condition
+  return %result
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @lanes_f32(%first: reg<wasm.f32>, %last: reg<wasm.f32>) -> (reg<wasm.f32>, reg<wasm.f32>) asm {
+  %splat = f32x4.splat %first
+  %inserted = f32x4.replace_lane %splat, %last, 3
+  %low = f32x4.extract_lane %inserted, 0
+  %high = f32x4.extract_lane %inserted, 3
+  return %low, %high
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @select_f32(%condition: reg<wasm.i32>, %yes: reg<wasm.f32>, %no: reg<wasm.f32>) -> (reg<wasm.f32>) asm {
+  %result = f32.select %yes, %no, %condition
+  return %result
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @lanes_f64(%first: reg<wasm.f64>, %last: reg<wasm.f64>) -> (reg<wasm.f64>, reg<wasm.f64>) asm {
+  %splat = f64x2.splat %first
+  %inserted = f64x2.replace_lane %splat, %last, 1
+  %low = f64x2.extract_lane %inserted, 0
+  %high = f64x2.extract_lane %inserted, 1
+  return %low, %high
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @select_f64(%condition: reg<wasm.i32>, %yes: reg<wasm.f64>, %no: reg<wasm.f64>) -> (reg<wasm.f64>) asm {
+  %result = f64.select %yes, %no, %condition
+  return %result
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @constant_bits32() -> (reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>) asm {
+  %negative_zero = f32.const 2147483648
+  %smallest = f32.const 1
+  %fraction = f32.const 3213675725
+  %zero_bits = i32.reinterpret_f32 %negative_zero
+  %smallest_bits = i32.reinterpret_f32 %smallest
+  %fraction_bits = i32.reinterpret_f32 %fraction
+  return %zero_bits, %smallest_bits, %fraction_bits
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @reinterpret32(%bits: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %value = f32.reinterpret_i32 %bits
+  %result = i32.reinterpret_f32 %value
+  return %result
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @constant_bits64() -> (reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>) asm {
+  %negative_zero = f64.const -9223372036854775808
+  %smallest = f64.const 1
+  %fraction = f64.const -4615739258092021350
+  %zero_bits = i64.reinterpret_f64 %negative_zero
+  %smallest_bits = i64.reinterpret_f64 %smallest
+  %fraction_bits = i64.reinterpret_f64 %fraction
+  return %zero_bits, %smallest_bits, %fraction_bits
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @reinterpret64(%bits: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %value = f64.reinterpret_i64 %bits
+  %result = i64.reinterpret_f64 %value
+  return %result
+}
+
+// ----
+CHECK: Disassembly of section CODE:
+CHECK: i32.add
+CHECK: i32.sub
+CHECK: i32.mul
+CHECK: i32.and
+CHECK: i32.or
+CHECK: i32.xor
+CHECK: i32.shl
+CHECK: i32.shr_s
+CHECK: i32.shr_u
+CHECK: i32.eq
+CHECK: i32.ne
+CHECK: i32.lt_s
+CHECK: i32.lt_u
+CHECK: i32.gt_s
+CHECK: i32.gt_u
+CHECK: i32.le_s
+CHECK: i32.le_u
+CHECK: i32.ge_s
+CHECK: i32.ge_u
+CHECK: i64.add
+CHECK: i64.sub
+CHECK: i64.mul
+CHECK: i64.and
+CHECK: i64.or
+CHECK: i64.xor
+CHECK: i64.shl
+CHECK: i64.shr_s
+CHECK: i64.shr_u
+CHECK: i64.eq
+CHECK: i64.ne
+CHECK: i64.lt_s
+CHECK: i64.lt_u
+CHECK: i64.gt_s
+CHECK: i64.gt_u
+CHECK: i64.le_s
+CHECK: i64.le_u
+CHECK: i64.ge_s
+CHECK: i64.ge_u
+CHECK: i32x4.splat
+CHECK: i32x4.replace_lane *3
+CHECK: i32x4.extract_lane *0
+CHECK: i32x4.extract_lane *3
+CHECK: i64x2.splat
+CHECK: i64x2.replace_lane *1
+CHECK: i64x2.extract_lane *0
+CHECK: i64x2.extract_lane *1
+CHECK: f32x4.splat
+CHECK: f32x4.replace_lane *3
+CHECK: f32x4.extract_lane *0
+CHECK: f32x4.extract_lane *3
+CHECK: f64x2.splat
+CHECK: f64x2.replace_lane *1
+CHECK: f64x2.extract_lane *0
+CHECK: f64x2.extract_lane *1
+CHECK: f32.const *-0x0p0
+CHECK: f32.const *0x1p-149
+CHECK: f32.const *-0x1.19999ap0
+CHECK: i32.reinterpret_f32
+CHECK: f32.reinterpret_i32
+CHECK: f64.const *-0x0p0
+CHECK: f64.const *0x0.0000000000001p-1022
+CHECK: f64.const *-0x1.199999999999ap0
+CHECK: i64.reinterpret_f64
+CHECK: f64.reinterpret_i64
+CHECK: f32.select
