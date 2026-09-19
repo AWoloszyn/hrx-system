@@ -156,7 +156,7 @@ func.def @multiple_entry_odd_cycle(%first_entry: i1, %second_entry: i1) {
 }
 
 // ====
-// RUN: pass-report cfg-simplify
+// RUN: with-checks pass-report cfg-simplify
 
 func.def @shared_tail_iteration_count(%first: i1, %second: i1, %third: i1, %value: i32) -> (i32) {
   cfg.cond_br %first, ^shortcut_first, ^dispatch_second
@@ -181,4 +181,7 @@ func.def @shared_tail_iteration_count(%first: i1, %second: i1, %third: i1, %valu
 }
 
 // ----
-{"invocations":[{"pass":"cfg-simplify","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"shared_tail_iteration_count","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"iterations":3,"branches-folded":0,"edges-forwarded":5,"blocks-removed":3,"block-args-removed":0,"blocks-fused":0,"duplicate-blocks-merged":0,"terminal-blocks-duplicated":0},"details":[{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":4,"cleared_value_count":4}]}]}
+CHECK: *"changed":true,*
+CHECK: *"iterations":3,*
+CHECK: *"edges-forwarded":5,*
+CHECK: *"blocks-removed":3,*

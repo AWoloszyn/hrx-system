@@ -39,6 +39,50 @@ func.def public @entry(%left: index, %right: index) -> (index) {
 
 // ====
 
+// Contextual target queries are indexed by the fact owner. An explicit CFG
+// edge can therefore prove or disprove a provider requirement without scanning
+// unrelated retained relations.
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @wave32(%value: i32) -> (i32)
+
+template.def<@wave32> requires [#target.subgroup.size<32>] priority(10) @matched(%value: i32) -> (i32) {
+  %doubled = test.addi %value, %value : i32
+  template.return %doubled : i32
+}
+
+template.def<@wave32> priority(1) @fallback(%value: i32) -> (i32) {
+  template.return %value : i32
+}
+
+func.def public @target_query(%arg: i32) -> (i32) {
+  %subgroup_size = target.subgroup.size : index
+  %c32 = index.constant 32 : index
+  %is_wave32 = index.cmp eq, %subgroup_size, %c32 : index
+  cfg.cond_br %is_wave32, ^matched, ^fallback
+^matched:
+  %specialized = template.apply<@wave32>(%arg) : (i32) -> (i32)
+  func.return %specialized : i32
+^fallback:
+  %generic = template.apply<@wave32>(%arg) : (i32) -> (i32)
+  func.return %generic : i32
+}
+
+// ----
+func.def public @target_query(%arg: i32) -> (i32) {
+  %subgroup_size = target.subgroup.size : index
+  %c32 = index.constant 32 : index
+  %is_wave32 = index.cmp eq, %subgroup_size, %c32 : index
+  cfg.cond_br %is_wave32, ^matched, ^fallback
+^matched:
+  %doubled = test.addi %arg, %arg : i32
+  func.return %doubled : i32
+^fallback:
+  func.return %arg : i32
+}
+
+// ====
+
 // A false edge, forwarded arguments and a retained exact call share the same
 // block-entry proof. Facts from another function cannot leak into the last one.
 // RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
@@ -170,14 +214,14 @@ func.def public @join_loses_relation(%left: index, %right: index) -> (index) {
 func.def public @unreachable_predecessor(%left: index, %right: index) -> (index) {
   %equal = index.cmp eq, %left, %right : index
   cfg.cond_br %equal, ^matched, ^other
-^unreachable:
-  cfg.br ^matched
 ^matched:
   %selected = template.apply<@equal>(%left, %right) : (index, index) -> (index)
   func.return %selected : index
 ^other:
   %result = index.constant 0 : index
   func.return %result : index
+^unreachable:
+  cfg.br ^matched
 }
 
 // ----
@@ -196,14 +240,14 @@ func.def public @join_loses_relation(%left: index, %right: index) -> (index) {
 func.def public @unreachable_predecessor(%left: index, %right: index) -> (index) {
   %equal = index.cmp eq, %left, %right : index
   cfg.cond_br %equal, ^matched, ^other
-^unreachable:
-  cfg.br ^matched
 ^matched:
   %value = index.constant 19 : index
   func.return %value : index
 ^other:
   %result = index.constant 0 : index
   func.return %result : index
+^unreachable:
+  cfg.br ^matched
 }
 
 // ====

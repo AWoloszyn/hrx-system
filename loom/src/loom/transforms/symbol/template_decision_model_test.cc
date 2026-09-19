@@ -463,7 +463,6 @@ func.def public @entry(%x: index, %y: index, %m: index) -> (index, index) {
   loom_template_applicability_facts_t application_facts = {
       /*.values=*/&value_facts,
   };
-  loom_condition_fact_set_initialize(nullptr, 0, &application_facts.path);
 
   for (iree_host_size_t i = 0; i < references.template_demands.count; ++i) {
     const loom_template_demand_t& demand =
@@ -650,7 +649,6 @@ func.def public target(@application_target) @entry(%value: i32) -> (i32, i32) {
       /*.facts=*/application_target_facts->projection,
   };
   loom_template_applicability_facts_t application_facts = {};
-  loom_condition_fact_set_initialize(nullptr, 0, &application_facts.path);
 
   ASSERT_EQ(references.template_demands.count, 2u);
   for (iree_host_size_t i = 0; i < references.template_demands.count; ++i) {

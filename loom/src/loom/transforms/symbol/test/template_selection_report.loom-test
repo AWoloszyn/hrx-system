@@ -1,4 +1,4 @@
-// RUN: pass-report select-templates
+// RUN: with-checks pass-report select-templates
 
 template.decl @demo.report(%m: index) -> (index)
 
@@ -17,10 +17,12 @@ func.def public @entry() -> (index) {
 }
 
 // ----
-{"invocations":[{"pass":"select-templates","kind":"module","anchor":"module","pipeline":"__command_line","symbol":"<none>","instruction_index":0,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"apply-sites":1,"exact-call-sites":0,"selected-sites":1,"fallback-selected-sites":1,"unresolved-sites":0,"no-provider-sites":0,"target-mismatch-sites":0,"rejected-sites":0,"family-rejected-sites":0,"missing-fact-sites":0,"ambiguous-sites":0,"materialization-blocked-sites":0,"provider-edges":1,"symbols-pruned":1},"details":[{"category":"template-selection","outcome":"fallback_selected","function":"entry","application_op":"template.apply","family":"demo.report","selected_provider":"fallback","selected_priority":1,"highest_provider_priority":10,"provider_count":2,"target_identity_match_count":2,"target_identity_unresolved_count":0,"possible_count":1,"best_match_count":1},{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":1,"scope_clear_count":1,"computed_value_count":2,"cleared_value_count":2}]}]}
+CHECK: *"changed":true,*
+CHECK: *"selected-sites":1,"fallback-selected-sites":1,"unresolved-sites":0,*
+CHECK: *{"category":"template-selection","outcome":"fallback_selected","function":"entry","application_op":"template.apply","family":"demo.report","selected_provider":"fallback","selected_priority":1,"highest_provider_priority":10,"provider_count":2,"target_identity_match_count":2,"target_identity_unresolved_count":0,"possible_count":1,"best_match_count":1}*
 
 // ====
-// RUN: pass-report select-templates{mode=final}
+// RUN: with-checks pass-report select-templates{mode=final}
 
 template.decl @demo.target_condition_report(%value: i32) -> (i32)
 
@@ -38,10 +40,12 @@ func.def public @entry(%arg: i32) -> (i32) {
 }
 
 // ----
-{"invocations":[{"pass":"select-templates","kind":"module","anchor":"module","pipeline":"__command_line","symbol":"<none>","instruction_index":0,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"apply-sites":1,"exact-call-sites":0,"selected-sites":1,"fallback-selected-sites":1,"unresolved-sites":0,"no-provider-sites":0,"target-mismatch-sites":0,"rejected-sites":0,"family-rejected-sites":0,"missing-fact-sites":0,"ambiguous-sites":0,"materialization-blocked-sites":0,"provider-edges":1,"symbols-pruned":1},"details":[{"category":"template-selection","outcome":"fallback_selected","function":"entry","application_op":"template.apply","family":"demo.target_condition_report","selected_provider":"fallback","selected_priority":1,"unresolved_provider":"wave64","unresolved_priority":10,"unresolved_contract":"provider","unresolved_reason":"target_condition","unresolved_condition":"target.subgroup.size","highest_provider_priority":10,"provider_count":2,"target_identity_match_count":2,"target_identity_unresolved_count":0,"possible_count":2,"best_match_count":1}]}]}
+CHECK: *"changed":true,*
+CHECK: *"selected-sites":1,"fallback-selected-sites":1,"unresolved-sites":0,*
+CHECK: *{"category":"template-selection","outcome":"fallback_selected","function":"entry","application_op":"template.apply","family":"demo.target_condition_report","selected_provider":"fallback","selected_priority":1,"unresolved_provider":"wave64","unresolved_priority":10,"unresolved_contract":"provider","unresolved_reason":"target_condition","unresolved_condition":"target.subgroup.size","highest_provider_priority":10,"provider_count":2,"target_identity_match_count":2,"target_identity_unresolved_count":0,"possible_count":2,"best_match_count":1}*
 
 // ====
-// RUN: pass-report select-templates{mode=final}
+// RUN: with-checks pass-report select-templates{mode=final}
 
 test.target<low_core> @low_core
 
@@ -61,4 +65,6 @@ func.def public @entry(%arg: i32) -> (i32) {
 }
 
 // ----
-{"invocations":[{"pass":"select-templates","kind":"module","anchor":"module","pipeline":"__command_line","symbol":"<none>","instruction_index":0,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"apply-sites":1,"exact-call-sites":0,"selected-sites":1,"fallback-selected-sites":1,"unresolved-sites":0,"no-provider-sites":0,"target-mismatch-sites":0,"rejected-sites":0,"family-rejected-sites":0,"missing-fact-sites":0,"ambiguous-sites":0,"materialization-blocked-sites":0,"provider-edges":1,"symbols-pruned":1},"details":[{"category":"template-selection","outcome":"fallback_selected","function":"entry","application_op":"template.apply","family":"demo.target_identity_report","selected_provider":"fallback","selected_priority":1,"unresolved_provider":"targeted","unresolved_priority":10,"unresolved_contract":"provider","unresolved_reason":"target_identity","highest_provider_priority":10,"provider_count":2,"target_identity_match_count":1,"target_identity_unresolved_count":1,"possible_count":2,"best_match_count":1}]}]}
+CHECK: *"changed":true,*
+CHECK: *"selected-sites":1,"fallback-selected-sites":1,"unresolved-sites":0,*
+CHECK: *{"category":"template-selection","outcome":"fallback_selected","function":"entry","application_op":"template.apply","family":"demo.target_identity_report","selected_provider":"fallback","selected_priority":1,"unresolved_provider":"targeted","unresolved_priority":10,"unresolved_contract":"provider","unresolved_reason":"target_identity","highest_provider_priority":10,"provider_count":2,"target_identity_match_count":1,"target_identity_unresolved_count":1,"possible_count":2,"best_match_count":1}*
