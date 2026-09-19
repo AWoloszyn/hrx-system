@@ -35,6 +35,8 @@ typedef struct loom_op_t loom_op_t;
 
 // Function-local state used only when report rows are requested.
 typedef struct loom_low_lower_report_state_t {
+  // Number of operations finalized by the function's emission builder.
+  uint64_t emitted_op_count;
   // Source CFG block execution counts indexed by source block ordinal.
   uint64_t* source_block_execution_counts;
   // True after source block execution count analysis has run.
@@ -48,6 +50,10 @@ typedef struct loom_low_lower_report_state_t {
   // Number of allocated entries in |memory_expression_entries|.
   iree_host_size_t memory_expression_entry_capacity;
 } loom_low_lower_report_state_t;
+
+// Installs emission accounting on the initialized function builder when
+// selection reports are enabled. Builder copies retain the same report owner.
+void loom_low_lower_report_initialize(loom_low_lower_context_t* context);
 
 // Releases all report row storage owned by |result|.
 void loom_low_lower_result_deinitialize(loom_low_lower_result_t* result);

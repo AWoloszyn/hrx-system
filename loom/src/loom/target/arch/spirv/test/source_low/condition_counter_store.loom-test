@@ -29,5 +29,7 @@ func.def target(@target) @condition_counter_store(%output: buffer) {
 }
 
 // ----
+CHECK: COMPILE-REPORT: source_low_selection[*] * source_op=view.store * selected_ops=3 * exact_dynamic_ops=3 unknown_dynamic_ops=0 dynamic_selected_ops=10 *
 CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=5
 CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=4
+CHECK-NOT: COMPILE-REPORT: source_low[*] * source_op=view.store * emitted_ops=0*

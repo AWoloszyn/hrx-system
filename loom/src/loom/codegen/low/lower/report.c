@@ -47,6 +47,23 @@ struct loom_low_lower_memory_expression_entry_t {
   loom_low_lower_memory_expression_key_t key;
 };
 
+static iree_status_t loom_low_lower_report_op_finalized(void* user_data,
+                                                        loom_op_t* op) {
+  loom_low_lower_report_state_t* report =
+      (loom_low_lower_report_state_t*)user_data;
+  ++report->emitted_op_count;
+  return iree_ok_status();
+}
+
+void loom_low_lower_report_initialize(loom_low_lower_context_t* context) {
+  if (!iree_allocator_is_null(context->options->report_allocator)) {
+    context->builder.on_op_finalized = (loom_builder_callback_t){
+        .fn = loom_low_lower_report_op_finalized,
+        .user_data = &context->lowering.report,
+    };
+  }
+}
+
 static iree_string_view_t loom_low_lower_report_descriptor_string(
     const loom_low_lower_context_t* context,
     const loom_low_descriptor_t* descriptor,

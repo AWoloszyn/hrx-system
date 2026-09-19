@@ -32,3 +32,4 @@ func.def target(@target) @condition_counter_store(%output: buffer) {
 CHECK: COMPILE-REPORT: source_low_memory * unknown_dynamic_packets=0 * dynamic_write_bytes=40 *
 CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=5
 CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=4
+CHECK-NOT: COMPILE-REPORT: source_low[*] * source_op=view.store * emitted_ops=0*
