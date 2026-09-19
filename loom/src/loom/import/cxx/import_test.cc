@@ -198,6 +198,27 @@ TEST_F(ImportTest, UnsupportedVectorFormsDiagnoseAtSourceAdmission) {
   }
 }
 
+TEST_F(ImportTest, BracedVectorConstructionRejectsInvalidInitializers) {
+  for (auto source : {
+           "typedef int V __attribute__((vector_size(16))); V f() { "
+           "return V{1, 2, 3, 4, 5}; }",
+           "typedef unsigned V __attribute__((ext_vector_type(4))); V f() { "
+           "return V{1u, 2u, 3u, 4u, 5u}; }",
+           "typedef unsigned char V __attribute__((vector_size(16))); V f() { "
+           "return V{256}; }",
+           "typedef int V __attribute__((vector_size(16))); V f(float x) { "
+           "return V{x, 0, 0, 0}; }",
+           "struct Value { int field; }; int f(int x) { "
+           "return Value{x}.field; }",
+       }) {
+    SCOPED_TRACE(source);
+    auto before = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_cstring_view(source)));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_GT(diagnostic_count_, before);
+  }
+}
+
 TEST_F(ImportTest, ShapedIntrinsicsRetainHeterogeneousSignaturesAndKinds) {
   IREE_ASSERT_OK(Import(IREE_SV(R"(
     typedef unsigned Table __attribute__((vector_size(64)));

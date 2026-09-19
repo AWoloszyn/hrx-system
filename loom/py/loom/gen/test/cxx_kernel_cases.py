@@ -424,6 +424,47 @@ def vector_control(directory):
     return "kernel.decl @vector_control_kernel() launch(%output: buffer, %input: i32, %count: i32)\n\n" + "\n".join(cases)
 
 
+CONSTRUCTOR_INPUTS = [0, 1, 127, 255, 256, 0xFFFFFF80, 0x7FFFFFFC, 0xFFFFFFFF]
+
+
+def constructor_references(value):
+    signed = signed_bits(value, 32)
+    floating = struct.unpack("<I", struct.pack("<f", float(signed)))[0]
+    return {
+        "constructor_return": [signed + lane for lane in range(4)],
+        "constructor_argument": [value, 7, 0, 0],
+        "constructor_single": [value, 0, 0, 0],
+        "constructor_narrow": [value & 255, 255, 128] + [0] * 13,
+        "constructor_float": [floating, 0x80000000, 0x3FC00000, 0],
+        "constructor_nested": [value + 9, 9, 9, 9],
+    }
+
+
+def vector_constructor_values(directory):
+    del directory
+    samples = {}
+    for value in CONSTRUCTOR_INPUTS:
+        for name, lanes in constructor_references(value).items():
+            samples.setdefault(name, []).extend(([value, lane], expected) for lane, expected in enumerate(lanes))
+    return "\n\n".join(function_cases(name, [32, 32], 32, values) for name, values in samples.items()) + "\n"
+
+
+def vector_initializers(directory):
+    cases = []
+    for value in CONSTRUCTOR_INPUTS:
+        expected = []
+        for name, lanes in constructor_references(value).items():
+            expected.extend(struct.unpack("<4I", bytes(lanes)) if name == "constructor_narrow" else lanes)
+        expected.extend(value + lane for lane in range(4))
+        expected.extend([1234, 0, 0, 0])
+        case = Case(directory, f"vector_initializers_{value}", "i32", len(expected))
+        case.scalar("input", signed_bits(value, 32), "i32")
+        case.launch("vector_initializers", "%output, %input", f"tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish([signed_bits(element, 32) for element in expected]))
+    return "kernel.decl @vector_initializers() launch(%output: buffer, %input: i32)\n\n" + "\n".join(cases)
+
+
 def f32_bits(bits):
     return struct.unpack("<f", struct.pack("<I", bits))[0]
 
@@ -538,6 +579,8 @@ def main():
         ("vector_depth", vector_depth),
         ("vector_depth_span", vector_depth_span),
         ("vector_values", vector_values),
+        ("vector_constructor_values", vector_constructor_values),
+        ("vector_initializers", vector_initializers),
         ("vector_control", vector_control),
         ("vector_masks", vector_masks),
         ("shaped_intrinsic_values", shaped_intrinsic_values),

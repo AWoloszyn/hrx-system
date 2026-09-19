@@ -41,6 +41,7 @@ http_archive(
     build_file = "//build_tools/third_party/cxx:cxx.BUILD.bazel",
     patch_args = ["-p1"],
     patches = [
+        "//build_tools/third_party/cxx:braced_vector_initialization.patch",
         "//build_tools/third_party/cxx:include_continuation.patch",
         "//build_tools/third_party/cxx:include_paths.patch",
         "//build_tools/third_party/cxx:template_lookahead.patch",

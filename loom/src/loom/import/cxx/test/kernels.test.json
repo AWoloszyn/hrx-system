@@ -2,6 +2,78 @@
   "version": 1,
   "cases": [
     {
+      "name": "vector_initializers preserves complete vectors and ordered initializer effects",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--root=vector_initializers",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/vector_initializers.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_initializers.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":8",
+                "\"sample_count\":8",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check initializer stores with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_initializers.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":8",
+                "\"sample_count\":8",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "vector_control carries vectors through calls, loops and conditional regions",
       "steps": [
         {

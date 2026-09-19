@@ -24,6 +24,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
   LABELS
     "hostonly"
@@ -57,6 +58,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/short_circuit.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_depth.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
   SANITIZER_SUPPRESSIONS
     lsan

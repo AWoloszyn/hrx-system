@@ -46,8 +46,10 @@ tail and ordinary pointer reinterpretation.
 
 GNU `vector_size` and Clang `ext_vector_type` forms admit arithmetic, bitwise
 operations, shifts, scalar splats, brace initialization and indexed lane reads.
-Partial initializers zero the remaining lanes. Vector comparisons and logical
-negation produce source-width integer masks containing zero or all ones.
+Named brace initializers and typed temporaries such as `u32x16{1u, 2u}` use
+the same lane conversions and zero the remaining lanes. Typed temporaries can
+appear in returns, call arguments and larger expressions. Vector comparisons
+and logical negation produce source-width integer masks containing zero or all ones.
 Narrow integer vector arithmetic wraps at its element width; it does not acquire
 the scalar language's integer promotions. Equal-size vector casts and
 `__builtin_bit_cast` reinterpret the bits. Whole vectors flow through local

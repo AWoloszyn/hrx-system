@@ -472,6 +472,13 @@ class Translator {
           output, source, &op));
       return result(op);
     }
+    if (auto* construction =
+            cxx::ast_cast<cxx::BracedTypeConstructionAST>(ast)) {
+      if (construction->constructorSymbol || !types_.vector(ast->type)) {
+        fail(ast, "braced value construction requires an explicit vector type");
+      }
+      return expression(construction->bracedInitList);
+    }
     if (auto* initializer = cxx::ast_cast<cxx::BracedInitListAST>(ast)) {
       auto* vector = types_.vector(ast->type);
       if (!vector) {
