@@ -6,7 +6,7 @@
 
 # ruff: noqa: F403, F405
 
-"""Full-width vector integer multiplies and high-product constant forms."""
+"""Full-width vector integer multiply operands and constant forms."""
 
 from __future__ import annotations
 
@@ -16,9 +16,10 @@ _RESULT_CONSTRAINTS = (Constraint(ConstraintKind.REMATERIALIZABLE, 0),)
 
 
 def _v_mul_u32_overlay(
-    product: str, *, operand_forms: tuple[OperandForm, ...] = ()
+    product: str, *, include_literal_forms: bool
 ) -> AmdgpuDescriptorOverlay:
     mnemonic = f"v_mul_{product}_u32"
+    modes = ("inline", "lit") if include_literal_forms else ("inline",)
     return AmdgpuDescriptorOverlay(
         descriptor_key=f"amdgpu.{mnemonic}",
         instruction_name=mnemonic.upper(),
@@ -31,14 +32,23 @@ def _v_mul_u32_overlay(
             AmdgpuOperandOverlay("SRC0", _sgpr_vgpr_operand("lhs")),
             AmdgpuOperandOverlay("SRC1", _vgpr_operand("rhs")),
         ),
-        operand_forms=operand_forms,
+        operand_forms=tuple(
+            _literal_operand_form(
+                replacement_descriptor=f"amdgpu.{mnemonic}.{source}_{mode}",
+                source_operand=operand,
+            )
+            for mode in modes
+            for source, operand in (("src0", "lhs"), ("src1", "rhs"))
+        ),
         constraints=_RESULT_CONSTRAINTS,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
     )
 
 
-def _v_mul_hi_u32_constant_overlay(source: str, mode: str) -> AmdgpuDescriptorOverlay:
-    mnemonic = "v_mul_hi_u32"
+def _v_mul_u32_constant_overlay(
+    product: str, source: str, mode: str
+) -> AmdgpuDescriptorOverlay:
+    mnemonic = f"v_mul_{product}_u32"
     source_fields = {
         "src0": ("SRC0", "lhs", _sgpr_vgpr_operand("lhs")),
         "src1": ("SRC1", "rhs", _vgpr_operand("rhs")),
@@ -66,7 +76,7 @@ def _v_mul_hi_u32_constant_overlay(source: str, mode: str) -> AmdgpuDescriptorOv
         instruction_name=mnemonic.upper(),
         mnemonic=mnemonic,
         encoding_name="ENC_VOP3",
-        semantic_tag="integer.mul.hi.u32",
+        semantic_tag=f"integer.mul.{product}.u32",
         schedule_class=_SCHEDULE_VALU,
         operands=(
             AmdgpuOperandOverlay("VDST", _vgpr_result()),
@@ -91,22 +101,17 @@ def _v_mul_u32_overlays(
     *, include_literal_forms: bool = True
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
     modes = ("inline", "lit") if include_literal_forms else ("inline",)
-    high_product_forms = tuple(
-        _literal_operand_form(
-            replacement_descriptor=f"amdgpu.v_mul_hi_u32.{source}_{mode}",
-            source_operand=operand,
+    return tuple(
+        overlay
+        for product in ("lo", "hi")
+        for overlay in (
+            _v_mul_u32_overlay(product, include_literal_forms=include_literal_forms),
+            *(
+                _v_mul_u32_constant_overlay(product, source, mode)
+                for mode in modes
+                for source in ("src0", "src1")
+            ),
         )
-        for mode in modes
-        for source, operand in (("src0", "lhs"), ("src1", "rhs"))
-    )
-    return (
-        _v_mul_u32_overlay("lo"),
-        _v_mul_u32_overlay("hi", operand_forms=high_product_forms),
-        *(
-            _v_mul_hi_u32_constant_overlay(source, mode)
-            for mode in modes
-            for source in ("src0", "src1")
-        ),
     )
 
 

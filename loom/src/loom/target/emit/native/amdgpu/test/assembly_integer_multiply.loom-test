@@ -175,3 +175,183 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_gfx1250(%vecto
 0x0201FE00
 0x81234567
 0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-assembly @multiply_low_gfx942 strategy=source
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @multiply_low_gfx942(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %left_inline = v_mul_lo_u32_src0_inline %vector, 64
+  %right_inline = v_mul_lo_u32_src1_inline %scalar, 64
+  return %left_inline, %right_inline
+}
+
+// ----
+  v_mul_lo_u32 v0, 64, v0
+  v_mul_lo_u32 v1, s0, 64
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-native-words @multiply_low_gfx942 strategy=source
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @multiply_low_gfx942(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %left_inline = v_mul_lo_u32_src0_inline %vector, 64
+  %right_inline = v_mul_lo_u32_src1_inline %scalar, 64
+  return %left_inline, %right_inline
+}
+
+// ----
+0xD2850000
+0x000200C0
+0xD2850001
+0x00018000
+0xBF810000
+
+// ====
+
+// RUN: emit amdgpu-assembly @multiply_low_gfx1100 strategy=source
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @multiply_low_gfx1100(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %left_inline = v_mul_lo_u32_src0_inline %vector, 64
+  %right_inline = v_mul_lo_u32_src1_inline %scalar, 64
+  %left_literal = v_mul_lo_u32_src0_lit %vector, 2166572391
+  %right_literal = v_mul_lo_u32_src1_lit %scalar, 2166572391
+  return %left_inline, %right_inline, %left_literal, %right_literal
+}
+
+// ----
+  v_mul_lo_u32 v1, 64, v0
+  v_mul_lo_u32 v2, s0, 64
+  v_mul_lo_u32 v0, 2166572391, v0
+  v_mul_lo_u32 v3, s0, 2166572391
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-native-words @multiply_low_gfx1100 strategy=source
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @multiply_low_gfx1100(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %left_inline = v_mul_lo_u32_src0_inline %vector, 64
+  %right_inline = v_mul_lo_u32_src1_inline %scalar, 64
+  %left_literal = v_mul_lo_u32_src0_lit %vector, 2166572391
+  %right_literal = v_mul_lo_u32_src1_lit %scalar, 2166572391
+  return %left_inline, %right_inline, %left_literal, %right_literal
+}
+
+// ----
+0xD72C0001
+0x020200C0
+0xD72C0002
+0x02018000
+0xD72C0000
+0x020200FF
+0x81234567
+0xD72C0003
+0x0201FE00
+0x81234567
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-assembly @multiply_low_gfx1201 strategy=source
+
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @multiply_low_gfx1201(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %left_inline = v_mul_lo_u32_src0_inline %vector, 64
+  %right_inline = v_mul_lo_u32_src1_inline %scalar, 64
+  %left_literal = v_mul_lo_u32_src0_lit %vector, 2166572391
+  %right_literal = v_mul_lo_u32_src1_lit %scalar, 2166572391
+  return %left_inline, %right_inline, %left_literal, %right_literal
+}
+
+// ----
+  v_mul_lo_u32 v1, 64, v0
+  v_mul_lo_u32 v2, s0, 64
+  v_mul_lo_u32 v0, 2166572391, v0
+  v_mul_lo_u32 v3, s0, 2166572391
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-native-words @multiply_low_gfx1201 strategy=source
+
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @multiply_low_gfx1201(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %left_inline = v_mul_lo_u32_src0_inline %vector, 64
+  %right_inline = v_mul_lo_u32_src1_inline %scalar, 64
+  %left_literal = v_mul_lo_u32_src0_lit %vector, 2166572391
+  %right_literal = v_mul_lo_u32_src1_lit %scalar, 2166572391
+  return %left_inline, %right_inline, %left_literal, %right_literal
+}
+
+// ----
+0xD72C0001
+0x020200C0
+0xD72C0002
+0x02018000
+0xD72C0000
+0x020200FF
+0x81234567
+0xD72C0003
+0x0201FE00
+0x81234567
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-assembly @multiply_low_gfx1250 strategy=source
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_low_gfx1250(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %left_inline = v_mul_lo_u32_src0_inline %vector, 64
+  %right_inline = v_mul_lo_u32_src1_inline %scalar, 64
+  %left_literal = v_mul_lo_u32_src0_lit %vector, 2166572391
+  %right_literal = v_mul_lo_u32_src1_lit %scalar, 2166572391
+  return %left_inline, %right_inline, %left_literal, %right_literal
+}
+
+// ----
+  v_mul_lo_u32 v1, 64, v0
+  v_mul_lo_u32 v2, s0, 64
+  v_mul_lo_u32 v0, 2166572391, v0
+  v_mul_lo_u32 v3, s0, 2166572391
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-native-words @multiply_low_gfx1250 strategy=source
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_low_gfx1250(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %left_inline = v_mul_lo_u32_src0_inline %vector, 64
+  %right_inline = v_mul_lo_u32_src1_inline %scalar, 64
+  %left_literal = v_mul_lo_u32_src0_lit %vector, 2166572391
+  %right_literal = v_mul_lo_u32_src1_lit %scalar, 2166572391
+  return %left_inline, %right_inline, %left_literal, %right_literal
+}
+
+// ----
+0xD72C0001
+0x020200C0
+0xD72C0002
+0x02018000
+0xD72C0000
+0x020200FF
+0x81234567
+0xD72C0003
+0x0201FE00
+0x81234567
+0xBFB00000
