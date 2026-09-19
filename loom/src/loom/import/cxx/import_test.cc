@@ -100,6 +100,32 @@ class ImportTest : public ::testing::Test {
   std::map<std::string, int> source_requests_;
 };
 
+TEST_F(ImportTest, RejectsMutationOfConstObjectsAndBindings) {
+  for (auto source : {
+           IREE_SV("void store(const int* p) { p[0u] = 1; }"),
+           IREE_SV(
+               "int entry() { const int value = 1; value = 2; return value; }"),
+           IREE_SV("int entry() { const int value = 1; value += 2; return "
+                   "value; }"),
+           IREE_SV("void entry(int* const p, int* q) { p = q; }"),
+           IREE_SV("void entry(int* const p) { p += 1; }"),
+           IREE_SV(
+               "int entry() { const int value = 1; ++value; return value; }"),
+       }) {
+    IREE_ASSERT_OK(Import(source));
+    EXPECT_EQ(module_, nullptr);
+  }
+  EXPECT_GE(diagnostic_count_, 6);
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    int entry(int* const output, const int* input) {
+      const int value = input[0u];
+      output[0u] = value;
+      return value;
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+}
+
 TEST_F(ImportTest, FunctionsAndRootsOutliveSource) {
   std::string source =
       "static int helper(int x) { return x + 1; }\n"

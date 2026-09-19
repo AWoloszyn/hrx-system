@@ -82,6 +82,13 @@ bool Types::is_unsigned(const cxx::Type* type) {
   return unit_.typeTraits().is_unsigned(type);
 }
 
+void Types::require_mutable(const cxx::Type* input, cxx::AST* owner) {
+  if (unit_.typeTraits().is_const(input)) {
+    diagnostics_.reject(unit_, owner,
+                        "mutation requires a non-const destination");
+  }
+}
+
 bool Types::is_float(const cxx::Type* input) {
   auto kind = unqualified(input)->kind();
   return kind == cxx::TypeKind::kFloat || kind == cxx::TypeKind::kFloat16 ||

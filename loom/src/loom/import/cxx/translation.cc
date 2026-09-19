@@ -815,6 +815,7 @@ class Translator {
       if (!destination || assignment->symbol) {
         fail(ast, "compound assignment requires a builtin scalar local");
       }
+      types_.require_mutable(destination->type, destination);
       auto old = expression(destination);
       auto value = expression(assignment->rightExpression);
       auto* promoted = assignment->leftExpression->type;
@@ -833,6 +834,8 @@ class Translator {
       if (assignment->symbol || assignment->op != cxx::TokenKind::T_EQUAL) {
         fail(ast, "only builtin plain assignment is admitted here");
       }
+      types_.require_mutable(assignment->leftExpression->type,
+                             assignment->leftExpression);
       auto value = expression(assignment->rightExpression);
       if (auto* destination =
               cxx::ast_cast<cxx::IdExpressionAST>(assignment->leftExpression)) {
@@ -877,6 +880,7 @@ class Translator {
       destination = increment->expression;
     }
     if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(destination)) {
+      types_.require_mutable(id->type, id);
       if (!unit_.typeTraits().is_integral(id->type) ||
           types_.unqualified(id->type)->kind() == cxx::TypeKind::kBool) {
         fail(ast, "increment requires an integer local");

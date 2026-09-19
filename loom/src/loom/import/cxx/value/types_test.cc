@@ -61,5 +61,25 @@ TEST(TypesTest, RejectsRepresentationsThatLoseSourceSemantics) {
   EXPECT_THROW(types.get(control->getLongDoubleType(), owner), SourceRejected);
 }
 
+TEST(TypesTest, MutationUsesTheObjectQualifierInsteadOfItsPointee) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV("int entry();"), IREE_SV("types.cpp"), options);
+  Types types(source.unit(), source.diagnostics());
+  auto* control = source.unit().control();
+  auto* owner = source.unit().ast();
+  auto* constant =
+      control->getQualType(control->getIntType(), cxx::CvQualifiers::kConst);
+  auto* pointer = control->getPointerType(control->getIntType());
+  EXPECT_THROW(types.require_mutable(constant, owner), SourceRejected);
+  EXPECT_THROW(
+      types.require_mutable(
+          control->getQualType(pointer, cxx::CvQualifiers::kConst), owner),
+      SourceRejected);
+  EXPECT_NO_THROW(types.require_mutable(control->getIntType(), owner));
+  EXPECT_NO_THROW(
+      types.require_mutable(control->getPointerType(constant), owner));
+}
+
 }  // namespace
 }  // namespace loom::cxx_import

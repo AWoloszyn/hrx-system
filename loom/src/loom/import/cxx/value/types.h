@@ -23,6 +23,10 @@ class Types {
   // Diagnoses unsupported source representations at owner and throws
   // SourceRejected. Returned types retain no source storage.
   loom_type_t get(const cxx::Type* input, cxx::AST* owner);
+  // Admits mutation of the source object before projection removes qualifiers.
+  // A const pointer binding is immutable; a pointer to const has an immutable
+  // pointee but the binding itself may still change.
+  void require_mutable(const cxx::Type* input, cxx::AST* owner);
   const cxx::Type* unqualified(const cxx::Type* type);
   bool is_unsigned(const cxx::Type* type);
   bool is_float(const cxx::Type* type);
