@@ -325,10 +325,9 @@ static_assert(sizeof(loom_amdgpu_vector_16bit_float_conversion_plan_t) == 136,
 
 typedef enum loom_amdgpu_index_cast_kind_e {
   LOOM_AMDGPU_INDEX_CAST_KIND_NONE = 0,
-  LOOM_AMDGPU_INDEX_CAST_KIND_ALIAS = 1,
-  LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_32 = 2,
-  LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32 = 3,
-  LOOM_AMDGPU_INDEX_CAST_KIND_DIAGNOSTIC_REJECTED = 4,
+  LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS = 1,
+  LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32 = 2,
+  LOOM_AMDGPU_INDEX_CAST_KIND_DIAGNOSTIC_REJECTED = 3,
 } loom_amdgpu_index_cast_kind_t;
 
 typedef struct loom_amdgpu_index_cast_plan_t {
@@ -340,7 +339,11 @@ typedef struct loom_amdgpu_index_cast_plan_t {
   loom_value_id_t result;
   // Descriptor materializing the high zero lane for a widening cast.
   loom_amdgpu_descriptor_ref_t zero_descriptor_ref;
+  // Selected result width, independent of storage retained by source aliases.
+  uint16_t result_unit_count;
 } loom_amdgpu_index_cast_plan_t;
+static_assert(sizeof(loom_amdgpu_index_cast_plan_t) == 16,
+              "index cast plans must stay cache dense");
 
 typedef enum loom_amdgpu_address_i64_alu_kind_e {
   LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_NONE = 0,
