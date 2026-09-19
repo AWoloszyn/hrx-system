@@ -8,7 +8,9 @@
           "name": "fixtures",
           "run": {
             "tool": "generate-cases",
-            "args": ["{tmp}/fixtures"]
+            "args": [
+              "{tmp}/fixtures"
+            ]
           }
         },
         {
@@ -41,6 +43,96 @@
                 "\"planning_issue_count\":0"
               ]
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "explicit vector lanes preserve narrow arithmetic, masks and bit casts",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--root=vector_signed_byte",
+              "--root=vector_signed_short",
+              "--root=vector_unsigned_short",
+              "--root=vector_unsigned",
+              "--root=vector_mask",
+              "--root=vector_narrow",
+              "--root=vector_bitcast",
+              "--root=vector_float_ne",
+              "--root=vector_ext_splat",
+              "--to=bc",
+              "--output={tmp}/functions.loombc",
+              "{srcdir}/vector_values.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute on the VM",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_values.loom",
+              "--library={tmp}/functions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":246",
+                "\"sample_count\":246",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "VM diagnoses vector loop transport after successful source import",
+      "steps": [
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--root=vector_control",
+              "--to=bc",
+              "--output={tmp}/control.loombc",
+              "{srcdir}/vector_values.cpp"
+            ]
+          }
+        },
+        {
+          "name": "compile for VM",
+          "run": {
+            "tool": "loom-compile",
+            "args": [
+              "{tmp}/control.loombc",
+              "--target=vm:core",
+              "--output={tmp}/control.vm"
+            ]
+          },
+          "exit": 1,
+          "stderr": {
+            "contains": [
+              "TARGET/033",
+              "source type vector<4xi32> has no target-low register mapping"
+            ]
           }
         }
       ]

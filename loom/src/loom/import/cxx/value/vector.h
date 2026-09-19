@@ -7,6 +7,8 @@
 #ifndef LOOM_IMPORT_CXX_VALUE_VECTOR_H_
 #define LOOM_IMPORT_CXX_VALUE_VECTOR_H_
 
+#include <span>
+
 #include "loom/import/cxx/value/scalar.h"
 
 namespace loom::cxx_import {
@@ -39,6 +41,15 @@ class Vectors {
   loom_value_id_t unary(cxx::TokenKind token, loom_value_id_t value,
                         const cxx::Type* input_type,
                         const cxx::Type* output_type, cxx::AST* owner);
+  // Constructs an initialized vector from source-order scalar lanes. Omitted
+  // trailing lanes are zero, as in a C/C++ aggregate initializer.
+  loom_value_id_t construct(std::span<const loom_value_id_t> elements,
+                            const cxx::Type* source_type, cxx::AST* owner);
+  // Reads one lane. Source-defined indices are nonnegative and below the lane
+  // count; the index carrier does not change that source bounds contract.
+  loom_value_id_t extract(loom_value_id_t value, loom_value_id_t index,
+                          const cxx::Type* source_type,
+                          const cxx::Type* index_type, cxx::AST* owner);
 
  private:
   // Resolved frontend types and object layout.

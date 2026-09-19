@@ -18,9 +18,11 @@ iree_execution_test_suite(
   TOOLS
     "generate-cases=loom::py::loom::gen::test::cxx_kernel_cases"
     "iree-test-loom=loom::tools::iree-test-loom"
+    "loom-compile=loom::tools::loom-compile"
     "loom-import-cxx=loom::tools::loom-import-cxx"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
   LABELS
     "hostonly"
 )
@@ -52,6 +54,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/scheduled_sum.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/short_circuit.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_depth.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
   SANITIZER_SUPPRESSIONS
     lsan
     rocm

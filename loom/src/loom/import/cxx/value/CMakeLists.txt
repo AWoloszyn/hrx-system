@@ -73,6 +73,7 @@ loom_cc_library(
     loom::import::cxx::source
     loom::import::cxx::source::error
     loom::import::cxx::source::locations
+    loom::ops::index
     loom::ops::vector
   PUBLIC
 )

@@ -418,32 +418,40 @@ class Translator {
     if (auto* cast = cxx::ast_cast<cxx::BuiltinBitCastExpressionAST>(ast)) {
       auto input = types_.get(cast->expression->type, ast);
       auto output = types_.get(cast->type, ast);
-      if (loom_type_kind(input) != LOOM_TYPE_SCALAR ||
-          loom_type_kind(output) != LOOM_TYPE_SCALAR ||
+      if (loom_type_kind(input) != loom_type_kind(output) ||
+          (loom_type_kind(input) != LOOM_TYPE_SCALAR &&
+           loom_type_kind(input) != LOOM_TYPE_VECTOR) ||
           unit_.control()->memoryLayout()->sizeOf(cast->expression->type) !=
               unit_.control()->memoryLayout()->sizeOf(cast->type)) {
-        fail(ast, "bit_cast requires equal-width supported scalar types");
+        fail(ast,
+             "bit_cast requires equal-width scalars or equal-width vectors");
       }
       auto value = expression(cast->expression).ssa();
       loom_op_t* op;
-      check(loom_scalar_bitcast_build(&builder_, value, input, output, source,
-                                      &op));
+      auto build = types_.vector(cast->type) ? loom_vector_bitcast_build
+                                             : loom_scalar_bitcast_build;
+      check(build(&builder_, value, input, output, source, &op));
       return result(op);
     }
     if (auto* cast = cxx::ast_cast<cxx::CastExpressionAST>(ast)) {
-      if (loom_type_kind(types_.get(cast->type, ast)) != LOOM_TYPE_SCALAR ||
-          loom_type_kind(types_.get(cast->expression->type, ast)) !=
-              LOOM_TYPE_SCALAR) {
-        fail(ast, "explicit casts are restricted to numeric scalar values");
+      auto input = loom_type_kind(types_.get(cast->expression->type, ast));
+      auto output = loom_type_kind(types_.get(cast->type, ast));
+      if (input != output) {
+        fail(ast,
+             "explicit casts require two scalars, two vectors or two pointers");
       }
       return convert(cast->expression, cast->type, ast);
     }
     if (auto* cast = cxx::ast_cast<cxx::CppCastExpressionAST>(ast)) {
-      if (cast->castOp != cxx::TokenKind::T_STATIC_CAST ||
-          loom_type_kind(types_.get(cast->type, ast)) != LOOM_TYPE_SCALAR ||
-          loom_type_kind(types_.get(cast->expression->type, ast)) !=
-              LOOM_TYPE_SCALAR) {
-        fail(ast, "only numeric static_cast is admitted");
+      auto input = loom_type_kind(types_.get(cast->expression->type, ast));
+      auto output = loom_type_kind(types_.get(cast->type, ast));
+      if (input != output ||
+          (cast->castOp != cxx::TokenKind::T_STATIC_CAST &&
+           !(cast->castOp == cxx::TokenKind::T_REINTERPRET_CAST &&
+             (input == LOOM_TYPE_BUFFER || input == LOOM_TYPE_VECTOR)))) {
+        fail(ast,
+             "casts require numeric static_cast or pointer/vector "
+             "reinterpret_cast");
       }
       return convert(cast->expression, cast->type, ast);
     }
@@ -463,6 +471,18 @@ class Translator {
           types_.is_float(ast->type) ? loom_attr_f64(0.0) : loom_attr_i64(0),
           output, source, &op));
       return result(op);
+    }
+    if (auto* initializer = cxx::ast_cast<cxx::BracedInitListAST>(ast)) {
+      auto* vector = types_.vector(ast->type);
+      if (!vector) {
+        fail(ast,
+             "aggregate value initializers require an explicit vector type");
+      }
+      std::vector<loom_value_id_t> elements;
+      for (auto* element : cxx::ListView{initializer->expressionList}) {
+        elements.push_back(convert(element, vector->elementType(), ast).ssa());
+      }
+      return vectors_.construct(elements, ast->type, ast);
     }
     if (auto* select = cxx::ast_cast<cxx::ConditionalExpressionAST>(ast)) {
       if (types_.vector(select->condition->type)) {
@@ -672,7 +692,22 @@ class Translator {
       }
       fail(ast, "unsupported unary value expression");
     }
-    if (cxx::ast_cast<cxx::SubscriptExpressionAST>(ast)) {
+    if (auto* subscript = cxx::ast_cast<cxx::SubscriptExpressionAST>(ast)) {
+      auto* base_type = subscript->baseExpression->type;
+      auto* index_type = subscript->indexExpression->type;
+      if (types_.vector(base_type) || types_.vector(index_type)) {
+        if (subscript->symbol) {
+          fail(ast, "overloaded indexing is not admitted");
+        }
+        auto base = expression(subscript->baseExpression);
+        auto index = expression(subscript->indexExpression);
+        if (!types_.vector(base_type)) {
+          std::swap(base, index);
+          std::swap(base_type, index_type);
+        }
+        return vectors_.extract(base.ssa(), index.ssa(), base_type, index_type,
+                                ast);
+      }
       return load(ast);
     }
     if (auto* call = cxx::ast_cast<cxx::CallExpressionAST>(ast)) {

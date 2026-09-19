@@ -12,6 +12,7 @@
 #include <cxx/types.h>
 
 #include "loom/import/cxx/source/error.h"
+#include "loom/ops/index/ops.h"
 #include "loom/ops/vector/ops.h"
 
 namespace loom::cxx_import {
@@ -173,6 +174,46 @@ loom_value_id_t Vectors::unary(cxx::TokenKind token, loom_value_id_t value,
     default:
       diagnostics_.reject(unit_, owner, "unsupported vector unary operator");
   }
+  return loom_op_results(op)[0];
+}
+
+loom_value_id_t Vectors::construct(std::span<const loom_value_id_t> elements,
+                                   const cxx::Type* source_type,
+                                   cxx::AST* owner) {
+  auto output = types_.get(source_type, owner);
+  auto* vector = types_.vector(source_type);
+  if (elements.size() > vector->elementCount()) {
+    diagnostics_.reject(unit_, owner, "too many vector initializer lanes");
+  }
+  std::vector<loom_value_id_t> lanes(elements.begin(), elements.end());
+  if (lanes.size() < vector->elementCount()) {
+    auto zero = scalars_.constant(int64_t{0}, vector->elementType(), owner);
+    lanes.resize(vector->elementCount(), zero);
+  }
+  loom_op_t* op;
+  check(loom_vector_from_elements_build(&builder_, lanes.data(), lanes.size(),
+                                        output, locations_.get(owner), &op));
+  return loom_op_results(op)[0];
+}
+
+loom_value_id_t Vectors::extract(loom_value_id_t value, loom_value_id_t index,
+                                 const cxx::Type* source_type,
+                                 const cxx::Type* index_type, cxx::AST* owner) {
+  if (!unit_.typeTraits().is_integral(index_type)) {
+    diagnostics_.reject(unit_, owner,
+                        "vector subscripts require integral indices");
+  }
+  auto* vector = types_.vector(source_type);
+  types_.get(source_type, owner);
+  auto output = types_.get(vector->elementType(), owner);
+  loom_op_t* op;
+  check(loom_index_cast_build(&builder_, index, types_.get(index_type, owner),
+                              loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+                              locations_.get(owner), &op));
+  index = loom_op_results(op)[0];
+  int64_t selector = INT64_MIN;
+  check(loom_vector_extract_build(&builder_, value, &index, 1, &selector, 1,
+                                  output, locations_.get(owner), &op));
   return loom_op_results(op)[0];
 }
 

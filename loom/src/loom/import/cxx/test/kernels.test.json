@@ -2,6 +2,80 @@
   "version": 1,
   "cases": [
     {
+      "name": "vector_control carries vectors through calls, loops and conditional regions",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=vector_control_kernel",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/vector_values.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_control.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":12",
+                "\"sample_count\":12",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check complete vector footprints with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_control.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":12",
+                "\"sample_count\":12",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "vector_depth preserves packed color and depth across vector pointers and helper calls",
       "steps": [
         {
@@ -55,6 +129,154 @@
             "tool": "iree-test-loom",
             "args": [
               "{tmp}/fixtures/vector_depth.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":3",
+                "\"sample_count\":3",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "vector_depth_span computes wrapping depth recurrences with exact scalar tails",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=vector_depth_span",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/vector_depth.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_depth_span.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":8",
+                "\"sample_count\":8",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check complete vector footprints with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_depth_span.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":8",
+                "\"sample_count\":8",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "vector comparisons store full-width signed masks for unsigned, signed and floating inputs",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=vector_masks",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/vector_values.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_masks.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":3",
+                "\"sample_count\":3",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check complete vector footprints with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_masks.loom",
               "--library={tmp}/kernel.loombc",
               "--device=amdgpu",
               "--sanitizer=access",

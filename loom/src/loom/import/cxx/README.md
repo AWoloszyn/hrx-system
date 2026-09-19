@@ -28,6 +28,40 @@ Overloaded root names require disambiguation in the source. Template helpers
 are instantiated by cxx before import. This interface does not yet define an
 external C++ ABI for linking separately compiled C++ translation units.
 
+Explicit fixed vectors retain their lanes and element widths in High IR:
+
+```cpp
+typedef unsigned u32x16 __attribute__((vector_size(64)));
+
+u32x16 replace_depth(u32x16 previous, u32x16 depth) {
+  return (previous & 65535u) | (depth & 0xffff0000u);
+}
+```
+
+This imports as `vector<16xi32>` arguments, vector constants, `vector.andi` and
+`vector.ori`. Vector pointers use contiguous `vector.load` and `vector.store`,
+with source object sizes determining pointer strides. The
+`test/vector_depth.cpp` example combines a vector depth recurrence with a scalar
+tail and ordinary pointer reinterpretation.
+
+GNU `vector_size` and Clang `ext_vector_type` forms admit arithmetic, bitwise
+operations, shifts, scalar splats, brace initialization and indexed lane reads.
+Partial initializers zero the remaining lanes. Vector comparisons and logical
+negation produce source-width integer masks containing zero or all ones.
+Narrow integer vector arithmetic wraps at its element width; it does not acquire
+the scalar language's integer promotions. Equal-size vector casts and
+`__builtin_bit_cast` reinterpret the bits. Whole vectors flow through local
+values, helper calls, returns, branches and loops.
+
+Admission requires non-boolean lanes and an object layout with no padding beyond
+the lanes. Packed boolean vectors and padded three-lane objects need separate
+storage projections. Lane assignment, lane addresses, swizzles, vector `&&`/`||`
+and vector-conditioned `?:` also produce source diagnostics: they require
+additional lvalue or lane-selection projections. Target support remains a
+separate compilation boundary. For example, the VM can execute extracted lane
+programs but currently rejects vector aggregate transport across loop/branch
+arguments; that requires a shared aggregate representation through control flow.
+
 Kernel launch contracts are explicit source attributes:
 
 ```cpp
@@ -135,9 +169,9 @@ frontend's language and version macros; it does not promise historical-standard
 conformance. LP64, LLP64 and ILP32 source layouts are independent of the machine
 running the importer.
 
-The current translation surface covers scalar arithmetic and conversions,
-scalar-pointer indexing and arithmetic, local SSA values, conditional regions,
-short-circuit `&&` and `||`, counted and general `for` loops, `while` and
+The current translation surface covers scalar and explicit vector arithmetic,
+conversions, typed-pointer indexing and arithmetic, local SSA values,
+conditional regions, short-circuit `&&` and `||`, counted and general `for` loops, `while` and
 `do/while` loops, fixed workgroup arrays, and direct calls. Unsupported reachable
 types and statements produce source diagnostics. Integral subscripts preserve
 their source width and signedness. Interior pointers carry a buffer root and an
@@ -181,7 +215,7 @@ header APIs, and direct API tests that do not link the aggregate importer.
 | Package | Contract |
 | --- | --- |
 | `source/` | One configured frontend invocation, provider and diagnostic handling, immutable facade lookup, and source locations copied into the output module. |
-| `value/` | Source type/layout projection, scalar and buffer/origin representations, arithmetic, and memory access construction from already evaluated operands. |
+| `value/` | Source type/layout projection, scalar/vector SSA and buffer/origin representations, arithmetic, and memory access construction from already evaluated operands. |
 | `control/` | An immutable analysis of ordered source writes, return/fallthrough outcomes and nonwrapping counted-loop eligibility. This package has no IR dependency. |
 | `binding/` | Admission and construction for generated operation bindings, kernel launch contracts, and explicit loop schedules. |
 | `symbol/` | Root selection, reachable function identities, deterministic naming, and native function definitions with explicit body contracts. |

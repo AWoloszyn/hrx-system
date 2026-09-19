@@ -157,14 +157,32 @@ TEST_F(ImportTest, ExplicitVectorsRetainMasksAndStructuredValueTransport) {
   EXPECT_NE(text.find("scf.for"), std::string::npos);
 }
 
+TEST_F(ImportTest, VectorLanesAndBitCastsKeepSourceRepresentation) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"(
+    typedef unsigned U __attribute__((vector_size(16)));
+    typedef float F __attribute__((vector_size(16)));
+    unsigned lane(unsigned* input, unsigned index) {
+      U lanes = {1u, 2u};
+      const U* source = reinterpret_cast<const U*>(input);
+      U value = *source + lanes;
+      F bits = (F)value;
+      U recovered = __builtin_bit_cast(U, bits);
+      return recovered[index];
+    }
+  )")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("vector.from_elements"), std::string::npos);
+  EXPECT_NE(text.find("vector.extract"), std::string::npos);
+  EXPECT_NE(text.find("vector.bitcast"), std::string::npos);
+}
+
 TEST_F(ImportTest, UnsupportedVectorFormsDiagnoseAtSourceAdmission) {
   for (auto source : {
            "typedef bool V __attribute__((ext_vector_type(16))); V f(V x) { "
            "return x; }",
            "typedef float V __attribute__((ext_vector_type(3))); V f(V x) { "
            "return x; }",
-           "typedef int V __attribute__((vector_size(16))); int f(V x) { "
-           "return x[0]; }",
            "typedef int V __attribute__((vector_size(16))); void f(V x) { x[0] "
            "= 1; }",
            "typedef int V __attribute__((vector_size(16))); V f(V x, V y) { "
