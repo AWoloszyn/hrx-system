@@ -1296,7 +1296,9 @@ class ConditionInductionFactsRewriteTest
           std::tuple<loom_scalar_type_t, uint8_t, bool>> {};
 
 TEST_P(ConditionInductionFactsRewriteTest, SemanticEditsMatchFreshAnalysis) {
-  const auto [scalar_type, bitwidth, permute] = GetParam();
+  const auto scalar_type = std::get<0>(GetParam());
+  const auto bitwidth = std::get<1>(GetParam());
+  const auto permute = std::get<2>(GetParam());
   const auto type = loom_type_scalar(scalar_type);
   auto constant = [&](int64_t value) {
     loom_op_t* op = nullptr;
