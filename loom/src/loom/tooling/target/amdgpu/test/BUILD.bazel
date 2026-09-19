@@ -118,6 +118,12 @@ loom_test(
 )
 
 loom_test(
+    name = "sequential_loops_hardware_test",
+    srcs = ["//loom/src/loom/test/corpus/conformance:sequential_loop_slices.loom"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+)
+
+loom_test(
     name = "kernarg_access_test",
     srcs = ["amdgpu_unused_kernargs.loom"],
     execution_profile = AMDGPU_ACCESS_PROFILE,

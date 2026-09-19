@@ -831,14 +831,15 @@ static iree_status_t loom_low_allocation_coalescing_append_relation_interval(
                             "allocation placement relation exceeds result "
                             "interval units");
   }
-  uint32_t source_assignment_index = 0;
-  const loom_value_id_t source_value_id =
-      loom_low_placement_value_id(context->placement, relation->source_ordinal);
-  IREE_RETURN_IF_ERROR(
-      loom_low_allocation_coalescing_assignment_index_for_value(
-          context, source_value_id, &source_assignment_index));
   const loom_low_allocation_assignment_t* source_assignment =
-      &context->assignment_map->assignments[source_assignment_index];
+      loom_low_allocation_coalescing_current_assignment_for_value_ordinal(
+          context, relation->source_ordinal);
+  if (!source_assignment) {
+    // Interval order can place a result before its source across blocks.
+    // Optional coalescing uses only current assignments; final packet moves
+    // materialize any transfer left after both values have been allocated.
+    return iree_ok_status();
+  }
   if (!loom_low_allocation_assignment_is_register_like(source_assignment)) {
     return iree_ok_status();
   }

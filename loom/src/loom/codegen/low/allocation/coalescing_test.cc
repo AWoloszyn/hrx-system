@@ -47,16 +47,24 @@ class LowAllocationCoalescingTest : public ::testing::Test {
     return value_id;
   }
 
+  // Backing blocks for module and allocation scratch.
   iree_arena_block_pool_t block_pool_;
+  // Scratch storage for coalescing queries.
   iree_arena_allocator_t arena_;
+  // Context shared by the fixture's modules.
   loom_context_t context_;
 };
 
 struct AppendState {
+  // Borrowed storage receiving committed assignments.
   loom_low_allocation_assignment_t* assignments;
+  // Number of available assignment slots.
   iree_host_size_t assignment_capacity;
+  // Number of committed assignments.
   iree_host_size_t assignment_count;
+  // Borrowed value-ordinal lookup updated after each append.
   uint32_t* assignment_indices_by_value_ordinal;
+  // Borrowed assignment map whose current count follows appends.
   loom_low_allocation_assignment_map_t* assignment_map;
 };
 
@@ -383,6 +391,85 @@ TEST_F(LowAllocationCoalescingTest, ConcatMayPrecedeItsSourceAssignments) {
     EXPECT_FALSE(assigned);
     EXPECT_EQ(assignment_map.assignment_count, assigned_count);
     EXPECT_EQ(assignment_indices[2], UINT32_MAX);
+  }
+
+  for (loom_value_id_t value_id : value_ids) {
+    loom_module_value_ordinal_scratch_clear(module, value_id);
+  }
+  loom_module_value_ordinal_scratch_release(module);
+  loom_module_free(module);
+}
+
+TEST_F(LowAllocationCoalescingTest,
+       OptionalStructuralAliasMayPrecedeItsSourceAssignment) {
+  loom_module_t* module = AllocateModule();
+  const loom_value_id_t value_ids[] = {DefineValue(module),
+                                       DefineValue(module)};
+  loom_module_value_ordinal_scratch_acquire(module);
+  for (uint32_t i = 0; i < IREE_ARRAYSIZE(value_ids); ++i) {
+    loom_module_value_ordinal_scratch_set(module, value_ids[i], i);
+  }
+
+  const loom_liveness_value_class_t value_class = RegisterValueClass(17);
+  loom_liveness_interval_t intervals[] = {
+      Interval(value_ids[0], /*start=*/10, /*end=*/12, value_class),
+      Interval(value_ids[1], /*start=*/2, /*end=*/14, value_class),
+  };
+  const uint32_t interval_indices[] = {0, 1};
+  loom_liveness_analysis_t liveness = {};
+  liveness.intervals = intervals;
+  liveness.interval_count = IREE_ARRAYSIZE(intervals);
+  liveness.value_ids = value_ids;
+  liveness.value_count = IREE_ARRAYSIZE(value_ids);
+  liveness.value_interval_indices = interval_indices;
+
+  loom_low_placement_relation_t relation = {};
+  relation.result_ordinal = 1;
+  relation.source_ordinal = 0;
+  relation.unit_count = 1;
+  relation.flags = LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED |
+                   LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE;
+  const loom_low_placement_relation_range_t result_ranges[] = {{0, 0}, {0, 1}};
+  const loom_low_placement_relation_range_t source_ranges[] = {{0, 1}, {1, 0}};
+  const uint32_t source_relations[] = {0};
+  loom_low_placement_table_t placement = {};
+  placement.value_ids = value_ids;
+  placement.value_count = IREE_ARRAYSIZE(value_ids);
+  placement.relations = &relation;
+  placement.relation_count = 1;
+  placement.ranges_by_result_ordinal = result_ranges;
+  placement.ranges_by_source_ordinal = source_ranges;
+  placement.relation_indices_by_source_ordinal = source_relations;
+
+  uint32_t assignment_indices[] = {UINT32_MAX, UINT32_MAX};
+  loom_low_allocation_assignment_map_t assignment_map = {};
+  assignment_map.module = module;
+  assignment_map.liveness = &liveness;
+  assignment_map.assignment_indices_by_value_ordinal = assignment_indices;
+
+  loom_low_allocation_coalescing_context_t context = {};
+  context.arena = &arena_;
+  context.liveness = &liveness;
+  context.placement = &placement;
+  context.assignment_map = &assignment_map;
+
+  for (loom_low_placement_cause_t cause :
+       {LOOM_LOW_PLACEMENT_CAUSE_LOW_COPY, LOOM_LOW_PLACEMENT_CAUSE_LOW_MOVE,
+        LOOM_LOW_PLACEMENT_CAUSE_LOW_SLICE}) {
+    SCOPED_TRACE(cause);
+    const bool is_slice = cause == LOOM_LOW_PLACEMENT_CAUSE_LOW_SLICE;
+    intervals[0].unit_count = is_slice ? 2 : 1;
+    relation.kind = is_slice ? LOOM_LOW_PLACEMENT_RELATION_SUBRANGE
+                             : LOOM_LOW_PLACEMENT_RELATION_SAME_STORAGE;
+    relation.cause = cause;
+    relation.source_unit_offset = is_slice ? 1 : 0;
+    bool assigned = true;
+    IREE_EXPECT_OK(loom_low_allocation_coalescing_assign_structural_interval(
+        &context, &intervals[1], &assigned));
+    EXPECT_FALSE(assigned);
+    EXPECT_EQ(assignment_map.assignment_count, 0u);
+    EXPECT_EQ(assignment_indices[0], UINT32_MAX);
+    EXPECT_EQ(assignment_indices[1], UINT32_MAX);
   }
 
   for (loom_value_id_t value_id : value_ids) {
