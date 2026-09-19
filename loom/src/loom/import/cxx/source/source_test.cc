@@ -11,6 +11,7 @@
 #include <cxx/memory_layout.h>
 
 #include <map>
+#include <optional>
 #include <string>
 
 #include "iree/testing/gtest.h"
@@ -110,6 +111,33 @@ TEST(SourceTest, DiagnosticSinkFailureCrossesTheParserSafeBoundary) {
   } catch (StatusError& error) {
     IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED, error.release());
   }
+}
+
+TEST(SourceTest, CopiedProviderFailureRetainsOriginalStatus) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  iree_status_t provided_status = nullptr;
+  options.source_provider = {
+      [](void* user_data, iree_string_view_t, bool*, iree_string_view_t*) {
+        auto status =
+            iree_make_status(IREE_STATUS_UNAVAILABLE, "provider failed");
+        // Retain only the identity; the source boundary owns the status.
+        *static_cast<iree_status_t*>(user_data) = status;
+        return status;
+      },
+      &provided_status};
+  std::optional<StatusError> retained_error;
+  try {
+    Source source(IREE_SV("#include \"missing.h\"\n"),
+                  IREE_SV("/app/source.cpp"), options);
+    FAIL() << "Expected the provider failure";
+  } catch (const StatusError& error) {
+    retained_error.emplace(error);
+  }
+  ASSERT_TRUE(retained_error.has_value());
+  auto status = retained_error->release();
+  EXPECT_EQ(status, provided_status);
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_UNAVAILABLE, status);
 }
 
 }  // namespace
