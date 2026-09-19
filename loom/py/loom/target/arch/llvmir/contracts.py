@@ -233,8 +233,6 @@ _BITCAST_RESHAPE_SPECS = (
 
 _I8_MIN = -(2**7)
 _I8_MAX = (2**7) - 1
-_I1_MIN = 0
-_I1_MAX = 1
 _I16_MIN = -(2**15)
 _I16_MAX = (2**15) - 1
 _I32_MIN = -(2**31)
@@ -369,12 +367,22 @@ def _const_i8_rule(source_op: Op, result_type: TypePattern) -> DescriptorRule:
 
 
 def _const_i1_rule(source_op: Op, result_type: TypePattern) -> DescriptorRule:
-    return _const_integer_rule(
-        source_op,
-        result_type,
-        "llvmir.const.i1",
-        minimum=_I1_MIN,
-        maximum=_I1_MAX,
+    descriptor = _descriptor("llvmir.const.i1")
+    return DescriptorRule(
+        source_op=source_op,
+        descriptor=descriptor,
+        guards=(
+            Guard.value_type("result", result_type),
+            Guard.value_exact_i64("result"),
+        ),
+        emit=(
+            EmitDescriptorOp(
+                descriptor=descriptor,
+                results={"dst": ValueRef.result("result")},
+                immediates={"value": ValueProject.exact_i64("result")},
+                form=DescriptorEmitForm.CONST,
+            ),
+        ),
     )
 
 
