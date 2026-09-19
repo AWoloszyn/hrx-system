@@ -131,12 +131,12 @@ static void loom_verify_defined_type_refs(
   const loom_value_id_t direct_encoding =
       loom_type_has_ssa_encoding(type) ? loom_type_encoding_value_id(type)
                                        : LOOM_VALUE_ID_INVALID;
-  for (loom_type_use_id_t use_id =
-           loom_module_value_first_outgoing_type_use(state->module, value_id);
-       use_id != LOOM_TYPE_USE_ID_INVALID;) {
-    const loom_type_use_t* use = &state->module->type_uses.records[use_id];
-    use_id = use->next_outgoing_use_id;
-    const loom_value_id_t referenced_id = use->referenced_value_id;
+  loom_type_use_iterator_t dependencies;
+  loom_module_value_type_dependencies(state->module, value_id, &dependencies);
+  for (loom_value_id_t referenced_id =
+           loom_type_dependencies_next(&dependencies);
+       referenced_id != LOOM_VALUE_ID_INVALID;
+       referenced_id = loom_type_dependencies_next(&dependencies)) {
     if (referenced_id == direct_encoding ||
         loom_verify_definition_ref_is_visible(state, op, vtable, referenced_id,
                                               is_result)) {
@@ -251,18 +251,23 @@ void loom_verify_attribute_value_refs(loom_verify_state_t* state,
                                       const loom_op_vtable_t* vtable) {
   const bool allows_local_definitions =
       iree_any_bit_set(vtable->traits, LOOM_TRAIT_SYMBOL_DEFINE);
-  const loom_attribute_use_id_t* heads = loom_op_attribute_use_heads(op);
+  const uint32_t* attribute_owners = loom_op_attribute_owners(op);
   for (uint8_t i = 0; i < op->attribute_count; ++i) {
-    for (loom_attribute_use_id_t use_id = heads[i]; use_id;) {
-      const loom_attribute_use_t* use =
-          &state->module->attribute_uses.records[use_id - 1];
-      use_id = use->next_outgoing;
-      if (loom_verify_definition_ref_is_visible(
-              state, op, vtable, use->value_id, allows_local_definitions)) {
+    if (!attribute_owners[i]) {
+      continue;
+    }
+    loom_type_use_iterator_t dependencies;
+    loom_attribute_dependencies_begin(&state->module->type_uses, op, i,
+                                      &dependencies);
+    for (loom_value_id_t provider = loom_type_dependencies_next(&dependencies);
+         provider != LOOM_VALUE_ID_INVALID;
+         provider = loom_type_dependencies_next(&dependencies)) {
+      if (loom_verify_definition_ref_is_visible(state, op, vtable, provider,
+                                                allows_local_definitions)) {
         continue;
       }
       loom_verify_emit_attribute_ref_not_visible(state, op, vtable, i,
-                                                 use->value_id);
+                                                 provider);
       if (loom_verify_at_error_limit(state)) {
         return;
       }

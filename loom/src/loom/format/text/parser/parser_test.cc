@@ -459,11 +459,8 @@ TEST_F(ParserTest, ParsedOpScratchFramesStayDepthSafeWhileParentIsActive) {
 
 TEST_F(ParserTest, ScopeFramesReuseHashStorageAcrossSiblingScopes) {
   loom_parser_scope_t root_scope = {};
-  loom_parser_t parser = {
-      /*.tokenizer=*/{}, /*.module=*/{},
-      /*.context=*/{},   /*.parser_arena=*/{},
-      /*.builder=*/{},   /*.scope=*/&root_scope,
-  };
+  loom_parser_t parser = {};
+  parser.scope = &root_scope;
   iree_arena_initialize(&block_pool_, &parser.parser_arena);
 
   IREE_ASSERT_OK(loom_parser_scope_push(&parser, &root_scope, &parser.scope));
@@ -517,11 +514,8 @@ TEST_F(ParserTest, ScopeFramesReuseHashStorageAcrossSiblingScopes) {
 
 TEST_F(ParserTest, ScopeFramesPreserveParentLookupAndRejectLocalDuplicates) {
   loom_parser_scope_t root_scope = {};
-  loom_parser_t parser = {
-      /*.tokenizer=*/{}, /*.module=*/{},
-      /*.context=*/{},   /*.parser_arena=*/{},
-      /*.builder=*/{},   /*.scope=*/&root_scope,
-  };
+  loom_parser_t parser = {};
+  parser.scope = &root_scope;
   iree_arena_initialize(&block_pool_, &parser.parser_arena);
 
   bool duplicate = true;

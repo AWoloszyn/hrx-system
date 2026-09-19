@@ -225,9 +225,8 @@ TEST_F(LowLowerFunctionBoundaryTest,
   ASSERT_EQ(predicate_count, 1u);
   ASSERT_NE(predicates, nullptr);
   EXPECT_EQ(predicates[0].args[0], low_arguments[0]);
-  EXPECT_NE(loom_module_value_attribute_use_heads(module_, low_arguments[0])
-                ->predicate,
-            0u);
+  EXPECT_TRUE(loom_value_has_attribute_uses(
+      loom_module_value(module_, low_arguments[0])));
 
   loom_op_t* resource_op = nullptr;
   iree_host_size_t resource_count = 0;
@@ -325,10 +324,8 @@ TEST_F(LowLowerFunctionBoundaryTest,
   ASSERT_EQ(predicate_count, 1u);
   ASSERT_NE(predicates, nullptr);
   EXPECT_EQ(predicates[0].args[0], low_arguments.values[0]);
-  EXPECT_NE(
-      loom_module_value_attribute_use_heads(module_, low_arguments.values[0])
-          ->predicate,
-      0u);
+  EXPECT_TRUE(loom_value_has_attribute_uses(
+      loom_module_value(module_, low_arguments.values[0])));
 
   EXPECT_EQ(loom_low_func_decl_import_kind(result_.low_func_op),
             LOOM_LOW_FUNC_DECL_IMPORT_KIND_NATIVE);

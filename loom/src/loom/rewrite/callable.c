@@ -623,8 +623,7 @@ static bool loom_callable_value_uses_move_to_continuation(
   }
   const loom_value_t* value = loom_module_value(module, value_id);
   if (loom_value_has_attribute_uses(value) ||
-      loom_module_value_first_incoming_type_use(module, value_id) !=
-          LOOM_TYPE_USE_ID_INVALID) {
+      loom_module_value_has_type_uses(module, value_id)) {
     return false;
   }
   const loom_use_t* uses = loom_value_uses(value);

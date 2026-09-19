@@ -164,13 +164,13 @@ static iree_status_t loom_scf_body_capture_payload(
   }
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    for (loom_type_use_id_t use_id = loom_module_value_first_outgoing_type_use(
-             builder->module, results[i]);
-         use_id != LOOM_TYPE_USE_ID_INVALID;) {
-      const loom_type_use_t* use = &builder->module->type_uses.records[use_id];
-      IREE_RETURN_IF_ERROR(
-          loom_scf_body_append_reference(use->referenced_value_id, builder));
-      use_id = use->next_outgoing_use_id;
+    loom_type_use_iterator_t dependencies;
+    loom_module_value_type_dependencies(builder->module, results[i],
+                                        &dependencies);
+    for (loom_value_id_t provider = loom_type_dependencies_next(&dependencies);
+         provider != LOOM_VALUE_ID_INVALID;
+         provider = loom_type_dependencies_next(&dependencies)) {
+      IREE_RETURN_IF_ERROR(loom_scf_body_append_reference(provider, builder));
     }
   }
   const loom_attribute_t* attributes = loom_op_const_attrs(op);

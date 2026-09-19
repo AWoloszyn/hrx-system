@@ -509,8 +509,10 @@ static SelectedMaterializationStats InspectSelectedMaterialization(
   SelectedMaterializationStats stats = {
       /*.body_bytes=*/0,
       /*.body_count=*/0,
-      /*.output_owned_bytes=*/output_module->arena.total_allocation_size,
-      /*.output_used_bytes=*/output_module->arena.used_allocation_size,
+      /*.output_owned_bytes=*/output_module->arena.total_allocation_size +
+          output_module->type_uses.arena.total_allocation_size,
+      /*.output_used_bytes=*/output_module->arena.used_allocation_size +
+          output_module->type_uses.arena.used_allocation_size,
       /*.scratch_owned_bytes=*/scratch_arena.total_allocation_size,
       /*.scratch_used_bytes=*/scratch_arena.used_allocation_size,
       /*.type_count=*/output_module->types.count,

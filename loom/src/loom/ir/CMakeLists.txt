@@ -59,9 +59,13 @@ loom_cc_library(
     "semantics.h"
     "structural_hash.h"
     "type_constraint.h"
+    "type_dependencies.h"
     "type_descriptor.h"
+    "type_identity.h"
+    "type_import.h"
     "types.h"
     "value_refs.h"
+    "value_replacement.h"
   TEXTUAL_HDRS
     "location_tag_table.inc"
     "scalar_type_table.inc"
@@ -76,10 +80,15 @@ loom_cc_library(
     "module_record.c"
     "scalar_type.c"
     "type_constraint.c"
+    "type_dependencies.c"
+    "type_identity.c"
+    "type_import.c"
     "types.c"
     "value_refs.c"
+    "value_replacement.c"
   DEPS
     iree::base
+    iree::base::internal
     iree::base::internal::arena
     loom::error::emitter
     loom::util::adaptive_sort
@@ -182,6 +191,7 @@ loom_cc_test(
     value_refs_test
   SRCS
     "value_refs_test.cc"
+    "value_replacement_test.cc"
   DEPS
     ::ir
     iree::base::internal::arena

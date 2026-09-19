@@ -13,8 +13,8 @@
 #include "loom/ir/parameterized_type.h"
 #include "loom/ir/structural_hash.h"
 
-// One distinct exact storage representation. Copied recursive payloads need not
-// share pointers with the canonical module entry, while topological readers do.
+// One distinct exact storage representation and its wire-equivalence class.
+// Canonical compound types retain the canonical storage of their children.
 typedef struct loom_bytecode_type_node_t {
   // Borrowed by-value type whose payload remains owned by the module.
   loom_type_t type;
@@ -664,8 +664,8 @@ iree_status_t loom_bytecode_type_index_initialize(
       .index = out_index,
       .arena = arena,
   };
-  // Most module types need distinct storage nodes. Start with the table size
-  // instead of abandoning successively doubled arena arrays.
+  // Each canonical module type needs one storage node. Start with the table
+  // size instead of abandoning successively doubled arena arrays.
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, module->types.count,
                                                  sizeof(*out_index->nodes),
                                                  (void**)&out_index->nodes));
@@ -743,8 +743,8 @@ iree_status_t loom_bytecode_type_index_initialize(
         classes[slot] = frame->node;
       }
       node->representative = classes[slot];
-      // Copied payloads may be discovered before their module representatives.
-      // Keep the earliest module entry regardless of postorder discovery order.
+      // Scoped bindings may distinguish wire-equivalent module types. Keep the
+      // earliest module entry regardless of postorder discovery order.
       loom_bytecode_type_node_t* representative =
           &out_index->nodes[node->representative];
       if (node->module_index < representative->module_index) {

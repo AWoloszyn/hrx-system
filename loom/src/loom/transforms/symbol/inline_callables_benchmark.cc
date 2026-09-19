@@ -603,7 +603,8 @@ static void BM_InlineComposition(benchmark::State& state, CallableMode mode,
     state.PauseTiming();
     metrics = {
         /*.output_shape=*/MeasureModuleShape(module),
-        /*.module_arena_bytes=*/module->arena.used_allocation_size,
+        /*.module_arena_bytes=*/module->arena.used_allocation_size +
+            module->type_uses.arena.used_allocation_size,
         /*.pass_arena_bytes=*/pass_arena.used_allocation_size,
         /*.required_edge_count=*/
         ReadPassStatistic(pass_info, statistic_storage,

@@ -956,8 +956,8 @@ TEST_F(ModuleTest, BlockRemoveArgRejectsPredicateAttributeUses) {
   loom_op_attrs(function_op)[3] = loom_attr_predicate_list(&predicate, 1);
   IREE_ASSERT_OK(loom_module_compute_uses(module));
 
-  EXPECT_NE(loom_module_value_attribute_use_heads(module, argument)->predicate,
-            0u);
+  EXPECT_TRUE(
+      loom_value_has_attribute_uses(loom_module_value(module, argument)));
   IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
                         loom_block_remove_arg(module, entry_block, 0));
   EXPECT_EQ(entry_block->arg_count, 1u);
@@ -1383,10 +1383,10 @@ TEST_F(ModuleTest, TypeUseTableCrossesValueSegments) {
   IREE_ASSERT_OK(loom_module_define_value(module, vector_type, &vector_id));
   ASSERT_EQ(vector_id, LOOM_VALUE_SEGMENT_CAPACITY);
   ASSERT_TRUE(loom_module_value_has_type_uses(module, dim_id));
-  loom_type_use_id_t use_id =
-      loom_module_value_first_incoming_type_use(module, dim_id);
-  ASSERT_NE(use_id, LOOM_TYPE_USE_ID_INVALID);
-  EXPECT_EQ(module->type_uses.records[use_id].user_value_id, vector_id);
+  loom_type_use_iterator_t users;
+  loom_module_value_type_users(module, dim_id, &users);
+  EXPECT_EQ(loom_type_users_next(&users), vector_id);
+  EXPECT_EQ(loom_type_users_next(&users), LOOM_VALUE_ID_INVALID);
 
   IREE_ASSERT_OK(loom_module_set_value_type(
       module, vector_id,
@@ -1431,12 +1431,11 @@ TEST_F(ModuleTest, TypeUseTableRebuildRetainsDeclarationArguments) {
   ASSERT_TRUE(loom_module_value_has_type_uses(module, extent));
 
   IREE_ASSERT_OK(loom_module_compute_uses(module));
-  loom_type_use_id_t use_id =
-      loom_module_value_first_outgoing_type_use(module, storage);
-  ASSERT_NE(use_id, LOOM_TYPE_USE_ID_INVALID);
-  EXPECT_EQ(module->type_uses.records[use_id].referenced_value_id, extent);
-  EXPECT_EQ(module->type_uses.records[use_id].user_value_id, storage);
-  EXPECT_EQ(module->type_uses.active_count, 1u);
+  loom_type_use_iterator_t dependencies;
+  loom_module_value_type_dependencies(module, storage, &dependencies);
+  EXPECT_EQ(loom_type_dependencies_next(&dependencies), extent);
+  EXPECT_EQ(loom_type_dependencies_next(&dependencies), LOOM_VALUE_ID_INVALID);
+  EXPECT_EQ(module->type_uses.active_carrier_count, 1u);
 
   IREE_ASSERT_OK(
       loom_module_set_value_type(module, storage, argument_types[1]));
@@ -1450,8 +1449,8 @@ TEST_F(ModuleTest, TypeUseTableRebuildRetainsDeclarationArguments) {
   IREE_ASSERT_OK(loom_op_erase(module, declaration));
   IREE_ASSERT_OK(loom_module_compute_uses(module));
   EXPECT_FALSE(loom_module_has_active_type_uses(module));
-  EXPECT_EQ(loom_module_value_first_outgoing_type_use(module, storage),
-            LOOM_TYPE_USE_ID_INVALID);
+  loom_module_value_type_dependencies(module, storage, &dependencies);
+  EXPECT_EQ(loom_type_dependencies_next(&dependencies), LOOM_VALUE_ID_INVALID);
   loom_module_free(module);
 }
 

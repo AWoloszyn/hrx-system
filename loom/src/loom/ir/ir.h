@@ -7,8 +7,8 @@
 // Loom IR graph: Module -> Region -> Block -> Operation -> Value.
 //
 // The IR is a lightweight, arena-allocated graph that represents loom
-// programs. All IR for a module lives in a single arena: creation is
-// bump-pointer allocation, destruction is freeing the arena.
+// programs. Module-owned arenas use bump-pointer allocation and return their
+// blocks to a shared pool on destruction.
 //
 // ==========================================================================
 // Core concepts
@@ -104,6 +104,7 @@ extern "C" {
 
 typedef struct loom_context_t loom_context_t;
 typedef struct loom_module_t loom_module_t;
+struct loom_type_identity_page_t;
 typedef struct loom_symbol_t loom_symbol_t;
 typedef struct loom_block_t loom_block_t;
 typedef struct loom_op_t loom_op_t;
@@ -349,7 +350,7 @@ enum loom_value_flag_bits_e {
   LOOM_VALUE_FLAG_OVERFLOW_USES = 1u << 2,
 
   // This value has incoming operation attribute uses. Exact owners are retained
-  // in the module's attribute-use table, separate from ordinary operand uses.
+  // in the shared dependency index, separate from ordinary operand uses.
   LOOM_VALUE_FLAG_ATTRIBUTE_USES = 1u << 3,
 };
 typedef uint16_t loom_value_flags_t;
@@ -1666,7 +1667,7 @@ typedef struct loom_op_t {
   //   loom_tied_result_t tied_results[tied_result_count]
   //   <padding to alignof(loom_attribute_t)>
   //   loom_attribute_t   attributes[attribute_count]
-  //   uint32_t           attribute_use_heads[attribute_count]
+  //   uint32_t           attribute_owners[attribute_count]
   //   uint16_t           operand_segment_counts[operand_descriptor_count]
 } loom_op_t;
 
@@ -1688,7 +1689,7 @@ static_assert(sizeof(loom_op_t) == 64, "loom_op_t must be 64 bytes");
 //   loom_tied_result_t tied_results[tied_result_count]
 //   <padding to alignof(loom_attribute_t)>
 //   loom_attribute_t   attributes[attribute_count]  (16 bytes each)
-//   uint32_t           attribute_use_heads[attribute_count] (4 bytes each)
+//   uint32_t           attribute_owners[attribute_count] (4 bytes each)
 //   uint16_t           operand_segment_counts[]     (segmented ops only)
 
 // Returns a pointer to the successor block pointer array.
@@ -1754,9 +1755,10 @@ static inline const loom_attribute_t* loom_op_const_attrs(const loom_op_t* op) {
   return (const loom_attribute_t*)loom_op_attrs(op);
 }
 
-// Outgoing attribute-use list heads, indexed by attribute ordinal. Zero means
-// no uses. The heads move with trailing attributes when results are removed.
-static inline uint32_t* loom_op_attribute_use_heads(const loom_op_t* op) {
+// Retained dependency owner IDs, indexed by attribute ordinal. Zero means no
+// declared dependencies. The slots move with attributes on result repacking;
+// their owners retain the stable operation pointer and attribute ordinal.
+static inline uint32_t* loom_op_attribute_owners(const loom_op_t* op) {
   return (uint32_t*)(loom_op_attrs(op) + op->attribute_count);
 }
 
@@ -1765,12 +1767,11 @@ static inline uint32_t* loom_op_attribute_use_heads(const loom_op_t* op) {
 // LOOM_OP_VTABLE_SEGMENTED_OPERANDS, with one uint16_t count per operand
 // descriptor. Non-segmented callers must not dereference the returned pointer.
 static inline uint16_t* loom_op_operand_segment_counts(const loom_op_t* op) {
-  return (uint16_t*)(loom_op_attribute_use_heads(op) + op->attribute_count);
+  return (uint16_t*)(loom_op_attribute_owners(op) + op->attribute_count);
 }
 static inline const uint16_t* loom_op_const_operand_segment_counts(
     const loom_op_t* op) {
-  return (const uint16_t*)(loom_op_attribute_use_heads(op) +
-                           op->attribute_count);
+  return (const uint16_t*)(loom_op_attribute_owners(op) + op->attribute_count);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2163,30 +2164,19 @@ typedef struct loom_string_table_t {
   iree_string_view_t* entries;
 } loom_string_table_t;
 
-// Index into the module's type-use record table.
-typedef uint32_t loom_type_use_id_t;
-#define LOOM_TYPE_USE_ID_INVALID ((loom_type_use_id_t)UINT32_MAX)
+// Canonical set of SSA dependencies in a type. Zero is the empty set.
+typedef uint32_t loom_type_dependency_id_t;
 
-// Per-value heads for the type-use adjacency lists.
+// Per-value identities in the shared type-dependency ownership index.
 typedef struct loom_value_type_use_heads_t {
-  // First record whose referenced_value_id is this value.
-  loom_type_use_id_t first_incoming_use_id;
-  // First record whose user_value_id is this value.
-  loom_type_use_id_t first_outgoing_use_id;
+  // Canonical singleton for this provider, or zero until first activation.
+  loom_type_dependency_id_t provider;
+  // Carrier record retaining this value's declared and active dependency sets.
+  uint32_t carrier;
 } loom_value_type_use_heads_t;
 
-// One-based index into the module's attribute-use records. Zero is no use.
-typedef uint32_t loom_attribute_use_id_t;
-
-// Incoming references from operation attributes, separated by their semantic
-// role. References inside a type-valued attribute are type references even if
-// that type itself contains predicates.
-typedef struct loom_value_attribute_use_heads_t {
-  // First incoming reference carried by a type-valued attribute.
-  loom_attribute_use_id_t type;
-  // First incoming reference carried by a predicate-list attribute.
-  loom_attribute_use_id_t predicate;
-} loom_value_attribute_use_heads_t;
+// One-based attribute owner in the dependency index. Zero is no owner.
+typedef uint32_t loom_attribute_owner_id_t;
 
 // Number of module values stored in each stable value segment.
 #define LOOM_VALUE_SEGMENT_CAPACITY 256u
@@ -2214,12 +2204,9 @@ typedef iree_alignas(64) struct loom_value_segment_t {
   uint32_t u32_scratch[LOOM_VALUE_SEGMENT_CAPACITY];
   // Type-use adjacency heads indexed by the same value rows.
   loom_value_type_use_heads_t type_use_heads[LOOM_VALUE_SEGMENT_CAPACITY];
-  // Attribute-use adjacency heads indexed by the same value rows.
-  loom_value_attribute_use_heads_t
-      attribute_use_heads[LOOM_VALUE_SEGMENT_CAPACITY];
 } loom_value_segment_t;
 
-static_assert(sizeof(loom_value_segment_t) == 21504,
+static_assert(sizeof(loom_value_segment_t) == 19456,
               "value segment must fit in one workspace block");
 
 // Value table. All values live in stable, cache-line-aligned segments and are
@@ -2286,7 +2273,7 @@ static inline const uint32_t* loom_value_table_const_u32_scratch(
   return &segment->u32_scratch[value_id & LOOM_VALUE_SEGMENT_MASK];
 }
 
-// Returns the mutable type-use adjacency heads for |value_id|.
+// Returns the mutable dependency-index identities for |value_id|.
 static inline loom_value_type_use_heads_t* loom_value_table_type_use_heads(
     loom_value_table_t* table, loom_value_id_t value_id) {
   loom_value_segment_t* segment =
@@ -2294,7 +2281,7 @@ static inline loom_value_type_use_heads_t* loom_value_table_type_use_heads(
   return &segment->type_use_heads[value_id & LOOM_VALUE_SEGMENT_MASK];
 }
 
-// Returns the const type-use adjacency heads for |value_id|.
+// Returns the const dependency-index identities for |value_id|.
 static inline const loom_value_type_use_heads_t*
 loom_value_table_const_type_use_heads(const loom_value_table_t* table,
                                       loom_value_id_t value_id) {
@@ -2347,82 +2334,33 @@ typedef struct loom_symbol_table_t {
 
 // Type table. Interned types for pointer-equality comparison.
 typedef struct loom_type_table_t {
+  // Number of published canonical types and parallel facts.
   iree_host_size_t count;
+  // Allocated rows in each parallel array.
   iree_host_size_t capacity;
+  // Immutable module-owned type payloads.
   loom_type_t* entries;
   // Structural hashes parallel to entries.
   uint32_t* hashes;
+  // Canonical SSA dependency sets parallel to entries, including forward IDs.
+  loom_type_dependency_id_t* dependencies;
 } loom_type_table_t;
 
-// A reference from one SSA value's type to another SSA value.
-//
-// Type uses are not operands: they describe symbolic type structure such as
-// dynamic dimensions and SSA encodings. They still participate in liveness and
-// RAUW because printed/serialized types contain the referenced SSA names.
-typedef struct loom_type_use_t {
-  // SSA value referenced by a type payload.
-  loom_value_id_t referenced_value_id;
-  // SSA value whose type carries the reference.
-  loom_value_id_t user_value_id;
-  // Next record in referenced_value_id's incoming list.
-  loom_type_use_id_t next_incoming_use_id;
-  // Previous record in referenced_value_id's incoming list.
-  loom_type_use_id_t previous_incoming_use_id;
-  // Next record in user_value_id's outgoing list.
-  loom_type_use_id_t next_outgoing_use_id;
-  // Previous record in user_value_id's outgoing list.
-  loom_type_use_id_t previous_outgoing_use_id;
-} loom_type_use_t;
+typedef struct loom_type_dependency_index_t loom_type_dependency_index_t;
 
-// Side metadata for SSA references embedded in value types.
+// Shared membership and active ownership of SSA references in value types and
+// operation attributes. These references participate in liveness and RAUW but
+// are not operands.
 typedef struct loom_type_use_table_t {
-  // Value table whose segments own the per-value adjacency heads.
+  // Persistent facts survive speculative type-payload arena checkpoints.
+  iree_arena_allocator_t arena;
+  // Value table whose segments own the provider and carrier identities.
   loom_value_table_t* value_table;
-  // Number of record slots ever allocated from records.
-  iree_host_size_t record_count;
-  // Number of record slots allocated in records.
-  iree_host_size_t record_capacity;
-  // Number of currently active type-use records.
-  iree_host_size_t active_count;
-  // Number of inactive record slots linked through first_free_use_id.
-  iree_host_size_t free_count;
-  // First inactive record slot available for reuse.
-  loom_type_use_id_t first_free_use_id;
-  // Sparse type-use records, indexed by loom_type_use_id_t.
-  loom_type_use_t* records;
+  // Arena-owned index, allocated only for the first nonempty dependency set.
+  loom_type_dependency_index_t* index;
+  // Number of value-type carriers with a nonempty active set, not pair count.
+  uint32_t active_carrier_count;
 } loom_type_use_table_t;
-
-// One SSA reference carried by an operation attribute. Duplicate references
-// have separate records; replacing one attribute unlinks its entire outgoing
-// list without searching the referenced values' incoming lists.
-typedef struct loom_attribute_use_t {
-  // Stable owning operation; NULL for a recycled record slot.
-  loom_op_t* op;
-  // Referenced module value.
-  loom_value_id_t value_id;
-  // Next incoming reference of the same type/predicate class.
-  loom_attribute_use_id_t next_incoming;
-  // Previous incoming reference, or zero at the value's list head.
-  loom_attribute_use_id_t previous_incoming;
-  // Next reference owned by this attribute, or next free record when recycled.
-  loom_attribute_use_id_t next_outgoing;
-  // Ordinal of the owning attribute, stable across trailing-storage repacking.
-  uint8_t attribute_index;
-  // True for predicate-list references outside type-valued attributes.
-  bool is_predicate;
-} loom_attribute_use_t;
-
-// Arena-owned reusable records for exact operation attribute references.
-typedef struct loom_attribute_use_table_t {
-  // Number of record slots initialized in records, including recycled slots.
-  uint32_t count;
-  // Allocated record slots; geometrically grown in the module arena.
-  uint32_t capacity;
-  // First recycled record, or zero when all initialized slots are occupied.
-  loom_attribute_use_id_t first_free;
-  // Records addressed by one-based IDs. No pointer survives capacity growth.
-  loom_attribute_use_t* records;
-} loom_attribute_use_table_t;
 
 // Kind of IR object that owns source text comments.
 typedef enum loom_comment_owner_kind_e {
@@ -2532,11 +2470,8 @@ typedef struct loom_module_t {
   // Reusable compiler scratch indexed by value ID.
   loom_module_scratch_t scratch;
 
-  // SSA references carried by value types.
+  // SSA membership and active value-type and operation-attribute ownership.
   loom_type_use_table_t type_uses;
-
-  // SSA references carried by operation attributes.
-  loom_attribute_use_table_t attribute_uses;
 
   // Module-level named symbols (functions, globals, executables).
   loom_symbol_table_t symbols;
@@ -2564,6 +2499,14 @@ typedef struct loom_module_t {
   loom_intern_table_t string_intern;
   loom_intern_table_t type_intern;
   loom_intern_table_t encoding_intern;
+
+  // Complete immutable canonical-payload identity index, published with types.
+  struct {
+    // Radix directory of pages containing canonical payload starts.
+    uint64_t root;
+    // Most recently published page, accelerating sequential arena construction.
+    struct loom_type_identity_page_t* recent_page;
+  } type_identity;
 
   // One-based IDs of the two most-recent exact type candidates, newest first.
   // Zero denotes an empty slot and keeps zero-initialized modules inert.

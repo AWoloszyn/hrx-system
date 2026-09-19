@@ -57,8 +57,12 @@ loom_cc_library(
         "module_record.c",
         "scalar_type.c",
         "type_constraint.c",
+        "type_dependencies.c",
+        "type_identity.c",
+        "type_import.c",
         "types.c",
         "value_refs.c",
+        "value_replacement.c",
     ],
     hdrs = [
         "attribute.h",
@@ -77,9 +81,13 @@ loom_cc_library(
         "semantics.h",
         "structural_hash.h",
         "type_constraint.h",
+        "type_dependencies.h",
         "type_descriptor.h",
+        "type_identity.h",
+        "type_import.h",
         "types.h",
         "value_refs.h",
+        "value_replacement.h",
     ],
     textual_hdrs = [
         "location_tag_table.inc",
@@ -91,6 +99,7 @@ loom_cc_library(
         "//loom/src/loom/util:bstring",
         "//loom/src/loom/util:segmented_storage",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
         "//runtime/src/iree/base/internal:arena",
     ],
 )
@@ -179,7 +188,10 @@ loom_cc_test(
 
 loom_cc_test(
     name = "value_refs_test",
-    srcs = ["value_refs_test.cc"],
+    srcs = [
+        "value_refs_test.cc",
+        "value_replacement_test.cc",
+    ],
     deps = [
         ":ir",
         "//loom/src/loom/ops/test",

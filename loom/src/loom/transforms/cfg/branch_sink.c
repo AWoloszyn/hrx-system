@@ -174,16 +174,12 @@ static bool loom_branch_sink_value_uses_target_one_region(
     }
   }
 
-  loom_type_use_id_t use_id =
-      loom_module_value_first_incoming_type_use(module, value_id);
-  while (use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (type_use->user_value_id >= module->values.count) {
-      return false;
-    }
-
-    const loom_value_t* user_value =
-        loom_module_value(module, type_use->user_value_id);
+  loom_type_use_iterator_t type_users;
+  loom_module_value_type_users(module, value_id, &type_users);
+  for (loom_value_id_t user_value_id = loom_type_users_next(&type_users);
+       user_value_id != LOOM_VALUE_ID_INVALID;
+       user_value_id = loom_type_users_next(&type_users)) {
+    const loom_value_t* user_value = loom_module_value(module, user_value_id);
     uint8_t region_index = LOOM_BRANCH_SINK_REGION_INDEX_NONE;
     if (loom_value_is_block_arg(user_value)) {
       region_index = loom_branch_sink_block_arg_region_index(
@@ -196,8 +192,6 @@ static bool loom_branch_sink_value_uses_target_one_region(
                                              has_use)) {
       return false;
     }
-
-    use_id = type_use->next_incoming_use_id;
   }
 
   return true;
@@ -239,16 +233,12 @@ static bool loom_branch_sink_value_uses_only_op(const loom_module_t* module,
     *has_use = true;
   }
 
-  loom_type_use_id_t use_id =
-      loom_module_value_first_incoming_type_use(module, value_id);
-  while (use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (type_use->user_value_id >= module->values.count) {
-      return false;
-    }
-
-    const loom_value_t* user_value =
-        loom_module_value(module, type_use->user_value_id);
+  loom_type_use_iterator_t type_users;
+  loom_module_value_type_users(module, value_id, &type_users);
+  for (loom_value_id_t user_value_id = loom_type_users_next(&type_users);
+       user_value_id != LOOM_VALUE_ID_INVALID;
+       user_value_id = loom_type_users_next(&type_users)) {
+    const loom_value_t* user_value = loom_module_value(module, user_value_id);
     if (loom_value_is_block_arg(user_value)) {
       return false;
     }
@@ -256,8 +246,6 @@ static bool loom_branch_sink_value_uses_only_op(const loom_module_t* module,
       return false;
     }
     *has_use = true;
-
-    use_id = type_use->next_incoming_use_id;
   }
 
   return true;

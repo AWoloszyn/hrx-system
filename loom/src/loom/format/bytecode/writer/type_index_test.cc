@@ -123,7 +123,7 @@ TEST_F(TypeIndexTest,
   }
 }
 
-TEST_F(TypeIndexTest, SeparatelyClonedChildrenUseCanonicalRepresentatives) {
+TEST_F(TypeIndexTest, GeneralConstructionRetainsCanonicalChildren) {
   loom_type_id_t child = Intern(loom_type_scalar(LOOM_SCALAR_TYPE_F32));
   for (int level = 0; level < 6; ++level) {
     child = InternFunction(child, 2);
@@ -133,13 +133,13 @@ TEST_F(TypeIndexTest, SeparatelyClonedChildrenUseCanonicalRepresentatives) {
   loom_type_t parent;
   IREE_ASSERT_OK(loom_module_intern_function_type(module_, &argument, 1,
                                                   &result, 1, &parent));
-  const loom_type_t copied_child = loom_type_func_data(parent)->types[0];
-  ASSERT_NE(loom_type_func_data(copied_child), loom_type_func_data(argument));
+  const loom_type_t retained_child = loom_type_func_data(parent)->types[0];
+  ASSERT_EQ(loom_type_func_data(retained_child), loom_type_func_data(argument));
 
   loom_bytecode_type_index_t index;
   IREE_ASSERT_OK(loom_bytecode_type_index_initialize(module_, &arena_, &index));
-  EXPECT_GT(index.count, module_->types.count);
-  EXPECT_EQ(loom_bytecode_type_index_lookup(&index, copied_child), child);
+  EXPECT_EQ(index.count, module_->types.count);
+  EXPECT_EQ(loom_bytecode_type_index_lookup(&index, retained_child), child);
   EXPECT_EQ(loom_bytecode_type_index_lookup(&index, argument), child);
 }
 

@@ -89,8 +89,10 @@ class OperationMemoryTracker {
   OperationMemoryTracker& operator=(const OperationMemoryTracker&) = delete;
 
   void MarkWarmupComplete(const loom_module_t* module) {
-    module_arena_used_bytes_ = module->arena.used_allocation_size;
-    module_arena_owned_bytes_ = module->arena.total_allocation_size;
+    module_arena_used_bytes_ = module->arena.used_allocation_size +
+                               module->type_uses.arena.used_allocation_size;
+    module_arena_owned_bytes_ = module->arena.total_allocation_size +
+                                module->type_uses.arena.total_allocation_size;
     warmup_ = QueryBlockPoolStatistics(block_pool_);
   }
 

@@ -176,15 +176,12 @@ static bool loom_loop_fusion_value_is_type_used_under_op(
   if (value_id >= module->values.count) {
     return false;
   }
-  loom_type_use_id_t use_id =
-      loom_module_value_first_incoming_type_use(module, value_id);
-  while (use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (type_use->user_value_id >= module->values.count) {
-      return true;
-    }
-    const loom_value_t* user_value =
-        loom_module_value(module, type_use->user_value_id);
+  loom_type_use_iterator_t type_users;
+  loom_module_value_type_users(module, value_id, &type_users);
+  for (loom_value_id_t user_value_id = loom_type_users_next(&type_users);
+       user_value_id != LOOM_VALUE_ID_INVALID;
+       user_value_id = loom_type_users_next(&type_users)) {
+    const loom_value_t* user_value = loom_module_value(module, user_value_id);
     if (loom_value_is_block_arg(user_value)) {
       if (loom_loop_fusion_block_is_under_op(
               root, loom_value_def_block(user_value))) {
@@ -194,7 +191,6 @@ static bool loom_loop_fusion_value_is_type_used_under_op(
                                                loom_value_def_op(user_value))) {
       return true;
     }
-    use_id = type_use->next_incoming_use_id;
   }
   return false;
 }

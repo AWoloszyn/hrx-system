@@ -235,7 +235,7 @@ TEST_F(OpEraseTest, KernelDeclarationDropsBothOwnedSignatures) {
         module_, signature.values[1],
         loom_type_pool(loom_dim_pack_dynamic(signature.values[0]))));
   }
-  ASSERT_EQ(module_->type_uses.active_count, 2u);
+  ASSERT_EQ(module_->type_uses.active_carrier_count, 2u);
   const iree_host_size_t arena_bytes = module_->arena.used_allocation_size;
   std::vector<uint32_t> visits(module_->values.count, 0);
   IREE_ASSERT_OK(loom_op_walk_subtree_value_refs(
@@ -257,9 +257,11 @@ TEST_F(OpEraseTest, KernelDeclarationDropsBothOwnedSignatures) {
         loom_value_owner_op(loom_module_value(module_, signature.values[1])),
         nullptr);
     EXPECT_EQ(loom_module_value(module_, signature.values[1])->use_count, 0u);
-    EXPECT_EQ(
-        loom_module_value_first_outgoing_type_use(module_, signature.values[1]),
-        LOOM_TYPE_USE_ID_INVALID);
+    loom_type_use_iterator_t dependencies;
+    loom_module_value_type_dependencies(module_, signature.values[1],
+                                        &dependencies);
+    EXPECT_EQ(loom_type_dependencies_next(&dependencies),
+              LOOM_VALUE_ID_INVALID);
     EXPECT_FALSE(loom_module_value_has_type_uses(module_, signature.values[0]));
   }
   IREE_ASSERT_OK(loom_module_compute_uses(module_));

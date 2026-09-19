@@ -87,23 +87,12 @@ static iree_status_t loom_local_value_domain_register_value_callback(
 static iree_status_t loom_local_value_domain_for_each_value_type_ref(
     const loom_module_t* module, loom_value_id_t user_value_id,
     loom_local_value_domain_value_callback_t visitor) {
-  loom_type_use_id_t use_id =
-      loom_module_value_first_outgoing_type_use(module, user_value_id);
-  if (use_id == LOOM_TYPE_USE_ID_INVALID) {
-    return iree_ok_status();
-  }
-
-  // Records are inserted at the adjacency head, so find the oldest record and
-  // walk back toward the head to retain the type walk's structural order.
-  while (module->type_uses.records[use_id].next_outgoing_use_id !=
-         LOOM_TYPE_USE_ID_INVALID) {
-    use_id = module->type_uses.records[use_id].next_outgoing_use_id;
-  }
-  while (use_id != LOOM_TYPE_USE_ID_INVALID) {
-    const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    IREE_RETURN_IF_ERROR(
-        visitor.fn(visitor.user_data, type_use->referenced_value_id));
-    use_id = type_use->previous_outgoing_use_id;
+  loom_type_use_iterator_t dependencies;
+  loom_module_value_type_dependencies(module, user_value_id, &dependencies);
+  for (loom_value_id_t provider = loom_type_dependencies_next(&dependencies);
+       provider != LOOM_VALUE_ID_INVALID;
+       provider = loom_type_dependencies_next(&dependencies)) {
+    IREE_RETURN_IF_ERROR(visitor.fn(visitor.user_data, provider));
   }
   return iree_ok_status();
 }

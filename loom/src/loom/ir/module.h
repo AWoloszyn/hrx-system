@@ -7,8 +7,9 @@
 // Module construction: create modules, define values, intern strings and
 // types, create blocks and regions, insert ops into blocks.
 //
-// All allocations go through the module's arena (bump-pointer, O(1) bulk free
-// on module destruction). Module values use stable fixed-capacity segments.
+// Allocations use module-owned arenas backed by a shared block pool. Persistent
+// dependency facts are independent of speculative payload checkpoints.
+// Module values use stable fixed-capacity segments.
 // Smaller contiguous intern/metadata tables are pre-sized from capacity hints
 // when available and grow when needed.
 //
@@ -22,7 +23,9 @@
 #include "iree/base/internal/arena.h"
 #include "loom/ir/ir.h"
 #include "loom/ir/parameterized_attr.h"
+#include "loom/ir/type_dependencies.h"
 #include "loom/ir/value_refs.h"
+#include "loom/ir/value_replacement.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,7 +70,7 @@ iree_status_t loom_module_allocate(loom_context_t* context,
                                    iree_allocator_t allocator,
                                    loom_module_t** out_module);
 
-// Destroys a module and frees all arena-allocated IR in O(1).
+// Destroys a module and releases its arena blocks to the shared pool.
 void loom_module_free(loom_module_t* module);
 
 // Returns the module's body block. All top-level ops (function
@@ -76,8 +79,8 @@ static inline loom_block_t* loom_module_block(loom_module_t* module) {
   return loom_region_entry_block(module->body);
 }
 
-// Sets the type of a value by ID, updating SSA references carried by the old
-// and new type payloads in the module's type-use side table.
+// Sets the type of a value by ID and replaces its active dependency ownership.
+// Failure leaves the value's type and active ownership unchanged.
 iree_status_t loom_module_set_value_type(loom_module_t* module,
                                          loom_value_id_t value_id,
                                          loom_type_t type);
@@ -124,17 +127,17 @@ iree_status_t loom_module_try_set_derived_value_name(
     loom_value_id_t target_value_id, iree_string_view_t suffix,
     iree_arena_allocator_t* scratch_arena);
 
-// Removes type-use records carried by |value_id|'s current type while leaving
-// the stored type unchanged. Used when the carrier value is no longer live
-// enough for its type to keep referenced values alive, such as op erasure.
+// Removes active dependency ownership while retaining the stored type and its
+// declared membership. Used when the carrier no longer keeps referenced values
+// alive, such as after op erasure. A later refresh can restore ownership.
 void loom_module_drop_value_type_uses(loom_module_t* module,
                                       loom_value_id_t value_id);
 
-// Rebuilds type-use records carried by one value's current type.
+// Reactivates one value's retained declared dependencies.
 //
-// References to values that do not exist yet are ignored; a later refresh after
-// defining those values will add the records. Structural validation remains the
-// verifier's job.
+// References to values that do not exist yet remain inactive; a later refresh
+// after defining those values includes them. Failure preserves active
+// ownership. Structural validation remains the verifier's job.
 iree_status_t loom_module_refresh_value_type_uses(loom_module_t* module,
                                                   loom_value_id_t value_id);
 
@@ -300,14 +303,13 @@ const iree_string_view_t* loom_module_block_comments(
     const loom_module_t* module, const loom_block_t* block,
     iree_host_size_t* out_comment_count);
 
-// Rebuilds the dense type-use side table from live value types, including
-// bodyless signature arguments retained by their declaration's operand uses.
-//
-// Most construction paths maintain the table incrementally, but bulk readers
-// and recovery paths can call this after setting value types directly and
-// establishing definition and operand-use bookkeeping.
-// Existing record capacity is reused. Allocation failure preserves the current
-// incoming and outgoing reference lists so the rebuild can be retried.
+// Refreshes active type ownership from retained declared dependencies,
+// including bodyless signature arguments retained by their declaration's
+// operand uses. Dependent types must be installed through the module setters.
+// This operation restores dropped ownership and includes newly defined forward
+// references; it does not rediscover dependencies from raw payload writes.
+// Allocation failure preserves all active ownership so the refresh can be
+// retried.
 iree_status_t loom_module_recompute_type_uses(loom_module_t* module);
 
 // Returns true if |value_id| is referenced by any currently-active value type.
@@ -317,29 +319,23 @@ bool loom_module_value_has_type_uses(const loom_module_t* module,
 // Returns true if any currently-active value type embeds an SSA reference.
 static inline bool loom_module_has_active_type_uses(
     const loom_module_t* module) {
-  return module->type_uses.active_count > 0;
+  return module->type_uses.active_carrier_count > 0;
 }
 
-// Returns the first type-use record that references |value_id|, or INVALID
-// when the value is out of range or has no incoming type uses.
-static inline loom_type_use_id_t loom_module_value_first_incoming_type_use(
-    const loom_module_t* module, loom_value_id_t value_id) {
-  if (value_id >= module->values.count) {
-    return LOOM_TYPE_USE_ID_INVALID;
-  }
-  return loom_value_table_const_type_use_heads(&module->values, value_id)
-      ->first_incoming_use_id;
+// Begins iterating distinct active carriers referencing |value_id|.
+// Mutation invalidates the cursor; order is deterministic but unspecified.
+static inline void loom_module_value_type_users(
+    const loom_module_t* module, loom_value_id_t value_id,
+    loom_type_use_iterator_t* out_iterator) {
+  loom_type_users_begin(&module->type_uses, value_id, out_iterator);
 }
 
-// Returns the first type-use record carried by |value_id|'s type, or INVALID
-// when the value is out of range or its type has no SSA references.
-static inline loom_type_use_id_t loom_module_value_first_outgoing_type_use(
-    const loom_module_t* module, loom_value_id_t value_id) {
-  if (value_id >= module->values.count) {
-    return LOOM_TYPE_USE_ID_INVALID;
-  }
-  return loom_value_table_const_type_use_heads(&module->values, value_id)
-      ->first_outgoing_use_id;
+// Begins iterating distinct active dependencies of |value_id|'s type in
+// increasing provider-ID order. Mutation invalidates the cursor.
+static inline void loom_module_value_type_dependencies(
+    const loom_module_t* module, loom_value_id_t value_id,
+    loom_type_use_iterator_t* out_iterator) {
+  loom_type_dependencies_begin(&module->type_uses, value_id, out_iterator);
 }
 
 // Interns a string in the module's string table. If an identical string
@@ -498,10 +494,10 @@ loom_module_encoding_family_descriptor(const loom_module_t* module,
 // encodings referenced by the type or its dependencies must already
 // exist in the module. Encoding parameters likewise reference only existing
 // types and encodings, keeping the combined dependency graph acyclic.
-// Heap-backed payload owned by |type| (overflow dims, function signatures,
-// dialect params, typed register payloads) is recursively copied into the
-// module arena before storage, so callers may pass temporary or
-// foreign-allocator payloads.
+// Pointer-backed payload owned by |type| may be temporary or foreign-allocated.
+// Import processes each distinct compound payload once and retains canonical
+// immediate children, preserving shared structure instead of expanding it.
+// Exact module-owned payload identities resolve without a structural walk.
 iree_status_t loom_module_intern_type(loom_module_t* module, loom_type_t type,
                                       loom_type_t* out_interned_type);
 
@@ -514,17 +510,18 @@ iree_status_t loom_module_intern_type_id(loom_module_t* module,
 //
 // |structural_dependency_ids| lists function arguments/results, dialect type
 // parameters, or a typed register's value type in representation order. It is
-// empty for all other type kinds. The corresponding by-value types in |type|
-// must be exact copies of those module entries. Pointer-backed storage owned by
-// |type| may be temporary; only its top-level payload is copied because nested
-// payloads are retained by the canonical dependency entries.
-// Shaped scalar element types are interned implicitly to preserve the module's
+// empty for all other type kinds. The IDs supply the canonical child
+// identities; |type| supplies the parent metadata (function counts, dialect
+// name, register carrier). Its child payload entries are not read. Parent
+// metadata may be temporary; only its top-level payload is copied because
+// nested payloads are retained by the canonical dependency entries. Shaped
+// scalar element types are interned implicitly to preserve the module's
 // serializer closure even when a selective reader has not reached a separate
 // scalar type-table entry.
 // All static encoding attachments must already exist in the module.
 //
-// This is the topological construction path for validated serialized type
-// tables. General callers with arbitrary recursive type values use
+// This is the shared construction path for type import and validated serialized
+// type tables. General callers with arbitrary recursive type values use
 // loom_module_intern_type_id instead.
 iree_status_t loom_module_intern_topological_type_id(
     loom_module_t* module, loom_type_t type,
@@ -533,9 +530,9 @@ iree_status_t loom_module_intern_topological_type_id(
 
 // Interns a function type directly from argument and result type arrays. If a
 // structurally identical function type already exists, returns the canonical
-// module-owned entry without cloning. Otherwise, recursively interns signature
-// dependencies, clones the signature payload into the module arena, and appends
-// a new interned type.
+// module-owned entry without cloning. Otherwise, imports signature
+// dependencies, retains their canonical entries in a new module-owned signature
+// payload, and appends a new interned type.
 //
 // |arg_types| and |result_types| may point to temporary parser scratch as long
 // as they remain valid for the duration of this call.
@@ -547,8 +544,8 @@ iree_status_t loom_module_intern_function_type(loom_module_t* module,
                                                loom_type_t* out_interned_type);
 
 // Interns a register type carrying a semantic value type. Carrier payload
-// interpretation remains target-owned. The value type is recursively interned
-// and copied into module-owned storage only when the register type is new.
+// interpretation remains target-owned. The semantic value type is imported once
+// and retained canonically when constructing a new register payload.
 iree_status_t loom_module_intern_register_type(loom_module_t* module,
                                                uint64_t carrier_payload0,
                                                uint64_t carrier_payload1,
@@ -680,7 +677,7 @@ iree_status_t loom_block_insert_arg(loom_module_t* module, loom_block_t* block,
 // have no operand, attribute, or incoming type uses; callers must replace or
 // drop all references before changing the block signature. The removed value
 // remains in the module value table but no longer carries block-argument
-// identity or outgoing type-use records. Following block arguments keep their
+// identity or active type dependencies. Following block arguments keep their
 // value IDs and receive updated definition indices.
 iree_status_t loom_block_remove_arg(loom_module_t* module, loom_block_t* block,
                                     uint16_t arg_index);

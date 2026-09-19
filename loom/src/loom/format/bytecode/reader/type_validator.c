@@ -497,12 +497,7 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
         };
         memcpy(fact->payload_prefix, &payload_header, sizeof(payload_header));
         out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
-            .type_header = loom_type_function(NULL).header,
-            .children_offset = offsetof(loom_func_type_data_t, types),
             .dependency_count = (uint32_t)total_count,
-            .payload_size = iree_max(
-                sizeof(fact->payload_prefix),
-                sizeof(payload_header) + total_count * sizeof(loom_type_t)),
         };
       }
       for (iree_host_size_t i = 0; i < total_count; ++i) {
@@ -561,11 +556,9 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
                 },
         };
         out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
-            .type_header = loom_type_dialect_opaque(0).header,
             .parameter_count = (uint16_t)param_count,
             .name_id = (loom_string_id_t)name_id,
             .dependency_count = (uint32_t)param_count,
-            .payload_size = (iree_host_size_t)param_count * sizeof(loom_type_t),
         };
       }
       for (uint64_t i = 0; i < param_count; ++i) {
@@ -659,11 +652,7 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
         };
         fact->type_ids[0] = (loom_type_id_t)value_type_id;
         out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
-            .type_header =
-                loom_type_register_payload_with_value_type(NULL).header,
-            .children_offset = offsetof(loom_register_type_data_t, value_type),
             .dependency_count = 1,
-            .payload_size = sizeof(loom_register_type_data_t),
         };
         type_fact = &fact->base;
       } else {

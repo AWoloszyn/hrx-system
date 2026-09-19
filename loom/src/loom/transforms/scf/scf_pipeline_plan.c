@@ -138,12 +138,12 @@ static iree_status_t loom_scf_pipeline_plan_partition(
     }
     const loom_value_id_t value_id = domain->value_ids[i];
     plan->queue_values[next_queue_value++] = value_id;
-    for (loom_type_use_id_t use_id =
-             loom_module_value_first_outgoing_type_use(module, value_id);
-         use_id != LOOM_TYPE_USE_ID_INVALID;) {
-      const loom_type_use_t* use = &module->type_uses.records[use_id];
-      const loom_value_t* reference =
-          loom_module_value(module, use->referenced_value_id);
+    loom_type_use_iterator_t dependencies;
+    loom_module_value_type_dependencies(module, value_id, &dependencies);
+    for (loom_value_id_t provider = loom_type_dependencies_next(&dependencies);
+         provider != LOOM_VALUE_ID_INVALID;
+         provider = loom_type_dependencies_next(&dependencies)) {
+      const loom_value_t* reference = loom_module_value(module, provider);
       const bool local =
           loom_value_is_block_arg(reference)
               ? loom_value_def_block(reference) == block
@@ -156,7 +156,6 @@ static iree_status_t loom_scf_pipeline_plan_partition(
         };
         return iree_ok_status();
       }
-      use_id = use->next_outgoing_use_id;
     }
   }
   return iree_ok_status();

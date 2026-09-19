@@ -115,8 +115,9 @@
 // Function types use dims[0] as a pointer to an arena-allocated
 // loom_func_type_data_t containing the arg and result type arrays.
 // Function types may carry SSA-specific dim bindings within their
-// arg/result types, so the embedded types are stored by value (24
-// bytes each), not interned.
+// arg/result types. Embedded types are stored by value (24 bytes each); module
+// constructors retain exact copies of canonical children, including their
+// shared immutable payloads.
 //
 // Register types without a value type reserve dims[0..1] as inline
 // target-owned payload storage. Register types with a value type use dims[0]
@@ -799,8 +800,8 @@ static inline loom_type_t loom_type_register_payload(uint64_t payload0,
 }
 
 // Creates a target-owned low register payload type carrying a semantic value
-// type. |data| must outlive the returned type. Module interning recursively
-// copies the payload into module-owned storage.
+// type. |data| must outlive the returned type. Module interning imports its
+// semantic child and retains a canonical module-owned payload.
 static inline loom_type_t loom_type_register_payload_with_value_type(
     const loom_register_type_data_t* data) {
   loom_type_t type = {0};
@@ -954,9 +955,11 @@ static inline loom_type_t loom_type_shaped_2d(loom_type_kind_t kind,
 }
 
 // Creates a function type from a pre-allocated loom_func_type_data_t.
-// The data must be arena-allocated and outlive the type. The caller
-// is responsible for populating the types[] array before use.
-static inline loom_type_t loom_type_function(loom_func_type_data_t* func_data) {
+// The data must outlive the type. Module interning accepts temporary payloads
+// and retains its own canonical copy. The caller populates types[] before
+// structural consumers use the type.
+static inline loom_type_t loom_type_function(
+    const loom_func_type_data_t* func_data) {
   loom_type_t type = {0};
   type.header = loom_type_make_raw_header(LOOM_TYPE_FUNCTION, 0, 0, 0);
   type.dims[0] = (uint64_t)(uintptr_t)func_data;
