@@ -1664,12 +1664,17 @@ TEST_F(TransportTest, MovedMessagesSurviveConnectionTeardown) {
     }
   } retained;
 
-  // The largest message exceeds the fixture's entire receive slab. Retained
-  // messages exercise both intact receive storage and fragmented assembly.
-  std::array<std::string, 4> payloads = {
-      std::string(31, 'a'), std::string(65535, 'b'), std::string(65537, 'c'),
-      std::string(1024 * 1024 + 1, 'd')};
-  std::array<SendState, 4> sends;
+  // Hold more intact messages than the native receive inventory, followed by
+  // fragmented messages larger than the entire receive slab. None can be
+  // released until later messages arrive, as with bulk DATA then COMPLETE.
+  std::vector<std::string> payloads;
+  for (int i = 0; i < 64; ++i) {
+    payloads.emplace_back(31, static_cast<char>(i));
+  }
+  payloads.emplace_back(65535, 'b');
+  payloads.emplace_back(65537, 'c');
+  payloads.emplace_back(1024 * 1024 + 1, 'd');
+  std::vector<SendState> sends(payloads.size());
   SendState independent_send;
   ScopedConnectionDrain drain{this};
 
@@ -1701,8 +1706,12 @@ TEST_F(TransportTest, MovedMessagesSurviveConnectionTeardown) {
         /*.completion_callback=*/sends[i].callback(),
     };
     IREE_ASSERT_OK(iree_net_message_endpoint_send(client_endpoint, &params));
+    // Acknowledge each delivery before sending another so coalescing cannot
+    // hide native-storage pressure behind framing's earlier-frame copies.
+    PollBothUntil([&] {
+      return retained.messages.size() == i + 1 && sends[i].callback_count == 1;
+    });
   }
-  PollBothUntil([&] { return retained.messages.size() == payloads.size(); });
   EXPECT_EQ(retained.errors, 0);
 
   // A separate endpoint must progress while the first retains its messages.
@@ -1746,7 +1755,8 @@ TEST_F(TransportTest, MovedMessagesSurviveConnectionTeardown) {
   // still need the poll owner for final release, even after connection drain.
   std::atomic<bool> consumer_done = false;
   std::thread consumer([&] {
-    for (size_t i : {2u, 0u, 3u, 1u}) {
+    for (size_t offset = 0; offset < payloads.size(); ++offset) {
+      size_t i = payloads.size() - offset - 1;
       EXPECT_EQ(retained.messages[i].data_length, payloads[i].size());
       EXPECT_EQ(memcmp(retained.messages[i].data, payloads[i].data(),
                        payloads[i].size()),

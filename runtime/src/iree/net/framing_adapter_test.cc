@@ -378,12 +378,28 @@ static constexpr iree_host_size_t kMaxFrameSize = 1024;
 
 class FramingAdapterTest : public ::testing::Test {
  protected:
+  static iree_status_t Allocate(void* self, iree_allocator_command_t command,
+                                const void* params, void** inout_ptr) {
+    auto* test = static_cast<FramingAdapterTest*>(self);
+    if (command == IREE_ALLOCATOR_COMMAND_MALLOC ||
+        command == IREE_ALLOCATOR_COMMAND_CALLOC) {
+      ++test->allocation_count_;
+      if (test->fail_allocations_) {
+        *inout_ptr = nullptr;
+        return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "injected framing allocation failure");
+      }
+    }
+    iree_allocator_t allocator = iree_allocator_system();
+    return allocator.ctl(allocator.self, command, params, inout_ptr);
+  }
+
   void SetUp() override {
     mock_carrier_ = MockCarrier::Create();
     iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
     IREE_ASSERT_OK(iree_net_framing_adapter_allocate(
         &mock_carrier_->base, frame_length, kMaxFrameSize,
-        /*connection_barrier=*/nullptr, iree_allocator_system(), &adapter_));
+        /*connection_barrier=*/nullptr, {this, Allocate}, &adapter_));
     endpoint_ = iree_net_framing_adapter_as_endpoint(adapter_);
   }
 
@@ -419,6 +435,10 @@ class FramingAdapterTest : public ::testing::Test {
   iree_net_message_endpoint_t endpoint_;
   std::unique_ptr<MockCarrier> mock_carrier_;
   TestContext ctx_;
+  // Number of adapter or message-storage allocation requests.
+  size_t allocation_count_ = 0;
+  // Injects failure only at the framing allocator boundary.
+  bool fail_allocations_ = false;
 };
 
 //===----------------------------------------------------------------------===//
@@ -551,6 +571,24 @@ TEST_F(FramingAdapterTest, BorrowedCompleteFrameGetsOwnedLease) {
   ASSERT_EQ(ctx_.messages.size(), 1u);
   EXPECT_EQ(ctx_.messages[0].data, frame);
   EXPECT_TRUE(ctx_.messages[0].had_lease);
+}
+
+TEST_F(FramingAdapterTest, BorrowedFrameAllocationFailureIsTerminal) {
+  ActivateWithCallbacks();
+  auto frame = MakeFrame("Receive pressure");
+  size_t initial_allocations = allocation_count_;
+  IREE_ASSERT_OK(InjectRecv(frame));
+  EXPECT_EQ(allocation_count_, initial_allocations);
+
+  fail_allocations_ = true;
+  IREE_ASSERT_OK(InjectBorrowed(frame));
+  EXPECT_EQ(allocation_count_, initial_allocations + 1);
+  ASSERT_EQ(ctx_.messages.size(), 1u);
+  ASSERT_EQ(ctx_.errors.size(), 1u);
+  EXPECT_EQ(ctx_.errors[0], IREE_STATUS_RESOURCE_EXHAUSTED);
+  EXPECT_TRUE(iree_net_carrier_has_terminal_error(&mock_carrier_->base));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION, InjectBorrowed(frame));
+  EXPECT_EQ(ctx_.errors.size(), 1u);
 }
 
 TEST_F(FramingAdapterTest, MultipleFramesInOneBuffer) {

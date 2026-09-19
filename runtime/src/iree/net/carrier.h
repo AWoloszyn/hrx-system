@@ -209,10 +209,12 @@ typedef struct iree_net_carrier_send_budget_t {
 // beyond the callback. An empty span with no lease indicates an orderly peer
 // send shutdown (EOF); no later receive data will be delivered. Returning OK
 // from EOF preserves the local send direction, while returning an error makes
-// the carrier failure terminal in both directions. |lease| may be NULL for
-// carriers that don't use buffer pools (e.g., loopback where data comes from
-// the sender's buffer). When non-NULL, the carrier releases the lease after
-// this callback returns. A handler may take ownership by copying the lease and
+// the carrier failure terminal in both directions. |lease| may be NULL when
+// the storage cannot be retained, including when native receive capacity is
+// needed for continued transport progress. In that case |data| is borrowed
+// only for this callback; copy bytes that must outlive it. When non-NULL, the
+// carrier releases the lease after this callback returns. A handler may take
+// ownership by copying the lease and
 // clearing the callback's lease value, or may copy the data when holding a
 // receive buffer would impede progress. Call iree_async_buffer_lease_release()
 // to return a buffer early.

@@ -13,8 +13,9 @@
 // under the generic asynchronous carrier contract.
 //
 // Receive progress uses one pool-backed operation. A consumer may move a
-// receive lease out of its callback, and returning that lease wakes receive
-// progress if pool exhaustion paused it.
+// receive lease out of its callback. The last available native buffer is
+// delivered without a movable lease so retained data cannot block later
+// control messages. Framing gives borrowed messages independent storage.
 
 #ifndef IREE_NET_CARRIER_TCP_CARRIER_H_
 #define IREE_NET_CARRIER_TCP_CARRIER_H_

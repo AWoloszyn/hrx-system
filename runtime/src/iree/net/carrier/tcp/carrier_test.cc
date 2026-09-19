@@ -55,6 +55,9 @@ struct CarrierContext {
   // Number of receive callbacks delivered.
   int receive_count = 0;
 
+  // Number of callbacks whose storage was borrowed rather than movable.
+  int borrowed_receive_count = 0;
+
   // Number of orderly peer send shutdowns delivered.
   int eof_count = 0;
 
@@ -249,7 +252,9 @@ static iree_status_t Receive(void* user_data, iree_async_span_t data,
   context->received_data.insert(context->received_data.end(), data_ptr,
                                 data_ptr + data.length);
   ++context->receive_count;
-  if (context->retain_lease_count > 0) {
+  if (!lease) {
+    ++context->borrowed_receive_count;
+  } else if (context->retain_lease_count > 0) {
     --context->retain_lease_count;
     context->retained_lease = *lease;
     *lease = {};
@@ -750,14 +755,17 @@ TEST_F(TcpCarrierTest, OverflowAllocationFailurePrecedesSendAdmission) {
   DeactivatePair();
 }
 
-TEST_F(TcpCarrierTest, RetainedReceiveLeasePausesAndResumesProgress) {
+TEST_F(TcpCarrierTest, RetainedReceiveLeasePreservesProgress) {
+  CountingAllocator server_host_allocator;
   CreateCarrierPair(/*max_send_operations=*/4,
                     /*receive_buffer_size=*/64,
-                    /*receive_buffer_count=*/1);
+                    /*receive_buffer_count=*/2,
+                    server_host_allocator.allocator());
   server_context_.retain_lease_count = 1;
 
-  std::array<uint8_t, 16> first = {};
-  std::array<uint8_t, 16> second = {};
+  // One byte makes each receive indivisible even with a short native send.
+  std::array<uint8_t, 1> first = {};
+  std::array<uint8_t, 1> second = {};
   first.fill(0x31);
   second.fill(0x32);
   iree_async_span_t first_span =
@@ -777,6 +785,7 @@ TEST_F(TcpCarrierTest, RetainedReceiveLeasePausesAndResumesProgress) {
            server_context_.receive_count == 1;
   });
   ASSERT_NE(server_context_.retained_lease.release.fn, nullptr);
+  EXPECT_EQ(server_context_.borrowed_receive_count, 0);
 
   iree_net_send_params_t second_params = {
       iree_net_send_prefix_empty(),
@@ -784,19 +793,67 @@ TEST_F(TcpCarrierTest, RetainedReceiveLeasePausesAndResumesProgress) {
       {SendCompleted, &second_result},
   };
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &second_params));
-  PollUntil([&] { return second_result.completion_count == 1; });
-  EXPECT_EQ(server_context_.receive_count, 1);
-
-  iree_async_buffer_lease_release(&server_context_.retained_lease);
-  PollUntil([&] { return server_context_.receive_count == 2; });
+  PollUntil([&] {
+    return second_result.completion_count == 1 &&
+           server_context_.receive_count == 2;
+  });
+  EXPECT_EQ(server_context_.borrowed_receive_count, 1);
+  EXPECT_EQ(memcmp(iree_async_span_ptr(server_context_.retained_lease.span),
+                   first.data(), first.size()),
+            0);
   EXPECT_EQ(server_context_.received_data.size(), first.size() + second.size());
+
+  std::thread consumer([&] {
+    iree_async_buffer_lease_release(&server_context_.retained_lease);
+  });
+  consumer.join();
+  second_result = {};
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &second_params));
+  PollUntil([&] {
+    return second_result.completion_count == 1 &&
+           server_context_.receive_count == 3;
+  });
+  EXPECT_EQ(server_context_.borrowed_receive_count, 1);
+  EXPECT_EQ(server_host_allocator.allocation_count, 1u);
+  DeactivatePair();
+}
+
+TEST_F(TcpCarrierTest, SingleBufferReceivesRemainBorrowedWithoutAllocation) {
+  CountingAllocator server_host_allocator;
+  CreateCarrierPair(/*max_send_operations=*/4,
+                    /*receive_buffer_size=*/64,
+                    /*receive_buffer_count=*/1,
+                    server_host_allocator.allocator());
+  std::array<uint8_t, 16> payload = {};
+  iree_async_span_t span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  for (int i = 0; i < 32; ++i) {
+    payload.fill(static_cast<uint8_t>(i));
+    SendResult result;
+    iree_net_send_params_t params = {iree_net_send_prefix_empty(),
+                                     iree_async_span_list_make(&span, 1),
+                                     {SendCompleted, &result}};
+    IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+    PollUntil([&] {
+      return result.completion_count == 1 &&
+             server_context_.received_data.size() == (i + 1) * payload.size();
+    });
+    EXPECT_EQ(result.status_code, IREE_STATUS_OK);
+    EXPECT_EQ(memcmp(server_context_.received_data.data() + i * payload.size(),
+                     payload.data(), payload.size()),
+              0);
+  }
+  EXPECT_EQ(server_context_.borrowed_receive_count,
+            server_context_.receive_count);
+  EXPECT_EQ(server_host_allocator.allocation_count, 1u);
+  DeactivatePair();
 }
 
 TEST_F(TcpCarrierTest, RetainedReceiveLeaseExtendsCarrierLifetime) {
   CountingAllocator server_host_allocator;
   CreateCarrierPair(/*max_send_operations=*/4,
                     /*receive_buffer_size=*/64,
-                    /*receive_buffer_count=*/1,
+                    /*receive_buffer_count=*/2,
                     server_host_allocator.allocator());
   EXPECT_EQ(server_host_allocator.allocation_count, 1u);
   server_context_.retain_lease_count = 1;
@@ -813,7 +870,7 @@ TEST_F(TcpCarrierTest, RetainedReceiveLeaseExtendsCarrierLifetime) {
   IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
   PollUntil([&] {
     return send_result.completion_count == 1 &&
-           server_context_.receive_count == 1;
+           server_context_.received_data.size() == payload.size();
   });
   ASSERT_NE(server_context_.retained_lease.release.fn, nullptr);
 
@@ -825,6 +882,49 @@ TEST_F(TcpCarrierTest, RetainedReceiveLeaseExtendsCarrierLifetime) {
 
   iree_async_buffer_lease_release(&server_context_.retained_lease);
   EXPECT_EQ(server_host_allocator.free_count, 1u);
+}
+
+TEST_F(TcpCarrierTest, LeaseReturnedOffThreadBeforeReceiveCallbackReturns) {
+  auto receive_and_return = [](void* user_data, iree_async_span_t data,
+                               iree_async_buffer_lease_t* lease) {
+    IREE_RETURN_IF_ERROR(Receive(user_data, data, lease));
+    if (data.length == 0) {
+      return iree_ok_status();
+    }
+    if (!lease) {
+      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "prior early return lost native capacity");
+    }
+    auto owned_lease = *lease;
+    *lease = {};
+    std::thread consumer([owned_lease]() mutable {
+      iree_async_buffer_lease_release(&owned_lease);
+    });
+    consumer.join();
+    return iree_ok_status();
+  };
+  CreateCarrierPairWithHandlers(
+      {Receive, Error, &client_context_},
+      {receive_and_return, Error, &server_context_},
+      /*max_send_operations=*/4, /*receive_buffer_size=*/64,
+      /*receive_buffer_count=*/2, iree_allocator_system());
+  std::array<uint8_t, 16> payload = {};
+  iree_async_span_t span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  for (int i = 0; i < 32; ++i) {
+    SendResult result;
+    iree_net_send_params_t params = {iree_net_send_prefix_empty(),
+                                     iree_async_span_list_make(&span, 1),
+                                     {SendCompleted, &result}};
+    IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+    PollUntil([&] {
+      return result.completion_count == 1 &&
+             server_context_.received_data.size() == (i + 1) * payload.size();
+    });
+    EXPECT_EQ(result.status_code, IREE_STATUS_OK);
+    ASSERT_EQ(server_context_.error_count, 0);
+  }
+  EXPECT_EQ(server_context_.borrowed_receive_count, 0);
 }
 
 TEST_F(TcpCarrierTest,
