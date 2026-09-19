@@ -528,6 +528,7 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
   // Compute absolute deadline so EINTR retries use the remaining time rather
   // than restarting the full timeout duration. Without this, frequent signals
   // (profiler sampling, etc.) cause the effective wait to grow unboundedly.
+  const bool is_immediate = timeout_ns == IREE_DURATION_ZERO;
   const bool has_timeout =
       timeout_ns > 0 && timeout_ns != IREE_DURATION_INFINITE;
   iree_time_t deadline = IREE_TIME_INFINITE_FUTURE;
@@ -550,7 +551,7 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
         if (iree_io_uring_ring_cq_count(ring) > 0) {
           return iree_ok_status();
         }
-        return iree_make_status(IREE_STATUS_DEADLINE_EXCEEDED, "poll timeout");
+        return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
       }
       flags |= IREE_IORING_ENTER_EXT_ARG;
       ts.tv_sec = remaining / 1000000000LL;
@@ -567,10 +568,17 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
                                        iree_memory_order_acquire);
       to_submit = submission_tail - head;
     }
-    int ret = iree_io_uring_enter(ring->ring_fd, to_submit, min_complete, flags,
+    // An immediate wait still flushes pending submissions and deferred kernel
+    // work, but cannot require the kernel to produce a completion before
+    // return.
+    int ret = iree_io_uring_enter(ring->ring_fd, to_submit,
+                                  is_immediate ? 0 : min_complete, flags,
                                   arg_ptr, arg_sz);
 
     if (ret >= 0) {
+      if (is_immediate && iree_io_uring_ring_cq_count(ring) == 0) {
+        return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
+      }
       return iree_ok_status();
     }
 
@@ -578,7 +586,7 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
       if (iree_io_uring_ring_cq_count(ring) > 0) {
         return iree_ok_status();
       }
-      return iree_make_status(IREE_STATUS_DEADLINE_EXCEEDED, "poll timeout");
+      return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
     }
     if (errno == EINTR) {
       if (iree_io_uring_ring_cq_count(ring) > 0) {

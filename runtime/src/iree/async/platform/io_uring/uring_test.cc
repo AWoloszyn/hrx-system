@@ -509,4 +509,39 @@ TEST_F(RingTest, WaitCqeTimesOutWhenEmpty) {
                                   /*timeout_ns=*/1000000));  // 1ms
 }
 
+TEST_F(RingTest, WaitCqeZeroTimeoutReturnsWhenEmpty) {
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEADLINE_EXCEEDED,
+      iree_io_uring_ring_wait_cqe(&ring_, /*min_complete=*/1,
+                                  /*flush_pending=*/false, IREE_DURATION_ZERO));
+}
+
+TEST_F(RingTest, WaitCqeZeroTimeoutSubmitsPendingSqe) {
+  iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&ring_);
+  ASSERT_NE(sqe, nullptr);
+  sqe->opcode = IREE_IORING_OP_NOP;
+  sqe->user_data = 123;
+
+  // Immediate progress can submit without waiting for a completion. A
+  // deadline result does not discard the submission or retire its storage.
+  iree_status_t status = iree_io_uring_ring_wait_cqe(
+      &ring_, /*min_complete=*/1, /*flush_pending=*/true, IREE_DURATION_ZERO);
+  if (iree_status_is_deadline_exceeded(status)) {
+    iree_status_free(status);
+  } else {
+    IREE_ASSERT_OK(status);
+  }
+  EXPECT_EQ(iree_io_uring_ring_sq_pending(&ring_), 0u);
+
+  IREE_ASSERT_OK(iree_io_uring_ring_wait_cqe(&ring_, /*min_complete=*/1,
+                                             /*flush_pending=*/false,
+                                             IREE_DURATION_INFINITE));
+  ASSERT_EQ(iree_io_uring_ring_cq_count(&ring_), 1u);
+  iree_io_uring_cqe_t* cqe = iree_io_uring_ring_peek_cqe(&ring_);
+  ASSERT_NE(cqe, nullptr);
+  EXPECT_EQ(cqe->user_data, 123u);
+  EXPECT_EQ(cqe->res, 0);
+  iree_io_uring_ring_cq_advance(&ring_, 1);
+}
+
 }  // namespace
