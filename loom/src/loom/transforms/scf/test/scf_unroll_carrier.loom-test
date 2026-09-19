@@ -1,0 +1,199 @@
+// RUN: with-checks pass specialize-target-callgraph,unroll-scf-for
+
+// The final tile can end at MAX32 without representing its unused next IV.
+test.target<quirky> @target
+
+func.def public target(@target) @exact_full_tiles() {
+  %begin = index.constant 2147483632 : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 2 : index
+  %factor = index.constant 4 : index
+  scf.for %counter = [%begin to %end step %step] unroll(%factor) schedule(interleaved) {
+    test.use %counter : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *scf.for * = [%begin to %end step *] {
+CHECK-NOT: *index.constant 2147483648 : index
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,unroll-scf-for
+
+test.target<quirky> @target
+
+func.def public target(@target) @dynamic_narrow_split(%begin: index, %end: index, %initial: index) -> (index) {
+  %step = index.constant 2 : index
+  %factor = index.constant 4 : index
+  %result = scf.for %counter = [%begin to %end step %step](%last = %initial : index) -> (index) unroll(%factor) schedule(recurrence) {
+    %input = index.andi %counter, %factor : index
+    %next = index.add %last, %input : index
+    scf.yield %next : index
+  }
+  func.return %result : index
+}
+
+// ----
+CHECK: *scalar.remui * : i32
+CHECK: *index.cmp ule, * : index
+CHECK: *index.assume * [ge(*), le(*)] : index
+CHECK-NOT: *index.div *
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,unroll-scf-for
+
+test.target<low_core> @target
+
+func.def public target(@target) @dynamic_wide_split(%begin: index, %end: index) {
+  %step = index.constant 3 : index
+  %factor = index.constant 2 : index
+  scf.for %counter = [%begin to %end step %step] unroll(%factor) schedule(interleaved) {
+    test.use %counter : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *scalar.remui * : i64
+CHECK: *index.cmp ule, * : index
+CHECK-NOT: *index.div *
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,unroll-scf-for
+
+test.target<quirky> @target
+
+func.def public target(@target) @unsigned_offset_split(%begin: offset, %end: offset) {
+  %step = index.constant 3 : offset
+  %factor = index.constant 2 : index
+  scf.for %counter = [%begin to %end step %step] unroll(%factor) schedule(interleaved) {
+    test.use %counter : offset
+  }
+  func.return
+}
+
+// ----
+CHECK: *index.cmp ult, %begin, %end : offset
+CHECK: *scalar.remui * : i64
+CHECK: *index.cmp ule, * : offset
+CHECK-NOT: *index.max *
+CHECK-NOT: *index.div *
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,unroll-scf-for
+
+// Bounded ordinary domains keep the cheaper address arithmetic.
+test.target<quirky> @target
+
+func.def public target(@target) @bounded_split(%end_input: index) {
+  %begin = index.constant 0 : index
+  %end = index.assume %end_input [range(%end_input, 0, 1024)] : index
+  %step = index.constant 3 : index
+  %factor = index.constant 2 : index
+  scf.for %counter = [%begin to %end step %step] unroll(%factor) schedule(interleaved) {
+    test.use %counter : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *index.div *
+CHECK-NOT: *scalar.remui *
+CHECK-NOT: *index.cast *
+
+// ====
+
+// RUN: with-checks pass specialize-target-callgraph,unroll-scf-for
+
+// An exact count does not make a dynamic lower + full-tile span representable.
+test.target<quirky> @target
+
+func.def public target(@target) @exact_count_wide_span(%begin_input: index) {
+  %begin = index.assume %begin_input [range(%begin_input, -2147483648, -2147483647)] : index
+  %end = index.constant 2147483647 : index
+  %step = index.constant 536870911 : index
+  %factor = index.constant 2 : index
+  scf.for %counter = [%begin to %end step %step] unroll(%factor) schedule(interleaved) {
+    test.use %counter : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *scalar.remui * : i32
+CHECK-NOT: *index.constant 4294967288 : index
+
+// ====
+
+// RUN: pass specialize-target-callgraph,unroll-scf-for
+
+test.target<quirky> @target
+
+func.def public target(@target) @rejects_unrepresentable_stride(%begin: index, %end: index) {
+  %step = index.constant 1073741824 : index
+  %factor = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="unroll_factor", expected_constraint="step * unroll factor representable in the address carrier"}
+  scf.for %counter = [%begin to %end step %step] unroll(%factor) {
+    test.use %counter : index
+  }
+  func.return
+}
+
+// ====
+
+// RUN: pass specialize-target-callgraph,unroll-scf-for
+
+// The guarded copy's IV is constructed inside the proven nonwrapping arm.
+test.target<quirky> @target
+
+func.def public target(@target) @guarded_last_lane(%begin: index, %end: index, %initial: index) -> (index) {
+  %step = index.constant 2 : index
+  %factor = index.constant 2 : index
+  %result = scf.for %counter = [%begin to %end step %step](%last = %initial : index) -> (index) unroll(%factor) {
+    scf.yield %counter : index
+  }
+  func.return %result : index
+}
+
+// ----
+test.target<quirky> @target
+
+func.def public target(@target) @guarded_last_lane(%begin: index, %end: index, %initial: index) -> (index) {
+  %step = index.constant 2 : index
+  %factor = index.constant 2 : index
+  %9 = index.constant 4 : index
+  %result = scf.for %counter = [%begin to %end step %9](%last = %initial : index) -> (index) {
+    %13 = index.sub %end, %counter : index
+    %14 = index.constant 2 : index
+    %15 = index.cmp ult, %14, %13 : index
+    %16 = scf.if %15 -> (index) {
+      %17 = index.constant 2 : index
+      %18 = index.add %counter, %17 : index
+      %counter_2 = index.assume %18 [ge(%18, %counter), lt(%18, %end)] : index
+      scf.yield %counter_2 : index
+    } else {
+      scf.yield %counter : index
+    }
+    scf.yield %16 : index
+  }
+  func.return %result : index
+}
+// ====
+
+// RUN: pass unroll-scf-for
+
+// Rejected schedules stop before consuming the tile's unproduced results.
+func.def @empty_recurrence_rejected(%begin: index, %end: index, %initial: index) -> (index) {
+  %step = index.constant 2 : index
+  %factor = index.constant 4 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="schedule", expected_constraint="one or more loop-carried-independent producer operations"}
+  %result = scf.for %counter = [%begin to %end step %step](%last = %initial : index) -> (index) unroll(%factor) schedule(recurrence) {
+    scf.yield %counter : index
+  }
+  func.return %result : index
+}

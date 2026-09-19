@@ -85,7 +85,7 @@ func.def @ranged_lower_full_span_vector_origins(%payload: buffer, %base: offset,
   cfg.br ^_bb1(%channel_start: index)
 ^_bb1(%23: index):
   %25 = index.cmp slt, %23, %channel_end : index
-  cfg.cond_br %25, ^_bb2, ^_bb3
+  cfg.cond_br %25, ^_bb2, ^_bb4
 ^_bb2:
   %channel = index.assume %23 [range(%23, 0, 1660), mul(%23, 4), ge(%23, %channel_start)] : index
   %13 = index.constant 128 : index
@@ -102,9 +102,13 @@ func.def @ranged_lower_full_span_vector_origins(%payload: buffer, %base: offset,
   test.use %values_2 : vector<4xf32>
   %values_3 = vector.load %view[%channel_384] : view<2048xf32> -> vector<4xf32>
   test.use %values_3 : vector<4xf32>
-  %26 = index.add %channel, %11 : index
-  cfg.br ^_bb1(%26: index)
+  %26 = index.sub %channel_end, %channel : index
+  %27 = index.cmp ult, %11, %26 : index
+  cfg.cond_br %27, ^_bb3, ^_bb4
 ^_bb3:
+  %28 = index.add %channel, %11 : index
+  cfg.br ^_bb1(%28: index)
+^_bb4:
   func.return
 }
 
@@ -150,14 +154,14 @@ func.def @dynamic_recurrence_nonunit_step(%payload: buffer, %base: offset, %end0
   %49 = index.shrui %23, %48 : index
   %26 = index.mul %49, %16 : index
   cfg.br ^_bb1(%begin: index, %initial: i32)
-^_bb1(%57: index, %sum$58: i32):
-  %60 = index.cmp slt, %57, %26 : index
-  cfg.cond_br %60, ^_bb2, ^_bb3
+^_bb1(%59: index, %sum$60: i32):
+  %62 = index.cmp slt, %59, %26 : index
+  cfg.cond_br %62, ^_bb2, ^_bb3
 ^_bb2:
-  %59 = index.assume %57 [range(%57, 0, 12), mul(%57, 6), lt(%57, %26)] : index
+  %61 = index.assume %59 [range(%59, 0, 12), mul(%59, 6), lt(%59, %26)] : index
   %31 = index.constant 3 : index
-  %32 = index.add %59, %31 : index
-  %i$33, %i_3 = index.assume %59, %32 [lt(%59, %end), lt(%32, %end)] : index, index
+  %32 = index.add %61, %31 : index
+  %i$33, %i_3 = index.assume %61, %32 [lt(%61, %end), lt(%32, %end)] : index, index
   %packet$35 = vector.load %view[%i$33, %c0] : view<17x4xi32> -> vector<4xi32>
   %value$36 = view.load %view[%i$33, %c0] : view<17x4xi32> -> i32
   test.use %packet$35 : vector<4xi32>
@@ -165,30 +169,36 @@ func.def @dynamic_recurrence_nonunit_step(%payload: buffer, %base: offset, %end0
   %value_1 = view.load %view[%i_3, %c0] : view<17x4xi32> -> i32
   test.use %packet_1 : vector<4xi32>
   scf.schedule.fence
-  %next$39 = scalar.addi %sum$58, %value$36 : i32
+  %next$39 = scalar.addi %sum$60, %value$36 : i32
   scf.schedule.fence
   %next_1 = scalar.addi %next$39, %value_1 : i32
-  %61 = index.add %59, %16 : index
-  cfg.br ^_bb1(%61: index, %next_1: i32)
+  %63 = index.add %61, %16 : index
+  cfg.br ^_bb1(%63: index, %next_1: i32)
 ^_bb3:
-  cfg.br ^_bb4(%sum$58: i32)
-^_bb4(%56: i32):
+  cfg.br ^_bb4(%sum$60: i32)
+^_bb4(%58: i32):
   %41 = index.constant 3 : index
-  cfg.br ^_bb5(%26: index, %56: i32)
+  cfg.br ^_bb5(%26: index, %58: i32)
 ^_bb5(%51: index, %sum$52: i32):
   %54 = index.cmp slt, %51, %end : index
-  cfg.cond_br %54, ^_bb6, ^_bb7
+  cfg.cond_br %54, ^_bb6, ^_bb9
 ^_bb6:
   %i$53 = index.assume %51 [range(%51, 0, 16), mul(%51, 3), ge(%51, %26), lt(%51, %end)] : index
   %packet$45 = vector.load %view[%i$53, %c0] : view<17x4xi32> -> vector<4xi32>
   %value$46 = view.load %view[%i$53, %c0] : view<17x4xi32> -> i32
   test.use %packet$45 : vector<4xi32>
   %next$47 = scalar.addi %sum$52, %value$46 : i32
-  %55 = index.add %i$53, %41 : index
-  cfg.br ^_bb5(%55: index, %next$47: i32)
+  %55 = index.sub %end, %i$53 : index
+  %56 = index.cmp ult, %41, %55 : index
+  cfg.cond_br %56, ^_bb7, ^_bb8
 ^_bb7:
-  cfg.br ^_bb8(%sum$52: i32)
-^_bb8(%total: i32):
+  %57 = index.add %i$53, %41 : index
+  cfg.br ^_bb5(%57: index, %next$47: i32)
+^_bb8:
+  cfg.br ^_bb10(%next$47: i32)
+^_bb9:
+  cfg.br ^_bb10(%sum$52: i32)
+^_bb10(%total: i32):
   test.use %total : i32
   func.return
 }

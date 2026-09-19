@@ -1,0 +1,178 @@
+// RUN: pass canonicalize
+
+func.def @preserves_positive_overflow_lhs_strict(%left: index, %right: index) -> (i64, i64) {
+  %ordered = index.assume %left [gt(%left, %right)] : index
+  %difference = index.sub %ordered, %right : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @preserves_positive_overflow_lhs_strict(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @preserves_positive_overflow_rhs_strict(%left: index, %right: index) -> (i64, i64) {
+  %ordered = index.assume %right [lt(%right, %left)] : index
+  %difference = index.sub %left, %ordered : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @preserves_positive_overflow_rhs_strict(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @preserves_positive_overflow_lhs_inclusive(%left: index, %right: index) -> (i64, i64) {
+  %ordered = index.assume %left [ge(%left, %right)] : index
+  %difference = index.sub %ordered, %right : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @preserves_positive_overflow_lhs_inclusive(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @preserves_positive_overflow_rhs_inclusive(%left: index, %right: index) -> (i64, i64) {
+  %ordered = index.assume %right [le(%right, %left)] : index
+  %difference = index.sub %left, %ordered : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @preserves_positive_overflow_rhs_inclusive(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @preserves_negative_overflow_lhs_strict(%left: index, %right: index) -> (i64, i64) {
+  %ordered = index.assume %left [lt(%left, %right)] : index
+  %difference = index.sub %ordered, %right : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @preserves_negative_overflow_lhs_strict(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @preserves_negative_overflow_rhs_strict(%left: index, %right: index) -> (i64, i64) {
+  %ordered = index.assume %right [gt(%right, %left)] : index
+  %difference = index.sub %left, %ordered : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @preserves_negative_overflow_rhs_strict(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @preserves_negative_overflow_lhs_inclusive(%left: index, %right: index) -> (i64, i64) {
+  %ordered = index.assume %left [le(%left, %right)] : index
+  %difference = index.sub %ordered, %right : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @preserves_negative_overflow_lhs_inclusive(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @preserves_negative_overflow_rhs_inclusive(%left: index, %right: index) -> (i64, i64) {
+  %ordered = index.assume %right [ge(%right, %left)] : index
+  %difference = index.sub %left, %ordered : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @preserves_negative_overflow_rhs_inclusive(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @retains_safe_positive_difference(%left: index, %right: index) -> (i64, i64) {
+  %bounded_left = index.assume %left [range(%left, 0, 9223372036854775807)] : index
+  %bounded_right = index.assume %right [range(%right, 0, 9223372036854775807), gt(%right, %bounded_left)] : index
+  %difference = index.sub %bounded_right, %bounded_left : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @retains_safe_positive_difference(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant 1 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @retains_safe_negative_difference(%left: index, %right: index) -> (i64, i64) {
+  %bounded_left = index.assume %left [range(%left, 0, 9223372036854775807)] : index
+  %bounded_right = index.assume %right [range(%right, 0, 9223372036854775807), lt(%right, %bounded_left)] : index
+  %difference = index.sub %bounded_right, %bounded_left : index
+  %lower = test.fact_range_lo %difference : index -> i64
+  %upper = test.fact_range_hi %difference : index -> i64
+  func.return %lower, %upper : i64, i64
+}
+// ----
+func.def @retains_safe_negative_difference(%left: index, %right: index) -> (i64, i64) {
+  %lower = scalar.constant -9223372036854775807 : i64
+  %upper = scalar.constant -1 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+// RUN: with-checks pass canonicalize
+
+// Negative input makes the unsigned distance exceed INT64_MAX.
+func.def @retains_unsigned_distance_guard(%initial: index) -> (i1) {
+  %upper = index.constant 9223372036854775807 : index
+  %iv = index.assume %initial [lt(%initial, %upper)] : index
+  %distance = index.sub %upper, %iv : index
+  %again = index.cmp ult, %upper, %distance : index
+  func.return %again : i1
+}
+// ----
+CHECK:   %again = index.cmp ult, %upper, %distance : index
+CHECK:   func.return %again : i1
+CHECK-NOT:   %again = scalar.constant *

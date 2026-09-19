@@ -16,12 +16,12 @@ func.def @read_ahead_sum(%input: view<64xf32>, %begin: index, %end: index, %init
   %step = index.constant 1 : index
   %depth = index.constant 2 : index
   %12 = index.constant 9223372036854775806 : index
-  %13 = index.min %begin, %12 : index
-  %14 = index.cmp sle, %begin, %12 : index
+  %13 = index.cmp sle, %begin, %12 : index
+  %14 = index.min %begin, %12 : index
   %15 = index.constant 1 : index
-  %16 = index.add %13, %15 : index
+  %16 = index.add %14, %15 : index
   %17 = index.cmp slt, %16, %end : index
-  %18 = scalar.andi %14, %17 : i1
+  %18 = scalar.andi %13, %17 : i1
   %result = scf.if %18 -> (f32) {
     %value = view.load %input[%begin] : view<64xf32> -> f32
     %24, %25 = scf.for %21 = [%16 to %end step %step](%22 = %initial : f32, %23 = %value : f32) -> (f32, f32) {

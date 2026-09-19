@@ -65,6 +65,7 @@ loom_cc_library(
     loom::rewrite::materialize
     loom::rewrite::remap
     loom::rewrite::rewriter
+    loom::target::function_version
     loom::target::pass_environment
     loom::util::fact_table
     loom::util::walk
@@ -103,6 +104,7 @@ loom_cc_library(
   SRCS
     "scf_unroll.c"
   DEPS
+    ::scf_unroll_bounds
     ::scf_unroll_tile
     iree::base
     loom::error::emitter
@@ -144,6 +146,25 @@ loom_cc_library(
     loom::rewrite::materialize
     loom::rewrite::remap
     loom::rewrite::rewriter
+    loom::util::fact_table
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    scf_unroll_bounds
+  HDRS
+    "scf_unroll_bounds.h"
+  SRCS
+    "scf_unroll_bounds.c"
+  DEPS
+    iree::base
+    loom::ir
+    loom::ir::facts
+    loom::ops::index
+    loom::ops::op_defs
+    loom::ops::scalar
+    loom::ops::scf
     loom::util::fact_table
   PUBLIC
 )

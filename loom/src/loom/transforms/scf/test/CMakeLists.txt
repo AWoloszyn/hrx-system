@@ -13,9 +13,11 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "scf_for_termination.loom-test"
     "scf_index.loom-test"
     "scf_pipeline.loom-test"
     "scf_pipeline_bounds.loom-test"
+    "scf_pipeline_carrier.loom-test"
     "scf_pipeline_facts.loom-test"
     "scf_pipeline_policy.loom-test"
     "scf_pipeline_regions.loom-test"
@@ -24,6 +26,7 @@ loom_check_test_suite(
     "scf_to_cfg.loom-test"
     "scf_unroll.loom-test"
     "scf_unroll_bounds.loom-test"
+    "scf_unroll_carrier.loom-test"
     "scf_unroll_fences.loom-test"
     "scf_unroll_payload.loom-test"
     "scf_unroll_regions.loom-test"

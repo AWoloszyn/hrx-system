@@ -36,6 +36,7 @@ from loom.target.contracts import (
     EmitDescriptorOp,
     Guard,
     GuardDiagnostic,
+    OrdinalValueAliasRule,
     ResultTypeBinding,
     Scalar,
     SourceMemoryByteOffsetMaterializer,
@@ -3069,11 +3070,10 @@ LLVMIR_GENERIC_CORE_CONTRACT_FRAGMENT = ContractFragment(
             _F64,
             "llvmir.const.f64",
         ),
-        ValueAliasRule(
+        OrdinalValueAliasRule(
             source_op=index.index_assume,
             source=ValueRef.operand("values"),
             result=ValueRef.result("results"),
-            guards=(Guard.operand_segment_count("values", 1),),
         ),
         _buffer_alloca_rule("private"),
         _buffer_alloca_rule("workgroup"),
