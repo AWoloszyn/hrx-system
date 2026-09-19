@@ -12,7 +12,16 @@
         ]
       },
       "stdout": {
-        "contains": {"unordered": ["kernel.def @affine", "kernel.def @convert", "scalar.fmaf", "scalar.extf"]}
+        "contains": {
+          "unordered": [
+            "kernel.def @affine",
+            "kernel.def @convert",
+            "scalar.fmaf",
+            "scalar.extf",
+            "\n  kernel.launch.config ",
+            "\n  kernel.return\n"
+          ]
+        }
       }
     },
     {

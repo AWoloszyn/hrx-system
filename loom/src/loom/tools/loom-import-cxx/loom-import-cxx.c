@@ -57,7 +57,8 @@ static iree_status_t loom_cxx_cli_write_module(loom_module_t* module,
       iree_make_cstring_view(FLAG_output), allocator, &output));
   iree_status_t status = iree_ok_status();
   if (strcmp(FLAG_to, "text") == 0) {
-    status = loom_text_print_module(module, &output.stream, 0);
+    status =
+        loom_text_print_module(module, &output.stream, LOOM_TEXT_PRINT_DEFAULT);
   } else {
     iree_io_stream_t* stream = NULL;
     status = iree_io_vec_stream_create(
