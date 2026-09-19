@@ -65,6 +65,7 @@ def _magic_division_guards(
     *,
     register_class: str,
     is_add: bool,
+    divisor_guards: tuple[Guard, ...] = (),
 ) -> tuple[Guard, ...]:
     type_guards = tuple(
         Guard.value_type(field, type_pattern) for field in ("lhs", "rhs", "result")
@@ -98,6 +99,7 @@ def _magic_division_guards(
         )
     return (
         *type_guards,
+        *divisor_guards,
         Guard.low_value_register_class("result", register_class),
         *numerator_guards,
         Guard.value_exact_i64("rhs", diagnostic=_POSITIVE_U32_DIVISOR_DIAGNOSTIC),
@@ -440,11 +442,11 @@ def _magic_remainder_vgpr_rule(
         source_op=source_op,
         descriptor=product_descriptor,
         guards=(
-            *product_guards,
             *_magic_division_guards(
                 type_pattern,
                 register_class="amdgpu.vgpr",
                 is_add=is_add,
+                divisor_guards=product_guards,
             ),
             *_descriptor_available_guards(
                 *_magic_division_vgpr_descriptors(descriptor_set, is_add=is_add),
