@@ -323,9 +323,14 @@ is positive. Parenthesized bindings initialize loop-carried values, and
 }
 ```
 
-The induction variable is an `index`. Every carried value has the same type as
-its corresponding result. Multiple accumulators are ordinary parallel
-bindings:
+The induction variable has the bounds' address type: `index` for logical
+coordinates or `offset` for byte positions. If the lower bound is at least the
+upper bound, the results are the initial values. Otherwise, they are the last
+iteration's yielded values. A nonunit step visits only values below the upper
+bound: `[3 to 10 step 4]` visits `3` and `7`.
+
+Every carried value has the same type as its corresponding result. Multiple
+accumulators are ordinary parallel bindings:
 
 ```loom
 %sum, %sum_of_squares = scf.for %column = [%begin to %column_count step %step](
