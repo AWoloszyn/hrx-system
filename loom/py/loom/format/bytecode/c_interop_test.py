@@ -29,6 +29,7 @@ from loom.dialect.test import (
 from loom.format.bytecode.reader import read_module
 from loom.format.bytecode.writer import write_module
 from loom.format.text.parser import Parser
+from loom.format.text.printer import Printer
 from loom.ir import (
     BF16,
     Block,
@@ -384,7 +385,16 @@ def main() -> None:
     captured = _predicate_capture_module()
     _assert_predicate_identities(captured)
     _assert_predicate_identities(read_module(write_module(captured)))
-    _assert_predicate_identities(_roundtrip_through_c(Path(sys.argv[1]), captured))
+    captured_from_c = _roundtrip_through_c(Path(sys.argv[1]), captured)
+    _assert_predicate_identities(captured_from_c)
+    parser = Parser()
+    printer = Printer()
+    for operations in (ALL_FUNC_OPS, ALL_SCF_OPS, ALL_TEST_OPS):
+        parser.register_ops(operations)
+        printer.register_ops(operations)
+    for module in (captured, captured_from_c):
+        text = printer.print_module(module)
+        _assert_predicate_identities(parser.parse(text))
 
 
 if __name__ == "__main__":

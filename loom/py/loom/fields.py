@@ -81,7 +81,7 @@ class FormatFields(Protocol):
     def region(self, name: str) -> Region | None: ...
     def regions(self, name: str) -> list[Region]: ...
     def tied_result_map(self) -> dict[int, TiedResult]: ...
-    def operand_name_for_tied(self, tied: TiedResult) -> str: ...
+    def operand_id_for_tied(self, tied: TiedResult) -> int: ...
     def value_id(self, name: str) -> int: ...
     def value_ids(self, name: str) -> list[int]: ...
     def type_of(self, name: str) -> Type: ...
@@ -567,29 +567,18 @@ class ResolvedFields:
         """
         return {tr.result_index: tr for tr in self._op.tied_results}
 
-    def operand_name_for_tied(self, tied: TiedResult) -> str:
-        """Get the SSA name of the operand or func arg a result is tied to.
+    def operand_id_for_tied(self, tied: TiedResult) -> int:
+        """Get the value ID of the operand or func arg a result is tied to.
 
         For body ops, tied.operand_index indexes into op.operands. For
         func-like ops with a body region (func.def, template.def), there
         are no op-level operands — tied.operand_index indexes into the
         entry block's arguments instead.
         """
-        if tied.operand_index < len(self._op.operands):
-            value_id = self._op.operands[tied.operand_index]
-            name = self._module.values[value_id].name
-        elif self._op.regions:
-            entry = (
-                self._op.regions[0].blocks[0] if self._op.regions[0].blocks else None
-            )
-            if entry and tied.operand_index < len(entry.arg_ids):
-                value_id = entry.arg_ids[tied.operand_index]
-                name = self._module.values[value_id].name
-            else:
-                return f"%arg{tied.operand_index}"
-        else:
-            return f"%arg{tied.operand_index}"
-        return "%" + name
+        body_index = self._layout.func_body_region_index
+        if body_index is not None:
+            return self._op.regions[body_index].blocks[0].arg_ids[tied.operand_index]
+        return self._op.operands[tied.operand_index]
 
     # --- FuncArgs support for func-like ops ---
 

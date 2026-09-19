@@ -725,7 +725,7 @@ class TestTiedResults:
         tied_map = fields.tied_result_map()
         assert 0 in tied_map
         assert tied_map[0].operand_index == 1
-        assert fields.operand_name_for_tied(tied_map[0]) == "%tensor"
+        assert fields.operand_id_for_tied(tied_map[0]) == vids[1]
 
     def test_no_tied_results(self) -> None:
         module, vids = _make_module_with_values(

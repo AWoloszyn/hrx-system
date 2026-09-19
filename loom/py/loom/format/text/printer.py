@@ -22,8 +22,8 @@ Value naming:
   - Value.name stores the bare name without sigil ("x", not "%x").
   - The printer adds the '%' sigil when emitting: "x" -> %x.
   - Unnamed values (name == "") get auto-names using their value ID: %0, %1, %2.
-  - Digit-only names and identifier names occupy separate syntactic
-    namespaces, so no collision avoidance is needed.
+  - A per-print plan disambiguates captures and duplicate definitions while
+    preserving names in independent scopes.
   - Stable: same IR always produces identical output.
 """
 
@@ -88,6 +88,7 @@ from loom.fields import (
     resolve_fields,
 )
 from loom.format.text.block_order import ordered_blocks
+from loom.format.text.name_plan import NamePlan, plan_names
 from loom.ir import (
     Block,
     BufferType,
@@ -179,8 +180,8 @@ class TypePrintContext:
         "_dim_bindings",
         "_encoding_alias_selectors",
         "_encoding_binding",
-        "_module",
         "_use_aliases",
+        "_value_name",
     )
 
     def __init__(
@@ -190,12 +191,17 @@ class TypePrintContext:
         encoding_binding: int = -1,
         use_aliases: bool = True,
         encoding_alias_selectors: _EncodingAliasSelectors | None = None,
+        value_name: Callable[[int], str] | None = None,
     ) -> None:
         self._dim_bindings = dim_bindings
         self._encoding_alias_selectors = encoding_alias_selectors
         self._encoding_binding = encoding_binding
-        self._module = module
         self._use_aliases = use_aliases
+        self._value_name = (
+            value_name
+            if value_name is not None
+            else lambda value_id: resolve_value_name(module, value_id)
+        )
 
     def dim_name(self, position: int) -> str | None:
         """Get the name for a dynamic dim at the given position.
@@ -205,7 +211,7 @@ class TypePrintContext:
         value_id = self._dim_bindings.get(position)
         if value_id is None:
             return None
-        return resolve_value_name(self._module, value_id)
+        return self._value_name(value_id)
 
     def encoding_binding_name(self) -> str | None:
         """Get the SSA name for a dynamic encoding binding.
@@ -215,7 +221,7 @@ class TypePrintContext:
         """
         if self._encoding_binding < 0:
             return None
-        return resolve_value_name(self._module, self._encoding_binding)
+        return self._value_name(self._encoding_binding)
 
 
 def _select_canonical_encoding_alias(
@@ -667,12 +673,9 @@ class TokenStream:
 
 
 def resolve_value_name(module: Module, value_id: int) -> str:
-    """Returns the SSA name for a value with '%' sigil.
+    """Returns an authored spelling for standalone type fragments.
 
-    User-assigned names are returned with % prefix added.
-    Unnamed values get %N where N is the value ID. These occupy
-    separate syntactic namespaces (identifiers vs digit-only), so
-    no collision is possible.
+    Complete module and operation printing use the lexical name plan.
     """
     if value_id < len(module.values):
         name: str = module.values[value_id].name
@@ -1129,7 +1132,7 @@ class Printer:
     The printer maintains:
       - An op registry (Op declarations for format-driven printing).
       - A field layout cache (computed once per op kind).
-      - A name table (built per function, maps value IDs to SSA names).
+      - A lexical name plan shared by definitions and all reference forms.
     """
 
     def __init__(
@@ -1145,6 +1148,7 @@ class Printer:
         self._encoding_alias_selectors: dict[str, _EncodingAliasSelector] = {}
         self._layouts: dict[str, FieldLayout] = {}
         self._module: Module | None = None
+        self._name_plan = NamePlan((), frozenset())
         self._indent: int = 0
         self._lines: list[str] = []
         self._print_locations: bool = print_locations
@@ -1196,8 +1200,7 @@ class Printer:
 
     def _value_name(self, value_id: int) -> str:
         """Resolve a value ID to its SSA name."""
-        assert self._module is not None
-        return resolve_value_name(self._module, value_id)
+        return self._name_plan.names[value_id]
 
     def _type_context(self, value: Value, module: Module) -> TypePrintContext:
         """Create a TypePrintContext for a value's dim and encoding bindings."""
@@ -1207,6 +1210,7 @@ class Printer:
             encoding_binding=value.encoding_binding,
             use_aliases=self._use_aliases,
             encoding_alias_selectors=self._encoding_alias_selectors,
+            value_name=self._value_name,
         )
 
     def _format_attr_value(
@@ -1264,6 +1268,7 @@ class Printer:
         """Print a complete module to canonical text."""
         self._lines = []
         self._module = module
+        self._name_plan = plan_names(module, self._registry, self._layout)
         self._emit_comments(module.file_header)
         if module.file_header and (
             any(encoding.alias for encoding in module.encodings)
@@ -1382,7 +1387,7 @@ class Printer:
                     args = []
                     for arg_id in block.arg_ids:
                         name = self._value_name(arg_id)
-                        arg_type = print_type(module.values[arg_id].type)
+                        arg_type = self._print_value_type(arg_id, module)
                         args.append(f"{name}: {arg_type}")
                     arg_strs = "(" + ", ".join(args) + ")"
                 self._emit(f"^{block.label}{arg_strs}:")
@@ -1702,6 +1707,8 @@ class Printer:
     ) -> str:
         """Print a single operation (may be multi-line for ops with regions)."""
         self._module = module
+        saved_name_plan = self._name_plan
+        self._name_plan = plan_names(module, self._registry, self._layout, op)
         saved_lines = self._lines
         saved_indent = self._indent
         self._lines = []
@@ -1710,6 +1717,7 @@ class Printer:
         result = "\n".join(self._lines)
         self._lines = saved_lines
         self._indent = saved_indent
+        self._name_plan = saved_name_plan
         return result
 
     def _print_op(
@@ -2088,7 +2096,7 @@ class Printer:
                         covered_attrs.add(start_attr)
                     if end_attr is not None:
                         covered_attrs.add(end_attr)
-                    arg_names, _arg_types, arg_value_ids = fields.func_args(name)
+                    _arg_names, _arg_types, arg_value_ids = fields.func_args(name)
                     start = fields.attr(start_attr) if start_attr is not None else 0
                     end = (
                         fields.attr(end_attr)
@@ -2107,16 +2115,11 @@ class Printer:
                             f"[{start}, {end}) is outside its "
                             f"{len(arg_value_ids)} arguments."
                         )
-                    arg_names = arg_names[start:end]
                     arg_value_ids = arg_value_ids[start:end]
                     arg_strs: list[str] = []
-                    for i, arg_value_id in enumerate(arg_value_ids):
+                    for arg_value_id in arg_value_ids:
                         type_str = self._print_value_type(arg_value_id, module)
-                        arg_name = arg_names[i] if i < len(arg_names) else ""
-                        if arg_name:
-                            arg_strs.append(f"%{arg_name}: {type_str}")
-                        else:
-                            arg_strs.append(type_str)
+                        arg_strs.append(f"{self._value_name(arg_value_id)}: {type_str}")
                     stream.emit("(" + ", ".join(arg_strs) + ")", glue=True)
 
                 case PredicateList(field=name):
@@ -2256,9 +2259,9 @@ class Printer:
 
             if result_position in tied_map:
                 tied = tied_map[result_position]
-                operand_name = fields.operand_name_for_tied(tied)
+                operand_name = self._value_name(fields.operand_id_for_tied(tied))
                 parts.append(f"{operand_name} as {type_str}")
-            elif value.name:
+            elif value.name or result_id in self._name_plan.referenced:
                 # Named result: %name: type.
                 # Omit the name if it matches the LHS result name (to avoid
                 # redundancy in func.call and other body ops).
@@ -2266,7 +2269,7 @@ class Printer:
                 # so we always print the name there.
                 is_symbol = _is_symbol_define(op_decl)
                 if is_symbol:
-                    parts.append(f"%{value.name}: {type_str}")
+                    parts.append(f"{self._value_name(result_id)}: {type_str}")
                 else:
                     parts.append(type_str)
             else:
