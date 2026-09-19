@@ -159,6 +159,25 @@ TEST_F(SymbolicExprTest, SemanticMatchVisitsSharedProducerPairsOnce) {
   EXPECT_EQ(proof, LOOM_SYMBOLIC_PROOF_TRUE);
 }
 
+TEST_F(SymbolicExprTest, SemanticMatchUsesErasedProducerProvenance) {
+  const loom_value_id_t source = DefineI64Value();
+  const loom_value_id_t mask = DefineI64Value();
+  const loom_value_id_t left = BuildScalarAndI(source, mask);
+  const loom_value_id_t right = BuildScalarAndI(source, mask);
+  loom_op_t* left_op = loom_value_def_op(loom_module_value(module_, left));
+  loom_op_t* right_op = loom_value_def_op(loom_module_value(module_, right));
+
+  IREE_ASSERT_OK(loom_op_erase(module_, left_op));
+  IREE_ASSERT_OK(loom_op_erase(module_, right_op));
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_symbolic_expr_context_reset(&expression_context_);
+
+  loom_symbolic_proof_result_t proof = LOOM_SYMBOLIC_PROOF_UNKNOWN;
+  IREE_ASSERT_OK(ProveSemanticallyEquivalentUpperBound(&expression_context_,
+                                                       left, right, &proof));
+  EXPECT_EQ(proof, LOOM_SYMBOLIC_PROOF_TRUE);
+}
+
 TEST_F(SymbolicExprTest, SemanticMatchRejectsDistinctProducerLeaves) {
   loom_value_id_t left = DefineI64Value();
   loom_value_id_t right = DefineI64Value();
@@ -864,6 +883,10 @@ TEST_F(SymbolicExprTest, ProvesIndexRemainderIsBelowDynamicDivisor) {
                                       LOOM_LOCATION_UNKNOWN, &remainder_op));
   loom_value_id_t remainder = loom_index_rem_result(remainder_op);
 
+  IREE_ASSERT_OK(loom_op_erase(module_, remainder_op));
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_symbolic_expr_context_reset(&expression_context_);
+
   loom_symbolic_proof_result_t proof = LOOM_SYMBOLIC_PROOF_UNKNOWN;
   IREE_ASSERT_OK(loom_symbolic_expr_prove_value_relation(
       &expression_context_, LOOM_SYMBOLIC_INTEGER_RELATION_LT, remainder,
@@ -1055,6 +1078,14 @@ TEST_F(SymbolicExprTest, SelectConditionProvesDynamicLoopLowerBound) {
       &expression_context_, LOOM_SYMBOLIC_INTEGER_RELATION_GE, shifted,
       zero_value, &active_facts_proof));
   EXPECT_EQ(active_facts_proof, LOOM_SYMBOLIC_PROOF_UNKNOWN);
+
+  IREE_ASSERT_OK(loom_op_erase(module_, shifted_op));
+  IREE_ASSERT_OK(loom_op_erase(module_, sum_op));
+  IREE_ASSERT_OK(loom_op_erase(module_, assume_op));
+  IREE_ASSERT_OK(loom_op_erase(module_, lower_bound_op));
+  IREE_ASSERT_OK(loom_op_erase(module_, edge_cmp_op));
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_symbolic_expr_context_reset(&expression_context_);
 
   loom_symbolic_expr_t shifted_expression = {0};
   IREE_ASSERT_OK(loom_symbolic_expr_from_value(&expression_context_, shifted,

@@ -2143,7 +2143,7 @@ TEST_F(BuilderTest, DefBlockArg) {
   EXPECT_EQ(loom_value_def_index(value2), 1);
 }
 
-TEST_F(BuilderTest, DefOpClearedOnErase) {
+TEST_F(BuilderTest, DefOpRetainedOnEraseAndUseRecompute) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_op_t* const_op = NULL;
   loom_value_id_t c = build_constant(&builder_, module_, i32, &const_op);
@@ -2154,8 +2154,12 @@ TEST_F(BuilderTest, DefOpClearedOnErase) {
   // Erase the constant (no uses, so erase succeeds).
   IREE_ASSERT_OK(loom_op_erase(module_, const_op));
 
-  // Def pointer should be cleared to NULL.
-  EXPECT_EQ(loom_value_def_op(value), nullptr);
+  EXPECT_EQ(loom_value_def_op(value), const_op);
+  EXPECT_EQ(loom_value_def_index(value), 0);
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  EXPECT_EQ(loom_value_def_op(value), const_op);
+  EXPECT_EQ(loom_value_def_index(value), 0);
 }
 
 TEST_F(BuilderTest, DefOpRestoredByComputeUses) {

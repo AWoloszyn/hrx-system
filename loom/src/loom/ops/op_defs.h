@@ -2171,8 +2171,9 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
 // attribute/type uses from outside the op (caller must RAUW results first).
 // Removes operand and attribute use records, drops type-use records carried by
 // results, owned declaration arguments and nested block arguments, then marks
-// the op dead. Dead ops are skipped by enumeration macros and will not be
-// serialized. The memory is not freed (arena-owned). Returns
+// the op dead. Result values retain their defining op and result index as
+// immutable producer provenance. Dead ops are skipped by enumeration macros
+// and will not be serialized. The memory is not freed (arena-owned). Returns
 // IREE_STATUS_FAILED_PRECONDITION if any result still has uses.
 iree_status_t loom_op_erase(loom_module_t* module, loom_op_t* op);
 
