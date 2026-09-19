@@ -66,7 +66,16 @@ TEST_F(StorageTest, InteriorPointersRetainSignedDisplacementsAndRootIdentity) {
   EXPECT_EQ(loom_buffer_view_buffer(view), allocation.pointer.root);
   auto* offset = producer(loom_buffer_view_byte_offset(view));
   ASSERT_TRUE(loom_index_cast_isa(offset));
-  auto* sum = producer(loom_op_operands(offset)[0]);
+  auto* assumed_origin = producer(loom_index_cast_input(offset));
+  ASSERT_TRUE(loom_scalar_assume_isa(assumed_origin));
+  auto predicates = loom_scalar_assume_predicates(assumed_origin);
+  ASSERT_EQ(predicates.count, 1u);
+  EXPECT_EQ(predicates.predicate_list[0].kind, LOOM_PREDICATE_RANGE);
+  EXPECT_EQ(predicates.predicate_list[0].args[0],
+            loom_op_operands(assumed_origin)[0]);
+  EXPECT_EQ(predicates.predicate_list[0].args[1], 0);
+  EXPECT_EQ(predicates.predicate_list[0].args[2], INT64_MAX);
+  auto* sum = producer(loom_op_operands(assumed_origin)[0]);
   ASSERT_TRUE(loom_scalar_addi_isa(sum));
   auto* scale = producer(loom_op_operands(sum)[1]);
   ASSERT_TRUE(loom_scalar_muli_isa(scale));
@@ -104,7 +113,9 @@ TEST_F(StorageTest, UnsignedDisplacementsExtendBeforeScaling) {
   auto advanced = storage.advance(
       allocation.pointer, scalars.integer(17, LOOM_SCALAR_TYPE_I32), pointer,
       control->getUnsignedIntType(), cxx::TokenKind::T_PLUS, owner);
-  auto* sum = producer(loom_op_operands(producer(advanced.byte_offset))[0]);
+  auto* assumed_origin =
+      producer(loom_op_operands(producer(advanced.byte_offset))[0]);
+  auto* sum = producer(loom_op_operands(assumed_origin)[0]);
   auto* scale = producer(loom_op_operands(sum)[1]);
   EXPECT_TRUE(loom_scalar_extui_isa(producer(loom_op_operands(scale)[0])));
   auto invalid = scalars.integer(1, LOOM_SCALAR_TYPE_I32);
@@ -112,6 +123,32 @@ TEST_F(StorageTest, UnsignedDisplacementsExtendBeforeScaling) {
       storage.advance(allocation.pointer, invalid, pointer,
                       control->getIntType(), cxx::TokenKind::T_STAR, owner),
       SourceRejected);
+}
+
+TEST_F(StorageTest, WideArrayIndicesRetainDeclaredBounds) {
+  Locations locations(source_.unit(), source_.diagnostics(), module_);
+  Scalars scalars(source_.unit(), source_.diagnostics(), types_, locations,
+                  builder_);
+  Storage storage(source_.unit(), source_.diagnostics(), types_, scalars,
+                  locations, builder_);
+  auto* control = source_.unit().control();
+  auto* owner = source_.unit().ast();
+  auto* array = control->getBoundedArrayType(control->getIntType(), 64);
+  auto allocation = storage.workgroup(array, 0, owner);
+  auto input = scalars.integer(63, LOOM_SCALAR_TYPE_I64);
+  auto access = storage.subscript(allocation.pointer, input, array,
+                                  control->getUnsignedLongLongIntType(), owner);
+  ASSERT_TRUE(access.index.has_value());
+  auto* offset = producer(loom_index_cast_input(producer(*access.index)));
+  ASSERT_TRUE(loom_index_cast_isa(offset));
+  auto* assumed_index = producer(loom_index_cast_input(offset));
+  ASSERT_TRUE(loom_scalar_assume_isa(assumed_index));
+  auto predicates = loom_scalar_assume_predicates(assumed_index);
+  ASSERT_EQ(predicates.count, 1u);
+  EXPECT_EQ(predicates.predicate_list[0].kind, LOOM_PREDICATE_RANGE);
+  EXPECT_EQ(predicates.predicate_list[0].args[0], input);
+  EXPECT_EQ(predicates.predicate_list[0].args[1], 0);
+  EXPECT_EQ(predicates.predicate_list[0].args[2], 63);
 }
 
 }  // namespace
