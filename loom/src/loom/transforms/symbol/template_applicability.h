@@ -8,7 +8,7 @@
 #define LOOM_TRANSFORMS_SYMBOL_TEMPLATE_APPLICABILITY_H_
 
 #include "iree/base/api.h"
-#include "loom/analysis/condition_facts.h"
+#include "loom/analysis/condition_fact_scope.h"
 #include "loom/analysis/template_provider_catalog.h"
 #include "loom/decision/predicate.h"
 #include "loom/ir/facts.h"
@@ -64,8 +64,8 @@ typedef struct loom_template_applicability_facts_t {
   // Function-scoped SSA facts projected with the function target facts.
   const loom_value_fact_table_t* values;
 
-  // Facts established only along the lexical path to this application.
-  loom_condition_fact_set_t path;
+  // Immutable facts established along the lexical path to this application.
+  const loom_condition_fact_scope_t* path;
 } loom_template_applicability_facts_t;
 
 // Allocation-free applicability fields shared by families and providers.

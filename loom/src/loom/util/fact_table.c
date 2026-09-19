@@ -974,6 +974,18 @@ bool loom_value_fact_table_query_contextual_query_origin(
                                                               out_origin);
 }
 
+void loom_value_fact_table_contextual_query_values(
+    const loom_value_fact_table_t* table, const loom_value_id_t** out_value_ids,
+    iree_host_size_t* out_value_count) {
+  if (table == NULL) {
+    *out_value_ids = NULL;
+    *out_value_count = 0;
+    return;
+  }
+  *out_value_ids = table->contextual_query_origins.touched_values;
+  *out_value_count = table->contextual_query_origins.touched_count;
+}
+
 iree_status_t loom_value_fact_table_clone_values(
     loom_value_fact_table_t* target, loom_value_fact_table_view_t source_view,
     const loom_module_t* module) {

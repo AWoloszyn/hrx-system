@@ -295,3 +295,35 @@ bool loom_condition_fact_scope_for_each_anchored_while(
   }
   return true;
 }
+
+bool loom_condition_fact_scope_for_each_value_anchored_while(
+    const loom_condition_fact_scope_t* scope,
+    const loom_value_fact_table_t* fact_table, const loom_value_id_t* value_ids,
+    iree_host_size_t value_count, loom_cfg_condition_relation_visit_fn_t visit,
+    void* user_data) {
+  for (const loom_condition_fact_scope_t* current = scope; current != NULL;
+       current = current->parent) {
+    if (current->local_derivation != NULL) {
+      const loom_condition_fact_set_t* facts =
+          &current->local_derivation->integer_facts;
+      for (iree_host_size_t i = 0; i < facts->integer_relation_count; ++i) {
+        if (!visit(user_data, &facts->integer_relations[i])) {
+          return false;
+        }
+      }
+    } else if (current->relation_view != NULL) {
+      for (iree_host_size_t i = 0; i < value_count; ++i) {
+        const loom_condition_integer_operand_t anchor = {
+            .kind = LOOM_CONDITION_INTEGER_OPERAND_VALUE,
+            .value_id = value_ids[i],
+        };
+        if (!loom_cfg_condition_relation_view_for_each_while(
+                current->relation_table, current->relation_view, fact_table,
+                anchor, visit, user_data)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
