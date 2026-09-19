@@ -654,12 +654,6 @@ class BytecodeWriter:
                 self._ctx.intern_string(value.name)
             self._number_type(value.type)
 
-        # Predicate value name strings.
-        for predicate in op.attributes.get("predicates", []):
-            for arg in predicate.args:
-                if arg.tag == "value" and isinstance(arg.value, str):
-                    self._ctx.intern_string(arg.value)
-
         for key, value in op.attributes.items():
             if key in shared_attr_keys:
                 continue
@@ -840,28 +834,13 @@ class BytecodeWriter:
             add_value(result_id)
         scan_index = collect_value_bindings(0)
 
-        name_to_value_id = {
-            module.values[value_id].name: value_id
-            for value_id in local_values
-            if module.values[value_id].name
-        }
-
         def collect_attr_value(value: Any) -> None:
             if isinstance(value, list) and value and isinstance(value[0], Predicate):
                 for predicate in value:
                     for arg in predicate.args:
                         if arg.tag != "value":
                             continue
-                        if isinstance(arg.value, int):
-                            add_value(arg.value)
-                            continue
-                        try:
-                            add_value(name_to_value_id[str(arg.value)])
-                        except KeyError as exc:
-                            raise ValueError(
-                                f"global {op.name} predicate references "
-                                f"unknown value {arg.value!r}"
-                            ) from exc
+                        add_value(arg.value)
                 return
             if isinstance(value, Mapping):
                 for nested_value in value.values():
@@ -1484,13 +1463,6 @@ class BytecodeWriter:
         buf.write_varint(self._ctx.intern_type(value.type))
         self._write_dim_bindings(buf, value, value_numbers)
 
-    def _value_numbers_by_name(self, value_numbers: dict[int, int]) -> dict[str, int]:
-        return {
-            self._module.values[value_id].name: value_number
-            for value_id, value_number in value_numbers.items()
-            if self._module.values[value_id].name
-        }
-
     def _write_operation(
         self,
         buf: ByteBuffer,
@@ -1561,13 +1533,12 @@ class BytecodeWriter:
         buf.write_varint(len(op.attributes))
         # Operation attributes are canonicalized at IR construction time, so
         # emit the stored order directly.
-        value_numbers_by_name = self._value_numbers_by_name(value_numbers)
         for key, value in op.attributes.items():
             buf.write_varint(self._ctx.strings[key])
             self._write_attr_value(
                 buf,
                 value,
-                value_numbers_by_name,
+                value_numbers,
                 self._attr_def_for_op_attr(op.name, key),
             )
 
@@ -1580,7 +1551,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: ParameterizedAttr,
-        value_numbers_by_name: dict[str, int] | None,
+        value_numbers: dict[int, int] | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
     ) -> None:
@@ -1610,7 +1581,7 @@ class BytecodeWriter:
             self._write_attr_value(
                 buf,
                 parameter_value,
-                value_numbers_by_name,
+                value_numbers,
                 parameter_by_name[parameter_name],
                 aggregate_nesting_depth + 1,
             )
@@ -1619,7 +1590,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: ParameterizedAttr,
-        value_numbers_by_name: dict[str, int] | None,
+        value_numbers: dict[int, int] | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
     ) -> None:
@@ -1634,7 +1605,7 @@ class BytecodeWriter:
         self._write_parameterized_attr_payload(
             buf,
             value,
-            value_numbers_by_name,
+            value_numbers,
             attr_def,
             aggregate_nesting_depth,
         )
@@ -1643,7 +1614,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: ParameterizedAttrArray,
-        value_numbers_by_name: dict[str, int] | None,
+        value_numbers: dict[int, int] | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
     ) -> None:
@@ -1663,7 +1634,7 @@ class BytecodeWriter:
             self._write_parameterized_attr_payload(
                 buf,
                 element,
-                value_numbers_by_name,
+                value_numbers,
                 attr_def,
                 aggregate_nesting_depth + 1,
             )
@@ -1672,7 +1643,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: Mapping[str, Any],
-        value_numbers_by_name: dict[str, int] | None,
+        value_numbers: dict[int, int] | None,
         aggregate_nesting_depth: int,
     ) -> None:
         """Write a canonical generic attribute dictionary."""
@@ -1688,7 +1659,7 @@ class BytecodeWriter:
             self._write_attr_value(
                 buf,
                 item,
-                value_numbers_by_name,
+                value_numbers,
                 aggregate_nesting_depth=aggregate_nesting_depth + 1,
             )
 
@@ -1696,7 +1667,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: Any,
-        value_numbers_by_name: dict[str, int] | None,
+        value_numbers: dict[int, int] | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
     ) -> bool:
@@ -1706,7 +1677,7 @@ class BytecodeWriter:
             self._write_parameterized_attr_value(
                 buf,
                 value,
-                value_numbers_by_name,
+                value_numbers,
                 attr_def,
                 aggregate_nesting_depth,
             )
@@ -1715,7 +1686,7 @@ class BytecodeWriter:
             self._write_parameterized_attr_array_value(
                 buf,
                 value,
-                value_numbers_by_name,
+                value_numbers,
                 attr_def,
                 aggregate_nesting_depth,
             )
@@ -1736,7 +1707,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: Any,
-        value_numbers_by_name: dict[str, int] | None = None,
+        value_numbers: dict[int, int] | None = None,
         attr_def: Any | None = None,
         aggregate_nesting_depth: int = 0,
     ) -> None:
@@ -1745,7 +1716,7 @@ class BytecodeWriter:
         if self._dispatch_parameterized_attr_value(
             buf,
             value,
-            value_numbers_by_name,
+            value_numbers,
             attr_def,
             aggregate_nesting_depth,
         ):
@@ -1761,12 +1732,12 @@ class BytecodeWriter:
                     f"objects, got {value!r}"
                 )
             buf.write_u8(ATTR_KIND_PREDICATE_LIST)
-            self._write_predicate_list(buf, value, value_numbers_by_name)
+            self._write_predicate_list(buf, value, value_numbers)
             return
         # Check for predicate list attribute (list of Predicate objects).
         if isinstance(value, list) and value and isinstance(value[0], Predicate):
             buf.write_u8(ATTR_KIND_PREDICATE_LIST)
-            self._write_predicate_list(buf, value, value_numbers_by_name)
+            self._write_predicate_list(buf, value, value_numbers)
             return
         if self._dispatch_enum_attr_value(buf, value, attr_def):
             return
@@ -1824,7 +1795,7 @@ class BytecodeWriter:
             raise ValueError("symbol sets require a descriptor-backed field")
         elif isinstance(value, Mapping):
             self._write_dict_attr_value(
-                buf, value, value_numbers_by_name, aggregate_nesting_depth
+                buf, value, value_numbers, aggregate_nesting_depth
             )
         elif isinstance(value, EncodingInstance):
             buf.write_u8(ATTR_KIND_ENCODING)
@@ -1992,7 +1963,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         predicates: list[Predicate],
-        value_numbers_by_name: dict[str, int] | None = None,
+        value_numbers: dict[int, int] | None = None,
     ) -> None:
         """Write a predicate list: count + per-predicate data."""
         buf.write_varint(len(predicates))
@@ -2003,26 +1974,27 @@ class BytecodeWriter:
             buf.write_u8(kind_byte)
             buf.write_u8(len(predicate.args))
             for arg in predicate.args:
-                self._write_predicate_arg(buf, arg, value_numbers_by_name)
+                self._write_predicate_arg(buf, arg, value_numbers)
 
     def _write_predicate_arg(
         self,
         buf: ByteBuffer,
         arg: PredicateArg,
-        value_numbers_by_name: dict[str, int] | None = None,
+        value_numbers: dict[int, int] | None = None,
     ) -> None:
         """Write a single predicate argument: tag + value."""
         match arg.tag:
             case "value":
                 buf.write_u8(self._PRED_ARG_TAG_VALUE)
-                name = arg.value if isinstance(arg.value, str) else str(arg.value)
-                if value_numbers_by_name is not None:
-                    buf.write_varint(value_numbers_by_name[name])
-                else:
-                    buf.write_varint(self._ctx.intern_string(name))
+                if value_numbers is None:
+                    raise ValueError("predicate value reference requires a value scope")
+                buf.write_varint(
+                    self._value_number_or_error(
+                        value_numbers, arg.value, "predicate argument"
+                    )
+                )
             case "const":
                 buf.write_u8(self._PRED_ARG_TAG_CONST)
-                assert isinstance(arg.value, int)
                 buf.write_signed_varint(arg.value)
             case _:
                 raise ValueError(f"unknown predicate arg tag: {arg.tag!r}")
@@ -2213,7 +2185,7 @@ class BytecodeWriter:
                 self._write_predicate_list(
                     buf,
                     predicates,
-                    self._value_numbers_by_name(signature_value_numbers),
+                    signature_value_numbers,
                 )
 
                 self._write_function_implementation_metadata(
@@ -2227,15 +2199,12 @@ class BytecodeWriter:
                     if key not in shared_attr_keys
                 ]
                 buf.write_varint(len(payload_attrs))
-                value_numbers_by_name = self._value_numbers_by_name(
-                    signature_value_numbers
-                )
                 for key, value in payload_attrs:
                     buf.write_varint(self._ctx.strings[key])
                     self._write_attr_value(
                         buf,
                         value,
-                        value_numbers_by_name,
+                        signature_value_numbers,
                         self._attr_def_for_op_attr(op.name, key),
                     )
 
@@ -2277,13 +2246,12 @@ class BytecodeWriter:
                     if key != symbol_field
                 ]
                 buf.write_varint(len(payload_attrs))
-                value_numbers_by_name = self._value_numbers_by_name(local_value_numbers)
                 for key, value in payload_attrs:
                     buf.write_varint(self._ctx.strings[key])
                     self._write_attr_value(
                         buf,
                         value,
-                        value_numbers_by_name,
+                        local_value_numbers,
                         self._attr_def_for_op_attr(op.name, key),
                     )
             elif symbol.kind == SymbolKind.RECORD and symbol.op is not None:

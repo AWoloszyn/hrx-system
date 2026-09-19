@@ -2457,6 +2457,45 @@ class TestCrossFormatRoundTrip:
 class TestPredicateBytecodeRoundTrip:
     """Predicate serialization: write → read → verify."""
 
+    def test_unnamed_predicate_value_roundtrip(self) -> None:
+        parser = Parser()
+        parser.register_ops(ALL_FUNC_OPS)
+        module = parser.parse(
+            "func.decl @first(%extent: index) where [ge(%extent, 1)]\n"
+            "func.decl @second(%extent: index) where [ge(%extent, 2)]\n"
+        )
+        for value in module.values:
+            value.name = ""
+        loaded = read_module(write_module(module))
+        first, second = loaded.body.ops
+        assert first.operands[0] != second.operands[0]
+        for operation in loaded.body.ops:
+            argument_id = operation.operands[0]
+            assert loaded.values[argument_id].name == ""
+            assert operation.attributes["predicates"][0].args[0].value == argument_id
+
+    def test_predicate_reference_outside_function_is_rejected(self) -> None:
+        from loom.ir import Predicate, PredicateArg
+
+        parser = Parser()
+        parser.register_ops(ALL_FUNC_OPS)
+        module = parser.parse("func.decl @f(%extent: index)\n")
+        foreign_id = module.add_value(Value(name="extent", type=INDEX))
+        operation = module.body.ops[0]
+        operation = replace(
+            operation,
+            attributes={
+                **operation.attributes,
+                "predicates": [Predicate("pow2", (PredicateArg("value", foreign_id),))],
+            },
+        )
+        module.body.ops[0] = operation
+        module.symbols[0].op = operation
+        with pytest.raises(
+            ValueError, match=r"predicate argument.*no local bytecode number"
+        ):
+            write_module(module)
+
     def test_function_predicates_roundtrip(self) -> None:
         """Function predicates survive bytecode round-trip."""
         from loom.format.bytecode.reader import read_module as read
@@ -2471,58 +2510,58 @@ class TestPredicateBytecodeRoundTrip:
         )
 
         module = Module(name="test")
+        m_id = module.add_value(Value(name="M", type=INDEX))
+        k_id = module.add_value(Value(name="K", type=INDEX))
+        n_id = module.add_value(Value(name="N", type=INDEX))
+        arg_id = module.add_value(Value(name="A", type=F32))
+        result_id = module.add_value(Value(name="", type=F32))
         predicates = [
             Predicate(
                 kind="mul",
                 args=(
-                    PredicateArg(tag="value", value="M"),
+                    PredicateArg(tag="value", value=m_id),
                     PredicateArg(tag="const", value=16),
                 ),
             ),
             Predicate(
                 kind="lt",
                 args=(
-                    PredicateArg(tag="value", value="K"),
+                    PredicateArg(tag="value", value=k_id),
                     PredicateArg(tag="const", value=1024),
                 ),
             ),
             Predicate(
                 kind="ne",
                 args=(
-                    PredicateArg(tag="value", value="N"),
+                    PredicateArg(tag="value", value=n_id),
                     PredicateArg(tag="const", value=0),
                 ),
             ),
             Predicate(
                 kind="pow2",
-                args=(PredicateArg(tag="value", value="N"),),
+                args=(PredicateArg(tag="value", value=n_id),),
             ),
             Predicate(
                 kind="range",
                 args=(
-                    PredicateArg(tag="value", value="M"),
+                    PredicateArg(tag="value", value=m_id),
                     PredicateArg(tag="const", value=32),
                     PredicateArg(tag="const", value=512),
                 ),
             ),
             Predicate(
                 kind="not_nan",
-                args=(PredicateArg(tag="value", value="A"),),
+                args=(PredicateArg(tag="value", value=arg_id),),
             ),
             Predicate(
                 kind="not_inf",
-                args=(PredicateArg(tag="value", value="A"),),
+                args=(PredicateArg(tag="value", value=arg_id),),
             ),
             Predicate(
                 kind="finite",
-                args=(PredicateArg(tag="value", value="A"),),
+                args=(PredicateArg(tag="value", value=arg_id),),
             ),
         ]
-        m_id = module.add_value(Value(name="M", type=INDEX))
-        k_id = module.add_value(Value(name="K", type=INDEX))
-        n_id = module.add_value(Value(name="N", type=INDEX))
-        arg_id = module.add_value(Value(name="A", type=F32))
-        result_id = module.add_value(Value(name="", type=F32))
         func_op = Operation(
             name="func.decl",
             operands=[m_id, k_id, n_id, arg_id],
@@ -2544,7 +2583,7 @@ class TestPredicateBytecodeRoundTrip:
         assert loaded_preds[0].kind == "mul"
         assert len(loaded_preds[0].args) == 2
         assert loaded_preds[0].args[0].tag == "value"
-        assert loaded_preds[0].args[0].value == "M"
+        assert loaded_preds[0].args[0].value == loaded_op.operands[0]
         assert loaded_preds[0].args[1].tag == "const"
         assert loaded_preds[0].args[1].value == 16
 
@@ -2562,15 +2601,15 @@ class TestPredicateBytecodeRoundTrip:
 
         assert loaded_preds[5].kind == "not_nan"
         assert len(loaded_preds[5].args) == 1
-        assert loaded_preds[5].args[0].value == "A"
+        assert loaded_preds[5].args[0].value == loaded_op.operands[3]
 
         assert loaded_preds[6].kind == "not_inf"
         assert len(loaded_preds[6].args) == 1
-        assert loaded_preds[6].args[0].value == "A"
+        assert loaded_preds[6].args[0].value == loaded_op.operands[3]
 
         assert loaded_preds[7].kind == "finite"
         assert len(loaded_preds[7].args) == 1
-        assert loaded_preds[7].args[0].value == "A"
+        assert loaded_preds[7].args[0].value == loaded_op.operands[3]
 
     def test_empty_predicates_roundtrip(self) -> None:
         """Function with no predicates survives bytecode round-trip."""

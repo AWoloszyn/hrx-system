@@ -3745,7 +3745,15 @@ class Parser:
         tok = self._tokenizer
         if tok.at(TokenKind.SSA_VALUE):
             name_tok = tok.next()
-            return PredicateArg(tag="value", value=name_tok.text)
+            try:
+                value_id = self._scope.lookup(name_tok.text)
+            except KeyError:
+                raise ParseError(
+                    f"undefined SSA value '%{name_tok.text}'",
+                    name_tok.location,
+                    tok._filename,
+                ) from None
+            return PredicateArg(tag="value", value=value_id)
         if tok.at(TokenKind.INTEGER):
             int_tok = tok.next()
             return PredicateArg(tag="const", value=int(int_tok.text))

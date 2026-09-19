@@ -2663,7 +2663,7 @@ class TestParsePredicates:
         assert pred.kind == "mul"
         assert len(pred.args) == 2
         assert pred.args[0].tag == "value"
-        assert pred.args[0].value == "M"
+        assert pred.args[0].value == op.regions[0].blocks[0].arg_ids[0]
         assert pred.args[1].tag == "const"
         assert pred.args[1].value == 16
 
@@ -2687,7 +2687,7 @@ class TestParsePredicates:
         # range has 3 args.
         range_pred = predicates[3]
         assert len(range_pred.args) == 3
-        assert range_pred.args[0].value == "M"
+        assert range_pred.args[0].value == op.regions[0].blocks[0].arg_ids[0]
         assert range_pred.args[1].value == 32
         assert range_pred.args[2].value == 512
 
@@ -2720,6 +2720,24 @@ class TestParsePredicates:
                 "}\n"
             )
 
+    def test_undefined_predicate_value_rejected(self) -> None:
+        with pytest.raises(ParseError, match="undefined SSA value '%missing'"):
+            self._parse_module(
+                "test.func @f(%extent: index) where [eq(%missing, 1)] {\n"
+                "  test.yield\n"
+                "}\n"
+            )
+
+    def test_predicate_cannot_refer_to_a_later_definition(self) -> None:
+        with pytest.raises(ParseError, match="undefined SSA value '%later'"):
+            self._parse_module(
+                "test.func @f(%extent: index) {\n"
+                "  %bounded = test.assume %extent [eq(%later, 1)] : index\n"
+                "  %later = test.constant 1 : index\n"
+                "  test.yield\n"
+                "}\n"
+            )
+
     def test_named_result_predicate(self) -> None:
         """Parse eq(%idx, %M) — result name argument."""
 
@@ -2736,9 +2754,9 @@ class TestParsePredicates:
         pred = predicates[0]
         assert pred.kind == "eq"
         assert pred.args[0].tag == "value"
-        assert pred.args[0].value == "idx"
+        assert pred.args[0].value == op.results[0]
         assert pred.args[1].tag == "value"
-        assert pred.args[1].value == "M"
+        assert pred.args[1].value == op.regions[0].blocks[0].arg_ids[0]
 
     def test_no_predicates(self) -> None:
         """Functions without where clause have empty predicates list."""

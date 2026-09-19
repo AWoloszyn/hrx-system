@@ -912,12 +912,23 @@ class PredicateArg:
     """A single argument to a predicate.
 
     tag: "value" for SSA value references, "const" for integer constants.
-    value: For "value" tag, the bare SSA name as a string (no % prefix).
-           For "const" tag, the integer constant value.
+    value: For "value" tag, the resolved ID in the owning module's value table.
+           For "const" tag, the integer constant value. Names are presentation
+           metadata and never participate in predicate identity.
     """
 
-    tag: str  # "value", "const"
-    value: int | str
+    # Distinguishes an SSA reference from a literal integer.
+    tag: str
+    # Module value ID or integer constant, as selected by tag.
+    value: int
+
+    def __post_init__(self) -> None:
+        if self.tag not in ("value", "const"):
+            raise ValueError(f"unknown predicate arg tag: {self.tag!r}")
+        if type(self.value) is not int:
+            raise TypeError("predicate arguments require integer IDs or constants")
+        if self.tag == "value" and self.value < 0:
+            raise ValueError("predicate value IDs must be nonnegative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -936,28 +947,27 @@ class Predicate:
 
 
 def _resolve_predicate_arg(
-    arg: PredicateArg, values: dict[str, int | float]
+    arg: PredicateArg, values: dict[int, int | float]
 ) -> int | float | None:
     """Resolve a predicate argument to a concrete scalar.
 
-    Returns None if the value name is not in the values dict.
+    Returns None if the value ID is not in the values dict.
     """
     match arg.tag:
         case "const":
-            assert isinstance(arg.value, int)
             return arg.value
         case "value":
-            return values.get(str(arg.value))
+            return values.get(arg.value)
         case _:
             raise ValueError(f"unknown predicate arg tag: {arg.tag!r}")
 
 
-def evaluate_predicate(predicate: Predicate, values: dict[str, int | float]) -> bool:
+def evaluate_predicate(predicate: Predicate, values: dict[int, int | float]) -> bool:
     """Evaluate a predicate against concrete dimension values.
 
-    values maps bare SSA names ("M", "K") to their concrete scalar values.
+    values maps module value IDs to their concrete scalar values.
     Returns True if the predicate is satisfied or if any argument
-    cannot be resolved (value name not in the dict).
+    cannot be resolved (value ID not in the dict).
     """
     resolved = [_resolve_predicate_arg(a, values) for a in predicate.args]
     if any(v is None for v in resolved):
@@ -999,7 +1009,7 @@ def evaluate_predicate(predicate: Predicate, values: dict[str, int | float]) -> 
 
 
 def evaluate_predicates(
-    predicates: list[Predicate], values: dict[str, int | float]
+    predicates: list[Predicate], values: dict[int, int | float]
 ) -> bool:
     """Evaluate all predicates. Returns True iff all are satisfied."""
     return all(evaluate_predicate(p, values) for p in predicates)

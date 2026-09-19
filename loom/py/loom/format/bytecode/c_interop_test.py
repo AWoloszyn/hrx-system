@@ -14,7 +14,9 @@ import tempfile
 from pathlib import Path
 
 from loom.builtin_types import ALL_BUILTIN_TYPES
+from loom.dialect.func import ALL_FUNC_OPS
 from loom.dialect.low import ALL_LOW_OPS
+from loom.dialect.scf import ALL_SCF_OPS
 from loom.dialect.test import (
     ALL_TEST_OPS,
     ALL_TEST_PARAMETERIZED_ATTRS,
@@ -145,6 +147,42 @@ def _roundtrip_through_c(loom_format: Path, module: Module) -> Module:
             parameterized_attrs=ALL_TEST_PARAMETERIZED_ATTRS,
             type_defs=ALL_TEST_TYPES,
         )
+
+
+def _predicate_capture_module() -> Module:
+    parser = Parser()
+    for operations in (ALL_FUNC_OPS, ALL_SCF_OPS, ALL_TEST_OPS):
+        parser.register_ops(operations)
+    module = parser.parse(
+        "func.decl @first(%extent: index) where [ge(%extent, 1)]\n"
+        "func.def @capture(%condition: i1, %extent: index) "
+        "where [ge(%extent, 2)] {\n"
+        "  scf.if %condition {\n"
+        "    %inner = test.constant 4 : index\n"
+        "    %bounded = test.assume %condition "
+        "[eq(%extent, 7), eq(%inner, 4)] : i1\n"
+        "  }\n"
+        "  func.return\n"
+        "}\n"
+    )
+    nested = module.body.ops[1].regions[0].blocks[0].ops[0].regions[0].blocks[0]
+    # Changing a display name leaves the resolved outer and inner IDs intact.
+    module.values[nested.ops[0].results[0]].name = "extent"
+    return module
+
+
+def _assert_predicate_identities(module: Module) -> None:
+    first, capture = module.body.ops
+    assert first.attributes["predicates"][0].args[0].value == first.operands[0]
+    body = capture.regions[0].blocks[0]
+    extent = body.arg_ids[1]
+    assert capture.attributes["predicates"][0].args[0].value == extent
+    nested = body.ops[0].regions[0].blocks[0]
+    inner = nested.ops[0].results[0]
+    predicates = nested.ops[1].attributes["predicates"]
+    assert extent != inner
+    assert predicates[0].args[0].value == extent
+    assert predicates[1].args[0].value == inner
 
 
 def _assert_module_structure(module: Module, register_type: RegisterType) -> Block:
@@ -343,6 +381,10 @@ def main() -> None:
     _assert_parameterized_attrs(entry_block)
     _assert_parameterized_arrays(entry_block)
     _assert_symbol_payloads(loaded_module)
+    captured = _predicate_capture_module()
+    _assert_predicate_identities(captured)
+    _assert_predicate_identities(read_module(write_module(captured)))
+    _assert_predicate_identities(_roundtrip_through_c(Path(sys.argv[1]), captured))
 
 
 if __name__ == "__main__":

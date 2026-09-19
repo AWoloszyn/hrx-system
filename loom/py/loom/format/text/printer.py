@@ -30,7 +30,7 @@ Value naming:
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -1071,26 +1071,28 @@ def _format_float(value: float) -> str:
     return text
 
 
-def _format_predicate_arg(arg: PredicateArg) -> str:
+def _format_predicate_arg(arg: PredicateArg, value_name: Callable[[int], str]) -> str:
     """Format a single predicate argument."""
     match arg.tag:
         case "value":
-            return f"%{arg.value}"
+            return value_name(arg.value)
         case "const":
             return str(arg.value)
         case _:
             raise ValueError(f"unknown predicate arg tag: {arg.tag!r}")
 
 
-def _format_predicate(predicate: Predicate) -> str:
+def _format_predicate(predicate: Predicate, value_name: Callable[[int], str]) -> str:
     """Format a single predicate: kind(arg, arg, ...)."""
-    arg_strs = [_format_predicate_arg(a) for a in predicate.args]
+    arg_strs = [_format_predicate_arg(a, value_name) for a in predicate.args]
     return f"{predicate.kind}({', '.join(arg_strs)})"
 
 
-def _format_predicate_list(predicates: list[Predicate]) -> str:
+def _format_predicate_list(
+    predicates: list[Predicate], value_name: Callable[[int], str]
+) -> str:
     """Format a predicate list: [pred(...), pred(...)]."""
-    parts = [_format_predicate(p) for p in predicates]
+    parts = [_format_predicate(p, value_name) for p in predicates]
     return "[" + ", ".join(parts) + "]"
 
 
@@ -2122,7 +2124,9 @@ class Printer:
                     if predicates is None and hasattr(fields, "_op"):
                         predicates = fields._op.attributes.get(name)
                     if predicates is not None:
-                        stream.emit(_format_predicate_list(predicates))
+                        stream.emit(
+                            _format_predicate_list(predicates, self._value_name)
+                        )
 
                 case OptionalGroup(elements=inner, anchor=anchor):
                     if fields.is_present(anchor):

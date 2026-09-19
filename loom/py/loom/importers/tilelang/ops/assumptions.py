@@ -225,12 +225,12 @@ def _normalize_mixed_address_comparison(
         lhs_value = _assume_value_as_index(lhs_value, context)
         if lhs_value is None:
             return None
-        lhs_arg = _value_predicate_arg(lhs_value.ref, context)
+        lhs_arg = PredicateArg("value", lhs_value.ref.id)
     if rhs_domain == "scalar":
         rhs_value = _assume_value_as_index(rhs_value, context)
         if rhs_value is None:
             return None
-        rhs_arg = _value_predicate_arg(rhs_value.ref, context)
+        rhs_arg = PredicateArg("value", rhs_value.ref.id)
     return lhs_arg, lhs_value, rhs_arg, rhs_value
 
 
@@ -293,7 +293,7 @@ def _extract_divisibility(
     return _ExtractedPredicate(
         predicate=Predicate(
             "mul",
-            (_value_predicate_arg(value.ref, context), PredicateArg("const", modulus)),
+            (PredicateArg("value", value.ref.id), PredicateArg("const", modulus)),
         ),
         values=(value,),
     )
@@ -340,7 +340,7 @@ def _predicate_arg(
     assume_value = _assume_value(expr, context, converter)
     if assume_value is None:
         return None
-    return _value_predicate_arg(assume_value.ref, context), assume_value
+    return PredicateArg("value", assume_value.ref.id), assume_value
 
 
 def _assume_value(
@@ -354,13 +354,6 @@ def _assume_value(
     if ref is None:
         return None
     return _AssumeValue(source=source, ref=ref)
-
-
-def _value_predicate_arg(
-    ref: ValueRef,
-    context: TileLangConversionContext,
-) -> PredicateArg:
-    return PredicateArg("value", context.ssa(ref).removeprefix("%"))
 
 
 def _group_predicates(
