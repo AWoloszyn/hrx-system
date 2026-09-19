@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "signature_binders.loom-test"
     "ssa_names.loom-test"
     "type_scratch.loom-test"
 )

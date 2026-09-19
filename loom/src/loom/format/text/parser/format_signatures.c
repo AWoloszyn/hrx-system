@@ -258,12 +258,92 @@ static iree_status_t loom_parse_format_lhs_result_type_list(
   return iree_ok_status();
 }
 
+// Parses an optional local binder followed by a type or tied-result clause.
+// The binder names the result independently of the argument named by a tie.
+static iree_status_t loom_parse_format_symbol_result_type(
+    loom_parser_t* parser, loom_parsed_op_t* parsed) {
+  const uint32_t errors_before = parser->error_count;
+  loom_token_t name_token = loom_token_none();
+  loom_token_t tied_token = loom_token_none();
+  if (loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_SSA_VALUE)) {
+    loom_token_t token = loom_tokenizer_next(&parser->tokenizer);
+    if (loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_COLON)) {
+      name_token = token;
+      if (loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_SSA_VALUE)) {
+        tied_token = loom_tokenizer_next(&parser->tokenizer);
+      }
+    } else {
+      tied_token = token;
+    }
+  }
+
+  uint16_t operand_index = UINT16_MAX;
+  if (tied_token.kind != LOOM_TOKEN_NONE) {
+    if (!loom_tokenizer_try_consume_keyword(&parser->tokenizer,
+                                            IREE_SV("as"))) {
+      loom_token_t peek = loom_tokenizer_peek(&parser->tokenizer);
+      return loom_parser_emit_unexpected_token(
+          parser, peek,
+          name_token.kind == LOOM_TOKEN_NONE ? IREE_SV("':' or 'as'")
+                                             : IREE_SV("'as'"));
+    }
+    IREE_RETURN_IF_ERROR(loom_parse_format_resolve_symbol_tied_result_operand(
+        parser, parsed, tied_token, &operand_index));
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
+  }
+
+  loom_type_t type = {0};
+  loom_type_parse_mode_t type_mode =
+      tied_token.kind == LOOM_TOKEN_NONE &&
+              (name_token.kind != LOOM_TOKEN_NONE ||
+               loom_parser_in_definition_scope(parser))
+          ? LOOM_TYPE_PARSE_ARG
+          : LOOM_TYPE_PARSE_BODY;
+  IREE_RETURN_IF_ERROR(loom_parse_type(parser, type_mode, &type));
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
+
+  if (tied_token.kind != LOOM_TOKEN_NONE) {
+    loom_value_id_t operand_id = LOOM_VALUE_ID_INVALID;
+    if (operand_index < parsed->operand_count) {
+      operand_id = parsed->operand_ids[operand_index];
+    } else {
+      uint16_t pending_index =
+          (uint16_t)(operand_index - parsed->operand_count);
+      if (pending_index < parser->pending_block_args.count) {
+        operand_id = parser->pending_block_args.entries[pending_index].value_id;
+      } else {
+        pending_index =
+            (uint16_t)(pending_index - parser->pending_block_args.count);
+        operand_id = parser->pending_func_args.entries[pending_index].value_id;
+      }
+    }
+    loom_type_t operand_type =
+        loom_module_value_type(parser->module, operand_id);
+    loom_tied_result_t tied = {
+        .result_index = parsed->result_count,
+        .operand_index = operand_index,
+        .has_type_change = !loom_type_equal(operand_type, type),
+    };
+    IREE_RETURN_IF_ERROR(
+        loom_parsed_op_add_tied_result(parsed, &parser->parser_arena, tied));
+    IREE_RETURN_IF_ERROR(loom_parsed_op_add_field_span(
+        parsed, &parser->parser_arena, LOOM_LOCATION_FIELD_OPERAND,
+        operand_index, tied_token, tied_token.line, tied_token.end_column));
+  }
+  return loom_parse_format_append_symbol_result(parser, parsed, type,
+                                                name_token);
+}
+
 // Parses a symbol-definition result type list:
-//   (type, %name: type, %arg as type, ...)
+//   (type, %name: type, %arg as type, %name: %arg as type, ...)
 //
 // Result values are created as each type is parsed. Named result values are
-// local to the surrounding Scope(...) and become visible only to subsequent
-// result types / predicates in the same signature.
+// local to the surrounding Scope(...); definition-mode type references can
+// resolve a later binder in the same signature.
 static iree_status_t loom_parse_format_symbol_result_type_list(
     loom_parser_t* parser, const loom_format_element_t* element,
     loom_parsed_op_t* parsed) {
@@ -285,72 +365,7 @@ static iree_status_t loom_parse_format_symbol_result_type_list(
         break;
       }
     }
-    if (loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_SSA_VALUE)) {
-      loom_token_t ssa_token = loom_tokenizer_next(&parser->tokenizer);
-      if (loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_COLON)) {
-        loom_type_t type = {0};
-        IREE_RETURN_IF_ERROR(
-            loom_parse_type(parser, LOOM_TYPE_PARSE_ARG, &type));
-        IREE_RETURN_IF_ERROR(loom_parse_format_append_symbol_result(
-            parser, parsed, type, ssa_token));
-      } else if (loom_tokenizer_try_consume_keyword(&parser->tokenizer,
-                                                    IREE_SV("as"))) {
-        uint16_t operand_index = UINT16_MAX;
-        IREE_RETURN_IF_ERROR(
-            loom_parse_format_resolve_symbol_tied_result_operand(
-                parser, parsed, ssa_token, &operand_index));
-        if (parser->error_count > errors_before) {
-          return iree_ok_status();
-        }
-
-        loom_type_t type = {0};
-        IREE_RETURN_IF_ERROR(
-            loom_parse_type(parser, LOOM_TYPE_PARSE_BODY, &type));
-
-        loom_value_id_t operand_id = LOOM_VALUE_ID_INVALID;
-        if (operand_index < parsed->operand_count) {
-          operand_id = parsed->operand_ids[operand_index];
-        } else {
-          uint16_t pending_index =
-              (uint16_t)(operand_index - parsed->operand_count);
-          if (pending_index < parser->pending_block_args.count) {
-            operand_id =
-                parser->pending_block_args.entries[pending_index].value_id;
-          } else {
-            pending_index =
-                (uint16_t)(pending_index - parser->pending_block_args.count);
-            operand_id =
-                parser->pending_func_args.entries[pending_index].value_id;
-          }
-        }
-        loom_type_t operand_type =
-            loom_module_value_type(parser->module, operand_id);
-        loom_tied_result_t tied = {
-            .result_index = parsed->result_count,
-            .operand_index = operand_index,
-            .has_type_change = !loom_type_equal(operand_type, type),
-        };
-        IREE_RETURN_IF_ERROR(loom_parsed_op_add_tied_result(
-            parsed, &parser->parser_arena, tied));
-        IREE_RETURN_IF_ERROR(loom_parsed_op_add_field_span(
-            parsed, &parser->parser_arena, LOOM_LOCATION_FIELD_OPERAND,
-            operand_index, ssa_token, ssa_token.line, ssa_token.end_column));
-        IREE_RETURN_IF_ERROR(loom_parse_format_append_symbol_result(
-            parser, parsed, type, loom_token_none()));
-      } else {
-        loom_token_t peek = loom_tokenizer_peek(&parser->tokenizer);
-        return loom_parser_emit_unexpected_token(parser, peek,
-                                                 IREE_SV("':' or 'as'"));
-      }
-    } else {
-      loom_type_t type = {0};
-      loom_type_parse_mode_t type_mode = loom_parser_in_definition_scope(parser)
-                                             ? LOOM_TYPE_PARSE_ARG
-                                             : LOOM_TYPE_PARSE_BODY;
-      IREE_RETURN_IF_ERROR(loom_parse_type(parser, type_mode, &type));
-      IREE_RETURN_IF_ERROR(loom_parse_format_append_symbol_result(
-          parser, parsed, type, loom_token_none()));
-    }
+    IREE_RETURN_IF_ERROR(loom_parse_format_symbol_result_type(parser, parsed));
     if (parser->error_count > errors_before) {
       return iree_ok_status();
     }

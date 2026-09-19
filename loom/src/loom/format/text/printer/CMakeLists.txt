@@ -70,6 +70,22 @@ loom_cc_test(
 
 loom_cc_test(
   NAME
+    format_signatures_test
+  SRCS
+    "format_signatures_test.cc"
+  DEPS
+    ::printer_impl
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::format::text::parser
+    loom::ir
+    loom::ops::config
+    loom::ops::test
+    loom::verify
+)
+
+loom_cc_test(
+  NAME
     name_plan_test
   SRCS
     "name_plan_test.cc"

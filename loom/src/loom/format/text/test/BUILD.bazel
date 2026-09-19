@@ -16,6 +16,7 @@ package(
 loom_check_test_suite(
     name = "test",
     srcs = [
+        "signature_binders.loom-test",
         "ssa_names.loom-test",
         "type_scratch.loom-test",
     ],

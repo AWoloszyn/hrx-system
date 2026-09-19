@@ -127,7 +127,8 @@ enum loom_format_kind_e {
   LOOM_FORMAT_KIND_RESULT_TYPE = 5,
   // Types of a variadic operand: f32, tile<4xf32>, i32.
   LOOM_FORMAT_KIND_OPERAND_TYPES = 6,
-  // Result type list with tied handling: -> (type, %op as type).
+  // Result type list with tied handling: (type, %operand as type).
+  // Symbol results may prefix either form with a local %result: binder.
   LOOM_FORMAT_KIND_RESULT_TYPE_LIST = 7,
   // Literal keyword token: , : -> to step else do.
   LOOM_FORMAT_KIND_KEYWORD = 8,
