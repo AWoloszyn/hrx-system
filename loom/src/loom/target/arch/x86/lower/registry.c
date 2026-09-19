@@ -31,8 +31,9 @@ static bool loom_x86_vector_element_bit_width(loom_scalar_type_t scalar_type,
                                               uint32_t* out_bit_width) {
   static const loom_scalar_type_set_t kRegisterElementTypes =
       LOOM_SCALAR_TYPE_SET_I8 | LOOM_SCALAR_TYPE_SET_I16 |
-      LOOM_SCALAR_TYPE_SET_I32 | LOOM_SCALAR_TYPE_SET_16BIT_FLOAT |
-      LOOM_SCALAR_TYPE_SET_F32;
+      LOOM_SCALAR_TYPE_SET_I32 | LOOM_SCALAR_TYPE_SET_I64 |
+      LOOM_SCALAR_TYPE_SET_16BIT_FLOAT | LOOM_SCALAR_TYPE_SET_F32 |
+      LOOM_SCALAR_TYPE_SET_F64;
   if (!loom_scalar_type_set_contains(kRegisterElementTypes, scalar_type)) {
     *out_bit_width = 0;
     return false;

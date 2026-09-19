@@ -26,12 +26,19 @@ low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_bit
 x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_addi_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>) -> (i64) {
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
   %sum = scalar.addi %lhs, %rhs : i64
   func.return %sum : i64
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_addi_vgpr(%lhs_values: reg<x86.xmm>, %rhs_values: reg<x86.xmm>) -> (reg<x86.gpr64>) asm {
+  %lhs = vpextrq.xmm %lhs_values, 0
+  %rhs = vpextrq.xmm %rhs_values, 0
+  %11 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %sum = add.gpr64 %11, %rhs
+  return %sum
 }
 
 // ====
@@ -39,12 +46,19 @@ func.def target(@target) @scalar_i64_addi_vgpr(%lhs_values: vector<2xi64>, %rhs_
 x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_subi_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>) -> (i64) {
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
   %difference = scalar.subi %lhs, %rhs : i64
   func.return %difference : i64
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_subi_vgpr(%lhs_values: reg<x86.xmm>, %rhs_values: reg<x86.xmm>) -> (reg<x86.gpr64>) asm {
+  %lhs = vpextrq.xmm %lhs_values, 0
+  %rhs = vpextrq.xmm %rhs_values, 0
+  %11 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %difference = sub.gpr64 %11, %rhs
+  return %difference
 }
 
 // ====
@@ -52,9 +66,7 @@ func.def target(@target) @scalar_i64_subi_vgpr(%lhs_values: vector<2xi64>, %rhs_
 x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_shli_vgpr(%value_values: vector<2xi64>, %shift_values: vector<2xi64>) -> (i64) {
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %value = vector.extract %value_values[0] : vector<2xi64> -> i64
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %shift = vector.extract %shift_values[0] : vector<2xi64> -> i64
   // ERROR@+1: TARGET/003 {op_name="scalar.shli", subject_role="value_fact", subject_name="rhs", constraint_key="exact_i64"}
   %shifted = scalar.shli %value, %shift : i64
@@ -66,15 +78,24 @@ func.def target(@target) @scalar_i64_shli_vgpr(%value_values: vector<2xi64>, %sh
 x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_muli_bitwise_vgpr(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>, %mask_values: vector<2xi64>) -> (i64) {
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %mask = vector.extract %mask_values[0] : vector<2xi64> -> i64
   %product = scalar.muli %lhs, %rhs : i64
   %mixed = scalar.xori %product, %mask : i64
   func.return %mixed : i64
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_muli_bitwise_vgpr(%lhs_values: reg<x86.xmm>, %rhs_values: reg<x86.xmm>, %mask_values: reg<x86.xmm>) -> (reg<x86.gpr64>) asm {
+  %lhs = vpextrq.xmm %lhs_values, 0
+  %rhs = vpextrq.xmm %rhs_values, 0
+  %mask = vpextrq.xmm %mask_values, 0
+  %16 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
+  %product = imul.gpr64 %16, %rhs
+  %18 = copy %product : reg<x86.gpr64> -> reg<x86.gpr64>
+  %mixed = xor.gpr64 %18, %mask
+  return %mixed
 }
 
 // ====
@@ -161,9 +182,7 @@ func.def target(@target) @scalar_i64_compare_constant_select(%lhs: i64, %true_va
 x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_compare_all_predicates_vgpr_select(%lhs_values: vector<2xi64>, %rhs_values: vector<2xi64>, %true_value: f32, %false_value: f32) -> (f32, f32, f32, f32, f32, f32, f32, f32, f32, f32) {
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %lhs = vector.extract %lhs_values[0] : vector<2xi64> -> i64
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %rhs = vector.extract %rhs_values[0] : vector<2xi64> -> i64
   %eq = scalar.cmpi eq, %lhs, %rhs : i64
   %ne = scalar.cmpi ne, %lhs, %rhs : i64
@@ -258,15 +277,20 @@ func.def target(@target) @scalar_f64_constant_select_bitcast(%condition: i1, %fa
 x86.target<avx2> @target
 
 func.def target(@target) @scalar_i64_lanes(%values: vector<2xi64>, %replacement: i64) -> (i64, i64, vector<2xi64>, vector<2xi64>) {
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %first = vector.extract %values[0] : vector<2xi64> -> i64
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %second = vector.extract %values[1] : vector<2xi64> -> i64
-  // ERROR@+1: TARGET/002 {op_name="vector.insert", field_name="value", actual_type="i64", expected_type="i32"}
   %replace_first = vector.insert %replacement into %values[0] : i64, vector<2xi64>
-  // ERROR@+1: TARGET/002 {op_name="vector.insert", field_name="value", actual_type="i64", expected_type="i32"}
   %replace_second = vector.insert %replacement into %values[1] : i64, vector<2xi64>
   func.return %first, %second, %replace_first, %replace_second : i64, i64, vector<2xi64>, vector<2xi64>
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_i64_lanes(%values: reg<x86.xmm>, %replacement: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.xmm>, reg<x86.xmm>) asm {
+  %first = vpextrq.xmm %values, 0
+  %second = vpextrq.xmm %values, 1
+  %replace_first = vpinsrq.xmm %values, %replacement, 0
+  %replace_second = vpinsrq.xmm %values, %replacement, 1
+  return %first, %second, %replace_first, %replace_second
 }
 
 // ====
@@ -274,15 +298,20 @@ func.def target(@target) @scalar_i64_lanes(%values: vector<2xi64>, %replacement:
 x86.target<avx2> @target
 
 func.def target(@target) @scalar_f64_lanes(%values: vector<2xf64>, %replacement: f64) -> (f64, f64, vector<2xf64>, vector<2xf64>) {
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xf64>", expected_type="vector<4xi32>"}
   %first = vector.extract %values[0] : vector<2xf64> -> f64
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xf64>", expected_type="vector<4xi32>"}
   %second = vector.extract %values[1] : vector<2xf64> -> f64
-  // ERROR@+1: TARGET/002 {op_name="vector.insert", field_name="value", actual_type="f64", expected_type="i32"}
   %replace_first = vector.insert %replacement into %values[0] : f64, vector<2xf64>
-  // ERROR@+1: TARGET/002 {op_name="vector.insert", field_name="value", actual_type="f64", expected_type="i32"}
   %replace_second = vector.insert %replacement into %values[1] : f64, vector<2xf64>
   func.return %first, %second, %replace_first, %replace_second : f64, f64, vector<2xf64>, vector<2xf64>
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @scalar_f64_lanes(%values: reg<x86.xmm>, %replacement: reg<x86.xmm>) -> (reg<x86.xmm>, reg<x86.xmm>, reg<x86.xmm>, reg<x86.xmm>) asm {
+  %first = vpermilpd.xmm %values, 0
+  %second = vpermilpd.xmm %values, 1
+  %replace_first = vshufpd.xmm %replacement, %values, 2
+  %replace_second = vshufpd.xmm %values, %replacement, 0
+  return %first, %second, %replace_first, %replace_second
 }
 
 // ====

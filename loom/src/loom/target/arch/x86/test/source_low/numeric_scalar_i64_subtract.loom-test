@@ -47,9 +47,18 @@ low.func.def target<x86.avx2.core>(@target) abi(object_function) @constant_subtr
 x86.target<avx2> @target
 
 func.def target(@target) @mixed_subtract(%uniform: i64, %values: vector<2xi64>) -> (i64, i64) {
-  // ERROR@+1: TARGET/002 {op_name="vector.extract", field_name="source", actual_type="vector<2xi64>", expected_type="vector<4xi32>"}
   %varying = vector.extract %values[0] : vector<2xi64> -> i64
   %uniform_left = scalar.subi %uniform, %varying : i64
   %uniform_right = scalar.subi %varying, %uniform : i64
   func.return %uniform_left, %uniform_right : i64, i64
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @mixed_subtract(%uniform: reg<x86.gpr64>, %values: reg<x86.xmm>) -> (reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %varying = vpextrq.xmm %values, 0
+  %12 = copy %uniform : reg<x86.gpr64> -> reg<x86.gpr64>
+  %uniform_left = sub.gpr64 %12, %varying
+  %14 = copy %varying : reg<x86.gpr64> -> reg<x86.gpr64>
+  %uniform_right = sub.gpr64 %14, %uniform
+  return %uniform_left, %uniform_right
 }
