@@ -1,0 +1,69 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//loom/build_tools/bazel:build_defs.bzl", "iree_cmake_extra_content", "loom_cc_library", "loom_cc_test")
+load("//loom/src/loom/import/cxx:build_defs.bzl", "CXX_COMPILER_OPTIONS")
+
+package(
+    default_visibility = ["//loom/src/loom/import/cxx:__subpackages__"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+loom_cc_library(
+    name = "functions",
+    srcs = ["functions.cc"],
+    hdrs = ["functions.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        "//loom/src/loom/import/cxx/binding:intrinsics",
+        "//loom/src/loom/import/cxx/binding:launch",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:attributes",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/source:locations",
+        "//loom/src/loom/import/cxx/value:types",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/ops/kernel",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "functions_test",
+    srcs = ["functions_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":functions",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/value:builder_test",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/ops/kernel",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+iree_cmake_extra_content(
+    """
+foreach(_target IN ITEMS
+    loom_import_cxx_symbol_functions.objects
+    loom_import_cxx_symbol_functions_test
+)
+  if(TARGET ${_target})
+    target_compile_features(${_target} PRIVATE cxx_std_23)
+    if(MSVC)
+      target_compile_options(${_target} PRIVATE /EHsc /GR)
+    else()
+      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
+    endif()
+  endif()
+endforeach()
+""",
+    inline = True,
+)

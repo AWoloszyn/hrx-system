@@ -32,6 +32,11 @@ def test_checked_in_artifact_families_register_expected_families() -> None:
             return_value=amdgpu_target_config,
         ),
         mock.patch.object(
+            checked_in_artifacts.cxx_intrinsics,
+            "checked_in_file_set",
+            return_value=empty_file_set,
+        ),
+        mock.patch.object(
             checked_in_artifacts.package_inits,
             "checked_in_file_set",
             return_value=empty_file_set,
@@ -65,6 +70,7 @@ def test_checked_in_artifact_families_register_expected_families() -> None:
         families = checked_in_artifacts.checked_in_artifact_families()
 
     assert tuple(family.description for family in families) == (
+        "Loom C++ scalar declarations",
         "Python package initializers",
         "Python builder stubs",
         "C op table artifacts",

@@ -46,6 +46,13 @@ EXECUTE_IREE_HAL = build_requirement(
     cmake_condition = "LOOM_EXECUTE_IREE_HAL",
 )
 
+IMPORT_CXX = build_requirement(
+    id = "loom.import.cxx",
+    label = Label("//loom/requirements:import_cxx"),
+    enabled_by = Label("//loom/config/import:cxx"),
+    cmake_condition = "LOOM_IMPORT_CXX",
+)
+
 IMPORT_MLIR = build_requirement(
     id = "loom.import.mlir",
     label = Label("//loom/requirements:import_mlir"),
@@ -115,6 +122,7 @@ REQUIREMENTS = [
     EMIT_SPIRV,
     EMIT_WASM,
     EXECUTE_IREE_HAL,
+    IMPORT_CXX,
     IMPORT_MLIR,
     IMPORT_TILELANG,
     TARGET_ARCH_AMDGPU,

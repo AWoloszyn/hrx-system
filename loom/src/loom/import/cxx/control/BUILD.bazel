@@ -1,0 +1,54 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//loom/build_tools/bazel:build_defs.bzl", "iree_cmake_extra_content", "loom_cc_library", "loom_cc_test")
+load("//loom/src/loom/import/cxx:build_defs.bzl", "CXX_COMPILER_OPTIONS")
+
+package(
+    default_visibility = ["//loom/src/loom/import/cxx:__subpackages__"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+loom_cc_library(
+    name = "analysis",
+    srcs = ["analysis.cc"],
+    hdrs = ["analysis.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = ["//third_party:cxx_parser"],
+)
+
+loom_cc_test(
+    name = "analysis_test",
+    srcs = ["analysis_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":analysis",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:options",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+iree_cmake_extra_content(
+    """
+foreach(_target IN ITEMS
+    loom_import_cxx_control_analysis.objects
+    loom_import_cxx_control_analysis_test)
+  if(TARGET ${_target})
+    target_compile_features(${_target} PRIVATE cxx_std_23)
+    if(MSVC)
+      target_compile_options(${_target} PRIVATE /EHsc /GR)
+    else()
+      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
+    endif()
+  endif()
+endforeach()
+""",
+    inline = True,
+)

@@ -1,0 +1,71 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
+load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+exports_files([
+    "aiter_swiglu_f16.cpp",
+    "flash_attention.cpp",
+    "llama_rms_norm.cpp",
+])
+
+iree_execution_test_suite(
+    name = "functions_test",
+    data = ["integer_functions.cpp"],
+    manifests = ["functions.test.json"],
+    tags = ["hostonly"],
+    target_compatible_with = loom_config_compatible_with([
+        "//loom/config/import:cxx",
+        "//loom/config/target/arch:vm",
+    ]),
+    tools = {
+        "generate-cases": "//loom/py/loom/gen/test:cxx_kernel_cases",
+        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+        "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
+    },
+)
+
+iree_execution_test_suite(
+    name = "kernels_test",
+    data = [
+        "aiter_swiglu_f16.cpp",
+        "control_flow.cpp",
+        "early_returns.cpp",
+        "flash_attention.cpp",
+        "integer_increment.cpp",
+        "llama_rms_norm.cpp",
+        "pointer_walk.cpp",
+        "scheduled_sum.cpp",
+        "short_circuit.cpp",
+        "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
+        "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/math.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/scalar.h",
+    ],
+    manifests = ["kernels.test.json"],
+    sanitizer_suppressions = rocm_suppressions,
+    tags = [
+        "iree-run-requirement=runtime.resource.amd_gpu",
+        "runtime-resource=amd-gpu",
+    ],
+    target_compatible_with = loom_config_compatible_with([
+        "//loom/config/import:cxx",
+        "//loom/config/execute:amdgpu_hal",
+    ]),
+    tools = {
+        "generate-cases": "//loom/py/loom/gen/test:cxx_kernel_cases",
+        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+        "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
+    },
+)

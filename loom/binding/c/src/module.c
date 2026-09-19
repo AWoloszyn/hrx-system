@@ -52,10 +52,14 @@ struct loomc_module_t {
     loomc_config_binding_list_t config_bindings;
   } compilation;
 
-  // Input invariants established with the context's immutable target tables.
-  // Successful compiler transforms preserve them; failed mutation invalidates
-  // them. New deserialized, linked, and cloned handles start unverified.
-  bool verified;
+  // Input invariants retained across successful compiler transforms. A failed
+  // mutation invalidates both independently owned admission facts.
+  struct {
+    // Structural verification established by source admission or the binding.
+    bool structural;
+    // Target-Low verification against the context's immutable target tables.
+    bool context_target;
+  } verification;
 };
 
 typedef struct loomc_module_ir_projection_t {
@@ -348,11 +352,9 @@ static loomc_status_t loomc_module_deserialize_complete(
         state->result, source, state->before_diagnostic_count);
   }
   if (loomc_status_is_ok(status) && state->internal_module != NULL) {
-    status =
-        loomc_module_set_loom_module(state->module, state->internal_module);
-    if (loomc_status_is_ok(status)) {
-      state->internal_module = NULL;
-    }
+    loomc_module_set_loom_module(state->module, state->internal_module,
+                                 LOOMC_MODULE_INPUT_UNVERIFIED);
+    state->internal_module = NULL;
   }
   if (loomc_status_is_ok(status)) {
     if (loomc_result_succeeded(state->result)) {
@@ -369,7 +371,7 @@ static loomc_status_t loomc_module_deserialize_complete(
   return status;
 }
 
-loomc_status_t loomc_module_validate_deserialize_source_arguments(
+loomc_status_t loomc_module_validate_source_arguments(
     loomc_context_t* context, loomc_workspace_t* workspace,
     const loomc_source_t* source, loomc_module_t** out_module,
     loomc_result_t** out_result) {
@@ -396,7 +398,7 @@ loomc_status_t loomc_module_deserialize_explicit_source(
     loomc_source_format_t required_format,
     loomc_module_source_decoder_fn_t decoder, loomc_allocator_t allocator,
     loomc_module_t** out_module, loomc_result_t** out_result) {
-  LOOMC_RETURN_IF_ERROR(loomc_module_validate_deserialize_source_arguments(
+  LOOMC_RETURN_IF_ERROR(loomc_module_validate_source_arguments(
       context, workspace, source, out_module, out_result));
 
   loomc_module_resolved_deserialize_options_t resolved_options = {0};
@@ -507,18 +509,13 @@ iree_arena_block_pool_t* loomc_module_block_pool(loomc_module_t* module) {
   return module ? loomc_workspace_block_pool(module->workspace) : NULL;
 }
 
-loomc_status_t loomc_module_set_loom_module(loomc_module_t* module,
-                                            loom_module_t* internal_module) {
-  if (module == NULL || internal_module == NULL) {
-    return loomc_make_status(LOOMC_STATUS_INVALID_ARGUMENT,
-                             "module and internal_module must not be NULL");
-  }
-  if (module->module != NULL) {
-    return loomc_make_status(LOOMC_STATUS_FAILED_PRECONDITION,
-                             "module already owns internal module storage");
-  }
+void loomc_module_set_loom_module(loomc_module_t* module,
+                                  loom_module_t* internal_module,
+                                  loomc_module_input_state_t input_state) {
+  IREE_ASSERT(!module->module, "module storage can only be transferred once");
   module->module = internal_module;
-  return loomc_ok_status();
+  module->verification.structural =
+      input_state == LOOMC_MODULE_INPUT_STRUCTURALLY_VERIFIED;
 }
 
 loom_module_t* loomc_module_loom_module(loomc_module_t* module) {
@@ -543,14 +540,17 @@ loomc_status_t loomc_module_verify(
     loomc_result_t* result) {
   const bool context_environment =
       target_environment == loomc_context_target_environment(module->context);
-  if (module->verified && context_environment) {
+  if (module->verification.context_target && context_environment) {
     return loomc_ok_status();
   }
 
-  LOOMC_RETURN_IF_ERROR(
-      loomc_result_verify_loom_module(module->module, /*source=*/NULL, result));
-  if (!loomc_result_succeeded(result)) {
-    return loomc_ok_status();
+  if (!module->verification.structural) {
+    LOOMC_RETURN_IF_ERROR(loomc_result_verify_loom_module(
+        module->module, /*source=*/NULL, result));
+    if (!loomc_result_succeeded(result)) {
+      return loomc_ok_status();
+    }
+    module->verification.structural = true;
   }
 
   const loomc_target_pass_environment_t* pass_environment =
@@ -577,13 +577,14 @@ loomc_status_t loomc_module_verify(
     return loomc_result_set_state(result, LOOMC_RESULT_STATE_FAILED);
   }
   if (context_environment) {
-    module->verified = true;
+    module->verification.context_target = true;
   }
   return loomc_ok_status();
 }
 
 void loomc_module_invalidate_verification(loomc_module_t* module) {
-  module->verified = false;
+  module->verification.structural = false;
+  module->verification.context_target = false;
 }
 
 iree_arena_allocator_t* loomc_module_prepare_compilation(
@@ -676,10 +677,9 @@ loomc_status_t loomc_module_clone(const loomc_module_t* source_module,
             iree_allocator_from_loomc(allocator), &cloned_internal_module));
   }
   if (loomc_status_is_ok(status)) {
-    status = loomc_module_set_loom_module(module, cloned_internal_module);
-    if (loomc_status_is_ok(status)) {
-      cloned_internal_module = NULL;
-    }
+    loomc_module_set_loom_module(module, cloned_internal_module,
+                                 LOOMC_MODULE_INPUT_UNVERIFIED);
+    cloned_internal_module = NULL;
   }
   for (const loomc_config_binding_record_t* binding =
            source_module->compilation.config_bindings.head;

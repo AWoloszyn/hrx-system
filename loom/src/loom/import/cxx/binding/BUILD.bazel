@@ -1,0 +1,155 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//loom/build_tools/bazel:build_defs.bzl", "iree_cmake_extra_content", "loom_cc_library", "loom_cc_test", "loom_generated_cc_library")
+load("//loom/src/loom/import/cxx:build_defs.bzl", "CXX_COMPILER_OPTIONS")
+
+package(
+    default_visibility = ["//loom/src/loom/import/cxx:__subpackages__"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+loom_generated_cc_library(
+    name = "scalar_bindings",
+    hdrs = ["scalar_bindings.h"],
+    generator = "//loom/py/loom/gen/cxx:intrinsics_generator",
+    deps = [
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/scalar",
+    ],
+)
+
+loom_cc_library(
+    name = "intrinsics",
+    srcs = ["intrinsics.cc"],
+    hdrs = ["intrinsics.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":scalar_bindings",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:attributes",
+        "//loom/src/loom/import/cxx/source:error",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
+    name = "launch",
+    srcs = ["launch.cc"],
+    hdrs = ["launch.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:attributes",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/config",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/kernel",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
+    name = "loop_schedule",
+    srcs = ["loop_schedule.cc"],
+    hdrs = ["loop_schedule.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:attributes",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scf",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
+    name = "declaration_test",
+    testonly = True,
+    hdrs = ["declaration_test.h"],
+    deps = [
+        "//loom/src/loom/import/cxx/value:builder_test",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "intrinsics_test",
+    srcs = ["intrinsics_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":declaration_test",
+        ":intrinsics",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/value:builder_test",
+        "//loom/src/loom/ops/scalar",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "launch_test",
+    srcs = ["launch_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":declaration_test",
+        ":launch",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/value:builder_test",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/kernel",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
+    name = "loop_schedule_test",
+    srcs = ["loop_schedule_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":loop_schedule",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/value:builder_test",
+        "//loom/src/loom/ops/index",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+iree_cmake_extra_content(
+    """
+foreach(_target IN ITEMS
+    loom_import_cxx_binding_intrinsics.objects
+    loom_import_cxx_binding_launch.objects
+    loom_import_cxx_binding_loop_schedule.objects
+    loom_import_cxx_binding_intrinsics_test
+    loom_import_cxx_binding_launch_test
+    loom_import_cxx_binding_loop_schedule_test
+)
+  if(TARGET ${_target})
+    target_compile_features(${_target} PRIVATE cxx_std_23)
+    if(MSVC)
+      target_compile_options(${_target} PRIVATE /EHsc /GR)
+    else()
+      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
+    endif()
+  endif()
+endforeach()
+""",
+    inline = True,
+)

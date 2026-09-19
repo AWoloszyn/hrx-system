@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "integer functions preserve promoted arithmetic and source width conversions",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": ["{tmp}/fixtures"]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--to=bc",
+              "--output={tmp}/functions.loombc",
+              "{srcdir}/integer_functions.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute on the VM",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/integer_functions.loom",
+              "--library={tmp}/functions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":162",
+                "\"sample_count\":162",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

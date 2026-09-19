@@ -88,7 +88,7 @@ loomc_status_t loomc_module_deserialize_from_source(
     const loomc_module_deserialize_options_t* options,
     loomc_allocator_t allocator, loomc_module_t** out_module,
     loomc_result_t** out_result) {
-  LOOMC_RETURN_IF_ERROR(loomc_module_validate_deserialize_source_arguments(
+  LOOMC_RETURN_IF_ERROR(loomc_module_validate_source_arguments(
       context, workspace, source, out_module, out_result));
   loomc_source_format_t format = LOOMC_SOURCE_FORMAT_UNKNOWN;
   LOOMC_RETURN_IF_ERROR(loomc_module_select_deserialize_format(

@@ -1,0 +1,49 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_benchmark", "loom_config_compatible_with")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+_COMPATIBLE_WITH = loom_config_compatible_with([
+    "//loom/config/import:cxx",
+    "//loom/config/import/cxx:embed_includes_enabled",
+    "//loom/config/emit:amdgpu",
+])
+
+iree_c_embed_data(
+    name = "kernels",
+    testonly = True,
+    srcs = [
+        "//loom/src/loom/import/cxx/test:aiter_swiglu_f16.cpp",
+        "//loom/src/loom/import/cxx/test:flash_attention.cpp",
+        "//loom/src/loom/import/cxx/test:llama_rms_norm.cpp",
+    ],
+    c_file_output = "kernels.c",
+    flatten = True,
+    h_file_output = "kernels.h",
+    identifier = "loomc_cxx_benchmark_kernels",
+    target_compatible_with = _COMPATIBLE_WITH,
+)
+
+loom_cc_benchmark(
+    name = "source_to_hsaco_benchmark",
+    srcs = ["source_to_hsaco_benchmark.cc"],
+    target_compatible_with = _COMPATIBLE_WITH,
+    deps = [
+        ":kernels",
+        "//loom/binding/c:loomc",
+        "//loom/binding/c/benchmark:compile_throughput_benchmark_harness",
+        "//loom/binding/c/import/cxx",
+        "//loom/binding/c/target/amdgpu",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/testing:benchmark_main",
+    ],
+)

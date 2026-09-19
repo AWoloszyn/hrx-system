@@ -435,11 +435,9 @@ loomc_status_t loomc_link_module(loomc_linker_t* linker,
                                        linker->allocator, &module);
   }
   if (loomc_status_is_ok(status) && loomc_result_succeeded(result)) {
-    status = loomc_module_set_loom_module(module,
-                                          index_materialization.product.module);
-    if (loomc_status_is_ok(status)) {
-      index_materialization.product.module = NULL;
-    }
+    loomc_module_set_loom_module(module, index_materialization.product.module,
+                                 LOOMC_MODULE_INPUT_UNVERIFIED);
+    index_materialization.product.module = NULL;
   }
 
   if (loomc_status_is_ok(status)) {

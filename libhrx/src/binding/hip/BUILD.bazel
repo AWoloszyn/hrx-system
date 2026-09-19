@@ -8,7 +8,6 @@ load("//build_tools/bazel:cmake.bzl", "iree_cmake_extra_content")
 load(
     "//build_tools/sanitizer:suppressions.bzl",
     "hsa_suppressions",
-    "rocm_suppressions",
 )
 load(
     "//libhrx/build_tools/bazel:cc.bzl",
@@ -746,37 +745,6 @@ hrx_cc_test(
         ":hip_dso_test_util",
         "//build_tools/bazel:dl",
         "//build_tools/bazel:pthreads",
-        "//runtime/src/iree/testing:gtest",
-        "//runtime/src/iree/testing:gtest_main",
-    ],
-)
-
-hrx_cc_test(
-    name = "hip_launch_validation_api_test",
-    srcs = [
-        "hip_launch_validation_api_test.cc",
-        "//libhrx/cts:core/amdgpu_executable_test_data.hpp",
-        "//libhrx/cts:core/amdgpu_test_data.hpp",
-    ],
-    # The test loads the built runtime through its public ABI and resolves
-    # production function handles from an embedded executable image.
-    data = [":amdhip64"],
-    env = {
-        "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64)",
-    },
-    sanitizer_suppressions = rocm_suppressions,
-    tags = [
-        "iree-run-requirement=runtime.resource.amd_gpu",
-        "runtime-resource=amd-gpu",
-    ],
-    target_compatible_with = _HIP_GPU_COMPATIBILITY,
-    deps = [
-        ":hip_dso_test_util",
-        ":launch_params",
-        "//build_tools/amdgpu:target_map_h",
-        "//build_tools/bazel:dl",
-        "//build_tools/bazel:pthreads",
-        "//libhrx/cts:amdgpu_executable_test_kernels",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

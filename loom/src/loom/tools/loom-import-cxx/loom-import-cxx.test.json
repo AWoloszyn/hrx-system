@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "imports the external HIP facade and generated scalar bindings",
+      "run": {
+        "tool": "loom-import-cxx",
+        "args": [
+          "--builtin-includes=false",
+          "--I={srcdir}/../../import/cxx/include",
+          "{srcdir}/testdata/hip_kernels.cpp"
+        ]
+      },
+      "stdout": {
+        "contains": {
+          "unordered": [
+            "kernel.def @affine",
+            "kernel.def @convert",
+            "scalar.fmaf",
+            "scalar.extf",
+            "\n  kernel.launch.config ",
+            "\n  kernel.return\n"
+          ]
+        }
+      }
+    },
+    {
+      "name": "imports multiple kernels and included template helpers",
+      "run": {
+        "tool": "loom-import-cxx",
+        "args": ["{srcdir}/testdata/kernels.cpp"]
+      },
+      "stdout": {
+        "contains": {
+          "unordered": [
+            "kernel.def @first",
+            "kernel.def @second",
+            "func.def device @scale_3",
+            "config.decl @second.workgroup_size.x"
+          ]
+        }
+      }
+    },
+    {
+      "name": "exports an explicit root and retains its private callee",
+      "run": {
+        "tool": "loom-import-cxx",
+        "args": ["--root=second", "{srcdir}/testdata/functions.cpp"]
+      },
+      "stdout": {
+        "contains": {"unordered": ["func.def public @second", "func.def @twice"]},
+        "not_contains": ["@first", "kernel.def"]
+      }
+    },
+    {
+      "name": "writes ordinary Loom bytecode",
+      "steps": [
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": ["--to=bc", "--output={tmp}/module.loombc", "{srcdir}/testdata/functions.cpp"]
+          }
+        },
+        {
+          "name": "decode",
+          "run": {
+            "tool": "loom-format",
+            "args": ["--from=bc", "--to=text", "{tmp}/module.loombc"]
+          },
+          "stdout": {
+            "contains": {"unordered": ["func.def public @first", "func.def public @second", "func.def @twice"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports a missing root",
+      "run": {
+        "tool": "loom-import-cxx",
+        "args": ["--root=absent", "{srcdir}/testdata/functions.cpp"]
+      },
+      "exit": {"code": 1},
+      "stderr": {"contains": {"unordered": ["root has no concrete definition: absent"]}}
+    }
+  ]
+}

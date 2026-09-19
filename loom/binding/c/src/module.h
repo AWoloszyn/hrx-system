@@ -73,9 +73,18 @@ LOOMC_API_PRIVATE loomc_context_t* loomc_module_context(
 LOOMC_API_PRIVATE iree_arena_block_pool_t* loomc_module_block_pool(
     loomc_module_t* module);
 
-// Transfers one internal module into an empty public module handle.
-LOOMC_API_PRIVATE loomc_status_t loomc_module_set_loom_module(
-    loomc_module_t* module, loom_module_t* internal_module);
+// Structural admission already established by the native producer.
+typedef enum loomc_module_input_state_e {
+  LOOMC_MODULE_INPUT_UNVERIFIED = 0,
+  LOOMC_MODULE_INPUT_STRUCTURALLY_VERIFIED = 1,
+} loomc_module_input_state_t;
+
+// Transfers one internal module into an empty public module handle, retaining
+// the producer's structural verification fact. Target-Low verification remains
+// owned by the public module's target environment.
+LOOMC_API_PRIVATE void loomc_module_set_loom_module(
+    loomc_module_t* module, loom_module_t* internal_module,
+    loomc_module_input_state_t input_state);
 
 // Returns the internal module owned by a public module handle.
 LOOMC_API_PRIVATE loom_module_t* loomc_module_loom_module(
@@ -103,13 +112,11 @@ LOOMC_API_PRIVATE void loomc_module_invalidate_verification(
 LOOMC_API_PRIVATE loomc_status_t loomc_module_validate_deserialize_options(
     const loomc_module_deserialize_options_t* options);
 
-// Validates source-deserialization arguments and clears both outputs.
-LOOMC_API_PRIVATE loomc_status_t
-loomc_module_validate_deserialize_source_arguments(loomc_context_t* context,
-                                                   loomc_workspace_t* workspace,
-                                                   const loomc_source_t* source,
-                                                   loomc_module_t** out_module,
-                                                   loomc_result_t** out_result);
+// Validates source-to-module arguments and clears both outputs.
+LOOMC_API_PRIVATE loomc_status_t loomc_module_validate_source_arguments(
+    loomc_context_t* context, loomc_workspace_t* workspace,
+    const loomc_source_t* source, loomc_module_t** out_module,
+    loomc_result_t** out_result);
 
 // Deserializes a source through one statically selected format decoder.
 LOOMC_API_PRIVATE loomc_status_t loomc_module_deserialize_explicit_source(

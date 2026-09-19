@@ -21,6 +21,7 @@ independent from any GPU runtime.
 | --- | --- | --- |
 | `//loom/binding/c:loomc`, `loomc/loomc.h` | Core source, module, linker, compiler, target, result, diagnostic, and artifact APIs. | None beyond the C/C++ runtime headers used by the public ABI. |
 | `loomc/iree.h` | Header-only adapters between Loom status/allocator/string types and IREE base types. | IREE base headers. |
+| `//loom/binding/c/import/cxx`, `loomc/import/cxx.h` | Optional C/C++ translation-unit import into ordinary module handles, with source providers and retained diagnostics. | No frontend implementation headers. |
 | `//loom/binding/c/target/amdgpu`, `loomc/target/amdgpu.h` | AMDGPU target environment, processor profiles, and HSACO emission. | No HSA, HIP, ROCm, or IREE HAL headers. |
 | `//loom/binding/c/target/spirv`, `loomc/target/spirv.h` | SPIR-V target environment, profiles, and SPIR-V emission. | No Vulkan or IREE HAL headers. |
 | `//loom/binding/c/target/spirv/vulkaninfo`, `loomc/target/spirv/vulkaninfo.h` | Saved Vulkan/GPUInfo profile import for offline or cached SPIR-V targeting. | No Vulkan loader or Vulkan SDK headers. |
@@ -53,6 +54,8 @@ JIT can keep every important edge in process memory:
    bytes, generated source text, or externally owned buffers.
 2. Parse, index, or link those sources into `loomc_module_t` handles. A frozen
    link index can be shared across many specializations of the same library.
+   The optional C/C++ extension imports a source with UNKNOWN format through
+   `loomc_module_import_cxx`, using the same module/workspace ownership model.
 3. Reuse prepared pass programs, linkers, compilers, and target profiles across
    invocations.
 4. Use a caller-owned `loomc_workspace_t` as per-worker scratch while compiling
@@ -118,6 +121,9 @@ The examples under `loom/binding/c/example/` are intentionally small end-to-end
 embedding programs:
 
 - `compile_text.c` compiles in-memory Loom text and consumes diagnostics.
+- `cxx/jit_amdgpu.c` imports the HIP-style C++ translation unit in
+  `cxx/kernels.cpp`, emits one HSACO, and executes both kernels through IREE
+  HAL using the imported launch contracts.
 - `link_modules.c` links multiple sources and turns module artifacts back into
   source handles.
 - `emit_amdgpu_offline.c` compiles packaged Loom bytecode and emits AMDGPU

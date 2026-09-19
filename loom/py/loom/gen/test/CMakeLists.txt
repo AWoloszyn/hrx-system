@@ -11,6 +11,15 @@ iree_add_all_subdirs()
 
 iree_py_library(
   NAME
+    cxx_kernel_cases
+  MAIN
+    "cxx_kernel_cases.py"
+  SRCS
+    "cxx_kernel_cases.py"
+)
+
+iree_py_library(
+  NAME
     numeric_conversion_matrix
   MAIN
     "numeric_conversion_matrix.py"

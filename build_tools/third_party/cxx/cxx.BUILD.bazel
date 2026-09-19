@@ -1,0 +1,30 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# The semantic parser is independent of the upstream drivers and LLVM backend.
+cc_library(
+    name = "parser",
+    srcs = glob(["src/parser/cxx/*.cc"]),
+    hdrs = glob(["src/parser/cxx/**/*.h"]),
+    copts = select({
+        "@platforms//os:windows": [
+            "/std:c++latest",
+            "/EHsc",
+            "/GR",
+        ],
+        "//conditions:default": [
+            "-std=c++23",
+            "-fexceptions",
+            "-frtti",
+        ],
+    }),
+    defines = ['CXX_VERSION="1.2.0"'],
+    includes = ["src/parser"],
+)
