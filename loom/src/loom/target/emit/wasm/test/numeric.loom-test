@@ -3,6 +3,16 @@
 
 wasm.target<simd128> @target
 
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @remainder32(%lhs: reg<wasm.i32>, %rhs: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %remainder = i32.rem_u %lhs, %rhs
+  return %remainder
+}
+
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @remainder64(%lhs: reg<wasm.i64>, %rhs: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %remainder = i64.rem_u %lhs, %rhs
+  return %remainder
+}
+
 low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @arithmetic32(%lhs: reg<wasm.i32>, %rhs: reg<wasm.i32>, %count: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>) asm {
   %add = i32.add %lhs, %rhs
   %sub = i32.sub %lhs, %rhs
@@ -143,6 +153,8 @@ low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @reint
 
 // ----
 CHECK: Disassembly of section CODE:
+CHECK: i32.rem_u
+CHECK: i64.rem_u
 CHECK: i32.add
 CHECK: i32.sub
 CHECK: i32.mul

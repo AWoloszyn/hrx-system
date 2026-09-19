@@ -61,3 +61,37 @@ func.def target(@target) @negative_index_offset(%input: index) -> (offset) {
   %result = index.cast %negative : index to offset
   func.return %result : offset
 }
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @index_remainder_unproven_dividend(%value: index) -> (index) {
+  %divisor = index.constant 3 : index
+  // ERROR@+1: TARGET/005 {op_name="index.rem", subject_name="lhs", minimum="0", maximum="4294967295"}
+  %remainder = index.rem %value, %divisor : index
+  func.return %remainder : index
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @index_remainder_unproven_divisor(%value: index, %divisor: index) -> (index) {
+  %bounded_value = index.assume %value [range(%value, 0, 4294967295)] : index
+  // ERROR@+1: TARGET/005 {op_name="index.rem", subject_name="rhs", minimum="0", maximum="4294967295"}
+  %remainder = index.rem %bounded_value, %divisor : index
+  func.return %remainder : index
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @index_remainder_wide_dividend(%value: index) -> (index) {
+  %wide_value = index.assume %value [range(%value, 4294967296, 8589934591)] : index
+  %divisor = index.constant 3 : index
+  // ERROR@+1: TARGET/005 {op_name="index.rem", subject_name="lhs", minimum="0", maximum="4294967295"}
+  %remainder = index.rem %wide_value, %divisor : index
+  func.return %remainder : index
+}
