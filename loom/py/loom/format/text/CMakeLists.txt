@@ -14,7 +14,7 @@ iree_py_library(
     text
   SRCS
     "__init__.py"
-    "block_order.py"
+    "blocks.py"
     "name_plan.py"
     "parser.py"
     "printer.py"
@@ -31,6 +31,7 @@ iree_py_test(
   MAIN
     "../../tools/pytest_style_runner.py"
   SRCS
+    "cfg_test.py"
     "name_plan_test.py"
     "parser_regression_test.py"
     "parser_test.py"
@@ -39,6 +40,7 @@ iree_py_test(
     "tokenizer_test.py"
     "../../tools/pytest_style_runner.py"
   ARGS
+    "loom.format.text.cfg_test"
     "loom.format.text.name_plan_test"
     "loom.format.text.parser_regression_test"
     "loom.format.text.parser_test"

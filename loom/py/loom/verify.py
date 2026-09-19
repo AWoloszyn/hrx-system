@@ -862,10 +862,12 @@ class ModuleVerifier:
                     source=region_path,
                     details=(f"expected 1, found {len(region.blocks)}",),
                 )
+            region_blocks = {id(block) for block in region.blocks}
             for block_index, block in enumerate(region.blocks):
                 self._verify_block(
                     block,
                     f"{region_path}.blocks[{block_index}]",
+                    region_blocks=region_blocks,
                     region_terminator=region_decl.terminator
                     if region_decl is not None
                     else None,
@@ -877,6 +879,7 @@ class ModuleVerifier:
         block: Block,
         path: str,
         *,
+        region_blocks: set[int],
         region_terminator: str | None,
         parent_stack: tuple[Operation, ...],
     ) -> None:
@@ -884,6 +887,12 @@ class ModuleVerifier:
         for operation_index, operation in enumerate(block.ops):
             op_decl = self.registry.op(operation.name)
             op_path = f"{path}.ops[{operation_index}]"
+            for successor in operation.successors:
+                if id(successor) not in region_blocks:
+                    self.diagnostics.error(
+                        "successor is outside the enclosing region",
+                        source=op_path,
+                    )
             if (
                 op_decl is not None
                 and op_decl.is_terminator
@@ -908,6 +917,10 @@ class ModuleVerifier:
         if terminator.name == region_terminator:
             return
         if terminator_decl is not None and terminator_decl.is_terminator:
+            # A CFG branch continues within the region; the declared terminator
+            # constrains operations that exit the region.
+            if terminator.successors:
+                return
             self.diagnostics.error(
                 "region terminated by wrong op",
                 source=path,

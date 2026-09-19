@@ -14,7 +14,9 @@ iree_py_library(
     package
   SRCS
     "__init__.py"
+    "block_order.py"
   DEPS
+    loom::py::loom::core
     loom::py::loom::package
 )
 

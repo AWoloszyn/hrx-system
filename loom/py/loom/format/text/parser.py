@@ -31,6 +31,7 @@ from loom.assembly import (
     AttrTable,
     BindingList,
     BlockArgs,
+    BlockRef,
     Clause,
     Flags,
     FormatElement,
@@ -73,6 +74,7 @@ from loom.dsl import (
     TypeDef,
 )
 from loom.fields import FieldKind, FieldLayout, compute_layout
+from loom.format.text.blocks import BlockScope
 from loom.format.text.tokenizer import (
     ParseError,
     SourceLocation,
@@ -1827,6 +1829,7 @@ class ParsedFields:
         "func_arg_ids",
         "func_args_consumed",
         "operand_fields",
+        "successors",
     )
 
     def __init__(self) -> None:
@@ -1841,6 +1844,8 @@ class ParsedFields:
         self.func_arg_ids: list[int] = []
         self.func_args_consumed = False
         self.operand_fields: dict[str, list[int]] = {}
+        # Direct block identities keyed by declared successor field name.
+        self.successors: dict[str, Block] = {}
 
 
 def _func_args_field(op_decl: Op) -> str | None:
@@ -1906,6 +1911,7 @@ class Parser:
         self._parameterized_attr_registry: dict[str, ParameterizedAttrDef] = {}
         self._layouts: dict[str, FieldLayout] = {}
         self._scope: NameScope = NameScope()
+        self._block_scope = BlockScope("")
         self._module: Module = Module()
         self._tokenizer: Tokenizer = Tokenizer("")
         self._implicit_source_id: int | None = None
@@ -1991,6 +1997,7 @@ class Parser:
             self._find_or_add_source(filename) if filename else None
         )
         self._scope = NameScope()
+        self._block_scope = BlockScope(filename)
         self._encoding_aliases = {}
         _CURRENT_ALIASES = self._encoding_aliases
         _CURRENT_CANONICAL_ENCODING_ALIASES = self._canonical_encoding_aliases
@@ -2026,6 +2033,7 @@ class Parser:
                 tok._filename,
             )
 
+        self._block_scope.finish()
         _CURRENT_ALIASES = None
         _CURRENT_CANONICAL_ENCODING_ALIASES = None
         _CURRENT_KNOWN_ENCODINGS = None
@@ -2546,6 +2554,7 @@ class Parser:
             operand_segment_counts=operand_segment_counts,
             results=result_ids,
             tied_results=parsed.tied_results,
+            successors=[parsed.successors[field.name] for field in op_decl.successors],
             attributes=parsed.attributes,
             regions=parsed.regions,
             location_id=location_id,
@@ -2790,6 +2799,11 @@ class Parser:
         tok = self._tokenizer
         for element in elements:
             match element:
+                case BlockRef(field=name):
+                    parsed.successors[name] = self._block_scope.reference(
+                        tok.expect(TokenKind.BLOCK_LABEL)
+                    )
+
                 case Ref(field=name):
                     if name in ("iv",):
                         # Implicit region argument: create the value now, but
@@ -3235,6 +3249,11 @@ class Parser:
                 case Glue():
                     pass
 
+                case _:
+                    raise ValueError(
+                        f"unsupported operation format element: {element!r}"
+                    )
+
     def _optional_group_present(
         self,
         inner_elements: tuple[FormatElement, ...],
@@ -3280,6 +3299,8 @@ class Parser:
                 return tok.at(TokenKind.BARE_IDENT)
             case SymbolRef():
                 return tok.at(TokenKind.SYMBOL)
+            case BlockRef():
+                return tok.at(TokenKind.BLOCK_LABEL)
             case (
                 KeyRef()
                 | ScopedEnumRef()
@@ -3861,6 +3882,9 @@ class Parser:
         parent_scope = self._scope
         self._scope = parent_scope.push()
 
+        parent_block_scope = self._block_scope
+        self._block_scope = BlockScope(tok._filename)
+
         # For function args: they're already in the parent scope.
         # Copy them into the child scope so the body can see them.
         entry_arg_ids: list[int] = []
@@ -3886,6 +3910,8 @@ class Parser:
         blocks: list[Block] = []
         is_first = True
         while not tok.at(TokenKind.RBRACE):
+            if tok.at(TokenKind.EOF):
+                tok.expect(TokenKind.RBRACE)
             block = self._parse_block(implicit_terminator_decl=implicit_terminator_decl)
             if is_first and entry_arg_ids:
                 block.arg_ids = entry_arg_ids + block.arg_ids
@@ -3902,6 +3928,8 @@ class Parser:
 
         tok.take_pending_source_trivia()
         tok.expect(TokenKind.RBRACE)
+        self._block_scope.finish()
+        self._block_scope = parent_block_scope
         self._scope = parent_scope
         return Region(blocks=blocks)
 
@@ -4156,7 +4184,7 @@ class Parser:
     ) -> Block:
         """Parse a block (optional label, then operations)."""
         tok = self._tokenizer
-        label = ""
+        block = Block()
         arg_ids: list[int] = []
         comments: tuple[str, ...] = ()
         leading_blank_line = False
@@ -4165,15 +4193,22 @@ class Parser:
         if tok.peek().kind == TokenKind.BLOCK_LABEL:
             pending_comments, leading_blank_line = tok.take_pending_source_trivia()
             comments = tuple(pending_comments)
-            label = tok.next().text
+            block = self._block_scope.define(tok.next())
             if tok.at(TokenKind.LPAREN):
                 tok.expect(TokenKind.LPAREN)
                 while not tok.at(TokenKind.RPAREN):
                     arg_name = tok.expect(TokenKind.SSA_VALUE).text
                     tok.expect(TokenKind.COLON)
-                    arg_type, _ = self._parse_type(tok, self._scope, TypeParseMode.BODY)
+                    arg_type, bindings = self._parse_type(
+                        tok, self._scope, TypeParseMode.BODY
+                    )
                     value_id = self._module.add_value(
-                        Value(name=arg_name, type=arg_type)
+                        Value(
+                            name=arg_name,
+                            type=arg_type,
+                            dim_bindings={k: v for k, v in bindings.items() if k >= 0},
+                            encoding_binding=bindings.get(-1, -1),
+                        )
                     )
                     self._scope.define(arg_name, value_id)
                     arg_ids.append(value_id)
@@ -4202,13 +4237,11 @@ class Parser:
             if not has_terminator:
                 ops.append(Operation(name=implicit_terminator_decl.name))
 
-        return Block(
-            label=label,
-            arg_ids=arg_ids,
-            ops=ops,
-            comments=comments,
-            leading_blank_line=leading_blank_line,
-        )
+        block.arg_ids = arg_ids
+        block.ops = ops
+        block.comments = comments
+        block.leading_blank_line = leading_blank_line
+        return block
 
     # --- Attr dict ---
 

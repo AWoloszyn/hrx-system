@@ -12,6 +12,7 @@ from typing import Any
 
 from loom.dsl import Op
 from loom.fields import FieldLayout, resolve_fields
+from loom.format.text.blocks import plan_block_labels
 from loom.ir import (
     Block,
     Module,
@@ -28,6 +29,8 @@ class NamePlan:
     names: tuple[str, ...]
     # Values whose references require a name even in an optional definition.
     referenced: frozenset[int]
+    # Required block headers and successor spellings, keyed by object identity.
+    block_labels: dict[int, str]
 
 
 @dataclass
@@ -107,6 +110,7 @@ def plan_names(
     root = _Scope()
     seen_operations: set[int] = set()
     symbolic_scopes: list[_Scope] = []
+    block_labels: dict[int, str] = {}
     # Projected region arguments have distinct identities but one printed
     # signature. Their spellings are owned by the signature argument.
     spelling_owners = list(range(len(module.values)))
@@ -162,12 +166,35 @@ def plan_names(
         for value_id in (*op.operands, *op.results):
             type_references(value_id, scope)
         _attribute_references(op.attributes, scope.references)
+        declared_regions: set[int] = set()
+        if declaration is not None:
+            field_layout = layout(declaration)
+            fields = resolve_fields(field_layout, op, module)
+            declared_regions.update(
+                id(region)
+                for name in field_layout.entry_args_declared_by_parent
+                for region in fields.regions(name)
+            )
         for region in op.regions:
             child = _Scope()
             enclosing.children.append(child)
-            collect_blocks(region.blocks, child)
+            collect_blocks(
+                region.blocks,
+                child,
+                entry_args_declared_by_parent=id(region) in declared_regions,
+            )
 
-    def collect_blocks(blocks: Sequence[Block], scope: _Scope) -> None:
+    def collect_blocks(
+        blocks: Sequence[Block],
+        scope: _Scope,
+        *,
+        entry_args_declared_by_parent: bool = False,
+    ) -> None:
+        block_labels.update(
+            plan_block_labels(
+                blocks, entry_args_declared_by_parent=entry_args_declared_by_parent
+            )
+        )
         for block in blocks:
             scope.definitions.extend(block.arg_ids)
             for argument in block.arg_ids:
@@ -178,6 +205,20 @@ def plan_names(
     collect_blocks([module.body], root)
     if operation is not None and id(operation) not in seen_operations:
         collect_operation(operation, root)
+        detached_targets = list(
+            {
+                id(block): block
+                for block in operation.successors
+                if id(block) not in block_labels
+            }.values()
+        )
+        block_labels.update(
+            plan_block_labels(
+                detached_targets,
+                entry_args_declared_by_parent=False,
+                referenced_blocks=detached_targets,
+            )
+        )
 
     defined: set[int] = set()
     referenced: set[int] = set()
@@ -218,6 +259,7 @@ def plan_names(
     referenced_owners = {spelling_owners[value_id] for value_id in referenced}
     return NamePlan(
         names=tuple("%" + bare_names[owner] for owner in spelling_owners),
+        block_labels=block_labels,
         referenced=frozenset(
             value_id
             for value_id, owner in enumerate(spelling_owners)

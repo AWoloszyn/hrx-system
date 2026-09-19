@@ -25,6 +25,7 @@ from typing import Any, ClassVar, cast
 
 from loom.dsl import FuncLikeInterface, SymbolReferenceRole
 from loom.fields import compute_layout, resolve_fields
+from loom.format.block_order import ordered_blocks
 from loom.format.bytecode.encoding import ByteBuffer
 from loom.format.bytecode.op_decls import (
     attr_def_for_op,
@@ -564,6 +565,8 @@ class BytecodeWriter:
         self._location_mode = location_mode
         self._op_decls_by_name = build_op_decl_map(op_decls)
         self._ctx = NumberingContext()
+        # Dominance order retained once for value numbering and block emission.
+        self._region_blocks: dict[int, list[Block]] = {}
         self._wire_symbols, self._wire_symbol_indices = (
             self._build_wire_symbol_projection()
         )
@@ -859,7 +862,9 @@ class BytecodeWriter:
 
     def _number_region(self, region: Region) -> None:
         """Number all entities in a region (recursive)."""
-        for block in region.blocks:
+        blocks = ordered_blocks(region)
+        self._region_blocks[id(region)] = blocks
+        for block in blocks:
             if block.label:
                 self._ctx.intern_string(block.label)
             for arg_id in block.arg_ids:
@@ -1282,7 +1287,7 @@ class BytecodeWriter:
 
     def _assign_value_numbers(self, region: Region, numbers: dict[int, int]) -> None:
         """Assign sequential value numbers within one root region."""
-        for block in region.blocks:
+        for block in self._region_blocks[id(region)]:
             for arg_id in block.arg_ids:
                 if arg_id not in numbers:
                     numbers[arg_id] = len(numbers)
@@ -1375,8 +1380,9 @@ class BytecodeWriter:
             )
         buf.write_varint(region.source_flags)
         buf.write_varint(len(region.blocks))
-        block_indices = {id(block): index for index, block in enumerate(region.blocks)}
-        for block in region.blocks:
+        blocks = self._region_blocks[id(region)]
+        block_indices = {id(block): index for index, block in enumerate(blocks)}
+        for block in blocks:
             self._write_block(buf, block, value_numbers, block_indices)
 
     def _write_block(

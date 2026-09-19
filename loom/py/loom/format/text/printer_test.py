@@ -21,7 +21,7 @@ from loom.dialect.test import (
     test_scope_type,
     test_tile_attr,
 )
-from loom.format.text.block_order import ordered_blocks
+from loom.format.block_order import ordered_blocks
 from loom.format.text.parser import Parser
 from loom.format.text.printer import Printer, print_type
 from loom.ir import (

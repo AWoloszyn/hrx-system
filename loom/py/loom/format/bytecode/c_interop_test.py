@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from loom.builtin_types import ALL_BUILTIN_TYPES
+from loom.dialect.cfg import ALL_CFG_OPS
 from loom.dialect.func import ALL_FUNC_OPS
 from loom.dialect.low import ALL_LOW_OPS
 from loom.dialect.scf import ALL_SCF_OPS
@@ -127,20 +128,26 @@ def _interop_module() -> tuple[Module, RegisterType]:
     return module, register_types[0]
 
 
-def _roundtrip_through_c(loom_format: Path, module: Module) -> Module:
+def _roundtrip_through_c(loom_format: Path, source: Module | str) -> Module:
     with tempfile.TemporaryDirectory(prefix="loom-bytecode-interop-") as temp_dir:
         temp_path = Path(temp_dir)
-        python_bytecode_path = temp_path / "python.loombc"
+        source_format = "text" if isinstance(source, str) else "bc"
+        source_path = temp_path / (
+            "python.loom" if isinstance(source, str) else "python.loombc"
+        )
         c_bytecode_path = temp_path / "c.loombc"
-        python_bytecode_path.write_bytes(write_module(module))
+        if isinstance(source, str):
+            source_path.write_text(source)
+        else:
+            source_path.write_bytes(write_module(source))
 
         _run_loom_format(
             [
                 loom_format,
-                "--from=bc",
+                f"--from={source_format}",
                 "--to=bc",
                 f"--output={c_bytecode_path}",
-                python_bytecode_path,
+                source_path,
             ]
         )
         return read_module(
@@ -364,6 +371,51 @@ def _assert_symbol_payloads(module: Module) -> None:
         raise AssertionError("descriptor-backed types did not survive C bytecode")
 
 
+def _assert_cfg_identities(module: Module) -> None:
+    entry, forward, exit = module.body.ops[0].regions[0].blocks
+    assert entry.ops[0].successors[0] is forward
+    assert forward.ops[1].successors[0] is exit
+    assert entry.ops[0].operands[0] == entry.arg_ids[2]
+    assert forward.ops[0].operands[0] == forward.arg_ids[0]
+    assert exit.ops[0].operands[0] == forward.arg_ids[0]
+    argument = module.values[forward.arg_ids[0]]
+    assert argument.dim_bindings == {0: entry.arg_ids[0]}
+    assert argument.encoding_binding == entry.arg_ids[1]
+
+
+def _test_cfg_interop(loom_format: Path) -> None:
+    parser = Parser()
+    printer = Printer()
+    for format in (parser, printer):
+        format.register_types(ALL_BUILTIN_TYPES)
+        for operations in (ALL_FUNC_OPS, ALL_CFG_OPS, ALL_TEST_OPS):
+            format.register_ops(operations)
+    module = parser.parse(
+        "func.def @f(%extent: index, %layout: encoding, "
+        "%value: tile<[%extent]xf32, %layout>) {\n"
+        "  cfg.br ^forward(%value: tile<[%extent]xf32, %layout>)\n"
+        "^forward(%forwarded: tile<[%extent]xf32, %layout>):\n"
+        "  test.use %forwarded : tile<[%extent]xf32, %layout>\n"
+        "  cfg.br ^exit\n"
+        "^exit:\n"
+        "  test.use %forwarded : tile<[%extent]xf32, %layout>\n"
+        "  func.return\n"
+        "}\n",
+        verify=True,
+    )
+    _assert_cfg_identities(module)
+    region = module.body.ops[0].regions[0]
+    entry, forward, exit = region.blocks
+    region.blocks[:] = [entry, exit, forward]
+    for loaded in (
+        read_module(write_module(module)),
+        _roundtrip_through_c(loom_format, module),
+        _roundtrip_through_c(loom_format, printer.print_module(module)),
+    ):
+        _assert_cfg_identities(loaded)
+        _assert_cfg_identities(parser.parse(printer.print_module(loaded), verify=True))
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise ValueError("expected the C loom-format binary path")
@@ -395,6 +447,7 @@ def main() -> None:
     for module in (captured, captured_from_c):
         text = printer.print_module(module)
         _assert_predicate_identities(parser.parse(text))
+    _test_cfg_interop(Path(sys.argv[1]))
 
 
 if __name__ == "__main__":

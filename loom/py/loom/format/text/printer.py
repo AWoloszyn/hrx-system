@@ -42,6 +42,7 @@ from loom.assembly import (
     AttrTable,
     BindingList,
     BlockArgs,
+    BlockRef,
     Clause,
     Flags,
     FormatElement,
@@ -87,7 +88,7 @@ from loom.fields import (
     compute_layout,
     resolve_fields,
 )
-from loom.format.text.block_order import ordered_blocks
+from loom.format.block_order import ordered_blocks
 from loom.format.text.name_plan import NamePlan, plan_names
 from loom.ir import (
     Block,
@@ -528,6 +529,7 @@ def _print_descriptor_backed_type(
                         walk(inner)
                 case Glue():
                     stream.set_glue()
+
                 case _:
                     raise ValueError(
                         f"unsupported parameterized type format element: {element!r}"
@@ -1148,7 +1150,7 @@ class Printer:
         self._encoding_alias_selectors: dict[str, _EncodingAliasSelector] = {}
         self._layouts: dict[str, FieldLayout] = {}
         self._module: Module | None = None
-        self._name_plan = NamePlan((), frozenset())
+        self._name_plan = NamePlan((), frozenset(), {})
         self._indent: int = 0
         self._lines: list[str] = []
         self._print_locations: bool = print_locations
@@ -1372,25 +1374,29 @@ class Printer:
         region: Region,
         module: Module,
         implicit_terminator_name: str | None = None,
+        *,
+        entry_args_declared_by_parent: bool = False,
     ) -> None:
         """Print the blocks of a region."""
         for block in ordered_blocks(region):
-            # Block label (if named and not the entry block).
-            if block.label:
+            label = self._name_plan.block_labels.get(id(block))
+            if label is not None:
                 if block.leading_blank_line:
                     self._lines.append("")
                 saved_indent = self._indent
                 self._indent = max(self._indent - 1, 0)
                 self._emit_comments(block.comments)
                 arg_strs = ""
-                if block.arg_ids:
+                if block.arg_ids and not (
+                    block is region.blocks[0] and entry_args_declared_by_parent
+                ):
                     args = []
                     for arg_id in block.arg_ids:
                         name = self._value_name(arg_id)
                         arg_type = self._print_value_type(arg_id, module)
                         args.append(f"{name}: {arg_type}")
                     arg_strs = "(" + ", ".join(args) + ")"
-                self._emit(f"^{block.label}{arg_strs}:")
+                self._emit(f"^{label}{arg_strs}:")
                 self._indent = saved_indent
             final_live_op_index = self._printable_final_op_index(block)
             for i, op in enumerate(block.ops):
@@ -1855,6 +1861,11 @@ class Printer:
         """
         for element_index, element in enumerate(elements):
             match element:
+                case BlockRef(field=name):
+                    stream.emit(
+                        "^" + self._name_plan.block_labels[id(fields.successor(name))]
+                    )
+
                 case Ref(field=name):
                     try:
                         vid = fields.value_id(name)
@@ -2011,6 +2022,9 @@ class Printer:
                 case RegionFmt(field=name, syntax=syntax):
                     region = fields.region(name)
                     implicit_terminator_name = _implicit_terminator_name(op_decl)
+                    entry_args_declared_by_parent = (
+                        name in self._layout(op_decl).entry_args_declared_by_parent
+                    )
                     if not print_regions:
                         # Declaration mode: placeholder braces.
                         if syntax == "pipeline":
@@ -2046,6 +2060,7 @@ class Printer:
                                 region,
                                 module,
                                 implicit_terminator_name=implicit_terminator_name,
+                                entry_args_declared_by_parent=entry_args_declared_by_parent,
                             )
                             self._indent -= 1
                         stream = TokenStream()
@@ -2060,6 +2075,7 @@ class Printer:
                                 region,
                                 module,
                                 implicit_terminator_name=implicit_terminator_name,
+                                entry_args_declared_by_parent=entry_args_declared_by_parent,
                             )
                             self._indent -= 1
                         # Start new token accumulation with "}".
@@ -2215,6 +2231,11 @@ class Printer:
 
                 case Glue():
                     stream.set_glue()
+
+                case _:
+                    raise ValueError(
+                        f"unsupported operation format element: {element!r}"
+                    )
 
         return stream
 

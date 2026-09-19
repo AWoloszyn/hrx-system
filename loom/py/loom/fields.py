@@ -34,10 +34,22 @@ remain one flat operand array for use-def and generic pass infrastructure.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum, unique
 from typing import Any, Protocol, runtime_checkable
 
+from loom.assembly import (
+    BindingList,
+    BlockArgs,
+    Clause,
+    FormatElement,
+    FuncArgs,
+    OptionalGroup,
+    Ref,
+    Scope,
+)
+from loom.assembly import Region as RegionFormat
 from loom.dsl import FuncLikeInterface, Op
 from loom.ir import (
     Block,
@@ -164,6 +176,50 @@ class FieldLayout:
     variadic_region: str | None  # Name of the variadic region, if any.
     segmented_operands: bool = False
     func_body_region_index: int | None = None
+    # Regions whose entry arguments are declared in their parent's format.
+    entry_args_declared_by_parent: frozenset[str] = frozenset()
+
+
+def _entry_args_declared_by_parent(op_decl: Op) -> frozenset[str]:
+    declared: set[str] = set()
+    func_args: set[str] = set()
+    implicit_names = {
+        name for region in op_decl.regions for name, _type in region.implicit_args
+    }
+    pending = False
+
+    def walk(elements: Sequence[FormatElement]) -> None:
+        nonlocal pending
+        for element in elements:
+            match element:
+                case (
+                    Clause(elements=inner)
+                    | OptionalGroup(elements=inner)
+                    | Scope(elements=inner)
+                ):
+                    walk(inner)
+                case FuncArgs(field=name):
+                    func_args.add(name)
+                    pending = True
+                case BindingList():
+                    pending = True
+                case Ref(field=name) if name in implicit_names:
+                    pending = True
+                case BlockArgs(region=name):
+                    declared.add(name)
+                case RegionFormat(field=name):
+                    if pending:
+                        declared.add(name)
+                    pending = False
+
+    walk(op_decl.format)
+    for interface in op_decl.interfaces:
+        if isinstance(interface, FuncLikeInterface) and interface.body is not None:
+            declared.add(interface.body)
+    declared.update(
+        region.name for region in op_decl.regions if region.arg_source in func_args
+    )
+    return frozenset(declared)
 
 
 def compute_layout(op_decl: Op) -> FieldLayout:
@@ -339,6 +395,7 @@ def compute_layout(op_decl: Op) -> FieldLayout:
         variadic_region=variadic_region,
         segmented_operands=segmented_operands,
         func_body_region_index=_func_body_region_index(op_decl),
+        entry_args_declared_by_parent=_entry_args_declared_by_parent(op_decl),
     )
 
 
