@@ -14,6 +14,7 @@ from __future__ import annotations
 from .alu import *
 from .categories import *
 from .common import *
+from .integer_multiply import *
 from .matrix import *
 from .scalar_float import *
 from .sets import *
@@ -61,8 +62,7 @@ _AMDGPU_CONTRACT_DESCRIPTOR_OVERLAY_BUILDERS: dict[
     "amdgpu.v_sub_u32.lhs_tied": lambda: _v_sub_u32_lhs_tied_overlay(
         "V_SUB_NC_U32", "v_sub_nc_u32"
     ),
-    "amdgpu.v_mul_lo_u32": _v_mul_lo_u32_overlay,
-    "amdgpu.v_mul_hi_u32": _v_mul_hi_u32_overlay,
+    **_contract_overlay_builders_from_overlays(_v_mul_u32_overlays()),
     "amdgpu.v_mul_u32_u24": _v_mul_u32_u24_overlay,
     "amdgpu.v_mul_u32_u24.src0_inline": _v_mul_u32_u24_src0_inline_overlay,
     "amdgpu.v_mul_u32_u24.lit": _v_mul_u32_u24_literal_overlay,

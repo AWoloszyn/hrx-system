@@ -17,16 +17,20 @@ static uint32_t loom_low_schedule_saturate_u64_to_u32(uint64_t value) {
 }
 
 // Returns a static nomination tier for materializations that may open live
-// storage before it becomes actionable. Ordinary work comes first, followed by
-// rematerializable leaves that can unlock ordinary consumers, and finally
-// storage setup. Exact candidate scoring still recognizes setup that
-// immediately advances storage and closes an opened rematerialization chain
-// before selecting another leaf.
+// storage before it becomes actionable. Descriptor-bound slice/concat aliases
+// retain ordinary critical-path priority so they can expose consumers outside
+// the source-order window. Rematerializable leaves follow ordinary work, then
+// other storage setup. Exact candidate scoring still defers non-actionable
+// storage growth and closes an opened rematerialization chain before selecting
+// another leaf.
 static uint64_t loom_low_schedule_node_materialization_key(
     const loom_low_schedule_build_state_t* state,
     const loom_low_schedule_node_t* node) {
   if (iree_any_bit_set(node->flags,
-                       LOOM_LOW_SCHEDULE_NODE_FLAG_STORAGE_SETUP)) {
+                       LOOM_LOW_SCHEDULE_NODE_FLAG_STORAGE_SETUP) &&
+      !iree_all_bits_set(node->flags,
+                         LOOM_LOW_SCHEDULE_NODE_FLAG_PAIR_TRANSPARENT |
+                             LOOM_LOW_SCHEDULE_NODE_FLAG_DESCRIPTOR_SETUP)) {
     return UINT64_C(1) << 63;
   }
   if (node->descriptor == NULL || node->operand_count != 0 ||

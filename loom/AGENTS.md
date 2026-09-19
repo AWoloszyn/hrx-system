@@ -3,6 +3,35 @@
 This guide applies to work under `loom/`. More specific subtree guides can add
 target rules, but they inherit the ownership split here.
 
+## Performance And Numerical Accuracy
+
+Loom's first priority is the performance of its emitted programs: outperform
+tuned HIP and hand-authored assembly on AMD GPUs and AIE on XDNA, while
+maintaining roughly reference-equivalent numerical accuracy. Independent
+numerical oracles establish accuracy. HIP, Triton, ggml and other implementations
+provide performance baselines and algorithmic evidence; their output bits,
+rounding choices and numerical weaknesses are not accuracy requirements.
+
+Optimization explores the performance/accuracy frontier against those oracles.
+The objective is the fastest implementation within the workload's acceptable
+error envelope, with the highest accuracy attainable at that performance.
+Different approximations, reduction orders and instruction sequences are valid
+when they satisfy that envelope and the caller's explicit requirements.
+Qualification records native performance and oracle error independently,
+including representative inputs and relevant difficult cases. Better accuracy
+at no performance cost is a win; extra accuracy alone does not justify a
+slower default path. Numerical acceptance comes from the workload and reference,
+independently of a competitor's errors or a convenient test tolerance.
+
+Ordinary ML paths have first claim on useful relaxed math, contraction,
+accumulation and hardware-native operations. Stronger precision requirements
+are explicit, using operation flags or other established source contracts.
+Supporting additional frontends or accuracy modes cannot impose extra
+emulation, restrictions, runtime dispatch or code/resource costs on that
+ordinary path. Existing permitted fast implementations take priority over
+additional strict coverage. JIT time and memory remain architectural costs to
+measure and control alongside final-output performance.
+
 ## Responsibility Boundaries
 
 Python owns source-of-truth data that already lives naturally in Python:

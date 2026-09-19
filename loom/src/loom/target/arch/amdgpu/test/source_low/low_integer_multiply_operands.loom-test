@@ -1,0 +1,435 @@
+// RUN: pass low-select-operand-forms,low-cse,low-dce
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @multiply_gfx942_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 64
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @multiply_gfx942_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_inline %vector, 64
+  %low_right = v_mul_lo_u32_src1_inline %scalar, 64
+  %high_left = v_mul_hi_u32_src0_inline %vector, 64
+  %high_right = v_mul_hi_u32_src1_inline %scalar, 64
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @multiply_gfx942_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 65
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @multiply_gfx942_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 65
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @multiply_gfx942_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 4294967295
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @multiply_gfx942_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 4294967295
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @multiply_gfx950_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 64
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @multiply_gfx950_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_inline %vector, 64
+  %low_right = v_mul_lo_u32_src1_inline %scalar, 64
+  %high_left = v_mul_hi_u32_src0_inline %vector, 64
+  %high_right = v_mul_hi_u32_src1_inline %scalar, 64
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @multiply_gfx950_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 65
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @multiply_gfx950_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 65
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @multiply_gfx950_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 4294967295
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @multiply_gfx950_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 4294967295
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @multiply_gfx1100_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 64
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @multiply_gfx1100_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_inline %vector, 64
+  %low_right = v_mul_lo_u32_src1_inline %scalar, 64
+  %high_left = v_mul_hi_u32_src0_inline %vector, 64
+  %high_right = v_mul_hi_u32_src1_inline %scalar, 64
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @multiply_gfx1100_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 65
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @multiply_gfx1100_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_lit %vector, 65
+  %low_right = v_mul_lo_u32_src1_lit %scalar, 65
+  %high_left = v_mul_hi_u32_src0_lit %vector, 65
+  %high_right = v_mul_hi_u32_src1_lit %scalar, 65
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @multiply_gfx1100_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 4294967295
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @multiply_gfx1100_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_lit %vector, 4294967295
+  %low_right = v_mul_lo_u32_src1_lit %scalar, 4294967295
+  %high_left = v_mul_hi_u32_src0_lit %vector, 4294967295
+  %high_right = v_mul_hi_u32_src1_lit %scalar, 4294967295
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @multiply_gfx1151_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 64
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @multiply_gfx1151_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_inline %vector, 64
+  %low_right = v_mul_lo_u32_src1_inline %scalar, 64
+  %high_left = v_mul_hi_u32_src0_inline %vector, 64
+  %high_right = v_mul_hi_u32_src1_inline %scalar, 64
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @multiply_gfx1151_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 65
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @multiply_gfx1151_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_lit %vector, 65
+  %low_right = v_mul_lo_u32_src1_lit %scalar, 65
+  %high_left = v_mul_hi_u32_src0_lit %vector, 65
+  %high_right = v_mul_hi_u32_src1_lit %scalar, 65
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @multiply_gfx1151_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 4294967295
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @multiply_gfx1151_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_lit %vector, 4294967295
+  %low_right = v_mul_lo_u32_src1_lit %scalar, 4294967295
+  %high_left = v_mul_hi_u32_src0_lit %vector, 4294967295
+  %high_right = v_mul_hi_u32_src1_lit %scalar, 4294967295
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @multiply_gfx1201_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 64
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @multiply_gfx1201_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_inline %vector, 64
+  %low_right = v_mul_lo_u32_src1_inline %scalar, 64
+  %high_left = v_mul_hi_u32_src0_inline %vector, 64
+  %high_right = v_mul_hi_u32_src1_inline %scalar, 64
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @multiply_gfx1201_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 65
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @multiply_gfx1201_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_lit %vector, 65
+  %low_right = v_mul_lo_u32_src1_lit %scalar, 65
+  %high_left = v_mul_hi_u32_src0_lit %vector, 65
+  %high_right = v_mul_hi_u32_src1_lit %scalar, 65
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @multiply_gfx1201_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 4294967295
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @multiply_gfx1201_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_lit %vector, 4294967295
+  %low_right = v_mul_lo_u32_src1_lit %scalar, 4294967295
+  %high_left = v_mul_hi_u32_src0_lit %vector, 4294967295
+  %high_right = v_mul_hi_u32_src1_lit %scalar, 4294967295
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_gfx1250_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 64
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_gfx1250_64(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_inline %vector, 64
+  %low_right = v_mul_lo_u32_src1_inline %scalar, 64
+  %high_left = v_mul_hi_u32_src0_inline %vector, 64
+  %high_right = v_mul_hi_u32_src1_inline %scalar, 64
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_gfx1250_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 65
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_gfx1250_65(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_lit %vector, 65
+  %low_right = v_mul_lo_u32_src1_lit %scalar, 65
+  %high_left = v_mul_hi_u32_src0_lit %vector, 65
+  %high_right = v_mul_hi_u32_src1_lit %scalar, 65
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ====
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_gfx1250_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %constant = v_mov_b32 4294967295
+  %low_left = v_mul_lo_u32 %constant, %vector
+  %low_right = v_mul_lo_u32 %scalar, %constant
+  %high_left = v_mul_hi_u32 %constant, %vector
+  %high_right = v_mul_hi_u32 %scalar, %constant
+  return %low_left, %low_right, %high_left, %high_right
+}
+
+// ----
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @multiply_gfx1250_4294967295(%vector: reg<amdgpu.vgpr>, %scalar: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %low_left = v_mul_lo_u32_src0_lit %vector, 4294967295
+  %low_right = v_mul_lo_u32_src1_lit %scalar, 4294967295
+  %high_left = v_mul_hi_u32_src0_lit %vector, 4294967295
+  %high_right = v_mul_hi_u32_src1_lit %scalar, 4294967295
+  return %low_left, %low_right, %high_left, %high_right
+}
