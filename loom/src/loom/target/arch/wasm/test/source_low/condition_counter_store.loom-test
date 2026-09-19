@@ -1,0 +1,31 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/condition_counter_store.loom-test
+// RUN: emit source-low output=low control-flow=structured-low
+
+wasm.target<simd128> @target
+
+func.def target(@target) @condition_counter_store(%output: buffer) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %header_base = index.constant 16 : offset
+  %aligned_output = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %body_view = buffer.view %aligned_output[%base] : buffer -> view<4xi32>
+  // ERROR@+1: WASM/004 {field_name="byte_offset"}
+  %header_view = buffer.view %aligned_output[%header_base] : buffer -> view<5xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %header_value = index.cast %before : index to i32
+    view.store %header_value, %header_view[%before] : i32, view<5xi32>
+    // ERROR@+1: TARGET/003 {op_name="index.cmp", subject_name="predicate"}
+    %more = index.cmp slt, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %body_value = index.cast %position : index to i32
+    view.store %body_value, %body_view[%position] : i32, view<4xi32>
+    %next = index.add %position, %step : index
+    scf.yield %next : index
+  }
+  %exit_value = index.cast %terminal : index to i32
+  view.store %exit_value, %header_view[%terminal] : i32, view<5xi32>
+  func.return
+}

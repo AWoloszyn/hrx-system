@@ -560,8 +560,8 @@ static iree_status_t loom_value_fact_table_compute_cfg_block_arg(
   if (header_loop != LOOM_CFG_LOOP_NEST_NONE &&
       region->inductions[header_loop].value == arg_id) {
     const loom_loop_recurrence_facts_t recurrence =
-        loom_value_fact_cfg_induction_facts(table, module,
-                                            &region->inductions[header_loop]);
+        loom_value_fact_induction_facts(table, module,
+                                        &region->inductions[header_loop]);
     facts = loom_value_facts_clamp_domain(facts, recurrence.values.range_lo,
                                           recurrence.values.range_hi);
   }

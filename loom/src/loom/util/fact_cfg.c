@@ -204,7 +204,7 @@ iree_status_t loom_value_fact_cfg_region_initialize(
         arena, out_region->loops.loop_count, sizeof(*out_region->inductions),
         (void**)&out_region->inductions));
     for (iree_host_size_t i = 0; i < out_region->loops.loop_count; ++i) {
-      out_region->inductions[i] = (loom_value_fact_cfg_induction_t){
+      out_region->inductions[i] = (loom_value_fact_induction_t){
           .value = LOOM_VALUE_ID_INVALID,
       };
     }

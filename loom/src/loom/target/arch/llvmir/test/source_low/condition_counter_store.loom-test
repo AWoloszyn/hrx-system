@@ -1,0 +1,33 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/condition_counter_store.loom-test
+// RUN: with-checks compile-report scf-to-cfg,source-to-low,low-dce
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @condition_counter_store(%output: buffer) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %header_base = index.constant 16 : offset
+  %aligned_output = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %body_view = buffer.view %aligned_output[%base] : buffer -> view<4xi32>
+  %header_view = buffer.view %aligned_output[%header_base] : buffer -> view<5xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %header_value = index.cast %before : index to i32
+    view.store %header_value, %header_view[%before] : i32, view<5xi32>
+    %more = index.cmp slt, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %body_value = index.cast %position : index to i32
+    view.store %body_value, %body_view[%position] : i32, view<4xi32>
+    %next = index.add %position, %step : index
+    scf.yield %next : index
+  }
+  %exit_value = index.cast %terminal : index to i32
+  view.store %exit_value, %header_view[%terminal] : i32, view<5xi32>
+  func.return
+}
+
+// ----
+CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=5
+CHECK: COMPILE-REPORT: source_low[*] * source_op=view.store * execution_count=4

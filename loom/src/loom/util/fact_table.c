@@ -25,6 +25,9 @@ struct loom_value_fact_region_entry_t {
   uint32_t temporal_distribution;
   // CFG and forwarding components retained for the populated fact scope.
   const loom_value_fact_cfg_region_t* structure;
+  // Condition-loop equation retained for the populated fact scope, when
+  // present.
+  loom_value_fact_induction_t* induction;
   // Next entry in the region-address hash collision chain.
   loom_value_fact_region_entry_t* next_bucket;
   // Next entry in the complete cache entry list.
@@ -525,6 +528,30 @@ loom_value_facts_t loom_value_fact_table_block_temporal_scope(
     }
   }
   return scope;
+}
+
+iree_status_t loom_value_fact_table_set_condition_induction(
+    loom_value_fact_table_t* table, const loom_region_t* condition_region,
+    loom_value_fact_induction_t induction) {
+  loom_value_fact_region_entry_t* entry = NULL;
+  IREE_RETURN_IF_ERROR(loom_value_fact_table_ensure_region_entry(
+      table, condition_region, &entry));
+  if (!entry->induction) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate(table->transient_arena,
+                                             sizeof(*entry->induction),
+                                             (void**)&entry->induction));
+  }
+  *entry->induction = induction;
+  return iree_ok_status();
+}
+
+const loom_value_fact_induction_t*
+loom_value_fact_table_lookup_condition_induction(
+    const loom_value_fact_table_t* table,
+    const loom_region_t* condition_region) {
+  const loom_value_fact_region_entry_t* entry =
+      loom_value_fact_table_lookup_region_entry(table, condition_region);
+  return entry ? entry->induction : NULL;
 }
 
 iree_status_t loom_value_fact_table_set_cfg_region(

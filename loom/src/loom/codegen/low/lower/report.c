@@ -406,12 +406,31 @@ iree_status_t loom_low_lower_memory_report_row_populate_source_interval(
   return iree_ok_status();
 }
 
-static bool loom_low_lower_report_exact_trip_count(
-    const loom_value_fact_table_t* fact_table, loom_loop_like_t loop,
-    uint64_t* out_trip_count) {
+static bool loom_low_lower_report_loop_region_execution_count(
+    const loom_low_lower_context_t* context, loom_loop_like_t loop,
+    const loom_region_t* executed_region, uint64_t* out_trip_count) {
   *out_trip_count = 0;
-  if (fact_table == NULL || !loom_loop_like_isa(loop) ||
-      !loom_loop_like_has_counted_range(loop)) {
+  const loom_value_fact_table_t* fact_table = context->lowering.fact_table;
+  if (fact_table == NULL || !loom_loop_like_isa(loop)) {
+    return false;
+  }
+  const loom_region_t* condition = loom_loop_like_condition_region(loop);
+  if (condition) {
+    const loom_value_fact_induction_t* induction =
+        loom_value_fact_table_lookup_condition_induction(fact_table, condition);
+    if (!induction) {
+      return false;
+    }
+    const loom_loop_recurrence_facts_t recurrence =
+        loom_value_fact_induction_facts(fact_table, context->module, induction);
+    if (!recurrence.trip_count_known ||
+        (executed_region == condition && recurrence.trip_count == UINT64_MAX)) {
+      return false;
+    }
+    *out_trip_count = recurrence.trip_count + (executed_region == condition);
+    return true;
+  }
+  if (!loom_loop_like_has_counted_range(loop)) {
     return false;
   }
   int64_t lower_bound = 0;
@@ -463,9 +482,9 @@ static iree_status_t loom_low_lower_report_calculate_source_block_counts(
   }
   for (iree_host_size_t i = 0; i < loops->loop_count; ++i) {
     const loom_loop_recurrence_facts_t recurrence =
-        loom_value_fact_cfg_induction_facts(context->lowering.fact_table,
-                                            context->module,
-                                            &region->inductions[i]);
+        loom_value_fact_induction_facts(context->lowering.fact_table,
+                                        context->module,
+                                        &region->inductions[i]);
     if (!recurrence.trip_count_known) {
       context->lowering.report.source_block_execution_counts_exact = false;
       return iree_ok_status();
@@ -520,16 +539,17 @@ iree_status_t loom_low_lower_source_op_execution_count_plus_one(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     uint64_t* out_execution_count_plus_one) {
   uint64_t execution_count = 1;
-  for (const loom_op_t* parent = source_op ? source_op->parent_op : NULL;
-       parent; parent = parent->parent_op) {
+  for (const loom_op_t *child = source_op,
+                       *parent = source_op ? source_op->parent_op : NULL;
+       parent; child = parent, parent = parent->parent_op) {
     loom_loop_like_t loop =
         loom_loop_like_cast(context->module, (loom_op_t*)parent);
     if (!loom_loop_like_isa(loop)) {
       continue;
     }
     uint64_t trip_count = 0;
-    if (!loom_low_lower_report_exact_trip_count(context->lowering.fact_table,
-                                                loop, &trip_count) ||
+    if (!loom_low_lower_report_loop_region_execution_count(
+            context, loop, child->parent_block->parent_region, &trip_count) ||
         !loom_low_lower_report_multiply_u64(execution_count, trip_count,
                                             &execution_count) ||
         execution_count == UINT64_MAX) {
