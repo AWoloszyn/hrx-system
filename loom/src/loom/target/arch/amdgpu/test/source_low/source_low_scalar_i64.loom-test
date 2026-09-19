@@ -439,16 +439,31 @@ amdgpu.target<gfx11-generic> @target
 func.def target(@target) @scalar_i64_right_shift_select(%value: i64, %condition: i1) -> (i64, i64, i64, i64, i64) {
   %word_count = scalar.constant 32 : i64
   %sign_count = scalar.constant 63 : i64
-  // ERROR@+1: AMDGPU/023 {op_name="scalar.shrui", constraint_key="result.vgpr64"}
   %logical_word = scalar.shrui %value, %word_count : i64
-  // ERROR@+1: TARGET/002 {op_name="scalar.shrsi", field_name="lhs", actual_type="i64", expected_type="i32"}
   %signed_word = scalar.shrsi %value, %word_count : i64
-  // ERROR@+1: AMDGPU/023 {op_name="scalar.shrui", constraint_key="result.vgpr64"}
   %logical_sign = scalar.shrui %value, %sign_count : i64
-  // ERROR@+1: TARGET/002 {op_name="scalar.shrsi", field_name="lhs", actual_type="i64", expected_type="i32"}
   %signed_sign = scalar.shrsi %value, %sign_count : i64
   %selected = scf.select %condition, %logical_word, %signed_word : i64
   func.return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected : i64, i64, i64, i64, i64
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_i64_right_shift_select(%value: reg<amdgpu.sgpr x2>, %condition: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) asm {
+  %21 = s_mov_b32 32
+  %24 = s_mov_b32 63
+  %logical_word = s_lshr_b64 %value, %21
+  %signed_word = s_ashr_i64 %value, %21
+  %logical_sign = s_lshr_b64 %value, %24
+  %signed_sign = s_ashr_i64 %value, %24
+  %35 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %36 = slice %logical_word[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %37 = slice %signed_word[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %38 = s_cselect_b32 %36, %37, %35
+  %39 = slice %logical_word[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %40 = slice %signed_word[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %41 = s_cselect_b32 %39, %40, %35
+  %selected = concat(%38, %41) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  return %logical_word, %signed_word, %logical_sign, %signed_sign, %selected
 }
 
 // ====

@@ -23,3 +23,40 @@ func.def @wide_shift_varying(%values: vector<2xi64>, %counts: vector<2xi64>) -> 
   %shifted = scalar.shli %value, %count : i64
   func.return %shifted : i64
 }
+
+// ====
+
+func.def @wide_right_shift_uniform(%value: i64, %count: i64) -> (i64, i64) {
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ====
+
+func.def @wide_right_shift_uniform_count(%values: vector<2xi64>, %count: i64) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ====
+
+func.def @wide_right_shift_varying_count(%values: vector<2xi64>, %counts: vector<2xi64>) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %count = vector.extract %counts[1] : vector<2xi64> -> i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
+
+// ====
+
+func.def @wide_right_shift_constant(%values: vector<2xi64>) -> (i64, i64) {
+  %value = vector.extract %values[1] : vector<2xi64> -> i64
+  %count = scalar.constant 31 : i64
+  %logical = scalar.shrui %value, %count : i64
+  %signed = scalar.shrsi %value, %count : i64
+  func.return %logical, %signed : i64, i64
+}
