@@ -16,6 +16,7 @@
 #include "loom/ir/facts.h"
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
+#include "loom/ops/index/carrier.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/scf/ops.h"
@@ -25,6 +26,7 @@
 #include "loom/rewrite/remap.h"
 #include "loom/rewrite/rewriter.h"
 #include "loom/target/function_version.h"
+#include "loom/transforms/scf/scf_unroll_bounds.h"
 #include "loom/transforms/scf/scf_unroll_tile.h"
 #include "loom/util/fact_table.h"
 #include "loom/util/walk.h"
@@ -788,10 +790,58 @@ static iree_status_t loom_scf_unroll_clone_iteration(
 
 static iree_status_t loom_scf_unroll_clone_guarded_iteration(
     loom_scf_unroll_context_t* context, loom_ir_remap_t* remap,
-    const loom_block_t* body_block, loom_op_t* yield, loom_value_id_t condition,
-    uint32_t ordinal, const loom_value_id_t* carried_values,
-    uint16_t carried_count, const loom_type_t* result_types,
-    loom_location_id_t location, loom_value_id_t* next_carried_values) {
+    const loom_block_t* body_block, loom_op_t* yield, loom_op_t* source,
+    loom_value_id_t base, int64_t step, uint32_t ordinal,
+    const loom_value_id_t* carried_values, uint16_t carried_count,
+    const loom_type_t* result_types, loom_location_id_t location,
+    loom_value_id_t* next_carried_values) {
+  loom_builder_t* builder = &context->rewriter->builder;
+  const loom_value_id_t source_iv = body_block->arg_ids[0];
+  const loom_type_t type = loom_module_value_type(context->module, source_iv);
+  const loom_scalar_type_t scalar_type = loom_type_element_type(type);
+  const bool is_offset = scalar_type == LOOM_SCALAR_TYPE_OFFSET;
+  const int64_t advance = step * ordinal;
+  const loom_value_facts_t iv_facts =
+      loom_value_fact_table_lookup(context->fact_table, source_iv);
+  int64_t maximum_candidate = 0;
+  bool candidate_fits =
+      iree_checked_add_i64(iv_facts.range_hi, advance, &maximum_candidate);
+  if (candidate_fits) {
+    const loom_value_facts_t maximum_facts =
+        loom_value_facts_exact_i64(maximum_candidate);
+    candidate_fits =
+        is_offset
+            ? loom_index_value_facts_fit_unsigned_target_carrier(
+                  &context->fact_table->context, scalar_type, maximum_facts)
+            : loom_index_value_facts_fit_signed_target_carrier(
+                  &context->fact_table->context, scalar_type, maximum_facts);
+  }
+  loom_value_id_t iteration_index = LOOM_VALUE_ID_INVALID;
+  loom_op_t* comparison = NULL;
+  if (candidate_fits) {
+    IREE_RETURN_IF_ERROR(loom_scf_unroll_build_strided_iteration_index(
+        context, source_iv, base, type, step, ordinal, location,
+        &iteration_index));
+    IREE_RETURN_IF_ERROR(loom_index_cmp_build(
+        builder,
+        is_offset ? LOOM_INDEX_CMP_PREDICATE_ULT : LOOM_INDEX_CMP_PREDICATE_SLT,
+        iteration_index, loom_scf_for_upper_bound(source), location,
+        &comparison));
+  } else {
+    // The body is entered only with base < upper. Unsigned subtraction keeps
+    // that positive distance exact even when signed bounds straddle zero.
+    loom_op_t* remaining = NULL;
+    IREE_RETURN_IF_ERROR(
+        loom_index_sub_build(builder, loom_scf_for_upper_bound(source), base,
+                             type, location, &remaining));
+    loom_value_id_t offset = LOOM_VALUE_ID_INVALID;
+    IREE_RETURN_IF_ERROR(loom_scf_unroll_build_index_constant(
+        context, source, advance, type, &offset));
+    IREE_RETURN_IF_ERROR(loom_index_cmp_build(
+        builder, LOOM_INDEX_CMP_PREDICATE_ULT, offset,
+        loom_index_sub_result(remaining), location, &comparison));
+  }
+  const loom_value_id_t condition = loom_index_cmp_result(comparison);
   loom_op_t* if_op = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_if_build(
       &context->rewriter->builder,
@@ -800,6 +850,37 @@ static iree_status_t loom_scf_unroll_clone_guarded_iteration(
 
   loom_builder_ip_t saved_ip = loom_builder_enter_region(
       &context->rewriter->builder, if_op, loom_scf_if_then_region(if_op));
+  if (loom_scf_unroll_value_has_references(context->module, source_iv)) {
+    if (!candidate_fits) {
+      IREE_RETURN_IF_ERROR(loom_scf_unroll_build_strided_iteration_index(
+          context, source_iv, base, type, step, ordinal, location,
+          &iteration_index));
+      // This guard proves the materialized lane is inside the source domain.
+      const loom_predicate_t predicates[] = {
+          {.kind = LOOM_PREDICATE_GE,
+           .arg_count = 2,
+           .arg_tags = {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_VALUE,
+                        LOOM_PRED_ARG_NONE},
+           .args = {iteration_index, base, 0}},
+          {.kind = LOOM_PREDICATE_LT,
+           .arg_count = 2,
+           .arg_tags = {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_VALUE,
+                        LOOM_PRED_ARG_NONE},
+           .args = {iteration_index, loom_scf_for_upper_bound(source), 0}},
+      };
+      loom_op_t* assume = NULL;
+      IREE_RETURN_IF_ERROR(loom_index_assume_build(
+          builder, &iteration_index, 1, predicates, IREE_ARRAYSIZE(predicates),
+          &type, 1, location, &assume));
+      const loom_value_id_t bounded_index =
+          loom_index_assume_results(assume).values[0];
+      IREE_RETURN_IF_ERROR(loom_rewriter_move_value_name(
+          context->rewriter, iteration_index, bounded_index));
+      iteration_index = bounded_index;
+    }
+    IREE_RETURN_IF_ERROR(
+        loom_ir_remap_map_value(remap, source_iv, iteration_index));
+  }
   IREE_RETURN_IF_ERROR(loom_scf_unroll_clone_iteration(
       context, remap, body_block, yield, ordinal, carried_values, carried_count,
       next_carried_values));
@@ -956,31 +1037,9 @@ static iree_status_t loom_scf_unroll_build_scaled_step(
     uint32_t unroll_factor, loom_type_t index_type,
     loom_value_id_t* out_scaled_step) {
   *out_scaled_step = LOOM_VALUE_ID_INVALID;
-  int64_t scaled_step = 0;
-  if (!iree_checked_mul_i64(step, (int64_t)unroll_factor, &scaled_step)) {
-    return loom_scf_unroll_emit_policy_error(
-        context, op, IREE_SV("unroll_factor"), unroll_factor,
-        IREE_SV("step * unroll factor representable as i64"));
-  }
+  const int64_t scaled_step = step * (int64_t)unroll_factor;
   return loom_scf_unroll_build_index_constant(context, op, scaled_step,
                                               index_type, out_scaled_step);
-}
-
-static iree_status_t loom_scf_unroll_build_in_bounds_condition(
-    loom_scf_unroll_context_t* context, loom_op_t* op,
-    loom_value_id_t iteration_index, loom_type_t index_type,
-    loom_value_id_t* out_condition) {
-  *out_condition = LOOM_VALUE_ID_INVALID;
-  loom_op_t* cmp_op = NULL;
-  const loom_index_cmp_predicate_t predicate =
-      loom_type_element_type(index_type) == LOOM_SCALAR_TYPE_OFFSET
-          ? LOOM_INDEX_CMP_PREDICATE_ULT
-          : LOOM_INDEX_CMP_PREDICATE_SLT;
-  IREE_RETURN_IF_ERROR(loom_index_cmp_build(
-      &context->rewriter->builder, predicate, iteration_index,
-      loom_scf_for_upper_bound(op), op->location, &cmp_op));
-  *out_condition = loom_index_cmp_result(cmp_op);
-  return iree_ok_status();
 }
 
 static iree_status_t loom_scf_unroll_partial_unroll(
@@ -1054,31 +1113,20 @@ static iree_status_t loom_scf_unroll_partial_unroll(
     const bool guard_iteration =
         ordinal > 0 &&
         iree_any_bit_set(flags, LOOM_SCF_UNROLL_PARTIAL_UNROLL_FLAG_GUARD_TAIL);
-    loom_value_id_t iteration_index = LOOM_VALUE_ID_INVALID;
-    if (induction_variable_has_references || guard_iteration) {
-      IREE_RETURN_IF_ERROR(loom_scf_unroll_build_strided_iteration_index(
-          context, source_induction_variable, outer_index, index_type, step,
-          ordinal, op->location, &iteration_index));
-      if (iteration_index == LOOM_VALUE_ID_INVALID) {
-        return loom_scf_unroll_emit_policy_error(
-            context, op, IREE_SV("unroll_factor"), ordinal,
-            IREE_SV("iteration index representable as i64"));
-      }
-    }
-    if (induction_variable_has_references) {
-      IREE_RETURN_IF_ERROR(loom_ir_remap_map_value(
-          &iteration_remap, source_induction_variable, iteration_index));
-    }
-
     if (guard_iteration) {
-      loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
-      IREE_RETURN_IF_ERROR(loom_scf_unroll_build_in_bounds_condition(
-          context, op, iteration_index, index_type, &condition));
       IREE_RETURN_IF_ERROR(loom_scf_unroll_clone_guarded_iteration(
-          context, &iteration_remap, old_block, yield, condition, ordinal,
-          carried_values, op->result_count, result_types, op->location,
+          context, &iteration_remap, old_block, yield, op, outer_index, step,
+          ordinal, carried_values, op->result_count, result_types, op->location,
           next_carried_values));
     } else {
+      if (induction_variable_has_references) {
+        loom_value_id_t iteration_index = LOOM_VALUE_ID_INVALID;
+        IREE_RETURN_IF_ERROR(loom_scf_unroll_build_strided_iteration_index(
+            context, source_induction_variable, outer_index, index_type, step,
+            ordinal, op->location, &iteration_index));
+        IREE_RETURN_IF_ERROR(loom_ir_remap_map_value(
+            &iteration_remap, source_induction_variable, iteration_index));
+      }
       IREE_RETURN_IF_ERROR(loom_scf_unroll_clone_iteration(
           context, &iteration_remap, old_block, yield, ordinal, carried_values,
           op->result_count, next_carried_values));
@@ -1262,10 +1310,9 @@ static iree_status_t loom_scf_unroll_build_exact_scheduled_main_upper(
 
   const uint32_t main_iteration_count =
       (trip_count->count / unroll_factor) * unroll_factor;
-  // Preserve independent upper-bound facts when all ranged-lower iterations
-  // are tiled; lower + main_span carries weaker facts for the same loop.
-  if (main_iteration_count == trip_count->count &&
-      trip_count->lower_kind == LOOM_SCF_UNROLL_LOWER_BOUND_DYNAMIC) {
+  // With no remainder the original upper bound terminates exactly the full
+  // tiles. Materializing lower + main_span could overflow after the last IV.
+  if (main_iteration_count == trip_count->count) {
     *out_main_upper = loom_scf_for_upper_bound(op);
     return iree_ok_status();
   }
@@ -1295,6 +1342,13 @@ static iree_status_t loom_scf_unroll_build_exact_scheduled_main_upper(
       return iree_ok_status();
     }
     case LOOM_SCF_UNROLL_LOWER_BOUND_DYNAMIC:
+      if (!loom_index_value_facts_fit_signed_target_carrier(
+              &context->fact_table->context, loom_type_element_type(index_type),
+              loom_value_facts_exact_i64(main_span))) {
+        return loom_scf_unroll_build_dynamic_split(
+            &context->rewriter->builder, context->fact_table, op,
+            trip_count->step, unroll_factor, *out_scaled_step, out_main_upper);
+      }
       if (main_span == 0) {
         *out_main_upper = trip_count->lower_value;
         return iree_ok_status();
@@ -1311,69 +1365,6 @@ static iree_status_t loom_scf_unroll_build_exact_scheduled_main_upper(
       *out_main_upper = loom_index_add_result(upper_op);
       return iree_ok_status();
   }
-  return iree_ok_status();
-}
-
-static iree_status_t loom_scf_unroll_build_dynamic_scheduled_main_upper(
-    loom_scf_unroll_context_t* context, loom_op_t* op, int64_t step,
-    uint32_t unroll_factor, loom_type_t index_type,
-    loom_value_id_t* out_scaled_step, loom_value_id_t* out_main_upper) {
-  *out_scaled_step = LOOM_VALUE_ID_INVALID;
-  *out_main_upper = LOOM_VALUE_ID_INVALID;
-
-  IREE_RETURN_IF_ERROR(loom_scf_unroll_build_scaled_step(
-      context, op, step, unroll_factor, index_type, out_scaled_step));
-
-  loom_op_t* zero_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_index_constant_build(&context->rewriter->builder,
-                                                 loom_attr_i64(0), index_type,
-                                                 op->location, &zero_op));
-  const loom_value_id_t zero = loom_index_constant_result(zero_op);
-
-  loom_op_t* span_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_index_sub_build(
-      &context->rewriter->builder, loom_scf_for_upper_bound(op),
-      loom_scf_for_lower_bound(op), index_type, op->location, &span_op));
-  loom_op_t* non_negative_span_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_index_max_build(
-      &context->rewriter->builder, loom_index_sub_result(span_op), zero,
-      op->location, &non_negative_span_op));
-  loom_value_id_t trip_count = loom_index_max_result(non_negative_span_op);
-  if (step != 1) {
-    loom_value_id_t step_minus_one = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_scf_unroll_build_index_constant(
-        context, op, step - 1, index_type, &step_minus_one));
-    loom_op_t* padded_span_op = NULL;
-    IREE_RETURN_IF_ERROR(loom_index_add_build(
-        &context->rewriter->builder, trip_count, step_minus_one, index_type,
-        op->location, &padded_span_op));
-    loom_value_id_t step_value = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_scf_unroll_build_index_constant(
-        context, op, step, index_type, &step_value));
-    loom_op_t* trip_count_op = NULL;
-    IREE_RETURN_IF_ERROR(loom_index_div_build(
-        &context->rewriter->builder, loom_index_add_result(padded_span_op),
-        step_value, op->location, &trip_count_op));
-    trip_count = loom_index_div_result(trip_count_op);
-  }
-
-  loom_value_id_t factor_value = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_scf_unroll_build_index_constant(
-      context, op, unroll_factor, index_type, &factor_value));
-  loom_op_t* tile_count_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_index_div_build(&context->rewriter->builder,
-                                            trip_count, factor_value,
-                                            op->location, &tile_count_op));
-  loom_op_t* main_span_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_index_mul_build(
-      &context->rewriter->builder, loom_index_div_result(tile_count_op),
-      *out_scaled_step, op->location, &main_span_op));
-  loom_op_t* main_upper_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_index_add_build(
-      &context->rewriter->builder, loom_scf_for_lower_bound(op),
-      loom_index_mul_result(main_span_op), index_type, op->location,
-      &main_upper_op));
-  *out_main_upper = loom_index_add_result(main_upper_op);
   return iree_ok_status();
 }
 
@@ -1427,9 +1418,11 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
         context, op, trip_count, unroll_factor, index_type, &scaled_step,
         &main_upper));
   } else {
-    IREE_RETURN_IF_ERROR(loom_scf_unroll_build_dynamic_scheduled_main_upper(
-        context, op, step, unroll_factor, index_type, &scaled_step,
-        &main_upper));
+    IREE_RETURN_IF_ERROR(loom_scf_unroll_build_scaled_step(
+        context, op, step, unroll_factor, index_type, &scaled_step));
+    IREE_RETURN_IF_ERROR(loom_scf_unroll_build_dynamic_split(
+        &context->rewriter->builder, context->fact_table, op, step,
+        unroll_factor, scaled_step, &main_upper));
   }
 
   loom_op_t* main_loop = NULL;
@@ -1478,7 +1471,8 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
       context, op, old_block, &tile_trip_count,
       trip_count ? LOOM_VALUE_ID_INVALID : loom_scf_for_upper_bound(op),
       main_carried_values, schedule, scratch_arena, final_main_carried_values);
-  if (iree_status_is_ok(status)) {
+  if (iree_status_is_ok(status) &&
+      !loom_pass_has_error_diagnostics(context->pass)) {
     loom_op_t* main_yield = NULL;
     status = loom_scf_yield_build(&context->rewriter->builder,
                                   final_main_carried_values, op->result_count,
@@ -1486,6 +1480,9 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
   }
   loom_builder_restore(&context->rewriter->builder, saved_ip);
   IREE_RETURN_IF_ERROR(status);
+  if (loom_pass_has_error_diagnostics(context->pass)) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t* replacement_values = NULL;
   if (op->result_count > 0) {
@@ -1625,12 +1622,12 @@ static iree_status_t loom_scf_unroll_try_unroll(
   loom_scf_unroll_trip_count_t trip_count = {0};
   loom_scf_unroll_trip_count_state_t trip_count_state =
       loom_scf_unroll_resolve_trip_count(context, op, &trip_count);
+  int64_t step = trip_count.step;
   if (trip_count_state != LOOM_SCF_UNROLL_TRIP_COUNT_EXACT) {
     if (!has_unroll_factor) {
       return loom_scf_unroll_emit_trip_count_error(context, op,
                                                    trip_count_state);
     }
-    int64_t step = 0;
     if (!loom_scf_unroll_exact_i64(context->fact_table, loom_scf_for_step(op),
                                    &step)) {
       return loom_scf_unroll_emit_policy_error(
@@ -1642,6 +1639,30 @@ static iree_status_t loom_scf_unroll_try_unroll(
           context, op, IREE_SV("step"), step,
           IREE_SV("positive exact static step"));
     }
+  }
+  if (has_unroll_factor &&
+      (trip_count_state != LOOM_SCF_UNROLL_TRIP_COUNT_EXACT ||
+       unroll_factor_u32 != trip_count.count)) {
+    int64_t scaled_step = 0;
+    const loom_scalar_type_t scalar_type = loom_type_element_type(
+        loom_module_value_type(context->module, loom_scf_for_lower_bound(op)));
+    const bool product_fits =
+        iree_checked_mul_i64(step, unroll_factor, &scaled_step);
+    const loom_value_facts_t scaled_facts =
+        loom_value_facts_exact_i64(scaled_step);
+    const bool carrier_fits =
+        scalar_type == LOOM_SCALAR_TYPE_OFFSET
+            ? loom_index_value_facts_fit_unsigned_target_carrier(
+                  &context->fact_table->context, scalar_type, scaled_facts)
+            : loom_index_value_facts_fit_signed_target_carrier(
+                  &context->fact_table->context, scalar_type, scaled_facts);
+    if (!product_fits || !carrier_fits) {
+      return loom_scf_unroll_emit_policy_error(
+          context, op, IREE_SV("unroll_factor"), unroll_factor,
+          IREE_SV("step * unroll factor representable in the address carrier"));
+    }
+  }
+  if (trip_count_state != LOOM_SCF_UNROLL_TRIP_COUNT_EXACT) {
     if (uses_scheduled_tile) {
       IREE_RETURN_IF_ERROR(loom_scf_unroll_append_partial_report_detail(
           context, op, unroll_factor, unroll_schedule, step, trip_count_state,

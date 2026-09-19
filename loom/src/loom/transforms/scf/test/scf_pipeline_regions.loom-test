@@ -315,27 +315,27 @@ func.def @nested_unroll_composition(%input: view<8xf32>, %initial: f32, %enabled
   %17 = index.constant 1 : index
   %value$20 = view.load %input[%begin] : view<8xf32> -> f32
   %47 = index.constant 3 : index
-  %125 = index.constant 2 : index
+  %124 = index.constant 2 : index
   %value$55 = view.load %input[%17] : view<8xf32> -> f32
-  %value_1 = view.load %input[%125] : view<8xf32> -> f32
+  %value_1 = view.load %input[%124] : view<8xf32> -> f32
   scf.schedule.fence
-  %added$102 = scalar.addf %initial, %value$20 : f32
-  %selected$124 = scf.select %enabled, %added$102, %initial : f32
-  %added$104 = scalar.addf %selected$124, %value$20 : f32
-  %selected_1$123 = scf.select %enabled, %added$104, %selected$124 : f32
+  %added$101 = scalar.addf %initial, %value$20 : f32
+  %selected$123 = scf.select %enabled, %added$101, %initial : f32
+  %added$103 = scalar.addf %selected$123, %value$20 : f32
+  %selected_1$122 = scf.select %enabled, %added$103, %selected$123 : f32
   scf.schedule.fence
-  %added$106 = scalar.addf %selected_1$123, %value$55 : f32
-  %selected$122 = scf.select %enabled, %added$106, %selected_1$123 : f32
-  %added$108 = scalar.addf %selected$122, %value$55 : f32
-  %selected_1$121 = scf.select %enabled, %added$108, %selected$122 : f32
+  %added$105 = scalar.addf %selected_1$122, %value$55 : f32
+  %selected$121 = scf.select %enabled, %added$105, %selected_1$122 : f32
+  %added$107 = scalar.addf %selected$121, %value$55 : f32
+  %selected_1$120 = scf.select %enabled, %added$107, %selected$121 : f32
   %value$72 = view.load %input[%47] : view<8xf32> -> f32
-  %added$110 = scalar.addf %selected_1$121, %value_1 : f32
-  %selected$127 = scf.select %enabled, %added$110, %selected_1$121 : f32
-  %added$112 = scalar.addf %selected$127, %value_1 : f32
-  %selected_1$126 = scf.select %enabled, %added$112, %selected$127 : f32
-  %added$79 = scalar.addf %selected_1$126, %value$72 : f32
-  %selected$129 = scf.select %enabled, %added$79, %selected_1$126 : f32
-  %added$81 = scalar.addf %selected$129, %value$72 : f32
-  %selected_1$128 = scf.select %enabled, %added$81, %selected$129 : f32
-  func.return %selected_1$128 : f32
+  %added$109 = scalar.addf %selected_1$120, %value_1 : f32
+  %selected$126 = scf.select %enabled, %added$109, %selected_1$120 : f32
+  %added$111 = scalar.addf %selected$126, %value_1 : f32
+  %selected_1$125 = scf.select %enabled, %added$111, %selected$126 : f32
+  %added$79 = scalar.addf %selected_1$125, %value$72 : f32
+  %selected$128 = scf.select %enabled, %added$79, %selected_1$125 : f32
+  %added$81 = scalar.addf %selected$128, %value$72 : f32
+  %selected_1$127 = scf.select %enabled, %added$81, %selected$128 : f32
+  func.return %selected_1$127 : f32
 }

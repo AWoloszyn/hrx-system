@@ -92,6 +92,7 @@ loom_cc_library(
     srcs = ["scf_unroll.c"],
     hdrs = ["scf_unroll.h"],
     deps = [
+        ":scf_unroll_bounds",
         ":scf_unroll_tile",
         "//loom/src/loom/error:emitter",
         "//loom/src/loom/error:error_defs",
@@ -129,6 +130,22 @@ loom_cc_library(
         "//loom/src/loom/rewrite:materialize",
         "//loom/src/loom/rewrite:remap",
         "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "scf_unroll_bounds",
+    srcs = ["scf_unroll_bounds.c"],
+    hdrs = ["scf_unroll_bounds.h"],
+    deps = [
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ir:facts",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/ops/scf",
         "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base",
     ],
