@@ -159,10 +159,14 @@ loom_loop_recurrence_facts_t loom_value_fact_cfg_induction_facts(
     const loom_value_fact_cfg_induction_t* induction) {
   const loom_loop_recurrence_facts_t unknown = {
       .values = loom_value_facts_unknown(),
+      .body_values = loom_value_facts_unknown(),
+      .exit_value = loom_value_facts_unknown(),
   };
   if (induction->exits_at_header) {
     return (loom_loop_recurrence_facts_t){
         .values = loom_value_facts_unknown(),
+        .body_values = loom_value_facts_unknown(),
+        .exit_value = loom_value_facts_unknown(),
         .trip_count_known = true,
     };
   }
