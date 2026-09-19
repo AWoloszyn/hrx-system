@@ -73,8 +73,10 @@ Pointer Storage::advance(Pointer base, loom_value_id_t displacement,
 StorageAccess Storage::dereference(Pointer base, const cxx::Type* element_type,
                                    cxx::AST* owner) {
   auto element = types_.get(element_type, owner);
-  auto view_type = loom_type_shaped_1d(LOOM_TYPE_VIEW,
-                                       loom_type_element_type(element), 1, 0);
+  auto* vector = types_.vector(element_type);
+  auto view_type =
+      loom_type_shaped_1d(LOOM_TYPE_VIEW, loom_type_element_type(element),
+                          vector ? vector->elementCount() : 1, 0);
   loom_op_t* view;
   check(loom_buffer_view_build(&builder_, base.root, base.byte_offset,
                                view_type, locations_.get(owner), &view));

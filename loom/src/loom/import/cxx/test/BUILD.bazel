@@ -47,6 +47,7 @@ iree_execution_test_suite(
         "pointer_walk.cpp",
         "scheduled_sum.cpp",
         "short_circuit.cpp",
+        "vector_depth.cpp",
         "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
         "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
         "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",

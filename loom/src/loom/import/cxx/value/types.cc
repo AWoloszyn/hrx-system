@@ -16,6 +16,10 @@ const cxx::Type* Types::unqualified(const cxx::Type* type) {
   return unit_.typeTraits().remove_cv(type);
 }
 
+const cxx::VectorType* Types::vector(const cxx::Type* type) {
+  return cxx::type_cast<cxx::VectorType>(unqualified(type));
+}
+
 loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
   if (!input) {
     diagnostics_.reject(unit_, ast, "expression has no resolved C++ type");
@@ -50,6 +54,25 @@ loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
       return loom_type_scalar(LOOM_SCALAR_TYPE_F64);
     case cxx::TypeKind::kFloat16:
       return loom_type_scalar(LOOM_SCALAR_TYPE_F16);
+    case cxx::TypeKind::kVector: {
+      auto* source = vector(input);
+      auto element = get(source->elementType(), ast);
+      auto* layout = unit_.control()->memoryLayout();
+      auto bytes = layout->sizeOf(source);
+      auto element_bytes = layout->sizeOf(source->elementType());
+      if (loom_type_kind(element) != LOOM_TYPE_SCALAR ||
+          loom_type_element_type(element) == LOOM_SCALAR_TYPE_I1 ||
+          !source->elementCount() ||
+          source->elementCount() > LOOM_DIM_MAX_STATIC_SIZE || !bytes ||
+          !element_bytes || *bytes != source->elementCount() * *element_bytes) {
+        diagnostics_.reject(
+            unit_, ast,
+            "vectors require non-boolean scalar lanes without object padding");
+      }
+      return loom_type_shaped_1d(LOOM_TYPE_VECTOR,
+                                 loom_type_element_type(element),
+                                 source->elementCount(), 0);
+    }
     case cxx::TypeKind::kBoundedArray: {
       auto* array = cxx::type_cast<cxx::BoundedArrayType>(unqualified(input));
       auto element = get(array->elementType(), ast);
@@ -64,11 +87,12 @@ loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
     case cxx::TypeKind::kPointer: {
       auto* pointer = cxx::type_cast<cxx::PointerType>(unqualified(input));
       auto element = get(pointer->elementType(), ast);
-      if (loom_type_kind(element) != LOOM_TYPE_SCALAR ||
+      if ((loom_type_kind(element) != LOOM_TYPE_SCALAR &&
+           loom_type_kind(element) != LOOM_TYPE_VECTOR) ||
           loom_type_element_type(element) == LOOM_SCALAR_TYPE_I1) {
-        diagnostics_.reject(
-            unit_, ast,
-            "pointers require a supported non-boolean scalar element");
+        diagnostics_.reject(unit_, ast,
+                            "pointers require a supported non-boolean scalar "
+                            "or vector element");
       }
       return loom_type_buffer();
     }

@@ -49,6 +49,22 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "vector",
+    srcs = ["vector.cc"],
+    hdrs = ["vector.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":scalar",
+        ":types",
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/source:locations",
+        "//loom/src/loom/ops/vector",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
     name = "storage",
     srcs = ["storage.cc"],
     hdrs = ["storage.h"],
@@ -120,6 +136,22 @@ loom_cc_test(
 )
 
 loom_cc_test(
+    name = "vector_test",
+    srcs = ["vector_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":builder_test",
+        ":scalar",
+        ":vector",
+        "//loom/src/loom/import/cxx/source:locations",
+        "//loom/src/loom/ops/vector",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
     name = "storage_test",
     srcs = ["storage_test.cc"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
@@ -146,6 +178,8 @@ foreach(_target IN ITEMS
     loom_import_cxx_value_types_test
     loom_import_cxx_value_scalar.objects
     loom_import_cxx_value_scalar_test
+    loom_import_cxx_value_vector.objects
+    loom_import_cxx_value_vector_test
     loom_import_cxx_value_storage.objects
     loom_import_cxx_value_storage_test
     )

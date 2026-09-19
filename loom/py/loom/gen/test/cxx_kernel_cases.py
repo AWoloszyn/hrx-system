@@ -318,6 +318,25 @@ def pointer_walk(directory):
     return "kernel.decl @pointer_walk() launch(%input: buffer, %counts: buffer, %output: buffer, %length: i32, %start: i64, %displacement: i64)\n\n" + "\n".join(cases)
 
 
+def vector_depth(directory):
+    cases = []
+    for blocks in [1, 3, 7]:
+        rng = random.Random(843 + blocks)
+        previous = [rng.getrandbits(32) for _ in range(blocks * 16)]
+        depth = [rng.getrandbits(32) for _ in previous]
+        previous[:4] = [0, 0xFFFFFFFF, 0x12345678, 0xFFFF0000]
+        depth[:4] = [0xFFFFFFFF, 0, 0x87654321, 0xFFFF]
+        expected = [signed_bits((a & 0xFFFF) | (b & 0xFFFF0000), 32) for a, b in zip(previous, depth, strict=True)]
+        case = Case(directory, f"vector_depth_{blocks}", "i32", len(previous))
+        case.array("previous", [signed_bits(value, 32) for value in previous])
+        case.array("depth", [signed_bits(value, 32) for value in depth])
+        case.scalar("count", blocks, "i32")
+        case.launch("vector_depth", "%previous, %depth, %output, %count", f"tensor<{len(previous)}xi32>, tensor<{len(depth)}xi32>, tensor<{len(expected)}xi32>, i32")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @vector_depth() launch(%previous: buffer, %depth: buffer, %output: buffer, %count: i32)\n\n" + "\n".join(cases)
+
+
 def main():
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
@@ -333,6 +352,7 @@ def main():
         ("increment_u64", lambda directory: integer_increment(directory, 64, WIDE_INPUTS)),
         ("integer_functions", integer_functions),
         ("pointer_walk", pointer_walk),
+        ("vector_depth", vector_depth),
     ]:
         (directory / f"{name}.loom").write_text(generator(directory))
 

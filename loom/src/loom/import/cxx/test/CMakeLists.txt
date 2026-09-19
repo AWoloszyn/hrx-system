@@ -51,6 +51,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/pointer_walk.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/scheduled_sum.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/short_circuit.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_depth.cpp"
   SANITIZER_SUPPRESSIONS
     lsan
     rocm

@@ -16,7 +16,7 @@
 namespace loom::cxx_import {
 
 // One typed access, either a dynamic element of a retained array view or a
-// scalar projection of a pointer's buffer.
+// scalar or vector projection of a pointer's buffer.
 struct StorageAccess {
   // Typed view containing the memory access.
   loom_value_id_t view;
@@ -63,7 +63,7 @@ class Storage {
   StorageAccess subscript(Pointer base, loom_value_id_t index,
                           const cxx::Type* base_type,
                           const cxx::Type* subscript_type, cxx::AST* owner);
-  // Projects a scalar element at the pointer's current origin.
+  // Projects an object's scalar lane footprint at the pointer's current origin.
   StorageAccess dereference(Pointer base, const cxx::Type* element_type,
                             cxx::AST* owner);
   // Allocates a fixed workgroup scalar array using its source layout and any

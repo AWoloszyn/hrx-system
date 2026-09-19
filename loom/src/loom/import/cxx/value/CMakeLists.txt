@@ -61,6 +61,26 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    vector
+  HDRS
+    "vector.h"
+  SRCS
+    "vector.cc"
+  DEPS
+    ::scalar
+    ::types
+    iree::third_party::cxx_parser
+    loom::import::cxx::source
+    loom::import::cxx::source::error
+    loom::import::cxx::source::locations
+    loom::ops::vector
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     storage
   HDRS
     "storage.h"
@@ -148,6 +168,26 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
+    vector_test
+  SRCS
+    "vector_test.cc"
+  DEPS
+    ::builder_test
+    ::scalar
+    ::vector
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+    loom::import::cxx::source::locations
+    loom::ops::vector
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
     storage_test
   SRCS
     "storage_test.cc"
@@ -174,6 +214,8 @@ foreach(_target IN ITEMS
     loom_import_cxx_value_types_test
     loom_import_cxx_value_scalar.objects
     loom_import_cxx_value_scalar_test
+    loom_import_cxx_value_vector.objects
+    loom_import_cxx_value_vector_test
     loom_import_cxx_value_storage.objects
     loom_import_cxx_value_storage_test
     )

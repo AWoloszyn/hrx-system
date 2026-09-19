@@ -37,12 +37,14 @@
 #include "loom/import/cxx/value/scalar.h"
 #include "loom/import/cxx/value/storage.h"
 #include "loom/import/cxx/value/types.h"
+#include "loom/import/cxx/value/vector.h"
 #include "loom/ir/module.h"
 #include "loom/ops/func/ops.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/ops/scf/ops.h"
+#include "loom/ops/vector/ops.h"
 #include "loom/ops/view/ops.h"
 
 namespace loom::cxx_import {
@@ -57,6 +59,7 @@ class Translator {
         locations_(unit, diagnostics, module),
         types_(unit, diagnostics),
         scalars_(unit, diagnostics, types_, locations_, builder_),
+        vectors_(unit, diagnostics, types_, scalars_, locations_, builder_),
         storage_(unit, diagnostics, types_, scalars_, locations_, builder_),
         intrinsics_(unit, diagnostics),
         launches_(unit, diagnostics),
@@ -91,8 +94,26 @@ class Translator {
       }
       return value;
     }
-    return scalars_.convert(value.scalar(), input_ast->type, output_type,
-                            owner);
+    return numeric_convert(value.ssa(), input_ast->type, output_type, owner);
+  }
+
+  loom_value_id_t numeric_convert(loom_value_id_t value,
+                                  const cxx::Type* input_type,
+                                  const cxx::Type* output_type,
+                                  cxx::AST* owner) {
+    return types_.vector(input_type) || types_.vector(output_type)
+               ? vectors_.convert(value, input_type, output_type, owner)
+               : scalars_.convert(value, input_type, output_type, owner);
+  }
+
+  loom_value_id_t binary(cxx::TokenKind token, loom_value_id_t left,
+                         loom_value_id_t right, const cxx::Type* input_type,
+                         const cxx::Type* output_type, cxx::AST* owner) {
+    return types_.vector(input_type)
+               ? vectors_.binary(token, left, right, input_type, output_type,
+                                 owner)
+               : scalars_.binary(token, left, right, input_type, output_type,
+                                 owner);
   }
 
   loom_type_t value_type(loom_value_id_t value) {
@@ -120,7 +141,7 @@ class Translator {
       name(pointer.root, hint);
       name(pointer.byte_offset, hint + "_byte_offset");
     } else {
-      name(value.scalar(), hint);
+      name(value.ssa(), hint);
     }
     return value;
   }
@@ -173,7 +194,7 @@ class Translator {
       auto value =
           region_value(region, argument_index, pointer && !kernel ? 2 : 1);
       if (pointer && kernel) {
-        value = storage_.root(value.scalar(), defined.source);
+        value = storage_.root(value.ssa(), defined.source);
       }
       values_[parameter] = name(value, cxx::to_string(parameter->name()));
     }
@@ -252,7 +273,7 @@ class Translator {
              "conditional returns require at most one fallthrough arm; "
              "shared continuations need a scoped exit projection");
       }
-      auto condition = expression(branch->condition).scalar();
+      auto condition = expression(branch->condition).ssa();
       auto outer_values = values_;
       std::vector<loom_type_t> result_types;
       if (current_function_.return_type->kind() != cxx::TypeKind::kVoid) {
@@ -307,11 +328,14 @@ class Translator {
       auto index = expression(subscript->indexExpression);
       auto* base_type = subscript->baseExpression->type;
       auto* index_type = subscript->indexExpression->type;
+      if (types_.vector(base_type) || types_.vector(index_type)) {
+        fail(ast, "vector lane subscripts require a value projection");
+      }
       if (!base.is_pointer()) {
         std::swap(base, index);
         std::swap(base_type, index_type);
       }
-      return storage_.subscript(base.pointer(), index.scalar(), base_type,
+      return storage_.subscript(base.pointer(), index.ssa(), base_type,
                                 index_type, ast);
     }
     if (auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast)) {
@@ -336,11 +360,14 @@ class Translator {
       auto index = expression(subscript->indexExpression);
       auto* base_type = subscript->baseExpression->type;
       auto* index_type = subscript->indexExpression->type;
+      if (types_.vector(base_type) || types_.vector(index_type)) {
+        fail(ast, "vector lanes do not have an independent storage address");
+      }
       if (!base.is_pointer()) {
         std::swap(base, index);
         std::swap(base_type, index_type);
       }
-      return storage_.advance(base.pointer(), index.scalar(), base_type,
+      return storage_.advance(base.pointer(), index.ssa(), base_type,
                               index_type, cxx::TokenKind::T_PLUS, ast);
     }
     if (auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast)) {
@@ -355,10 +382,12 @@ class Translator {
     auto access = address(ast);
     loom_op_t* op;
     int64_t selector = access.index ? INT64_MIN : 0;
-    check(loom_view_load_build(
-        &builder_, 0, 0, access.view, access.index ? &*access.index : nullptr,
-        access.index ? 1 : 0, &selector, 1, 0, 0, types_.get(ast->type, ast),
-        locations_.get(ast), &op));
+    auto build = types_.vector(ast->type) ? loom_vector_load_build
+                                          : loom_view_load_build;
+    check(build(&builder_, 0, 0, access.view,
+                access.index ? &*access.index : nullptr, access.index ? 1 : 0,
+                &selector, 1, 0, 0, types_.get(ast->type, ast),
+                locations_.get(ast), &op));
     return result(op);
   }
 
@@ -395,7 +424,7 @@ class Translator {
               unit_.control()->memoryLayout()->sizeOf(cast->type)) {
         fail(ast, "bit_cast requires equal-width supported scalar types");
       }
-      auto value = expression(cast->expression).scalar();
+      auto value = expression(cast->expression).ssa();
       loom_op_t* op;
       check(loom_scalar_bitcast_build(&builder_, value, input, output, source,
                                       &op));
@@ -436,9 +465,12 @@ class Translator {
       return result(op);
     }
     if (auto* select = cxx::ast_cast<cxx::ConditionalExpressionAST>(ast)) {
+      if (types_.vector(select->condition->type)) {
+        fail(ast, "vector conditions require lane-wise selection");
+      }
       std::vector<loom_type_t> outputs;
       types_.append(select->type, ast, outputs);
-      auto condition = expression(select->condition).scalar();
+      auto condition = expression(select->condition).ssa();
       loom_op_t* op;
       check(loom_scf_if_build(&builder_, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,
                               condition, outputs.data(), outputs.size(),
@@ -532,11 +564,14 @@ class Translator {
       auto left = expression(binary->leftExpression);
       if (binary->op == cxx::TokenKind::T_AMP_AMP ||
           binary->op == cxx::TokenKind::T_BAR_BAR) {
+        if (types_.vector(ast->type)) {
+          fail(ast, "vector logical operators require lane-wise evaluation");
+        }
         // The semantic AST supplies both contextual boolean conversions.
         // The skipped arm forwards the left value without evaluating the
         // right operand, including its memory accesses and helper calls.
         auto output = types_.get(ast->type, ast);
-        auto left_scalar = left.scalar();
+        auto left_scalar = left.ssa();
         loom_op_t* op;
         check(loom_scf_if_build(
             &builder_, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION, left_scalar,
@@ -548,7 +583,7 @@ class Translator {
                                    ? loom_scf_if_else_region(op)
                                    : loom_scf_if_then_region(op);
         auto saved = loom_builder_enter_region(&builder_, op, right_region);
-        auto right = expression(binary->rightExpression).scalar();
+        auto right = expression(binary->rightExpression).ssa();
         loom_op_t* yield;
         check(loom_scf_yield_build(&builder_, &right, 1, source, &yield));
         loom_builder_restore(&builder_, saved);
@@ -561,13 +596,13 @@ class Translator {
       if (left.is_pointer() || right.is_pointer()) {
         if (left.is_pointer() && !right.is_pointer()) {
           return storage_.advance(
-              left.pointer(), right.scalar(), binary->leftExpression->type,
+              left.pointer(), right.ssa(), binary->leftExpression->type,
               binary->rightExpression->type, binary->op, ast);
         }
         if (right.is_pointer() && !left.is_pointer() &&
             binary->op == cxx::TokenKind::T_PLUS) {
           return storage_.advance(
-              right.pointer(), left.scalar(), binary->rightExpression->type,
+              right.pointer(), left.ssa(), binary->rightExpression->type,
               binary->leftExpression->type, binary->op, ast);
         }
         fail(ast,
@@ -579,11 +614,11 @@ class Translator {
       // width; normalize that count without changing any defined execution.
       if (binary->op == cxx::TokenKind::T_LESS_LESS ||
           binary->op == cxx::TokenKind::T_GREATER_GREATER) {
-        right = scalars_.convert(right.scalar(), binary->rightExpression->type,
-                                 binary->leftExpression->type, ast);
+        right = numeric_convert(right.ssa(), binary->rightExpression->type,
+                                binary->leftExpression->type, ast);
       }
-      return scalars_.binary(binary->op, left.scalar(), right.scalar(),
-                             binary->leftExpression->type, ast->type, ast);
+      return this->binary(binary->op, left.ssa(), right.ssa(),
+                          binary->leftExpression->type, ast->type, ast);
     }
     if (auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast)) {
       if (unary->symbol) {
@@ -602,12 +637,16 @@ class Translator {
         fail(ast, "unsupported unary value expression");
       }
       auto operand = expression(unary->expression);
+      if (types_.vector(unary->expression->type)) {
+        return vectors_.unary(unary->op, operand.ssa(), unary->expression->type,
+                              ast->type, ast);
+      }
       if (unary->op == cxx::TokenKind::T_PLUS) {
         return operand;
       }
       loom_op_t* op;
       auto output = types_.get(ast->type, ast);
-      auto value = operand.scalar();
+      auto value = operand.ssa();
       if (unary->op == cxx::TokenKind::T_MINUS) {
         if (types_.is_float(ast->type)) {
           check(
@@ -748,7 +787,7 @@ class Translator {
       if (branch->initializer || branch->constexprLoc) {
         fail(ast, "if initializer/constexpr is outside this slice");
       }
-      auto condition = expression(branch->condition).scalar();
+      auto condition = expression(branch->condition).ssa();
       auto saved_values = values_;
       auto written = live_mutations(ast);
       std::vector<loom_type_t> types;
@@ -856,7 +895,7 @@ class Translator {
     if (test == LoopTest::AfterBody) {
       statement(body);
     }
-    auto condition = expression(condition_expression).scalar();
+    auto condition = expression(condition_expression).ssa();
     auto forwarded = current(written);
     loom_op_t* terminator;
     check(loom_scf_condition_build(&builder_, condition, forwarded.data(),
@@ -893,8 +932,8 @@ class Translator {
                     const LoopSchedule& schedule) {
     auto source = locations_.get(loop);
     auto* induction = counted.induction;
-    auto lower = unsigned_offset(values_.at(induction).scalar(), source);
-    auto upper = unsigned_offset(expression(counted.upper).scalar(), source);
+    auto lower = unsigned_offset(values_.at(induction).ssa(), source);
+    auto upper = unsigned_offset(expression(counted.upper).ssa(), source);
     auto step = scalars_.integer(counted.step, LOOM_SCALAR_TYPE_OFFSET, source);
     auto written = live_mutations(loop);
     std::erase(written, induction);
@@ -995,7 +1034,7 @@ class Translator {
         if (!bound || *bound <= 0 || *bound > INT32_MAX) {
           fail(ast, "assume upper bound must fit positive signed i32");
         }
-        auto value = expression(binding).scalar();
+        auto value = expression(binding).ssa();
         auto value_type = types_.get(binding->type, ast);
         loom_predicate_t predicate = {
             .kind = LOOM_PREDICATE_RANGE,
@@ -1064,7 +1103,7 @@ class Translator {
       auto value = expression(assignment->rightExpression);
       if (old.is_pointer()) {
         auto updated = storage_.advance(
-            old.pointer(), value.scalar(), destination->type,
+            old.pointer(), value.ssa(), destination->type,
             assignment->rightExpression->type,
             cxx::get_underlying_binary_op(assignment->op), ast);
         values_[destination->symbol] =
@@ -1072,13 +1111,12 @@ class Translator {
         return;
       }
       auto* promoted = assignment->leftExpression->type;
-      old = scalars_.convert(old.scalar(), destination->type, promoted, ast);
-      value = scalars_.convert(
-          value.scalar(), assignment->rightExpression->type, promoted, ast);
-      auto updated = scalars_.binary(
-          cxx::get_underlying_binary_op(assignment->op), old.scalar(),
-          value.scalar(), promoted, promoted, ast);
-      updated = scalars_.convert(updated, promoted, destination->type, ast);
+      old = numeric_convert(old.ssa(), destination->type, promoted, ast);
+      value = numeric_convert(value.ssa(), assignment->rightExpression->type,
+                              promoted, ast);
+      auto updated = binary(cxx::get_underlying_binary_op(assignment->op),
+                            old.ssa(), value.ssa(), promoted, promoted, ast);
+      updated = numeric_convert(updated, promoted, destination->type, ast);
       values_[destination->symbol] =
           name(updated, cxx::to_string(destination->symbol->name()));
       return;
@@ -1102,10 +1140,12 @@ class Translator {
       auto access = address(assignment->leftExpression);
       int64_t selector = access.index ? INT64_MIN : 0;
       loom_op_t* op;
-      check(loom_view_store_build(&builder_, 0, 0, value.scalar(), access.view,
-                                  access.index ? &*access.index : nullptr,
-                                  access.index ? 1 : 0, &selector, 1, 0, 0,
-                                  locations_.get(ast), &op));
+      auto build = types_.vector(assignment->leftExpression->type)
+                       ? loom_vector_store_build
+                       : loom_view_store_build;
+      check(build(&builder_, 0, 0, value.ssa(), access.view,
+                  access.index ? &*access.index : nullptr, access.index ? 1 : 0,
+                  &selector, 1, 0, 0, locations_.get(ast), &op));
       return;
     }
     cxx::ExpressionAST* destination = nullptr;
@@ -1145,7 +1185,7 @@ class Translator {
           types_.unqualified(id->type)->kind() == cxx::TypeKind::kBool) {
         fail(ast, "increment requires an integer local");
       }
-      auto old = expression(id).scalar();
+      auto old = expression(id).ssa();
       // Builtin ++/-- performs promoted arithmetic before converting back to
       // the lvalue type, just like compound assignment with an integer one.
       auto* promoted = unit_.typeTraits().promoted_integer_type(id->type);
@@ -1177,6 +1217,8 @@ class Translator {
   Types types_;
   // Numeric builders consume evaluated operands without AST callbacks.
   Scalars scalars_;
+  // Explicit vector builders retain lane widths and full-width source masks.
+  Vectors vectors_;
   // Memory representations retain declared array extents and access shape.
   Storage storage_;
   // Retained generated operation bindings for reached source declarations.

@@ -24,12 +24,13 @@ struct Pointer {
 };
 
 // Source values flatten to ordinary High operands at calls and region edges.
-// Scalars have one component; pointers and array designators have two. The
-// source type admits operations before a consumer extracts either form.
+// Scalars and vectors have one component; pointers and array designators have
+// two. The source type admits operations before a consumer extracts either
+// form.
 class Value {
  public:
   Value() = default;
-  Value(loom_value_id_t scalar) : components_{scalar, LOOM_VALUE_ID_INVALID} {}
+  Value(loom_value_id_t value) : components_{value, LOOM_VALUE_ID_INVALID} {}
   Value(Pointer pointer) : components_{pointer.root, pointer.byte_offset} {}
   explicit Value(std::span<const loom_value_id_t> components)
       : components_{components[0], components.size() == 2
@@ -37,7 +38,7 @@ class Value {
                                        : LOOM_VALUE_ID_INVALID} {}
 
   bool is_pointer() const { return components_[1] != LOOM_VALUE_ID_INVALID; }
-  loom_value_id_t scalar() const {
+  loom_value_id_t ssa() const {
     IREE_ASSERT(!is_pointer());
     return components_[0];
   }
@@ -54,7 +55,7 @@ class Value {
   }
 
  private:
-  // Inline scalar or buffer/offset pair; an invalid offset denotes a scalar.
+  // Inline SSA value or buffer/offset pair; an invalid offset denotes a value.
   loom_value_id_t components_[2] = {LOOM_VALUE_ID_INVALID,
                                     LOOM_VALUE_ID_INVALID};
 };

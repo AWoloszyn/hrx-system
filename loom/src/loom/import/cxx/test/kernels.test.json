@@ -2,6 +2,80 @@
   "version": 1,
   "cases": [
     {
+      "name": "vector_depth preserves packed color and depth across vector pointers and helper calls",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--isystem={srcdir}/../include",
+              "--root=vector_depth",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/vector_depth.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_depth.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":3",
+                "\"sample_count\":3",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check complete vector footprints with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/vector_depth.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":3",
+                "\"sample_count\":3",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "early_returns preserve guarded helpers, live values and per-lane kernel exits",
       "steps": [
         {
