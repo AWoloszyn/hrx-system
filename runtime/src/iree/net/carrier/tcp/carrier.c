@@ -28,6 +28,8 @@ typedef enum iree_net_tcp_send_slot_state_e {
   IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING = 5,
   IREE_NET_TCP_SEND_SLOT_STATE_LOCAL_COMPLETION = 6,
   IREE_NET_TCP_SEND_SLOT_STATE_DETACHED = 7,
+  // All logical bytes accepted; native source-reuse notification outstanding.
+  IREE_NET_TCP_SEND_SLOT_STATE_RETIRING = 8,
 } iree_net_tcp_send_slot_state_t;
 
 // One bounded logical send.
@@ -89,7 +91,7 @@ typedef enum iree_net_tcp_receive_lease_state_e {
 typedef enum iree_net_tcp_carrier_flag_bits_e {
   IREE_NET_TCP_CARRIER_FLAG_NONE = 0u,
 
-  // One send lane is submitted or owned by its completion callback.
+  // One ordered write lane is submitted or owned by its progress callback.
   IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE = 1u << 0,
   IREE_NET_TCP_CARRIER_FLAG_SEND_SHUTDOWN_INITIATED = 1u << 1,
   IREE_NET_TCP_CARRIER_FLAG_SOCKET_WRITE_SHUTDOWN_ISSUED = 1u << 2,
@@ -506,6 +508,8 @@ static void iree_net_tcp_process_send_result(
     iree_status_t status, iree_host_size_t bytes_sent,
     iree_async_completion_flags_t flags);
 
+static void iree_net_tcp_advance_send_dispatch(iree_net_tcp_carrier_t* carrier);
+
 static void iree_net_tcp_local_send_completed(
     void* user_data, iree_async_operation_t* operation, iree_status_t status,
     iree_async_completion_flags_t flags) {
@@ -590,10 +594,32 @@ static void iree_net_tcp_socket_send_completed(
   iree_net_tcp_send_slot_t* slot = (iree_net_tcp_send_slot_t*)operation;
   iree_slim_mutex_lock(&carrier->mutex);
   IREE_ASSERT(slot->state == IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED ||
-                  slot->state == IREE_NET_TCP_SEND_SLOT_STATE_CANCELLING,
+                  slot->state == IREE_NET_TCP_SEND_SLOT_STATE_CANCELLING ||
+                  slot->state == IREE_NET_TCP_SEND_SLOT_STATE_RETIRING,
               "TCP send completed from state %d", (int)slot->state);
-  slot->state = IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING;
   const iree_host_size_t bytes_sent = slot->operation.bytes_sent;
+  if (iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE)) {
+    IREE_ASSERT(iree_status_is_ok(status));
+    // A partial attempt keeps the write lane until its operation can be reused.
+    // A complete logical frame relinquishes only the lane, not its source
+    // storage or user completion. No later frame can interleave its bytes.
+    const bool frame_accepted =
+        bytes_sent == slot->submitted_length &&
+        bytes_sent == slot->total_length - slot->bytes_transferred;
+    if (frame_accepted) {
+      slot->bytes_transferred = slot->total_length;
+      slot->state = IREE_NET_TCP_SEND_SLOT_STATE_RETIRING;
+    }
+    iree_slim_mutex_unlock(&carrier->mutex);
+    iree_status_free(status);
+    if (frame_accepted) {
+      iree_net_tcp_advance_send_dispatch(carrier);
+    }
+    return;
+  }
+  if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_RETIRING) {
+    slot->state = IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING;
+  }
   iree_slim_mutex_unlock(&carrier->mutex);
   iree_net_tcp_process_send_result(carrier, slot, status, bytes_sent, flags);
 }
@@ -617,7 +643,7 @@ static iree_status_t iree_net_tcp_submit_send_slot_locked(
   for (iree_host_size_t i = 0; i < submitted_span_count; ++i) {
     slot->submitted_length += slot->operation.buffers.values[i].length;
   }
-  slot->operation.send_flags = IREE_ASYNC_SOCKET_SEND_FLAG_NONE;
+  slot->operation.send_flags = IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS;
   return iree_async_proactor_submit_one(carrier->proactor,
                                         &slot->operation.base);
 }
@@ -643,6 +669,7 @@ static void iree_net_tcp_process_send_result(
     iree_net_tcp_carrier_t* carrier, iree_net_tcp_send_slot_t* slot,
     iree_status_t status, iree_host_size_t bytes_sent,
     iree_async_completion_flags_t flags) {
+  const bool is_retiring = slot->state == IREE_NET_TCP_SEND_SLOT_STATE_RETIRING;
   if (iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_CANCELLED) &&
       iree_status_is_ok(status)) {
     status = iree_make_status(IREE_STATUS_CANCELLED,
@@ -651,7 +678,7 @@ static void iree_net_tcp_process_send_result(
 
   const iree_host_size_t remaining_length =
       slot->total_length - slot->bytes_transferred;
-  if (iree_status_is_ok(status)) {
+  if (!is_retiring && iree_status_is_ok(status)) {
     if (bytes_sent == 0) {
       status = iree_make_status(IREE_STATUS_UNAVAILABLE,
                                 "TCP socket send made no forward progress");
@@ -722,13 +749,29 @@ static void iree_net_tcp_process_send_result(
   completion_callback.fn(completion_callback.user_data, status,
                          total_bytes_transferred);
 
+  if (!is_retiring) {
+    iree_net_tcp_advance_send_dispatch(carrier);
+  } else {
+    iree_slim_mutex_lock(&carrier->mutex);
+    const bool issue_write_shutdown =
+        iree_net_tcp_claim_write_shutdown_locked(carrier);
+    iree_slim_mutex_unlock(&carrier->mutex);
+    if (issue_write_shutdown) {
+      iree_net_tcp_issue_deferred_write_shutdown(carrier);
+    }
+  }
+  iree_net_tcp_carrier_retire_pending_operation(carrier);
+}
+
+// Hands the single ordered write lane to its next frame. Prior full-frame
+// writes may still own their independent slots pending native retirement.
+static void iree_net_tcp_advance_send_dispatch(
+    iree_net_tcp_carrier_t* carrier) {
   iree_net_tcp_send_slot_t* next_slot = NULL;
   iree_net_tcp_send_slot_t* detached_sends = NULL;
   iree_status_t next_submit_status = iree_ok_status();
-  bool issue_write_shutdown = false;
   iree_slim_mutex_lock(&carrier->mutex);
-  if (send_succeeded &&
-      iree_net_carrier_state(&carrier->base) == IREE_NET_CARRIER_STATE_ACTIVE &&
+  if (iree_net_carrier_state(&carrier->base) == IREE_NET_CARRIER_STATE_ACTIVE &&
       !iree_net_carrier_has_terminal_error(&carrier->base)) {
     next_slot = iree_net_tcp_pop_send_locked(carrier);
     if (next_slot) {
@@ -745,7 +788,8 @@ static void iree_net_tcp_process_send_result(
   if (!next_slot) {
     carrier->flags &= ~IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE;
   }
-  issue_write_shutdown = iree_net_tcp_claim_write_shutdown_locked(carrier);
+  const bool issue_write_shutdown =
+      iree_net_tcp_claim_write_shutdown_locked(carrier);
   iree_slim_mutex_unlock(&carrier->mutex);
 
   if (detached_sends) {
@@ -764,7 +808,6 @@ static void iree_net_tcp_process_send_result(
   if (issue_write_shutdown) {
     iree_net_tcp_issue_deferred_write_shutdown(carrier);
   }
-  iree_net_tcp_carrier_retire_pending_operation(carrier);
 }
 
 static void iree_net_tcp_socket_receive_completed(

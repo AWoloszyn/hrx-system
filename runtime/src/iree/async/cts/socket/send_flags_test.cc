@@ -4,12 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// CTS tests for socket send flags (zero-copy, MORE).
+// CTS tests for socket send flags and zero-copy source ownership.
 //
-// Tests zero-copy send (SEND_ZC) and MSG_MORE flag behavior. These tests
-// verify the send flags work correctly across all proactor backends that
-// support them.
+// Exercises corking, optional write progress, and final source retirement
+// across proactor backends, including copied completion paths.
 
+#include <array>
 #include <cstring>
 #include <vector>
 
@@ -21,7 +21,108 @@
 
 namespace iree::async::cts {
 
-class SendFlagsTest : public SocketTestBase<> {};
+class SendFlagsTest : public SocketTestBase<> {
+ protected:
+  void TestReportedProgress(iree_async_socket_options_t socket_options,
+                            bool cancel_at_progress = false) {
+    iree_async_socket_t* client = nullptr;
+    iree_async_socket_t* server = nullptr;
+    iree_async_socket_t* listener = nullptr;
+    EstablishConnectionWithOptions(
+        &client, &server, &listener,
+        socket_options | IREE_ASYNC_SOCKET_OPTION_NO_DELAY,
+        IREE_ASYNC_SOCKET_OPTION_NONE);
+
+    struct SendState {
+      // Poll owner used to issue the dependent write or cancellation.
+      iree_async_proactor_t* proactor;
+      // Next write, submitted exactly once after this write accepts its byte.
+      iree_async_operation_t* next = nullptr;
+      // Source byte, deliberately overwritten only at final retirement.
+      uint8_t* source;
+      // Intermediate callback count, bounded by one per native send.
+      int progress_count = 0;
+      // Terminal callback count; only this returns source ownership.
+      int final_count = 0;
+      // Whether to exercise cancellation after bytes have been accepted.
+      bool cancel_at_progress = false;
+
+      static void Complete(void* user_data, iree_async_operation_t* operation,
+                           iree_status_t status,
+                           iree_async_completion_flags_t flags) {
+        auto* self = static_cast<SendState*>(user_data);
+        IREE_CHECK_OK(status);
+        auto* send =
+            reinterpret_cast<iree_async_socket_send_operation_t*>(operation);
+        EXPECT_EQ(send->bytes_sent, 1u);
+        EXPECT_EQ(self->final_count, 0);
+        if (iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE)) {
+          EXPECT_EQ(++self->progress_count, 1);
+          EXPECT_EQ(flags & IREE_ASYNC_COMPLETION_FLAG_ZERO_COPY_ACHIEVED, 0u);
+          if (self->cancel_at_progress) {
+            EXPECT_THAT(
+                Status(iree_async_proactor_cancel(self->proactor, operation)),
+                ::testing::AnyOf(
+                    ::iree::testing::status::IsOk(),
+                    ::iree::testing::status::StatusIs(StatusCode::kNotFound)));
+          }
+        } else {
+          ++self->final_count;
+          *self->source = 0xFF;
+        }
+        if (self->next) {
+          auto* next = self->next;
+          self->next = nullptr;
+          IREE_CHECK_OK(iree_async_proactor_submit_one(self->proactor, next));
+        }
+      }
+    };
+
+    std::array<uint8_t, 2> source = {0x12, 0x34};
+    // The second descriptor remains live until its deferred submission.
+    iree_async_span_t spans[2] = {iree_async_span_from_ptr(&source[0], 1),
+                                  iree_async_span_from_ptr(&source[1], 1)};
+    iree_async_socket_send_operation_t sends[2];
+    SendState states[2] = {
+        {proactor_, &sends[1].base, &source[0], 0, 0, cancel_at_progress},
+        {proactor_, nullptr, &source[1], 0, 0, cancel_at_progress}};
+    for (int i = 0; i < 2; ++i) {
+      InitSendOperation(&sends[i], client, &spans[i], 1,
+                        IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS,
+                        SendState::Complete, &states[i]);
+    }
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &sends[0].base));
+
+    uint8_t received[2] = {};
+    EXPECT_EQ(RecvAll(server, received, sizeof(received)), sizeof(received));
+    PollUntilCondition([&] {
+      return states[0].final_count == 1 && states[1].final_count == 1;
+    });
+    EXPECT_EQ(received[0], 0x12);
+    EXPECT_EQ(received[1], 0x34);
+    EXPECT_EQ(source[0], 0xFF);
+    EXPECT_EQ(source[1], 0xFF);
+    if (!(socket_options & IREE_ASYNC_SOCKET_OPTION_ZERO_COPY)) {
+      EXPECT_EQ(states[0].progress_count + states[1].progress_count, 0);
+    }
+    iree_async_socket_release(server);
+    iree_async_socket_release(client);
+    iree_async_socket_release(listener);
+  }
+};
+
+TEST_P(SendFlagsTest, ReportProgressWithCopiedWrites) {
+  TestReportedProgress(IREE_ASYNC_SOCKET_OPTION_NONE);
+}
+
+TEST_P(SendFlagsTest, ReportProgressOrdersWritesBeforeRetirement) {
+  TestReportedProgress(IREE_ASYNC_SOCKET_OPTION_ZERO_COPY);
+}
+
+TEST_P(SendFlagsTest, CancelAfterReportedProgressStillRetiresSource) {
+  TestReportedProgress(IREE_ASYNC_SOCKET_OPTION_ZERO_COPY,
+                       /*cancel_at_progress=*/true);
+}
 
 //===----------------------------------------------------------------------===//
 // Zero-copy send tests

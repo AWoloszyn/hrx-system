@@ -307,6 +307,7 @@ TEST(OperationCompletionTest, RetainsDuplicateSpanRegionsIndependently) {
       iree_async_span_make(&region.base, 1, 1),
   };
   send_op.buffers = iree_async_span_list_make(spans, IREE_ARRAYSIZE(spans));
+  send_op.send_flags = IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS;
 
   iree_async_operation_acquire_resources(&send_op.base);
   EXPECT_EQ(iree_atomic_ref_count_load(&region.base.ref_count), 3);
@@ -315,11 +316,21 @@ TEST(OperationCompletionTest, RetainsDuplicateSpanRegionsIndependently) {
   EXPECT_EQ(send_op.retained_buffer_regions[1], nullptr);
   EXPECT_EQ(send_op.retained_buffer_regions[2], &region.base);
   iree_async_region_release(&region.base);
+
+  // Write progress does not release any source reference, even though this is
+  // not a multishot operation. Only the final callback returns ownership.
+  EXPECT_EQ(iree_async_operation_complete(&send_op.base, iree_ok_status(),
+                                          IREE_ASYNC_COMPLETION_FLAG_MORE),
+            1u);
+  EXPECT_FALSE(region.destroyed);
+  EXPECT_EQ(send_op.base.acquired_span_count, 3);
+  EXPECT_EQ(iree_atomic_ref_count_load(&region.base.ref_count), 2);
   EXPECT_EQ(iree_async_operation_complete(&send_op.base, iree_ok_status(),
                                           IREE_ASYNC_COMPLETION_FLAG_NONE),
             1u);
   EXPECT_TRUE(region.destroyed);
   EXPECT_EQ(send_op.base.acquired_span_count, 0);
+  EXPECT_EQ(record.call_count, 2u);
 }
 
 }  // namespace

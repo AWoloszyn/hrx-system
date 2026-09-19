@@ -1321,7 +1321,7 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     iree_async_io_uring_socket_send_completion_t completion =
         iree_async_io_uring_socket_process_send_cqe(
             cqe, (iree_async_socket_send_operation_t*)operation);
-    if (!completion.is_terminal) {
+    if (!completion.dispatch) {
       return 0;
     }
     status = completion.status;
@@ -1330,7 +1330,7 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     iree_async_io_uring_socket_send_completion_t completion =
         iree_async_io_uring_socket_process_sendto_cqe(
             cqe, (iree_async_socket_sendto_operation_t*)operation);
-    if (!completion.is_terminal) {
+    if (!completion.dispatch) {
       return 0;
     }
     status = completion.status;

@@ -19,21 +19,22 @@ extern "C" {
 
 // Result of processing one connected or unconnected socket send CQE.
 typedef struct iree_async_io_uring_socket_send_completion_t {
-  // Terminal operation status. Owned by the caller when |is_terminal| is true.
+  // Operation status transferred to the callback when |dispatch| is true.
   iree_status_t status;
 
-  // Completion flags to publish with a terminal operation callback.
+  // Callback flags; MORE keeps operation and source ownership with the kernel.
   iree_async_completion_flags_t flags;
 
-  // True when the operation can release its payload and invoke its callback.
-  bool is_terminal;
+  // True when the result should be delivered to the operation callback.
+  bool dispatch;
 } iree_async_io_uring_socket_send_completion_t;
 
 // Processes a CQE for a connected socket send operation.
 //
-// A zero-copy primary CQE records its result and returns a non-terminal result.
-// The later ownership notification returns the retained primary status and
-// indicates whether zero-copy was achieved.
+// A zero-copy primary CQE records its result. Successful write progress can
+// dispatch a MORE callback when requested; otherwise the result is withheld.
+// The ownership notification dispatches the retained primary status without
+// MORE and indicates whether zero-copy was achieved.
 iree_async_io_uring_socket_send_completion_t
 iree_async_io_uring_socket_process_send_cqe(
     const iree_io_uring_cqe_t* cqe,

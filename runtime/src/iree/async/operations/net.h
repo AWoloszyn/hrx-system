@@ -355,6 +355,16 @@ enum iree_async_socket_send_flag_bits_e {
   // The kernel may delay sending to coalesce with subsequent data.
   // Use this when sending multiple logical units that should share a packet.
   IREE_ASYNC_SOCKET_SEND_FLAG_MORE = 1u << 0,
+
+  // Allow an intermediate successful completion when bytes have been accepted
+  // but their source storage is still in use by the transport. This callback
+  // has IREE_ASYNC_COMPLETION_FLAG_MORE; bytes_sent reports the accepted total,
+  // not an increment. Operation storage and source bytes remain owned by the
+  // proactor until the final callback without MORE. A send produces at most
+  // one intermediate callback, and the final callback repeats its byte count.
+  // Backends that retire storage with write progress deliver only the final
+  // callback. Neither callback guarantees that the peer has consumed the data.
+  IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS = 1u << 1,
 };
 typedef uint32_t iree_async_socket_send_flags_t;
 
@@ -373,10 +383,10 @@ typedef uint32_t iree_async_socket_send_flags_t;
 //   operation becomes observable and materializes native descriptors before
 //   execution.
 //
-//   Buffer data referenced by spans must remain valid until the completion
-//   callback fires. The send operation does not copy buffer contents; the
-//   kernel reads directly from the provided addresses at an unspecified time
-//   between submission and completion.
+//   Buffer data referenced by spans must remain valid until the final
+//   completion callback fires (without MORE). The send operation does not copy
+//   contents; the kernel reads directly from the provided addresses at an
+//   unspecified time between submission and completion.
 //
 //   On POSIX backends (epoll, kqueue): the proactor attempts an eager
 //   writev() during submit. If the socket buffer has room, data is consumed
@@ -396,8 +406,8 @@ typedef uint32_t iree_async_socket_send_flags_t;
 // Zero-copy path:
 //   Create the socket with IREE_ASYNC_SOCKET_OPTION_ZERO_COPY and use
 //   registered buffers (via iree_async_proactor_register_slab) for DMA directly
-//   from application memory. The buffer must remain valid until the callback
-//   fires. Zero-copy is a socket-level option, not a per-send flag.
+//   from application memory. The buffer must remain valid until the final
+//   callback fires. Zero-copy is a socket-level option, not a per-send flag.
 //
 // Scatter-gather semantics:
 //   Buffers are sent in order as a single logical message. Maximum scatter
@@ -409,9 +419,12 @@ typedef uint32_t iree_async_socket_send_flags_t;
 //   inline span list storage, or set |buffers| to a caller-managed span list.
 //
 // Threading model:
-//   Callback fires on the poll thread when the send completes. For
-//   zero-copy sends, "completes" means the kernel has finished DMA—the
-//   buffer is now safe to modify or free.
+//   Callbacks fire on the poll thread. Without REPORT_PROGRESS, exactly one
+//   final callback fires when source storage is safe to modify or free. With
+//   REPORT_PROGRESS, an earlier successful callback with MORE may report
+//   bytes_sent while the kernel still owns source storage. The caller may use
+//   that progress to order another send, but must not modify, free, or resubmit
+//   this operation or modify its source bytes until the final callback.
 typedef struct iree_async_socket_send_operation_t {
   iree_async_operation_t base;
 
@@ -426,7 +439,7 @@ typedef struct iree_async_socket_send_operation_t {
   iree_async_region_t*
       retained_buffer_regions[IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS];
 
-  // Behavioral flags (zero-copy, cork, etc.).
+  // Behavioral flags controlling corking and progress reporting.
   iree_async_socket_send_flags_t send_flags;
 
   // Result: total bytes sent across all buffer entries.
@@ -494,11 +507,13 @@ static inline void iree_async_socket_send_operation_initialize(
 //   The span descriptor array is consumed during submit and need not remain
 //   valid after submit returns.
 //
-//   Buffer data referenced by spans must remain valid until the completion
-//   callback fires. See SOCKET_SEND documentation for per-backend details.
+//   Buffer data referenced by spans must remain valid until the final
+//   completion callback fires. See SOCKET_SEND for per-backend and
+//   REPORT_PROGRESS details.
 //
 // Threading model:
-//   Callback fires on the poll thread when the send completes.
+//   Callbacks fire on the poll thread, with optional progress before retirement
+//   when REPORT_PROGRESS is set, as with SOCKET_SEND.
 typedef struct iree_async_socket_sendto_operation_t {
   iree_async_operation_t base;
 
