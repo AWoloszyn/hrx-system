@@ -14,91 +14,140 @@
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-struct __attribute__((packed)) Packet { unsigned char first; unsigned value; };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-struct __attribute__((__packed__)) Packet { unsigned char first; unsigned value; };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-struct [[gnu::packed]] Packet { unsigned char first; unsigned value; };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-struct [[using __gnu__: __packed__]] Packet { unsigned char first; unsigned value; };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-struct Packet { unsigned value __attribute__((packed)); };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-struct Packet { [[gnu::packed]] unsigned value; };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-struct Packet { unsigned char first; unsigned value; } __attribute__((packed));
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-template<class T> struct __attribute__((packed)) Packet { T value; };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported"
+// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
 struct __attribute__((aligned(16))) Packet { unsigned value; };
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported"
+// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
 struct [[gnu::aligned(16)]] Packet { unsigned value; };
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported"
+// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
 struct Packet { unsigned value __attribute__((aligned(16))); };
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported"
+// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
 struct Packet { unsigned value __attribute__((__aligned__(16))); };
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported"
+// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
 struct Packet { [[using gnu: aligned(16)]] unsigned value; };
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported"
+// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
 typedef unsigned Value __attribute__((aligned(16)));
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported"
+// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
 template<unsigned Alignment> struct Packet { unsigned value __attribute__((aligned(Alignment))); };
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported"
+// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
 struct Packet { unsigned value __attribute__((unused, aligned(16))); };
-
-// ====
-// INPUT: cxx
-#define PACKED __attribute__((packed))
-// ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
-struct PACKED Packet { unsigned char first; unsigned value; };
 
 // ====
 // INPUT: cxx triple=x86_64-w64-windows-gnu data-model=llp64
 // ERROR@+1: PARSE/036 "Microsoft bitfield layout is not supported"
 struct Packet { unsigned bits : 3; };
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=lp64
+#include "packed_layout.h"
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=llp64
+#include "packed_layout.h"
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=ilp32
+#include "packed_layout.h"
+
+// ====
+// RUN: roundtrip
+// INPUT: cxx
+#include "packed_layout.h"
+unsigned stride() { return sizeof(Block<unsigned>); }
+unsigned payload() { return __builtin_offsetof(Block<unsigned>, words); }
+unsigned alignment() { return alignof(Block<unsigned>); }
+// ----
+func.def public @stride() -> (i32) {
+  %1 = scalar.constant 18 : i64
+  %2 = scalar.trunci %1 : i64 to i32
+  func.return %2 : i32
+}
+
+func.def public @payload() -> (i32) {
+  %4 = scalar.constant 2 : i64
+  %5 = scalar.trunci %4 : i64 to i32
+  func.return %5 : i32
+}
+
+func.def public @alignment() -> (i32) {
+  %7 = scalar.constant 1 : i64
+  %8 = scalar.trunci %7 : i64 to i32
+  func.return %8 : i32
+}
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'packed' attribute takes no arguments"
+struct __attribute__((packed(1))) Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'packed' attribute requires a record or non-static data member"
+typedef unsigned Value __attribute__((packed));
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'packed' attribute requires a record or non-static data member"
+unsigned value __attribute__((packed));
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'packed' attribute requires a record or non-static data member"
+struct Packet { [[gnu::packed]] static unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'packed' attribute requires a record or non-static data member"
+unsigned read(unsigned value __attribute__((packed)));
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'packed' attribute takes no arguments"
+struct __attribute__((packed, packed(1))) Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+struct Base { unsigned value; };
+// ERROR@+1: PARSE/036 "packed base classes and virtual members are not supported"
+struct [[gnu::packed]] Packet : Base { unsigned char tag; };
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned value : 3; };
+// ERROR@+1: PARSE/036 "offsetof requires an addressable data member"
+unsigned offset() { return __builtin_offsetof(Packet, value); }
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned values[4]; };
+// ERROR@+1: PARSE/036 "compound offsetof designators are not supported"
+unsigned offset() { return __builtin_offsetof(Packet, values[2]); }
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned value; };
+// ERROR@+1: PARSE/036 "'packed' attribute must precede record completion"
+struct __attribute__((packed)) Packet;

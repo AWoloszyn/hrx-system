@@ -14,8 +14,8 @@ exports_files([
     "enum_semantics.patch",
     "include_continuation.patch",
     "include_paths.patch",
-    "layout_attributes.patch",
     "macro_operator_locations.patch",
     "packed_bitfields.patch",
+    "packed_records.patch",
     "template_lookahead.patch",
 ])

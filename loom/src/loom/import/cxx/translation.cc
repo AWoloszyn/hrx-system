@@ -623,7 +623,8 @@ class Translator {
         cxx::ast_cast<cxx::CharLiteralExpressionAST>(ast) ||
         cxx::ast_cast<cxx::SizeofExpressionAST>(ast) ||
         cxx::ast_cast<cxx::SizeofTypeExpressionAST>(ast) ||
-        cxx::ast_cast<cxx::AlignofTypeExpressionAST>(ast)) {
+        cxx::ast_cast<cxx::AlignofTypeExpressionAST>(ast) ||
+        cxx::ast_cast<cxx::BuiltinOffsetofExpressionAST>(ast)) {
       cxx::ASTInterpreter interpreter(&unit_);
       auto value = interpreter.evaluate(ast);
       if (!value) {
