@@ -137,10 +137,9 @@ static inline bool loom_target_low_legality_provider_list_is_empty(
 }
 
 typedef struct loom_target_low_legality_options_t {
-  // Borrowed immutable target facts selected for this legality check.
-  const loom_target_facts_t* target_facts;
-  // Low descriptor registry linked into the current compiler binary.
-  const loom_low_descriptor_registry_t* descriptor_registry;
+  // Caller-owned source query snapshot. Its descriptors, analyses, arena and
+  // target state remain valid throughout verification and subsequent queries.
+  const loom_target_contract_query_environment_t* environment;
   // Catalog resolving compact diagnostic refs emitted by target contract
   // queries and target-owned legality providers.
   const loom_error_catalog_t* error_catalog;
@@ -154,10 +153,6 @@ typedef struct loom_target_low_legality_options_t {
   // verifier limited to target-independent low-compatible types and registered
   // type semantics.
   loom_target_low_legality_type_supported_callback_t type_supported;
-  // Caller-owned function analysis shared with contract queries and lowering.
-  // The table carries the matching value domain and stable symbolic expression
-  // context, which owns the current facts.
-  const loom_view_region_table_t* view_regions;
   // Structural source forms permitted by the caller's current phase.
   loom_target_low_structural_legality_flags_t structural_legality_flags;
   // Optional target-specific feedback diagnostics to emit during source
@@ -176,8 +171,8 @@ typedef struct loom_target_low_legality_result_t {
   uint32_t error_count;
   // Number of remark diagnostics emitted.
   uint32_t remark_count;
-  // Descriptor set selected by options.target_facts, or NULL when selection
-  // failed before verification started.
+  // Descriptor set borrowed from the query environment, or NULL when option
+  // validation failed before verification started.
   const loom_low_descriptor_set_t* descriptor_set;
 } loom_target_low_legality_result_t;
 
@@ -185,9 +180,8 @@ typedef struct loom_target_low_legality_result_t {
 // |options|.
 //
 // User IR legality failures are counted in |out_result| and emitted through
-// options.emitter. The function still returns OK unless an infrastructure error
-// such as malformed options, invalid provider tables, or registry lookup
-// failure occurs.
+// options.emitter. The function still returns OK unless verification encounters
+// malformed options, invalid provider tables, or an allocation failure.
 iree_status_t loom_target_low_verify_function_legality(
     const loom_module_t* module, loom_func_like_t function,
     const loom_target_low_legality_options_t* options,
@@ -223,16 +217,15 @@ const loom_value_fact_table_t* loom_target_low_legality_fact_table(
     const loom_target_low_legality_context_t* context);
 
 // Returns the active value domain owned by the shared function analysis.
-loom_local_value_domain_t* loom_target_low_legality_value_domain(
+const loom_local_value_domain_t* loom_target_low_legality_value_domain(
     const loom_target_low_legality_context_t* context);
 
 // Returns the shared analyzed view-region table.
 const loom_view_region_table_t* loom_target_low_legality_view_regions(
     const loom_target_low_legality_context_t* context);
 
-// Returns the transient arena for the current legality verification. Storage
-// allocated from the arena remains valid until the current verification call
-// returns.
+// Returns the source query owner's arena. Analysis storage remains valid for
+// the source snapshot, including queries after this legality check returns.
 iree_arena_allocator_t* loom_target_low_legality_scratch_arena(
     loom_target_low_legality_context_t* context);
 
@@ -240,8 +233,8 @@ iree_arena_allocator_t* loom_target_low_legality_scratch_arena(
 // first use.
 //
 // Keys must be target-owned static addresses. Reusing a key with a different
-// data length is an internal legality-provider error. The returned storage
-// remains valid until the current legality verification call returns.
+// data length is an internal provider error. The returned storage is shared
+// with contract queries and remains valid for the caller's source snapshot.
 iree_status_t loom_target_low_legality_get_or_allocate_target_state(
     loom_target_low_legality_context_t* context, const void* key,
     iree_host_size_t data_length, void** out_data);

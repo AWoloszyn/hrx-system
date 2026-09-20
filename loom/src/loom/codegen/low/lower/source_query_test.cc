@@ -202,6 +202,69 @@ TEST_F(LowLowerSourceQueryTest, NativeMappingAgreesWithRequiredLowering) {
   EXPECT_EQ(mapping_result_.error_count, 0u);
 }
 
+TEST_F(LowLowerSourceQueryTest, ContractQueriesRetainSourceScopeState) {
+  static const uint8_t state_key = 0;
+  struct MappingProbe {
+    // Arena owned by the source query scope.
+    iree_arena_allocator_t* expected_arena = nullptr;
+    // State allocated before issuing a contract query.
+    void* expected_state = nullptr;
+    // Whether native value queries observed the scope's state and arena.
+    bool observed_scope = false;
+    // Whether a supplied foreign allocator was used.
+    bool used_foreign_allocator = false;
+  } probe;
+  loom_low_lower_policy_t policy = *options_.policy;
+  policy.map_contract_value = {
+      /*.fn=*/[](void* user_data,
+                 const loom_target_contract_query_environment_t* environment,
+                 const loom_op_t*, loom_value_id_t,
+                 loom_low_lower_rule_mapped_value_t* out_value)
+                  -> iree_status_t {
+        auto* probe = static_cast<MappingProbe*>(user_data);
+        void* state = nullptr;
+        IREE_RETURN_IF_ERROR(
+            loom_target_contract_query_get_or_allocate_target_state(
+                environment, &state_key, sizeof(uint32_t), &state));
+        probe->observed_scope = state == probe->expected_state &&
+                                environment->arena == probe->expected_arena &&
+                                *static_cast<uint32_t*>(state) == 42;
+        *out_value = loom_low_lower_rule_mapped_value_none();
+        return iree_ok_status();
+      },
+      /*.user_data=*/&probe,
+  };
+  options_.policy = &policy;
+  CreateQueryScope();
+  loom_target_contract_query_environment_t environment = {};
+  IREE_ASSERT_OK(loom_low_lower_source_query_scope_environment_initialize(
+      query_scope_, &environment));
+  probe.expected_arena = environment.arena;
+  IREE_ASSERT_OK(loom_target_contract_query_get_or_allocate_target_state(
+      &environment, &state_key, sizeof(uint32_t), &probe.expected_state));
+  *static_cast<uint32_t*>(probe.expected_state) = 42;
+
+  environment.arena = &analysis_arena_;
+  environment.target_state_allocator = {
+      /*.fn=*/[](void* user_data, const void*, iree_host_size_t,
+                 void** out_data) -> iree_status_t {
+        auto* probe = static_cast<MappingProbe*>(user_data);
+        probe->used_foreign_allocator = true;
+        *out_data = probe->expected_state;
+        return iree_ok_status();
+      },
+      /*.user_data=*/&probe,
+  };
+  const auto callback =
+      loom_low_lower_source_query_scope_callback(query_scope_);
+  loom_target_contract_query_result_t result = {};
+  IREE_ASSERT_OK(callback.fn(callback.user_data, &environment,
+                             mapped_source_op_, &result));
+  EXPECT_EQ(result.outcome, LOOM_TARGET_CONTRACT_QUERY_LEGAL);
+  EXPECT_TRUE(probe.observed_scope);
+  EXPECT_FALSE(probe.used_foreign_allocator);
+}
+
 TEST_F(LowLowerSourceQueryTest, AbsentNativeMappingDoesNotEmitDiagnostic) {
   const loom_op_t* constant =
       loom_value_def_op(loom_module_value(module_, unsupported_value_id_));
