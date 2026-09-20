@@ -653,8 +653,11 @@ static iree_status_t iree_async_proactor_posix_register_notification_wait(
           &proactor->fd_map, fd, IREE_ASYNC_POSIX_FD_HANDLER_NOTIFICATION,
           notification);
       if (!iree_status_is_ok(status)) {
-        iree_status_ignore(
-            iree_async_posix_event_set_remove(proactor->event_set, fd));
+        iree_status_t cleanup_status =
+            iree_async_posix_event_set_remove(proactor->event_set, fd);
+        if (!iree_status_is_ok(cleanup_status)) {
+          iree_status_abort(iree_status_join(status, cleanup_status));
+        }
       }
     }
     if (!iree_status_is_ok(status)) {
@@ -4255,13 +4258,12 @@ static void iree_async_proactor_posix_signal_event_source_callback(
     return;
   }
 
-  iree_status_t status = iree_async_posix_signal_read(
+  IREE_CHECK_OK(iree_async_posix_signal_read(
       &proactor->signal.backend_state,
       (iree_async_signal_dispatch_callback_t){
           .fn = iree_async_proactor_posix_signal_dispatch_callback,
           .user_data = proactor,
-      });
-  iree_status_ignore(status);
+      }));
 }
 
 // Lazy-initializes signal handling: creates signal fd and registers as event

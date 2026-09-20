@@ -787,16 +787,12 @@ static void iree_async_proactor_io_uring_handle_signal_cqe(
 
   // Read and dispatch all pending signals from signalfd.
   if (cqe->res >= 0 && (cqe->res & POLLIN)) {
-    iree_status_t status = iree_async_linux_signal_read_signalfd(
+    IREE_CHECK_OK(iree_async_linux_signal_read_signalfd(
         &proactor->signal.linux_state,
         (iree_async_signal_dispatch_callback_t){
             .fn = iree_async_proactor_io_uring_signal_dispatch_callback,
             .user_data = proactor,
-        });
-    // Exception: ignore here because failure requires the signalfd to be
-    // invalid (EBADF) or a kernel bug - neither of which we can recover from
-    // in a CQE handler, and both are effectively impossible in practice.
-    iree_status_ignore(status);
+        }));
   }
 
   // Multishot poll remains armed until cancelled. CQE_F_MORE indicates more
