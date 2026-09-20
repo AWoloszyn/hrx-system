@@ -74,13 +74,19 @@ destinations directly, and only declared zero-fill tails are cleared. Gaps are
 undefined. Binding validates logical HAL ranges and patches DMA addresses;
 publishing mapped writes remains an explicit cache operation.
 
-Invocation zero establishes entry state. After completion, each invocation's
-metadata names its continuation. The current finite compiler protocol loads
-resident workers once and reuses the per-invocation DMA commands afterward.
-A reset, replacement by another entry or loss of backing invalidates that
-continuation and requires establishment again. Role changes within a held
-invocation remain compiled device behavior. libamdf receives memory handles and
-byte ranges, with no per-submission binding list or argument patching.
+Each independent invocation uses the entry's complete establishing command.
+The adapter resolves that command once, and the runner reuses its immutable
+backing for every `--invocation_count` repetition. Each submission resets and
+configures the entry's device state, loads its tile programs, and performs the
+input/output DMA. Host image loading, allocation and binding happen once.
+
+The image also describes a continuation that can reuse resident workers, but
+the time-sliced native contexts used here do not guarantee tile state survives
+between submissions. Keeping a context and its backing alive does not establish
+that guarantee. The finite adapter therefore selects invocation zero and does
+not expose continuation selection. Role changes within a held invocation remain
+compiled device behavior. libamdf receives memory handles and byte ranges, with
+no per-submission binding list or argument patching.
 
 The runner waits for each finite command before submitting the next. The
 image's output DMA wait, together with native command retirement, establishes
@@ -99,9 +105,14 @@ without creating a device.
 The native consumer tests in `cts/` select the matching canonical compiler
 image, allocate data and instruction backing through the public memory scopes,
 and execute three different inputs through one retained native allocation. They
-check all 48 integer products, native retirement and caller-ordered teardown. Each output is poisoned before its
-submission so missing writes cannot pass. Both process- and instance-scoped
-native lifetimes use the shared CTS device owner.
+check all 48 integer products, immutable command bytes, native retirement and
+caller-ordered teardown. A second case alternates two retained contexts across
+three producer/consumer pairs with changing inputs, then releases the producer
+and continues using shared data in the consumer. Providers advertising fixed
+full-array backing are checked to place both contexts on the same physical
+array. Each output is poisoned before its submission so missing writes cannot
+pass. Both process- and instance-scoped native lifetimes use the shared CTS
+device owner.
 
 ```sh
 iree-bazel-test --config=asan //experimental/xdna/cts/...
@@ -112,18 +123,21 @@ These tests carry the XDNA hardware requirement and share the AMDGPU resource
 group with native and interop CTS. The same sources run on Linux and Windows;
 hosts without an XDNA endpoint or a matching compiler fixture report a skip.
 
-## Warm execution benchmarks
+## Independent execution benchmarks
 
 `benchmarks/execution_benchmark` measures native publication of the same
 canonical multiplication program. It retains one device, context, queue and
-set of allocations across every row and repetition. Image loading, binding, instruction publication and the first initialization command all
-finish before measurement. Later submissions reuse immutable instructions and
-resident data addresses; libamdf receives only the resolved command range.
+set of allocations across every row and repetition. Image loading, binding,
+instruction publication and an initial correctness warmup finish before
+measurement. Each measured submission reuses the complete setup-and-execution
+command. Device setup repeats inside that command, including tile program
+loading; its completion is included in the end-to-end row. libamdf receives
+only the resolved immutable command range.
 
 | Row | Timed region |
 | --- | --- |
-| `XdnaExecution/Submit` | One native submission, excluding its completion wait. |
-| `XdnaExecution/SubmitAndWait` | The same submission plus native completion wait. |
+| `XdnaExecution/Independent/Submit` | One complete command submission, excluding its completion wait. |
+| `XdnaExecution/Independent/SubmitAndWait` | The same submission plus device setup, execution and completion wait. |
 
 Each iteration publishes changed inputs and poisoned output before timing.
 After completion, outside timing, the caller checks native retirement, all
@@ -146,5 +160,8 @@ example `--benchmark_min_time=200x --benchmark_repetitions=5`, and retain JSON
 with `--benchmark_out=execution.json --benchmark_out_format=json`. Fixed counts
 bound the untimed completion and verification work in submit-only rows.
 Measurements require an otherwise idle device and host, separate from builds
-and other hardware jobs. The two rows describe warm kernel-mediated dispatch,
-not image preparation, pipelined throughput, or autonomous user-mode scheduling.
+and other hardware jobs. The two rows describe independent kernel-mediated
+dispatch with prepared host resources. They exclude image preparation and do
+not measure pipelined throughput or resident execution. Earlier
+continuation-only measurements describe a different, conditional warm-reuse
+path and are not interchangeable with these rows.

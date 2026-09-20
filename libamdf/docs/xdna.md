@@ -133,10 +133,13 @@ sticky terminal failure.
 
 The [canonical ELF consumer](../../experimental/xdna/cts/execution_test.cc)
 shows the complete flow, including target selection, image loading, relocation,
-cold initialization, reusable execution, numerical checks and teardown. The
+cold host preparation, independent execution, numerical checks and teardown. The
 ELF decoder and materializer live in the runtime image layer; libamdf receives
 only the prepared native range. Reusing that range does not repeat image
-loading or require an indirect data-buffer list.
+loading or require an indirect data-buffer list. Each independent submission
+uses the complete setup-and-execution range to establish its application tile
+state; time-sliced context lifetime alone does not guarantee that state survives
+between submissions.
 
 ## Ownership
 

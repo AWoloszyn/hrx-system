@@ -26,8 +26,8 @@ IREE_FLAG(int32_t, columns, 0,
           "Logical context column count required by the image, in [1, 8].");
 IREE_FLAG(int32_t, device, 0, "XDNA endpoint ordinal in the native inventory.");
 IREE_FLAG(int32_t, invocation_count, 1,
-          "Number of checked invocations; the first activates the program and "
-          "later invocations follow the image continuation.");
+          "Number of independent invocations; each establishes the program's "
+          "device state and waits for completion.");
 IREE_FLAG(string, binding_memory, "system",
           "Backing for every binding: system or registered_host.");
 IREE_FLAG_LIST(string, binding,
@@ -767,14 +767,12 @@ static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
       IREE_HAL_AMD_STATUS_FROM_AMDF(run->xdna_api->kernel_queue_create(
                                         run->context, &queue_info, &run->queue),
                                     "xdna.kernel_queue_create"));
-  uint32_t next_invocation = 0;
+  amdf_xdna_kernel_command_t command;
+  IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_executable_query_invocation(
+      run->image, run->entry_ordinal, run->storage.count, run->storage.values,
+      &command));
   for (int32_t invocation_ordinal = 0;
        invocation_ordinal < FLAG_invocation_count; ++invocation_ordinal) {
-    amdf_xdna_kernel_command_t command;
-    uint32_t continuation = 0;
-    IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_executable_query_invocation(
-        run->image, run->entry_ordinal, next_invocation, run->storage.count,
-        run->storage.values, &command, &continuation));
     const amdf_xdna_kernel_queue_submission_info_t submission_info = {
         .type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO,
         .structure_size = sizeof(submission_info),
@@ -782,9 +780,8 @@ static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
         .commands = &command,
     };
     uint64_t submission = 0;
-    fprintf(stderr, "Publishing invocation %d/%d (%s)\n",
-            invocation_ordinal + 1, FLAG_invocation_count,
-            invocation_ordinal == 0 ? "establish state" : "continue");
+    fprintf(stderr, "Publishing independent invocation %d/%d\n",
+            invocation_ordinal + 1, FLAG_invocation_count);
     fflush(stderr);
     IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
         run->xdna_api->kernel_queue_submit(run->queue, &submission_info,
@@ -796,7 +793,6 @@ static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
         run->api->kernel_queue_wait(run->queue, submission,
                                     AMDF_TIMEOUT_INFINITE, 0),
         "kernel_queue_wait"));
-    next_invocation = continuation;
     fprintf(stderr, "Submission %" PRIu64 " completed and retired\n",
             submission);
     fflush(stderr);

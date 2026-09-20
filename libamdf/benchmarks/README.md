@@ -62,19 +62,21 @@ CPU scaling, concurrent activity, and repetition spread remain part of the
 result. Sanitizer and smoke-test output establish correctness, not performance.
 The benchmark executable is not part of the installed libamdf distribution.
 
-## Warm XDNA execution
+## Independent XDNA execution
 
 [`//experimental/xdna/benchmarks:execution_benchmark`](../../experimental/xdna/benchmarks/execution_benchmark.cc)
 uses the runtime ELF loader and the public libamdf API. It retains one device,
 context, queue, prepared instruction range and data allocation set across cases
-and repetitions. Image loading, relocation, cold initialization and allocation
-are outside timing. Each iteration publishes fresh input and checks numerical
-output, guards and instruction immutability outside timing.
+and repetitions. Host image loading, relocation, instruction publication and
+allocation are outside timing. Every command includes device initialization
+and execution because time-sliced context lifetime does not guarantee tile
+state survives between independent submissions. Each iteration publishes fresh
+input and checks numerical output and guards outside timing.
 
 | Scenario | Timed operations |
 | --- | --- |
-| `XdnaExecution/Submit` | Publication of one prepared native instruction range. Completion occurs outside timing. |
-| `XdnaExecution/SubmitAndWait` | The same publication plus its completion wait. |
+| `XdnaExecution/Independent/Submit` | Publication of the complete setup-and-execution range. Completion occurs outside timing. |
+| `XdnaExecution/Independent/SubmitAndWait` | The same publication plus device setup, execution and completion wait. |
 
 Both rows wait for each submission before reusing the queue, which admits one
 unretired command. The submit-only row measures host publication cost, not

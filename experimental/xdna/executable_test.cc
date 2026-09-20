@@ -153,24 +153,41 @@ TEST_F(XdnaExecutableTest, RebindsWithoutReloadingOrChangingOtherStorage) {
   }
 }
 
-TEST_F(XdnaExecutableTest, ResolvesBorrowedNativeRangesAndContinuations) {
+TEST_F(XdnaExecutableTest, ResolvesIndependentInvocationWithContinuation) {
+  IREE_ASSERT_OK(Load());
+  IREE_ASSERT_OK(Bind());
+  const auto before = bytes_;
+  // The image names a continuation at offset 32768. Independent invocations
+  // must use the establishing range even though that continuation is present.
   amdf_xdna_kernel_command_t command = {};
-  uint32_t next = 0;
   IREE_ASSERT_OK(iree_hal_amd_xdna_executable_query_invocation(
-      image_, 0, 0, storage_.size(), storage_.data(), &command, &next));
+      image_, 0, storage_.size(), storage_.data(), &command));
   EXPECT_EQ(command.memory, storage_[0].memory);
   EXPECT_EQ(command.access_ordinal, 3u);
   EXPECT_EQ(command.byte_offset, storage_[0].memory_byte_offset);
   EXPECT_EQ(command.byte_length, 16u);
-  EXPECT_EQ(next, 1u);
-  IREE_ASSERT_OK(iree_hal_amd_xdna_executable_query_invocation(
-      image_, 0, next, storage_.size(), storage_.data(), &command, &next));
-  EXPECT_EQ(command.byte_offset, storage_[0].memory_byte_offset + 32768);
-  EXPECT_EQ(next, 1u);
+  EXPECT_EQ(bytes_, before);
+}
+
+TEST_F(XdnaExecutableTest,
+       ValidatesIndependentInvocationBeforePublishingRange) {
+  amdf_xdna_kernel_command_t command = {};
   IREE_EXPECT_STATUS_IS(
       StatusCode::kOutOfRange,
+      iree_hal_amd_xdna_executable_query_invocation(image_, 1, storage_.size(),
+                                                    storage_.data(), &command));
+  EXPECT_EQ(command.memory, nullptr);
+  IREE_EXPECT_STATUS_IS(
+      StatusCode::kInvalidArgument,
       iree_hal_amd_xdna_executable_query_invocation(
-          image_, 0, 2, storage_.size(), storage_.data(), &command, &next));
+          image_, 0, storage_.size() - 1, storage_.data(), &command));
+  EXPECT_EQ(command.memory, nullptr);
+  --storage_[0].mapping.data_length;
+  IREE_EXPECT_STATUS_IS(
+      StatusCode::kInvalidArgument,
+      iree_hal_amd_xdna_executable_query_invocation(image_, 0, storage_.size(),
+                                                    storage_.data(), &command));
+  EXPECT_EQ(command.memory, nullptr);
 }
 
 TEST_F(XdnaExecutableTest, ChecksAllBackingBeforeLoading) {

@@ -296,22 +296,16 @@ iree_status_t iree_hal_amd_xdna_executable_bind(
 
 iree_status_t iree_hal_amd_xdna_executable_query_invocation(
     const iree_hal_amd_xdna_image_t* image, uint32_t entry_ordinal,
-    uint32_t invocation_ordinal, iree_host_size_t storage_count,
+    iree_host_size_t storage_count,
     const iree_hal_amd_xdna_executable_storage_t* storage,
-    amdf_xdna_kernel_command_t* out_command, uint32_t* out_next_invocation) {
+    amdf_xdna_kernel_command_t* out_command) {
   iree_xdna_elf_entry_record_t entry;
   IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_executable_entry(
       image, entry_ordinal, storage_count, storage, &entry));
-  if (invocation_ordinal >= entry.invocation_count) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "XDNA invocation ordinal %u is out of range",
-                            invocation_ordinal);
-  }
   const iree_hal_amd_xdna_image_tables_t* tables =
       iree_hal_amd_xdna_image_tables(image);
   const iree_xdna_elf_invocation_record_t invocation =
-      iree_hal_amd_xdna_image_tables_invocation(
-          tables, entry.first_invocation + invocation_ordinal);
+      iree_hal_amd_xdna_image_tables_invocation(tables, entry.first_invocation);
   const uint32_t ordinal = iree_hal_amd_xdna_image_tables_allocation_use(
       tables, entry.first_allocation_use + invocation.allocation_use);
   const iree_xdna_elf_allocation_record_t allocation =
@@ -326,6 +320,5 @@ iree_status_t iree_hal_amd_xdna_executable_query_invocation(
       .byte_offset = backing->memory_byte_offset + invocation.byte_offset,
       .byte_length = invocation.byte_length,
   };
-  *out_next_invocation = invocation.next_invocation;
   return iree_ok_status();
 }
