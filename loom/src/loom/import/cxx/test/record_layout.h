@@ -71,3 +71,28 @@ struct Natural {
 };
 static_assert(sizeof(Natural) == 8 && alignof(Natural) == 4);
 static_assert(__builtin_offsetof(Natural, value) == 4);
+
+#pragma pack(push, 1)
+struct CrossingBits {
+  unsigned first : 31;
+  unsigned second : 2;
+};
+struct BitBoundary {
+  unsigned char first;
+  unsigned : 0;
+  unsigned char last;
+};
+union BitPayload {
+  unsigned bits : 3;
+};
+#pragma pack(pop)
+static_assert(sizeof(CrossingBits) == 5 && alignof(CrossingBits) == 1);
+static_assert(sizeof(BitBoundary) == 5 && alignof(BitBoundary) == 1);
+static_assert(__builtin_offsetof(BitBoundary, last) == 4);
+static_assert(sizeof(BitPayload) == 1 && alignof(BitPayload) == 1);
+
+union NaturalBitPayload {
+  unsigned bits : 3;
+};
+static_assert(sizeof(NaturalBitPayload) == 4 &&
+              alignof(NaturalBitPayload) == 4);

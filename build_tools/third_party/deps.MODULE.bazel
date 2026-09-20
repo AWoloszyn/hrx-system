@@ -49,6 +49,7 @@ http_archive(
         "//build_tools/third_party/cxx:include_paths.patch",
         "//build_tools/third_party/cxx:layout_attributes.patch",
         "//build_tools/third_party/cxx:macro_operator_locations.patch",
+        "//build_tools/third_party/cxx:packed_bitfields.patch",
         "//build_tools/third_party/cxx:template_lookahead.patch",
     ],
     sha256 = "39e18971b03f3b5ae2afc8cb9313bcccaf6a51176a94eb57cb8fa4e683ef290b",

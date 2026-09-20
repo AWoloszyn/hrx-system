@@ -97,3 +97,8 @@ struct Packet { unsigned value __attribute__((unused, aligned(16))); };
 #define PACKED __attribute__((packed))
 // ERROR@+1: PARSE/036 "layout attribute 'packed' is not supported"
 struct PACKED Packet { unsigned char first; unsigned value; };
+
+// ====
+// INPUT: cxx triple=x86_64-w64-windows-gnu data-model=llp64
+// ERROR@+1: PARSE/036 "Microsoft bitfield layout is not supported"
+struct Packet { unsigned bits : 3; };

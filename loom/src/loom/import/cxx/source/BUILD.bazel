@@ -91,6 +91,19 @@ loom_cc_library(
     ],
 )
 
+loom_cc_test(
+    name = "layout_test",
+    srcs = ["layout_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":options",
+        ":source",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
 loom_cc_library(
     name = "locations",
     srcs = ["locations.cc"],

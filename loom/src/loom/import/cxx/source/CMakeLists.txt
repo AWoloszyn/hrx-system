@@ -118,6 +118,23 @@ loom_cc_library(
 endif()
 
 if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
+    layout_test
+  SRCS
+    "layout_test.cc"
+  DEPS
+    ::options
+    ::source
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     locations
