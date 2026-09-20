@@ -682,6 +682,15 @@ iree_status_t loom_block_insert_arg(loom_module_t* module, loom_block_t* block,
 iree_status_t loom_block_remove_arg(loom_module_t* module, loom_block_t* block,
                                     uint16_t arg_index);
 
+// Removes a closed set of unused block arguments and compacts the remaining
+// arguments once. |remove_args| has |remove_arg_count| entries matching the
+// current block signature. Removed values may have type uses from other
+// removed arguments and must have no operand, attribute, or retained-argument
+// type uses. Returns the number of removed arguments.
+uint16_t loom_block_remove_args(loom_module_t* module, loom_block_t* block,
+                                const bool* remove_args,
+                                uint16_t remove_arg_count);
+
 // Appends an op to the end of a block.
 iree_status_t loom_block_append_op(loom_module_t* module, loom_block_t* block,
                                    loom_op_t* op);

@@ -4627,6 +4627,72 @@ iree_status_t loom_block_remove_arg(loom_module_t* module, loom_block_t* block,
   return iree_ok_status();
 }
 
+uint16_t loom_block_remove_args(loom_module_t* module, loom_block_t* block,
+                                const bool* remove_args,
+                                uint16_t remove_arg_count) {
+  IREE_ASSERT_EQ(remove_arg_count, block->arg_count);
+
+  uint16_t removed_count = 0;
+  for (uint16_t arg_index = 0; arg_index < remove_arg_count; ++arg_index) {
+    if (!remove_args[arg_index]) {
+      continue;
+    }
+    const loom_value_id_t value_id = block->arg_ids[arg_index];
+    IREE_ASSERT_NE(value_id, LOOM_VALUE_ID_INVALID);
+    IREE_ASSERT_LT(value_id, module->values.count);
+    const loom_value_t* value = loom_module_value(module, value_id);
+    IREE_ASSERT(loom_value_is_block_arg(value));
+    IREE_ASSERT_EQ(loom_value_def_block(value), block);
+    IREE_ASSERT_EQ(loom_value_def_index(value), arg_index);
+    IREE_ASSERT_EQ(value->use_count, 0u);
+    IREE_ASSERT(!loom_value_has_attribute_uses(value));
+
+#ifndef NDEBUG
+    loom_type_use_iterator_t users;
+    loom_module_value_type_users(module, value_id, &users);
+    for (loom_value_id_t carrier = loom_type_users_next(&users);
+         carrier != LOOM_VALUE_ID_INVALID;
+         carrier = loom_type_users_next(&users)) {
+      const loom_value_t* carrier_value = loom_module_value(module, carrier);
+      IREE_ASSERT(loom_value_is_block_arg(carrier_value));
+      IREE_ASSERT_EQ(loom_value_def_block(carrier_value), block);
+      IREE_ASSERT(remove_args[loom_value_def_index(carrier_value)]);
+    }
+#endif  // !NDEBUG
+    ++removed_count;
+  }
+  if (removed_count == 0) {
+    return 0;
+  }
+
+  for (uint16_t arg_index = 0; arg_index < remove_arg_count; ++arg_index) {
+    if (remove_args[arg_index]) {
+      loom_module_drop_value_type_uses(module, block->arg_ids[arg_index]);
+    }
+  }
+
+  uint16_t kept_count = 0;
+  for (uint16_t arg_index = 0; arg_index < remove_arg_count; ++arg_index) {
+    const loom_value_id_t value_id = block->arg_ids[arg_index];
+    loom_value_t* value = loom_module_value(module, value_id);
+    if (remove_args[arg_index]) {
+      IREE_ASSERT(!loom_module_value_has_type_uses(module, value_id));
+      value->flags &= ~LOOM_VALUE_FLAG_BLOCK_ARG;
+      value->def = loom_value_def_make_none();
+      continue;
+    }
+    block->arg_ids[kept_count] = value_id;
+    value->def = loom_value_def_make_block(block, kept_count);
+    ++kept_count;
+  }
+  for (uint16_t arg_index = kept_count; arg_index < remove_arg_count;
+       ++arg_index) {
+    block->arg_ids[arg_index] = LOOM_VALUE_ID_INVALID;
+  }
+  block->arg_count = kept_count;
+  return removed_count;
+}
+
 //===----------------------------------------------------------------------===//
 // Block op insertion
 //===----------------------------------------------------------------------===//

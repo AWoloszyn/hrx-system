@@ -848,6 +848,46 @@ TEST_F(ModuleTest, BlockRemoveArgCompactsDefinitions) {
   loom_module_free(module);
 }
 
+TEST_F(ModuleTest, BlockRemoveArgsCompactsClosedDependentSet) {
+  loom_module_t* module = NULL;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      NULL, iree_allocator_system(), &module));
+
+  loom_block_t* block = loom_module_block(module);
+  const loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  const loom_type_t i32_type = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+
+  loom_value_id_t provider = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(module, index_type, &provider));
+  const loom_type_t carrier_type =
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_I32,
+                          loom_dim_pack_dynamic(provider), 0);
+  loom_value_id_t carrier = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(module, carrier_type, &carrier));
+  IREE_ASSERT_OK(loom_block_add_arg(module, block, carrier));
+  loom_value_id_t retained = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(module, i32_type, &retained));
+  IREE_ASSERT_OK(loom_block_add_arg(module, block, retained));
+  IREE_ASSERT_OK(loom_block_add_arg(module, block, provider));
+  loom_value_id_t tail = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(module, i32_type, &tail));
+  IREE_ASSERT_OK(loom_block_add_arg(module, block, tail));
+
+  const bool closed_set[] = {true, false, true, true};
+  const uint16_t removed_count = loom_block_remove_args(
+      module, block, closed_set, IREE_ARRAYSIZE(closed_set));
+  EXPECT_EQ(removed_count, 3u);
+  ASSERT_EQ(block->arg_count, 1u);
+  EXPECT_EQ(loom_block_arg_id(block, 0), retained);
+  EXPECT_EQ(loom_value_def_index(loom_module_value(module, retained)), 0u);
+  EXPECT_FALSE(loom_value_is_block_arg(loom_module_value(module, carrier)));
+  EXPECT_FALSE(loom_value_is_block_arg(loom_module_value(module, provider)));
+  EXPECT_FALSE(loom_value_is_block_arg(loom_module_value(module, tail)));
+  EXPECT_FALSE(loom_module_value_has_type_uses(module, provider));
+
+  loom_module_free(module);
+}
+
 TEST_F(ModuleTest, BlockRemoveArgRejectsLiveUses) {
   loom_module_t* module = NULL;
   IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
