@@ -87,6 +87,7 @@ jobs:
       HRX_CTEST_LABEL_EXCLUDE_REGEX: ${{ inputs.ctest_label_exclude_regex }}
       HRX_PACKAGE: ${{ inputs.package }}
       HRX_PACKAGE_SUFFIX: ${{ inputs.package_suffix }}
+      IREE_CI_FAILURE_ARTIFACT_DIR: ${{ github.workspace }}\build\windows-build-failures-${{ github.run_id }}-${{ github.run_attempt }}
       PIP_CACHE_DIR: ${{ github.workspace }}/build/windows/${{ inputs.windows_toolchain }}/caches/pip
     steps:
       - name: Checkout repository
@@ -138,6 +139,15 @@ jobs:
             --composed-install-dir "$relocated/composed" `
             --package-smoke-build-dir "$relocated/package-smoke" `
             --no-prepare-public-deps
+
+      - name: Upload Windows build failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-build-failures-core-${{ inputs.windows_toolchain }}-attempt-${{ github.run_attempt }}
+          path: ${{ env.IREE_CI_FAILURE_ARTIFACT_DIR }}
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload public package
         if: ${{ inputs.package }}

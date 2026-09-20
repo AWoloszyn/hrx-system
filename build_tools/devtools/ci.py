@@ -133,6 +133,8 @@ else:
     sys.path.insert(0, str(REPO_ROOT))
     from build_tools.devtools import ci_config
 
+from build_tools.ci import windows_diagnostics
+
 
 @dataclass(frozen=True)
 class CiStep:
@@ -1238,7 +1240,23 @@ def run_step(step: CiStep, verbose: bool) -> StepResult:
                 environment[key] = value
     else:
         environment = None
-    returncode = subprocess.run(step.argv, cwd=REPO_ROOT, env=environment).returncode
+    artifact_dir = os.environ.get(windows_diagnostics.ARTIFACT_DIR_ENV)
+    if artifact_dir:
+        build_dir = None
+        if "--cmake-build-dir" in step.argv:
+            build_dir = REPO_ROOT / step.argv[step.argv.index("--cmake-build-dir") + 1]
+        returncode = windows_diagnostics.run(
+            step.argv,
+            cwd=REPO_ROOT,
+            env=environment,
+            artifact_dir=Path(artifact_dir),
+            label=step.name,
+            build_dir=build_dir,
+        )
+    else:
+        returncode = subprocess.run(
+            step.argv, cwd=REPO_ROOT, env=environment
+        ).returncode
     elapsed_seconds = time.monotonic() - start_time
     result = StepResult(step, returncode, elapsed_seconds)
     if result.ok:

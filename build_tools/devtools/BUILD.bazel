@@ -49,6 +49,7 @@ py_library(
     deps = [
         "//build_tools/bazel:compile_commands_merge_lib",
         "//build_tools/bazel:configure",
+        "//build_tools/ci:windows_diagnostics",
     ],
 )
 
@@ -59,6 +60,7 @@ py_binary(
         "ci.py",
         "ci_config.py",
     ],
+    deps = ["//build_tools/ci:windows_diagnostics"],
 )
 
 config_setting(
@@ -154,6 +156,7 @@ py_test(
     ],
     main = "ci_test.py",
     tags = _PRESUBMIT_TEST_TAGS,
+    deps = ["//build_tools/ci:windows_diagnostics"],
 )
 
 py_test(
@@ -358,5 +361,6 @@ test_suite(
         ":setup_test",
         ":smoke_test_lib_test",
         ":source_lock_test",
+        "//build_tools/ci:windows_diagnostics_test",
     ],
 )

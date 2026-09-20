@@ -7,7 +7,20 @@
 # CI orchestration has no CMake target surface.
 # bazel-to-cmake: skip
 
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+py_library(
+    name = "windows_diagnostics",
+    srcs = ["windows_diagnostics.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "windows_diagnostics_test",
+    size = "small",
+    srcs = ["windows_diagnostics_test.py"],
+    deps = [":windows_diagnostics"],
+)
 
 py_test(
     name = "rocm_environment_test",
@@ -66,6 +79,7 @@ py_test(
         "ci_core_windows_test.py",
     ],
     main = "ci_core_windows_test.py",
+    deps = [":windows_diagnostics"],
 )
 
 py_test(
