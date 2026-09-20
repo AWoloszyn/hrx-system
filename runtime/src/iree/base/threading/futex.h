@@ -112,18 +112,19 @@ extern "C" {
 
 #if defined(IREE_PLATFORM_HAS_FUTEX)
 
-// Waits in the OS for the value at the specified |address| to change.
-// If the contents of |address| do not match |expected_value| the wait will
-// fail and return IREE_STATUS_UNAVAILABLE and should be retried.
+// Waits in the OS while the value at |address| matches |expected_value|.
+// A value mismatch succeeds without blocking. Wakes can be spurious, so the
+// caller must recheck its condition with the appropriate memory ordering after
+// every successful return, including interruption by an OS signal.
 //
 // |deadline_ns| can be either IREE_TIME_INFINITE_FUTURE to wait forever or an
 // absolute time to wait until prior to returning early with
 // IREE_STATUS_DEADLINE_EXCEEDED.
 //
 // Returns:
-//   IREE_STATUS_OK: Woken by another thread or value changed.
+//   IREE_STATUS_OK: Wake or value mismatch; recheck the condition.
 //   IREE_STATUS_DEADLINE_EXCEEDED: Timeout reached before wake.
-//   IREE_STATUS_UNAVAILABLE: Value at address != expected_value (retry needed).
+//   IREE_STATUS_UNAVAILABLE: Native wait failed for another reason.
 static inline iree_status_code_t iree_futex_wait(void* address,
                                                  uint32_t expected_value,
                                                  iree_time_t deadline_ns);
@@ -185,9 +186,8 @@ static inline iree_status_code_t iree_futex_wait(void* address,
       (int32_t*)address, (int32_t)expected_value, timeout_ns);
   switch (rc) {
     case 0:
-      return IREE_STATUS_OK;
     case 1:
-      return IREE_STATUS_UNAVAILABLE;
+      return IREE_STATUS_OK;
     case 2:
       return IREE_STATUS_DEADLINE_EXCEEDED;
     default:

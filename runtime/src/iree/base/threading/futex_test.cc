@@ -36,16 +36,16 @@ TEST(FutexTest, WakeNoWaiters) {
 }
 
 // Tests that iree_futex_wait returns IREE_STATUS_OK immediately when the value
-// at the address doesn't match the expected value (spurious wakeup handling).
+// at the address doesn't match the expected value. Notification commit_wait
+// relies on this when publication precedes entry into the native wait.
 TEST(FutexTest, WaitValueMismatch) {
   uint32_t futex_word = 42;
   // Expected value doesn't match - should return immediately.
-  // Note: Linux futex returns EAGAIN which maps to OK (retry expected).
-  // Windows returns "value changed" which also completes successfully.
   iree_status_code_t status =
       iree_futex_wait(&futex_word, 0, IREE_TIME_INFINITE_FUTURE);
-  // Both OK (spurious) and UNAVAILABLE (value mismatch) are acceptable.
-  EXPECT_TRUE(status == IREE_STATUS_OK || status == IREE_STATUS_UNAVAILABLE);
+  EXPECT_EQ(status, IREE_STATUS_OK);
+  EXPECT_EQ(iree_futex_wait_shared(&futex_word, 0, IREE_TIME_INFINITE_FUTURE),
+            IREE_STATUS_OK);
 }
 
 // Tests that a background thread can be woken by the main thread.
