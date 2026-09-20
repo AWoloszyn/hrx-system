@@ -845,6 +845,7 @@ def _cdna_core_overlays(
             descriptor_key_suffix="_saddr",
             implicit_m0=True,
         ),
+        _s_mov_b64_shared_base_overlay(),
         *_flat_memory_overlays(
             load_mnemonics=_CDNA_FLAT_LOAD_MNEMONICS,
             store_mnemonics=_CDNA_FLAT_STORE_MNEMONICS,
@@ -1357,6 +1358,7 @@ def _gfx11_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             address_units=1,
             descriptor_key_suffix="_saddr",
         ),
+        _s_mov_b64_shared_base_overlay(encoding_condition="Nothas_lit_0_Nothas_lit_1"),
         *_flat_memory_overlays(
             load_mnemonics=_RDNA_FLAT_LOAD_MNEMONICS,
             store_mnemonics=_RDNA_FLAT_STORE_MNEMONICS,
@@ -2098,6 +2100,7 @@ def _rdna4_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             address_units=1,
             descriptor_key_suffix="_saddr",
         ),
+        _s_mov_b64_shared_base_overlay(encoding_condition="Nothas_lit_0_Nothas_lit_1"),
         *_flat_memory_overlays(
             load_mnemonics=_RDNA_FLAT_LOAD_MNEMONICS,
             store_mnemonics=_RDNA_FLAT_STORE_MNEMONICS,

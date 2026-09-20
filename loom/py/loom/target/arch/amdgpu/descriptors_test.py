@@ -59,6 +59,8 @@ from loom.target.arch.amdgpu.descriptors import (
     _RESOURCE_SWMMAC,
     _RESOURCE_VALU,
     _RESOURCE_WMMA,
+    _SCHEDULE_FLAT_LOAD,
+    _SCHEDULE_FLAT_STORE,
     _SCHEDULE_LDS_STORE,
     _SCHEDULE_MATRIX,
     _SCHEDULE_MFMA_QUALIFIED_PREFIX,
@@ -72,7 +74,6 @@ from loom.target.arch.amdgpu.descriptors import (
     _SCHEDULE_VALU,
     _SCHEDULE_VMEM_LOAD,
     _SCHEDULE_VMEM_LOAD_LDS,
-    _SCHEDULE_VMEM_STORE,
     _SCHEDULE_WAIT_ALU,
     _SCHEDULE_WMMA,
     _SOURCE_INLINE_F32_ENCODING_ID,
@@ -366,7 +367,7 @@ def test_storage_lease_rows_project_memory_dependencies() -> None:
     descriptor = Descriptor(
         key="amdgpu.test.memory",
         mnemonic="test_memory",
-        semantic_tag="memory.global.atomic.u32",
+        semantic_tag="memory.global.copy.u64",
         operands=(
             Operand("dst", OperandRole.RESULT, (RegClassAlt(_REG_VGPR),), unit_count=2),
             Operand("vaddr", OperandRole.OPERAND, (RegClassAlt(_REG_VGPR),)),
@@ -387,11 +388,13 @@ def test_storage_lease_rows_project_memory_dependencies() -> None:
         effects=(
             Effect(
                 EffectKind.READ,
+                counter_id=_COUNTER_VMEM_LOAD,
                 memory_space=MemorySpace.GLOBAL,
                 flags=(EffectFlag.DEPENDENCY,),
             ),
             Effect(
                 EffectKind.WRITE,
+                counter_id=_COUNTER_VMEM_STORE,
                 memory_space=MemorySpace.GLOBAL,
                 flags=(EffectFlag.DEPENDENCY,),
             ),
@@ -2840,7 +2843,7 @@ def test_flat_memory_descriptors_cover_execution_families() -> None:
                 implicit_data_format=implicit_data_format,
                 implicit_ignore_reason="modeled-by-generic-read-effect",
             )
-            assert descriptor.schedule_class == _SCHEDULE_VMEM_LOAD
+            assert descriptor.schedule_class == _SCHEDULE_FLAT_LOAD
             assert descriptor.asm_forms is not None
             assert len(descriptor.asm_forms) == 1
             asm_form = descriptor.asm_forms[0]
@@ -2890,7 +2893,7 @@ def test_flat_memory_descriptors_cover_execution_families() -> None:
                 implicit_data_format=f"FMT_NUM_B{width_bits}",
                 implicit_ignore_reason="modeled-by-generic-write-effect",
             )
-            assert descriptor.schedule_class == _SCHEDULE_VMEM_STORE
+            assert descriptor.schedule_class == _SCHEDULE_FLAT_STORE
             assert descriptor.asm_forms is not None
             assert len(descriptor.asm_forms) == 1
             asm_form = descriptor.asm_forms[0]

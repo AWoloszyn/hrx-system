@@ -224,6 +224,39 @@ Numerical checks establish that every schedule consumes the intended tiles.
 then establishes which loads remain pending, where waits occur, and how the
 chosen order changes register pressure.
 
+### Use flat pointers in authored AMDGPU helpers
+
+An AMDGPU flat pointer can address global or workgroup memory at runtime,
+including different spaces in different lanes of the same wave. The compiler
+tracks both completion domains for flat loads, stores, and atomics. Required
+waits protect consumers, register reuse, and workgroup publication in authored
+Low helpers, including `schedule(locked)` helpers inlined with `low.invoke`.
+
+To form a flat pointer from an LDS byte offset, read the shared aperture with
+`s_mov_b64_shared_base` and use its upper word. The 32-bit hardware read returns
+zero and cannot supply this address. For example, inside a GFX11 Low helper:
+
+```loom
+%aperture = s_mov_b64_shared_base
+%shared_base = slice %aperture[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+%upper = v_mov_b32_copy %shared_base
+%address = concat(%local_byte_offset, %upper) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+%value = flat_load_dword %address
+```
+
+Here `%local_byte_offset` includes the workgroup allocation's base and the
+lane's offset. The [checked flat-pointer example](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/flat_aperture.loom)
+passes a `buffer.alloca<workgroup>` allocation into a Low helper, exercises
+returning and non-returning atomics, and selects global or LDS addresses per
+lane. Download it and run `iree-test-loom flat_aperture.loom --device=amdgpu`
+on a GFX11 device.
+
+Flat completion differs across families. GFX9 can report early completion in
+the unused address domain, so consuming a pending flat result requires full
+drains. GFX11 and GFX12 can retain younger requests with partial waits in both
+domains. [Inspect the native waits](../workflows/tune-loop-schedules.md#check-that-read-ahead-survives-native-code-generation)
+when evaluating how much of an authored schedule remains asynchronous.
+
 ### Compose independently scheduled helpers
 
 A motif author can give a Low helper `schedule(phased)` and use

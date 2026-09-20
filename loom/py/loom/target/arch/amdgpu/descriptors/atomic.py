@@ -787,11 +787,10 @@ def _flat_atomic_overlay(
     width_bits: int,
 ) -> AmdgpuDescriptorOverlay:
     schedule_class = (
-        _SCHEDULE_VMEM_ATOMIC_RETURN
+        _SCHEDULE_FLAT_ATOMIC_RETURN
         if returns_old_value
-        else _SCHEDULE_VMEM_ATOMIC_NO_RETURN
+        else _SCHEDULE_FLAT_ATOMIC_NO_RETURN
     )
-    counter_id = _COUNTER_VMEM_LOAD if returns_old_value else _COUNTER_VMEM_STORE
     result_operand = (
         _vgpr_agpr_result(units=value_units)
         if allow_accumulator_operands
@@ -880,7 +879,7 @@ def _flat_atomic_overlay(
             ),
         ),
         fixed_encoding_fields=fixed_encoding_fields,
-        effects=_generic_atomic_effects(width_bits, counter_id=counter_id),
+        effects=_generic_atomic_effects(width_bits),
         flags=(DescriptorFlag.SIDE_EFFECTING,),
         asm_forms=_flat_atomic_asm(
             mnemonic=mnemonic,
@@ -963,7 +962,7 @@ def _flat_atomic_cmpswap_overlay(
         mnemonic=mnemonic,
         encoding_name=encoding_name,
         semantic_tag=semantic_tag,
-        schedule_class=_SCHEDULE_VMEM_ATOMIC_RETURN,
+        schedule_class=_SCHEDULE_FLAT_ATOMIC_RETURN,
         operands=(
             AmdgpuOperandOverlay("VDST", result_operand),
             AmdgpuOperandOverlay(address_field_name, _vgpr_operand("addr", units=2)),
@@ -981,7 +980,7 @@ def _flat_atomic_cmpswap_overlay(
             ),
         ),
         fixed_encoding_fields=fixed_encoding_fields,
-        effects=_generic_atomic_effects(width_bits, counter_id=_COUNTER_VMEM_LOAD),
+        effects=_generic_atomic_effects(width_bits),
         flags=(DescriptorFlag.SIDE_EFFECTING,),
         asm_forms=_flat_atomic_asm(
             mnemonic=mnemonic,

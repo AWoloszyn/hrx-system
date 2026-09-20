@@ -3135,7 +3135,7 @@ def _flat_load_overlay(
         mnemonic=mnemonic,
         encoding_name=encoding_name,
         semantic_tag=semantic_tag,
-        schedule_class=_SCHEDULE_VMEM_LOAD,
+        schedule_class=_SCHEDULE_FLAT_LOAD,
         operands=(
             AmdgpuOperandOverlay(data_field_name, result_operand),
             AmdgpuOperandOverlay(address_field_name, _vgpr_operand("addr", units=2)),
@@ -3293,7 +3293,7 @@ def _flat_store_overlay(
         mnemonic=mnemonic,
         encoding_name=encoding_name,
         semantic_tag=f"memory.generic.store.u{width_bits}",
-        schedule_class=_SCHEDULE_VMEM_STORE,
+        schedule_class=_SCHEDULE_FLAT_STORE,
         operands=(
             AmdgpuOperandOverlay(address_field_name, _vgpr_operand("addr", units=2)),
             AmdgpuOperandOverlay(data_field_name, value_operand),

@@ -1,0 +1,158 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// A 64-bit aperture read supplies the high address word. The low word is zero;
+// a 32-bit move from the same inline source cannot construct a flat LDS pointer.
+// Each lane roundtrips its own LDS word through a generic flat pointer. The
+// compiler supplies completion for both possible memory paths.
+amdgpu.target<gfx11-generic> @flat_aperture_target
+
+low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@flat_aperture_target) @flat_aperture_roundtrip(%local_base: reg<amdgpu.vgpr>, %byte_offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %aperture = s_mov_b64_shared_base
+  %shared_base = slice %aperture[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %upper = v_mov_b32_copy %shared_base
+  %lower = v_add_u32 %local_base, %byte_offset
+  %address = concat(%lower, %upper) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  flat_store_b32 %address, %value
+  %loaded = flat_load_dword %address
+  %result = v_add_u32 %loaded, %byte_offset
+  return %result
+}
+
+kernel.def target(@flat_aperture_target) @flat_aperture_kernel() {
+  %c1 = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%width, %c1, %c1) : index
+} launch(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %size = index.constant 128 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %size : buffer
+  %lane = kernel.workitem.id<x> : index
+  %element_bytes = index.constant 4 : index
+  %byte = index.mul %lane, %element_bytes : index
+  %byte_i32 = index.cast %byte : index to i32
+  %byte_vector = vector.splat %byte_i32 : vector<1xi32>
+  %input_view = buffer.view %input[%base] : buffer -> view<32xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<32xi32>
+  %value = vector.load %input_view[%lane] : view<32xi32> -> vector<1xi32>
+  %result = low.invoke @flat_aperture_roundtrip(%scratch, %byte_vector, %value) : (buffer, vector<1xi32>, vector<1xi32>) -> (vector<1xi32>)
+  vector.store %result, %output_view[%lane] : vector<1xi32>, view<32xi32>
+  kernel.return
+}
+
+check.case public @flat_aperture_case {
+  %input = check.generate.iota offset(10) step(3) : tensor<32xi32>
+  %output = check.generate.fill value(-1) : tensor<32xi32>
+  kernel.launch @flat_aperture_kernel(%input, %output) : (tensor<32xi32>, tensor<32xi32>)
+  %expected = check.generate.iota offset(10) step(7) : tensor<32xi32>
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+// Returning and non-returning atomics use different VMEM counters. Both also
+// complete through LDS before this lane reads or reuses its workgroup word.
+low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@flat_aperture_target) @flat_aperture_atomic_roundtrip(%local_base: reg<amdgpu.vgpr>, %byte_offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %aperture = s_mov_b64_shared_base
+  %shared_base = slice %aperture[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %upper = v_mov_b32_copy %shared_base
+  %lower = v_add_u32 %local_base, %byte_offset
+  %address = concat(%lower, %upper) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  flat_store_b32 %address, %value
+  %old = flat_atomic_add_u32_rtn %address, %value
+  flat_atomic_add_u32 %address, %byte_offset
+  %loaded = flat_load_dword %address
+  %result = v_add_u32 %loaded, %old
+  return %result
+}
+
+kernel.def target(@flat_aperture_target) @flat_aperture_atomic_kernel() {
+  %c1 = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%width, %c1, %c1) : index
+} launch(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %size = index.constant 128 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %size : buffer
+  %lane = kernel.workitem.id<x> : index
+  %element_bytes = index.constant 4 : index
+  %byte = index.mul %lane, %element_bytes : index
+  %byte_i32 = index.cast %byte : index to i32
+  %byte_vector = vector.splat %byte_i32 : vector<1xi32>
+  %input_view = buffer.view %input[%base] : buffer -> view<32xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<32xi32>
+  %value = vector.load %input_view[%lane] : view<32xi32> -> vector<1xi32>
+  %result = low.invoke @flat_aperture_atomic_roundtrip(%scratch, %byte_vector, %value) : (buffer, vector<1xi32>, vector<1xi32>) -> (vector<1xi32>)
+  vector.store %result, %output_view[%lane] : vector<1xi32>, view<32xi32>
+  kernel.return
+}
+
+check.case public @flat_aperture_atomic_case {
+  %input = check.generate.iota offset(10) step(3) : tensor<32xi32>
+  %output = check.generate.fill value(-1) : tensor<32xi32>
+  kernel.launch @flat_aperture_atomic_kernel(%input, %output) : (tensor<32xi32>, tensor<32xi32>)
+  %expected = check.generate.iota offset(30) step(13) : tensor<32xi32>
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+// One wave selects global memory for its first half and LDS for its second.
+// The LDS payload differs from the global payload, so both address paths have
+// independent numerical checks after a single mixed-domain flat instruction.
+low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@flat_aperture_target) @flat_aperture_mixed(%global: reg<amdgpu.sgpr x2>, %local: reg<amdgpu.vgpr>, %byte_offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %aperture = s_mov_b64_shared_base
+  %shared_base = slice %aperture[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %local_upper = v_mov_b32_copy %shared_base
+  %local_lower = v_add_u32 %local, %byte_offset
+  %local_address = concat(%local_lower, %local_upper) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %local_value = v_add_u32 %value, %byte_offset
+  flat_store_b32 %local_address, %local_value
+  %global_lower = slice %global[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %global_upper = slice %global[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %lower, %carry = v_add_co_u32 %global_lower, %byte_offset
+  %upper_base = v_mov_b32_copy %global_upper
+  %zero = v_mov_b32 0
+  %upper, %carry_out = v_add_co_ci_u32 %upper_base, %zero, %carry
+  %use_global = v_cmp_lt_u32_src1_inline %byte_offset {rhs = 64}
+  %selected_lower = v_cndmask_b32 %local_lower, %lower, %use_global
+  %selected_upper = v_cndmask_b32 %local_upper, %upper, %use_global
+  %address = concat(%selected_lower, %selected_upper) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %loaded = flat_load_dword %address
+  return %loaded
+}
+
+kernel.def target(@flat_aperture_target) @flat_aperture_mixed_kernel() {
+  %c1 = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%width, %c1, %c1) : index
+} launch(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %size = index.constant 128 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %size : buffer
+  %lane = kernel.workitem.id<x> : index
+  %element_bytes = index.constant 4 : index
+  %byte = index.mul %lane, %element_bytes : index
+  %byte_i32 = index.cast %byte : index to i32
+  %byte_vector = vector.splat %byte_i32 : vector<1xi32>
+  %input_view = buffer.view %input[%base] : buffer -> view<32xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<32xi32>
+  %value = vector.load %input_view[%lane] : view<32xi32> -> vector<1xi32>
+  %result = low.invoke @flat_aperture_mixed(%input, %scratch, %byte_vector, %value) : (buffer, buffer, vector<1xi32>, vector<1xi32>) -> (vector<1xi32>)
+  vector.store %result, %output_view[%lane] : vector<1xi32>, view<32xi32>
+  kernel.return
+}
+
+check.case public @flat_aperture_mixed_case {
+  %input = check.generate.iota offset(10) step(3) : tensor<32xi32>
+  %output = check.generate.fill value(-1) : tensor<32xi32>
+  kernel.launch @flat_aperture_mixed_kernel(%input, %output) : (tensor<32xi32>, tensor<32xi32>)
+  %global_actual = check.tensor.view %output offset(0) : tensor<32xi32> -> tensor<16xi32>
+  %global_expected = check.generate.iota offset(10) step(3) : tensor<16xi32>
+  check.expect.equal actual(%global_actual) expected(%global_expected) : tensor<16xi32>
+  %local_actual = check.tensor.view %output offset(64) : tensor<32xi32> -> tensor<16xi32>
+  %local_expected = check.generate.iota offset(122) step(7) : tensor<16xi32>
+  check.expect.equal actual(%local_actual) expected(%local_expected) : tensor<16xi32>
+  check.return
+}
