@@ -74,6 +74,9 @@
 //   // TEMPLATE: <path>      Require this file to remain synchronized with a
 //                           root-relative corpus template. File-level only;
 //                           ordinary execution rejects stale files.
+//   // TEMPLATE-EXCLUDE: @<case> <reason>
+//                           Omit one architecturally inapplicable template
+//                           case. File-level only; requires TEMPLATE.
 //
 // Separators:
 //   // ====                 Case separator. The first separator must appear
@@ -102,6 +105,11 @@
 //   private helpers are present, its unique public func-like definition. The
 //   helpers remain authoritative template source. // CASE directives are
 //   intentionally unsupported.
+//   TEMPLATE-EXCLUDE names an exact case symbol and requires a nonempty reason.
+//   Duplicate exclusions and names absent from the template are errors. The
+//   remaining cases keep their template order and synchronization contract.
+//   Entirely inapplicable corpora need no target fixture; excluding every case
+//   is an error instead of producing an empty passing test.
 //
 // Annotations (for verify mode — uppercase to distinguish from comments):
 //   // ERROR: DOMAIN/CODE "substring"
@@ -347,6 +355,14 @@ typedef struct loom_test_case_t {
 // Test file
 //===----------------------------------------------------------------------===//
 
+// One explicitly inapplicable case from the file's authoritative template.
+typedef struct loom_test_template_exclusion_t {
+  // Exact function symbol name, without '@'. Borrows from the source.
+  iree_string_view_t case_name;
+  // Architectural reason for omitting this case. Borrows from the source.
+  iree_string_view_t reason;
+} loom_test_template_exclusion_t;
+
 // A parsed test file containing one or more cases. All internal
 // allocations live in the arena passed to loom_test_file_parse. The
 // caller owns the arena and deinitializes it to free everything.
@@ -361,6 +377,13 @@ typedef struct loom_test_file_t {
   loom_test_source_range_t template_directive_range;
   // Root-relative corpus template path from // TEMPLATE:.
   iree_string_view_t template_path;
+  // Explicitly inapplicable cases named by // TEMPLATE-EXCLUDE: directives.
+  struct {
+    // Arena-allocated entries whose strings borrow from the source.
+    loom_test_template_exclusion_t* values;
+    // Number of exclusions.
+    iree_host_size_t count;
+  } template_exclusions;
 
   // File-level default mode inherited by cases without their own // RUN:
   // directive. Defaults to ROUNDTRIP when no default // RUN: directive exists.

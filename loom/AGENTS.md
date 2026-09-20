@@ -277,10 +277,14 @@ Positive source-lowering regressions with a shared source contract belong in
 the [common corpus](src/loom/test/corpus/source_low/README.md). Target fixtures
 consume them through `TEMPLATE`, retaining their own profiles, lowering modes,
 and output assertions. A bug discovered on one backend contributes coverage to
-every backend: supported lowering or an exercised, precise unsupported
-diagnostic. Architectural non-applicability needs an explicit contract reason;
-missing implementation is a coverage gap. Authored Low IR, target-specific
-configuration, and rejection semantics stay with their owning subsystem.
+every applicable backend: supported lowering or an exercised, precise
+unsupported diagnostic for a missing implementation. Architectural
+non-applicability is different: entirely inapplicable corpora need no target
+fixture, and mixed fixtures use `TEMPLATE-EXCLUDE: @case <reason>` for the exact
+inapplicable cases. The target suite records the architectural reason; dedicated
+target tests own that rejection contract instead of repeating it for every
+positive source program. Authored Low IR, target-specific configuration, and
+rejection semantics stay with their owning subsystem.
 
 A new `format/text:parser` dependency in a C++ unit-test target is a boundary
 review signal. Parsing is appropriate when the parser API itself is the subject;
