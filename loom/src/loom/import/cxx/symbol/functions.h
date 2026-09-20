@@ -77,11 +77,16 @@ class Functions {
                       Locations& locations, loom_builder_t* builder);
 
  private:
+  enum class DeclarationScope { Namespace, Nested };
+
   void check_declaration(cxx::FunctionSymbol* function,
                          cxx::List<cxx::AttributeSpecifierAST*>* attributes,
-                         cxx::AST* owner);
+                         cxx::AST* owner, DeclarationScope scope);
   loom_symbol_ref_t create_symbol(cxx::FunctionSymbol* function);
   void collect(cxx::List<cxx::DeclarationAST*>* declarations,
+               DeclarationScope scope,
+               std::vector<cxx::FunctionSymbol*>& definitions);
+  void collect(cxx::DeclarationAST* declaration, DeclarationScope scope,
                std::vector<cxx::FunctionSymbol*>& definitions);
   const std::string& qualified_name(cxx::FunctionSymbol* symbol);
 

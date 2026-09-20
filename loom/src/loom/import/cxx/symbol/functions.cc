@@ -30,7 +30,7 @@ void Functions::select(std::span<const iree_string_view_t> roots) {
                         "expected an ordinary translation unit");
   }
   std::vector<cxx::FunctionSymbol*> definitions;
-  collect(root->declarationList, definitions);
+  collect(root->declarationList, DeclarationScope::Namespace, definitions);
   for (const auto& [function, source] : check_cases_) {
     if (!definition(function)) {
       diagnostics_.reject(unit_, source, "check cases require a definition");
@@ -86,44 +86,87 @@ void Functions::select(std::span<const iree_string_view_t> roots) {
 }
 
 void Functions::collect(cxx::List<cxx::DeclarationAST*>* declarations,
+                        DeclarationScope scope,
                         std::vector<cxx::FunctionSymbol*>& definitions) {
   for (auto* declaration : cxx::ListView{declarations}) {
-    if (auto* function =
-            cxx::ast_cast<cxx::FunctionDefinitionAST>(declaration)) {
-      if (!function->symbol->isTemplatePattern()) {
-        intrinsics_.declaration(function->symbol, function->attributeList,
-                                function);
-        launches_.declaration(function->symbol, function->attributeList);
-        check_declaration(function->symbol, function->attributeList, function);
-        definitions_.emplace(function->symbol->canonical(), function->symbol);
-        definitions.push_back(function->symbol);
+    collect(declaration, scope, definitions);
+  }
+}
+
+void Functions::collect(cxx::DeclarationAST* declaration,
+                        DeclarationScope scope,
+                        std::vector<cxx::FunctionSymbol*>& definitions) {
+  if (auto* function = cxx::ast_cast<cxx::FunctionDefinitionAST>(declaration)) {
+    check_declaration(function->symbol, function->attributeList, function,
+                      scope);
+    if (scope == DeclarationScope::Namespace &&
+        !function->symbol->isTemplatePattern()) {
+      intrinsics_.declaration(function->symbol, function->attributeList,
+                              function);
+      launches_.declaration(function->symbol, function->attributeList);
+      definitions_.emplace(function->symbol->canonical(), function->symbol);
+      definitions.push_back(function->symbol);
+    }
+  } else if (auto* space =
+                 cxx::ast_cast<cxx::NamespaceDefinitionAST>(declaration)) {
+    check_declaration(nullptr, space->attributeList, space, scope);
+    check_declaration(nullptr, space->extraAttributeList, space, scope);
+    collect(space->declarationList, scope, definitions);
+  } else if (auto* linkage =
+                 cxx::ast_cast<cxx::LinkageSpecificationAST>(declaration)) {
+    collect(linkage->declarationList, scope, definitions);
+  } else if (auto* pattern =
+                 cxx::ast_cast<cxx::TemplateDeclarationAST>(declaration)) {
+    collect(pattern->declaration, DeclarationScope::Nested, definitions);
+  } else if (auto* alias =
+                 cxx::ast_cast<cxx::AliasDeclarationAST>(declaration)) {
+    check_declaration(nullptr, alias->attributeList, alias, scope);
+  } else if (auto* attribute =
+                 cxx::ast_cast<cxx::AttributeDeclarationAST>(declaration)) {
+    check_declaration(nullptr, attribute->attributeList, attribute, scope);
+  } else if (auto* enumeration =
+                 cxx::ast_cast<cxx::OpaqueEnumDeclarationAST>(declaration)) {
+    check_declaration(nullptr, enumeration->attributeList, enumeration, scope);
+  } else if (auto* simple =
+                 cxx::ast_cast<cxx::SimpleDeclarationAST>(declaration)) {
+    if (!simple->initDeclaratorList) {
+      check_declaration(nullptr, simple->attributeList, simple, scope);
+    }
+    for (auto* specifier : cxx::ListView{simple->declSpecifierList}) {
+      if (auto* record = cxx::ast_cast<cxx::ClassSpecifierAST>(specifier)) {
+        check_declaration(nullptr, record->attributeList, record,
+                          DeclarationScope::Nested);
+        collect(record->declarationList, DeclarationScope::Nested, definitions);
+      } else if (auto* enumeration =
+                     cxx::ast_cast<cxx::EnumSpecifierAST>(specifier)) {
+        check_declaration(nullptr, enumeration->attributeList, enumeration,
+                          scope);
+        for (auto* enumerator : cxx::ListView{enumeration->enumeratorList}) {
+          check_declaration(nullptr, enumerator->attributeList, enumerator,
+                            scope);
+        }
       }
-    } else if (auto* space =
-                   cxx::ast_cast<cxx::NamespaceDefinitionAST>(declaration)) {
-      collect(space->declarationList, definitions);
-    } else if (auto* linkage =
-                   cxx::ast_cast<cxx::LinkageSpecificationAST>(declaration)) {
-      collect(linkage->declarationList, definitions);
-    } else if (auto* simple =
-                   cxx::ast_cast<cxx::SimpleDeclarationAST>(declaration)) {
-      for (auto* declarator : cxx::ListView{simple->initDeclaratorList}) {
-        if (auto* function =
-                cxx::symbol_cast<cxx::FunctionSymbol>(declarator->symbol)) {
-          intrinsics_.declaration(function, simple->attributeList, declarator);
-          launches_.declaration(function, simple->attributeList);
-          check_declaration(function, simple->attributeList, declarator);
-        }
-        auto* variable =
-            cxx::symbol_cast<cxx::VariableSymbol>(declarator->symbol);
-        if (variable && !variable->isExtern() &&
-            !(variable->isConstexpr() ||
-              (unit_.typeTraits().is_const(variable->type()) &&
-               variable->constValue()))) {
-          diagnostics_.reject(
-              unit_, declarator,
-              "global storage definitions require a global-storage "
-              "projection");
-        }
+    }
+    for (auto* declarator : cxx::ListView{simple->initDeclaratorList}) {
+      auto* function =
+          cxx::symbol_cast<cxx::FunctionSymbol>(declarator->symbol);
+      check_declaration(function, simple->attributeList, declarator, scope);
+      if (scope != DeclarationScope::Namespace) {
+        continue;
+      }
+      if (function) {
+        intrinsics_.declaration(function, simple->attributeList, declarator);
+        launches_.declaration(function, simple->attributeList);
+      }
+      auto* variable =
+          cxx::symbol_cast<cxx::VariableSymbol>(declarator->symbol);
+      if (variable && !variable->isExtern() &&
+          !(variable->isConstexpr() ||
+            (unit_.typeTraits().is_const(variable->type()) &&
+             variable->constValue()))) {
+        diagnostics_.reject(
+            unit_, declarator,
+            "global storage definitions require a global-storage projection");
       }
     }
   }
@@ -131,7 +174,17 @@ void Functions::collect(cxx::List<cxx::DeclarationAST*>* declarations,
 
 void Functions::check_declaration(
     cxx::FunctionSymbol* function,
-    cxx::List<cxx::AttributeSpecifierAST*>* attributes, cxx::AST* owner) {
+    cxx::List<cxx::AttributeSpecifierAST*>* attributes, cxx::AST* owner,
+    DeclarationScope scope) {
+  auto require_namespace_function = [&] {
+    if (!function || scope != DeclarationScope::Namespace ||
+        function->isTemplatePattern() ||
+        !cxx::symbol_cast<cxx::NamespaceSymbol>(function->parent())) {
+      diagnostics_.reject(
+          unit_, owner,
+          "check declarations require non-template namespace-scope functions");
+    }
+  };
   bool found = false;
   visit_loom_attributes(
       unit_, attributes,
@@ -139,6 +192,7 @@ void Functions::check_declaration(
         if (name != "check_case" && name != "check_benchmark") {
           return;
         }
+        require_namespace_function();
         auto* signature = cxx::type_cast<cxx::FunctionType>(function->type());
         if (found || annotated(function, "kernel") ||
             annotated(function, "device") || annotated(function, "op") ||
@@ -194,6 +248,7 @@ void Functions::check_declaration(
   if (!found &&
       ((annotated(function, "check_case") && !is_check_case(function)) ||
        annotated(function, "check_benchmark"))) {
+    require_namespace_function();
     diagnostics_.reject(unit_, owner,
                         "check annotations must precede the declaration");
   }

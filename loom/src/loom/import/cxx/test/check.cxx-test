@@ -233,3 +233,82 @@ func.def public @forward_helper(%value: i32) -> (i32) {
 }
 
 check.benchmark<@forward> @forward_benchmark
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+struct Suite {
+  // ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+  LOOM_CHECK_CASE(member) {}
+};
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(target) {}
+struct Suite {
+  // ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+  LOOM_CHECK_BENCHMARK(member, target);
+};
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+template <typename T>
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+LOOM_CHECK_CASE(pattern) {}
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+[[loom::check_case]] constexpr int constant = 3;
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+struct [[loom::check_case]] WrongScope {};
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+// Unused class members stay outside ordinary root selection.
+struct Unused {
+  int value;
+  static int storage;
+  int member() { return value; }
+};
+template <typename T>
+T twice(T value) { return value + value; }
+LOOM_CHECK_CASE(concrete_helper) {
+  const auto actual = twice(3);
+  loom::check::expect_equal(actual, 6);
+}
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+namespace [[loom::check_case]] WrongScope {}
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+enum [[loom::check_case]] WrongScope { value };
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+struct Suite { static void member(); };
+LOOM_CHECK_CASE(Suite::member) {}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+namespace suite {
+int twice(int value) { return value + value; }
+LOOM_CHECK_CASE(concrete) {
+  const auto actual = twice(3);
+  loom::check::expect_equal(actual, 6);
+}
+LOOM_CHECK_BENCHMARK(timing, concrete);
+}
