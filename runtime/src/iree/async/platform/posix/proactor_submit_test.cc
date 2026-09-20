@@ -467,6 +467,48 @@ TEST_F(PosixProactorSubmitTest,
   ExpectSuccessfulCompletions(tracker, kWaitCount);
 }
 
+TEST_F(PosixProactorSubmitTest, SharedRelayCapturesRegistrationEpoch) {
+  int pipe_fds[2];
+  ASSERT_EQ(pipe(pipe_fds), 0);
+  ScopedFd read_fd(pipe_fds[0]);
+  ScopedFd write_fd(pipe_fds[1]);
+  ASSERT_EQ(fcntl(read_fd.get(), F_SETFL, O_NONBLOCK), 0);
+  ASSERT_EQ(fcntl(write_fd.get(), F_SETFL, O_NONBLOCK), 0);
+
+  iree_atomic_int32_t epoch = IREE_ATOMIC_VAR_INIT(7);
+  iree_async_notification_shared_options_t options = {};
+  options.epoch_address = &epoch;
+  options.wake_primitive = iree_async_primitive_from_fd(read_fd.get());
+  options.signal_primitive = iree_async_primitive_from_fd(write_fd.get());
+  iree_async_notification_t* source = nullptr;
+  iree_async_notification_t* sink = nullptr;
+  IREE_ASSERT_OK(
+      iree_async_notification_create_shared(proactor_, &options, &source));
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
+
+  // The native wake remains pending, but its epoch predates registration.
+  iree_async_notification_signal(source, 1);
+  iree_async_relay_t* relay = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_register_relay(
+      proactor_, iree_async_relay_source_from_notification(source),
+      iree_async_relay_sink_signal_notification(sink, 1),
+      IREE_ASYNC_RELAY_FLAG_PERSISTENT, iree_async_relay_error_callback_none(),
+      &relay));
+  IREE_ASSERT_OK(
+      iree_async_proactor_poll(proactor_, iree_infinite_timeout(), nullptr));
+  EXPECT_EQ(iree_async_notification_query_epoch(sink), 0u);
+
+  iree_async_notification_signal(source, 1);
+  IREE_ASSERT_OK(
+      iree_async_proactor_poll(proactor_, iree_infinite_timeout(), nullptr));
+  EXPECT_EQ(iree_async_notification_query_epoch(sink), 1u);
+  iree_async_proactor_unregister_relay(
+      proactor_, relay, iree_async_relay_unregistered_callback_none());
+  iree_async_notification_release(sink);
+  iree_async_notification_release(source);
+}
+
 TEST_F(PosixProactorSubmitTest, ValidationFailurePrecedesEagerSend) {
   SocketPtr socket;
   ScopedFd peer_fd;

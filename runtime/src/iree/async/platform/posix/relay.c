@@ -321,7 +321,7 @@ iree_status_t iree_async_proactor_posix_register_relay(
     notification->platform.posix.relay_list = relay;
 
     // Capture the current epoch for change detection.
-    relay->wait_epoch = (uint32_t)iree_atomic_load(&notification->epoch,
+    relay->wait_epoch = (uint32_t)iree_atomic_load(notification->epoch_ptr,
                                                    iree_memory_order_acquire);
 
     // Activate the notification's fd if this is the first consumer.
@@ -450,7 +450,7 @@ void iree_async_proactor_posix_dispatch_notification_relays(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_t* notification) {
   uint32_t current_epoch = (uint32_t)iree_atomic_load(
-      &notification->epoch, iree_memory_order_acquire);
+      notification->epoch_ptr, iree_memory_order_acquire);
 
   iree_async_relay_t** previous = &notification->platform.posix.relay_list;
   iree_async_relay_t* relay = notification->platform.posix.relay_list;

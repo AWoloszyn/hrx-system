@@ -28,6 +28,7 @@
 #include "iree/async/cts/util/test_base.h"
 #include "iree/async/notification.h"
 #include "iree/async/operations/scheduling.h"
+#include "iree/async/relay.h"
 
 #if defined(IREE_PLATFORM_WINDOWS)
 // Windows: Event objects for wake/signal primitives.
@@ -150,6 +151,58 @@ class SharedNotificationTest : public CtsTestBase<> {
     options.signal_primitive = iree_async_primitive_from_fd(state->pipe_fds[1]);
 #endif
     return options;
+  }
+
+  void VerifyPeerRelay(iree_async_relay_flags_t flags, int signal_count) {
+    SharedState state;
+    IREE_ASSERT_OK(CreateSharedState(&state));
+    iree_atomic_store(&state.epoch, 7, iree_memory_order_release);
+    auto receiver_options = MakeSharedOptions(&state);
+    auto sender_options = MakeSharedOptions(&state);
+#if defined(IREE_PLATFORM_WINDOWS)
+    sender_options.wake_primitive = receiver_options.signal_primitive;
+    sender_options.signal_primitive = receiver_options.wake_primitive;
+#endif  // IREE_PLATFORM_WINDOWS
+
+    IREE_ASSERT_OK_AND_ASSIGN(
+        iree_async_proactor_t * sender_proactor,
+        GetParam().factory(iree_async_proactor_options_default()));
+    iree_async_notification_t* receiver = nullptr;
+    iree_async_notification_t* sender = nullptr;
+    iree_async_notification_t* sink = nullptr;
+    IREE_ASSERT_OK(iree_async_notification_create_shared(
+        proactor_, &receiver_options, &receiver));
+    IREE_ASSERT_OK(iree_async_notification_create_shared(
+        sender_proactor, &sender_options, &sender));
+    IREE_ASSERT_OK(iree_async_notification_create(
+        proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
+
+    iree_async_relay_t* relay = nullptr;
+    IREE_ASSERT_OK(iree_async_proactor_register_relay(
+        proactor_, iree_async_relay_source_from_notification(receiver),
+        iree_async_relay_sink_signal_notification(sink, 1), flags,
+        iree_async_relay_error_callback_none(), &relay));
+    for (int i = 0; i < signal_count; ++i) {
+      SCOPED_TRACE(i);
+      const uint32_t sink_epoch = iree_async_notification_query_epoch(sink);
+      iree_async_notification_signal(sender, 1);
+      PollUntilCondition(
+          [&] {
+            return iree_async_notification_query_epoch(sink) != sink_epoch;
+          },
+          "shared notification relay");
+      EXPECT_EQ(iree_async_notification_query_epoch(sink), sink_epoch + 1);
+      EXPECT_EQ(iree_async_notification_query_epoch(receiver), 8u + i);
+    }
+    if (iree_any_bit_set(flags, IREE_ASYNC_RELAY_FLAG_PERSISTENT)) {
+      WaitForRelayUnregistration(relay);
+    }
+
+    iree_async_notification_release(sink);
+    iree_async_notification_release(sender);
+    iree_async_notification_release(receiver);
+    iree_async_proactor_release(sender_proactor);
+    DestroySharedState(&state);
   }
 };
 
@@ -447,6 +500,15 @@ TEST_P(SharedNotificationTest, AdvisorySignalWakesOtherHandle) {
   iree_async_notification_release(waiter);
   iree_async_proactor_release(signaler_proactor);
   DestroySharedState(&state);
+}
+
+// Relay sources use the shared epoch and the peer's native wake primitive.
+TEST_P(SharedNotificationTest, OneShotPeerRelay) {
+  VerifyPeerRelay(IREE_ASYNC_RELAY_FLAG_NONE, 1);
+}
+
+TEST_P(SharedNotificationTest, PersistentPeerRelay) {
+  VerifyPeerRelay(IREE_ASYNC_RELAY_FLAG_PERSISTENT, 4);
 }
 
 // Cancellation of a registered shared wait needs no signal from either peer.
