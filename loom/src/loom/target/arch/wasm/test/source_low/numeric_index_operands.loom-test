@@ -222,7 +222,14 @@ func.def target(@target) @high_bit_offset_add(%input: offset) -> (i64) {
   %bounded = index.assume %input [range(%input, 0, 1023)] : offset
   %base = index.constant 2147483648 : offset
   %sum = index.add %base, %bounded : offset
-  // ERROR@+1: WASM/001 {op_name="index.cast", field_name="result", actual_type="i64"}
   %wide = index.cast %sum : offset to i64
   func.return %wide : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @high_bit_offset_add(%bounded: reg<wasm.i32>) -> (reg<wasm.i64>) asm {
+  %base = i32.const 2147483648
+  %sum = i32.add %base, %bounded
+  %wide = i64.extend_i32_u %sum
+  return %wide
 }

@@ -935,6 +935,15 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         *(
             _conversion_rule(
                 index.index_cast,
+                source_type,
+                _I64,
+                f"wasm.i64.extend_i32_{signedness}",
+            )
+            for source_type, signedness in ((_INDEX, "s"), (_OFFSET, "u"))
+        ),
+        *(
+            _conversion_rule(
+                index.index_cast,
                 _I64,
                 result_type,
                 "wasm.i32.wrap_i64",
