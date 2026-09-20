@@ -78,44 +78,42 @@ iree_populate_locked_fetch_content(sample sample_source)
 """,
                 encoding="utf-8",
             )
-            build = root / "build"
-            # file(CONFIGURE) terminates its single template line after expanding
-            # the complete patch stack, including its existing patch separators.
-            expected_patch = (
-                (patches / "first.patch").read_bytes()
-                + b"\n"
-                + (patches / "second.patch").read_bytes()
-                + b"\n\n"
-            )
-            for _ in range(2):
-                result = subprocess.run(
-                    [
-                        CMAKE_COMMAND,
-                        "-S",
-                        str(root),
-                        "-B",
-                        str(build),
-                        *configured_cmake_arguments(),
-                    ],
-                    check=False,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                )
-                self.assertEqual(result.returncode, 0, result.stdout)
-                self.assertEqual(
-                    (build / "CMakeFiles/sample-patch.diff").read_bytes(),
-                    expected_patch,
-                )
-                cache = (build / "CMakeCache.txt").read_text(encoding="utf-8")
-                self.assertIn(
-                    f"CMAKE_GENERATOR:INTERNAL={os.environ['IREE_TEST_CMAKE_GENERATOR']}\n",
-                    cache,
-                )
-                value = build / "_deps/sample-src/value.txt"
-                self.assertEqual(
-                    value.read_bytes(), (context + "after\n").encode("utf-8")
-                )
+            # The patch stack must apply under either source-file newline policy.
+            for autocrlf in ("false", "true"):
+                with self.subTest(autocrlf=autocrlf):
+                    build = root / f"build-{autocrlf}"
+                    environment = {
+                        **os.environ,
+                        "GIT_CONFIG_COUNT": "1",
+                        "GIT_CONFIG_KEY_0": "core.autocrlf",
+                        "GIT_CONFIG_VALUE_0": autocrlf,
+                    }
+                    for _ in range(2):
+                        result = subprocess.run(
+                            [
+                                CMAKE_COMMAND,
+                                "-S",
+                                str(root),
+                                "-B",
+                                str(build),
+                                *configured_cmake_arguments(),
+                            ],
+                            env=environment,
+                            check=False,
+                            text=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                        )
+                        self.assertEqual(result.returncode, 0, result.stdout)
+                        cache = (build / "CMakeCache.txt").read_text(encoding="utf-8")
+                        self.assertIn(
+                            f"CMAKE_GENERATOR:INTERNAL={os.environ['IREE_TEST_CMAKE_GENERATOR']}\n",
+                            cache,
+                        )
+                        value = build / "_deps/sample-src/value.txt"
+                        self.assertEqual(
+                            value.read_text(encoding="utf-8"), context + "after\n"
+                        )
 
     def run_patch(self, source: Path, patch: Path) -> subprocess.CompletedProcess:
         git = shutil.which("git")
