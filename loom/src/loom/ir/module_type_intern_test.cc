@@ -383,9 +383,10 @@ TEST_P(PooledTypeRowsTest, WarmConstructionUsesOnlyRecycledFixedBlocks) {
     IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("pooled_types"),
                                         &pool_, nullptr,
                                         iree_allocator_system(), &module_));
-    // This exceeds flat row-array pool capacity while keeping interner
-    // generations small enough to fit both configured pool sizes.
-    for (uint32_t dimension = 1; dimension <= 2048; ++dimension) {
+    // Both canonical rows and hash buckets exceed one block; every allocation
+    // still comes from the pool and is reusable by the next module.
+    constexpr uint32_t kDimensionCount = 8192;
+    for (uint32_t dimension = 1; dimension <= kDimensionCount; ++dimension) {
       const auto type = loom_type_shaped_2d(
           LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
           loom_dim_pack_static(dimension), loom_dim_pack_static(4),
@@ -394,10 +395,10 @@ TEST_P(PooledTypeRowsTest, WarmConstructionUsesOnlyRecycledFixedBlocks) {
       IREE_ASSERT_OK(loom_module_intern_type_id(module_, type, &type_id));
       EXPECT_EQ(type_id, dimension);
     }
-    EXPECT_EQ(module_->types.count, 2049u);
-    EXPECT_EQ(
-        module_->types.segments.segment_count,
-        (2049 + LOOM_TYPE_SEGMENT_CAPACITY - 1) / LOOM_TYPE_SEGMENT_CAPACITY);
+    EXPECT_EQ(module_->types.count, kDimensionCount + 1);
+    EXPECT_EQ(module_->types.segments.segment_count,
+              (kDimensionCount + LOOM_TYPE_SEGMENT_CAPACITY) /
+                  LOOM_TYPE_SEGMENT_CAPACITY);
     if (iteration == 0) {
       ASSERT_GT(allocation_count_, 0u);
       warm_allocation_count = allocation_count_;
@@ -501,6 +502,22 @@ class TypeInternerFailureTest
     }
   }
 
+  void ExpectInternerStorageUnchanged(const loom_intern_table_t& interner) {
+    EXPECT_EQ(module_->type_intern.count, interner.count);
+    EXPECT_EQ(module_->type_intern.capacity, interner.capacity);
+    EXPECT_EQ(module_->type_intern.segments.segment_count,
+              interner.segments.segment_count);
+    EXPECT_EQ(module_->type_intern.segments.primary_page,
+              interner.segments.primary_page);
+    EXPECT_EQ(module_->type_intern.segments.page_directory,
+              interner.segments.page_directory);
+    for (uint32_t i = 0; i < interner.segments.segment_count; ++i) {
+      EXPECT_EQ(loom_segmented_storage_const_segment(
+                    &module_->type_intern.segments, i),
+                loom_segmented_storage_const_segment(&interner.segments, i));
+    }
+  }
+
   // Backing allocation ordinal to fail, or SIZE_MAX when failure is disabled.
   iree_host_size_t failure_index_ = SIZE_MAX;
   // Backing allocation requests since the latest preparation completed.
@@ -519,7 +536,13 @@ TEST_P(TypeInternerFailureTest,
   loom_type_t type = {};
   loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
   IREE_ASSERT_OK(MakeType(GetParam().type_count, &type, &type_id));
-  ASSERT_GT(allocation_count_, 0u);
+  // Logical bucket growth within one chunk may need no backing allocation.
+  // A new row or bucket chunk always allocates with this deliberately tiny
+  // pool.
+  if (GetParam().type_count == GetParam().row_capacity ||
+      GetParam().hash_capacity >= LOOM_INTERN_SEGMENT_CAPACITY) {
+    ASSERT_GT(allocation_count_, 0u);
+  }
 
   // Page-directory growth depends on the backing allocator's address layout.
   // Exhaust failure ordinals until a complete attempt makes no failing call.
@@ -544,10 +567,7 @@ TEST_P(TypeInternerFailureTest,
     EXPECT_EQ(allocation_count_, failure_index + 1);
 
     ExpectTypeStorageUnchanged(types);
-    EXPECT_EQ(module_->type_intern.hashes, interner.hashes);
-    EXPECT_EQ(module_->type_intern.indices, interner.indices);
-    EXPECT_EQ(module_->type_intern.capacity, interner.capacity);
-    EXPECT_EQ(module_->type_intern.count, interner.count);
+    ExpectInternerStorageUnchanged(interner);
     EXPECT_EQ(module_->type_identity.root, identity.root);
     EXPECT_EQ(module_->type_identity.recent_page, identity.recent_page);
     EXPECT_EQ(module_->arena.used_allocation_size, used_bytes);
@@ -599,8 +619,7 @@ TEST_P(TypeInternerFailureTest, InvalidParameterRollsBackAndRetries) {
     EXPECT_EQ(module_->arena.used_allocation_size, used_bytes);
     EXPECT_EQ(module_->arena.total_allocation_size, owned_bytes);
     ExpectTypeStorageUnchanged(types);
-    EXPECT_EQ(module_->type_intern.hashes, interner.hashes);
-    EXPECT_EQ(module_->type_intern.count, interner.count);
+    ExpectInternerStorageUnchanged(interner);
     IREE_ASSERT_OK(MakeType(GetParam().type_count, &type, &type_id));
     EXPECT_EQ(type_id, GetParam().type_count);
   }
@@ -681,14 +700,21 @@ TEST_P(TypeInternerFailureTest, GenericInternOwnsCanonicalParameterPayload) {
   EXPECT_EQ(module_->arena.used_allocation_size, used_bytes);
 }
 
-// Exercise row-only, hash-only, and simultaneous row/hash growth through
-// distinct type construction, without altering table metadata. The last case
-// joins interner growth with append into an already-shared directory page.
+// Bucket capacity before the interner needs its first shared pointer page.
+constexpr iree_host_size_t kBucketDirectoryCapacity =
+    LOOM_INTERN_SEGMENT_CAPACITY * LOOM_SEGMENTED_STORAGE_INLINE_SEGMENT_COUNT;
+
+// Exercise row-only, logical hash-only, and simultaneous row/hash growth
+// through distinct type construction, without altering table metadata. The last
+// case promotes the bucket directory while appending to shared row storage.
 INSTANTIATE_TEST_SUITE_P(TypeGrowth, TypeInternerFailureTest,
                          ::testing::Values(TypeGrowthBoundary{32, 32, 64},
-                                           TypeGrowthBoundary{12, 32, 16},
+                                           TypeGrowthBoundary{48, 64, 64},
                                            TypeGrowthBoundary{96, 96, 128},
-                                           TypeGrowthBoundary{768, 768, 1024}));
+                                           TypeGrowthBoundary{
+                                               kBucketDirectoryCapacity * 3 / 4,
+                                               kBucketDirectoryCapacity * 3 / 4,
+                                               kBucketDirectoryCapacity}));
 
 }  // namespace
 }  // namespace loom

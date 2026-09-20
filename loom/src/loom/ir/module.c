@@ -40,183 +40,6 @@ static uint32_t loom_hash_string_view(iree_string_view_t string) {
 }
 
 //===----------------------------------------------------------------------===//
-// Intern table
-//===----------------------------------------------------------------------===//
-
-// Returns the hash table capacity needed for |entry_capacity| entries
-// at a maximum 0.75 load factor, rounded up to a power of two.
-static iree_host_size_t loom_intern_capacity_for_entries(
-    iree_host_size_t entry_capacity) {
-  return iree_host_size_next_power_of_two((entry_capacity * 4 + 2) / 3);
-}
-
-static iree_status_t loom_intern_table_allocate(iree_arena_allocator_t* arena,
-                                                iree_host_size_t capacity,
-                                                loom_intern_table_t* table) {
-  uint32_t* hashes = NULL;
-  uint32_t* indices = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, capacity, sizeof(uint32_t), (void**)&hashes));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, capacity, sizeof(uint32_t), (void**)&indices));
-
-  iree_host_size_t byte_size = capacity * sizeof(uint32_t);
-  memset(hashes, 0, byte_size);
-  memset(indices, 0xFF, byte_size);
-  table->count = 0;
-  table->capacity = capacity;
-  table->hashes = hashes;
-  table->indices = indices;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_intern_table_grow(iree_arena_allocator_t* arena,
-                                            loom_intern_table_t* table) {
-  iree_host_size_t old_capacity = table->capacity;
-  uint32_t* old_hashes = table->hashes;
-  uint32_t* old_indices = table->indices;
-
-  iree_host_size_t new_capacity = old_capacity * 2;
-  IREE_RETURN_IF_ERROR(loom_intern_table_allocate(arena, new_capacity, table));
-
-  // Reinsert all entries from the old table.
-  iree_host_size_t mask = new_capacity - 1;
-  for (iree_host_size_t i = 0; i < old_capacity; ++i) {
-    if (old_indices[i] == UINT32_MAX) {
-      continue;
-    }
-    uint32_t hash = old_hashes[i];
-    iree_host_size_t slot = hash & mask;
-    while (table->indices[slot] != UINT32_MAX) {
-      slot = (slot + 1) & mask;
-    }
-    table->hashes[slot] = hash;
-    table->indices[slot] = old_indices[i];
-    ++table->count;
-  }
-
-  return iree_ok_status();
-}
-
-// Clears all entries while retaining the arena-owned table allocation.
-static void loom_intern_table_clear(loom_intern_table_t* table) {
-  if (table->capacity == 0) {
-    return;
-  }
-  memset(table->indices, 0xFF, table->capacity * sizeof(uint32_t));
-  table->count = 0;
-}
-
-// Finds a vacant slot for a known-unique value in a non-full table.
-static iree_host_size_t loom_intern_table_find_empty_slot(
-    const loom_intern_table_t* table, uint32_t hash) {
-  const iree_host_size_t mask = table->capacity - 1;
-  iree_host_size_t slot = hash & mask;
-  while (table->indices[slot] != UINT32_MAX) {
-    slot = (slot + 1) & mask;
-  }
-  return slot;
-}
-
-// Inserts a value known to be unique into a table with available capacity.
-static void loom_intern_table_insert_unique(loom_intern_table_t* table,
-                                            uint32_t hash, uint32_t index) {
-  IREE_ASSERT(table->count < table->capacity);
-  const iree_host_size_t slot = loom_intern_table_find_empty_slot(table, hash);
-  table->hashes[slot] = hash;
-  table->indices[slot] = index;
-  ++table->count;
-}
-
-// Tests whether insertion preserves the maximum load factor without growth.
-static bool loom_intern_table_has_insert_capacity(
-    const loom_intern_table_t* table) {
-  return table->count * 4 < table->capacity * 3;
-}
-
-// Ensures one entry can be inserted while preserving the maximum load factor.
-static iree_status_t loom_intern_table_reserve_insert(
-    iree_arena_allocator_t* arena, loom_intern_table_t* table) {
-  if (table->capacity == 0) {
-    return loom_intern_table_allocate(arena, /*capacity=*/32, table);
-  }
-  if (!loom_intern_table_has_insert_capacity(table)) {
-    return loom_intern_table_grow(arena, table);
-  }
-  return iree_ok_status();
-}
-
-typedef bool (*loom_intern_equal_fn_t)(const void* context, uint32_t index);
-
-typedef struct loom_intern_probe_t {
-  // Existing entry index, or UINT32_MAX when the candidate is absent.
-  uint32_t index;
-  // Matching or vacant slot, valid until the table grows or is mutated.
-  iree_host_size_t slot;
-} loom_intern_probe_t;
-
-static loom_intern_probe_t loom_intern_table_probe(
-    const loom_intern_table_t* table, uint32_t hash,
-    loom_intern_equal_fn_t equal_fn, const void* equal_context) {
-  if (table->capacity == 0) {
-    return (loom_intern_probe_t){.index = UINT32_MAX, .slot = 0};
-  }
-
-  iree_host_size_t mask = table->capacity - 1;
-  iree_host_size_t slot = hash & mask;
-  while (true) {
-    uint32_t index = table->indices[slot];
-    if (index == UINT32_MAX) {
-      return (loom_intern_probe_t){.index = UINT32_MAX, .slot = slot};
-    }
-    if (table->hashes[slot] == hash && equal_fn(equal_context, index)) {
-      return (loom_intern_probe_t){.index = index, .slot = slot};
-    }
-    slot = (slot + 1) & mask;
-  }
-}
-
-static uint32_t loom_intern_table_lookup(const loom_intern_table_t* table,
-                                         uint32_t hash,
-                                         loom_intern_equal_fn_t equal_fn,
-                                         const void* equal_context) {
-  return loom_intern_table_probe(table, hash, equal_fn, equal_context).index;
-}
-
-// Looks up or inserts an entry in the intern table.
-// |hash|: pre-computed hash of the entry.
-// |index|: the entry table index to insert if not found.
-// |out_index|: set to the existing index if found, or |new_index| if newly
-//   inserted.
-static iree_status_t loom_intern_table_find_or_insert(
-    iree_arena_allocator_t* arena, loom_intern_table_t* table, uint32_t hash,
-    uint32_t new_index, loom_intern_equal_fn_t equal_fn,
-    const void* equal_context, uint32_t* out_index) {
-  IREE_RETURN_IF_ERROR(loom_intern_table_reserve_insert(arena, table));
-
-  iree_host_size_t mask = table->capacity - 1;
-  iree_host_size_t slot = hash & mask;
-
-  while (true) {
-    if (table->indices[slot] == UINT32_MAX) {
-      // Empty slot: insert.
-      table->hashes[slot] = hash;
-      table->indices[slot] = new_index;
-      ++table->count;
-      *out_index = new_index;
-      return iree_ok_status();
-    }
-    if (table->hashes[slot] == hash &&
-        equal_fn(equal_context, table->indices[slot])) {
-      // Found existing entry.
-      *out_index = table->indices[slot];
-      return iree_ok_status();
-    }
-    slot = (slot + 1) & mask;
-  }
-}
-
-//===----------------------------------------------------------------------===//
 // Growable table helpers
 //===----------------------------------------------------------------------===//
 
@@ -299,20 +122,29 @@ static iree_status_t loom_string_table_ensure_capacity(
   return iree_ok_status();
 }
 
-// Reserves a private interner generation before appending any shared row
-// storage. Append is the last fallible step: failure leaves both owners
-// unchanged, so a speculative payload constructor can rewind its arena.
-static iree_status_t loom_module_reserve_type_insert(loom_module_t* module) {
-  loom_intern_table_t interner = module->type_intern;
-  IREE_RETURN_IF_ERROR(
-      loom_intern_table_reserve_insert(&module->arena, &interner));
-  if (module->types.count == loom_type_table_capacity(&module->types)) {
+// Stages row storage before the last fallible bucket reserve. Successful
+// rehash may move existing buckets; only infallible publication follows it.
+static iree_status_t loom_module_reserve_type_insert(
+    loom_module_t* module, uint32_t hash, iree_host_size_t* inout_slot) {
+  const iree_arena_checkpoint_t checkpoint =
+      iree_arena_checkpoint_save(&module->arena);
+  loom_type_table_t types = module->types;
+  iree_status_t status = iree_ok_status();
+  if (types.count == loom_type_table_capacity(&types)) {
     void* segment = NULL;
-    IREE_RETURN_IF_ERROR(loom_segmented_storage_append(
-        &module->types.segments, &module->arena, &segment));
+    status = loom_segmented_storage_append(&types.segments, &module->arena,
+                                           &segment);
   }
-  module->type_intern = interner;
-  return iree_ok_status();
+  if (iree_status_is_ok(status)) {
+    status = loom_intern_table_reserve_insert(
+        &module->arena, &module->type_intern, hash, inout_slot);
+  }
+  if (iree_status_is_ok(status)) {
+    module->types = types;
+  } else {
+    iree_arena_checkpoint_restore(&checkpoint);
+  }
+  return status;
 }
 
 static iree_status_t loom_encoding_table_ensure_capacity(
@@ -679,21 +511,20 @@ static iree_status_t loom_module_initialize_tables(
 
   // Intern tables sized to match entry capacity.
   iree_host_size_t string_intern_capacity =
-      loom_intern_capacity_for_entries(string_capacity);
-  IREE_RETURN_IF_ERROR(loom_intern_table_allocate(arena, string_intern_capacity,
-                                                  &module->string_intern));
+      loom_intern_table_capacity_for_entries(string_capacity);
+  IREE_RETURN_IF_ERROR(loom_intern_table_initialize(
+      arena, string_intern_capacity, &module->string_intern));
   iree_host_size_t type_intern_capacity =
-      loom_intern_capacity_for_entries(type_capacity);
-  IREE_RETURN_IF_ERROR(loom_intern_table_allocate(arena, type_intern_capacity,
-                                                  &module->type_intern));
+      loom_intern_table_capacity_for_entries(type_capacity);
+  IREE_RETURN_IF_ERROR(loom_intern_table_initialize(arena, type_intern_capacity,
+                                                    &module->type_intern));
+  iree_host_size_t encoding_intern_capacity = 0;
   if (encoding_capacity > 0) {
-    iree_host_size_t encoding_intern_capacity =
-        loom_intern_capacity_for_entries(encoding_capacity);
-    IREE_RETURN_IF_ERROR(loom_intern_table_allocate(
-        arena, encoding_intern_capacity, &module->encoding_intern));
+    encoding_intern_capacity =
+        loom_intern_table_capacity_for_entries(encoding_capacity);
   }
-
-  return iree_ok_status();
+  return loom_intern_table_initialize(arena, encoding_intern_capacity,
+                                      &module->encoding_intern);
 }
 
 iree_status_t loom_module_allocate(loom_context_t* context,
@@ -979,8 +810,9 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
       .module = module,
       .encoding = &canonical_encoding,
   };
-  const uint32_t existing_index = loom_intern_table_lookup(
+  const loom_intern_probe_t probe = loom_intern_table_probe(
       &module->encoding_intern, hash, loom_encoding_equal_fn, &equal_context);
+  const uint32_t existing_index = probe.index;
 
   // Alias names are rare file-local shorthand. Scan only when one is authored
   // and reject collisions against any structurally different encoding.
@@ -1035,13 +867,14 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
 
   IREE_RETURN_IF_ERROR(
       loom_encoding_table_ensure_capacity(&module->arena, &module->encodings));
+  iree_host_size_t slot = probe.slot;
   IREE_RETURN_IF_ERROR(loom_intern_table_reserve_insert(
-      &module->arena, &module->encoding_intern));
+      &module->arena, &module->encoding_intern, hash, &slot));
 
   const uint32_t new_index = (uint32_t)module->encodings.count;
   loom_encoding_t* entry = &module->encodings.entries[new_index];
   *entry = canonical_encoding;
-  loom_intern_table_insert_unique(&module->encoding_intern, hash, new_index);
+  loom_intern_table_insert(&module->encoding_intern, slot, hash, new_index);
 
   *out_encoding_id = (uint16_t)(new_index + 1);
   ++module->encodings.count;
@@ -1632,8 +1465,10 @@ iree_status_t loom_module_compact_symbols_preserving_symbol_refs(
         module, new_symbol_ids, old_symbol_count, &attributes,
         encoding->attribute_count));
     encoding->attributes = attributes;
-    loom_intern_table_insert_unique(&module->encoding_intern,
-                                    loom_encoding_hash(encoding), (uint32_t)i);
+    const uint32_t hash = loom_encoding_hash(encoding);
+    const iree_host_size_t slot =
+        loom_intern_table_find_empty_slot(&module->encoding_intern, hash);
+    loom_intern_table_insert(&module->encoding_intern, slot, hash, (uint32_t)i);
   }
 
   for (iree_host_size_t old_index = 0; old_index < old_symbol_count;
@@ -2256,10 +2091,10 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
   uint32_t hash = loom_hash_string_view(string);
   loom_string_equal_context_t equal_context = {module, string};
 
-  uint32_t existing_index = loom_intern_table_lookup(
+  const loom_intern_probe_t probe = loom_intern_table_probe(
       &module->string_intern, hash, loom_string_equal_fn, &equal_context);
-  if (existing_index != UINT32_MAX) {
-    *out_string_id = (loom_string_id_t)existing_index;
+  if (probe.index != UINT32_MAX) {
+    *out_string_id = (loom_string_id_t)probe.index;
     return iree_ok_status();
   }
 
@@ -2273,13 +2108,10 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
         module->strings.count, (unsigned)(LOOM_STRING_ID_INVALID - 1));
   }
 
-  // Reserve both tables before preparing the new string. The duplicate probe
-  // established uniqueness, so publishing its index requires no equality check
-  // or fallible work after the string row is populated.
+  // Prepare the row and bytes before the last fallible bucket reserve. The
+  // duplicate probe retains the vacant slot unless growth changes placement.
   IREE_RETURN_IF_ERROR(
       loom_string_table_ensure_capacity(&module->arena, &module->strings));
-  IREE_RETURN_IF_ERROR(
-      loom_intern_table_reserve_insert(&module->arena, &module->string_intern));
 
   // New entry: arena-allocate a copy of the string data.
   char* copy = NULL;
@@ -2288,10 +2120,13 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
         iree_arena_allocate(&module->arena, string.size, (void**)&copy));
     memcpy(copy, string.data, string.size);
   }
+  iree_host_size_t slot = probe.slot;
+  IREE_RETURN_IF_ERROR(loom_intern_table_reserve_insert(
+      &module->arena, &module->string_intern, hash, &slot));
   const uint32_t new_index = (uint32_t)module->strings.count;
   module->strings.entries[new_index] = iree_make_string_view(copy, string.size);
   module->strings.count++;
-  loom_intern_table_insert_unique(&module->string_intern, hash, new_index);
+  loom_intern_table_insert(&module->string_intern, slot, hash, new_index);
 
   *out_string_id = (loom_string_id_t)new_index;
   return iree_ok_status();
@@ -2301,8 +2136,9 @@ loom_string_id_t loom_module_lookup_string(const loom_module_t* module,
                                            iree_string_view_t string) {
   uint32_t hash = loom_hash_string_view(string);
   loom_string_equal_context_t equal_context = {module, string};
-  return (loom_string_id_t)loom_intern_table_lookup(
+  const loom_intern_probe_t probe = loom_intern_table_probe(
       &module->string_intern, hash, loom_string_equal_fn, &equal_context);
+  return (loom_string_id_t)probe.index;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3984,14 +3820,9 @@ static iree_status_t loom_module_intern_type_impl(
   // Payload preparation does not intern types. Only hash-table growth can
   // invalidate the vacant slot found by the initial probe.
   iree_host_size_t slot = probe.slot;
-  const bool grow_intern_table =
-      !loom_intern_table_has_insert_capacity(&module->type_intern);
   if (module->types.count == loom_type_table_capacity(&module->types) ||
-      grow_intern_table) {
-    IREE_RETURN_IF_ERROR(loom_module_reserve_type_insert(module));
-    if (grow_intern_table) {
-      slot = loom_intern_table_find_empty_slot(&module->type_intern, hash);
-    }
+      !loom_intern_table_has_insert_capacity(&module->type_intern)) {
+    IREE_RETURN_IF_ERROR(loom_module_reserve_type_insert(module, hash, &slot));
   }
 
   uint32_t new_index = (uint32_t)module->types.count;
@@ -4004,9 +3835,7 @@ static iree_status_t loom_module_intern_type_impl(
   segment->dependencies[row] = dependencies;
   module->types.count++;
   loom_type_identity_commit(module, &identity_insertion);
-  module->type_intern.hashes[slot] = hash;
-  module->type_intern.indices[slot] = new_index;
-  ++module->type_intern.count;
+  loom_intern_table_insert(&module->type_intern, slot, hash, new_index);
   *out_interned_type = type;
   if (out_type_id) {
     *out_type_id = (loom_type_id_t)new_index;

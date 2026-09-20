@@ -49,6 +49,7 @@ loom_cc_library(
     "context.h"
     "encoding.h"
     "function_version.h"
+    "intern_table.h"
     "ir.h"
     "local_value_domain.h"
     "location.h"
@@ -77,6 +78,7 @@ loom_cc_library(
     "context.c"
     "encoding.c"
     "function_version.c"
+    "intern_table.c"
     "local_value_domain.c"
     "location.c"
     "module.c"
@@ -189,6 +191,7 @@ loom_cc_test(
   NAME
     module_test
   SRCS
+    "intern_table_test.cc"
     "module_dictionary_test.cc"
     "module_location_test.cc"
     "module_test.cc"

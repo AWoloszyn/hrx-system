@@ -93,6 +93,7 @@
 #include "loom/error/emitter.h"
 #include "loom/ir/attribute.h"
 #include "loom/ir/encoding.h"
+#include "loom/ir/intern_table.h"
 #include "loom/ir/location.h"
 #include "loom/ir/type_table.h"
 #include "loom/ir/types.h"
@@ -2396,16 +2397,6 @@ typedef struct loom_comment_table_t {
   loom_comment_attachment_t* entries;
 } loom_comment_table_t;
 
-// Open-addressing hash table for deduplicating module-owned values during
-// construction. Arena-allocated, freed when the module is destroyed.
-// Lazy-initialized: capacity 0 means uninitialized, first use allocates.
-typedef struct loom_intern_table_t {
-  iree_host_size_t count;
-  iree_host_size_t capacity;
-  uint32_t* hashes;
-  uint32_t* indices;
-} loom_intern_table_t;
-
 //===----------------------------------------------------------------------===//
 // Module flags
 //===----------------------------------------------------------------------===//
@@ -2424,9 +2415,9 @@ typedef uint16_t loom_module_flags_t;
 
 // A loom module: the top-level IR container.
 //
-// Owns all IR through an arena allocator. Creating a module allocates
-// the arena. Destroying the module frees the arena and all IR within
-// it in O(1) time. No individual deallocation of IR nodes.
+// Owns all IR through arena allocators. Destroying the module releases its
+// arenas, returning pooled blocks in batches without individually freeing IR
+// nodes.
 //
 // Thread safety: a module is single-owner. During parallel compilation
 // phases, the module is immutable (const access from worker threads).
@@ -2453,8 +2444,8 @@ typedef struct loom_module_t {
   // Allocator used to allocate and free the module struct itself.
   iree_allocator_t allocator;
 
-  // Arena backing all IR storage. Bump-pointer allocation during construction
-  // and O(1) destruction through reusable workspace blocks.
+  // Arena backing IR storage with bump-pointer allocation and batched return
+  // of reusable workspace blocks.
   iree_arena_allocator_t arena;
 
   // Interned strings (SSA names, function names, attribute keys).
@@ -2497,10 +2488,11 @@ typedef struct loom_module_t {
   // loom_module_allocate().
   loom_region_t* body;
 
-  // Intern hash tables for deduplicating strings, types, and encodings during
-  // construction. Arena-allocated, lazy-initialized on first use.
+  // Arena-owned deduplication buckets for canonical strings.
   loom_intern_table_t string_intern;
+  // Arena-owned deduplication buckets for canonical types.
   loom_intern_table_t type_intern;
+  // Arena-owned deduplication buckets for canonical encodings.
   loom_intern_table_t encoding_intern;
 
   // Complete immutable canonical-payload identity index, published with types.

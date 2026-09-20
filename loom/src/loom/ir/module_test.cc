@@ -3225,7 +3225,8 @@ TEST_F(ModuleTest, ParameterizedTypeDuplicateAtGrowthThresholdKeepsStorage) {
   }
   ASSERT_EQ(module->type_intern.capacity, initial_capacity);
   ASSERT_EQ(module->type_intern.count, growth_threshold);
-  const uint32_t* indices = module->type_intern.indices;
+  const auto* first_bucket =
+      loom_intern_table_const_bucket(&module->type_intern, 0);
   const iree_host_size_t allocation_size = module->arena.used_allocation_size;
   loom_type_t duplicate_type = {};
   IREE_ASSERT_OK(loom_test_array_type_make(
@@ -3233,7 +3234,8 @@ TEST_F(ModuleTest, ParameterizedTypeDuplicateAtGrowthThresholdKeepsStorage) {
       /*alignment=*/1, loom_named_attr_slice_empty(), &duplicate_type));
   EXPECT_EQ(loom_type_parameterized_parameters(duplicate_type),
             loom_type_parameterized_parameters(first_type));
-  EXPECT_EQ(module->type_intern.indices, indices);
+  EXPECT_EQ(loom_intern_table_const_bucket(&module->type_intern, 0),
+            first_bucket);
   EXPECT_EQ(module->type_intern.capacity, initial_capacity);
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
 

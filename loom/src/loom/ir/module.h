@@ -49,20 +49,20 @@ typedef struct loom_module_size_hints_t {
   iree_host_size_t symbol_count;
 } loom_module_size_hints_t;
 
-// Growth factor applied to contiguous-table size hints during module creation:
+// Growth factor applied to row-table and intern-bucket size hints at creation:
 //   actual_capacity = (iree_host_size_t)(count * LOOM_MODULE_GROWTH_FACTOR)
 // Provides headroom for passes that add values/ops during compilation.
 // Tunable: profile real compilation pipelines to find the right value.
 #define LOOM_MODULE_GROWTH_FACTOR 1.5f
 
-// Creates a new empty module. The module owns an arena allocated from
-// |block_pool|. All IR created through the module is arena-allocated
-// and freed in O(1) when the module is destroyed. The module struct
-// itself is allocated with |allocator|.
+// Creates a new empty module. Its arenas allocate from |block_pool| and own all
+// IR created through the module. Destruction releases arena storage, returning
+// pooled blocks in batches without individually freeing IR nodes. The module
+// struct itself is allocated with |allocator|.
 //
 // |hints| may be NULL for default capacities (text parsing, tests). When
-// non-NULL, contiguous tables are pre-allocated at hint * growth_factor while
-// value segments remain lazy.
+// non-NULL, hints size contiguous tables and intern buckets with growth
+// headroom. Value, location and canonical type rows remain lazy.
 iree_status_t loom_module_allocate(loom_context_t* context,
                                    iree_string_view_t name,
                                    iree_arena_block_pool_t* block_pool,
