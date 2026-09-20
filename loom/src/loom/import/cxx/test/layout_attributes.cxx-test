@@ -122,12 +122,6 @@ unsigned offset() { return __builtin_offsetof(Packet, value); }
 
 // ====
 // INPUT: cxx
-struct Packet { unsigned values[4]; };
-// ERROR@+1: PARSE/036 "compound offsetof designators are not supported"
-unsigned offset() { return __builtin_offsetof(Packet, values[2]); }
-
-// ====
-// INPUT: cxx
 struct Packet { unsigned value; };
 // ERROR@+1: PARSE/036 "'packed' attribute must precede record completion"
 struct __attribute__((packed)) Packet;

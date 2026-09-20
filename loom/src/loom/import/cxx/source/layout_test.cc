@@ -6,12 +6,18 @@
 
 #include <cxx/archive.h>
 #include <cxx/ast.h>
+#include <cxx/ast_interpreter.h>
 #include <cxx/ast_visitor.h>
 #include <cxx/private/semantic_codec.h>
 #include <cxx/symbols.h>
 #include <cxx/type_traits.h>
 #include <cxx/types.h>
 #include <cxx/views/symbol_chain.h>
+
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <vector>
 
 #include "iree/testing/gtest.h"
 #include "loom/import/cxx/source/source.h"
@@ -154,6 +160,77 @@ TEST_P(LayoutTest, PackedRequestsAndResolvedLayoutSurviveSemanticArchives) {
   auto* tail = cxx::symbol_cast<cxx::FieldSymbol>(*tails.begin());
   ASSERT_NE(tail, nullptr);
   EXPECT_TRUE(tail->isPacked());
+}
+
+// Queries decoded syntax directly so evaluation cannot depend on the source
+// invocation or a reconstruction of its member-designator chain.
+class OffsetValueVisitor final : public cxx::ASTVisitor {
+ public:
+  explicit OffsetValueVisitor(cxx::TranslationUnit& unit)
+      : interpreter_(&unit) {}
+
+  void visit(cxx::BuiltinOffsetofExpressionAST* ast) override {
+    values.push_back(ast->value);
+    auto value = interpreter_.evaluate(ast);
+    EXPECT_EQ(value.has_value(), ast->value.has_value());
+    if (value) {
+      EXPECT_EQ(interpreter_.toUInt(*value), ast->value);
+    }
+  }
+
+  // Resolved or dependent offsets in ordinary syntax visitation order.
+  std::vector<std::optional<std::uint64_t>> values;
+
+ private:
+  // Evaluator borrowing the decoded source invocation.
+  cxx::ASTInterpreter interpreter_;
+};
+
+TEST_P(LayoutTest, CompoundOffsetsSurviveSourceDestructionArchivesAndClones) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  options.data_model = GetParam();
+  std::vector<std::uint8_t> bytes;
+  {
+    Source source(
+        IREE_SV(
+            "struct [[gnu::packed]] Block { char tag; unsigned payload[3]; };"
+            "struct [[gnu::packed]] Packet { char tag; Block blocks[3]; };"
+            "auto offset() { return "
+            "__builtin_offsetof(Packet, blocks[2].payload[1]); }"
+            "struct Address { char bytes[1]; };"
+            "auto wide_offset() { return __builtin_offsetof(Address, "
+            "bytes[sizeof(void*) == 4 ? 0xffffffffULL : "
+            "0x100000005ULL]); }"
+            "template<unsigned Index> constexpr auto deferred() { return "
+            "__builtin_offsetof(Packet, blocks[Index].payload[1]); }"),
+        IREE_SV("offset.cpp"), options);
+    cxx::ArchiveWriter writer;
+    cxx::SemanticArchiveRoots roots;
+    roots.globalScope = source.unit().globalScope();
+    roots.ast = source.unit().ast();
+    cxx::SemanticEncoder encoder(&source.unit());
+    ASSERT_TRUE(encoder(roots, writer));
+    bytes = writer();
+  }
+  Source destination(IREE_SV(""), IREE_SV("destination.cpp"), options);
+  cxx::ArchiveReader reader;
+  ASSERT_TRUE(reader(bytes)) << reader.error();
+  cxx::SemanticArchiveRoots restored;
+  cxx::SemanticDecoder decoder(&destination.unit());
+  ASSERT_TRUE(decoder(reader, restored)) << decoder.error();
+  OffsetValueVisitor offsets(destination.unit());
+  std::vector<std::optional<std::uint64_t>> expected = {
+      32,
+      GetParam() == LOOM_CXX_DATA_MODEL_ILP32
+          ? std::numeric_limits<std::uint32_t>::max()
+          : UINT64_C(0x100000005),
+      std::nullopt};
+  offsets.accept(restored.ast);
+  EXPECT_EQ(offsets.values, expected);
+  offsets.values.clear();
+  offsets.accept(restored.ast->clone(destination.unit().arena()));
+  EXPECT_EQ(offsets.values, expected);
 }
 
 INSTANTIATE_TEST_SUITE_P(DataModels, LayoutTest,

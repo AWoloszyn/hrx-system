@@ -11,6 +11,7 @@ exports_files([
     "bitfield_attributes.patch",
     "braced_vector_initialization.patch",
     "builtin_macro_locations.patch",
+    "compound_offsetof.patch",
     "constant_arithmetic.patch",
     "cxx.BUILD.bazel",
     "enum_semantics.patch",
