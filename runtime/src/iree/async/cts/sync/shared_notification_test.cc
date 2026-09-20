@@ -273,6 +273,60 @@ TEST_P(SharedNotificationTest, CancelRegisteredWaitWithoutSignal) {
   EXPECT_EQ(iree_async_notification_query_epoch(notification_), 0u);
 }
 
+TEST_P(SharedNotificationTest, CompletionReturnsSharedResourceOwnership) {
+  struct Owner {
+    // Managed receiver reference released at terminal completion.
+    iree_async_notification_t** notification;
+    // Independently owned native resources returned with the last consumer.
+    iree_async_notification_native_t* native;
+    // Terminal completion count after releasing both ownership layers.
+    int completions = 0;
+    static void Complete(void* context, iree_async_operation_t*,
+                         iree_status_t status, iree_async_completion_flags_t) {
+      auto* owner = static_cast<Owner*>(context);
+      IREE_EXPECT_OK(status);
+      iree_async_notification_release(*owner->notification);
+      *owner->notification = nullptr;
+      iree_async_notification_native_deinitialize(owner->native);
+      ++owner->completions;
+    }
+  } owner = {&notification_, &native_};
+  iree_async_notification_wait_operation_t wait = {};
+  iree_async_operation_initialize(
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, Owner::Complete, &owner);
+  wait.notification = notification_;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  iree_async_notification_native_signal(&native_, 1);
+  PollUntilCondition([&] { return owner.completions == 1; });
+  EXPECT_EQ(notification_, nullptr);
+  EXPECT_EQ(native_.async_event.wait_primitive.type,
+            IREE_ASYNC_PRIMITIVE_TYPE_NONE);
+}
+
+TEST_P(SharedNotificationTest, OneShotRelayOwnsItsSourceUntilDelivery) {
+  iree_async_notification_t* sink = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
+  iree_async_relay_t* relay = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_register_relay(
+      proactor_, iree_async_relay_source_from_notification(notification_),
+      iree_async_relay_sink_signal_notification(sink, 1),
+      IREE_ASYNC_RELAY_FLAG_NONE, iree_async_relay_error_callback_none(),
+      &relay));
+  iree_async_notification_release(notification_);
+  notification_ = nullptr;
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  iree_async_notification_native_signal(&native_, 1);
+  PollUntilCondition(
+      [&] { return iree_async_notification_query_epoch(sink) != 0; });
+  EXPECT_EQ(iree_async_notification_query_epoch(sink), 1u);
+  iree_async_notification_release(sink);
+}
+
 TEST_P(SharedNotificationTest, SharedSyncWaitTimeout) {
   const iree_time_t deadline = iree_time_now() + iree_make_duration_ms(10);
   EXPECT_FALSE(iree_async_notification_wait(notification_,

@@ -283,11 +283,13 @@ struct iree_async_relay_t {
     } posix;
     struct {
       // Per-notification relay chain linkage (poll thread only).
-      // Same pattern as POSIX — singly-linked through the source
-      // notification's relay_list.
+      // Accepted relays retain their source through native retirement.
       struct iree_async_relay_t* notification_relay_next;
-      // True after source monitoring ended due to a relay fault.
-      bool is_terminal;
+      // IOCP active, fired, faulted, or unregistering lifecycle state.
+      uint32_t state;
+      // Native sink error awaiting its terminal error callback; zero when the
+      // fault belongs to the source notification's native monitor instead.
+      uint32_t sink_error;
     } iocp;
   } platform;
 };

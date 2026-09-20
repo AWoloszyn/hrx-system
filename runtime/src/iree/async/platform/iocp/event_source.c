@@ -8,6 +8,7 @@
 
 #include <string.h>
 
+#include "iree/async/platform/iocp/notification.h"
 #include "iree/async/platform/iocp/proactor.h"
 
 #if defined(IREE_PLATFORM_WINDOWS)
@@ -242,6 +243,11 @@ void iree_async_iocp_event_source_deinitialize_all(
         entry.lpCompletionKey == IREE_ASYNC_IOCP_EVENT_SOURCE_COMPLETION_KEY) {
       iree_async_iocp_event_source_dispatch(
           proactor, (iree_async_event_source_t*)entry.lpOverlapped);
+    } else if (entry_count &&
+               entry.lpCompletionKey ==
+                   IREE_ASYNC_IOCP_SHARED_NOTIFICATION_COMPLETION_KEY) {
+      iree_async_iocp_notification_wake(
+          (iree_async_notification_t*)entry.lpOverlapped);
     }
   }
 }

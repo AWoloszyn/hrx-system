@@ -38,6 +38,8 @@ iree_runtime_cc_library(
     srcs = [
         "event_source.c",
         "event_source.h",
+        "notification.c",
+        "notification.h",
         "proactor.c",
         "proactor.h",
         "proactor_cancel.c",
@@ -72,6 +74,18 @@ iree_runtime_cc_library(
 iree_runtime_cc_test(
     name = "event_source_test",
     srcs = ["event_source_test.cc"],
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        ":iocp",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "notification_test",
+    srcs = ["notification_test.cc"],
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":iocp",

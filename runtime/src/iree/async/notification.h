@@ -127,32 +127,21 @@ typedef struct iree_async_notification_t {
       // Uses iree_async_operation_t::next for linkage.
       iree_async_notification_wait_operation_t* pending_waits;
       // Intrusive linkage for proactor's notifications_with_waits list.
-      // Only valid when in_wait_list is true.
+      // Only valid while the owner-list flag is set.
       struct iree_async_notification_t* next_with_waits;
-      // Whether this notification is currently in the proactor's
-      // notifications_with_waits list. Avoids duplicate insertion.
-      bool in_wait_list;
+      // IOCP owner-list, native association, and withdrawal obligations.
+      uint32_t state;
       // Intrusive list of relays with this notification as their source
       // (poll thread only). Walked alongside pending_waits during poll
       // to fire relay sinks when the epoch advances.
       // Uses iree_async_relay_t::platform.iocp.notification_relay_next.
       struct iree_async_relay_t* relay_list;
-      // Handle for the outstanding wait registration that bridges the
-      // caller-provided wake Event to our IOCP completion port. Only valid
-      // for shared notifications; zero otherwise. Must be cancelled on destroy.
-      // RegisterWaitForSingleObject path: threadpool registration handle
-      //   for UnregisterWaitEx.
-      // NtAssociateWaitCompletionPacket path: WaitCompletionPacket HANDLE
-      //   for NtCancelWaitCompletionPacket + CloseHandle.
+      // Eager reusable WCP handle, or the legacy threadpool registration.
+      // Shared notifications only. WCP associations are consumer-owned;
+      // legacy publisher callbacks are joined by destruction.
       uintptr_t wait_registration;
-      // The caller-provided wake Event HANDLE that we monitor for signals
-      // from the remote process. Stored for re-arm calls on the
-      // NtAssociateWaitCompletionPacket path (which is one-shot and must be
-      // re-armed after each completion). Not owned — caller manages the
-      // Event handle lifetime. Zero when using RegisterWaitForSingleObject
-      // (which remembers the Event internally). Only valid for shared
-      // notifications.
-      uintptr_t wake_handle;
+      // Sticky native association failure delivered to accepted consumers.
+      iree_status_t failure;
     } iocp;
   } platform;
 } iree_async_notification_t;

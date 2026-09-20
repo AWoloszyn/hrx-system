@@ -33,6 +33,8 @@ iree_cc_library(
   SRCS
     "event_source.c"
     "event_source.h"
+    "notification.c"
+    "notification.h"
     "proactor.c"
     "proactor.h"
     "proactor_cancel.c"
@@ -68,6 +70,20 @@ iree_cc_test(
     event_source_test
   SRCS
     "event_source_test.cc"
+  DEPS
+    ::iocp
+    iree::async
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+iree_cc_test(
+  NAME
+    notification_test
+  SRCS
+    "notification_test.cc"
   DEPS
     ::iocp
     iree::async
