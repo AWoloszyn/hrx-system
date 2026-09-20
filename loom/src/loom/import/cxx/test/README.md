@@ -43,7 +43,8 @@ iree-bazel-test --config=asan --config=loom-importer-cxx \
   //loom/src/loom/import/cxx/test:functions_test
 ```
 
-Build declarations pair each C++ source with its reference module and fixture
+Build declarations list source files; host reference selection and test names
+follow each filename. GPU sources pair with their reference module and fixture
 directory. All kernels in a source file share that module; the cases select the
 entries they exercise. Import uses the normal facade headers without per-kernel
 root flags or header-path overrides. Generated directories are declared action
@@ -57,14 +58,15 @@ The numerical tests explicitly permit approximate mathematical functions.
 They test correctness and source compatibility, not kernel performance or
 compatibility with complete upstream libraries.
 
-`functions_test` aggregates 11 groups with 2,817 scalar cases. `kernels_test`
-aggregates 18 source modules with 215 cases, each run normally and with device
+`functions_test` aggregates 11 source modules with 2,817 scalar cases.
+`kernels_test` aggregates 18 source modules with 215 cases, each run normally and with device
 access sanitization, for 430 case executions. Every case checks for zero access
 reports. Individual targets such as `integer_functions_test`,
 `structured_continue_source_test`, and `structured_continue_access_test` can be
 run directly. Compiler rejection witnesses live in `.cxx-test`, including
-scheduled-loop lowering and unsupported VM aggregate transport. The corpus has no JSON execution manifests; JSON fixtures
-under `tooling/` exercise CLI options, report fields, and process exit behavior.
+scheduled-loop lowering and unsupported VM aggregate transport. The corpus has
+no JSON execution manifests; JSON fixtures under `tooling/` exercise CLI options,
+report fields, and process exit behavior.
 
 | Source | Numerical coverage | Provenance |
 | --- | --- | --- |

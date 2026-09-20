@@ -64,21 +64,21 @@ loom_check_test_suite(
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
 
-# Each group retains independent mathematical references and imports its
+# Each source retains independent mathematical references and imports its
 # implementation through the same source path as handwritten check cases.
-_HOST_GROUPS = {
-    "assumption_functions": "assumptions.cpp",
-    "comparison_functions": "comparison_functions.cpp",
-    "constant_loop_functions": "constant_loops.cpp",
-    "continue_functions": "structured_continue.cpp",
-    "enum_functions": "enum_values.cpp",
-    "increment_functions": "increment_values.cpp",
-    "integer_functions": "integer_functions.cpp",
-    "schedule_functions": "schedule_values.cpp",
-    "shaped_intrinsic_values": "shaped_intrinsics.cpp",
-    "vector_constructor_values": "vector_initializers.cpp",
-    "vector_values": "vector_values.cpp",
-}
+_HOST_SOURCES = [
+    "assumptions.cpp",
+    "comparison_functions.cpp",
+    "constant_loops.cpp",
+    "enum_values.cpp",
+    "increment_values.cpp",
+    "integer_functions.cpp",
+    "schedule_values.cpp",
+    "shaped_intrinsics.cpp",
+    "structured_continue.cpp",
+    "vector_initializers.cpp",
+    "vector_values.cpp",
+]
 
 _HOST_COMPATIBILITY = loom_config_compatible_with([
     "//loom/config/import:cxx",
@@ -87,30 +87,29 @@ _HOST_COMPATIBILITY = loom_config_compatible_with([
 
 [
     loom_generated_file(
-        name = group + "_cases_gen",
+        name = source.removesuffix(".cpp") + "_cases_gen",
         testonly = True,
         args = [
             "host",
-            "--group=" + group,
             "--source=$(location " + source + ")",
         ],
         generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
         inputs = [source],
-        output = group + "_cases.cc",
+        output = source.removesuffix(".cpp") + "_cases.cc",
         output_flag = "--output",
         target_compatible_with = _HOST_COMPATIBILITY,
     )
-    for group, source in _HOST_GROUPS.items()
+    for source in _HOST_SOURCES
 ]
 
 [
     loom_test(
-        name = group + "_test",
-        srcs = [":" + group + "_cases.cc"],
+        name = source.removesuffix(".cpp") + "_test",
+        srcs = [":" + source.removesuffix(".cpp") + "_cases.cc"],
         data = [source],
         target_compatible_with = _HOST_COMPATIBILITY,
     )
-    for group, source in _HOST_GROUPS.items()
+    for source in _HOST_SOURCES
 ]
 
 loom_check_test_suite(
@@ -228,5 +227,5 @@ test_suite(
 
 test_suite(
     name = "functions_test",
-    tests = [":" + group + "_test" for group in _HOST_GROUPS],
+    tests = [":" + source.removesuffix(".cpp") + "_test" for source in _HOST_SOURCES],
 )

@@ -964,18 +964,18 @@ KERNEL_GROUPS = {
 }
 
 
-HOST_GROUPS = {
-    "schedule_functions": schedule_functions,
-    "constant_loop_functions": constant_loop_functions,
-    "continue_functions": continue_functions,
-    "increment_functions": increment_functions,
-    "assumption_functions": assumption_functions,
-    "vector_constructor_values": vector_constructor_values,
-    "comparison_functions": comparison_functions,
-    "enum_functions": enum_functions,
-    "integer_functions": integer_functions,
-    "vector_values": vector_values,
-    "shaped_intrinsic_values": shaped_intrinsic_values,
+HOST_REFERENCES = {
+    "assumptions.cpp": assumption_functions,
+    "comparison_functions.cpp": comparison_functions,
+    "constant_loops.cpp": constant_loop_functions,
+    "enum_values.cpp": enum_functions,
+    "increment_values.cpp": increment_functions,
+    "integer_functions.cpp": integer_functions,
+    "schedule_values.cpp": schedule_functions,
+    "shaped_intrinsics.cpp": shaped_intrinsic_values,
+    "structured_continue.cpp": continue_functions,
+    "vector_initializers.cpp": vector_constructor_values,
+    "vector_values.cpp": vector_values,
 }
 
 
@@ -983,7 +983,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_subparsers(dest="mode", required=True)
     host = modes.add_parser("host", help="emit one source-authored scalar check group")
-    host.add_argument("--group", choices=HOST_GROUPS, required=True)
     host.add_argument("--source", type=Path, required=True)
     host.add_argument("--output", type=Path, required=True)
     kernel = modes.add_parser("kernel", help="emit one kernel check group and its arrays")
@@ -997,10 +996,14 @@ def main():
         options.output.write_text(KERNEL_GROUPS[options.group](arrays))
         return
 
+    reference = HOST_REFERENCES.get(options.source.name)
+    if reference is None:
+        parser.error(f"no host reference for source '{options.source.name}'")
+
     # The source and output are declared build inputs/outputs. A relative include
     # preserves their relationship without embedding a sandbox or checkout path.
     include = Path(os.path.relpath(options.source, options.output.parent)).as_posix()
-    contents = f'// Generated from independent Python numerical references.\n#include <loomcxx/check.h>\n#include "{include}"\n\n' + HOST_GROUPS[options.group]() + "\n"
+    contents = f'// Generated from independent Python numerical references.\n#include <loomcxx/check.h>\n#include "{include}"\n\n' + reference() + "\n"
     options.output.parent.mkdir(parents=True, exist_ok=True)
     if not options.output.exists() or options.output.read_text() != contents:
         options.output.write_text(contents)

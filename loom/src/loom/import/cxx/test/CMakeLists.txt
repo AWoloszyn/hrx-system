@@ -54,16 +54,15 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_generated_file(
   NAME
-    assumption_functions_cases_gen
+    assumptions_cases_gen
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "assumption_functions_cases.cc"
+    "assumptions_cases.cc"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--group=assumption_functions"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
   INPUTS
     "assumptions.cpp"
@@ -83,7 +82,6 @@ loom_generated_file(
     "--output"
   ARGS
     "host"
-    "--group=comparison_functions"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
   INPUTS
     "comparison_functions.cpp"
@@ -94,16 +92,15 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_generated_file(
   NAME
-    constant_loop_functions_cases_gen
+    constant_loops_cases_gen
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "constant_loop_functions_cases.cc"
+    "constant_loops_cases.cc"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--group=constant_loop_functions"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
   INPUTS
     "constant_loops.cpp"
@@ -114,36 +111,15 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_generated_file(
   NAME
-    continue_functions_cases_gen
+    enum_values_cases_gen
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "continue_functions_cases.cc"
+    "enum_values_cases.cc"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--group=continue_functions"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
-  INPUTS
-    "structured_continue.cpp"
-  TESTONLY
-)
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_generated_file(
-  NAME
-    enum_functions_cases_gen
-  GENERATOR
-    loom::py::loom::gen::test::cxx_kernel_cases
-  OUTPUT
-    "enum_functions_cases.cc"
-  OUTPUT_FLAG
-    "--output"
-  ARGS
-    "host"
-    "--group=enum_functions"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
   INPUTS
     "enum_values.cpp"
@@ -154,16 +130,15 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_generated_file(
   NAME
-    increment_functions_cases_gen
+    increment_values_cases_gen
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "increment_functions_cases.cc"
+    "increment_values_cases.cc"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--group=increment_functions"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
   INPUTS
     "increment_values.cpp"
@@ -183,7 +158,6 @@ loom_generated_file(
     "--output"
   ARGS
     "host"
-    "--group=integer_functions"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
   INPUTS
     "integer_functions.cpp"
@@ -194,16 +168,15 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_generated_file(
   NAME
-    schedule_functions_cases_gen
+    schedule_values_cases_gen
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "schedule_functions_cases.cc"
+    "schedule_values_cases.cc"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--group=schedule_functions"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
   INPUTS
     "schedule_values.cpp"
@@ -214,16 +187,15 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_generated_file(
   NAME
-    shaped_intrinsic_values_cases_gen
+    shaped_intrinsics_cases_gen
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "shaped_intrinsic_values_cases.cc"
+    "shaped_intrinsics_cases.cc"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--group=shaped_intrinsic_values"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
   INPUTS
     "shaped_intrinsics.cpp"
@@ -234,16 +206,34 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_generated_file(
   NAME
-    vector_constructor_values_cases_gen
+    structured_continue_cases_gen
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "vector_constructor_values_cases.cc"
+    "structured_continue_cases.cc"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--group=vector_constructor_values"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
+  INPUTS
+    "structured_continue.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    vector_initializers_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "vector_initializers_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
   INPUTS
     "vector_initializers.cpp"
@@ -263,7 +253,6 @@ loom_generated_file(
     "--output"
   ARGS
     "host"
-    "--group=vector_values"
     "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
   INPUTS
     "vector_values.cpp"
@@ -274,9 +263,9 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test(
   NAME
-    assumption_functions_test
+    assumptions_test
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/assumption_functions_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/assumptions_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
 )
@@ -296,9 +285,9 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test(
   NAME
-    constant_loop_functions_test
+    constant_loops_test
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/constant_loop_functions_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
 )
@@ -307,20 +296,9 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test(
   NAME
-    continue_functions_test
+    enum_values_test
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/continue_functions_cases.cc"
-  DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
-)
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
-  NAME
-    enum_functions_test
-  SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/enum_functions_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/enum_values_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
 )
@@ -329,9 +307,9 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test(
   NAME
-    increment_functions_test
+    increment_values_test
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/increment_functions_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/increment_values_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
 )
@@ -351,9 +329,9 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test(
   NAME
-    schedule_functions_test
+    schedule_values_test
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/schedule_functions_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/schedule_values_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
 )
@@ -362,9 +340,9 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test(
   NAME
-    shaped_intrinsic_values_test
+    shaped_intrinsics_test
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsic_values_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
 )
@@ -373,9 +351,20 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test(
   NAME
-    vector_constructor_values_test
+    structured_continue_test
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/vector_constructor_values_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    vector_initializers_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
 )
