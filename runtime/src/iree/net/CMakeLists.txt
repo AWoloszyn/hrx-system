@@ -165,6 +165,25 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    framed_endpoint
+  HDRS
+    "framed_endpoint.h"
+  SRCS
+    "framed_endpoint.c"
+  DEPS
+    ::carrier
+    ::endpoint_lifecycle
+    ::framing_adapter
+    ::message_endpoint
+    iree::async
+    iree::base
+    iree::base::core_headers
+    iree::base::threading
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     frame_accumulator
   HDRS
     "frame_accumulator.h"
@@ -208,6 +227,22 @@ iree_cc_library(
     iree::base
     iree::base::threading
   PUBLIC
+)
+
+iree_cc_test(
+  NAME
+    framed_endpoint_test
+  SRCS
+    "framed_endpoint_test.cc"
+  DEPS
+    ::framed_endpoint
+    ::message_endpoint
+    iree::async
+    iree::async::platform
+    iree::base
+    iree::net::carrier::loopback
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 iree_cc_fuzz(
