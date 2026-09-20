@@ -380,18 +380,6 @@ static iree_status_t loom_source_table_ensure_capacity(
   return iree_ok_status();
 }
 
-static iree_status_t loom_location_table_ensure_capacity(
-    iree_arena_allocator_t* arena, loom_location_table_t* table) {
-  if (table->count < table->capacity) {
-    return iree_ok_status();
-  }
-  IREE_RETURN_IF_ERROR(
-      iree_arena_grow_array(arena, table->count, /*minimum_capacity=*/16,
-                            sizeof(loom_location_entry_t), &table->capacity,
-                            (void**)&table->entries));
-  return iree_ok_status();
-}
-
 static iree_status_t loom_comment_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_comment_table_t* table) {
   if (table->count < table->capacity) {
@@ -679,6 +667,11 @@ static iree_status_t loom_module_initialize_tables(
       LOOM_VALUE_U32_SCRATCH_STATE_UNACQUIRED_ORDINALS;
   module->type_uses.value_table = &module->values;
   iree_arena_initialize(module->arena.block_pool, &module->type_uses.arena);
+
+  // Locations. Rows are allocated lazily in stable segments.
+  loom_segmented_storage_initialize(sizeof(loom_location_segment_t),
+                                    iree_alignof(loom_location_segment_t),
+                                    &module->locations.segments);
 
   // Strings.
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -1771,16 +1764,6 @@ iree_status_t loom_module_append_source(loom_module_t* module,
 iree_status_t loom_module_add_location(loom_module_t* module,
                                        loom_location_entry_t entry,
                                        loom_location_id_t* out_location_id) {
-  // Lazily initialize with entry 0 = LOOM_LOCATION_NONE.
-  if (module->locations.count == 0) {
-    IREE_RETURN_IF_ERROR(loom_location_table_ensure_capacity(
-        &module->arena, &module->locations));
-    module->locations.entries[0] = (loom_location_entry_t){
-        .kind = LOOM_LOCATION_NONE,
-    };
-    module->locations.count = 1;
-  }
-
   // Location IDs are 32-bit and ID 0 is reserved for LOOM_LOCATION_UNKNOWN.
   // IDs 1 through UINT32_MAX are representable, so once count advances past
   // UINT32_MAX the next cast would wrap to 0 and forge the null sentinel.
@@ -1791,12 +1774,21 @@ iree_status_t loom_module_add_location(loom_module_t* module,
                             module->locations.count, (unsigned)UINT32_MAX);
   }
 
-  IREE_RETURN_IF_ERROR(
-      loom_location_table_ensure_capacity(&module->arena, &module->locations));
-
   loom_location_id_t id = (loom_location_id_t)module->locations.count;
-  module->locations.entries[id] = entry;
-  module->locations.count++;
+  loom_location_segment_t* segment = NULL;
+  if ((id & LOOM_LOCATION_SEGMENT_MASK) == 0) {
+    IREE_RETURN_IF_ERROR(loom_segmented_storage_append(
+        &module->locations.segments, &module->arena, (void**)&segment));
+    if (id == LOOM_LOCATION_UNKNOWN) {
+      segment->rows[0] = (loom_location_entry_t){.kind = LOOM_LOCATION_NONE};
+      id = 1;
+    }
+  } else {
+    segment = (loom_location_segment_t*)loom_segmented_storage_segment(
+        &module->locations.segments, id >> LOOM_LOCATION_SEGMENT_SHIFT);
+  }
+  segment->rows[id & LOOM_LOCATION_SEGMENT_MASK] = entry;
+  module->locations.count = (iree_host_size_t)id + 1;
   *out_location_id = id;
   return iree_ok_status();
 }
@@ -1812,7 +1804,8 @@ iree_status_t loom_module_attach_location_field_spans(
                             "attachment (module has %" PRIhsz " locations)",
                             location_id, module->locations.count);
   }
-  loom_location_entry_t* entry = &module->locations.entries[location_id];
+  loom_location_entry_t* entry =
+      loom_location_table_entry(&module->locations, location_id);
   if (entry->kind != LOOM_LOCATION_FILE) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,

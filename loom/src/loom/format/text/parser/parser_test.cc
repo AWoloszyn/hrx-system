@@ -3061,7 +3061,7 @@ TEST_F(ParserTest, TrailingFileLocationOverridesParserSourceFallback) {
   ASSERT_LT(op->location, module->locations.count);
 
   const loom_location_entry_t& location =
-      module->locations.entries[op->location];
+      *loom_location_table_const_entry(&module->locations, op->location);
   ASSERT_EQ(location.kind, LOOM_LOCATION_FILE);
   ASSERT_LT(location.file.source_id, module->sources.count);
   EXPECT_TRUE(
@@ -3116,9 +3116,9 @@ TEST_F(ParserTest, TrailingLocationsReuseSourceIds) {
   ASSERT_LT(second_op->location, module->locations.count);
 
   const loom_location_entry_t& first_location =
-      module->locations.entries[first_op->location];
+      *loom_location_table_const_entry(&module->locations, first_op->location);
   const loom_location_entry_t& second_location =
-      module->locations.entries[second_op->location];
+      *loom_location_table_const_entry(&module->locations, second_op->location);
   ASSERT_EQ(first_location.kind, LOOM_LOCATION_FILE);
   ASSERT_EQ(second_location.kind, LOOM_LOCATION_FILE);
   EXPECT_EQ(first_location.file.source_id, second_location.file.source_id);
@@ -3176,7 +3176,7 @@ TEST_F(ParserTest, FallbackParserLocationPrintedWhenNoExplicitLoc) {
   ASSERT_LT(op->location, module->locations.count);
 
   const loom_location_entry_t& location =
-      module->locations.entries[op->location];
+      *loom_location_table_const_entry(&module->locations, op->location);
   ASSERT_EQ(location.kind, LOOM_LOCATION_FILE);
   EXPECT_TRUE(iree_string_view_equal(
       module->sources.entries[location.file.source_id], IREE_SV("test.loom")));

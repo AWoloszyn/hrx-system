@@ -517,7 +517,9 @@ static iree_status_t loom_ir_remap_location_entry(
                 source_child_id, remap->source_module->locations.count);
           }
           IREE_RETURN_IF_ERROR(loom_ir_remap_location_entry(
-              remap, remap->source_module->locations.entries[source_child_id],
+              remap,
+              *loom_location_table_const_entry(&remap->source_module->locations,
+                                               source_child_id),
               depth + 1, &target_child_entry));
           IREE_RETURN_IF_ERROR(loom_module_add_location(
               remap->target_module, target_child_entry, &target_children[i]));
@@ -570,7 +572,8 @@ static iree_status_t loom_ir_remap_location_entry(
         loom_location_entry_t target_child_entry = {0};
         IREE_RETURN_IF_ERROR(loom_ir_remap_location_entry(
             remap,
-            remap->source_module->locations.entries[source_entry.tagged.child],
+            *loom_location_table_const_entry(&remap->source_module->locations,
+                                             source_entry.tagged.child),
             depth + 1, &target_child_entry));
         IREE_RETURN_IF_ERROR(
             loom_module_add_location(remap->target_module, target_child_entry,
@@ -623,7 +626,9 @@ iree_status_t loom_ir_remap_location_id(
   }
   loom_location_entry_t target_entry = {0};
   IREE_RETURN_IF_ERROR(loom_ir_remap_location_entry(
-      remap, remap->source_module->locations.entries[source_location_id],
+      remap,
+      *loom_location_table_const_entry(&remap->source_module->locations,
+                                       source_location_id),
       /*depth=*/0, &target_entry));
   return loom_module_add_location(remap->target_module, target_entry,
                                   out_target_location_id);

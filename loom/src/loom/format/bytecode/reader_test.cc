@@ -2867,9 +2867,8 @@ TEST_F(ReaderTest, MaterializesExactIndexedSymbolSelection) {
       IREE_SV("selected")));
   ASSERT_NE(selected_symbol->defining_op, nullptr);
   ASSERT_NE(selected_symbol->defining_op->location, LOOM_LOCATION_UNKNOWN);
-  const loom_location_entry_t& location =
-      selected_module->locations
-          .entries[selected_symbol->defining_op->location];
+  const loom_location_entry_t& location = *loom_location_table_const_entry(
+      &selected_module->locations, selected_symbol->defining_op->location);
   EXPECT_EQ(location.kind, LOOM_LOCATION_FILE);
   EXPECT_EQ(location.file.start_line, 8u);
   EXPECT_EQ(location.file.end_line, 10u);
@@ -4302,7 +4301,7 @@ TEST_F(ReaderTest, ReadsLocationTablesWithModuleSources) {
                                      IREE_SV("model.loom")));
   ASSERT_EQ(read_module->locations.count, 2u);
   const loom_location_entry_t& file_location =
-      read_module->locations.entries[1];
+      *loom_location_table_const_entry(&read_module->locations, 1);
   EXPECT_EQ(file_location.kind, LOOM_LOCATION_FILE);
   EXPECT_EQ(file_location.file.source_id, 0u);
   EXPECT_EQ(file_location.file.start_line, 1u);
@@ -4338,7 +4337,8 @@ TEST_F(ReaderTest, ReadsTaggedLocationTables) {
   ASSERT_NE(read_module, nullptr);
   ASSERT_EQ(read_module->locations.count, 3u);
   const loom_location_entry_t& tagged_location =
-      read_module->locations.entries[tagged_location_id];
+      *loom_location_table_const_entry(&read_module->locations,
+                                       tagged_location_id);
   EXPECT_EQ(tagged_location.kind, LOOM_LOCATION_TAGGED);
   EXPECT_EQ(tagged_location.tagged.tag, LOOM_LOCATION_TAG_SANITIZER_SITE);
   EXPECT_EQ(tagged_location.tagged.child, 1u);
@@ -4917,9 +4917,10 @@ TEST_F(ReaderTest, PreservesGlobalAndRecordDefinitionLocations) {
     const loom_location_id_t selected_location =
         selected_module->symbols.entries[0].defining_op->location;
     ASSERT_NE(selected_location, LOOM_LOCATION_UNKNOWN);
-    EXPECT_EQ(
-        selected_module->locations.entries[selected_location].file.start_line,
-        4u);
+    EXPECT_EQ(loom_location_table_const_entry(&selected_module->locations,
+                                              selected_location)
+                  ->file.start_line,
+              4u);
     ExpectCanonicalBytecodeRoundTrip(module);
     loom_module_free(selected_module);
     iree_arena_deinitialize(&arena);

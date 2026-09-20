@@ -226,7 +226,9 @@ TEST_F(BytecodeSelectedTablesTest, MaterializesOnlyReachedMixedTableFacts) {
       &materializer, /*source_location_id=*/1, &target_location_id));
   EXPECT_EQ(target_location_id, 1u);
   ASSERT_EQ(module_->locations.count, 2u);
-  EXPECT_EQ(module_->locations.entries[1].file.source_id, 0u);
+  EXPECT_EQ(
+      loom_location_table_const_entry(&module_->locations, 1)->file.source_id,
+      0u);
   ASSERT_EQ(module_->sources.count, 1u);
   EXPECT_TRUE(iree_string_view_equal(module_->sources.entries[0], sources[0]));
 
@@ -277,7 +279,9 @@ TEST_F(BytecodeSelectedTablesTest, ReusesInheritedSourceWhenComposingLocation) {
       &materializer, /*source_location_id=*/1, &target_location_id));
   EXPECT_EQ(target_location_id, 1u);
   ASSERT_EQ(module_->locations.count, 2u);
-  EXPECT_EQ(module_->locations.entries[1].file.source_id, inherited_source_id);
+  EXPECT_EQ(
+      loom_location_table_const_entry(&module_->locations, 1)->file.source_id,
+      inherited_source_id);
   ASSERT_EQ(module_->sources.count, 1u);
   EXPECT_TRUE(iree_string_view_equal(module_->sources.entries[0], sources[0]));
 

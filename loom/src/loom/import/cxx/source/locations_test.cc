@@ -72,7 +72,8 @@ TEST_F(LocationsTest, RetainedRangeAndFilenameOutliveSource) {
     EXPECT_EQ(module_->locations.count, count);
   }
   ASSERT_NE(location, LOOM_LOCATION_UNKNOWN);
-  const auto& entry = module_->locations.entries[location];
+  const auto& entry =
+      *loom_location_table_const_entry(&module_->locations, location);
   EXPECT_EQ(entry.kind, LOOM_LOCATION_FILE);
   auto filename = module_->sources.entries[entry.file.source_id];
   EXPECT_EQ(string(filename), "/app/source.cpp");

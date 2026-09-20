@@ -629,7 +629,7 @@ TEST_F(RemapTest, RemapsLocationsAcrossModules) {
 
   ASSERT_LT(target_location_id, target_->locations.count);
   const loom_location_entry_t& target_fused =
-      target_->locations.entries[target_location_id];
+      *loom_location_table_const_entry(&target_->locations, target_location_id);
   ASSERT_EQ(target_fused.kind, LOOM_LOCATION_FUSED);
   ASSERT_EQ(target_fused.fused.count, 1u);
   ASSERT_NE(target_fused.fused.children, nullptr);
@@ -637,7 +637,7 @@ TEST_F(RemapTest, RemapsLocationsAcrossModules) {
   loom_location_id_t target_child_id = target_fused.fused.children[0];
   ASSERT_LT(target_child_id, target_->locations.count);
   const loom_location_entry_t& target_child =
-      target_->locations.entries[target_child_id];
+      *loom_location_table_const_entry(&target_->locations, target_child_id);
   ASSERT_EQ(target_child.kind, LOOM_LOCATION_FILE);
   EXPECT_NE(target_child.file.source_id, source_id);
   EXPECT_NE(target_child.file.source_id, target_preexisting_source_id);
@@ -677,7 +677,7 @@ TEST_F(RemapTest, RemapsTaggedLocationsAcrossModules) {
 
   ASSERT_LT(target_location_id, target_->locations.count);
   const loom_location_entry_t& target_tagged =
-      target_->locations.entries[target_location_id];
+      *loom_location_table_const_entry(&target_->locations, target_location_id);
   ASSERT_EQ(target_tagged.kind, LOOM_LOCATION_TAGGED);
   EXPECT_EQ(target_tagged.tagged.tag, LOOM_LOCATION_TAG_SANITIZER_SITE);
   ASSERT_NE(target_tagged.tagged.child, LOOM_LOCATION_UNKNOWN);
@@ -688,8 +688,8 @@ TEST_F(RemapTest, RemapsTaggedLocationsAcrossModules) {
   EXPECT_EQ(std::memcmp(target_tagged.tagged.data, data, IREE_ARRAYSIZE(data)),
             0);
 
-  const loom_location_entry_t& target_child =
-      target_->locations.entries[target_tagged.tagged.child];
+  const loom_location_entry_t& target_child = *loom_location_table_const_entry(
+      &target_->locations, target_tagged.tagged.child);
   ASSERT_EQ(target_child.kind, LOOM_LOCATION_FILE);
   ASSERT_LT(target_child.file.source_id, target_->sources.count);
   EXPECT_TRUE(iree_string_view_equal(

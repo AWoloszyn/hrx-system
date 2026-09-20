@@ -443,7 +443,8 @@ iree_status_t loom_bytecode_write_locations_section(
   IREE_RETURN_IF_ERROR(
       loom_bytecode_page_writer_write_uvarint(page_writer, location_count));
   for (iree_host_size_t i = 0; i < location_count; ++i) {
-    const loom_location_entry_t* entry = &module->locations.entries[i];
+    const loom_location_entry_t* entry = loom_location_table_const_entry(
+        &module->locations, (loom_location_id_t)i);
     IREE_RETURN_IF_ERROR(
         loom_bytecode_page_writer_write_u8(page_writer, (uint8_t)entry->kind));
     IREE_RETURN_IF_ERROR(

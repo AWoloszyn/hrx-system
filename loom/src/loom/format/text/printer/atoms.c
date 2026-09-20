@@ -736,7 +736,8 @@ static iree_status_t loom_print_location_body(loom_output_stream_t* stream,
                             " locations)",
                             location_id, module->locations.count);
   }
-  const loom_location_entry_t* entry = &module->locations.entries[location_id];
+  const loom_location_entry_t* entry =
+      loom_location_table_const_entry(&module->locations, location_id);
   switch (entry->kind) {
     case LOOM_LOCATION_NONE:
       return iree_ok_status();

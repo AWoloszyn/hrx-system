@@ -191,7 +191,8 @@ TEST_F(BytecodeLocationTest, MaterializesCanonicalTable) {
       loom_bytecode_location_table_materialize(&materializer, &section));
 
   ASSERT_EQ(module_->locations.count, 5u);
-  const loom_location_entry_t& file = module_->locations.entries[1];
+  const loom_location_entry_t& file =
+      *loom_location_table_const_entry(&module_->locations, 1);
   EXPECT_EQ(file.kind, LOOM_LOCATION_FILE);
   EXPECT_EQ(file.file.source_id, 0u);
   EXPECT_EQ(file.file.start_line, 1u);
@@ -199,18 +200,21 @@ TEST_F(BytecodeLocationTest, MaterializesCanonicalTable) {
   EXPECT_EQ(file.file.end_line, 3u);
   EXPECT_EQ(file.file.end_col, 4u);
 
-  const loom_location_entry_t& fused = module_->locations.entries[2];
+  const loom_location_entry_t& fused =
+      *loom_location_table_const_entry(&module_->locations, 2);
   EXPECT_EQ(fused.kind, LOOM_LOCATION_FUSED);
   ASSERT_EQ(fused.fused.count, 1u);
   EXPECT_EQ(fused.fused.children[0], 1u);
 
-  const loom_location_entry_t& opaque = module_->locations.entries[3];
+  const loom_location_entry_t& opaque =
+      *loom_location_table_const_entry(&module_->locations, 3);
   EXPECT_EQ(opaque.kind, LOOM_LOCATION_OPAQUE);
   EXPECT_EQ(opaque.opaque.source_id, 0u);
   ASSERT_EQ(opaque.opaque.data_length, 3u);
   EXPECT_EQ(std::memcmp(opaque.opaque.data, "abc", 3), 0);
 
-  const loom_location_entry_t& tagged = module_->locations.entries[4];
+  const loom_location_entry_t& tagged =
+      *loom_location_table_const_entry(&module_->locations, 4);
   EXPECT_EQ(tagged.kind, LOOM_LOCATION_TAGGED);
   EXPECT_EQ(tagged.tagged.tag, 1u);
   EXPECT_EQ(tagged.tagged.child, 2u);

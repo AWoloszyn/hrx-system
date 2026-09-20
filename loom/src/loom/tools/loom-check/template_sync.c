@@ -478,8 +478,8 @@ static iree_status_t loom_check_template_sync_extract_case_metadata(
         break;
       }
       symbol_record->definition_flags = symbol->definition->flags;
-      const loom_location_entry_t* location =
-          &module->locations.entries[symbol->defining_op->location];
+      const loom_location_entry_t* location = loom_location_table_const_entry(
+          &module->locations, symbol->defining_op->location);
       if (location->kind == LOOM_LOCATION_FILE) {
         symbol_record->start_line = location->file.start_line;
         symbol_record->end_line = location->file.end_line;

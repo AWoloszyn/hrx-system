@@ -107,7 +107,8 @@ static iree_status_t loom_sanitizer_site_location_find_payload(
         location_id, module->locations.count);
   }
 
-  const loom_location_entry_t* entry = &module->locations.entries[location_id];
+  const loom_location_entry_t* entry =
+      loom_location_table_const_entry(&module->locations, location_id);
   switch (loom_location_get_kind(*entry)) {
     case LOOM_LOCATION_NONE:
     case LOOM_LOCATION_FILE:
