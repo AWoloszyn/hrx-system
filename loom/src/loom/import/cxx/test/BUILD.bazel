@@ -28,6 +28,7 @@ loom_check_test_suite(
         "const.cxx-test",
         "control_invalid.cxx-test",
         "data_models.cxx-test",
+        "frontend.cxx-test",
         "functions.cxx-test",
         "intrinsics_invalid.cxx-test",
         "launch.cxx-test",
