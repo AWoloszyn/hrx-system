@@ -3572,6 +3572,8 @@ iree_status_t loom_vector_cmpi_facts(loom_fact_context_t* context,
                                      loom_value_facts_t* result_facts) {
   bool result = false;
   uint8_t predicate = loom_vector_cmpi_predicate(op);
+  const loom_scalar_type_t element_type = loom_type_element_type(
+      loom_module_value_type(module, loom_vector_cmpi_lhs(op)));
   if (loom_vector_cmpi_lhs(op) == loom_vector_cmpi_rhs(op) &&
       loom_scalar_cmpi_same_value_result(predicate, &result)) {
     return loom_value_facts_make_uniform_element(
@@ -3585,7 +3587,8 @@ iree_status_t loom_vector_cmpi_facts(loom_fact_context_t* context,
       loom_vector_facts_query_uniform_element(context, operand_facts[1],
                                               &rhs)) {
     loom_value_facts_t element = loom_vector_boolean_range_facts();
-    if (loom_scalar_cmpi_result_from_facts(predicate, &lhs, &rhs, &result)) {
+    if (loom_scalar_cmpi_result_from_facts(element_type, predicate, &lhs, &rhs,
+                                           &result)) {
       element = loom_value_facts_exact_i64(result ? 1 : 0);
     }
     return loom_value_facts_make_uniform_element(context, element,
@@ -3606,7 +3609,8 @@ iree_status_t loom_vector_cmpi_facts(loom_fact_context_t* context,
           context, loom_vector_boolean_range_facts(), &result_facts[0]);
     }
     lanes[i] = loom_vector_boolean_range_facts();
-    if (loom_scalar_cmpi_result_from_facts(predicate, &lhs, &rhs, &result)) {
+    if (loom_scalar_cmpi_result_from_facts(element_type, predicate, &lhs, &rhs,
+                                           &result)) {
       lanes[i] = loom_value_facts_exact_i64(result ? 1 : 0);
     }
   }

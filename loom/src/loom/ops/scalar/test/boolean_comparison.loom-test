@@ -1,0 +1,221 @@
+// RUN: pass canonicalize
+
+func.def public @boolean_comparisons(%left: i32, %right: i32) -> (i32) {
+  %c0 = scalar.constant 0 : i32
+  %lhs = scalar.cmpi ne, %left, %c0 : i32
+  %rhs = scalar.cmpi ne, %right, %c0 : i32
+  %eq = scalar.cmpi eq, %lhs, %rhs : i1
+  %eq_bit = scalar.extui %eq : i1 to i32
+  %ne = scalar.cmpi ne, %lhs, %rhs : i1
+  %ne_bit = scalar.extui %ne : i1 to i32
+  %shift_1 = scalar.constant 1 : i32
+  %ne_shifted = scalar.shli %ne_bit, %shift_1 : i32
+  %mask_1 = scalar.ori %eq_bit, %ne_shifted : i32
+  %slt = scalar.cmpi slt, %lhs, %rhs : i1
+  %slt_bit = scalar.extui %slt : i1 to i32
+  %shift_2 = scalar.constant 2 : i32
+  %slt_shifted = scalar.shli %slt_bit, %shift_2 : i32
+  %mask_2 = scalar.ori %mask_1, %slt_shifted : i32
+  %sle = scalar.cmpi sle, %lhs, %rhs : i1
+  %sle_bit = scalar.extui %sle : i1 to i32
+  %shift_3 = scalar.constant 3 : i32
+  %sle_shifted = scalar.shli %sle_bit, %shift_3 : i32
+  %mask_3 = scalar.ori %mask_2, %sle_shifted : i32
+  %sgt = scalar.cmpi sgt, %lhs, %rhs : i1
+  %sgt_bit = scalar.extui %sgt : i1 to i32
+  %shift_4 = scalar.constant 4 : i32
+  %sgt_shifted = scalar.shli %sgt_bit, %shift_4 : i32
+  %mask_4 = scalar.ori %mask_3, %sgt_shifted : i32
+  %sge = scalar.cmpi sge, %lhs, %rhs : i1
+  %sge_bit = scalar.extui %sge : i1 to i32
+  %shift_5 = scalar.constant 5 : i32
+  %sge_shifted = scalar.shli %sge_bit, %shift_5 : i32
+  %mask_5 = scalar.ori %mask_4, %sge_shifted : i32
+  %ult = scalar.cmpi ult, %lhs, %rhs : i1
+  %ult_bit = scalar.extui %ult : i1 to i32
+  %shift_6 = scalar.constant 6 : i32
+  %ult_shifted = scalar.shli %ult_bit, %shift_6 : i32
+  %mask_6 = scalar.ori %mask_5, %ult_shifted : i32
+  %ule = scalar.cmpi ule, %lhs, %rhs : i1
+  %ule_bit = scalar.extui %ule : i1 to i32
+  %shift_7 = scalar.constant 7 : i32
+  %ule_shifted = scalar.shli %ule_bit, %shift_7 : i32
+  %mask_7 = scalar.ori %mask_6, %ule_shifted : i32
+  %ugt = scalar.cmpi ugt, %lhs, %rhs : i1
+  %ugt_bit = scalar.extui %ugt : i1 to i32
+  %shift_8 = scalar.constant 8 : i32
+  %ugt_shifted = scalar.shli %ugt_bit, %shift_8 : i32
+  %mask_8 = scalar.ori %mask_7, %ugt_shifted : i32
+  %uge = scalar.cmpi uge, %lhs, %rhs : i1
+  %uge_bit = scalar.extui %uge : i1 to i32
+  %shift_9 = scalar.constant 9 : i32
+  %uge_shifted = scalar.shli %uge_bit, %shift_9 : i32
+  %mask_9 = scalar.ori %mask_8, %uge_shifted : i32
+  func.return %mask_9 : i32
+}
+
+// ----
+func.def public @boolean_comparisons(%left: i32, %right: i32) -> (i32) {
+  %c0 = scalar.constant 0 : i32
+  %lhs = scalar.cmpi ne, %left, %c0 : i32
+  %rhs = scalar.cmpi ne, %right, %c0 : i32
+  %78 = scalar.xori %lhs, %rhs : i1
+  %79 = scalar.constant true : i1
+  %eq = scalar.xori %78, %79 : i1
+  %eq_bit = scalar.extui %eq : i1 to i32
+  %ne = scalar.xori %lhs, %rhs : i1
+  %ne_bit = scalar.extui %ne : i1 to i32
+  %shift_1 = scalar.constant 1 : i32
+  %ne_shifted = scalar.shli %ne_bit, %shift_1 : i32
+  %mask_1 = scalar.ori %eq_bit, %ne_shifted : i32
+  %74 = scalar.constant true : i1
+  %75 = scalar.xori %rhs, %74 : i1
+  %slt = scalar.andi %75, %lhs : i1
+  %slt_bit = scalar.extui %slt : i1 to i32
+  %shift_2 = scalar.constant 2 : i32
+  %slt_shifted = scalar.shli %slt_bit, %shift_2 : i32
+  %mask_2 = scalar.ori %mask_1, %slt_shifted : i32
+  %71 = scalar.constant true : i1
+  %72 = scalar.xori %rhs, %71 : i1
+  %sle = scalar.ori %72, %lhs : i1
+  %sle_bit = scalar.extui %sle : i1 to i32
+  %shift_3 = scalar.constant 3 : i32
+  %sle_shifted = scalar.shli %sle_bit, %shift_3 : i32
+  %mask_3 = scalar.ori %mask_2, %sle_shifted : i32
+  %68 = scalar.constant true : i1
+  %69 = scalar.xori %lhs, %68 : i1
+  %sgt = scalar.andi %69, %rhs : i1
+  %sgt_bit = scalar.extui %sgt : i1 to i32
+  %shift_4 = scalar.constant 4 : i32
+  %sgt_shifted = scalar.shli %sgt_bit, %shift_4 : i32
+  %mask_4 = scalar.ori %mask_3, %sgt_shifted : i32
+  %65 = scalar.constant true : i1
+  %66 = scalar.xori %lhs, %65 : i1
+  %sge = scalar.ori %66, %rhs : i1
+  %sge_bit = scalar.extui %sge : i1 to i32
+  %shift_5 = scalar.constant 5 : i32
+  %sge_shifted = scalar.shli %sge_bit, %shift_5 : i32
+  %mask_5 = scalar.ori %mask_4, %sge_shifted : i32
+  %62 = scalar.constant true : i1
+  %63 = scalar.xori %lhs, %62 : i1
+  %ult = scalar.andi %63, %rhs : i1
+  %ult_bit = scalar.extui %ult : i1 to i32
+  %shift_6 = scalar.constant 6 : i32
+  %ult_shifted = scalar.shli %ult_bit, %shift_6 : i32
+  %mask_6 = scalar.ori %mask_5, %ult_shifted : i32
+  %59 = scalar.constant true : i1
+  %60 = scalar.xori %lhs, %59 : i1
+  %ule = scalar.ori %60, %rhs : i1
+  %ule_bit = scalar.extui %ule : i1 to i32
+  %shift_7 = scalar.constant 7 : i32
+  %ule_shifted = scalar.shli %ule_bit, %shift_7 : i32
+  %mask_7 = scalar.ori %mask_6, %ule_shifted : i32
+  %56 = scalar.constant true : i1
+  %57 = scalar.xori %rhs, %56 : i1
+  %ugt = scalar.andi %57, %lhs : i1
+  %ugt_bit = scalar.extui %ugt : i1 to i32
+  %shift_8 = scalar.constant 8 : i32
+  %ugt_shifted = scalar.shli %ugt_bit, %shift_8 : i32
+  %mask_8 = scalar.ori %mask_7, %ugt_shifted : i32
+  %53 = scalar.constant true : i1
+  %54 = scalar.xori %rhs, %53 : i1
+  %uge = scalar.ori %54, %lhs : i1
+  %uge_bit = scalar.extui %uge : i1 to i32
+  %shift_9 = scalar.constant 9 : i32
+  %uge_shifted = scalar.shli %uge_bit, %shift_9 : i32
+  %mask_9 = scalar.ori %mask_8, %uge_shifted : i32
+  func.return %mask_9 : i32
+}
+
+// ====
+
+func.def @boolean_constant_order() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
+  %c0 = scalar.constant false : i1
+  %c1 = scalar.constant true : i1
+  %eq_0_0 = scalar.cmpi eq, %c0, %c0 : i1
+  %ne_0_0 = scalar.cmpi ne, %c0, %c0 : i1
+  %slt_0_0 = scalar.cmpi slt, %c0, %c0 : i1
+  %sle_0_0 = scalar.cmpi sle, %c0, %c0 : i1
+  %sgt_0_0 = scalar.cmpi sgt, %c0, %c0 : i1
+  %sge_0_0 = scalar.cmpi sge, %c0, %c0 : i1
+  %ult_0_0 = scalar.cmpi ult, %c0, %c0 : i1
+  %ule_0_0 = scalar.cmpi ule, %c0, %c0 : i1
+  %ugt_0_0 = scalar.cmpi ugt, %c0, %c0 : i1
+  %uge_0_0 = scalar.cmpi uge, %c0, %c0 : i1
+  %eq_0_1 = scalar.cmpi eq, %c0, %c1 : i1
+  %ne_0_1 = scalar.cmpi ne, %c0, %c1 : i1
+  %slt_0_1 = scalar.cmpi slt, %c0, %c1 : i1
+  %sle_0_1 = scalar.cmpi sle, %c0, %c1 : i1
+  %sgt_0_1 = scalar.cmpi sgt, %c0, %c1 : i1
+  %sge_0_1 = scalar.cmpi sge, %c0, %c1 : i1
+  %ult_0_1 = scalar.cmpi ult, %c0, %c1 : i1
+  %ule_0_1 = scalar.cmpi ule, %c0, %c1 : i1
+  %ugt_0_1 = scalar.cmpi ugt, %c0, %c1 : i1
+  %uge_0_1 = scalar.cmpi uge, %c0, %c1 : i1
+  %eq_1_0 = scalar.cmpi eq, %c1, %c0 : i1
+  %ne_1_0 = scalar.cmpi ne, %c1, %c0 : i1
+  %slt_1_0 = scalar.cmpi slt, %c1, %c0 : i1
+  %sle_1_0 = scalar.cmpi sle, %c1, %c0 : i1
+  %sgt_1_0 = scalar.cmpi sgt, %c1, %c0 : i1
+  %sge_1_0 = scalar.cmpi sge, %c1, %c0 : i1
+  %ult_1_0 = scalar.cmpi ult, %c1, %c0 : i1
+  %ule_1_0 = scalar.cmpi ule, %c1, %c0 : i1
+  %ugt_1_0 = scalar.cmpi ugt, %c1, %c0 : i1
+  %uge_1_0 = scalar.cmpi uge, %c1, %c0 : i1
+  %eq_1_1 = scalar.cmpi eq, %c1, %c1 : i1
+  %ne_1_1 = scalar.cmpi ne, %c1, %c1 : i1
+  %slt_1_1 = scalar.cmpi slt, %c1, %c1 : i1
+  %sle_1_1 = scalar.cmpi sle, %c1, %c1 : i1
+  %sgt_1_1 = scalar.cmpi sgt, %c1, %c1 : i1
+  %sge_1_1 = scalar.cmpi sge, %c1, %c1 : i1
+  %ult_1_1 = scalar.cmpi ult, %c1, %c1 : i1
+  %ule_1_1 = scalar.cmpi ule, %c1, %c1 : i1
+  %ugt_1_1 = scalar.cmpi ugt, %c1, %c1 : i1
+  %uge_1_1 = scalar.cmpi uge, %c1, %c1 : i1
+  func.return %eq_0_0, %ne_0_0, %slt_0_0, %sle_0_0, %sgt_0_0, %sge_0_0, %ult_0_0, %ule_0_0, %ugt_0_0, %uge_0_0, %eq_0_1, %ne_0_1, %slt_0_1, %sle_0_1, %sgt_0_1, %sge_0_1, %ult_0_1, %ule_0_1, %ugt_0_1, %uge_0_1, %eq_1_0, %ne_1_0, %slt_1_0, %sle_1_0, %sgt_1_0, %sge_1_0, %ult_1_0, %ule_1_0, %ugt_1_0, %uge_1_0, %eq_1_1, %ne_1_1, %slt_1_1, %sle_1_1, %sgt_1_1, %sge_1_1, %ult_1_1, %ule_1_1, %ugt_1_1, %uge_1_1 : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+}
+
+// ----
+func.def @boolean_constant_order() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
+  %eq_0_0 = scalar.constant true : i1
+  %ne_0_0 = scalar.constant false : i1
+  %slt_0_0 = scalar.constant false : i1
+  %sle_0_0 = scalar.constant true : i1
+  %sgt_0_0 = scalar.constant false : i1
+  %sge_0_0 = scalar.constant true : i1
+  %ult_0_0 = scalar.constant false : i1
+  %ule_0_0 = scalar.constant true : i1
+  %ugt_0_0 = scalar.constant false : i1
+  %uge_0_0 = scalar.constant true : i1
+  %eq_0_1 = scalar.constant false : i1
+  %ne_0_1 = scalar.constant true : i1
+  %slt_0_1 = scalar.constant false : i1
+  %sle_0_1 = scalar.constant false : i1
+  %sgt_0_1 = scalar.constant true : i1
+  %sge_0_1 = scalar.constant true : i1
+  %ult_0_1 = scalar.constant true : i1
+  %ule_0_1 = scalar.constant true : i1
+  %ugt_0_1 = scalar.constant false : i1
+  %uge_0_1 = scalar.constant false : i1
+  %eq_1_0 = scalar.constant false : i1
+  %ne_1_0 = scalar.constant true : i1
+  %slt_1_0 = scalar.constant true : i1
+  %sle_1_0 = scalar.constant true : i1
+  %sgt_1_0 = scalar.constant false : i1
+  %sge_1_0 = scalar.constant false : i1
+  %ult_1_0 = scalar.constant false : i1
+  %ule_1_0 = scalar.constant false : i1
+  %ugt_1_0 = scalar.constant true : i1
+  %uge_1_0 = scalar.constant true : i1
+  %eq_1_1 = scalar.constant true : i1
+  %ne_1_1 = scalar.constant false : i1
+  %slt_1_1 = scalar.constant false : i1
+  %sle_1_1 = scalar.constant true : i1
+  %sgt_1_1 = scalar.constant false : i1
+  %sge_1_1 = scalar.constant true : i1
+  %ult_1_1 = scalar.constant false : i1
+  %ule_1_1 = scalar.constant true : i1
+  %ugt_1_1 = scalar.constant false : i1
+  %uge_1_1 = scalar.constant true : i1
+  func.return %eq_0_0, %ne_0_0, %slt_0_0, %sle_0_0, %sgt_0_0, %sge_0_0, %ult_0_0, %ule_0_0, %ugt_0_0, %uge_0_0, %eq_0_1, %ne_0_1, %slt_0_1, %sle_0_1, %sgt_0_1, %sge_0_1, %ult_0_1, %ule_0_1, %ugt_0_1, %uge_0_1, %eq_1_0, %ne_1_0, %slt_1_0, %sle_1_0, %sgt_1_0, %sge_1_0, %ult_1_0, %ule_1_0, %ugt_1_0, %uge_1_0, %eq_1_1, %ne_1_1, %slt_1_1, %sle_1_1, %sgt_1_1, %sge_1_1, %ult_1_1, %ule_1_1, %ugt_1_1, %uge_1_1 : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+}

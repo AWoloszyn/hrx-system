@@ -29,8 +29,15 @@ bool loom_scalar_cmpi_same_value_result(uint8_t predicate, bool* out_result);
 // Returns the equivalent integer predicate after swapping lhs and rhs.
 uint8_t loom_scalar_cmpi_swapped_predicate(uint8_t predicate);
 
+// Maps an integer predicate to the ordering used by range facts. Logical i1
+// facts use zero/one, so their signed ordering is the reverse of their stored
+// range ordering. Other integer facts already use signed values.
+uint8_t loom_scalar_cmpi_range_predicate(loom_scalar_type_t type,
+                                         uint8_t predicate);
+
 // Proves an integer comparison result from the operand fact summaries.
-bool loom_scalar_cmpi_result_from_facts(uint8_t predicate,
+bool loom_scalar_cmpi_result_from_facts(loom_scalar_type_t type,
+                                        uint8_t predicate,
                                         const loom_value_facts_t* lhs_facts,
                                         const loom_value_facts_t* rhs_facts,
                                         bool* out_result);

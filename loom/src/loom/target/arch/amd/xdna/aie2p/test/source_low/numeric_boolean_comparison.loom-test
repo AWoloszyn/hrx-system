@@ -1,0 +1,113 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_boolean_comparison.loom-test
+// RUN: emit source-low output=low
+
+aie2p.target<core> @target
+
+func.def public target(@target) @boolean_comparisons(%left: i32, %right: i32) -> (i32) {
+  %c0 = scalar.constant 0 : i32
+  %lhs = scalar.cmpi ne, %left, %c0 : i32
+  %rhs = scalar.cmpi ne, %right, %c0 : i32
+  %eq = scalar.cmpi eq, %lhs, %rhs : i1
+  %eq_bit = scalar.extui %eq : i1 to i32
+  %ne = scalar.cmpi ne, %lhs, %rhs : i1
+  %ne_bit = scalar.extui %ne : i1 to i32
+  %shift_1 = scalar.constant 1 : i32
+  %ne_shifted = scalar.shli %ne_bit, %shift_1 : i32
+  %mask_1 = scalar.ori %eq_bit, %ne_shifted : i32
+  %slt = scalar.cmpi slt, %lhs, %rhs : i1
+  %slt_bit = scalar.extui %slt : i1 to i32
+  %shift_2 = scalar.constant 2 : i32
+  %slt_shifted = scalar.shli %slt_bit, %shift_2 : i32
+  %mask_2 = scalar.ori %mask_1, %slt_shifted : i32
+  %sle = scalar.cmpi sle, %lhs, %rhs : i1
+  %sle_bit = scalar.extui %sle : i1 to i32
+  %shift_3 = scalar.constant 3 : i32
+  %sle_shifted = scalar.shli %sle_bit, %shift_3 : i32
+  %mask_3 = scalar.ori %mask_2, %sle_shifted : i32
+  %sgt = scalar.cmpi sgt, %lhs, %rhs : i1
+  %sgt_bit = scalar.extui %sgt : i1 to i32
+  %shift_4 = scalar.constant 4 : i32
+  %sgt_shifted = scalar.shli %sgt_bit, %shift_4 : i32
+  %mask_4 = scalar.ori %mask_3, %sgt_shifted : i32
+  %sge = scalar.cmpi sge, %lhs, %rhs : i1
+  %sge_bit = scalar.extui %sge : i1 to i32
+  %shift_5 = scalar.constant 5 : i32
+  %sge_shifted = scalar.shli %sge_bit, %shift_5 : i32
+  %mask_5 = scalar.ori %mask_4, %sge_shifted : i32
+  %ult = scalar.cmpi ult, %lhs, %rhs : i1
+  %ult_bit = scalar.extui %ult : i1 to i32
+  %shift_6 = scalar.constant 6 : i32
+  %ult_shifted = scalar.shli %ult_bit, %shift_6 : i32
+  %mask_6 = scalar.ori %mask_5, %ult_shifted : i32
+  %ule = scalar.cmpi ule, %lhs, %rhs : i1
+  %ule_bit = scalar.extui %ule : i1 to i32
+  %shift_7 = scalar.constant 7 : i32
+  %ule_shifted = scalar.shli %ule_bit, %shift_7 : i32
+  %mask_7 = scalar.ori %mask_6, %ule_shifted : i32
+  %ugt = scalar.cmpi ugt, %lhs, %rhs : i1
+  %ugt_bit = scalar.extui %ugt : i1 to i32
+  %shift_8 = scalar.constant 8 : i32
+  %ugt_shifted = scalar.shli %ugt_bit, %shift_8 : i32
+  %mask_8 = scalar.ori %mask_7, %ugt_shifted : i32
+  %uge = scalar.cmpi uge, %lhs, %rhs : i1
+  %uge_bit = scalar.extui %uge : i1 to i32
+  %shift_9 = scalar.constant 9 : i32
+  %uge_shifted = scalar.shli %uge_bit, %shift_9 : i32
+  %mask_9 = scalar.ori %mask_8, %uge_shifted : i32
+  func.return %mask_9 : i32
+}
+
+// ----
+low.func.def public target<amd.xdna.aie2p.core>(@target) abi(object_function) @boolean_comparisons(%left: reg<aie2p.er>, %right: reg<aie2p.er>) -> (reg<aie2p.er>) asm {
+  %c0 = mov.short 0
+  %lhs = nez %left
+  %rhs = nez %right
+  %105 = xor %lhs, %rhs
+  %106 = mov.short 1
+  %eq = xor %105, %106
+  %109 = copy %eq : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %eq_bit = sel.nez %106, %c0, %109
+  %111 = copy %105 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %ne_bit = sel.nez %106, %c0, %111
+  %ne_shifted = lshl %ne_bit, %106
+  %mask_1 = or %eq_bit, %ne_shifted
+  %115 = xor %rhs, %106
+  %slt = and %115, %lhs
+  %117 = copy %slt : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %slt_bit = sel.nez %106, %c0, %117
+  %shift_2 = mov.short 2
+  %slt_shifted = lshl %slt_bit, %shift_2
+  %mask_2 = or %mask_1, %slt_shifted
+  %sle = or %115, %lhs
+  %123 = copy %sle : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %sle_bit = sel.nez %106, %c0, %123
+  %shift_3 = mov.short 3
+  %sle_shifted = lshl %sle_bit, %shift_3
+  %mask_3 = or %mask_2, %sle_shifted
+  %128 = xor %lhs, %106
+  %sgt = and %128, %rhs
+  %130 = copy %sgt : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %sgt_bit = sel.nez %106, %c0, %130
+  %shift_4 = mov.short 4
+  %sgt_shifted = lshl %sgt_bit, %shift_4
+  %mask_4 = or %mask_3, %sgt_shifted
+  %sge = or %128, %rhs
+  %136 = copy %sge : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %sge_bit = sel.nez %106, %c0, %136
+  %shift_5 = mov.short 5
+  %sge_shifted = lshl %sge_bit, %shift_5
+  %mask_5 = or %mask_4, %sge_shifted
+  %shift_6 = mov.short 6
+  %ult_shifted = lshl %sgt_bit, %shift_6
+  %mask_6 = or %mask_5, %ult_shifted
+  %shift_7 = mov.short 7
+  %ule_shifted = lshl %sge_bit, %shift_7
+  %mask_7 = or %mask_6, %ule_shifted
+  %shift_8 = mov.short 8
+  %ugt_shifted = lshl %slt_bit, %shift_8
+  %mask_8 = or %mask_7, %ugt_shifted
+  %shift_9 = mov.short 9
+  %uge_shifted = lshl %sle_bit, %shift_9
+  %mask_9 = or %mask_8, %uge_shifted
+  return %mask_9
+}

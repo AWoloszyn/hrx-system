@@ -41,9 +41,12 @@ iree_execution_test_suite(
   MANIFESTS
     "vm.test.json"
   TOOLS
+    "iree-test-loom=loom::tools::iree-test-loom"
     "loom-compile=loom::tools::loom-compile"
     "vm-dis=iree::tools::vm::vm-dis"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_boolean_comparison.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/boolean_comparison.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/duplicate_exports.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/empty_export.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/invalid_operand.loom"

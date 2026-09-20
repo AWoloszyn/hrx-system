@@ -606,9 +606,11 @@ iree_status_t loom_scalar_cmpi_facts(loom_fact_context_t* context,
   if ((loom_scalar_cmpi_lhs(op) == loom_scalar_cmpi_rhs(op) &&
        loom_scalar_cmpi_same_value_result(loom_scalar_cmpi_predicate(op),
                                           &result)) ||
-      loom_scalar_cmpi_result_from_facts(loom_scalar_cmpi_predicate(op),
-                                         &operand_facts[0], &operand_facts[1],
-                                         &result)) {
+      loom_scalar_cmpi_result_from_facts(
+          loom_type_element_type(
+              loom_module_value_type(module, loom_scalar_cmpi_lhs(op))),
+          loom_scalar_cmpi_predicate(op), &operand_facts[0], &operand_facts[1],
+          &result)) {
     result_facts[0] = loom_value_facts_exact_i64(result ? 1 : 0);
     return iree_ok_status();
   }

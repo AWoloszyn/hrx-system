@@ -16,6 +16,7 @@ loom_generated_cc_library(
     name = "scalar",
     srcs = [
         "canonicalize.c",
+        "canonicalize_comparison.c",
         "combining.c",
         "compare.c",
         "facts.c",
