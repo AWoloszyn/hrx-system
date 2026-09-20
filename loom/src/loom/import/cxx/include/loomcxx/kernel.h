@@ -14,9 +14,12 @@
 // Counted unsigned for loops accept loom::unroll(factor),
 // loom::pipeline(depth), and
 // loom::schedule("linear"|"interleaved"|"recurrence"). Factors and depths are
-// positive integer constant expressions, including template parameters. Bare
-// loom::unroll requests full unrolling. Scheduling is an explicit compiler
-// contract; an unsupported loop form is diagnosed instead of ignoring it.
+// pure integer expressions read after the for initializer. They become SSA
+// values and must resolve exactly when Loom applies the schedule. Calls,
+// mutation, volatile reads, and overloaded operations inside an annotation
+// are rejected. Unroll factors 0/1 and pipeline depth 1 are serial. Bare
+// loom::unroll requests full unrolling; pipeline depths must be in [1, 65535].
+// Scheduling is an explicit compiler contract; unsupported policies diagnose.
 #define LOOM_KERNEL [[loom::kernel]]
 #define LOOM_DEVICE [[loom::device]]
 #define LOOM_WORKGROUP [[loom::workgroup]]

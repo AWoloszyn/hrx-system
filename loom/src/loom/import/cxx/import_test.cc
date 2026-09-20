@@ -615,19 +615,104 @@ TEST_F(ImportTest, BareUnrollAndConstantExpressionSchedules) {
   EXPECT_EQ(diagnostic_count_, 0);
 }
 
+TEST_F(ImportTest, ConstantLoopHeadersPreserveSchedulesAndSourceConversions) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"cpp(
+#define PIXELS 320u
+    template <unsigned Width, unsigned Step>
+    static unsigned sum(const unsigned* input, unsigned start) {
+      constexpr unsigned lanes = 16;
+      unsigned total = 0;
+      [[loom::unroll(3), loom::pipeline(2)]]
+      for (unsigned index = start; index < (Width / lanes);
+           index += Step / 2u) {
+        total += input[index];
+      }
+      return total;
+    }
+    unsigned entry(const unsigned* input, unsigned start) {
+      unsigned total = sum<PIXELS, 4>(input, start);
+      [[loom::unroll(2)]]
+      for (unsigned index = start;
+           index < static_cast<unsigned>(sizeof(++start) * 5u); index++) {
+        total += input[index];
+      }
+      [[loom::unroll(2)]]
+      for (unsigned index = start; index < (0xffffffffu + 21u);
+           index += (1u << 2)) {
+        total += input[index];
+      }
+      return total;
+    }
+  )cpp")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("scf.for"), std::string::npos);
+  EXPECT_NE(text.find("unroll(%"), std::string::npos);
+  EXPECT_NE(text.find("pipeline(%"), std::string::npos);
+  EXPECT_EQ(text.find("scf.while"), std::string::npos);
+  EXPECT_EQ(text.find("scalar.div"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
+TEST_F(ImportTest, SchedulingExpressionsRetainValuesUntilLoomSpecialization) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"cpp(
+    [[loom::force_inline]] static unsigned sum(unsigned count, unsigned factor,
+                                               unsigned long long depth) {
+      unsigned total = 0;
+      [[loom::unroll(factor + 1u), loom::pipeline(depth / sizeof(unsigned)),
+        loom::schedule("linear")]]
+      for (unsigned index = 0; index < count; ++index) {
+        total += index;
+      }
+      return total;
+    }
+    unsigned entry(unsigned count, unsigned factor, unsigned long long depth) {
+      return sum(count, factor, depth);
+    }
+  )cpp")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("pipeline(%"), std::string::npos);
+  EXPECT_NE(text.find("unroll(%"), std::string::npos);
+  EXPECT_NE(text.find("scalar.addi"), std::string::npos);
+  EXPECT_NE(text.find("scalar.divui"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
+TEST_F(ImportTest, ScheduleNumericPoliciesBelongToLoomTransforms) {
+  for (auto annotation : {"unroll(0)", "unroll(-1)", "unroll(2147483648u)",
+                          "unroll(0xffffffffffffffffULL)", "pipeline(0)",
+                          "pipeline(65536)", "pipeline(count)"}) {
+    SCOPED_TRACE(annotation);
+    auto source =
+        std::string(
+            "unsigned entry(unsigned count) { unsigned total = 0; [[loom::") +
+        annotation +
+        "]] for (unsigned i = 0; i < count; ++i) { total += i; } return total; "
+        "}";
+    IREE_ASSERT_OK(Import(iree_make_string_view(source.data(), source.size())));
+    ASSERT_NE(module_, nullptr);
+  }
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
 TEST_F(ImportTest, InvalidLoopSchedulesAreNotSilentlyDiscarded) {
   for (const char* attributes :
-       {"loom::unroll(0)", "loom::unroll(-1)", "loom::unroll(2.5)",
-        "loom::unroll(2147483648u)", "loom::unroll()", "loom::unroll(2, 3)",
+       {"loom::unroll(2.5)", "loom::unroll()", "loom::unroll(2, 3)",
         "loom::unroll, loom::unroll(2)", "loom::pipeline",
-        "loom::pipeline(count)", "loom::pipeline(1), loom::pipeline(2)",
-        "loom::schedule(3)", "loom::schedule(\"linear\")",
+        "loom::pipeline(++count)", "loom::unroll(count++)",
+        "loom::unroll(count = 2)", "loom::unroll(opaque())",
+        "loom::unroll(false ? opaque() : 2u)",
+        "loom::pipeline(1), loom::pipeline(2)", "loom::schedule(3)",
+        "loom::schedule(\"linear\")",
         "loom::unroll(2), loom::schedule(\"unknown\")",
         "loom::unroll(2), loom::schedule(\"linear\"), "
         "loom::schedule(\"linear\")",
         "loom::surprise(2)"}) {
     SCOPED_TRACE(attributes);
-    auto source = std::string("int entry(unsigned count) { int total = 0; [[") +
+    auto source = std::string(
+                      "unsigned opaque(); int entry(unsigned count) { int "
+                      "total = 0; [[") +
                   attributes +
                   "]] for (unsigned i = 0; i < count; ++i) { total += (int)i; "
                   "} return total; }";
@@ -639,7 +724,12 @@ TEST_F(ImportTest, InvalidLoopSchedulesAreNotSilentlyDiscarded) {
   for (const char* loop :
        {"[[loom::unroll(2)]] while (count) { --count; }",
         "[[loom::pipeline(2)]] do { --count; } while (count);",
-        "[[loom::unroll]] for (int i = 0; i < (int)count; ++i) {}"}) {
+        "[[loom::unroll]] for (int i = 0; i < (int)count; ++i) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < 20ULL; ++i) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < (count + 0u); ++i) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < (count = 20u); ++i) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < 20u; i += count) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < ~0u; i += (1u << 2)) {}"}) {
     SCOPED_TRACE(loop);
     auto source = std::string("unsigned entry(unsigned count) { ") + loop +
                   " return count; }";

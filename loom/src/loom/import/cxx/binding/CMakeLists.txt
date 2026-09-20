@@ -34,6 +34,7 @@ loom_cc_library(
   DEPS
     iree::third_party::cxx_parser
     loom::import::cxx::source
+    loom::import::cxx::source::constants
   PUBLIC
 )
 endif()
@@ -110,7 +111,9 @@ loom_cc_library(
     loom::import::cxx::source
     loom::import::cxx::source::attributes
     loom::import::cxx::source::error
+    loom::ir
     loom::ops::index
+    loom::ops::scalar
     loom::ops::scf
   PUBLIC
 )
@@ -227,6 +230,7 @@ loom_cc_test(
     loom::import::cxx::source::error
     loom::import::cxx::value::builder_test
     loom::ops::index
+    loom::ops::scalar
   LABELS
     "iree-build-requirement=loom.import.cxx"
 )

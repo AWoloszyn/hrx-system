@@ -164,9 +164,12 @@ def scheduled_sum(directory):
         expected = [sum(values[row * columns : (row + 1) * columns]) for row in range(rows)]
         case = Case(directory, f"scheduled_sum_{columns}", "i32", rows)
         case.array("input", values)
+        case.array("original", values)
         case.scalar("rows", rows, "i32")
         case.scalar("columns", columns, "i32")
         case.launch("scheduled_sum", "%input, %output, %rows, %columns", f"tensor<{len(values)}xi32>, tensor<{rows}xi32>, i32, i32")
+        case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @scheduled_sum() launch(%input: buffer, %output: buffer, %rows: i32, %columns: i32)\n\n" + "\n".join(cases)
 
@@ -508,6 +511,62 @@ def continue_vectors(directory):
             case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
             cases.append(case.finish(expected))
     return "kernel.decl @continue_vectors() launch(%output: buffer, %count: i32, %choose: i32)\n\n" + "\n".join(cases)
+
+
+CONSTANT_LOOP_STARTS = [0, 1, 2, 3, 7, 16, 17, 18, 19, 20, 21, 0x80000000, 0xFFFFFFFF]
+
+
+def schedule_functions(directory):
+    del directory
+    cases = []
+    for name in ["call", "snapshot", "wide", "narrow", "signed", "unevaluated", "initializer", "serial"]:
+        samples = []
+        for count in [0, 1, 2, 3, 4, 5, 7, 16, 17, 33]:
+            expected = sum(range(count))
+            if name == "snapshot":
+                expected += count + 3
+            elif name == "unevaluated":
+                expected += count + 8 + ord("A")
+            samples.append(([count], expected))
+        cases.append(function_cases(f"schedule_{name}", [32], 32, samples))
+    return "\n".join(cases)
+
+
+def constant_loop_functions(directory):
+    del directory
+    cases = [
+        ("counted_stride", [([start], sum(range(start, 20, 4))) for start in CONSTANT_LOOP_STARTS]),
+        ("counted_empty", [([start], 7) for start in CONSTANT_LOOP_STARTS]),
+        ("counted_maximum_step", [([start], 7 if start == 0 else 0) for start in CONSTANT_LOOP_STARTS]),
+        ("counted_edge", [([start], sum(range(start, 0xFFFFFFFC, 4))) for start in range(0xFFFFFFF0, 0x100000000)]),
+    ]
+    return "\n".join(function_cases(name, [32], 32, samples) for name, samples in cases)
+
+
+def constant_loops(directory):
+    values = [(index * 17 + 7) % 251 for index in range(64 * 20)]
+    cases = []
+    for start in CONSTANT_LOOP_STARTS:
+        expected = []
+        for lane in range(64):
+            row = values[lane * 20 : (lane + 1) * 20]
+            expected.extend([sum(row[start:20:2])] * 2)
+            expected.extend([sum(row[0:20:2])] * 2)
+            expected.append(sum(row[0:20:4]))
+            expected.append(sum(row))
+            iterations = max(0, (20 - start) // 2)
+            expected.append(sum(row[start : start + iterations]) + 19 - iterations)
+            expected.append(signed_bits(sum(range(0xFFFFFFF0 + lane % 8, 0xFFFFFFFC, 4)), 32))
+            expected.extend([sum(row[0:bound:2]) for bound in [0, 1, 2, 5]])
+        case = Case(directory, f"constant_loops_{start}", "i32", len(expected))
+        case.array("input", values)
+        case.array("original", values)
+        case.scalar("start", signed_bits(start, 32), "i32")
+        case.launch("constant_loops", "%input, %output, %start", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32")
+        case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @constant_loops() launch(%input: buffer, %output: buffer, %start: i32)\n\n" + "\n".join(cases)
 
 
 def assumption_functions(directory):
@@ -864,6 +923,7 @@ def main():
         ("aiter_swiglu_f16", swiglu),
         ("control_flow", control_flow),
         ("scheduled_sum", scheduled_sum),
+        ("schedule_functions", schedule_functions),
         ("short_circuit", short_circuit),
         ("early_returns", early_returns),
         ("increment_u8", lambda directory: integer_increment(directory, 8, BYTE_INPUTS)),
@@ -878,6 +938,8 @@ def main():
         ("continue_copy", continue_copy),
         ("continue_pointers", continue_pointers),
         ("continue_vectors", continue_vectors),
+        ("constant_loop_functions", constant_loop_functions),
+        ("constant_loops", constant_loops),
         ("assumption_functions", assumption_functions),
         ("assumption_kernel", assumption_kernel),
         ("comparison_functions", comparison_functions),

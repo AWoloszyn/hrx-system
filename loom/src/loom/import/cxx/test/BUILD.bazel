@@ -24,8 +24,11 @@ iree_execution_test_suite(
     data = [
         "assumptions.cpp",
         "comparison_functions.cpp",
+        "constant_loops.cpp",
         "increment_values.cpp",
         "integer_functions.cpp",
+        "schedule_policy.cpp",
+        "schedule_values.cpp",
         "shaped_intrinsics.cpp",
         "structured_continue.cpp",
         "vector_initializers.cpp",
@@ -54,6 +57,7 @@ iree_execution_test_suite(
     data = [
         "aiter_swiglu_f16.cpp",
         "assumptions.cpp",
+        "constant_loops.cpp",
         "control_flow.cpp",
         "early_returns.cpp",
         "flash_attention.cpp",

@@ -137,6 +137,38 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    constants
+  HDRS
+    "constants.h"
+  SRCS
+    "constants.cc"
+  DEPS
+    iree::third_party::cxx_parser
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
+    constants_test
+  SRCS
+    "constants_test.cc"
+  DEPS
+    ::constants
+    ::options
+    ::source
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     attributes
   HDRS
     "attributes.h"
@@ -189,6 +221,8 @@ endif()
 foreach(_target IN ITEMS
     loom_import_cxx_source_source.objects
     loom_import_cxx_source_locations.objects
+    loom_import_cxx_source_constants.objects
+    loom_import_cxx_source_constants_test
     loom_import_cxx_source_source_test
     loom_import_cxx_source_locations_test)
   if(TARGET ${_target})

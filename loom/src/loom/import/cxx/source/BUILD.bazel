@@ -105,6 +105,28 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "constants",
+    srcs = ["constants.cc"],
+    hdrs = ["constants.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = ["//third_party:cxx_parser"],
+)
+
+loom_cc_test(
+    name = "constants_test",
+    srcs = ["constants_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":constants",
+        ":options",
+        ":source",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
     name = "attributes",
     hdrs = ["attributes.h"],
     deps = ["//third_party:cxx_parser"],
@@ -147,6 +169,8 @@ iree_cmake_extra_content(
 foreach(_target IN ITEMS
     loom_import_cxx_source_source.objects
     loom_import_cxx_source_locations.objects
+    loom_import_cxx_source_constants.objects
+    loom_import_cxx_source_constants_test
     loom_import_cxx_source_source_test
     loom_import_cxx_source_locations_test)
   if(TARGET ${_target})

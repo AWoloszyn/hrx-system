@@ -19,6 +19,7 @@ loom_cc_library(
     "analysis.cc"
   DEPS
     iree::third_party::cxx_parser
+    loom::import::cxx::source::constants
   PUBLIC
 )
 endif()
