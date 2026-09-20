@@ -178,7 +178,9 @@ Disassembly of section CODE:
   local.get  1
   i32.lt_s
   i32.eqz
-  br_if     0
+  if
+  br        1
+  end
   loop
   local.get  3
   local.get  4
@@ -188,7 +190,9 @@ Disassembly of section CODE:
   local.get  6
   i32.lt_s
   i32.eqz
-  br_if     1
+  if
+  br        2
+  end
   local.get  0
   local.get  2
   i32.add
@@ -212,14 +216,18 @@ Disassembly of section CODE:
   i32.lt_u
   f32.select
   local.set  6
-  local.get  3
-  local.set  5
   block
   local.get  0
   local.get  1
   i32.lt_s
   i32.eqz
-  br_if     0
+  if
+  local.get  3
+  local.set  5
+  br        1
+  end
+  local.get  3
+  local.set  5
   loop
   local.get  5
   local.get  4
@@ -229,7 +237,9 @@ Disassembly of section CODE:
   local.get  6
   i32.lt_s
   i32.eqz
-  br_if     1
+  if
+  br        2
+  end
   local.get  0
   local.get  2
   i32.add
@@ -336,7 +346,9 @@ Disassembly of section CODE:
   local.get  1
   i32.lt_s
   i32.eqz
-  br_if     0
+  if
+  br        1
+  end
   loop
   local.get  3
   local.get  0
@@ -369,7 +381,9 @@ Disassembly of section CODE:
   local.get  12
   i32.lt_s
   i32.eqz
-  br_if     1
+  if
+  br        2
+  end
   local.get  0
   local.get  2
   i32.add

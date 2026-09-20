@@ -3699,9 +3699,9 @@ low.func.def target<amdgpu.cdna4.core>(@gfx_target) @wait_fragment(%value: reg<a
 }
 
 // ----
-  buffer_load_dword v0, v1, s[0:3], s4 offen offset:0
+  buffer_load_dword v1, v0, s[0:3], s4 offen offset:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
-  buffer_store_dword v0, v1, s[0:3], s4 offen offset:4
+  buffer_store_dword v1, v0, s[0:3], s4 offen offset:4
   s_waitcnt vmcnt(0) lgkmcnt(15)
   s_endpgm
 
@@ -3717,9 +3717,9 @@ low.func.def target<amdgpu.rdna3.core>(@gfx_target) @wait_fragment(%value: reg<a
 }
 
 // ----
-  buffer_load_dword v0, v1, s[0:3], s4 offen offset:0
+  buffer_load_dword v1, v0, s[0:3], s4 offen offset:0
   s_waitcnt vmcnt(0) lgkmcnt(63)
-  buffer_store_dword v0, v1, s[0:3], s4 offen offset:4
+  buffer_store_dword v1, v0, s[0:3], s4 offen offset:4
   s_waitcnt_vscnt vscnt(0)
   s_endpgm
 
@@ -3832,9 +3832,9 @@ low.func.def target<amdgpu.rdna4.core>(@gfx_target) @wait_fragment(%value: reg<a
 }
 
 // ----
-  buffer_load_dword v0, v1, s[0:3], s4 offen offset:0
+  buffer_load_dword v1, v0, s[0:3], s4 offen offset:0
   s_wait_loadcnt loadcnt(0)
-  buffer_store_dword v0, v1, s[0:3], s4 offen offset:4
+  buffer_store_dword v1, v0, s[0:3], s4 offen offset:4
   s_wait_storecnt storecnt(0)
   s_endpgm
 
@@ -3850,9 +3850,9 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@gfx_target) @wait_fragment(%valu
 }
 
 // ----
-  buffer_load_dword v0, v1, s[0:3], s4 offen offset:0
+  buffer_load_dword v1, v0, s[0:3], s4 offen offset:0
   s_wait_loadcnt loadcnt(0)
-  buffer_store_dword v0, v1, s[0:3], s4 offen offset:4
+  buffer_store_dword v1, v0, s[0:3], s4 offen offset:4
   s_wait_storecnt storecnt(0)
   s_endpgm
 

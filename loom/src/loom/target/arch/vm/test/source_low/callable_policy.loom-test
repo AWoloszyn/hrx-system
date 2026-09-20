@@ -25,3 +25,85 @@ low.func.def public target<vm.core>(@target) abi(vm_function) @caller(%value: re
   %explicit = low.func.call pure noinline @callee(%ordinary, %delta) : (reg<vm.value : i32>, reg<vm.value : i32>) -> (reg<vm.value : i32>)
   return %ordinary, %explicit
 }
+
+// ====
+
+// RUN: with-checks emit source-low @caller target=vm:core output=low
+
+vm.target<core> @authored
+
+func.def noinline target(@authored) @callee(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+func.def public @caller(%value: i32) -> (i32) {
+  %result = func.call @callee(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+CHECK: low.func.def noinline target<vm.core>* @callee*
+CHECK: low.func.def public target<vm.core>* @caller*
+CHECK: *low.func.call* @callee*
+
+// ====
+
+// RUN: with-checks emit source-low @caller target=vm:core output=low
+
+vm.target<core> @authored
+
+func.def noinline @callee(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+func.def public target(@authored) @caller(%value: i32) -> (i32) {
+  %result = func.call @callee(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+CHECK: low.func.def noinline target<vm.core>* @callee*
+CHECK: low.func.def public target<vm.core>* @caller*
+CHECK: *low.func.call* @callee*
+
+// ====
+
+// RUN: with-checks emit source-low @caller target=vm:core output=module
+
+vm.target<core> @authored
+
+func.def noinline target(@authored) @callee(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+func.def public @caller(%value: i32) -> (i32) {
+  %result = func.call @callee(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+CHECK: vm.target<core> @authored
+CHECK: low.func.def noinline target<vm.core>(@authored) @callee*
+CHECK: low.func.def public target<vm.core>(@authored)* @caller*
+CHECK: *low.func.call* @callee*
+
+// ====
+
+// RUN: with-checks emit source-low @caller target=vm:core output=module
+
+vm.target<core> @authored
+
+func.def noinline @callee(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+func.def public target(@authored) @caller(%value: i32) -> (i32) {
+  %result = func.call @callee(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+CHECK: vm.target<core> @authored
+CHECK: low.func.def noinline target<vm.core>(@authored) @callee*
+CHECK: low.func.def public target<vm.core>(@authored)* @caller*
+CHECK: *low.func.call* @callee*

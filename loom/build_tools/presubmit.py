@@ -419,7 +419,7 @@ def bazel_package_test_target(path: str) -> str | None:
     while directory != REPO_ROOT:
         if (directory / "BUILD.bazel").is_file() or (directory / "BUILD").is_file():
             package_path = directory.relative_to(REPO_ROOT).as_posix()
-            return f"//{package_path}:all"
+            return f"//{package_path}/..."
         directory = directory.parent
     return None
 
@@ -427,8 +427,10 @@ def bazel_package_test_target(path: str) -> str | None:
 def selected_bazel_test_targets(paths: list[str]) -> list[str] | None:
     # Enabled target providers are linked through shared Loom registries, which
     # makes nearly every test a graph-level reverse dependency of a leaf target
-    # package. Package ownership is therefore the useful local proof boundary;
-    # repository-wide validation remains the CI and explicit --all contract.
+    # package. The owning package subtree is the useful local proof boundary:
+    # emitter libraries commonly keep tests in a nested test/ package. Selecting
+    # only :all misses those tests and may select no tests at all. Repository-wide
+    # validation remains the CI and explicit --all contract.
     # Starlark load edges are not ordinary target dependencies, so package-local
     # selection cannot represent their impact. The same is true of repository
     # configuration and presubmit machinery covered by is_global_trigger.

@@ -1677,6 +1677,17 @@ static iree_status_t loom_liveness_finalize_interval_array(
   for (iree_host_size_t value_ordinal = 0; value_ordinal < state->value_count;
        ++value_ordinal) {
     if (state->value_interval_indices[value_ordinal] != UINT32_MAX) {
+      const loom_liveness_interval_t* interval =
+          &state->interval_states[value_ordinal].interval;
+      // Unused arguments need no destination for a defining write. Decide
+      // after collecting implicit loop-control reads as well as explicit uses.
+      if (interval->start_point == interval->end_point &&
+          loom_value_is_block_arg(
+              loom_module_value(state->module, interval->value_id)) &&
+          !loom_module_value_has_uses(state->module, interval->value_id)) {
+        state->value_interval_indices[value_ordinal] = UINT32_MAX;
+        continue;
+      }
       ++count;
     }
   }

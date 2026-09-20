@@ -28,6 +28,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/invalid_operand.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/invalid_storage.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/module.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/source_call_context.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/source_cases.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/source_config.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/source_library_cases.loom"

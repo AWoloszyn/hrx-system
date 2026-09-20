@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "iree/base/internal/arena.h"
+#include "loom/codegen/low/call_context.h"
 #include "loom/codegen/low/function.h"
 #include "loom/codegen/low/packet.h"
 #include "loom/codegen/low/register_parts.h"
@@ -43,6 +44,8 @@ typedef struct loom_low_verify_state_t {
 typedef struct loom_low_function_verify_state_t {
   loom_low_verify_state_t* state;
   const loom_low_resolved_target_t* target;
+  // Invocation context retained by specialization, or NULL for authored Low.
+  const loom_target_function_version_t* version;
   loom_low_register_type_resolver_t register_type_resolver;
   iree_string_view_t function_name;
   const loom_op_t* function_op;
@@ -210,7 +213,7 @@ static loom_region_t* loom_low_verify_function_body(
   return NULL;
 }
 
-static const loom_target_facts_t* loom_low_verify_function_target_facts(
+static const loom_target_function_version_t* loom_low_verify_function_version(
     const loom_low_verify_state_t* state, const loom_op_t* low_func_op) {
   const loom_func_like_t function =
       loom_func_like_const_cast(state->module, low_func_op);
@@ -222,9 +225,8 @@ static const loom_target_facts_t* loom_low_verify_function_target_facts(
       function_ref.symbol_id >= state->function_version_snapshot.symbol_count) {
     return NULL;
   }
-  return loom_target_function_version_target_facts(
-      loom_target_function_version_snapshot_handle_at(
-          &state->function_version_snapshot, function_ref.symbol_id));
+  return loom_target_function_version_snapshot_at(
+      &state->function_version_snapshot, function_ref.symbol_id);
 }
 
 static iree_string_view_t loom_low_verify_string_or_empty(
@@ -2042,6 +2044,15 @@ static iree_status_t loom_low_verify_walk_op(void* user_data, loom_op_t* op,
       *out_result = LOOM_WALK_ABORT;
       return iree_ok_status();
     }
+    if (loom_low_func_call_isa(op)) {
+      IREE_RETURN_IF_ERROR(loom_low_verify_call_context(
+          module, function_state->function_op, function_state->version,
+          &function_state->state->function_version_snapshot, op,
+          (iree_diagnostic_emitter_t){
+              .fn = loom_low_verify_counting_emitter,
+              .user_data = function_state->state,
+          }));
+    }
     if (loom_low_resource_isa(op)) {
       IREE_RETURN_IF_ERROR(loom_low_verify_resource(function_state, op));
     }
@@ -2118,11 +2129,13 @@ static iree_status_t loom_low_verify_function(loom_low_verify_state_t* state,
       .fn = loom_low_verify_counting_emitter,
       .user_data = state,
   };
+  const loom_target_function_version_t* version =
+      loom_low_verify_function_version(state, low_func_op);
   loom_low_resolved_target_t target = {0};
   IREE_RETURN_IF_ERROR(loom_low_resolve_function_target(
       state->module, &state->symbol_facts, low_func_op,
-      loom_low_verify_function_target_facts(state, low_func_op),
-      state->registry, counting_emitter, &target));
+      version != NULL ? version->function_target_facts : NULL, state->registry,
+      counting_emitter, &target));
   loom_region_t* body = loom_low_verify_function_body(low_func_op);
   if (target.descriptor_set == NULL || loom_low_verify_should_stop(state)) {
     return iree_ok_status();
@@ -2131,6 +2144,7 @@ static iree_status_t loom_low_verify_function(loom_low_verify_state_t* state,
   loom_low_function_verify_state_t function_state = {
       .state = state,
       .target = &target,
+      .version = version,
       .function_op = low_func_op,
       .body = body,
       .register_parts =

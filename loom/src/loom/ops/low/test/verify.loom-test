@@ -299,14 +299,15 @@ low.func.def target<test.low.core>(@test_target) @low_call_non_low(%lhs: reg<tes
 // ====
 
 test.target<low_core> @gfx1100
+
 test.target<low_core> @gfx1200
 
 low.func.decl target<test.low.core>(@gfx1200) @extern_add(%lhs: reg<test.i32>) -> (reg<test.i32>)
 
-low.func.def target<test.low.core>(@gfx1100) @low_call_cross_target(%lhs: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def target<test.low.core>(@gfx1100) @low_call_cross_target(%lhs: reg<test.i32>) -> (reg<test.i32>) asm {
   // ERROR@+1: TARGET/040 {op_name="low.func.call", field_name="callee", callee_target_name="gfx1200", caller_target_name="gfx1100"}
   %sum = low.func.call @extern_add(%lhs) : (reg<test.i32>) -> (reg<test.i32>)
-  low.return %sum : reg<test.i32>
+  return %sum
 }
 
 // ====
@@ -781,4 +782,27 @@ low.func.def target<test.low.core>(@test_target) @cfg_return_type_mismatch(%cond
   low.return %value : reg<test.i32>
 ^invalid:
   low.return %wrong : reg<test.ptr>
+}
+
+// ====
+
+// Authored Low has no invocation context to relate an unbound declaration.
+test.target<low_core> @target
+
+low.func.decl target<test.low.core> @unbound(%value: reg<test.i32>) -> (reg<test.i32>)
+
+low.func.def target<test.low.core>(@target) @bound_caller(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  // ERROR@+1: TARGET/040 {callee_target_name="<unnamed>", caller_target_name="target"}
+  %result = low.func.call @unbound(%value) : (reg<test.i32>) -> (reg<test.i32>)
+  return %result
+}
+
+// ====
+
+// Matching portable contexts remain valid without specialization.
+low.func.decl target<test.low.core> @portable(%value: reg<test.i32>) -> (reg<test.i32>)
+
+low.func.def target<test.low.core> @portable_caller(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = low.func.call @portable(%value) : (reg<test.i32>) -> (reg<test.i32>)
+  return %result
 }

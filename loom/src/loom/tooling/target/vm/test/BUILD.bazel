@@ -21,6 +21,7 @@ iree_execution_test_suite(
         "invalid_operand.loom",
         "invalid_storage.loom",
         "module.loom",
+        "source_call_context.loom",
         "source_cases.loom",
         "source_config.loom",
         "source_library_cases.loom",

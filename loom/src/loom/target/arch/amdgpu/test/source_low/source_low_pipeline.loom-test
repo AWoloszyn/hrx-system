@@ -476,10 +476,12 @@ func.def target(@target) @module_output_prints_low_asm(%lhs: i32, %rhs: i32) -> 
 // ----
 amdgpu.target<gfx11-generic> @target
 
-low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @module_output_prints_low_asm(%lhs: reg<amdgpu.sgpr>, %rhs: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+low.func.def target<amdgpu.gfx11.generic.core>(@__loom_target_context_0_0) abi(hal_kernel) @module_output_prints_low_asm(%lhs: reg<amdgpu.sgpr>, %rhs: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
   %product = s_mul_i32 %lhs, %rhs
   return %product
 }
+
+amdgpu.target<gfx11-generic> @__loom_target_context_0_0 {subgroup_size = 32}
 
 // ====
 // RUN: emit source-low output=low
