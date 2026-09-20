@@ -60,6 +60,8 @@ iree_execution_test_suite(
         "testdata/dependency_component.loom",
         "testdata/dependency_direct.loom",
         "testdata/dependency_transitive.loom",
+        "testdata/kernel_export_cases.loom",
+        "testdata/kernel_exports.loom",
         "testdata/source_library.loom-test",
         "testdata/source_main.loom",
         "//loom/src/loom/link/testdata:provider_roots/direct.loom",

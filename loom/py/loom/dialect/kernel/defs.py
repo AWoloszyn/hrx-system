@@ -281,7 +281,7 @@ _ENTRY_ATTRS = [
         optional=True,
         symbol_ref=SymbolReference("target", ["target"]),
     ),
-    AttrDef("export_symbol", "string", optional=True),
+    AttrDef("export_symbol", "string", optional=True, doc="Artifact export name override; omission exports the kernel's symbol name."),
     AttrDef("export_linkage", "enum", enum_def=ExportLinkage, optional=True),
     AttrDef("predicates", "predicate_list", optional=True),
     AttrDef("retain", "enum", enum_def=Retain, optional=True),
@@ -1846,7 +1846,6 @@ kernel_decl = Op(
             args="args",
         )
     ],
-    verify="loom_kernel_decl_verify",
     format=[
         *_ENTRY_RETAIN_FORMAT,
         *_ENTRY_TARGET_FORMAT,

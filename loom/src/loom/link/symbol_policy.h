@@ -40,7 +40,8 @@ bool loom_link_symbol_has_global_identity(const loom_module_t* module,
 //
 // Public visibility, retention, and function export metadata are removed
 // together so the operation and symbol table continue to describe the same
-// private dependency. |op| must define a module-local symbol.
+// private dependency. Kernel entries remain externally dispatchable and retain
+// their export contracts. |op| must define a symbol in |module|.
 void loom_link_symbol_internalize(loom_module_t* module, loom_op_t* op);
 
 #ifdef __cplusplus

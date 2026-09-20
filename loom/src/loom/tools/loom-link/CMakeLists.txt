@@ -66,6 +66,8 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/dependency_component.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/dependency_direct.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/dependency_transitive.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/kernel_export_cases.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/kernel_exports.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/source_library.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/source_main.loom"
   LABELS

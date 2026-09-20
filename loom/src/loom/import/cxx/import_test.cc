@@ -223,8 +223,7 @@ TEST_F(ImportTest, EmbeddedFacadeAndExternalProviderAgree) {
   }
   ASSERT_NE(module_, nullptr);
   auto embedded = Print();
-  EXPECT_NE(embedded.find("kernel.def export(\"entry\") @entry"),
-            std::string::npos);
+  EXPECT_NE(embedded.find("kernel.def @entry"), std::string::npos);
   EXPECT_NE(embedded.find("scalar.expf<afn>"), std::string::npos);
   EXPECT_NE(embedded.find("kernel.subgroup.shuffle"), std::string::npos);
 

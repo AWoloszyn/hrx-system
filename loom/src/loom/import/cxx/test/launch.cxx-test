@@ -5,7 +5,7 @@
 first() {}
 [[loom::kernel]] void second() {}
 // ----
-kernel.def export("first") @first() {
+kernel.def @first() {
   %0 = index.constant 2 : index
   %1 = index.constant 1 : index
   %2 = index.constant 1 : index
@@ -17,7 +17,7 @@ kernel.def export("first") @first() {
   kernel.return
 }
 
-kernel.def export("second") @second() {
+kernel.def @second() {
   %workgroup_count_x = config.get @second.workgroup_count.x : index
   %workgroup_count_y = config.get @second.workgroup_count.y : index
   %workgroup_count_z = config.get @second.workgroup_count.z : index
@@ -49,7 +49,7 @@ void bounded();
 [[using loom: workgroup_size_range(32, 128, 1, 1, 1, 1)]]
 void bounded() {}
 // ----
-kernel.def export("bounded") @bounded() {
+kernel.def @bounded() {
   %workgroup_count_x = config.get @bounded.workgroup_count.x : index
   %workgroup_count_y = config.get @bounded.workgroup_count.y : index
   %workgroup_count_z = config.get @bounded.workgroup_count.z : index
@@ -81,7 +81,7 @@ namespace kernels {
 [[loom::kernel]] void entry(int* output) {}
 }  // namespace kernels
 // ----
-kernel.def export("kernels__entry") @kernels__entry() {
+kernel.def @kernels__entry() {
   %workgroup_count_x = config.get @kernels__entry.workgroup_count.x : index
   %workgroup_count_y = config.get @kernels__entry.workgroup_count.y : index
   %workgroup_count_z = config.get @kernels__entry.workgroup_count.z : index
@@ -106,7 +106,7 @@ config.decl @kernels__entry.workgroup_size.y : index
 
 config.decl @kernels__entry.workgroup_size.z : index
 
-kernel.def export("kernels__entry_1") @kernels__entry_1() {
+kernel.def @kernels__entry_1() {
   %workgroup_count_x = config.get @kernels__entry_1.workgroup_count.x : index
   %workgroup_count_y = config.get @kernels__entry_1.workgroup_count.y : index
   %workgroup_count_z = config.get @kernels__entry_1.workgroup_count.z : index

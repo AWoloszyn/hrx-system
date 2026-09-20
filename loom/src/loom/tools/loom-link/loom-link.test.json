@@ -2,6 +2,86 @@
   "version": 1,
   "cases": [
     {
+      "name": "kernel entries retain implicit and renamed exports across source and bytecode libraries",
+      "steps": [
+        {
+          "name": "select-source-exports",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/testdata/kernel_exports.loom",
+              "--mode=link",
+              "--include-input-exports"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "kernel.def retain @entry()",
+              "kernel.def retain export(\"artifact_entry\") @renamed_entry()"
+            ],
+            "not_contains": [
+              "@unused_helper",
+              "export(\"entry\")"
+            ]
+          }
+        },
+        {
+          "name": "encode-library",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/testdata/kernel_exports.loom",
+              "--mode=merge",
+              "--to=bc",
+              "--output={tmp}/kernels.loombc"
+            ]
+          }
+        },
+        {
+          "name": "select-bytecode-exports",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "--root-library={tmp}/kernels.loombc",
+              "--mode=link"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "kernel.def retain @entry()",
+              "kernel.def retain export(\"artifact_entry\") @renamed_entry()"
+            ],
+            "not_contains": [
+              "@unused_helper",
+              "export(\"entry\")"
+            ]
+          }
+        },
+        {
+          "name": "resolve-bytecode-library",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/testdata/kernel_export_cases.loom",
+              "--library={tmp}/kernels.loombc",
+              "--mode=link",
+              "--include-input-tests"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "kernel.def @entry()",
+              "kernel.def export(\"artifact_entry\") @renamed_entry()"
+            ],
+            "not_contains": [
+              "@unused_helper",
+              "export(\"entry\")"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "preserves linked source IDs for primary and related diagnostics",
       "run": {
         "tool": "loom-link",

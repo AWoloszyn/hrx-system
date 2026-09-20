@@ -372,14 +372,10 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
     }
     auto callee = callees_.at(symbol->canonical());
     auto name_id = module_->symbols.entries[callee.symbol_id].name_id;
-    check(loom_kernel_def_build(
-        builder,
-        exported_.contains(symbol)
-            ? LOOM_KERNEL_DEF_BUILD_FLAG_HAS_EXPORT_SYMBOL
-            : 0,
-        0, {}, exported_.contains(symbol) ? name_id : LOOM_STRING_ID_INVALID, 0,
-        callee, nullptr, 0, arguments.data(), arguments.size(), nullptr, 0,
-        locations.get(definition), &op));
+    check(loom_kernel_def_build(builder, 0, 0, {}, LOOM_STRING_ID_INVALID, 0,
+                                callee, nullptr, 0, arguments.data(),
+                                arguments.size(), nullptr, 0,
+                                locations.get(definition), &op));
     auto saved =
         loom_builder_enter_region(builder, op, loom_kernel_def_config(op));
     auto spelling = module_->strings.entries[name_id];

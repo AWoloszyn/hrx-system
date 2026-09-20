@@ -228,8 +228,9 @@ provider contract.
 Multiple kernels and ordinary functions can coexist. By default, concrete
 definitions with external visibility are exported. Repeated `--root` options
 select qualified source function names; their reachable helpers remain private.
-Selected kernel roots publish an `export("symbol")` contract so a separate
-Loom module can resolve its `kernel.decl` through normal library dependencies.
+Kernel entries export by their symbol name, so a separate Loom module can
+resolve its `kernel.decl` through normal library dependencies. An explicit
+`export("name")` is needed only when the artifact export name differs.
 Overloaded root names require disambiguation in the source. Template helpers
 are instantiated by cxx before import. This interface does not yet define an
 external C++ ABI for linking separately compiled C++ translation units.

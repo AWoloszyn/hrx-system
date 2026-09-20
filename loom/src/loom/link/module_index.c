@@ -957,7 +957,8 @@ static loom_link_symbol_flags_t loom_link_materialized_symbol_flags(
     flags |= LOOM_LINK_SYMBOL_FLAG_EXPORT;
   }
   if (loom_func_like_isa(func) &&
-      loom_func_like_export_symbol(func) != LOOM_STRING_ID_INVALID) {
+      (loom_func_like_is_kernel_entry(func) ||
+       loom_func_like_export_symbol(func) != LOOM_STRING_ID_INVALID)) {
     flags |= LOOM_LINK_SYMBOL_FLAG_EXPORT;
   }
   return flags;
