@@ -21,6 +21,7 @@ loom_cc_test(
         "//loom/src/loom/tools/loom-check:file",
         "//loom/src/loom/tools/loom-check:test_util",
         "//loom/src/loom/util:json",
+        "//loom/src/loom/util:stream",
         "//loom/src/loom/verify",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",

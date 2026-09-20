@@ -17,6 +17,8 @@
 #include "loom/ops/op_registry.h"
 #include "loom/tools/loom-check/file.h"
 #include "loom/tools/loom-check/test_util.h"
+#include "loom/util/json.h"
+#include "loom/util/stream.h"
 
 namespace {
 
@@ -26,6 +28,17 @@ iree_string_view_t View(const std::string& value) {
 
 std::string String(iree_string_view_t value) {
   return std::string(value.data ? value.data : "", value.size);
+}
+
+std::string JsonString(iree_string_view_t value) {
+  iree_string_builder_t builder;
+  iree_string_builder_initialize(iree_allocator_system(), &builder);
+  loom_output_stream_t stream;
+  loom_output_stream_for_builder(&builder, &stream);
+  IREE_EXPECT_OK(loom_json_write_escaped_string(&stream, value));
+  std::string result = String(iree_string_builder_view(&builder));
+  iree_string_builder_deinitialize(&builder);
+  return result;
 }
 
 iree_status_t RegisterContext(void*, loom_context_t* context) {
@@ -128,15 +141,18 @@ TEST_F(InputTest, HeaderSnapshotsSurviveFrontendAndFilesystemChanges) {
       continue;
     }
     EXPECT_EQ(range.provenance, LOOM_SOURCE_PROVENANCE_EXACT_SOURCE);
-    EXPECT_EQ(String(range.filename).find("/logical/"), 0u);
     const std::string text = String(range.source);
     if (text == header_source) {
       saw_header = true;
+      EXPECT_EQ(String(range.filename),
+                "/logical" + header.path().substr(directory.size()));
       EXPECT_EQ(range.start_line, 1u);
       EXPECT_LT(range.start, range.end);
       EXPECT_LE(range.end, text.size());
     } else if (text == original_source) {
       saw_main = true;
+      EXPECT_EQ(String(range.filename),
+                "/logical" + main.path().substr(directory.size()));
       EXPECT_EQ(range.start_line, 2u);
     } else {
       ADD_FAILURE() << "resolver lost the admitted source snapshot";
@@ -240,7 +256,8 @@ TEST_F(InputTest, HeaderErrorsCannotSatisfyMainFileAnnotations) {
   IREE_ASSERT_OK(
       harness.ExecuteFirst(View(source), IREE_SV("main.cxx-test"), &result));
   EXPECT_EQ(result.raw_outcome, LOOM_CHECK_FAIL);
-  EXPECT_NE(harness.DiagnosticJsonString(result).find(header.path()),
+  EXPECT_NE(harness.DiagnosticJsonString(result).find(
+                "\"filename\":" + JsonString(header.path_view())),
             std::string::npos);
   const std::string edits =
       String(loom_json_value_list_body(&result.annotation_edits));

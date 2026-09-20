@@ -33,6 +33,7 @@ loom_cc_test(
     loom::tools::loom-check::file
     loom::tools::loom-check::test_util
     loom::util::json
+    loom::util::stream
     loom::verify
   LABELS
     "iree-build-requirement=loom.import.cxx"
