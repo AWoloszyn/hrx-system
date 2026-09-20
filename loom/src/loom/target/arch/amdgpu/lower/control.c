@@ -175,9 +175,9 @@ static iree_status_t loom_amdgpu_cfg_cond_br_edge_implied_bool(
       condition, out_condition, out_proven);
 }
 
-// Materializes a subgroup-uniform 32- or 64-bit address stored in VGPRs as an
-// SGPR branch payload.
-static iree_status_t loom_amdgpu_materialize_uniform_vgpr_address_as_sgpr(
+// Materializes a subgroup-uniform scalar stored in one or two VGPRs as an
+// SGPR branch payload without changing its canonical source mapping.
+static iree_status_t loom_amdgpu_materialize_uniform_vgpr_scalar_as_sgpr(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_value_id_t low_value_id, loom_type_t required_low_type,
     loom_value_id_t* out_low_value_id) {
@@ -197,7 +197,7 @@ static iree_status_t loom_amdgpu_materialize_uniform_vgpr_address_as_sgpr(
       loom_low_register_carrier_type_with_unit_count(actual_type, 1);
   const loom_type_t sgpr_type =
       loom_low_register_carrier_type_with_unit_count(required_low_type, 1);
-  // Address scalars contain at most two 32-bit register units.
+  // Scalar carriers contain at most two 32-bit register units.
   loom_value_id_t sgpr_registers[2] = {
       LOOM_VALUE_ID_INVALID,
       LOOM_VALUE_ID_INVALID,
@@ -261,7 +261,7 @@ static iree_status_t loom_amdgpu_materialize_branch_address(
     const loom_value_facts_t source_facts = loom_value_fact_table_lookup(
         loom_low_lower_context_fact_table(context), source_value_id);
     if (loom_value_facts_is_subgroup_uniform(source_facts)) {
-      IREE_RETURN_IF_ERROR(loom_amdgpu_materialize_uniform_vgpr_address_as_sgpr(
+      IREE_RETURN_IF_ERROR(loom_amdgpu_materialize_uniform_vgpr_scalar_as_sgpr(
           context, source_op, *out_low_value_id, required_low_type,
           out_low_value_id));
       actual_type = loom_module_value_type(module, *out_low_value_id);
@@ -383,6 +383,19 @@ iree_status_t loom_amdgpu_materialize_branch_arg(
         &required_low_type, 1, &select_op));
     *out_low_value_id = loom_value_slice_get(loom_low_op_results(select_op), 0);
     return iree_ok_status();
+  }
+
+  if (requires_sgpr && loom_type_is_scalar(source_type)) {
+    // Collective results and their arithmetic can use VGPR instructions even
+    // when the destination join selects scalar storage. Only the retained
+    // uniformity proof makes selecting one active lane semantics-preserving.
+    IREE_ASSERT(
+        loom_value_facts_is_subgroup_uniform(loom_value_fact_table_lookup(
+            loom_low_lower_context_fact_table(context), source_value_id)),
+        "SGPR branch payload requires a uniform source value");
+    return loom_amdgpu_materialize_uniform_vgpr_scalar_as_sgpr(
+        context, source_terminator, low_value_id, required_low_type,
+        out_low_value_id);
   }
 
   IREE_ASSERT_UNREACHABLE(
