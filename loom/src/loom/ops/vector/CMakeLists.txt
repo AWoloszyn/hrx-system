@@ -9,7 +9,7 @@
 
 iree_add_all_subdirs()
 
-loom_generated_textual_header(
+loom_generated_file(
   NAME
     scalarization_rows_gen
   GENERATOR

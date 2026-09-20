@@ -4,12 +4,12 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# Loom generated C build helpers.
+# Loom generated-file build helpers.
 #
 # These helpers mirror loom/build_tools/bazel/build_defs.bzl for generated
 # CMake.
 # Loom packages keep source-of-truth tables in Python and generate compact C
-# data into the build tree.
+# data and source fixtures into the build tree.
 #
 # Generated commands use the shared content-stable Python projection helper so
 # every file in an output family comes from one generator process.
@@ -43,26 +43,30 @@ function(_loom_generated_files)
   iree_py_generated_files(${ARGN})
 endfunction()
 
-function(loom_generated_textual_header)
+function(loom_generated_file)
   cmake_parse_arguments(
     _RULE
-    ""
+    "TESTONLY"
     "NAME;GENERATOR;OUTPUT;OUTPUT_FLAG;COMMENT"
     "ARGS;INPUTS"
     ${ARGN}
   )
 
   if(NOT _RULE_NAME)
-    message(FATAL_ERROR "loom_generated_textual_header requires NAME")
+    message(FATAL_ERROR "loom_generated_file requires NAME")
   endif()
   if(NOT _RULE_GENERATOR)
-    message(FATAL_ERROR "loom_generated_textual_header requires GENERATOR")
+    message(FATAL_ERROR "loom_generated_file requires GENERATOR")
   endif()
   if(NOT _RULE_OUTPUT)
-    message(FATAL_ERROR "loom_generated_textual_header requires OUTPUT")
+    message(FATAL_ERROR "loom_generated_file requires OUTPUT")
   endif()
   if(NOT _RULE_OUTPUT_FLAG)
-    message(FATAL_ERROR "loom_generated_textual_header requires OUTPUT_FLAG")
+    message(FATAL_ERROR "loom_generated_file requires OUTPUT_FLAG")
+  endif()
+
+  if(_RULE_TESTONLY AND NOT IREE_BUILD_TESTS)
+    return()
   endif()
 
   _loom_generated_files(
@@ -79,7 +83,7 @@ endfunction()
 function(loom_generated_file_family)
   cmake_parse_arguments(
     _RULE
-    ""
+    "TESTONLY"
     "NAME;GENERATOR;COMMENT"
     "OUTPUTS;OUTPUT_FLAGS;ARGS;INPUTS"
     ${ARGN}
@@ -89,6 +93,10 @@ function(loom_generated_file_family)
   if(_OUTPUT_COUNT LESS 2)
     message(FATAL_ERROR
       "loom_generated_file_family requires at least two outputs")
+  endif()
+
+  if(_RULE_TESTONLY AND NOT IREE_BUILD_TESTS)
+    return()
   endif()
 
   _loom_generated_files(

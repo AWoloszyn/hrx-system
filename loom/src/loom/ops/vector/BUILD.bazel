@@ -8,7 +8,7 @@ load(
     "//loom/build_tools/bazel:build_defs.bzl",
     "loom_cc_test",
     "loom_generated_cc_library",
-    "loom_generated_textual_header",
+    "loom_generated_file",
 )
 
 package(
@@ -17,7 +17,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-loom_generated_textual_header(
+loom_generated_file(
     name = "scalarization_rows_gen",
     generator = "//loom/py/loom/gen/ops:c_vector_scalarization",
     output = "scalarization_rows.inl",

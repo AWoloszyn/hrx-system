@@ -619,7 +619,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             )
         return convert(values)
 
-    def loom_generated_textual_header(
+    def loom_generated_file(
         self,
         name,
         generator,
@@ -640,6 +640,13 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             target_compatible_with
         )
 
+        self._target_file_paths[self._current_target_label(name)] = (
+            f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"
+        )
+        self._target_file_paths[self._current_target_label(output)] = (
+            f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"
+        )
+        testonly_block = self._convert_option_block("TESTONLY", testonly)
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         generator_block = self._convert_single_target_block("GENERATOR", generator)
         output_block = self._convert_string_arg_block("OUTPUT", output)
@@ -664,7 +671,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         if platform_inputs_block:
             self._converter.body += platform_inputs_block
         self._converter.body += (
-            f"loom_generated_textual_header(\n"
+            f"loom_generated_file(\n"
             f"{name_block}"
             f"{generator_block}"
             f"{output_block}"
@@ -672,6 +679,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f"{args_block}"
             f"{inputs_block}"
             f"{comment_block}"
+            f"{testonly_block}"
             f")\n\n"
         )
         self._emit_platform_guard_end(target_compatible_with)
@@ -697,6 +705,11 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             target_compatible_with
         )
 
+        for output in outputs:
+            self._target_file_paths[self._current_target_label(output)] = (
+                f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"
+            )
+        testonly_block = self._convert_option_block("TESTONLY", testonly)
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         generator_block = self._convert_single_target_block("GENERATOR", generator)
         outputs_block = self._convert_string_list_block("OUTPUTS", outputs, sort=False)
@@ -731,6 +744,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f"{args_block}"
             f"{inputs_block}"
             f"{comment_block}"
+            f"{testonly_block}"
             f")\n\n"
         )
         self._emit_platform_guard_end(target_compatible_with)

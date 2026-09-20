@@ -274,9 +274,17 @@ loom_check_test_suite(
         cmake = bazel_to_cmake_converter.convert_build_file(
             """
 load("//loom/build_tools/bazel:defs.bzl", "loom_test")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_generated_file")
+loom_generated_file(
+    name = "cases_gen",
+    generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
+    output = "generated_cases.cc",
+    output_flag = "--output",
+    testonly = True,
+)
 loom_test(
     name = "source_test",
-    srcs = ["check_cases.cc"],
+    srcs = ["check_cases.cc", ":generated_cases.cc"],
     data = ["check_cases.h"],
     input_format = "cxx",
     input_options = ["cxx:std=c++20 D=EXPECTED=5"],
@@ -289,6 +297,9 @@ loom_test(
             repo_root=str(repo_root),
         )
         self.assertIn("if(LOOM_TARGET_ARCH_VM AND LOOM_IMPORT_CXX)", cmake)
+        self.assertIn("loom_generated_file(", cmake)
+        self.assertIn('"${CMAKE_CURRENT_BINARY_DIR}/generated_cases.cc"', cmake)
+        self.assertIn("TESTONLY", cmake)
         self.assertIn("loom_test(", cmake)
         self.assertIn('"check_cases.cc"', cmake)
         self.assertIn(
