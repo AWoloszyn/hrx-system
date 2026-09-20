@@ -32,6 +32,7 @@ loom_target_contract_table_cc_libraries(
         "//loom/src/loom/ops/scalar",
         "//loom/src/loom/ops/scf",
         "//loom/src/loom/ops/vector",
+        "//loom/src/loom/ops/view",
         "//loom/src/loom/target/arch/wasm/descriptors:descriptors_ids",
     ],
 )

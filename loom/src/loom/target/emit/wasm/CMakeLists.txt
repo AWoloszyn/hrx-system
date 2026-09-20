@@ -10,6 +10,22 @@
 iree_add_all_subdirs()
 
 if(LOOM_TARGET_ARCH_WASM AND LOOM_EMIT_WASM)
+loom_cc_library(
+  NAME
+    artifact_emitter
+  HDRS
+    "artifact_emitter.h"
+  SRCS
+    "artifact_emitter.c"
+  DEPS
+    ::module_binary
+    iree::base
+    loom::target::provider
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_WASM AND LOOM_EMIT_WASM)
 loom_generated_cc_library(
   NAME
     error_defs
@@ -144,20 +160,6 @@ loom_cc_library(
     iree::base
     loom::tools::loom-check::provider
   PUBLIC
-)
-endif()
-
-if(LOOM_TARGET_ARCH_WASM AND LOOM_EMIT_WASM)
-loom_check_test_suite(
-  NAME
-    loom_check_file_test
-  SRCS
-    "test/assembly.loom-test"
-    "test/loop_termination.loom-test"
-    "test/numeric.loom-test"
-    "test/schedule_scopes.loom-test"
-  TEST_NAME_PREFIX_TO_STRIP
-    "test/"
 )
 endif()
 

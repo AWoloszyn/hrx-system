@@ -32,6 +32,12 @@ _CONFIGURED_COMPILE_COPTS = (
         "//conditions:default": [],
     }) +
     iree_select({
+        "//loom/config/target:wasm_artifacts": [
+            "-DLOOM_CONFIG_COMPILE_HAVE_WASM_ARTIFACTS=1",
+        ],
+        "//conditions:default": [],
+    }) +
+    iree_select({
         "//loom/config/target:xdna_artifacts": [
             "-DLOOM_CONFIG_COMPILE_HAVE_XDNA_ARTIFACTS=1",
         ],
@@ -55,6 +61,12 @@ _CONFIGURED_COMPILE_DEPS = (
     iree_select({
         "//loom/config/target:llvmir_artifacts": [
             "//loom/src/loom/target/emit/llvmir:artifact_emitter",
+        ],
+        "//conditions:default": [],
+    }) +
+    iree_select({
+        "//loom/config/target:wasm_artifacts": [
+            "//loom/src/loom/target/emit/wasm:artifact_emitter",
         ],
         "//conditions:default": [],
     }) +

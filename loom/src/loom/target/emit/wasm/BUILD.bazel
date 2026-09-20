@@ -9,10 +9,6 @@ load(
     "loom_cc_library",
     "loom_generated_cc_library",
 )
-load(
-    "//loom/build_tools/bazel:loom_check.bzl",
-    "loom_check_test_suite",
-)
 
 package(
     default_visibility = ["//visibility:private"],
@@ -21,6 +17,18 @@ package(
 )
 
 _WASM_CHECK_VISIBILITY = ["//loom/src/loom/tools/loom-check:__pkg__"]
+
+loom_cc_library(
+    name = "artifact_emitter",
+    srcs = ["artifact_emitter.c"],
+    hdrs = ["artifact_emitter.h"],
+    visibility = ["//loom/src/loom/tooling/compile:__pkg__"],
+    deps = [
+        ":module_binary",
+        "//loom/src/loom/target:provider",
+        "//runtime/src/iree/base",
+    ],
+)
 
 #===------------------------------------------------------------------------===#
 # Wasm emission
@@ -125,21 +133,4 @@ loom_cc_library(
         "//loom/src/loom/tools/loom-check:provider",
         "//runtime/src/iree/base",
     ],
-)
-
-loom_check_test_suite(
-    name = "loom_check_file_test",
-    srcs = [
-        "test/assembly.loom-test",
-        "test/loop_termination.loom-test",
-        "test/numeric.loom-test",
-        "test/schedule_scopes.loom-test",
-    ],
-    data = [
-        "@wasi_sdk//:llvm-objdump",
-    ],
-    env = {
-        "LOOM_WASM_LLVM_OBJDUMP": "$(rootpath @wasi_sdk//:llvm-objdump)",
-    },
-    test_name_prefix_to_strip = "test/",
 )

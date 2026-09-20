@@ -29,6 +29,7 @@ loom_target_contract_table_cc_libraries(
     loom::ops::scalar
     loom::ops::scf
     loom::ops::vector
+    loom::ops::view
     loom::target::arch::wasm::descriptors::descriptors_ids
 )
 endif()

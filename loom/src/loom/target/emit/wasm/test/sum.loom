@@ -1,0 +1,15 @@
+wasm.target<simd128> @target
+
+func.def public target(@target) @sum_to(%end: index) -> (index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %terminal, %sum = scf.while(%before = %begin : index, %total = %begin : index) -> (index, index) {
+    %more = index.cmp ult, %before, %end : index
+    scf.condition %more, %before, %total : i1, index, index
+  } do(%position: index, %partial: index) {
+    %next_sum = index.add %partial, %position : index
+    %next = index.add %position, %step : index
+    scf.yield %next, %next_sum : index, index
+  }
+  func.return %sum : index
+}

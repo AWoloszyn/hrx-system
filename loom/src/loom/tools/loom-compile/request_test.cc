@@ -89,6 +89,7 @@ static const loom_target_emitter_t kDiagnosticEmitter = {
     /*.public_artifact_format=*/IREE_SVL("DiagnosticFormat123"),
     /*.default_identifier=*/IREE_SVL("diagnostic.out"),
     /*.target_artifact_format=*/LOOM_TARGET_ARTIFACT_FORMAT_UNKNOWN,
+    /*.default_pipeline_options=*/{},
     /*.emit=*/EmitDiagnosticFormat,
 };
 static const loom_target_emitter_t* const kTargetEmitters[] = {

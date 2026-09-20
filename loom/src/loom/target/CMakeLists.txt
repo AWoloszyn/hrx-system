@@ -679,6 +679,7 @@ loom_cc_library(
     ::low_legality
     ::low_packet_diagnostics
     ::math_policy
+    ::pipeline_options
     ::profile
     ::resolved_target
     iree::base
