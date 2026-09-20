@@ -124,6 +124,22 @@ low.func.def target<x86.scalar.core>(@target) @remainder3(%value: reg<x86.gpr32>
 
 // ====
 
+// RUN: emit x86-asm @immediate_product fixed=%input:physical_register:8:1 fixed=%negative:physical_register:9:1 fixed=%positive:physical_register:8:1
+x86.target<scalar> @target
+
+low.func.def target<x86.scalar.core>(@target) @immediate_product(%input: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %negative = imul.imm.gpr64 %input {imm32 = -2147483648}
+  %positive = imul.imm.gpr64 %input {imm32 = 2147483647}
+  return %negative, %positive
+}
+
+// ----
+  imul r9, r8, -2147483648
+  imul r8, r8, 2147483647
+  ret
+
+// ====
+
 // RUN: emit x86-asm @lea_narrow fixed=%base:physical_register:8:1 fixed=%index:physical_register:9:1 fixed=%result:physical_register:8:1
 x86.target<avx512> @target
 

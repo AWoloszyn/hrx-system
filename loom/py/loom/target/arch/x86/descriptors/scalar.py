@@ -366,6 +366,22 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
         mnemonic="imul",
         semantic_tag="integer.mul.i64",
     ),
+    Descriptor(
+        key="x86.scalar.imul.imm.gpr64",
+        mnemonic="imul",
+        semantic_tag="integer.mul.signed_imm32.i64",
+        operands=(_gpr64_result(), _gpr64_operand("lhs")),
+        immediates=(_IMM32_IMMEDIATE,),
+        asm_forms=_asm(
+            mnemonic="imul.imm.gpr64",
+            results=("dst",),
+            operands=("lhs",),
+            immediates=("imm32",),
+            named_immediates=True,
+        ),
+        schedule_class=_SCHEDULE_SCALAR,
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    ),
     _gpr32_destructive_binary_descriptor(
         key="x86.scalar.and.gpr32",
         mnemonic="and",

@@ -67,3 +67,53 @@ low.func.def target<x86.avx2.core>(@target) abi(object_function) @constant_remai
   %index_remainder = sub.gpr64 %37, %36
   return %remainder, %index_remainder
 }
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @constant_remainder_factors(%word: i32, %position: index) -> (i32, i32, index, index) {
+  %bounded = index.assume %position [range(%position, 0, 4294967295)] : index
+  %c5 = scalar.constant 5 : i32
+  %c9 = scalar.constant 9 : i32
+  %c5_index = index.constant 5 : index
+  %c9_index = index.constant 9 : index
+  %word_five = scalar.remui %word, %c5 : i32
+  %word_nine = scalar.remui %word, %c9 : i32
+  %position_five = index.rem %bounded, %c5_index : index
+  %position_nine = index.rem %bounded, %c9_index : index
+  func.return %word_five, %word_nine, %position_five, %position_nine : i32, i32, index, index
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @constant_remainder_factors(%word: reg<x86.gpr32>, %bounded: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr32>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %21 = movzx.gpr64.gpr32 %word
+  %22 = mov.imm64 3435973837
+  %23 = copy %21 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %24 = imul.gpr64 %23, %22
+  %25 = copy %24 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %26 = shr.imm.gpr64 %25 {shift = 34}
+  %27 = lea.add_scale.gpr32 %26, %26 {disp32 = 0, scale = 4}
+  %28 = copy %word : reg<x86.gpr32> -> reg<x86.gpr32>
+  %word_five = sub.gpr32 %28, %27
+  %31 = imul.imm.gpr64 %21 {imm32 = 954437177}
+  %32 = copy %31 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %33 = shr.imm.gpr64 %32 {shift = 33}
+  %34 = lea.add_scale.gpr32 %33, %33 {disp32 = 0, scale = 8}
+  %35 = copy %word : reg<x86.gpr32> -> reg<x86.gpr32>
+  %word_nine = sub.gpr32 %35, %34
+  %38 = copy %bounded : reg<x86.gpr64> -> reg<x86.gpr64>
+  %39 = imul.gpr64 %38, %22
+  %40 = copy %39 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %41 = shr.imm.gpr64 %40 {shift = 34}
+  %42 = lea.add_scale %41, %41 {disp32 = 0, scale = 4}
+  %43 = copy %bounded : reg<x86.gpr64> -> reg<x86.gpr64>
+  %position_five = sub.gpr64 %43, %42
+  %45 = imul.imm.gpr64 %bounded {imm32 = 954437177}
+  %46 = copy %45 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %47 = shr.imm.gpr64 %46 {shift = 33}
+  %48 = lea.add_scale %47, %47 {disp32 = 0, scale = 8}
+  %49 = copy %bounded : reg<x86.gpr64> -> reg<x86.gpr64>
+  %position_nine = sub.gpr64 %49, %48
+  return %word_five, %word_nine, %position_five, %position_nine
+}

@@ -36,3 +36,31 @@ func.def target(@target) @constant_remainder_loaded(%input: buffer) -> (i32, ind
   %index_remainder = index.rem %position, %index_divisor : index
   func.return %remainder, %index_remainder : i32, index
 }
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @constant_remainder_factors(%word: i32, %position: index) -> (i32, i32, index, index) {
+  %bounded = index.assume %position [range(%position, 0, 4294967295)] : index
+  %c5 = scalar.constant 5 : i32
+  %c9 = scalar.constant 9 : i32
+  %c5_index = index.constant 5 : index
+  %c9_index = index.constant 9 : index
+  %word_five = scalar.remui %word, %c5 : i32
+  %word_nine = scalar.remui %word, %c9 : i32
+  %position_five = index.rem %bounded, %c5_index : index
+  %position_nine = index.rem %bounded, %c9_index : index
+  func.return %word_five, %word_nine, %position_five, %position_nine : i32, i32, index, index
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @constant_remainder_factors(%word: reg<wasm.i32>, %bounded: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>) asm {
+  %c5 = i32.const 5
+  %c9 = i32.const 9
+  %word_five = i32.rem_u %word, %c5
+  %word_nine = i32.rem_u %word, %c9
+  %position_five = i32.rem_u %bounded, %c5
+  %position_nine = i32.rem_u %bounded, %c9
+  return %word_five, %word_nine, %position_five, %position_nine
+}

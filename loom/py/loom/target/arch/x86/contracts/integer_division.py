@@ -61,21 +61,38 @@ def _remainder_rule(
                 result_types={"dst": _I64},
             )
         )
-    emits.extend(
-        (
+    multiplier = ValueProject.u32_divisor_magic_multiplier("rhs")
+    if divisor == 9:
+        # Nine's reciprocal fits the sign-extended immediate multiply form.
+        emits.append(
             EmitDescriptorOp(
-                descriptor=descriptor_lookup("x86.scalar.movimm.gpr64"),
-                results={"dst": ValueRef.temporary("magic")},
-                result_types={"dst": _I64},
-                immediates={"imm64": ValueProject.u32_divisor_magic_multiplier("rhs")},
-                form=DescriptorEmitForm.CONST,
-            ),
-            EmitDescriptorOp(
-                descriptor=descriptor_lookup("x86.scalar.imul.gpr64"),
-                operands={"lhs": numerator, "rhs": ValueRef.temporary("magic")},
+                descriptor=descriptor_lookup("x86.scalar.imul.imm.gpr64"),
+                operands={"lhs": numerator},
                 results={"dst": ValueRef.temporary("wide_product")},
                 result_types={"dst": _I64},
-            ),
+                immediates={"imm32": multiplier},
+            )
+        )
+    else:
+        emits.extend(
+            (
+                EmitDescriptorOp(
+                    descriptor=descriptor_lookup("x86.scalar.movimm.gpr64"),
+                    results={"dst": ValueRef.temporary("magic")},
+                    result_types={"dst": _I64},
+                    immediates={"imm64": multiplier},
+                    form=DescriptorEmitForm.CONST,
+                ),
+                EmitDescriptorOp(
+                    descriptor=descriptor_lookup("x86.scalar.imul.gpr64"),
+                    operands={"lhs": numerator, "rhs": ValueRef.temporary("magic")},
+                    results={"dst": ValueRef.temporary("wide_product")},
+                    result_types={"dst": _I64},
+                ),
+            )
+        )
+    emits.extend(
+        (
             EmitDescriptorOp(
                 descriptor=descriptor_lookup("x86.scalar.shr.imm.gpr64"),
                 operands={"lhs": ValueRef.temporary("wide_product")},
@@ -144,5 +161,5 @@ def unsigned_remainder_rules(
             (scalar_arithmetic.scalar_remui, _I32),
             (index.index_rem, _INDEX),
         )
-        for divisor in (3,)
+        for divisor in (3, 5, 9)
     )
