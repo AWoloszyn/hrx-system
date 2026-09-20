@@ -180,7 +180,8 @@ static iree_string_view_t loom_check_template_sync_trim_trailing_blank_lines(
     }
     end = line_start;
   }
-  return iree_string_view_substr(text, 0, end);
+  text.size = end;
+  return text;
 }
 
 static bool loom_check_template_sync_line_at(iree_string_view_t source,
