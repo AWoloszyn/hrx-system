@@ -33,11 +33,18 @@ TEST(SourceTest, LayoutAndMutableSemanticStateBelongToEachSource) {
   Source second(IREE_SV("static_assert(sizeof(long) == 4); int value = 2;"),
                 IREE_SV("second.cpp"), options);
   options.data_model = LOOM_CXX_DATA_MODEL_ILP32;
-  Source third(IREE_SV("static_assert(sizeof(void*) == 4); int value = 3;"),
-               IREE_SV("third.cpp"), options);
+  Source third(
+      IREE_SV("static_assert(sizeof(void*) == 4);"
+              "static_assert(sizeof(long) == 4);"
+              "static_assert(sizeof(long long) == 8);"
+              "static_assert(sizeof(long long) == __SIZEOF_LONG_LONG__);"
+              "static_assert((1LL << 40) == 1099511627776LL);"
+              "int value = 3;"),
+      IREE_SV("third.cpp"), options);
   EXPECT_EQ(first.unit().control()->memoryLayout()->sizeOfLong(), 8);
   EXPECT_EQ(second.unit().control()->memoryLayout()->sizeOfLong(), 4);
   EXPECT_EQ(third.unit().control()->memoryLayout()->sizeOfPointer(), 4);
+  EXPECT_EQ(third.unit().control()->memoryLayout()->sizeOfLongLong(), 8);
   EXPECT_NE(first.unit().ast(), second.unit().ast());
   EXPECT_NE(first.unit().globalScope(), second.unit().globalScope());
 }
