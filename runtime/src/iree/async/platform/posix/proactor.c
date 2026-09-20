@@ -3698,8 +3698,7 @@ static iree_status_t iree_async_proactor_posix_create_notification(
   notification->platform.posix.pending_waits = NULL;
   notification->platform.posix.relay_list = NULL;
 #if !defined(IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX)
-  // Condvar is process-local — only initialize for local notifications.
-  // Shared notifications use poll() on the wake fd for sync waits.
+  // The condvar is process-local and is only used by local notifications.
   if (!iree_any_bit_set(notification->flags,
                         IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
     iree_notification_initialize(
@@ -3920,6 +3919,12 @@ static void iree_async_proactor_posix_notification_signal(
                         IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
     iree_notification_post(&notification->platform.posix.sync_notification,
                            wake_count);
+#if defined(IREE_PLATFORM_LINUX) && defined(IREE_PLATFORM_HAS_FUTEX)
+  } else {
+    // Shared address waiting remains native under sanitizers. A process-local
+    // condvar cannot wake a peer and sync waiters must not drain the async fd.
+    iree_futex_wake_shared(notification->epoch_ptr, wake_count);
+#endif  // IREE_PLATFORM_LINUX && IREE_PLATFORM_HAS_FUTEX
   }
 }
 
@@ -3936,19 +3941,25 @@ static bool iree_async_notification_epoch_advanced(void* arg) {
          predicate->wait_epoch;
 }
 
-// Sync wait for shared notifications on non-futex platforms (macOS).
-// Falls back to poll() on the wake fd since condvar is process-local.
+// Shared sync waits cannot use the process-local condvar. Linux uses native
+// shared futexes even when private synchronization uses pthreads.
 static bool iree_async_proactor_posix_notification_wait_shared(
     iree_async_notification_t* notification, uint32_t wait_token,
     iree_timeout_t timeout) {
   iree_time_t deadline_ns = iree_timeout_as_deadline_ns(timeout);
-  int fd = notification->platform.posix.primitive.value.fd;
   while (iree_time_now() < deadline_ns) {
     uint32_t current_epoch =
         iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
     if (current_epoch != wait_token) {
       return true;
     }
+#if defined(IREE_PLATFORM_LINUX) && defined(IREE_PLATFORM_HAS_FUTEX)
+    if (iree_futex_wait_shared(notification->epoch_ptr, wait_token,
+                               deadline_ns) == IREE_STATUS_DEADLINE_EXCEEDED) {
+      break;
+    }
+#else
+    int fd = notification->platform.posix.primitive.value.fd;
     iree_duration_t remaining_ns = deadline_ns - iree_time_now();
     if (remaining_ns <= 0) {
       break;
@@ -3979,6 +3990,7 @@ static bool iree_async_proactor_posix_notification_wait_shared(
           iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
       return current_epoch != wait_token;
     }
+#endif  // IREE_PLATFORM_LINUX && IREE_PLATFORM_HAS_FUTEX
   }
   uint32_t final_epoch =
       iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
@@ -3990,7 +4002,7 @@ static bool iree_async_proactor_posix_notification_wait(
     iree_async_notification_t* notification, uint32_t wait_token,
     iree_timeout_t timeout) {
   (void)base_proactor;
-  // Shared notifications can't use condvar (process-local) — poll on wake fd.
+  // Shared notifications need a cross-process wake mechanism.
   if (iree_any_bit_set(notification->flags,
                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
     return iree_async_proactor_posix_notification_wait_shared(

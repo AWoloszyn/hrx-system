@@ -93,8 +93,9 @@ iree_runtime_cc_test(
         ":thread",
         ":threading",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/testing:coordinated_test",
+        "//runtime/src/iree/testing:coordinated_test_main",
         "//runtime/src/iree/testing:gtest",
-        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

@@ -79,8 +79,9 @@ iree_cc_test(
     ::thread
     ::threading
     iree::base
+    iree::testing::coordinated_test
+    iree::testing::coordinated_test_main
     iree::testing::gtest
-    iree::testing::gtest_main
 )
 
 iree_cc_test(
