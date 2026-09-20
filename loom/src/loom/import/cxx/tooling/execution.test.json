@@ -122,6 +122,44 @@
           "VM compilation failed"
         ]
       }
+    },
+    {
+      "name": "links imported cases and retains header locations in bytecode",
+      "steps": [
+        {
+          "name": "link",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/check_cases.cc",
+              "{srcdir}/check_library.cc",
+              "--mode=link",
+              "--include-input-tests",
+              "--input-options=cxx:D=CHECK_HEADER_EXPECTED=6u",
+              "--source-prefix-map={srcdir}=source",
+              "--to=bc",
+              "--output={tmp}/checks.loombc"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/checks.loombc"
+            ]
+          },
+          "exit": 1,
+          "stdout": {
+            "contains": [
+              "\"case_count\":3",
+              "\"failed_sample_count\":1",
+              "\"filename\":\"source/check_cases.h\",\"start_line\":20,\"start_column\":3"
+            ]
+          }
+        }
+      ]
     }
   ]
 }

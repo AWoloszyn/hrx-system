@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// loom-link: merges or links Loom text and bytecode modules through
+// loom-link: imports sources and merges or links bytecode modules through
 // metadata-first planning and materialization.
 
 #include <stdio.h>
@@ -19,7 +19,6 @@
 #include "loom/codegen/low/text_asm.h"
 #include "loom/error/diagnostic.h"
 #include "loom/format/bytecode/writer.h"
-#include "loom/format/text/parser.h"
 #include "loom/format/text/printer.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
@@ -36,6 +35,8 @@
 #include "loom/tooling/cli/help.h"
 #include "loom/tooling/config/config.h"
 #include "loom/tooling/context/context.h"
+#include "loom/tooling/input/configured.h"
+#include "loom/tooling/input/flags.h"
 #include "loom/tooling/io/file.h"
 #include "loom/tooling/io/source.h"
 #include "loom/tools/loom-format/convert.h"
@@ -47,7 +48,8 @@ IREE_FLAG(string, mode, "auto",
           "link mode when roots, root libraries, or exported input symbols "
           "are requested.");
 IREE_FLAG(string, from, "auto",
-          "Input format for every input: auto, text, bc, or bytecode.");
+          "Input encoding for every input: auto, text, bc, or bytecode. "
+          "Source language is selected separately with --input-format.");
 IREE_FLAG(string, to, "text", "Output format: text, bc, or bytecode.");
 IREE_FLAG(string, output, "-",
           "Output path. Use '-' or the empty string for stdout.");
@@ -137,12 +139,8 @@ typedef struct loom_link_cli_input_t {
   loom_module_format_t format;
   // File contents kept alive while bytecode metadata borrows from it.
   iree_io_file_contents_t* contents;
-  // Materialized module owned by a text input; NULL for bytecode.
-  loom_module_t* materialized_module;
-  // Source table entry for text diagnostics.
-  loom_source_entry_t source_entry;
-  // True when source_entry is valid.
-  bool has_source_entry;
+  // Imported module and owned main/header snapshots; empty for bytecode.
+  loom_input_module_t source;
 } loom_link_cli_input_t;
 
 typedef struct loom_link_cli_index_t {
@@ -373,7 +371,7 @@ static void loom_link_cli_input_deinitialize(loom_link_cli_input_t* input) {
   if (!input) {
     return;
   }
-  loom_module_free(input->materialized_module);
+  loom_input_module_deinitialize(&input->source);
   iree_io_file_contents_free(input->contents);
   *input = (loom_link_cli_input_t){0};
 }
@@ -430,38 +428,36 @@ static iree_status_t loom_link_cli_read_input(
                             loom_module_format_name(format));
   }
 
-  loom_text_parse_options_t parse_options = {
-      .diagnostic_sink = {.fn = loom_diagnostic_stderr_sink},
-      .max_errors = 20,
+  const loom_input_options_t options = loom_input_options_from_flags();
+  const loom_input_provider_t* provider = NULL;
+  IREE_RETURN_IF_ERROR(loom_input_provider_select(
+      loom_configured_input_providers(), options.format, out_input->filename,
+      &provider));
+  loom_input_request_t request = {
+      .source = loom_tooling_file_contents_string_view(out_input->contents),
+      .path = out_input->filename,
+      .format = provider->name,
+      .parse_options = {.diagnostic_sink = {.fn = loom_diagnostic_stderr_sink},
+                        .max_errors = 20},
+      .source_path_options = options.source_path_options,
   };
+  IREE_RETURN_IF_ERROR(loom_input_options_for_provider(
+      options.provider_options, provider->name, &request.options));
   loom_target_low_descriptor_registry_t low_registry = {0};
   IREE_RETURN_IF_ERROR(
       loom_target_environment_initialize_low_descriptor_registry(
           loom_configured_target_environment(), &low_registry));
   loom_low_descriptor_text_asm_environment_initialize(
-      &low_registry.registry, &parse_options.low_asm_environment);
-  loom_module_t* module = NULL;
-  iree_string_view_t source =
-      loom_tooling_file_contents_string_view(out_input->contents);
-  IREE_RETURN_IF_ERROR(loom_text_parse(source, out_input->filename, context,
-                                       block_pool, &parse_options, &module));
-  if (!module) {
+      &low_registry.registry, &request.parse_options.low_asm_environment);
+  IREE_RETURN_IF_ERROR(loom_input_module_load(
+      provider, &request, context, block_pool, allocator, &out_input->source));
+  if (!out_input->source.module) {
     return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT, "failed to parse text input '%.*s'",
+        IREE_STATUS_INVALID_ARGUMENT, "input has source errors: '%.*s'",
         (int)out_input->filename.size, out_input->filename.data);
   }
-
-  out_input->materialized_module = module;
-
-  loom_source_id_t source_id = LOOM_SOURCE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_module_register_source(
-      out_input->materialized_module, out_input->filename, &source_id));
-  out_input->source_entry = (loom_source_entry_t){
-      .source_id = source_id,
-      .source = source,
-      .filename = out_input->filename,
-  };
-  out_input->has_source_entry = true;
+  iree_io_file_contents_free(out_input->contents);
+  out_input->contents = NULL;
   return iree_ok_status();
 }
 
@@ -613,9 +609,9 @@ static iree_status_t loom_link_cli_build_index(
         .role = loom_link_cli_input_role(input),
     };
     iree_host_size_t provider_ordinal = LOOM_LINK_MODULE_INDEX_INVALID_ORDINAL;
-    if (input->materialized_module != NULL) {
+    if (input->source.module != NULL) {
       status = loom_link_module_index_add_materialized(
-          index, input->materialized_module, &options, &provider_ordinal);
+          index, input->source.module, &options, &provider_ordinal);
     } else {
       loom_bytecode_index_options_t index_options = {
           .diagnostic_sink = {.fn = loom_diagnostic_stderr_sink},
@@ -907,12 +903,8 @@ static iree_status_t loom_link_cli_capture_sources(
         loom_link_module_index_module_at(index->module_index, i);
     const loom_link_cli_input_t* input =
         index->provider_inputs[module->provider_ordinal];
-    const loom_source_table_resolver_t input_sources = {
-        .entries = &input->source_entry,
-        .count = input->has_source_entry ? 1 : 0,
-    };
     IREE_RETURN_IF_ERROR(loom_tooling_source_storage_project(
-        sources, &input_sources, projection->values));
+        sources, &input->source.sources.table, projection->values));
   }
   return iree_ok_status();
 }
@@ -1053,7 +1045,8 @@ static void loom_link_cli_print_agents_markdown(FILE* stream) {
       stream,
       "## loom-link\n"
       "\n"
-      "`loom-link` combines Loom text and bytecode modules, applies config\n"
+      "`loom-link` imports source and combines bytecode modules, applies "
+      "config\n"
       "bindings to materialized modules, and selects the symbols that should "
       "be\n"
       "kept in a merged library or reachable runtime artifact.\n"
@@ -1088,7 +1081,13 @@ static void loom_link_cli_print_agents_markdown(FILE* stream) {
       "equally available to link mode, but does not own a direct dependency\n"
       "during strict dependency analysis. `--from=auto|text|bc` "
       "controls\n"
-      "input decoding and `--to=text|bc` controls output encoding.\n"
+      "input encoding and `--to=text|bc` controls output encoding. Source\n"
+      "languages are selected by filename or `--input-format=loom|cxx`.\n"
+      "Optional importers must be enabled in the build. Provider options use\n"
+      "`--input-options=\"cxx:std=c++20 I=include\"`; relative headers "
+      "resolve\n"
+      "from the physical input path. `--source-prefix-map=old=new` changes\n"
+      "diagnostic filenames without changing header lookup.\n"
       "\n"
       "### Merge and link\n"
       "\n"
@@ -1148,7 +1147,7 @@ static void loom_link_cli_print_agents_markdown(FILE* stream) {
 int main(int argc, char** argv) {
   iree_flags_set_usage(
       "loom-link",
-      "Links Loom text and bytecode modules into one module.\n"
+      "Imports source and links bytecode modules into one Loom module.\n"
       "\n"
       "Usage:\n"
       "  loom-link [--mode=merge|link] [--from=auto|text|bc] "

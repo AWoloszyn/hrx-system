@@ -69,6 +69,7 @@ iree_execution_test_suite(
   TOOLS
     "iree-benchmark-loom=loom::tools::iree-benchmark-loom"
     "iree-test-loom=loom::tools::iree-test-loom"
+    "loom-link=loom::tools::loom-link"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.cc"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"

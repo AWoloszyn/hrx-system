@@ -24,7 +24,6 @@ loom_cc_binary(
     loom::codegen::low::text_asm
     loom::error::diagnostic
     loom::format::bytecode::writer
-    loom::format::text::parser
     loom::format::text::printer
     loom::ir
     loom::link::dependency_analysis
@@ -40,6 +39,8 @@ loom_cc_binary(
     loom::tooling::cli::help
     loom::tooling::config
     loom::tooling::context
+    loom::tooling::input::configured
+    loom::tooling::input::flags
     loom::tooling::io::file
     loom::tooling::io::source
     loom::tools::loom-format::convert

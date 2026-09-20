@@ -66,5 +66,6 @@ iree_execution_test_suite(
     tools = {
         "iree-benchmark-loom": "//loom/src/loom/tools/iree-benchmark-loom",
         "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+        "loom-link": "//loom/src/loom/tools/loom-link",
     },
 )
