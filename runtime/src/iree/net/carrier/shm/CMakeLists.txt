@@ -65,6 +65,29 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    connection
+  HDRS
+    "connection.h"
+  SRCS
+    "connection.c"
+  DEPS
+    ::region
+    ::shm
+    ::storage
+    iree::async
+    iree::async::util::local_stream
+    iree::base
+    iree::base::threading
+    iree::net::carrier
+    iree::net::connection
+    iree::net::endpoint_lifecycle
+    iree::net::framed_endpoint
+    iree::net::message_endpoint
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     bootstrap
   HDRS
     "bootstrap.h"
@@ -133,6 +156,36 @@ iree_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     ${_carrier_test_platform_deps}
+)
+
+set(_connection_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+  list(APPEND _connection_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _connection_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  list(APPEND _connection_test_platform_deps iree::async::platform::posix)
+endif()
+iree_cc_test(
+  NAME
+    connection_test
+  SRCS
+    "connection_test.cc"
+  DEPS
+    ::connection
+    ::region
+    ::shm
+    ::storage
+    iree::async
+    iree::async::platform
+    iree::async::util::local_stream
+    iree::base
+    iree::base::internal
+    iree::net::connection
+    iree::net::message_endpoint
+    iree::testing::gtest
+    iree::testing::gtest_main
+    ${_connection_test_platform_deps}
 )
 
 iree_cc_test(
