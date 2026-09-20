@@ -387,8 +387,8 @@ TEST_F(PosixProactorSubmitTest, CancellationSurvivesInlineCallbackMapGrowth) {
             nullptr};
         for (size_t i = 0; i < state->events.size(); ++i) {
           IREE_EXPECT_OK(iree_async_proactor_register_event_source(
-              state->proactor, state->events[i]->primitive, callback,
-              &state->sources[i]));
+              state->proactor, state->events[i]->native.wait_primitive,
+              callback, &state->sources[i]));
         }
       }
     };

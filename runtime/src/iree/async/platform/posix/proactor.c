@@ -522,7 +522,7 @@ int iree_async_proactor_posix_operation_fd(iree_async_operation_t* operation) {
           ->socket->primitive.value.fd;
     case IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT:
       return ((iree_async_event_wait_operation_t*)operation)
-          ->event->primitive.value.fd;
+          ->event->native.wait_primitive.value.fd;
     case IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL:
       return ((iree_async_handle_poll_operation_t*)operation)
           ->primitive.value.fd;
@@ -751,7 +751,7 @@ static iree_host_size_t iree_async_proactor_posix_drain_pending_queue(
       case IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT: {
         iree_async_event_wait_operation_t* event_wait =
             (iree_async_event_wait_operation_t*)operation;
-        int fd = event_wait->event->primitive.value.fd;
+        int fd = event_wait->event->native.wait_primitive.value.fd;
         status = iree_async_proactor_posix_register_fd_operation(proactor,
                                                                  operation, fd);
         break;
@@ -2576,7 +2576,7 @@ static iree_status_t iree_async_proactor_posix_execute_event_wait(
   //   pipe: loop drains all accumulated bytes.
   // Both are non-blocking (eventfd has EFD_NONBLOCK, pipe has O_NONBLOCK).
   uint64_t drain_buffer = 0;
-  while (read(event_wait->event->primitive.value.fd, &drain_buffer,
+  while (read(event_wait->event->native.wait_primitive.value.fd, &drain_buffer,
               sizeof(drain_buffer)) > 0) {
     // Keep draining.
   }
@@ -3586,60 +3586,20 @@ static iree_status_t iree_async_proactor_posix_create_event(
       iree_async_proactor_posix_cast(base_proactor);
   iree_allocator_t allocator = proactor->base.allocator;
 
-  // Allocate and zero-initialize the event structure.
   iree_async_event_t* event = NULL;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(allocator, sizeof(*event), (void**)&event));
-  memset(event, 0, sizeof(*event));
-
-#if defined(IREE_PLATFORM_LINUX)
-  // Linux: use eventfd (single fd, more efficient than pipe).
-  // EFD_CLOEXEC prevents leakage to child processes.
-  // EFD_NONBLOCK is required so reads during drain don't block.
-  int efd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-  if (efd < 0) {
+  iree_status_t status = iree_async_event_native_initialize(&event->native);
+  if (iree_status_is_ok(status)) {
+    iree_atomic_ref_count_init(&event->ref_count);
+    event->proactor = base_proactor;
+    event->fixed_file_index = -1;
+    *out_event = event;
+  } else {
     iree_allocator_free(allocator, event);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(iree_status_code_from_errno(errno),
-                            "eventfd creation failed (%d)", errno);
   }
-  iree_atomic_ref_count_init(&event->ref_count);
-  event->proactor = base_proactor;
-  event->primitive = iree_async_primitive_from_fd(efd);
-  // On Linux, signal_primitive is the same as primitive (eventfd is
-  // bidirectional: write to signal, read to drain).
-  event->signal_primitive = event->primitive;
-#else
-  // macOS/BSD: use pipe (read end for monitoring, write end for signaling).
-  int pipe_fds[2] = {-1, -1};
-  if (pipe(pipe_fds) < 0) {
-    iree_allocator_free(allocator, event);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(iree_status_code_from_errno(errno),
-                            "pipe() failed for event creation");
-  }
-  // Set non-blocking and close-on-exec on both ends.
-  for (int i = 0; i < 2; ++i) {
-    int flags = fcntl(pipe_fds[i], F_GETFL);
-    if (flags >= 0) {
-      fcntl(pipe_fds[i], F_SETFL, flags | O_NONBLOCK);
-    }
-    fcntl(pipe_fds[i], F_SETFD, FD_CLOEXEC);
-  }
-  iree_atomic_ref_count_init(&event->ref_count);
-  event->proactor = base_proactor;
-  event->primitive = iree_async_primitive_from_fd(pipe_fds[0]);         // read
-  event->signal_primitive = iree_async_primitive_from_fd(pipe_fds[1]);  // write
-#endif  // IREE_PLATFORM_LINUX
-
-  event->fixed_file_index = -1;
-  event->pool = NULL;
-  event->pool_next = NULL;
-  event->pool_all_next = NULL;
-
-  *out_event = event;
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 static void iree_async_proactor_posix_destroy_event(
@@ -3653,17 +3613,7 @@ static void iree_async_proactor_posix_destroy_event(
       iree_async_proactor_posix_cast(base_proactor);
   iree_allocator_t allocator = proactor->base.allocator;
 
-  // Close the fd(s).
-  // On Linux (eventfd): primitive == signal_primitive, close once.
-  // On macOS (pipe): primitive != signal_primitive, close both ends.
-  if (event->primitive.value.fd >= 0) {
-    close(event->primitive.value.fd);
-  }
-  if (event->signal_primitive.value.fd >= 0 &&
-      event->signal_primitive.value.fd != event->primitive.value.fd) {
-    close(event->signal_primitive.value.fd);
-  }
-
+  iree_async_event_native_deinitialize(&event->native);
   iree_allocator_free(allocator, event);
   IREE_TRACE_ZONE_END(z0);
 }

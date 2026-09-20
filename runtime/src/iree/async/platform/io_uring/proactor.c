@@ -1748,37 +1748,20 @@ static iree_status_t iree_async_proactor_io_uring_create_event(
       iree_async_proactor_io_uring_cast(base_proactor);
   iree_allocator_t allocator = proactor->base.allocator;
 
-  // Allocate and zero-initialize the event structure.
   iree_async_event_t* event = NULL;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(allocator, sizeof(*event), (void**)&event));
-  memset(event, 0, sizeof(*event));
-
-  // Create the eventfd. EFD_CLOEXEC prevents leakage to child processes.
-  // EFD_NONBLOCK is required for io_uring POLL_ADD (avoids blocking on read).
-  int eventfd_result = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-  if (eventfd_result < 0) {
+  iree_status_t status = iree_async_event_native_initialize(&event->native);
+  if (iree_status_is_ok(status)) {
+    iree_atomic_ref_count_init(&event->ref_count);
+    event->proactor = base_proactor;
+    event->fixed_file_index = -1;
+    *out_event = event;
+  } else {
     iree_allocator_free(allocator, event);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(iree_status_code_from_errno(errno),
-                            "eventfd creation failed (%d)", errno);
   }
-
-  // Initialize the event structure.
-  iree_atomic_ref_count_init(&event->ref_count);
-  event->proactor = base_proactor;
-  event->primitive = iree_async_primitive_from_fd(eventfd_result);
-  // On Linux, signal_primitive is the same as primitive (eventfd is
-  // bidirectional: write to signal, read to drain).
-  event->signal_primitive = event->primitive;
-  event->fixed_file_index = -1;
-  event->pool = NULL;
-  event->pool_next = NULL;
-  event->pool_all_next = NULL;
-
-  *out_event = event;
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 static void iree_async_proactor_io_uring_destroy_event(
@@ -1793,11 +1776,7 @@ static void iree_async_proactor_io_uring_destroy_event(
       iree_async_proactor_io_uring_cast(base_proactor);
   iree_allocator_t allocator = proactor->base.allocator;
 
-  // Close the eventfd. On Linux, primitive == signal_primitive, so close once.
-  if (event->primitive.value.fd >= 0) {
-    close(event->primitive.value.fd);
-  }
-
+  iree_async_event_native_deinitialize(&event->native);
   iree_allocator_free(allocator, event);
   IREE_TRACE_ZONE_END(z0);
 }

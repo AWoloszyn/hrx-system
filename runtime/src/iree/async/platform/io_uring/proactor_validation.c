@@ -226,8 +226,9 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
             IREE_STATUS_INVALID_ARGUMENT,
             "EVENT_WAIT event belongs to a different proactor");
       }
-      if (wait->event->primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
-          wait->event->primitive.value.fd < 0) {
+      if (wait->event->native.wait_primitive.type !=
+              IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+          wait->event->native.wait_primitive.value.fd < 0) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "EVENT_WAIT event has an invalid descriptor");
       }

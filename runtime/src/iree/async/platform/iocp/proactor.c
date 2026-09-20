@@ -967,7 +967,7 @@ static iree_host_size_t iree_async_proactor_iocp_drain_pending_queue(
         iree_async_event_wait_operation_t* event_wait =
             (iree_async_event_wait_operation_t*)operation;
         HANDLE event_handle =
-            (HANDLE)event_wait->event->primitive.value.win32_handle;
+            (HANDLE)event_wait->event->native.wait_primitive.value.win32_handle;
         iree_async_proactor_iocp_submit_handle_wait(
             proactor, operation, event_handle, &direct_completions);
         break;
@@ -2618,42 +2618,20 @@ static iree_status_t iree_async_proactor_iocp_create_event(
       iree_async_proactor_iocp_cast(base_proactor);
   iree_allocator_t allocator = proactor->base.allocator;
 
-  // Allocate and zero-initialize the event structure.
   iree_async_event_t* event = NULL;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(allocator, sizeof(*event), (void**)&event));
-  memset(event, 0, sizeof(*event));
-
-  // Create an auto-reset Win32 event, initially non-signaled.
-  // Auto-reset: RegisterWaitForSingleObject consumes the signal atomically,
-  // matching the POSIX eventfd drain pattern. Only one waiter is woken per
-  // SetEvent call.
-  HANDLE event_handle = CreateEventW(NULL, FALSE, FALSE, NULL);
-  if (event_handle == NULL) {
-    DWORD error = GetLastError();
+  iree_status_t status = iree_async_event_native_initialize(&event->native);
+  if (iree_status_is_ok(status)) {
+    iree_atomic_ref_count_init(&event->ref_count);
+    event->proactor = base_proactor;
+    event->fixed_file_index = -1;
+    *out_event = event;
+  } else {
     iree_allocator_free(allocator, event);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INTERNAL,
-                            "CreateEvent failed (error %lu)",
-                            (unsigned long)error);
   }
-
-  iree_atomic_ref_count_init(&event->ref_count);
-  event->proactor = base_proactor;
-  event->primitive =
-      iree_async_primitive_from_win32_handle((uintptr_t)event_handle);
-  // On Windows, signal_primitive is the same as primitive (same HANDLE used
-  // for both monitoring and signaling, like Linux eventfd).
-  event->signal_primitive = event->primitive;
-  event->fixed_file_index = -1;
-  event->drain_buffer = 0;
-  event->pool = NULL;
-  event->pool_next = NULL;
-  event->pool_all_next = NULL;
-
-  *out_event = event;
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 static void iree_async_proactor_iocp_destroy_event(
@@ -2662,12 +2640,7 @@ static void iree_async_proactor_iocp_destroy_event(
   iree_async_proactor_iocp_t* proactor =
       iree_async_proactor_iocp_cast(base_proactor);
 
-  // Close the Win32 event handle. Since primitive == signal_primitive on
-  // Windows, we only close once.
-  if (event->primitive.value.win32_handle != 0) {
-    CloseHandle((HANDLE)event->primitive.value.win32_handle);
-  }
-
+  iree_async_event_native_deinitialize(&event->native);
   iree_allocator_free(proactor->base.allocator, event);
   IREE_TRACE_ZONE_END(z0);
 }

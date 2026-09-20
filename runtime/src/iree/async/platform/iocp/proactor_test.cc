@@ -504,9 +504,10 @@ TEST(IocpEventSourceTest, RequiresWaitCompletionPackets) {
       nullptr,
   };
   iree_async_event_source_t* source = nullptr;
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_UNAVAILABLE,
-                        iree_async_proactor_register_event_source(
-                            proactor, event->primitive, callback, &source));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_UNAVAILABLE,
+      iree_async_proactor_register_event_source(
+          proactor, event->native.wait_primitive, callback, &source));
   EXPECT_EQ(source, nullptr);
 
   iree_async_event_release(event);

@@ -123,7 +123,7 @@ class CancelRequestTest : public SocketTestBase<> {
     iree_async_operation_initialize(
         &operation.base, IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL,
         IREE_ASYNC_OPERATION_FLAG_NONE, CancelJoin::Complete, join);
-    operation.primitive = event_->primitive;
+    operation.primitive = event_->native.wait_primitive;
     operation.events = IREE_ASYNC_POLL_EVENT_IN;
     return operation;
   }

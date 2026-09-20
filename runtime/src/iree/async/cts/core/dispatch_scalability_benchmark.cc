@@ -117,7 +117,7 @@ static IdleHandlerContext* CreateIdleHandlerContext(
     callback.fn = IdleEventSourceCallback;
     callback.user_data = nullptr;
     status = iree_async_proactor_register_event_source(
-        ctx->proactor, ctx->idle_events[i]->primitive, callback,
+        ctx->proactor, ctx->idle_events[i]->native.wait_primitive, callback,
         &ctx->idle_sources[i]);
     if (!iree_status_is_ok(status)) {
       state.SkipWithError("Event source registration failed");

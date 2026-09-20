@@ -74,7 +74,7 @@ static void iree_async_proactor_io_uring_fill_event_wait(
   iree_async_event_wait_operation_t* event_wait =
       (iree_async_event_wait_operation_t*)base_operation;
 
-  int fd = event_wait->event->primitive.value.fd;
+  int fd = event_wait->event->native.wait_primitive.value.fd;
 
   // SQE 1: POLL_ADD with link to next SQE.
   // Tagged internal so process_cqe ignores it — the READ CQE handles

@@ -204,10 +204,10 @@ iree_status_t iree_async_proactor_iocp_validate_operation(
             IREE_STATUS_INVALID_ARGUMENT,
             "EVENT_WAIT event belongs to a different proactor");
       }
-      if (wait->event->primitive.type !=
+      if (wait->event->native.wait_primitive.type !=
               IREE_ASYNC_PRIMITIVE_TYPE_WIN32_HANDLE ||
-          wait->event->primitive.value.win32_handle == 0 ||
-          (HANDLE)wait->event->primitive.value.win32_handle ==
+          wait->event->native.wait_primitive.value.win32_handle == 0 ||
+          (HANDLE)wait->event->native.wait_primitive.value.win32_handle ==
               INVALID_HANDLE_VALUE) {
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,

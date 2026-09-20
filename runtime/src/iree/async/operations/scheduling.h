@@ -134,7 +134,7 @@ typedef struct iree_async_event_t iree_async_event_t;
 // Implementation:
 //   io_uring: IORING_OP_POLL_ADD on the event's eventfd.
 //   IOCP: Thread pool wait or completion port association.
-//   kqueue: EVFILT_USER.
+//   kqueue: pipe + EVFILT_READ.
 //   generic: poll/select on the event's fd.
 //
 // Threading model:
