@@ -382,8 +382,7 @@ Bitfield layouts retain actual bit positions, including fields crossing their
 declared storage units and zero-width alignment boundaries. Layout queries do
 not admit record values or bitfield memory operations into High IR. Packed base
 classes, virtual members, Microsoft bitfield ABI layouts, aligned typedefs,
-and GNU `aligned` without an explicit argument
-produce source diagnostics.
+and GNU `aligned` without an explicit argument produce source diagnostics.
 
 Explicit fixed vectors retain their lanes and element widths in High IR:
 

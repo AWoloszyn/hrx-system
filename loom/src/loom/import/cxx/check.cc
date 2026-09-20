@@ -229,8 +229,7 @@ class CheckBody {
   Functions& functions_;
   // Admitted declaration bindings, including equality expectations.
   Intrinsics& intrinsics_;
-  // Namespace-only configuration admission shared with ordinary function
-  // bodies.
+  // Namespace-scope config admission shared with ordinary function bodies.
   Configs& configs_;
   // Source scalar representation admission.
   Types& types_;

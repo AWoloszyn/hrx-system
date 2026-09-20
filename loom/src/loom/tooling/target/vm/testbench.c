@@ -97,8 +97,9 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
     loom_tooling_config_materialize_result_t result;
     status = loom_tooling_config_materialize_module(
         module,
-        &(loom_tooling_config_materialize_options_t){.config_set =
-                                                         testbench->config_set},
+        &(loom_tooling_config_materialize_options_t){
+            .config_set = testbench->config_set,
+        },
         &pool, &result);
   }
   loom_target_specialization_request_t* requests = NULL;
