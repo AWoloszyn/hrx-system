@@ -6,11 +6,13 @@
 
 // A load queue larger than the immediate range still requires an effective
 // wait. The all-ones encoding is reserved for leaving a counter unconstrained.
-// RUN: with-checks emit amdgpu-assembly @partial_count_limit strategy=source
+// RUN: with-checks emit amdgpu-assembly @incoming_count_limit strategy=source
 amdgpu.target<gfx1151> @target
 
-low.func.def target<amdgpu.rdna3_5.core>(@target) @partial_count_limit(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+low.func.def target<amdgpu.rdna3_5.core>(@target) @incoming_count_limit(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr>) asm {
   %old = global_load_b32_saddr %address, %base
+  low.br ^issue
+^issue:
   %younger0 = global_load_b32_saddr %address, %base {offset = 4}
   %younger1 = global_load_b32_saddr %address, %base {offset = 8}
   %younger2 = global_load_b32_saddr %address, %base {offset = 12}

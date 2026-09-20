@@ -76,7 +76,7 @@ typedef enum loom_amdgpu_wait_plan_reason_e {
   // A loop-entry SSA dependency requires a conservative full counter drain.
   LOOM_AMDGPU_WAIT_PLAN_REASON_LOOP_ENTRY_CONSERVATIVE_SSA_USE = 13,
   // A loop-carried SSA dependency uses a target count derived from the stable
-  // producer frontier of the preceding iteration.
+  // producer frontier or a known younger suffix issued in the current block.
   LOOM_AMDGPU_WAIT_PLAN_REASON_LOOP_CARRIED_DERIVED_SSA_USE = 14,
   // A loop-carried SSA dependency requires a conservative full counter drain.
   LOOM_AMDGPU_WAIT_PLAN_REASON_LOOP_CARRIED_CONSERVATIVE_SSA_USE = 15,
