@@ -19,5 +19,6 @@ exports_files([
     "packed_records.patch",
     "aligned_records.patch",
     "packed_enums.patch",
+    "bitfield_attributes.patch",
     "template_lookahead.patch",
 ])

@@ -253,3 +253,18 @@ struct [[gnu::aligned(requested)]] Packet { unsigned value; };
 // INPUT: cxx
 // ERROR@+1: PARSE/036 "requested alignment is not a positive power of 2"
 struct [[gnu::aligned(8), gnu::aligned(3)]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'packed' attribute takes no arguments"
+struct Bits { unsigned value [[gnu::packed(1)]] : 3; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'packed' attribute takes no arguments"
+struct Bits { unsigned value : 3 __attribute__((packed(1))); };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "requested alignment is not a positive power of 2"
+struct Bits { unsigned value : 3 __attribute__((aligned(3))); };

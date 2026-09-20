@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <cxx/archive.h>
+#include <cxx/ast.h>
+#include <cxx/ast_visitor.h>
 #include <cxx/private/semantic_codec.h>
 #include <cxx/symbols.h>
 #include <cxx/type_traits.h>
@@ -45,17 +47,60 @@ TEST_P(LayoutTest, PragmaPackedBitPositionsBelongToTheSourceLayout) {
   EXPECT_EQ(second->localOffset() * 8 + second->bitFieldOffset(), 31);
 }
 
+// Inspects the decoded syntax and its ordinary arena clone, independently of
+// the field layout facts stored on symbols.
+class BitfieldAttributeVisitor final : public cxx::ASTVisitor {
+ public:
+  void visit(cxx::BitfieldDeclaratorAST* ast) override {
+    ++count;
+    EXPECT_NE(ast->attributeList, nullptr);
+    EXPECT_NE(ast->trailingAttributeList, nullptr);
+    EXPECT_GT(ast->lastSourceLocation().index(),
+              ast->sizeExpression->lastSourceLocation().index());
+  }
+
+  // Number of bitfield declarations reached through normal AST visitation.
+  unsigned count = 0;
+};
+
+TEST_P(LayoutTest, MemberPackingCrossesTheDeclaredAllocationUnit) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  options.data_model = GetParam();
+  Source source(IREE_SV("struct Bits { unsigned first:31, second:2 "
+                        "__attribute__((packed)); };"),
+                IREE_SV("bits.cpp"), options);
+  auto records = source.unit().globalScope()->find("Bits");
+  ASSERT_FALSE(records.begin() == records.end());
+  auto* record = cxx::symbol_cast<cxx::ClassSymbol>(*records.begin());
+  ASSERT_NE(record, nullptr);
+  auto fields = record->find("second");
+  ASSERT_FALSE(fields.begin() == fields.end());
+  auto* second = cxx::symbol_cast<cxx::FieldSymbol>(*fields.begin());
+  ASSERT_NE(second, nullptr);
+  EXPECT_TRUE(second->isPacked());
+  auto position = record->layout()->getFieldInfo(second);
+  ASSERT_TRUE(position.has_value());
+  EXPECT_EQ(position->offset * 8 + position->bitOffset, 31u);
+  auto first = record->find("first");
+  ASSERT_FALSE(first.begin() == first.end());
+  EXPECT_FALSE(cxx::symbol_cast<cxx::FieldSymbol>(*first.begin())->isPacked());
+}
+
 TEST_P(LayoutTest, PackedRequestsAndResolvedLayoutSurviveSemanticArchives) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);
   options.data_model = GetParam();
-  Source source(IREE_SV("enum [[gnu::packed]] Byte { byte = 255 };\n"
-                        "struct [[gnu::packed, gnu::aligned(64)]] Packet {\n"
-                        "  unsigned char tag;\n"
-                        "  alignas(16) unsigned value;\n"
-                        "  unsigned tail [[gnu::packed]];\n"
-                        "};\n"),
-                IREE_SV("layout.cpp"), options);
+  Source source(
+      IREE_SV(
+          "enum [[gnu::packed]] Byte { byte = 255 };\n"
+          "struct [[gnu::packed, gnu::aligned(64)]] Packet {\n"
+          "  unsigned char tag;\n"
+          "  alignas(16) unsigned value;\n"
+          "  unsigned tail [[gnu::packed]];\n"
+          "  unsigned bits [[gnu::packed]] : 3 __attribute__((aligned(2)));\n"
+          "};\n"),
+      IREE_SV("layout.cpp"), options);
   cxx::ArchiveWriter writer;
   cxx::SemanticArchiveRoots roots;
   roots.globalScope = source.unit().globalScope();
@@ -70,6 +115,12 @@ TEST_P(LayoutTest, PackedRequestsAndResolvedLayoutSurviveSemanticArchives) {
   cxx::SemanticArchiveRoots restored;
   cxx::SemanticDecoder decoder(&destination.unit());
   ASSERT_TRUE(decoder(reader, restored)) << decoder.error();
+  BitfieldAttributeVisitor attributes;
+  attributes.accept(restored.ast);
+  EXPECT_EQ(attributes.count, 1u);
+  auto* clone = restored.ast->clone(destination.unit().arena());
+  attributes.accept(clone);
+  EXPECT_EQ(attributes.count, 2u);
   auto enumerations = restored.globalScope->find("Byte");
   ASSERT_FALSE(enumerations.begin() == enumerations.end());
   auto* enumeration = cxx::symbol_cast<cxx::EnumSymbol>(*enumerations.begin());

@@ -147,6 +147,38 @@ int next(Byte value) { return value + 1; }
 `next` zero-extends its `i8` argument before the `i32` addition, so `next(last)`
 returns `256`.
 
+Record layout queries honor GNU `packed`, explicit `aligned(N)`, standard
+`alignas`, and `#pragma pack`. Requests stay attached to their declarations
+through template specialization. Nested records keep their own padding; packing
+an outer record changes where its members begin.
+
+```cpp
+template<class Word>
+struct Block {
+  unsigned short scale;
+  Word words[4];
+} __attribute__((packed));
+
+unsigned stride() { return sizeof(Block<unsigned>); }             // 18
+unsigned payload() { return __builtin_offsetof(Block<unsigned>, words); } // 2
+unsigned alignment() { return alignof(Block<unsigned>); }         // 1
+```
+
+The functions import as scalar constants. `__attribute__((packed))`,
+`[[gnu::packed]]`, underscored spellings, record-level requests and member-level
+requests share the same source layout owner. GNU `aligned(N)` raises a packed
+member's alignment, while a pragma pack cap limits member alignment. Record
+alignment can raise the final stride without changing internal member offsets.
+Standard `alignas` retains its own validation rules. Explicit alignment on shared
+arrays reaches the workgroup allocation's `align` operand.
+
+Bitfield layouts retain actual bit positions, including fields crossing their
+declared storage units and zero-width alignment boundaries. Layout queries do
+not admit record values or bitfield memory operations into High IR. Packed base
+classes, virtual members, Microsoft bitfield ABI layouts, compound `offsetof`
+designators, aligned typedefs, and GNU `aligned` without an explicit argument
+produce source diagnostics.
+
 Explicit fixed vectors retain their lanes and element widths in High IR:
 
 ```cpp

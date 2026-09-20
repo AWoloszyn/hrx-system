@@ -140,3 +140,48 @@ struct Forward {
   unsigned value;
 };
 static_assert(sizeof(Forward) == 5 && alignof(Forward) == 1);
+
+struct PackedNamedBits {
+  unsigned char tag;
+  unsigned bits [[gnu::packed]] : 3;
+  unsigned char tail;
+};
+static_assert(sizeof(PackedNamedBits) == 3 && alignof(PackedNamedBits) == 1);
+static_assert(__builtin_offsetof(PackedNamedBits, tail) == 2);
+
+struct PackedTrailingBits {
+  unsigned char tag;
+  unsigned bits : 3 __attribute__((__packed__));
+  unsigned char tail;
+};
+static_assert(sizeof(PackedTrailingBits) == 3 &&
+              alignof(PackedTrailingBits) == 1);
+static_assert(__builtin_offsetof(PackedTrailingBits, tail) == 2);
+
+struct PackedAlignedBits {
+  unsigned char tag;
+  unsigned bits : 3 __attribute__((packed, aligned(2)));
+  unsigned char tail;
+};
+static_assert(sizeof(PackedAlignedBits) == 4 &&
+              alignof(PackedAlignedBits) == 2);
+static_assert(__builtin_offsetof(PackedAlignedBits, tail) == 3);
+
+struct PackedZeroWidth {
+  unsigned char tag;
+  unsigned : 0 __attribute__((packed, aligned(8)));
+  unsigned char tail;
+};
+static_assert(sizeof(PackedZeroWidth) == 9 && alignof(PackedZeroWidth) == 1);
+static_assert(__builtin_offsetof(PackedZeroWidth, tail) == 8);
+
+template <unsigned Alignment>
+struct PackedDependentBits {
+  unsigned char tag;
+  unsigned bits [[gnu::packed]] : 3 __attribute__((aligned(Alignment)));
+  unsigned char tail;
+};
+static_assert(sizeof(PackedDependentBits<2>) == 4);
+static_assert(sizeof(PackedDependentBits<8>) == 16);
+static_assert(__builtin_offsetof(PackedDependentBits<8>, tail) == 9);
+static_assert(sizeof(PackedDependentBits<2>) == 4);
