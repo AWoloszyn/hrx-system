@@ -396,13 +396,6 @@ iree_status_t iree_benchmark_loom_run_file(
     }
     loom_testbench_case_execution_options_t execution_options = {0};
     loom_testbench_case_execution_options_initialize(&execution_options);
-    const loom_testbench_function_call_provider_callback_t function_calls =
-        options->configuration->function_call_provider;
-    if (iree_status_is_ok(status) && function_calls.fn) {
-      execution_options.invocation.function_call =
-          function_calls.fn(function_calls.user_data, &module_plan,
-                            loom_run_module_source_resolver(&run_module));
-    }
     execution_options.materializer.host_allocator = allocator;
     execution_options.materializer.open_read_file =
         (loom_testbench_file_open_callback_t){
@@ -425,6 +418,27 @@ iree_status_t iree_benchmark_loom_run_file(
         selected_benchmark_count = work_plan.selected_benchmark_count;
         logical_sample_count = work_plan.logical_sample_count;
         work_item_count = work_plan.work_item_count;
+      }
+    }
+
+    const loom_testbench_function_call_provider_callback_t function_calls =
+        options->configuration->function_call_provider;
+    if (iree_status_is_ok(status) && failure_count == 0 && function_calls.fn) {
+      const loom_testbench_case_plan_t** selected_cases = NULL;
+      status = iree_arena_allocate_array(
+          &plan_arena, work_plan.selected_benchmark_count,
+          sizeof(*selected_cases), (void**)&selected_cases);
+      if (iree_status_is_ok(status)) {
+        for (iree_host_size_t i = 0; i < work_plan.selected_benchmark_count;
+             ++i) {
+          selected_cases[i] = work_plan.selected_benchmarks[i].case_plan;
+        }
+        execution_options.invocation.function_call =
+            function_calls.fn(function_calls.user_data,
+                              (loom_testbench_case_plan_list_t){
+                                  .values = selected_cases,
+                                  .count = work_plan.selected_benchmark_count},
+                              loom_run_module_source_resolver(&run_module));
       }
     }
 

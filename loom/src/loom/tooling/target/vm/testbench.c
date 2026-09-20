@@ -58,8 +58,11 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
     // The case planner owns invocation discovery. Its direct callees are the
     // executable roots; authored public helpers are implementation dependencies
     // within this independently compiled execution module.
-    for (iree_host_size_t i = 0; i < testbench->plan->case_count; ++i) {
-      const loom_testbench_case_plan_t* case_plan = &testbench->plan->cases[i];
+    for (iree_host_size_t i = 0; i < testbench->cases.count; ++i) {
+      const loom_testbench_case_plan_t* case_plan = testbench->cases.values[i];
+      if (case_plan->issue_count) {
+        continue;
+      }
       for (iree_host_size_t j = 0; j < case_plan->invocation_count; ++j) {
         const loom_testbench_invocation_plan_t* call =
             &case_plan->invocations[j];
@@ -509,10 +512,10 @@ static iree_status_t loom_vm_testbench_invoke(
 }
 
 loom_testbench_invocation_provider_t loom_vm_testbench_invocation_provider(
-    void* user_data, const loom_testbench_module_plan_t* plan,
+    void* user_data, loom_testbench_case_plan_list_t cases,
     loom_source_resolver_t source_resolver) {
   loom_vm_testbench_t* testbench = user_data;
-  testbench->plan = plan;
+  testbench->cases = cases;
   testbench->source_resolver = source_resolver;
   return (loom_testbench_invocation_provider_t){
       .invoke = loom_vm_testbench_invoke,

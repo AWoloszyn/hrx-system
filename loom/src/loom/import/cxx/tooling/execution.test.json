@@ -160,6 +160,42 @@
           }
         }
       ]
+    },
+    {
+      "name": "selected C++ case excludes unsupported unselected invocations",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_MATH=1",
+          "--case=wraps_byte"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":1",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "selected C++ benchmark excludes unsupported unselected invocations",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_MATH=1",
+          "--iterations=1",
+          "--warmup-iterations=0",
+          "--output-format=jsonl",
+          "--benchmark=wraps_byte_benchmark"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "wraps_byte_benchmark"
+        ]
+      }
     }
   ]
 }

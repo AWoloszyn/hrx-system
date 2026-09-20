@@ -27,4 +27,5 @@ LOOM_CHECK_CASE(math_policy) {
   const auto actual = exact_sine(0.0f);
   loom::check::expect_equal(actual, 0.0f);
 }
+LOOM_CHECK_BENCHMARK(math_policy_benchmark, math_policy);
 #endif
