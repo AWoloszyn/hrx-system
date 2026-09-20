@@ -21,6 +21,11 @@
 #include "loom/rewrite/remap.h"
 #include "loom/rewrite/rewriter.h"
 
+void loom_low_rematerialization_invalidate_placement(
+    loom_low_rematerialization_state_t* state) {
+  iree_bitmap_reset_all(state->per_use_values);
+}
+
 static iree_status_t loom_low_rematerialization_reserve_per_use_values(
     loom_low_rematerialization_state_t* state,
     iree_host_size_t required_bit_count) {

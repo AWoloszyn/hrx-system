@@ -937,6 +937,7 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
             result.materialized_spills, result.materialized_spill_count,
             &materialization_summary.spill_records, repair_arena));
     last_repaired_spill_plan_count = IREE_HOST_SIZE_MAX;
+    loom_low_rematerialization_invalidate_placement(&rematerialization);
 
     loom_low_emission_frame_record_memory_high_water(
         frame_checkpoint, repair_arena, scratch_arena, statistics);

@@ -55,14 +55,20 @@ typedef struct loom_low_allocation_rematerialization_result_t {
 // attempt. The arena and state survive analysis rebuilds until the repair loop
 // finishes. Per-use clones already have the narrowest definition placement this
 // transform can provide; inserting other operand definitions does not make them
-// candidates again. Value IDs remain stable across the supported repair
-// mutations.
+// candidates again. Spill materialization can insert reloads between clones and
+// their users, invalidating that placement fact. Value IDs remain stable across
+// the supported repair mutations.
 typedef struct loom_low_rematerialization_state_t {
   // Arena retaining clone membership across repair attempts.
   iree_arena_allocator_t* arena;
-  // Module value IDs created as per-use definitions by this repair lifecycle.
+  // Module value IDs cloned near uses since the last placement invalidation.
   iree_bitmap_t per_use_values;
 } loom_low_rematerialization_state_t;
+
+// Invalidates per-use placement after spill traffic changes live ranges.
+// Retains allocated membership storage for subsequent repair attempts.
+void loom_low_rematerialization_invalidate_placement(
+    loom_low_rematerialization_state_t* state);
 
 // Rematerializes a descriptor-backed SSA value near all of its uses.
 //

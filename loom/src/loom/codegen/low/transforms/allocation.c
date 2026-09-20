@@ -556,6 +556,7 @@ iree_status_t loom_low_materialize_allocation_run(loom_pass_t* pass,
           table.spill_plan_count);
     }
 
+    loom_low_rematerialization_invalidate_placement(&rematerialization);
     loom_low_materialize_allocation_statistics_t* statistics =
         loom_low_materialize_allocation_statistics(pass);
     statistics->storage += (int64_t)result.storage_count;
