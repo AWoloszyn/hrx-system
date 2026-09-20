@@ -20,6 +20,72 @@
       }
     },
     {
+      "name": "VM compilation resolves a linked helper source snapshot",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_math_case.loom",
+          "--library={srcdir}/source_math.loom"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "source_math.loom:2:3",
+          "vm-math",
+          "scalar.sinf %value : f32",
+          "VM compilation failed"
+        ]
+      }
+    },
+    {
+      "name": "benchmark correctness failure reports the authored assertion range",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/source_mismatch.loom",
+          "--iterations=1",
+          "--warmup-iterations=0",
+          "--output-format=jsonl"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stdout": {
+        "contains": [
+          "\"failure_count\":1",
+          "\"source_location\":{\"filename\":",
+          "source_mismatch.loom",
+          "\"start_line\":11,\"start_column\":3"
+        ]
+      }
+    },
+    {
+      "name": "iree-test-loom reports the authored assertion range after linking",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_cases.loom",
+          "--library={srcdir}/source_mismatch.loom",
+          "--case=mismatch"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stdout": {
+        "contains": [
+          "\"failure_count\":1",
+          "\"source_location\":{\"filename\":",
+          "source_mismatch.loom",
+          "\"start_line\":11,\"start_column\":3"
+        ]
+      }
+    },
+    {
       "name": "rejects an unavailable callee when a case actually invokes it",
       "run": {
         "tool": "iree-test-loom",

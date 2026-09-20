@@ -28,12 +28,27 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    source_report
+  HDRS
+    "source_report.h"
+  SRCS
+    "source_report.c"
+  DEPS
+    iree::base
+    loom::ir
+    loom::util::json
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     issue_report
   HDRS
     "issue_report.h"
   SRCS
     "issue_report.c"
   DEPS
+    ::source_report
     ::testbench
     iree::base
     loom::ir
@@ -89,6 +104,7 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     loom::ir
+    loom::verify
   PUBLIC
 )
 
@@ -101,6 +117,7 @@ loom_cc_library(
     "expectation.c"
   DEPS
     ::device_event
+    ::source_report
     ::testbench
     ::value_materializer
     iree::base

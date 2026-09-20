@@ -399,7 +399,8 @@ iree_status_t iree_benchmark_loom_run_file(
         options->configuration->function_call_provider;
     if (iree_status_is_ok(status) && function_calls.fn) {
       execution_options.invocation.function_call =
-          function_calls.fn(function_calls.user_data, &module_plan);
+          function_calls.fn(function_calls.user_data, &module_plan,
+                            loom_run_module_source_resolver(&run_module));
     }
     execution_options.materializer.host_allocator = allocator;
     execution_options.materializer.open_read_file =

@@ -774,7 +774,8 @@ int iree_test_loom_main(int argc, char** argv,
     if (iree_status_is_ok(status) && configuration->function_call_provider.fn) {
       execution_options.invocation.function_call =
           configuration->function_call_provider.fn(
-              configuration->function_call_provider.user_data, &module_plan);
+              configuration->function_call_provider.user_data, &module_plan,
+              loom_run_module_source_resolver(&run_module));
     }
     execution_options.materializer.host_allocator = allocator;
     execution_options.materializer.open_read_file =

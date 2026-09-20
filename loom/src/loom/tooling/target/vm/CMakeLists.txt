@@ -55,6 +55,9 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/module.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_cases.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_library_cases.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_math.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_math_case.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_mismatch.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_unavailable.loom"
 )
 endif()

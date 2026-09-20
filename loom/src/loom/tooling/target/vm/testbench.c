@@ -125,6 +125,7 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
     loom_compile_pipeline_options_t options;
     loom_compile_pipeline_options_initialize(&options);
     options.target_environment = testbench->target_environment;
+    options.source_resolver = testbench->source_resolver;
     options.target_specializations =
         (loom_target_specialization_request_list_t){requests, request_count};
     options.low_descriptor_registry = &registry;
@@ -508,9 +509,11 @@ static iree_status_t loom_vm_testbench_invoke(
 }
 
 loom_testbench_invocation_provider_t loom_vm_testbench_invocation_provider(
-    void* user_data, const loom_testbench_module_plan_t* plan) {
+    void* user_data, const loom_testbench_module_plan_t* plan,
+    loom_source_resolver_t source_resolver) {
   loom_vm_testbench_t* testbench = user_data;
   testbench->plan = plan;
+  testbench->source_resolver = source_resolver;
   return (loom_testbench_invocation_provider_t){
       .invoke = loom_vm_testbench_invoke,
       .user_data = testbench,

@@ -295,6 +295,10 @@ check.case @scalar_mismatch {
                    iree_string_builder_view(&json_builder).size);
   EXPECT_THAT(json, ::testing::HasSubstr("\"expectation_count\":1"));
   EXPECT_THAT(json, ::testing::HasSubstr("\"kind\":\"equal\""));
+  EXPECT_THAT(json,
+              ::testing::HasSubstr(
+                  "\"source_location\":{\"filename\":\"expectation_test.loom\","
+                  "\"start_line\":5,\"start_column\":3"));
   EXPECT_THAT(json, ::testing::HasSubstr("\"detail\":"));
   EXPECT_THAT(json, ::testing::HasSubstr("43"));
   EXPECT_THAT(json, ::testing::HasSubstr("42"));

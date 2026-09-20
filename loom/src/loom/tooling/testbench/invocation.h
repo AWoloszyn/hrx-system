@@ -17,6 +17,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/tooling/testbench/value_materializer.h"
+#include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,11 +74,13 @@ typedef struct loom_testbench_invocation_provider_t {
 } loom_testbench_invocation_provider_t;
 
 // Binds one borrowed function-call provider to a complete parsed case plan.
-// The caller owns callback state. The plan remains live through the final
-// invocation; provider teardown must not access it after the runner returns.
+// The caller owns callback state. The plan and source resolver remain live
+// through the final invocation; provider teardown must not access them after
+// the runner returns. Resolvers support compiler copies preserving source IDs.
 typedef loom_testbench_invocation_provider_t(
     IREE_API_PTR* loom_testbench_function_call_provider_fn_t)(
-    void* user_data, const loom_testbench_module_plan_t* plan);
+    void* user_data, const loom_testbench_module_plan_t* plan,
+    loom_source_resolver_t source_resolver);
 
 typedef struct loom_testbench_function_call_provider_callback_t {
   // Binding callback, or NULL when no function executor is linked.

@@ -31,10 +31,22 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "source_report",
+    srcs = ["source_report.c"],
+    hdrs = ["source_report.h"],
+    deps = [
+        "//loom/src/loom/ir",
+        "//loom/src/loom/util:json",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
     name = "issue_report",
     srcs = ["issue_report.c"],
     hdrs = ["issue_report.h"],
     deps = [
+        ":source_report",
         ":testbench",
         "//loom/src/loom/ir",
         "//loom/src/loom/util:json",
@@ -79,6 +91,7 @@ loom_cc_library(
         ":testbench",
         ":value_materializer",
         "//loom/src/loom/ir",
+        "//loom/src/loom/verify",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
     ],
@@ -90,6 +103,7 @@ loom_cc_library(
     hdrs = ["expectation.h"],
     deps = [
         ":device_event",
+        ":source_report",
         ":testbench",
         ":value_materializer",
         "//loom/src/loom/ir",
