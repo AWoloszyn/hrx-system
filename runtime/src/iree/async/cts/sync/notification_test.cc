@@ -90,6 +90,152 @@ TEST_P(NotificationTest, SignalNoWaiters) {
   iree_async_notification_release(notification);
 }
 
+// Cancellation completes an already registered wait without advancing the
+// notification epoch or requiring another signal.
+TEST_P(NotificationTest, CancelRegisteredWaitWithoutSignal) {
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  CompletionTracker tracker;
+  iree_async_notification_wait_operation_t wait_operation = {};
+  InitNotificationWaitOp(&wait_operation, notification,
+                         CompletionTracker::Callback, &tracker);
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &wait_operation.base));
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  EXPECT_EQ(tracker.call_count, 0);
+
+  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait_operation.base));
+  PollUntilCondition([&] { return tracker.call_count == 1; });
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED, tracker.ConsumeStatus());
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), 0u);
+  iree_async_notification_release(notification);
+}
+
+TEST_P(NotificationTest, CancelQueuedWaitWithoutSignal) {
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  CompletionTracker tracker;
+  iree_async_notification_wait_operation_t wait_operation = {};
+  InitNotificationWaitOp(&wait_operation, notification,
+                         CompletionTracker::Callback, &tracker);
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &wait_operation.base));
+  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait_operation.base));
+  PollUntilCondition([&] { return tracker.call_count == 1; });
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED, tracker.ConsumeStatus());
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), 0u);
+  iree_async_notification_release(notification);
+}
+
+// Off-thread duplicate cancellation requests coalesce without losing a target
+// or requiring notification signals. Operation storage is distinct throughout.
+TEST_P(NotificationTest, CancelRegisteredWaitsFromThread) {
+  constexpr size_t kWaitCount = 32;
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  CompletionTracker trackers[kWaitCount];
+  iree_async_notification_wait_operation_t wait_operations[kWaitCount] = {};
+  for (size_t i = 0; i < kWaitCount; ++i) {
+    InitNotificationWaitOp(&wait_operations[i], notification,
+                           CompletionTracker::Callback, &trackers[i]);
+    IREE_ASSERT_OK(
+        iree_async_proactor_submit_one(proactor_, &wait_operations[i].base));
+  }
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+
+  std::thread canceller([&] {
+    for (size_t i = 0; i < kWaitCount; ++i) {
+      IREE_EXPECT_OK(
+          iree_async_proactor_cancel(proactor_, &wait_operations[i].base));
+      IREE_EXPECT_OK(
+          iree_async_proactor_cancel(proactor_, &wait_operations[i].base));
+    }
+  });
+  PollUntilCondition([&] {
+    for (const auto& tracker : trackers) {
+      if (tracker.call_count == 0) {
+        return false;
+      }
+    }
+    return true;
+  });
+  canceller.join();
+  for (auto& tracker : trackers) {
+    EXPECT_EQ(tracker.call_count, 1);
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED, tracker.ConsumeStatus());
+  }
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), 0u);
+  iree_async_notification_release(notification);
+}
+
+// Cancellation must neither complete other waits nor consume a native wake
+// that a relay on the same notification still needs.
+TEST_P(NotificationTest, CancelWaitPreservesOtherConsumers) {
+  iree_async_notification_t* notification = nullptr;
+  iree_async_notification_t* sink = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
+  iree_async_relay_t* relay = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_register_relay(
+      proactor_, iree_async_relay_source_from_notification(notification),
+      iree_async_relay_sink_signal_notification(sink, 1),
+      IREE_ASYNC_RELAY_FLAG_PERSISTENT, iree_async_relay_error_callback_none(),
+      &relay));
+
+  CompletionTracker cancelled_tracker;
+  CompletionTracker surviving_tracker;
+  iree_async_notification_wait_operation_t cancelled_wait = {};
+  iree_async_notification_wait_operation_t surviving_wait = {};
+  InitNotificationWaitOp(&cancelled_wait, notification,
+                         CompletionTracker::Callback, &cancelled_tracker);
+  InitNotificationWaitOp(&surviving_wait, notification,
+                         CompletionTracker::Callback, &surviving_tracker);
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &cancelled_wait.base));
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &surviving_wait.base));
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+
+  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &cancelled_wait.base));
+  PollUntilCondition([&] { return cancelled_tracker.call_count == 1; });
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED,
+                        cancelled_tracker.ConsumeStatus());
+  EXPECT_EQ(surviving_tracker.call_count, 0);
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), 0u);
+  EXPECT_EQ(iree_async_notification_query_epoch(sink), 0u);
+
+  CompletionTracker racing_tracker;
+  iree_async_notification_wait_operation_t racing_wait = {};
+  InitNotificationWaitOp(&racing_wait, notification,
+                         CompletionTracker::Callback, &racing_tracker);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &racing_wait.base));
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &racing_wait.base));
+  iree_async_notification_signal(notification, INT32_MAX);
+  PollUntilCondition([&] {
+    return surviving_tracker.call_count == 1 &&
+           racing_tracker.call_count == 1 &&
+           iree_async_notification_query_epoch(sink) == 1;
+  });
+  IREE_EXPECT_OK(surviving_tracker.ConsumeStatus());
+  EXPECT_THAT(iree::Status(racing_tracker.ConsumeStatus()),
+              ::testing::AnyOf(iree::testing::status::IsOk(),
+                               iree::testing::status::StatusIs(
+                                   iree::StatusCode::kCancelled)));
+  WaitForRelayUnregistration(relay);
+  iree_async_notification_release(sink);
+  iree_async_notification_release(notification);
+}
+
 TEST_P(NotificationTest, SignalIfObservedNoWaitersSkipsWake) {
   iree_async_notification_t* notification = nullptr;
   IREE_ASSERT_OK(iree_async_notification_create(

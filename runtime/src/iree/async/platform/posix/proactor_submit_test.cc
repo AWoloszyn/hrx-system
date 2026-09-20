@@ -316,6 +316,113 @@ TEST_F(PosixProactorSubmitTest,
   ExpectSuccessfulCompletions(tracker, kCompletionPoolCapacity);
 }
 
+TEST_F(PosixProactorSubmitTest, CancellationSurvivesInlineCallbackMapGrowth) {
+  constexpr size_t kWaitCount = 16;
+  // Both layouts use eight native descriptors per wait, creating collisions
+  // without exceeding a process's small default descriptor limit.
+#if defined(IREE_PLATFORM_LINUX)
+  constexpr size_t kEventsPerWait = 7;
+#else
+  constexpr size_t kEventsPerWait = 3;
+#endif  // IREE_PLATFORM_LINUX
+  constexpr size_t kEventCount = kWaitCount * kEventsPerWait;
+  struct EventDeleter {
+    void operator()(iree_async_event_t* event) const {
+      iree_async_event_release(event);
+    }
+  };
+  struct State {
+    // Proactor that owns all waits and registrations.
+    iree_async_proactor_t* proactor;
+    // Completion results from all cancelled waits.
+    CompletionTracker tracker;
+    // Caller-owned events kept alive through source unregistration.
+    std::array<std::unique_ptr<iree_async_event_t, EventDeleter>, kEventCount>
+        events;
+    // Sources registered by the first inline cancellation callback.
+    std::array<iree_async_event_source_t*, kEventCount> sources = {};
+    // Whether that callback has registered the sources.
+    bool registered_sources = false;
+  } state = {proactor_};
+  struct WaitState {
+    // Shared results and callback-owned registrations.
+    State* state;
+    // Caller reference dropped in the wait's terminal callback.
+    std::unique_ptr<iree_async_notification_t,
+                    decltype(&iree_async_notification_release)>
+        notification = {nullptr, iree_async_notification_release};
+  } wait_states[kWaitCount] = {};
+  std::array<iree_async_notification_wait_operation_t, kWaitCount> waits = {};
+  for (size_t i = 0; i < waits.size(); ++i) {
+    wait_states[i].state = &state;
+    iree_async_notification_t* notification = nullptr;
+    IREE_ASSERT_OK(iree_async_notification_create(
+        proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+    wait_states[i].notification.reset(notification);
+    // Interleave live native handles so the initial map contains collisions
+    // rather than only consecutive descriptor keys.
+    for (size_t j = 0; j < kEventsPerWait; ++j) {
+      iree_async_event_t* event = nullptr;
+      IREE_ASSERT_OK(iree_async_event_create(proactor_, &event));
+      state.events[i * kEventsPerWait + j].reset(event);
+    }
+  }
+  for (size_t i = 0; i < waits.size(); ++i) {
+    InitializeOperation(&waits[i], IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+                        &state.tracker);
+    waits[i].notification = wait_states[i].notification.get();
+    waits[i].base.user_data = &wait_states[i];
+    waits[i].base.completion_fn = +[](void* user_data,
+                                      iree_async_operation_t* operation,
+                                      iree_status_t status,
+                                      iree_async_completion_flags_t flags) {
+      auto* wait_state = static_cast<WaitState*>(user_data);
+      auto* state = wait_state->state;
+      CompletionTracker::Callback(&state->tracker, operation, status, flags);
+      wait_state->notification.reset();
+      if (!state->registered_sources) {
+        state->registered_sources = true;
+        iree_async_event_source_callback_t callback = {
+            +[](void*, iree_async_event_source_t*, iree_async_poll_events_t) {},
+            nullptr};
+        for (size_t i = 0; i < state->events.size(); ++i) {
+          IREE_EXPECT_OK(iree_async_proactor_register_event_source(
+              state->proactor, state->events[i]->primitive, callback,
+              &state->sources[i]));
+        }
+      }
+    };
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &waits[i].base));
+  }
+  iree_async_proactor_wake(proactor_);
+  IREE_ASSERT_OK(
+      iree_async_proactor_poll(proactor_, iree_infinite_timeout(), nullptr));
+  const iree_host_size_t initial_bucket_count =
+      posix_proactor()->fd_map.bucket_count;
+  for (auto& wait : waits) {
+    IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait.base));
+    IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait.base));
+  }
+  PollUntilCallbacks(proactor_, &state.tracker, kWaitCount);
+  EXPECT_GT(posix_proactor()->fd_map.bucket_count, initial_bucket_count);
+  EXPECT_EQ(state.tracker.call_count, kWaitCount);
+  for (iree_status_code_t code : state.tracker.status_codes) {
+    EXPECT_EQ(code, IREE_STATUS_CANCELLED);
+  }
+  for (auto* source : state.sources) {
+    if (source) {
+      iree_async_proactor_unregister_event_source(proactor_, source);
+    }
+  }
+  iree_async_proactor_wake(proactor_);
+  IREE_ASSERT_OK(
+      iree_async_proactor_poll(proactor_, iree_infinite_timeout(), nullptr));
+  EXPECT_EQ(iree_atomic_load(&posix_proactor()->pending_cancellations,
+                             iree_memory_order_acquire),
+            0);
+  ExpectQuiescent(proactor_);
+}
+
 TEST_F(PosixProactorSubmitTest, ValidationFailurePrecedesEagerSend) {
   SocketPtr socket;
   ScopedFd peer_fd;

@@ -449,6 +449,33 @@ TEST_P(SharedNotificationTest, AdvisorySignalWakesOtherHandle) {
   DestroySharedState(&state);
 }
 
+// Cancellation of a registered shared wait needs no signal from either peer.
+TEST_P(SharedNotificationTest, CancelRegisteredWaitWithoutSignal) {
+  SharedState state;
+  IREE_ASSERT_OK(CreateSharedState(&state));
+  auto options = MakeSharedOptions(&state);
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
+                                                       &notification));
+  CompletionTracker tracker;
+  iree_async_notification_wait_operation_t wait_operation = {};
+  iree_async_operation_initialize(
+      &wait_operation.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
+  wait_operation.notification = notification;
+  IREE_ASSERT_OK(
+      iree_async_proactor_submit_one(proactor_, &wait_operation.base));
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+
+  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait_operation.base));
+  PollUntilCondition([&] { return tracker.call_count == 1; });
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED, tracker.ConsumeStatus());
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), 0u);
+  iree_async_notification_release(notification);
+  DestroySharedState(&state);
+}
+
 // Sync wait on one shared notification, signal from the other (same epoch).
 TEST_P(SharedNotificationTest, CrossNotificationSyncWait) {
   SharedState state;
