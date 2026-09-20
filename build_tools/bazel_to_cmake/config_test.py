@@ -330,7 +330,7 @@ loom_test(
         self.assertIn('"cxx:std=c++20 D=EXPECTED=5"', cmake)
         self.assertIn('"--case=header_assertion"', cmake)
 
-    def test_ignored_rule_accepts_loaded_and_inline_execution_profiles(self):
+    def test_loom_test_generates_inline_profiles_and_preserves_opaque_profiles(self):
         repo_root = Path(__file__).resolve().parents[2]
         loom = bazel_to_cmake_config.include_project(
             str(repo_root / ".bazel_to_cmake.cfg.py"),
@@ -373,7 +373,81 @@ loom_test(
         )
 
         self.assertNotIn("one_test", cmake)
-        self.assertNotIn("inline_profile_test", cmake)
+        self.assertIn("NAME\n    inline_profile_test", cmake)
+        self.assertIn('"loom-execution-profile=reference"', cmake)
+
+    def test_loom_test_projects_profile_policy_and_module_inputs(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        loom = bazel_to_cmake_config.include_project(
+            str(repo_root / ".bazel_to_cmake.cfg.py"), "loom/.bazel_to_cmake.cfg.py"
+        )
+        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
+        cmake = bazel_to_cmake_converter.convert_build_file(
+            """
+load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_library", "loom_test")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_generated_file_family")
+load("//loom/requirements:defs.bzl", "TARGET_ARCH_AMDGPU", "TARGET_ARCH_VM")
+load("//runtime/requirements:defs.bzl", "AMDGPU_RESOURCE")
+load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
+loom_library(name = "reusable", srcs = ["kernel.cc"])
+loom_generated_file_family(
+    name = "fixtures",
+    generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
+    outputs = ["checks.loom", "arrays"],
+    output_flags = ["--output", "--arrays"],
+    output_directories = ["arrays"],
+)
+loom_test(
+    name = "configured",
+    srcs = [":reusable"],
+    execution_profile = loom_execution_profile(
+        name = "five",
+        target_family = "vm",
+        target_class = "cpu",
+        executor = "reference",
+        runner_args = ["--case=five", "--config=tuning.factor=5"],
+        build_requirements = [TARGET_ARCH_VM],
+    ),
+)
+loom_test(
+    name = "device",
+    srcs = [":reusable", ":checks.loom"],
+    data = [":fixtures"],
+    args = ["--sanitizer=access"],
+    execution_profile = loom_execution_profile(
+        name = "device",
+        target_family = "amdgpu",
+        target_class = "gpu",
+        executor = "hardware",
+        runner_args = ["--device=amdgpu"],
+        build_requirements = [TARGET_ARCH_AMDGPU],
+        run_requirements = [AMDGPU_RESOURCE],
+        resource_group = "shared-device",
+        sanitizer_suppressions = rocm_suppressions,
+        tags = ["profile-tag"],
+    ),
+)
+""",
+            repo_cfg,
+            str(repo_root / "loom/src/loom/import/cxx/test"),
+            repo_root=str(repo_root),
+        )
+        self.assertIn("if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)", cmake)
+        self.assertIn('"::reusable"', cmake)
+        self.assertIn('"${CMAKE_CURRENT_BINARY_DIR}/checks.loom"', cmake)
+        self.assertIn('"${CMAKE_CURRENT_BINARY_DIR}/arrays"', cmake)
+        self.assertNotIn("loom::import::cxx::test::fixtures", cmake)
+        self.assertIn('ARGS\n    "--sanitizer=access"', cmake)
+        self.assertIn(
+            'RUNNER_ARGS\n    "--case=five"\n    "--config=tuning.factor=5"',
+            cmake,
+        )
+        self.assertIn('"iree-build-requirement=loom.target.arch.vm"', cmake)
+        self.assertIn('"iree-run-requirement=runtime.resource.amd_gpu"', cmake)
+        self.assertIn('"runtime-resource=amd-gpu"', cmake)
+        self.assertIn('"profile-tag"', cmake)
+        self.assertIn('RESOURCE_GROUP\n    "shared-device"', cmake)
+        self.assertIn("SANITIZER_SUPPRESSIONS\n    lsan\n    rocm", cmake)
 
     def test_unhandled_loaded_rule_fails_loudly(self):
         repo_root = Path(__file__).resolve().parents[2]
