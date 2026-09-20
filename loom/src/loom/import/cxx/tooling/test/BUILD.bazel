@@ -1,0 +1,11 @@
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
+
+package(default_visibility = ["//visibility:public"])
+
+loom_check_test_suite(
+    name = "test",
+    srcs = ["import.cxx-test"],
+    data = ["helper.h"],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)

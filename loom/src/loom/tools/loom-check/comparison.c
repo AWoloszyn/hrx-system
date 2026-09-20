@@ -16,9 +16,15 @@ static iree_status_t loom_check_match_lines(iree_string_view_t expected,
     iree_string_view_split(expected, '\n', &line, &expected);
     ++line_number;
     line = iree_string_view_trim(line);
-    if (iree_string_view_is_empty(line) ||
-        iree_string_view_starts_with(line, IREE_SV("//"))) {
+    if (iree_string_view_is_empty(line)) {
       continue;
+    }
+    if (iree_string_view_consume_prefix(&line, IREE_SV("//"))) {
+      line = iree_string_view_trim(line);
+      if (!iree_string_view_starts_with(line, IREE_SV("CHECK:")) &&
+          !iree_string_view_starts_with(line, IREE_SV("CHECK-NOT:"))) {
+        continue;
+      }
     }
     bool negative = false;
     if (iree_string_view_consume_prefix(&line, IREE_SV("CHECK:"))) {

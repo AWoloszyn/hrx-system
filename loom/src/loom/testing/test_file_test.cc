@@ -79,6 +79,37 @@ TEST_F(TestFileParseTest, NoDirectiveDefaultsToRoundtrip) {
   EXPECT_EQ(file_.cases[0].mode, LOOM_TEST_MODE_ROUNDTRIP);
 }
 
+TEST_F(TestFileParseTest, InputOptionsInheritIndependentlyOfRun) {
+  IREE_ASSERT_OK(
+      Parse("// INPUT: cxx std=c++23 root=entry\n"
+            "// RUN: pass dce\nint entry() { return 1; }\n"
+            "// ====\n// RUN: verify\nint second() { return 2; }\n"
+            "// ====\n// INPUT: loom\nfunc.def @third() {}\n"));
+  ASSERT_EQ(file_.case_count, 3u);
+  EXPECT_TRUE(iree_string_view_equal(file_.cases[1].input_options.format,
+                                     IREE_SV("cxx")));
+  EXPECT_TRUE(iree_string_view_equal(file_.cases[1].input_options.arguments,
+                                     IREE_SV("std=c++23 root=entry")));
+  EXPECT_EQ(file_.cases[1].mode, LOOM_TEST_MODE_VERIFY);
+  EXPECT_EQ(file_.cases[1].input_directive_range.start_byte, 0u);
+  EXPECT_TRUE(iree_string_view_equal(file_.cases[2].input_options.format,
+                                     IREE_SV("loom")));
+  EXPECT_TRUE(
+      iree_string_view_is_empty(file_.cases[2].input_options.arguments));
+  ExpectRangeForFragment(file_.cases[0].input_directive_range,
+                         "// INPUT: cxx std=c++23 root=entry");
+}
+
+TEST_F(TestFileParseTest, InvalidInputDirectivesFailAtTheEnvelopeBoundary) {
+  for (const char* source :
+       {"// INPUT:\nint value;\n", "// INPUT:cxx\nint value;\n",
+        "//INPUT: cxx\nint value;\n",
+        "// INPUT: cxx\n// INPUT: loom\nint value;\n",
+        "int value;\n// INPUT: cxx\n"}) {
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT, Parse(source));
+  }
+}
+
 TEST_F(TestFileParseTest, ExplicitRoundtrip) {
   IREE_ASSERT_OK(Parse("// RUN: roundtrip\nfunc.def @f() {}\n"));
   ASSERT_EQ(file_.case_count, 1);

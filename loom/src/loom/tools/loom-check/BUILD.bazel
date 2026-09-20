@@ -135,7 +135,18 @@ _TARGET_X86_CHECK_DEPS = iree_select({
     "//conditions:default": [],
 })
 
+_INPUT_COPTS = iree_select({
+    "//loom/config/import:cxx": ["-DLOOM_CHECK_HAVE_INPUT_CXX=1"],
+    "//conditions:default": [],
+})
+
+_INPUT_DEPS = iree_select({
+    "//loom/config/import:cxx": ["//loom/src/loom/import/cxx/tooling:input"],
+    "//conditions:default": [],
+})
+
 _LOOM_CHECK_PROVIDER_COPTS = (
+    _INPUT_COPTS +
     _EMIT_AMDGPU_CHECK_COPTS +
     _TARGET_LLVMIR_CHECK_COPTS +
     _EMIT_LLVMIR_CHECK_COPTS +
@@ -148,6 +159,7 @@ _LOOM_CHECK_PROVIDER_COPTS = (
 )
 
 _LOOM_CHECK_PROVIDER_DEPS = (
+    _INPUT_DEPS +
     _EMIT_AMDGPU_CHECK_DEPS +
     _TARGET_LLVMIR_CHECK_DEPS +
     _EMIT_LLVMIR_CHECK_DEPS +
@@ -179,6 +191,7 @@ loom_cc_library(
         "diagnostics.c",
         "emit.c",
         "execute.c",
+        "input.c",
         "low_emit.c",
         "low_report.c",
         "requirements.c",
@@ -189,6 +202,7 @@ loom_cc_library(
         "comparison.h",
         "diagnostics.h",
         "execute.h",
+        "input.h",
         "low_emit.h",
         "low_report.h",
         "requirements.h",
@@ -248,6 +262,7 @@ loom_cc_library(
         "//loom/src/loom/testing:test_diagnostic",
         "//loom/src/loom/testing:test_file",
         "//loom/src/loom/tooling/compile:pipeline",
+        "//loom/src/loom/tooling/input",
         "//loom/src/loom/tools/loom-format:convert",
         "//loom/src/loom/util:diff",
         "//loom/src/loom/util:json",
@@ -456,6 +471,7 @@ loom_cc_library(
         ":main",
         "//loom/src/loom/target:provider",
         "//loom/src/loom/tooling/context",
+        "//loom/src/loom/tooling/input",
         "//runtime/src/iree/base",
     ],
 )

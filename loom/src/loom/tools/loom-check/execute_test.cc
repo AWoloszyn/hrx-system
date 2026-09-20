@@ -185,7 +185,9 @@ const loom_check_emit_provider_t* const kTestEmitProviders[] = {
 };
 
 const loom_check_environment_t kExecuteTestEnvironment = {
-    /*.register_context=*/{
+    /*.input_providers=*/{},
+    /*.register_context=*/
+    {
         /*.fn=*/RegisterTestContext,
         /*.user_data=*/nullptr,
     },
@@ -203,7 +205,9 @@ const loom_check_environment_t kExecuteTestEnvironment = {
 };
 
 const loom_check_environment_t kExecuteTestProviderEnvironment = {
-    /*.register_context=*/{
+    /*.input_providers=*/{},
+    /*.register_context=*/
+    {
         /*.fn=*/RegisterTestContext,
         /*.user_data=*/nullptr,
     },
@@ -287,10 +291,12 @@ class ExecuteTest : public ::testing::Test {
     if (iree_status_is_ok(status)) {
       loom_check_result_initialize(iree_allocator_system(), out_result);
       result_initialized = true;
-      status = loom_check_execute_case(&file.cases[0], 0, &report,
-                                       iree_make_cstring_view("test.loom-test"),
-                                       environment, &context_, &block_pool_,
-                                       iree_allocator_system(), out_result);
+      loom_input_request_t input_request = {};
+      input_request.path = IREE_SV("test.loom-test");
+      status = loom_check_execute_case(
+          &file.cases[0], 0, &report, iree_make_cstring_view("test.loom-test"),
+          &input_request, environment, &context_, &block_pool_,
+          iree_allocator_system(), out_result);
     }
     iree_arena_deinitialize(&arena);
     if (!iree_status_is_ok(status) && result_initialized) {

@@ -139,7 +139,8 @@ static iree_status_t loom_check_provider_initialize_math_policy_registry(
 }
 
 int loom_check_provider_main(int argc, char** argv,
-                             const loom_check_provider_set_t* provider_set) {
+                             const loom_check_provider_set_t* provider_set,
+                             loom_input_provider_list_t input_providers) {
   loom_check_provider_environment_state_t state;
   iree_status_t status =
       loom_check_provider_environment_state_initialize(provider_set, &state);
@@ -150,6 +151,7 @@ int loom_check_provider_main(int argc, char** argv,
   }
 
   const loom_check_environment_t environment = {
+      .input_providers = input_providers,
       .register_context =
           {
               .fn = loom_check_provider_register_context,

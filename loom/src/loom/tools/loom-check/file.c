@@ -150,6 +150,23 @@ static iree_status_t loom_check_process_file(
   iree_string_builder_t template_synced_source;
   iree_string_builder_initialize(allocator, &template_synced_source);
   bool template_sync_changed = false;
+  for (iree_host_size_t i = 0;
+       iree_status_is_ok(status) && file.has_template_directive &&
+       i < file.case_count;
+       ++i) {
+    const loom_input_provider_t* provider = NULL;
+    iree_string_view_t format = file.cases[i].input_options.format;
+    if (iree_string_view_is_empty(format)) {
+      format = options->input_format;
+    }
+    status = loom_input_provider_select(environment->input_providers, format,
+                                        path, &provider);
+    if (iree_status_is_ok(status) && provider != &loom_input_text_provider) {
+      status =
+          iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                           "TEMPLATE materialization requires Loom text input");
+    }
+  }
   if (iree_status_is_ok(status) && file.has_template_directive) {
     status = loom_check_build_template_source(
         path, filename, source, &file, options, context, environment,
@@ -188,9 +205,15 @@ static iree_status_t loom_check_process_file(
 
     loom_check_result_initialize(allocator, &results[i]);
     ++initialized_result_count;
-    status =
-        loom_check_execute_case(test_case, i, &report, filename, environment,
-                                context, block_pool, allocator, &results[i]);
+    const loom_input_request_t input_request = {
+        .source = test_case->input,
+        .path = is_stdin ? IREE_SV("<stdin>") : path,
+        .format = options->input_format,
+        .source_path_options = options->source_path_options,
+    };
+    status = loom_check_execute_case(test_case, i, &report, filename,
+                                     &input_request, environment, context,
+                                     block_pool, allocator, &results[i]);
     if (!iree_status_is_ok(status)) {
       break;
     }
@@ -305,11 +328,9 @@ iree_status_t loom_check_read_and_process(
         loom_tooling_file_contents_string_view(contents);
     iree_string_view_t filename = is_stdin ? IREE_SV("<stdin>") : path;
     char* filename_storage = NULL;
-    if (!is_stdin) {
-      status = loom_tooling_source_path_remap(
-          filename, &options->source_path_options, host_allocator, &filename,
-          &filename_storage);
-    }
+    status = loom_tooling_source_path_remap(
+        filename, &options->source_path_options, host_allocator, &filename,
+        &filename_storage);
     if (iree_status_is_ok(status)) {
       status = loom_check_process_file(
           path, filename, source, is_stdin, options, environment, context,

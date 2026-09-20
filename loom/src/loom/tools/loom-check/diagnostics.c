@@ -79,25 +79,6 @@ iree_status_t loom_check_diagnostic_collector_sink(
 // Diagnostic emission materialization
 //===----------------------------------------------------------------------===//
 
-iree_status_t loom_check_source_resolver_for_case(
-    loom_module_t* module, iree_string_view_t filename,
-    iree_string_view_t source, loom_source_entry_t* out_source_entry,
-    loom_source_table_resolver_t* out_source_resolver) {
-  loom_source_id_t source_id = LOOM_SOURCE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(
-      loom_module_register_source(module, filename, &source_id));
-  *out_source_entry = (loom_source_entry_t){
-      .source_id = source_id,
-      .source = source,
-      .filename = filename,
-  };
-  *out_source_resolver = (loom_source_table_resolver_t){
-      .entries = out_source_entry,
-      .count = 1,
-  };
-  return iree_ok_status();
-}
-
 static bool loom_check_diagnostic_resolve_location(
     const loom_check_diagnostic_emitter_capture_t* capture,
     const loom_module_t* module, const loom_op_t* op,

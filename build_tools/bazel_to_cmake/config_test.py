@@ -209,6 +209,25 @@ loom_check_test_suite(
         self.assertIn('    "test/source_low/"', cmake)
         self.assertNotIn('    "loom-check"', cmake)
 
+    def test_importer_check_suite_preserves_optional_guard(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        loom = bazel_to_cmake_config.include_project(
+            str(repo_root / ".bazel_to_cmake.cfg.py"),
+            "loom/.bazel_to_cmake.cfg.py",
+        )
+        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
+        cmake = bazel_to_cmake_converter.convert_build_file(
+            'loom_check_test_suite(name="test", srcs=["import.cxx-test"], '
+            'data=["helper.h"])',
+            repo_cfg,
+            str(repo_root / "loom/src/loom/import/cxx/tooling/test"),
+            repo_root=str(repo_root),
+        )
+        self.assertIn("if(LOOM_IMPORT_CXX)", cmake)
+        self.assertIn('"import.cxx-test"', cmake)
+        self.assertIn("loom_check_test_suite(", cmake)
+        self.assertIn("helper.h", cmake)
+
     def test_loom_check_test_suite_preserves_glob_srcs(self):
         repo_root = Path(__file__).resolve().parents[2]
         loom = bazel_to_cmake_config.include_project(

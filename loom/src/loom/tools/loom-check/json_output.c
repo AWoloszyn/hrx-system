@@ -203,6 +203,13 @@ static iree_status_t loom_check_json_write_case(
       iree_make_cstring_view(loom_test_mode_name(test_case->mode))));
   IREE_RETURN_IF_ERROR(loom_json_object_write_bool_field(
       &object, IREE_SV("has_run_directive"), test_case->has_run_directive));
+  IREE_RETURN_IF_ERROR(loom_check_json_write_optional_string_field(
+      &object, IREE_SV("input_format"), test_case->input_options.format));
+  IREE_RETURN_IF_ERROR(loom_check_json_write_optional_string_field(
+      &object, IREE_SV("input_options"), test_case->input_options.arguments));
+  IREE_RETURN_IF_ERROR(loom_check_json_write_optional_source_range_field(
+      &object, IREE_SV("input_directive_range"),
+      test_case->input_directive_range));
   IREE_RETURN_IF_ERROR(loom_json_object_write_bool_field(
       &object, IREE_SV("has_requires_directive"),
       test_case->has_requires_directive));
@@ -300,6 +307,12 @@ iree_status_t loom_check_json_write_file_result(
       iree_make_cstring_view(loom_test_mode_name(file->default_mode))));
   IREE_RETURN_IF_ERROR(loom_check_json_write_optional_string_field(
       &object, IREE_SV("default_pipeline"), file->default_pipeline));
+  IREE_RETURN_IF_ERROR(loom_check_json_write_optional_string_field(
+      &object, IREE_SV("default_input_format"),
+      file->default_input_options.format));
+  IREE_RETURN_IF_ERROR(loom_check_json_write_optional_string_field(
+      &object, IREE_SV("default_input_options"),
+      file->default_input_options.arguments));
   IREE_RETURN_IF_ERROR(loom_check_json_write_optional_string_field(
       &object, IREE_SV("default_format_target"), file->default_format_target));
   IREE_RETURN_IF_ERROR(loom_check_json_write_optional_string_field(

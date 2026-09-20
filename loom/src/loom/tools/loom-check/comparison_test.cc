@@ -42,6 +42,20 @@ TEST_F(ComparisonTest, IndependentTrimmedWholeLineGlobs) {
   EXPECT_EQ(result_.raw_outcome, LOOM_CHECK_PASS);
 }
 
+TEST_F(ComparisonTest, CommentedChecksUseTheSamePatterns) {
+  IREE_ASSERT_OK(
+      Compare("// Explanation.\n// CHECK: value=*\n"
+              "// CHECK-NOT: *unknown*\n",
+              "value=7\n"));
+  EXPECT_EQ(result_.raw_outcome, LOOM_CHECK_PASS);
+}
+
+TEST_F(ComparisonTest, CommentedForbiddenCheckFails) {
+  IREE_ASSERT_OK(Compare("// CHECK: value=*\n// CHECK-NOT: *unknown*\n",
+                         "value=unknown\n"));
+  EXPECT_EQ(result_.raw_outcome, LOOM_CHECK_FAIL);
+}
+
 TEST_F(ComparisonTest, CountDoesNotMatchLongerNumber) {
   IREE_ASSERT_OK(Compare("CHECK: * count=5\n", "row count=50\n"));
   EXPECT_EQ(result_.raw_outcome, LOOM_CHECK_FAIL);

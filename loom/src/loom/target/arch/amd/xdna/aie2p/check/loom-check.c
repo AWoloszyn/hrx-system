@@ -25,8 +25,8 @@ static const loom_check_provider_set_t kAie2pCheckProviderSet = {
 int main(int argc, char** argv) {
   IREE_TRACE_APP_ENTER();
   IREE_TRACE_ZONE_BEGIN(z0);
-  const int exit_code =
-      loom_check_provider_main(argc, argv, &kAie2pCheckProviderSet);
+  const int exit_code = loom_check_provider_main(
+      argc, argv, &kAie2pCheckProviderSet, (loom_input_provider_list_t){0});
   IREE_TRACE_ZONE_END(z0);
   IREE_TRACE_APP_EXIT(exit_code);
   return exit_code;

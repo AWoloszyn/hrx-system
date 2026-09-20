@@ -82,12 +82,6 @@ typedef struct loom_check_diagnostic_emitter_capture_t {
 iree_status_t loom_check_diagnostic_collector_sink(
     void* user_data, const loom_diagnostic_t* diagnostic);
 
-// Initializes a single-source resolver for a parsed loom-check case.
-iree_status_t loom_check_source_resolver_for_case(
-    loom_module_t* module, iree_string_view_t filename,
-    iree_string_view_t source, loom_source_entry_t* out_source_entry,
-    loom_source_table_resolver_t* out_source_resolver);
-
 // Diagnostic emitter callback. Pass a
 // loom_check_diagnostic_emitter_capture_t* as user_data.
 iree_status_t loom_check_diagnostic_emitter_capture_emit(

@@ -1018,6 +1018,32 @@ static iree_status_t loom_test_file_parse_case_sections(
       continue;
     }
 
+    if (iree_string_view_starts_with(trimmed, IREE_SV("// INPUT: "))) {
+      if (body_started) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "INPUT directive must appear before source content");
+      }
+      if (!iree_string_view_is_empty(out_case->input_options.format)) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "multiple INPUT directives in one test case");
+      }
+      iree_string_view_t value = iree_string_view_trim(iree_string_view_substr(
+          trimmed, sizeof("// INPUT: ") - 1, IREE_HOST_SIZE_MAX));
+      iree_host_size_t end = 0;
+      while (end < value.size && value.data[end] != ' ' &&
+             value.data[end] != '\t') {
+        ++end;
+      }
+      out_case->input_options.format = iree_string_view_substr(value, 0, end);
+      out_case->input_options.arguments = iree_string_view_trim(
+          iree_string_view_substr(value, end, IREE_HOST_SIZE_MAX));
+      out_case->input_directive_range = loom_test_source_range_from_pointers(
+          source_start, line_start, line.data + line.size);
+      body_start = loom_test_file_scanner_end(scanner, case_end);
+      continue;
+    }
+
     if (loom_test_file_is_run_directive(trimmed)) {
       if (body_started) {
         return iree_make_status(
@@ -1124,7 +1150,9 @@ static iree_status_t loom_test_file_parse_case_sections(
     //   "//XFAIL: reason" — missing space after //
     //   "// TEMPLATE:foo" — missing space after colon
     //   "//TEMPLATE: foo" — missing space after //
-    if (loom_test_file_looks_like_run(trimmed) ||
+    if (iree_string_view_starts_with(trimmed, IREE_SV("// INPUT:")) ||
+        iree_string_view_starts_with(trimmed, IREE_SV("//INPUT:")) ||
+        loom_test_file_looks_like_run(trimmed) ||
         loom_test_file_looks_like_requires(trimmed) ||
         loom_test_file_looks_like_xfail(trimmed) ||
         loom_test_file_looks_like_template(trimmed) ||
@@ -1139,7 +1167,8 @@ static iree_status_t loom_test_file_parse_case_sections(
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
           "malformed directive '%.*s'; expected '// RUN: <mode>', "
-          "'// REQUIRES: <name>', '// XFAIL: <reason>', or "
+          "'// INPUT: <format> [options]', '// REQUIRES: <name>', '// XFAIL: "
+          "<reason>', or "
           "'// TEMPLATE: <path>'",
           (int)trimmed.size, trimmed.data);
     }
@@ -1383,6 +1412,7 @@ iree_status_t loom_test_file_parse(iree_string_view_t source,
       out_file->default_format_target = preamble_case.format_target;
       out_file->default_emit_target = preamble_case.emit_target;
     }
+    out_file->default_input_options = preamble_case.input_options;
     if (preamble_case.has_requires_directive) {
       out_file->default_requirements = preamble_case.requirements;
       out_file->default_requirement_count = preamble_case.requirement_count;
@@ -1493,9 +1523,15 @@ iree_status_t loom_test_file_parse(iree_string_view_t source,
     out_file->default_requirement_count = out_file->cases[0].requirement_count;
   }
 
-  // Apply RUN inheritance: cases without their own RUN directive inherit the
-  // file-level default.
+  // Apply independent INPUT and RUN defaults to cases without their own
+  // directive for that selection.
+  if (case_count > 0 && out_file->cases[0].input_options.format.size) {
+    out_file->default_input_options = out_file->cases[0].input_options;
+  }
   for (iree_host_size_t i = 0; i < case_count; ++i) {
+    if (iree_string_view_is_empty(out_file->cases[i].input_options.format)) {
+      out_file->cases[i].input_options = out_file->default_input_options;
+    }
     if (!out_file->cases[i].has_run_directive) {
       out_file->cases[i].mode = out_file->default_mode;
       out_file->cases[i].output_flags = out_file->default_output_flags;

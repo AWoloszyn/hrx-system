@@ -1,0 +1,47 @@
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+loom_cc_test(
+    name = "input_test",
+    srcs = ["input_test.cc"],
+    deps = [
+        ":input",
+        "//loom/src/loom/import/cxx",
+        "//loom/src/loom/import/cxx/source:catalog",
+        "//loom/src/loom/import/cxx/source:options",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_registry",
+        "//loom/src/loom/tooling/input",
+        "//loom/src/loom/tools/loom-check:execute",
+        "//loom/src/loom/tools/loom-check:file",
+        "//loom/src/loom/tools/loom-check:test_util",
+        "//loom/src/loom/util:json",
+        "//loom/src/loom/verify",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/io:file_handle",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//runtime/src/iree/testing:temp_file",
+    ],
+)
+
+loom_cc_library(
+    name = "input",
+    srcs = ["input.c"],
+    hdrs = ["input.h"],
+    deps = [
+        "//loom/src/loom/import/cxx",
+        "//loom/src/loom/import/cxx/source:options",
+        "//loom/src/loom/tooling/input",
+        "//loom/src/loom/tooling/io:file",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/base/internal:path",
+    ],
+)

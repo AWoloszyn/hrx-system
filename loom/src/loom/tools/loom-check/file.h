@@ -21,6 +21,8 @@ extern "C" {
 #endif
 
 typedef struct loom_check_process_options_t {
+  // Explicit source format for stdin or nonstandard filenames, empty for auto.
+  iree_string_view_t input_format;
   // Rewrites expected sections and synchronized template cases in-place.
   bool update;
   // Prints PASS/FAIL/SKIP for every case, not just failures.

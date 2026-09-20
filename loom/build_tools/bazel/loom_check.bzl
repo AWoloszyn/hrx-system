@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Macros for defining tests that run .loom-test files through loom-check."""
+"""Macros for defining tests that run .<format>-test files through loom-check."""
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//build_tools/bazel:cc_attrs.bzl", "cc_attrs")
@@ -12,8 +12,6 @@ load(
     "//loom/requirements:package_policy.bzl",
     "apply_loom_test_policy",
 )
-
-_LOOM_CHECK_EXTENSION = ".loom-test"
 
 LoomCheckTestInfo = provider(
     doc = "Metadata for a generated loom-check test wrapper.",
@@ -26,10 +24,10 @@ LoomCheckTestInfo = provider(
 )
 
 def _loom_check_test_base_name(src):
-    if not src.endswith(_LOOM_CHECK_EXTENSION):
-        fail("loom_check_test source must use the .loom-test extension: %s" %
-             src)
-    return src[:-len(_LOOM_CHECK_EXTENSION)]
+    base, separator, extension = src.rpartition(".")
+    if not separator or not extension.endswith("-test") or extension == "-test":
+        fail("loom_check_test source must use a .<format>-test extension: %s" % src)
+    return base
 
 def _loom_check_expand_env(ctx):
     return {
@@ -108,12 +106,12 @@ _loom_check_executable = rule(
             executable = True,
         ),
         "src": attr.label(
-            allow_single_file = [_LOOM_CHECK_EXTENSION],
-            doc = "Source .loom-test file appended by the wrapper.",
+            allow_single_file = True,
+            doc = "Source .<format>-test file appended by the wrapper.",
             mandatory = True,
         ),
     },
-    doc = "Generates a shell launcher for one .loom-test file.",
+    doc = "Generates a shell launcher for one .<format>-test file.",
     executable = True,
 )
 
@@ -126,11 +124,11 @@ def loom_check_test(
         env = {},
         runner = "//loom/src/loom/tools/loom-check:loom-check-test",
         **kwargs):
-    """Creates a test that runs a single .loom-test file through loom-check.
+    """Creates a test that runs a single .<format>-test file through loom-check.
 
     Args:
       name: Name of the generated test.
-      src: Source .loom-test file containing the test cases.
+      src: Source .<format>-test file containing the test cases.
       size: Test size (default: "small").
       tags: Additional tags to apply to the test.
       data: Additional runfiles made available to loom-check, including every
@@ -177,15 +175,15 @@ def loom_check_test_suite(
         runner = "//loom/src/loom/tools/loom-check:loom-check-test",
         test_name_prefix_to_strip = "",
         **kwargs):
-    """Creates one test per .loom-test file, bundled into a test suite.
+    """Creates one test per .<format>-test file, bundled into a test suite.
 
-    Each .loom-test file becomes an independent test target. The test name
+    Each .<format>-test file becomes an independent test target. The test name
     is derived from the file path by replacing "/" with "_" and
-    stripping the .loom-test extension.
+    stripping the .<format>-test extension.
 
     Args:
       name: Name of the generated test suite.
-      srcs: List of .loom-test files to test.
+      srcs: List of .<format>-test files to test.
       size: Test size (default: "small").
       tags: Additional tags to apply to each generated test and the suite.
       data: Additional runfiles made available to each generated test.

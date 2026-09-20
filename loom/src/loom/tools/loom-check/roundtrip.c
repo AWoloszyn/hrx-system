@@ -10,6 +10,7 @@
 #include "loom/ir/module.h"
 #include "loom/tools/loom-check/comparison.h"
 #include "loom/tools/loom-check/execute.h"
+#include "loom/tools/loom-check/input.h"
 
 iree_status_t loom_check_validate_printed_ir(
     iree_string_view_t source, loom_context_t* context,
@@ -69,18 +70,11 @@ static loom_text_print_flags_t loom_check_roundtrip_print_flags(
 
 iree_status_t loom_check_execute_roundtrip(
     const loom_test_case_t* test_case, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result) {
-  // Strip standalone comment lines from input. Comments become blank
-  // lines to preserve line count for diagnostic source locations.
-  iree_string_builder_t stripped_input;
-  iree_string_builder_initialize(allocator, &stripped_input);
-  IREE_RETURN_IF_ERROR(
-      loom_test_file_strip_comments(test_case->input, &stripped_input));
-
-  // Parse the stripped input.
-  loom_module_t* module = NULL;
+  loom_input_module_t input = {0};
   loom_check_diagnostic_capture_t diagnostic_capture = {
       .detail = &result->detail,
       .result = result,
@@ -100,18 +94,16 @@ iree_status_t loom_check_execute_roundtrip(
         &low_registry.registry, environment->low_asm_diagnostic_provider_list,
         &low_asm_storage, &parse_options.low_asm_environment);
   }
-  iree_status_t parse_status =
-      iree_status_is_ok(registry_status)
-          ? loom_text_parse(iree_string_builder_view(&stripped_input), filename,
-                            context, block_pool, &parse_options, &module)
-          : registry_status;
-  iree_string_builder_deinitialize(&stripped_input);
-  IREE_RETURN_IF_ERROR(parse_status);
-  if (!module) {
-    // Parse errors are content failures, not infrastructure failures.
-    // Diagnostics are already in result->detail from the sink.
+  iree_status_t parse_status = registry_status;
+  if (iree_status_is_ok(parse_status)) {
+    parse_status =
+        loom_check_load_input(test_case, input_request, environment, context,
+                              block_pool, &parse_options, allocator, &input);
+  }
+  if (!iree_status_is_ok(parse_status) || !input.module) {
     result->raw_outcome = LOOM_CHECK_FAIL;
-    return iree_ok_status();
+    loom_input_module_deinitialize(&input);
+    return parse_status;
   }
 
   // Print the parsed module to canonical text (directly into the result's
@@ -124,8 +116,8 @@ iree_status_t loom_check_execute_roundtrip(
       .low_asm_environment = low_asm_environment,
   };
   iree_status_t print_status = loom_text_print_module_to_builder_with_options(
-      module, &result->actual_output, &print_options);
-  loom_module_free(module);
+      input.module, &result->actual_output, &print_options);
+  loom_input_module_deinitialize(&input);
   IREE_RETURN_IF_ERROR(print_status);
   bool valid_output = false;
   IREE_RETURN_IF_ERROR(loom_check_validate_printed_ir(

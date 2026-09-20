@@ -215,12 +215,13 @@ static iree_status_t loom_format_write_bytecode_output(
   return status;
 }
 
-static iree_status_t loom_format_write_module(
+iree_status_t loom_format_write_module(
     const loom_module_t* module, loom_module_format_t output_format,
     loom_text_print_flags_t text_print_flags,
     iree_arena_block_pool_t* block_pool,
     loom_text_low_asm_environment_t low_asm_environment,
     loom_format_output_t* out_output, iree_allocator_t allocator) {
+  *out_output = (loom_format_output_t){0};
   switch (output_format) {
     case LOOM_MODULE_FORMAT_TEXT:
       return loom_format_write_text_output(
