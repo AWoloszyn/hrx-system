@@ -1,0 +1,313 @@
+// Narrow runtime arguments share the direct scalar ABI with wider values.
+// Stores and extensions consume their declared source width; guard elements
+// make the memory footprint observable.
+
+kernel.def export("narrow_argument_i8") @narrow_argument_i8() {
+  %unit = index.constant 1 : index
+  %workgroup_size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%workgroup_size, %unit, %unit) : index
+} launch(%raw_output: buffer, %value: i8, %extended_output: buffer) {
+  %lane = kernel.workitem.id<x> : index
+  %unsigned_start = index.constant 64 : index
+  %unsigned_lane = index.add %lane, %unsigned_start : index
+  %raw_start = index.constant 1 : offset
+  %extended_start = index.constant 4 : offset
+  %raw_view = buffer.view %raw_output[%raw_start] : buffer -> view<64xi8>
+  %extended_view = buffer.view %extended_output[%extended_start] : buffer -> view<128xi32>
+  %signed_value = scalar.extsi %value : i8 to i32
+  %unsigned_value = scalar.extui %value : i8 to i32
+  view.store %value, %raw_view[%lane] : i8, view<64xi8>
+  view.store %signed_value, %extended_view[%lane] : i32, view<128xi32>
+  view.store %unsigned_value, %extended_view[%unsigned_lane] : i32, view<128xi32>
+  kernel.return
+}
+
+kernel.def export("narrow_argument_i16") @narrow_argument_i16() {
+  %unit = index.constant 1 : index
+  %workgroup_size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%workgroup_size, %unit, %unit) : index
+} launch(%raw_output: buffer, %value: i16, %extended_output: buffer) {
+  %lane = kernel.workitem.id<x> : index
+  %unsigned_start = index.constant 64 : index
+  %unsigned_lane = index.add %lane, %unsigned_start : index
+  %raw_start = index.constant 2 : offset
+  %extended_start = index.constant 4 : offset
+  %raw_view = buffer.view %raw_output[%raw_start] : buffer -> view<64xi16>
+  %extended_view = buffer.view %extended_output[%extended_start] : buffer -> view<128xi32>
+  %signed_value = scalar.extsi %value : i16 to i32
+  %unsigned_value = scalar.extui %value : i16 to i32
+  view.store %value, %raw_view[%lane] : i16, view<64xi16>
+  view.store %signed_value, %extended_view[%lane] : i32, view<128xi32>
+  view.store %unsigned_value, %extended_view[%unsigned_lane] : i32, view<128xi32>
+  kernel.return
+}
+
+check.case @narrow_argument_i8_zero {
+  %value = check.literal value(0) : i8
+  %raw = check.generate.fill value(37) : tensor<66xi8>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i8(%raw, %value, %extended) : (tensor<66xi8>, i8, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(1) : tensor<66xi8> -> tensor<64xi8>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(0) : tensor<64xi8>
+  %expected_signed = check.generate.fill value(0) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(0) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi8>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi8> -> tensor<1xi8>
+  %raw_suffix = check.tensor.view %raw offset(65) : tensor<66xi8> -> tensor<1xi8>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi8>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i8_one {
+  %value = check.literal value(1) : i8
+  %raw = check.generate.fill value(37) : tensor<66xi8>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i8(%raw, %value, %extended) : (tensor<66xi8>, i8, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(1) : tensor<66xi8> -> tensor<64xi8>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(1) : tensor<64xi8>
+  %expected_signed = check.generate.fill value(1) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(1) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi8>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi8> -> tensor<1xi8>
+  %raw_suffix = check.tensor.view %raw offset(65) : tensor<66xi8> -> tensor<1xi8>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi8>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i8_positive {
+  %value = check.literal value(127) : i8
+  %raw = check.generate.fill value(37) : tensor<66xi8>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i8(%raw, %value, %extended) : (tensor<66xi8>, i8, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(1) : tensor<66xi8> -> tensor<64xi8>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(127) : tensor<64xi8>
+  %expected_signed = check.generate.fill value(127) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(127) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi8>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi8> -> tensor<1xi8>
+  %raw_suffix = check.tensor.view %raw offset(65) : tensor<66xi8> -> tensor<1xi8>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi8>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i8_sign_bit {
+  %value = check.literal value(-128) : i8
+  %raw = check.generate.fill value(37) : tensor<66xi8>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i8(%raw, %value, %extended) : (tensor<66xi8>, i8, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(1) : tensor<66xi8> -> tensor<64xi8>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(-128) : tensor<64xi8>
+  %expected_signed = check.generate.fill value(-128) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(128) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi8>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi8> -> tensor<1xi8>
+  %raw_suffix = check.tensor.view %raw offset(65) : tensor<66xi8> -> tensor<1xi8>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi8>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i8_all_bits {
+  %value = check.literal value(-1) : i8
+  %raw = check.generate.fill value(37) : tensor<66xi8>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i8(%raw, %value, %extended) : (tensor<66xi8>, i8, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(1) : tensor<66xi8> -> tensor<64xi8>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(-1) : tensor<64xi8>
+  %expected_signed = check.generate.fill value(-1) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(255) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi8>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi8> -> tensor<1xi8>
+  %raw_suffix = check.tensor.view %raw offset(65) : tensor<66xi8> -> tensor<1xi8>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi8>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi8>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i16_zero {
+  %value = check.literal value(0) : i16
+  %raw = check.generate.fill value(37) : tensor<66xi16>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i16(%raw, %value, %extended) : (tensor<66xi16>, i16, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(2) : tensor<66xi16> -> tensor<64xi16>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(0) : tensor<64xi16>
+  %expected_signed = check.generate.fill value(0) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(0) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi16>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi16> -> tensor<1xi16>
+  %raw_suffix = check.tensor.view %raw offset(130) : tensor<66xi16> -> tensor<1xi16>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi16>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i16_one {
+  %value = check.literal value(1) : i16
+  %raw = check.generate.fill value(37) : tensor<66xi16>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i16(%raw, %value, %extended) : (tensor<66xi16>, i16, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(2) : tensor<66xi16> -> tensor<64xi16>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(1) : tensor<64xi16>
+  %expected_signed = check.generate.fill value(1) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(1) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi16>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi16> -> tensor<1xi16>
+  %raw_suffix = check.tensor.view %raw offset(130) : tensor<66xi16> -> tensor<1xi16>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi16>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i16_positive {
+  %value = check.literal value(32767) : i16
+  %raw = check.generate.fill value(37) : tensor<66xi16>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i16(%raw, %value, %extended) : (tensor<66xi16>, i16, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(2) : tensor<66xi16> -> tensor<64xi16>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(32767) : tensor<64xi16>
+  %expected_signed = check.generate.fill value(32767) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(32767) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi16>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi16> -> tensor<1xi16>
+  %raw_suffix = check.tensor.view %raw offset(130) : tensor<66xi16> -> tensor<1xi16>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi16>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i16_sign_bit {
+  %value = check.literal value(-32768) : i16
+  %raw = check.generate.fill value(37) : tensor<66xi16>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i16(%raw, %value, %extended) : (tensor<66xi16>, i16, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(2) : tensor<66xi16> -> tensor<64xi16>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(-32768) : tensor<64xi16>
+  %expected_signed = check.generate.fill value(-32768) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(32768) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi16>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi16> -> tensor<1xi16>
+  %raw_suffix = check.tensor.view %raw offset(130) : tensor<66xi16> -> tensor<1xi16>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi16>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}
+
+check.case @narrow_argument_i16_all_bits {
+  %value = check.literal value(-1) : i16
+  %raw = check.generate.fill value(37) : tensor<66xi16>
+  %extended = check.generate.fill value(37) : tensor<130xi32>
+  kernel.launch @narrow_argument_i16(%raw, %value, %extended) : (tensor<66xi16>, i16, tensor<130xi32>)
+  %raw_values = check.tensor.view %raw offset(2) : tensor<66xi16> -> tensor<64xi16>
+  %signed_values = check.tensor.view %extended offset(4) : tensor<130xi32> -> tensor<64xi32>
+  %unsigned_values = check.tensor.view %extended offset(260) : tensor<130xi32> -> tensor<64xi32>
+  %expected_raw = check.generate.fill value(-1) : tensor<64xi16>
+  %expected_signed = check.generate.fill value(-1) : tensor<64xi32>
+  %expected_unsigned = check.generate.fill value(65535) : tensor<64xi32>
+  check.expect.equal actual(%raw_values) expected(%expected_raw) : tensor<64xi16>
+  check.expect.equal actual(%signed_values) expected(%expected_signed) : tensor<64xi32>
+  check.expect.equal actual(%unsigned_values) expected(%expected_unsigned) : tensor<64xi32>
+  %raw_prefix = check.tensor.view %raw offset(0) : tensor<66xi16> -> tensor<1xi16>
+  %raw_suffix = check.tensor.view %raw offset(130) : tensor<66xi16> -> tensor<1xi16>
+  %extended_prefix = check.tensor.view %extended offset(0) : tensor<130xi32> -> tensor<1xi32>
+  %extended_suffix = check.tensor.view %extended offset(516) : tensor<130xi32> -> tensor<1xi32>
+  %raw_guard = check.generate.fill value(37) : tensor<1xi16>
+  %extended_guard = check.generate.fill value(37) : tensor<1xi32>
+  check.expect.equal actual(%raw_prefix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%raw_suffix) expected(%raw_guard) : tensor<1xi16>
+  check.expect.equal actual(%extended_prefix) expected(%extended_guard) : tensor<1xi32>
+  check.expect.equal actual(%extended_suffix) expected(%extended_guard) : tensor<1xi32>
+  check.return
+}

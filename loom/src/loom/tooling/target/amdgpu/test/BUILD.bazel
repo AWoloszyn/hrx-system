@@ -159,6 +159,18 @@ loom_test(
 )
 
 loom_test(
+    name = "narrow_argument_hardware_test",
+    srcs = ["narrow_arguments.loom"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+)
+
+loom_test(
+    name = "narrow_argument_access_test",
+    srcs = ["narrow_arguments.loom"],
+    execution_profile = AMDGPU_ACCESS_PROFILE,
+)
+
+loom_test(
     name = "narrow_integer_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:integer_narrow_consumers.loom"],
     execution_profile = AMDGPU_HARDWARE_PROFILE,
