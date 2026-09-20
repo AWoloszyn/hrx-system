@@ -41,7 +41,7 @@ def _declare_relocatable_module(
         progress_message,
         data = [],
         input_format = "",
-        input_options = []):
+        inputopts = []):
     dependencies = _collect_dependency_modules(dependency_infos)
     transitive_dependencies = depset(
         direct = dependencies.direct,
@@ -60,7 +60,7 @@ def _declare_relocatable_module(
     args.add("--output=%s" % module.path)
     if input_format:
         args.add("--input-format=%s" % input_format)
-    args.add_all(input_options, format_each = "--input-options=%s")
+    args.add_all(inputopts, format_each = "--input-options=%s")
     args.add_all(sources)
     args.add_all(dependencies.direct, format_each = "--library=%s")
     args.add_all(

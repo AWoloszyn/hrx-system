@@ -251,7 +251,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         deps=None,
         data=None,
         input_format="",
-        input_options=None,
+        inputopts=None,
         tags=None,
         target_compatible_with=None,
         **kwargs,
@@ -269,7 +269,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             self._convert_data_list_block(data),
             self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
             self._convert_string_list_block(
-                "INPUT_OPTIONS", self._convert_location_args(input_options), sort=False
+                "INPUTOPTS", self._convert_location_args(inputopts), sort=False
             ),
             "  MODE merge\n  OUTPUT_FORMAT bc\n  STRICT_DEPS\n",
         ]
@@ -287,7 +287,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         deps=None,
         data=None,
         input_format="",
-        input_options=None,
+        inputopts=None,
         args=None,
         execution_profile=None,
         tags=None,
@@ -314,8 +314,8 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             self._convert_data_list_block(data),
             self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
             self._convert_string_list_block(
-                "INPUT_OPTIONS",
-                self._convert_location_args(input_options),
+                "INPUTOPTS",
+                self._convert_location_args(inputopts),
                 sort=False,
             ),
             self._convert_string_list_block("ARGS", args, sort=False),

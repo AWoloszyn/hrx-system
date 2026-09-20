@@ -186,7 +186,7 @@ loom_test(
 )
 ```
 
-List included project headers in `data`. `input_options` accepts provider-scoped
+List included project headers in `data`. `inputopts` accepts provider-scoped
 settings such as `["cxx:std=c++23 D=COUNT=8 I=include"]`. `loom_test` imports and
 links its root-owned cases, runs correctness checks, and runs a single-iteration
 benchmark smoke check. Dependency libraries retain their own tests; linking one

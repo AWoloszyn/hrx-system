@@ -136,9 +136,9 @@ def _loom_library_impl(ctx):
         sources = ctx.files.srcs,
         data = ctx.files.data,
         input_format = ctx.attr.input_format,
-        input_options = [
+        inputopts = [
             ctx.expand_location(option, targets = ctx.attr.srcs + ctx.attr.data)
-            for option in ctx.attr.input_options
+            for option in ctx.attr.inputopts
         ],
         dependency_infos = dependency_infos,
         output_stem = ctx.label.name,
@@ -171,7 +171,7 @@ _loom_library = rule(
         "input_format": attr.string(
             doc = "Source provider override; empty selects each source by filename.",
         ),
-        "input_options": attr.string_list(
+        "inputopts": attr.string_list(
             doc = "Provider-scoped options (format:options), with location expansion.",
         ),
         "srcs": attr.label_list(
@@ -583,7 +583,7 @@ def _declare_library(
         deps,
         data,
         input_format,
-        input_options,
+        inputopts,
         execution_profiles,
         kernel_targets,
         plan_benchmarks,
@@ -598,7 +598,7 @@ def _declare_library(
         deps = deps,
         data = data,
         input_format = input_format,
-        input_options = input_options,
+        inputopts = inputopts,
         tags = tags,
         testonly = module_testonly,
         target_compatible_with = target_compatible_with,
@@ -732,7 +732,7 @@ def loom_library(
         deps = [],
         data = [],
         input_format = "",
-        input_options = [],
+        inputopts = [],
         tags = [],
         visibility = None,
         target_compatible_with = []):
@@ -750,7 +750,7 @@ def loom_library(
         deps = deps,
         data = data,
         input_format = input_format,
-        input_options = input_options,
+        inputopts = inputopts,
         execution_profiles = [],
         kernel_targets = [],
         plan_benchmarks = False,
@@ -767,7 +767,7 @@ def loom_test(
         deps = [],
         data = [],
         input_format = "",
-        input_options = [],
+        inputopts = [],
         args = [],
         execution_profile = None,
         size = "small",
@@ -789,7 +789,7 @@ def loom_test(
       srcs: Authored source modules jointly owning the test module.
       data: Headers and runtime fixtures available during import and execution.
       input_format: Source provider override, or empty for filename selection.
-      input_options: Provider-scoped options, such as ``cxx:std=c++20``.
+      inputopts: Provider-scoped options, such as ``cxx:std=c++20``.
       deps: Loom libraries available only for dependency resolution.
       args: Additional arguments passed to the correctness runner.
       execution_profile: Optional execution environment and requirement policy.
@@ -808,7 +808,7 @@ def loom_test(
         deps = deps,
         data = data,
         input_format = input_format,
-        input_options = input_options,
+        inputopts = inputopts,
         tags = tags + ["manual"],
         testonly = True,
         visibility = ["//visibility:private"],
@@ -841,7 +841,7 @@ def loom_kernel_library(
         deps = [],
         data = [],
         input_format = "",
-        input_options = [],
+        inputopts = [],
         execution_profiles = [],
         targets = [],
         tags = [],
@@ -862,7 +862,7 @@ def loom_kernel_library(
         deps = deps,
         data = data,
         input_format = input_format,
-        input_options = input_options,
+        inputopts = inputopts,
         execution_profiles = execution_profiles,
         kernel_targets = targets,
         plan_benchmarks = True,

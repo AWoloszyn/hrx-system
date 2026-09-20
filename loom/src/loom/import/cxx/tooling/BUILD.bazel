@@ -75,7 +75,7 @@ loom_test(
     name = "source_test",
     srcs = ["check_cases.cc"],
     data = ["check_cases.h"],
-    input_options = ["cxx:D=CHECK_EXPECTED=0u"],
+    inputopts = ["cxx:D=CHECK_EXPECTED=0u"],
     target_compatible_with = loom_config_compatible_with([
         "//loom/config/import:cxx",
         "//loom/config/target/arch:vm",

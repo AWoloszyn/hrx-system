@@ -1002,7 +1002,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include approximate-functions=true root=aiter_swiglu_f16"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1022,7 +1022,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=assumption_kernel"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1042,7 +1042,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=constant_loops"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1062,7 +1062,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=continue_copy"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1082,7 +1082,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=continue_pointers"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1102,7 +1102,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=continue_scheduled"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1122,7 +1122,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=continue_values"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1142,7 +1142,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=continue_vectors"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1162,7 +1162,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=control_flow"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1182,7 +1182,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=early_returns"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1202,7 +1202,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=enum_storage_u16"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1222,7 +1222,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=enum_storage_u32"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1242,7 +1242,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=enum_storage_u64"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1262,7 +1262,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=enum_storage_u8"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1282,7 +1282,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include approximate-functions=true root=flash_attention"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1302,7 +1302,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=increment_pointers"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1322,7 +1322,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=increment_u64"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1342,7 +1342,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=increment_u8"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1362,7 +1362,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false I=../include root=increment_values"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1382,7 +1382,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include approximate-functions=true root=llama_rms_norm"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1402,7 +1402,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:root=mixed_dot"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1422,7 +1422,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=pointer_walk"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1442,7 +1442,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:root=register_lookup"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1462,7 +1462,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:root=register_lookup_float"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1482,7 +1482,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:D=UNROLL=1 D=DEPTH=1 builtin-includes=false isystem=../include root=scheduled_sum"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1502,7 +1502,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:D=UNROLL=1 D=DEPTH=2 builtin-includes=false isystem=../include root=scheduled_sum"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1522,7 +1522,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:D=UNROLL=3 D=DEPTH=1 builtin-includes=false isystem=../include root=scheduled_sum"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1542,7 +1542,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:D=UNROLL=3 D=DEPTH=2 builtin-includes=false isystem=../include root=scheduled_sum"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1562,7 +1562,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=short_circuit"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1582,7 +1582,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=vector_control_kernel"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1602,7 +1602,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=vector_depth"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1622,7 +1622,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=vector_depth_span"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1642,7 +1642,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:root=vector_initializers"
   MODE merge
   OUTPUT_FORMAT bc
@@ -1662,7 +1662,7 @@ loom_module(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:builtin-includes=false isystem=../include root=vector_masks"
   MODE merge
   OUTPUT_FORMAT bc

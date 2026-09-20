@@ -88,7 +88,7 @@ loom_test(
     "check_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"
-  INPUT_OPTIONS
+  INPUTOPTS
     "cxx:D=CHECK_EXPECTED=0u"
 )
 endif()

@@ -294,14 +294,14 @@ loom_library(
     name = "source_kernel",
     srcs = ["kernel.cc"],
     data = ["kernel.h"],
-    input_options = ["cxx:root=entry"],
+    inputopts = ["cxx:root=entry"],
 )
 loom_test(
     name = "source_test",
     srcs = ["check_cases.cc", ":generated_cases.cc"],
     data = ["check_cases.h"],
     input_format = "cxx",
-    input_options = ["cxx:std=c++20 D=EXPECTED=5"],
+    inputopts = ["cxx:std=c++20 D=EXPECTED=5"],
     args = ["--case=header_assertion"],
     target_compatible_with = ["//loom/config/target/arch:vm"],
 )
@@ -318,7 +318,7 @@ loom_test(
         self.assertIn('"--arrays"', cmake)
         self.assertIn("loom_module(", cmake)
         self.assertIn("NAME\n    source_kernel", cmake)
-        self.assertIn('"cxx:root=entry"', cmake)
+        self.assertIn('INPUTOPTS\n    "cxx:root=entry"', cmake)
         self.assertIn("STRICT_DEPS", cmake)
         self.assertIn("loom_test(", cmake)
         self.assertIn('"check_cases.cc"', cmake)
