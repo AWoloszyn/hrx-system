@@ -4,12 +4,13 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""C++ kernel inputs with independent floating-point and exact integer references."""
+"""C++ checks and kernel inputs with independent numerical references."""
 
+import argparse
 import math
+import os
 import random
 import struct
-import sys
 from pathlib import Path
 
 ELEMENTS = {"f16": ("e", "<f2", 2), "f32": ("f", "<f4", 4), "i8": ("b", "|i1", 1), "i16": ("h", "<i2", 2), "i32": ("i", "<i4", 4), "i64": ("q", "<i8", 8)}
@@ -247,20 +248,18 @@ def integer_increment(directory, width, inputs):
     return f"kernel.decl @increment_u{width}() launch(%output: buffer, %input: i{argument_width})\n\n" + "\n".join(cases)
 
 
-def function_cases(name, argument_widths, result_width, samples):
-    types = ", ".join(f"i{width}" for width in argument_widths)
-    parameters = ", ".join(f"%arg{index}: i{width}" for index, width in enumerate(argument_widths))
-    cases = [f"func.decl @{name}({parameters}) -> (i{result_width})"]
+def function_cases(name, argument_widths, result_width, samples, *, argument_types=None):
+    """Emit source calls with the oracle's exact argument and expected bits."""
+    cases = []
     for ordinal, (arguments, expected) in enumerate(samples):
-        lines = [f"check.case public @{name}_{ordinal} {{"]
-        for index, (value, width) in enumerate(zip(arguments, argument_widths, strict=True)):
-            lines.append(f"  %arg{index} = check.literal value({signed_bits(value, width)}) : i{width}")
-        operands = ", ".join(f"%arg{index}" for index in range(len(arguments)))
-        lines.append(f"  %actual = func.call @{name}({operands}) : ({types}) -> (i{result_width})")
-        lines.append(f"  %expected = check.literal value({signed_bits(expected, result_width)}) : i{result_width}")
-        lines.append(f"  check.expect.equal actual(%actual) expected(%expected) : i{result_width}")
-        lines.extend(["  check.return", "}"])
-        cases.append("\n".join(lines))
+        operands = [f"0x{value % (1 << width):x}ULL" for value, width in zip(arguments, argument_widths, strict=True)]
+        if argument_types is not None:
+            operands = [f"static_cast<{kind}>({value})" for kind, value in zip(argument_types, operands, strict=True)]
+        operands = ", ".join(operands)
+        expected_bits = expected % (1 << result_width)
+        cases.append(
+            f"LOOM_CHECK_CASE({name}_{ordinal}) {{\n  const auto actual = {name}({operands});\n  loom::check::expect_equal(actual,\n      static_cast<decltype(actual)>(0x{expected_bits:x}ULL));\n}}"
+        )
     return "\n\n".join(cases)
 
 
@@ -303,8 +302,7 @@ def increment_condition_reference(value):
     return (selected ^ (final * 17)) % (1 << 32)
 
 
-def increment_functions(directory):
-    del directory
+def increment_functions():
     counts = [0, 1, 2, 3, 7, 8, 15, 16, 31, 32]
     functions = [
         ("increment_byte", [32], 32, [([value], increment_byte_reference(value)) for value in range(256)]),
@@ -408,8 +406,7 @@ def continue_references(count, choose):
     }
 
 
-def continue_functions(directory):
-    del directory
+def continue_functions():
     counts = [0, 1, 2, 3, 7, 16, 31]
     cases = []
     for name in continue_references(0, 0):
@@ -516,8 +513,7 @@ def continue_vectors(directory):
 CONSTANT_LOOP_STARTS = [0, 1, 2, 3, 7, 16, 17, 18, 19, 20, 21, 0x80000000, 0xFFFFFFFF]
 
 
-def schedule_functions(directory):
-    del directory
+def schedule_functions():
     cases = []
     for name in ["call", "snapshot", "wide", "narrow", "signed", "unevaluated", "initializer", "serial"]:
         samples = []
@@ -532,8 +528,7 @@ def schedule_functions(directory):
     return "\n".join(cases)
 
 
-def constant_loop_functions(directory):
-    del directory
+def constant_loop_functions():
     cases = [
         ("counted_stride", [([start], sum(range(start, 20, 4))) for start in CONSTANT_LOOP_STARTS]),
         ("counted_empty", [([start], 7) for start in CONSTANT_LOOP_STARTS]),
@@ -569,8 +564,7 @@ def constant_loops(directory):
     return "kernel.decl @constant_loops() launch(%input: buffer, %output: buffer, %start: i32)\n\n" + "\n".join(cases)
 
 
-def assumption_functions(directory):
-    del directory
+def assumption_functions():
     values = [0, 1, 127, 128, 254, 255]
     seven = [[0] * 7, [255] * 7] + [[255 if lane == active else 0 for lane in range(7)] for active in range(7)]
     samples = [
@@ -615,8 +609,7 @@ def assumption_kernel(directory):
     return "kernel.decl @assumption_kernel() launch(%output: buffer, %input: i32)\n\n" + "\n".join(cases)
 
 
-def integer_functions(directory):
-    del directory
+def integer_functions():
     cases = []
 
     def function(name, argument_widths, result_width, samples):
@@ -638,21 +631,20 @@ def integer_functions(directory):
     return "\n\n".join(cases) + "\n"
 
 
-def enum_functions(directory):
-    del directory
+def enum_functions():
     cases = []
     commands = [0, 1, 2, 3, 4, 5, 6, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF]
-    cases.append(function_cases("enum_dispatch", [32], 32, [([value], 128 if value == 1 else 255 if value >= 5 else value + 7) for value in commands]))
-    cases.append(function_cases("enum_byte", [8], 32, [([value], (value + 1) % 256) for value in range(256)]))
-    cases.append(function_cases("enum_signed", [8], 64, [([value], value * 65537) for value in [-128, -127, -1, 0, 1, 126, 127]]))
-    cases.append(function_cases("enum_unsigned", [32], 64, [([value], value + 1) for value in commands]))
+    cases.append(function_cases("enum_dispatch", [32], 32, [([value], 128 if value == 1 else 255 if value >= 5 else value + 7) for value in commands], argument_types=['Command']))
+    cases.append(function_cases("enum_byte", [8], 32, [([value], (value + 1) % 256) for value in range(256)], argument_types=['Byte']))
+    cases.append(function_cases("enum_signed", [8], 64, [([value], value * 65537) for value in [-128, -127, -1, 0, 1, 126, 127]], argument_types=['SignedByte']))
+    cases.append(function_cases("enum_unsigned", [32], 64, [([value], value + 1) for value in commands], argument_types=['Word']))
     wide = [0, 1, (1 << 32) - 1, 1 << 32, (1 << 63) - 1, 1 << 63, (1 << 64) - 1]
-    cases.append(function_cases("enum_compare64", [64, 64], 32, [([left, right], int(left < right)) for left in wide for right in wide]))
+    cases.append(function_cases("enum_compare64", [64, 64], 32, [([left, right], int(left < right)) for left in wide for right in wide], argument_types=['Long', 'Long']))
     cases.append(function_cases("enum_inferred", [32], 64, [([value], (1 << 40) if value else -1) for value in commands]))
     cases.append(function_cases("enum_inferred_unsigned", [64], 32, [([value], int(value < (1 << 64) - 1)) for value in wide]))
     cases.append(function_cases("enum_specialization", [32], 64, [([value], (1 << 40) + 0xFFFFFFFF + (4 if value else 0)) for value in commands]))
-    cases.append(function_cases("enum_packed_unsigned", [8], 32, [([value], value + 1) for value in range(256)]))
-    cases.append(function_cases("enum_packed_signed", [8], 32, [([value], value - 1) for value in range(-128, 128)]))
+    cases.append(function_cases("enum_packed_unsigned", [8], 32, [([value], value + 1) for value in range(256)], argument_types=['PackedByte']))
+    cases.append(function_cases("enum_packed_signed", [8], 32, [([value], value - 1) for value in range(-128, 128)], argument_types=['PackedSignedByte']))
     cases.append(function_cases("enum_bool", [32], 32, [([value], int(value != 0)) for value in commands]))
     return "\n\n".join(cases) + "\n"
 
@@ -676,8 +668,7 @@ def enum_storage(directory, width):
     return f"kernel.decl @enum_storage_u{width}() launch(%input: buffer, %output: buffer, %delta: i{width})\n\n" + "\n".join(cases)
 
 
-def comparison_functions(directory):
-    del directory
+def comparison_functions():
     samples = []
     for mask in range(128):
         arguments = [256 if mask & (1 << index) else 255 for index in range(7)]
@@ -766,8 +757,7 @@ def vector_depth_span(directory):
     return "kernel.decl @vector_depth_span() launch(%previous: buffer, %output: buffer, %count: i32, %depth: i32, %step: i32)\n\n" + "\n".join(cases)
 
 
-def vector_values(directory):
-    del directory
+def vector_values():
     cases = []
 
     def function(name, samples):
@@ -832,8 +822,7 @@ def constructor_references(value):
     }
 
 
-def vector_constructor_values(directory):
-    del directory
+def vector_constructor_values():
     samples = {}
     for value in CONSTRUCTOR_INPUTS:
         for name, lanes in constructor_references(value).items():
@@ -883,8 +872,7 @@ def vector_masks(directory):
     return "kernel.decl @vector_masks() launch(%input: buffer, %output: buffer)\n\n" + "\n".join(cases)
 
 
-def shaped_intrinsic_values(directory):
-    del directory
+def shaped_intrinsic_values():
     lookups = []
     for value in [0, 0x80000000, 0xFFFFFFFF]:
         table = [value, 1, 0xFFFFFFFF, 0x80000000, *range(4, 16)]
@@ -952,8 +940,7 @@ def mixed_dot(directory):
     return "kernel.decl @mixed_dot() launch(%lhs: buffer, %rhs: buffer, %acc: buffer, %output: buffer, %count: i32)\n\n" + "\n".join(cases)
 
 
-def main():
-    directory = Path(sys.argv[1])
+def kernel_cases(directory):
     directory.mkdir(parents=True, exist_ok=True)
     for name, generator in [
         ("flash_attention", attention),
@@ -961,27 +948,19 @@ def main():
         ("aiter_swiglu_f16", swiglu),
         ("control_flow", control_flow),
         ("scheduled_sum", scheduled_sum),
-        ("schedule_functions", schedule_functions),
         ("short_circuit", short_circuit),
         ("early_returns", early_returns),
         ("increment_u8", lambda directory: integer_increment(directory, 8, BYTE_INPUTS)),
         ("increment_u64", lambda directory: integer_increment(directory, 64, WIDE_INPUTS)),
-        ("integer_functions", integer_functions),
-        ("increment_functions", increment_functions),
         ("increment_values", increment_values),
         ("increment_pointers", increment_pointers),
-        ("continue_functions", continue_functions),
         ("continue_values", continue_values),
         ("continue_scheduled", continue_scheduled),
         ("continue_copy", continue_copy),
         ("continue_pointers", continue_pointers),
         ("continue_vectors", continue_vectors),
-        ("constant_loop_functions", constant_loop_functions),
         ("constant_loops", constant_loops),
-        ("assumption_functions", assumption_functions),
         ("assumption_kernel", assumption_kernel),
-        ("comparison_functions", comparison_functions),
-        ("enum_functions", enum_functions),
         ("enum_storage_u8", lambda directory: enum_storage(directory, 8)),
         ("enum_storage_u16", lambda directory: enum_storage(directory, 16)),
         ("enum_storage_u32", lambda directory: enum_storage(directory, 32)),
@@ -989,17 +968,52 @@ def main():
         ("pointer_walk", pointer_walk),
         ("vector_depth", vector_depth),
         ("vector_depth_span", vector_depth_span),
-        ("vector_values", vector_values),
-        ("vector_constructor_values", vector_constructor_values),
         ("vector_initializers", vector_initializers),
         ("vector_control", vector_control),
         ("vector_masks", vector_masks),
-        ("shaped_intrinsic_values", shaped_intrinsic_values),
         ("register_lookup", register_lookup),
         ("register_lookup_float", lambda directory: register_lookup(directory, floating=True)),
         ("mixed_dot", mixed_dot),
     ]:
         (directory / f"{name}.loom").write_text(generator(directory))
+
+
+HOST_GROUPS = {
+    "schedule_functions": schedule_functions,
+    "constant_loop_functions": constant_loop_functions,
+    "continue_functions": continue_functions,
+    "increment_functions": increment_functions,
+    "assumption_functions": assumption_functions,
+    "vector_constructor_values": vector_constructor_values,
+    "comparison_functions": comparison_functions,
+    "enum_functions": enum_functions,
+    "integer_functions": integer_functions,
+    "vector_values": vector_values,
+    "shaped_intrinsic_values": shaped_intrinsic_values,
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    modes = parser.add_subparsers(dest="mode", required=True)
+    host = modes.add_parser("host", help="emit one source-authored scalar check group")
+    host.add_argument("--group", choices=HOST_GROUPS, required=True)
+    host.add_argument("--source", type=Path, required=True)
+    host.add_argument("--output", type=Path, required=True)
+    kernels = modes.add_parser("kernels", help="emit kernel cases and numerical arrays")
+    kernels.add_argument("--output-dir", type=Path, required=True)
+    options = parser.parse_args()
+    if options.mode == "kernels":
+        kernel_cases(options.output_dir)
+        return
+
+    # The source and output are declared build inputs/outputs. A relative include
+    # preserves their relationship without embedding a sandbox or checkout path.
+    include = Path(os.path.relpath(options.source, options.output.parent)).as_posix()
+    contents = f'// Generated from independent Python numerical references.\n#include <loomcxx/check.h>\n#include "{include}"\n\n' + HOST_GROUPS[options.group]() + "\n"
+    options.output.parent.mkdir(parents=True, exist_ok=True)
+    if not options.output.exists() or options.output.read_text() != contents:
+        options.output.write_text(contents)
 
 
 if __name__ == "__main__":

@@ -51,32 +51,357 @@ loom_check_test_suite(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    assumption_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "assumption_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=assumption_functions"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
+  INPUTS
+    "assumptions.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    comparison_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "comparison_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=comparison_functions"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
+  INPUTS
+    "comparison_functions.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    constant_loop_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "constant_loop_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=constant_loop_functions"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
+  INPUTS
+    "constant_loops.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    continue_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "continue_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=continue_functions"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
+  INPUTS
+    "structured_continue.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    enum_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "enum_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=enum_functions"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
+  INPUTS
+    "enum_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    increment_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "increment_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=increment_functions"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
+  INPUTS
+    "increment_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    integer_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "integer_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=integer_functions"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
+  INPUTS
+    "integer_functions.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    schedule_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "schedule_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=schedule_functions"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
+  INPUTS
+    "schedule_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    shaped_intrinsic_values_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "shaped_intrinsic_values_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=shaped_intrinsic_values"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
+  INPUTS
+    "shaped_intrinsics.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    vector_constructor_values_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "vector_constructor_values_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=vector_constructor_values"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
+  INPUTS
+    "vector_initializers.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    vector_values_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "vector_values_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--group=vector_values"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
+  INPUTS
+    "vector_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    assumption_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/assumption_functions_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    comparison_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/comparison_functions_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    constant_loop_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/constant_loop_functions_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    continue_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/continue_functions_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    enum_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/enum_functions_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    increment_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/increment_functions_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    integer_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/integer_functions_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    schedule_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/schedule_functions_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    shaped_intrinsic_values_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsic_values_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    vector_constructor_values_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/vector_constructor_values_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    vector_values_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/vector_values_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 iree_execution_test_suite(
   NAME
     functions_test
   MANIFESTS
     "functions.test.json"
   TOOLS
-    "generate-cases=loom::py::loom::gen::test::cxx_kernel_cases"
-    "iree-test-loom=loom::tools::iree-test-loom"
     "loom-compile=loom::tools::loom-compile"
     "loom-import-cxx=loom::tools::loom-import-cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_policy.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
   LABELS
     "hostonly"
