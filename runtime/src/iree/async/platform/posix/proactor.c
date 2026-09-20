@@ -3775,14 +3775,9 @@ static void iree_async_proactor_posix_destroy_notification(
   IREE_TRACE_ZONE_END(z0);
 }
 
-#if defined(IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX)
-
 //===----------------------------------------------------------------------===//
-// Futex-based sync notification signal/wait
+// Notification publication
 //===----------------------------------------------------------------------===//
-// Sync waiters use futex_wait() on the epoch atomic. The eventfd is written
-// for async waiters and relays only; sync waiters never touch it, so there
-// is no drain race with the poll loop.
 
 static void iree_async_proactor_posix_notification_signal(
     iree_async_proactor_t* base_proactor,
@@ -3794,12 +3789,15 @@ static void iree_async_proactor_posix_notification_signal(
   int signal_fd = notification->platform.posix.signal_primitive.value.fd;
 #if defined(IREE_PLATFORM_LINUX)
   uint64_t value = 1;
-  ssize_t result = write(signal_fd, &value, sizeof(value));
 #else
   uint8_t value = 1;
-  ssize_t result = write(signal_fd, &value, sizeof(value));
 #endif  // IREE_PLATFORM_LINUX
+  ssize_t result;
+  do {
+    result = write(signal_fd, &value, sizeof(value));
+  } while (result < 0 && errno == EINTR);
   IREE_ASSERT(result >= 0 || errno == EAGAIN);
+#if defined(IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX)
   // Wake sync waiters directly via futex on the epoch atomic.
   if (iree_any_bit_set(notification->flags,
                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
@@ -3807,7 +3805,29 @@ static void iree_async_proactor_posix_notification_signal(
   } else {
     iree_futex_wake(notification->epoch_ptr, wake_count);
   }
+#else
+  // The condvar is process-local. Shared synchronous waits use a native
+  // shared futex on Linux, including when private synchronization uses
+  // pthreads.
+  if (!iree_any_bit_set(notification->flags,
+                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
+    iree_notification_post(&notification->platform.posix.sync_notification,
+                           wake_count);
+#if defined(IREE_PLATFORM_LINUX) && defined(IREE_PLATFORM_HAS_FUTEX)
+  } else {
+    iree_futex_wake_shared(notification->epoch_ptr, wake_count);
+#endif  // IREE_PLATFORM_LINUX && IREE_PLATFORM_HAS_FUTEX
+  }
+#endif  // IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX
 }
+
+#if defined(IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX)
+
+//===----------------------------------------------------------------------===//
+// Futex-based synchronous waits
+//===----------------------------------------------------------------------===//
+// Sync waiters use futex_wait() on the epoch atomic without consuming the
+// eventfd readiness belonging to async waiters and relays.
 
 static bool iree_async_proactor_posix_notification_wait(
     iree_async_proactor_t* base_proactor,
@@ -3841,42 +3861,11 @@ static bool iree_async_proactor_posix_notification_wait(
 #else  // !IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX
 
 //===----------------------------------------------------------------------===//
-// Condvar-based sync notification signal/wait
+// Condvar-based synchronous waits
 //===----------------------------------------------------------------------===//
 // Sync waiters use iree_notification_await() on sync_notification (condvar).
 // The eventfd is written for async waiters and relays only; sync waiters never
 // touch it, so there is no drain race with the poll loop.
-
-static void iree_async_proactor_posix_notification_signal(
-    iree_async_proactor_t* base_proactor,
-    iree_async_notification_t* notification, int32_t wake_count) {
-  (void)base_proactor;
-  // Write eventfd/pipe to wake the poll thread (async waits and relays).
-  // EAGAIN means already signaled (redundant, benign). EBADF/EPIPE indicates
-  // the notification's fd was closed while still in use — a lifecycle bug.
-  int signal_fd = notification->platform.posix.signal_primitive.value.fd;
-#if defined(IREE_PLATFORM_LINUX)
-  uint64_t value = 1;
-  ssize_t result = write(signal_fd, &value, sizeof(value));
-#else
-  uint8_t value = 1;
-  ssize_t result = write(signal_fd, &value, sizeof(value));
-#endif  // IREE_PLATFORM_LINUX
-  IREE_ASSERT(result >= 0 || errno == EAGAIN);
-  // Wake sync waiters via condvar (local notifications only — shared
-  // notifications don't have a condvar since it's process-local).
-  if (!iree_any_bit_set(notification->flags,
-                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
-    iree_notification_post(&notification->platform.posix.sync_notification,
-                           wake_count);
-#if defined(IREE_PLATFORM_LINUX) && defined(IREE_PLATFORM_HAS_FUTEX)
-  } else {
-    // Shared address waiting remains native under sanitizers. A process-local
-    // condvar cannot wake a peer and sync waiters must not drain the async fd.
-    iree_futex_wake_shared(notification->epoch_ptr, wake_count);
-#endif  // IREE_PLATFORM_LINUX && IREE_PLATFORM_HAS_FUTEX
-  }
-}
 
 // Predicate for iree_notification_await: true when epoch has advanced.
 typedef struct iree_async_notification_epoch_predicate_t {

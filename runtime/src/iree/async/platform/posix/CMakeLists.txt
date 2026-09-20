@@ -82,6 +82,22 @@ iree_cc_library(
 )
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    notification_wake_test
+  SRCS
+    "notification_wake_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=write"
+  DEPS
+    ::posix
+    iree::async
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 iree_cc_test(
   NAME

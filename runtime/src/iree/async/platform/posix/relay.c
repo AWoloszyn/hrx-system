@@ -25,8 +25,11 @@ static bool iree_async_posix_relay_fire_sink(iree_async_relay_t* relay) {
   switch (relay->sink.type) {
     case IREE_ASYNC_RELAY_SINK_TYPE_SIGNAL_PRIMITIVE: {
       uint64_t value = relay->sink.signal_primitive.value;
-      ssize_t written = write(relay->sink.signal_primitive.primitive.value.fd,
-                              &value, sizeof(value));
+      ssize_t written;
+      do {
+        written = write(relay->sink.signal_primitive.primitive.value.fd, &value,
+                        sizeof(value));
+      } while (written < 0 && errno == EINTR);
       if (written != sizeof(value)) {
         return false;
       }
