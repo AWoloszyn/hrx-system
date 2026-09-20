@@ -11,6 +11,7 @@ exports_files([
     "builtin_macro_locations.patch",
     "cxx.BUILD.bazel",
     "constant_arithmetic.patch",
+    "enum_semantics.patch",
     "include_continuation.patch",
     "include_paths.patch",
     "macro_operator_locations.patch",

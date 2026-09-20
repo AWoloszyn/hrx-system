@@ -147,6 +147,19 @@ loom_cc_test(
 )
 
 loom_cc_test(
+    name = "enum_test",
+    srcs = ["enum_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":error",
+        ":options",
+        ":source",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "locations_test",
     srcs = ["locations_test.cc"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
@@ -172,6 +185,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_source_constants.objects
     loom_import_cxx_source_constants_test
     loom_import_cxx_source_source_test
+    loom_import_cxx_source_enum_test
     loom_import_cxx_source_locations_test)
   if(TARGET ${_target})
     target_compile_features(${_target} PRIVATE cxx_std_23)

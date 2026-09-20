@@ -199,6 +199,23 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
+    enum_test
+  SRCS
+    "enum_test.cc"
+  DEPS
+    ::error
+    ::options
+    ::source
+    iree::testing::gtest
+    iree::testing::gtest_main
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
     locations_test
   SRCS
     "locations_test.cc"
@@ -224,6 +241,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_source_constants.objects
     loom_import_cxx_source_constants_test
     loom_import_cxx_source_source_test
+    loom_import_cxx_source_enum_test
     loom_import_cxx_source_locations_test)
   if(TARGET ${_target})
     target_compile_features(${_target} PRIVATE cxx_std_23)
