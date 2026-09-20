@@ -423,6 +423,50 @@ TEST_F(PosixProactorSubmitTest, CancellationSurvivesInlineCallbackMapGrowth) {
   ExpectQuiescent(proactor_);
 }
 
+TEST_F(PosixProactorSubmitTest,
+       ReadinessCompletionReturnsNotificationOwnership) {
+  constexpr size_t kWaitCount = kCompletionPoolCapacity + 1;
+  CompletionTracker tracker;
+  struct WaitState {
+    // Combined terminal completion results.
+    CompletionTracker* tracker;
+    // Caller reference dropped by terminal completion.
+    std::unique_ptr<iree_async_notification_t,
+                    decltype(&iree_async_notification_release)>
+        notification = {nullptr, iree_async_notification_release};
+  } states[kWaitCount] = {};
+  std::array<iree_async_notification_wait_operation_t, kWaitCount> waits = {};
+  for (size_t i = 0; i < waits.size(); ++i) {
+    states[i].tracker = &tracker;
+    iree_async_notification_t* notification = nullptr;
+    IREE_ASSERT_OK(iree_async_notification_create(
+        proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+    states[i].notification.reset(notification);
+  }
+  for (size_t i = 0; i < waits.size(); ++i) {
+    InitializeOperation(&waits[i], IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+                        &tracker);
+    waits[i].notification = states[i].notification.get();
+    waits[i].base.user_data = &states[i];
+    waits[i].base.completion_fn =
+        +[](void* user_data, iree_async_operation_t* operation,
+            iree_status_t status, iree_async_completion_flags_t flags) {
+          auto* state = static_cast<WaitState*>(user_data);
+          CompletionTracker::Callback(state->tracker, operation, status, flags);
+          state->notification.reset();
+        };
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &waits[i].base));
+  }
+  iree_async_proactor_wake(proactor_);
+  IREE_ASSERT_OK(
+      iree_async_proactor_poll(proactor_, iree_infinite_timeout(), nullptr));
+  for (auto& state : states) {
+    iree_async_notification_signal(state.notification.get(), 1);
+  }
+  PollUntilCallbacks(proactor_, &tracker, kWaitCount);
+  ExpectSuccessfulCompletions(tracker, kWaitCount);
+}
+
 TEST_F(PosixProactorSubmitTest, ValidationFailurePrecedesEagerSend) {
   SocketPtr socket;
   ScopedFd peer_fd;

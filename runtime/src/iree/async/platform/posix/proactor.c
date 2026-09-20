@@ -2897,21 +2897,24 @@ static iree_host_size_t iree_async_proactor_posix_process_operation_chain(
   return completed_count;
 }
 
-// Processes pending notification waits, completing any whose epoch has advanced
-// or whose cancellation flag is set. When the last consumer completes,
-// unregisters the notification's fd from event_set and fd_map.
+// Detaches notification waits whose epoch has advanced or whose cancellation
+// flag is set. The detached operations retain the notification until completed,
+// allowing the caller to finish notification dispatch before callbacks can
+// release the caller's final reference. Preserves pending-list order.
 //
 // Called from the poll thread when the notification's fd fires (POLLIN) and
 // during requested cancellation service. Native readiness dispatch owns fd
 // draining; cancellation leaves wakeups available for notification relays.
-static iree_host_size_t iree_async_proactor_posix_process_notification_waits(
+static iree_async_operation_t*
+iree_async_proactor_posix_detach_notification_waits(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_t* notification) {
-  iree_host_size_t completed_count = 0;
+  iree_async_operation_t* ready_head = NULL;
+  iree_async_operation_t** ready_tail = &ready_head;
   uint32_t current_epoch =
       iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
 
-  // Walk the pending wait list, completing waiters with advanced epoch or
+  // Walk the pending wait list, detaching waiters with advanced epoch or
   // cancellation flag set.
   iree_async_notification_wait_operation_t** previous =
       &notification->platform.posix.pending_waits;
@@ -2927,29 +2930,11 @@ static iree_host_size_t iree_async_proactor_posix_process_notification_waits(
     bool epoch_advanced = (wait->wait_token != current_epoch);
 
     if (epoch_advanced || cancelled) {
-      // Remove from the pending list.
+      // Transfer to the ready list without invoking callbacks.
       *previous = next;
-
-      // Notification reference is released by release_operation_resources
-      // when the completion is drained (or inline in the fallback path).
-
-      iree_status_t status = cancelled
-                                 ? iree_status_from_code(IREE_STATUS_CANCELLED)
-                                 : iree_ok_status();
-
-      // Push to completion queue.
-      iree_async_posix_completion_t* completion =
-          iree_async_posix_completion_pool_acquire(&proactor->completion_pool);
-      if (completion) {
-        completion->operation = &wait->base;
-        completion->status = status;
-        completion->flags = IREE_ASYNC_COMPLETION_FLAG_NONE;
-        iree_atomic_slist_push(&proactor->completion_queue,
-                               &completion->slist_entry);
-      } else {
-        completed_count += iree_async_proactor_posix_complete_direct(
-            proactor, &wait->base, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
-      }
+      wait->base.next = NULL;
+      *ready_tail = &wait->base;
+      ready_tail = &wait->base.next;
     } else {
       // Still waiting — advance the previous pointer.
       previous = (iree_async_notification_wait_operation_t**)&wait->base.next;
@@ -2965,6 +2950,39 @@ static iree_host_size_t iree_async_proactor_posix_process_notification_waits(
     iree_async_posix_fd_map_remove(&proactor->fd_map, fd);
     iree_status_ignore(
         iree_async_posix_event_set_remove(proactor->event_set, fd));
+  }
+  return ready_head;
+}
+
+// Completes detached notification waits after all notification state accesses.
+// Completion-pool exhaustion may invoke callbacks inline, returning operation
+// and notification ownership to the caller before this function returns.
+static iree_host_size_t iree_async_proactor_posix_complete_notification_waits(
+    iree_async_proactor_posix_t* proactor,
+    iree_async_operation_t* ready_waits) {
+  iree_host_size_t completed_count = 0;
+  while (ready_waits) {
+    iree_async_operation_t* operation = ready_waits;
+    ready_waits = operation->next;
+    operation->next = NULL;
+    bool cancelled =
+        iree_any_bit_set(iree_async_operation_load_internal_flags(operation),
+                         IREE_ASYNC_POSIX_INTERNAL_FLAG_CANCELLED);
+    iree_status_t status = cancelled
+                               ? iree_status_from_code(IREE_STATUS_CANCELLED)
+                               : iree_ok_status();
+    iree_async_posix_completion_t* completion =
+        iree_async_posix_completion_pool_acquire(&proactor->completion_pool);
+    if (completion) {
+      completion->operation = operation;
+      completion->status = status;
+      completion->flags = IREE_ASYNC_COMPLETION_FLAG_NONE;
+      iree_atomic_slist_push(&proactor->completion_queue,
+                             &completion->slist_entry);
+    } else {
+      completed_count += iree_async_proactor_posix_complete_direct(
+          proactor, operation, status, IREE_ASYNC_COMPLETION_FLAG_NONE);
+    }
   }
   return completed_count;
 }
@@ -3038,13 +3056,11 @@ iree_async_proactor_posix_drain_pending_fd_cancellations(
     }
     if (entry->handler_type == IREE_ASYNC_POSIX_FD_HANDLER_NOTIFICATION) {
       iree_async_notification_t* notification = entry->handler;
-      // Completion-pool exhaustion can dispatch a callback inline that drops
-      // the caller's final reference. Keep this cold-path borrow alive until
-      // notification service finishes inspecting its pending consumers.
-      iree_async_notification_retain(notification);
-      completed_count += iree_async_proactor_posix_process_notification_waits(
-          proactor, notification);
-      iree_async_notification_release(notification);
+      iree_async_operation_t* ready_waits =
+          iree_async_proactor_posix_detach_notification_waits(proactor,
+                                                              notification);
+      completed_count += iree_async_proactor_posix_complete_notification_waits(
+          proactor, ready_waits);
       continue;
     }
     if (entry->handler_type != IREE_ASYNC_POSIX_FD_HANDLER_OPERATION) {
@@ -3325,11 +3341,16 @@ static iree_status_t iree_async_proactor_posix_poll(
         uint64_t drain_buffer = 0;
         while (read(fd, &drain_buffer, sizeof(drain_buffer)) > 0) {
         }
-        // Process both pending async waits and notification-source relays.
-        completed_count += iree_async_proactor_posix_process_notification_waits(
-            proactor, notification);
+        // Detached waits retain the notification while relays are dispatched.
+        // Complete them only after the final notification access.
+        iree_async_operation_t* ready_waits =
+            iree_async_proactor_posix_detach_notification_waits(proactor,
+                                                                notification);
         iree_async_proactor_posix_dispatch_notification_relays(proactor,
                                                                notification);
+        completed_count +=
+            iree_async_proactor_posix_complete_notification_waits(proactor,
+                                                                  ready_waits);
         break;
       }
 
