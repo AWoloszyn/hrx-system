@@ -192,6 +192,10 @@ _SCHEDULE_VMEM_LOAD_LDS = "amdgpu.vmem.load.lds"
 _SCHEDULE_VMEM_STORE = "amdgpu.vmem.store"
 _SCHEDULE_VMEM_ATOMIC_RETURN = "amdgpu.vmem.atomic.return"
 _SCHEDULE_VMEM_ATOMIC_NO_RETURN = "amdgpu.vmem.atomic.no_return"
+_SCHEDULE_FLAT_LOAD = "amdgpu.flat.load"
+_SCHEDULE_FLAT_STORE = "amdgpu.flat.store"
+_SCHEDULE_FLAT_ATOMIC_RETURN = "amdgpu.flat.atomic.return"
+_SCHEDULE_FLAT_ATOMIC_NO_RETURN = "amdgpu.flat.atomic.no_return"
 _SCHEDULE_LDS_LOAD = "amdgpu.lds.load"
 _SCHEDULE_LDS_STORE = "amdgpu.lds.store"
 _SCHEDULE_LDS_ATOMIC = "amdgpu.lds.atomic"
@@ -284,6 +288,10 @@ _EXECUTION_MASKED_SCHEDULE_CLASSES = frozenset(
         _SCHEDULE_VMEM_STORE,
         _SCHEDULE_VMEM_ATOMIC_RETURN,
         _SCHEDULE_VMEM_ATOMIC_NO_RETURN,
+        _SCHEDULE_FLAT_LOAD,
+        _SCHEDULE_FLAT_STORE,
+        _SCHEDULE_FLAT_ATOMIC_RETURN,
+        _SCHEDULE_FLAT_ATOMIC_NO_RETURN,
         _SCHEDULE_LDS_LOAD,
         _SCHEDULE_LDS_STORE,
         _SCHEDULE_LDS_ATOMIC,
@@ -1027,6 +1035,68 @@ def _common_scalar_vector_memory_schedule_classes(
             ),
             hazards=vmem_store_hazards,
             flags=(ScheduleClassFlag.MAY_LOAD, ScheduleClassFlag.MAY_STORE),
+            model_quality=ModelQuality.FALLBACK,
+        ),
+        ScheduleClass(
+            _SCHEDULE_FLAT_LOAD,
+            latency_kind=LatencyKind.VARIABLE,
+            latency_cycles=16,
+            minimum_issue_separation_cycles=16,
+            issue_uses=(
+                IssueUse(_RESOURCE_VMEM_LOAD, cycles=1, units=1),
+                IssueUse(_RESOURCE_LDS_LOAD, cycles=1, units=1),
+            ),
+            hazards=(*vmem_load_hazards, *lds_load_hazards),
+            flags=(ScheduleClassFlag.MAY_LOAD,),
+            model_quality=ModelQuality.FALLBACK,
+        ),
+        ScheduleClass(
+            _SCHEDULE_FLAT_STORE,
+            latency_kind=LatencyKind.VARIABLE,
+            latency_cycles=16,
+            minimum_issue_separation_cycles=16,
+            issue_uses=(
+                IssueUse(_RESOURCE_VMEM_STORE, cycles=1, units=1),
+                IssueUse(_RESOURCE_LDS_STORE, cycles=1, units=1),
+            ),
+            hazards=(*vmem_store_hazards, *lds_store_hazards),
+            flags=(ScheduleClassFlag.MAY_STORE,),
+            model_quality=ModelQuality.FALLBACK,
+        ),
+        ScheduleClass(
+            _SCHEDULE_FLAT_ATOMIC_RETURN,
+            latency_kind=LatencyKind.VARIABLE,
+            latency_cycles=16,
+            minimum_issue_separation_cycles=16,
+            issue_uses=(
+                IssueUse(_RESOURCE_VMEM_LOAD, cycles=1, units=1),
+                IssueUse(_RESOURCE_VMEM_STORE, cycles=1, units=1),
+                IssueUse(_RESOURCE_LDS_LOAD, cycles=1, units=1),
+                IssueUse(_RESOURCE_LDS_STORE, cycles=1, units=1),
+            ),
+            hazards=(*vmem_load_hazards, *lds_atomic_hazards),
+            flags=(
+                ScheduleClassFlag.MAY_LOAD,
+                ScheduleClassFlag.MAY_STORE,
+            ),
+            model_quality=ModelQuality.FALLBACK,
+        ),
+        ScheduleClass(
+            _SCHEDULE_FLAT_ATOMIC_NO_RETURN,
+            latency_kind=LatencyKind.VARIABLE,
+            latency_cycles=16,
+            minimum_issue_separation_cycles=16,
+            issue_uses=(
+                IssueUse(_RESOURCE_VMEM_LOAD, cycles=1, units=1),
+                IssueUse(_RESOURCE_VMEM_STORE, cycles=1, units=1),
+                IssueUse(_RESOURCE_LDS_LOAD, cycles=1, units=1),
+                IssueUse(_RESOURCE_LDS_STORE, cycles=1, units=1),
+            ),
+            hazards=(*vmem_store_hazards, *lds_atomic_hazards),
+            flags=(
+                ScheduleClassFlag.MAY_LOAD,
+                ScheduleClassFlag.MAY_STORE,
+            ),
             model_quality=ModelQuality.FALLBACK,
         ),
         ScheduleClass(
@@ -3068,10 +3138,9 @@ def _global_atomic_effects(
     return _atomic_effects(MemorySpace.GLOBAL, width_bits, counter_id=counter_id)
 
 
-def _generic_atomic_effects(
-    width_bits: int, *, counter_id: int
-) -> tuple[Effect, Effect]:
-    return _atomic_effects(MemorySpace.GENERIC, width_bits, counter_id=counter_id)
+def _generic_atomic_effects(width_bits: int) -> tuple[Effect, Effect]:
+    # Both sides of a flat atomic complete through the full schedule hazard set.
+    return _atomic_effects(MemorySpace.GENERIC, width_bits, counter_id=0)
 
 
 def _global_to_lds_effects(
@@ -3426,6 +3495,10 @@ __all__ = (
     "_SCHEDULE_TENSOR_LOAD_LDS",
     "_SCHEDULE_TRANS",
     "_SCHEDULE_VALU",
+    "_SCHEDULE_FLAT_LOAD",
+    "_SCHEDULE_FLAT_STORE",
+    "_SCHEDULE_FLAT_ATOMIC_RETURN",
+    "_SCHEDULE_FLAT_ATOMIC_NO_RETURN",
     "_SCHEDULE_VMEM_ATOMIC_NO_RETURN",
     "_SCHEDULE_VMEM_ATOMIC_RETURN",
     "_SCHEDULE_VMEM_LOAD",

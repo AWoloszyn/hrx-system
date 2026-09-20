@@ -285,6 +285,9 @@ typedef enum loom_amdgpu_processor_scheduling_bit_e {
   LOOM_AMDGPU_PROCESSOR_SCHEDULING_DELAY_ALU = 1u << 5,
   // Same-class VMEM instructions write vector-register results in issue order.
   LOOM_AMDGPU_PROCESSOR_SCHEDULING_VMEM_RESULT_WRITES_IN_ORDER = 1u << 6,
+  // Flat requests retire in issue order within each memory counter domain.
+  // Without this property, either domain can report early completion.
+  LOOM_AMDGPU_PROCESSOR_SCHEDULING_FLAT_COUNTERS_IN_ORDER = 1u << 7,
   // Processor scheduling bits known by the AMDGPU target package.
   LOOM_AMDGPU_PROCESSOR_SCHEDULING_KNOWN_BITS =
       LOOM_AMDGPU_PROCESSOR_SCHEDULING_VALU_TRANS_USE_DEPCTR |
@@ -293,7 +296,8 @@ typedef enum loom_amdgpu_processor_scheduling_bit_e {
       LOOM_AMDGPU_PROCESSOR_SCHEDULING_DESTINATION_SELECTION_WAIT_STATES |
       LOOM_AMDGPU_PROCESSOR_SCHEDULING_VALU_SGPR_READ_DEPCTR |
       LOOM_AMDGPU_PROCESSOR_SCHEDULING_DELAY_ALU |
-      LOOM_AMDGPU_PROCESSOR_SCHEDULING_VMEM_RESULT_WRITES_IN_ORDER,
+      LOOM_AMDGPU_PROCESSOR_SCHEDULING_VMEM_RESULT_WRITES_IN_ORDER |
+      LOOM_AMDGPU_PROCESSOR_SCHEDULING_FLAT_COUNTERS_IN_ORDER,
 } loom_amdgpu_processor_scheduling_bit_t;
 
 // Bitset of loom_amdgpu_processor_scheduling_bit_t values.

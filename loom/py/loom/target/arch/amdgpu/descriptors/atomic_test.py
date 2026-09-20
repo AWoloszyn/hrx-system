@@ -4,12 +4,37 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+from dataclasses import replace
+
+from loom.target.arch.amdgpu.descriptors.api import _with_storage_lease_rows
+from loom.target.arch.amdgpu.descriptors.cdna import (
+    _AMDGPU_CDNA3_CORE_DESCRIPTOR_SET_BASE,
+    _AMDGPU_CDNA4_CORE_DESCRIPTOR_SET_BASE,
+)
+from loom.target.arch.amdgpu.descriptors.common import (
+    _COUNTER_LDS,
+    _COUNTER_VMEM_LOAD,
+    _COUNTER_VMEM_STORE,
+    _COUNTER_X,
+)
+from loom.target.arch.amdgpu.descriptors.contracts import (
+    _amdgpu_contract_descriptor_from_overlay,
+)
+from loom.target.arch.amdgpu.descriptors.rdna3 import (
+    _AMDGPU_RDNA3_CORE_DESCRIPTOR_SET_BASE,
+)
+from loom.target.arch.amdgpu.descriptors.rdna4 import (
+    _AMDGPU_RDNA4_CORE_DESCRIPTOR_SET_BASE,
+)
 from loom.target.arch.amdgpu.descriptors.sets import (
     _gfx9_4_generic_core_overlays,
+    _gfx11_core_overlays,
+    _gfx12_core_overlays,
+    _gfx125x_core_overlays,
     _gfx940_core_overlays,
     _gfx950_core_overlays,
 )
-from loom.target.low_descriptors import MemorySpace, OperandRole
+from loom.target.low_descriptors import MemorySpace, OperandRole, StorageLeaseKind
 
 
 def test_cdna_global_integer_atomics_preserve_return_and_native_spelling() -> None:
@@ -66,3 +91,59 @@ def test_cdna_global_integer_atomics_preserve_return_and_native_spelling() -> No
                 assert descriptor.asm_forms[0].mnemonic == (
                     f"global_atomic_{mnemonic_suffix}{return_suffix}_saddr"
                 )
+
+
+def test_flat_atomics_complete_both_domains_without_duplicate_accesses() -> None:
+    for base, overlays, enable_xcnt in (
+        (_AMDGPU_CDNA3_CORE_DESCRIPTOR_SET_BASE, _gfx940_core_overlays(), False),
+        (_AMDGPU_CDNA4_CORE_DESCRIPTOR_SET_BASE, _gfx950_core_overlays(), False),
+        (_AMDGPU_RDNA3_CORE_DESCRIPTOR_SET_BASE, _gfx11_core_overlays(), False),
+        (_AMDGPU_RDNA4_CORE_DESCRIPTOR_SET_BASE, _gfx12_core_overlays(), False),
+        (_AMDGPU_RDNA4_CORE_DESCRIPTOR_SET_BASE, _gfx125x_core_overlays(), True),
+    ):
+        descriptors = tuple(
+            _amdgpu_contract_descriptor_from_overlay(overlay)
+            for overlay in overlays
+            if overlay.descriptor_key.startswith("amdgpu.flat_atomic_")
+        )
+        descriptor_set = _with_storage_lease_rows(
+            replace(base, descriptors=descriptors), enable_gfx125x_xcnt=enable_xcnt
+        )
+        schedule_classes = {row.name: row for row in descriptor_set.schedule_classes}
+        assert descriptors
+        for descriptor in descriptor_set.descriptors:
+            results = [
+                operand
+                for operand in descriptor.operands
+                if operand.role is OperandRole.RESULT
+            ]
+            completion_counters = {
+                _COUNTER_LDS,
+                _COUNTER_VMEM_LOAD if results else _COUNTER_VMEM_STORE,
+            }
+            assert {
+                hazard.counter_id
+                for hazard in schedule_classes[descriptor.schedule_class].hazards
+            } == completion_counters
+            result_leases = [
+                lease
+                for lease in descriptor.storage_leases
+                if lease.kind is StorageLeaseKind.RESULT_WRITE
+            ]
+            assert {lease.release_class_id for lease in result_leases} == (
+                completion_counters if results else set()
+            )
+            assert all(
+                lease.unit_count == results[0].unit_count for lease in result_leases
+            )
+            source_counters = {
+                lease.release_class_id
+                for lease in descriptor.storage_leases
+                if lease.kind is StorageLeaseKind.SOURCE_READ
+            }
+            assert (_COUNTER_X in source_counters) == enable_xcnt
+            # Counter completion does not duplicate the single read/write access
+            # reported for an atomic, including compare-and-swap and wide forms.
+            assert len(descriptor.effects) == 2
+            assert all(effect.counter_id == 0 for effect in descriptor.effects)
+            assert descriptor.effects[0].width_bits == descriptor.effects[1].width_bits

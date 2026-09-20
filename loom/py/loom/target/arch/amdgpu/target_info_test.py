@@ -215,7 +215,7 @@ def test_rdna4m_processors_publish_delay_alu_scheduling() -> None:
 
     assert set(processors) == {"gfx1170", "gfx1171", "gfx1172"}
     assert all(
-        info.features.scheduling == AMDGPU_PROCESSOR_SCHEDULING_DELAY_ALU
+        info.features.scheduling & AMDGPU_PROCESSOR_SCHEDULING_DELAY_ALU
         for info in processors.values()
     )
 

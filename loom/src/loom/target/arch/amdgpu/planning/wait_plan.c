@@ -60,11 +60,11 @@ typedef enum loom_amdgpu_wait_node_state_flag_bits_e {
   LOOM_AMDGPU_WAIT_NODE_STATE_DEPENDENCY_READ = 1u << 2,
   // Node has a dependency-participating memory write effect.
   LOOM_AMDGPU_WAIT_NODE_STATE_DEPENDENCY_WRITE = 1u << 3,
-  // Node has a memory read effect using the target's default read counter.
+  // Node has a memory read effect using the descriptor's completion hazards.
   LOOM_AMDGPU_WAIT_NODE_STATE_DEFAULT_DEPENDENCY_READ = 1u << 4,
-  // Node has a memory write effect using the target's default write counter.
+  // Node has a memory write effect using the descriptor's completion hazards.
   LOOM_AMDGPU_WAIT_NODE_STATE_DEFAULT_DEPENDENCY_WRITE = 1u << 5,
-  // Node has a workgroup write effect using the target's default write counter.
+  // Node may write workgroup memory using the descriptor's completion hazards.
   LOOM_AMDGPU_WAIT_NODE_STATE_DEFAULT_WORKGROUP_WRITE = 1u << 6,
   // Node issues on the vector ALU.
   LOOM_AMDGPU_WAIT_NODE_STATE_USES_VECTOR_ALU = 1u << 7,
@@ -86,6 +86,8 @@ typedef enum loom_amdgpu_wait_node_state_flag_bits_e {
   LOOM_AMDGPU_WAIT_NODE_STATE_EXPLICIT_WAIT = 1u << 15,
   // Structural packet emits no native instructions or physical moves.
   LOOM_AMDGPU_WAIT_NODE_STATE_ZERO_NATIVE_WORK = 1u << 16,
+  // Generic-address completion can retire early in either memory domain.
+  LOOM_AMDGPU_WAIT_NODE_STATE_UNORDERED_FLAT_COMPLETION = 1u << 17,
 } loom_amdgpu_wait_node_state_flag_bits_t;
 typedef uint32_t loom_amdgpu_wait_node_state_flags_t;
 
@@ -190,6 +192,9 @@ typedef struct loom_amdgpu_wait_plan_builder_t {
   // Common VMEM completion class in the current epoch, or UNKNOWN for mixed
   // classes and accesses without a single known completion domain.
   loom_amdgpu_vmem_result_order_class_t vmem_epoch_order_class;
+  // Local counter epochs containing flat requests that can retire early.
+  // Each bit remains set until that counter is fully drained.
+  uint32_t unordered_flat_counter_mask;
   // Generated wait-packet descriptors selected by the low target.
   loom_amdgpu_wait_packet_target_t wait_packet_target;
   // Per-node counter classification.
@@ -1440,13 +1445,15 @@ static void loom_amdgpu_wait_plan_classify_effects(
         if (counter_mask == 0) {
           node_state->flags |=
               LOOM_AMDGPU_WAIT_NODE_STATE_DEFAULT_DEPENDENCY_WRITE;
-          if (effect->memory_space == LOOM_LOW_MEMORY_SPACE_WORKGROUP) {
+          if (effect->memory_space == LOOM_LOW_MEMORY_SPACE_WORKGROUP ||
+              effect->memory_space == LOOM_LOW_MEMORY_SPACE_GENERIC) {
             node_state->flags |=
                 LOOM_AMDGPU_WAIT_NODE_STATE_DEFAULT_WORKGROUP_WRITE;
           }
         } else {
           frontier_node->write_counter_mask |= counter_mask;
-          if (effect->memory_space == LOOM_LOW_MEMORY_SPACE_WORKGROUP) {
+          if (effect->memory_space == LOOM_LOW_MEMORY_SPACE_WORKGROUP ||
+              effect->memory_space == LOOM_LOW_MEMORY_SPACE_GENERIC) {
             node_state->workgroup_write_counter_mask |= counter_mask;
           }
         }
@@ -1697,7 +1704,8 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     if (iree_any_bit_set(flags,
                          LOOM_AMDGPU_WAIT_NODE_STATE_DEFAULT_DEPENDENCY_READ)) {
       const uint32_t default_read_counter_mask =
-          node_state->hazard_counter_mask & LOOM_AMDGPU_WAIT_COUNTER_MASK_READ;
+          node_state->hazard_counter_mask &
+          LOOM_AMDGPU_WAIT_COUNTER_MASK_MEMORY;
       IREE_ASSERT_NE(default_read_counter_mask, 0u);
       frontier_node->read_counter_mask |= default_read_counter_mask;
     }
@@ -1707,7 +1715,8 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     if (iree_any_bit_set(
             flags, LOOM_AMDGPU_WAIT_NODE_STATE_DEFAULT_DEPENDENCY_WRITE)) {
       const uint32_t default_write_counter_mask =
-          node_state->hazard_counter_mask & LOOM_AMDGPU_WAIT_COUNTER_MASK_WRITE;
+          node_state->hazard_counter_mask &
+          LOOM_AMDGPU_WAIT_COUNTER_MASK_MEMORY;
       IREE_ASSERT_NE(default_write_counter_mask, 0u);
       frontier_node->write_counter_mask |= default_write_counter_mask;
       if (iree_any_bit_set(
@@ -1718,6 +1727,21 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     IREE_ASSERT_EQ(
         frontier_node->write_counter_mask & ~node_state->hazard_counter_mask,
         0u);
+    const uint32_t memory_counter_mask =
+        frontier_node->read_counter_mask | frontier_node->write_counter_mask;
+    if (iree_any_bit_set(memory_counter_mask,
+                         LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS) &&
+        iree_any_bit_set(memory_counter_mask,
+                         LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM) &&
+        iree_any_bit_set(
+            frontier_node->read_space_flags | frontier_node->write_space_flags,
+            generic_space) &&
+        !loom_amdgpu_processor_properties_have_scheduling(
+            builder->processor_properties,
+            LOOM_AMDGPU_PROCESSOR_SCHEDULING_FLAT_COUNTERS_IN_ORDER)) {
+      node_state->flags |=
+          LOOM_AMDGPU_WAIT_NODE_STATE_UNORDERED_FLAT_COMPLETION;
+    }
     const loom_amdgpu_structural_packet_flags_t structural_flags =
         loom_amdgpu_wait_plan_classify_structural_node(builder, (uint32_t)i);
     if (node->kind == LOOM_LOW_SCHEDULE_NODE_STRUCTURAL &&
@@ -1782,7 +1806,14 @@ static bool loom_amdgpu_wait_plan_storage_release_is_ordered_vmem_reuse(
   const loom_amdgpu_vmem_result_order_class_t consumer_order_class =
       builder->frontier_nodes[action->insertion_node_index]
           .vmem_result_order_class;
-  return producer_order_class != LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE &&
+  // A flat result may return through LDS while another request writes through
+  // VMEM. Matching VMEM classes alone cannot order those physical writes.
+  return builder->frontier_nodes[lease_record->node_index].read_counter_mask ==
+             LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD &&
+         builder->frontier_nodes[action->insertion_node_index]
+                 .read_counter_mask ==
+             LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD &&
+         producer_order_class != LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE &&
          producer_order_class != LOOM_AMDGPU_VMEM_RESULT_ORDER_UNKNOWN &&
          producer_order_class == consumer_order_class;
 }
@@ -2166,6 +2197,12 @@ static uint16_t loom_amdgpu_wait_plan_normalize_target_count(
   const uint32_t slot = loom_amdgpu_wait_counter_slot_from_id(counter_id);
   const uint32_t outstanding_count = builder->outstanding_counts[slot];
   target_count = (uint16_t)iree_min((uint32_t)target_count, outstanding_count);
+  if (iree_any_bit_set(builder->unordered_flat_counter_mask,
+                       loom_amdgpu_wait_counter_mask_from_slot(slot))) {
+    // Early completion in the unused flat domain breaks issue-position bounds.
+    // Only a full drain identifies completion of a particular request.
+    target_count = 0;
+  }
   if (counter_id == LOOM_AMDGPU_WAIT_COUNTER_X && target_count != 0 &&
       builder->xcnt_group == LOOM_AMDGPU_WAIT_XCNT_GROUP_SMEM) {
     // Scalar-memory translations may complete out of order. A nonzero XCNT
@@ -2200,6 +2237,7 @@ static void loom_amdgpu_wait_plan_apply_counter_progress(
         builder, producer_node, counter_mask);
   }
   if (target_count == 0) {
+    builder->unordered_flat_counter_mask &= ~counter_mask;
     builder->current_block_full_drain_counter_mask |= counter_mask;
     loom_amdgpu_wait_frontier_drain(&builder->frontier, counter_mask);
     ++builder->counter_epochs[slot];
@@ -2544,6 +2582,11 @@ static void loom_amdgpu_wait_plan_seed_cyclic_frontiers(
       node_state->counters.producer.epochs[slot] =
           builder->counter_epochs[slot];
       node_state->counters.producer.positions[slot] = ++producer_position;
+      if (iree_any_bit_set(
+              node_state->flags,
+              LOOM_AMDGPU_WAIT_NODE_STATE_UNORDERED_FLAT_COMPLETION)) {
+        builder->unordered_flat_counter_mask |= counter_mask;
+      }
       if (iree_any_bit_set(counter_mask,
                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD)) {
         loom_amdgpu_wait_plan_note_vmem_order(
@@ -3516,6 +3559,11 @@ static iree_status_t loom_amdgpu_wait_plan_note_producer(
   const uint32_t counter_mask =
       frontier_node->read_counter_mask | frontier_node->write_counter_mask |
       node_state->trans_result_counter_mask | node_state->source_counter_mask;
+  if (iree_any_bit_set(node_state->flags,
+                       LOOM_AMDGPU_WAIT_NODE_STATE_UNORDERED_FLAT_COMPLETION)) {
+    builder->unordered_flat_counter_mask |=
+        frontier_node->read_counter_mask | frontier_node->write_counter_mask;
+  }
   if (iree_any_bit_set(counter_mask, LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD)) {
     loom_amdgpu_wait_plan_note_vmem_order(builder, frontier_node);
   }
@@ -3556,6 +3604,10 @@ static iree_status_t loom_amdgpu_wait_plan_note_producer(
 
 static bool loom_amdgpu_wait_plan_partial_bound_orders_producers(
     const loom_amdgpu_wait_plan_builder_t* builder, uint16_t counter_id) {
+  if (iree_any_bit_set(builder->unordered_flat_counter_mask,
+                       loom_amdgpu_wait_counter_mask(counter_id))) {
+    return false;
+  }
   if (counter_id == LOOM_AMDGPU_WAIT_COUNTER_LDS) {
     return true;
   }
@@ -3691,6 +3743,7 @@ static iree_status_t loom_amdgpu_wait_plan_build_actions(
     builder->current_block_full_drain_counter_mask = 0;
     builder->xcnt_group = LOOM_AMDGPU_WAIT_XCNT_GROUP_NONE;
     builder->vmem_epoch_order_class = LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE;
+    builder->unordered_flat_counter_mask = 0;
     memset(builder->counter_epochs, 0, sizeof(builder->counter_epochs));
     memset(builder->completed_position_counts, 0,
            sizeof(builder->completed_position_counts));

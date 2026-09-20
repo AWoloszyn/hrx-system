@@ -993,16 +993,12 @@ _AMDGPU_WAIT_COUNTER_MASKS = {
     _COUNTER_X: 1 << 7,
 }
 
-_AMDGPU_READ_COUNTER_MASK = (
+# Default memory effects complete with the packet's memory hazards. Atomic reads
+# and writes share the return-dependent VMEM counter, so effect kind is not a
+# completion-domain filter.
+_AMDGPU_MEMORY_COUNTER_MASK = (
     _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_VMEM_LOAD]
-    | _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_LDS]
-    | _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_SMEM]
-    | _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_TENSOR]
-    | _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_ASYNC]
-)
-
-_AMDGPU_WRITE_COUNTER_MASK = (
-    _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_VMEM_STORE]
+    | _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_VMEM_STORE]
     | _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_LDS]
     | _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_SMEM]
     | _AMDGPU_WAIT_COUNTER_MASKS[_COUNTER_TENSOR]
@@ -1038,6 +1034,10 @@ _GFX125X_XCNT_SCHEDULE_CLASSES = frozenset(
         _SCHEDULE_VMEM_STORE,
         _SCHEDULE_VMEM_ATOMIC_RETURN,
         _SCHEDULE_VMEM_ATOMIC_NO_RETURN,
+        _SCHEDULE_FLAT_LOAD,
+        _SCHEDULE_FLAT_STORE,
+        _SCHEDULE_FLAT_ATOMIC_RETURN,
+        _SCHEDULE_FLAT_ATOMIC_NO_RETURN,
         _SCHEDULE_CLUSTER_LOAD_LDS,
     )
 )
@@ -1096,10 +1096,9 @@ def _amdgpu_effect_counter_mask(
     descriptor: Descriptor,
     effect: Effect,
     default_counter_mask: int,
-    allowed_counter_mask: int,
 ) -> int:
     if effect.counter_id == 0:
-        counter_mask = default_counter_mask & allowed_counter_mask
+        counter_mask = default_counter_mask & _AMDGPU_MEMORY_COUNTER_MASK
         if counter_mask == 0:
             raise ValueError(
                 f"AMDGPU dependency memory effect on descriptor "
@@ -1126,14 +1125,12 @@ def _amdgpu_storage_lease_counter_masks(
                 descriptor,
                 effect,
                 hazard_counter_mask,
-                _AMDGPU_READ_COUNTER_MASK,
             )
         elif effect.kind is EffectKind.WRITE:
             write_counter_mask |= _amdgpu_effect_counter_mask(
                 descriptor,
                 effect,
                 hazard_counter_mask,
-                _AMDGPU_WRITE_COUNTER_MASK,
             )
     return read_counter_mask, write_counter_mask
 
@@ -1331,6 +1328,22 @@ _AMDGPU_SCHEDULE_INSTRUCTION_CLASSES = {
     _SCHEDULE_VMEM_STORE: (InstructionClass.GLOBAL_MEMORY,),
     _SCHEDULE_VMEM_ATOMIC_RETURN: (InstructionClass.GLOBAL_MEMORY,),
     _SCHEDULE_VMEM_ATOMIC_NO_RETURN: (InstructionClass.GLOBAL_MEMORY,),
+    _SCHEDULE_FLAT_LOAD: (
+        InstructionClass.GLOBAL_MEMORY,
+        InstructionClass.LOCAL_MEMORY,
+    ),
+    _SCHEDULE_FLAT_STORE: (
+        InstructionClass.GLOBAL_MEMORY,
+        InstructionClass.LOCAL_MEMORY,
+    ),
+    _SCHEDULE_FLAT_ATOMIC_RETURN: (
+        InstructionClass.GLOBAL_MEMORY,
+        InstructionClass.LOCAL_MEMORY,
+    ),
+    _SCHEDULE_FLAT_ATOMIC_NO_RETURN: (
+        InstructionClass.GLOBAL_MEMORY,
+        InstructionClass.LOCAL_MEMORY,
+    ),
     _SCHEDULE_LDS_LOAD: (InstructionClass.LOCAL_MEMORY,),
     _SCHEDULE_LDS_STORE: (InstructionClass.LOCAL_MEMORY,),
     _SCHEDULE_LDS_ATOMIC: (InstructionClass.LOCAL_MEMORY,),
@@ -1358,6 +1371,7 @@ _AMDGPU_KEY_INSTRUCTION_CLASSES = (
     ("amdgpu.buffer_store_", InstructionClass.BUFFER_STORE),
     ("amdgpu.flat_load_", InstructionClass.FLAT_MEMORY),
     ("amdgpu.flat_store_", InstructionClass.FLAT_MEMORY),
+    ("amdgpu.flat_atomic_", InstructionClass.FLAT_MEMORY),
 )
 
 
