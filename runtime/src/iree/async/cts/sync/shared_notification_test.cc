@@ -270,6 +270,77 @@ TEST_P(SharedNotificationTest, SharedEpochSyncWait) {
   DestroySharedState(&state);
 }
 
+#if defined(IREE_PLATFORM_LINUX)
+
+// A stale async wake must survive a synchronous timeout: the synchronous
+// waiter has no ownership of the proactor's readiness channel.
+TEST_P(SharedNotificationTest, SyncTimeoutPreservesAsyncReadiness) {
+  SharedState state;
+  IREE_ASSERT_OK(CreateSharedState(&state));
+  auto options = MakeSharedOptions(&state);
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
+                                                       &notification));
+  iree_async_notification_signal(notification, 1);
+  uint32_t token = iree_async_notification_begin_observe(notification);
+  EXPECT_FALSE(iree_async_notification_wait_for_token(notification, token,
+                                                      iree_make_timeout_ms(1)));
+  iree_async_notification_end_observe(notification);
+  struct pollfd descriptor = {state.eventfd, POLLIN, 0};
+  EXPECT_EQ(poll(&descriptor, 1, 0), 1);
+  EXPECT_NE(descriptor.revents & POLLIN, 0);
+  iree_async_notification_release(notification);
+  DestroySharedState(&state);
+}
+
+TEST_P(SharedNotificationTest, SyncAndAsyncObserversShareOnePublication) {
+  SharedState state;
+  IREE_ASSERT_OK(CreateSharedState(&state));
+  auto options = MakeSharedOptions(&state);
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
+                                                       &notification));
+
+  constexpr int kWaiterCount = 4;
+  std::promise<void> ready[kWaiterCount];
+  std::vector<std::thread> waiters;
+  for (int i = 0; i < kWaiterCount; ++i) {
+    waiters.emplace_back([&, i] {
+      uint32_t token = iree_async_notification_begin_observe(notification);
+      ready[i].set_value();
+      EXPECT_TRUE(iree_async_notification_wait_for_token(
+          notification, token, iree_infinite_timeout()));
+      iree_async_notification_end_observe(notification);
+    });
+  }
+
+  CompletionTracker tracker;
+  iree_async_notification_wait_operation_t wait = {};
+  iree_async_operation_initialize(
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
+  wait.notification = notification;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  EXPECT_EQ(tracker.call_count, 0);
+  for (auto& waiter_ready : ready) {
+    waiter_ready.get_future().wait();
+  }
+
+  iree_async_notification_signal(notification, INT32_MAX);
+  PollUntilCondition([&] { return tracker.call_count == 1; },
+                     "shared async notification with sync observers");
+  for (auto& waiter : waiters) {
+    waiter.join();
+  }
+  IREE_EXPECT_OK(tracker.ConsumeStatus());
+  iree_async_notification_release(notification);
+  DestroySharedState(&state);
+}
+
+#endif  // IREE_PLATFORM_LINUX
+
 // Async NOTIFICATION_WAIT completes when shared epoch advances.
 TEST_P(SharedNotificationTest, SharedEpochAsyncWait) {
   SharedState state;

@@ -23,9 +23,8 @@ extern "C" {
 
 typedef struct iree_async_proactor_io_uring_t iree_async_proactor_io_uring_t;
 
-// Creates an io_uring notification. Selects futex mode when the proactor has
-// FUTEX_OPERATIONS capability, otherwise creates an eventfd for poll-based
-// waits.
+// Creates an eventfd-backed io_uring notification. Synchronous waits use the
+// epoch's futex separately from asynchronous native readiness.
 iree_status_t iree_async_io_uring_notification_create(
     iree_async_proactor_io_uring_t* proactor,
     iree_async_notification_flags_t flags,
@@ -43,13 +42,13 @@ void iree_async_io_uring_notification_destroy(
     iree_async_proactor_io_uring_t* proactor,
     iree_async_notification_t* notification);
 
-// Platform-specific signal wakeup (futex_wake or eventfd write).
+// Wakes asynchronous eventfd consumers and synchronous futex waiters.
 // Called from the shared notification_signal() after epoch increment.
 void iree_async_io_uring_notification_signal(
     iree_async_proactor_t* base_proactor,
     iree_async_notification_t* notification, int32_t wake_count);
 
-// Platform-specific synchronous wait (futex_wait or poll on eventfd).
+// Synchronous epoch-futex wait, independent of proactor progress.
 // Called from the shared notification_wait().
 bool iree_async_io_uring_notification_wait(
     iree_async_proactor_t* base_proactor,

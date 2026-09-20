@@ -7,7 +7,6 @@
 #include "iree/async/platform/io_uring/notification.h"
 
 #include <errno.h>
-#include <poll.h>
 #include <string.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
@@ -137,46 +136,31 @@ void iree_async_io_uring_notification_destroy(
 void iree_async_io_uring_notification_signal(
     iree_async_proactor_t* base_proactor,
     iree_async_notification_t* notification, int32_t wake_count) {
-#if defined(IREE_RUNTIME_USE_FUTEX)
-  if (notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-    // Add the count of relays with in-flight FUTEX_WAIT operations on this
-    // notification. Each relay is an implicit kernel-side futex waiter that the
-    // caller cannot account for. Without this, signaling with wake_count=1
-    // when N relays are attached would only wake 1 of the N kernel waiters,
-    // leaving N-1 relays permanently stuck.
-    int32_t relay_count =
-        iree_atomic_load(&notification->platform.io_uring.futex_relay_count,
-                         iree_memory_order_acquire);
-    int32_t total_wake_count = wake_count;
-    if (relay_count > 0) {
-      if (wake_count > INT32_MAX - relay_count) {
-        total_wake_count = INT32_MAX;
-      } else {
-        total_wake_count = wake_count + relay_count;
-      }
-    }
-    if (iree_any_bit_set(notification->flags,
-                         IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
-      iree_futex_wake_shared(notification->epoch_ptr, total_wake_count);
-    } else {
-      iree_futex_wake(notification->epoch_ptr, total_wake_count);
-    }
-    return;
-  }
-#endif  // IREE_RUNTIME_USE_FUTEX
-
   // With EFD_SEMAPHORE, write(N) allows N read()s to succeed.
   // Write to signal_primitive — for local notifications this is the same
   // eventfd as primitive; for shared/proxy notifications it's the peer's fd.
   uint64_t value = (wake_count > 0) ? (uint64_t)wake_count : UINT32_MAX;
-  ssize_t result =
-      write(notification->platform.io_uring.signal_primitive.value.fd, &value,
-            sizeof(value));
-  // The vtable signature returns void so we cannot propagate errors, but an
-  // eventfd write failure means waiters will not be woken — assert in debug.
-  IREE_ASSERT(result == sizeof(value),
+  ssize_t result;
+  do {
+    result = write(notification->platform.io_uring.signal_primitive.value.fd,
+                   &value, sizeof(value));
+  } while (result < 0 && errno == EINTR);
+  // A full nonblocking eventfd is already readable. Other failures indicate
+  // that the native primitive was released before the notification.
+  IREE_ASSERT(result == sizeof(value) || (result < 0 && errno == EAGAIN),
               "eventfd write failed during notification signal: %zd (errno=%d)",
               result, errno);
+
+#if defined(IREE_PLATFORM_HAS_FUTEX)
+  // Synchronous waiters have their own native wake channel. They never consume
+  // eventfd readiness belonging to asynchronous waits and relays.
+  if (iree_any_bit_set(notification->flags,
+                       IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
+    iree_futex_wake_shared(notification->epoch_ptr, wake_count);
+  } else {
+    iree_futex_wake(notification->epoch_ptr, wake_count);
+  }
+#endif  // IREE_PLATFORM_HAS_FUTEX
 }
 
 bool iree_async_io_uring_notification_wait(
@@ -184,37 +168,6 @@ bool iree_async_io_uring_notification_wait(
     iree_async_notification_t* notification, uint32_t wait_token,
     iree_timeout_t timeout) {
   iree_time_t deadline_ns = iree_timeout_as_deadline_ns(timeout);
-
-#if defined(IREE_RUNTIME_USE_FUTEX)
-  if (notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-    bool is_shared = iree_any_bit_set(notification->flags,
-                                      IREE_ASYNC_NOTIFICATION_FLAG_SHARED);
-    while (iree_time_now() < deadline_ns) {
-      uint32_t current_epoch =
-          iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-      if (current_epoch != wait_token) {
-        return true;
-      }
-
-      iree_status_code_t status_code =
-          is_shared ? iree_futex_wait_shared(notification->epoch_ptr,
-                                             wait_token, deadline_ns)
-                    : iree_futex_wait(notification->epoch_ptr, wait_token,
-                                      deadline_ns);
-      if (status_code == IREE_STATUS_DEADLINE_EXCEEDED) {
-        return false;
-      }
-    }
-
-    uint32_t final_epoch =
-        iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-    return final_epoch != wait_token;
-  }
-#endif  // IREE_RUNTIME_USE_FUTEX
-
-  // Event mode: poll on eventfd, check epoch after wakeup.
-  int fd = notification->platform.io_uring.primitive.value.fd;
-
   while (iree_time_now() < deadline_ns) {
     uint32_t current_epoch =
         iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
@@ -222,34 +175,17 @@ bool iree_async_io_uring_notification_wait(
       return true;
     }
 
-    iree_duration_t remaining_ns = deadline_ns - iree_time_now();
-    if (remaining_ns <= 0) {
+#if defined(IREE_PLATFORM_HAS_FUTEX)
+    iree_status_code_t status_code =
+        iree_any_bit_set(notification->flags,
+                         IREE_ASYNC_NOTIFICATION_FLAG_SHARED)
+            ? iree_futex_wait_shared(notification->epoch_ptr, wait_token,
+                                     deadline_ns)
+            : iree_futex_wait(notification->epoch_ptr, wait_token, deadline_ns);
+    if (status_code == IREE_STATUS_DEADLINE_EXCEEDED) {
       break;
     }
-    int timeout_ms = (int)(remaining_ns / 1000000);
-    if (timeout_ms <= 0) {
-      timeout_ms = 1;
-    }
-
-    struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-    int result = poll(&pfd, 1, timeout_ms);
-    if (result < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      return false;
-    }
-
-    if (pfd.revents & POLLIN) {
-      uint64_t value;
-      ssize_t result = read(fd, &value, sizeof(value));
-      // EAGAIN means counter is already 0 (spurious wake, benign).
-      IREE_ASSERT(result >= 0 || errno == EAGAIN);
-    }
-
-    if (pfd.revents & (POLLHUP | POLLERR)) {
-      return false;
-    }
+#endif  // IREE_PLATFORM_HAS_FUTEX
   }
 
   uint32_t final_epoch =
