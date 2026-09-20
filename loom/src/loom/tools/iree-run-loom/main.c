@@ -23,6 +23,7 @@
 #include "loom/tooling/execution/execution_backend.h"
 #include "loom/tooling/execution/one_shot.h"
 #include "loom/tooling/execution/session.h"
+#include "loom/tooling/input/flags.h"
 #include "loom/tooling/io/file.h"
 
 IREE_FLAG(string, pipeline, "default",
@@ -485,6 +486,7 @@ int iree_run_loom_main(int argc, char** argv,
     loom_run_session_options_t session_options = {0};
     loom_run_session_options_initialize(&session_options);
     session_options.host_allocator = allocator;
+    session_options.input_providers = configuration->input_providers;
     session_options.register_context = (loom_run_register_context_callback_t){
         .fn = iree_run_loom_register_context,
         .user_data = (void*)configuration,
@@ -534,6 +536,7 @@ int iree_run_loom_main(int argc, char** argv,
   if (iree_status_is_ok(status)) {
     loom_run_module_parse_options_t parse_options = {0};
     loom_run_module_parse_options_initialize(&parse_options);
+    parse_options.input = loom_input_options_from_flags();
     parse_options.filename = filename;
     parse_options.source = source;
     status = loom_run_module_parse(&session, &parse_options, &run_module);

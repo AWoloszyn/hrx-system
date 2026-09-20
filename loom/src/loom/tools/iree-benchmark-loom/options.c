@@ -15,6 +15,7 @@
 #include "iree/base/tooling/flags.h"
 #include "loom/sanitizer/options.h"
 #include "loom/tooling/compile/report_capture.h"
+#include "loom/tooling/input/flags.h"
 #include "loom/tooling/testbench/testbench.h"
 #include "loom/tools/iree-benchmark-loom/module_query.h"
 #include "loom/util/json.h"
@@ -263,6 +264,7 @@ iree_status_t iree_benchmark_loom_options_from_flags(
       iree_make_cstring_view(FLAG_sanitizer_reporting),
       IREE_SV("--sanitizer-reporting"),
       &out_options->sanitizer.reporting_mode));
+  out_options->input = loom_input_options_from_flags();
   out_options->output = iree_make_cstring_view(FLAG_output);
   IREE_RETURN_IF_ERROR(iree_benchmark_loom_parse_output_format(
       iree_make_cstring_view(FLAG_output_format), &out_options->output_format));

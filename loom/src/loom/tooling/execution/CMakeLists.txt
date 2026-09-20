@@ -94,6 +94,7 @@ loom_cc_library(
     loom::format::text::parser
     loom::ir
     loom::target::low_descriptor_registry
+    loom::tooling::input
     loom::tooling::io::source
     loom::verify
   PUBLIC

@@ -38,6 +38,8 @@ typedef struct iree_test_loom_populate_requirement_providers_callback_t {
 } iree_test_loom_populate_requirement_providers_callback_t;
 
 typedef struct iree_test_loom_configuration_t {
+  // Borrowed optional source importers selected by the final application.
+  loom_input_provider_list_t input_providers;
   // Null-terminated executable name used in help and diagnostics.
   const char* tool_name;
   // Registers target-specific dialects and attrs linked into this runner.

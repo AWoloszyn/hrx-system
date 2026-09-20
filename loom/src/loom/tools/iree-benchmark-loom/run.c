@@ -330,6 +330,7 @@ iree_status_t iree_benchmark_loom_run_file(
   if (iree_status_is_ok(status)) {
     loom_run_module_parse_options_t parse_options = {0};
     loom_run_module_parse_options_initialize(&parse_options);
+    parse_options.input = benchmark_options->input;
     parse_options.filename = filename;
     parse_options.source = source;
     parse_options.diagnostic_sink = (loom_diagnostic_sink_t){

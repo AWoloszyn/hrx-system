@@ -22,9 +22,11 @@ extern "C" {
 // definitions retain input precedence. Library paths must name filesystem
 // files; stdin is reserved for the primary input. On success |run_module| owns
 // the linked replacement module while retaining its primary source metadata.
+// Source libraries use |input_options|, or default admission when NULL.
 iree_status_t iree_test_loom_link_libraries(
     loom_run_session_t* session, loom_run_module_t* run_module,
-    iree_string_view_list_t library_paths);
+    iree_string_view_list_t library_paths,
+    const loom_input_options_t* input_options);
 
 #ifdef __cplusplus
 }  // extern "C"

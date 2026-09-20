@@ -19,12 +19,62 @@ loom_cc_library(
   DEPS
     iree::base
     iree::base::internal::arena
+    iree::base::internal::path
     loom::error::diagnostic
     loom::format::text::parser
     loom::ir
+    loom::tooling::io::source
     loom::tooling::io::source_path
     loom::verify
   PUBLIC
+)
+
+set(_configured_platform_copts "")
+if(LOOM_IMPORT_CXX)
+  list(APPEND _configured_platform_copts "-DLOOM_CONFIG_INPUT_HAVE_CXX=1")
+endif()
+set(_configured_platform_deps "")
+if(LOOM_IMPORT_CXX)
+  list(APPEND _configured_platform_deps loom::import::cxx::tooling::input)
+endif()
+loom_cc_library(
+  NAME
+    configured
+  COPTS
+    ${_configured_platform_copts}
+  HDRS
+    "configured.h"
+  SRCS
+    "configured.c"
+  DEPS
+    ::input
+    ${_configured_platform_deps}
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    flags
+  HDRS
+    "flags.h"
+  SRCS
+    "flags.c"
+  DEPS
+    ::input
+    iree::base::tooling::flags
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    input_test
+  SRCS
+    "input_test.cc"
+  DEPS
+    ::input
+    iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

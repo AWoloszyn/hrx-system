@@ -8,12 +8,29 @@
 #define LOOM_TOOLING_INPUT_INPUT_H_
 
 #include "loom/format/text/parser.h"
+#include "loom/tooling/io/source.h"
 #include "loom/tooling/io/source_path.h"
 #include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Shared source selection and per-provider options for multi-input tools.
+typedef struct loom_input_options_t {
+  // Explicit source format, or empty to select from each filename.
+  iree_string_view_t format;
+  // Borrowed entries spelled "format:options", at most one per format.
+  iree_string_view_list_t provider_options;
+  // Display remapping for diagnostics and retained module source names.
+  loom_tooling_source_path_options_t source_path_options;
+} loom_input_options_t;
+
+// Resolves the option string for |provider|. Malformed entries and duplicate
+// entries for this provider fail. Entries for other providers are independent.
+iree_status_t loom_input_options_for_provider(iree_string_view_list_t entries,
+                                              iree_string_view_t provider,
+                                              iree_string_view_t* out_options);
 
 // One source admission request. All views are borrowed until loading returns.
 typedef struct loom_input_request_t {
@@ -69,7 +86,7 @@ typedef struct loom_input_provider_list_t {
 // Builtin Loom text admission, always available without an optional importer.
 extern const loom_input_provider_t loom_input_text_provider;
 
-// Selects an explicit format or a filename suffix. Unrecognized *-test suffixes
+// Selects an explicit format or a filename suffix. Unrecognized extensions
 // fail rather than falling through to Loom text. Extensionless input defaults
 // to Loom text; an explicit format supports stdin and nonstandard filenames.
 iree_status_t loom_input_provider_select(
@@ -84,10 +101,8 @@ typedef struct loom_input_module_t {
   loom_module_t* module;
   // Logical main-source filename, valid even after source rejection.
   iree_string_view_t filename;
-  // Retained source entries indexed by the module's source IDs.
-  loom_source_table_resolver_t source_table;
-  // Storage for source bytes and filenames, released after the module.
-  iree_arena_allocator_t source_arena;
+  // Owned snapshots indexed by the module's source IDs, released last.
+  loom_tooling_source_storage_t sources;
 } loom_input_module_t;
 
 // Loads an input and retains source snapshots through module teardown. Always

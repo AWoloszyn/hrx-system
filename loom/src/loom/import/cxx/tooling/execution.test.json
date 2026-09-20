@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "imports a C++ library with relative headers and provider-scoped options",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_input.loom",
+          "--library={srcdir}/source_input.cc",
+          "--input-options=cxx:D=CHECK_BIAS=1"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":1",
+          "\"failed_sample_count\":0",
+          "\"planning_issue_count\":0"
+        ]
+      }
+    }
+  ]
+}

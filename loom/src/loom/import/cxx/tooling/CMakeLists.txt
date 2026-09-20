@@ -60,4 +60,19 @@ loom_cc_library(
 )
 endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+iree_execution_test_suite(
+  NAME
+    execution_test
+  MANIFESTS
+    "execution.test.json"
+  TOOLS
+    "iree-test-loom=loom::tools::iree-test-loom"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.cc"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.loom"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

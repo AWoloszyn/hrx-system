@@ -1,4 +1,5 @@
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test")
+load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -45,4 +46,19 @@ loom_cc_library(
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/base/internal:path",
     ],
+)
+
+iree_execution_test_suite(
+    name = "execution_test",
+    data = [
+        "source_input.cc",
+        "source_input.h",
+        "source_input.loom",
+    ],
+    manifests = ["execution.test.json"],
+    target_compatible_with = loom_config_compatible_with([
+        "//loom/config/import:cxx",
+        "//loom/config/target/arch:vm",
+    ]),
+    tools = {"iree-test-loom": "//loom/src/loom/tools/iree-test-loom"},
 )

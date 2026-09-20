@@ -1,0 +1,9 @@
+func.decl @source_increment(%value: i32) -> (i32)
+
+check.case @mixed_source {
+  %input = check.literal value(4) : i32
+  %actual = func.call @source_increment(%input) : (i32) -> (i32)
+  %expected = check.literal value(5) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}

@@ -1,4 +1,4 @@
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library")
+load("//loom/build_tools/bazel:build_defs.bzl", "iree_select", "loom_cc_library", "loom_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -14,9 +14,46 @@ loom_cc_library(
         "//loom/src/loom/error:diagnostic",
         "//loom/src/loom/format/text:parser",
         "//loom/src/loom/ir",
+        "//loom/src/loom/tooling/io:source",
         "//loom/src/loom/tooling/io:source_path",
         "//loom/src/loom/verify",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/base/internal:path",
+    ],
+)
+
+loom_cc_library(
+    name = "configured",
+    srcs = ["configured.c"],
+    hdrs = ["configured.h"],
+    copts = iree_select({
+        "//loom/config/import:cxx": ["-DLOOM_CONFIG_INPUT_HAVE_CXX=1"],
+        "//conditions:default": [],
+    }),
+    deps = [":input"] + iree_select({
+        "//loom/config/import:cxx": ["//loom/src/loom/import/cxx/tooling:input"],
+        "//conditions:default": [],
+    }),
+)
+
+loom_cc_library(
+    name = "flags",
+    srcs = ["flags.c"],
+    hdrs = ["flags.h"],
+    deps = [
+        ":input",
+        "//runtime/src/iree/base/tooling:flags",
+    ],
+)
+
+loom_cc_test(
+    name = "input_test",
+    srcs = ["input_test.cc"],
+    deps = [
+        ":input",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )

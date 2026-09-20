@@ -63,6 +63,7 @@ loom_cc_library(
     loom::tooling::execution::hal::device_provider
     loom::tooling::execution::hal::testbench_actual
     loom::tooling::execution::session
+    loom::tooling::input::flags
     loom::tooling::io::file
     loom::tooling::testbench::device_event
     loom::tooling::testbench::executor
@@ -112,6 +113,7 @@ loom_cc_binary(
     ::main
     iree::base
     loom::tooling::execution::execution_provider
+    loom::tooling::input::configured
     ${_iree_test_loom_platform_deps}
 )
 

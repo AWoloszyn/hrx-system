@@ -72,6 +72,7 @@ loom_cc_library(
         "//loom/src/loom/tooling/execution:execution_backend",
         "//loom/src/loom/tooling/execution:one_shot",
         "//loom/src/loom/tooling/execution:session",
+        "//loom/src/loom/tooling/input:flags",
         "//loom/src/loom/tooling/io:file",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/tooling:flags",
@@ -88,6 +89,7 @@ loom_cc_binary(
     deps = [
         ":main",
         "//loom/src/loom/tooling/execution:execution_provider",
+        "//loom/src/loom/tooling/input:configured",
         "//runtime/src/iree/base",
     ] + _IREE_RUN_LOOM_EXECUTE_DEPS,
 )

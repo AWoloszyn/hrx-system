@@ -28,6 +28,7 @@ iree_status_t iree_benchmark_loom_session_initialize(
   loom_run_session_options_t session_options = {0};
   loom_run_session_options_initialize(&session_options);
   session_options.host_allocator = host_allocator;
+  session_options.input_providers = configuration->input_providers;
   session_options.register_context = (loom_run_register_context_callback_t){
       .fn = iree_benchmark_loom_register_context,
       .user_data = (void*)configuration,

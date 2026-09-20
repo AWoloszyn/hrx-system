@@ -14,6 +14,7 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/target/low_descriptor_registry.h"
+#include "loom/tooling/input/input.h"
 #include "loom/tooling/io/source.h"
 #include "loom/verify/verify.h"
 
@@ -44,6 +45,8 @@ typedef struct loom_run_initialize_low_descriptor_registry_callback_t {
 } loom_run_initialize_low_descriptor_registry_callback_t;
 
 typedef struct loom_run_session_options_t {
+  // Borrowed optional input providers linked by the final application.
+  loom_input_provider_list_t input_providers;
   // Host allocator used for session-owned runtime state.
   iree_allocator_t host_allocator;
   // Total bytes retained per transient parser/compiler arena block.
@@ -56,6 +59,8 @@ typedef struct loom_run_session_options_t {
 } loom_run_session_options_t;
 
 typedef struct loom_run_session_t {
+  // Borrowed optional input providers, live through all module admissions.
+  loom_input_provider_list_t input_providers;
   // Host allocator used for session-owned runtime state.
   iree_allocator_t host_allocator;
   // Transient block pool reused across modules and candidates.
@@ -93,7 +98,9 @@ const loom_target_low_descriptor_registry_t*
 loom_run_session_low_descriptor_registry(const loom_run_session_t* session);
 
 typedef struct loom_run_module_parse_options_t {
-  // User-facing source filename for diagnostics.
+  // Source format, provider options, and diagnostic filename remapping.
+  loom_input_options_t input;
+  // Physical input path used for include lookup and default diagnostics.
   iree_string_view_t filename;
   // Input bytes. Text is parsed directly; bytecode is detected by file magic.
   // Borrowed for the parse call; captured text snapshots are owned by the
@@ -119,7 +126,7 @@ typedef struct loom_run_module_t {
 void loom_run_module_parse_options_initialize(
     loom_run_module_parse_options_t* out_options);
 
-// Parses text or reads bytecode into a module owned by |out_module|.
+// Imports source or reads bytecode into a module owned by |out_module|.
 iree_status_t loom_run_module_parse(
     loom_run_session_t* session, const loom_run_module_parse_options_t* options,
     loom_run_module_t* out_module);

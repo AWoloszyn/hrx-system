@@ -8,7 +8,32 @@
 
 #include <string.h>
 
+#include "iree/base/internal/path.h"
 #include "loom/ir/module.h"
+
+iree_status_t loom_input_options_for_provider(iree_string_view_list_t entries,
+                                              iree_string_view_t provider,
+                                              iree_string_view_t* out_options) {
+  *out_options = iree_string_view_empty();
+  bool matched = false;
+  for (iree_host_size_t i = 0; i < entries.count; ++i) {
+    iree_string_view_t name, options;
+    if (iree_string_view_split(entries.values[i], ':', &name, &options) < 1) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "input options require 'format:options'");
+    }
+    if (iree_string_view_equal(name, provider)) {
+      if (matched) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "duplicate input options for '%.*s'",
+                                (int)provider.size, provider.data);
+      }
+      matched = true;
+      *out_options = options;
+    }
+  }
+  return iree_ok_status();
+}
 
 static iree_status_t loom_input_text_load(const loom_input_request_t* request,
                                           loom_input_source_capture_t capture,
@@ -62,7 +87,7 @@ iree_status_t loom_input_provider_select(
                             "input format '%.*s' is not linked into this tool",
                             (int)format.size, format.data);
   }
-  if (iree_string_view_ends_with(path, IREE_SV("-test"))) {
+  if (!iree_string_view_is_empty(iree_file_path_extension(path))) {
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                             "no linked input provider accepts '%.*s'",
                             (int)path.size, path.data);
@@ -122,7 +147,7 @@ static iree_status_t loom_input_remap_path(loom_input_capture_t* capture,
   char* storage = NULL;
   return loom_tooling_source_path_remap(
       path, &capture->request->source_path_options,
-      iree_arena_allocator(&capture->input->source_arena), out_filename,
+      iree_arena_allocator(&capture->input->sources.arena), out_filename,
       &storage);
 }
 
@@ -149,7 +174,7 @@ static iree_status_t loom_input_capture_source(void* user_data,
           path.data, (int)filename.size, filename.data);
     }
   }
-  iree_arena_allocator_t* arena = &capture->input->source_arena;
+  iree_arena_allocator_t* arena = &capture->input->sources.arena;
   loom_input_snapshot_t* snapshot = NULL;
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate(arena, sizeof(*snapshot), (void**)&snapshot));
@@ -175,7 +200,7 @@ static iree_status_t loom_input_capture_diagnostic(
   if (diagnostic->related_location_count) {
     loom_diagnostic_related_location_t* related = NULL;
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        &capture->input->source_arena, diagnostic->related_location_count,
+        &capture->input->sources.arena, diagnostic->related_location_count,
         sizeof(*related), (void**)&related));
     for (iree_host_size_t i = 0; i < diagnostic->related_location_count; ++i) {
       related[i] = diagnostic->related_locations[i];
@@ -194,10 +219,13 @@ static iree_status_t loom_input_bind_sources(loom_input_capture_t* capture) {
   loom_module_t* module = input->module;
   loom_source_entry_t* entries = NULL;
   IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(&input->source_arena, module->sources.count,
+      iree_arena_allocate_array(&input->sources.arena, module->sources.count,
                                 sizeof(*entries), (void**)&entries));
-  input->source_table.entries = entries;
+  input->sources.table.entries = entries;
+  input->sources.table.count = module->sources.count;
+  input->sources.capacity = module->sources.count;
   for (iree_host_size_t i = 0; i < module->sources.count; ++i) {
+    entries[i] = (loom_source_entry_t){.source_id = LOOM_SOURCE_ID_INVALID};
     iree_string_view_t path = module->sources.entries[i];
     iree_string_view_t filename = iree_string_view_empty();
     IREE_RETURN_IF_ERROR(loom_input_remap_path(capture, path, &filename));
@@ -207,7 +235,7 @@ static iree_status_t loom_input_bind_sources(loom_input_capture_t* capture) {
     for (loom_input_snapshot_t* snapshot = capture->snapshots; snapshot;
          snapshot = snapshot->next) {
       if (iree_string_view_equal(snapshot->path, path)) {
-        entries[input->source_table.count++] = (loom_source_entry_t){
+        entries[i] = (loom_source_entry_t){
             .source_id = (loom_source_id_t)i,
             .source = snapshot->source,
             .filename = snapshot->filename,
@@ -226,7 +254,7 @@ iree_status_t loom_input_module_load(const loom_input_provider_t* provider,
                                      iree_allocator_t host_allocator,
                                      loom_input_module_t* out_input) {
   *out_input = (loom_input_module_t){0};
-  iree_arena_initialize(block_pool, &out_input->source_arena);
+  loom_tooling_source_storage_initialize(block_pool, &out_input->sources);
   loom_input_capture_t capture = {.input = out_input, .request = request};
   IREE_RETURN_IF_ERROR(
       loom_input_capture_source(&capture, request->path, request->source));
@@ -249,12 +277,11 @@ iree_status_t loom_input_module_load(const loom_input_provider_t* provider,
 
 loom_source_resolver_t loom_input_module_source_resolver(
     loom_input_module_t* input) {
-  return (loom_source_resolver_t){.fn = loom_source_table_resolve,
-                                  .user_data = &input->source_table};
+  return loom_tooling_source_storage_resolver(&input->sources);
 }
 
 void loom_input_module_deinitialize(loom_input_module_t* input) {
   loom_module_free(input->module);
-  iree_arena_deinitialize(&input->source_arena);
+  loom_tooling_source_storage_deinitialize(&input->sources);
   memset(input, 0, sizeof(*input));
 }

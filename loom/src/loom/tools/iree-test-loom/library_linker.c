@@ -28,7 +28,8 @@ static iree_status_t iree_test_loom_capture_sources(
 
 static iree_status_t iree_test_loom_add_library(
     loom_run_session_t* session, iree_string_view_t library_path,
-    loom_linker_t* linker, iree_test_loom_link_sources_t* sources) {
+    const loom_input_options_t* input_options, loom_linker_t* linker,
+    iree_test_loom_link_sources_t* sources) {
   if (loom_tooling_file_path_is_stdio(library_path)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "--library requires a filesystem path");
@@ -41,6 +42,9 @@ static iree_status_t iree_test_loom_add_library(
   if (iree_status_is_ok(status)) {
     loom_run_module_parse_options_t parse_options = {0};
     loom_run_module_parse_options_initialize(&parse_options);
+    if (input_options) {
+      parse_options.input = *input_options;
+    }
     parse_options.filename = library_path;
     parse_options.source = loom_tooling_file_contents_string_view(contents);
     status = loom_run_module_parse(session, &parse_options, &library_module);
@@ -57,7 +61,8 @@ static iree_status_t iree_test_loom_add_library(
 
 iree_status_t iree_test_loom_link_libraries(
     loom_run_session_t* session, loom_run_module_t* run_module,
-    iree_string_view_list_t library_paths) {
+    iree_string_view_list_t library_paths,
+    const loom_input_options_t* input_options) {
   if (library_paths.count == 0) {
     return iree_ok_status();
   }
@@ -89,7 +94,7 @@ iree_status_t iree_test_loom_link_libraries(
   for (iree_host_size_t i = 0;
        i < library_paths.count && iree_status_is_ok(status); ++i) {
     status = iree_test_loom_add_library(session, library_paths.values[i],
-                                        linker, &sources);
+                                        input_options, linker, &sources);
   }
   if (iree_status_is_ok(status)) {
     status = loom_linker_finish(linker, &linked_module);

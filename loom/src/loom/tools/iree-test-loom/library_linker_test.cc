@@ -44,8 +44,8 @@ TEST(LibraryLinkerTest, ResolvesOwnedMainAndLibraryBytesAfterLinking) {
       library.path_view(), IREE_SV("// library snapshot\n"),
       iree_allocator_system()));
   const iree_string_view_t paths[] = {library.path_view()};
-  IREE_ASSERT_OK(iree_test_loom_link_libraries(&session, &module,
-                                               {IREE_ARRAYSIZE(paths), paths}));
+  IREE_ASSERT_OK(iree_test_loom_link_libraries(
+      &session, &module, {IREE_ARRAYSIZE(paths), paths}, nullptr));
   // The loader has destroyed the library's parsed module and file buffer.
   // Changing the file also ensures resolution never rereads the filesystem.
   IREE_ASSERT_OK(loom_tooling_write_output_file(library.path_view(),

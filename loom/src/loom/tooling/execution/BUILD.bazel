@@ -81,6 +81,7 @@ loom_cc_library(
         "//loom/src/loom/format/text:parser",
         "//loom/src/loom/ir",
         "//loom/src/loom/target:low_descriptor_registry",
+        "//loom/src/loom/tooling/input",
         "//loom/src/loom/tooling/io:source",
         "//loom/src/loom/verify",
         "//runtime/src/iree/base",

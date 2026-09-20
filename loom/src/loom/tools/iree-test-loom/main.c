@@ -20,6 +20,7 @@
 #include "loom/tooling/config/config.h"
 #include "loom/tooling/context/context.h"
 #include "loom/tooling/execution/hal/testbench_actual.h"
+#include "loom/tooling/input/flags.h"
 #include "loom/tooling/io/file.h"
 #include "loom/tooling/testbench/device_event.h"
 #include "loom/tooling/testbench/executor.h"
@@ -39,7 +40,7 @@ IREE_FLAG(int32_t, sample, -1,
           "or cases. Negative executes all planned samples.");
 IREE_FLAG_LIST(
     string, library,
-    "Loom bytecode library linked into the authored input module. Repeat as "
+    "Source or bytecode library linked into the authored input. Repeat as "
     "--library=path.loombc. Libraries are linked whole in argument order.");
 IREE_FLAG_NAMED(int32_t, max_samples_per_case, "max-samples-per-case",
                 LOOM_TESTBENCH_DEFAULT_MAX_SAMPLES_PER_CASE,
@@ -699,6 +700,7 @@ int iree_test_loom_main(int argc, char** argv,
     loom_run_session_options_t session_options = {0};
     loom_run_session_options_initialize(&session_options);
     session_options.host_allocator = allocator;
+    session_options.input_providers = configuration->input_providers;
     session_options.register_context = (loom_run_register_context_callback_t){
         .fn = iree_test_loom_register_context,
         .user_data = (void*)configuration,
@@ -740,17 +742,20 @@ int iree_test_loom_main(int argc, char** argv,
   if (iree_status_is_ok(status)) {
     loom_run_module_parse_options_t parse_options = {0};
     loom_run_module_parse_options_initialize(&parse_options);
+    parse_options.input = loom_input_options_from_flags();
     parse_options.filename = filename;
     parse_options.source = source;
     status = loom_run_module_parse(&session, &parse_options, &run_module);
   }
   if (iree_status_is_ok(status)) {
     const iree_flag_string_list_t libraries = FLAG_library_list();
+    const loom_input_options_t input_options = loom_input_options_from_flags();
     status = iree_test_loom_link_libraries(&session, &run_module,
                                            (iree_string_view_list_t){
                                                .count = libraries.count,
                                                .values = libraries.values,
-                                           });
+                                           },
+                                           &input_options);
   }
   if (iree_status_is_ok(status)) {
     status = iree_test_loom_verify_run_module(&run_module);
