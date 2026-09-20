@@ -212,8 +212,8 @@ not as a growing architecture allowlist.
 
 ## A benchmark names proven work
 
-[`check.benchmark`](../reference/dialects/check/ops/benchmark.md) references one
-case and optionally binds named parameters:
+[`check.benchmark`](../reference/dialects/check/ops/benchmark.md) requires an
+explicit symbol name, references one case, and optionally binds named parameters:
 
 ```loom
 check.benchmark<@copy_i32_case> @copy_i32_sweep
@@ -221,6 +221,8 @@ check.benchmark<@copy_i32_case> @copy_i32_sweep
 check.benchmark<@copy_i32_case> @copy_i32_seed_1002 {seed = 1002}
 ```
 
+The symbol is the record's identity through linking, reports, and selection by
+`--benchmark` or `--compare`. It is distinct from the referenced case's name.
 The first record selects the case's complete seed sweep. The second names one
 representative sample. Both reuse its value generation, kernel launch,
 expectation, and correctness contract. Several benchmark names that resolve to

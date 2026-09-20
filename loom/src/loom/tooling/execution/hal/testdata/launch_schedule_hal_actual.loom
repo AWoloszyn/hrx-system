@@ -45,7 +45,7 @@ check.case @launch_schedule_serial_case {
   check.return
 }
 
-check.benchmark<@launch_schedule_serial_case>
+check.benchmark<@launch_schedule_serial_case> @launch_schedule_serial
 
 check.case @launch_schedule_concurrent_case {
   %input_a = check.generate.fill value(7) : tensor<1xi32>
@@ -63,4 +63,4 @@ check.case @launch_schedule_concurrent_case {
   check.return
 }
 
-check.benchmark<@launch_schedule_concurrent_case>
+check.benchmark<@launch_schedule_concurrent_case> @launch_schedule_concurrent

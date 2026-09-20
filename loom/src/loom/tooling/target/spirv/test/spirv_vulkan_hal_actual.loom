@@ -25,7 +25,7 @@ check.case @double_i32_at_byte_offset_case {
   check.return
 }
 
-check.benchmark<@double_i32_at_byte_offset_case>
+check.benchmark<@double_i32_at_byte_offset_case> @double_i32_at_byte_offset_benchmark
 
 kernel.def target(@target) @increment_i32() {
   %unit = index.constant 1 : index
@@ -72,7 +72,7 @@ check.case @ordered_dispatch_aba_case {
   check.return
 }
 
-check.benchmark<@ordered_dispatch_aba_case>
+check.benchmark<@ordered_dispatch_aba_case> @ordered_dispatch_aba
 
 kernel.def target(@target) @scalar_addressing_i32() {
   %unit = index.constant 1 : index

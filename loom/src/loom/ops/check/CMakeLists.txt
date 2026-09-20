@@ -30,4 +30,21 @@ loom_generated_cc_library(
     loom::ops::op_defs
 )
 
+loom_cc_test(
+  NAME
+    ops_test
+  SRCS
+    "ops_test.cc"
+  DEPS
+    ::check
+    iree::base::internal::arena
+    iree::io::stream
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::format::bytecode::reader
+    loom::format::bytecode::writer
+    loom::ir
+    loom::verify
+)
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

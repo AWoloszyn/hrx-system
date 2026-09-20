@@ -69,7 +69,7 @@ check.case public @indexed_row_gather_f32_case {
   check.return
 }
 
-check.benchmark<@indexed_row_gather_f32_case>
+check.benchmark<@indexed_row_gather_f32_case> @indexed_row_gather_f32_sweep
 
 check.benchmark<@indexed_row_gather_f32_case> @indexed_row_gather_f32_single {nrows = 1}
 

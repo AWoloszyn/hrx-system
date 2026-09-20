@@ -38,4 +38,4 @@ check.case public @divergent_loop_carry_case {
   check.return
 }
 
-check.benchmark<@divergent_loop_carry_case>
+check.benchmark<@divergent_loop_carry_case> @divergent_loop_carry_benchmark

@@ -68,4 +68,4 @@ check.case @dense_projection_tiled_u8_128_case {
   check.return
 }
 
-check.benchmark<@dense_projection_tiled_u8_128_case>
+check.benchmark<@dense_projection_tiled_u8_128_case> @dense_projection_tiled_u8_128_benchmark

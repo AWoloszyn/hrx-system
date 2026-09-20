@@ -38,6 +38,30 @@ check.benchmark<@not_a_case> @wrong_case_kind {}
 
 // ====
 
+// An assignment dictionary does not supply the benchmark's identity.
+check.case @unnamed_slice_case {
+  %count = check.param.choice values([1, 2]) name("count") : index
+  check.return
+}
+
+// ERROR@+2: PARSE/003 "symbol"
+// ERROR@+1: PARSE/003 "op name"
+check.benchmark<@unnamed_slice_case> {count = 1}
+
+// ====
+
+// Distinct slices of one case still require distinct benchmark symbols.
+check.case @sliced_case {
+  %count = check.param.choice values([1, 2]) name("count") : index
+  check.return
+}
+
+check.benchmark<@sliced_case> @slice {count = 1}
+// ERROR@+1: SYMBOL/005 "slice"
+check.benchmark<@sliced_case> @slice {count = 2}
+
+// ====
+
 // Literal payloads must match the result element type.
 check.case @bad_literal_payload {
   // ERROR@+1: TYPE/005 "value"
@@ -55,3 +79,13 @@ check.case @bad_expect_types {
   check.expect.equal actual(%actual) expected(%expected) : i32
   check.return
 }
+
+// ====
+
+// Every benchmark has an explicit identity, even without assignments.
+check.case @unnamed_case {
+  check.return
+}
+
+// ERROR@+2: PARSE/003 "symbol"
+check.benchmark<@unnamed_case>

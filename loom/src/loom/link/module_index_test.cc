@@ -732,7 +732,6 @@ check.case public @kernel_case {
   check.return
 }
 
-check.benchmark<@kernel_case>
 check.benchmark<@kernel_case> @kernel_bench {}
 )"));
   ASSERT_NE(module, nullptr);

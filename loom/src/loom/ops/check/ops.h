@@ -411,22 +411,21 @@ iree_status_t loom_check_expect_event_build(
     loom_location_id_t location,
     loom_op_t** out_op);
 
-// LOOM_OP_CHECK_BENCHMARK: Declares a benchmark slice over a check.case.
+// LOOM_OP_CHECK_BENCHMARK: Declares a named benchmark slice over a check.case. The required symbol identifies the record in linking, reports, and benchmark selection.
 // check.benchmark<@gemv_sweep> @gemv_latency {m = 8, n = 96}
 LOOM_DEFINE_ISA(loom_check_benchmark_isa, LOOM_OP_CHECK_BENCHMARK)
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_benchmark_benchmark, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_benchmark_case_ref, 1)
 LOOM_DEFINE_ATTR_DICT(loom_check_benchmark_attrs, 2)
 enum loom_check_benchmark_build_flag_bits_e {
-  LOOM_CHECK_BENCHMARK_BUILD_FLAG_HAS_BENCHMARK = 1u << 0,
-  LOOM_CHECK_BENCHMARK_BUILD_FLAG_HAS_ATTRS = 1u << 1,
+  LOOM_CHECK_BENCHMARK_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
 typedef uint32_t loom_check_benchmark_build_flags_t;
 iree_status_t loom_check_benchmark_build(
     loom_builder_t* builder,
     loom_check_benchmark_build_flags_t build_flags,
     loom_symbol_ref_t case_ref,
-    loom_optional loom_symbol_ref_t benchmark,
+    loom_symbol_ref_t benchmark,
     loom_optional loom_named_attr_slice_t attrs,
     loom_location_id_t location,
     loom_op_t** out_op);

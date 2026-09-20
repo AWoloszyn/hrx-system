@@ -508,58 +508,58 @@ check.case public @fp8_finite_storage_compact_rhs_tile_zero_scale_bf16_k4608_cas
   check.return
 }
 
-check.benchmark<@fp8_finite_storage_decode_case>
+check.benchmark<@fp8_finite_storage_decode_case> @fp8_finite_storage_decode_sweep
 
 check.benchmark<@fp8_finite_storage_decode_case> @fp8_finite_storage_decode_single {row_count = 1}
 
 check.benchmark<@fp8_finite_storage_decode_case> @fp8_finite_storage_decode_tail {row_count = 65}
 
-check.benchmark<@fp8_finite_storage_decode_bf16_case>
+check.benchmark<@fp8_finite_storage_decode_bf16_case> @fp8_finite_storage_decode_bf16_sweep
 
 check.benchmark<@fp8_finite_storage_decode_bf16_case> @fp8_finite_storage_decode_bf16_single {row_count = 1}
 
 check.benchmark<@fp8_finite_storage_decode_bf16_case> @fp8_finite_storage_decode_bf16_tail {row_count = 65}
 
-check.benchmark<@fp8_finite_storage_zero_decode_bf16_case>
+check.benchmark<@fp8_finite_storage_zero_decode_bf16_case> @fp8_finite_storage_zero_decode_bf16
 
-check.benchmark<@fp8_finite_storage_mixed_subnormal_decode_bf16_case>
+check.benchmark<@fp8_finite_storage_mixed_subnormal_decode_bf16_case> @fp8_finite_storage_mixed_subnormal_decode_bf16
 
-check.benchmark<@fp8_finite_storage_decode_f16_case>
+check.benchmark<@fp8_finite_storage_decode_f16_case> @fp8_finite_storage_decode_f16_sweep
 
 check.benchmark<@fp8_finite_storage_decode_f16_case> @fp8_finite_storage_decode_f16_single {row_count = 1}
 
 check.benchmark<@fp8_finite_storage_decode_f16_case> @fp8_finite_storage_decode_f16_tail {row_count = 65}
 
-check.benchmark<@fp8_finite_storage_zero_decode_f16_case>
+check.benchmark<@fp8_finite_storage_zero_decode_f16_case> @fp8_finite_storage_zero_decode_f16
 
-check.benchmark<@fp8_finite_storage_subnormal_decode_f16_case>
+check.benchmark<@fp8_finite_storage_subnormal_decode_f16_case> @fp8_finite_storage_subnormal_decode_f16
 
-check.benchmark<@bf8_finite_storage_decode_f16_case>
+check.benchmark<@bf8_finite_storage_decode_f16_case> @bf8_finite_storage_decode_f16_sweep
 
 check.benchmark<@bf8_finite_storage_decode_f16_case> @bf8_finite_storage_decode_f16_single {row_count = 1}
 
 check.benchmark<@bf8_finite_storage_decode_f16_case> @bf8_finite_storage_decode_f16_tail {row_count = 65}
 
-check.benchmark<@bf8_finite_storage_zero_decode_f16_case>
+check.benchmark<@bf8_finite_storage_zero_decode_f16_case> @bf8_finite_storage_zero_decode_f16
 
-check.benchmark<@bf8_finite_storage_subnormal_decode_f16_case>
+check.benchmark<@bf8_finite_storage_subnormal_decode_f16_case> @bf8_finite_storage_subnormal_decode_f16
 
-check.benchmark<@fp8_finite_storage_scale_decode_bf16_case>
+check.benchmark<@fp8_finite_storage_scale_decode_bf16_case> @fp8_finite_storage_scale_decode_bf16_sweep
 
 check.benchmark<@fp8_finite_storage_scale_decode_bf16_case> @fp8_finite_storage_scale_decode_bf16_single {row_count = 1}
 
 check.benchmark<@fp8_finite_storage_scale_decode_bf16_case> @fp8_finite_storage_scale_decode_bf16_tail {row_count = 65}
 
-check.benchmark<@bf8_finite_storage_scale_decode_bf16_case>
+check.benchmark<@bf8_finite_storage_scale_decode_bf16_case> @bf8_finite_storage_scale_decode_bf16_sweep
 
 check.benchmark<@bf8_finite_storage_scale_decode_bf16_case> @bf8_finite_storage_scale_decode_bf16_single {row_count = 1}
 
 check.benchmark<@bf8_finite_storage_scale_decode_bf16_case> @bf8_finite_storage_scale_decode_bf16_tail {row_count = 65}
 
-check.benchmark<@fp8_finite_storage_zero_scale_mixed_pair_bf16_case>
+check.benchmark<@fp8_finite_storage_zero_scale_mixed_pair_bf16_case> @fp8_finite_storage_zero_scale_mixed_pair_bf16_benchmark
 
-check.benchmark<@bf8_finite_storage_zero_scale_mixed_pair_bf16_case>
+check.benchmark<@bf8_finite_storage_zero_scale_mixed_pair_bf16_case> @bf8_finite_storage_zero_scale_mixed_pair_bf16_benchmark
 
-check.benchmark<@fp8_finite_storage_compact_rhs_tile_zero_scale_bf16_k2048_case>
+check.benchmark<@fp8_finite_storage_compact_rhs_tile_zero_scale_bf16_k2048_case> @fp8_finite_storage_compact_rhs_tile_zero_scale_bf16_k2048
 
-check.benchmark<@fp8_finite_storage_compact_rhs_tile_zero_scale_bf16_k4608_case>
+check.benchmark<@fp8_finite_storage_compact_rhs_tile_zero_scale_bf16_k4608_case> @fp8_finite_storage_compact_rhs_tile_zero_scale_bf16_k4608

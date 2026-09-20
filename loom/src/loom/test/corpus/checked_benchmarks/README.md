@@ -13,7 +13,7 @@ Each checked benchmark source is expected to contain:
 - One or more kernels or callable entry points under test.
 - One or more `check.case` records with deterministic input generation and
   meaningful expectations.
-- One or more `check.benchmark<@case>` rows selecting the checked workload for
+- One or more `check.benchmark<@case> @name` rows selecting the checked workload for
   timing.
 - Comments that identify the represented behavior class and any non-obvious
   numeric, layout, target, or launch contract.

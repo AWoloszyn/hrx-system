@@ -116,7 +116,7 @@ check.case @dense_projection_tiled_f16_128_case {
   check.return
 }
 
-check.benchmark<@dense_projection_tiled_f16_128_case>
+check.benchmark<@dense_projection_tiled_f16_128_case> @dense_projection_tiled_f16_128_benchmark
 
 kernel.def target(@target) @narrow_score_tiled_f16_128x16_m1() {
   %m_tiles = index.constant 8 : index
@@ -271,6 +271,6 @@ check.case @narrow_score_tiled_f16_128x16_m2_case {
   check.return
 }
 
-check.benchmark<@narrow_score_tiled_f16_128x16_m1_case>
+check.benchmark<@narrow_score_tiled_f16_128x16_m1_case> @narrow_score_tiled_f16_128x16_m1_benchmark
 
-check.benchmark<@narrow_score_tiled_f16_128x16_m2_case>
+check.benchmark<@narrow_score_tiled_f16_128x16_m2_case> @narrow_score_tiled_f16_128x16_m2_benchmark

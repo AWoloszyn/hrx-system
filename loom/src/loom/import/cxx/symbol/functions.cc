@@ -357,9 +357,9 @@ void Functions::build_benchmarks(Locations& locations,
     }
     auto symbol = callees_.at(benchmark.function->canonical());
     loom_op_t* op;
-    check(loom_check_benchmark_build(
-        builder, LOOM_CHECK_BENCHMARK_BUILD_FLAG_HAS_BENCHMARK, target->second,
-        symbol, {}, locations.get(benchmark.source), &op));
+    check(loom_check_benchmark_build(builder, /*build_flags=*/0, target->second,
+                                     symbol, {},
+                                     locations.get(benchmark.source), &op));
   }
 }
 

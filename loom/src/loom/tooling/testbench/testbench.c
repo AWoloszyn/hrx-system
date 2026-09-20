@@ -1255,13 +1255,6 @@ static iree_host_size_t loom_testbench_case_index_from_ref(
   return case_index;
 }
 
-static iree_string_view_t loom_testbench_default_benchmark_name(
-    const loom_testbench_case_plan_t* case_plan) {
-  iree_string_view_t name =
-      iree_string_view_strip_suffix(case_plan->name, IREE_SV("_case"));
-  return iree_string_view_is_empty(name) ? case_plan->name : name;
-}
-
 static bool loom_testbench_range_parameter_sample_ordinal(
     const loom_testbench_parameter_plan_t* parameter, loom_attribute_t value,
     iree_host_size_t* out_sample_ordinal) {
@@ -1635,10 +1628,6 @@ iree_status_t loom_testbench_plan_module(
                                   benchmark->op, benchmark->case_ref);
       benchmark->sample_count = 0;
       continue;
-    }
-    if (iree_string_view_is_empty(benchmark->name)) {
-      benchmark->name =
-          loom_testbench_default_benchmark_name(&cases[benchmark->case_index]);
     }
     IREE_RETURN_IF_ERROR(loom_testbench_plan_benchmark_assignments(
         module, i, max_samples_per_case, benchmark,
