@@ -490,6 +490,7 @@ diff --git a/src/parser/cxx/util.h b/src/parser/cxx/util.h
  template <typename T>
  void hash_combine(std::size_t& seed, const T& val) {
 diff --git a/tests/unit_tests/sema/aligned_layout_01.cc b/tests/unit_tests/sema/aligned_layout_01.cc
+new file mode 100644
 --- /dev/null
 +++ b/tests/unit_tests/sema/aligned_layout_01.cc
 @@ -0,0 +1,100 @@

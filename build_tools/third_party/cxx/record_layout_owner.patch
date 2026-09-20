@@ -1348,6 +1348,7 @@ diff --git a/src/parser/cxx/binder_complete_class.cc b/src/parser/cxx/binder_com
 -}
  }  // namespace cxx
 diff --git a/src/parser/cxx/binder_record_layout.cc b/src/parser/cxx/binder_record_layout.cc
+new file mode 100644
 --- /dev/null
 +++ b/src/parser/cxx/binder_record_layout.cc
 @@ -0,0 +1,1362 @@

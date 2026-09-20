@@ -296,6 +296,7 @@ diff --git a/src/parser/cxx/type_traits.h b/src/parser/cxx/type_traits.h
        -> std::pair<const Type*, const Type*>;
 
 diff --git a/tests/unit_tests/sema/packed_enums_01.cc b/tests/unit_tests/sema/packed_enums_01.cc
+new file mode 100644
 --- /dev/null
 +++ b/tests/unit_tests/sema/packed_enums_01.cc
 @@ -0,0 +1,61 @@

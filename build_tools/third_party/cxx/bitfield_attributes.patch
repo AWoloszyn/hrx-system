@@ -368,6 +368,7 @@ diff --git a/src/parser/cxx/semantic_codec.cc b/src/parser/cxx/semantic_codec.cc
 
  void SemanticDecoder::readAstParameterPackAST(
 diff --git a/tests/unit_tests/sema/bitfield_attributes_01.cc b/tests/unit_tests/sema/bitfield_attributes_01.cc
+new file mode 100644
 --- /dev/null
 +++ b/tests/unit_tests/sema/bitfield_attributes_01.cc
 @@ -0,0 +1,48 @@
