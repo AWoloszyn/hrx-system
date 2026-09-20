@@ -56,7 +56,9 @@ iree_status_t loom_cfg_value_identity_table_update(
     const loom_dominance_info_t* dominance, iree_arena_allocator_t* arena);
 
 // Returns the direct representative for |value_id|, or |value_id| when no
-// identity has been established.
+// identity has been established. An equivalence class represented by block
+// arguments in one block selects its earliest argument, so a forward consumer
+// can replace later arguments without searching the class.
 static inline loom_value_id_t loom_cfg_value_identity_table_lookup(
     const loom_cfg_value_identity_table_t* table, loom_value_id_t value_id) {
   if (table == NULL || table->value_domain == NULL) {

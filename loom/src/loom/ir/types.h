@@ -713,6 +713,18 @@ bool loom_type_equal_after_value_remap(const loom_module_t* module,
 // loom_type_hash(a) == loom_type_hash(b).
 uint32_t loom_type_hash(loom_type_t type);
 
+// Returns a content-based hash after applying |remap| to embedded SSA value
+// references. |module| owns type-valued parameter attributes reached from
+// |type|. A NULL |remap| hashes the type without replacing value references.
+//
+// This hash is paired with loom_type_equal_after_value_remap(): when that
+// comparison succeeds for source and target, hashing source with the same
+// remap equals hashing target with a NULL remap. Its numeric result need not
+// equal loom_type_hash(), even when |remap| is NULL.
+uint32_t loom_type_hash_after_value_remap(const loom_module_t* module,
+                                          loom_type_t type,
+                                          const loom_type_value_remap_t* remap);
+
 // Callback invoked for each SSA value reference embedded in a type.
 typedef iree_status_t (*loom_type_value_ref_callback_t)(
     loom_value_id_t value_id, void* user_data);

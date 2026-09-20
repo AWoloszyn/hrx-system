@@ -80,3 +80,28 @@ func.def @correlated_duplicate_rotation(%input: buffer, %count_input: index, %fi
   %sum3 = scalar.addi %sum2, %b_view_value : i32
   func.return %sum3 : i32
 }
+
+
+// ====
+
+func.def @correlated_cfg_rotation(%input: buffer, %select: i1, %again: i1, %left_offset_input: offset, %right_offset_input: offset) -> (i32) {
+  %left_offset = index.assume %left_offset_input [range(%left_offset_input, 0, 4092), mul(%left_offset_input, 4)] : offset
+  %right_offset = index.assume %right_offset_input [range(%right_offset_input, 0, 4092), mul(%right_offset_input, 4)] : offset
+  %storage = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  cfg.cond_br %select, ^left, ^right
+^left:
+  cfg.br ^loop(%left_offset: offset, %left_offset: offset)
+^right:
+  cfg.br ^loop(%right_offset: offset, %right_offset: offset)
+^loop(%offset: offset, %duplicate_offset: offset):
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  cfg.br ^loop(%duplicate_offset: offset, %offset: offset)
+^exit:
+  %view = buffer.view %storage[%offset] : buffer -> view<1xi32>
+  %duplicate_view = buffer.view %storage[%duplicate_offset] : buffer -> view<1xi32>
+  %value = view.load %view[0] : view<1xi32> -> i32
+  %duplicate_value = view.load %duplicate_view[0] : view<1xi32> -> i32
+  %sum = scalar.addi %value, %duplicate_value : i32
+  func.return %sum : i32
+}
