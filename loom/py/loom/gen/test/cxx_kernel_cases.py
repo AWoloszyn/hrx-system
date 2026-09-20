@@ -85,6 +85,7 @@ class Case:
         self.lines.append(f"  %guard = check.generate.fill value({self.guard}) : tensor<16x{self.element}>")
         for name in ["prefix", "suffix"]:
             self.lines.append(f"  check.expect.bitwise actual(%{name}) expected(%guard) : tensor<16x{self.element}>")
+        self.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         self.lines.extend(["  check.return", "}", ""])
         return "\n".join(self.lines)
 
@@ -170,23 +171,22 @@ def control_flow(arrays):
     return "kernel.decl @control_flow() launch(%counts: buffer, %output: buffer, %length: i32)\n\n" + case.finish(expected)
 
 
-def scheduled_sum(arrays):
+def scheduled_sum_variant(arrays, kernel):
     cases = []
     rows = 7
     for columns in [0, 1, 2, 5, 17, 33]:
         rng = random.Random(1030 + columns)
         values = [rng.randrange(-100, 101) for _ in range(rows * max(1, columns))]
         expected = [sum(values[row * columns : (row + 1) * columns]) for row in range(rows)]
-        case = Case(arrays, f"scheduled_sum_{columns}", "i32", rows)
+        case = Case(arrays, f"{kernel}_{columns}", "i32", rows)
         case.array("input", values)
         case.array("original", values)
         case.scalar("rows", rows, "i32")
         case.scalar("columns", columns, "i32")
-        case.launch("scheduled_sum", "%input, %output, %rows, %columns", f"tensor<{len(values)}xi32>, tensor<{rows}xi32>, i32, i32")
+        case.launch(kernel, "%input, %output, %rows, %columns", f"tensor<{len(values)}xi32>, tensor<{rows}xi32>, i32, i32")
         case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
-    return "kernel.decl @scheduled_sum() launch(%input: buffer, %output: buffer, %rows: i32, %columns: i32)\n\n" + "\n".join(cases)
+    return f"kernel.decl @{kernel}() launch(%input: buffer, %output: buffer, %rows: i32, %columns: i32)\n\n" + "\n".join(cases)
 
 
 def short_circuit(arrays):
@@ -219,7 +219,6 @@ def short_circuit(arrays):
         case.array("input", values)
         case.scalar("length", length, "i32")
         case.launch("short_circuit", "%input, %output, %length", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @short_circuit() launch(%input: buffer, %output: buffer, %length: i32)\n\n" + "\n".join(cases)
 
@@ -243,7 +242,6 @@ def early_returns(arrays):
         case.array("input", values)
         case.scalar("length", length, "i32")
         case.launch("early_returns", "%input, %output, %length", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @early_returns() launch(%input: buffer, %output: buffer, %length: i32)\n\n" + "\n".join(cases)
 
@@ -357,7 +355,6 @@ def increment_values(arrays):
         case = Case(arrays, f"increment_values_{input_value}", "i32", len(expected))
         case.scalar("input", signed_bits(input_value, 32), "i32")
         case.launch("increment_values", "%output, %input", f"tensor<{len(expected)}xi32>, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish([signed_bits(value, 32) for value in expected]))
     return "kernel.decl @increment_values() launch(%output: buffer, %input: i32)\n\n" + "\n".join(cases)
 
@@ -394,7 +391,6 @@ def increment_pointers(arrays):
         case.launch("increment_pointers", "%input, %output, %length, %choose", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32, i32")
         case.array("input_expected", values)
         case.lines.append(f"  check.expect.bitwise actual(%input) expected(%input_expected) : tensor<{len(values)}xi32>")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @increment_pointers() launch(%input: buffer, %output: buffer, %length: i32, %choose: i32)\n\n" + "\n".join(cases)
 
@@ -446,7 +442,6 @@ def continue_values(arrays):
             case.scalar("count", count, "i32")
             case.scalar("choose", choose, "i32")
             case.launch("continue_values", "%output, %count, %choose", f"tensor<{len(expected)}xi32>, i32, i32")
-            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
             cases.append(case.finish(expected))
     return "kernel.decl @continue_values() launch(%output: buffer, %count: i32, %choose: i32)\n\n" + "\n".join(cases)
 
@@ -467,7 +462,6 @@ def continue_scheduled(arrays):
             case.scalar("choose", choose, "i32")
             case.launch("continue_scheduled", "%input, %output, %count, %choose", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32, i32")
             case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
-            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
             cases.append(case.finish(expected))
     return "kernel.decl @continue_scheduled() launch(%input: buffer, %output: buffer, %count: i32, %choose: i32)\n\n" + "\n".join(cases)
 
@@ -480,7 +474,6 @@ def continue_copy(arrays):
     case.array("original", values)
     case.launch("continue_copy", "%input, %output", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>")
     case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
-    case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
     return "kernel.decl @continue_copy() launch(%input: buffer, %output: buffer)\n\n" + case.finish(expected)
 
 
@@ -501,7 +494,6 @@ def continue_pointers(arrays):
             case.scalar("choose", choose, "i32")
             case.launch("continue_pointers", "%input, %output, %length, %choose", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32, i32")
             case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
-            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
             cases.append(case.finish(expected))
     return "kernel.decl @continue_pointers() launch(%input: buffer, %output: buffer, %length: i32, %choose: i32)\n\n" + "\n".join(cases)
 
@@ -519,7 +511,6 @@ def continue_vectors(arrays):
             case.scalar("count", count, "i32")
             case.scalar("choose", choose, "i32")
             case.launch("continue_vectors", "%output, %count, %choose", "tensor<4xi32>, i32, i32")
-            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
             cases.append(case.finish(expected))
     return "kernel.decl @continue_vectors() launch(%output: buffer, %count: i32, %choose: i32)\n\n" + "\n".join(cases)
 
@@ -573,7 +564,6 @@ def constant_loops(arrays):
         case.scalar("start", signed_bits(start, 32), "i32")
         case.launch("constant_loops", "%input, %output, %start", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32")
         case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @constant_loops() launch(%input: buffer, %output: buffer, %start: i32)\n\n" + "\n".join(cases)
 
@@ -618,7 +608,6 @@ def assumption_kernel(arrays):
         case = Case(arrays, f"assumptions_{input_value}", "i32", len(expected))
         case.scalar("input", signed_bits(input_value, 32), "i32")
         case.launch("assumption_kernel", "%output, %input", f"tensor<{len(expected)}xi32>, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @assumption_kernel() launch(%output: buffer, %input: i32)\n\n" + "\n".join(cases)
 
@@ -676,7 +665,6 @@ def enum_storage(arrays, width):
         case.scalar("delta", signed_bits(delta, width), element)
         case.launch(f"enum_storage_u{width}", "%input, %output, %delta", f"tensor<64x{element}>, tensor<64x{element}>, {element}")
         case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<64x{element}>")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         expected = [signed_bits((value + delta) & mask, width) for value in values]
         cases.append(case.finish(expected))
     return f"kernel.decl @enum_storage_u{width}() launch(%input: buffer, %output: buffer, %delta: i{width})\n\n" + "\n".join(cases)
@@ -727,7 +715,6 @@ def pointer_walk(arrays):
         case.scalar("start", start, "i64")
         case.scalar("displacement", displacement, "i64")
         case.launch("pointer_walk", "%input, %counts, %output, %length, %start, %displacement", f"tensor<{len(values)}xi32>, tensor<{len(counts)}xi32>, tensor<{len(expected)}xi32>, i32, i64, i64")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         for name, original in [("input", values), ("counts", counts)]:
             case.array(name + "_expected", original)
             case.lines.append(f"  check.expect.bitwise actual(%{name}) expected(%{name}_expected) : tensor<{len(original)}xi32>")
@@ -749,7 +736,6 @@ def vector_depth(arrays):
         case.array("depth", [signed_bits(value, 32) for value in depth])
         case.scalar("count", blocks, "i32")
         case.launch("vector_depth", "%previous, %depth, %output, %count", f"tensor<{len(previous)}xi32>, tensor<{len(depth)}xi32>, tensor<{len(expected)}xi32>, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @vector_depth() launch(%previous: buffer, %depth: buffer, %output: buffer, %count: i32)\n\n" + "\n".join(cases)
 
@@ -766,7 +752,6 @@ def vector_depth_span(arrays):
         for name, value in [("count", count), ("depth", depth), ("step", step)]:
             case.scalar(name, signed_bits(value, 32), "i32")
         case.launch("vector_depth_span", "%previous, %output, %count, %depth, %step", f"tensor<{len(previous)}xi32>, tensor<{count}xi32>, i32, i32, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @vector_depth_span() launch(%previous: buffer, %output: buffer, %count: i32, %depth: i32, %step: i32)\n\n" + "\n".join(cases)
 
@@ -815,7 +800,6 @@ def vector_control(arrays):
             case.scalar("input", signed_bits(value, 32), "i32")
             case.scalar("count", count, "i32")
             case.launch("vector_control_kernel", "%output, %input, %count", "tensor<4xi32>, i32, i32")
-            case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
             cases.append(case.finish([signed_bits(element, 32) for element in expected]))
     return "kernel.decl @vector_control_kernel() launch(%output: buffer, %input: i32, %count: i32)\n\n" + "\n".join(cases)
 
@@ -855,7 +839,6 @@ def vector_initializers(arrays):
         case = Case(arrays, f"vector_initializers_{value}", "i32", len(expected))
         case.scalar("input", signed_bits(value, 32), "i32")
         case.launch("vector_initializers", "%output, %input", f"tensor<{len(expected)}xi32>, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish([signed_bits(element, 32) for element in expected]))
     return "kernel.decl @vector_initializers() launch(%output: buffer, %input: i32)\n\n" + "\n".join(cases)
 
@@ -881,7 +864,6 @@ def vector_masks(arrays):
         case = Case(arrays, f"vector_masks_{ordinal}", "i32", len(expected))
         case.array("input", [signed_bits(value, 32) for value in left + right])
         case.launch("vector_masks", "%input, %output", "tensor<8xi32>, tensor<20xi32>")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @vector_masks() launch(%input: buffer, %output: buffer)\n\n" + "\n".join(cases)
 
@@ -921,7 +903,6 @@ def register_lookup(arrays, *, floating=False):
         case.array("indices", indices)
         case.scalar("count", count, "i32")
         case.launch(name, "%table, %indices, %output, %count", f"tensor<16xi32>, tensor<{len(indices)}xi32>, tensor<{len(expected)}xi32>, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return f"kernel.decl @{name}() launch(%table: buffer, %indices: buffer, %output: buffer, %count: i32)\n\n" + "\n".join(cases)
 
@@ -949,43 +930,37 @@ def mixed_dot(arrays):
         case.array("acc", accumulators)
         case.scalar("count", count, "i32")
         case.launch("mixed_dot", "%lhs, %rhs, %acc, %output, %count", f"tensor<{len(lhs) // 4}xi32>, tensor<{len(rhs) // 4}xi32>, tensor<{len(accumulators)}xi32>, tensor<{len(expected)}xi32>, i32")
-        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @mixed_dot() launch(%lhs: buffer, %rhs: buffer, %acc: buffer, %output: buffer, %count: i32)\n\n" + "\n".join(cases)
 
 
+def launch_grid(kernel, x, y=1, z=1):
+    return "".join(f"config.def @{kernel}.workgroup_count.{axis} = {count} : index\n" for axis, count in zip("xyz", (x, y, z), strict=True)) + "\n"
+
+
+def scheduled_sum(arrays):
+    return "\n".join(scheduled_sum_variant(arrays, f"scheduled_sum_unroll_{unroll}_depth_{depth}") for unroll in (1, 3) for depth in (1, 2))
+
+
 KERNEL_GROUPS = {
-    "flash_attention": attention,
-    "llama_rms_norm": rms_norm,
-    "aiter_swiglu_f16": swiglu,
-    "control_flow": control_flow,
-    "scheduled_sum": scheduled_sum,
-    "short_circuit": short_circuit,
-    "early_returns": early_returns,
-    "increment_u8": lambda arrays: integer_increment(arrays, 8, BYTE_INPUTS),
-    "increment_u64": lambda arrays: integer_increment(arrays, 64, WIDE_INPUTS),
-    "increment_values": increment_values,
-    "increment_pointers": increment_pointers,
-    "continue_values": continue_values,
-    "continue_scheduled": continue_scheduled,
-    "continue_copy": continue_copy,
-    "continue_pointers": continue_pointers,
-    "continue_vectors": continue_vectors,
+    "aiter_swiglu_f16": lambda arrays: launch_grid("aiter_swiglu_f16", 3) + swiglu(arrays),
+    "assumptions": assumption_kernel,
     "constant_loops": constant_loops,
-    "assumption_kernel": assumption_kernel,
-    "enum_storage_u8": lambda arrays: enum_storage(arrays, 8),
-    "enum_storage_u16": lambda arrays: enum_storage(arrays, 16),
-    "enum_storage_u32": lambda arrays: enum_storage(arrays, 32),
-    "enum_storage_u64": lambda arrays: enum_storage(arrays, 64),
+    "control_flow": control_flow,
+    "early_returns": early_returns,
+    "enum_values": lambda arrays: "\n".join(enum_storage(arrays, width) for width in (8, 16, 32, 64)),
+    "flash_attention": lambda arrays: launch_grid("flash_attention", 3) + attention(arrays),
+    "increment_values": lambda arrays: increment_values(arrays) + "\n" + increment_pointers(arrays),
+    "integer_increment": lambda arrays: integer_increment(arrays, 8, BYTE_INPUTS) + "\n" + integer_increment(arrays, 64, WIDE_INPUTS),
+    "llama_rms_norm": lambda arrays: launch_grid("llama_rms_norm", 3) + rms_norm(arrays),
     "pointer_walk": pointer_walk,
-    "vector_depth": vector_depth,
-    "vector_depth_span": vector_depth_span,
+    "scheduled_sum": scheduled_sum,
+    "shaped_intrinsics": lambda arrays: register_lookup(arrays) + "\n" + register_lookup(arrays, floating=True) + "\n" + mixed_dot(arrays),
+    "short_circuit": short_circuit,
+    "structured_continue": lambda arrays: "\n".join(reference(arrays) for reference in (continue_values, continue_scheduled, continue_copy, continue_pointers, continue_vectors)),
+    "vector_depth": lambda arrays: vector_depth(arrays) + "\n" + vector_depth_span(arrays),
     "vector_initializers": vector_initializers,
-    "vector_control": vector_control,
-    "vector_masks": vector_masks,
-    "register_lookup": register_lookup,
-    "register_lookup_float": lambda arrays: register_lookup(arrays, floating=True),
-    "mixed_dot": mixed_dot,
+    "vector_values": lambda arrays: vector_control(arrays) + "\n" + vector_masks(arrays),
 }
 
 

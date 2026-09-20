@@ -6,7 +6,7 @@
 
 load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file", "loom_generated_file_family")
-load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_library", "loom_test")
+load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_test")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 load("//loom/requirements:defs.bzl", "EMIT_AMDGPU", "EXECUTE_IREE_HAL", "TARGET_ARCH_AMDGPU")
 load("//runtime/requirements:defs.bzl", "AMDGPU_RESOURCE", "HAL_AMDGPU")
@@ -142,341 +142,88 @@ _CXX_AMDGPU_PROFILE = loom_execution_profile(
     target_family = "amdgpu",
 )
 
-# Each variant binds one source kernel to a shared mathematical oracle group.
-# Import options retain source includes, schedule macros, and math contracts.
-_KERNEL_VARIANTS = {
-    "aiter_swiglu_f16": dict(
-        access_sanitizer = False,
-        args = [
-            "--config=aiter_swiglu_f16.workgroup_count.x=3",
-            "--config=aiter_swiglu_f16.workgroup_count.y=1",
-            "--config=aiter_swiglu_f16.workgroup_count.z=1",
-        ],
-        group = "aiter_swiglu_f16",
-        inputopts = ["cxx:builtin-includes=false isystem=../include approximate-functions=true root=aiter_swiglu_f16"],
-        source = "aiter_swiglu_f16.cpp",
-    ),
-    "assumption_kernel": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "assumption_kernel",
-        inputopts = ["cxx:builtin-includes=false I=../include root=assumption_kernel"],
-        source = "assumptions.cpp",
-    ),
-    "constant_loops": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "constant_loops",
-        inputopts = ["cxx:builtin-includes=false I=../include root=constant_loops"],
-        source = "constant_loops.cpp",
-    ),
-    "continue_copy": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "continue_copy",
-        inputopts = ["cxx:builtin-includes=false I=../include root=continue_copy"],
-        source = "structured_continue.cpp",
-    ),
-    "continue_pointers": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "continue_pointers",
-        inputopts = ["cxx:builtin-includes=false I=../include root=continue_pointers"],
-        source = "structured_continue.cpp",
-    ),
-    "continue_scheduled": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "continue_scheduled",
-        inputopts = ["cxx:builtin-includes=false I=../include root=continue_scheduled"],
-        source = "structured_continue.cpp",
-    ),
-    "continue_values": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "continue_values",
-        inputopts = ["cxx:builtin-includes=false I=../include root=continue_values"],
-        source = "structured_continue.cpp",
-    ),
-    "continue_vectors": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "continue_vectors",
-        inputopts = ["cxx:builtin-includes=false I=../include root=continue_vectors"],
-        source = "structured_continue.cpp",
-    ),
-    "control_flow": dict(
-        access_sanitizer = False,
-        args = [],
-        group = "control_flow",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=control_flow"],
-        source = "control_flow.cpp",
-    ),
-    "early_returns": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "early_returns",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=early_returns"],
-        source = "early_returns.cpp",
-    ),
-    "enum_storage_u16": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "enum_storage_u16",
-        inputopts = ["cxx:builtin-includes=false I=../include root=enum_storage_u16"],
-        source = "enum_values.cpp",
-    ),
-    "enum_storage_u32": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "enum_storage_u32",
-        inputopts = ["cxx:builtin-includes=false I=../include root=enum_storage_u32"],
-        source = "enum_values.cpp",
-    ),
-    "enum_storage_u64": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "enum_storage_u64",
-        inputopts = ["cxx:builtin-includes=false I=../include root=enum_storage_u64"],
-        source = "enum_values.cpp",
-    ),
-    "enum_storage_u8": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "enum_storage_u8",
-        inputopts = ["cxx:builtin-includes=false I=../include root=enum_storage_u8"],
-        source = "enum_values.cpp",
-    ),
-    "flash_attention": dict(
-        access_sanitizer = False,
-        args = [
-            "--config=flash_attention.workgroup_count.x=3",
-            "--config=flash_attention.workgroup_count.y=1",
-            "--config=flash_attention.workgroup_count.z=1",
-        ],
-        group = "flash_attention",
-        inputopts = ["cxx:builtin-includes=false isystem=../include approximate-functions=true root=flash_attention"],
-        source = "flash_attention.cpp",
-    ),
-    "increment_pointers": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "increment_pointers",
-        inputopts = ["cxx:builtin-includes=false I=../include root=increment_pointers"],
-        source = "increment_values.cpp",
-    ),
-    "increment_u64": dict(
-        access_sanitizer = False,
-        args = [],
-        group = "increment_u64",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=increment_u64"],
-        source = "integer_increment.cpp",
-    ),
-    "increment_u8": dict(
-        access_sanitizer = False,
-        args = [],
-        group = "increment_u8",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=increment_u8"],
-        source = "integer_increment.cpp",
-    ),
-    "increment_values": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "increment_values",
-        inputopts = ["cxx:builtin-includes=false I=../include root=increment_values"],
-        source = "increment_values.cpp",
-    ),
-    "llama_rms_norm": dict(
-        access_sanitizer = False,
-        args = [
-            "--config=llama_rms_norm.workgroup_count.x=3",
-            "--config=llama_rms_norm.workgroup_count.y=1",
-            "--config=llama_rms_norm.workgroup_count.z=1",
-        ],
-        group = "llama_rms_norm",
-        inputopts = ["cxx:builtin-includes=false isystem=../include approximate-functions=true root=llama_rms_norm"],
-        source = "llama_rms_norm.cpp",
-    ),
-    "mixed_dot": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "mixed_dot",
-        inputopts = ["cxx:root=mixed_dot"],
-        source = "shaped_intrinsics.cpp",
-    ),
-    "pointer_walk": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "pointer_walk",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=pointer_walk"],
-        source = "pointer_walk.cpp",
-    ),
-    "register_lookup": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "register_lookup",
-        inputopts = ["cxx:root=register_lookup"],
-        source = "shaped_intrinsics.cpp",
-    ),
-    "register_lookup_float": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "register_lookup_float",
-        inputopts = ["cxx:root=register_lookup_float"],
-        source = "shaped_intrinsics.cpp",
-    ),
-    "scheduled_sum_unroll_1_depth_1": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "scheduled_sum",
-        inputopts = ["cxx:D=UNROLL=1 D=DEPTH=1 builtin-includes=false isystem=../include root=scheduled_sum"],
-        source = "scheduled_sum.cpp",
-    ),
-    "scheduled_sum_unroll_1_depth_2": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "scheduled_sum",
-        inputopts = ["cxx:D=UNROLL=1 D=DEPTH=2 builtin-includes=false isystem=../include root=scheduled_sum"],
-        source = "scheduled_sum.cpp",
-    ),
-    "scheduled_sum_unroll_3_depth_1": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "scheduled_sum",
-        inputopts = ["cxx:D=UNROLL=3 D=DEPTH=1 builtin-includes=false isystem=../include root=scheduled_sum"],
-        source = "scheduled_sum.cpp",
-    ),
-    "scheduled_sum_unroll_3_depth_2": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "scheduled_sum",
-        inputopts = ["cxx:D=UNROLL=3 D=DEPTH=2 builtin-includes=false isystem=../include root=scheduled_sum"],
-        source = "scheduled_sum.cpp",
-    ),
-    "short_circuit": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "short_circuit",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=short_circuit"],
-        source = "short_circuit.cpp",
-    ),
-    "vector_control": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "vector_control",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=vector_control_kernel"],
-        source = "vector_values.cpp",
-    ),
-    "vector_depth": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "vector_depth",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=vector_depth"],
-        source = "vector_depth.cpp",
-    ),
-    "vector_depth_span": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "vector_depth_span",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=vector_depth_span"],
-        source = "vector_depth.cpp",
-    ),
-    "vector_initializers": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "vector_initializers",
-        inputopts = ["cxx:root=vector_initializers"],
-        source = "vector_initializers.cpp",
-    ),
-    "vector_masks": dict(
-        access_sanitizer = True,
-        args = [],
-        group = "vector_masks",
-        inputopts = ["cxx:builtin-includes=false isystem=../include root=vector_masks"],
-        source = "vector_values.cpp",
-    ),
-}
-
-_KERNEL_GROUPS = sorted({variant["group"]: None for variant in _KERNEL_VARIANTS.values()})
+# A source file and its independent reference cases form one test module.
+# Kernel names, launch configuration, and schedule variants belong to those files.
+_KERNEL_SOURCES = [
+    "aiter_swiglu_f16",
+    "assumptions",
+    "constant_loops",
+    "control_flow",
+    "early_returns",
+    "enum_values",
+    "flash_attention",
+    "increment_values",
+    "integer_increment",
+    "llama_rms_norm",
+    "pointer_walk",
+    "scheduled_sum",
+    "shaped_intrinsics",
+    "short_circuit",
+    "structured_continue",
+    "vector_depth",
+    "vector_initializers",
+    "vector_values",
+]
 
 [
     loom_generated_file_family(
-        name = group + "_checks_gen",
+        name = source + "_checks_gen",
         testonly = True,
         args = [
             "kernel",
-            "--group=" + group,
+            "--group=" + source,
         ],
         generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
-        output_directories = [group + "_arrays"],
+        output_directories = [source + "_arrays"],
         output_flags = [
             "--output",
             "--arrays",
         ],
         outputs = [
-            group + "_checks.loom",
-            group + "_arrays",
+            source + "_checks.loom",
+            source + "_arrays",
         ],
         target_compatible_with = _KERNEL_COMPATIBILITY,
     )
-    for group in _KERNEL_GROUPS
-]
-
-[
-    loom_library(
-        name = name + "_kernel",
-        srcs = [variant["source"]],
-        data = [
-            "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
-            "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
-            "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
-            "//loom/src/loom/import/cxx:include/loomcxx/math.h",
-            "//loom/src/loom/import/cxx:include/loomcxx/scalar.h",
-        ],
-        inputopts = variant["inputopts"],
-        tags = ["manual"],
-        target_compatible_with = _KERNEL_COMPATIBILITY,
-    )
-    for name, variant in _KERNEL_VARIANTS.items()
+    for source in _KERNEL_SOURCES
 ]
 
 [
     loom_test(
-        name = name + "_source_test",
-        srcs = [":" + variant["group"] + "_checks.loom"],
-        args = variant["args"],
-        data = [":" + variant["group"] + "_checks_gen"],
-        execution_profile = _CXX_AMDGPU_PROFILE,
-        target_compatible_with = _KERNEL_COMPATIBILITY,
-        deps = [":" + name + "_kernel"],
-    )
-    for name, variant in _KERNEL_VARIANTS.items()
-]
-
-[
-    loom_test(
-        name = name + "_access_test",
-        srcs = [":" + variant["group"] + "_checks.loom"],
-        args = variant["args"] + [
-            "--sanitizer=access",
-            "--sanitizer-reporting=report-only",
+        name = source + suffix + "_test",
+        srcs = [
+            source + ".cpp",
+            ":" + source + "_checks.loom",
         ],
-        data = [":" + variant["group"] + "_checks_gen"],
+        args = args,
+        data = [":" + source + "_checks_gen"],
         execution_profile = _CXX_AMDGPU_PROFILE,
+        inputopts = ["cxx:approximate-functions=true"] if source in [
+            "aiter_swiglu_f16",
+            "flash_attention",
+            "llama_rms_norm",
+        ] else [],
         target_compatible_with = _KERNEL_COMPATIBILITY,
-        deps = [":" + name + "_kernel"],
     )
-    for name, variant in _KERNEL_VARIANTS.items()
-    if variant["access_sanitizer"]
+    for source in _KERNEL_SOURCES
+    for suffix, args in [
+        ("_source", []),
+        (
+            "_access",
+            [
+                "--sanitizer=access",
+                "--sanitizer-reporting=report-only",
+            ],
+        ),
+    ]
 ]
 
 test_suite(
     name = "kernels_test",
-    tests = [":" + name + "_source_test" for name in _KERNEL_VARIANTS] + [
-        ":" + name + "_access_test"
-        for name, variant in _KERNEL_VARIANTS.items()
-        if variant["access_sanitizer"]
-    ],
+    tests = [":" + source + suffix + "_test" for source in _KERNEL_SOURCES for suffix in [
+        "_source",
+        "_access",
+    ]],
 )
 
 test_suite(
