@@ -155,6 +155,7 @@ py_test(
     data = [
         "test/status_checks.c",
         "test/status_checks.cc",
+        "test/status_constructor_checks.cc",
         ":IREEClangTidyPlugin.so",
         "@iree_clang_tidy_llvm//:clang-tidy",
     ],
