@@ -62,7 +62,9 @@ enum class CompletionTiming { kExcluded, kIncluded };
 
 // The benchmark owns a real image consumer above libamdf. Every repetition
 // shares one device, context and queue, with one explicitly retired command at
-// a time. Cold preparation never enters a measured region.
+// a time. Host preparation stays outside timing. Each native command includes
+// device setup because time-sliced contexts do not guarantee application tile
+// state survives between independent submissions.
 class ExecutionBenchmark {
  public:
   void Initialize() {
@@ -172,7 +174,7 @@ class ExecutionBenchmark {
     PrepareExecution(entry_ordinal);
 
     WriteInputs();
-    const uint64_t submission = Submit(&initialization_);
+    const uint64_t submission = Submit(&command_);
     Wait(submission);
     VerifyOutput(submission);
     skip_reason_ = nullptr;
@@ -184,13 +186,12 @@ class ExecutionBenchmark {
       state.SkipWithMessage(skip_reason_);
       return;
     }
-    const auto* command = &continuation_;
     for (auto iteration : state) {
       (void)iteration;
       state.PauseTiming();
       WriteInputs();
       state.ResumeTiming();
-      const uint64_t submission = Submit(command);
+      const uint64_t submission = Submit(&command_);
       if constexpr (completion_timing == CompletionTiming::kIncluded) {
         Wait(submission);
         state.PauseTiming();
@@ -427,15 +428,8 @@ class ExecutionBenchmark {
     CheckIreeStatus(iree_hal_amd_xdna_executable_bind(
         executable_, entry_ordinal, 1, &storage, resolved_bindings.size(),
         resolved_bindings.data()));
-    uint32_t continuation = 0;
     CheckIreeStatus(iree_hal_amd_xdna_executable_query_invocation(
-        executable_, entry_ordinal, 0, 1, &storage, &initialization_,
-        &continuation));
-    Check(continuation == 1, "multiplication establishing continuation");
-    CheckIreeStatus(iree_hal_amd_xdna_executable_query_invocation(
-        executable_, entry_ordinal, continuation, 1, &storage, &continuation_,
-        &continuation));
-    Check(continuation == 1, "multiplication repeat continuation");
+        executable_, entry_ordinal, 1, &storage, &command_));
     CheckStatus(api_->host_mapping_cache_control(
                     instructions_.mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0,
                     instruction_byte_length_),
@@ -540,10 +534,8 @@ class ExecutionBenchmark {
   MappedMemory instructions_;
   // Used instruction prefix, independent of native allocation granularity.
   iree_host_size_t instruction_byte_length_ = 0;
-  // Establishing command over live instruction backing.
-  amdf_xdna_kernel_command_t initialization_ = {};
-  // Continuation valid after establishment completes in context_.
-  amdf_xdna_kernel_command_t continuation_ = {};
+  // Complete device setup and execution over immutable instruction backing.
+  amdf_xdna_kernel_command_t command_ = {};
   // Native publication lease borrowing context_.
   amdf_kernel_queue_t* queue_ = nullptr;
   struct Binding {
@@ -573,13 +565,13 @@ int main(int argument_count, char** argument_values) {
   ExecutionBenchmark fixture;
   fixture.Initialize();
   benchmark::RegisterBenchmark(
-      "XdnaExecution/Submit",
+      "XdnaExecution/Independent/Submit",
       [&fixture](benchmark::State& state) {
         fixture.Run<CompletionTiming::kExcluded>(state);
       })
       ->UseRealTime();
   benchmark::RegisterBenchmark(
-      "XdnaExecution/SubmitAndWait",
+      "XdnaExecution/Independent/SubmitAndWait",
       [&fixture](benchmark::State& state) {
         fixture.Run<CompletionTiming::kIncluded>(state);
       })

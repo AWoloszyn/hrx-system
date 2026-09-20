@@ -71,15 +71,17 @@ iree_status_t iree_hal_amd_xdna_executable_bind(
     iree_host_size_t binding_count,
     const iree_hal_amd_xdna_executable_binding_t* bindings);
 
-// Resolves one invocation to a native command over caller-owned backing. The
-// returned continuation becomes valid only after terminal completion with
-// context, backing and resident state preserved. Reset or another entry's
-// configuration invalidates it; invocation zero establishes state again.
+// Resolves an independent invocation to a native command over caller-owned
+// backing. The entry's invocation zero establishes its tile state on every
+// submission. The command may be reused after terminal completion while its
+// backing and bindings remain valid; no host reload or relocation is required.
+// Time-sliced contexts do not guarantee resident state between submissions,
+// so this finite execution adapter does not follow image continuations.
 iree_status_t iree_hal_amd_xdna_executable_query_invocation(
     const iree_hal_amd_xdna_image_t* image, uint32_t entry_ordinal,
-    uint32_t invocation_ordinal, iree_host_size_t storage_count,
+    iree_host_size_t storage_count,
     const iree_hal_amd_xdna_executable_storage_t* storage,
-    amdf_xdna_kernel_command_t* out_command, uint32_t* out_next_invocation);
+    amdf_xdna_kernel_command_t* out_command);
 
 #ifdef __cplusplus
 }  // extern "C"
