@@ -99,7 +99,7 @@
       },
       "stderr": {
         "contains": [
-          "VM runtime imports require module import rows"
+          "VM callee '@unavailable' has no definition or runtime import"
         ]
       }
     },

@@ -34,4 +34,58 @@ loom_cc_library(
 )
 endif()
 
+if(LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    imports_binary
+  GENERATOR
+    loom::tools::loom-compile
+  OUTPUT
+    "imports.vm"
+  OUTPUT_FLAG
+    "--output="
+  ARGS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/imports.loom"
+    "--target=vm:core"
+  INPUTS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/imports.loom"
+  TESTONLY
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+iree_c_embed_data(
+  NAME
+    imports_bytecode
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/imports.vm"
+  C_FILE_OUTPUT
+    "imports_bytecode.c"
+  H_FILE_OUTPUT
+    "imports_bytecode.h"
+  IDENTIFIER
+    "loom_vm_imports_bytecode"
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+loom_cc_test(
+  NAME
+    imports_test
+  SRCS
+    "imports_test.cc"
+  DEPS
+    ::imports_bytecode
+    iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::vm
+    iree::vm::bytecode::module
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

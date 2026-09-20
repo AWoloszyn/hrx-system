@@ -1,0 +1,40 @@
+func.decl import("native") @step(%value: i32) -> (i32)
+
+func.decl import("native") @mixed(%left: buffer, %value: i64, %right: buffer) -> (buffer, i64, buffer)
+
+func.decl import("native") @fail(%left: buffer, %right: buffer)
+
+func.def public @loop(%count: i32) -> (i32) {
+  %c0 = scalar.constant 0 : i32
+  %c1 = scalar.constant 1 : i32
+  %remaining, %sum = scf.while(%current = %count : i32, %acc = %c0 : i32) -> (i32, i32) {
+    %condition = scalar.cmpi sgt, %current, %c0 : i32
+    scf.condition %condition, %current, %acc : i1, i32, i32
+  } do(%current: i32, %acc: i32) {
+    %index = scalar.subi %current, %c1 : i32
+    %value = func.call @step(%index) : (i32) -> (i32)
+    %next = scalar.addi %acc, %value : i32
+    scf.yield %index, %next : i32, i32
+  }
+  func.return %sum : i32
+}
+
+func.def public @aliases(%buffer: buffer, %value: i64) -> (buffer, i64, buffer) {
+  %left, %result, %right = func.call @mixed(%buffer, %value, %buffer) : (buffer, i64, buffer) -> (buffer, i64, buffer)
+  %sum = scalar.addi %value, %result : i64
+  func.return %right, %sum, %left : buffer, i64, buffer
+}
+
+func.def public @failure(%buffer: buffer) {
+  func.call @fail(%buffer, %buffer) : (buffer, buffer)
+  func.return
+}
+
+// Exercise both overflow banks and preserve a live scalar across the call.
+func.decl import("native") @wide(%v0: i64, %v1: i64, %v2: i64, %v3: i64, %v4: i64, %v5: i64, %v6: i64, %v7: i64, %v8: i64, %v9: i64, %v10: i64, %v11: i64, %v12: i64, %v13: i64, %v14: i64, %v15: i64, %v16: i64, %r0: buffer, %r1: buffer, %r2: buffer, %r3: buffer, %r4: buffer, %r5: buffer, %r6: buffer, %r7: buffer, %r8: buffer, %r9: buffer, %r10: buffer, %r11: buffer, %r12: buffer, %r13: buffer, %r14: buffer, %r15: buffer, %r16: buffer) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer)
+
+func.def public @overflow(%value: i64, %buffer: buffer) -> (i64, i64, buffer, buffer) {
+  %v0, %v1, %v2, %v3, %v4, %v5, %v6, %v7, %v8, %v9, %v10, %v11, %v12, %v13, %v14, %v15, %v16, %r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7, %r8, %r9, %r10, %r11, %r12, %r13, %r14, %r15, %r16 = func.call @wide(%value, %value, %value, %value, %value, %value, %value, %value, %value, %value, %value, %value, %value, %value, %value, %value, %value, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer, %buffer) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer)
+  %sum = scalar.addi %value, %v16 : i64
+  func.return %v0, %sum, %r0, %r16 : i64, i64, buffer, buffer
+}
