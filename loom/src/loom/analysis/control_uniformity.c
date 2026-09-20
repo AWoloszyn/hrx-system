@@ -18,8 +18,6 @@ struct loom_control_uniformity_cfg_region_t {
   const loom_region_t* region;
   // Graph and control dependencies borrowed from the populated fact scope.
   const loom_value_fact_cfg_region_t* facts;
-  // Dominance and mandatory entries retained for this exclusion query scope.
-  loom_cfg_dominance_t dominance;
   // Per-controller generation marks for mandatory-alternative queries.
   uint32_t* query_marks;
   // Current nonzero generation in query_marks.
@@ -111,8 +109,6 @@ static iree_status_t loom_control_uniformity_cfg_region_initialize(
   if (!summary->facts || !summary->facts->control_structure.node_count) {
     return iree_ok_status();
   }
-  IREE_RETURN_IF_ERROR(loom_cfg_dominance_build(
-      &summary->facts->graph, info->arena, &summary->dominance));
   const uint32_t count = summary->facts->graph.block_count;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       info->arena, count, sizeof(*summary->query_marks),
@@ -135,7 +131,7 @@ static iree_host_size_t loom_control_uniformity_cfg_collect_alternatives(
     loom_control_uniformity_cfg_region_t* summary, uint16_t block_index,
     loom_value_fact_uniform_scope_t required_scope, uint16_t* out_blocks) {
   const loom_cfg_graph_t* graph = &summary->facts->graph;
-  const loom_cfg_dominance_t* dominance = &summary->dominance;
+  const loom_cfg_dominance_t* dominance = &summary->facts->dominance;
   if (++summary->query_generation == 0) {
     memset(summary->query_marks, 0,
            graph->block_count * sizeof(*summary->query_marks));
@@ -415,7 +411,8 @@ iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
     iree_host_size_t retained_count = 0;
     for (iree_host_size_t j = 0; j < candidate_count; ++j) {
       const uint16_t target = summary->query_lhs_blocks[j];
-      const uint16_t source = summary->dominance.entry_predecessors[target];
+      const uint16_t source =
+          summary->facts->dominance.entry_predecessors[target];
       if (loom_control_uniformity_cfg_alternative(summary, source) == target) {
         summary->query_lhs_blocks[retained_count++] = target;
       }
@@ -436,7 +433,8 @@ iree_status_t loom_control_uniformity_prove_mutually_exclusive_execution(
     iree_host_size_t retained_count = 0;
     for (iree_host_size_t j = 0; j < candidate_count; ++j) {
       const uint16_t target = summary->query_lhs_blocks[j];
-      const uint16_t source = summary->dominance.entry_predecessors[target];
+      const uint16_t source =
+          summary->facts->dominance.entry_predecessors[target];
       const uint16_t alternative =
           loom_control_uniformity_cfg_alternative(summary, source);
       if (alternative != LOOM_CFG_DOMINATOR_INVALID && alternative != target) {

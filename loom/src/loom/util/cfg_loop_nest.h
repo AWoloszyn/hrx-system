@@ -9,7 +9,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
-#include "loom/util/cfg_graph.h"
+#include "loom/util/cfg_dominance.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,14 +59,15 @@ typedef struct loom_cfg_loop_nest_t {
   bool reducible;
 } loom_cfg_loop_nest_t;
 
-// Builds loop nesting from graph-owned adjacency and DFS facts. Discovery
-// uses dominance and path-compressed subloop contraction, taking
+// Builds loop nesting from retained adjacency, DFS and dominance facts.
+// Discovery uses dominance and path-compressed subloop contraction, taking
 // O((B+E) log B) time and O(B+E) space without inclusive per-loop block lists.
 // Entry/exit summaries and loop-tree intervals take O(B+E) time. Scratch
 // storage is released before returning; retained storage is O(B+L).
 // The graph must be produced by loom_cfg_graph_build. Rebuild after topology
 // changes. Graphs with no backward edges require no traversal or allocation.
 iree_status_t loom_cfg_loop_nest_build(const loom_cfg_graph_t* graph,
+                                       const loom_cfg_dominance_t* dominance,
                                        iree_arena_allocator_t* arena,
                                        loom_cfg_loop_nest_t* out_nest);
 

@@ -71,6 +71,11 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
+  for func {
+    where target(codegen = "low_native", family = "amdgpu") {
+      cfg-converge
+    }
+  }
   source-to-low(control-flow = "structured-low")
   inline-callables(policy = "target")
   for func {

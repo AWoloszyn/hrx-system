@@ -18,6 +18,7 @@ loom_check_test_suite(
     "branch_fusion.loom-test"
     "branch_sink.loom-test"
     "cfg_compatibility.loom-test"
+    "cfg_converge.loom-test"
     "cfg_simplify.loom-test"
     "cfg_simplify_conditions.loom-test"
     "cfg_simplify_facts.loom-test"

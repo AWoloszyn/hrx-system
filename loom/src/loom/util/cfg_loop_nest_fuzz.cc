@@ -40,8 +40,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   iree_arena_block_pool_initialize(4096, iree_allocator_system(), &pool);
   iree_arena_allocator_t arena;
   iree_arena_initialize(&pool, &arena);
+  loom_cfg_dominance_t dominance;
+  check(loom_cfg_dominance_build(graph.get(), &arena, &dominance));
   loom_cfg_loop_nest_t nest;
-  check(loom_cfg_loop_nest_build(graph.get(), &arena, &nest));
+  check(loom_cfg_loop_nest_build(graph.get(), &dominance, &arena, &nest));
   check(loom::testing::CheckLoopNest(nest));
   iree_arena_deinitialize(&arena);
   iree_arena_block_pool_deinitialize(&pool);

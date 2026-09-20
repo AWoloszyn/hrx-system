@@ -1,0 +1,59 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/shared_conditional_values.loom-test
+// RUN: emit source-low output=low
+
+aie2p.target<core> @target
+
+func.def target(@target) @shared_conditional_values(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %completed = scalar.constant 1 : i32
+  %aligned_input = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %aligned_output = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %in = buffer.view %aligned_input[%base] : buffer -> view<3xi32>
+  %out = buffer.view %aligned_output[%base] : buffer -> view<3xi32>
+  %outer_value = view.load %in[0] : view<3xi32> -> i32
+  %outer = scalar.cmpi ne, %outer_value, %c0 : i32
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %loaded = view.load %in[1] : view<3xi32> -> i32
+  view.store %loaded, %out[0] : i32, view<3xi32>
+  %inner = scalar.cmpi ne, %loaded, %c0 : i32
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %result = scalar.addi %loaded, %loaded : i32
+  view.store %result, %out[1] : i32, view<3xi32>
+  cfg.br ^exit
+^fallback:
+  %fallback = view.load %in[2] : view<3xi32> -> i32
+  view.store %fallback, %out[1] : i32, view<3xi32>
+  cfg.br ^exit
+^exit:
+  view.store %completed, %out[2] : i32, view<3xi32>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @shared_conditional_values() asm {
+  %in = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %out = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %completed = mov.short 1
+  %outer_value = lda %in, 0
+  %outer = nez %outer_value
+  low.cond_br %outer, ^evaluate, ^fallback : reg<aie2p.er>
+^evaluate:
+  %loaded = lda %in, 4
+  st %loaded, %out, 0
+  %inner = nez %loaded
+  low.cond_br %inner, ^selected, ^fallback : reg<aie2p.er>
+^selected:
+  %result = add.rr %loaded, %loaded
+  st %result, %out, 4
+  low.br ^exit
+^fallback:
+  %fallback = lda %in, 8
+  st %fallback, %out, 4
+  low.br ^exit
+^exit:
+  st %completed, %out, 8
+  return
+}

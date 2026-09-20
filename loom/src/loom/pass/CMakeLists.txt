@@ -310,6 +310,7 @@ loom_cc_library(
     loom::target::pass_requirements
     loom::transforms::cfg::branch_fusion
     loom::transforms::cfg::branch_sink
+    loom::transforms::cfg::cfg_converge
     loom::transforms::cfg::cfg_simplify
     loom::transforms::cleanup::canonicalize
     loom::transforms::cleanup::cse

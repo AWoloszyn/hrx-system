@@ -102,6 +102,28 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    cfg_converge
+  HDRS
+    "cfg_converge.h"
+  SRCS
+    "cfg_converge.c"
+  DEPS
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+    loom::ops::cfg
+    loom::ops::scalar
+    loom::ops::special_values
+    loom::pass::types
+    loom::pass::value_facts
+    loom::rewrite::rewriter
+    loom::target::function_version
+    loom::util::fact_table
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     cfg_simplify
   HDRS
     "cfg_simplify.h"

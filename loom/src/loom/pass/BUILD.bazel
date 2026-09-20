@@ -280,6 +280,7 @@ loom_cc_library(
         "//loom/src/loom/target:pass_requirements",
         "//loom/src/loom/transforms/cfg:branch_fusion",
         "//loom/src/loom/transforms/cfg:branch_sink",
+        "//loom/src/loom/transforms/cfg:cfg_converge",
         "//loom/src/loom/transforms/cfg:cfg_simplify",
         "//loom/src/loom/transforms/cleanup:canonicalize",
         "//loom/src/loom/transforms/cleanup:cse",

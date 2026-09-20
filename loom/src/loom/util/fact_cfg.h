@@ -15,6 +15,7 @@
 #include "loom/analysis/scc.h"
 #include "loom/util/cfg_graph.h"
 #include "loom/util/cfg_loop_nest.h"
+#include "loom/util/cfg_regions.h"
 #include "loom/util/fact_control.h"
 #include "loom/util/fact_induction.h"
 
@@ -53,6 +54,10 @@ typedef struct loom_value_fact_cfg_forwarding_t {
 typedef struct loom_value_fact_cfg_region_t {
   // CFG edges and reachability owned by this analysis.
   loom_cfg_graph_t graph;
+  // Dominance and mandatory incoming alternatives for the graph snapshot.
+  loom_cfg_dominance_t dominance;
+  // Unique continuations and indexed exits of dominance subtrees.
+  loom_cfg_regions_t regions;
   // Semantic natural loops, independent of textual block order.
   loom_cfg_loop_nest_t loops;
   // Current recurrence equations, indexed by loops.loops.

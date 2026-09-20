@@ -197,8 +197,12 @@ iree_status_t loom_value_fact_cfg_region_initialize(
   *out_region = (loom_value_fact_cfg_region_t){0};
   IREE_RETURN_IF_ERROR(
       loom_cfg_graph_build(module, region, arena, &out_region->graph));
-  IREE_RETURN_IF_ERROR(
-      loom_cfg_loop_nest_build(&out_region->graph, arena, &out_region->loops));
+  IREE_RETURN_IF_ERROR(loom_cfg_dominance_build(&out_region->graph, arena,
+                                                &out_region->dominance));
+  IREE_RETURN_IF_ERROR(loom_cfg_regions_build(
+      &out_region->graph, &out_region->dominance, arena, &out_region->regions));
+  IREE_RETURN_IF_ERROR(loom_cfg_loop_nest_build(
+      &out_region->graph, &out_region->dominance, arena, &out_region->loops));
   if (out_region->loops.loop_count) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         arena, out_region->loops.loop_count, sizeof(*out_region->inductions),

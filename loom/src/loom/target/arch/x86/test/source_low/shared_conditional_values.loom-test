@@ -1,0 +1,59 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/shared_conditional_values.loom-test
+// RUN: emit source-low output=low
+
+x86.target<avx2> @target
+
+func.def target(@target) @shared_conditional_values(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %completed = scalar.constant 1 : i32
+  %aligned_input = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %aligned_output = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %in = buffer.view %aligned_input[%base] : buffer -> view<3xi32>
+  %out = buffer.view %aligned_output[%base] : buffer -> view<3xi32>
+  %outer_value = view.load %in[0] : view<3xi32> -> i32
+  %outer = scalar.cmpi ne, %outer_value, %c0 : i32
+  cfg.cond_br %outer, ^evaluate, ^fallback
+^evaluate:
+  %loaded = view.load %in[1] : view<3xi32> -> i32
+  view.store %loaded, %out[0] : i32, view<3xi32>
+  %inner = scalar.cmpi ne, %loaded, %c0 : i32
+  cfg.cond_br %inner, ^selected, ^fallback
+^selected:
+  %result = scalar.addi %loaded, %loaded : i32
+  view.store %result, %out[1] : i32, view<3xi32>
+  cfg.br ^exit
+^fallback:
+  %fallback = view.load %in[2] : view<3xi32> -> i32
+  view.store %fallback, %out[1] : i32, view<3xi32>
+  cfg.br ^exit
+^exit:
+  view.store %completed, %out[2] : i32, view<3xi32>
+  func.return
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @shared_conditional_values(%in: reg<x86.gpr64>, %out: reg<x86.gpr64>) asm {
+  %c0 = mov.imm32 0
+  %completed = mov.imm32 1
+  %outer_value = mov.load.gpr32 %in {disp32 = 0}
+  %outer = cmp.ne.gpr32 %outer_value, %c0
+  low.cond_br %outer, ^evaluate, ^fallback : reg<x86.gpr32>
+^evaluate:
+  %loaded = mov.load.gpr32 %in {disp32 = 4}
+  mov.store.gpr32 %loaded, %out {disp32 = 0}
+  %inner = cmp.ne.gpr32 %loaded, %c0
+  low.cond_br %inner, ^selected, ^fallback : reg<x86.gpr32>
+^selected:
+  %23 = copy %loaded : reg<x86.gpr32> -> reg<x86.gpr32>
+  %result = add.gpr32 %23, %loaded
+  mov.store.gpr32 %result, %out {disp32 = 4}
+  low.br ^exit
+^fallback:
+  %fallback = mov.load.gpr32 %in {disp32 = 8}
+  mov.store.gpr32 %fallback, %out {disp32 = 4}
+  low.br ^exit
+^exit:
+  mov.store.gpr32 %completed, %out {disp32 = 8}
+  return
+}

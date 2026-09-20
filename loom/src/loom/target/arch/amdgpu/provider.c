@@ -81,11 +81,40 @@ static iree_status_t loom_amdgpu_provider_build_hal_kernel_abi_pass(
       builder, IREE_SV("amdgpu-materialize-hal-kernel-abi"));
 }
 
+static iree_status_t loom_amdgpu_provider_build_cfg_converge_pass(
+    loom_builder_t* builder, void* user_data) {
+  (void)user_data;
+  return loom_amdgpu_provider_build_run_pass(builder, IREE_SV("cfg-converge"));
+}
+
+static iree_status_t loom_amdgpu_provider_build_source_finalization(
+    loom_builder_t* builder, void* user_data) {
+  (void)user_data;
+  loom_named_attr_t attrs[2] = {0};
+  IREE_RETURN_IF_ERROR(loom_amdgpu_provider_build_string_attr(
+      builder, IREE_SV("family"), IREE_SV("amdgpu"), &attrs[0]));
+  IREE_RETURN_IF_ERROR(loom_amdgpu_provider_build_string_attr(
+      builder, IREE_SV("codegen"), IREE_SV("low_native"), &attrs[1]));
+  loom_op_t* where_op = NULL;
+  return loom_pass_ir_build_where(
+      builder, LOOM_PASS_WHERE_BUILD_FLAG_HAS_ATTRS, IREE_SV("target"),
+      loom_make_named_attr_slice(attrs, IREE_ARRAYSIZE(attrs)),
+      loom_amdgpu_provider_build_cfg_converge_pass, NULL, &where_op);
+}
+
 static iree_status_t loom_amdgpu_provider_contribute_pipeline(
     const loom_target_pipeline_contribution_t* contribution) {
   loom_pass_ir_body_build_fn_t build_body = NULL;
-  if (contribution->phase ==
-      LOOM_TARGET_PIPELINE_PHASE_SOURCE_LOW_ARTIFACT_PREPARATION) {
+  if (contribution->phase == LOOM_TARGET_PIPELINE_PHASE_SOURCE_TO_LOW) {
+    // Shared source preparation has finished threading branch conditions.
+    // Masked lowering needs explicit convergence for the shared alternatives
+    // that those valid condition proofs can expose.
+    loom_op_t* for_op = NULL;
+    return loom_pass_ir_build_for(
+        contribution->builder, LOOM_PASS_ANCHOR_FUNC,
+        loom_amdgpu_provider_build_source_finalization, NULL, &for_op);
+  } else if (contribution->phase ==
+             LOOM_TARGET_PIPELINE_PHASE_SOURCE_LOW_ARTIFACT_PREPARATION) {
     build_body = loom_amdgpu_provider_build_hal_buffer_descriptors_pass;
   } else if (contribution->phase ==
              LOOM_TARGET_PIPELINE_PHASE_TARGET_LOW_MATERIALIZATION) {

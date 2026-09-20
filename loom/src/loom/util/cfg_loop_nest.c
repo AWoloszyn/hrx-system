@@ -208,11 +208,9 @@ static void loom_cfg_loop_number_tree(iree_host_size_t loop_count,
 }
 
 static iree_status_t loom_cfg_loop_nest_build_impl(
-    const loom_cfg_graph_t* graph, iree_arena_allocator_t* scratch_arena,
-    iree_arena_allocator_t* arena, loom_cfg_loop_nest_t* out_nest) {
-  loom_cfg_dominance_t dominance;
-  IREE_RETURN_IF_ERROR(
-      loom_cfg_dominance_build(graph, scratch_arena, &dominance));
+    const loom_cfg_graph_t* graph, const loom_cfg_dominance_t* dominance,
+    iree_arena_allocator_t* scratch_arena, iree_arena_allocator_t* arena,
+    loom_cfg_loop_nest_t* out_nest) {
   uint16_t* stack = NULL;
   uint16_t* innermost = NULL;
   loom_cfg_loop_build_state_t* states = NULL;
@@ -227,10 +225,10 @@ static iree_status_t loom_cfg_loop_nest_build_impl(
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       scratch_arena, graph->block_count, sizeof(*loops), (void**)&loops));
   memset(innermost, 0xFF, graph->block_count * sizeof(*innermost));
-  iree_host_size_t loop_count = loom_cfg_loop_discover(
-      graph, &dominance, stack, innermost, states, loops);
+  iree_host_size_t loop_count =
+      loom_cfg_loop_discover(graph, dominance, stack, innermost, states, loops);
   out_nest->reducible = loom_cfg_loop_summarize_boundaries(
-      graph, &dominance, innermost, loop_count, states, loops);
+      graph, dominance, innermost, loop_count, states, loops);
   if (loop_count == 0) {
     return iree_ok_status();
   }
@@ -252,6 +250,7 @@ static iree_status_t loom_cfg_loop_nest_build_impl(
 }
 
 iree_status_t loom_cfg_loop_nest_build(const loom_cfg_graph_t* graph,
+                                       const loom_cfg_dominance_t* dominance,
                                        iree_arena_allocator_t* arena,
                                        loom_cfg_loop_nest_t* out_nest) {
   *out_nest = (loom_cfg_loop_nest_t){
@@ -263,8 +262,8 @@ iree_status_t loom_cfg_loop_nest_build(const loom_cfg_graph_t* graph,
   }
   iree_arena_allocator_t scratch_arena;
   iree_arena_initialize(arena->block_pool, &scratch_arena);
-  iree_status_t status =
-      loom_cfg_loop_nest_build_impl(graph, &scratch_arena, arena, out_nest);
+  iree_status_t status = loom_cfg_loop_nest_build_impl(
+      graph, dominance, &scratch_arena, arena, out_nest);
   iree_arena_deinitialize(&scratch_arena);
   return status;
 }
