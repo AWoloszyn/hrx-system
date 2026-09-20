@@ -106,26 +106,33 @@ struct loom_low_lower_rule_match_context_t {
   uint16_t policy_rule_set_ordinal;
 };
 
-typedef struct loom_low_lower_rule_selection_t {
-  // Selected rule row, or NULL when no rule accepted the source op.
-  const loom_low_lower_rule_t* rule;
+typedef struct loom_low_lower_rule_failure_t {
   // Source op carrying the best rejection diagnostic. Defaults to the rule
   // root when a root guard or source-memory constraint rejected the rule.
   const loom_op_t* diagnostic_source_op;
-  // Resolved source graph for the selected rule. Entry zero is the rule root.
-  const loom_op_t* source_nodes[LOOM_LOW_LOWER_MAX_SOURCE_NODES];
-  // Selected rule row ordinal, or UINT16_MAX when no rule accepted the source
-  // op.
-  uint16_t rule_index;
-  // True when the rule set had at least one rule span for the source op kind.
-  bool has_source_op_span;
-  // Diagnostic row describing the best failed guard when |rule| is NULL.
+  // Diagnostic row describing the best failed guard, or
+  // LOOM_LOW_LOWER_DIAGNOSTIC_NONE.
   uint16_t diagnostic_index;
   // Number of guards matched by the best failed rule candidate.
   uint16_t matched_guard_count;
   // True when a descriptor guard rejected a rule whose source-memory
   // constraints matched the source access.
   bool source_memory_compatible;
+  // True when the rule set had at least one eligible rule for the source kind.
+  bool has_source_op_span;
+} loom_low_lower_rule_failure_t;
+
+typedef struct loom_low_lower_rule_selection_t {
+  // Selected rule row, or NULL when no rule accepted the source op.
+  const loom_low_lower_rule_t* rule;
+  // Best rejection to report when no rule accepted the source op.
+  loom_low_lower_rule_failure_t failure;
+  // Resolved source graph for the selected rule. Entry zero is the rule root;
+  // only the first source_node_count entries are initialized.
+  const loom_op_t* source_nodes[LOOM_LOW_LOWER_MAX_SOURCE_NODES];
+  // Selected rule row ordinal, or UINT16_MAX when no rule accepted the source
+  // op.
+  uint16_t rule_index;
   // True when the selected rule consumes the canonical source-memory plan.
   bool uses_source_memory_access;
   // Number of populated source_nodes entries for the selected rule.
@@ -135,9 +142,9 @@ typedef struct loom_low_lower_rule_selection_t {
 // Returns true when |candidate| carries a more useful selection failure than
 // |incumbent|. Actionable diagnostics win over structural non-matches, then
 // source-memory compatibility and matched guard depth break ties.
-bool loom_low_lower_rule_selection_failure_is_better(
-    loom_low_lower_rule_selection_t candidate,
-    loom_low_lower_rule_selection_t incumbent);
+bool loom_low_lower_rule_failure_is_better(
+    loom_low_lower_rule_failure_t candidate,
+    loom_low_lower_rule_failure_t incumbent);
 
 // Initializes a rule match context backed by a mutable lowering context.
 // |source_memory_state| retains the canonical source-memory plan across every
@@ -193,9 +200,9 @@ iree_status_t loom_low_lower_rule_set_select_rule_range_with_match_context(
     loom_low_lower_rule_selection_t* out_selection);
 
 // Returns the diagnostic row for a failed selection, or NULL when unavailable.
-const loom_low_lower_diagnostic_t* loom_low_lower_rule_set_selection_diagnostic(
+const loom_low_lower_diagnostic_t* loom_low_lower_rule_set_failure_diagnostic(
     const loom_low_lower_rule_set_t* rule_set,
-    loom_low_lower_rule_selection_t selection);
+    loom_low_lower_rule_failure_t failure);
 
 // Materializes generated diagnostic parameter projections for a rejected rule.
 void loom_low_lower_rule_materialize_diagnostic_params(
@@ -222,7 +229,7 @@ loom_low_lower_descriptor_ref_t loom_low_lower_rule_primary_descriptor_ref(
 iree_status_t loom_low_lower_rule_set_emit_selection_failure(
     loom_low_lower_context_t* context,
     const loom_low_lower_rule_set_t* rule_set, const loom_op_t* source_op,
-    loom_low_lower_rule_selection_t selection,
+    loom_low_lower_rule_failure_t failure,
     loom_low_lower_rule_source_memory_state_t* source_memory_state);
 
 #ifdef __cplusplus

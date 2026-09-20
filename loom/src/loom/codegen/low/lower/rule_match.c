@@ -1317,9 +1317,9 @@ static iree_status_t loom_low_lower_rule_matches(
   return iree_ok_status();
 }
 
-bool loom_low_lower_rule_selection_failure_is_better(
-    loom_low_lower_rule_selection_t candidate,
-    loom_low_lower_rule_selection_t incumbent) {
+bool loom_low_lower_rule_failure_is_better(
+    loom_low_lower_rule_failure_t candidate,
+    loom_low_lower_rule_failure_t incumbent) {
   if (!candidate.has_source_op_span) {
     return false;
   }
@@ -1345,24 +1345,23 @@ iree_status_t loom_low_lower_rule_set_select_rule_range_with_match_context(
     const loom_low_lower_rule_set_t* rule_set, const loom_op_t* source_op,
     uint16_t rule_start, uint16_t rule_count,
     loom_low_lower_rule_selection_t* out_selection) {
-  *out_selection = (loom_low_lower_rule_selection_t){
-      .rule = NULL,
+  out_selection->rule = NULL;
+  out_selection->failure = (loom_low_lower_rule_failure_t){
       .diagnostic_source_op = source_op,
-      .source_nodes = {NULL},
-      .rule_index = UINT16_MAX,
       .has_source_op_span = false,
       .diagnostic_index = LOOM_LOW_LOWER_DIAGNOSTIC_NONE,
       .matched_guard_count = 0,
       .source_memory_compatible = false,
-      .uses_source_memory_access = false,
-      .source_node_count = 0,
   };
+  out_selection->rule_index = UINT16_MAX;
+  out_selection->uses_source_memory_access = false;
+  out_selection->source_node_count = 0;
 
   if (rule_count == 0) {
     return iree_ok_status();
   }
 
-  loom_low_lower_rule_selection_t best_failure = *out_selection;
+  loom_low_lower_rule_failure_t best_failure = out_selection->failure;
   for (uint16_t i = 0; i < rule_count; ++i) {
     uint16_t rule_index = (uint16_t)(rule_start + i);
     const loom_low_lower_rule_t* rule = &rule_set->rules[rule_index];
@@ -1372,7 +1371,7 @@ iree_status_t loom_low_lower_rule_set_select_rule_range_with_match_context(
                            LOOM_LOW_LOWER_RULE_MATCH_FLAG_CONTRACT_ONLY)) {
       continue;
     }
-    out_selection->has_source_op_span = true;
+    out_selection->failure.has_source_op_span = true;
     bool rule_matches = false;
     uint16_t diagnostic_index = LOOM_LOW_LOWER_DIAGNOSTIC_NONE;
     uint16_t matched_guard_count = 0;
@@ -1397,25 +1396,20 @@ iree_status_t loom_low_lower_rule_set_select_rule_range_with_match_context(
              source_node_count * sizeof(*source_nodes));
       return iree_ok_status();
     }
-    const loom_low_lower_rule_selection_t candidate_failure = {
-        .rule = NULL,
+    const loom_low_lower_rule_failure_t candidate_failure = {
         .diagnostic_source_op = diagnostic_source_op,
-        .source_nodes = {NULL},
-        .rule_index = UINT16_MAX,
         .has_source_op_span = true,
         .diagnostic_index = diagnostic_index,
         .matched_guard_count = matched_guard_count,
         .source_memory_compatible = source_memory_compatible,
-        .uses_source_memory_access = false,
-        .source_node_count = 0,
     };
-    if (loom_low_lower_rule_selection_failure_is_better(candidate_failure,
-                                                        best_failure)) {
+    if (loom_low_lower_rule_failure_is_better(candidate_failure,
+                                              best_failure)) {
       best_failure = candidate_failure;
     }
   }
 
-  *out_selection = best_failure;
+  out_selection->failure = best_failure;
   return iree_ok_status();
 }
 
@@ -1801,15 +1795,14 @@ iree_status_t loom_low_lower_rule_set_select_rule_range(
                                               rule_count, out_selection);
 }
 
-const loom_low_lower_diagnostic_t* loom_low_lower_rule_set_selection_diagnostic(
+const loom_low_lower_diagnostic_t* loom_low_lower_rule_set_failure_diagnostic(
     const loom_low_lower_rule_set_t* rule_set,
-    loom_low_lower_rule_selection_t selection) {
-  if (selection.rule != NULL ||
-      selection.diagnostic_index == LOOM_LOW_LOWER_DIAGNOSTIC_NONE ||
-      selection.diagnostic_index >= rule_set->diagnostic_count) {
+    loom_low_lower_rule_failure_t failure) {
+  if (failure.diagnostic_index == LOOM_LOW_LOWER_DIAGNOSTIC_NONE ||
+      failure.diagnostic_index >= rule_set->diagnostic_count) {
     return NULL;
   }
-  return &rule_set->diagnostics[selection.diagnostic_index];
+  return &rule_set->diagnostics[failure.diagnostic_index];
 }
 
 loom_low_lower_descriptor_ref_t loom_low_lower_rule_primary_descriptor_ref(
@@ -1830,16 +1823,15 @@ loom_low_lower_descriptor_ref_t loom_low_lower_rule_primary_descriptor_ref(
 iree_status_t loom_low_lower_rule_set_emit_selection_failure(
     loom_low_lower_context_t* context,
     const loom_low_lower_rule_set_t* rule_set, const loom_op_t* source_op,
-    loom_low_lower_rule_selection_t selection,
+    loom_low_lower_rule_failure_t failure,
     loom_low_lower_rule_source_memory_state_t* source_memory_state) {
-  IREE_ASSERT(selection.rule == NULL);
-  if (!selection.has_source_op_span) {
+  if (!failure.has_source_op_span) {
     return loom_low_lower_rule_emit_no_mapping(context, source_op);
   }
-  const loom_op_t* diagnostic_source_op = selection.diagnostic_source_op != NULL
-                                              ? selection.diagnostic_source_op
+  const loom_op_t* diagnostic_source_op = failure.diagnostic_source_op != NULL
+                                              ? failure.diagnostic_source_op
                                               : source_op;
   return loom_low_lower_rule_emit_diagnostic(
-      context, rule_set, diagnostic_source_op, selection.diagnostic_index,
+      context, rule_set, diagnostic_source_op, failure.diagnostic_index,
       source_memory_state);
 }

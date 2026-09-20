@@ -253,7 +253,7 @@ static iree_status_t loom_low_lower_query_target_contract_index(
   }
 
   const loom_low_lower_rule_set_t* failed_rule_set = NULL;
-  loom_low_lower_rule_selection_t failed_selection = {0};
+  loom_low_lower_rule_failure_t best_failure = {0};
   uint16_t failed_binding_index = UINT16_MAX;
   uint16_t failed_case_index = UINT16_MAX;
   uint16_t failed_rule_set_index = UINT16_MAX;
@@ -290,7 +290,7 @@ static iree_status_t loom_low_lower_query_target_contract_index(
         options->rule_sets.values[binding->rule_set_index];
     case_match_context.policy_rule_set_ordinal =
         (uint16_t)(binding->rule_set_index + 1u);
-    loom_low_lower_rule_selection_t selection = {0};
+    loom_low_lower_rule_selection_t selection;
     IREE_RETURN_IF_ERROR(
         loom_low_lower_rule_set_select_rule_range_with_match_context(
             &case_match_context, rule_set, source_op, rule_index, 1,
@@ -324,10 +324,10 @@ static iree_status_t loom_low_lower_query_target_contract_index(
       };
       return iree_ok_status();
     }
-    if (loom_low_lower_rule_selection_failure_is_better(selection,
-                                                        failed_selection)) {
+    if (loom_low_lower_rule_failure_is_better(selection.failure,
+                                              best_failure)) {
       failed_rule_set = rule_set;
-      failed_selection = selection;
+      best_failure = selection.failure;
       failed_binding_index = contract_case->binding_index;
       failed_case_index = case_index;
       failed_rule_set_index = binding->rule_set_index;
@@ -339,8 +339,7 @@ static iree_status_t loom_low_lower_query_target_contract_index(
   }
 
   const loom_low_lower_diagnostic_t* diagnostic =
-      loom_low_lower_rule_set_selection_diagnostic(failed_rule_set,
-                                                   failed_selection);
+      loom_low_lower_rule_set_failure_diagnostic(failed_rule_set, best_failure);
   const loom_target_contract_rejection_t* rejection = NULL;
   IREE_RETURN_IF_ERROR(loom_low_lower_contract_query_make_rejection(
       environment, match_context, failed_rule_set, source_op, diagnostic,
@@ -351,8 +350,8 @@ static iree_status_t loom_low_lower_query_target_contract_index(
       .case_index = failed_case_index,
       .rule_set_index = failed_rule_set_index,
       .rule_index = UINT16_MAX,
-      .diagnostic_index = failed_selection.diagnostic_index,
-      .matched_guard_count = failed_selection.matched_guard_count,
+      .diagnostic_index = best_failure.diagnostic_index,
+      .matched_guard_count = best_failure.matched_guard_count,
       .selected_descriptor = NULL,
       .source_rejection_bits = 0,
       .target_rejection_bits = 0,

@@ -1001,7 +1001,7 @@ static iree_status_t loom_low_lower_record_descriptor_matrix_plan(
 static iree_status_t loom_low_lower_plan_op_from_contract_index(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_low_lower_rule_set_t** inout_failed_rule_set,
-    loom_low_lower_rule_selection_t* inout_failed_rule_selection,
+    loom_low_lower_rule_failure_t* inout_rule_failure,
     loom_low_lower_rule_source_memory_state_t* source_memory_state,
     bool* out_selected) {
   *out_selected = false;
@@ -1068,7 +1068,7 @@ static iree_status_t loom_low_lower_plan_op_from_contract_index(
     }
     IREE_ASSERT(rule_set->source_memory_count == 0 ||
                 source_memory_state->access_plan != NULL);
-    loom_low_lower_rule_selection_t rule_selection = {0};
+    loom_low_lower_rule_selection_t rule_selection;
     IREE_RETURN_IF_ERROR(
         loom_low_lower_rule_set_select_rule_range_with_match_context(
             &match_context, rule_set, source_op, rule_index, 1,
@@ -1084,10 +1084,10 @@ static iree_status_t loom_low_lower_plan_op_from_contract_index(
       }
       continue;
     }
-    if (loom_low_lower_rule_selection_failure_is_better(
-            rule_selection, *inout_failed_rule_selection)) {
+    if (loom_low_lower_rule_failure_is_better(rule_selection.failure,
+                                              *inout_rule_failure)) {
       *inout_failed_rule_set = rule_set;
-      *inout_failed_rule_selection = rule_selection;
+      *inout_rule_failure = rule_selection.failure;
     }
   }
   return iree_ok_status();
@@ -1126,7 +1126,7 @@ static iree_status_t loom_low_lower_plan_op(loom_low_lower_context_t* context,
   }
 
   const loom_low_lower_rule_set_t* failed_rule_set = NULL;
-  loom_low_lower_rule_selection_t failed_rule_selection = {0};
+  loom_low_lower_rule_failure_t rule_failure = {0};
   loom_low_source_memory_access_plan_t source_memory_access;
   loom_low_lower_rule_source_memory_state_t source_memory_state;
   loom_low_lower_rule_source_memory_state_initialize(
@@ -1134,14 +1134,14 @@ static iree_status_t loom_low_lower_plan_op(loom_low_lower_context_t* context,
   bool selected_rule = false;
   if (context->policy->contract.index != NULL) {
     IREE_RETURN_IF_ERROR(loom_low_lower_plan_op_from_contract_index(
-        context, source_op, &failed_rule_set, &failed_rule_selection,
+        context, source_op, &failed_rule_set, &rule_failure,
         &source_memory_state, &selected_rule));
     if (selected_rule) {
       return iree_ok_status();
     }
     if (failed_rule_set != NULL) {
       return loom_low_lower_rule_set_emit_selection_failure(
-          context, failed_rule_set, source_op, failed_rule_selection,
+          context, failed_rule_set, source_op, rule_failure,
           &source_memory_state);
     }
   }
@@ -1152,11 +1152,6 @@ static iree_status_t loom_low_lower_plan_op(loom_low_lower_context_t* context,
     return iree_ok_status();
   }
 
-  if (failed_rule_set != NULL) {
-    return loom_low_lower_rule_set_emit_selection_failure(
-        context, failed_rule_set, source_op, failed_rule_selection,
-        &source_memory_state);
-  }
   if (loom_low_lower_op_is_discardable_hint(context->module, source_op)) {
     loom_low_lower_record_elided_hint_plan(context, source_op);
     return iree_ok_status();

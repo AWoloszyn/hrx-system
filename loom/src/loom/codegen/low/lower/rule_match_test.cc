@@ -19,38 +19,38 @@ namespace loom {
 namespace {
 
 TEST(LowLowerRuleSelectionTest, RanksActionableFailuresBeforeDepth) {
-  loom_low_lower_rule_selection_t diagnostic_failure = {};
+  loom_low_lower_rule_failure_t diagnostic_failure = {};
   diagnostic_failure.has_source_op_span = true;
   diagnostic_failure.diagnostic_index = 1;
   diagnostic_failure.matched_guard_count = 1;
-  loom_low_lower_rule_selection_t structural_nonmatch = {};
+  loom_low_lower_rule_failure_t structural_nonmatch = {};
   structural_nonmatch.has_source_op_span = true;
   structural_nonmatch.diagnostic_index = LOOM_LOW_LOWER_DIAGNOSTIC_NONE;
   structural_nonmatch.matched_guard_count = 10;
   structural_nonmatch.source_memory_compatible = true;
 
-  EXPECT_TRUE(loom_low_lower_rule_selection_failure_is_better(
-      diagnostic_failure, structural_nonmatch));
-  EXPECT_FALSE(loom_low_lower_rule_selection_failure_is_better(
-      structural_nonmatch, diagnostic_failure));
+  EXPECT_TRUE(loom_low_lower_rule_failure_is_better(diagnostic_failure,
+                                                    structural_nonmatch));
+  EXPECT_FALSE(loom_low_lower_rule_failure_is_better(structural_nonmatch,
+                                                     diagnostic_failure));
 }
 
 TEST(LowLowerRuleSelectionTest, UsesCompatibilityThenDepthForEqualFailures) {
-  loom_low_lower_rule_selection_t shallow_failure = {};
+  loom_low_lower_rule_failure_t shallow_failure = {};
   shallow_failure.has_source_op_span = true;
   shallow_failure.diagnostic_index = 1;
   shallow_failure.matched_guard_count = 1;
-  loom_low_lower_rule_selection_t deep_failure = {};
+  loom_low_lower_rule_failure_t deep_failure = {};
   deep_failure.has_source_op_span = true;
   deep_failure.diagnostic_index = 2;
   deep_failure.matched_guard_count = 2;
-  loom_low_lower_rule_selection_t compatible_failure = shallow_failure;
+  loom_low_lower_rule_failure_t compatible_failure = shallow_failure;
   compatible_failure.source_memory_compatible = true;
 
-  EXPECT_TRUE(loom_low_lower_rule_selection_failure_is_better(deep_failure,
-                                                              shallow_failure));
-  EXPECT_TRUE(loom_low_lower_rule_selection_failure_is_better(
-      compatible_failure, deep_failure));
+  EXPECT_TRUE(
+      loom_low_lower_rule_failure_is_better(deep_failure, shallow_failure));
+  EXPECT_TRUE(
+      loom_low_lower_rule_failure_is_better(compatible_failure, deep_failure));
 }
 
 class LowLowerRuleMatchTest : public ::testing::Test {
@@ -175,13 +175,15 @@ class LowLowerRuleMatchTest : public ::testing::Test {
     IREE_EXPECT_OK(loom_low_lower_rule_set_select_with_match_context(
         &match_context, &rule_set, source_op, &selection));
     SourceGraphSelection result = {
-        /*.source_nodes=*/{selection.source_nodes[0],
-                           selection.source_nodes[1]},
-        /*.diagnostic_source_op=*/selection.diagnostic_source_op,
+        /*.source_nodes=*/{},
+        /*.diagnostic_source_op=*/selection.failure.diagnostic_source_op,
         /*.source_node_count=*/selection.source_node_count,
         /*.selected=*/selection.rule != nullptr,
-        /*.has_source_op_span=*/selection.has_source_op_span,
+        /*.has_source_op_span=*/selection.failure.has_source_op_span,
     };
+    for (uint8_t i = 0; i < selection.source_node_count; ++i) {
+      result.source_nodes[i] = selection.source_nodes[i];
+    }
     return result;
   }
 
@@ -191,7 +193,7 @@ class LowLowerRuleMatchTest : public ::testing::Test {
   loom_builder_t builder_;
 };
 
-TEST_F(LowLowerRuleMatchTest, SelectsFirstRuleWhoseGuardsMatch) {
+TEST_F(LowLowerRuleMatchTest, SelectsFirstMatchAndResetsReusedSelection) {
   loom_low_lower_guard_t guards[2] = {};
   guards[0].kind = LOOM_LOW_LOWER_GUARD_ATTR_I64_RANGE;
   guards[0].attr_index = 0;
@@ -235,7 +237,29 @@ TEST_F(LowLowerRuleMatchTest, SelectsFirstRuleWhoseGuardsMatch) {
 
   EXPECT_EQ(selection.rule, &rules[1]);
   EXPECT_EQ(selection.rule_index, 1u);
-  EXPECT_TRUE(selection.has_source_op_span);
+  EXPECT_TRUE(selection.failure.has_source_op_span);
+  ASSERT_EQ(selection.source_node_count, 1u);
+  EXPECT_EQ(selection.source_nodes[0], source_op);
+
+  const loom_op_t* rejected_op = BuildConstant(9);
+  IREE_ASSERT_OK(loom_low_lower_rule_set_select_with_match_context(
+      &match_context, &rule_set, rejected_op, &selection));
+  EXPECT_EQ(selection.rule, nullptr);
+  EXPECT_EQ(selection.rule_index, UINT16_MAX);
+  EXPECT_EQ(selection.source_node_count, 0u);
+  EXPECT_FALSE(selection.uses_source_memory_access);
+  EXPECT_TRUE(selection.failure.has_source_op_span);
+  EXPECT_EQ(selection.failure.diagnostic_source_op, rejected_op);
+  EXPECT_EQ(selection.failure.diagnostic_index, 0u);
+  EXPECT_EQ(selection.failure.matched_guard_count, 0u);
+
+  IREE_ASSERT_OK(loom_low_lower_rule_set_select_rule_range_with_match_context(
+      &match_context, &rule_set, source_op, 0, 0, &selection));
+  EXPECT_EQ(selection.rule, nullptr);
+  EXPECT_EQ(selection.rule_index, UINT16_MAX);
+  EXPECT_EQ(selection.source_node_count, 0u);
+  EXPECT_FALSE(selection.failure.has_source_op_span);
+  EXPECT_EQ(selection.failure.diagnostic_index, LOOM_LOW_LOWER_DIAGNOSTIC_NONE);
 }
 
 TEST_F(LowLowerRuleMatchTest, ContractQueriesMaySelectContractOnlyRules) {
