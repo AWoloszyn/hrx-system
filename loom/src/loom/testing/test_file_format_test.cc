@@ -223,6 +223,18 @@ TEST_F(LoomTestFileFormatTest, PreservesExactlyAnnotatedParserFailure) {
   EXPECT_EQ(Format(source), std::string(source.data, source.size));
 }
 
+TEST_F(LoomTestFileFormatTest, PreservesEofDiagnosticAfterTrailingTrivia) {
+  const iree_string_view_t source = IREE_SV(
+      "// RUN: verify\n"
+      "\n"
+      "// ERROR@+5: PARSE/003 \"symbol\"\n"
+      "func.decl\n"
+      "\n"
+      "// This comment and blank line precede the diagnostic's EOF.\n"
+      "\n");
+  EXPECT_EQ(Format(source), std::string(source.data, source.size));
+}
+
 TEST_F(LoomTestFileFormatTest, PreservesExactlyAnnotatedVerifierFailure) {
   const iree_string_view_t source = IREE_SV(
       "// RUN: verify\n"
