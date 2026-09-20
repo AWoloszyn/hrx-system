@@ -21,6 +21,32 @@
 #include "loom/rewrite/remap.h"
 #include "loom/rewrite/rewriter.h"
 
+void loom_low_rematerialization_invalidate_placement(
+    loom_low_rematerialization_state_t* state) {
+  iree_bitmap_reset_all(state->per_use_values);
+}
+
+static iree_status_t loom_low_rematerialization_reserve_per_use_values(
+    loom_low_rematerialization_state_t* state,
+    iree_host_size_t required_bit_count) {
+  const iree_host_size_t required_word_count =
+      iree_bitmap_calculate_words(required_bit_count);
+  iree_host_size_t word_capacity =
+      iree_bitmap_calculate_words(state->per_use_values.bit_count);
+  if (required_word_count > word_capacity) {
+    const iree_host_size_t old_word_count = word_capacity;
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        state->arena, old_word_count, required_word_count,
+        sizeof(*state->per_use_values.words), &word_capacity,
+        (void**)&state->per_use_values.words));
+    memset(state->per_use_values.words + old_word_count, 0,
+           (word_capacity - old_word_count) *
+               sizeof(*state->per_use_values.words));
+    state->per_use_values.bit_count = word_capacity * IREE_BITMAP_BITS_PER_WORD;
+  }
+  return iree_ok_status();
+}
+
 static loom_low_allocation_rematerialization_result_t
 loom_low_allocation_rematerialization_result_empty(void) {
   return (loom_low_allocation_rematerialization_result_t){
@@ -114,10 +140,15 @@ static iree_status_t loom_low_rematerialization_clone_for_use(
 
 iree_status_t loom_low_rematerialize_value_uses(
     loom_module_t* module, const loom_low_resolved_target_t* target,
-    loom_value_id_t value_id, iree_arena_allocator_t* arena,
+    loom_value_id_t value_id, loom_low_rematerialization_state_t* state,
+    iree_arena_allocator_t* arena,
     loom_low_value_rematerialization_result_t* out_result) {
   *out_result = loom_low_value_rematerialization_result_empty();
   if (value_id == LOOM_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
+  if (value_id < state->per_use_values.bit_count &&
+      iree_bitmap_test(state->per_use_values, value_id)) {
     return iree_ok_status();
   }
 
@@ -188,6 +219,10 @@ iree_status_t loom_low_rematerialize_value_uses(
     }
   }
 
+  // Each eligible packet has one result and no regions. Reserve membership for
+  // its per-operand clones before any mutation changes the module value count.
+  IREE_RETURN_IF_ERROR(loom_low_rematerialization_reserve_per_use_values(
+      state, module->values.count + use_count));
   loom_rewriter_t rewriter = {0};
   loom_low_value_rematerialization_result_t result = {
       .value_id = value_id,
@@ -207,6 +242,7 @@ iree_status_t loom_low_rematerialize_value_uses(
                                          cloned_value_id);
     }
     if (iree_status_is_ok(status)) {
+      iree_bitmap_set(state->per_use_values, cloned_value_id);
       ++result.cloned_packet_count;
       ++result.rewritten_operand_count;
     }
@@ -224,11 +260,12 @@ iree_status_t loom_low_rematerialize_value_uses(
 
 static iree_status_t loom_low_allocation_try_rematerialize_value(
     loom_module_t* module, const loom_low_resolved_target_t* target,
-    loom_value_id_t value_id, iree_arena_allocator_t* arena,
+    loom_value_id_t value_id, loom_low_rematerialization_state_t* state,
+    iree_arena_allocator_t* arena,
     loom_low_allocation_rematerialization_result_t* result) {
   loom_low_value_rematerialization_result_t value_result = {0};
   IREE_RETURN_IF_ERROR(loom_low_rematerialize_value_uses(
-      module, target, value_id, arena, &value_result));
+      module, target, value_id, state, arena, &value_result));
   result->value = value_result;
   return iree_ok_status();
 }
@@ -345,7 +382,7 @@ static bool loom_low_allocation_rematerialization_frontier_contains(
 static iree_status_t loom_low_allocation_try_rematerialize_live_frontier(
     loom_module_t* module, const loom_low_allocation_table_t* table,
     loom_low_allocation_rematerialization_frontier_t frontier,
-    iree_arena_allocator_t* arena,
+    loom_low_rematerialization_state_t* state, iree_arena_allocator_t* arena,
     loom_low_allocation_rematerialization_result_t* out_result) {
   const loom_low_allocation_failure_t* failure = &table->failure;
   uint64_t previous_pressure_area = UINT64_MAX;
@@ -389,7 +426,8 @@ static iree_status_t loom_low_allocation_try_rematerialize_live_frontier(
     const loom_low_allocation_assignment_t* assignment =
         &table->assignments[best_assignment_index];
     IREE_RETURN_IF_ERROR(loom_low_allocation_try_rematerialize_value(
-        module, &table->target, assignment->value_id, arena, out_result));
+        module, &table->target, assignment->value_id, state, arena,
+        out_result));
     if (out_result->value.rewritten_operand_count != 0) {
       out_result->assignment_index = (uint32_t)best_assignment_index;
       return iree_ok_status();
@@ -401,7 +439,7 @@ static iree_status_t loom_low_allocation_try_rematerialize_live_frontier(
 
 iree_status_t loom_low_allocation_rematerialize_failure(
     loom_module_t* module, const loom_low_allocation_table_t* table,
-    iree_arena_allocator_t* arena,
+    loom_low_rematerialization_state_t* state, iree_arena_allocator_t* arena,
     loom_low_allocation_rematerialization_result_t* out_result) {
   *out_result = loom_low_allocation_rematerialization_result_empty();
   if (!loom_low_allocation_failure_is_rematerializable_pressure(
@@ -412,8 +450,8 @@ iree_status_t loom_low_allocation_rematerialize_failure(
   const loom_low_allocation_failure_t* failure = &table->failure;
   IREE_RETURN_IF_ERROR(loom_low_allocation_try_rematerialize_live_frontier(
       module, table,
-      LOOM_LOW_ALLOCATION_REMATERIALIZATION_FRONTIER_PRESSURE_CLASS, arena,
-      out_result));
+      LOOM_LOW_ALLOCATION_REMATERIALIZATION_FRONTIER_PRESSURE_CLASS, state,
+      arena, out_result));
   if (out_result->value.rewritten_operand_count != 0) {
     return iree_ok_status();
   }
@@ -423,8 +461,8 @@ iree_status_t loom_low_allocation_rematerialize_failure(
   // the first concrete collision selected for diagnostics.
   IREE_RETURN_IF_ERROR(loom_low_allocation_try_rematerialize_live_frontier(
       module, table,
-      LOOM_LOW_ALLOCATION_REMATERIALIZATION_FRONTIER_OVERLAPPING_STORAGE, arena,
-      out_result));
+      LOOM_LOW_ALLOCATION_REMATERIALIZATION_FRONTIER_OVERLAPPING_STORAGE, state,
+      arena, out_result));
   if (out_result->value.rewritten_operand_count != 0) {
     return iree_ok_status();
   }
@@ -432,7 +470,7 @@ iree_status_t loom_low_allocation_rematerialize_failure(
   // The failed value may not have an assignment in the partial table and is
   // therefore the only pressure candidate not covered by the live frontier.
   IREE_RETURN_IF_ERROR(loom_low_allocation_try_rematerialize_value(
-      module, &table->target, failure->value_id, arena, out_result));
+      module, &table->target, failure->value_id, state, arena, out_result));
   if (out_result->value.rewritten_operand_count != 0) {
     out_result->assignment_index = UINT32_MAX;
     return iree_ok_status();
@@ -442,13 +480,14 @@ iree_status_t loom_low_allocation_rematerialize_failure(
 
 iree_status_t loom_low_allocation_rematerialize_spill_plan(
     loom_module_t* module, const loom_low_allocation_table_t* table,
-    iree_arena_allocator_t* arena,
+    loom_low_rematerialization_state_t* state, iree_arena_allocator_t* arena,
     loom_low_allocation_rematerialization_result_t* out_result) {
   *out_result = loom_low_allocation_rematerialization_result_empty();
   for (iree_host_size_t i = 0; i < table->spill_plan_count; ++i) {
     const loom_low_allocation_spill_plan_t* spill_plan = &table->spill_plans[i];
     IREE_RETURN_IF_ERROR(loom_low_allocation_try_rematerialize_value(
-        module, &table->target, spill_plan->value_id, arena, out_result));
+        module, &table->target, spill_plan->value_id, state, arena,
+        out_result));
     if (out_result->value.rewritten_operand_count != 0) {
       out_result->assignment_index = spill_plan->assignment_index;
       return iree_ok_status();

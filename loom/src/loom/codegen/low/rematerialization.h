@@ -15,6 +15,7 @@
 #define LOOM_CODEGEN_LOW_REMATERIALIZATION_H_
 
 #include "iree/base/api.h"
+#include "iree/base/bitmap.h"
 #include "iree/base/internal/arena.h"
 #include "loom/codegen/low/allocation.h"
 #include "loom/error/emitter.h"
@@ -49,6 +50,26 @@ typedef struct loom_low_allocation_rematerialization_result_t {
   uint32_t assignment_index;
 } loom_low_allocation_rematerialization_result_t;
 
+// Retained producer facts for one scheduling/allocation repair lifecycle.
+// Initialize with the repair arena and an empty bitmap before the first
+// attempt. The arena and state survive analysis rebuilds until the repair loop
+// finishes. Per-use clones already have the narrowest definition placement this
+// transform can provide; inserting other operand definitions does not make them
+// candidates again. Spill materialization can insert reloads between clones and
+// their users, invalidating that placement fact. Value IDs remain stable across
+// the supported repair mutations.
+typedef struct loom_low_rematerialization_state_t {
+  // Arena retaining clone membership across repair attempts.
+  iree_arena_allocator_t* arena;
+  // Module value IDs cloned near uses since the last placement invalidation.
+  iree_bitmap_t per_use_values;
+} loom_low_rematerialization_state_t;
+
+// Invalidates per-use placement after spill traffic changes live ranges.
+// Retains allocated membership storage for subsequent repair attempts.
+void loom_low_rematerialization_invalidate_placement(
+    loom_low_rematerialization_state_t* state);
+
 // Rematerializes a descriptor-backed SSA value near all of its uses.
 //
 // Returns OK with a zero result when |value_id| is not a safe rematerialization
@@ -56,7 +77,8 @@ typedef struct loom_low_allocation_rematerialization_result_t {
 // rebuild them before continuing.
 iree_status_t loom_low_rematerialize_value_uses(
     loom_module_t* module, const loom_low_resolved_target_t* target,
-    loom_value_id_t value_id, iree_arena_allocator_t* arena,
+    loom_value_id_t value_id, loom_low_rematerialization_state_t* state,
+    iree_arena_allocator_t* arena,
     loom_low_value_rematerialization_result_t* out_result);
 
 // Attempts to repair a terminal hard allocation failure by rematerializing a
@@ -64,11 +86,10 @@ iree_status_t loom_low_rematerialize_value_uses(
 //
 // Returns OK with a zero result when the failure is not a rematerialization
 // candidate. User IR failures remain allocation diagnostics; status failures
-// are reserved for compiler infrastructure invariants while cloning or
-// rewriting already-validated descriptor packets.
+// are reserved for allocation failures while cloning or rewriting packets.
 iree_status_t loom_low_allocation_rematerialize_failure(
     loom_module_t* module, const loom_low_allocation_table_t* table,
-    iree_arena_allocator_t* arena,
+    loom_low_rematerialization_state_t* state, iree_arena_allocator_t* arena,
     loom_low_allocation_rematerialization_result_t* out_result);
 
 // Attempts to repair one predicted spill plan by rematerializing its value
@@ -79,7 +100,7 @@ iree_status_t loom_low_allocation_rematerialize_failure(
 // consulting the old allocation table again.
 iree_status_t loom_low_allocation_rematerialize_spill_plan(
     loom_module_t* module, const loom_low_allocation_table_t* table,
-    iree_arena_allocator_t* arena,
+    loom_low_rematerialization_state_t* state, iree_arena_allocator_t* arena,
     loom_low_allocation_rematerialization_result_t* out_result);
 
 // Emits a structured remark describing a successful rematerialization result.

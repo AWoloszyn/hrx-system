@@ -1,5 +1,7 @@
 // RUN: emit amdgpu-assembly @rematerialization_budget_falls_back_to_spills strategy=source amdgpu.vgpr=5
 
+// Spill insertion separates a per-use literal clone from its consumer. The
+// subsequent repair must rematerialize it again instead of spilling the literal.
 amdgpu.target<gfx1100> @target
 
 low.func.def target<amdgpu.rdna3.core>(@target) @rematerialization_budget_falls_back_to_spills(%addr: reg<amdgpu.vgpr>, %a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %input: reg<amdgpu.sgpr x2>, %output: reg<amdgpu.sgpr x2>) asm {

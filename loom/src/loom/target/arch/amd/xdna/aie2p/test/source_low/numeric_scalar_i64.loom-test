@@ -100,17 +100,19 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_i
   %15 = mov.short 31
   %16 = mov.short 32
   %17 = and %13, %15
-  %18 = add %17, -32
-  %19 = lshl %11, %17
-  %20 = lshl %12, %17
-  %21 = lshl %11, %18
-  %22 = or %20, %21
-  %24 = ltu %13, %16
-  %25 = copy %24 : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %26 = sel.nez %19, %14, %25
-  %27 = copy %24 : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %28 = sel.nez %22, %19, %27
-  %shifted = concat(%26, %28) : (reg<aie2p.er>, reg<aie2p.er>) -> reg<aie2p.er x2>
+  %18 = mov.short -1
+  %19 = lshl %11, %18
+  %20 = add %17, -31
+  %21 = lshl %11, %17
+  %22 = lshl %12, %17
+  %23 = lshl %19, %20
+  %24 = or %22, %23
+  %26 = ltu %13, %16
+  %27 = copy %26 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %28 = sel.nez %21, %14, %27
+  %29 = copy %26 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %30 = sel.nez %24, %21, %29
+  %shifted = concat(%28, %30) : (reg<aie2p.er>, reg<aie2p.er>) -> reg<aie2p.er x2>
   return %shifted
 }
 
@@ -444,17 +446,19 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scalar_i
   %11 = mov.short 31
   %12 = mov.short 32
   %13 = and %9, %11
-  %14 = add %13, -32
-  %15 = lshl %7, %13
-  %16 = lshl %8, %13
-  %17 = lshl %7, %14
-  %18 = or %16, %17
-  %20 = ltu %9, %12
-  %21 = copy %20 : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %22 = sel.nez %15, %10, %21
-  %23 = copy %20 : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %24 = sel.nez %18, %15, %23
-  %result = concat(%22, %24) : (reg<aie2p.er>, reg<aie2p.er>) -> reg<aie2p.er x2>
+  %14 = mov.short -1
+  %15 = lshl %7, %14
+  %16 = add %13, -31
+  %17 = lshl %7, %13
+  %18 = lshl %8, %13
+  %19 = lshl %15, %16
+  %20 = or %18, %19
+  %22 = ltu %9, %12
+  %23 = copy %22 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %24 = sel.nez %17, %10, %23
+  %25 = copy %22 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %26 = sel.nez %20, %17, %25
+  %result = concat(%24, %26) : (reg<aie2p.er>, reg<aie2p.er>) -> reg<aie2p.er x2>
   return %result
 }
 

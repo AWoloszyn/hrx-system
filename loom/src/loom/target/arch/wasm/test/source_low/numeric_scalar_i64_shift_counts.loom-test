@@ -131,3 +131,163 @@ low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_right_s
   %signed = i64.shr_s %value, %count
   return %logical, %signed
 }
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_word_boundaries(%value: i64) -> (i64, i64, i64, i64) {
+  %identity_count = scalar.constant 0 : i64
+  %last_low = scalar.constant 31 : i64
+  %first_high = scalar.constant 32 : i64
+  %last_high = scalar.constant 63 : i64
+  %unchanged = scalar.shli %value, %identity_count : i64
+  %low_edge = scalar.shli %value, %last_low : i64
+  %high_edge = scalar.shli %value, %first_high : i64
+  %top_bit = scalar.shli %value, %last_high : i64
+  func.return %unchanged, %low_edge, %high_edge, %top_bit : i64, i64, i64, i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_word_boundaries(%value: reg<wasm.i64>) -> (reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>, reg<wasm.i64>) asm {
+  %last_low = i64.const 31
+  %first_high = i64.const 32
+  %last_high = i64.const 63
+  %low_edge = i64.shl %value, %last_low
+  %high_edge = i64.shl %value, %first_high
+  %top_bit = i64.shl %value, %last_high
+  return %value, %low_edge, %high_edge, %top_bit
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_low_word(%value: i64) -> (i32) {
+  %count = scalar.constant 6 : i64
+  %shifted = scalar.shli %value, %count : i64
+  %result = scalar.trunci %shifted : i64 to i32
+  func.return %result : i32
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_low_word(%value: reg<wasm.i64>) -> (reg<wasm.i32>) asm {
+  %count = i64.const 6
+  %shifted = i64.shl %value, %count
+  %result = i32.wrap_i64 %shifted
+  return %result
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_bounded_low(%value: i64, %count_input: i64) -> (i64) {
+  %count = scalar.assume %count_input [range(%count_input, 0, 31)] : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_bounded_low(%value: reg<wasm.i64>, %count: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %shifted = i64.shl %value, %count
+  return %shifted
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_bounded_high(%value: i64, %count_input: i64) -> (i64) {
+  %count = scalar.assume %count_input [range(%count_input, 32, 63)] : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_bounded_high(%value: reg<wasm.i64>, %count: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %shifted = i64.shl %value, %count
+  return %shifted
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_crossing_words(%value: i64, %count_input: i64) -> (i64) {
+  %count = scalar.assume %count_input [range(%count_input, 31, 32)] : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_crossing_words(%value: reg<wasm.i64>, %count: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %shifted = i64.shl %value, %count
+  return %shifted
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @wide_shift_bounded_nonzero_low(%value: i64, %count_input: i64) -> (i64) {
+  %count = scalar.assume %count_input [range(%count_input, 1, 31)] : i64
+  %shifted = scalar.shli %value, %count : i64
+  func.return %shifted : i64
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @wide_shift_bounded_nonzero_low(%value: reg<wasm.i64>, %count: reg<wasm.i64>) -> (reg<wasm.i64>) asm {
+  %shifted = i64.shl %value, %count
+  return %shifted
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @word_right_shift_constants(%value: i32) -> (i32, i32, i32, i32, i32, i32, i32) {
+  %identity_count = scalar.constant 0 : i32
+  %single_bit = scalar.constant 1 : i32
+  %middle = scalar.constant 16 : i32
+  %last = scalar.constant 31 : i32
+  %unchanged = scalar.shrui %value, %identity_count : i32
+  %logical_one = scalar.shrui %value, %single_bit : i32
+  %signed_one = scalar.shrsi %value, %single_bit : i32
+  %logical_middle = scalar.shrui %value, %middle : i32
+  %signed_middle = scalar.shrsi %value, %middle : i32
+  %logical_last = scalar.shrui %value, %last : i32
+  %signed_last = scalar.shrsi %value, %last : i32
+  func.return %unchanged, %logical_one, %signed_one, %logical_middle, %signed_middle, %logical_last, %signed_last : i32, i32, i32, i32, i32, i32, i32
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @word_right_shift_constants(%value: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>) asm {
+  %single_bit = i32.const 1
+  %middle = i32.const 16
+  %last = i32.const 31
+  %logical_one = i32.shr_u %value, %single_bit
+  %signed_one = i32.shr_s %value, %single_bit
+  %logical_middle = i32.shr_u %value, %middle
+  %signed_middle = i32.shr_s %value, %middle
+  %logical_last = i32.shr_u %value, %last
+  %signed_last = i32.shr_s %value, %last
+  return %value, %logical_one, %signed_one, %logical_middle, %signed_middle, %logical_last, %signed_last
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @word_right_shift_dynamic(%value: i32, %count: i32) -> (i32, i32) {
+  %logical = scalar.shrui %value, %count : i32
+  %signed = scalar.shrsi %value, %count : i32
+  func.return %logical, %signed : i32, i32
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @word_right_shift_dynamic(%value: reg<wasm.i32>, %count: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>) asm {
+  %logical = i32.shr_u %value, %count
+  %signed = i32.shr_s %value, %count
+  return %logical, %signed
+}

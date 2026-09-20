@@ -633,6 +633,9 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
   // Target-lowered spill helpers require registers. Rematerialized clones
   // inherit that requirement so rematerialization cannot erase the fact.
   iree_bitmap_t required_register_values = {0};
+  loom_low_rematerialization_state_t rematerialization = {
+      .arena = repair_arena,
+  };
   loom_low_emission_frame_lower_spill_traffic_result_t spill_lowering_result = {
       0};
   IREE_RETURN_IF_ERROR(loom_low_emission_frame_lower_spill_traffic(
@@ -719,7 +722,8 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
             module->values.count;
         IREE_RETURN_IF_ERROR(loom_low_rematerialize_value_uses(
             module, &frame.schedule.target,
-            frame.schedule.failure.state_value_id, scratch_arena, &result));
+            frame.schedule.failure.state_value_id, &rematerialization,
+            scratch_arena, &result));
         if (result.rewritten_operand_count != 0) {
           IREE_RETURN_IF_ERROR(
               loom_low_emission_frame_record_derived_register_requirement(
@@ -749,7 +753,8 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
         const iree_host_size_t first_rematerialized_value_id =
             module->values.count;
         IREE_RETURN_IF_ERROR(loom_low_allocation_rematerialize_failure(
-            module, &frame.allocation, scratch_arena, &result));
+            module, &frame.allocation, &rematerialization, scratch_arena,
+            &result));
         if (result.value.rewritten_operand_count != 0) {
           IREE_RETURN_IF_ERROR(
               loom_low_emission_frame_record_derived_register_requirement(
@@ -844,7 +849,8 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
       const iree_host_size_t first_rematerialized_value_id =
           module->values.count;
       IREE_RETURN_IF_ERROR(loom_low_allocation_rematerialize_spill_plan(
-          module, &frame.allocation, scratch_arena, &rematerialization_result));
+          module, &frame.allocation, &rematerialization, scratch_arena,
+          &rematerialization_result));
       if (rematerialization_result.value.rewritten_operand_count != 0) {
         IREE_RETURN_IF_ERROR(
             loom_low_emission_frame_record_derived_register_requirement(
@@ -931,6 +937,7 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
             result.materialized_spills, result.materialized_spill_count,
             &materialization_summary.spill_records, repair_arena));
     last_repaired_spill_plan_count = IREE_HOST_SIZE_MAX;
+    loom_low_rematerialization_invalidate_placement(&rematerialization);
 
     loom_low_emission_frame_record_memory_high_water(
         frame_checkpoint, repair_arena, scratch_arena, statistics);
