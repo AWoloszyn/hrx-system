@@ -16,10 +16,38 @@ namespace {
 
 class SegmentedStorageTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    iree_arena_block_pool_initialize(128 * 1024, iree_allocator_system(),
+  static iree_status_t Allocate(void* self, iree_allocator_command_t command,
+                                const void* parameters, void** pointer) {
+    auto* test = static_cast<SegmentedStorageTest*>(self);
+    if (command != IREE_ALLOCATOR_COMMAND_FREE) {
+      const auto* allocation =
+          static_cast<const iree_allocator_alloc_params_t*>(parameters);
+      test->largest_allocation_ =
+          iree_max(test->largest_allocation_, allocation->byte_length);
+      if (test->allocation_count_++ == test->failure_index_) {
+        return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "injected backing allocation failure");
+      }
+    }
+    const auto allocator = iree_allocator_system();
+    return allocator.ctl(allocator.self, command, parameters, pointer);
+  }
+
+  void InitializePool(iree_host_size_t block_size) {
+    iree_arena_block_pool_initialize(block_size, {this, Allocate},
                                      &block_pool_);
     iree_arena_initialize(&block_pool_, &arena_);
+  }
+
+  void SetUp() override { InitializePool(128 * 1024); }
+
+  void ResetPool(iree_host_size_t block_size) {
+    iree_arena_deinitialize(&arena_);
+    iree_arena_block_pool_deinitialize(&block_pool_);
+    allocation_count_ = 0;
+    largest_allocation_ = 0;
+    failure_index_ = SIZE_MAX;
+    InitializePool(block_size);
   }
 
   void TearDown() override {
@@ -27,8 +55,16 @@ class SegmentedStorageTest : public ::testing::Test {
     iree_arena_block_pool_deinitialize(&block_pool_);
   }
 
-  iree_arena_block_pool_t block_pool_;
-  iree_arena_allocator_t arena_;
+  // Number of backing allocations attempted since reset.
+  iree_host_size_t allocation_count_ = 0;
+  // Largest requested backing allocation since reset, in bytes.
+  iree_host_size_t largest_allocation_ = 0;
+  // Allocation ordinal to fail, or SIZE_MAX to allow every request.
+  iree_host_size_t failure_index_ = SIZE_MAX;
+  // Shared backing pool retained across arena resets.
+  iree_arena_block_pool_t block_pool_ = {};
+  // Arena owning every payload and directory page in one test.
+  iree_arena_allocator_t arena_ = {};
 };
 
 TEST_F(SegmentedStorageTest, InlineAndPrimaryPagePointersStayStable) {
@@ -69,6 +105,26 @@ TEST_F(SegmentedStorageTest, SecondaryPointerPage) {
   }
 
   EXPECT_EQ(storage.segment_count, kSegmentCount);
+  for (uint32_t i = 0; i < kSegmentCount; ++i) {
+    EXPECT_EQ(*static_cast<const uint32_t*>(
+                  loom_segmented_storage_const_segment(&storage, i)),
+              i);
+  }
+}
+
+TEST_F(SegmentedStorageTest, MultiplePageGroupsPreserveThePrefix) {
+  loom_segmented_storage_t storage;
+  loom_segmented_storage_initialize(sizeof(uint32_t), alignof(uint32_t),
+                                    &storage);
+  constexpr uint32_t kSegmentCount =
+      LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE *
+          LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE +
+      1;
+  for (uint32_t i = 0; i < kSegmentCount; ++i) {
+    void* segment = nullptr;
+    IREE_ASSERT_OK(loom_segmented_storage_append(&storage, &arena_, &segment));
+    *static_cast<uint32_t*>(segment) = i;
+  }
   for (uint32_t i = 0; i < kSegmentCount; ++i) {
     EXPECT_EQ(*static_cast<const uint32_t*>(
                   loom_segmented_storage_const_segment(&storage, i)),
@@ -125,13 +181,13 @@ TEST_F(SegmentedStorageTest, MoveExpandedDirectory) {
   loom_segmented_storage_initialize(sizeof(uint32_t), alignof(uint32_t),
                                     &source);
   constexpr uint32_t kSegmentCount =
-      LOOM_SEGMENTED_STORAGE_INLINE_SEGMENT_COUNT + 1;
+      LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE + 1;
   for (uint32_t i = 0; i < kSegmentCount; ++i) {
     void* segment = nullptr;
     IREE_ASSERT_OK(loom_segmented_storage_append(&source, &arena_, &segment));
     *static_cast<uint32_t*>(segment) = i;
   }
-  void** source_primary_page = source.primary_page;
+  auto* source_primary_page = source.primary_page;
 
   loom_segmented_storage_t storage;
   loom_segmented_storage_move(&source, &storage);
@@ -142,6 +198,39 @@ TEST_F(SegmentedStorageTest, MoveExpandedDirectory) {
     EXPECT_EQ(*static_cast<const uint32_t*>(
                   loom_segmented_storage_const_segment(&storage, i)),
               i);
+  }
+}
+
+TEST_F(SegmentedStorageTest, ReadOnlyCopiesSurviveDirectoryPromotion) {
+  loom_segmented_storage_t storage;
+  loom_segmented_storage_initialize(sizeof(uint32_t), alignof(uint32_t),
+                                    &storage);
+  const uint32_t copy_counts[] = {
+      LOOM_SEGMENTED_STORAGE_INLINE_SEGMENT_COUNT,
+      LOOM_SEGMENTED_STORAGE_INLINE_SEGMENT_COUNT + 1,
+      LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE + 1,
+  };
+  loom_segmented_storage_t copies[IREE_ARRAYSIZE(copy_counts)];
+  uint32_t copy_index = 0;
+  for (uint32_t i = 0; i < 2 * LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE + 1;
+       ++i) {
+    void* segment = nullptr;
+    IREE_ASSERT_OK(loom_segmented_storage_append(&storage, &arena_, &segment));
+    *static_cast<uint32_t*>(segment) = i;
+    if (copy_index < IREE_ARRAYSIZE(copy_counts) &&
+        storage.segment_count == copy_counts[copy_index]) {
+      copies[copy_index++] = storage;
+    }
+  }
+  ASSERT_EQ(copy_index, IREE_ARRAYSIZE(copy_counts));
+  for (const auto& copy : copies) {
+    for (uint32_t i = 0; i < copy.segment_count; ++i) {
+      EXPECT_EQ(loom_segmented_storage_const_segment(&copy, i),
+                loom_segmented_storage_const_segment(&storage, i));
+      EXPECT_EQ(*static_cast<const uint32_t*>(
+                    loom_segmented_storage_const_segment(&copy, i)),
+                i);
+    }
   }
 }
 
@@ -168,6 +257,8 @@ TEST_F(SegmentedStorageTest, ArenaResetReusesPoolBlocks) {
 
   iree_arena_block_pool_statistics_t warm_statistics;
   iree_arena_block_pool_query_statistics(&block_pool_, &warm_statistics);
+  const iree_host_size_t warm_allocation_count = allocation_count_;
+  ASSERT_GT(warm_allocation_count, 0u);
   iree_arena_reset(&arena_);
   loom_segmented_storage_initialize(/*segment_size=*/4096,
                                     /*segment_alignment=*/64, &storage);
@@ -182,6 +273,104 @@ TEST_F(SegmentedStorageTest, ArenaResetReusesPoolBlocks) {
             warm_statistics.block_system_allocation_count);
   EXPECT_EQ(reused_statistics.oversized_allocation_count,
             warm_statistics.oversized_allocation_count);
+  EXPECT_EQ(allocation_count_, warm_allocation_count);
+}
+
+TEST_F(SegmentedStorageTest, NormalPoolSizesReuseDirectoryAndPayloadStorage) {
+  for (const iree_host_size_t block_size : {32 * 1024u, 128 * 1024u}) {
+    SCOPED_TRACE(block_size);
+    ResetPool(block_size);
+    iree_host_size_t warm_allocation_count = 0;
+    for (uint32_t iteration = 0; iteration < 3; ++iteration) {
+      loom_segmented_storage_t storage;
+      loom_segmented_storage_initialize(sizeof(uint64_t), alignof(uint64_t),
+                                        &storage);
+      for (uint32_t i = 0; i < LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE + 1;
+           ++i) {
+        void* segment = nullptr;
+        IREE_ASSERT_OK(
+            loom_segmented_storage_append(&storage, &arena_, &segment));
+        *static_cast<uint64_t*>(segment) = i;
+      }
+      if (iteration == 0) {
+        warm_allocation_count = allocation_count_;
+        ASSERT_GT(warm_allocation_count, 0u);
+      }
+      EXPECT_EQ(allocation_count_, warm_allocation_count);
+      EXPECT_LE(largest_allocation_, block_size);
+      iree_arena_reset(&arena_);
+    }
+  }
+}
+
+TEST_F(SegmentedStorageTest, FailedAppendCanRewindAndRetryAtPageTransitions) {
+  const uint32_t boundaries[] = {
+      0,
+      LOOM_SEGMENTED_STORAGE_INLINE_SEGMENT_COUNT,
+      LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE,
+      LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE + 1,
+      2 * LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE,
+      LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE *
+          LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE,
+  };
+  for (uint32_t boundary : boundaries) {
+    SCOPED_TRACE(boundary);
+    for (iree_host_size_t failure_index = 0;; ++failure_index) {
+      SCOPED_TRACE(failure_index);
+      // Valid small blocks expose each directory allocation to the backing
+      // allocator. Each attempt starts without blocks from an earlier retry.
+      ResetPool(128);
+      loom_segmented_storage_t storage;
+      loom_segmented_storage_initialize(sizeof(uint32_t), alignof(uint32_t),
+                                        &storage);
+      for (uint32_t i = 0; i < boundary; ++i) {
+        void* segment = nullptr;
+        IREE_ASSERT_OK(
+            loom_segmented_storage_append(&storage, &arena_, &segment));
+        *static_cast<uint32_t*>(segment) = i;
+      }
+      // Fill the current allocation block so the payload allocation itself,
+      // as well as later directory allocations, has a fallible backing call.
+      void* arena_tail = nullptr;
+      IREE_ASSERT_OK(iree_arena_allocate(
+          &arena_, iree_arena_block_pool_max_allocation_size(&block_pool_),
+          &arena_tail));
+      const loom_segmented_storage_t before = storage;
+      const auto checkpoint = iree_arena_checkpoint_save(&arena_);
+      allocation_count_ = 0;
+      failure_index_ = failure_index;
+      void* segment = nullptr;
+      iree_status_t status =
+          loom_segmented_storage_append(&storage, &arena_, &segment);
+      failure_index_ = SIZE_MAX;
+      if (iree_status_is_ok(status)) {
+        EXPECT_LE(allocation_count_, failure_index);
+        EXPECT_EQ(storage.segment_count, boundary + 1);
+        break;
+      }
+      IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, status);
+      EXPECT_EQ(allocation_count_, failure_index + 1);
+      EXPECT_EQ(segment, nullptr);
+      EXPECT_EQ(storage.segment_count, before.segment_count);
+      EXPECT_EQ(storage.segment_size, before.segment_size);
+      EXPECT_EQ(storage.segment_alignment, before.segment_alignment);
+      EXPECT_EQ(storage.primary_page, before.primary_page);
+      EXPECT_EQ(storage.page_directory, before.page_directory);
+      for (uint32_t i = 0; i < LOOM_SEGMENTED_STORAGE_INLINE_SEGMENT_COUNT;
+           ++i) {
+        EXPECT_EQ(storage.inline_segments[i], before.inline_segments[i]);
+      }
+      iree_arena_checkpoint_restore(&checkpoint);
+      IREE_ASSERT_OK(
+          loom_segmented_storage_append(&storage, &arena_, &segment));
+      *static_cast<uint32_t*>(segment) = boundary;
+      for (uint32_t i = 0; i < storage.segment_count; ++i) {
+        EXPECT_EQ(*static_cast<const uint32_t*>(
+                      loom_segmented_storage_const_segment(&storage, i)),
+                  i);
+      }
+    }
+  }
 }
 
 }  // namespace
