@@ -227,6 +227,7 @@ loom_cc_test(
     loom::ops::func
     loom::ops::index
     loom::ops::kernel
+    loom::ops::pipeline
     loom::ops::scalar
     loom::testing::test_file
 )

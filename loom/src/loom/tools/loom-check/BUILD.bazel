@@ -355,6 +355,7 @@ loom_cc_test(
         "//loom/src/loom/ops/func",
         "//loom/src/loom/ops/index",
         "//loom/src/loom/ops/kernel",
+        "//loom/src/loom/ops/pipeline",
         "//loom/src/loom/ops/scalar",
         "//loom/src/loom/testing:test_file",
         "//runtime/src/iree/base",
