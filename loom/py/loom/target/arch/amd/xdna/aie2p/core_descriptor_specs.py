@@ -1601,6 +1601,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_MOVXM_eR",
         (("dst", "eR"),),
         asm_mnemonic="mov.static-byte-offset",
+        rematerializable=True,
     ),
     _DescriptorSpec(
         "MOVXM",
