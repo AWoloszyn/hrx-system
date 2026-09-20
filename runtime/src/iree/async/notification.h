@@ -13,15 +13,12 @@
 #include "iree/base/threading/futex.h"
 #include "iree/base/threading/notification.h"
 
-// Compile-time selection for sync notification_wait() implementation.
+// Compile-time selection for private sync notification_wait() implementation.
 // When futex is available, sync waiters use futex_wait() on the epoch atomic —
 // no eventfd involvement, no drain race with the poll thread. When futex is
 // unavailable (macOS), sync waiters use iree_notification_t (condvar-based),
-// keeping the eventfd exclusively for the poll thread.
-//
-// This flag is potentially transient: after measurement across platforms it
-// may either track the main IREE_RUNTIME_USE_FUTEX unconditionally or be
-// removed entirely.
+// keeping native fd readiness exclusively for the poll thread. Shared waits
+// use the independent native notification bundle instead of this selection.
 //
 // Set IREE_ASYNC_POSIX_NOTIFICATION_WANT_FUTEX=0 to force the condvar path
 // even on platforms that support futex (for benchmarking/testing).
@@ -54,8 +51,7 @@ typedef uint32_t iree_async_notification_flags_t;
 //
 // Provides cross-thread signaling with epoch counting: multiple signals
 // coalesce, and waiters observe signals that occurred after their wait was
-// submitted. Unlike events (edge-triggered, one signal -> one completion),
-// notifications are level-triggered.
+// submitted. Native wake counts are hints, not one permit per logical waiter.
 //
 // Semantics:
 //   - signal(): Atomically increments the epoch and wakes waiters.
