@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "iree/async/operations/scheduling.h"
+#include "iree/async/platform/io_uring/notification.h"
 #include "iree/async/platform/io_uring/proactor.h"
 #include "iree/async/util/semaphore_wait.h"
 #include "iree/async/util/sequence_emulation.h"
@@ -17,6 +18,12 @@ iree_status_t iree_async_proactor_io_uring_cancel(
     iree_async_proactor_t* base_proactor, iree_async_operation_t* operation) {
   iree_async_proactor_io_uring_t* proactor =
       iree_async_proactor_io_uring_cast(base_proactor);
+
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
+    iree_async_io_uring_notification_cancel_wait(
+        (iree_async_notification_wait_operation_t*)operation);
+    return iree_ok_status();
+  }
 
   // The poll owner joins software timepoints before retiring their trackers.
   if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_WAIT) {
@@ -58,8 +65,7 @@ iree_status_t iree_async_proactor_io_uring_cancel(
   // operation pointer; only the target's terminal CQE returns ownership.
   sqe->opcode = IREE_IORING_OP_ASYNC_CANCEL;
   sqe->fd = -1;
-  if (operation->type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT ||
-      operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT) {
     // Cancel the POLL_ADD head of the linked POLL_ADD+READ pair. The READ CQE
     // reports cancellation and owns resource release and the callback; the
     // tagged POLL_ADD completion never dereferences the operation.

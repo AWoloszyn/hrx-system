@@ -12,9 +12,11 @@
 #include <thread>
 
 #include "iree/async/event.h"
+#include "iree/async/notification.h"
 #include "iree/async/operations/net.h"
 #include "iree/async/operations/scheduling.h"
 #include "iree/async/platform/io_uring/api.h"
+#include "iree/async/relay.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -548,6 +550,219 @@ TEST_P(IoUringCancelTest, LastDispatchWakesSoftwareWorkForNextPoll) {
   });
   PollUntil([&] { return completion.count == 1; });
   EXPECT_EQ(completion.code, IREE_STATUS_OK);
+}
+
+TEST_P(IoUringCancelTest, DeferredNotificationPreservesCancellation) {
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  Completion predecessor_completion;
+  iree_async_handle_poll_operation_t predecessor = {};
+  InitializeWait(&predecessor, &predecessor_completion);
+  predecessor.base.flags = IREE_ASYNC_OPERATION_FLAG_LINKED;
+  Completion wait_completion;
+  iree_async_notification_wait_operation_t wait = {};
+  iree_async_operation_initialize(
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_LINKED, Completion::Record, &wait_completion);
+  wait.notification = notification;
+  Completion tail_completion;
+  iree_async_operation_t tail = {};
+  iree_async_operation_initialize(&tail, IREE_ASYNC_OPERATION_TYPE_NOP,
+                                  IREE_ASYNC_OPERATION_FLAG_NONE,
+                                  Completion::Record, &tail_completion);
+  iree_async_operation_t* operations[] = {&predecessor.base, &wait.base, &tail};
+  IREE_ASSERT_OK(iree_async_proactor_submit(
+      proactor_, iree_async_operation_list_make(operations, 3)));
+  allocations_enabled_ = false;
+  Dispatch([&] {
+    IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait.base));
+  });
+  Dispatch([] {});
+  EXPECT_EQ(predecessor_completion.count, 0);
+  EXPECT_EQ(wait_completion.count, 0);
+  EXPECT_EQ(tail_completion.count, 0);
+
+  // Only the predecessor owns the deferred wait. Its successful completion
+  // activates the already-cancelled wait without requiring a source signal.
+  uint64_t value = 1;
+  ASSERT_EQ(write(event_fd_, &value, sizeof(value)), sizeof(value));
+  PollUntil([&] {
+    return predecessor_completion.count == 1 && wait_completion.count == 1 &&
+           tail_completion.count == 1;
+  });
+  EXPECT_EQ(predecessor_completion.code, IREE_STATUS_OK);
+  EXPECT_EQ(wait_completion.code, IREE_STATUS_CANCELLED);
+  EXPECT_EQ(tail_completion.code, IREE_STATUS_CANCELLED);
+  iree_async_notification_release(notification);
+  Dispatch([] {});
+}
+
+TEST_P(IoUringCancelTest, LastNotificationConsumerReleasesBorrowedState) {
+  auto epoch = std::make_unique<iree_atomic_int32_t>();
+  iree_atomic_store(epoch.get(), 0, iree_memory_order_release);
+  iree_async_notification_shared_options_t options = {};
+  options.epoch_address = epoch.get();
+  options.wake_primitive = iree_async_primitive_from_fd(event_fd_);
+  options.signal_primitive = options.wake_primitive;
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
+                                                       &notification));
+  struct State {
+    // Caller reference released by the final callback.
+    iree_async_notification_t* notification;
+    // Borrowed epoch storage retired at the same boundary.
+    std::unique_ptr<iree_atomic_int32_t>* epoch;
+    // Borrowed wake descriptor, invalidated before a subsequent poll turn.
+    int* event_fd;
+    // Terminal completion join.
+    Completion completion;
+  } state{notification, &epoch, &event_fd_};
+  iree_async_notification_wait_operation_t wait = {};
+  iree_async_operation_initialize(
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE,
+      [](void* user_data, iree_async_operation_t* operation,
+         iree_status_t status, iree_async_completion_flags_t flags) {
+        auto* state = static_cast<State*>(user_data);
+        Completion::Record(&state->completion, operation, status, flags);
+        iree_async_notification_release(state->notification);
+        state->notification = nullptr;
+        state->epoch->reset();
+        EXPECT_EQ(close(*state->event_fd), 0);
+        *state->event_fd = -1;
+      },
+      &state);
+  wait.notification = notification;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
+  allocations_enabled_ = false;
+  Dispatch([&] {
+    FillSubmissionQueue();
+    IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait.base));
+    EXPECT_EQ(state.completion.count, 0);
+  });
+  PollUntil([&] { return state.completion.count == 1; });
+  EXPECT_EQ(state.completion.code, IREE_STATUS_CANCELLED);
+  EXPECT_EQ(state.notification, nullptr);
+  EXPECT_EQ(epoch, nullptr);
+  // A real subsequent owner turn processes any outstanding native receipts.
+  // Neither the freed epoch nor the closed descriptor can be touched again.
+  Dispatch([] {});
+}
+
+TEST_P(IoUringCancelTest, NotificationWaitJoinsDuringMonitorRetirement) {
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  Completion old_completion;
+  Completion new_completion;
+  iree_async_notification_wait_operation_t old_wait = {};
+  iree_async_notification_wait_operation_t new_wait = {};
+  iree_async_operation_initialize(
+      &old_wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, Completion::Record, &old_completion);
+  old_wait.notification = notification;
+  iree_async_operation_initialize(
+      &new_wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, Completion::Record, &new_completion);
+  new_wait.notification = notification;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &old_wait.base));
+  Dispatch([] {});
+  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &old_wait.base));
+
+  using FixturePointer = decltype(this);
+  struct State {
+    // Ring owner and bounded SQ pressure fixture.
+    FixturePointer fixture;
+    // New consumer arriving before the old cancellation is issued.
+    iree_async_notification_wait_operation_t* wait;
+    // One-shot owner callback after notification retirement was requested.
+    iree_async_progress_entry_t entry = {};
+    // Confirms admission occurred at the intended lifecycle boundary.
+    bool admitted = false;
+  } state{this, &new_wait};
+  state.entry.user_data = &state;
+  state.entry.fn = [](void* user_data, iree_host_size_t*) -> iree_status_t {
+    auto* state = static_cast<State*>(user_data);
+    state->entry.remove_requested = true;
+    // Notification intent processing precedes progress callbacks; the old
+    // unsignaled monitor is now queued for cancellation, but not yet retired.
+    state->fixture->FillSubmissionQueue();
+    IREE_RETURN_IF_ERROR(iree_async_proactor_submit_one(
+        state->fixture->proactor_, &state->wait->base));
+    state->admitted = true;
+    return iree_ok_status();
+  };
+  iree_async_proactor_register_progress(proactor_, &state.entry);
+  allocations_enabled_ = false;
+  PollUntil([&] { return old_completion.count == 1; });
+  ASSERT_TRUE(state.admitted);
+  EXPECT_EQ(old_completion.code, IREE_STATUS_CANCELLED);
+  EXPECT_EQ(new_completion.count, 0);
+  iree_async_notification_signal(notification, 1);
+  PollUntil([&] { return new_completion.count == 1; });
+  EXPECT_EQ(new_completion.code, IREE_STATUS_OK);
+  iree_async_notification_release(notification);
+}
+
+TEST_P(IoUringCancelTest, NotificationRearmsWithFullSqAfterRelayCallback) {
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  // A saturated nonblocking sink produces a real backpressure error without
+  // invalidating the borrowed descriptor's lifetime.
+  uint64_t saturation = UINT64_MAX - 1;
+  ASSERT_EQ(write(event_fd_, &saturation, sizeof(saturation)),
+            sizeof(saturation));
+  Completion completion;
+  iree_async_notification_wait_operation_t wait = {};
+  iree_async_operation_initialize(
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, Completion::Record, &completion);
+  wait.notification = notification;
+  using FixturePointer = decltype(this);
+  struct State {
+    // Ring owner and native submission pressure.
+    FixturePointer fixture;
+    // Wait admitted reentrantly with a token newer than the relay snapshot.
+    iree_async_notification_wait_operation_t* wait;
+    // Completion join for the relay error callback.
+    bool called = false;
+  } state{this, &wait};
+  iree_async_relay_t* relay = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_register_relay(
+      proactor_, iree_async_relay_source_from_notification(notification),
+      iree_async_relay_sink_signal_primitive(
+          iree_async_primitive_from_fd(event_fd_), 1),
+      IREE_ASYNC_RELAY_FLAG_PERSISTENT,
+      {[](void* user_data, iree_async_relay_t*, iree_status_t status) {
+         auto* state = static_cast<State*>(user_data);
+         IREE_EXPECT_STATUS_IS(IREE_STATUS_UNAVAILABLE, status);
+         // Admission must not deadlock on the source mutex. Its later token
+         // cannot be compared against the earlier relay-dispatch snapshot.
+         iree_async_notification_signal(state->wait->notification, 1);
+         IREE_ASSERT_OK(iree_async_proactor_submit_one(
+             state->fixture->proactor_, &state->wait->base));
+         state->fixture->FillSubmissionQueue();
+         state->called = true;
+       },
+       &state},
+      &relay));
+  Dispatch([] {});
+  allocations_enabled_ = false;
+  iree_async_notification_signal(notification, 1);
+  PollUntil([&] { return state.called; });
+  EXPECT_EQ(completion.count, 0);
+  bool unregistered = false;
+  iree_async_proactor_unregister_relay(
+      proactor_, relay,
+      {[](void* user_data) { *static_cast<bool*>(user_data) = true; },
+       &unregistered});
+  PollUntil([&] { return unregistered; });
+  iree_async_notification_signal(notification, 1);
+  PollUntil([&] { return completion.count == 1; });
+  EXPECT_EQ(completion.code, IREE_STATUS_OK);
+  iree_async_notification_release(notification);
 }
 
 INSTANTIATE_TEST_SUITE_P(

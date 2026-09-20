@@ -165,6 +165,10 @@ typedef struct iree_async_proactor_io_uring_t {
   // base.pending_status to carry owned completion status through the queue.
   iree_atomic_slist_t pending_software_operations;
 
+  // Coalesced notification-local admission, readiness, and cancellation work.
+  // Entries exist only while accepted consumers own the notification.
+  iree_atomic_slist_t pending_notifications;
+
   // MPSC queue of semaphore wait operations ready to complete.
   // Timepoint callbacks push trackers here, poll() drains and completes them.
   iree_atomic_slist_t pending_semaphore_waits;
@@ -242,7 +246,7 @@ typedef enum iree_io_uring_internal_tag_e {
   IREE_IO_URING_TAG_EVENT_SOURCE = 6,  // Event source multishot poll.
   IREE_IO_URING_TAG_RELAY = 7,         // Relay source completion.
   IREE_IO_URING_TAG_SIGNAL = 8,        // Signal fd multishot poll.
-  // Linked POLL_ADD head for EVENT_WAIT and NOTIFICATION_WAIT (event mode).
+  // Linked POLL_ADD head for EVENT_WAIT.
   // The POLL_ADD CQE is always ignored; the linked READ CQE handles
   // resource release and user callback dispatch for both success and failure.
   IREE_IO_URING_TAG_LINKED_POLL = 9,

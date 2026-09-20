@@ -504,28 +504,12 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
             wait->wait_flags &
                 ~IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN);
       }
-      if (wait->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-        if (!iree_any_bit_set(
-                proactor->capabilities,
-                IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS)) {
-          return iree_make_status(
-              IREE_STATUS_UNAVAILABLE,
-              "futex notification wait requires io_uring futex support");
-        }
-      } else if (wait->notification->mode ==
-                 IREE_ASYNC_NOTIFICATION_MODE_EVENT) {
-        const iree_async_primitive_t primitive =
-            wait->notification->platform.io_uring.primitive;
-        if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
-            primitive.value.fd < 0) {
-          return iree_make_status(
-              IREE_STATUS_INVALID_ARGUMENT,
-              "event notification wait has an invalid descriptor");
-        }
-      } else {
+      const iree_async_primitive_t primitive =
+          wait->notification->platform.io_uring.primitive;
+      if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+          primitive.value.fd < 0) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "NOTIFICATION_WAIT mode %d is invalid",
-                                (int)wait->notification->mode);
+                                "notification wait has an invalid descriptor");
       }
       return iree_ok_status();
     }
@@ -548,28 +532,13 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
             IREE_STATUS_INVALID_ARGUMENT,
             "NOTIFICATION_SIGNAL wake count must be non-negative");
       }
-      if (signal->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-        if (!iree_any_bit_set(
-                proactor->capabilities,
-                IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS)) {
-          return iree_make_status(
-              IREE_STATUS_UNAVAILABLE,
-              "futex notification signal requires io_uring futex support");
-        }
-      } else if (signal->notification->mode ==
-                 IREE_ASYNC_NOTIFICATION_MODE_EVENT) {
-        const iree_async_primitive_t primitive =
-            signal->notification->platform.io_uring.signal_primitive;
-        if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
-            primitive.value.fd < 0) {
-          return iree_make_status(
-              IREE_STATUS_INVALID_ARGUMENT,
-              "event notification signal has an invalid descriptor");
-        }
-      } else {
-        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "NOTIFICATION_SIGNAL mode %d is invalid",
-                                (int)signal->notification->mode);
+      const iree_async_primitive_t primitive =
+          signal->notification->platform.io_uring.signal_primitive;
+      if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+          primitive.value.fd < 0) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "notification signal has an invalid descriptor");
       }
       return iree_ok_status();
     }

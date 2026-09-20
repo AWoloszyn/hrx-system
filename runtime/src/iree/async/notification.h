@@ -52,7 +52,7 @@ typedef enum iree_async_notification_mode_e {
   IREE_ASYNC_NOTIFICATION_MODE_FUTEX = 0,
 
   // Event fd: eventfd (Linux) or pipe (macOS/BSD) with poll-based waits.
-  // Used by POSIX backend and io_uring fallback on older kernels.
+  // Used by the POSIX and io_uring backends.
   IREE_ASYNC_NOTIFICATION_MODE_EVENT = 1,
 } iree_async_notification_mode_t;
 
@@ -93,7 +93,7 @@ typedef struct iree_async_notification_t {
   iree_async_proactor_t* proactor;
 
   // Epoch counter incremented on each signal. Source of truth for signal state.
-  // In FUTEX mode, also the address for futex syscalls. For local
+  // Also supplies the address for native synchronous address waits. For local
   // notifications, epoch_ptr points here. For shared notifications, epoch_ptr
   // points to caller-provided shared memory and this field is unused.
   iree_atomic_int32_t epoch;
@@ -118,26 +118,17 @@ typedef struct iree_async_notification_t {
   // Platform-specific resources. Only the creating backend accesses its member.
   union {
     // io_uring backend (Linux).
-    // In FUTEX mode: primitive is unused (futex operates on &epoch directly).
-    // In EVENT mode: primitive is an eventfd with EFD_SEMAPHORE for linked
-    // POLL_ADD + READ SQE patterns.
+    // Async consumers share a backend-private monitor of a coalescing eventfd.
+    // Synchronous waits use the epoch futex without consuming eventfd
+    // readiness.
     struct {
-      // Eventfd for poll-based async waits (EVENT mode only).
-      // Monitored for POLLIN by io_uring POLL_ADD SQEs and sync poll().
+      // Eventfd monitored by the single async native polling owner.
       iree_async_primitive_t primitive;
       // Fd written to by signal() to trigger POLLIN on the monitored end.
       // For local notifications: same as primitive (eventfd is bidirectional).
       // For shared notifications: caller-provided signal fd (may differ from
       // primitive when the notification is a proxy for a remote peer).
       iree_async_primitive_t signal_primitive;
-      // Buffer target for linked READ SQEs that drain the eventfd.
-      uint64_t drain_buffer;
-      // Count of relays with in-flight FUTEX_WAIT SQEs on this notification.
-      // Incremented when a relay submits a FUTEX_WAIT, decremented when the
-      // FUTEX_WAIT CQE is processed. Read from the signal path to compute a
-      // precise futex wake count that includes both user waiters and relay
-      // waiters. Always zero in EVENT mode (relays use POLL_ADD instead).
-      iree_atomic_int32_t futex_relay_count;
     } io_uring;
 
     // POSIX backend (Linux/macOS/BSD).
@@ -222,12 +213,9 @@ typedef struct iree_async_notification_t {
 //   generic | io_uring | IOCP | kqueue
 //   yes     | yes      | yes  | yes
 //
-// Implementation selection (automatic based on capabilities):
-//   io_uring 6.7+: Futex word with FUTEX_WAIT/WAKE ops (optimal).
-//   io_uring <6.7: Eventfd with linked POLL_ADD + READ.
-//   IOCP: WaitOnAddress / SetEvent.
-//   kqueue: dispatch_semaphore / kevent.
-//   generic: eventfd + poll.
+// Async waits and relays share native readiness and check the epoch before
+// completing. Synchronous waits use platform address waits or blocking wake
+// primitives independently of proactor progress.
 //
 // Returns:
 //   IREE_STATUS_OK: Notification created successfully.
@@ -245,9 +233,10 @@ typedef struct iree_async_notification_shared_options_t {
 
   // Wake primitive for the proactor poll loop (platform-specific):
   //   Linux/macOS: fd for POLLIN monitoring (eventfd or pipe read end).
-  //     Must be in non-blocking mode (O_NONBLOCK).
+  //     Must be non-blocking and coalescing: Linux eventfd without
+  //     EFD_SEMAPHORE, or a macOS pipe read end.
   //   Windows: Event HANDLE signaled by remote process.
-  // Ignored in FUTEX mode (futex_wake on shared address is sufficient).
+  // May be NONE for a signal-only proxy that is never waited on locally.
   iree_async_primitive_t wake_primitive;
 
   // Signal primitive for waking the remote proactor (platform-specific):
@@ -256,7 +245,6 @@ typedef struct iree_async_notification_shared_options_t {
   //   Windows: Event HANDLE to SetEvent on signal.
   // On Linux eventfd: wake_primitive == signal_primitive (same fd).
   // On macOS pipe: wake_primitive = read end, signal_primitive = write end.
-  // Ignored in FUTEX mode.
   iree_async_primitive_t signal_primitive;
 } iree_async_notification_shared_options_t;
 
@@ -266,6 +254,9 @@ typedef struct iree_async_notification_shared_options_t {
 // and typically reside in or reference shared memory. The notification does not
 // take ownership of these resources — the caller is responsible for their
 // lifetime and cleanup.
+// Each wake resource has one polling owner. Multiple local waits and relays
+// subscribe to that notification; remote signal-only proxies can share its
+// signal resource. Independent polling consumers must use separate resources.
 //
 // The IREE_ASYNC_NOTIFICATION_FLAG_SHARED flag is set automatically.
 //
@@ -287,14 +278,14 @@ IREE_API_EXPORT void iree_async_notification_retain(
 IREE_API_EXPORT void iree_async_notification_release(
     iree_async_notification_t* notification);
 
-// Signals the notification, waking up to |wake_count| waiters.
+// Advances the epoch and wakes observers of the notification.
 //
 // Thread-safe, async-signal-safe. May be called from any context including
 // completion callbacks, signal handlers, or other threads.
 //
-// |wake_count|: Number of waiters to wake.
-//   - 1: Wake a single waiter (typical for producer/consumer).
-//   - INT32_MAX: Wake all waiters (broadcast).
+// |wake_count| is a native wake hint, not a limit on observers seeing the new
+// epoch. Use 1 for a single native sleeper or INT32_MAX for broadcast. Async
+// waits and relays sharing one native monitor observe the publication together.
 //
 // Implementation:
 //   Atomically increments the notification's epoch, then wakes waiters via

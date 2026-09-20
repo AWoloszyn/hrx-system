@@ -370,10 +370,9 @@ enum iree_async_notification_wait_flag_bits_e {
 //   generic | io_uring | IOCP | kqueue
 //   yes     | yes      | yes  | yes
 //
-// Implementation:
-//   io_uring 6.7+: IORING_OP_FUTEX_WAIT on epoch word.
-//   io_uring <6.7: Linked POLL_ADD + READ on eventfd.
-//   Others: Platform-specific (eventfd + poll, WaitOnAddress, etc.).
+// Native readiness is a coalescing wake indication, not proof of completion.
+// Backends recheck the original token after readiness, preserving it across
+// native rearming. A stale native wake cannot satisfy an unchanged epoch.
 //
 // Threading model:
 //   Callback fires on the poll thread when the notification is signaled.

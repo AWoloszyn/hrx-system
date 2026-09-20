@@ -245,6 +245,71 @@ TEST_P(NotificationTest, SignalIfObservedNoWaitersSkipsWake) {
   iree_async_notification_release(notification);
 }
 
+TEST_P(NotificationTest, CoalescedWakePreservesWaitAndRelayEpochs) {
+  iree_async_notification_t* source = nullptr;
+  iree_async_notification_t* sink = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &source));
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
+  // Leave native readiness from before any subscriber's token was captured.
+  iree_async_notification_signal(source, INT32_MAX);
+  iree_async_relay_t* relay = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_register_relay(
+      proactor_, iree_async_relay_source_from_notification(source),
+      iree_async_relay_sink_signal_notification(sink, 1),
+      IREE_ASYNC_RELAY_FLAG_PERSISTENT, iree_async_relay_error_callback_none(),
+      &relay));
+
+  constexpr size_t kWaitCount = 16;
+  CompletionTracker tracker;
+  iree_async_notification_wait_operation_t waits[kWaitCount] = {};
+  for (auto& wait : waits) {
+    iree_async_operation_initialize(
+        &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+        IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
+    wait.notification = source;
+    wait.wait_flags = IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN;
+    wait.wait_token = iree_async_notification_begin_observe(source);
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
+    iree_async_notification_end_observe(source);
+  }
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  EXPECT_EQ(tracker.call_count, 0);
+  EXPECT_EQ(iree_async_notification_query_epoch(sink), 0u);
+
+  // Many publications coalesce without losing any local subscriber or leaving
+  // semaphore-like wake credits that could satisfy a later token.
+  for (int i = 0; i < 64; ++i) {
+    iree_async_notification_signal(source, 1);
+  }
+  PollUntilCondition([&] {
+    return tracker.call_count == kWaitCount &&
+           iree_async_notification_query_epoch(sink) == 1;
+  });
+  IREE_EXPECT_OK(tracker.ConsumeStatus());
+
+  CompletionTracker next_tracker;
+  iree_async_notification_wait_operation_t next_wait = {};
+  InitNotificationWaitOp(&next_wait, source, CompletionTracker::Callback,
+                         &next_tracker);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &next_wait.base));
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  EXPECT_EQ(next_tracker.call_count, 0);
+  EXPECT_EQ(iree_async_notification_query_epoch(sink), 1u);
+  iree_async_notification_signal(source, 1);
+  PollUntilCondition([&] {
+    return next_tracker.call_count == 1 &&
+           iree_async_notification_query_epoch(sink) == 2;
+  });
+  IREE_EXPECT_OK(next_tracker.ConsumeStatus());
+  WaitForRelayUnregistration(relay);
+  iree_async_notification_release(sink);
+  iree_async_notification_release(source);
+}
+
 TEST_P(NotificationTest, SignalIfObservedExplicitObservationAdvancesEpoch) {
   iree_async_notification_t* notification = nullptr;
   IREE_ASSERT_OK(iree_async_notification_create(

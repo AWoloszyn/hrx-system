@@ -7,8 +7,8 @@
 // Relay primitive for declarative source-to-sink event dataflow.
 //
 // A relay connects an event source (fd becoming ready, notification signaled)
-// to an event sink (signal another fd, signal a notification) with optional
-// kernel-optimized paths on io_uring using LINK chains.
+// to an event sink (signal another fd, signal a notification). The proactor
+// monitors native readiness and executes the sink on its polling thread.
 //
 // Relays are **event-based**: "when X happens, trigger Y". This is distinct
 // from **timeline-based** semaphore operations (import_fence/export_fence)
@@ -17,7 +17,7 @@
 // Use cases:
 //   - Bridge external device fds to notifications for thread wakeup
 //   - Fan-out: multiple relays from one source to different sinks
-//   - Device-to-device signaling without userspace round-trips (io_uring LINK)
+//   - Route readiness between native primitives and runtime notifications
 //
 // Ownership model:
 //   - The relay does NOT own the source/sink resources by default
@@ -270,9 +270,8 @@ struct iree_async_relay_t {
       // io_uring tracks asynchronous cancellation, re-arm, and terminal
       // kernel-reference ownership explicitly.
       uint32_t state;
-      // Stable buffer for async eventfd WRITE SQE.
-      // Must remain valid while the SQE is in flight.
-      uint64_t write_buffer;
+      // Source-local linkage for notification relays (poll owner only).
+      struct iree_async_relay_t* notification_relay_next;
     } io_uring;
     struct {
       // Per-notification relay chain linkage (poll thread only).

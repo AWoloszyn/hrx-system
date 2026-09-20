@@ -146,6 +146,7 @@ iree_status_t iree_async_proactor_create_io_uring(
                     iree_memory_order_relaxed);
   proactor->capabilities = IREE_ASYNC_PROACTOR_CAPABILITY_NONE;
   iree_atomic_slist_initialize(&proactor->pending_software_operations);
+  iree_atomic_slist_initialize(&proactor->pending_notifications);
   iree_atomic_slist_initialize(&proactor->pending_semaphore_waits);
   iree_async_semaphore_wait_context_initialize(
       &proactor->semaphore_wait_context);
@@ -263,6 +264,7 @@ static void iree_async_proactor_io_uring_destroy(
   // alive until this completes so terminal callbacks cannot observe cleanup
   // while the kernel still holds references.
   iree_io_uring_ring_deinitialize(&proactor->ring);
+  iree_async_io_uring_notification_discard_pending(proactor);
 
   // Clean up signal handling state.
   if (proactor->signal.initialized) {
@@ -305,6 +307,7 @@ static void iree_async_proactor_io_uring_destroy(
   iree_async_message_pool_deinitialize(&proactor->message_pool);
 
   iree_atomic_slist_deinitialize(&proactor->pending_software_operations);
+  iree_atomic_slist_deinitialize(&proactor->pending_notifications);
   iree_atomic_slist_deinitialize(&proactor->pending_semaphore_waits);
   iree_async_semaphore_wait_context_deinitialize(
       &proactor->semaphore_wait_context);
@@ -969,14 +972,6 @@ static iree_status_t iree_async_proactor_io_uring_cqe_to_status(
     return iree_ok_status();
   }
 
-  // NOTIFICATION_WAIT: -EAGAIN is a satisfied wait in futex mode (the epoch
-  // already changed) or another waiter drained the eventfd before us in event
-  // mode. Treat as success: the caller will re-check or re-wait as appropriate.
-  if (cqe->res == -EAGAIN &&
-      operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
-    return iree_ok_status();
-  }
-
   return iree_make_status(iree_status_code_from_errno(-cqe->res),
                           "io_uring operation type %d failed (%d)",
                           (int)operation->type, -cqe->res);
@@ -1274,7 +1269,7 @@ iree_async_proactor_io_uring_socket_from_io_operation(
 static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe,
     iree_status_t* inout_poll_status) {
-  // Linked POLL_ADD head CQE for EVENT_WAIT or NOTIFICATION_WAIT (event mode).
+  // Linked POLL_ADD head CQE for EVENT_WAIT.
   // Always ignored — the linked READ CQE handles resource release and user
   // callback dispatch for both success (READ returns data) and failure
   // (READ gets -ECANCELED when POLL_ADD fails).
@@ -1360,10 +1355,14 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     }
   }
 
+  bool is_notification_monitor =
+      operation->type == IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL &&
+      iree_any_bit_set(iree_async_operation_load_internal_flags(operation),
+                       IREE_ASYNC_IO_URING_NOTIFICATION_OPERATION_MONITOR);
   iree_host_size_t completed_count =
       iree_async_operation_complete(operation, status, flags);
 
-  return completed_count;
+  return is_notification_monitor ? 0 : completed_count;
 }
 
 // Submits poll-owned event source and relay operations in SQ-sized batches.
@@ -1410,6 +1409,10 @@ static iree_status_t iree_async_proactor_io_uring_poll(
                     iree_memory_order_relaxed);
 
   bool is_immediate = iree_timeout_is_immediate(timeout);
+
+  // Accepted notification consumers share one poll-owned native monitor.
+  // Any staged SQEs are flushed with the registrations below.
+  iree_async_io_uring_notification_drain_pending(proactor);
 
   // Submit registrations and any SQEs queued before the first poll. This must
   // happen before arming the wake source: a full pre-poll SQ must not prevent
@@ -1506,6 +1509,7 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   // from Phase 4 flushes, because those CQEs correspond to operations later in
   // the chain. Example: [RECV → SIGNAL → SEND] — SIGNAL's callback must
   // fire before SEND's CQE is processed.
+  iree_async_io_uring_notification_drain_pending(proactor);
   completed +=
       iree_async_proactor_io_uring_drain_pending_software_operations(proactor);
 
@@ -1529,6 +1533,9 @@ static iree_status_t iree_async_proactor_io_uring_poll(
        drain_pass < IREE_ASYNC_IO_URING_CQE_DRAIN_PASS_BUDGET &&
        iree_status_is_ok(status);
        ++drain_pass) {
+    iree_async_io_uring_notification_drain_pending(proactor);
+    completed += iree_async_proactor_io_uring_drain_pending_software_operations(
+        proactor);
     status = iree_async_proactor_io_uring_submit_cancel_requests(proactor);
     if (iree_status_is_ok(status)) {
       status = iree_io_uring_ring_submit(&proactor->ring, /*min_complete=*/0,
@@ -1560,6 +1567,14 @@ static iree_status_t iree_async_proactor_io_uring_poll(
                        iree_memory_order_acq_rel);
 
   if (iree_status_is_ok(status)) {
+    // Acquire notification intents from submitters that suppressed their wake
+    // before dispatch_tid became idle. A monitor staged here must be submitted
+    // before returning; future submitters use the normal wake path.
+    if (iree_async_io_uring_notification_drain_pending(proactor)) {
+      status = iree_io_uring_ring_submit(&proactor->ring, /*min_complete=*/0,
+                                         IREE_IORING_ENTER_GETEVENTS);
+    }
+
     // Drain pending messages from the fallback MPSC queue.
     // This handles messages that arrived via eventfd wake rather than MSG_RING.
     iree_async_proactor_io_uring_drain_pending_messages(proactor);

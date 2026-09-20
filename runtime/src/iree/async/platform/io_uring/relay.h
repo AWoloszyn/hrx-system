@@ -8,8 +8,8 @@
 //
 // io_uring-specific state enum and implementation functions. The relay struct
 // is defined in the shared iree/async/relay.h with a platform union.
-// Relays use multishot POLL_ADD for persistent monitoring and callback-based
-// sink execution during poll().
+// Primitive sources use multishot POLL_ADD. Notification sources subscribe to
+// the notification's shared native monitor. Both execute sinks during poll().
 
 #ifndef IREE_ASYNC_PLATFORM_IO_URING_RELAY_H_
 #define IREE_ASYNC_PLATFORM_IO_URING_RELAY_H_
@@ -44,25 +44,21 @@ typedef enum iree_async_io_uring_relay_state_e {
   // waiting for its final source CQE. The sink will not fire in this state.
   IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_SUBMITTED = 3,
 
-  // Relay needs to re-arm its source monitoring but failed due to SQ pressure.
-  // The proactor will retry submission on the next poll cycle.
-  IREE_ASYNC_IO_URING_RELAY_STATE_REARM_PENDING = 4,
-
   // Relay faulted while its multishot source was still active, but an SQE was
   // not available to cancel it. The sink will not fire in this state.
-  IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_PENDING = 5,
+  IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_PENDING = 4,
 
   // Relay faulted and cancellation of its active multishot source was
   // submitted. The sink will not fire in this state.
-  IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_SUBMITTED = 6,
+  IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_SUBMITTED = 5,
 
   // Relay faulted and has no remaining kernel references. The caller-visible
   // handle remains valid until terminal unregistration.
-  IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED = 7,
+  IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED = 6,
 
   // A persistent poll source terminated without a relay fault. The
   // caller-visible handle remains valid until terminal unregistration.
-  IREE_ASYNC_IO_URING_RELAY_STATE_TERMINAL = 8,
+  IREE_ASYNC_IO_URING_RELAY_STATE_TERMINAL = 7,
 } iree_async_io_uring_relay_state_t;
 
 //===----------------------------------------------------------------------===//
@@ -90,10 +86,21 @@ void iree_async_io_uring_handle_relay_cqe(
     iree_async_proactor_io_uring_t* proactor, iree_async_relay_t* relay,
     int32_t result, uint32_t cqe_flags);
 
-// Queues initial arms, terminal unregistrations, and source re-arms deferred to
-// the poll owner. Returns true when SQ pressure left work pending.
+// Queues primitive-source arms and terminal unregistrations deferred to the
+// poll owner. Returns true when SQ pressure left work pending.
 bool iree_async_io_uring_retry_pending_relays(
     iree_async_proactor_io_uring_t* proactor);
+
+// Executes an epoch-qualified notification relay with no native source owned
+// by the relay. A failure faults the logical handle and invokes its observer;
+// one-shot completion marks it for source-local detachment before cleanup.
+// Takes ownership of |status| (a source failure suppresses the sink).
+void iree_async_io_uring_relay_dispatch_notification(iree_async_relay_t* relay,
+                                                     iree_status_t status);
+
+// Completes terminal cleanup after source-local/native ownership has retired.
+void iree_async_io_uring_relay_cleanup(iree_async_proactor_io_uring_t* proactor,
+                                       iree_async_relay_t* relay);
 
 #ifdef __cplusplus
 }  // extern "C"
