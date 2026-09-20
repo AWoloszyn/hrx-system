@@ -98,8 +98,10 @@
 //   executing any case. TEMPLATE is a provenance contract, not a linking
 //   mechanism or case namespace. The preamble is the leading directive/comment
 //   block containing TEMPLATE; do not add a // ==== separator before the first
-//   real case. Individual case names are the function symbols inside the case
-//   IR; // CASE directives are intentionally unsupported.
+//   real case. A case is identified by its sole func-like definition or, when
+//   private helpers are present, its unique public func-like definition. The
+//   helpers remain authoritative template source. // CASE directives are
+//   intentionally unsupported.
 //
 // Annotations (for verify mode — uppercase to distinguish from comments):
 //   // ERROR: DOMAIN/CODE "substring"

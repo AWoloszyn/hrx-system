@@ -689,6 +689,88 @@ TEST_F(TemplateSyncTest, ReportsUnchangedWhenConcreteFileIsCurrent) {
   EXPECT_EQ(result, target_source);
 }
 
+TEST_F(TemplateSyncTest, UpdatesHelpersAroundPublicEntry) {
+  const char* target_source =
+      "// TEMPLATE: loom/src/loom/test/corpus/source_low/callables.loom-test\n"
+      "// RUN: emit source-low output=module\n"
+      "\n"
+      "func.decl @target()\n"
+      "\n"
+      "func.def @helper(%value: i32) -> (i32) {\n"
+      "  func.return %value : i32\n"
+      "}\n"
+      "\n"
+      "func.def public target(@target) @entry(%input: i32) -> (i32) {\n"
+      "  %result = func.call @helper(%input) : (i32) -> (i32)\n"
+      "  func.return %result : i32\n"
+      "}\n"
+      "\n"
+      "// ----\n"
+      "retained target expectation\n";
+  const char* template_source =
+      "// RUN: roundtrip\n"
+      "\n"
+      "func.def @helper(%value: i32) -> (i32) {\n"
+      "  %result = func.call @twice(%value) : (i32) -> (i32)\n"
+      "  func.return %result : i32\n"
+      "}\n"
+      "\n"
+      "func.def public @entry(%input: i32) -> (i32) {\n"
+      "  %result = func.call @helper(%input) : (i32) -> (i32)\n"
+      "  func.return %result : i32\n"
+      "}\n"
+      "\n"
+      "func.def @twice(%value: i32) -> (i32) {\n"
+      "  %result = scalar.addi %value, %value : i32\n"
+      "  func.return %result : i32\n"
+      "}\n"
+      "\n"
+      "// ====\n"
+      "\n"
+      "func.def public @next_entry(%value: i32) -> (i32) {\n"
+      "  func.return %value : i32\n"
+      "}\n";
+
+  std::string first_result;
+  bool first_changed = false;
+  IREE_ASSERT_OK(
+      Build(target_source, template_source, &first_result, &first_changed));
+  EXPECT_TRUE(first_changed);
+  EXPECT_NE(first_result.find("func.def public target(@target) @entry"),
+            std::string::npos);
+  EXPECT_NE(first_result.find("func.call @twice(%value)"), std::string::npos);
+  EXPECT_EQ(first_result.find("func.def @helper"),
+            first_result.rfind("func.def @helper"));
+  EXPECT_NE(first_result.find("func.def public target(@target) @next_entry"),
+            std::string::npos);
+  EXPECT_NE(first_result.find("retained target expectation"),
+            std::string::npos);
+
+  std::string second_result;
+  bool second_changed = true;
+  IREE_ASSERT_OK(Build(first_result.c_str(), template_source, &second_result,
+                       &second_changed));
+  EXPECT_FALSE(second_changed);
+  EXPECT_EQ(second_result, first_result);
+}
+
+TEST_F(TemplateSyncTest, RejectsAmbiguousMultiFunctionCases) {
+  for (const char* visibility : {"", "public "}) {
+    const std::string template_source =
+        std::string("// RUN: roundtrip\n\nfunc.def ") + visibility +
+        "@alpha() {\n  func.return\n}\n\nfunc.def " + visibility +
+        "@beta() {\n  func.return\n}\n";
+    std::string result;
+    bool changed = false;
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        Build("// TEMPLATE: "
+              "loom/src/loom/test/corpus/source_low/callables.loom-test\n"
+              "// RUN: emit source-low output=module\n\n",
+              template_source.c_str(), &result, &changed));
+  }
+}
+
 TEST_F(TemplateSyncTest, RejectsTargetCaseRunDirectives) {
   std::string result;
   bool changed = false;
