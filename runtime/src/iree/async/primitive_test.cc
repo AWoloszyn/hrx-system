@@ -122,6 +122,46 @@ TEST_F(PrimitiveTestFixture, DupProducesValidHandle) {
   iree_async_primitive_close(&dup);
 }
 
+TEST_F(PrimitiveTestFixture, DupIsNonInheritable) {
+  iree_async_primitive_t original = MakePrimitive();
+#if !defined(IREE_PLATFORM_WINDOWS)
+  ASSERT_EQ(fcntl(original.value.fd, F_SETFD, 0), 0);
+#else
+  ASSERT_TRUE(
+      SetHandleInformation(event_, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT));
+#endif
+
+  iree_async_primitive_t duplicate = {};
+  IREE_ASSERT_OK(iree_async_primitive_dup(original, &duplicate));
+#if !defined(IREE_PLATFORM_WINDOWS)
+  int flags = fcntl(duplicate.value.fd, F_GETFD);
+  EXPECT_GE(flags, 0);
+  EXPECT_NE(flags & FD_CLOEXEC, 0);
+#else
+  DWORD flags = 0;
+  EXPECT_TRUE(
+      GetHandleInformation((HANDLE)duplicate.value.win32_handle, &flags));
+  EXPECT_EQ(flags & HANDLE_FLAG_INHERIT, 0u);
+#endif
+  AssertPrimitiveValid(duplicate);
+  iree_async_primitive_close(&duplicate);
+}
+
+TEST_F(PrimitiveTestFixture, DupOutlivesOriginal) {
+  iree_async_primitive_t original = MakePrimitive();
+  iree_async_primitive_t duplicate = {};
+  IREE_ASSERT_OK(iree_async_primitive_dup(original, &duplicate));
+  iree_async_primitive_close(&original);
+#if !defined(IREE_PLATFORM_WINDOWS)
+  read_fd_ = -1;
+#else
+  event_ = NULL;
+#endif
+
+  AssertPrimitiveValid(duplicate);
+  iree_async_primitive_close(&duplicate);
+}
+
 TEST_F(PrimitiveTestFixture, DupIsIndependentOfOriginal) {
   iree_async_primitive_t original = MakePrimitive();
   iree_async_primitive_t dup = {};
