@@ -271,6 +271,14 @@ typedef struct loom_test_annotation_t {
 // Test case
 //===----------------------------------------------------------------------===//
 
+// Input selection shared by a file default and individual cases.
+typedef struct loom_test_input_options_t {
+  // Explicit input provider name, or empty to select from the filename.
+  iree_string_view_t format;
+  // Provider-owned options following the format name.
+  iree_string_view_t arguments;
+} loom_test_input_options_t;
+
 // One parsed test case (one // ==== section).
 typedef struct loom_test_case_t {
   // What operation to perform.
@@ -288,6 +296,10 @@ typedef struct loom_test_case_t {
   bool has_run_directive;
   // Source range of the // RUN: directive line. Empty when inherited.
   loom_test_source_range_t run_directive_range;
+  // Input format and options, independent of the RUN mode and pipeline.
+  loom_test_input_options_t input_options;
+  // Source range of this case's INPUT directive. Empty when inherited.
+  loom_test_source_range_t input_directive_range;
   // For PASS mode: comma-separated pass pipeline (e.g. "dce,cse").
   iree_string_view_t pipeline;
   // For FORMAT mode: target format name (e.g. "bytecode").
@@ -310,7 +322,7 @@ typedef struct loom_test_case_t {
   iree_string_view_t* requirements;
   // Number of requirement names in requirements.
   iree_host_size_t requirement_count;
-  // IR text with directives stripped. Points into source.
+  // Source text with header directives stripped. Points into source.
   iree_string_view_t input;
   // Source range of input.
   loom_test_source_range_t input_range;
@@ -355,6 +367,8 @@ typedef struct loom_test_file_t {
   iree_string_view_t default_pipeline;
   iree_string_view_t default_format_target;
   iree_string_view_t default_emit_target;
+  // Input format and options inherited by cases without their own INPUT.
+  loom_test_input_options_t default_input_options;
   // Arena-allocated file-level default requirement name array.
   iree_string_view_t* default_requirements;
   // Number of requirement names in default_requirements.

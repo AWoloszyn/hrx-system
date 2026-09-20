@@ -1,0 +1,40 @@
+// RUN: verify
+// Unsupported conjuncts reject the complete assumption.
+[[loom::assume]] void assume(bool);
+void entry(unsigned value, unsigned limit) {
+  // ERROR@+1: LOWERING/059 "assume upper bound requires a pure integer constant in [1, INT32_MAX] without calls or mutation"
+  assume(value < 256u && value < limit);
+}
+
+// ====
+// RUN: verify
+// Unsupported conjuncts reject the complete assumption.
+[[loom::assume]] void assume(bool);
+unsigned side();
+// ERROR@+1: LOWERING/059 "assume upper bound requires a pure integer constant in [1, INT32_MAX] without calls or mutation"
+void entry(unsigned value) { assume(value < 256u && value < (side(), 16u)); }
+
+// ====
+// RUN: verify
+// Unsupported conjuncts reject the complete assumption.
+[[loom::assume]] void assume(bool);
+struct Bound {};
+bool operator&&(bool, Bound);
+// ERROR@+1: PARSE/036 "invalid operands to binary expression ('bool' and '::Bound')"
+void entry(unsigned value, Bound bound) { assume((value < 256u) && bound); }
+
+// ====
+// RUN: roundtrip
+// Pure constant bounds constrain the original bindings.
+[[loom::assume]] void assume(bool);
+unsigned entry(unsigned value, unsigned other) {
+  assume(value < (1u << 8) && other < 256u);
+  return value + other;
+}
+// ----
+func.def public @entry(%value$0: i32, %other$1: i32) -> (i32) {
+  %value$3 = scalar.assume %value$0 [range(%value$0, 0, 255)] : i32
+  %other$4 = scalar.assume %other$1 [range(%other$1, 0, 255)] : i32
+  %5 = scalar.addi %value$3, %other$4 : i32
+  func.return %5 : i32
+}

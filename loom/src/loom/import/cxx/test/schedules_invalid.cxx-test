@@ -1,0 +1,277 @@
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling value requires an integer expression"
+  [[loom::unroll(2.5)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling attribute requires one argument"
+  [[loom::unroll()]] for (unsigned i = 0; i < count; ++i) { total += (int)i; }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling attribute requires one argument"
+  [[loom::unroll(2, 3)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "duplicate loop unroll policy"
+  [[loom::unroll, loom::unroll(2)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling attribute requires one argument"
+  [[loom::pipeline]] for (unsigned i = 0; i < count; ++i) { total += (int)i; }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions require pure values without calls, mutation, or overloaded operations"
+  [[loom::pipeline(++count)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions require pure values without calls, mutation, or overloaded operations"
+  [[loom::unroll(count++)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions require pure values without calls, mutation, or overloaded operations"
+  [[loom::unroll(count = 2)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions require pure values without calls, mutation, or overloaded operations"
+  [[loom::unroll(opaque())]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions require pure values without calls, mutation, or overloaded operations"
+  [[loom::unroll(false ? opaque() : 2u)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "duplicate loop pipeline depth"
+  [[loom::pipeline(1), loom::pipeline(2)]] for (unsigned i = 0; i < count;
+                                                ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop schedule requires linear, interleaved, or recurrence as a string literal"
+  [[loom::schedule(3)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop schedule requires an unroll policy"
+  [[loom::schedule("linear")]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "loop schedule requires linear, interleaved, or recurrence as a string literal"
+  [[loom::unroll(2), loom::schedule("unknown")]] for (unsigned i = 0; i < count;
+                                                      ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  [[loom::unroll(2), loom::schedule("linear"),
+    // ERROR@+1: LOWERING/059 "duplicate loop unroll schedule"
+    loom::schedule("linear")]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned opaque();
+int entry(unsigned count) {
+  int total = 0;
+  // ERROR@+1: LOWERING/059 "unsupported Loom loop attribute"
+  [[loom::surprise(2)]] for (unsigned i = 0; i < count; ++i) {
+    total += (int)i;
+  }
+  return total;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned entry(unsigned count) {
+  // ERROR@+1: LOWERING/059 "loop scheduling requires a counted for loop"
+  [[loom::unroll(2)]] while (count) { --count; }
+  return count;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned entry(unsigned count) {
+  // ERROR@+1: LOWERING/059 "loop scheduling requires a counted for loop"
+  [[loom::pipeline(2)]] do { --count; } while (count);
+  return count;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned entry(unsigned count) {
+  // ERROR@+1: LOWERING/059 "loop scheduling requires a nonwrapping unsigned counted for loop"
+  [[loom::unroll]] for (int i = 0; i < (int)count; ++i) {}
+  return count;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned entry(unsigned count) {
+  // ERROR@+1: LOWERING/059 "loop scheduling requires a nonwrapping unsigned counted for loop"
+  [[loom::unroll]] for (unsigned i = 0; i < 20ULL; ++i) {}
+  return count;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned entry(unsigned count) {
+  // ERROR@+1: LOWERING/059 "loop scheduling requires a nonwrapping unsigned counted for loop"
+  [[loom::unroll]] for (unsigned i = 0; i < (count + 0u); ++i) {}
+  return count;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned entry(unsigned count) {
+  // ERROR@+1: LOWERING/059 "loop scheduling requires a nonwrapping unsigned counted for loop"
+  [[loom::unroll]] for (unsigned i = 0; i < (count = 20u); ++i) {}
+  return count;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned entry(unsigned count) {
+  // ERROR@+1: LOWERING/059 "loop scheduling requires a nonwrapping unsigned counted for loop"
+  [[loom::unroll]] for (unsigned i = 0; i < 20u; i += count) {}
+  return count;
+}
+
+// ====
+// RUN: verify
+// Invalid loop schedules are not silently discarded.
+unsigned entry(unsigned count) {
+  // ERROR@+1: LOWERING/059 "loop scheduling requires a nonwrapping unsigned counted for loop"
+  [[loom::unroll]] for (unsigned i = 0; i < ~0u; i += (1u << 2)) {}
+  return count;
+}

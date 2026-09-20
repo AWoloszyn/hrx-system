@@ -11,11 +11,11 @@
 # owns expansion into individual CTest entries.
 
 function(_loom_check_test_base_name OUTPUT_BASE_NAME SRC)
-  if(NOT SRC MATCHES "\\.loom-test$")
+  if(NOT SRC MATCHES "\\.[^.]+-test$")
     message(FATAL_ERROR
-      "loom_check_test source must use the .loom-test extension: ${SRC}")
+      "loom_check_test source must use a .<format>-test extension: ${SRC}")
   endif()
-  string(REGEX REPLACE "\\.loom-test$" "" _BASE_NAME "${SRC}")
+  string(REGEX REPLACE "\\.[^.]+-test$" "" _BASE_NAME "${SRC}")
   set(${OUTPUT_BASE_NAME} "${_BASE_NAME}" PARENT_SCOPE)
 endfunction()
 

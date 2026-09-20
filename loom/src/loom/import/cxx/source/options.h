@@ -47,6 +47,20 @@ typedef struct loom_cxx_source_provider_t {
   void* user_data;
 } loom_cxx_source_provider_t;
 
+// Observes source bytes immediately before preprocessing admits them. This
+// includes the main source and headers from every lookup mechanism, including
+// embedded headers. Views are borrowed for the callback; consumers retaining
+// source text for later diagnostics copy it here. A failure aborts import.
+typedef iree_status_t (*loom_cxx_source_observer_fn_t)(
+    void* user_data, iree_string_view_t filename, iree_string_view_t source);
+
+typedef struct loom_cxx_source_observer_t {
+  // Optional source admission callback.
+  loom_cxx_source_observer_fn_t fn;
+  // Caller-owned state borrowed for the duration of import.
+  void* user_data;
+} loom_cxx_source_observer_t;
+
 typedef struct loom_cxx_define_t {
   // Preprocessor macro name, including parameters for a function-like macro.
   iree_string_view_t name;
@@ -69,6 +83,8 @@ typedef struct loom_cxx_import_options_t {
   loom_cxx_import_flags_t flags;
   // Include source ownership and lookup callback.
   loom_cxx_source_provider_t source_provider;
+  // Optional retention of admitted sources for post-import diagnostics.
+  loom_cxx_source_observer_t source_observer;
   // User include directories, searched in order after quoted local includes.
   const iree_string_view_t* include_paths;
   // Number of user include directories.

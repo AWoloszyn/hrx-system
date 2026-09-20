@@ -41,6 +41,7 @@
 #include "loom/target/pipeline.h"
 #include "loom/testing/test_file.h"
 #include "loom/tooling/compile/pipeline.h"
+#include "loom/tooling/input/input.h"
 #include "loom/tools/loom-check/report.h"
 #include "loom/tools/loom-check/update.h"
 #include "loom/util/json.h"
@@ -104,7 +105,7 @@ typedef struct loom_check_result_t {
   } update_edit;
 
   // Machine-readable edits for accepting actual verify diagnostics into
-  // diagnostic annotation comments. Edit ranges are in the original .loom-test
+  // diagnostic annotation comments. Edit ranges are in the original test-file
   // source; apply multiple edits atomically or in descending range order.
   loom_json_value_list_t annotation_edits;
 
@@ -204,7 +205,7 @@ typedef struct loom_check_emit_provider_request_t {
   const loom_test_case_t* test_case;
   // Runner environment that selected this provider.
   const loom_check_environment_t* environment;
-  // Parsed module after comment stripping.
+  // Module admitted by the selected input provider.
   loom_module_t* module;
   // Source resolver for source-backed operation locations in |module|.
   loom_source_resolver_t source_resolver;
@@ -321,6 +322,8 @@ typedef struct loom_check_requirement_provider_registry_t {
 
 // Execution environment supplied by each loom-check binary or embedding.
 struct loom_check_environment_t {
+  // Optional source input providers linked into this runner.
+  loom_input_provider_list_t input_providers;
   // Dialect registration callback for the IR surface accepted by this runner.
   loom_check_register_context_callback_t register_context;
   // Optional composed target environment used by compile-pipeline-backed modes.
@@ -441,13 +444,15 @@ iree_status_t loom_check_environment_initialize_math_policy_registry(
 // IR/test-subject outcomes. Requirement harness failures and skips are final
 // outcomes and are not hidden by XFAIL.
 //
-// |filename| is passed through to the parser for diagnostic source
-// locations. Infrastructure errors (OOM, missing vtables) propagate as
-// non-ok status. Test failures (mismatch, unmatched annotations) set
-// raw_outcome = FAIL and return iree_ok_status().
+// |filename| is the logical filename used in reports. |input_request| retains
+// the physical path, input selection, and source display options.
+// Infrastructure errors (OOM, missing vtables) propagate as non-ok status. Test
+// failures (mismatch, unmatched annotations) set raw_outcome = FAIL and return
+// iree_ok_status().
 iree_status_t loom_check_execute_case(
     const loom_test_case_t* test_case, iree_host_size_t case_index,
     loom_check_file_report_t* report, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);
@@ -460,74 +465,81 @@ iree_status_t loom_check_validate_printed_ir(
     const loom_text_print_options_t* print_options, loom_check_result_t* result,
     bool* out_valid);
 
-// Strips comments from input, parses, prints, reparses, and compares against
+// Loads the input module, prints Loom text, reparses it, and compares against
 // the expected section. On mismatch, appends a unified diff to result->detail
 // and copies the printed output to result->actual_output for --update.
 iree_status_t loom_check_execute_roundtrip(
     const loom_test_case_t* test_case, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);
 
-// Strips comments from input, parses (collecting diagnostics), verifies
+// Loads the input module (collecting diagnostics), verifies
 // (collecting more diagnostics), then matches collected diagnostics against
 // the case's annotations. Unmatched annotations and unexpected diagnostics
 // are reported in result->detail.
 iree_status_t loom_check_execute_verify(
     const loom_test_case_t* test_case, iree_host_size_t case_index,
     loom_check_file_report_t* report, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);
 
-// Strips comments from input, parses, runs the pass pipeline specified
+// Loads the input module and runs the pass pipeline specified
 // in test_case->pipeline, verifies the transformed module, prints the result,
 // and compares against the expected section. Same diff/update behavior as
 // roundtrip.
 iree_status_t loom_check_execute_pass(
     const loom_test_case_t* test_case, iree_host_size_t case_index,
     loom_check_file_report_t* report, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);
 
-// Strips comments from input, parses, runs the pass pipeline specified in
+// Loads the input module and runs the pass pipeline specified in
 // test_case->pipeline, prints its stable pass execution report, and compares
 // against the expected section. Same diff/update behavior as roundtrip.
 iree_status_t loom_check_execute_pass_report(
     const loom_test_case_t* test_case, iree_host_size_t case_index,
     loom_check_file_report_t* report, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);
 
-// Strips comments from input, parses, runs the pass pipeline specified in
+// Loads the input module and runs the pass pipeline specified in
 // test_case->pipeline, verifies the transformed module, prints the target
 // compile report, and compares against the expected section. Same diff/update
 // behavior as roundtrip.
 iree_status_t loom_check_execute_compile_report(
     const loom_test_case_t* test_case, iree_host_size_t case_index,
     loom_check_file_report_t* report, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);
 
-// Strips comments from input, parses, converts to the format specified
+// Loads the input module, writes the format specified
 // in test_case->format_target (e.g. bytecode), converts back to text,
 // and compares against the expected section. Same diff/update behavior
 // as roundtrip.
 iree_status_t loom_check_execute_format(
     const loom_test_case_t* test_case, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);
 
-// Strips comments from input, parses, lowers to the target specified in
+// Loads the input module, lowers to the target specified in
 // test_case->emit_target, writes a comparable target output form, and compares
 // against the expected section. Same diff/update behavior as roundtrip.
 iree_status_t loom_check_execute_emit(
     const loom_test_case_t* test_case, iree_host_size_t case_index,
     loom_check_file_report_t* report, iree_string_view_t filename,
+    const loom_input_request_t* input_request,
     const loom_check_environment_t* environment, loom_context_t* context,
     iree_arena_block_pool_t* block_pool, iree_allocator_t allocator,
     loom_check_result_t* result);

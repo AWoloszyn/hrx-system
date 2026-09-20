@@ -1149,12 +1149,12 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     def _loom_check_test_base_name(self, src):
         if src.startswith("${_GLOB_") and src.endswith("}"):
             return src
-        extension = ".loom-test"
-        if not src.endswith(extension):
+        base, separator, extension = src.rpartition(".")
+        if not separator or not extension.endswith("-test") or extension == "-test":
             raise ValueError(
-                f"loom_check_test source must use the {extension} extension: {src}"
+                f"loom_check_test source must use a .<format>-test extension: {src}"
             )
-        return src[: -len(extension)]
+        return base
 
     def loom_check_runner_binary(
         self,

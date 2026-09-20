@@ -7,6 +7,7 @@
 load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
 load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -18,6 +19,35 @@ exports_files([
     "flash_attention.cpp",
     "llama_rms_norm.cpp",
 ])
+
+loom_check_test_suite(
+    name = "compiler_test",
+    srcs = [
+        "assumptions.cxx-test",
+        "conditionals.cxx-test",
+        "const.cxx-test",
+        "control_invalid.cxx-test",
+        "data_models.cxx-test",
+        "frontend.cxx-test",
+        "functions.cxx-test",
+        "intrinsics_invalid.cxx-test",
+        "launch.cxx-test",
+        "launch_invalid.cxx-test",
+        "locations.cxx-test",
+        "loops.cxx-test",
+        "macro_operators.cxx-test",
+        "pointers.cxx-test",
+        "scalar.cxx-test",
+        "scalar_invalid.cxx-test",
+        "schedules.cxx-test",
+        "schedules_invalid.cxx-test",
+        "standards.cxx-test",
+        "vectors.cxx-test",
+        "vectors_invalid.cxx-test",
+    ],
+    data = ["locations.h"],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
 
 iree_execution_test_suite(
     name = "functions_test",

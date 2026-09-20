@@ -93,6 +93,16 @@ iree_status_t loom_format_convert(iree_const_byte_span_t input,
                                   loom_format_output_t* out_output,
                                   iree_allocator_t allocator);
 
+// Writes an already verified module in an explicit output format. Borrows the
+// module and returns allocator-owned bytes, released with output_deinitialize.
+// This is the same writer used by convert after its source admission step.
+iree_status_t loom_format_write_module(
+    const loom_module_t* module, loom_module_format_t output_format,
+    loom_text_print_flags_t text_print_flags,
+    iree_arena_block_pool_t* block_pool,
+    loom_text_low_asm_environment_t low_asm_environment,
+    loom_format_output_t* out_output, iree_allocator_t allocator);
+
 // Releases output storage. Safe to call with zero-initialized output.
 void loom_format_output_deinitialize(loom_format_output_t* output,
                                      iree_allocator_t allocator);

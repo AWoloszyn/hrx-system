@@ -32,6 +32,7 @@ loom_cc_library(
     "comparison.h"
     "diagnostics.h"
     "execute.h"
+    "input.h"
     "low_emit.h"
     "low_report.h"
     "requirements.h"
@@ -40,6 +41,7 @@ loom_cc_library(
     "diagnostics.c"
     "emit.c"
     "execute.c"
+    "input.c"
     "low_emit.c"
     "low_report.c"
     "requirements.c"
@@ -104,6 +106,7 @@ loom_cc_library(
     loom::testing::test_diagnostic
     loom::testing::test_file
     loom::tooling::compile::pipeline
+    loom::tooling::input
     loom::tools::loom-format::convert
     loom::util::diff
     loom::util::json
@@ -340,6 +343,7 @@ loom_cc_library(
     iree::base
     loom::target::provider
     loom::tooling::context
+    loom::tooling::input
   PUBLIC
 )
 
@@ -399,6 +403,9 @@ loom_cc_test(
 )
 
 set(_loom_check_platform_copts "")
+if(LOOM_IMPORT_CXX)
+  list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_INPUT_CXX=1")
+endif()
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_EMIT_AMDGPU=1")
 endif()
@@ -427,6 +434,9 @@ if(LOOM_TARGET_ARCH_X86)
   list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_TARGET_X86=1")
 endif()
 set(_loom_check_platform_deps "")
+if(LOOM_IMPORT_CXX)
+  list(APPEND _loom_check_platform_deps loom::import::cxx::tooling::input)
+endif()
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_platform_deps loom::target::arch::amdgpu::check::provider)
 endif()
@@ -469,6 +479,9 @@ loom_cc_binary(
 )
 
 set(_loom_check_test_platform_copts "")
+if(LOOM_IMPORT_CXX)
+  list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_INPUT_CXX=1")
+endif()
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_EMIT_AMDGPU=1")
 endif()
@@ -497,6 +510,9 @@ if(LOOM_TARGET_ARCH_X86)
   list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_TARGET_X86=1")
 endif()
 set(_loom_check_test_platform_deps "")
+if(LOOM_IMPORT_CXX)
+  list(APPEND _loom_check_test_platform_deps loom::import::cxx::tooling::input)
+endif()
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_test_platform_deps loom::target::arch::amdgpu::check::provider)
 endif()

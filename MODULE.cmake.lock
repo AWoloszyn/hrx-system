@@ -130,9 +130,11 @@ set(IREE_DEP_CXX_STRIP_PREFIX "cplusplus-bccf4d1e2d266b3d5d770c49e9eac59a2eab34b
 set(IREE_DEP_CXX_BUILD_FILE "//build_tools/third_party/cxx:cxx.BUILD.bazel")
 set(IREE_DEP_CXX_PATCHES
   "//build_tools/third_party/cxx:braced_vector_initialization.patch"
+  "//build_tools/third_party/cxx:builtin_macro_locations.patch"
   "//build_tools/third_party/cxx:constant_arithmetic.patch"
   "//build_tools/third_party/cxx:include_continuation.patch"
   "//build_tools/third_party/cxx:include_paths.patch"
+  "//build_tools/third_party/cxx:macro_operator_locations.patch"
   "//build_tools/third_party/cxx:template_lookahead.patch"
 )
 set(IREE_DEP_CXX_PATCH_ARGS

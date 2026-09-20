@@ -60,7 +60,9 @@ endif()
 
 message(FATAL_ERROR
   "The dependency patch set neither applies to the source nor matches its "
-  "already-applied state. Remove '${IREE_PATCH_SOURCE_DIR}' so FetchContent "
-  "can populate a clean source tree.\n"
+  "already-applied state. Remove '${IREE_PATCH_SOURCE_DIR}' and clear this "
+  "dependency's FetchContent download stamp before reconfiguring so CMake "
+  "extracts a clean source tree. Removing only the source directory leaves "
+  "the download stamp valid.\n"
   "Apply check:\n${_apply_check_output}${_apply_check_error}\n"
   "Reverse check:\n${_reverse_check_output}${_reverse_check_error}")

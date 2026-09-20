@@ -1,0 +1,85 @@
+// RUN: roundtrip
+int add(int lhs, int rhs) { return lhs + rhs; }
+// ----
+func.def public @add(%lhs: i32, %rhs: i32) -> (i32) {
+  %3 = scalar.addi %lhs, %rhs : i32
+  func.return %3 : i32
+}
+
+// ====
+// RUN: with-locations pass canonicalize,cse,dce
+// INPUT: cxx root=entry D=INCREMENT=3
+#include "helper.h"
+int entry(int value) {
+  return HEADER_ADD(header_twice(value), INCREMENT);
+}
+// ----
+func.def public @entry(%value: i32) -> (i32) {
+  %2 = func.call pure @header_twice(%value) : (i32) -> (i32) loc("loom/src/loom/import/cxx/tooling/test/import.cxx-test":3:21 to 3:40)
+  %3 = scalar.constant 3 : i32 loc("loom/src/loom/import/cxx/tooling/test/import.cxx-test":3:10 to 3:20)
+  %4 = scalar.addi %2, %3 : i32 loc("loom/src/loom/import/cxx/tooling/test/import.cxx-test":3:10 to 3:20)
+  func.return %4 : i32 loc("loom/src/loom/import/cxx/tooling/test/import.cxx-test":3:3 to 3:53)
+} loc("loom/src/loom/import/cxx/tooling/test/import.cxx-test":2:1 to 4:2)
+
+func.def @header_twice(%value: i32) -> (i32) {
+  %9 = scalar.constant 1 : i32 loc("loom/src/loom/import/cxx/tooling/test/helper.h":7:45 to 7:54)
+  %10 = scalar.shli %value, %9 : i32 loc("loom/src/loom/import/cxx/tooling/test/helper.h":7:45 to 7:54)
+  func.return %10 : i32 loc("loom/src/loom/import/cxx/tooling/test/helper.h":7:38 to 7:55)
+} loc("loom/src/loom/import/cxx/tooling/test/helper.h":7:1 to 7:57)
+
+// ====
+// RUN: verify
+// INPUT: cxx
+long distance(int* left, int* right) {
+  // ERROR@+1: LOWERING/059 "pointer arithmetic"
+  return left - right;
+}
+
+// ====
+// RUN: verify
+int malformed() {
+  // ERROR@+1: PARSE/036 "missing"
+  return missing;
+}
+
+// ====
+// RUN: pass canonicalize,cse,dce
+constexpr int raw_length = sizeof(R"text(a
+// retained inside the literal
+b)text");
+int raw_size() { return raw_length; }
+// ----
+func.def public @raw_size() -> (i32) {
+  %raw_length = scalar.constant 35 : i32
+  func.return %raw_length : i32
+}
+
+// ====
+// RUN: format bytecode
+int identity(int value) { return value; }
+// ----
+func.def public @identity(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+// ====
+// RUN: with-checks roundtrip
+unsigned increment(unsigned value) { return value + 1u; }
+// ----
+// CHECK: func.def public @increment*
+// CHECK: *scalar.addi*
+// CHECK-NOT: *scalar.muli*
+
+// ====
+// RUN: with-checks emit liveness-json @entry
+int entry(int value) { return value + 1; }
+// ----
+// CHECK: {"format":"loom.liveness.v0",*"block_count":1,*
+
+// ====
+// RUN: with-checks pass-report canonicalize,cse,dce
+int entry(int value) { return value * 2; }
+// ----
+// CHECK: *canonicalize*
+// CHECK: *cse*
+// CHECK: *dce*

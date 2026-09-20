@@ -258,7 +258,8 @@ static iree_status_t loom_test_file_format_case(
     iree_host_size_t* annotation_to_diagnostic = NULL;
     iree_status_t match_status = loom_test_diagnostics_match_annotations(
         collector.diagnostics, collector.count, test_case->annotations,
-        test_case->annotation_count, arena, &annotation_to_diagnostic);
+        test_case->annotation_count, filename, arena,
+        &annotation_to_diagnostic);
     bool has_error = false;
     bool all_diagnostics_matched = collector.count > 0;
     for (iree_host_size_t i = 0; i < collector.count; ++i) {

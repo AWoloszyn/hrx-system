@@ -21,6 +21,88 @@ subexpression elimination and dead-code elimination, and prints Loom text.
 `--cleanup=false` exposes the direct import. `--to=bc --output=module.loombc`
 produces normal Loom bytecode for the existing compilation and linking tools.
 
+## Compiler tests
+
+When the importer is enabled, `loom-check` accepts `.cxx-test` files through the
+same case, diagnostic, comparison, and update machinery as `.loom-test` files.
+Each case is an independent translation unit. Roundtrip imports C++ and checks
+canonical Loom output; pass, verify, format, emit, and report modes consume that
+same module.
+
+```cpp
+// RUN: with-checks pass canonicalize,cse,dce
+// INPUT: cxx root=twice std=c++23
+int twice(int value) { return value * 2; }
+// ----
+// CHECK: func.def public @twice*
+// CHECK: *scalar.shli*
+// CHECK-NOT: *scalar.muli*
+
+// ====
+// RUN: verify
+// INPUT: cxx
+long distance(int* left, int* right) {
+  // ERROR@+1: LOWERING/059 "pointer arithmetic"
+  return left - right;
+}
+```
+
+Exact goldens occupy the `// ----` section without `with-checks`. `loom-check --update file.cxx-test`
+writes that section, inserting it when absent, and preserves the source. A subsequent run checks the updated output. Hand-authored
+CHECK patterns are preserved by updates. Diagnostic annotations use the normal
+structured ERROR/WARNING/REMARK syntax; the JSON report includes suggested
+annotation edits when expectations differ.
+
+`INPUT` selects the source format and options independently of `RUN`. The first
+case's INPUT is inherited by later cases; a later INPUT replaces it for that
+case. With no INPUT, the filename selects C++ with the importer's normal
+C++26/LP64 defaults. `--input-format=cxx` selects C++ for stdin or another
+filename. `--list-input-formats` reports the formats linked into that binary.
+An importer-disabled binary rejects `.cxx-test` and explicit `cxx` input.
+
+Options use whitespace-separated `key=value` tokens. Single or double quotes
+preserve spaces within a token, and quotes/backslashes can be escaped inside
+quotes. The C++ provider accepts:
+
+| Option | Meaning |
+| --- | --- |
+| `std=c++23` | Source language standard, including supported C spellings. |
+| `triple=...` | Source ABI triple. |
+| `data-model=lp64` | `lp64`, `llp64`, or `ilp32` integer and pointer widths. |
+| `root=entry` | Exported source function; repeat for multiple roots. |
+| `I=include` | User include directory, relative to the test file; repeatable. |
+| `isystem=include` | System include directory, relative to the test file; repeatable. |
+| `D=COUNT=8` | Macro definition; repeatable. `D=ENABLED` defines it to `1`. |
+| `approximate-functions=true` | Permit approximate mathematical functions. |
+| `builtin-includes=false` | Use explicit include paths without embedded headers. |
+
+Source locations use physical, case-relative lines. `#line` controls the presumed
+values of `__LINE__` and `__FILE__`; locations and diagnostics still refer to the
+admitted source bytes. Builtin macro replacements retain the range of the macro
+use, independently of the replacement spelling: the value `100` from `__LINE__`
+points at the eight characters of `__LINE__`. Nested expansions retain the
+frontend's macro-body use site or argument-token range.
+Stringized and pasted tokens use the macro invocation's range; their generated
+spelling need not occur contiguously in the source.
+
+Header locations retain their own filenames and coordinates; an ERROR in the
+main test cannot match a header diagnostic at a coincident line. Source snapshots
+remain available after import for pass diagnostics, including headers.
+`--source-prefix-map` changes displayed
+names without changing relative include lookup; mappings that merge distinct
+admitted source identities are rejected. Full-line test separators and
+directives are reserved by the shared envelope, including inside multiline
+source constructs. Other C++ comments, macro continuations, and raw strings
+remain untouched.
+
+The importer-owned integration suite is
+`//loom/src/loom/import/cxx/tooling/test:test`. Authored source lowering goldens
+run through `//loom/src/loom/import/cxx/test:compiler_test`; native API tests
+cover ownership, source providers, and failure propagation. Execution manifests
+in `test/` retain their independent numerical oracles and runtime checks.
+
+## Source constructs
+
 Multiple kernels and ordinary functions can coexist. By default, concrete
 definitions with external visibility are exported. Repeated `--root` options
 select qualified source function names; their reachable helpers remain private.

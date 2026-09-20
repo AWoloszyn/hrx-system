@@ -185,7 +185,9 @@ const loom_check_emit_provider_t* const kTestEmitProviders[] = {
 };
 
 const loom_check_environment_t kExecuteTestEnvironment = {
-    /*.register_context=*/{
+    /*.input_providers=*/{},
+    /*.register_context=*/
+    {
         /*.fn=*/RegisterTestContext,
         /*.user_data=*/nullptr,
     },
@@ -203,7 +205,9 @@ const loom_check_environment_t kExecuteTestEnvironment = {
 };
 
 const loom_check_environment_t kExecuteTestProviderEnvironment = {
-    /*.register_context=*/{
+    /*.input_providers=*/{},
+    /*.register_context=*/
+    {
         /*.fn=*/RegisterTestContext,
         /*.user_data=*/nullptr,
     },
@@ -287,10 +291,12 @@ class ExecuteTest : public ::testing::Test {
     if (iree_status_is_ok(status)) {
       loom_check_result_initialize(iree_allocator_system(), out_result);
       result_initialized = true;
-      status = loom_check_execute_case(&file.cases[0], 0, &report,
-                                       iree_make_cstring_view("test.loom-test"),
-                                       environment, &context_, &block_pool_,
-                                       iree_allocator_system(), out_result);
+      loom_input_request_t input_request = {};
+      input_request.path = IREE_SV("test.loom-test");
+      status = loom_check_execute_case(
+          &file.cases[0], 0, &report, iree_make_cstring_view("test.loom-test"),
+          &input_request, environment, &context_, &block_pool_,
+          iree_allocator_system(), out_result);
     }
     iree_arena_deinitialize(&arena);
     if (!iree_status_is_ok(status) && result_initialized) {
@@ -646,6 +652,45 @@ TEST_F(ExecuteTest, VerifyUnexpectedDiagnostic) {
   EXPECT_TRUE(iree_string_view_equal(LookupObject(edit, IREE_SV("text")),
                                      IREE_SV("// ERROR@+1: PARSE/006\\n")));
   loom_check_result_deinitialize(&result);
+}
+
+TEST_F(ExecuteTest, HeaderDiagnosticCannotMatchOrEditTheMainSource) {
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_test_file_t file = {};
+  IREE_ASSERT_OK(loom_test_file_parse(
+      IREE_SV("// RUN: verify\n// ERROR@+1: PARSE/036\ninvalid\n"), &arena,
+      &file));
+  loom_check_file_report_t report = {};
+  IREE_ASSERT_OK(loom_check_file_report_initialize(&file, &arena, &report));
+  loom_check_result_t result;
+  loom_check_result_initialize(iree_allocator_system(), &result);
+  loom_check_diagnostic_collector_t collector = {};
+  collector.arena = &arena;
+  collector.host_allocator = iree_allocator_system();
+  collector.filename = IREE_SV("test.loom-test");
+  collector.result = &result;
+  loom_diagnostic_param_t parameter =
+      loom_param_string(IREE_SV("invalid input"));
+  loom_diagnostic_t diagnostic = {};
+  diagnostic.severity = LOOM_DIAGNOSTIC_ERROR;
+  diagnostic.error = loom_error_def_lookup(LOOM_ERROR_DOMAIN_PARSE, 36);
+  diagnostic.params = &parameter;
+  diagnostic.param_count = 1;
+  diagnostic.origin.filename = IREE_SV("included.h");
+  diagnostic.origin.start_line = 2;
+  IREE_ASSERT_OK(loom_check_diagnostic_collector_sink(&collector, &diagnostic));
+  IREE_ASSERT_OK(loom_check_diagnostic_collector_finish(
+      &collector, &file.cases[0], 0, &report, iree_allocator_system(),
+      &result));
+  EXPECT_EQ(result.raw_outcome, LOOM_CHECK_FAIL);
+  EXPECT_EQ(result.annotation_edits.count, 1u);
+  const std::string edits = AnnotationEditJsonString(result);
+  EXPECT_NE(edits.find("delete_diagnostic_annotation"), std::string::npos);
+  EXPECT_EQ(edits.find("insert_diagnostic_annotations"), std::string::npos);
+  EXPECT_NE(DiagnosticJsonString(result).find("included.h"), std::string::npos);
+  loom_check_result_deinitialize(&result);
+  iree_arena_deinitialize(&arena);
 }
 
 TEST_F(ExecuteTest, VerifyWildcardDomain) {

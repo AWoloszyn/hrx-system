@@ -9,6 +9,37 @@
 
 iree_add_all_subdirs()
 
+if(LOOM_IMPORT_CXX)
+loom_check_test_suite(
+  NAME
+    compiler_test
+  SRCS
+    "assumptions.cxx-test"
+    "conditionals.cxx-test"
+    "const.cxx-test"
+    "control_invalid.cxx-test"
+    "data_models.cxx-test"
+    "frontend.cxx-test"
+    "functions.cxx-test"
+    "intrinsics_invalid.cxx-test"
+    "launch.cxx-test"
+    "launch_invalid.cxx-test"
+    "locations.cxx-test"
+    "loops.cxx-test"
+    "macro_operators.cxx-test"
+    "pointers.cxx-test"
+    "scalar.cxx-test"
+    "scalar_invalid.cxx-test"
+    "schedules.cxx-test"
+    "schedules_invalid.cxx-test"
+    "standards.cxx-test"
+    "vectors.cxx-test"
+    "vectors_invalid.cxx-test"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/locations.h"
+)
+endif()
+
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 iree_execution_test_suite(
   NAME

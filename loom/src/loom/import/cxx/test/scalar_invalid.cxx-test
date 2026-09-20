@@ -1,0 +1,62 @@
+// RUN: verify
+// Increment rejects unprojected lvalues and source types.
+unsigned entry() {
+  const unsigned x = 1;
+  // ERROR@+1: PARSE/036 "cannot increment a value of type 'const unsigned int'"
+  return x++;
+}
+
+// ====
+// RUN: verify
+// Increment rejects unprojected lvalues and source types.
+unsigned entry() {
+  // ERROR@+1: LOWERING/059 "volatile access is not supported"
+  volatile unsigned x = 1;
+  return ++x;
+}
+
+// ====
+// RUN: verify
+// Increment rejects unprojected lvalues and source types.
+// ERROR@+1: LOWERING/059 "increment requires an owned automatic source binding"
+unsigned entry(unsigned* pointer) { return (*pointer)++; }
+
+// ====
+// RUN: verify
+// Increment rejects unprojected lvalues and source types.
+// ERROR@+1: LOWERING/059 "increment requires an owned automatic source binding"
+unsigned entry(unsigned* pointer) { return ++pointer[0u]; }
+
+// ====
+// RUN: verify
+// Increment rejects unprojected lvalues and source types.
+// ERROR@+1: LOWERING/059 "increment requires an integer or pointer binding"
+float entry(float value) { return value++; }
+
+// ====
+// RUN: verify
+// Increment rejects unprojected lvalues and source types.
+extern unsigned value;
+// ERROR@+1: LOWERING/059 "increment requires an owned automatic source binding"
+unsigned entry() { return ++value; }
+
+// ====
+// RUN: verify
+// Increment rejects unprojected lvalues and source types.
+using V = unsigned __attribute__((vector_size(16)));
+// ERROR@+1: PARSE/036 "cannot increment a value of type 'unsigned int __attribute__((vector_size(4 * sizeof(unsigned int))))'"
+V entry(V value) { return value++; }
+
+// ====
+// RUN: verify
+// Global constants and unsupported storage.
+// ERROR@+1: LOWERING/059 "global storage definitions require a global-storage projection"
+int global = 3;
+int entry() { return 1; }
+
+// ====
+// RUN: verify
+// External storage cannot become an automatic binding.
+extern int counter;
+// ERROR@+1: LOWERING/059 "assignment requires an owned automatic source binding"
+void entry() { counter = 3; }

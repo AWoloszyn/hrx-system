@@ -25,6 +25,12 @@ IREE_FLAG(bool, update, false,
           "Cannot be used with stdin or verify mode.");
 IREE_FLAG(bool, verbose, false,
           "Print PASS/FAIL/SKIP for every case, not just failures.");
+IREE_FLAG_NAMED(
+    string, input_format, "input-format", "",
+    "Source format for stdin or nonstandard filenames.\n"
+    "Defaults to the filename suffix; INPUT directives override it.");
+IREE_FLAG_NAMED(bool, list_input_formats, "list-input-formats", false,
+                "List input formats linked into this binary and exit.");
 IREE_FLAG(string, template_root, "",
           "Filesystem root used to resolve root-relative TEMPLATE paths.\n"
           "Defaults to the current working directory.");
@@ -102,7 +108,12 @@ static void loom_check_print_agents_markdown(FILE* stream) {
       stream,
       "## loom-check\n"
       "\n"
-      "`loom-check` is the Loom IR golden-test runner for `.loom-test` files.\n"
+      "`loom-check` checks compiler output and diagnostics from test files.\n"
+      "`.loom-test` selects Loom text. `--list-input-formats` shows linked\n"
+      "source importers and their filename suffixes. Each case is "
+      "independent;\n"
+      "`// INPUT: <format> [options]` selects source options, while `// RUN:`\n"
+      "selects the operation to check.\n"
       "Checked-in Bazel test targets are the stable unit because they "
       "preserve\n"
       "the CI test environment and carry the fixture path they own.\n"
@@ -251,8 +262,9 @@ int loom_check_main(int argc, char** argv,
       "              Linked providers may add\n"
       "              more.\n"
       "File format:\n"
-      "  A .loom-test file contains one or more cases separated by // ====.\n"
-      "  Each case has directives at the top, then input IR, and\n"
+      "  A .<format>-test file contains cases separated by // ====.\n"
+      "  .loom-test selects Loom text; --list-input-formats lists importers.\n"
+      "  Each case has directives at the top, then input source, and\n"
       "  optionally a // ---- separator followed by expected output.\n"
       "  When // ---- is absent, the expected output equals the input\n"
       "  (round-trip identity test).\n"
@@ -262,6 +274,10 @@ int loom_check_main(int argc, char** argv,
       "  mode. Cases without their own // RUN: inherit from it.\n"
       "\n"
       "  Directives:\n"
+      "    // INPUT: <format> [options]\n"
+      "                            Select source input independently of RUN.\n"
+      "                            The first case supplies defaults; each\n"
+      "                            later INPUT replaces them for that case.\n"
       "    // RUN: [with-locations] <mode> [args]\n"
       "                            Set the test mode (one per case). The\n"
       "                            with-locations modifier prints loc()\n"
@@ -283,6 +299,9 @@ int loom_check_main(int argc, char** argv,
       "    // REMARK: TYPE\n"
       "    Domain and code are optional (omit to match any).\n"
       "    @+N/@-N targets a line relative to the annotation.\n"
+      "    Lines are relative to the case input. Annotations target the main\n"
+      "    source; diagnostics from included files retain their own identity.\n"
+      "    Expected CHECK patterns may use CHECK: or // CHECK: spelling.\n"
       "\n"
       "Examples:\n"
       "  # Round-trip: print output must match input exactly.\n"
@@ -305,6 +324,22 @@ int loom_check_main(int argc, char** argv,
   }
   loom_tooling_cli_set_default_help_filter();
   iree_flags_parse_checked(IREE_FLAGS_PARSE_MODE_DEFAULT, &argc, &argv);
+
+  if (FLAG_list_input_formats) {
+    for (iree_host_size_t i = 0; i <= base_environment->input_providers.count;
+         ++i) {
+      const loom_input_provider_t* provider =
+          i == 0 ? &loom_input_text_provider
+                 : base_environment->input_providers.values[i - 1];
+      printf("%.*s:", (int)provider->name.size, provider->name.data);
+      for (iree_host_size_t j = 0; j < provider->suffixes.count; ++j) {
+        iree_string_view_t suffix = provider->suffixes.values[j];
+        printf(" %.*s", (int)suffix.size, suffix.data);
+      }
+      printf("\n");
+    }
+    return 0;
+  }
 
   iree_allocator_t host_allocator = iree_allocator_system();
   iree_arena_block_pool_t block_pool;
@@ -330,6 +365,7 @@ int loom_check_main(int argc, char** argv,
   iree_host_size_t fail_count = 0;
   iree_host_size_t skip_count = 0;
   const loom_check_process_options_t process_options = {
+      .input_format = iree_make_cstring_view(FLAG_input_format),
       .update = FLAG_update,
       .verbose = FLAG_verbose,
       .json_enabled = FLAG_json.enabled,

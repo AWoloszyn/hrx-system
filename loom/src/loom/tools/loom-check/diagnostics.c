@@ -79,25 +79,6 @@ iree_status_t loom_check_diagnostic_collector_sink(
 // Diagnostic emission materialization
 //===----------------------------------------------------------------------===//
 
-iree_status_t loom_check_source_resolver_for_case(
-    loom_module_t* module, iree_string_view_t filename,
-    iree_string_view_t source, loom_source_entry_t* out_source_entry,
-    loom_source_table_resolver_t* out_source_resolver) {
-  loom_source_id_t source_id = LOOM_SOURCE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(
-      loom_module_register_source(module, filename, &source_id));
-  *out_source_entry = (loom_source_entry_t){
-      .source_id = source_id,
-      .source = source,
-      .filename = filename,
-  };
-  *out_source_resolver = (loom_source_table_resolver_t){
-      .entries = out_source_entry,
-      .count = 1,
-  };
-  return iree_ok_status();
-}
-
 static bool loom_check_diagnostic_resolve_location(
     const loom_check_diagnostic_emitter_capture_t* capture,
     const loom_module_t* module, const loom_op_t* op,
@@ -295,11 +276,12 @@ static iree_status_t loom_check_match_annotations(
     iree_host_size_t diagnostic_count,
     const loom_test_annotation_t* annotations,
     iree_host_size_t annotation_count, loom_check_file_report_t* report,
-    iree_host_size_t case_index, iree_arena_allocator_t* arena) {
+    iree_host_size_t case_index, iree_string_view_t filename,
+    iree_arena_allocator_t* arena) {
   iree_host_size_t* annotation_to_diagnostic = NULL;
   IREE_RETURN_IF_ERROR(loom_test_diagnostics_match_annotations(
-      diagnostics, diagnostic_count, annotations, annotation_count, arena,
-      &annotation_to_diagnostic));
+      diagnostics, diagnostic_count, annotations, annotation_count, filename,
+      arena, &annotation_to_diagnostic));
   for (iree_host_size_t i = 0; i < annotation_count; ++i) {
     if (annotation_to_diagnostic[i] != IREE_HOST_SIZE_MAX) {
       IREE_RETURN_IF_ERROR(loom_check_file_report_mark_annotation_matched(
@@ -454,9 +436,10 @@ static iree_status_t loom_check_append_annotation_param_matches(
 
 static bool loom_check_previous_unmatched_diagnostic_on_line(
     const loom_check_collected_diagnostic_t* diagnostics,
-    iree_host_size_t begin, uint32_t origin_line) {
+    iree_host_size_t begin, uint32_t origin_line, iree_string_view_t filename) {
   for (iree_host_size_t i = 0; i < begin; ++i) {
-    if (!diagnostics[i].matched && diagnostics[i].origin_line == origin_line) {
+    if (!diagnostics[i].matched && diagnostics[i].origin.line == origin_line &&
+        iree_string_view_equal(diagnostics[i].origin.filename, filename)) {
       return true;
     }
   }
@@ -465,10 +448,12 @@ static bool loom_check_previous_unmatched_diagnostic_on_line(
 
 static iree_host_size_t loom_check_count_unmatched_diagnostics_on_line(
     const loom_check_collected_diagnostic_t* diagnostics,
-    iree_host_size_t diagnostic_count, uint32_t origin_line) {
+    iree_host_size_t diagnostic_count, uint32_t origin_line,
+    iree_string_view_t filename) {
   iree_host_size_t count = 0;
   for (iree_host_size_t i = 0; i < diagnostic_count; ++i) {
-    if (!diagnostics[i].matched && diagnostics[i].origin_line == origin_line) {
+    if (!diagnostics[i].matched && diagnostics[i].origin.line == origin_line &&
+        iree_string_view_equal(diagnostics[i].origin.filename, filename)) {
       ++count;
     }
   }
@@ -481,7 +466,8 @@ static iree_status_t loom_check_build_annotation_edits(
     const loom_test_annotation_t* annotations,
     iree_host_size_t annotation_count, const loom_check_file_report_t* report,
     iree_host_size_t case_index, const loom_test_case_t* test_case,
-    iree_allocator_t allocator, loom_check_result_t* result) {
+    iree_string_view_t filename, iree_allocator_t allocator,
+    loom_check_result_t* result) {
   for (iree_host_size_t a = 0; a < annotation_count; ++a) {
     bool annotation_matched = false;
     IREE_RETURN_IF_ERROR(loom_check_file_report_annotation_matched(
@@ -499,17 +485,18 @@ static iree_status_t loom_check_build_annotation_edits(
 
   for (iree_host_size_t d = 0; d < diagnostic_count; ++d) {
     const loom_check_collected_diagnostic_t* diagnostic = &diagnostics[d];
-    if (diagnostic->matched || diagnostic->origin_line == 0) {
+    if (diagnostic->matched || diagnostic->origin.line == 0 ||
+        !iree_string_view_equal(diagnostic->origin.filename, filename)) {
       continue;
     }
     if (loom_check_previous_unmatched_diagnostic_on_line(
-            diagnostics, d, diagnostic->origin_line)) {
+            diagnostics, d, diagnostic->origin.line, filename)) {
       continue;
     }
 
     loom_test_source_range_t insert_range = loom_test_source_range_empty();
     iree_string_view_t indentation = iree_string_view_empty();
-    if (!loom_check_find_input_line_start(test_case, diagnostic->origin_line,
+    if (!loom_check_find_input_line_start(test_case, diagnostic->origin.line,
                                           &insert_range, &indentation)) {
       continue;
     }
@@ -519,12 +506,13 @@ static iree_status_t loom_check_build_annotation_edits(
     iree_status_t status = iree_ok_status();
     iree_host_size_t line_diagnostic_count =
         loom_check_count_unmatched_diagnostics_on_line(
-            diagnostics, diagnostic_count, diagnostic->origin_line);
+            diagnostics, diagnostic_count, diagnostic->origin.line, filename);
     iree_host_size_t line_offset = line_diagnostic_count;
     for (iree_host_size_t i = d;
          iree_status_is_ok(status) && i < diagnostic_count; ++i) {
       if (diagnostics[i].matched ||
-          diagnostics[i].origin_line != diagnostic->origin_line) {
+          diagnostics[i].origin.line != diagnostic->origin.line ||
+          !iree_string_view_equal(diagnostics[i].origin.filename, filename)) {
         continue;
       }
       status = loom_check_append_diagnostic_annotation_line(
@@ -534,7 +522,7 @@ static iree_status_t loom_check_build_annotation_edits(
     if (iree_status_is_ok(status)) {
       status = loom_check_result_append_annotation_edit(
           result, LOOM_CHECK_UPDATE_EDIT_INSERT_DIAGNOSTIC_ANNOTATIONS,
-          insert_range, diagnostic->origin_line,
+          insert_range, diagnostic->origin.line,
           iree_string_builder_view(&text));
     }
     iree_string_builder_deinitialize(&text);
@@ -599,7 +587,7 @@ static iree_status_t loom_check_assemble_diagnostic_match_detail(
         loom_diagnostic_severity_name(diagnostic->severity);
     IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
         detail, "unexpected %s at line %u: [%s/%03u] %.*s\n", severity_name,
-        diagnostic->origin_line, loom_error_domain_name(diagnostic->domain),
+        diagnostic->origin.line, loom_error_domain_name(diagnostic->domain),
         diagnostic->code, (int)diagnostic->message.size,
         diagnostic->message.data));
     if (!iree_string_view_is_empty(diagnostic->formatted_diagnostic)) {
@@ -618,7 +606,8 @@ iree_status_t loom_check_diagnostic_collector_finish(
     loom_check_result_t* result) {
   IREE_RETURN_IF_ERROR(loom_check_match_annotations(
       collector->diagnostics, collector->count, test_case->annotations,
-      test_case->annotation_count, report, case_index, collector->arena));
+      test_case->annotation_count, report, case_index, collector->filename,
+      collector->arena));
 
   bool all_annotations_matched = true;
   for (iree_host_size_t i = 0; i < test_case->annotation_count; ++i) {
@@ -650,6 +639,6 @@ iree_status_t loom_check_diagnostic_collector_finish(
       test_case->annotation_count, report, case_index, &result->detail));
   return loom_check_build_annotation_edits(
       collector->diagnostics, collector->count, test_case->annotations,
-      test_case->annotation_count, report, case_index, test_case, allocator,
-      result);
+      test_case->annotation_count, report, case_index, test_case,
+      collector->filename, allocator, result);
 }

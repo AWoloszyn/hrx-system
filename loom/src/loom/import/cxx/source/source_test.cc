@@ -15,6 +15,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -99,151 +100,6 @@ TEST(SourceTest, RejectedSourceLeavesTheNextInvocationIndependent) {
   ASSERT_NE(source.unit().ast(), nullptr);
 }
 
-TEST(SourceTest, ComparisonsDoNotSpeculateOnNonTemplateArguments) {
-  loom_cxx_import_options_t options;
-  loom_cxx_import_options_initialize(&options);
-  Source source(IREE_SV(R"cpp(
-                  constexpr bool bounded(unsigned a, unsigned b, unsigned c,
-                                         unsigned d, unsigned e, unsigned f,
-                                         unsigned g) {
-                    return a < 256u && b < 256u && c < 256u && d < 256u &&
-                           e < 256u && f < 256u && g < 256u;
-                  }
-                  static_assert(bounded(0, 1, 2, 3, 4, 5, 255));
-                  static_assert(!bounded(0, 1, 2, 3, 4, 5, 256));
-
-                  namespace bounds {
-                  constexpr unsigned first = 1;
-                  constexpr unsigned second = 2;
-                  }  // namespace bounds
-                  static_assert(bounds::first < 2u && bounds::second < 3u);
-
-                  struct Bounds {
-                    unsigned first;
-                    unsigned second;
-                  };
-                  constexpr Bounds pair{1, 2};
-                  static_assert(pair.first < 2u && pair.second < 3u);
-
-                  template <unsigned Limit>
-                  constexpr bool below(unsigned value) {
-                    return value < Limit && Limit < 256u;
-                  }
-                  static_assert(below<16>(15));
-                  static_assert(!below<16>(16));
-                )cpp"),
-                IREE_SV("comparisons.cpp"), options);
-  EXPECT_FALSE(source.diagnostics().has_error());
-}
-
-TEST(SourceTest, IntegerConstantsPreserveDefinedArithmetic) {
-  loom_cxx_import_options_t options;
-  loom_cxx_import_options_initialize(&options);
-  Source source(IREE_SV(R"cpp(
-                  static_assert(2147483646 + 1 == 2147483647);
-                  static_assert(-2147483647 - 1 == (-2147483647 - 1));
-                  static_assert(-2147483647 * -1 == 2147483647);
-                  static_assert((-2147483647 - 1) * 0 == 0);
-                  static_assert((-2147483647 - 1) * 1 == (-2147483647 - 1));
-                  static_assert((-2147483647 - 1) / 1 == (-2147483647 - 1));
-                  static_assert((-2147483647 - 1) % 1 == 0);
-                  static_assert(9223372036854775806LL + 1 == 9223372036854775807LL);
-                  static_assert(-9223372036854775807LL * -1 == 9223372036854775807LL);
-                  static_assert(4294967295u + 17u == 16u);
-                  static_assert(0u - 1u == 4294967295u);
-                  static_assert(0x80000000u * 2u == 0u);
-                  static_assert(0xffffffffffffffffULL + 17ULL == 16ULL);
-                  static_assert(0x8000000000000000ULL * 2ULL == 0ULL);
-                  static_assert(-1 << 1 == -2);
-                  static_assert(1 << 31 == (-2147483647 - 1));
-                  static_assert(1LL << 63 == (-9223372036854775807LL - 1));
-                  static_assert(-2 >> 1 == -1);
-                  static_assert(0x80000000u >> 31 == 1u);
-                  static_assert(0x8000000000000000ULL >> 63 == 1ULL);
-                )cpp"),
-                IREE_SV("constants.cpp"), options);
-  EXPECT_FALSE(source.diagnostics().has_error());
-}
-
-TEST(SourceTest, InvalidIntegerConstantsProduceSourceDiagnostics) {
-  loom_cxx_import_options_t options;
-  loom_cxx_import_options_initialize(&options);
-  for (auto expression : {
-           "2147483647 + 1",
-           "(-2147483647 - 1) - 1",
-           "2147483647 * 2",
-           "(-2147483647 - 1) * -1",
-           "-(-2147483647 - 1)",
-           "(-2147483647 - 1) / -1",
-           "(-2147483647 - 1) % -1",
-           "9223372036854775807LL + 1",
-           "(-9223372036854775807LL - 1) - 1",
-           "9223372036854775807LL * 2",
-           "(-9223372036854775807LL - 1) * -1",
-           "-(-9223372036854775807LL - 1)",
-           "(-9223372036854775807LL - 1) / -1",
-           "(-9223372036854775807LL - 1) % -1",
-           "1 / 0",
-           "1u % 0u",
-           "1u << 32",
-           "1ULL << 64",
-           "1u >> 32",
-           "1ULL >> 64",
-           "1u << -1",
-           "1u >> -1",
-           "1u << (1ULL << 32)",
-       }) {
-    SCOPED_TRACE(expression);
-    std::string contents = "static_assert((" + std::string(expression) +
-                           ") == (" + expression + "));";
-    EXPECT_THROW(Source(view(contents), IREE_SV("constants.cpp"), options),
-                 SourceRejected);
-  }
-}
-
-TEST(SourceTest, TemplateLookaheadRetainsOverloadsCastsAndDependentNames) {
-  loom_cxx_import_options_t options;
-  loom_cxx_import_options_initialize(&options);
-  Source source(IREE_SV(R"cpp(
-                  constexpr int increment(int value) {
-                    return value + 10;
-                  }
-                  template <class T>
-                  constexpr T increment(T value) {
-                    return T(value) + T{1};
-                  }
-                  static_assert(increment(2) == 12);
-                  static_assert(increment<unsigned>(2) == 3);
-
-                  template <class T>
-                  struct Box {
-                    using type = T;
-                    template <class U>
-                    struct Rebind {
-                      using type = U;
-                    };
-                    template <class U>
-                    constexpr U get() const {
-                      return U{3};
-                    }
-                  };
-                  template <class T, class U>
-                  constexpr U extract(const Box<T>& box) {
-                    return box.template get<U>();
-                  }
-                  constexpr Box<float> box;
-                  static_assert(extract<float, int>(box) == 3);
-
-                  template <class T>
-                  struct Alias {
-                    using type = typename T::template Rebind<int>::type;
-                  };
-                  static_assert(sizeof(Alias<Box<int>>::type) == sizeof(int));
-                )cpp"),
-                IREE_SV("template_names.cpp"), options);
-  EXPECT_FALSE(source.diagnostics().has_error());
-}
-
 TEST(SourceTest, IncludeDirectoryRetainsFilesystemRoot) {
   const auto root = std::filesystem::current_path().root_path();
   const auto directory = root.string();
@@ -256,6 +112,79 @@ TEST(SourceTest, IncludeDirectoryRetainsFilesystemRoot) {
   const auto& paths = source.unit().preprocessor()->userIncludePaths();
   ASSERT_EQ(paths.size(), 1u);
   EXPECT_EQ(paths.front(), root.generic_string());
+}
+
+TEST(SourceTest, BuiltinStringSpellingRetainsThePhysicalExpansionRange) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  for (const char* macro : {"__FILE__", "__DATE__", "__TIME__"}) {
+    SCOPED_TRACE(macro);
+    const std::string contents =
+        "\n#line 700 \"presumed.cc\"\nconstexpr auto value = " +
+        std::string(macro) + ";\n";
+    Source source(view(contents), IREE_SV("physical.cpp"), options);
+    auto* preprocessor = source.unit().preprocessor();
+    unsigned literal_count = 0;
+    for (const auto& token : source.unit().tokens()) {
+      if (token.fileId() != preprocessor->mainSourceFileId() ||
+          token.kind() != cxx::TokenKind::T_STRING_LITERAL) {
+        continue;
+      }
+      ++literal_count;
+      EXPECT_EQ(token.offset(), contents.find(macro));
+      EXPECT_EQ(token.length(), std::string_view(macro).size());
+      auto first = preprocessor->tokenStartPosition(token);
+      auto last = preprocessor->tokenEndPosition(token);
+      EXPECT_EQ(first.fileName, "physical.cpp");
+      EXPECT_EQ(first.line, 3u);
+      EXPECT_EQ(first.column, 24u);
+      EXPECT_EQ(last.fileName, first.fileName);
+      EXPECT_EQ(last.line, first.line);
+      EXPECT_EQ(last.column, first.column + token.length());
+      auto presumed = preprocessor->presumedTokenStartPosition(token);
+      EXPECT_EQ(presumed.fileName, "presumed.cc");
+      EXPECT_EQ(presumed.line, 700u);
+      const auto spelling = token.spell();
+      if (std::string_view(macro) == "__FILE__") {
+        EXPECT_EQ(spelling, "\"presumed.cc\"");
+      } else {
+        // Date and time vary, but their spelling remains a quoted literal.
+        EXPECT_EQ(spelling.size(),
+                  std::string_view(macro) == "__DATE__" ? 13u : 10u);
+        EXPECT_EQ(spelling.front(), '"');
+        EXPECT_EQ(spelling.back(), '"');
+      }
+    }
+    EXPECT_EQ(literal_count, 1u);
+  }
+}
+
+TEST(SourceTest, StringizedTokensRetainInvocationRangesAndSeparateSpelling) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV("#define QUOTE(value) #value\n\n"
+                        "constexpr auto a = QUOTE(ab);\n"
+                        "constexpr auto b = QUOTE();\n"),
+                IREE_SV("operators.cpp"), options);
+  auto* preprocessor = source.unit().preprocessor();
+  unsigned literal_count = 0;
+  for (const auto& token : source.unit().tokens()) {
+    if (token.fileId() != preprocessor->mainSourceFileId() ||
+        token.kind() != cxx::TokenKind::T_STRING_LITERAL) {
+      continue;
+    }
+    auto first = preprocessor->tokenStartPosition(token);
+    auto last = preprocessor->tokenEndPosition(token);
+    EXPECT_EQ(first.fileName, "operators.cpp");
+    EXPECT_EQ(first.line, 3u + literal_count);
+    EXPECT_EQ(first.column, 20u);
+    EXPECT_EQ(last.line, first.line);
+    EXPECT_EQ(last.column, 25u);
+    EXPECT_EQ(token.length(), 5u);
+    EXPECT_EQ(token.spell(), literal_count == 0 ? "\"ab\"" : "\"\"");
+    ++literal_count;
+  }
+  EXPECT_EQ(literal_count, 2u);
 }
 
 TEST(SourceTest, DiagnosticSinkFailureCrossesTheParserSafeBoundary) {

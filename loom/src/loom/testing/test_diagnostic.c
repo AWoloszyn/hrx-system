@@ -174,7 +174,9 @@ iree_status_t loom_test_diagnostic_materialize(
   out_diagnostic->domain = loom_error_def_domain(diagnostic->error);
   out_diagnostic->code = loom_error_def_code(diagnostic->error);
   out_diagnostic->error = diagnostic->error;
-  out_diagnostic->origin_line = diagnostic->origin.start_line;
+  IREE_RETURN_IF_ERROR(loom_test_diagnostic_copy_string(
+      arena, diagnostic->origin.filename, &out_diagnostic->origin.filename));
+  out_diagnostic->origin.line = diagnostic->origin.start_line;
   return iree_ok_status();
 }
 
@@ -198,7 +200,10 @@ static int loom_test_diagnostic_find_param_index(
 
 bool loom_test_diagnostic_matches_annotation(
     const loom_test_diagnostic_t* diagnostic,
-    const loom_test_annotation_t* annotation) {
+    const loom_test_annotation_t* annotation, iree_string_view_t filename) {
+  if (!iree_string_view_equal(diagnostic->origin.filename, filename)) {
+    return false;
+  }
   if (diagnostic->severity != annotation->severity) {
     return false;
   }
@@ -209,7 +214,7 @@ bool loom_test_diagnostic_matches_annotation(
   if (annotation->code != 0 && diagnostic->code != annotation->code) {
     return false;
   }
-  if (diagnostic->origin_line != (uint32_t)annotation->target_line) {
+  if (diagnostic->origin.line != (uint32_t)annotation->target_line) {
     return false;
   }
   for (uint8_t i = 0; i < annotation->message_substring_count; ++i) {
@@ -234,11 +239,19 @@ bool loom_test_diagnostic_matches_annotation(
 }
 
 typedef struct loom_test_diagnostic_match_context_t {
+  // Diagnostics whose matched bits are updated by the assignment.
   loom_test_diagnostic_t* diagnostics;
+  // Number of collected diagnostics.
   iree_host_size_t diagnostic_count;
+  // Annotation constraints in source order.
   const loom_test_annotation_t* annotations;
+  // Number of annotation constraints.
   iree_host_size_t annotation_count;
+  // Main source identity to which unqualified annotations refer.
+  iree_string_view_t filename;
+  // Diagnostic assigned to each annotation, or IREE_HOST_SIZE_MAX.
   iree_host_size_t* annotation_to_diagnostic;
+  // Annotations visited by the current augmenting-path search.
   bool* visited_annotations;
 } loom_test_diagnostic_match_context_t;
 
@@ -250,7 +263,7 @@ static bool loom_test_diagnostic_match_augment(
     if (context->visited_annotations[annotation_index] ||
         !loom_test_diagnostic_matches_annotation(
             &context->diagnostics[diagnostic_index],
-            &context->annotations[annotation_index])) {
+            &context->annotations[annotation_index], context->filename)) {
       continue;
     }
     context->visited_annotations[annotation_index] = true;
@@ -268,7 +281,8 @@ static bool loom_test_diagnostic_match_augment(
 iree_status_t loom_test_diagnostics_match_annotations(
     loom_test_diagnostic_t* diagnostics, iree_host_size_t diagnostic_count,
     const loom_test_annotation_t* annotations,
-    iree_host_size_t annotation_count, iree_arena_allocator_t* arena,
+    iree_host_size_t annotation_count, iree_string_view_t filename,
+    iree_arena_allocator_t* arena,
     iree_host_size_t** out_annotation_to_diagnostic) {
   *out_annotation_to_diagnostic = NULL;
   for (iree_host_size_t i = 0; i < diagnostic_count; ++i) {
@@ -295,6 +309,7 @@ iree_status_t loom_test_diagnostics_match_annotations(
       .diagnostic_count = diagnostic_count,
       .annotations = annotations,
       .annotation_count = annotation_count,
+      .filename = filename,
       .annotation_to_diagnostic = annotation_to_diagnostic,
       .visited_annotations = visited_annotations,
   };

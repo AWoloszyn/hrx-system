@@ -46,6 +46,9 @@ typedef struct loom_check_diagnostic_collector_t {
   // Host allocator used by temporary string builders.
   iree_allocator_t host_allocator;
 
+  // Main source identity whose lines can match annotations and receive edits.
+  iree_string_view_t filename;
+
   // Current parsed module for full type rendering, or NULL during parse
   // recovery.
   const loom_module_t* module;
@@ -78,12 +81,6 @@ typedef struct loom_check_diagnostic_emitter_capture_t {
 // Diagnostic sink callback. Renders, stores, and JSON-captures one diagnostic.
 iree_status_t loom_check_diagnostic_collector_sink(
     void* user_data, const loom_diagnostic_t* diagnostic);
-
-// Initializes a single-source resolver for a parsed loom-check case.
-iree_status_t loom_check_source_resolver_for_case(
-    loom_module_t* module, iree_string_view_t filename,
-    iree_string_view_t source, loom_source_entry_t* out_source_entry,
-    loom_source_table_resolver_t* out_source_resolver);
 
 // Diagnostic emitter callback. Pass a
 // loom_check_diagnostic_emitter_capture_t* as user_data.
