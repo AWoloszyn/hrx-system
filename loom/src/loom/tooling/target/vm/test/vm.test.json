@@ -2,6 +2,56 @@
   "version": 1,
   "cases": [
     {
+      "name": "compiles an explicitly specialized root calling an authored VM helper",
+      "steps": [
+        {
+          "name": "compile",
+          "run": {
+            "tool": "loom-compile",
+            "args": [
+              "{srcdir}/source_call_context.loom",
+              "--root=@unbound_caller",
+              "--target=vm:core",
+              "--format=vm",
+              "--output={tmp}/specialized.vm"
+            ]
+          }
+        },
+        {
+          "name": "disassemble",
+          "run": {
+            "tool": "vm-dis",
+            "args": [
+              "{tmp}/specialized.vm"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "unbound_caller",
+              "control.call",
+              "control.return"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "executes calls between authored and inherited compatible target contexts",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_call_context.loom"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":1",
+          "\"failed_sample_count\":0",
+          "\"planning_issue_count\":0"
+        ]
+      }
+    },
+    {
       "name": "iree-test-loom applies invocation config 5 before VM compilation",
       "run": {
         "tool": "iree-test-loom",

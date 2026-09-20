@@ -1034,12 +1034,31 @@ loom_cc_test(
 
 loom_cc_library(
   NAME
+    call_context
+  HDRS
+    "call_context.h"
+  SRCS
+    "call_context.c"
+  DEPS
+    ::function
+    iree::base
+    loom::error::emitter
+    loom::error::error_defs
+    loom::ir
+    loom::ops::low
+    loom::target::function_version
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     verify
   HDRS
     "verify.h"
   SRCS
     "verify.c"
   DEPS
+    ::call_context
     ::function
     ::packet
     ::register_parts

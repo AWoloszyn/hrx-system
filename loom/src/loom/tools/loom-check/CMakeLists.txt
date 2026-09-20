@@ -94,6 +94,7 @@ loom_cc_library(
     loom::pass::tooling
     loom::sanitizer::options
     loom::target::entry_selection
+    loom::target::function_version_projection
     loom::target::legalization
     loom::target::low_asm_diagnostics
     loom::target::low_descriptor_registry
