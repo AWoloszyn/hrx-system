@@ -110,6 +110,7 @@ class SourceToolchain final : public cxx::Toolchain {
     setLanguageStandard(standard);
     auto layout = std::make_unique<cxx::MemoryLayout>(
         options.data_model == LOOM_CXX_DATA_MODEL_ILP32 ? 32 : 64);
+    layout->setSizeOfLongLong(8);
     if (options.data_model == LOOM_CXX_DATA_MODEL_LLP64) {
       layout->setSizeOfLong(4);
       layout->setSizeOfLongDouble(8, 53);

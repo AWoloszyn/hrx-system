@@ -537,6 +537,7 @@ loom_check_test_suite(
     data = [
         "//loom/src/loom/test/corpus/source_low:async_empty.loom-test",
         "//loom/src/loom/test/corpus/source_low:async_gather.loom-test",
+        "//loom/src/loom/test/corpus/source_low:callable_values.loom-test",
         "//loom/src/loom/test/corpus/source_low:carried_counter_store.loom-test",
         "//loom/src/loom/test/corpus/source_low:index_addressing.loom-test",
         "//loom/src/loom/test/corpus/source_low:lookup_table.loom-test",
@@ -558,6 +559,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:memory_workgroup_packed16.loom-test",
         "//loom/src/loom/test/corpus/source_low:ml_attention.loom-test",
         "//loom/src/loom/test/corpus/source_low:ml_contraction.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_boolean_comparison.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_constant_remainder.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_conversion.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_conversion_float8.loom-test",

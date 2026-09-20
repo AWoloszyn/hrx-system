@@ -1322,8 +1322,8 @@ kernel.def @wave64_root() {
   EXPECT_NE(module_text.find("@wave64_root()", wave64_root), std::string::npos)
       << module_text;
 
-  const size_t wave32_constant = module_text.find("s_mov_b32 32", wave32_root);
-  const size_t wave64_constant = module_text.find("s_mov_b32 64", wave64_root);
+  const size_t wave32_constant = module_text.find("v_mov_b32 32", wave32_root);
+  const size_t wave64_constant = module_text.find("v_mov_b32 64", wave64_root);
   EXPECT_LT(wave32_constant, wave64_root) << module_text;
   EXPECT_NE(wave64_constant, std::string::npos) << module_text;
   EXPECT_EQ(module_text.find("low.func.def"), std::string::npos) << module_text;

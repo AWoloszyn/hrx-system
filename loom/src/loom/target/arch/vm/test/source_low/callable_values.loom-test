@@ -1,0 +1,103 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/callable_values.loom-test
+// RUN: emit source-low output=low
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<1xi32>"}
+func.def public target(@target) @call_mixed_i32(%input: vector<1xi32>, %delta: i32) -> (i32, i32) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %input[0] : vector<1xi32> -> i32
+  %mixed = func.call @add_i32(%value, %delta) : (i32, i32) -> (i32)
+  %uniform = func.call @add_i32(%delta, %delta) : (i32, i32) -> (i32)
+  func.return %mixed, %uniform : i32, i32
+}
+
+func.def @add_i32(%value: i32, %delta: i32) -> (i32) {
+  %wide_value = scalar.extui %value : i32 to i64
+  %wide_delta = scalar.extui %delta : i32 to i64
+  %sum = scalar.addi %wide_value, %wide_delta : i64
+  %result = scalar.trunci %sum : i64 to i32
+  func.return %result : i32
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<1xi64>"}
+func.def public target(@target) @call_mixed_i64(%input: vector<1xi64>, %delta: i64) -> (i64, i64) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %input[0] : vector<1xi64> -> i64
+  %mixed = func.call @add_i64(%value, %delta) : (i64, i64) -> (i64)
+  %uniform = func.call @add_i64(%delta, %delta) : (i64, i64) -> (i64)
+  func.return %mixed, %uniform : i64, i64
+}
+
+func.def @add_i64(%value: i64, %delta: i64) -> (i64) {
+  %result = scalar.addi %value, %delta : i64
+  func.return %result : i64
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def public target(@target) @call_vector_result(%input: i32, %lane: index) -> (i32) where [range(%lane, 0, 3)] {
+  %c1 = scalar.constant 1 : i32
+  %c2 = scalar.constant 2 : i32
+  %c3 = scalar.constant 3 : i32
+  // ERROR@+4: TARGET/001 {op_name="vector.splat"}
+  // ERROR@+3: TARGET/001 {op_name="vector.insert"}
+  // ERROR@+2: TARGET/001 {op_name="vector.insert"}
+  // ERROR@+1: TARGET/001 {op_name="vector.insert"}
+  %values = vector.from_elements %input, %c1, %c2, %c3 : vector<4xi32>
+  %result = func.call @select_lane(%values, %lane) : (vector<4xi32>, index) -> (i32)
+  func.return %result : i32
+}
+
+func.def @select_lane(%values: vector<4xi32>, %lane: index) -> (i32) where [range(%lane, 0, 3)] {
+  %result = vector.extract %values[%lane] : vector<4xi32> -> i32
+  func.return %result : i32
+}
+
+// ====
+
+vm.target<core> @target
+
+// ERROR@+1: TARGET/033 {op_name="func.def", field_name="argument", actual_type="vector<1xi32>"}
+func.def public target(@target) @call_loop(%input: vector<1xi32>, %delta: i32, %count: index) -> (i32) {
+  // ERROR@+1: TARGET/001 {op_name="vector.extract"}
+  %value = vector.extract %input[0] : vector<1xi32> -> i32
+  %result = func.call @repeat_add(%value, %delta, %count) : (i32, i32, index) -> (i32)
+  func.return %result : i32
+}
+
+func.def @repeat_add(%value: i32, %delta: i32, %count: index) -> (i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %result = scf.for %i = [%c0 to %count step %c1](%current = %value : i32) -> (i32) {
+    %next = func.call @advance_i32(%current, %delta) : (i32, i32) -> (i32)
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+func.def @advance_i32(%value: i32, %delta: i32) -> (i32) {
+  %result = scalar.addi %value, %delta : i32
+  func.return %result : i32
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def public target(@target) @call_scalar(%value: i32, %delta: i32) -> (i32) {
+  // ERROR@+1: TARGET/040 {op_name="low.func.call", field_name="callee", caller_target_name="target"}
+  %result = func.call @scalar_add(%value, %delta) : (i32, i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def @scalar_add(%value: i32, %delta: i32) -> (i32) {
+  %result = scalar.addi %value, %delta : i32
+  func.return %result : i32
+}

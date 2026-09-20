@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "boolean_comparison.loom-test"
     "bytecode.loom-test"
     "verify.loom-test"
 )

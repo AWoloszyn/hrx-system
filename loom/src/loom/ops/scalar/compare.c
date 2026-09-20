@@ -56,6 +56,16 @@ uint8_t loom_scalar_cmpi_swapped_predicate(uint8_t predicate) {
   }
 }
 
+uint8_t loom_scalar_cmpi_range_predicate(loom_scalar_type_t type,
+                                         uint8_t predicate) {
+  if (type == LOOM_SCALAR_TYPE_I1 &&
+      predicate >= LOOM_SCALAR_CMPI_PREDICATE_SLT &&
+      predicate <= LOOM_SCALAR_CMPI_PREDICATE_SGE) {
+    return loom_scalar_cmpi_swapped_predicate(predicate);
+  }
+  return predicate;
+}
+
 static bool loom_scalar_cmpi_facts_are_non_overlapping(
     const loom_value_facts_t* lhs_facts, const loom_value_facts_t* rhs_facts) {
   return lhs_facts->range_hi < rhs_facts->range_lo ||
@@ -164,10 +174,12 @@ static bool loom_scalar_unsigned_cmpi_facts_result(
   }
 }
 
-bool loom_scalar_cmpi_result_from_facts(uint8_t predicate,
+bool loom_scalar_cmpi_result_from_facts(loom_scalar_type_t type,
+                                        uint8_t predicate,
                                         const loom_value_facts_t* lhs_facts,
                                         const loom_value_facts_t* rhs_facts,
                                         bool* out_result) {
+  predicate = loom_scalar_cmpi_range_predicate(type, predicate);
   return loom_scalar_signed_cmpi_facts_result(predicate, lhs_facts, rhs_facts,
                                               out_result) ||
          loom_scalar_unsigned_cmpi_facts_result(predicate, lhs_facts, rhs_facts,

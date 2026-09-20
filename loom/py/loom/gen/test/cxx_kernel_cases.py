@@ -12,7 +12,7 @@ import struct
 import sys
 from pathlib import Path
 
-ELEMENTS = {"f16": ("e", "<f2", 2), "f32": ("f", "<f4", 4), "i8": ("b", "|i1", 1), "i32": ("i", "<i4", 4), "i64": ("q", "<i8", 8)}
+ELEMENTS = {"f16": ("e", "<f2", 2), "f32": ("f", "<f4", 4), "i8": ("b", "|i1", 1), "i16": ("h", "<i2", 2), "i32": ("i", "<i4", 4), "i64": ("q", "<i8", 8)}
 
 BYTE_INPUTS = [0, 127, 128, 254, 255, 511]
 WIDE_INPUTS = [0, 126, 254, 255, (1 << 32) - 1, 1 << 32, (1 << 63) - 1, 1 << 63, (1 << 64) - 1]
@@ -638,6 +638,42 @@ def integer_functions(directory):
     return "\n\n".join(cases) + "\n"
 
 
+def enum_functions(directory):
+    del directory
+    cases = []
+    commands = [0, 1, 2, 3, 4, 5, 6, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF]
+    cases.append(function_cases("enum_dispatch", [32], 32, [([value], 128 if value == 1 else 255 if value >= 5 else value + 7) for value in commands]))
+    cases.append(function_cases("enum_byte", [8], 32, [([value], (value + 1) % 256) for value in range(256)]))
+    cases.append(function_cases("enum_signed", [8], 64, [([value], value * 65537) for value in [-128, -127, -1, 0, 1, 126, 127]]))
+    cases.append(function_cases("enum_unsigned", [32], 64, [([value], value + 1) for value in commands]))
+    wide = [0, 1, (1 << 32) - 1, 1 << 32, (1 << 63) - 1, 1 << 63, (1 << 64) - 1]
+    cases.append(function_cases("enum_compare64", [64, 64], 32, [([left, right], int(left < right)) for left in wide for right in wide]))
+    cases.append(function_cases("enum_inferred", [32], 64, [([value], (1 << 40) if value else -1) for value in commands]))
+    cases.append(function_cases("enum_inferred_unsigned", [64], 32, [([value], int(value < (1 << 64) - 1)) for value in wide]))
+    cases.append(function_cases("enum_specialization", [32], 64, [([value], (1 << 40) + 0xFFFFFFFF + (4 if value else 0)) for value in commands]))
+    cases.append(function_cases("enum_bool", [32], 32, [([value], int(value != 0)) for value in commands]))
+    return "\n\n".join(cases) + "\n"
+
+
+def enum_storage(directory, width):
+    mask = (1 << width) - 1
+    values = [0, 1, (1 << (width - 1)) - 1, 1 << (width - 1), mask - 1, mask]
+    values += [(index * 0x123456789ABCDEF) & mask for index in range(64 - len(values))]
+    cases = []
+    for delta in [1, 1 << (width - 1), mask]:
+        element = f"i{width}"
+        case = Case(directory, f"enum_storage_u{width}_{delta}", element, len(values))
+        case.array("input", [signed_bits(value, width) for value in values])
+        case.array("original", [signed_bits(value, width) for value in values])
+        case.scalar("delta", signed_bits(delta, width), element)
+        case.launch(f"enum_storage_u{width}", "%input, %output, %delta", f"tensor<64x{element}>, tensor<64x{element}>, {element}")
+        case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<64x{element}>")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        expected = [signed_bits((value + delta) & mask, width) for value in values]
+        cases.append(case.finish(expected))
+    return f"kernel.decl @enum_storage_u{width}() launch(%input: buffer, %output: buffer, %delta: i{width})\n\n" + "\n".join(cases)
+
+
 def comparison_functions(directory):
     del directory
     samples = []
@@ -943,6 +979,11 @@ def main():
         ("assumption_functions", assumption_functions),
         ("assumption_kernel", assumption_kernel),
         ("comparison_functions", comparison_functions),
+        ("enum_functions", enum_functions),
+        ("enum_storage_u8", lambda directory: enum_storage(directory, 8)),
+        ("enum_storage_u16", lambda directory: enum_storage(directory, 16)),
+        ("enum_storage_u32", lambda directory: enum_storage(directory, 32)),
+        ("enum_storage_u64", lambda directory: enum_storage(directory, 64)),
         ("pointer_walk", pointer_walk),
         ("vector_depth", vector_depth),
         ("vector_depth_span", vector_depth_span),

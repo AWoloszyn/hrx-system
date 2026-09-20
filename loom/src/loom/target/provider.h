@@ -69,11 +69,12 @@ typedef iree_status_t (*loom_target_materialize_definition_fn_t)(
     loom_builder_t* builder, const loom_resolved_target_t* resolved_target,
     loom_symbol_ref_t symbol, loom_location_id_t location);
 
-// Target disposition for a retained low.func.call edge.
+// Target disposition for semantic calls and retained low.func.call edges.
 typedef enum loom_target_low_call_policy_e {
   // The target can preserve and emit the direct Low call boundary.
   LOOM_TARGET_LOW_CALL_POLICY_DIRECT = 0,
-  // The target has no Low call ABI and requires the edge to inline.
+  // The target has no Low call ABI. Semantic edges must inline before physical
+  // representation selection; authored Low edges inline after normalization.
   LOOM_TARGET_LOW_CALL_POLICY_REQUIRE_INLINE = 1,
 } loom_target_low_call_policy_t;
 
@@ -324,8 +325,8 @@ struct loom_target_provider_t {
   // Optional pass-pipeline contribution callback.
   loom_target_provider_pipeline_contribution_fn_t contribute_pipeline;
   // Optional per-caller Low call policy selector. Missing permits direct Low
-  // calls. A REQUIRE_INLINE result is a target emission requirement, not an
-  // authored inline hint.
+  // calls. A REQUIRE_INLINE result applies before source-to-Low as well as to
+  // retained Low edges; it is an emission requirement, not an authored hint.
   loom_target_select_low_call_policy_fn_t select_low_call_policy;
   // Target-family fact representation owned by this provider. This is required
   // for providers with authored target definitions but no structured profile.

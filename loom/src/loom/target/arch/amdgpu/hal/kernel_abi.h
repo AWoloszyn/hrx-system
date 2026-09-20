@@ -34,6 +34,8 @@ extern "C" {
 #define LOOM_AMDGPU_HAL_KERNEL_ABI_GLOBAL_BUFFER_KERNARG_ALIGNMENT 8u
 
 // Kernarg storage for one 32-bit direct dispatch constant word.
+// Narrow i8/i16 integers use sign-extended words, matching their scalar value
+// representation. Unsigned source operations interpret the declared low bits.
 #define LOOM_AMDGPU_HAL_KERNEL_ABI_DIRECT_SCALAR_KERNARG_SIZE 4u
 
 // Required kernarg alignment for direct dispatch constant words.

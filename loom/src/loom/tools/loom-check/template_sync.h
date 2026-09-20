@@ -11,7 +11,8 @@
 // and verifies that the concrete target file is current. --update materializes
 // that list while preserving the target suite's file-level RUN directive and
 // any case-local REQUIRES/XFAIL directives already in the target file. Case
-// identity is the single func-like definition in each case body.
+// identity is the single func-like definition in each case body, or the unique
+// public func-like definition when a case also contains private helper bodies.
 
 #ifndef LOOM_TOOLS_LOOM_CHECK_TEMPLATE_SYNC_H_
 #define LOOM_TOOLS_LOOM_CHECK_TEMPLATE_SYNC_H_

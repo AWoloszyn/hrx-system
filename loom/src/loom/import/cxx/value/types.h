@@ -16,7 +16,9 @@ namespace loom::cxx_import {
 
 // Projects resolved C++ types using the translation unit's explicit data model.
 // Source signedness remains available even when both types share one IR
-// carrier. The source unit and diagnostics outlive this projection.
+// carrier. Enums use their resolved underlying integer representation; nominal
+// source types remain intact for C++ semantic queries. The source unit and
+// diagnostics outlive this projection.
 class Types {
  public:
   Types(cxx::TranslationUnit& unit, Diagnostics& diagnostics)

@@ -2,6 +2,63 @@
   "version": 1,
   "cases": [
     {
+      "name": "Enum constants, casts and comparisons preserve resolved source representations",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=enum_dispatch",
+              "--root=enum_byte",
+              "--root=enum_signed",
+              "--root=enum_unsigned",
+              "--root=enum_compare64",
+              "--root=enum_inferred",
+              "--root=enum_inferred_unsigned",
+              "--root=enum_specialization",
+              "--root=enum_bool",
+              "--to=bc",
+              "--output={tmp}/functions.loombc",
+              "{srcdir}/enum_values.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute on the VM",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/enum_functions.loom",
+              "--library={tmp}/functions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":369",
+                "\"sample_count\":369",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "SSA schedules preserve inlined arguments, binding snapshots and source widths",
       "steps": [
         {

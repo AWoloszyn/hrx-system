@@ -27,17 +27,15 @@ namespace {
 TEST(SourceTest, LayoutAndMutableSemanticStateBelongToEachSource) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);
-  Source first(IREE_SV("static_assert(sizeof(long) == 8); int value = 1;"),
-               IREE_SV("first.cpp"), options);
+  Source first(IREE_SV("int value = 1;"), IREE_SV("first.cpp"), options);
   options.data_model = LOOM_CXX_DATA_MODEL_LLP64;
-  Source second(IREE_SV("static_assert(sizeof(long) == 4); int value = 2;"),
-                IREE_SV("second.cpp"), options);
+  Source second(IREE_SV("int value = 2;"), IREE_SV("second.cpp"), options);
   options.data_model = LOOM_CXX_DATA_MODEL_ILP32;
-  Source third(IREE_SV("static_assert(sizeof(void*) == 4); int value = 3;"),
-               IREE_SV("third.cpp"), options);
+  Source third(IREE_SV("int value = 3;"), IREE_SV("third.cpp"), options);
   EXPECT_EQ(first.unit().control()->memoryLayout()->sizeOfLong(), 8);
   EXPECT_EQ(second.unit().control()->memoryLayout()->sizeOfLong(), 4);
   EXPECT_EQ(third.unit().control()->memoryLayout()->sizeOfPointer(), 4);
+  EXPECT_EQ(third.unit().control()->memoryLayout()->sizeOfLongLong(), 8);
   EXPECT_NE(first.unit().ast(), second.unit().ast());
   EXPECT_NE(first.unit().globalScope(), second.unit().globalScope());
 }

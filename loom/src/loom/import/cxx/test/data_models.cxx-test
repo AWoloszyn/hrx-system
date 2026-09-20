@@ -138,3 +138,12 @@ long identity(long x) { return x; }
 func.def public @identity(%x: i32) -> (i32) {
   func.return %x : i32
 }
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=ilp32
+static_assert(sizeof(void*) == 4);
+static_assert(sizeof(long) == 4);
+static_assert(sizeof(long long) == 8);
+static_assert(sizeof(long long) == __SIZEOF_LONG_LONG__);
+static_assert((1LL << 40) == 1099511627776LL);

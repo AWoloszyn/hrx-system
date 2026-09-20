@@ -572,7 +572,11 @@ static iree_status_t loom_condition_facts_query_integer_compare(
           ? loom_condition_index_predicate_relation(
                 loom_index_cmp_predicate(op), &relation, &unsigned_order)
           : loom_condition_scalar_cmpi_predicate_relation(
-                loom_scalar_cmpi_predicate(op), &relation, &unsigned_order);
+                loom_scalar_cmpi_range_predicate(
+                    loom_type_element_type(
+                        loom_module_value_type(module, left_value)),
+                    loom_scalar_cmpi_predicate(op)),
+                &relation, &unsigned_order);
   if (!has_relation) {
     return iree_ok_status();
   }
@@ -925,11 +929,13 @@ static bool loom_condition_fact_resolver_proves_index_cmp(
 }
 
 static bool loom_condition_fact_resolver_proves_scalar_cmpi(
-    const loom_value_fact_table_t* fact_table,
+    const loom_module_t* module, const loom_value_fact_table_t* fact_table,
     const loom_condition_fact_resolver_t* resolver,
     const loom_op_t* defining_op, bool* out_condition) {
   const loom_value_id_t lhs = loom_scalar_cmpi_lhs(defining_op);
   const loom_value_id_t rhs = loom_scalar_cmpi_rhs(defining_op);
+  const loom_scalar_type_t operand_type =
+      loom_type_element_type(loom_module_value_type(module, lhs));
   if (lhs == rhs &&
       loom_scalar_cmpi_same_value_result(
           loom_scalar_cmpi_predicate(defining_op), out_condition)) {
@@ -942,8 +948,9 @@ static bool loom_condition_fact_resolver_proves_scalar_cmpi(
   };
   bool unsigned_order = false;
   if (loom_condition_scalar_cmpi_predicate_relation(
-          loom_scalar_cmpi_predicate(defining_op), &relation.relation,
-          &unsigned_order) &&
+          loom_scalar_cmpi_range_predicate(
+              operand_type, loom_scalar_cmpi_predicate(defining_op)),
+          &relation.relation, &unsigned_order) &&
       (!unsigned_order ||
        loom_condition_values_are_non_negative(fact_table, lhs, rhs)) &&
       resolver != NULL && resolver->proves_integer_relation != NULL &&
@@ -957,8 +964,8 @@ static bool loom_condition_fact_resolver_proves_scalar_cmpi(
   const loom_value_facts_t rhs_facts =
       loom_condition_edge_value_facts(fact_table, resolver, rhs);
   return loom_scalar_cmpi_result_from_facts(
-      loom_scalar_cmpi_predicate(defining_op), &lhs_facts, &rhs_facts,
-      out_condition);
+      operand_type, loom_scalar_cmpi_predicate(defining_op), &lhs_facts,
+      &rhs_facts, out_condition);
 }
 
 typedef enum loom_condition_proof_state_e {
@@ -1079,7 +1086,7 @@ static loom_condition_proof_state_t loom_condition_query_evaluate_direct_proof(
       break;
     case LOOM_OP_SCALAR_CMPI:
       proven = loom_condition_fact_resolver_proves_scalar_cmpi(
-          fact_table, resolver, defining_op, &condition);
+          query->module, fact_table, resolver, defining_op, &condition);
       break;
     default: {
       loom_value_id_t lhs = LOOM_VALUE_ID_INVALID;

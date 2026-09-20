@@ -595,6 +595,14 @@ class Translator {
       if (auto found = values_.find(id->symbol); found != values_.end()) {
         return found->second;
       }
+      if (auto* enumerator =
+              cxx::symbol_cast<cxx::EnumeratorSymbol>(id->symbol)) {
+        if (!enumerator->value()) {
+          fail(ast, "enumerator has no resolved constant value");
+        }
+        return name(scalars_.constant(*enumerator->value(), ast->type, ast),
+                    cxx::to_string(enumerator->name()));
+      }
       if (auto* variable = cxx::symbol_cast<cxx::VariableSymbol>(id->symbol)) {
         if (variable->constValue() &&
             (variable->isConstexpr() ||

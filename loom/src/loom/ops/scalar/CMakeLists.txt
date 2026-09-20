@@ -16,6 +16,7 @@ loom_generated_cc_library(
     loom::py::loom::gen::ops::c_tables_scalar_generator
   SRCS
     "canonicalize.c"
+    "canonicalize_comparison.c"
     "combining.c"
     "compare.c"
     "facts.c"

@@ -1,0 +1,142 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/callable_values.loom-test
+// RUN: emit source-low output=low
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @call_mixed_i32(%input: vector<1xi32>, %delta: i32) -> (i32, i32) {
+  %value = vector.extract %input[0] : vector<1xi32> -> i32
+  %mixed = func.call @add_i32(%value, %delta) : (i32, i32) -> (i32)
+  %uniform = func.call @add_i32(%delta, %delta) : (i32, i32) -> (i32)
+  func.return %mixed, %uniform : i32, i32
+}
+
+func.def @add_i32(%value: i32, %delta: i32) -> (i32) {
+  %wide_value = scalar.extui %value : i32 to i64
+  %wide_delta = scalar.extui %delta : i32 to i64
+  %sum = scalar.addi %wide_value, %wide_delta : i64
+  %result = scalar.trunci %sum : i64 to i32
+  func.return %result : i32
+}
+
+// ----
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @call_mixed_i32(%value: reg<llvmir.i32>, %delta: reg<llvmir.i32>) -> (reg<llvmir.i32>, reg<llvmir.i32>) asm {
+  %wide_value = zext.i32.i64 %value
+  %wide_delta = zext.i32.i64 %delta
+  %sum$24 = add.i64 %wide_value, %wide_delta
+  %result$25 = trunc.i64.i32 %sum$24
+  %sum$26 = add.i64 %wide_delta, %wide_delta
+  %result$27 = trunc.i64.i32 %sum$26
+  return %result$25, %result$27
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @call_mixed_i64(%input: vector<1xi64>, %delta: i64) -> (i64, i64) {
+  %value = vector.extract %input[0] : vector<1xi64> -> i64
+  %mixed = func.call @add_i64(%value, %delta) : (i64, i64) -> (i64)
+  %uniform = func.call @add_i64(%delta, %delta) : (i64, i64) -> (i64)
+  func.return %mixed, %uniform : i64, i64
+}
+
+func.def @add_i64(%value: i64, %delta: i64) -> (i64) {
+  %result = scalar.addi %value, %delta : i64
+  func.return %result : i64
+}
+
+// ----
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @call_mixed_i64(%value: reg<llvmir.i64>, %delta: reg<llvmir.i64>) -> (reg<llvmir.i64>, reg<llvmir.i64>) asm {
+  %result$16 = add.i64 %value, %delta
+  %result$17 = add.i64 %delta, %delta
+  return %result$16, %result$17
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @call_vector_result(%input: i32, %lane: index) -> (i32) where [range(%lane, 0, 3)] {
+  %c1 = scalar.constant 1 : i32
+  %c2 = scalar.constant 2 : i32
+  %c3 = scalar.constant 3 : i32
+  %values = vector.from_elements %input, %c1, %c2, %c3 : vector<4xi32>
+  %result = func.call @select_lane(%values, %lane) : (vector<4xi32>, index) -> (i32)
+  func.return %result : i32
+}
+
+func.def @select_lane(%values: vector<4xi32>, %lane: index) -> (i32) where [range(%lane, 0, 3)] {
+  %result = vector.extract %values[%lane] : vector<4xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @call_vector_result(%input: reg<llvmir.i32>, %lane: reg<llvmir.i64>) -> (reg<llvmir.i32>) where [range(%lane, 0, 3)] asm {
+  %c1 = const.i32 1
+  %c2 = const.i32 2
+  %c3 = const.i32 3
+  %values = from_elements.v4i32 %input, %c1, %c2, %c3
+  %result = extract.dynamic.v4i32 %values, %lane
+  return %result
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @call_loop(%input: vector<1xi32>, %delta: i32, %count: index) -> (i32) {
+  %value = vector.extract %input[0] : vector<1xi32> -> i32
+  %result = func.call @repeat_add(%value, %delta, %count) : (i32, i32, index) -> (i32)
+  func.return %result : i32
+}
+
+func.def @repeat_add(%value: i32, %delta: i32, %count: index) -> (i32) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %result = scf.for %i = [%c0 to %count step %c1](%current = %value : i32) -> (i32) {
+    %next = func.call @advance_i32(%current, %delta) : (i32, i32) -> (i32)
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+func.def @advance_i32(%value: i32, %delta: i32) -> (i32) {
+  %result = scalar.addi %value, %delta : i32
+  func.return %result : i32
+}
+
+// ----
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @call_loop(%value: reg<llvmir.i32>, %delta: reg<llvmir.i32>, %count: reg<llvmir.i64>) -> (reg<llvmir.i32>) asm {
+  %c0 = const.i64 0
+  %c1 = const.i64 1
+  low.br ^_bb1(%c0: reg<llvmir.i64>, %value: reg<llvmir.i32>)
+^_bb1(%i: reg<llvmir.i64>, %current: reg<llvmir.i32>):
+  %35 = cmp.slt.i64 %i, %count
+  low.cond_br %35, ^_bb2, ^_bb3 : reg<llvmir.i1>
+^_bb2:
+  %result = add.i32 %current, %delta
+  %37 = add.i64 %i, %c1
+  low.br ^_bb1(%37: reg<llvmir.i64>, %result: reg<llvmir.i32>)
+^_bb3:
+  return %current
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @call_scalar(%value: i32, %delta: i32) -> (i32) {
+  %result = func.call @scalar_add(%value, %delta) : (i32, i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def @scalar_add(%value: i32, %delta: i32) -> (i32) {
+  %result = scalar.addi %value, %delta : i32
+  func.return %result : i32
+}
+
+// ----
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @call_scalar(%value: reg<llvmir.i32>, %delta: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  %result = add.i32 %value, %delta
+  return %result
+}

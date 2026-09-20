@@ -110,6 +110,29 @@ Overloaded root names require disambiguation in the source. Template helpers
 are instantiated by cxx before import. This interface does not yet define an
 external C++ ABI for linking separately compiled C++ translation units.
 
+Scoped and unscoped enums preserve their resolved integer representation:
+
+```cpp
+enum class Kind : unsigned { solid, water, sky };
+unsigned opacity(Kind kind) { return kind == Kind::water ? 128u : 255u; }
+
+enum class Byte : unsigned char { low, high = 255 };
+unsigned widen(Byte value) { return static_cast<unsigned>(value); }
+```
+
+`Kind` arguments use `i32`, and `Kind::water` becomes a named `%water` constant.
+`Byte` uses `i8`; widening it emits `scalar.extui`, while a signed byte enum uses
+`scalar.extsi`. Enum pointers retain that element width and its storage stride.
+C++ nominal type checking happens before projection, so distinct enum classes
+do not become interchangeable simply because they share an IR carrier.
+
+Fixed underlying types are checked for representability, including implicit
+enumerator increments. Inferred enums select the first type in the integer
+promotion order that contains their complete value range; values above 32 bits
+and the full unsigned 64-bit range remain intact. Template-dependent definitions
+are resolved when instantiated. Boolean enums use `i1` values; pointers to them
+require a byte-storage projection and receive the same diagnostic as `bool*`.
+
 Explicit fixed vectors retain their lanes and element widths in High IR:
 
 ```cpp

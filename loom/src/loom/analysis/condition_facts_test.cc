@@ -289,6 +289,39 @@ TEST_F(ConditionFactsTest, ExactOperandFactsProveEquivalentLiteralRelation) {
   EXPECT_FALSE(result);
 }
 
+TEST_F(ConditionFactsTest, SignedBooleanOrderUsesLogicalRangeRelations) {
+  const loom_value_id_t left =
+      DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  const loom_value_id_t right =
+      DefineValue(loom_type_scalar(LOOM_SCALAR_TYPE_I1));
+  DefineFacts(left, loom_value_facts_make(0, 1, 1));
+  DefineFacts(right, loom_value_facts_make(0, 1, 1));
+  const loom_value_id_t signed_less = loom_scalar_cmpi_result(
+      BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_SLT, left, right));
+  const loom_value_id_t unsigned_greater = loom_scalar_cmpi_result(
+      BuildScalarCompare(LOOM_SCALAR_CMPI_PREDICATE_UGT, left, right));
+
+  ASSERT_TRUE(Query(signed_less));
+  ASSERT_EQ(condition_facts_.integer_relation_count, 1u);
+  EXPECT_EQ(condition_facts_.integer_relations[0].relation,
+            LOOM_SYMBOLIC_INTEGER_RELATION_GT);
+
+  bool value = false;
+  bool proven = false;
+  IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+      &condition_query_, &fact_table_, &condition_facts_, unsigned_greater,
+      &value, &proven));
+  EXPECT_TRUE(proven);
+  EXPECT_TRUE(value);
+
+  ASSERT_TRUE(Query(unsigned_greater));
+  IREE_ASSERT_OK(loom_condition_fact_set_proves_condition(
+      &condition_query_, &fact_table_, &condition_facts_, signed_less, &value,
+      &proven));
+  EXPECT_TRUE(proven);
+  EXPECT_TRUE(value);
+}
+
 TEST_F(ConditionFactsTest, AppliesConstantRelationToValueFacts) {
   loom_value_id_t induction = DefineIndexValue();
   loom_value_id_t upper_bound = DefineIndexValue();

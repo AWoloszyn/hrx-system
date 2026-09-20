@@ -542,6 +542,7 @@ loom_check_test_suite(
     "test/pipeline_ports.loom-test"
     "test/pipeline_record_shapes.loom-test"
     "test/pipeline_reduce.loom-test"
+    "test/source_low/callable_values.loom-test"
     "test/source_low/carried_counter_store.loom-test"
     "test/source_low/function_storage.loom-test"
     "test/source_low/fused_packet_memory.loom-test"
@@ -554,6 +555,7 @@ loom_check_test_suite(
     "test/source_low/memory_scalar_addressing.loom-test"
     "test/source_low/memory_wide_carriers.loom-test"
     "test/source_low/memory_wide_offsets.loom-test"
+    "test/source_low/numeric_boolean_comparison.loom-test"
     "test/source_low/numeric_constant_remainder.loom-test"
     "test/source_low/numeric_conversion_f16.loom-test"
     "test/source_low/numeric_conversion_float8.loom-test"
@@ -591,6 +593,7 @@ loom_check_test_suite(
     ::loom-check
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/pipeline/record_shapes.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/callable_values.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/lookup_table.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"
@@ -598,6 +601,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_scalar_addressing.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_scalar_wide_offsets.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_wide_carriers.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_boolean_comparison.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_constant_remainder.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_conversion_float8.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_conversion_wide.loom-test"

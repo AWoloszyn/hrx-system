@@ -8,7 +8,9 @@
 
 #include <cxx/ast.h>
 #include <cxx/control.h>
+#include <cxx/symbols.h>
 #include <cxx/types.h>
+#include <cxx/views/symbol_chain.h>
 
 #include "iree/testing/gtest.h"
 #include "loom/import/cxx/source/error.h"
@@ -59,6 +61,72 @@ TEST(TypesTest, RejectsRepresentationsThatLoseSourceSemantics) {
       types.get(control->getLvalueReferenceType(control->getIntType()), owner),
       SourceRejected);
   EXPECT_THROW(types.get(control->getLongDoubleType(), owner), SourceRejected);
+}
+
+TEST(TypesTest, EnumProjectionPreservesSourceWidthSignednessAndIdentity) {
+  struct Case {
+    // Complete source definition used to establish the enum representation.
+    const char* source;
+    // Scalar storage after projection into Loom.
+    loom_scalar_type_t element;
+    // Source interpretation of the projected integer bits.
+    bool is_unsigned;
+  };
+  for (auto test : {
+           Case{"enum class Value : unsigned char { high = 255 };",
+                LOOM_SCALAR_TYPE_I8, true},
+           Case{"enum class Value : signed char { low = -128 };",
+                LOOM_SCALAR_TYPE_I8, false},
+           Case{"enum class Value : unsigned short { high = 65535 };",
+                LOOM_SCALAR_TYPE_I16, true},
+           Case{"enum Value { negative = -1, positive = 2 };",
+                LOOM_SCALAR_TYPE_I32, false},
+           Case{"enum Value { high = 0x80000000u };", LOOM_SCALAR_TYPE_I32,
+                true},
+           Case{"enum Value { high = 1ULL << 40 };", LOOM_SCALAR_TYPE_I64,
+                false},
+           Case{"enum Value { high = 0xffffffffffffffffULL };",
+                LOOM_SCALAR_TYPE_I64, true},
+       }) {
+    SCOPED_TRACE(test.source);
+    loom_cxx_import_options_t options;
+    loom_cxx_import_options_initialize(&options);
+    Source source(iree_make_cstring_view(test.source), IREE_SV("enum.cpp"),
+                  options);
+    auto symbols = source.unit().globalScope()->find("Value");
+    ASSERT_FALSE(symbols.begin() == symbols.end());
+    auto* type = (*symbols.begin())->type();
+    ASSERT_TRUE(source.unit().typeTraits().is_enum(type));
+    Types types(source.unit(), source.diagnostics());
+    auto* owner = source.unit().ast();
+    EXPECT_EQ(loom_type_element_type(types.get(type, owner)), test.element);
+    EXPECT_EQ(types.is_unsigned(type), test.is_unsigned);
+    EXPECT_EQ(types.unqualified(type), type);
+    auto* control = source.unit().control();
+    auto* constant = control->getQualType(type, cxx::CvQualifiers::kConst);
+    EXPECT_EQ(types.is_unsigned(constant), test.is_unsigned);
+    EXPECT_TRUE(
+        loom_type_equal(types.get(constant, owner), types.get(type, owner)));
+    EXPECT_THROW(types.require_mutable(constant, owner), SourceRejected);
+    EXPECT_EQ(loom_type_kind(types.get(control->getPointerType(type), owner)),
+              LOOM_TYPE_BUFFER);
+  }
+}
+
+TEST(TypesTest, BooleanEnumsKeepTheBooleanStorageContract) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV("enum class Flag : bool { no, yes };"),
+                IREE_SV("enum.cpp"), options);
+  auto symbols = source.unit().globalScope()->find("Flag");
+  ASSERT_FALSE(symbols.begin() == symbols.end());
+  auto* type = (*symbols.begin())->type();
+  Types types(source.unit(), source.diagnostics());
+  auto* owner = source.unit().ast();
+  EXPECT_EQ(loom_type_element_type(types.get(type, owner)),
+            LOOM_SCALAR_TYPE_I1);
+  EXPECT_THROW(types.get(source.unit().control()->getPointerType(type), owner),
+               SourceRejected);
 }
 
 TEST(TypesTest, VectorProjectionKeepsLaneShapeAndRejectsPackedBoolAndPadding) {
