@@ -244,6 +244,51 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         )
         self._emit_platform_guard_end(target_compatible_with)
 
+    def loom_test(
+        self,
+        name,
+        srcs,
+        deps=None,
+        data=None,
+        input_format="",
+        input_options=None,
+        args=None,
+        execution_profile=None,
+        tags=None,
+        target_compatible_with=None,
+        **kwargs,
+    ):
+        if execution_profile is not None:
+            # Device-profile rules have explicit CMake declarations owning their
+            # platform requirements, resource groups, and sanitizer policy.
+            return
+        if self._should_skip_target(tags=tags, **kwargs):
+            return
+        if deps:
+            raise NotImplementedError(
+                "CMake loom_test dependencies require a relocatable library "
+                "projection preserving the transitive dependency closure"
+            )
+        target_compatible_with = self._apply_loom_target_compatible_with(
+            target_compatible_with
+        )
+        blocks = [
+            self._convert_string_arg_block("NAME", name, quote=False),
+            self._convert_data_srcs_block(srcs),
+            self._convert_data_list_block(data),
+            self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
+            self._convert_string_list_block(
+                "INPUT_OPTIONS",
+                self._convert_location_args(input_options),
+                sort=False,
+            ),
+            self._convert_string_list_block("ARGS", args, sort=False),
+            self._convert_string_list_block("LABELS", tags, sort=False),
+        ]
+        self._emit_platform_guard_begin(target_compatible_with)
+        self._converter.body += "loom_test(\n" + "".join(blocks) + ")\n\n"
+        self._emit_platform_guard_end(target_compatible_with)
+
     def _convert_loom_module_inputs(self, block_name, inputs):
         if inputs is None:
             return ""

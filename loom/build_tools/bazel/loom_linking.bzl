@@ -38,7 +38,10 @@ def _declare_relocatable_module(
         dependency_infos,
         output_stem,
         mnemonic,
-        progress_message):
+        progress_message,
+        data = [],
+        input_format = "",
+        input_options = []):
     dependencies = _collect_dependency_modules(dependency_infos)
     transitive_dependencies = depset(
         direct = dependencies.direct,
@@ -55,6 +58,9 @@ def _declare_relocatable_module(
     args.add("--dependency-report=%s" % dependency_report.path)
     args.add("--to=bc")
     args.add("--output=%s" % module.path)
+    if input_format:
+        args.add("--input-format=%s" % input_format)
+    args.add_all(input_options, format_each = "--input-options=%s")
     args.add_all(sources)
     args.add_all(dependencies.direct, format_each = "--library=%s")
     args.add_all(
@@ -67,7 +73,7 @@ def _declare_relocatable_module(
         arguments = [args],
         executable = tool.files_to_run,
         inputs = depset(
-            direct = sources + dependencies.direct + dependencies.transitive,
+            direct = sources + data + dependencies.direct + dependencies.transitive,
         ),
         mnemonic = mnemonic,
         outputs = [module, dependency_report],

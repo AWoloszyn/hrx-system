@@ -80,4 +80,17 @@ iree_execution_test_suite(
 )
 endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    source_test
+  SRCS
+    "check_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"
+  INPUT_OPTIONS
+    "cxx:D=CHECK_EXPECTED=0u"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

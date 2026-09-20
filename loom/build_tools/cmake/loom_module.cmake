@@ -27,9 +27,9 @@ endfunction()
 function(loom_module)
   cmake_parse_arguments(
     _RULE
-    "INCLUDE_INPUT_EXPORTS;STRIP_CHECK;REQUIRE_RESOLVED_CONFIG"
-    "NAME;MODE;OUTPUT;OUTPUT_FORMAT"
-    "SRCS;LIBRARIES;ROOTS;CONFIGS"
+    "INCLUDE_INPUT_EXPORTS;INCLUDE_INPUT_TESTS;STRIP_CHECK;REQUIRE_RESOLVED_CONFIG;STRICT_DEPS"
+    "NAME;MODE;OUTPUT;OUTPUT_FORMAT;INPUT_FORMAT"
+    "SRCS;LIBRARIES;ROOTS;CONFIGS;DATA;INPUT_OPTIONS"
     ${ARGN}
   )
 
@@ -48,15 +48,15 @@ function(loom_module)
     )
   endif()
   if(_RULE_MODE STREQUAL "merge" AND
-     (_RULE_ROOTS OR _RULE_INCLUDE_INPUT_EXPORTS))
+     (_RULE_ROOTS OR _RULE_INCLUDE_INPUT_EXPORTS OR _RULE_INCLUDE_INPUT_TESTS))
     message(FATAL_ERROR
       "loom_module ${_RULE_NAME} merge mode does not accept roots"
     )
   endif()
   if(_RULE_MODE STREQUAL "link" AND
-     NOT _RULE_ROOTS AND NOT _RULE_INCLUDE_INPUT_EXPORTS)
+     NOT _RULE_ROOTS AND NOT _RULE_INCLUDE_INPUT_EXPORTS AND NOT _RULE_INCLUDE_INPUT_TESTS)
     message(FATAL_ERROR
-      "loom_module ${_RULE_NAME} link mode requires ROOTS or INCLUDE_INPUT_EXPORTS"
+      "loom_module ${_RULE_NAME} link mode requires ROOTS, INCLUDE_INPUT_EXPORTS, or INCLUDE_INPUT_TESTS"
     )
   endif()
   if(NOT _RULE_OUTPUT_FORMAT)
@@ -96,6 +96,18 @@ function(loom_module)
   if(_RULE_INCLUDE_INPUT_EXPORTS)
     list(APPEND _ARGS "--include-input-exports=true")
   endif()
+  if(_RULE_INCLUDE_INPUT_TESTS)
+    list(APPEND _ARGS "--include-input-tests")
+  endif()
+  if(_RULE_STRICT_DEPS)
+    list(APPEND _ARGS "--strict-deps")
+  endif()
+  if(_RULE_INPUT_FORMAT)
+    list(APPEND _ARGS "--input-format=${_RULE_INPUT_FORMAT}")
+  endif()
+  foreach(_OPTIONS IN LISTS _RULE_INPUT_OPTIONS)
+    list(APPEND _ARGS "--input-options=${_OPTIONS}")
+  endforeach()
   if(_RULE_STRIP_CHECK)
     list(APPEND _ARGS "--strip-check=true")
   endif()
@@ -113,6 +125,9 @@ function(loom_module)
       loom::tools::loom-link
       ${_SOURCES}
       ${_LIBRARIES}
+      ${_RULE_DATA}
+    WORKING_DIRECTORY
+      "${PROJECT_SOURCE_DIR}"
     COMMENT
       "Linking Loom module ${_RULE_OUTPUT}"
     VERBATIM

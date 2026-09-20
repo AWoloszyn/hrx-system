@@ -265,6 +265,40 @@ loom_check_test_suite(
         self.assertNotIn('"test/source_low/a.loom-test"', cmake)
         self.assertNotIn("iree_native_test(", cmake)
 
+    def test_unprofiled_loom_test_preserves_source_admission(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        loom = bazel_to_cmake_config.include_project(
+            str(repo_root / ".bazel_to_cmake.cfg.py"), "loom/.bazel_to_cmake.cfg.py"
+        )
+        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
+        cmake = bazel_to_cmake_converter.convert_build_file(
+            """
+load("//loom/build_tools/bazel:defs.bzl", "loom_test")
+loom_test(
+    name = "source_test",
+    srcs = ["check_cases.cc"],
+    data = ["check_cases.h"],
+    input_format = "cxx",
+    input_options = ["cxx:std=c++20 D=EXPECTED=5"],
+    args = ["--case=header_assertion"],
+    target_compatible_with = ["//loom/config/target/arch:vm"],
+)
+""",
+            repo_cfg,
+            str(repo_root / "loom/src/loom/import/cxx/tooling"),
+            repo_root=str(repo_root),
+        )
+        self.assertIn("if(LOOM_TARGET_ARCH_VM AND LOOM_IMPORT_CXX)", cmake)
+        self.assertIn("loom_test(", cmake)
+        self.assertIn('"check_cases.cc"', cmake)
+        self.assertIn(
+            '"${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"',
+            cmake,
+        )
+        self.assertIn('INPUT_FORMAT\n    "cxx"', cmake)
+        self.assertIn('"cxx:std=c++20 D=EXPECTED=5"', cmake)
+        self.assertIn('"--case=header_assertion"', cmake)
+
     def test_ignored_rule_accepts_loaded_and_inline_execution_profiles(self):
         repo_root = Path(__file__).resolve().parents[2]
         loom = bazel_to_cmake_config.include_project(
