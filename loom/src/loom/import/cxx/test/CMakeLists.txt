@@ -402,45 +402,59 @@ loom_check_test_suite(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-iree_execution_test_suite(
+loom_generated_file_family(
   NAME
-    kernels_test
-  MANIFESTS
-    "kernels.test.json"
-  TOOLS
-    "generate-cases=loom::py::loom::gen::test::cxx_kernel_cases"
-    "iree-test-loom=loom::tools::iree-test-loom"
-    "loom-import-cxx=loom::tools::loom-import-cxx"
-  DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/aiter_swiglu_f16.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/control_flow.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/early_returns.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/flash_attention.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_increment.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/llama_rms_norm.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/pointer_walk.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/scheduled_sum.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/short_circuit.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_depth.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-  LABELS
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
+    aiter_swiglu_f16_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "aiter_swiglu_f16_checks.loom"
+    "aiter_swiglu_f16_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=aiter_swiglu_f16"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    assumption_kernel_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "assumption_kernel_checks.loom"
+    "assumption_kernel_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=assumption_kernel"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    constant_loops_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "constant_loops_checks.loom"
+    "constant_loops_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=constant_loops"
+  TESTONLY
 )
 endif()
 
@@ -464,13 +478,1192 @@ loom_generated_file_family(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    continue_pointers_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "continue_pointers_checks.loom"
+    "continue_pointers_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=continue_pointers"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    continue_scheduled_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "continue_scheduled_checks.loom"
+    "continue_scheduled_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=continue_scheduled"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    continue_values_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "continue_values_checks.loom"
+    "continue_values_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=continue_values"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    continue_vectors_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "continue_vectors_checks.loom"
+    "continue_vectors_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=continue_vectors"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    control_flow_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "control_flow_checks.loom"
+    "control_flow_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=control_flow"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    early_returns_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "early_returns_checks.loom"
+    "early_returns_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=early_returns"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    enum_storage_u16_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "enum_storage_u16_checks.loom"
+    "enum_storage_u16_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=enum_storage_u16"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    enum_storage_u32_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "enum_storage_u32_checks.loom"
+    "enum_storage_u32_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=enum_storage_u32"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    enum_storage_u64_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "enum_storage_u64_checks.loom"
+    "enum_storage_u64_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=enum_storage_u64"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    enum_storage_u8_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "enum_storage_u8_checks.loom"
+    "enum_storage_u8_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=enum_storage_u8"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    flash_attention_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "flash_attention_checks.loom"
+    "flash_attention_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=flash_attention"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    increment_pointers_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "increment_pointers_checks.loom"
+    "increment_pointers_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=increment_pointers"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    increment_u64_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "increment_u64_checks.loom"
+    "increment_u64_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=increment_u64"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    increment_u8_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "increment_u8_checks.loom"
+    "increment_u8_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=increment_u8"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    increment_values_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "increment_values_checks.loom"
+    "increment_values_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=increment_values"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    llama_rms_norm_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "llama_rms_norm_checks.loom"
+    "llama_rms_norm_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=llama_rms_norm"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    mixed_dot_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "mixed_dot_checks.loom"
+    "mixed_dot_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=mixed_dot"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    pointer_walk_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "pointer_walk_checks.loom"
+    "pointer_walk_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=pointer_walk"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    register_lookup_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "register_lookup_checks.loom"
+    "register_lookup_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=register_lookup"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    register_lookup_float_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "register_lookup_float_checks.loom"
+    "register_lookup_float_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=register_lookup_float"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    scheduled_sum_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "scheduled_sum_checks.loom"
+    "scheduled_sum_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=scheduled_sum"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    short_circuit_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "short_circuit_checks.loom"
+    "short_circuit_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=short_circuit"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    vector_control_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "vector_control_checks.loom"
+    "vector_control_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=vector_control"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    vector_depth_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "vector_depth_checks.loom"
+    "vector_depth_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=vector_depth"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    vector_depth_span_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "vector_depth_span_checks.loom"
+    "vector_depth_span_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=vector_depth_span"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    vector_initializers_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "vector_initializers_checks.loom"
+    "vector_initializers_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=vector_initializers"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    vector_masks_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "vector_masks_checks.loom"
+    "vector_masks_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=vector_masks"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    aiter_swiglu_f16_kernel
+  SRCS
+    "aiter_swiglu_f16.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include approximate-functions=true root=aiter_swiglu_f16"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    assumption_kernel_kernel
+  SRCS
+    "assumptions.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=assumption_kernel"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    constant_loops_kernel
+  SRCS
+    "constant_loops.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=constant_loops"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_module(
   NAME
     continue_copy_kernel
   SRCS
     "structured_continue.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
   INPUT_OPTIONS
-    "cxx:root=continue_copy"
+    "cxx:builtin-includes=false I=../include root=continue_copy"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    continue_pointers_kernel
+  SRCS
+    "structured_continue.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=continue_pointers"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    continue_scheduled_kernel
+  SRCS
+    "structured_continue.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=continue_scheduled"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    continue_values_kernel
+  SRCS
+    "structured_continue.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=continue_values"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    continue_vectors_kernel
+  SRCS
+    "structured_continue.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=continue_vectors"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    control_flow_kernel
+  SRCS
+    "control_flow.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=control_flow"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    early_returns_kernel
+  SRCS
+    "early_returns.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=early_returns"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    enum_storage_u16_kernel
+  SRCS
+    "enum_values.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=enum_storage_u16"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    enum_storage_u32_kernel
+  SRCS
+    "enum_values.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=enum_storage_u32"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    enum_storage_u64_kernel
+  SRCS
+    "enum_values.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=enum_storage_u64"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    enum_storage_u8_kernel
+  SRCS
+    "enum_values.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=enum_storage_u8"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    flash_attention_kernel
+  SRCS
+    "flash_attention.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include approximate-functions=true root=flash_attention"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    increment_pointers_kernel
+  SRCS
+    "increment_values.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=increment_pointers"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    increment_u64_kernel
+  SRCS
+    "integer_increment.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=increment_u64"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    increment_u8_kernel
+  SRCS
+    "integer_increment.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=increment_u8"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    increment_values_kernel
+  SRCS
+    "increment_values.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false I=../include root=increment_values"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    llama_rms_norm_kernel
+  SRCS
+    "llama_rms_norm.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include approximate-functions=true root=llama_rms_norm"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    mixed_dot_kernel
+  SRCS
+    "shaped_intrinsics.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:root=mixed_dot"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    pointer_walk_kernel
+  SRCS
+    "pointer_walk.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=pointer_walk"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    register_lookup_kernel
+  SRCS
+    "shaped_intrinsics.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:root=register_lookup"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    register_lookup_float_kernel
+  SRCS
+    "shaped_intrinsics.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:root=register_lookup_float"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    scheduled_sum_unroll_1_depth_1_kernel
+  SRCS
+    "scheduled_sum.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:D=UNROLL=1 D=DEPTH=1 builtin-includes=false isystem=../include root=scheduled_sum"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    scheduled_sum_unroll_1_depth_2_kernel
+  SRCS
+    "scheduled_sum.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:D=UNROLL=1 D=DEPTH=2 builtin-includes=false isystem=../include root=scheduled_sum"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    scheduled_sum_unroll_3_depth_1_kernel
+  SRCS
+    "scheduled_sum.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:D=UNROLL=3 D=DEPTH=1 builtin-includes=false isystem=../include root=scheduled_sum"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    scheduled_sum_unroll_3_depth_2_kernel
+  SRCS
+    "scheduled_sum.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:D=UNROLL=3 D=DEPTH=2 builtin-includes=false isystem=../include root=scheduled_sum"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    short_circuit_kernel
+  SRCS
+    "short_circuit.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=short_circuit"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    vector_control_kernel
+  SRCS
+    "vector_values.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=vector_control_kernel"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    vector_depth_kernel
+  SRCS
+    "vector_depth.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=vector_depth"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    vector_depth_span_kernel
+  SRCS
+    "vector_depth.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=vector_depth_span"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    vector_initializers_kernel
+  SRCS
+    "vector_initializers.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:root=vector_initializers"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    vector_masks_kernel
+  SRCS
+    "vector_values.cpp"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
+  INPUT_OPTIONS
+    "cxx:builtin-includes=false isystem=../include root=vector_masks"
   MODE merge
   OUTPUT_FORMAT bc
   STRICT_DEPS
@@ -480,14 +1673,79 @@ endif()
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME continue_copy_source_test
-  SRCS "${CMAKE_CURRENT_BINARY_DIR}/continue_copy_checks.loom"
-  LIBRARIES ::continue_copy_kernel
-  DATA "${CMAKE_CURRENT_BINARY_DIR}/continue_copy_arrays"
-  ARGS --device=amdgpu
-  LABELS "iree-run-requirement=runtime.resource.amd_gpu"
-  RESOURCE_GROUP "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS lsan rocm
+# Profiled device tests own their CMake resource and sanitizer policy explicitly.
+# Source libraries and generated fixture actions above come from BUILD.bazel.
+function(_cxx_kernel_tests NAME GROUP)
+  cmake_parse_arguments(_RULE "ACCESS_SANITIZER" "" "ARGS" ${ARGN})
+  loom_test(
+    NAME "${NAME}_source_test"
+    SRCS "${CMAKE_CURRENT_BINARY_DIR}/${GROUP}_checks.loom"
+    LIBRARIES "::${NAME}_kernel"
+    DATA "${CMAKE_CURRENT_BINARY_DIR}/${GROUP}_arrays"
+    ARGS --device=amdgpu ${_RULE_ARGS}
+    LABELS "iree-run-requirement=runtime.resource.amd_gpu"
+    RESOURCE_GROUP "loom-amdgpu-tests"
+    SANITIZER_SUPPRESSIONS lsan rocm
+  )
+  if(_RULE_ACCESS_SANITIZER)
+    loom_test(
+      NAME "${NAME}_access_test"
+      SRCS "${CMAKE_CURRENT_BINARY_DIR}/${GROUP}_checks.loom"
+      LIBRARIES "::${NAME}_kernel"
+      DATA "${CMAKE_CURRENT_BINARY_DIR}/${GROUP}_arrays"
+      ARGS --device=amdgpu ${_RULE_ARGS}
+        --sanitizer=access --sanitizer-reporting=report-only
+      LABELS "iree-run-requirement=runtime.resource.amd_gpu"
+      RESOURCE_GROUP "loom-amdgpu-tests"
+      SANITIZER_SUPPRESSIONS lsan rocm
+    )
+  endif()
+endfunction()
+
+_cxx_kernel_tests(aiter_swiglu_f16 aiter_swiglu_f16
+  ARGS --config=aiter_swiglu_f16.workgroup_count.x=3
+    --config=aiter_swiglu_f16.workgroup_count.y=1
+    --config=aiter_swiglu_f16.workgroup_count.z=1
 )
+_cxx_kernel_tests(assumption_kernel assumption_kernel ACCESS_SANITIZER)
+_cxx_kernel_tests(constant_loops constant_loops ACCESS_SANITIZER)
+_cxx_kernel_tests(continue_copy continue_copy ACCESS_SANITIZER)
+_cxx_kernel_tests(continue_pointers continue_pointers ACCESS_SANITIZER)
+_cxx_kernel_tests(continue_scheduled continue_scheduled ACCESS_SANITIZER)
+_cxx_kernel_tests(continue_values continue_values ACCESS_SANITIZER)
+_cxx_kernel_tests(continue_vectors continue_vectors ACCESS_SANITIZER)
+_cxx_kernel_tests(control_flow control_flow)
+_cxx_kernel_tests(early_returns early_returns ACCESS_SANITIZER)
+_cxx_kernel_tests(enum_storage_u16 enum_storage_u16 ACCESS_SANITIZER)
+_cxx_kernel_tests(enum_storage_u32 enum_storage_u32 ACCESS_SANITIZER)
+_cxx_kernel_tests(enum_storage_u64 enum_storage_u64 ACCESS_SANITIZER)
+_cxx_kernel_tests(enum_storage_u8 enum_storage_u8 ACCESS_SANITIZER)
+_cxx_kernel_tests(flash_attention flash_attention
+  ARGS --config=flash_attention.workgroup_count.x=3
+    --config=flash_attention.workgroup_count.y=1
+    --config=flash_attention.workgroup_count.z=1
+)
+_cxx_kernel_tests(increment_pointers increment_pointers ACCESS_SANITIZER)
+_cxx_kernel_tests(increment_u64 increment_u64)
+_cxx_kernel_tests(increment_u8 increment_u8)
+_cxx_kernel_tests(increment_values increment_values ACCESS_SANITIZER)
+_cxx_kernel_tests(llama_rms_norm llama_rms_norm
+  ARGS --config=llama_rms_norm.workgroup_count.x=3
+    --config=llama_rms_norm.workgroup_count.y=1
+    --config=llama_rms_norm.workgroup_count.z=1
+)
+_cxx_kernel_tests(mixed_dot mixed_dot ACCESS_SANITIZER)
+_cxx_kernel_tests(pointer_walk pointer_walk ACCESS_SANITIZER)
+_cxx_kernel_tests(register_lookup register_lookup ACCESS_SANITIZER)
+_cxx_kernel_tests(register_lookup_float register_lookup_float ACCESS_SANITIZER)
+_cxx_kernel_tests(scheduled_sum_unroll_1_depth_1 scheduled_sum ACCESS_SANITIZER)
+_cxx_kernel_tests(scheduled_sum_unroll_1_depth_2 scheduled_sum ACCESS_SANITIZER)
+_cxx_kernel_tests(scheduled_sum_unroll_3_depth_1 scheduled_sum ACCESS_SANITIZER)
+_cxx_kernel_tests(scheduled_sum_unroll_3_depth_2 scheduled_sum ACCESS_SANITIZER)
+_cxx_kernel_tests(short_circuit short_circuit ACCESS_SANITIZER)
+_cxx_kernel_tests(vector_control vector_control ACCESS_SANITIZER)
+_cxx_kernel_tests(vector_depth vector_depth ACCESS_SANITIZER)
+_cxx_kernel_tests(vector_depth_span vector_depth_span ACCESS_SANITIZER)
+_cxx_kernel_tests(vector_initializers vector_initializers ACCESS_SANITIZER)
+_cxx_kernel_tests(vector_masks vector_masks ACCESS_SANITIZER)
 endif()

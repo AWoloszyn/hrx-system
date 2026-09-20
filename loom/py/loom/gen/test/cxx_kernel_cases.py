@@ -989,12 +989,6 @@ KERNEL_GROUPS = {
 }
 
 
-def kernel_cases(directory):
-    arrays = Arrays(directory, directory)
-    for name, generator in KERNEL_GROUPS.items():
-        (directory / f"{name}.loom").write_text(generator(arrays))
-
-
 HOST_GROUPS = {
     "schedule_functions": schedule_functions,
     "constant_loop_functions": constant_loop_functions,
@@ -1021,12 +1015,7 @@ def main():
     kernel.add_argument("--group", choices=KERNEL_GROUPS, required=True)
     kernel.add_argument("--output", type=Path, required=True)
     kernel.add_argument("--arrays", type=Path, required=True)
-    kernels = modes.add_parser("kernels", help="emit kernel cases and numerical arrays")
-    kernels.add_argument("--output-dir", type=Path, required=True)
     options = parser.parse_args()
-    if options.mode == "kernels":
-        kernel_cases(options.output_dir)
-        return
     if options.mode == "kernel":
         arrays = Arrays(options.arrays, options.output.parent)
         options.output.parent.mkdir(parents=True, exist_ok=True)
