@@ -300,6 +300,7 @@ LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_decl_predicates, 14)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_retain, 15, loom_low_retain_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_import_kind, 16, loom_low_func_decl_import_kind_t)
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_code_symbol, 17)
+LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_import_module, 18)
 enum loom_low_func_decl_build_flag_bits_e {
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -310,13 +311,14 @@ enum loom_low_func_decl_build_flag_bits_e {
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_SCHEDULE = 1u << 6,
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_IMPORT_KIND = 1u << 7,
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_CODE_SYMBOL = 1u << 8,
-  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_TARGET = 1u << 9,
-  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_ABI = 1u << 10,
-  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_EXPORT_SYMBOL = 1u << 11,
-  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_ABI_ATTRS = 1u << 12,
-  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_ABI_LAYOUT = 1u << 13,
-  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_EXPORT_ATTRS = 1u << 14,
-  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_PREDICATES = 1u << 15,
+  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_IMPORT_MODULE = 1u << 9,
+  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_TARGET = 1u << 10,
+  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_ABI = 1u << 11,
+  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_EXPORT_SYMBOL = 1u << 12,
+  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_ABI_ATTRS = 1u << 13,
+  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_ABI_LAYOUT = 1u << 14,
+  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_EXPORT_ATTRS = 1u << 15,
+  LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_PREDICATES = 1u << 16,
 };
 typedef uint32_t loom_low_func_decl_build_flags_t;
 iree_status_t loom_low_func_decl_build(
@@ -331,6 +333,7 @@ iree_status_t loom_low_func_decl_build(
     loom_optional uint8_t schedule,
     loom_optional uint8_t import_kind,
     loom_optional loom_string_id_t code_symbol,
+    loom_optional loom_string_id_t import_module,
     loom_string_id_t descriptor_set,
     loom_optional loom_symbol_ref_t target,
     loom_optional uint8_t abi,

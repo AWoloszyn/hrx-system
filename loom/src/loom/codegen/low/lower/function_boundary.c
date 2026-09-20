@@ -705,6 +705,8 @@ iree_status_t loom_low_lower_import_declaration(
   iree_status_t status = loom_low_lower_map_decl_signature_types(
       &context, &arg_types, &arg_count, &result_types, &result_count);
   if (iree_status_is_ok(status) && out_result->error_count == 0) {
+    const loom_string_id_t import_module =
+        loom_func_like_import_module(source_declaration);
     loom_string_id_t code_symbol =
         loom_func_like_import_symbol(source_declaration);
     if (code_symbol == LOOM_STRING_ID_INVALID) {
@@ -715,6 +717,9 @@ iree_status_t loom_low_lower_import_declaration(
     loom_low_func_decl_build_flags_t build_flags =
         LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_IMPORT_KIND |
         LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_CODE_SYMBOL;
+    if (import_module != LOOM_STRING_ID_INVALID) {
+      build_flags |= LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_IMPORT_MODULE;
+    }
     const uint8_t visibility = loom_func_like_visibility(source_declaration);
     const uint8_t cc = loom_func_like_cc(source_declaration);
     const uint8_t purity = loom_func_like_purity(source_declaration);
@@ -786,9 +791,10 @@ iree_status_t loom_low_lower_import_declaration(
             &context.builder, build_flags, visibility, retain, cc, purity,
             inline_policy, /*allocation=*/0, /*schedule=*/0,
             (uint8_t)options->policy->import_decl_kind, code_symbol,
-            descriptor_set_key, options->target_ref, abi, abi_attrs, abi_layout,
-            export_symbol, export_attrs, low_func_ref, arg_types, arg_count,
-            result_types, result_count, /*tied_results=*/NULL,
+            import_module, descriptor_set_key, options->target_ref, abi,
+            abi_attrs, abi_layout, export_symbol, export_attrs, low_func_ref,
+            arg_types, arg_count, result_types, result_count,
+            /*tied_results=*/NULL,
             /*tied_result_count=*/0, /*predicates=*/NULL,
             /*predicates_count=*/0, source_declaration.op->location,
             &context.low_func_op);

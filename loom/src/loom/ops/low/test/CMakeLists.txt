@@ -16,6 +16,7 @@ loom_check_test_suite(
     "assume.loom-test"
     "canonicalize.loom-test"
     "facts.loom-test"
+    "imports.loom-test"
     "roundtrip.loom-test"
     "schedule_scopes.loom-test"
     "structured_control.loom-test"

@@ -2,6 +2,12 @@
 
 test.target<low_core> @test_target
 
+low.func.decl import(native, "observe", module = "check") target<test.low.core>(@test_target) @observe(%value: reg<test.i32>)
+
+// ====
+
+test.target<low_core> @test_target
+
 low.kernel.def target<test.low.core>(@test_target) export("entry") linkage(dso_local) workgroup_size(16, 4, 1) workgroup_count(8, 2, 1) cluster_size(1, 2, 1) @entry(%buffer: reg<test.ptr>) asm {
   return
 }

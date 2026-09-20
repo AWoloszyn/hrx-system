@@ -77,6 +77,7 @@ class LowBuilder(DialectBuilder):
         schedule: str | None = ...,
         import_kind: str | None = ...,
         code_symbol: str | None = ...,
+        import_module: str | None = ...,
         descriptor_set: str,
         target: str | None = ...,
         abi: str | None = ...,
