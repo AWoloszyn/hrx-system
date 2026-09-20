@@ -54,6 +54,8 @@ struct SharedState {
   iree_notification_state_t notification;
   // Ordinary data acquired by every observer through notification publication.
   uint32_t payload;
+  // Observer round admitted after its poll owner stops setup progress.
+  iree_atomic_int32_t idle_round;
 };
 
 constexpr uint32_t kHandleCount =
@@ -172,6 +174,7 @@ int Publisher(int, char**, const char* directory) {
   CheckStatus(iree_shm_create(nullptr, sizeof(SharedState), &mapping));
   auto* state = static_cast<SharedState*>(mapping.base);
   iree_notification_state_initialize(&state->notification);
+  iree_atomic_store(&state->idle_round, 0, iree_memory_order_relaxed);
   iree_async_notification_native_t native = {};
   CheckStatus(
       iree_async_notification_native_initialize(&state->notification, &native));
@@ -200,6 +203,10 @@ int Publisher(int, char**, const char* directory) {
         enrolled.callback()));
     enrolled.Wait(peer.proactor);
     ROLE_CHECK(ready == round);
+    while (iree_atomic_load(&state->idle_round, iree_memory_order_acquire) !=
+           (int32_t)(round + 1)) {
+      std::this_thread::yield();
+    }
     ROLE_CHECK((uint32_t)iree_atomic_load(&state->notification.value,
                                           iree_memory_order_acquire) ==
                kWaiterCount);
@@ -269,6 +276,7 @@ int Observer(int, char**, const char* directory) {
                                                     &notification));
 
   for (uint32_t round = 0; round < kRounds; ++round) {
+    bool uses_async_wait = (round % 2) != 0;
     uint32_t token = iree_async_notification_query_epoch(notification);
     std::vector<std::thread> waiters;
     for (uint32_t i = 0; i < kWaiterCount; ++i) {
@@ -292,19 +300,25 @@ int Observer(int, char**, const char* directory) {
     wait.notification = notification;
     wait.wait_flags = IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN;
     wait.wait_token = token;
-    CheckStatus(iree_async_proactor_submit_one(peer.proactor, &wait.base));
+    if (uses_async_wait) {
+      CheckStatus(iree_async_proactor_submit_one(peer.proactor, &wait.base));
+    }
     WaitForEnrollment(&state->notification, kWaiterCount);
     Transfer ready;
     CheckStatus(iree_async_local_stream_send(
         peer.stream, iree_make_const_byte_span(&round, sizeof(round)), 0,
         nullptr, ready.callback()));
     ready.Wait(peer.proactor);
-    while (!completed) {
-      CheckStatus(iree_async_proactor_poll(peer.proactor,
-                                           iree_infinite_timeout(), nullptr));
-    }
+    // Publication cannot occur before this handoff. Blocking workers must
+    // finish while the proactor is idle, even with an admitted async observer.
+    iree_atomic_store(&state->idle_round, (int32_t)(round + 1),
+                      iree_memory_order_release);
     for (auto& waiter : waiters) {
       waiter.join();
+    }
+    while (uses_async_wait && !completed) {
+      CheckStatus(iree_async_proactor_poll(peer.proactor,
+                                           iree_infinite_timeout(), nullptr));
     }
     ROLE_CHECK(state->payload == 101 + round);
     ROLE_CHECK(iree_async_notification_query_epoch(notification) == token + 1);
