@@ -68,8 +68,12 @@ typedef struct loom_segmented_storage_directory_t {
 // The storage object does not own or reset its arena. Every pointer becomes
 // invalid when the owner resets that arena, after which the owner must
 // reinitialize the storage object before reuse. Initialized storage may be
-// copied for read-only use; appends must continue through one authoritative
-// instance.
+// copied as a read-only prefix snapshot. An exclusive owner may stage appends
+// through one copy, then publish that copy or discard the extension and restore
+// its arena checkpoint. Appends never overwrite pointers in the original
+// prefix, and sequential boundaries recreate unpublished pages without reading
+// their slots. Only one copy may append at a time; snapshots do not roll back
+// mutations to existing segment payloads.
 typedef struct loom_segmented_storage_t {
   // Number of initialized segment pointers.
   uint32_t segment_count;
@@ -101,8 +105,10 @@ void loom_segmented_storage_move(loom_segmented_storage_t* source,
 // Appends one uninitialized segment allocated from |arena| and returns it.
 // Existing segment payload pointers remain stable.
 // Allocation failure leaves the directory and published count unchanged.
-// Successful appends mutate shared pages and cannot be undone by restoring
-// only a shallow copy of the storage object before rewinding the arena.
+// Successful appends initialize only pointer slots beyond the prior prefix.
+// To discard a staged extension, retain the prior header and restore the arena
+// checkpoint preceding the extension before appending through that header
+// again. New payloads must not have been published to another owner.
 iree_status_t loom_segmented_storage_append(loom_segmented_storage_t* storage,
                                             iree_arena_allocator_t* arena,
                                             void** out_segment);
