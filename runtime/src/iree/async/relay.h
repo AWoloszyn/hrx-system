@@ -278,8 +278,10 @@ struct iree_async_relay_t {
       // Non-NULL when this relay has a NOTIFICATION source and is linked
       // into the source notification's relay_list.
       struct iree_async_relay_t* notification_relay_next;
-      // True after source monitoring ended due to a relay fault.
+      // True after source monitoring ended for terminal delivery or a fault.
       bool is_terminal;
+      // Native sink error held until source bookkeeping is complete.
+      int sink_error;
     } posix;
     struct {
       // Per-notification relay chain linkage (poll thread only).

@@ -2945,8 +2945,7 @@ iree_async_proactor_posix_detach_notification_waits(
       !notification->platform.posix.relay_list) {
     int fd = notification->platform.posix.event.wait_primitive.value.fd;
     iree_async_posix_fd_map_remove(&proactor->fd_map, fd);
-    iree_status_ignore(
-        iree_async_posix_event_set_remove(proactor->event_set, fd));
+    IREE_CHECK_OK(iree_async_posix_event_set_remove(proactor->event_set, fd));
   }
   return ready_head;
 }

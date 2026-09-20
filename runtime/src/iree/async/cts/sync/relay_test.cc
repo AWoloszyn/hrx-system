@@ -72,6 +72,40 @@ TEST_P(RelayTest, NotificationToNotification) {
   iree_async_notification_release(sink_notification);
 }
 
+// Source observation stays on its owner; signal publication may cross owners.
+TEST_P(RelayTest, SourceOwnerIsLocalButSinkOwnerMayDiffer) {
+  iree_async_proactor_t* peer = nullptr;
+  IREE_ASSERT_OK_AND_ASSIGN(
+      peer, GetParam().factory(iree_async_proactor_options_default()));
+  iree_async_notification_t* source = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &source));
+  iree_async_notification_t* sink = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      peer, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
+  iree_async_relay_t* relay = nullptr;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_async_proactor_register_relay(
+          proactor_, iree_async_relay_source_from_notification(sink),
+          iree_async_relay_sink_signal_notification(source, 1),
+          IREE_ASYNC_RELAY_FLAG_NONE, iree_async_relay_error_callback_none(),
+          &relay));
+  EXPECT_EQ(relay, nullptr);
+  IREE_ASSERT_OK(iree_async_proactor_register_relay(
+      proactor_, iree_async_relay_source_from_notification(source),
+      iree_async_relay_sink_signal_notification(sink, 1),
+      IREE_ASYNC_RELAY_FLAG_PERSISTENT, iree_async_relay_error_callback_none(),
+      &relay));
+  iree_async_notification_signal(source, 1);
+  PollUntilNotificationEpochAdvances(sink, 0);
+  EXPECT_EQ(iree_async_notification_query_epoch(sink), 1u);
+  WaitForRelayUnregistration(relay);
+  iree_async_notification_release(sink);
+  iree_async_notification_release(source);
+  iree_async_proactor_release(peer);
+}
+
 // Persistent notification relay fires multiple times.
 TEST_P(RelayTest, PersistentNotificationRelay) {
   iree_async_notification_t* source_notification = nullptr;

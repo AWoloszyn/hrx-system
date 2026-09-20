@@ -20,8 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 // Executes the sink action synchronously.
-// Returns true on success, false on failure with errno set.
-static bool iree_async_posix_relay_fire_sink(iree_async_relay_t* relay) {
+// Returns zero on success or the native error code on failure.
+static int iree_async_posix_relay_fire_sink(iree_async_relay_t* relay) {
   switch (relay->sink.type) {
     case IREE_ASYNC_RELAY_SINK_TYPE_SIGNAL_PRIMITIVE: {
       uint64_t value = relay->sink.signal_primitive.value;
@@ -31,7 +31,7 @@ static bool iree_async_posix_relay_fire_sink(iree_async_relay_t* relay) {
                         sizeof(value));
       } while (written < 0 && errno == EINTR);
       if (written != sizeof(value)) {
-        return false;
+        return written < 0 ? errno : EIO;
       }
       break;
     }
@@ -42,7 +42,7 @@ static bool iree_async_posix_relay_fire_sink(iree_async_relay_t* relay) {
       break;
     }
   }
-  return true;
+  return 0;
 }
 
 // Drains a level-triggered source fd to prevent busy-loops.
@@ -146,8 +146,11 @@ static iree_status_t iree_async_posix_notification_activate(
       &proactor->fd_map, fd, IREE_ASYNC_POSIX_FD_HANDLER_NOTIFICATION,
       notification);
   if (!iree_status_is_ok(status)) {
-    iree_status_ignore(
-        iree_async_posix_event_set_remove(proactor->event_set, fd));
+    iree_status_t cleanup_status =
+        iree_async_posix_event_set_remove(proactor->event_set, fd);
+    if (!iree_status_is_ok(cleanup_status)) {
+      iree_status_abort(iree_status_join(status, cleanup_status));
+    }
     return status;
   }
   return iree_ok_status();
@@ -160,8 +163,7 @@ static void iree_async_posix_notification_deactivate(
     iree_async_notification_t* notification) {
   int fd = notification->platform.posix.event.wait_primitive.value.fd;
   iree_async_posix_fd_map_remove(&proactor->fd_map, fd);
-  iree_status_ignore(
-      iree_async_posix_event_set_remove(proactor->event_set, fd));
+  IREE_CHECK_OK(iree_async_posix_event_set_remove(proactor->event_set, fd));
 }
 
 // Stops monitoring a relay source without destroying the caller-visible relay
@@ -171,8 +173,7 @@ static void iree_async_posix_relay_deactivate_source(
   if (relay->source.type == IREE_ASYNC_RELAY_SOURCE_TYPE_PRIMITIVE) {
     int fd = relay->source.primitive.value.fd;
     iree_async_posix_fd_map_remove(&proactor->fd_map, fd);
-    iree_status_ignore(
-        iree_async_posix_event_set_remove(proactor->event_set, fd));
+    IREE_CHECK_OK(iree_async_posix_event_set_remove(proactor->event_set, fd));
   } else {
     iree_async_notification_t* notification = relay->source.notification;
     iree_async_posix_relay_remove_from_notification_list(relay);
@@ -182,15 +183,13 @@ static void iree_async_posix_relay_deactivate_source(
   }
 }
 
-// Stops source monitoring, invokes the error callback, and retains persistent
-// relay handles for explicit terminal unregistration. Takes ownership of
-// |status|.
-static void iree_async_posix_relay_fault(iree_async_proactor_posix_t* proactor,
-                                         iree_async_relay_t* relay,
-                                         iree_status_t status) {
+// Reports a fault after source monitoring has stopped. Persistent handles
+// remain retained for explicit unregistration. Takes ownership of |status|.
+static void iree_async_posix_relay_report_fault(
+    iree_async_proactor_posix_t* proactor, iree_async_relay_t* relay,
+    iree_status_t status) {
   bool is_persistent =
       iree_any_bit_set(relay->flags, IREE_ASYNC_RELAY_FLAG_PERSISTENT);
-  iree_async_posix_relay_deactivate_source(proactor, relay);
   relay->platform.posix.is_terminal = true;
   if (relay->error_callback.fn) {
     relay->error_callback.fn(relay->error_callback.user_data, relay, status);
@@ -227,10 +226,12 @@ iree_status_t iree_async_proactor_posix_register_relay(
       }
       break;
     case IREE_ASYNC_RELAY_SOURCE_TYPE_NOTIFICATION:
-      if (!source.notification) {
+      if (!source.notification ||
+          source.notification->proactor != &proactor->base) {
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "relay source notification must not be NULL");
+                                "relay source must belong to the registering "
+                                "proactor");
       }
       break;
     default:
@@ -302,8 +303,11 @@ iree_status_t iree_async_proactor_posix_register_relay(
       status = iree_async_posix_fd_map_insert(
           &proactor->fd_map, fd, IREE_ASYNC_POSIX_FD_HANDLER_RELAY, relay);
       if (!iree_status_is_ok(status)) {
-        iree_status_ignore(
-            iree_async_posix_event_set_remove(proactor->event_set, fd));
+        iree_status_t cleanup_status =
+            iree_async_posix_event_set_remove(proactor->event_set, fd);
+        if (!iree_status_is_ok(cleanup_status)) {
+          iree_status_abort(iree_status_join(status, cleanup_status));
+        }
       }
     }
     if (!iree_status_is_ok(status)) {
@@ -412,11 +416,12 @@ void iree_async_proactor_posix_dispatch_relay(
   }
 
   if (should_fire) {
-    if (!iree_async_posix_relay_fire_sink(relay)) {
-      int saved_errno = errno;
-      iree_async_posix_relay_fault(
+    int error = iree_async_posix_relay_fire_sink(relay);
+    if (error) {
+      iree_async_posix_relay_deactivate_source(proactor, relay);
+      iree_async_posix_relay_report_fault(
           proactor, relay,
-          iree_make_status(iree_status_code_from_errno(saved_errno),
+          iree_make_status(iree_status_code_from_errno(error),
                            "relay sink write failed"));
       return;  // Persistent handles remain terminal until unregistered.
     }
@@ -427,20 +432,8 @@ void iree_async_proactor_posix_dispatch_relay(
     // Drain source to prevent busy-loops with level-triggered monitoring.
     iree_async_posix_relay_drain_source(relay);
   } else {
-    // One-shot: remove from fd_map + event_set, then clean up.
-    int fd = relay->source.primitive.value.fd;
-    iree_async_posix_fd_map_remove(&proactor->fd_map, fd);
-    iree_status_ignore(
-        iree_async_posix_event_set_remove(proactor->event_set, fd));
-
-    // Close source fd if we own it.
-    if (relay->flags & IREE_ASYNC_RELAY_FLAG_OWN_SOURCE_PRIMITIVE) {
-      close(fd);
-    }
-
-    // Unlink and free.
-    iree_async_posix_relay_unlink(proactor, relay);
-    iree_async_posix_relay_release_resources(relay);
+    iree_async_proactor_posix_unregister_relay(
+        proactor, relay, iree_async_relay_unregistered_callback_none());
   }
 }
 
@@ -452,7 +445,8 @@ void iree_async_proactor_posix_dispatch_notification_relays(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_t* notification) {
   uint32_t current_epoch = iree_async_notification_query_epoch(notification);
-
+  iree_async_relay_t* ready = NULL;
+  iree_async_relay_t** ready_tail = &ready;
   iree_async_relay_t** previous = &notification->platform.posix.relay_list;
   iree_async_relay_t* relay = notification->platform.posix.relay_list;
   while (relay) {
@@ -465,37 +459,44 @@ void iree_async_proactor_posix_dispatch_notification_relays(
       continue;
     }
 
-    // Epoch advanced — fire the sink.
-    if (!iree_async_posix_relay_fire_sink(relay)) {
-      int saved_errno = errno;
-      iree_async_posix_relay_fault(
-          proactor, relay,
-          iree_make_status(iree_status_code_from_errno(saved_errno),
-                           "relay sink write failed"));
-      // The fault handler removed |relay| from this notification's list.
-      relay = next;
-      continue;
-    }
-
-    bool is_persistent = (relay->flags & IREE_ASYNC_RELAY_FLAG_PERSISTENT) != 0;
-    if (is_persistent) {
-      // Update wait_epoch for next dispatch cycle.
+    // Sink publication invokes no user callbacks. Detach finished consumers
+    // before an error callback can register a new relay at the source head.
+    int error = iree_async_posix_relay_fire_sink(relay);
+    if (!error &&
+        iree_any_bit_set(relay->flags, IREE_ASYNC_RELAY_FLAG_PERSISTENT)) {
       relay->wait_epoch = current_epoch;
       previous = &relay->platform.posix.notification_relay_next;
     } else {
-      // One-shot: remove from notification relay list.
       *previous = next;
       relay->platform.posix.notification_relay_next = NULL;
-      // Check if notification should deactivate after list removal.
-      if (!iree_async_posix_notification_has_consumers(notification)) {
-        iree_async_posix_notification_deactivate(proactor, notification);
-      }
-      // Unlink from proactor relay list and free.
-      iree_async_posix_relay_unlink(proactor, relay);
-      iree_async_posix_relay_release_resources(relay);
+      relay->platform.posix.is_terminal = true;
+      relay->platform.posix.sink_error = error;
+      *ready_tail = relay;
+      ready_tail = &relay->platform.posix.notification_relay_next;
     }
 
     relay = next;
+  }
+  if (ready && !iree_async_posix_notification_has_consumers(notification)) {
+    iree_async_posix_notification_deactivate(proactor, notification);
+  }
+
+  // No source access after this boundary. Detached relays retain it through
+  // their final callback, which may admit work or release caller ownership.
+  while (ready) {
+    relay = ready;
+    ready = relay->platform.posix.notification_relay_next;
+    relay->platform.posix.notification_relay_next = NULL;
+    int error = relay->platform.posix.sink_error;
+    if (error) {
+      iree_async_posix_relay_report_fault(
+          proactor, relay,
+          iree_make_status(iree_status_code_from_errno(error),
+                           "relay sink write failed"));
+    } else {
+      iree_async_posix_relay_unlink(proactor, relay);
+      iree_async_posix_relay_release_resources(relay);
+    }
   }
 }
 
@@ -514,7 +515,7 @@ void iree_async_proactor_posix_destroy_all_relays(
         // Remove from fd_map and event_set before close (kqueue safety).
         int fd = relay->source.primitive.value.fd;
         iree_async_posix_fd_map_remove(&proactor->fd_map, fd);
-        iree_status_ignore(
+        IREE_CHECK_OK(
             iree_async_posix_event_set_remove(proactor->event_set, fd));
       } else {
         // Remove from the notification's relay list. No deactivation is
