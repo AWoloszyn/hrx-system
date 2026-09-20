@@ -18,20 +18,19 @@ extern "C" {
 
 typedef struct loom_parser_t loom_parser_t;
 
-// Placeholder SSA value created by ARG-mode type parsing inside the current
-// Scope(...). |resolved| tracks whether a later declaration in the same scope
-// bound that placeholder name, and |name_token| is retained so scope-exit
-// diagnostics can point at the original forward reference without storing
-// source locations on every lexical scope entry.
+// Placeholder SSA value created by ARG-mode type parsing. |resolved| tracks
+// later declarations inside Scope(...); explicit block argument lists resolve
+// placeholders by assigning their value type. |name_token| retains the
+// original forward-reference location.
 typedef struct loom_parser_unresolved_placeholder_t {
   loom_value_id_t value_id;
   loom_token_t name_token;
   bool resolved;
 } loom_parser_unresolved_placeholder_t;
 
-// Growable scratch list of signature/global placeholders created by ARG-mode
-// type parsing. Entries are appended as placeholders are created and truncated
-// when the one active Scope(...) exits.
+// Growable scratch list of placeholders created by ARG-mode type parsing.
+// Entries are appended as placeholders are created and truncated when their
+// declaration or block-argument binder scope exits.
 typedef struct loom_parser_unresolved_placeholders_t {
   loom_parser_unresolved_placeholder_t* entries;
   iree_host_size_t count;

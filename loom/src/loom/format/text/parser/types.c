@@ -382,6 +382,13 @@ loom_type_binding_lookup_placeholder(loom_parser_t* parser,
 // signatures wait for a later explicit binder.
 static iree_status_t loom_assign_type_binding_value_type(
     loom_parser_t* parser, loom_value_id_t value_id, loom_type_t binding_type) {
+  // Explicit block argument binders own their types. Forward references remain
+  // NONE-typed until their binder is parsed; resolved binders are checked by
+  // the verifier once the complete block is available.
+  if (loom_parser_in_block_arg_scope(parser) &&
+      value_id >= parser->block_arg_scope.value_start) {
+    return iree_ok_status();
+  }
   loom_parser_unresolved_placeholder_t* placeholder =
       loom_type_binding_lookup_placeholder(parser, value_id);
   loom_value_t* value = loom_module_value(parser->module, value_id);

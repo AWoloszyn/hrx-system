@@ -94,11 +94,19 @@ typedef struct loom_parser_t {
   // First source occurrence of every module symbol created during parsing.
   loom_parser_symbol_origins_t symbol_origins;
 
-  // Placeholder values created by ARG-mode type parsing inside Scope(...).
+  // Placeholder values created by ARG-mode type parsing.
   loom_parser_unresolved_placeholders_t unresolved_placeholders;
 
   // One active Scope(...) declaration wrapper.
   loom_parser_definition_scope_t definition_scope;
+
+  // Temporary placeholder range for one explicit block argument list.
+  struct {
+    // First placeholder entry owned by the active list.
+    iree_host_size_t placeholder_start;
+    // First value created by the active list, or INVALID when inactive.
+    loom_value_id_t value_start;
+  } block_arg_scope;
 } loom_parser_t;
 
 // Returns true while parsing the body of the one active Scope(...) declaration
@@ -106,6 +114,11 @@ typedef struct loom_parser_t {
 static inline bool loom_parser_in_definition_scope(
     const loom_parser_t* parser) {
   return parser->definition_scope.pop_at != UINT16_MAX;
+}
+
+// Returns true while parsing an explicit block argument list.
+static inline bool loom_parser_in_block_arg_scope(const loom_parser_t* parser) {
+  return parser->block_arg_scope.value_start != LOOM_VALUE_ID_INVALID;
 }
 
 #ifdef __cplusplus

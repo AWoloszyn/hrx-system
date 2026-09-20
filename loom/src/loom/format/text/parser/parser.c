@@ -849,6 +849,116 @@ iree_status_t loom_parser_seed_region_entry_block(loom_parser_t* parser,
   return iree_ok_status();
 }
 
+static void loom_parser_discard_block_arg_scope(loom_parser_t* parser) {
+  parser->unresolved_placeholders.count =
+      parser->block_arg_scope.placeholder_start;
+  parser->block_arg_scope.placeholder_start = 0;
+  parser->block_arg_scope.value_start = LOOM_VALUE_ID_INVALID;
+}
+
+static iree_status_t loom_parser_finish_block_arg_scope(loom_parser_t* parser) {
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t i = parser->block_arg_scope.placeholder_start;
+       i < parser->unresolved_placeholders.count; ++i) {
+    const loom_parser_unresolved_placeholder_t placeholder =
+        parser->unresolved_placeholders.entries[i];
+    if (loom_type_kind(loom_module_value_type(
+            parser->module, placeholder.value_id)) != LOOM_TYPE_NONE) {
+      continue;
+    }
+    loom_diagnostic_param_t params[] = {
+        loom_param_string(placeholder.name_token.text),
+    };
+    status = loom_parser_emit(parser, LOOM_ERR_PARSE_001, params,
+                              IREE_ARRAYSIZE(params), placeholder.name_token);
+    break;
+  }
+  loom_parser_discard_block_arg_scope(parser);
+  return status;
+}
+
+// Binds one block argument name before its type is parsed. A NONE-typed value
+// created since the list began is a forward reference to this binder.
+static iree_status_t loom_parser_bind_block_arg(loom_parser_t* parser,
+                                                loom_token_t name_token,
+                                                loom_value_id_t* out_value_id) {
+  loom_string_id_t name_id =
+      loom_module_lookup_string(parser->module, name_token.text);
+  loom_value_id_t value_id =
+      loom_parser_scope_lookup_local(parser->scope, name_id);
+  if (value_id != LOOM_VALUE_ID_INVALID) {
+    if (value_id < parser->block_arg_scope.value_start ||
+        loom_type_kind(loom_module_value_type(parser->module, value_id)) !=
+            LOOM_TYPE_NONE) {
+      return loom_parser_emit_duplicate_value_name(parser, name_token);
+    }
+  } else {
+    IREE_RETURN_IF_ERROR(
+        loom_module_define_value(parser->module, loom_type_none(), &value_id));
+    IREE_RETURN_IF_ERROR(
+        loom_parser_define_value_name(parser, name_token, value_id));
+  }
+  *out_value_id = value_id;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_parser_parse_block_arg(loom_parser_t* parser,
+                                                 loom_block_t* block) {
+  loom_token_t name_token = loom_token_none();
+  LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_SSA_VALUE, &name_token);
+  LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_COLON, NULL);
+
+  uint32_t errors_before = parser->error_count;
+  loom_value_id_t value_id = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(
+      loom_parser_bind_block_arg(parser, name_token, &value_id));
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
+
+  loom_type_t type = {0};
+  errors_before = parser->error_count;
+  IREE_RETURN_IF_ERROR(loom_parse_type(parser, LOOM_TYPE_PARSE_ARG, &type));
+  if (parser->error_count > errors_before) {
+    return iree_ok_status();
+  }
+
+  IREE_RETURN_IF_ERROR(
+      loom_module_set_value_type(parser->module, value_id, type));
+  return loom_block_add_arg(parser->module, block, value_id);
+}
+
+static iree_status_t loom_parser_parse_block_args(loom_parser_t* parser,
+                                                  loom_block_t* block) {
+  const uint32_t errors_before = parser->error_count;
+  parser->block_arg_scope.placeholder_start =
+      parser->unresolved_placeholders.count;
+  parser->block_arg_scope.value_start =
+      (loom_value_id_t)parser->module->values.count;
+
+  iree_status_t status = iree_ok_status();
+  while (!loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_RPAREN) &&
+         !loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_EOF)) {
+    if (block->arg_count > 0 &&
+        !loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_COMMA)) {
+      break;
+    }
+    status = loom_parser_parse_block_arg(parser, block);
+    if (!iree_status_is_ok(status) || parser->error_count > errors_before) {
+      break;
+    }
+  }
+  if (iree_status_is_ok(status) && parser->error_count == errors_before) {
+    status = loom_parser_expect(parser, LOOM_TOKEN_RPAREN, NULL);
+  }
+  if (iree_status_is_ok(status) && parser->error_count == errors_before) {
+    status = loom_parser_finish_block_arg_scope(parser);
+  } else {
+    loom_parser_discard_block_arg_scope(parser);
+  }
+  return status;
+}
+
 iree_status_t loom_parser_parse_optional_block_label(loom_parser_t* parser,
                                                      loom_region_t* region,
                                                      loom_block_t* block,
@@ -882,26 +992,15 @@ iree_status_t loom_parser_parse_optional_block_label(loom_parser_t* parser,
       parser->module, block, comments, comment_count));
 
   if (loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_LPAREN)) {
-    while (!loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_RPAREN) &&
-           !loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_EOF)) {
-      if (block->arg_count > 0) {
-        if (!loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_COMMA)) {
-          break;
-        }
+    const uint32_t errors_before = parser->error_count;
+    IREE_RETURN_IF_ERROR(loom_parser_parse_block_args(parser, block));
+    if (parser->error_count > errors_before) {
+      if (loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_COLON)) {
+        loom_tokenizer_next(&parser->tokenizer);
       }
-      loom_token_t arg_name_token = loom_token_none();
-      LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_SSA_VALUE, &arg_name_token);
-      LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_COLON, NULL);
-      loom_type_t arg_type = {0};
-      IREE_RETURN_IF_ERROR(
-          loom_parse_type(parser, LOOM_TYPE_PARSE_BODY, &arg_type));
-
-      loom_value_id_t arg_value_id = 0;
-      IREE_RETURN_IF_ERROR(loom_builder_define_block_arg(
-          &parser->builder, block, arg_type, &arg_value_id));
-      LOOM_PARSE_DEFINE_VALUE_NAME(parser, arg_name_token, arg_value_id);
+      *out_present = true;
+      return iree_ok_status();
     }
-    LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_RPAREN, NULL);
   }
 
   LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_COLON, NULL);
@@ -1211,6 +1310,10 @@ static iree_status_t loom_text_parse_impl(
       .definition_scope =
           {
               .pop_at = UINT16_MAX,
+          },
+      .block_arg_scope =
+          {
+              .value_start = LOOM_VALUE_ID_INVALID,
           },
   };
   if (options) {
