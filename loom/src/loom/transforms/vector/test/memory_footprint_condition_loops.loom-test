@@ -1,0 +1,240 @@
+// RUN: with-checks pass vector-memory-footprint
+
+func.def @condition_body_excludes_terminal(%output: buffer) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<4xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %more = index.cmp slt, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %value = index.cast %position : index to i32
+    view.store %value, %view[%position] : i32, view<4xi32>
+    %next = index.add %step, %position : index
+    scf.yield %next : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *view.store %value, %view[*] : i32, view<4xi32>
+
+// ====
+
+// RUN: with-checks pass vector-memory-footprint
+
+func.def @condition_partial_step(%output: buffer) {
+  %begin = index.constant 2 : index
+  %step = index.constant 3 : index
+  %end = index.constant 9 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<9xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %more = index.cmp slt, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %value = index.cast %position : index to i32
+    view.store %value, %view[%position] : i32, view<9xi32>
+    %next = index.add %step, %position : index
+    scf.yield %next : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *view.store %value, %view[*] : i32, view<9xi32>
+
+// ====
+
+// RUN: with-checks pass vector-memory-footprint
+
+func.def @condition_inclusive_body(%output: buffer) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 3 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<4xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %more = index.cmp sle, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %value = index.cast %position : index to i32
+    view.store %value, %view[%position] : i32, view<4xi32>
+    %next = index.add %step, %position : index
+    scf.yield %next : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *view.store %value, %view[*] : i32, view<4xi32>
+
+// ====
+
+// RUN: with-checks pass vector-memory-footprint
+
+func.def @condition_declared_aliases(%output: buffer) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<4xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %more = index.cmp slt, %before, %end : index
+    %forwarded = index.assume %before [] : index
+    scf.condition %more, %forwarded : i1, index
+  } do(%position: index) {
+    %value = index.cast %position : index to i32
+    view.store %value, %view[%position] : i32, view<4xi32>
+    %body_counter = index.assume %position [] : index
+    %next = index.add %step, %body_counter : index
+    %backedge = index.assume %next [] : index
+    scf.yield %backedge : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *view.store %value, %view[*] : i32, view<4xi32>
+
+// ====
+
+// RUN: pass vector-memory-footprint
+
+func.def @condition_header_includes_terminal(%output: buffer) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<4xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %value = index.cast %before : index to i32
+    // ERROR@+1: SUBRANGE/024
+    view.store %value, %view[%before] : i32, view<4xi32>
+    %more = index.cmp slt, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %next = index.add %step, %position : index
+    scf.yield %next : index
+  }
+  func.return
+}
+
+// ====
+
+// RUN: pass vector-memory-footprint
+
+func.def @condition_exit_is_terminal(%output: buffer) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<4xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %more = index.cmp slt, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %next = index.add %step, %position : index
+    scf.yield %next : index
+  }
+  %value = index.cast %terminal : index to i32
+  // ERROR@+1: SUBRANGE/024
+  view.store %value, %view[%terminal] : i32, view<4xi32>
+  func.return
+}
+
+// ====
+
+// RUN: pass vector-memory-footprint
+
+func.def @condition_negative_start(%output: buffer) {
+  %begin = index.constant -1 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<4xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %more = index.cmp slt, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %value = index.cast %position : index to i32
+    // ERROR@+1: SUBRANGE/023
+    view.store %value, %view[%position] : i32, view<4xi32>
+    %next = index.add %step, %position : index
+    scf.yield %next : index
+  }
+  func.return
+}
+
+// ====
+
+// RUN: pass vector-memory-footprint
+
+func.def @condition_bound_must_be_invariant(%output: buffer) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<4xi32>
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %limit = index.add %before, %end : index
+    %more = index.cmp slt, %before, %limit : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %value = index.cast %position : index to i32
+    // ERROR@+1: SUBRANGE/023
+    view.store %value, %view[%position] : i32, view<4xi32>
+    %next = index.add %step, %position : index
+    scf.yield %next : index
+  }
+  func.return
+}
+
+// ====
+
+// RUN: with-checks pass vector-memory-footprint
+
+func.def @nested_condition_loops(%output: buffer, %enabled: i1) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %rows = index.constant 3 : index
+  %columns = index.constant 4 : index
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<12xi32>
+  %row_end = scf.while(%row_before = %begin : index) -> (index) {
+    %more_rows = index.cmp slt, %row_before, %rows : index
+    scf.condition %more_rows, %row_before : i1, index
+  } do(%row: index) {
+    %row_base = index.mul %row, %columns : index
+    %column_end = scf.while(%column_before = %begin : index) -> (index) {
+      %more_columns = index.cmp ult, %column_before, %columns : index
+      scf.condition %more_columns, %column_before : i1, index
+    } do(%column: index) {
+      scf.if %enabled {
+        %position = index.add %row_base, %column : index
+        %value = index.cast %position : index to i32
+        view.store %value, %view[%position] : i32, view<12xi32>
+      } else {
+      }
+      %next_column = index.add %column, %step : index
+      scf.yield %next_column : index
+    }
+    %next_row = index.add %row, %step : index
+    scf.yield %next_row : index
+  }
+  func.return
+}
+
+// ----
+CHECK: *view.store %value, %view[%position] : i32, view<12xi32>

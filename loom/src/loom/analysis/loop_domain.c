@@ -67,6 +67,8 @@ loom_loop_recurrence_facts_t loom_loop_domain_recurrence_facts(
     int64_t initial_value, int64_t upper_bound, int64_t step) {
   loom_loop_recurrence_facts_t result = {
       .values = loom_value_facts_unknown(),
+      .body_values = loom_value_facts_unknown(),
+      .exit_value = loom_value_facts_unknown(),
   };
   result.trip_count_known = loom_loop_domain_trip_count(
       bound_flags, bitwidth, (uint64_t)initial_value, (uint64_t)upper_bound,
@@ -79,6 +81,7 @@ loom_loop_recurrence_facts_t loom_loop_domain_recurrence_facts(
   }
   if (result.trip_count == 0) {
     result.values = loom_value_facts_exact_i64(initial_value);
+    result.exit_value = result.values;
     return result;
   }
   if (step <= 0 || step > maximum) {
@@ -97,5 +100,7 @@ loom_loop_recurrence_facts_t loom_loop_domain_recurrence_facts(
                                ? (int64_t)(rank - (UINT64_C(1) << 63))
                                : INT64_MIN + (int64_t)rank;
   result.values = loom_value_facts_make(initial_value, terminal, 1);
+  result.body_values = loom_value_facts_make(initial_value, terminal - step, 1);
+  result.exit_value = loom_value_facts_exact_i64(terminal);
   return result;
 }

@@ -1001,21 +1001,6 @@ static iree_status_t loom_low_lower_emit_descriptor_matrix_plan(
   }
 }
 
-static uint64_t loom_low_lower_count_low_body_ops(
-    const loom_low_lower_context_t* context) {
-  uint64_t op_count = 0;
-  loom_region_t* low_body = loom_low_lower_low_body(context);
-  IREE_ASSERT(low_body != NULL);
-  if (low_body == NULL) {
-    return 0;
-  }
-  for (uint16_t block_index = 0; block_index < low_body->block_count;
-       ++block_index) {
-    op_count += loom_region_block(low_body, block_index)->op_count;
-  }
-  return op_count;
-}
-
 static iree_status_t loom_low_lower_emit_selected_plan(
     loom_low_lower_context_t* context, const loom_op_t* source_op) {
   IREE_ASSERT_LT(context->lowering.source_plan.selected_plan_emit_index,
@@ -1034,10 +1019,7 @@ static iree_status_t loom_low_lower_emit_selected_plan(
   }
   const bool report_allocator_provided =
       !iree_allocator_is_null(context->options->report_allocator);
-  uint64_t before_op_count = 0;
-  if (report_allocator_provided) {
-    before_op_count = loom_low_lower_count_low_body_ops(context);
-  }
+  const uint64_t before_op_count = context->lowering.report.emitted_op_count;
   if (selected_plan.kind == LOOM_LOW_LOWER_SELECTED_PLAN_RULE) {
     IREE_ASSERT(selected_plan.rule_set != NULL);
     IREE_ASSERT(selected_plan.rule != NULL);
@@ -1062,9 +1044,8 @@ static iree_status_t loom_low_lower_emit_selected_plan(
                                     source_op, selected_plan.data.target_plan));
   }
   if (report_allocator_provided) {
-    const uint64_t after_op_count = loom_low_lower_count_low_body_ops(context);
-    IREE_ASSERT_GE(after_op_count, before_op_count);
-    const uint64_t emitted_op_count = after_op_count - before_op_count;
+    const uint64_t emitted_op_count =
+        context->lowering.report.emitted_op_count - before_op_count;
     IREE_ASSERT_LE(emitted_op_count, UINT32_MAX);
     IREE_RETURN_IF_ERROR(loom_low_lower_report_record_selected_plan(
         context, &selected_plan, (uint32_t)emitted_op_count));
@@ -1421,6 +1402,7 @@ iree_status_t loom_low_lower_function(loom_module_t* module,
                                                      low_func_ref);
     loom_low_lower_emission_scope_end(&context);
     if (iree_status_is_ok(status)) {
+      loom_low_lower_report_initialize(&context);
       status = loom_low_lower_map_blocks(&context, source_body);
     }
     if (iree_status_is_ok(status)) {

@@ -156,6 +156,10 @@ TEST(LoopDomainRecurrenceTest, FullSignedCarrierAndTerminalBoundaries) {
     EXPECT_TRUE(full.trip_count_known);
     EXPECT_EQ(full.values.range_lo, minimum);
     EXPECT_EQ(full.values.range_hi, maximum);
+    EXPECT_EQ(full.body_values.range_lo, minimum);
+    EXPECT_EQ(full.body_values.range_hi, maximum - 1);
+    EXPECT_EQ(full.exit_value.range_lo, maximum);
+    EXPECT_EQ(full.exit_value.range_hi, maximum);
     const auto tail = loom_loop_domain_recurrence_facts(
         kSignedExclusive, bitwidth, maximum - 1, maximum, 2);
     EXPECT_FALSE(tail.trip_count_known);
@@ -189,6 +193,12 @@ struct ObservedLoop {
   int64_t minimum;
   // Largest signed source value observed at the header, including its exit.
   int64_t maximum;
+  // Smallest signed source value observed during an executed body.
+  int64_t body_minimum;
+  // Largest signed source value observed during an executed body.
+  int64_t body_maximum;
+  // Signed source value at the first false guard, if execution terminates.
+  int64_t exit_value;
 };
 
 // Small-width interpretation is independent of the closed-form count proof.
@@ -207,8 +217,15 @@ ObservedLoop InterpretLoop(loom_loop_bound_flags_t bound_flags,
     return bits >= uint64_t(modulus / 2) ? int64_t(bits) - modulus
                                          : int64_t(bits);
   };
-  ObservedLoop observed = {
-      true, true, 0, true, source_value(initial), source_value(initial)};
+  ObservedLoop observed = {true,
+                           true,
+                           0,
+                           true,
+                           source_value(initial),
+                           source_value(initial),
+                           INT64_MAX,
+                           INT64_MIN,
+                           0};
   uint64_t value = initial;
   do {
     bool more =
@@ -216,8 +233,13 @@ ObservedLoop InterpretLoop(loom_loop_bound_flags_t bound_flags,
             ? ordered_value(value) <= ordered_value(bound)
             : ordered_value(value) < ordered_value(bound);
     if (!more) {
+      observed.exit_value = source_value(value);
       return observed;
     }
+    observed.body_minimum =
+        std::min(observed.body_minimum, source_value(value));
+    observed.body_maximum =
+        std::max(observed.body_maximum, source_value(value));
     uint64_t next = (value + step) % modulus;
     observed.increases &= ordered_value(next) > ordered_value(value);
     observed.source_increases &= source_value(next) > source_value(value);
@@ -279,6 +301,19 @@ TEST(LoopDomainTripCountTest, ExhaustiveModularExecution) {
                      << " count=" << actual
                      << " expected_exact=" << expected_exact
                      << " expected_count=" << expected.trip_count;
+            }
+            if (expected_range) {
+              ASSERT_EQ(facts.exit_value.range_lo, expected.exit_value);
+              ASSERT_EQ(facts.exit_value.range_hi, expected.exit_value);
+              if (expected.trip_count != 0) {
+                ASSERT_EQ(facts.body_values.range_lo, expected.body_minimum);
+                ASSERT_EQ(facts.body_values.range_hi, expected.body_maximum);
+              } else {
+                ASSERT_TRUE(loom_value_facts_is_unknown(facts.body_values));
+              }
+            } else {
+              ASSERT_TRUE(loom_value_facts_is_unknown(facts.body_values));
+              ASSERT_TRUE(loom_value_facts_is_unknown(facts.exit_value));
             }
           }
         }

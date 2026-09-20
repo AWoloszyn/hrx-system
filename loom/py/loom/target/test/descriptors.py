@@ -873,6 +873,16 @@ TEST_LOW_CMP_EQ_I32_DESCRIPTOR = Descriptor(
     flags=(DescriptorFlag.DEAD_REMOVABLE,),
 )
 
+TEST_LOW_CMP_SLT_I32_DESCRIPTOR = Descriptor(
+    key="test.cmp.slt.i32",
+    mnemonic="test.cmp.slt.i32",
+    semantic_tag="integer.cmp.slt.i32",
+    operands=(_i32_result(), _i32_operand("lhs"), _i32_operand("rhs")),
+    asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
+    schedule_class=_SCHEDULE_SCALAR_ALU,
+    flags=(DescriptorFlag.DEAD_REMOVABLE,),
+)
+
 TEST_LOW_SELECT_I32_DESCRIPTOR = Descriptor(
     key="test.select.i32",
     mnemonic="test.select.i32",
@@ -2255,6 +2265,7 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
         TEST_LOW_WRITE_HIGH16_I32_DESCRIPTOR,
         TEST_LOW_SPV_OP_IADD_I32_DESCRIPTOR,
         TEST_LOW_CMP_EQ_I32_DESCRIPTOR,
+        TEST_LOW_CMP_SLT_I32_DESCRIPTOR,
         TEST_LOW_SELECT_I32_DESCRIPTOR,
         TEST_LOW_FIXED_SELECT_I32_DESCRIPTOR,
         TEST_LOW_FIXED_UPDATE_I32_DESCRIPTOR,

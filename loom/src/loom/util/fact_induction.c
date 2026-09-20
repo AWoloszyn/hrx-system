@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "loom/util/fact_induction.h"
+
 #include "loom/ir/module.h"
 #include "loom/ops/cfg/ops.h"
 #include "loom/ops/index/ops.h"
@@ -35,10 +37,32 @@ static bool loom_value_fact_induction_is_invariant(
          !loom_cfg_loop_nest_contains(loops, loop_index, block->region_index);
 }
 
-static loom_value_fact_cfg_induction_t loom_value_fact_induction_recognize(
+static bool loom_value_fact_induction_compare_flags(
+    const loom_op_t* compare, loom_loop_bound_flags_t* out_flags) {
+  loom_loop_bound_flags_t bound_flags = LOOM_LOOP_BOUND_NONE;
+  switch (loom_index_cmp_predicate(compare)) {
+    case LOOM_INDEX_CMP_PREDICATE_SLT:
+      bound_flags = LOOM_LOOP_BOUND_SIGNED;
+      break;
+    case LOOM_INDEX_CMP_PREDICATE_SLE:
+      bound_flags = LOOM_LOOP_BOUND_SIGNED | LOOM_LOOP_BOUND_INCLUSIVE;
+      break;
+    case LOOM_INDEX_CMP_PREDICATE_ULT:
+      break;
+    case LOOM_INDEX_CMP_PREDICATE_ULE:
+      bound_flags = LOOM_LOOP_BOUND_INCLUSIVE;
+      break;
+    default:
+      return false;
+  }
+  *out_flags = bound_flags;
+  return true;
+}
+
+static loom_value_fact_induction_t loom_value_fact_induction_recognize(
     const loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_cfg_loop_nest_t* loops, uint16_t loop_index) {
-  const loom_value_fact_cfg_induction_t unknown = {
+  const loom_value_fact_induction_t unknown = {
       .value = LOOM_VALUE_ID_INVALID,
   };
   const loom_cfg_natural_loop_t* loop = &loops->loops[loop_index];
@@ -61,7 +85,7 @@ static loom_value_fact_cfg_induction_t loom_value_fact_induction_recognize(
   if (compare && iree_any_bit_set(compare->traits, LOOM_TRAIT_CONSTANT_LIKE) &&
       loom_value_facts_is_zero(
           loom_value_fact_table_lookup(table, condition))) {
-    return (loom_value_fact_cfg_induction_t){
+    return (loom_value_fact_induction_t){
         .value = LOOM_VALUE_ID_INVALID,
         .exits_at_header = true,
     };
@@ -70,20 +94,8 @@ static loom_value_fact_cfg_induction_t loom_value_fact_induction_recognize(
     return unknown;
   }
   loom_loop_bound_flags_t bound_flags = LOOM_LOOP_BOUND_NONE;
-  switch (loom_index_cmp_predicate(compare)) {
-    case LOOM_INDEX_CMP_PREDICATE_SLT:
-      bound_flags = LOOM_LOOP_BOUND_SIGNED;
-      break;
-    case LOOM_INDEX_CMP_PREDICATE_SLE:
-      bound_flags = LOOM_LOOP_BOUND_SIGNED | LOOM_LOOP_BOUND_INCLUSIVE;
-      break;
-    case LOOM_INDEX_CMP_PREDICATE_ULT:
-      break;
-    case LOOM_INDEX_CMP_PREDICATE_ULE:
-      bound_flags = LOOM_LOOP_BOUND_INCLUSIVE;
-      break;
-    default:
-      return unknown;
+  if (!loom_value_fact_induction_compare_flags(compare, &bound_flags)) {
+    return unknown;
   }
   const loom_value_id_t counter =
       loom_value_fact_table_query_identity(table, loom_index_cmp_lhs(compare));
@@ -114,7 +126,7 @@ static loom_value_fact_cfg_induction_t loom_value_fact_induction_recognize(
                                               upper_bound)) {
     return unknown;
   }
-  loom_value_fact_cfg_induction_t induction = {
+  loom_value_fact_induction_t induction = {
       .value = counter,
       .initial_value = initial_value,
       .upper_bound = upper_bound,
@@ -141,6 +153,118 @@ static loom_value_fact_cfg_induction_t loom_value_fact_induction_recognize(
   return induction;
 }
 
+// A value visible at this single-block boundary is either a local definition
+// or a dominating capture. Literal constants remain invariant inside a region.
+static bool loom_value_fact_condition_loop_is_invariant(
+    const loom_module_t* module, loom_loop_like_t loop,
+    loom_value_id_t value_id) {
+  const loom_value_t* value = loom_module_value(module, value_id);
+  const loom_block_t* block = NULL;
+  if (loom_value_is_block_arg(value)) {
+    block = loom_value_def_block(value);
+  } else {
+    const loom_op_t* op = loom_value_def_op(value);
+    if (loom_index_constant_isa(op)) {
+      return true;
+    }
+    block = op->parent_block;
+  }
+  return block->parent_region != loom_loop_like_condition_region(loop) &&
+         block->parent_region != loom_loop_like_body(loop);
+}
+
+static bool loom_value_fact_condition_forwards_counter(
+    const loom_module_t* module, const loom_value_fact_table_t* table,
+    const loom_op_t* condition, const loom_block_t* body,
+    loom_value_id_t value_id, loom_value_id_t counter) {
+  const loom_value_t* value = loom_module_value(module, value_id);
+  return loom_value_is_block_arg(value) &&
+         loom_value_def_block(value) == body &&
+         loom_value_fact_table_query_identity(
+             table, loom_op_const_operands(
+                        condition)[1 + loom_value_def_index(value)]) == counter;
+}
+
+loom_value_fact_induction_t loom_value_fact_condition_loop_induction(
+    const loom_value_fact_table_t* table, const loom_module_t* module,
+    loom_loop_like_t loop) {
+  const loom_value_fact_induction_t unknown = {
+      .value = LOOM_VALUE_ID_INVALID,
+  };
+  const loom_block_t* before =
+      loom_region_const_entry_block(loom_loop_like_condition_region(loop));
+  const loom_block_t* body =
+      loom_region_const_entry_block(loom_loop_like_body(loop));
+  const loom_op_t* condition = before->last_op;
+  const loom_op_t* yield = body->last_op;
+  const loom_value_slice_t initial = loom_loop_like_iter_args(loop);
+  // Rewriter builders publish the shell before its terminators are complete.
+  if (!condition || condition->operand_count != initial.count + 1 || !yield ||
+      yield->operand_count != initial.count) {
+    return unknown;
+  }
+  const loom_value_id_t selector = loom_value_fact_table_query_identity(
+      table, loom_op_const_operands(condition)[0]);
+  const loom_op_t* compare =
+      loom_value_fact_induction_defining_op(module, selector);
+  if (compare && iree_any_bit_set(compare->traits, LOOM_TRAIT_CONSTANT_LIKE) &&
+      loom_value_facts_is_zero(loom_value_fact_table_lookup(table, selector))) {
+    return (loom_value_fact_induction_t){
+        .value = LOOM_VALUE_ID_INVALID,
+        .exits_at_header = true,
+    };
+  }
+  loom_loop_bound_flags_t bound_flags = LOOM_LOOP_BOUND_NONE;
+  if (!compare || !loom_index_cmp_isa(compare) ||
+      !loom_value_fact_induction_compare_flags(compare, &bound_flags)) {
+    return unknown;
+  }
+  const loom_value_id_t counter =
+      loom_value_fact_table_query_identity(table, loom_index_cmp_lhs(compare));
+  const loom_value_t* value = loom_module_value(module, counter);
+  if (!loom_value_is_block_arg(value) ||
+      loom_value_def_block(value) != before ||
+      !loom_type_is_scalar(loom_module_value_type(module, counter))) {
+    return unknown;
+  }
+  const uint16_t index = loom_value_def_index(value);
+  const loom_value_id_t upper =
+      loom_value_fact_table_query_identity(table, loom_index_cmp_rhs(compare));
+  if (!loom_value_fact_condition_loop_is_invariant(module, loop, upper)) {
+    return unknown;
+  }
+  loom_value_fact_induction_t induction = {
+      .value = counter,
+      .initial_value = initial.values[index],
+      .upper_bound = upper,
+      .step = LOOM_VALUE_ID_INVALID,
+      .bound_flags = bound_flags,
+  };
+  const loom_value_id_t next = loom_value_fact_table_query_identity(
+      table, loom_op_const_operands(yield)[index]);
+  const loom_op_t* add = loom_value_fact_induction_defining_op(module, next);
+  if (!add || !loom_index_add_isa(add)) {
+    return induction;
+  }
+  const loom_value_id_t lhs =
+      loom_value_fact_table_query_identity(table, loom_index_add_lhs(add));
+  const loom_value_id_t rhs =
+      loom_value_fact_table_query_identity(table, loom_index_add_rhs(add));
+  loom_value_id_t step = LOOM_VALUE_ID_INVALID;
+  if (loom_value_fact_condition_forwards_counter(module, table, condition, body,
+                                                 lhs, counter)) {
+    step = rhs;
+  } else if (loom_value_fact_condition_forwards_counter(
+                 module, table, condition, body, rhs, counter)) {
+    step = lhs;
+  }
+  if (step != LOOM_VALUE_ID_INVALID &&
+      loom_value_fact_condition_loop_is_invariant(module, loop, step)) {
+    induction.step = step;
+  }
+  return induction;
+}
+
 void loom_value_fact_cfg_update_induction(
     const loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_value_fact_cfg_region_t* region, uint16_t block_index) {
@@ -154,15 +278,19 @@ void loom_value_fact_cfg_update_induction(
       table, module, &region->loops, loop_index);
 }
 
-loom_loop_recurrence_facts_t loom_value_fact_cfg_induction_facts(
+loom_loop_recurrence_facts_t loom_value_fact_induction_facts(
     const loom_value_fact_table_t* table, const loom_module_t* module,
-    const loom_value_fact_cfg_induction_t* induction) {
+    const loom_value_fact_induction_t* induction) {
   const loom_loop_recurrence_facts_t unknown = {
       .values = loom_value_facts_unknown(),
+      .body_values = loom_value_facts_unknown(),
+      .exit_value = loom_value_facts_unknown(),
   };
   if (induction->exits_at_header) {
     return (loom_loop_recurrence_facts_t){
         .values = loom_value_facts_unknown(),
+        .body_values = loom_value_facts_unknown(),
+        .exit_value = loom_value_facts_unknown(),
         .trip_count_known = true,
     };
   }

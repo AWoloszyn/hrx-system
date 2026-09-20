@@ -77,6 +77,12 @@ typedef struct loom_loop_recurrence_facts_t {
   // Inclusive range of all header observations, including the terminal value.
   // Unknown when the recurrence crosses the signed source representation.
   loom_value_facts_t values;
+  // Inclusive range observed on entry to the body, excluding the terminal
+  // value. Unknown for zero trips or an unproven source-integer recurrence.
+  loom_value_facts_t body_values;
+  // Exact value observed at the false guard, including zero-trip exits.
+  // Unknown when the source-integer recurrence is unproven.
+  loom_value_facts_t exit_value;
   // Exact body execution count when trip_count_known is true; zero otherwise.
   uint64_t trip_count;
   // True when the recurrence reaches its exit without wrapping in guard order.
@@ -87,7 +93,8 @@ typedef struct loom_loop_recurrence_facts_t {
 // when its initial value and positive increments remain representable in the
 // signed carrier. An exact count alone does not imply such a range: unsigned
 // order can cross the sign bit, and a modular increment can be negative in the
-// source representation. A zero-trip range contains only the initial value.
+// source representation. A zero-trip header and exit contain only the initial
+// value; no body range is established.
 loom_loop_recurrence_facts_t loom_loop_domain_recurrence_facts(
     loom_loop_bound_flags_t bound_flags, uint8_t bitwidth,
     int64_t initial_value, int64_t upper_bound, int64_t step);

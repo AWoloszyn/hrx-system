@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "canonicalize.loom-test"
+    "canonicalize_condition_loop.loom-test"
     "convergence_facts.loom-test"
     "facts.loom-test"
     "forwarding_facts.loom-test"

@@ -19,6 +19,7 @@ loom_check_test_suite(
         "dynamic_extract.loom-test",
         "memory_footprint.loom-test",
         "memory_footprint_cfg_identities.loom-test",
+        "memory_footprint_condition_loops.loom-test",
         "memory_footprint_conditions.loom-test",
         "memory_footprint_induction.loom-test",
         "memory_to_scalar.loom-test",

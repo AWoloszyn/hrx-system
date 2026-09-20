@@ -528,6 +528,18 @@ iree_status_t loom_value_fact_table_compute_op_and_report(
     loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_op_t* op, bool* out_changed);
 
+// Computes nested regions using the already established function context.
+// Structured summaries own calls for their regions, including iterative solves.
+iree_status_t loom_value_fact_table_compute_region_tree(
+    loom_value_fact_table_t* table, const loom_module_t* module,
+    loom_region_t* region, loom_op_t* parent_op);
+
+// Publishes structured region results and their dependent type-extent facts.
+// Missing result facts are unknown; changes are reported to the rewrite owner.
+iree_status_t loom_value_fact_table_define_region_results(
+    loom_value_fact_table_t* table, const loom_module_t* module, loom_op_t* op,
+    loom_value_facts_t* result_facts, uint16_t result_count, bool* out_changed);
+
 // Seeds the table by running a forward pass over |region| and its nested
 // regions. |function| supplies the logical function context for op fact
 // inference, and may be empty for detached regions. |parent_op| is the op that

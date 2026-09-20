@@ -230,7 +230,9 @@ iree_status_t loom_scf_condition_build(
     loom_location_id_t location,
     loom_op_t** out_op);
 
-// LOOM_OP_SCF_WHILE: Unbounded loop with explicit before and after regions. The before region terminates with scf.condition, and the after region terminates with scf.yield.
+// LOOM_OP_SCF_WHILE: Condition-controlled loop with explicit before and after regions. The before region terminates with scf.condition, and the after region terminates with scf.yield. The before region runs once before the first body iteration and again after each iteration, including the final false condition. Values forwarded by that false condition become the loop results.
+//
+// When the initial value, invariant bound, and positive increment are known exactly, Loom can infer separate counter ranges for the condition region, body, and exit. The proof requires that the terminal increment cannot wrap the target's index or offset carrier. This allows bounded view accesses without repeating the counter range in an assumption. Compile reports use the same proof: a loop with N body iterations has N + 1 condition-region executions, even when N is zero. Unsupported recurrences keep unknown bounds and counts.
 // scf.while {
 //   scf.condition %cond : i1
 // } do {
@@ -249,6 +251,7 @@ iree_status_t loom_scf_while_build(
     iree_host_size_t tied_result_count,
     loom_location_id_t location,
     loom_op_t** out_op);
+iree_status_t loom_scf_while_canonicalize(loom_op_t* op, loom_rewriter_t* rewriter);
 
 // LOOM_OP_SCF_SCHEDULE_FENCE: Compiler hint separating independently reorderable source ranges. The fence has no runtime effect and emits no target instruction.
 // scf.schedule.fence

@@ -1,0 +1,130 @@
+// RUN: with-checks pass canonicalize
+
+// An empty body does not make the before region empty. Both memory effects
+// execute in order, and the computed condition tuple becomes the result.
+func.def @false_condition_keeps_effects(%input: view<1xi32>, %output: view<1xi32>, %seed: i32) -> (i32) {
+  %disabled = scalar.constant false : i1
+  %result = scf.while(%before = %seed : i32) -> (i32) {
+    %loaded = view.load %input[0] : view<1xi32> -> i32
+    %combined = scalar.addi %before, %loaded : i32
+    view.store %combined, %output[0] : i32, view<1xi32>
+    scf.condition %disabled, %combined : i1, i32
+  } do(%value: i32) {
+    view.store %value, %input[0] : i32, view<1xi32>
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *%loaded = view.load %input[0] : view<1xi32> -> i32
+CHECK: *%combined = scalar.addi %seed, %loaded : i32
+CHECK: *view.store %combined, %output[0] : i32, view<1xi32>
+CHECK: *func.return %combined : i32
+CHECK-NOT: *view.store *, %input[0] : *
+CHECK-NOT: *scf.while*
+
+// ====
+
+// Forwarding is a tuple projection, not necessarily the initial slot order.
+func.def @false_condition_permuted_tuple(%left: i32, %right: i32) -> (i32, i32) {
+  %disabled = scalar.constant false : i1
+  %first, %second = scf.while(%a = %left : i32, %b = %right : i32) -> (i32, i32) {
+    scf.condition %disabled, %b, %a : i1, i32, i32
+  } do(%x: i32, %y: i32) {
+    scf.yield %x, %y : i32, i32
+  }
+  func.return %first, %second : i32, i32
+}
+
+// ----
+CHECK: *func.return %right, %left : i32, i32
+CHECK-NOT: *scf.while*
+
+// ====
+
+// A resultless loop still preserves nested before-region effects.
+func.def @false_condition_nested_effect(%enabled: i1, %value: i32, %output: view<1xi32>) {
+  %disabled = scalar.constant false : i1
+  scf.while {
+    scf.if %enabled {
+      view.store %value, %output[0] : i32, view<1xi32>
+    } else {
+    }
+    scf.condition %disabled : i1
+  } do {
+    %unreachable = scalar.constant 99 : i32
+    view.store %unreachable, %output[0] : i32, view<1xi32>
+    scf.yield
+  }
+  func.return
+}
+
+// ----
+CHECK: *scf.if %enabled {
+CHECK: *view.store %value, %output[0] : i32, view<1xi32>
+CHECK-NOT: *scalar.constant 99 : i32
+CHECK-NOT: *scf.while*
+
+// ====
+
+// The initial condition is proved false from the carried recurrence. Removing
+// its unreachable body precedes footprint checking of the out-of-bounds store.
+// RUN: with-checks pass canonicalize,vector-memory-footprint
+func.def @empty_counter_store(%output: view<4xi32>) -> (index) {
+  %begin = index.constant 4 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %terminal = scf.while(%before = %begin : index) -> (index) {
+    %more = index.cmp slt, %before, %end : index
+    scf.condition %more, %before : i1, index
+  } do(%position: index) {
+    %value = index.cast %position : index to i32
+    view.store %value, %output[%position] : i32, view<4xi32>
+    %next = index.add %position, %step : index
+    scf.yield %next : index
+  }
+  func.return %terminal : index
+}
+
+// ----
+CHECK: *func.return %begin : index
+CHECK-NOT: *scf.while*
+CHECK-NOT: *view.store*
+
+// ====
+
+// Neither an unknown guard nor an always-true guard proves an empty loop.
+// RUN: with-checks pass canonicalize
+func.def @unknown_condition_keeps_loop(%enabled: i1, %output: view<1xi32>, %value: i32) {
+  scf.while {
+    scf.condition %enabled : i1
+  } do {
+    view.store %value, %output[0] : i32, view<1xi32>
+    scf.yield
+  }
+  func.return
+}
+
+// ----
+CHECK: *scf.while {
+CHECK: *scf.condition %enabled : i1
+CHECK: *view.store %value, %output[0] : i32, view<1xi32>
+
+// ====
+
+func.def @true_condition_keeps_loop(%output: view<1xi32>, %value: i32) {
+  %enabled = scalar.constant true : i1
+  scf.while {
+    scf.condition %enabled : i1
+  } do {
+    view.store %value, %output[0] : i32, view<1xi32>
+    scf.yield
+  }
+  func.return
+}
+
+// ----
+CHECK: *scf.while {
+CHECK: *scf.condition %enabled : i1
+CHECK: *view.store %value, %output[0] : i32, view<1xi32>

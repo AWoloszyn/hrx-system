@@ -457,7 +457,23 @@ scf_for = Op(
 scf_while = Op(
     "scf.while",
     group=scf_ops,
-    doc=("Unbounded loop with explicit before and after regions. The before region terminates with scf.condition, and the after region terminates with scf.yield."),
+    canonicalize="loom_scf_while_canonicalize",
+    doc=(
+        "Condition-controlled loop with explicit before and after regions. "
+        "The before region terminates with scf.condition, and the after region "
+        "terminates with scf.yield. The before region runs once before the first "
+        "body iteration and again after each iteration, including the final "
+        "false condition. Values forwarded by that false condition become the "
+        "loop results.\n\n"
+        "When the initial value, invariant bound, and positive increment are "
+        "known exactly, Loom can infer separate counter ranges for the "
+        "condition region, body, and exit. The proof requires that the terminal "
+        "increment cannot wrap the target's index or offset carrier. This "
+        "allows bounded view accesses without repeating the counter range in "
+        "an assumption. Compile reports use the same proof: a loop with N "
+        "body iterations has N + 1 condition-region executions, even when "
+        "N is zero. Unsupported recurrences keep unknown bounds and counts."
+    ),
     operands=[Operand("iter_args", ANY, variadic=True)],
     results=[Result("results", ANY, variadic=True)],
     regions=[
@@ -512,6 +528,7 @@ scf_while = Op(
     ],
     examples=[
         "scf.while {\n  scf.condition %cond : i1\n} do {\n  scf.yield\n}",
+        "%begin = index.constant 0 : index\n%end = index.constant 4 : index\n%step = index.constant 1 : index\n%terminal = scf.while(%before = %begin : index) -> (index) {\n  %more = index.cmp slt, %before, %end : index\n  scf.condition %more, %before : i1, index\n} do(%position: index) {\n  %value = index.cast %position : index to i32\n  view.store %value, %output[%position] : i32, view<4xi32>\n  %next = index.add %position, %step : index\n  scf.yield %next : index\n}",
         "%result = scf.while(%before = %init : index) -> (index) {\n  scf.condition %keep_going, %before : i1, index\n} do(%body: index) {\n  %next = index.add %body, %one : index\n  scf.yield %next : index\n}",
     ],
 )
