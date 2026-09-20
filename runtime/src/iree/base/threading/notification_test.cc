@@ -14,6 +14,83 @@
 
 namespace {
 
+//===----------------------------------------------------------------------===//
+// Native-independent event-count state
+//===----------------------------------------------------------------------===//
+
+TEST(NotificationStateTest, PublicationAndEnrollmentShareOrdering) {
+  iree_notification_state_t state;
+  iree_notification_state_initialize(&state);
+
+  // Publication before enrollment is observed by the enrolling caller, even
+  // though there was no native wake obligation at publication time.
+  iree_wait_token_t earlier_token = iree_notification_state_query_epoch(&state);
+  EXPECT_EQ(iree_notification_state_post(&state), 0u);
+  iree_wait_token_t token = iree_notification_state_prepare_wait(&state);
+  EXPECT_NE(token, earlier_token);
+
+  // Publication after enrollment carries the wake obligation and changes the
+  // token observed by a caller that has not entered its native wait yet.
+  EXPECT_EQ(iree_notification_state_post(&state), 1u);
+  EXPECT_NE(iree_notification_state_query_epoch(&state), token);
+  iree_notification_state_cancel_wait(&state);
+  EXPECT_EQ(iree_notification_state_post(&state), 0u);
+}
+
+TEST(NotificationStateTest, AcquiresPublishedData) {
+  iree_notification_state_t state;
+  iree_notification_state_initialize(&state);
+  iree_wait_token_t token = iree_notification_state_prepare_wait(&state);
+  int payload = 0;
+  std::thread producer([&] {
+    payload = 42;
+    EXPECT_EQ(iree_notification_state_post(&state), 1u);
+  });
+
+  while (iree_notification_state_query_epoch(&state) == token) {
+    std::this_thread::yield();
+  }
+  // Read before joining: visibility must come from the state's acquire, not
+  // the thread join or a second application synchronization channel.
+  EXPECT_EQ(payload, 42);
+  iree_notification_state_cancel_wait(&state);
+  producer.join();
+  EXPECT_EQ(iree_notification_state_post(&state), 0u);
+}
+
+TEST(NotificationStateTest, ConcurrentEnrollmentAndPublication) {
+  iree_notification_state_t state;
+  iree_notification_state_initialize(&state);
+  constexpr uint32_t kThreadCount = 8;
+  constexpr uint32_t kPublicationsPerThread = 1000;
+  std::atomic<bool> start{false};
+  std::vector<std::thread> threads;
+  for (uint32_t i = 0; i < kThreadCount; ++i) {
+    threads.emplace_back([&] {
+      while (!start.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      for (uint32_t j = 0; j < kPublicationsPerThread; ++j) {
+        iree_wait_token_t token = iree_notification_state_prepare_wait(&state);
+        uint32_t waiter_count = iree_notification_state_post(&state);
+        // Our own enrollment must remain visible until we withdraw it, even
+        // as other callers enroll, publish, and withdraw concurrently.
+        EXPECT_GE(waiter_count, 1u);
+        EXPECT_LE(waiter_count, kThreadCount);
+        EXPECT_NE(iree_notification_state_query_epoch(&state), token);
+        iree_notification_state_cancel_wait(&state);
+      }
+    });
+  }
+  start.store(true, std::memory_order_release);
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  EXPECT_EQ(iree_notification_state_query_epoch(&state),
+            kThreadCount * kPublicationsPerThread);
+  EXPECT_EQ(iree_notification_state_post(&state), 0u);
+}
+
 //==============================================================================
 // Basic notification tests
 //==============================================================================

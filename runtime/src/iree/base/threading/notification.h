@@ -23,9 +23,91 @@
 extern "C" {
 #endif
 
-//==============================================================================
+//===----------------------------------------------------------------------===//
+// Notification state
+//===----------------------------------------------------------------------===//
+
+// Opaque token identifying a notification epoch.
+typedef uint32_t iree_wait_token_t;
+
+// Event-count state independent of the native wait/wake mechanism. The upper
+// 32 bits hold the epoch and the lower 32 bits count prepared waits.
+// Publication and enrollment use the same atomic modification order: either a
+// publication observes enrollment and requests a wake, or enrollment observes
+// publication and the caller does not block on the old epoch.
+//
+// The representation contains no process-local pointers or synchronization
+// objects. It can reside in shared memory on platforms with process-shared
+// lock-free 64-bit atomics. All participants must use the same representation
+// and keep the state mapped until every operation accessing it has retired.
+// Native wait/wake resources and their ownership are supplied by the caller.
+typedef struct iree_notification_state_t {
+  // Atomically coupled epoch (upper 32 bits) and prepared-wait count (lower
+  // 32).
+  iree_atomic_uint64_t value;
+} iree_notification_state_t;
+static_assert(sizeof(iree_notification_state_t) == sizeof(uint64_t),
+              "notification state must have an eight-byte representation");
+
+// Initializes new, exclusively owned state before exposing it to observers.
+// Attaching to an existing shared mapping must not reinitialize its state.
+static inline void iree_notification_state_initialize(
+    iree_notification_state_t* out_state) {
+  iree_atomic_store(&out_state->value, 0, iree_memory_order_relaxed);
+}
+
+// Returns the current epoch and acquires data preceding its publication.
+static inline iree_wait_token_t iree_notification_state_query_epoch(
+    const iree_notification_state_t* state) {
+  return (iree_wait_token_t)(iree_atomic_load(&state->value,
+                                              iree_memory_order_acquire) >>
+                             32);
+}
+
+// Returns the address of the epoch subword for native 32-bit address waits.
+// This is not a separate C atomic object: program reads and writes must use the
+// full state word. Only the native compare-and-wait/wake primitive uses this
+// subword address, with matching private/shared semantics on both ends.
+static inline void* iree_notification_state_epoch_address(
+    iree_notification_state_t* state) {
+#if defined(IREE_ENDIANNESS_LITTLE)
+  return (uint8_t*)&state->value + sizeof(uint32_t);
+#else
+  return &state->value;
+#endif  // IREE_ENDIANNESS_*
+}
+
+// Advances the epoch and returns the number of prepared waits at publication.
+// The caller must perform its native wake when the returned count is nonzero.
+// It is normal for those waiters to observe the new epoch before native wake.
+static inline uint32_t iree_notification_state_post(
+    iree_notification_state_t* state) {
+  return (uint32_t)iree_atomic_fetch_add(&state->value, UINT64_C(1) << 32,
+                                         iree_memory_order_acq_rel);
+}
+
+// Enrolls a wait and returns its initial epoch. The caller then checks its
+// protected condition and/or compares an earlier token before blocking. Every
+// prepare must be paired with cancel_wait, including successful native waits.
+static inline iree_wait_token_t iree_notification_state_prepare_wait(
+    iree_notification_state_t* state) {
+  uint64_t previous_value =
+      iree_atomic_fetch_add(&state->value, 1, iree_memory_order_acq_rel);
+  return (iree_wait_token_t)(previous_value >> 32);
+}
+
+// Ends one prepared wait without changing the epoch or native wake state.
+static inline void iree_notification_state_cancel_wait(
+    iree_notification_state_t* state) {
+  uint64_t previous_value =
+      iree_atomic_fetch_sub(&state->value, 1, iree_memory_order_acq_rel);
+  IREE_ASSERT((uint32_t)previous_value != 0,
+              "notification wait ended without enrollment");
+}
+
+//===----------------------------------------------------------------------===//
 // iree_notification_t
-//==============================================================================
+//===----------------------------------------------------------------------===//
 
 // A lightweight wait-free cross-thread notification mechanism.
 // Classically called an 'event counter', these replace the use of condvars in
@@ -43,13 +125,17 @@ typedef struct iree_notification_t {
   // Nothing required. Unused field to make compilers happy.
   int reserved;
 #elif !defined(IREE_RUNTIME_USE_FUTEX)
-  // No futex on darwin/when using TSAN, so use mutex/condvar instead.
+  // Protects the process-local epoch and waiter count on pthread platforms.
   pthread_mutex_t mutex;
+  // Native blocking wait channel, paired with mutex.
   pthread_cond_t cond;
+  // Epoch incremented by each publication while mutex is held.
   uint32_t epoch;
+  // Prepared waits until commit_wait or cancel_wait returns.
   uint32_t waiters;
 #else
-  iree_atomic_int64_t value;
+  // Epoch and enrollment state used by the private native address wait.
+  iree_notification_state_t state;
 #endif  // IREE_PLATFORM_*
 } iree_notification_t;
 
@@ -71,8 +157,6 @@ IREE_API_EXPORT void iree_notification_deinitialize(
 // is the memory_order_acquire operation that is meant to pair with that.
 IREE_API_EXPORT void iree_notification_post(iree_notification_t* notification,
                                             int32_t count);
-
-typedef uint32_t iree_wait_token_t;  // opaque
 
 // Prepares for a wait operation, returning a token that must be passed to
 // iree_notification_commit_wait to perform the actual wait.
