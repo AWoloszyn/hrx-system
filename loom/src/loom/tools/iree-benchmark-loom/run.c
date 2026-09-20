@@ -433,12 +433,12 @@ iree_status_t iree_benchmark_loom_run_file(
              ++i) {
           selected_cases[i] = work_plan.selected_benchmarks[i].case_plan;
         }
-        execution_options.invocation.function_call =
-            function_calls.fn(function_calls.user_data,
-                              (loom_testbench_case_plan_list_t){
-                                  .values = selected_cases,
-                                  .count = work_plan.selected_benchmark_count},
-                              loom_run_module_source_resolver(&run_module));
+        execution_options.invocation.function_call = function_calls.fn(
+            function_calls.user_data,
+            (loom_testbench_case_plan_list_t){
+                .values = selected_cases,
+                .count = work_plan.selected_benchmark_count},
+            loom_run_module_source_resolver(&run_module), &config_set);
       }
     }
 

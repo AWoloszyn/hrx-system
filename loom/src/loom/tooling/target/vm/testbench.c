@@ -16,6 +16,7 @@
 #include "loom/target/arch/vm/module.h"
 #include "loom/target/arch/vm/provider.h"
 #include "loom/tooling/compile/pipeline.h"
+#include "loom/tooling/config/config.h"
 
 void loom_vm_testbench_initialize(
     const loom_target_environment_t* target_environment,
@@ -91,6 +92,14 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
             .root_symbols = {.count = root_count, .values = roots},
         },
         &pool, testbench->host_allocator, &module);
+  }
+  if (iree_status_is_ok(status)) {
+    loom_tooling_config_materialize_result_t result;
+    status = loom_tooling_config_materialize_module(
+        module,
+        &(loom_tooling_config_materialize_options_t){.config_set =
+                                                         testbench->config_set},
+        &pool, &result);
   }
   loom_target_specialization_request_t* requests = NULL;
   iree_host_size_t request_count = 0;
@@ -513,10 +522,12 @@ static iree_status_t loom_vm_testbench_invoke(
 
 loom_testbench_invocation_provider_t loom_vm_testbench_invocation_provider(
     void* user_data, loom_testbench_case_plan_list_t cases,
-    loom_source_resolver_t source_resolver) {
+    loom_source_resolver_t source_resolver,
+    const loom_tooling_config_set_t* config_set) {
   loom_vm_testbench_t* testbench = user_data;
   testbench->cases = cases;
   testbench->source_resolver = source_resolver;
+  testbench->config_set = config_set;
   return (loom_testbench_invocation_provider_t){
       .invoke = loom_vm_testbench_invoke,
       .user_data = testbench,

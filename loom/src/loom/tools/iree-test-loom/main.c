@@ -56,12 +56,14 @@ IREE_FLAG(string, target, "",
           "selects a compatible target from the device and authored kernel.");
 IREE_FLAG_LIST(
     string, config,
-    "Compile-time config binding for HAL kernel launches. Repeat as "
+    "Compile-time config binding for kernel and function compilation. Repeat "
+    "as "
     "--config=key=value. Bindings not referenced by the loaded module are "
     "ignored.");
 IREE_FLAG_LIST_NAMED(
     string, config_file, "config-file",
-    "JSON/JSONC config object file for HAL kernel launches. Repeat for "
+    "JSON/JSONC config object file for kernel and function compilation. Repeat "
+    "for "
     "multiple files. Nested object keys are flattened with '.' separators.");
 IREE_FLAG(string, sanitizer, "none",
           "Sanitizer checks inserted by the target pipeline. Use 'none', "
@@ -793,7 +795,7 @@ int iree_test_loom_main(int argc, char** argv,
         execution_options.invocation.function_call =
             configuration->function_call_provider.fn(
                 configuration->function_call_provider.user_data, selected,
-                loom_run_module_source_resolver(&run_module));
+                loom_run_module_source_resolver(&run_module), &config_set);
       }
     }
     execution_options.materializer.host_allocator = allocator;

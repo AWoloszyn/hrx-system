@@ -22,6 +22,7 @@ iree_execution_test_suite(
         "invalid_storage.loom",
         "module.loom",
         "source_cases.loom",
+        "source_config.loom",
         "source_library_cases.loom",
         "source_math.loom",
         "source_math_case.loom",

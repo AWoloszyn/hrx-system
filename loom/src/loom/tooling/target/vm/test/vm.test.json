@@ -2,6 +2,80 @@
   "version": 1,
   "cases": [
     {
+      "name": "iree-test-loom applies invocation config 5 before VM compilation",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_config.loom",
+          "--case=five",
+          "--config=tuning.factor=5"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":1",
+          "\"sample_count\":1",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "iree-benchmark-loom applies invocation config 5 before VM compilation",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/source_config.loom",
+          "--case=five",
+          "--config=tuning.factor=5",
+          "--iterations=1",
+          "--warmup-iterations=0"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "five_benchmark",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "iree-test-loom applies invocation config 9 before VM compilation",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_config.loom",
+          "--case=nine",
+          "--config=tuning.factor=9"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":1",
+          "\"sample_count\":1",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "iree-benchmark-loom applies invocation config 9 before VM compilation",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/source_config.loom",
+          "--case=nine",
+          "--config=tuning.factor=9",
+          "--iterations=1",
+          "--warmup-iterations=0"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "nine_benchmark",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
       "name": "executes every boolean comparison predicate with signed one-bit ordering",
       "run": {
         "tool": "iree-test-loom",
