@@ -36,6 +36,7 @@ iree_execution_test_suite(
         "loom_opt_f32_arith.loom",
         "selected_root_amdgpu.loom",
         "//loom/src/loom/test/corpus/conformance:address_scaling.loom",
+        "//loom/src/loom/test/corpus/conformance:address_widening.loom",
         "//loom/src/loom/test/corpus/source_low:memory_address_realizations.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_global_atomic.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_wide_offsets.loom-test",
@@ -46,6 +47,7 @@ iree_execution_test_suite(
         "loom-compile-amdgpu.test.json",
         # Lowering goldens cover distinct behavior; native compilation covers
         # each descriptor profile without duplicating those goldens.
+        "address-widening.test.json",
         "memory-addresses.test.json",
         "wide-offsets.test.json",
     ],
@@ -109,6 +111,7 @@ loom_test(
     srcs = [
         "//loom/src/loom/test/corpus/conformance:address_carrier_casts.loom",
         "//loom/src/loom/test/corpus/conformance:address_carrier_loops.loom",
+        "//loom/src/loom/test/corpus/conformance:address_widening.loom",
     ],
     execution_profile = AMDGPU_HARDWARE_PROFILE,
 )
@@ -118,6 +121,7 @@ loom_test(
     srcs = [
         "//loom/src/loom/test/corpus/conformance:address_carrier_casts.loom",
         "//loom/src/loom/test/corpus/conformance:address_carrier_loops.loom",
+        "//loom/src/loom/test/corpus/conformance:address_widening.loom",
     ],
     execution_profile = AMDGPU_ACCESS_PROFILE,
 )

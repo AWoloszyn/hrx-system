@@ -14,6 +14,7 @@ iree_execution_test_suite(
   NAME
     loom_compile_execution_test
   MANIFESTS
+    "address-widening.test.json"
     "loom-compile-amdgpu.test.json"
     "memory-addresses.test.json"
     "wide-offsets.test.json"
@@ -24,6 +25,7 @@ iree_execution_test_suite(
     "loom-opt=loom::tools::loom-opt"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_scaling.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_widening.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_address_realizations.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_global_atomic.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_wide_offsets.loom-test"

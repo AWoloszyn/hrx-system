@@ -327,7 +327,8 @@ typedef enum loom_amdgpu_index_cast_kind_e {
   LOOM_AMDGPU_INDEX_CAST_KIND_NONE = 0,
   LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS = 1,
   LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32 = 2,
-  LOOM_AMDGPU_INDEX_CAST_KIND_DIAGNOSTIC_REJECTED = 3,
+  LOOM_AMDGPU_INDEX_CAST_KIND_SIGN_EXTENDING_LOW_32 = 3,
+  LOOM_AMDGPU_INDEX_CAST_KIND_DIAGNOSTIC_REJECTED = 4,
 } loom_amdgpu_index_cast_kind_t;
 
 typedef struct loom_amdgpu_index_cast_plan_t {
@@ -337,7 +338,7 @@ typedef struct loom_amdgpu_index_cast_plan_t {
   loom_value_id_t source;
   // Result value receiving the cast payload.
   loom_value_id_t result;
-  // Descriptor materializing the high zero lane for a widening cast.
+  // Descriptor materializing the high lane for zero extension, otherwise NONE.
   loom_amdgpu_descriptor_ref_t zero_descriptor_ref;
   // Selected result width, independent of storage retained by source aliases.
   uint16_t result_unit_count;

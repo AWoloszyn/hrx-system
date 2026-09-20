@@ -589,34 +589,6 @@ static iree_status_t loom_amdgpu_bind_register64_lanes(
   return loom_low_lower_bind_value(context, source_result, low_result);
 }
 
-static iree_status_t loom_amdgpu_bind_sign_extended_i64(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    loom_value_id_t source_result, loom_value_id_t low_source) {
-  const loom_module_t* module = loom_low_lower_context_module(context);
-  const loom_type_t lane_type = loom_module_value_type(module, low_source);
-  const bool lane_is_vgpr = loom_amdgpu_low_type_is_register_class(
-      context, lane_type, LOOM_AMDGPU_REG_CLASS_ID_VGPR);
-  loom_value_id_t high_bits = LOOM_VALUE_ID_INVALID;
-  if (lane_is_vgpr) {
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_shift(
-        context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ASHRREV_I32_LIT,
-        /*shift=*/31, low_source, lane_type, &high_bits));
-  } else {
-    const bool lane_is_sgpr = loom_amdgpu_low_type_is_register_class(
-        context, lane_type, LOOM_AMDGPU_REG_CLASS_ID_SGPR);
-    if (!lane_is_sgpr) {
-      IREE_ASSERT_UNREACHABLE(
-          "AMDGPU scalar conversion sign-extended a non-register source");
-      IREE_BUILTIN_UNREACHABLE();
-    }
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr_binary_immediate(
-        context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ASHR_I32, low_source,
-        /*immediate=*/31, lane_type, &high_bits));
-  }
-  return loom_amdgpu_bind_register64_lanes(context, source_op, source_result,
-                                           low_source, high_bits);
-}
-
 static iree_status_t loom_amdgpu_bind_zero_extended_i64(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_value_id_t source_result, loom_value_id_t low_source) {
@@ -826,8 +798,10 @@ iree_status_t loom_amdgpu_lower_scalar_conversion(
       IREE_RETURN_IF_ERROR(
           loom_amdgpu_lookup_scalar_conversion_source_for_result(
               context, source_op, plan->source, plan->result, &low_source));
-      return loom_amdgpu_bind_sign_extended_i64(context, source_op,
-                                                plan->result, low_source);
+      loom_value_id_t low_result = LOOM_VALUE_ID_INVALID;
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_i64_from_i32(
+          context, source_op, low_source, &low_result));
+      return loom_low_lower_bind_value(context, plan->result, low_result);
     }
     case LOOM_AMDGPU_SCALAR_CONVERSION_KIND_ZERO_EXTEND: {
       loom_value_id_t low_source = LOOM_VALUE_ID_INVALID;

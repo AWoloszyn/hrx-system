@@ -25,6 +25,14 @@ iree_status_t loom_amdgpu_lookup_or_materialize_address_i64_operand(
     loom_value_id_t source_value, uint32_t register_class_id,
     loom_value_id_t* out_low_value);
 
+// Sign-extends a one-unit SGPR or VGPR value into a two-unit carrier in the
+// same register class. The low word is retained and the high word replicates
+// its sign bit.
+iree_status_t loom_amdgpu_emit_i64_from_i32(loom_low_lower_context_t* context,
+                                            const loom_op_t* source_op,
+                                            loom_value_id_t low_source,
+                                            loom_value_id_t* out_low_result);
+
 // Emits a two-word scalar carry or borrow chain. The low descriptor produces
 // the low result and SCC; the high descriptor consumes that SCC and produces
 // the high result and SCC. Both inputs and the result are SGPR pairs.

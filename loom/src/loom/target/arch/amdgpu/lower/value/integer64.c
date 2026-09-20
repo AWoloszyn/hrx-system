@@ -466,6 +466,14 @@ static const loom_amdgpu_descriptor_ref_t
         [LOOM_AMDGPU_REG_CLASS_ID_VGPR] = LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32,
 };
 
+static const loom_amdgpu_descriptor_ref_t
+    kAmdgpuIndexCastSignDescriptorRefs[LOOM_AMDGPU_REG_CLASS_ID_VGPR + 1] = {
+        [LOOM_AMDGPU_REG_CLASS_ID_SGPR] =
+            LOOM_AMDGPU_DESCRIPTOR_REF_S_ASHR_I32_RHS_INLINE,
+        [LOOM_AMDGPU_REG_CLASS_ID_VGPR] =
+            LOOM_AMDGPU_DESCRIPTOR_REF_V_ASHRREV_I32_LIT,
+};
+
 #undef LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN
 
 static uint32_t loom_amdgpu_target_index_bitwidth(
@@ -905,9 +913,7 @@ iree_status_t loom_amdgpu_select_index_cast_plan(
         return iree_ok_status();
       }
       if (result_scalar_type != LOOM_SCALAR_TYPE_I64 ||
-          source_unit_count != 1 || result_unit_count != 2 ||
-          (source_scalar_type == LOOM_SCALAR_TYPE_INDEX &&
-           source_facts.range_lo < 0)) {
+          source_unit_count != 1 || result_unit_count != 2) {
         return iree_ok_status();
       }
       break;
@@ -915,18 +921,23 @@ iree_status_t loom_amdgpu_select_index_cast_plan(
       return iree_ok_status();
   }
 
-  const loom_amdgpu_descriptor_ref_t zero_descriptor_ref =
-      kAmdgpuIndexCastZeroDescriptorRefs[source_register_class];
+  const bool sign_extend =
+      source_scalar_type == LOOM_SCALAR_TYPE_INDEX && source_facts.range_lo < 0;
+  const loom_amdgpu_descriptor_ref_t extension_descriptor_ref =
+      sign_extend ? kAmdgpuIndexCastSignDescriptorRefs[source_register_class]
+                  : kAmdgpuIndexCastZeroDescriptorRefs[source_register_class];
   if (!loom_amdgpu_descriptor_set_has_ref(
           loom_low_lower_context_descriptor_set(context),
-          zero_descriptor_ref)) {
+          extension_descriptor_ref)) {
     return iree_ok_status();
   }
   *out_plan = (loom_amdgpu_index_cast_plan_t){
-      .kind = LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32,
+      .kind = sign_extend ? LOOM_AMDGPU_INDEX_CAST_KIND_SIGN_EXTENDING_LOW_32
+                          : LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32,
       .source = source,
       .result = result,
-      .zero_descriptor_ref = zero_descriptor_ref,
+      .zero_descriptor_ref = sign_extend ? LOOM_AMDGPU_DESCRIPTOR_REF_NONE
+                                         : extension_descriptor_ref,
       .result_unit_count = result_unit_count,
   };
   *out_selected = true;
