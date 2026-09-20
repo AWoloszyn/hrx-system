@@ -493,8 +493,7 @@ static iree_status_t loom_bytecode_symbol_linkage(
   if (!loom_func_like_isa(func_like)) {
     return iree_ok_status();
   }
-  if (loom_func_like_is_kernel_entry(func_like) ||
-      loom_func_like_export_symbol(func_like) != LOOM_STRING_ID_INVALID) {
+  if (loom_func_like_is_exported(func_like)) {
     out_linkage->is_export = true;
   }
 

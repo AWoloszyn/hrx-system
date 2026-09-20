@@ -1,5 +1,5 @@
 vm.target<core> @vm
 
-func.def target(@vm) export("") @empty_name() {
+func.def public target(@vm) export("") @empty_name() {
   func.return
 }

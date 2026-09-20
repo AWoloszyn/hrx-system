@@ -39,7 +39,7 @@ kernel.def target(@target) @branch_exclusive_equal_slots() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(2, 1, 1) @branch_exclusive_equal_slots() asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(2, 1, 1) @branch_exclusive_equal_slots() asm {
   %workgroup = live_in<amdgpu.workgroup_id.x> : reg<amdgpu.sgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
   %18 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
@@ -126,7 +126,7 @@ kernel.def target(@target) @branch_exclusive_nested_max_slot() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(3, 1, 1) @branch_exclusive_nested_max_slot() asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(3, 1, 1) @branch_exclusive_nested_max_slot() asm {
   %workgroup = live_in<amdgpu.workgroup_id.x> : reg<amdgpu.sgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 12} : reg<amdgpu.sgpr x2>
   %25 = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
@@ -217,7 +217,7 @@ kernel.def target(@target) @lane_varying_branches_remain_distinct() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(2, 1, 1) workgroup_count(1, 1, 1) @lane_varying_branches_remain_distinct() asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(2, 1, 1) workgroup_count(1, 1, 1) @lane_varying_branches_remain_distinct() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
   %18 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
@@ -278,7 +278,7 @@ kernel.def target(@target) @sequential_allocations_remain_distinct() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @sequential_allocations_remain_distinct() asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @sequential_allocations_remain_distinct() asm {
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
   %15 = storage {byte_alignment = 16, byte_length = 128} : low.storage<workgroup>
   %16 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
@@ -339,7 +339,7 @@ kernel.def target(@target) @cyclic_branch_allocations_remain_distinct() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @cyclic_branch_allocations_remain_distinct() asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @cyclic_branch_allocations_remain_distinct() asm {
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
   %21 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
   %22 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
@@ -406,7 +406,7 @@ kernel.def target(@target) @bounded_dynamic_workgroup_storage() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(2, 1, 1) @bounded_dynamic_workgroup_storage() asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(2, 1, 1) @bounded_dynamic_workgroup_storage() asm {
   %workgroup = live_in<amdgpu.workgroup_id.x> : reg<amdgpu.sgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
   %16 = storage {byte_alignment = 16, byte_length = 8192} : low.storage<workgroup>
@@ -471,7 +471,7 @@ kernel.def target(@target) @partially_reconverged_allocations_remain_distinct(%o
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @partially_reconverged_allocations_remain_distinct(%outer: reg<amdgpu.sgpr>, %inner: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 2, direct_arg_count = 2, direct_arg_names = {arg0 = "outer", arg1 = "inner"}, direct_arg_offsets = [0, 4], direct_arg_parameter_indices = [0, 1], direct_arg_sizes = [4, 4], parameter_count = 3, resource_count = 1, resource_offsets = [8], resource_parameter_indices = [2], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @partially_reconverged_allocations_remain_distinct(%outer: reg<amdgpu.sgpr>, %inner: reg<amdgpu.sgpr>) asm {
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
   %24 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
   %25 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
@@ -537,7 +537,7 @@ kernel.def target(@target) @nonterminating_allocations_remain_distinct(%selector
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @nonterminating_allocations_remain_distinct(%selector: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "selector"}, direct_arg_offsets = [0], direct_arg_parameter_indices = [0], direct_arg_sizes = [4], parameter_count = 2, resource_count = 1, resource_offsets = [8], resource_parameter_indices = [1], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @nonterminating_allocations_remain_distinct(%selector: reg<amdgpu.sgpr>) asm {
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
   %19 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
   %20 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>

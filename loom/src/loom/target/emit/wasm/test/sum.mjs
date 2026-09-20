@@ -10,7 +10,8 @@ import {readFileSync} from 'node:fs';
 const binary = readFileSync(process.argv[2]);
 assert.ok(WebAssembly.validate(binary));
 const {instance} = await WebAssembly.instantiate(binary);
-assert.deepEqual(Object.keys(instance.exports), ['sum_to']);
+assert.deepEqual(Object.keys(instance.exports).sort(), ['artifact_alias', 'sum_to']);
+assert.equal(instance.exports.artifact_alias(42), 42);
 for (let end = 0; end <= 1024; ++end) {
   const expected = Math.max(0, end * (end - 1) / 2);
   assert.equal(instance.exports.sum_to(end), expected, `sum_to(${end})`);

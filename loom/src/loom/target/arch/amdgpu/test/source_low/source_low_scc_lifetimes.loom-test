@@ -52,7 +52,7 @@ kernel.def target(@target) @select_nested_global_buffer(%select_lhs: index, %sel
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @select_nested_global_buffer(%select_lhs: reg<amdgpu.sgpr>, %select_rhs: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 2, direct_arg_count = 2, direct_arg_names = {arg0 = "select_lhs", arg1 = "select_rhs"}, direct_arg_offsets = [0, 4], direct_arg_parameter_indices = [0, 1], direct_arg_sizes = [4, 4], parameter_count = 6, resource_count = 4, resource_offsets = [8, 16, 24, 32], resource_parameter_indices = [2, 3, 4, 5], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @select_nested_global_buffer(%select_lhs: reg<amdgpu.sgpr>, %select_rhs: reg<amdgpu.sgpr>) asm {
   %lhs = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %middle = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %rhs = resource<hal_binding> {index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>

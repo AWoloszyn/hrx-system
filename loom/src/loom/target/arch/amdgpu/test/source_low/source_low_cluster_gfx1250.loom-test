@@ -22,7 +22,7 @@ kernel.def target(@target) @cluster_gather_b32() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_b32() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_b32() asm {
   %global = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
   %14 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
   %16 = v_mov_b32 0
@@ -66,7 +66,7 @@ kernel.def target(@target) @cluster_gather_packet_widths() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_packet_widths() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_packet_widths() asm {
   %global = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 48} : reg<amdgpu.sgpr x2>
   %24 = storage {byte_alignment = 16, byte_length = 16} : low.storage<workgroup>
   %25 = storage {byte_alignment = 16, byte_length = 16} : low.storage<workgroup>
@@ -112,7 +112,7 @@ kernel.def target(@target) @cluster_gather_dynamic_addresses() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_dynamic_addresses() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_dynamic_addresses() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %global = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %21 = storage {byte_alignment = 16, byte_length = 1024} : low.storage<workgroup>
@@ -161,7 +161,7 @@ kernel.def target(@target) @cluster_gather_two_stage_wait_depth() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_two_stage_wait_depth() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_two_stage_wait_depth() asm {
   %global = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
   %27 = storage {byte_alignment = 16, byte_length = 16} : low.storage<workgroup>
   %28 = storage {byte_alignment = 16, byte_length = 16} : low.storage<workgroup>
@@ -231,7 +231,7 @@ kernel.def target(@target) @cluster_gather_same_root_disjoint_slots() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_same_root_disjoint_slots() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_same_root_disjoint_slots() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %global = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
   %39 = storage {byte_alignment = 16, byte_length = 4096} : low.storage<workgroup>
@@ -286,7 +286,7 @@ kernel.def target(@target) @cluster_gather_disjoint_workgroup_store() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_disjoint_workgroup_store() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 2, 1) cluster_size(1, 2, 1) @cluster_gather_disjoint_workgroup_store() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %global_input = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %payload_view = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>

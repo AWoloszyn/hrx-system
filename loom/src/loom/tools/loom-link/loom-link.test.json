@@ -17,7 +17,9 @@
           "stdout": {
             "contains": [
               "kernel.def retain @entry()",
-              "kernel.def retain export(\"artifact_entry\") @renamed_entry()"
+              "kernel.def retain export(\"artifact_entry\") @renamed_entry()",
+              "func.def public retain @public_entry()",
+              "func.def public retain export(\"public_alias\") @renamed_public_entry()"
             ],
             "not_contains": [
               "@unused_helper",
@@ -49,7 +51,9 @@
           "stdout": {
             "contains": [
               "kernel.def retain @entry()",
-              "kernel.def retain export(\"artifact_entry\") @renamed_entry()"
+              "kernel.def retain export(\"artifact_entry\") @renamed_entry()",
+              "func.def public retain @public_entry()",
+              "func.def public retain export(\"public_alias\") @renamed_public_entry()"
             ],
             "not_contains": [
               "@unused_helper",
@@ -258,7 +262,7 @@
           "name": "write-library",
           "write": {
             "path": "{tmp}/library.loom",
-            "text": "func.def @unused(%x: i32) -> (i32) {\n  func.return %x : i32\n}\n\nfunc.def export(\"identity\") @identity(%x: i32) -> (i32) {\n  func.return %x : i32\n}\n"
+            "text": "func.def @unused(%x: i32) -> (i32) {\n  func.return %x : i32\n}\n\nfunc.def public @identity(%x: i32) -> (i32) {\n  func.return %x : i32\n}\n"
           }
         },
         {

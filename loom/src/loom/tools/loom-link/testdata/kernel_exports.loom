@@ -12,6 +12,14 @@ kernel.def export("artifact_entry") @renamed_entry() {
   kernel.return
 }
 
-func.def @unused_helper() {
+func.def export("private_alias") @unused_helper() {
+  func.return
+}
+
+func.def public @public_entry() {
+  func.return
+}
+
+func.def public export("public_alias") @renamed_public_entry() {
   func.return
 }

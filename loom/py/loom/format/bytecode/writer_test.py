@@ -65,7 +65,6 @@ from loom.format.bytecode.writer import (
     SECTION_LOCATIONS,
     SECTION_SYMBOL_REFERENCES,
     SECTION_SYMBOLS,
-    SYMBOL_FLAG_EXPORT,
     SYMBOL_INTERFACE_BITS,
     write_module,
 )
@@ -2785,57 +2784,39 @@ class TestImportExportBytecodeRoundTrip:
         assert not names["helper"].is_public
         assert names["entry"].is_public
 
-    def test_explicit_export_is_indexed_without_public_visibility(self) -> None:
-        """Explicit exports are indexed independently of source visibility."""
-        module = Module(name="test")
-        argument_id = module.add_value(Value(name="x", type=F32))
-        function_op = Operation(
-            name="func.def",
-            attributes={"callee": "entry", "export_symbol": "entry"},
-            regions=[
-                Region(
-                    blocks=[
-                        Block(
-                            arg_ids=[argument_id],
-                            ops=[Operation(name="test.yield", operands=[argument_id])],
-                        )
-                    ]
-                )
-            ],
-        )
-        module.add_symbol(
-            Symbol(
-                name="entry",
-                kind=SymbolKind.FUNC_DEF,
-                flags=0,
-                op=function_op,
+    @pytest.mark.parametrize("role", ["private", "public", "kernel"])
+    @pytest.mark.parametrize("alias", [None, "artifact_entry"])
+    def test_export_index_uses_role_not_alias(self, role, alias) -> None:
+        """Aliases survive round trips without changing export eligibility."""
+        parser = Parser()
+        parser.register_ops([*ALL_FUNC_OPS, *ALL_KERNEL_OPS, *ALL_INDEX_OPS])
+        parser.register_types(ALL_BUILTIN_TYPES)
+        override = f'export("{alias}") ' if alias else ""
+        if role == "kernel":
+            text = (
+                f"kernel.def {override}@entry() {{\n"
+                "  %one = index.constant 1 : index\n"
+                "  kernel.launch.config workgroups(%one, %one, %one) "
+                "workgroup_size(%one, %one, %one) : index\n"
+                "} launch() {\n  kernel.return\n}\n"
             )
-        )
-
-        data = write_module(module)
+        else:
+            visibility = "public " if role == "public" else ""
+            text = f"func.def {visibility}{override}@entry() {{\n  func.return\n}}\n"
+        data = write_module(parser.parse(text))
         symbols = _section_payload(data, SECTION_SYMBOLS)
-        offset = 0
-        symbol_count, offset = decode_varint(symbols, offset)
+        symbol_count, offset = decode_varint(symbols, 0)
         import_count, offset = decode_varint(symbols, offset)
         export_count, offset = decode_varint(symbols, offset)
-        _root_region_payload_count, offset = decode_varint(symbols, offset)
         assert symbol_count == 1
         assert import_count == 0
-        assert export_count == 1
-        assert struct.unpack_from("<Q", symbols, offset)[0] == 0
-        offset += 8
-        _name_id, offset = decode_varint(symbols, offset)
-        _kind = symbols[offset]
-        visibility = symbols[offset + 1]
-        flags = struct.unpack_from("<H", symbols, offset + 2)[0]
-        assert visibility == 1
-        assert flags & SYMBOL_FLAG_EXPORT
+        assert export_count == (role != "private")
 
         loaded = read_module(data)
         loaded_symbol = loaded.symbols[0]
-        assert not loaded_symbol.is_public
+        assert loaded_symbol.is_public == (role == "public")
         assert loaded_symbol.op is not None
-        assert loaded_symbol.op.attributes["export_symbol"] == "entry"
+        assert loaded_symbol.op.attributes.get("export_symbol") == alias
 
     def test_mixed_import_export_private(self) -> None:
         """Module with imports, exports, and private symbols."""

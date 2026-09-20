@@ -20,7 +20,7 @@ kernel.def target(@target) @gfx1151_dynamic_result_row_stride() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3_5.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @gfx1151_dynamic_result_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna3_5.core>(@target) abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "row_size0"}, direct_arg_offsets = [0], direct_arg_parameter_indices = [0], direct_arg_sizes = [4], parameter_count = 2, resource_count = 1, resource_offsets = [8], resource_parameter_indices = [1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @gfx1151_dynamic_result_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
   %13 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %15 = v_mov_b32 0
@@ -62,7 +62,7 @@ kernel.def target(@target) @gfx1100_dynamic_result_row_stride() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_dynamic_result_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "row_size0"}, direct_arg_offsets = [0], direct_arg_parameter_indices = [0], direct_arg_sizes = [4], parameter_count = 2, resource_count = 1, resource_offsets = [8], resource_parameter_indices = [1], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_dynamic_result_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
   %12 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %14 = v_mov_b32 0
@@ -112,7 +112,7 @@ kernel.def target(@target) @gfx1250_dynamic_result_row_stride() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1250_dynamic_result_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "row_size0"}, direct_arg_offsets = [0], direct_arg_parameter_indices = [0], direct_arg_sizes = [4], parameter_count = 2, resource_count = 1, resource_offsets = [8], resource_parameter_indices = [1], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1250_dynamic_result_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
   %12 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %14 = v_mov_b32 0
@@ -170,7 +170,7 @@ kernel.def target(@target) @gfx942_dynamic_operand_strides() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna3.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @gfx942_dynamic_operand_strides(%lhs_column_count: reg<amdgpu.sgpr>, %rhs_column_stride: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 2, direct_arg_count = 2, direct_arg_names = {arg0 = "lhs_column_count0", arg1 = "rhs_column_stride0"}, direct_arg_offsets = [0, 4], direct_arg_parameter_indices = [0, 1], direct_arg_sizes = [4, 4], parameter_count = 5, resource_count = 3, resource_offsets = [8, 16, 24], resource_parameter_indices = [2, 3, 4], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @gfx942_dynamic_operand_strides(%lhs_column_count: reg<amdgpu.sgpr>, %rhs_column_stride: reg<amdgpu.sgpr>) asm {
   %24 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
@@ -231,7 +231,7 @@ kernel.def target(@target) @gfx1100_explicit_runtime_strided_vector_load() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_explicit_runtime_strided_vector_load(%row: reg<amdgpu.sgpr>, %row_stride: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 2, direct_arg_count = 2, direct_arg_names = {arg0 = "row0", arg1 = "row_stride0"}, direct_arg_offsets = [0, 4], direct_arg_parameter_indices = [0, 1], direct_arg_sizes = [4, 4], parameter_count = 4, resource_count = 2, resource_offsets = [8, 16], resource_parameter_indices = [2, 3], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_explicit_runtime_strided_vector_load(%row: reg<amdgpu.sgpr>, %row_stride: reg<amdgpu.sgpr>) asm {
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
   %22 = v_mov_b32 0
@@ -278,7 +278,7 @@ kernel.def target(@target) @gfx942_dynamic_packed_lhs_strides() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna3.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @gfx942_dynamic_packed_lhs_strides(%row_stride: reg<amdgpu.sgpr>, %column_stride: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 2, direct_arg_count = 2, direct_arg_names = {arg0 = "row_stride0", arg1 = "column_stride0"}, direct_arg_offsets = [0, 4], direct_arg_parameter_indices = [0, 1], direct_arg_sizes = [4, 4], parameter_count = 4, resource_count = 2, resource_offsets = [8, 16], resource_parameter_indices = [2, 3], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @gfx942_dynamic_packed_lhs_strides(%row_stride: reg<amdgpu.sgpr>, %column_stride: reg<amdgpu.sgpr>) asm {
   %18 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 2} : reg<amdgpu.sgpr x2>
@@ -327,7 +327,7 @@ kernel.def target(@target) @gfx1100_dynamic_origin_and_result_row_stride() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_dynamic_origin_and_result_row_stride(%row: reg<amdgpu.sgpr>, %row_size: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 2, direct_arg_count = 2, direct_arg_names = {arg0 = "row0", arg1 = "row_size0"}, direct_arg_offsets = [0, 4], direct_arg_parameter_indices = [0, 1], direct_arg_sizes = [4, 4], parameter_count = 3, resource_count = 1, resource_offsets = [8], resource_parameter_indices = [2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_dynamic_origin_and_result_row_stride(%row: reg<amdgpu.sgpr>, %row_size: reg<amdgpu.sgpr>) asm {
   %15 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %17 = v_mov_b32 0
@@ -382,7 +382,7 @@ kernel.def target(@target) @gfx1100_reuse_dynamic_result_row_stride() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_reuse_dynamic_result_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "row_size0"}, direct_arg_offsets = [0], direct_arg_parameter_indices = [0], direct_arg_sizes = [4], parameter_count = 2, resource_count = 1, resource_offsets = [8], resource_parameter_indices = [1], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_reuse_dynamic_result_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
   %14 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %16 = v_mov_b32 0
@@ -451,7 +451,7 @@ kernel.def target(@target) @gfx942_blocked_dynamic_result_row_stride() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna3.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @gfx942_blocked_dynamic_result_row_stride(%row_stride: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "row_stride0"}, direct_arg_offsets = [0], direct_arg_parameter_indices = [0], direct_arg_sizes = [4], parameter_count = 2, resource_count = 1, resource_offsets = [8], resource_parameter_indices = [1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @gfx942_blocked_dynamic_result_row_stride(%row_stride: reg<amdgpu.sgpr>) asm {
   %14 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %16 = v_mov_b32 0
@@ -548,7 +548,7 @@ kernel.def target(@target) @gfx1100_dynamic_init_load_row_stride() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_dynamic_init_load_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "row_size0"}, direct_arg_offsets = [0], direct_arg_parameter_indices = [0], direct_arg_sizes = [4], parameter_count = 3, resource_count = 2, resource_offsets = [8, 16], resource_parameter_indices = [1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_dynamic_init_load_row_stride(%row_size: reg<amdgpu.sgpr>) asm {
   %14 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>

@@ -45,7 +45,7 @@ kernel.def target(@target) @dependent_lookup() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3_5.core>(@target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @dependent_lookup(%initial: reg<amdgpu.sgpr>, %bias: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna3_5.core>(@target) abi_layout({constant_count = 2, direct_arg_count = 2, direct_arg_names = {arg0 = "initial", arg1 = "bias"}, direct_arg_offsets = [24, 28], direct_arg_parameter_indices = [3, 4], direct_arg_sizes = [4, 4], parameter_count = 5, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @dependent_lookup(%initial: reg<amdgpu.sgpr>, %bias: reg<amdgpu.sgpr>) asm {
   %ids = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 32} : reg<amdgpu.sgpr x2>
   %payloads = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 32} : reg<amdgpu.sgpr x2>
   %output = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>

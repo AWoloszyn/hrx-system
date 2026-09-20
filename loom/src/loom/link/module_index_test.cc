@@ -494,9 +494,9 @@ pipeline.def @generic_pipeline() launch() {
   verify_index(text_index.get());
 }
 
-TEST_F(ModuleIndexTest, IndexesExplicitBytecodeExportWithoutPublicVisibility) {
+TEST_F(ModuleIndexTest, IndexesPrivateAliasWithoutExportingSymbol) {
   loom_module_t* module = Parse(IREE_SV(R"(
-func.def export("entry") @entry(%x: i32) -> (i32) {
+func.def export("artifact_entry") @entry(%x: i32) -> (i32) {
   func.return %x : i32
 }
 )"));
@@ -512,11 +512,16 @@ func.def export("entry") @entry(%x: i32) -> (i32) {
       IREE_SV("functions.loombc"), /*index_options=*/nullptr, &options,
       /*out_provider_ordinal=*/nullptr));
 
+  EXPECT_EQ(
+      loom_link_module_index_lookup_global(index.get(), IREE_SV("@entry")),
+      nullptr);
   const loom_link_module_index_symbol_t* symbol =
-      loom_link_module_index_lookup_global(index.get(), IREE_SV("@entry"));
+      loom_link_module_index_lookup_private(
+          index.get(), loom_link_module_index_module_at(index.get(), 0),
+          IREE_SV("entry"));
   ASSERT_NE(symbol, nullptr);
-  EXPECT_EQ(symbol->identity, LOOM_LINK_SYMBOL_IDENTITY_GLOBAL);
-  EXPECT_TRUE(iree_all_bits_set(symbol->flags, LOOM_LINK_SYMBOL_FLAG_EXPORT));
+  EXPECT_EQ(symbol->identity, LOOM_LINK_SYMBOL_IDENTITY_PRIVATE);
+  EXPECT_FALSE(iree_all_bits_set(symbol->flags, LOOM_LINK_SYMBOL_FLAG_EXPORT));
   EXPECT_FALSE(iree_all_bits_set(symbol->flags, LOOM_LINK_SYMBOL_FLAG_PUBLIC));
 }
 

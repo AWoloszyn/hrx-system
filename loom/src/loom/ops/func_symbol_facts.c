@@ -96,16 +96,13 @@ static iree_status_t loom_func_symbol_apply_export_attrs(
   return iree_ok_status();
 }
 
-static iree_status_t loom_func_symbol_apply_direct_export_attrs(
+static void loom_func_symbol_apply_direct_export_attrs(
     loom_func_like_t func, loom_func_symbol_facts_t* facts) {
   uint8_t export_linkage = 0;
   if (loom_func_like_export_linkage(func, &export_linkage)) {
     facts->export_linkage = (loom_target_linkage_t)export_linkage;
     facts->has_export_linkage = true;
-    facts->exports = true;
   }
-
-  return iree_ok_status();
 }
 
 static iree_status_t loom_func_symbol_apply_imports(
@@ -205,6 +202,7 @@ static iree_status_t loom_func_symbol_fact_compute(
   IREE_RETURN_IF_ERROR(
       loom_func_symbol_resolve_target_conditions(context, module, func, facts));
   IREE_RETURN_IF_ERROR(loom_func_symbol_apply_imports(module, func, facts));
+  facts->exports = loom_func_like_is_exported(func);
   facts->target_symbol = loom_func_like_target(func);
 
   const bool has_abi_attr =
@@ -224,14 +222,10 @@ static iree_status_t loom_func_symbol_fact_compute(
     IREE_RETURN_IF_ERROR(loom_func_symbol_string_from_id(
         module, export_symbol_id, IREE_SV("export_symbol"),
         &facts->export_symbol));
-    facts->exports = true;
   }
   IREE_RETURN_IF_ERROR(
       loom_func_symbol_apply_export_attrs(module, export_attrs, facts));
-  IREE_RETURN_IF_ERROR(loom_func_symbol_apply_direct_export_attrs(func, facts));
-  if (export_attrs.count > 0 || loom_func_like_is_kernel_entry(func)) {
-    facts->exports = true;
-  }
+  loom_func_symbol_apply_direct_export_attrs(func, facts);
 
   (void)context;
   *out_facts = &facts->base;

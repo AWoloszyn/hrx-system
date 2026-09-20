@@ -40,10 +40,7 @@ bool loom_link_symbol_has_global_identity(const loom_module_t* module,
   if (!loom_func_like_isa(func)) {
     return false;
   }
-  return loom_func_like_is_kernel_entry(func) ||
-         loom_func_like_import_module(func) != LOOM_STRING_ID_INVALID ||
-         loom_func_like_import_symbol(func) != LOOM_STRING_ID_INVALID ||
-         loom_func_like_export_symbol(func) != LOOM_STRING_ID_INVALID;
+  return !loom_func_like_is_module_internal(func);
 }
 
 void loom_link_symbol_internalize(loom_module_t* module, loom_op_t* op) {
