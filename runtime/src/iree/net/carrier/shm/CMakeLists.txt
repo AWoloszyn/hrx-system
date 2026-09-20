@@ -88,6 +88,88 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    handshake
+  HDRS
+    "handshake.h"
+  SRCS
+    "handshake.c"
+  DEPS
+    ::bootstrap
+    ::connection
+    ::shm
+    ::storage
+    iree::async
+    iree::async::util::local_stream
+    iree::base
+    iree::net::connection
+    iree::net::transport_factory
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    connect
+  HDRS
+    "connect.h"
+  SRCS
+    "connect.c"
+  DEPS
+    ::connection
+    ::handshake
+    ::region
+    ::shm
+    ::storage
+    iree::async
+    iree::async::util::local_stream
+    iree::base
+    iree::base::threading
+    iree::net::connection
+    iree::net::transport_factory
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    listener
+  HDRS
+    "listener.h"
+  SRCS
+    "listener.c"
+  DEPS
+    ::connection
+    ::handshake
+    ::region
+    ::shm
+    ::storage
+    iree::async
+    iree::async::util::local_stream
+    iree::base
+    iree::base::threading
+    iree::net::connection
+    iree::net::transport_factory
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    factory
+  HDRS
+    "factory.h"
+  SRCS
+    "factory.c"
+  DEPS
+    ::connect
+    ::listener
+    ::region
+    ::shm
+    iree::async
+    iree::base
+    iree::net::transport_factory
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     bootstrap
   HDRS
     "bootstrap.h"
@@ -187,6 +269,59 @@ iree_cc_test(
     iree::testing::gtest_main
     ${_connection_test_platform_deps}
 )
+
+set(_factory_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+  list(APPEND _factory_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _factory_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  list(APPEND _factory_test_platform_deps iree::async::platform::posix)
+endif()
+iree_cc_test(
+  NAME
+    factory_test
+  SRCS
+    "factory_test.cc"
+  DEPS
+    ::bootstrap
+    ::connection
+    ::factory
+    ::region
+    ::storage
+    iree::async
+    iree::async::platform
+    iree::async::util::local_stream
+    iree::base
+    iree::net::connection
+    iree::net::message_endpoint
+    iree::net::transport_factory
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::testing::temp_file
+    ${_factory_test_platform_deps}
+)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+iree_cc_test(
+  NAME
+    factory_process_test
+  SRCS
+    "factory_process_test.cc"
+  DEPS
+    ::factory
+    iree::async
+    iree::async::platform
+    iree::base
+    iree::base::core_headers
+    iree::net::connection
+    iree::net::message_endpoint
+    iree::net::transport_factory
+    iree::testing::coordinated_test
+    iree::testing::coordinated_test_main
+    iree::testing::gtest
+)
+endif()
 
 iree_cc_test(
   NAME

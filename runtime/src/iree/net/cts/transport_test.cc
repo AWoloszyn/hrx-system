@@ -693,8 +693,7 @@ class TransportTest : public ::testing::Test {
       return;
     }
     if (connect_state_.callback_count == 0) {
-      PollUntil(client_proactor_, kClientPolling,
-                [&] { return connect_state_.callback_count == 1; });
+      PollBothUntil([&] { return connect_state_.callback_count == 1; });
     }
     if (connect_state_.status_code == IREE_STATUS_OK && listener_ &&
         accept_state_.callback_count == 0) {
@@ -713,15 +712,15 @@ class TransportTest : public ::testing::Test {
   }
 
   void EstablishConnection() {
-    CreateListener();
+    ASSERT_NO_FATAL_FAILURE(CreateListener());
     SubmitConnect(iree_make_string_view(connect_address_.data(),
                                         connect_address_.size()));
     EXPECT_EQ(connect_state_.callback_count, 0);
     EXPECT_EQ(accept_state_.callback_count, 0);
-    PollUntil(client_proactor_, kClientPolling,
-              [&] { return connect_state_.callback_count == 1; });
+    // Establishment may exchange resource-import records before either peer
+    // can publish a usable connection. Both owners must be allowed to progress.
+    PollBothUntil([&] { return connect_state_.callback_count == 1; });
     ASSERT_EQ(connect_state_.status_code, IREE_STATUS_OK);
-    EXPECT_EQ(accept_state_.callback_count, 0);
     PollUntil(server_proactor_, kServerPolling,
               [&] { return accept_state_.callback_count == 1; });
     ASSERT_EQ(accept_state_.status_code, IREE_STATUS_OK);
@@ -859,7 +858,7 @@ TEST_F(TransportTest, ReportsRequiredCapabilities) {
 }
 
 TEST_F(TransportTest, ListenerStopIsAsynchronousAndRefusesConnections) {
-  CreateListener();
+  ASSERT_NO_FATAL_FAILURE(CreateListener());
   IREE_ASSERT_OK(iree_net_listener_stop(listener_, stop_state_.callback()));
   stop_state_.submitted = true;
   EXPECT_FALSE(stop_state_.completed);
@@ -878,7 +877,7 @@ TEST_F(TransportTest, ListenerStopIsAsynchronousAndRefusesConnections) {
 }
 
 TEST_F(TransportTest, CancelBeforeKickoffAllowsReuseAfterJoin) {
-  CreateListener();
+  ASSERT_NO_FATAL_FAILURE(CreateListener());
   const auto address =
       iree_make_string_view(connect_address_.data(), connect_address_.size());
   SubmitConnect(address);
@@ -900,8 +899,7 @@ TEST_F(TransportTest, CancelBeforeKickoffAllowsReuseAfterJoin) {
   // A detached operation is not a pre-cancel token for its next execution.
   iree_net_transport_connect_operation_cancel(&connect_state_.operation);
   SubmitConnect(address);
-  PollUntil(client_proactor_, kClientPolling,
-            [&] { return connect_state_.callback_count == 2; });
+  PollBothUntil([&] { return connect_state_.callback_count == 2; });
   ASSERT_EQ(connect_state_.status_code, IREE_STATUS_OK);
   PollUntil(server_proactor_, kServerPolling,
             [&] { return accept_state_.callback_count == 1; });
@@ -909,7 +907,7 @@ TEST_F(TransportTest, CancelBeforeKickoffAllowsReuseAfterJoin) {
 }
 
 TEST_F(TransportTest, CancelledConnectCallbackDestroysOperationOwner) {
-  CreateListener();
+  ASSERT_NO_FATAL_FAILURE(CreateListener());
   struct Owner {
     // Stable attempt storage destroyed by its terminal callback.
     iree_net_transport_connect_operation_t operation;
@@ -944,7 +942,7 @@ TEST_F(TransportTest, CancelledConnectCallbackDestroysOperationOwner) {
 }
 
 TEST_F(TransportTest, ConcurrentCancellationJoinsBeforeCallerStorageReuse) {
-  CreateListener();
+  ASSERT_NO_FATAL_FAILURE(CreateListener());
   SubmitConnect(
       iree_make_string_view(connect_address_.data(), connect_address_.size()));
   std::thread canceller([&] {
@@ -952,8 +950,7 @@ TEST_F(TransportTest, ConcurrentCancellationJoinsBeforeCallerStorageReuse) {
       iree_net_transport_connect_operation_cancel(&connect_state_.operation);
     }
   });
-  PollUntil(client_proactor_, kClientPolling,
-            [&] { return connect_state_.callback_count == 1; });
+  PollBothUntil([&] { return connect_state_.callback_count == 1; });
   canceller.join();
   EXPECT_TRUE(connect_state_.status_code == IREE_STATUS_OK ||
               connect_state_.status_code == IREE_STATUS_CANCELLED);
@@ -969,7 +966,7 @@ TEST_F(TransportTest, ConcurrentCancellationJoinsBeforeCallerStorageReuse) {
 }
 
 TEST_F(TransportTest, CancellationAfterPublicationLeavesConnectionUsable) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_transport_connect_operation_cancel(&connect_state_.operation);
   auto endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
@@ -978,7 +975,7 @@ TEST_F(TransportTest, CancellationAfterPublicationLeavesConnectionUsable) {
 }
 
 TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
   iree_net_message_endpoint_t server_endpoint =
@@ -1046,7 +1043,7 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
 }
 
 TEST_F(TransportTest, CallbackHandoffPreservesQueuedMessageOrder) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
   iree_net_message_endpoint_t server_endpoint =
@@ -1113,7 +1110,7 @@ TEST_F(TransportTest, CallbackHandoffPreservesQueuedMessageOrder) {
 }
 
 TEST_F(TransportTest, CarriesControlDataAndGoaway) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
   iree_net_message_endpoint_t server_endpoint =
@@ -1199,7 +1196,7 @@ TEST_F(TransportTest, CarriesControlDataAndGoaway) {
 }
 
 TEST_F(TransportTest, CarriesQueueCommandsAndAdvances) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
   iree_net_message_endpoint_t server_endpoint =
@@ -1303,7 +1300,7 @@ TEST_F(TransportTest, CarriesQueueCommandsAndAdvances) {
 }
 
 TEST_F(TransportTest, CarriesCreditBoundedBulkTransfer) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
   iree_net_message_endpoint_t server_endpoint =
@@ -1482,7 +1479,7 @@ TEST_F(TransportTest, CarriesCreditBoundedBulkTransfer) {
 }
 
 TEST_F(TransportTest, GeneratesLargeTransientPrefixWithoutSizeCliff) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
   iree_net_message_endpoint_t server_endpoint =
@@ -1524,7 +1521,7 @@ TEST_F(TransportTest, GeneratesLargeTransientPrefixWithoutSizeCliff) {
 }
 
 TEST_F(TransportTest, SaturatedAdmissionResumesFromCompletion) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
   iree_net_message_endpoint_t server_endpoint =
@@ -1678,7 +1675,7 @@ TEST_F(TransportTest, MovedMessagesSurviveConnectionTeardown) {
   SendState independent_send;
   ScopedConnectionDrain drain{this};
 
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   iree_net_message_endpoint_t client_endpoint =
       OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
   iree_net_message_endpoint_t server_endpoint =
@@ -1775,7 +1772,7 @@ TEST_F(TransportTest, MovedMessagesSurviveConnectionTeardown) {
 }
 
 TEST_F(TransportTest, DeactivationCancelsPendingEndpointReadyCallback) {
-  EstablishConnection();
+  ASSERT_NO_FATAL_FAILURE(EstablishConnection());
   EndpointReadyState* ready_state =
       SubmitOpenEndpoint(client_connection_, kClientPolling);
   ASSERT_NE(ready_state, nullptr);
@@ -1799,7 +1796,7 @@ TEST_F(TransportTest, DeactivationCancelsPendingEndpointReadyCallback) {
 }
 
 TEST_F(TransportTest, PendingSubmissionRetainsFactoryAndProactors) {
-  CreateListener();
+  ASSERT_NO_FATAL_FAILURE(CreateListener());
   SubmitConnect(
       iree_make_string_view(connect_address_.data(), connect_address_.size()));
 
