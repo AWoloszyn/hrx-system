@@ -15,6 +15,30 @@ func.def @second(%extent: index) -> (index) {
 
 // ====
 
+// RUN: roundtrip
+
+// A block argument type can name a later argument in the same block.
+func.def @forward_block_argument_type(%extent: index, %input: view<[%extent]xf32>) {
+  cfg.br ^body(%input: view<[%extent]xf32>, %extent: index)
+^body(%view: view<[%body_extent]xf32>, %body_extent: index):
+  test.use %view : view<[%body_extent]xf32>
+  func.return
+}
+
+// ====
+
+// RUN: verify
+
+func.def @unresolved_block_argument_type(%extent: index, %input: view<[%extent]xf32>) {
+  cfg.br ^body(%input: view<[%extent]xf32>)
+  // ERROR@+1: PARSE/001 "missing"
+^body(%view: view<[%missing]xf32>):
+  test.use %view : view<[%missing]xf32>
+  func.return
+}
+
+// ====
+
 // RUN: pass scf-to-cfg
 
 // Flattening scopes must keep inner and outer references distinct.

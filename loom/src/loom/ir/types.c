@@ -394,7 +394,10 @@ bool loom_type_equal_after_value_remap(const loom_module_t* module,
     return false;
   }
   if (!loom_type_kind_is_valid(source_kind)) {
-    return source_type.dims[0] == target_type.dims[0] &&
+    return source_type.header == target_type.header &&
+           source_type.encoding_id == target_type.encoding_id &&
+           source_type.encoding_flags == target_type.encoding_flags &&
+           source_type.dims[0] == target_type.dims[0] &&
            source_type.dims[1] == target_type.dims[1];
   }
 
@@ -901,5 +904,232 @@ uint32_t loom_type_hash(loom_type_t type) {
   for (uint8_t i = 0; i < rank; ++i) {
     hash = loom_structural_hash_mix_u64(hash, dims[i]);
   }
+  return loom_structural_hash_finalize(hash);
+}
+
+#if IREE_HAVE_ATTRIBUTE(minsize)
+__attribute__((minsize))
+#endif
+IREE_ATTRIBUTE_NOINLINE static uint32_t loom_attribute_hash_after_value_remap(
+    const loom_module_t* module, const loom_attribute_t* attribute,
+    uint8_t depth, const loom_type_value_remap_t* remap) {
+  uint32_t hash = loom_structural_hash_initialize();
+  hash = loom_structural_hash_mix_u8(hash, attribute->kind);
+  switch ((loom_attr_kind_t)attribute->kind) {
+    case LOOM_ATTR_TYPE:
+      if (attribute->type_id < module->types.count) {
+        hash = loom_structural_hash_mix_u32(
+            hash,
+            loom_type_hash_after_value_remap(
+                module, module->types.entries[attribute->type_id], remap));
+      } else {
+        hash = loom_structural_hash_mix_u32(hash, attribute->type_id);
+      }
+      break;
+
+    case LOOM_ATTR_PREDICATE_LIST:
+      hash = loom_structural_hash_mix_u16(hash, attribute->count);
+      if (attribute->count > 0 && attribute->predicate_list == NULL) {
+        hash = loom_structural_hash_mix_u64(
+            hash, (uint64_t)(uintptr_t)attribute->predicate_list);
+        break;
+      }
+      for (uint16_t i = 0; i < attribute->count; ++i) {
+        const loom_predicate_t* predicate = &attribute->predicate_list[i];
+        hash = loom_structural_hash_mix_u8(hash, predicate->kind);
+        hash = loom_structural_hash_mix_u8(hash, predicate->arg_count);
+        hash = loom_structural_hash_mix_bytes(hash, predicate->arg_tags,
+                                              sizeof(predicate->arg_tags));
+        for (uint8_t j = 0; j < predicate->arg_count; ++j) {
+          int64_t argument = predicate->args[j];
+          if (predicate->arg_tags[j] == LOOM_PRED_ARG_VALUE && argument >= 0) {
+            argument = (int64_t)loom_type_remap_value(
+                module, remap, (loom_value_id_t)argument);
+          }
+          hash = loom_structural_hash_mix_u64(hash, (uint64_t)argument);
+        }
+      }
+      break;
+
+    case LOOM_ATTR_DICT:
+      hash = loom_structural_hash_mix_u16(hash, attribute->count);
+      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH ||
+          (attribute->count > 0 && attribute->dict_entries == NULL)) {
+        hash = loom_structural_hash_mix_u64(
+            hash, (uint64_t)(uintptr_t)attribute->dict_entries);
+        break;
+      }
+      for (uint16_t i = 0; i < attribute->count; ++i) {
+        hash = loom_structural_hash_mix_u32(hash,
+                                            attribute->dict_entries[i].name_id);
+        hash = loom_structural_hash_mix_u32(
+            hash, loom_attribute_hash_after_value_remap(
+                      module, &attribute->dict_entries[i].value,
+                      (uint8_t)(depth + 1), remap));
+      }
+      break;
+
+    case LOOM_ATTR_PARAMETERIZED:
+      hash = loom_structural_hash_mix_u32(hash, attribute->reserved_1);
+      hash = loom_structural_hash_mix_u16(hash, attribute->count);
+      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH ||
+          (attribute->count > 0 && attribute->parameterized_slots == NULL)) {
+        hash = loom_structural_hash_mix_u64(
+            hash, (uint64_t)(uintptr_t)attribute->parameterized_slots);
+        break;
+      }
+      for (uint16_t i = 0; i < attribute->count; ++i) {
+        hash = loom_structural_hash_mix_u32(
+            hash, loom_attribute_hash_after_value_remap(
+                      module, &attribute->parameterized_slots[i],
+                      (uint8_t)(depth + 1), remap));
+      }
+      break;
+
+    case LOOM_ATTR_PARAMETERIZED_ARRAY:
+      hash = loom_structural_hash_mix_u16(hash, attribute->count);
+      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH ||
+          (attribute->count > 0 && attribute->parameterized_array == NULL)) {
+        hash = loom_structural_hash_mix_u64(
+            hash, (uint64_t)(uintptr_t)attribute->parameterized_array);
+        break;
+      }
+      for (uint16_t i = 0; i < attribute->count; ++i) {
+        hash = loom_structural_hash_mix_u32(
+            hash, loom_attribute_hash_after_value_remap(
+                      module, &attribute->parameterized_array[i],
+                      (uint8_t)(depth + 1), remap));
+      }
+      break;
+
+    default:
+      hash = loom_structural_hash_mix_u32(hash, loom_attribute_hash(attribute));
+      break;
+  }
+  return loom_structural_hash_finalize(hash);
+}
+
+static uint32_t loom_type_hash_sequence_after_value_remap(
+    const loom_module_t* module, const loom_type_t* types,
+    iree_host_size_t type_count, const loom_type_value_remap_t* remap,
+    uint32_t hash) {
+  hash = loom_structural_hash_mix_u32(hash, (uint32_t)type_count);
+  if (!types) {
+    return hash;
+  }
+  for (iree_host_size_t i = 0; i < type_count; ++i) {
+    hash = loom_structural_hash_mix_u32(
+        hash, loom_type_hash_after_value_remap(module, types[i], remap));
+  }
+  return hash;
+}
+
+#if IREE_HAVE_ATTRIBUTE(minsize)
+__attribute__((minsize))
+#endif
+IREE_ATTRIBUTE_NOINLINE uint32_t
+loom_type_hash_after_value_remap(const loom_module_t* module, loom_type_t type,
+                                 const loom_type_value_remap_t* remap) {
+  if (!loom_type_may_reference_values(type)) {
+    return loom_type_hash(type);
+  }
+  uint32_t hash = loom_structural_hash_initialize();
+  hash = loom_structural_hash_mix_u32(hash, type.header);
+  hash = loom_structural_hash_mix_u16(hash, type.encoding_flags);
+
+  const loom_type_kind_t kind = loom_type_kind(type);
+  if (!loom_type_kind_is_valid(kind)) {
+    hash = loom_structural_hash_mix_u16(hash, type.encoding_id);
+    hash = loom_structural_hash_mix_u64(hash, type.dims[0]);
+    hash = loom_structural_hash_mix_u64(hash, type.dims[1]);
+    return loom_structural_hash_finalize(hash);
+  }
+  switch (kind) {
+    case LOOM_TYPE_FUNCTION: {
+      hash = loom_structural_hash_mix_u16(hash, type.encoding_id);
+      const loom_func_type_data_t* data = loom_type_func_data(type);
+      if (!data) {
+        return loom_structural_hash_finalize(hash);
+      }
+      hash = loom_structural_hash_mix_u16(hash, data->arg_count);
+      hash = loom_structural_hash_mix_u16(hash, data->result_count);
+      hash = loom_type_hash_sequence_after_value_remap(
+          module, data->types,
+          (iree_host_size_t)data->arg_count + data->result_count, remap, hash);
+      return loom_structural_hash_finalize(hash);
+    }
+
+    case LOOM_TYPE_DIALECT:
+      hash = loom_structural_hash_mix_u16(hash, type.encoding_id);
+      hash =
+          loom_structural_hash_mix_u32(hash, loom_type_dialect_name_id(type));
+      hash = loom_type_hash_sequence_after_value_remap(
+          module, loom_type_dialect_params(type),
+          loom_type_dialect_param_count(type), remap, hash);
+      return loom_structural_hash_finalize(hash);
+
+    case LOOM_TYPE_PARAMETERIZED: {
+      hash = loom_structural_hash_mix_u64(
+          hash, (uint64_t)(uintptr_t)loom_type_parameterized_descriptor(type));
+      const uint8_t parameter_count =
+          loom_type_parameterized_parameter_count(type);
+      const loom_attribute_t* parameters =
+          loom_type_parameterized_parameters(type);
+      if (!parameters) {
+        return loom_structural_hash_finalize(hash);
+      }
+      for (uint8_t i = 0; i < parameter_count; ++i) {
+        hash = loom_structural_hash_mix_u32(
+            hash, loom_attribute_hash_after_value_remap(module, &parameters[i],
+                                                        /*depth=*/1, remap));
+      }
+      return loom_structural_hash_finalize(hash);
+    }
+
+    case LOOM_TYPE_REGISTER: {
+      hash = loom_structural_hash_mix_u16(hash, type.encoding_id);
+      const loom_register_type_data_t* data = loom_type_register_data(type);
+      if (!loom_type_register_has_value_type(type)) {
+        hash = loom_structural_hash_mix_u64(hash, type.dims[0]);
+        hash = loom_structural_hash_mix_u64(hash, type.dims[1]);
+        return loom_structural_hash_finalize(hash);
+      }
+      if (!data) {
+        return loom_structural_hash_finalize(hash);
+      }
+      hash = loom_structural_hash_mix_u64(hash, data->carrier_payload0);
+      hash = loom_structural_hash_mix_u64(hash, data->carrier_payload1);
+      hash = loom_structural_hash_mix_u32(
+          hash,
+          loom_type_hash_after_value_remap(module, data->value_type, remap));
+      return loom_structural_hash_finalize(hash);
+    }
+
+    default:
+      break;
+  }
+
+  if (loom_type_is_shaped(type) || loom_type_is_pool(type)) {
+    uint32_t encoding = type.encoding_id;
+    if (loom_type_has_ssa_encoding(type)) {
+      encoding = loom_type_remap_value(module, remap,
+                                       loom_type_encoding_value_id(type));
+    }
+    hash = loom_structural_hash_mix_u32(hash, encoding);
+    const uint8_t rank = loom_type_rank(type);
+    for (uint8_t i = 0; i < rank; ++i) {
+      uint64_t dimension = loom_type_dim(type, i);
+      if (loom_dim_is_dynamic(dimension)) {
+        dimension = loom_dim_pack_dynamic(
+            loom_type_remap_value(module, remap, loom_dim_value_id(dimension)));
+      }
+      hash = loom_structural_hash_mix_u64(hash, dimension);
+    }
+    return loom_structural_hash_finalize(hash);
+  }
+
+  hash = loom_structural_hash_mix_u16(hash, type.encoding_id);
+  hash = loom_structural_hash_mix_u64(hash, type.dims[0]);
+  hash = loom_structural_hash_mix_u64(hash, type.dims[1]);
   return loom_structural_hash_finalize(hash);
 }

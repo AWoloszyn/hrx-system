@@ -531,10 +531,10 @@ low.func.def target<x86.avx2.core>(@target) abi(object_function) @cfg_rotating_f
   %limit = mov.imm64 2
   low.cond_br %choice, ^left, ^right : reg<x86.gpr32>
 ^left:
-  low.br ^header(%start: reg<x86.gpr64>, %origin: reg<x86.gpr64>, %origin: reg<x86.gpr64>)
+  low.br ^header(%start: reg<x86.gpr64>, %origin: reg<x86.gpr64>)
 ^right:
-  low.br ^header(%start: reg<x86.gpr64>, %bound: reg<x86.gpr64>, %bound: reg<x86.gpr64>)
-^header(%iteration: reg<x86.gpr64>, %first: reg<x86.gpr64>, %last: reg<x86.gpr64>):
+  low.br ^header(%start: reg<x86.gpr64>, %bound: reg<x86.gpr64>)
+^header(%iteration: reg<x86.gpr64>, %first: reg<x86.gpr64>):
   %again = cmp.slt.gpr64 %iteration, %limit
   low.cond_br %again, ^guard, ^exit : reg<x86.gpr32>
 ^guard:
@@ -542,10 +542,10 @@ low.func.def target<x86.avx2.core>(@target) abi(object_function) @cfg_rotating_f
   %fits = cmp.slt.gpr64 %end, %bound
   low.cond_br %fits, ^access, ^exit : reg<x86.gpr32>
 ^access:
-  %loaded = vmovdqu32.load.indexed.xmm %input_view, %last {disp32 = 0, scale = 4}
-  vmovdqu32.store.indexed.xmm %loaded, %output_view, %last {disp32 = 0, scale = 4}
+  %loaded = vmovdqu32.load.indexed.xmm %input_view, %first {disp32 = 0, scale = 4}
+  vmovdqu32.store.indexed.xmm %loaded, %output_view, %first {disp32 = 0, scale = 4}
   %next = lea.disp %iteration {disp32 = 1}
-  low.br ^header(%next: reg<x86.gpr64>, %last: reg<x86.gpr64>, %first: reg<x86.gpr64>)
+  low.br ^header(%next: reg<x86.gpr64>, %first: reg<x86.gpr64>)
 ^exit:
   return
 }

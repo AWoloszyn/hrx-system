@@ -1,7 +1,7 @@
 // TEMPLATE: loom/src/loom/test/corpus/source_low/view_transport.loom-test
 // RUN: emit source-low output=low
 
-llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+x86.target<avx2> @target
 
 func.def target(@target) @wide_subview_selection(%input: buffer, %byte_base0: offset, %condition: i1) -> (i32) {
   %byte_base = index.assume %byte_base0 [range(%byte_base0, 2147483648, 4294967296), mul(%byte_base0, 4)] : offset
@@ -15,21 +15,24 @@ func.def target(@target) @wide_subview_selection(%input: buffer, %byte_base0: of
 }
 
 // ----
-low.func.def target<llvmir.generic.core>(@target) abi(object_function) @wide_subview_selection(%selected: reg<llvmir.ptr>, %byte_base: reg<llvmir.i64>, %condition: reg<llvmir.i1>) -> (reg<llvmir.i32>) asm {
-  %24 = const.i64 4
-  %25 = add.i64 %byte_base, %24
-  %26 = const.i64 8
-  %27 = add.i64 %byte_base, %26
-  %selected_offset = select.i64 %condition, %25, %27
-  %value = load.indexed.i32 %selected, %selected_offset, 0, 1
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @wide_subview_selection(%selected: reg<x86.gpr64>, %byte_base: reg<x86.gpr64>, %condition: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %24 = mov.imm64 4
+  %25 = copy %byte_base : reg<x86.gpr64> -> reg<x86.gpr64>
+  %26 = add.gpr64 %25, %24
+  %27 = mov.imm64 8
+  %28 = copy %byte_base : reg<x86.gpr64> -> reg<x86.gpr64>
+  %29 = add.gpr64 %28, %27
+  %30 = copy %29 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %selected_offset = select.gpr64 %condition, %26, %30
+  %value = mov.load.indexed.gpr32 %selected, %selected_offset {disp32 = 0, scale = 1}
   return %value
 }
 
 // ====
 
-llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+x86.target<avx2> @target
 
-func.def public target(@target) @rotate_buffer_views(%input: buffer, %count_input: index, %seed: i32) -> (i32) {
+func.def target(@target) @rotate_buffer_views(%input: buffer, %count_input: index, %seed: i32) -> (i32) {
   %count = index.assume %count_input [range(%count_input, 0, 257)] : index
   %begin = index.constant 0 : index
   %step = index.constant 1 : index
@@ -69,55 +72,60 @@ func.def public target(@target) @rotate_buffer_views(%input: buffer, %count_inpu
 }
 
 // ----
-low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @rotate_buffer_views(%last0: reg<llvmir.ptr>, %count: reg<llvmir.i64>, %seed: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
-  %begin = const.i64 0
-  %depth = const.i32 4
-  store.i32 %seed, %last0, 0
-  %offset1 = const.i64 4
-  %ordinal1 = const.i32 1
-  %initial1 = add.i32 %seed, %ordinal1
-  store.i32 %initial1, %last0, 4
-  %offset2 = const.i64 8
-  %ordinal2 = const.i32 2
-  %initial2 = add.i32 %seed, %ordinal2
-  store.i32 %initial2, %last0, 8
-  %offset3 = const.i64 12
-  %ordinal3 = const.i32 3
-  %initial3 = add.i32 %seed, %ordinal3
-  store.i32 %initial3, %last0, 12
-  %117 = const.i64 2
-  low.br ^_bb1(%begin: reg<llvmir.i64>, %begin: reg<llvmir.i64>, %offset1: reg<llvmir.i64>, %offset2: reg<llvmir.i64>, %offset3: reg<llvmir.i64>)
-^_bb1(%record: reg<llvmir.i64>, %current0_offset: reg<llvmir.i64>, %current1_offset: reg<llvmir.i64>, %current2_offset: reg<llvmir.i64>, %current3_offset: reg<llvmir.i64>):
-  %118 = cmp.slt.i64 %record, %count
-  low.cond_br %118, ^_bb2, ^_bb6 : reg<llvmir.i1>
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @rotate_buffer_views(%last0: reg<x86.gpr64>, %count: reg<x86.gpr64>, %seed: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %begin = mov.imm64 0
+  %depth = mov.imm32 4
+  mov.store.gpr32 %seed, %last0 {disp32 = 0}
+  %offset1 = mov.imm64 4
+  %ordinal1 = mov.imm32 1
+  %110 = copy %seed : reg<x86.gpr32> -> reg<x86.gpr32>
+  %initial1 = add.gpr32 %110, %ordinal1
+  mov.store.gpr32 %initial1, %last0 {disp32 = 4}
+  %offset2 = mov.imm64 8
+  %ordinal2 = mov.imm32 2
+  %114 = copy %seed : reg<x86.gpr32> -> reg<x86.gpr32>
+  %initial2 = add.gpr32 %114, %ordinal2
+  mov.store.gpr32 %initial2, %last0 {disp32 = 8}
+  %offset3 = mov.imm64 12
+  %ordinal3 = mov.imm32 3
+  %118 = copy %seed : reg<x86.gpr32> -> reg<x86.gpr32>
+  %initial3 = add.gpr32 %118, %ordinal3
+  mov.store.gpr32 %initial3, %last0 {disp32 = 12}
+  low.br ^_bb1(%begin: reg<x86.gpr64>, %begin: reg<x86.gpr64>, %offset1: reg<x86.gpr64>, %offset2: reg<x86.gpr64>, %offset3: reg<x86.gpr64>)
+^_bb1(%record: reg<x86.gpr64>, %current0_offset: reg<x86.gpr64>, %current1_offset: reg<x86.gpr64>, %current2_offset: reg<x86.gpr64>, %current3_offset: reg<x86.gpr64>):
+  %120 = cmp.slt.gpr64 %record, %count
+  low.cond_br %120, ^_bb2, ^_bb6 : reg<x86.gpr32>
 ^_bb2:
-  %number = trunc.i64.i32 %record
-  %future = add.i32 %number, %depth
-  %value = add.i32 %seed, %future
-  store.indexed.i32 %value, %last0, %current0_offset, 0, 1
-  %122 = const.i64 1
-  %record_1 = add.i64 %record, %122
-  %124 = cmp.slt.i64 %record_1, %count
-  low.cond_br %124, ^_bb3, ^_bb4 : reg<llvmir.i1>
+  %number = mov.trunc.gpr32.gpr64 %record
+  %122 = copy %number : reg<x86.gpr32> -> reg<x86.gpr32>
+  %future = add.gpr32 %122, %depth
+  %124 = copy %seed : reg<x86.gpr32> -> reg<x86.gpr32>
+  %value = add.gpr32 %124, %future
+  mov.store.indexed.gpr32 %value, %last0, %current0_offset {disp32 = 0, scale = 1}
+  %record_1 = lea.disp %record {disp32 = 1}
+  %127 = cmp.slt.gpr64 %record_1, %count
+  low.cond_br %127, ^_bb3, ^_bb4 : reg<x86.gpr32>
 ^_bb3:
-  %number_1 = trunc.i64.i32 %record_1
-  %future_1 = add.i32 %number_1, %depth
-  %value_1 = add.i32 %seed, %future_1
-  store.indexed.i32 %value_1, %last0, %current1_offset, 0, 1
-  low.br ^_bb5(%current2_offset: reg<llvmir.i64>, %current3_offset: reg<llvmir.i64>, %current0_offset: reg<llvmir.i64>, %current1_offset: reg<llvmir.i64>)
+  %number_1 = mov.trunc.gpr32.gpr64 %record_1
+  %129 = copy %number_1 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %future_1 = add.gpr32 %129, %depth
+  %131 = copy %seed : reg<x86.gpr32> -> reg<x86.gpr32>
+  %value_1 = add.gpr32 %131, %future_1
+  mov.store.indexed.gpr32 %value_1, %last0, %current1_offset {disp32 = 0, scale = 1}
+  low.br ^_bb5(%current2_offset: reg<x86.gpr64>, %current3_offset: reg<x86.gpr64>, %current0_offset: reg<x86.gpr64>, %current1_offset: reg<x86.gpr64>)
 ^_bb4:
-  low.br ^_bb5(%current1_offset: reg<llvmir.i64>, %current2_offset: reg<llvmir.i64>, %current3_offset: reg<llvmir.i64>, %current0_offset: reg<llvmir.i64>)
-^_bb5(%101: reg<llvmir.i64>, %102: reg<llvmir.i64>, %103: reg<llvmir.i64>, %104: reg<llvmir.i64>):
-  %128 = add.i64 %record, %117
-  low.br ^_bb1(%128: reg<llvmir.i64>, %101: reg<llvmir.i64>, %102: reg<llvmir.i64>, %103: reg<llvmir.i64>, %104: reg<llvmir.i64>)
+  low.br ^_bb5(%current1_offset: reg<x86.gpr64>, %current2_offset: reg<x86.gpr64>, %current3_offset: reg<x86.gpr64>, %current0_offset: reg<x86.gpr64>)
+^_bb5(%101: reg<x86.gpr64>, %102: reg<x86.gpr64>, %103: reg<x86.gpr64>, %104: reg<x86.gpr64>):
+  %133 = lea.disp %record {disp32 = 2}
+  low.br ^_bb1(%133: reg<x86.gpr64>, %101: reg<x86.gpr64>, %102: reg<x86.gpr64>, %103: reg<x86.gpr64>, %104: reg<x86.gpr64>)
 ^_bb6:
-  %value0 = load.indexed.i32 %last0, %current0_offset, 0, 1
+  %value0 = mov.load.indexed.gpr32 %last0, %current0_offset {disp32 = 0, scale = 1}
   return %value0
 }
 
 // ====
 
-llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+x86.target<avx2> @target
 
 func.def target(@target) @correlated_duplicate_rotation(%input: buffer, %count_input: index, %first_offset_input: offset, %second_offset_input: offset) -> (i32) {
   %count = index.assume %count_input [range(%count_input, 0, 257)] : index
@@ -146,29 +154,32 @@ func.def target(@target) @correlated_duplicate_rotation(%input: buffer, %count_i
 }
 
 // ----
-low.func.def target<llvmir.generic.core>(@target) abi(object_function) @correlated_duplicate_rotation(%last_a_view: reg<llvmir.ptr>, %count: reg<llvmir.i64>, %first_offset: reg<llvmir.i64>, %second_offset: reg<llvmir.i64>) -> (reg<llvmir.i32>) asm {
-  %begin = const.i64 0
-  %step = const.i64 1
-  low.br ^_bb1(%begin: reg<llvmir.i64>, %first_offset: reg<llvmir.i64>, %second_offset: reg<llvmir.i64>)
-^_bb1(%i: reg<llvmir.i64>, %a_offset: reg<llvmir.i64>, %b_offset: reg<llvmir.i64>):
-  %71 = cmp.slt.i64 %i, %count
-  low.cond_br %71, ^_bb2, ^_bb3 : reg<llvmir.i1>
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @correlated_duplicate_rotation(%last_a_view: reg<x86.gpr64>, %count: reg<x86.gpr64>, %first_offset: reg<x86.gpr64>, %second_offset: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %begin = mov.imm64 0
+  low.br ^_bb1(%begin: reg<x86.gpr64>, %first_offset: reg<x86.gpr64>, %second_offset: reg<x86.gpr64>)
+^_bb1(%i: reg<x86.gpr64>, %a_offset: reg<x86.gpr64>, %b_offset: reg<x86.gpr64>):
+  %70 = cmp.slt.gpr64 %i, %count
+  low.cond_br %70, ^_bb2, ^_bb3 : reg<x86.gpr32>
 ^_bb2:
-  %72 = add.i64 %i, %step
-  low.br ^_bb1(%72: reg<llvmir.i64>, %b_offset: reg<llvmir.i64>, %a_offset: reg<llvmir.i64>)
+  %71 = lea.disp %i {disp32 = 1}
+  low.br ^_bb1(%71: reg<x86.gpr64>, %b_offset: reg<x86.gpr64>, %a_offset: reg<x86.gpr64>)
 ^_bb3:
-  %a_offset_value = load.indexed.i32 %last_a_view, %a_offset, 0, 1
-  %b_offset_value = load.indexed.i32 %last_a_view, %b_offset, 0, 1
-  %sum0 = add.i32 %a_offset_value, %a_offset_value
-  %sum1 = add.i32 %sum0, %a_offset_value
-  %sum2 = add.i32 %sum1, %b_offset_value
-  %sum3 = add.i32 %sum2, %b_offset_value
+  %a_offset_value = mov.load.indexed.gpr32 %last_a_view, %a_offset {disp32 = 0, scale = 1}
+  %b_offset_value = mov.load.indexed.gpr32 %last_a_view, %b_offset {disp32 = 0, scale = 1}
+  %74 = copy %a_offset_value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sum0 = add.gpr32 %74, %a_offset_value
+  %76 = copy %sum0 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sum1 = add.gpr32 %76, %a_offset_value
+  %78 = copy %sum1 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sum2 = add.gpr32 %78, %b_offset_value
+  %80 = copy %sum2 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sum3 = add.gpr32 %80, %b_offset_value
   return %sum3
 }
 
 // ====
 
-llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+x86.target<avx2> @target
 
 func.def target(@target) @correlated_cfg_rotation(%input: buffer, %select: i1, %again: i1, %left_offset_input: offset, %right_offset_input: offset) -> (i32) {
   %left_offset = index.assume %left_offset_input [range(%left_offset_input, 0, 4092), mul(%left_offset_input, 4)] : offset
@@ -193,18 +204,19 @@ func.def target(@target) @correlated_cfg_rotation(%input: buffer, %select: i1, %
 }
 
 // ----
-low.func.def target<llvmir.generic.core>(@target) abi(object_function) @correlated_cfg_rotation(%view: reg<llvmir.ptr>, %select: reg<llvmir.i1>, %again: reg<llvmir.i1>, %left_offset: reg<llvmir.i64>, %right_offset: reg<llvmir.i64>) -> (reg<llvmir.i32>) asm {
-  low.cond_br %select, ^left, ^right : reg<llvmir.i1>
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @correlated_cfg_rotation(%view: reg<x86.gpr64>, %select: reg<x86.gpr32>, %again: reg<x86.gpr32>, %left_offset: reg<x86.gpr64>, %right_offset: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  low.cond_br %select, ^left, ^right : reg<x86.gpr32>
 ^left:
-  low.br ^loop(%left_offset: reg<llvmir.i64>)
+  low.br ^loop(%left_offset: reg<x86.gpr64>)
 ^right:
-  low.br ^loop(%right_offset: reg<llvmir.i64>)
-^loop(%offset: reg<llvmir.i64>):
-  low.cond_br %again, ^body, ^exit : reg<llvmir.i1>
+  low.br ^loop(%right_offset: reg<x86.gpr64>)
+^loop(%offset: reg<x86.gpr64>):
+  low.cond_br %again, ^body, ^exit : reg<x86.gpr32>
 ^body:
-  low.br ^loop(%offset: reg<llvmir.i64>)
+  low.br ^loop(%offset: reg<x86.gpr64>)
 ^exit:
-  %value = load.indexed.i32 %view, %offset, 0, 1
-  %sum = add.i32 %value, %value
+  %value = mov.load.indexed.gpr32 %view, %offset {disp32 = 0, scale = 1}
+  %24 = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sum = add.gpr32 %24, %value
   return %sum
 }

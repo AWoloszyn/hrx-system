@@ -226,6 +226,20 @@ class ModuleTypesTest : public ::testing::Test {
   loom_module_t* module_ = nullptr;
 };
 
+TEST_F(ModuleTypesTest, InvalidKindsPreserveRawIdentityForDiagnostics) {
+  loom_type_t first = {};
+  first.header = loom_type_make_raw_header(
+      /*kind=*/static_cast<loom_type_kind_t>(4), /*element_type=*/1,
+      /*rank=*/0, /*flags=*/0);
+  first.encoding_id = 2;
+  loom_type_t different = first;
+  different.encoding_id = 3;
+
+  EXPECT_FALSE(loom_type_equal(first, different));
+  EXPECT_FALSE(loom_type_equal_after_value_remap(module_, first, different,
+                                                 /*remap=*/nullptr));
+}
+
 TEST_F(ModuleTypesTest, TopologicalShapedTypesRetainScalarDependencies) {
   const loom_type_kind_t kinds[] = {LOOM_TYPE_TILE, LOOM_TYPE_TENSOR,
                                     LOOM_TYPE_VECTOR, LOOM_TYPE_VIEW};
@@ -338,6 +352,8 @@ TEST_F(ModuleTypesTest, FunctionTypeReferencesPreserveCombinedArity) {
                                                  target.get(), nullptr));
   EXPECT_TRUE(loom_type_equal_after_value_remap(module_, source.get(),
                                                 target.get(), &remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source.get(), &remap),
+            loom_type_hash_after_value_remap(module_, target.get(), nullptr));
 }
 
 TEST_F(ModuleTypesTest, FullFunctionTypeHashMatchesAllInterners) {
@@ -457,6 +473,8 @@ TEST_F(ModuleTypesTest, RegisterValueTypeParticipatesInStructuralLifecycle) {
   };
   EXPECT_TRUE(
       loom_type_equal_after_value_remap(module_, source, target, &remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &remap),
+            loom_type_hash_after_value_remap(module_, target, nullptr));
   EXPECT_FALSE(loom_type_equal(source, target));
 }
 
@@ -486,6 +504,8 @@ TEST_F(ModuleTypesTest, ValueRemapComposesDiscontiguousSpans) {
 
   EXPECT_TRUE(
       loom_type_equal_after_value_remap(module_, source, target, &remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &remap),
+            loom_type_hash_after_value_remap(module_, target, nullptr));
   EXPECT_FALSE(
       loom_type_equal_after_value_remap(module_, source, target, &inner_remap));
 }
@@ -526,6 +546,8 @@ TEST_F(ModuleTypesTest, ValueRemapIndexesContiguousDefinitionSpans) {
 
   EXPECT_TRUE(loom_type_equal_after_value_remap(module_, source, target,
                                                 &indexed_remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &indexed_remap),
+            loom_type_hash_after_value_remap(module_, target, nullptr));
 }
 
 TEST(TypesTest, RegisterClassNamesMustBeNamespaceQualified) {

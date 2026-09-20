@@ -276,8 +276,18 @@ static iree_status_t loom_amdgpu_materialize_branch_address(
     IREE_BUILTIN_UNREACHABLE();
   }
 
-  if (loom_low_register_type_unit_count(actual_type) != 1 ||
-      loom_low_register_type_unit_count(required_low_type) != 2) {
+  const uint32_t actual_unit_count =
+      loom_low_register_type_unit_count(actual_type);
+  const uint32_t required_unit_count =
+      loom_low_register_type_unit_count(required_low_type);
+  if (actual_unit_count == 2 && required_unit_count == 1) {
+    // Entry ABI values remain 64-bit even when their retained range proves
+    // that a destination block can use one address register.
+    return loom_amdgpu_emit_low_slice(context, source_op, *out_low_value_id,
+                                      /*offset=*/0, required_low_type,
+                                      out_low_value_id);
+  }
+  if (actual_unit_count != 1 || required_unit_count != 2) {
     IREE_ASSERT_UNREACHABLE(
         "AMDGPU address branch payload materialized wrong register shape");
     IREE_BUILTIN_UNREACHABLE();

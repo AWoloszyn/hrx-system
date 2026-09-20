@@ -1,0 +1,272 @@
+// RUN: with-low-asm pass cfg-simplify
+
+// A rotated cycle whose columns share one initial value has no carried state.
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @compacts_cyclic_equal_arguments_to_external(%again: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^loop(%seed: reg<test.i32>, %seed: reg<test.i32>)
+^loop(%first: reg<test.i32>, %second: reg<test.i32>):
+  low.cond_br %again, ^body, ^exit : reg<test.i32>
+^body:
+  low.br ^loop(%second: reg<test.i32>, %first: reg<test.i32>)
+^exit:
+  %sum = test.add.i32 %first, %second
+  return %sum
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @compacts_cyclic_equal_arguments_to_external(%again: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^loop
+^loop:
+  low.cond_br %again, ^body, ^exit : reg<test.i32>
+^body:
+  low.br ^loop
+^exit:
+  %sum = test.add.i32 %seed, %seed
+  return %sum
+}
+
+// ====
+
+// RUN: with-low-asm pass cfg-simplify
+
+// Several external paths may select different values while preserving equality
+// between all three columns on every path and around the feedback edge.
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @compacts_cyclic_equal_arguments_across_fanin(%select: reg<test.i32>, %again: reg<test.i32>, %left_value: reg<test.i32>, %right_value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.cond_br %select, ^left, ^right : reg<test.i32>
+^left:
+  low.br ^loop(%left_value: reg<test.i32>, %left_value: reg<test.i32>, %left_value: reg<test.i32>)
+^right:
+  low.br ^loop(%right_value: reg<test.i32>, %right_value: reg<test.i32>, %right_value: reg<test.i32>)
+^loop(%first: reg<test.i32>, %second: reg<test.i32>, %third: reg<test.i32>):
+  low.cond_br %again, ^body, ^exit : reg<test.i32>
+^body:
+  low.br ^loop(%second: reg<test.i32>, %third: reg<test.i32>, %first: reg<test.i32>)
+^exit:
+  %partial = test.add.i32 %first, %second
+  %sum = test.add.i32 %partial, %third
+  return %sum
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @compacts_cyclic_equal_arguments_across_fanin(%select: reg<test.i32>, %again: reg<test.i32>, %left_value: reg<test.i32>, %right_value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.cond_br %select, ^left, ^right : reg<test.i32>
+^left:
+  low.br ^loop(%left_value: reg<test.i32>)
+^right:
+  low.br ^loop(%right_value: reg<test.i32>)
+^loop(%first: reg<test.i32>):
+  low.cond_br %again, ^body, ^exit : reg<test.i32>
+^body:
+  low.br ^loop(%first: reg<test.i32>)
+^exit:
+  %partial = test.add.i32 %first, %first
+  %sum = test.add.i32 %partial, %first
+  return %sum
+}
+
+// ====
+
+// RUN: with-low-asm pass cfg-simplify
+
+// Distinct initial values keep rotated columns separate.
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @preserves_rotated_distinct_initials(%again: reg<test.i32>, %first_initial: reg<test.i32>, %second_initial: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^loop(%first_initial: reg<test.i32>, %second_initial: reg<test.i32>)
+^loop(%first: reg<test.i32>, %second: reg<test.i32>):
+  low.cond_br %again, ^body, ^exit : reg<test.i32>
+^body:
+  low.br ^loop(%second: reg<test.i32>, %first: reg<test.i32>)
+^exit:
+  %sum = test.add.i32 %first, %second
+  return %sum
+}
+
+// ====
+
+// RUN: with-low-asm pass cfg-simplify
+
+// Equal initial values do not hide a distinct external transition.
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @preserves_distinct_external_transition(%again: reg<test.i32>, %seed: reg<test.i32>, %external: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^loop(%seed: reg<test.i32>, %seed: reg<test.i32>)
+^loop(%first: reg<test.i32>, %second: reg<test.i32>):
+  low.cond_br %again, ^body, ^exit : reg<test.i32>
+^body:
+  low.br ^loop(%second: reg<test.i32>, %external: reg<test.i32>)
+^exit:
+  %sum = test.add.i32 %first, %second
+  return %sum
+}
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// Dependent view types follow their correlated layout argument replacement.
+// Different external paths keep one physical layout/view pair at the join.
+func.def @compacts_cyclic_dependent_arguments(%select: i1, %again: i1, %left_layout: encoding<layout>, %left_view: view<4xf32, %left_layout>, %right_layout: encoding<layout>, %right_view: view<4xf32, %right_layout>) {
+  cfg.cond_br %select, ^left, ^right
+^left:
+  cfg.br ^loop(%left_layout: encoding<layout>, %left_layout: encoding<layout>, %left_view: view<4xf32, %left_layout>, %left_view: view<4xf32, %left_layout>)
+^right:
+  cfg.br ^loop(%right_layout: encoding<layout>, %right_layout: encoding<layout>, %right_view: view<4xf32, %right_layout>, %right_view: view<4xf32, %right_layout>)
+^loop(%first_layout: encoding<layout>, %second_layout: encoding<layout>, %first_view: view<4xf32, %first_layout>, %second_view: view<4xf32, %second_layout>):
+  test.use %first_view, %second_view : view<4xf32, %first_layout>, view<4xf32, %second_layout>
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  cfg.br ^loop(%second_layout: encoding<layout>, %first_layout: encoding<layout>, %second_view: view<4xf32, %second_layout>, %first_view: view<4xf32, %first_layout>)
+^exit:
+  test.use %first_view, %second_view : view<4xf32, %first_layout>, view<4xf32, %second_layout>
+  func.return
+}
+
+// ----
+func.def @compacts_cyclic_dependent_arguments(%select: i1, %again: i1, %left_layout: encoding<layout>, %left_view: view<4xf32, %left_layout>, %right_layout: encoding<layout>, %right_view: view<4xf32, %right_layout>) {
+  cfg.cond_br %select, ^left, ^right
+^left:
+  cfg.br ^loop(%left_layout: encoding<layout>, %left_view: view<4xf32, %left_layout>)
+^right:
+  cfg.br ^loop(%right_layout: encoding<layout>, %right_view: view<4xf32, %right_layout>)
+^loop(%first_layout: encoding<layout>, %first_view: view<4xf32, %first_layout>):
+  test.use %first_view, %first_view : view<4xf32, %first_layout>, view<4xf32, %first_layout>
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  cfg.br ^loop(%first_layout: encoding<layout>, %first_view: view<4xf32, %first_layout>)
+^exit:
+  test.use %first_view, %first_view : view<4xf32, %first_layout>, view<4xf32, %first_layout>
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// Alpha-equivalent self references do not make equal carried columns distinct.
+func.def @compacts_self_dependent_arguments(%again: i1, %seed: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%seed]xf32>>}>) {
+  cfg.br ^loop(%seed: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%seed]xf32>>}>, %seed: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%seed]xf32>>}>)
+^loop(%first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>, %second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%second]xf32>>}>):
+  test.use %first, %second : test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>, test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%second]xf32>>}>
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  cfg.br ^loop(%second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%second]xf32>>}>, %first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>)
+^exit:
+  func.return
+}
+
+// ----
+func.def @compacts_self_dependent_arguments(%again: i1, %seed: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%seed]xf32>>}>) {
+  cfg.br ^loop
+^loop:
+  test.use %seed, %seed : test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%seed]xf32>>}>, test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%seed]xf32>>}>
+  cfg.cond_br %again, ^loop, ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// A dead carrier may precede its dead provider in the block signature. The
+// complete dependent set is removed while an unrelated live argument keeps
+// its original incoming slot.
+func.def @removes_closed_forward_dependent_set(%choose: i1, %left_layout: encoding<layout>, %left_view: view<4xf32, %left_layout>, %left_value: i32, %left_tail: i32, %right_layout: encoding<layout>, %right_view: view<4xf32, %right_layout>, %right_value: i32, %right_tail: i32) -> (i32) {
+  cfg.cond_br %choose, ^left, ^right
+^left:
+  cfg.br ^join(%left_view: view<4xf32, %left_layout>, %left_value: i32, %left_layout: encoding<layout>, %left_tail: i32)
+^right:
+  cfg.br ^join(%right_view: view<4xf32, %right_layout>, %right_value: i32, %right_layout: encoding<layout>, %right_tail: i32)
+^join(%carrier: view<4xf32, %provider>, %retained: i32, %provider: encoding<layout>, %tail: i32):
+  func.return %retained : i32
+}
+
+// ----
+func.def @removes_closed_forward_dependent_set(%choose: i1, %left_layout: encoding<layout>, %left_view: view<4xf32, %left_layout>, %left_value: i32, %left_tail: i32, %right_layout: encoding<layout>, %right_view: view<4xf32, %right_layout>, %right_value: i32, %right_tail: i32) -> (i32) {
+  cfg.cond_br %choose, ^left, ^right
+^left:
+  cfg.br ^join(%left_value: i32)
+^right:
+  cfg.br ^join(%right_value: i32)
+^join(%retained: i32):
+  func.return %retained : i32
+}
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// A live carrier keeps its otherwise-unused provider while an independent
+// dead argument is still removed from the same signature.
+func.def @retains_provider_of_live_carrier(%choose: i1, %left_layout: encoding<layout>, %left_view: view<4xf32, %left_layout>, %left_tail: i32, %right_layout: encoding<layout>, %right_view: view<4xf32, %right_layout>, %right_tail: i32) {
+  cfg.cond_br %choose, ^left, ^right
+^left:
+  cfg.br ^join(%left_view: view<4xf32, %left_layout>, %left_layout: encoding<layout>, %left_tail: i32)
+^right:
+  cfg.br ^join(%right_view: view<4xf32, %right_layout>, %right_layout: encoding<layout>, %right_tail: i32)
+^join(%carrier: view<4xf32, %provider>, %provider: encoding<layout>, %tail: i32):
+  test.use %carrier : view<4xf32, %provider>
+  func.return
+}
+
+// ----
+func.def @retains_provider_of_live_carrier(%choose: i1, %left_layout: encoding<layout>, %left_view: view<4xf32, %left_layout>, %left_tail: i32, %right_layout: encoding<layout>, %right_view: view<4xf32, %right_layout>, %right_tail: i32) {
+  cfg.cond_br %choose, ^left, ^right
+^left:
+  cfg.br ^join(%left_view: view<4xf32, %left_layout>, %left_layout: encoding<layout>)
+^right:
+  cfg.br ^join(%right_view: view<4xf32, %right_layout>, %right_layout: encoding<layout>)
+^join(%carrier: view<4xf32, %provider>, %provider: encoding<layout>):
+  test.use %carrier : view<4xf32, %provider>
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// A self-dependent argument is a closed one-node type-use component and can
+// be removed when it has no direct uses.
+func.def @removes_unused_self_dependent_argument(%choose: i1, %left: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left]xf32>>}>, %right: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right]xf32>>}>) {
+  cfg.cond_br %choose, ^left_path, ^right_path
+^left_path:
+  cfg.br ^join(%left: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left]xf32>>}>)
+^right_path:
+  cfg.br ^join(%right: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right]xf32>>}>)
+^join(%unused: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%unused]xf32>>}>):
+  func.return
+}
+
+// ----
+func.def @removes_unused_self_dependent_argument(%choose: i1, %left: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left]xf32>>}>, %right: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right]xf32>>}>) {
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// A mutually dependent argument cycle is also one closed component. Forward
+// references make the removal order irrelevant.
+func.def @removes_unused_mutually_dependent_arguments(%choose: i1, %left_first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left_second]xf32>>}>, %left_second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left_first]xf32>>}>, %right_first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right_second]xf32>>}>, %right_second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right_first]xf32>>}>) {
+  cfg.cond_br %choose, ^left_path, ^right_path
+^left_path:
+  cfg.br ^join(%left_first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left_second]xf32>>}>, %left_second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left_first]xf32>>}>)
+^right_path:
+  cfg.br ^join(%right_first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right_second]xf32>>}>, %right_second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right_first]xf32>>}>)
+^join(%first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%second]xf32>>}>, %second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>):
+  func.return
+}
+
+// ----
+func.def @removes_unused_mutually_dependent_arguments(%choose: i1, %left_first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left_second]xf32>>}>, %left_second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left_first]xf32>>}>, %right_first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right_second]xf32>>}>, %right_second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right_first]xf32>>}>) {
+  func.return
+}

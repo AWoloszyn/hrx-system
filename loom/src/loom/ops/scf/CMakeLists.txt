@@ -11,6 +11,18 @@ iree_add_all_subdirs()
 
 loom_cc_test(
   NAME
+    forwarding_equivalence_test
+  SRCS
+    "forwarding_equivalence_test.cc"
+  DEPS
+    ::scf
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_test(
+  NAME
     verify_test
   SRCS
     "verify_test.cc"
@@ -33,6 +45,7 @@ loom_generated_cc_library(
     "canonicalize.c"
     "canonicalize_loop.c"
     "facts.c"
+    "forwarding_equivalence.c"
     "verify.c"
   GENERATED_SRC_FLAGS
     "--builders"
@@ -42,11 +55,13 @@ loom_generated_cc_library(
     "tables.c"
   HDRS
     "canonicalize.h"
+    "forwarding_equivalence.h"
     "ops.h"
   ARGS
     "--dialect=scf"
   DEPS
     iree::base::internal
+    iree::base::internal::arena
     loom::analysis::availability
     loom::error::emitter
     loom::error::error_defs

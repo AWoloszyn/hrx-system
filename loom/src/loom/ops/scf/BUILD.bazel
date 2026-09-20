@@ -13,6 +13,17 @@ package(
 )
 
 loom_cc_test(
+    name = "forwarding_equivalence_test",
+    srcs = ["forwarding_equivalence_test.cc"],
+    deps = [
+        ":scf",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "verify_test",
     srcs = ["verify_test.cc"],
     deps = [
@@ -32,10 +43,12 @@ loom_generated_cc_library(
         "canonicalize.c",
         "canonicalize_loop.c",
         "facts.c",
+        "forwarding_equivalence.c",
         "verify.c",
     ],
     hdrs = [
         "canonicalize.h",
+        "forwarding_equivalence.h",
         "ops.h",
     ],
     args = ["--dialect=scf"],
@@ -58,5 +71,6 @@ loom_generated_cc_library(
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:arena",
     ],
 )

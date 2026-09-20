@@ -670,8 +670,15 @@ static uint64_t loom_cfg_value_identity_refinement_label_hash(
       loom_cfg_value_identity_projection_argument(refinement->projection,
                                                   argument);
   const loom_module_t* module = refinement->projection->region->graph.module;
-  const uint64_t type_hash = loom_type_hash(
-      loom_module_value_type(module, refinement->values[root].value_id));
+  const loom_value_id_t value_id = refinement->values[root].value_id;
+  const loom_value_id_t normalized_id = LOOM_VALUE_ID_INVALID;
+  const loom_type_value_remap_t remap = {
+      .source_values = &value_id,
+      .target_values = &normalized_id,
+      .count = 1,
+  };
+  const uint64_t type_hash = loom_type_hash_after_value_remap(
+      module, loom_module_value_type(module, value_id), &remap);
   return loom_cfg_value_identity_mix64(
       ((uint64_t)descriptor->block_index << 32) ^ type_hash ^
       UINT64_C(0x612b0da9));
@@ -701,11 +708,27 @@ static bool loom_cfg_value_identity_refinement_same_label(
       loom_cfg_value_identity_projection_argument(refinement->projection,
                                                   right_argument);
   const loom_module_t* module = refinement->projection->region->graph.module;
-  return left_descriptor->block_index == right_descriptor->block_index &&
-         loom_type_equal(loom_module_value_type(
-                             module, refinement->values[left_root].value_id),
-                         loom_module_value_type(
-                             module, refinement->values[right_root].value_id));
+  if (left_descriptor->block_index != right_descriptor->block_index) {
+    return false;
+  }
+  const loom_value_id_t left_value = refinement->values[left_root].value_id;
+  const loom_value_id_t right_value = refinement->values[right_root].value_id;
+  const loom_type_t left_type = loom_module_value_type(module, left_value);
+  const loom_type_t right_type = loom_module_value_type(module, right_value);
+  const loom_type_value_remap_t left_to_right = {
+      .source_values = &left_value,
+      .target_values = &right_value,
+      .count = 1,
+  };
+  const loom_type_value_remap_t right_to_left = {
+      .source_values = &right_value,
+      .target_values = &left_value,
+      .count = 1,
+  };
+  return loom_type_equal_after_value_remap(module, left_type, right_type,
+                                           &left_to_right) &&
+         loom_type_equal_after_value_remap(module, right_type, left_type,
+                                           &right_to_left);
 }
 
 static uint64_t loom_cfg_value_identity_refinement_transition_hash(
@@ -1655,12 +1678,28 @@ static void loom_cfg_value_identity_refinement_resolve_obligations(
 }
 
 static void loom_cfg_value_identity_refinement_publish(
-    const loom_cfg_value_identity_refinement_t* refinement,
-    loom_value_id_t* roots) {
+    loom_cfg_value_identity_refinement_t* refinement, loom_value_id_t* roots) {
+  // Reuse the inactive marking slot to select the earliest argument root in
+  // every stable group. Argument nodes precede external nodes and follow CFG
+  // block/argument order, giving consumers a directly usable representative.
+  for (uint32_t group = 0; group < refinement->group_count; ++group) {
+    refinement->groups[group].first_marked = LOOM_CFG_VALUE_IDENTITY_INVALID;
+  }
+  for (uint32_t state = 0; state < refinement->component_count; ++state) {
+    const uint32_t group = refinement->states[state].group;
+    const uint32_t selected = refinement->groups[group].first_marked;
+    if (selected == LOOM_CFG_VALUE_IDENTITY_INVALID ||
+        refinement->components[state].root <
+            refinement->components[selected].root) {
+      refinement->groups[group].first_marked = state;
+    }
+  }
   for (uint32_t i = 0; i < refinement->argument_count; ++i) {
     const uint32_t state = refinement->values[i].component;
-    roots[i] = loom_cfg_value_identity_refinement_group_representative(
-        refinement, refinement->states[state].group);
+    const uint32_t selected =
+        refinement->groups[refinement->states[state].group].first_marked;
+    roots[i] =
+        refinement->values[refinement->components[selected].root].value_id;
   }
 }
 

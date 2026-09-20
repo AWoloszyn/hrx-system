@@ -185,12 +185,12 @@ func.def @forwarding_cycle_after_edge_removal(%again: i1, %good: i32, %bad: i32)
   %true = scalar.constant true : i1
   %c2 = index.constant 2 : index
   %c9 = index.constant 9 : index
-  cfg.br ^header(%c2: index, %c2: index)
-^header(%first: index, %second: index):
+  cfg.br ^header
+^header:
   cfg.cond_br %again, ^body, ^exit
 ^body:
-  test.use %first : index
-  cfg.br ^header(%second: index, %first: index)
+  test.use %c2 : index
+  cfg.br ^header
 ^exit:
   %matches = scalar.constant true : i1
   func.return %good : i32
