@@ -538,6 +538,64 @@ TEST_F(ImportTest, TemplateLoopSchedulesBecomeExplicitSSAOperands) {
   EXPECT_EQ(diagnostic_count_, 0);
 }
 
+TEST_F(ImportTest, ContinueRetainsCountedSchedulesAndConditionalLoopRegions) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"cpp(
+    unsigned entry(const unsigned* input, unsigned count, unsigned choose) {
+      unsigned total = 0;
+      [[loom::unroll(3), loom::pipeline(2)]]
+      for (unsigned index = 0; index < count; ++index) {
+        if (index & choose) {
+          continue;
+        }
+        total += input[index];
+      }
+      unsigned index = 0;
+      while (index++ < count) {
+        if (index & choose) {
+          continue;
+        }
+        total += index;
+      }
+      do {
+        if (index & choose) {
+          continue;
+        }
+        total += index;
+      } while (++index < count);
+      return total;
+    }
+  )cpp")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("scf.for"), std::string::npos);
+  EXPECT_NE(text.find("scf.while"), std::string::npos);
+  EXPECT_NE(text.find("pipeline(%"), std::string::npos);
+  EXPECT_NE(text.find("unroll(%"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
+TEST_F(ImportTest, ContinueDoesNotAdmitOtherUnsupportedTransfersOrConditions) {
+  for (const char* source : {
+           "void entry() { continue; }",
+           "void entry(unsigned count) { while (count) { "
+           "if (--count) continue; else break; } }",
+           "void entry(unsigned count) { while (count) { "
+           "switch (count) { case 1: continue; default: --count; } } }",
+           "unsigned entry(unsigned count) { while (count) { "
+           "if (--count) continue; return count; } return 0; }",
+           "void entry(unsigned count) { while (count) { "
+           "if constexpr (true) continue; } }",
+           "void entry(unsigned count) { while (count) { "
+           "if (unsigned remaining = --count; remaining) continue; } }",
+       }) {
+    SCOPED_TRACE(source);
+    int previous = diagnostic_count_;
+    IREE_ASSERT_OK(Import(iree_make_cstring_view(source)));
+    EXPECT_EQ(module_, nullptr);
+    EXPECT_GT(diagnostic_count_, previous);
+  }
+}
+
 TEST_F(ImportTest, BareUnrollAndConstantExpressionSchedules) {
   IREE_ASSERT_OK(Import(IREE_SV(R"cpp(
     int entry() {

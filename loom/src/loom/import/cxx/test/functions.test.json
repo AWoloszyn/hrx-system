@@ -2,6 +2,62 @@
   "version": 1,
   "cases": [
     {
+      "name": "structured continue preserves iteration exits, conditions, steps and nested scopes",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=continue_branches",
+              "--root=continue_for_step",
+              "--root=continue_while",
+              "--root=continue_do",
+              "--root=continue_nested",
+              "--root=continue_all",
+              "--root=continue_scopes",
+              "--root=continue_byte",
+              "--to=bc",
+              "--output={tmp}/functions.loombc",
+              "{srcdir}/structured_continue.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute on the VM",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_functions.loom",
+              "--library={tmp}/functions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":350",
+                "\"sample_count\":350",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "increment expressions preserve old/new values and conditional binding updates",
       "steps": [
         {

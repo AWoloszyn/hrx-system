@@ -2,6 +2,376 @@
   "version": 1,
   "cases": [
     {
+      "name": "continue_copy preserves iteration control and guarded state",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=continue_copy",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/structured_continue.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_copy.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":1",
+                "\"sample_count\":1",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check updates with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_copy.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":1",
+                "\"sample_count\":1",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "continue_values preserves iteration control and guarded state",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=continue_values",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/structured_continue.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_values.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":12",
+                "\"sample_count\":12",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check updates with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_values.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":12",
+                "\"sample_count\":12",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "continue_scheduled preserves iteration control and guarded state",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=continue_scheduled",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/structured_continue.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_scheduled.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":12",
+                "\"sample_count\":12",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check updates with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_scheduled.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":12",
+                "\"sample_count\":12",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "continue_pointers preserves iteration control and guarded state",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=continue_pointers",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/structured_continue.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_pointers.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":15",
+                "\"sample_count\":15",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check updates with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_pointers.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":15",
+                "\"sample_count\":15",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "continue_vectors preserves iteration control and guarded state",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=continue_vectors",
+              "--to=bc",
+              "--output={tmp}/kernel.loombc",
+              "{srcdir}/structured_continue.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_vectors.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":15",
+                "\"sample_count\":15",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "check updates with the device sanitizer",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/continue_vectors.loom",
+              "--library={tmp}/kernel.loombc",
+              "--device=amdgpu",
+              "--sanitizer=access",
+              "--sanitizer-reporting=report-only"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":15",
+                "\"sample_count\":15",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "increment_pointers preserves sequenced source updates and guarded accesses",
       "steps": [
         {

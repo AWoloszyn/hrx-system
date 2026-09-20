@@ -227,11 +227,18 @@ class Translator {
       }
       auto* child = sequence.remaining->value;
       sequence.remaining = sequence.remaining->next;
-      if (control_->returns(child) != ReturnFlow::None) {
+      if (control_->returns(child) != ExitFlow::None) {
         return returning_statement(child, sequence);
       }
       statement(child);
     }
+  }
+
+  loom_value_id_t branch_condition(cxx::IfStatementAST* branch) {
+    if (branch->initializer || branch->constexprLoc) {
+      fail(branch, "if initializer/constexpr is outside this slice");
+    }
+    return expression(branch->condition).ssa();
   }
 
   Returned returning_statement(cxx::StatementAST* ast,
@@ -264,17 +271,14 @@ class Translator {
       return return_sequence({compound->statementList, &continuation});
     }
     if (auto* branch = cxx::ast_cast<cxx::IfStatementAST>(ast);
-        branch && control_->returns(branch) != ReturnFlow::None) {
-      if (branch->initializer || branch->constexprLoc) {
-        fail(ast, "if initializer/constexpr is outside this slice");
-      }
-      if (control_->returns(branch->statement) != ReturnFlow::All &&
-          control_->returns(branch->elseStatement) != ReturnFlow::All) {
+        branch && control_->returns(branch) != ExitFlow::None) {
+      if (control_->returns(branch->statement) != ExitFlow::All &&
+          control_->returns(branch->elseStatement) != ExitFlow::All) {
         fail(ast,
              "conditional returns require at most one fallthrough arm; "
              "shared continuations need a scoped exit projection");
       }
-      auto condition = expression(branch->condition).ssa();
+      auto condition = branch_condition(branch);
       auto outer_values = values_;
       std::vector<loom_type_t> result_types;
       if (current_function_.return_type->kind() != cxx::TypeKind::kVoid) {
@@ -307,7 +311,7 @@ class Translator {
       returned.source = ast;
       return returned;
     }
-    if (control_->returns(ast) != ReturnFlow::None) {
+    if (control_->returns(ast) != ExitFlow::None) {
       fail(ast,
            "returns inside loops require a structured loop-exit projection");
     }
@@ -664,15 +668,12 @@ class Translator {
           fail(ast, "vector logical operators require lane-wise evaluation");
         }
         // The semantic AST supplies both contextual boolean conversions.
-        // The skipped arm has a known boolean result and never evaluates the
-        // right operand, including its memory accesses and binding updates.
+        // The skipped arm forwards the left value, preserving its identity
+        // without evaluating right-side memory accesses or binding updates.
         auto evaluate_right = [&] {
           return expression(binary->rightExpression);
         };
-        auto skipped = [&] {
-          return Value(scalars_.integer(binary->op == cxx::TokenKind::T_BAR_BAR,
-                                        LOOM_SCALAR_TYPE_I1, source));
-        };
+        auto skipped = [&] { return left; };
         return binary->op == cxx::TokenKind::T_AMP_AMP
                    ? conditional_value(ast, left.ssa(), evaluate_right, skipped)
                    : conditional_value(ast, left.ssa(), skipped,
@@ -843,6 +844,134 @@ class Translator {
          "unsupported expression: " + std::string(cxx::to_string(ast->kind())));
   }
 
+  // Each arm yields whether its remaining iteration may execute, followed by
+  // the live bindings it changed. Arm-local declarations stay inside the arm.
+  template <typename Then, typename Else>
+  loom_value_id_t continuing_branch(cxx::AST* owner, loom_value_id_t condition,
+                                    Then then_statement, Else else_statement) {
+    auto written = live_mutations(owner);
+    auto outer_values = values_;
+    std::vector<loom_type_t> result_types = {
+        loom_type_scalar(LOOM_SCALAR_TYPE_I1)};
+    for (auto* symbol : written) {
+      types_.append(symbol->type(), owner, result_types);
+    }
+    auto source = locations_.get(owner);
+    loom_op_t* op;
+    check(loom_scf_if_build(&builder_, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,
+                            condition, result_types.data(), result_types.size(),
+                            nullptr, 0, source, &op));
+    auto saved =
+        loom_builder_enter_region(&builder_, op, loom_scf_if_then_region(op));
+    std::vector<loom_value_id_t> yielded = {then_statement()};
+    auto mutations = current(written);
+    yielded.insert(yielded.end(), mutations.begin(), mutations.end());
+    loom_op_t* yield;
+    check(loom_scf_yield_build(&builder_, yielded.data(), yielded.size(),
+                               source, &yield));
+    loom_builder_restore(&builder_, saved);
+    values_ = outer_values;
+    saved =
+        loom_builder_enter_region(&builder_, op, loom_scf_if_else_region(op));
+    yielded = {else_statement()};
+    mutations = current(written);
+    yielded.insert(yielded.end(), mutations.begin(), mutations.end());
+    check(loom_scf_yield_build(&builder_, yielded.data(), yielded.size(),
+                               source, &yield));
+    loom_builder_restore(&builder_, saved);
+    values_ = std::move(outer_values);
+    bind_values(written, loom_op_results(op) + 1);
+    return loom_op_results(op)[0];
+  }
+
+  loom_value_id_t continuing_sequence(
+      cxx::CompoundStatementAST* owner,
+      cxx::List<cxx::StatementAST*>* remaining) {
+    while (remaining) {
+      auto* child = remaining->value;
+      remaining = remaining->next;
+      auto flow = control_->continues(child);
+      if (flow == ExitFlow::None) {
+        statement(child);
+        continue;
+      }
+      return continuing_tail(owner, child, remaining);
+    }
+    return scalars_.integer(true, LOOM_SCALAR_TYPE_I1, locations_.get(owner));
+  }
+
+  // A tail enters at most one arm directly. When both arms can reach it, join
+  // their fallthrough values first and emit the shared source just once.
+  loom_value_id_t continuing_tail(cxx::CompoundStatementAST* owner,
+                                  cxx::StatementAST* ast,
+                                  cxx::List<cxx::StatementAST*>* remaining) {
+    auto flow = control_->continues(ast);
+    if (flow == ExitFlow::None) {
+      if (ast) {
+        statement(ast);
+      }
+      return continuing_sequence(owner, remaining);
+    }
+    if (flow == ExitFlow::All || !remaining) {
+      return continuing_statement(ast);
+    }
+    if (auto* branch = cxx::ast_cast<cxx::IfStatementAST>(ast);
+        branch &&
+        (control_->continues(branch->statement) == ExitFlow::All ||
+         control_->continues(branch->elseStatement) == ExitFlow::All)) {
+      auto condition = branch_condition(branch);
+      return continuing_branch(
+          owner, condition,
+          [&] { return continuing_tail(owner, branch->statement, remaining); },
+          [&] {
+            return continuing_tail(owner, branch->elseStatement, remaining);
+          });
+    }
+    auto fallthrough = continuing_statement(ast);
+    return continuing_branch(
+        owner, fallthrough,
+        [&] { return continuing_sequence(owner, remaining); },
+        [&] {
+          return scalars_.integer(false, LOOM_SCALAR_TYPE_I1,
+                                  locations_.get(ast));
+        });
+  }
+
+  loom_value_id_t continuing_statement(cxx::StatementAST* ast) {
+    if (control_->continues(ast) == ExitFlow::None) {
+      statement(ast);
+      return scalars_.integer(true, LOOM_SCALAR_TYPE_I1, locations_.get(ast));
+    }
+    if (cxx::ast_cast<cxx::ContinueStatementAST>(ast)) {
+      return scalars_.integer(false, LOOM_SCALAR_TYPE_I1, locations_.get(ast));
+    }
+    if (auto* compound = cxx::ast_cast<cxx::CompoundStatementAST>(ast)) {
+      return continuing_sequence(compound, compound->statementList);
+    }
+    // The retained path analysis propagates iteration exits through blocks
+    // and conditionals only; nested loops consume their own continues.
+    auto* branch = cxx::ast_cast<cxx::IfStatementAST>(ast);
+    auto condition = branch_condition(branch);
+    return continuing_branch(
+        ast, condition, [&] { return continuing_statement(branch->statement); },
+        [&] {
+          return branch->elseStatement
+                     ? continuing_statement(branch->elseStatement)
+                     : scalars_.integer(true, LOOM_SCALAR_TYPE_I1,
+                                        locations_.get(ast));
+        });
+  }
+
+  // Continue ends only this body. The caller still emits the for step or the
+  // do condition, and ordinary bodies preserve their existing structured IR.
+  void loop_body(cxx::StatementAST* body) {
+    if (control_->continues(body) == ExitFlow::None) {
+      statement(body);
+    } else {
+      continuing_statement(body);
+    }
+  }
+
   void statement(cxx::StatementAST* ast) {
     if (auto* compound = cxx::ast_cast<cxx::CompoundStatementAST>(ast)) {
       for (auto* child : cxx::ListView{compound->statementList}) {
@@ -897,10 +1026,7 @@ class Translator {
       return;
     }
     if (auto* branch = cxx::ast_cast<cxx::IfStatementAST>(ast)) {
-      if (branch->initializer || branch->constexprLoc) {
-        fail(ast, "if initializer/constexpr is outside this slice");
-      }
-      auto condition = expression(branch->condition).ssa();
+      auto condition = branch_condition(branch);
       auto saved_values = values_;
       auto written = live_mutations(ast);
       std::vector<loom_type_t> types;
@@ -1006,7 +1132,7 @@ class Translator {
     auto saved = loom_builder_enter_region(&builder_, op, before);
     bind(written, before);
     if (test == LoopTest::AfterBody) {
-      statement(body);
+      loop_body(body);
     }
     auto condition = expression(condition_expression).ssa();
     auto forwarded = current(written);
@@ -1019,7 +1145,7 @@ class Translator {
     values_ = outer_values;
     bind(written, after);
     if (test == LoopTest::BeforeBody) {
-      statement(body);
+      loop_body(body);
     }
     if (step) {
       effect(step);
@@ -1063,7 +1189,7 @@ class Translator {
                                 &cast));
     values_[induction] = result(cast);
     bind(written, body, 1);
-    statement(loop->statement);
+    loop_body(loop->statement);
     auto yielded = current(written);
     loom_op_t* terminator;
     check(loom_scf_yield_build(&builder_, yielded.data(), yielded.size(),
