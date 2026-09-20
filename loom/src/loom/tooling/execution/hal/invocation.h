@@ -28,8 +28,8 @@ enum {
 };
 
 typedef struct loom_run_hal_invocation_options_t {
-  // HAL executable function symbol to dispatch. Empty selects the only named
-  // function in the prepared executable.
+  // Exact HAL artifact export name to dispatch, including any alias spelling.
+  // Empty selects the only named function in the prepared executable.
   iree_string_view_t function_name;
   // Dispatch workgroup count in x, y, z order.
   uint32_t workgroup_count[3];

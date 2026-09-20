@@ -174,7 +174,7 @@ static loom_spirv_module_abi_context_t loom_spirv_emit_abi_context(
       .scratch_arena = state->scratch_arena,
       .builder = state->builder,
       .type_context = state->type_context,
-      .raw_bda_layout = state->context->raw_bda_layout,
+      .shared_bda_root = state->context->shared_bda_root,
       .value_table = &state->value_table,
   };
 }
@@ -1108,6 +1108,10 @@ static iree_status_t loom_spirv_emit_return(loom_spirv_emit_state_t* state,
 
 static iree_status_t loom_spirv_emit_entry_point(
     loom_spirv_emit_state_t* state) {
+  const iree_string_view_t entry_name = loom_spirv_emit_export_name(state);
+  loom_spirv_module_abi_context_t context = loom_spirv_emit_abi_context(state);
+  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_emit_entry_metadata(
+      &context, &state->abi_plan, entry_name));
   const uint32_t prefix_operands[] = {
       LOOM_SPIRV_EXECUTION_MODEL_GL_COMPUTE,
       state->function_id,
@@ -1123,8 +1127,8 @@ static iree_status_t loom_spirv_emit_entry_point(
   IREE_RETURN_IF_ERROR(loom_spirv_binary_write_string_instruction(
       loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_ENTRY_POINT),
       LOOM_SPIRV_OP_ENTRY_POINT, prefix_operands,
-      IREE_ARRAYSIZE(prefix_operands), loom_spirv_emit_export_name(state),
-      interface_operands, interface_operand_count));
+      IREE_ARRAYSIZE(prefix_operands), entry_name, interface_operands,
+      interface_operand_count));
   uint32_t workgroup_size_x = 1;
   uint32_t workgroup_size_y = 1;
   uint32_t workgroup_size_z = 1;

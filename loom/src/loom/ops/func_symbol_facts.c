@@ -210,7 +210,7 @@ static iree_status_t loom_func_symbol_fact_compute(
   if (has_abi_attr) {
     facts->has_abi = true;
     facts->abi_kind = (loom_target_abi_kind_t)loom_func_like_abi(func);
-  } else if (loom_func_like_is_kernel_entry(func)) {
+  } else if (loom_func_like_is_kernel(func)) {
     facts->has_abi = true;
     facts->abi_kind = LOOM_TARGET_ABI_HAL_KERNEL;
   }

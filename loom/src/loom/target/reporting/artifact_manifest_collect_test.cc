@@ -143,13 +143,13 @@ target.generic<reference> @test_target {
 global.constant @weights : i32 = 1
 global.variable @scratch : i32
 
-func.def target(@test_target) abi(object_function) export("run") @entry(%input: i32) {
+func.def public target(@test_target) abi(object_function) export("run") @entry(%input: i32) {
   func.call @forward() : ()
   func.call @helper() : ()
   func.return
 }
 
-func.def target(@test_target) abi(object_function) export("aux") @aux() {
+func.def public target(@test_target) abi(object_function) @aux() {
   func.return
 }
 
@@ -163,7 +163,7 @@ func.def target(@test_target) abi(object_function) @unused() {
   func.return
 }
 
-func.def target(@test_target) abi(object_function) export("forward") @forward() {
+func.def public target(@test_target) abi(object_function) @forward() {
   func.return
 }
 )");
@@ -216,7 +216,7 @@ target.generic<reference> @authored_wave64 {
   subgroup_size = 64
 }
 
-func.def target(@authored_wave64) abi(object_function) export("run") @entry() {
+func.def public target(@authored_wave64) abi(object_function) export("run") @entry() {
   func.return
 }
 )");
@@ -248,7 +248,7 @@ TEST_F(ArtifactManifestCollectTest, CollectsGlobalsInModuleOrder) {
   ModulePtr module = ParseModule(R"(
 target.generic<reference> @test_target {artifact_format = elf}
 
-func.def target(@test_target) abi(object_function) export("run") @entry() {
+func.def public target(@test_target) abi(object_function) export("run") @entry() {
   %late_value = global.load @late : i32
   %early_value = global.load @early : i32
   func.return
@@ -287,7 +287,7 @@ TEST_F(ArtifactManifestCollectTest, CollectsDetailsParameters) {
   ModulePtr module = ParseModule(R"(
 target.generic<reference> @test_target {artifact_format = spirv_binary}
 
-func.def target(@test_target) abi(object_function) export("entry") @entry(%lhs: i32, %rhs: f32) {
+func.def public target(@test_target) abi(object_function) @entry(%lhs: i32, %rhs: f32) {
   func.return
 }
 )");
@@ -345,7 +345,7 @@ target.generic<reference> @gpu {
   max_workgroup_count_z = 32
 }
 
-func.def target(@gpu) abi(object_function) export("entry") @entry() {
+func.def public target(@gpu) abi(object_function) @entry() {
   func.return
 }
 )");

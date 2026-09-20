@@ -114,10 +114,21 @@ static void AppendSpirvStringInstruction(uint16_t opcode, const char* value,
 }
 
 static std::vector<uint32_t> MakeBdaMetadataModule(
-    std::initializer_list<const char*> metadata_strings) {
+    std::initializer_list<const char*> metadata_strings,
+    std::initializer_list<const char*> entry_names = {"main"}) {
   std::vector<uint32_t> words = {
       0x07230203u, 0x00010600u, 0u, 8u, 0u,
   };
+  uint32_t function_id = 1;
+  for (const char* entry_name : entry_names) {
+    const size_t entry_offset = words.size();
+    AppendSpirvStringInstruction(/*OpEntryPoint=*/15u, entry_name, &words);
+    words[entry_offset] += 2u << 16;
+    words.insert(words.begin() + entry_offset + 1,
+                 {/*GLCompute=*/5u, function_id});
+    words.insert(words.end(), {/*OpExecutionMode=*/0x00060010u, function_id++,
+                               /*LocalSize=*/17u, 1u, 1u, 1u});
+  }
   for (const char* metadata_string : metadata_strings) {
     AppendSpirvStringInstruction(/*OpModuleProcessed=*/330u, metadata_string,
                                  &words);
@@ -312,8 +323,8 @@ TEST(SpirvTest, RejectsTruncatedInstruction) {
       iree_hal_vulkan_spirv_bda_dispatch_metadata_t metadata = {};
       IREE_EXPECT_STATUS_IS(StatusCode::kInvalidArgument,
                             iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
-                                words, IREE_ARRAYSIZE(words),
-                                iree_allocator_system(), &metadata));
+                                words, IREE_ARRAYSIZE(words), 0, nullptr,
+                                &metadata, iree_allocator_system()));
       iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(
           &metadata, iree_allocator_system());
     }
@@ -906,16 +917,20 @@ TEST(SpirvTest, RejectsZeroLocalSizeExecutionMode) {
 
 TEST(SpirvTest, ParsesBdaDispatchMetadata) {
   std::vector<uint32_t> module = MakeBdaMetadataModule({
-      "iree.vulkan.bda.v1",
-      "iree.vulkan.bda.v1.bindings=2",
-      "iree.vulkan.bda.v1.constant_length=12",
-      "iree.vulkan.bda.v1.constant_offset=48",
-      "iree.vulkan.bda.v1.binding.1=16,64",
+      "iree.vulkan.bda.v1[main]",
+      "iree.vulkan.bda.v1[main].bindings=2",
+      "iree.vulkan.bda.v1[main].constant_length=12",
+      "iree.vulkan.bda.v1[main].constant_offset=48",
+      "iree.vulkan.bda.v1[main].binding.1=16,64",
   });
 
+  iree_hal_vulkan_spirv_compute_entry_point_t entry_point = {};
+  IREE_ASSERT_OK(iree_hal_vulkan_spirv_parse_compute_entry_points(
+      module.data(), module.size(), 1, &entry_point));
   iree_hal_vulkan_spirv_bda_dispatch_metadata_t metadata = {};
   IREE_ASSERT_OK(iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
-      module.data(), module.size(), iree_allocator_system(), &metadata));
+      module.data(), module.size(), 1, &entry_point, &metadata,
+      iree_allocator_system()));
   EXPECT_TRUE(metadata.is_present);
   EXPECT_EQ(0u, metadata.root_push_constant_offset);
   EXPECT_EQ(32u, metadata.root_push_constant_length);
@@ -938,9 +953,13 @@ TEST(SpirvTest, IgnoresUnknownBdaDispatchMetadataVersions) {
       "iree.vulkan.bda.v10.bindings=2",
   });
 
+  iree_hal_vulkan_spirv_compute_entry_point_t entry_point = {};
+  IREE_ASSERT_OK(iree_hal_vulkan_spirv_parse_compute_entry_points(
+      module.data(), module.size(), 1, &entry_point));
   iree_hal_vulkan_spirv_bda_dispatch_metadata_t metadata = {};
   IREE_ASSERT_OK(iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
-      module.data(), module.size(), iree_allocator_system(), &metadata));
+      module.data(), module.size(), 1, &entry_point, &metadata,
+      iree_allocator_system()));
   EXPECT_FALSE(metadata.is_present);
   iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(
       &metadata, iree_allocator_system());
@@ -948,25 +967,115 @@ TEST(SpirvTest, IgnoresUnknownBdaDispatchMetadataVersions) {
 
 TEST(SpirvTest, RejectsMalformedBdaDispatchMetadata) {
   std::vector<uint32_t> unknown_field_module =
-      MakeBdaMetadataModule({"iree.vulkan.bda.v1.surprise=1"});
+      MakeBdaMetadataModule({"iree.vulkan.bda.v1[main].surprise=1"});
+  iree_hal_vulkan_spirv_compute_entry_point_t entry_point = {};
+  IREE_ASSERT_OK(iree_hal_vulkan_spirv_parse_compute_entry_points(
+      unknown_field_module.data(), unknown_field_module.size(), 1,
+      &entry_point));
   iree_hal_vulkan_spirv_bda_dispatch_metadata_t metadata = {};
   IREE_EXPECT_STATUS_IS(
       StatusCode::kInvalidArgument,
       iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
-          unknown_field_module.data(), unknown_field_module.size(),
-          iree_allocator_system(), &metadata));
+          unknown_field_module.data(), unknown_field_module.size(), 1,
+          &entry_point, &metadata, iree_allocator_system()));
   iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(
       &metadata, iree_allocator_system());
 
   std::vector<uint32_t> missing_binding_count_module =
-      MakeBdaMetadataModule({"iree.vulkan.bda.v1.binding.0=4,16"});
+      MakeBdaMetadataModule({"iree.vulkan.bda.v1[main].binding.0=4,16"});
   IREE_EXPECT_STATUS_IS(StatusCode::kInvalidArgument,
                         iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
                             missing_binding_count_module.data(),
-                            missing_binding_count_module.size(),
-                            iree_allocator_system(), &metadata));
+                            missing_binding_count_module.size(), 1,
+                            &entry_point, &metadata, iree_allocator_system()));
   iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(
       &metadata, iree_allocator_system());
+}
+
+TEST(SpirvTest, JoinsBdaMetadataByEntryName) {
+  const auto module = MakeBdaMetadataModule(
+      {
+          "iree.vulkan.bda.v1[a].binding.0=16,64",
+          "iree.vulkan.bda.v1[z].bindings=2",
+          "iree.vulkan.bda.v1[a].bindings=1",
+          "iree.vulkan.bda.v1[a].constant_length=8",
+          "iree.vulkan.bda.v1[z].constant_length=4",
+          "iree.vulkan.bda.v1[z].binding.1=4,12",
+          "iree.vulkan.bda.v1[alias.with[brackets]].bindings=0",
+      },
+      {"z", "alias.with[brackets]", "a", "missing"});
+  iree_hal_vulkan_spirv_compute_entry_point_t entries[4] = {};
+  IREE_ASSERT_OK(iree_hal_vulkan_spirv_parse_compute_entry_points(
+      module.data(), module.size(), IREE_ARRAYSIZE(entries), entries));
+  iree_hal_vulkan_spirv_bda_dispatch_metadata_t metadata[4] = {};
+  IREE_ASSERT_OK(iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
+      module.data(), module.size(), IREE_ARRAYSIZE(entries), entries, metadata,
+      iree_allocator_system()));
+  EXPECT_TRUE(metadata[0].is_present);
+  EXPECT_EQ(metadata[0].binding_count, 2u);
+  EXPECT_EQ(metadata[0].constant_byte_length, 4u);
+  EXPECT_EQ(metadata[0].binding_requirement_count, 2u);
+  EXPECT_EQ(metadata[0].binding_requirements[0].minimum_alignment, 1u);
+  EXPECT_EQ(metadata[0].binding_requirements[1].minimum_length, 12u);
+  EXPECT_TRUE(metadata[1].is_present);
+  EXPECT_TRUE(metadata[1].binding_count_known);
+  EXPECT_EQ(metadata[1].binding_count, 0u);
+  EXPECT_EQ(metadata[1].constant_byte_length, 0u);
+  EXPECT_TRUE(metadata[2].is_present);
+  EXPECT_EQ(metadata[2].binding_count, 1u);
+  EXPECT_EQ(metadata[2].constant_byte_length, 8u);
+  EXPECT_EQ(metadata[2].binding_requirement_count, 1u);
+  EXPECT_EQ(metadata[2].binding_requirements[0].minimum_alignment, 16u);
+  EXPECT_EQ(metadata[2].binding_requirements[0].minimum_length, 64u);
+  EXPECT_FALSE(metadata[3].is_present);
+  for (auto& entry : metadata) {
+    iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(
+        &entry, iree_allocator_system());
+  }
+}
+
+TEST(SpirvTest, RejectsInvalidEntryMetadataAndReleasesAllEntries) {
+  for (const char* invalid_record : {
+           "iree.vulkan.bda.v1",
+           "iree.vulkan.bda.v1.bindings=2",
+           "iree.vulkan.bda.v1[",
+           "iree.vulkan.bda.v1[]",
+           "iree.vulkan.bda.v1[unknown].bindings=2",
+           "iree.vulkan.bda.v1[main]bindings=2",
+           "iree.vulkan.bda.v1[main].bindings=2",
+           "iree.vulkan.bda.v1[main].constant_length=3",
+           "iree.vulkan.bda.v1[main].constant_offset=3",
+           "iree.vulkan.bda.v1[main].root=4,32",
+           "iree.vulkan.bda.v1[main].root=0,16",
+           "iree.vulkan.bda.v1[main].binding.0=3,4",
+           "iree.vulkan.bda.v1[main].binding.1=4,8",
+           "iree.vulkan.bda.v1[main].binding.0=4,8",
+       }) {
+    SCOPED_TRACE(invalid_record);
+    const auto module = MakeBdaMetadataModule(
+        {
+            "iree.vulkan.bda.v1[other].bindings=1",
+            "iree.vulkan.bda.v1[other].binding.0=8,32",
+            "iree.vulkan.bda.v1[main].bindings=1",
+            "iree.vulkan.bda.v1[main].binding.0=4,16",
+            invalid_record,
+        },
+        {"other", "main"});
+    iree_hal_vulkan_spirv_compute_entry_point_t entries[2] = {};
+    IREE_ASSERT_OK(iree_hal_vulkan_spirv_parse_compute_entry_points(
+        module.data(), module.size(), IREE_ARRAYSIZE(entries), entries));
+    iree_hal_vulkan_spirv_bda_dispatch_metadata_t metadata[2] = {};
+    IREE_EXPECT_STATUS_IS(
+        StatusCode::kInvalidArgument,
+        iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
+            module.data(), module.size(), IREE_ARRAYSIZE(entries), entries,
+            metadata, iree_allocator_system()));
+    for (const auto& entry : metadata) {
+      EXPECT_FALSE(entry.is_present);
+      EXPECT_EQ(entry.binding_requirements, nullptr);
+      EXPECT_EQ(entry.binding_requirement_count, 0u);
+    }
+  }
 }
 
 }  // namespace

@@ -11,8 +11,9 @@
 # Loom packages keep source-of-truth tables in Python and generate compact C
 # data and source fixtures into the build tree.
 #
-# Generated commands use the shared content-stable Python projection helper so
-# every file in an output family comes from one generator process.
+# Python generators use the shared content-stable projection helper. Native
+# generators invoke their executable target, including forward references to
+# tools declared later in the CMake directory traversal.
 
 # Low-descriptor archive generation constructs a multi-target command graph and
 # uses these command/target primitives directly.
@@ -40,7 +41,55 @@ function(_loom_add_generated_target TARGET_NAME STAMP_PATH)
 endfunction()
 
 function(_loom_generated_files)
-  iree_py_generated_files(${ARGN})
+  cmake_parse_arguments(
+    _RULE "" "NAME;GENERATOR;COMMENT" "OUTPUTS;OUTPUT_FLAGS;ARGS;INPUTS" ${ARGN}
+  )
+  iree_package_target_name(_GENERATOR_TARGET "${_RULE_GENERATOR}")
+  # Python packages register their entry points before their consumers. Native
+  # executable targets may be forward references, resolved at generation time.
+  if(TARGET "${_GENERATOR_TARGET}")
+    get_target_property(_GENERATOR_TYPE "${_GENERATOR_TARGET}" TYPE)
+    if(_GENERATOR_TYPE STREQUAL "UTILITY")
+      iree_py_generated_files(${ARGN})
+      return()
+    endif()
+  endif()
+
+  list(LENGTH _RULE_OUTPUTS _OUTPUT_COUNT)
+  list(LENGTH _RULE_OUTPUT_FLAGS _OUTPUT_FLAG_COUNT)
+  if(_OUTPUT_COUNT EQUAL 0 OR NOT _OUTPUT_COUNT EQUAL _OUTPUT_FLAG_COUNT)
+    message(FATAL_ERROR "generated file output flags and outputs must be paired")
+  endif()
+  set(_OUTPUTS)
+  set(_OUTPUT_ARGS)
+  math(EXPR _OUTPUT_LAST "${_OUTPUT_COUNT} - 1")
+  foreach(_INDEX RANGE 0 ${_OUTPUT_LAST})
+    list(GET _RULE_OUTPUTS ${_INDEX} _OUTPUT)
+    list(GET _RULE_OUTPUT_FLAGS ${_INDEX} _FLAG)
+    set(_PATH "${CMAKE_CURRENT_BINARY_DIR}/${_OUTPUT}")
+    list(APPEND _OUTPUTS "${_PATH}")
+    if(_FLAG MATCHES "\\{path\\}")
+      string(REPLACE "{path}" "${_PATH}" _ARG "${_FLAG}")
+      list(APPEND _OUTPUT_ARGS "${_ARG}")
+    elseif(_FLAG MATCHES "=$")
+      list(APPEND _OUTPUT_ARGS "${_FLAG}${_PATH}")
+    elseif(_FLAG MATCHES "=")
+      list(APPEND _OUTPUT_ARGS "${_FLAG}=${_PATH}")
+    else()
+      list(APPEND _OUTPUT_ARGS "${_FLAG}" "${_PATH}")
+    endif()
+  endforeach()
+  add_custom_command(
+    OUTPUT ${_OUTPUTS}
+    COMMAND "$<TARGET_FILE:${_GENERATOR_TARGET}>" ${_RULE_ARGS} ${_OUTPUT_ARGS}
+    DEPENDS "${_GENERATOR_TARGET}" ${_RULE_INPUTS}
+    COMMENT "${_RULE_COMMENT}"
+    VERBATIM
+  )
+  iree_package_name(_PACKAGE_NAME)
+  set(_GEN_TARGET "${_PACKAGE_NAME}_${_RULE_NAME}")
+  add_custom_target("${_GEN_TARGET}" DEPENDS ${_OUTPUTS})
+  iree_register_generated_compile_input("${_GEN_TARGET}" OUTPUTS ${_OUTPUTS})
 endfunction()
 
 function(loom_generated_file)

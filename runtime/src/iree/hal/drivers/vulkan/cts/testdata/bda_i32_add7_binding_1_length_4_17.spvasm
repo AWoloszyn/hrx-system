@@ -34,9 +34,9 @@
                OpName %output_buffer "output_buffer"
                OpName %index "index"
                OpName %gl_GlobalInvocationID "gl_GlobalInvocationID"
-               OpModuleProcessed "iree.vulkan.bda.v1"
-               OpModuleProcessed "iree.vulkan.bda.v1.bindings=2"
-               OpModuleProcessed "iree.vulkan.bda.v1.binding.1=4,17"
+               OpModuleProcessed "iree.vulkan.bda.v1[main]"
+               OpModuleProcessed "iree.vulkan.bda.v1[main].bindings=2"
+               OpModuleProcessed "iree.vulkan.bda.v1[main].binding.1=4,17"
                OpDecorate %_runtimearr_ulong ArrayStride 8
                OpDecorate %AddressTable Block
                OpMemberDecorate %AddressTable 0 NonWritable

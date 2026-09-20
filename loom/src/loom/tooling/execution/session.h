@@ -131,6 +131,14 @@ iree_status_t loom_run_module_parse(
     loom_run_session_t* session, const loom_run_module_parse_options_t* options,
     loom_run_module_t* out_module);
 
+// Clones selected roots and their dependencies, preserving diagnostic sources.
+// An empty |root_symbols| clones the entire module. The result owns its IR and
+// source snapshots; its borrowed filename and session must outlive the result.
+iree_status_t loom_run_module_clone(loom_run_session_t* session,
+                                    const loom_run_module_t* source,
+                                    iree_string_view_list_t root_symbols,
+                                    loom_run_module_t* out_module);
+
 // Releases the parsed module owned by |run_module|.
 void loom_run_module_deinitialize(loom_run_module_t* run_module);
 

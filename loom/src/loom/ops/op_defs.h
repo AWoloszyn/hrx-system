@@ -1313,12 +1313,15 @@ loom_named_attr_slice_t loom_func_like_export_attrs(loom_func_like_t func);
 // symbol attribute.
 bool loom_func_like_is_kernel_entry(loom_func_like_t func);
 
-// Returns true for kernel entries and public functions that are not imports.
+// Returns true for dispatchable kernels and entries, including declarations.
+bool loom_func_like_is_kernel(loom_func_like_t func);
+
+// Returns true for kernels and public functions that are not imports.
 // Export name and payload attributes do not make a private function public.
 bool loom_func_like_is_exported(loom_func_like_t func);
 
 // Returns true when all possible callers and references to |func| are owned by
-// the current module. Imports, public functions, and kernel entries are
+// the current module. Imports, public functions, and kernels are
 // externally reachable.
 bool loom_func_like_is_module_internal(loom_func_like_t func);
 

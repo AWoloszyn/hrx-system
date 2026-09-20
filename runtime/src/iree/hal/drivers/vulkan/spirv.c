@@ -6,6 +6,7 @@
 
 #include "iree/hal/drivers/vulkan/spirv.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 enum {
@@ -525,6 +526,9 @@ void iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(
 }
 
 typedef struct iree_hal_vulkan_spirv_bda_metadata_parse_state_t {
+  // Borrowed exported name used to join records with parsed compute entries.
+  iree_string_view_t entry_name;
+
   // Reflected metadata receiving parsed scalar fields.
   iree_hal_vulkan_spirv_bda_dispatch_metadata_t* metadata;
 
@@ -581,25 +585,18 @@ static iree_status_t iree_hal_vulkan_spirv_parse_metadata_pair_u32_u64(
                                                      field_name, out_rhs);
 }
 
-static iree_status_t iree_hal_vulkan_spirv_parse_bda_metadata_string(
+static iree_status_t iree_hal_vulkan_spirv_parse_bda_metadata_field(
     iree_string_view_t value,
     iree_hal_vulkan_spirv_bda_metadata_parse_state_t* state) {
-  static const iree_string_view_t prefix =
-      iree_string_view_literal("iree.vulkan.bda.v1");
-  if (!iree_string_view_starts_with(value, prefix)) {
-    return iree_ok_status();
-  }
-
-  value = iree_string_view_remove_prefix(value, prefix.size);
   iree_hal_vulkan_spirv_bda_dispatch_metadata_t* metadata = state->metadata;
+  metadata->is_present = true;
   if (iree_string_view_is_empty(value)) {
-    metadata->is_present = true;
     return iree_ok_status();
   }
   if (!iree_string_view_consume_prefix(&value, IREE_SV("."))) {
-    return iree_ok_status();
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "Vulkan BDA metadata field must follow '.'");
   }
-  metadata->is_present = true;
   if (state->populate_binding_requirements &&
       !iree_string_view_starts_with(value, IREE_SV("binding."))) {
     return iree_ok_status();
@@ -714,9 +711,56 @@ static iree_status_t iree_hal_vulkan_spirv_parse_bda_metadata_string(
                           (int)value.size, value.data);
 }
 
+static int iree_hal_vulkan_spirv_bda_metadata_compare_names(const void* lhs,
+                                                            const void* rhs) {
+  const iree_hal_vulkan_spirv_bda_metadata_parse_state_t* lhs_state = lhs;
+  const iree_hal_vulkan_spirv_bda_metadata_parse_state_t* rhs_state = rhs;
+  return iree_string_view_compare(lhs_state->entry_name, rhs_state->entry_name);
+}
+
+static iree_status_t iree_hal_vulkan_spirv_parse_bda_metadata_string(
+    iree_string_view_t value, iree_host_size_t entry_count,
+    iree_hal_vulkan_spirv_bda_metadata_parse_state_t* states) {
+  if (!iree_string_view_consume_prefix(&value, IREE_SV("iree.vulkan.bda.v1"))) {
+    return iree_ok_status();
+  }
+  if (iree_string_view_is_empty(value) ||
+      iree_string_view_starts_with(value, IREE_SV("."))) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "Vulkan BDA v1 metadata requires an entry name");
+  }
+  if (!iree_string_view_consume_prefix(&value, IREE_SV("["))) {
+    return iree_ok_status();  // A different metadata version.
+  }
+  const iree_host_size_t name_end =
+      iree_string_view_find_last_of(value, IREE_SV("]"), IREE_STRING_VIEW_NPOS);
+  if (name_end == IREE_STRING_VIEW_NPOS || name_end == 0) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "Vulkan BDA metadata requires a nonempty [entry] name");
+  }
+  const iree_hal_vulkan_spirv_bda_metadata_parse_state_t key = {
+      .entry_name = iree_string_view_substr(value, 0, name_end),
+  };
+  iree_hal_vulkan_spirv_bda_metadata_parse_state_t* state =
+      bsearch(&key, states, entry_count, sizeof(states[0]),
+              iree_hal_vulkan_spirv_bda_metadata_compare_names);
+  if (!state) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "Vulkan BDA metadata names unknown entry '%.*s'",
+                            (int)key.entry_name.size, key.entry_name.data);
+  }
+  return iree_status_annotate_f(
+      iree_hal_vulkan_spirv_parse_bda_metadata_field(
+          iree_string_view_remove_prefix(value, name_end + 1), state),
+      "SPIR-V BDA entry point '%.*s'", (int)key.entry_name.size,
+      key.entry_name.data);
+}
+
 static iree_status_t iree_hal_vulkan_spirv_scan_bda_metadata_strings(
     const uint32_t* spirv_words, iree_host_size_t spirv_word_count,
-    iree_hal_vulkan_spirv_bda_metadata_parse_state_t* state) {
+    iree_host_size_t entry_count,
+    iree_hal_vulkan_spirv_bda_metadata_parse_state_t* states) {
   IREE_RETURN_IF_ERROR(iree_hal_vulkan_spirv_verify_module_header(
       spirv_words, spirv_word_count));
   iree_host_size_t word_offset = IREE_HAL_VULKAN_SPIRV_HEADER_WORD_COUNT;
@@ -733,8 +777,8 @@ static iree_status_t iree_hal_vulkan_spirv_scan_bda_metadata_strings(
     iree_string_view_t value = iree_string_view_empty();
     IREE_RETURN_IF_ERROR(iree_hal_vulkan_spirv_module_processed_string(
         operands, word_count, &value));
-    IREE_RETURN_IF_ERROR(
-        iree_hal_vulkan_spirv_parse_bda_metadata_string(value, state));
+    IREE_RETURN_IF_ERROR(iree_hal_vulkan_spirv_parse_bda_metadata_string(
+        value, entry_count, states));
   }
   return iree_ok_status();
 }
@@ -803,50 +847,70 @@ static iree_status_t iree_hal_vulkan_spirv_validate_bda_metadata(
 
 iree_status_t iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
     const uint32_t* spirv_words, iree_host_size_t spirv_word_count,
-    iree_allocator_t host_allocator,
-    iree_hal_vulkan_spirv_bda_dispatch_metadata_t* out_metadata) {
-  IREE_ASSERT_ARGUMENT(out_metadata);
-  iree_hal_vulkan_spirv_bda_dispatch_metadata_initialize(out_metadata);
-
-  iree_hal_vulkan_spirv_bda_metadata_parse_state_t state = {
-      .metadata = out_metadata,
-  };
-  iree_status_t status = iree_hal_vulkan_spirv_scan_bda_metadata_strings(
-      spirv_words, spirv_word_count, &state);
-  if (iree_status_is_ok(status)) {
-    status = iree_hal_vulkan_spirv_validate_bda_metadata(&state);
+    iree_host_size_t entry_point_count,
+    const iree_hal_vulkan_spirv_compute_entry_point_t* entry_points,
+    iree_hal_vulkan_spirv_bda_dispatch_metadata_t* out_metadata,
+    iree_allocator_t host_allocator) {
+  for (iree_host_size_t i = 0; i < entry_point_count; ++i) {
+    iree_hal_vulkan_spirv_bda_dispatch_metadata_initialize(&out_metadata[i]);
   }
-  if (iree_status_is_ok(status) && out_metadata->is_present &&
-      state.has_binding_requirements) {
-    out_metadata->binding_requirement_count = out_metadata->binding_count;
-    status = iree_allocator_malloc_array(
-        host_allocator, out_metadata->binding_requirement_count,
-        sizeof(out_metadata->binding_requirements[0]),
-        (void**)&out_metadata->binding_requirements);
-    if (iree_status_is_ok(status)) {
-      memset(out_metadata->binding_requirements, 0,
-             out_metadata->binding_requirement_count *
-                 sizeof(out_metadata->binding_requirements[0]));
-      state.populate_binding_requirements = true;
-      status = iree_hal_vulkan_spirv_scan_bda_metadata_strings(
-          spirv_words, spirv_word_count, &state);
+
+  // Sort only the temporary name index. Output ownership and pipeline ordinals
+  // remain in the order established by the entry-point parser.
+  iree_hal_vulkan_spirv_bda_metadata_parse_state_t* states = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
+      host_allocator, entry_point_count, sizeof(states[0]), (void**)&states));
+  for (iree_host_size_t i = 0; i < entry_point_count; ++i) {
+    states[i] = (iree_hal_vulkan_spirv_bda_metadata_parse_state_t){
+        .entry_name = entry_points[i].name,
+        .metadata = &out_metadata[i],
+    };
+  }
+  qsort(states, entry_point_count, sizeof(states[0]),
+        iree_hal_vulkan_spirv_bda_metadata_compare_names);
+  iree_status_t status = iree_hal_vulkan_spirv_scan_bda_metadata_strings(
+      spirv_words, spirv_word_count, entry_point_count, states);
+  bool has_binding_requirements = false;
+  for (iree_host_size_t i = 0;
+       iree_status_is_ok(status) && i < entry_point_count; ++i) {
+    iree_hal_vulkan_spirv_bda_metadata_parse_state_t* state = &states[i];
+    status = iree_hal_vulkan_spirv_validate_bda_metadata(state);
+    if (iree_status_is_ok(status) && state->has_binding_requirements) {
+      iree_hal_vulkan_spirv_bda_dispatch_metadata_t* metadata = state->metadata;
+      metadata->binding_requirement_count = metadata->binding_count;
+      status = iree_allocator_malloc_array(
+          host_allocator, metadata->binding_requirement_count,
+          sizeof(metadata->binding_requirements[0]),
+          (void**)&metadata->binding_requirements);
+      has_binding_requirements = true;
     }
-    if (iree_status_is_ok(status)) {
-      for (iree_host_size_t i = 0; i < out_metadata->binding_requirement_count;
-           ++i) {
-        iree_hal_vulkan_spirv_bda_binding_requirement_t* requirement =
-            &out_metadata->binding_requirements[i];
-        if (requirement->minimum_alignment == 0) {
-          requirement->minimum_alignment = 1;
-          requirement->minimum_length = 0;
+    state->populate_binding_requirements = true;
+  }
+  // Binding ordinals may precede the declaration of their entry's count. This
+  // second pass populates all requirement arrays together, never once per
+  // entry.
+  if (iree_status_is_ok(status) && has_binding_requirements) {
+    status = iree_hal_vulkan_spirv_scan_bda_metadata_strings(
+        spirv_words, spirv_word_count, entry_point_count, states);
+  }
+  if (iree_status_is_ok(status)) {
+    for (iree_host_size_t i = 0; i < entry_point_count; ++i) {
+      iree_hal_vulkan_spirv_bda_dispatch_metadata_t* metadata =
+          &out_metadata[i];
+      for (iree_host_size_t j = 0; j < metadata->binding_requirement_count;
+           ++j) {
+        if (metadata->binding_requirements[j].minimum_alignment == 0) {
+          metadata->binding_requirements[j].minimum_alignment = 1;
         }
       }
     }
+  } else {
+    for (iree_host_size_t i = 0; i < entry_point_count; ++i) {
+      iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(&out_metadata[i],
+                                                               host_allocator);
+    }
   }
-  if (!iree_status_is_ok(status)) {
-    iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(out_metadata,
-                                                             host_allocator);
-  }
+  iree_allocator_free(host_allocator, states);
   return status;
 }
 

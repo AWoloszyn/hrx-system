@@ -2784,7 +2784,7 @@ class TestImportExportBytecodeRoundTrip:
         assert not names["helper"].is_public
         assert names["entry"].is_public
 
-    @pytest.mark.parametrize("role", ["private", "public", "kernel"])
+    @pytest.mark.parametrize("role", ["private", "public", "kernel", "kernel_decl"])
     @pytest.mark.parametrize("alias", [None, "artifact_entry"])
     def test_export_index_uses_role_not_alias(self, role, alias) -> None:
         """Aliases survive round trips without changing export eligibility."""
@@ -2800,6 +2800,8 @@ class TestImportExportBytecodeRoundTrip:
                 "workgroup_size(%one, %one, %one) : index\n"
                 "} launch() {\n  kernel.return\n}\n"
             )
+        elif role == "kernel_decl":
+            text = f"kernel.decl {override}@entry() launch()\n"
         else:
             visibility = "public " if role == "public" else ""
             text = f"func.def {visibility}{override}@entry() {{\n  func.return\n}}\n"

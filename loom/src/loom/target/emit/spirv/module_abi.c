@@ -7,7 +7,6 @@
 #include "loom/target/emit/spirv/module_abi.h"
 
 #include <inttypes.h>
-#include <stdio.h>
 
 #include "loom/ir/module.h"
 #include "loom/ops/low/ops.h"
@@ -167,109 +166,32 @@ static uint16_t loom_spirv_module_abi_bda_resource_binding_ordinal(
 static iree_status_t loom_spirv_module_abi_module_processed(
     loom_spirv_module_abi_context_t* context, iree_string_view_t value) {
   return loom_spirv_binary_write_string_instruction(
-      loom_spirv_module_abi_section(context, LOOM_SPIRV_MODULE_SECTION_DEBUG),
+      loom_spirv_module_abi_section(context,
+                                    LOOM_SPIRV_MODULE_SECTION_MODULE_PROCESSED),
       LOOM_SPIRV_OP_MODULE_PROCESSED, NULL, 0, value, NULL, 0);
 }
 
-static iree_status_t loom_spirv_module_abi_bda_metadata_u32(
-    loom_spirv_module_abi_context_t* context, const char* format,
-    uint32_t value) {
-  char text[64] = {0};
-  const int length = snprintf(text, sizeof(text), format, value);
-  if (length < 0 || (iree_host_size_t)length >= sizeof(text)) {
-    return iree_make_status(IREE_STATUS_INTERNAL,
-                            "failed to format SPIR-V raw-BDA metadata");
-  }
-  return loom_spirv_module_abi_module_processed(
-      context, iree_make_string_view(text, (iree_host_size_t)length));
+static iree_status_t loom_spirv_module_abi_bda_metadata_field(
+    loom_spirv_module_abi_context_t* context, iree_string_builder_t* text,
+    iree_string_view_t entry_name, const char* field_prefix, uint32_t value) {
+  iree_string_builder_reset(text);
+  IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+      text, "iree.vulkan.bda.v1[%.*s].%s%" PRIu32, (int)entry_name.size,
+      entry_name.data, field_prefix, value));
+  return loom_spirv_module_abi_module_processed(context,
+                                                iree_string_builder_view(text));
 }
 
-static iree_status_t loom_spirv_module_abi_bda_metadata_u32_pair(
-    loom_spirv_module_abi_context_t* context, const char* format, uint32_t lhs,
-    uint32_t rhs) {
-  char text[64] = {0};
-  const int length = snprintf(text, sizeof(text), format, lhs, rhs);
-  if (length < 0 || (iree_host_size_t)length >= sizeof(text)) {
-    return iree_make_status(IREE_STATUS_INTERNAL,
-                            "failed to format SPIR-V raw-BDA metadata");
-  }
-  return loom_spirv_module_abi_module_processed(
-      context, iree_make_string_view(text, (iree_host_size_t)length));
-}
-
-static iree_status_t loom_spirv_module_abi_bda_metadata(
-    loom_spirv_module_abi_context_t* context, uint16_t binding_count,
-    uint16_t constant_word_count) {
-  const uint32_t constant_byte_length = (uint32_t)constant_word_count * 4u;
-  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_module_processed(
-      context, IREE_SV("iree.vulkan.bda.v1")));
-  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_bda_metadata_u32_pair(
-      context, "iree.vulkan.bda.v1.root=%" PRIu32 ",%" PRIu32, 0,
-      LOOM_SPIRV_BDA_ROOT_BYTE_LENGTH));
-  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_bda_metadata_u32(
-      context, "iree.vulkan.bda.v1.constant_offset=%" PRIu32,
-      LOOM_SPIRV_BDA_ROOT_CONSTANT_BYTE_OFFSET));
-  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_bda_metadata_u32(
-      context, "iree.vulkan.bda.v1.constant_length=%" PRIu32,
-      constant_byte_length));
-  return loom_spirv_module_abi_bda_metadata_u32(
-      context, "iree.vulkan.bda.v1.bindings=%" PRIu32, binding_count);
-}
-
-static iree_status_t loom_spirv_module_abi_declare_bda_root_variable(
-    loom_spirv_module_abi_context_t* context, uint16_t constant_word_count,
-    uint32_t* out_variable_id) {
-  uint32_t root_pointer_type_id = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_type_ptr_push_constant_bda_root(
-      context->type_context, constant_word_count, &root_pointer_type_id));
-  const uint32_t root_variable_id = loom_spirv_module_abi_allocate_id(context);
-  const uint32_t variable_operands[] = {
-      root_pointer_type_id,
-      root_variable_id,
-      LOOM_SPIRV_STORAGE_CLASS_PUSH_CONSTANT,
-  };
-  IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
-      loom_spirv_module_abi_section(context,
-                                    LOOM_SPIRV_MODULE_SECTION_DECLARATION),
-      LOOM_SPIRV_OP_VARIABLE, variable_operands,
-      IREE_ARRAYSIZE(variable_operands)));
-  *out_variable_id = root_variable_id;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_spirv_module_abi_share_bda_root(
+static void loom_spirv_module_abi_share_bda_root(
     loom_spirv_module_abi_context_t* context,
     loom_spirv_module_abi_plan_t* plan) {
-  if (context->raw_bda_layout == NULL) {
-    return iree_make_status(IREE_STATUS_INTERNAL,
-                            "SPIR-V raw-BDA emission requires module layout "
-                            "state");
+  loom_spirv_module_shared_bda_root_t* root = context->shared_bda_root;
+  if (root->root_variable_id == 0) {
+    root->root_variable_id = loom_spirv_module_abi_allocate_id(context);
   }
-
-  loom_spirv_module_raw_bda_layout_t* layout = context->raw_bda_layout;
-  if (layout->root_variable_id != 0) {
-    if (layout->binding_count != plan->bda_binding_count ||
-        layout->constant_word_count != plan->bda_constant_word_count) {
-      return iree_make_status(
-          IREE_STATUS_FAILED_PRECONDITION,
-          "SPIR-V raw-BDA module mixes dispatch layouts; first raw-BDA "
-          "function uses %u bindings and %u constant words but current "
-          "function uses %u bindings and %u constant words",
-          layout->binding_count, layout->constant_word_count,
-          plan->bda_binding_count, plan->bda_constant_word_count);
-    }
-    plan->bda_root.variable_id = layout->root_variable_id;
-    return iree_ok_status();
-  }
-
-  uint32_t root_variable_id = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_declare_bda_root_variable(
-      context, plan->bda_constant_word_count, &root_variable_id));
-  layout->root_variable_id = root_variable_id;
-  layout->binding_count = plan->bda_binding_count;
-  layout->constant_word_count = plan->bda_constant_word_count;
-  plan->bda_root.variable_id = root_variable_id;
-  return iree_ok_status();
+  root->constant_word_count =
+      iree_max(root->constant_word_count, plan->bda_constant_word_count);
+  plan->bda_root.variable_id = root->root_variable_id;
 }
 
 static iree_status_t loom_spirv_module_abi_slot_type_info(
@@ -528,7 +450,8 @@ static iree_status_t loom_spirv_module_abi_build_raw_bda_plan(
   plan->arg_count = entry_block->arg_count;
   plan->bda_binding_count = binding_count;
   plan->bda_constant_word_count = constant_word_count;
-  return loom_spirv_module_abi_share_bda_root(context, plan);
+  loom_spirv_module_abi_share_bda_root(context, plan);
+  return iree_ok_status();
 }
 
 iree_status_t loom_spirv_module_abi_build_plan(
@@ -1047,13 +970,50 @@ iree_status_t loom_spirv_module_abi_store_return_values(
   return iree_ok_status();
 }
 
-iree_status_t loom_spirv_module_abi_emit_metadata(
+iree_status_t loom_spirv_module_abi_emit_entry_metadata(
     loom_spirv_module_abi_context_t* context,
-    const loom_spirv_module_raw_bda_layout_t* raw_bda_layout) {
-  if (raw_bda_layout == NULL || raw_bda_layout->root_variable_id == 0) {
+    const loom_spirv_module_abi_plan_t* plan, iree_string_view_t entry_name) {
+  if (plan->kind != LOOM_SPIRV_MODULE_ABI_PLAN_HAL_KERNEL_RAW_BDA) {
     return iree_ok_status();
   }
-  return loom_spirv_module_abi_bda_metadata(
-      context, raw_bda_layout->binding_count,
-      raw_bda_layout->constant_word_count);
+  // One scratch buffer holds the entry name and the longest numeric field.
+  const iree_host_size_t text_capacity = entry_name.size + 80;
+  char* text_storage = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(
+      context->scratch_arena, text_capacity, (void**)&text_storage));
+  iree_string_builder_t text;
+  iree_string_builder_initialize_with_storage(text_storage, text_capacity,
+                                              &text);
+  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_bda_metadata_field(
+      context, &text, entry_name, "root=0,", LOOM_SPIRV_BDA_ROOT_BYTE_LENGTH));
+  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_bda_metadata_field(
+      context, &text, entry_name,
+      "constant_offset=", LOOM_SPIRV_BDA_ROOT_CONSTANT_BYTE_OFFSET));
+  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_bda_metadata_field(
+      context, &text, entry_name,
+      "constant_length=", (uint32_t)plan->bda_constant_word_count * 4u));
+  return loom_spirv_module_abi_bda_metadata_field(
+      context, &text, entry_name, "bindings=", plan->bda_binding_count);
+}
+
+iree_status_t loom_spirv_module_abi_emit_shared_bda_root(
+    loom_spirv_module_abi_context_t* context) {
+  const loom_spirv_module_shared_bda_root_t* root = context->shared_bda_root;
+  if (root->root_variable_id == 0) {
+    return iree_ok_status();
+  }
+
+  uint32_t root_pointer_type_id = 0;
+  IREE_RETURN_IF_ERROR(loom_spirv_emit_type_ptr_push_constant_bda_root(
+      context->type_context, root->constant_word_count, &root_pointer_type_id));
+  const uint32_t variable_operands[] = {
+      root_pointer_type_id,
+      root->root_variable_id,
+      LOOM_SPIRV_STORAGE_CLASS_PUSH_CONSTANT,
+  };
+  return loom_spirv_binary_write_instruction(
+      loom_spirv_module_abi_section(context,
+                                    LOOM_SPIRV_MODULE_SECTION_DECLARATION),
+      LOOM_SPIRV_OP_VARIABLE, variable_operands,
+      IREE_ARRAYSIZE(variable_operands));
 }

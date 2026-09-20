@@ -758,7 +758,9 @@ class BytecodeWriter:
         if symbol.op is None:
             return False
         symbol_def = symbol_def_for_op(self._op_decls_by_name, symbol.op.name)
-        return "kernel_entry" in symbol_def.interfaces or bool(
+        return bool(
+            {"kernel", "kernel_entry"}.intersection(symbol_def.interfaces)
+        ) or bool(
             symbol_def.visibility
             and symbol.op.attributes.get(symbol_def.visibility) == "public"
         )

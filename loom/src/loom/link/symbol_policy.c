@@ -45,7 +45,7 @@ bool loom_link_symbol_has_global_identity(const loom_module_t* module,
 
 void loom_link_symbol_internalize(loom_module_t* module, loom_op_t* op) {
   const loom_func_like_t function = loom_func_like_cast(module, op);
-  if (loom_func_like_is_kernel_entry(function)) {
+  if (loom_func_like_is_kernel(function)) {
     return;
   }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);

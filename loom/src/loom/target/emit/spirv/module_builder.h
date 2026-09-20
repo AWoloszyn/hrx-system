@@ -40,13 +40,15 @@ typedef enum loom_spirv_module_section_e {
   LOOM_SPIRV_MODULE_SECTION_EXECUTION_MODE = 5,
   // Debug and name rows.
   LOOM_SPIRV_MODULE_SECTION_DEBUG = 6,
+  // OpModuleProcessed rows follow all debug names, including later entries.
+  LOOM_SPIRV_MODULE_SECTION_MODULE_PROCESSED = 7,
   // Annotation and decoration rows.
-  LOOM_SPIRV_MODULE_SECTION_ANNOTATION = 7,
+  LOOM_SPIRV_MODULE_SECTION_ANNOTATION = 8,
   // Types, constants, global variables, and other declarations.
-  LOOM_SPIRV_MODULE_SECTION_DECLARATION = 8,
+  LOOM_SPIRV_MODULE_SECTION_DECLARATION = 9,
   // Function definitions.
-  LOOM_SPIRV_MODULE_SECTION_FUNCTION = 9,
-  LOOM_SPIRV_MODULE_SECTION_COUNT = 10,
+  LOOM_SPIRV_MODULE_SECTION_FUNCTION = 10,
+  LOOM_SPIRV_MODULE_SECTION_COUNT = 11,
 } loom_spirv_module_section_t;
 
 typedef struct loom_spirv_module_binary_t {

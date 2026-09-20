@@ -1110,6 +1110,8 @@ enum loom_func_like_flag_bits_e {
   // The operation defines an executable kernel entry with an implicit artifact
   // export and kernel ABI.
   LOOM_FUNC_LIKE_FLAG_KERNEL_ENTRY = 1u << 0,
+  // The operation declares or defines a source kernel launch contract.
+  LOOM_FUNC_LIKE_FLAG_KERNEL = 1u << 1,
 };
 
 typedef struct loom_func_like_vtable_t {

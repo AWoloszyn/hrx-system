@@ -1457,6 +1457,7 @@ def test_generate_kernel_declaration_preserves_both_signatures() -> None:
     builders_c = generate_builders_c("test", [op])
 
     assert ".interfaces = LOOM_SYMBOL_INTERFACE_FUNC_LIKE | LOOM_SYMBOL_INTERFACE_KERNEL," in tables_c
+    assert ".flags = LOOM_FUNC_LIKE_FLAG_KERNEL," in tables_c
     assert ".kernel_workload_operand_field_index_plus_one = 1," in tables_c
     assert ".args_operand_field_index = 1," in tables_c
     assert ".args_operand_segment_count = 2," in tables_c

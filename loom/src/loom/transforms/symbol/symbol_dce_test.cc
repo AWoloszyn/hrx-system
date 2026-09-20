@@ -277,11 +277,11 @@ low.func.decl target<test.low.core>(@test_target) @dead_add(%lhs: reg<test.i32>,
   EXPECT_EQ(pruned_text, Print(read_module.get()));
 }
 
-TEST_F(SymbolDCETest, FunctionExportRootsPrivateEntryAndClosure) {
+TEST_F(SymbolDCETest, AliasDoesNotRootPrivateEntryOrClosure) {
   const char* source = R"(
 test.target<low_core> @test_target
 
-func.def target(@test_target) abi(object_function) export("entry") @entry() {
+func.def target(@test_target) abi(object_function) export("artifact_entry") @entry() {
   func.call @helper() : ()
   func.return
 }
@@ -298,10 +298,10 @@ func.def target(@test_target) abi(object_function) @dead() {
   ModulePtr module(Parse(iree_make_cstring_view(source)));
   ASSERT_NE(module.get(), nullptr);
 
-  RunSymbolDCE(module.get(), 1, 1);
+  RunSymbolDCE(module.get(), 3, 3);
   std::string pruned_text = Print(module.get());
-  EXPECT_NE(pruned_text.find("@entry"), std::string::npos);
-  EXPECT_NE(pruned_text.find("@helper"), std::string::npos);
+  EXPECT_EQ(pruned_text.find("@entry"), std::string::npos);
+  EXPECT_EQ(pruned_text.find("@helper"), std::string::npos);
   EXPECT_EQ(pruned_text.find("@dead"), std::string::npos);
 }
 

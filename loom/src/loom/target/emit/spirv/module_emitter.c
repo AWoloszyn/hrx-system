@@ -40,8 +40,8 @@ typedef struct loom_spirv_emit_module_state_t {
   loom_spirv_module_builder_t builder;
   // SPIR-V type and constant emission cache shared by the module.
   loom_spirv_type_context_t type_context;
-  // Module-level raw-BDA ABI layout shared by HAL kernel entries.
-  loom_spirv_module_raw_bda_layout_t raw_bda_layout;
+  // Physical push-constant storage shared by HAL kernel entries.
+  loom_spirv_module_shared_bda_root_t shared_bda_root;
   // Shared Input variables for workgroup/local/global invocation builtins.
   uint32_t builtin_variable_ids[LOOM_SPIRV_BUILTIN_VARIABLE_COUNT];
   // First function's module-level target contract.
@@ -135,7 +135,7 @@ static iree_status_t loom_spirv_emit_low_function_into_module(
       .scratch_arena = state->scratch_arena,
       .builder = &state->builder,
       .type_context = &state->type_context,
-      .raw_bda_layout = &state->raw_bda_layout,
+      .shared_bda_root = &state->shared_bda_root,
       .builtin_variable_ids = state->builtin_variable_ids,
   };
   IREE_RETURN_IF_ERROR(loom_spirv_emit_low_function(&function_context,
@@ -184,10 +184,9 @@ static iree_status_t loom_spirv_emit_module_state_finalize(
       .scratch_arena = state->scratch_arena,
       .builder = &state->builder,
       .type_context = &state->type_context,
-      .raw_bda_layout = &state->raw_bda_layout,
+      .shared_bda_root = &state->shared_bda_root,
   };
-  IREE_RETURN_IF_ERROR(
-      loom_spirv_module_abi_emit_metadata(&context, &state->raw_bda_layout));
+  IREE_RETURN_IF_ERROR(loom_spirv_module_abi_emit_shared_bda_root(&context));
   return loom_spirv_module_builder_finalize(&state->builder, out_module);
 }
 

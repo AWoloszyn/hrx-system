@@ -9,4 +9,4 @@
                OpExecutionMode %1 LocalSize 1 1 1
           %3 = OpVariable %2 PushConstant
           %5 = OpVariable %4 StorageBuffer
-               OpModuleProcessed "iree.vulkan.bda.v1"
+               OpModuleProcessed "iree.vulkan.bda.v1[main]"

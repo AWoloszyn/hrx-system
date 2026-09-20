@@ -376,38 +376,12 @@ static iree_status_t loom_run_hal_testbench_materialize_config_set(
       loom_run_session_block_pool(provider->session), NULL);
 }
 
-static iree_status_t loom_run_hal_testbench_capture_sources(
-    void* user_data, const loom_module_t* source_module,
-    const loom_module_t* target_module,
-    const loom_source_id_t* target_sources) {
-  loom_run_hal_testbench_actual_provider_t* provider = user_data;
-  return loom_tooling_source_storage_project(
-      &provider->compile_module.sources, &provider->run_module->sources.table,
-      target_sources);
-}
-
 static iree_status_t loom_run_hal_testbench_clone_compile_module(
     loom_run_hal_testbench_actual_provider_t* provider) {
-  const loom_module_t* source_module = provider->run_module->module;
-  const loom_module_t* const source_modules[] = {source_module};
-  iree_string_view_t module_name = iree_string_view_empty();
-  if (source_module->name_id < source_module->strings.count) {
-    module_name = source_module->strings.entries[source_module->name_id];
-  }
-  loom_tooling_source_storage_initialize(
-      loom_run_session_block_pool(provider->session),
-      &provider->compile_module.sources);
   provider->compile_module_initialized = true;
-  provider->compile_module.filename = provider->run_module->filename;
-  return loom_link_materialized_modules(
-      source_modules, IREE_ARRAYSIZE(source_modules),
-      &(loom_link_options_t){
-          .module_name = module_name,
-          .source_callback = {.fn = loom_run_hal_testbench_capture_sources,
-                              .user_data = provider},
-      },
-      loom_run_session_block_pool(provider->session),
-      provider->context->host_allocator, &provider->compile_module.module);
+  return loom_run_module_clone(provider->session, provider->run_module,
+                               (iree_string_view_list_t){0},
+                               &provider->compile_module);
 }
 
 static iree_status_t loom_run_hal_testbench_link_selected_root(
@@ -556,11 +530,8 @@ static iree_status_t loom_run_hal_testbench_resolve_target_requirement(
 static iree_status_t loom_run_hal_testbench_reflect_function_parameters(
     loom_run_hal_testbench_actual_provider_t* provider) {
   iree_hal_executable_t* executable = provider->prepared_candidate.executable;
-  iree_string_view_t function_name =
-      iree_string_view_trim(provider->invocation_options.function_name);
-  if (iree_string_view_starts_with_char(function_name, '@')) {
-    function_name = iree_string_view_remove_prefix(function_name, 1);
-  }
+  const iree_string_view_t function_name =
+      provider->invocation_options.function_name;
 
   iree_hal_executable_function_t function =
       iree_hal_executable_function_invalid();
@@ -630,7 +601,13 @@ iree_status_t loom_run_hal_testbench_actual_provider_compile(
   loom_func_like_t entry_func = {0};
   IREE_RETURN_IF_ERROR(loom_run_hal_testbench_resolve_func(
       provider->compile_module.module, entry_symbol, &entry_func));
-  provider->invocation_options.function_name = entry_symbol;
+  provider->entry_symbol = entry_symbol;
+  const loom_string_id_t export_symbol =
+      loom_func_like_export_symbol(entry_func);
+  provider->invocation_options.function_name =
+      export_symbol != LOOM_STRING_ID_INVALID
+          ? provider->compile_module.module->strings.entries[export_symbol]
+          : entry_symbol;
 
   if (provider->target_environment == NULL) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
@@ -984,7 +961,7 @@ static iree_status_t loom_run_hal_testbench_evaluate_launch_config(
   IREE_ASSERT(provider->launch_config_target_facts != NULL);
 
   const loom_kernel_launch_config_options_t options = {
-      .function_symbol = provider->invocation_options.function_name,
+      .function_symbol = provider->entry_symbol,
       .workload_arguments = provider->workload_arguments,
       .workload_argument_count = workload_count,
       .required_fields = LOOM_KERNEL_LAUNCH_CONFIG_FIELD_FLAG_WORKGROUP_COUNT,

@@ -40,8 +40,8 @@ IREE_FLAG(string, sanitizer, "none",
           "Sanitizer checks to insert in the default target pipeline: none, "
           "all, or a '|'-separated set of access, value, operation, and race.");
 IREE_FLAG(string, function, "",
-          "HAL executable function to invoke. Empty selects the single "
-          "function.");
+          "Source kernel symbol to compile and invoke, with optional leading "
+          "'@'. Empty selects the single kernel.");
 IREE_FLAG_NAMED(int32_t, output_max_element_count, "output-max-element-count",
                 1024, "Maximum number of HAL output elements to format.");
 IREE_FLAG_NAMED(
