@@ -34,8 +34,13 @@ typedef struct loom_test_diagnostic_t {
   // Generated error definition carrying parameter names.
   const loom_error_def_t* error;
 
-  // One-based source line where the diagnostic was emitted, or 0 if unknown.
-  uint32_t origin_line;
+  // Original diagnostic source, independent of its rendered message.
+  struct {
+    // Source identity copied into the diagnostic arena.
+    iree_string_view_t filename;
+    // One-based source line, or 0 if unknown.
+    uint32_t line;
+  } origin;
 
   // Rendered diagnostic message text, arena-allocated.
   iree_string_view_t message;
@@ -70,10 +75,11 @@ iree_status_t loom_test_diagnostic_materialize(
     iree_arena_allocator_t* arena, iree_allocator_t host_allocator,
     loom_test_diagnostic_t* out_diagnostic);
 
-// Returns true when all constraints in |annotation| match |diagnostic|.
+// Returns true when |diagnostic| belongs to |filename| and all constraints in
+// |annotation| match. A same-numbered line in another source cannot match.
 bool loom_test_diagnostic_matches_annotation(
     const loom_test_diagnostic_t* diagnostic,
-    const loom_test_annotation_t* annotation);
+    const loom_test_annotation_t* annotation, iree_string_view_t filename);
 
 // Finds a maximum one-to-one matching between diagnostics and annotations.
 // Every diagnostic has matched reset and then set when a match is found.
@@ -83,7 +89,8 @@ bool loom_test_diagnostic_matches_annotation(
 iree_status_t loom_test_diagnostics_match_annotations(
     loom_test_diagnostic_t* diagnostics, iree_host_size_t diagnostic_count,
     const loom_test_annotation_t* annotations,
-    iree_host_size_t annotation_count, iree_arena_allocator_t* arena,
+    iree_host_size_t annotation_count, iree_string_view_t filename,
+    iree_arena_allocator_t* arena,
     iree_host_size_t** out_annotation_to_diagnostic);
 
 #ifdef __cplusplus

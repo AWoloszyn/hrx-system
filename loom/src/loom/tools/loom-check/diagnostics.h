@@ -46,6 +46,9 @@ typedef struct loom_check_diagnostic_collector_t {
   // Host allocator used by temporary string builders.
   iree_allocator_t host_allocator;
 
+  // Main source identity whose lines can match annotations and receive edits.
+  iree_string_view_t filename;
+
   // Current parsed module for full type rendering, or NULL during parse
   // recovery.
   const loom_module_t* module;

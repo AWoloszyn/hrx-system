@@ -6,6 +6,8 @@
 
 #include "loom/testing/test_diagnostic.h"
 
+#include <string>
+
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -40,7 +42,8 @@ TEST_F(TestDiagnosticTest, MatchesStructuredConstraints) {
   diagnostic.domain = LOOM_ERROR_DOMAIN_TYPE;
   diagnostic.code = 3;
   diagnostic.error = error;
-  diagnostic.origin_line = 7;
+  diagnostic.origin.line = 7;
+  diagnostic.origin.filename = IREE_SV("case.loom-test");
   diagnostic.message = IREE_SV("operand requires a floating-point scalar");
   diagnostic.param_values = param_values;
   diagnostic.param_value_count = IREE_ARRAYSIZE(param_values);
@@ -56,11 +59,11 @@ TEST_F(TestDiagnosticTest, MatchesStructuredConstraints) {
   annotation.param_matches[0].name = IREE_SV("actual_type");
   annotation.param_matches[0].value = IREE_SV("i32");
 
-  EXPECT_TRUE(
-      loom_test_diagnostic_matches_annotation(&diagnostic, &annotation));
+  EXPECT_TRUE(loom_test_diagnostic_matches_annotation(
+      &diagnostic, &annotation, IREE_SV("case.loom-test")));
   annotation.target_line = 8;
-  EXPECT_FALSE(
-      loom_test_diagnostic_matches_annotation(&diagnostic, &annotation));
+  EXPECT_FALSE(loom_test_diagnostic_matches_annotation(
+      &diagnostic, &annotation, IREE_SV("case.loom-test")));
 }
 
 TEST_F(TestDiagnosticTest, FindsMaximumOneToOneMatching) {
@@ -68,12 +71,14 @@ TEST_F(TestDiagnosticTest, FindsMaximumOneToOneMatching) {
   diagnostics[0].severity = LOOM_DIAGNOSTIC_ERROR;
   diagnostics[0].domain = LOOM_ERROR_DOMAIN_PARSE;
   diagnostics[0].code = 1;
-  diagnostics[0].origin_line = 1;
+  diagnostics[0].origin.line = 1;
+  diagnostics[0].origin.filename = IREE_SV("case.loom-test");
   diagnostics[0].message = IREE_SV("specific failure");
   diagnostics[1].severity = LOOM_DIAGNOSTIC_ERROR;
   diagnostics[1].domain = LOOM_ERROR_DOMAIN_PARSE;
   diagnostics[1].code = 1;
-  diagnostics[1].origin_line = 1;
+  diagnostics[1].origin.line = 1;
+  diagnostics[1].origin.filename = IREE_SV("case.loom-test");
   diagnostics[1].message = IREE_SV("other failure");
 
   loom_test_annotation_t annotations[2] = {};
@@ -91,11 +96,42 @@ TEST_F(TestDiagnosticTest, FindsMaximumOneToOneMatching) {
   iree_host_size_t* annotation_to_diagnostic = nullptr;
   IREE_ASSERT_OK(loom_test_diagnostics_match_annotations(
       diagnostics, IREE_ARRAYSIZE(diagnostics), annotations,
-      IREE_ARRAYSIZE(annotations), &arena_, &annotation_to_diagnostic));
+      IREE_ARRAYSIZE(annotations), IREE_SV("case.loom-test"), &arena_,
+      &annotation_to_diagnostic));
   EXPECT_TRUE(diagnostics[0].matched);
   EXPECT_TRUE(diagnostics[1].matched);
   EXPECT_EQ(annotation_to_diagnostic[0], 1u);
   EXPECT_EQ(annotation_to_diagnostic[1], 0u);
+}
+
+TEST_F(TestDiagnosticTest, MaterializationPreservesSourceIdentity) {
+  std::string filename = "included.h";
+  loom_diagnostic_param_t parameter =
+      loom_param_string(IREE_SV("invalid input"));
+  loom_diagnostic_t emitted = {};
+  emitted.severity = LOOM_DIAGNOSTIC_ERROR;
+  emitted.error = loom_error_def_lookup(LOOM_ERROR_DOMAIN_PARSE, 36);
+  ASSERT_NE(emitted.error, nullptr);
+  emitted.params = &parameter;
+  emitted.param_count = 1;
+  emitted.origin.filename =
+      iree_make_string_view(filename.data(), filename.size());
+  emitted.origin.start_line = 1;
+  loom_test_diagnostic_format_options_t options = {};
+  loom_test_diagnostic_t diagnostic = {};
+  IREE_ASSERT_OK(loom_test_diagnostic_materialize(
+      &emitted, &options, &arena_, iree_allocator_system(), &diagnostic));
+  filename.assign(filename.size(), '?');
+
+  loom_test_annotation_t annotation = {};
+  annotation.severity = LOOM_DIAGNOSTIC_ERROR;
+  annotation.domain = LOOM_ERROR_DOMAIN_PARSE;
+  annotation.code = 36;
+  annotation.target_line = 1;
+  EXPECT_FALSE(loom_test_diagnostic_matches_annotation(
+      &diagnostic, &annotation, IREE_SV("case.loom-test")));
+  EXPECT_TRUE(loom_test_diagnostic_matches_annotation(&diagnostic, &annotation,
+                                                      IREE_SV("included.h")));
 }
 
 }  // namespace

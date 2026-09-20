@@ -31,6 +31,7 @@ iree_status_t loom_check_execute_verify(
   loom_check_diagnostic_collector_t collector = {
       .arena = &collector_arena,
       .host_allocator = allocator,
+      .filename = filename,
       .result = result,
   };
 

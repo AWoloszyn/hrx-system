@@ -1746,6 +1746,7 @@ iree_status_t loom_check_execute_emit(
   loom_check_diagnostic_collector_t diagnostic_collector = {
       .arena = &diagnostic_arena,
       .host_allocator = allocator,
+      .filename = filename,
       .result = result,
   };
 

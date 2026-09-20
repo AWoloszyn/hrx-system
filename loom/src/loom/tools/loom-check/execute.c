@@ -442,6 +442,7 @@ static iree_status_t loom_check_execute_pass_with_output(
   loom_check_diagnostic_collector_t diagnostic_collector = {
       .arena = &diagnostic_arena,
       .host_allocator = allocator,
+      .filename = filename,
       .result = result,
   };
   loom_text_parse_options_t parse_options = {
