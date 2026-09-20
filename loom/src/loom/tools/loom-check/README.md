@@ -76,6 +76,24 @@ emission frame and prints its normal report summary, including static and dynami
 instruction counts. This uses the runner's linked target descriptors and the
 same report collector as native emission.
 
+### Source Target Lowering
+
+`emit source-low` runs the shared source compilation pipeline. For a function
+without an authored target, select its root and a linked target profile together:
+
+```cpp
+// RUN: emit source-low @entry target=vm:core output=low
+unsigned entry(unsigned value) { return value + 1u; }
+```
+
+In a `.cxx-test`, import produces the source function and specialization supplies
+its target facts, including reachable helpers. The same request works with
+`.loom-test` source IR. `output=low` compares the resulting Low assembly;
+`output=module` includes the rest of the module, and `output=none` checks only
+source-located diagnostics. Functions with authored target bindings can use the
+existing whole-module form without a function or target option. Pipeline-text
+outputs describe the pipeline itself and do not accept specialization requests.
+
 ### Running Fixtures
 
 Use checked-in Bazel test targets for normal verification:

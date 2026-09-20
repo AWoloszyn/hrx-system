@@ -36,6 +36,7 @@ loom_cc_library(
     "low_emit.h"
     "low_report.h"
     "requirements.h"
+    "source_low.h"
   SRCS
     "comparison.c"
     "diagnostics.c"
@@ -46,6 +47,7 @@ loom_cc_library(
     "low_report.c"
     "requirements.c"
     "roundtrip.c"
+    "source_low.c"
     "verify.c"
   DEPS
     ::report
@@ -102,6 +104,7 @@ loom_cc_library(
     loom::target::predicate
     loom::target::reporting::format
     loom::target::reporting::low
+    loom::target::selection
     loom::target::types
     loom::testing::test_diagnostic
     loom::testing::test_file

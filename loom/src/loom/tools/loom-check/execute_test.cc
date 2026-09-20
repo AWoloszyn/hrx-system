@@ -1387,7 +1387,7 @@ TEST_F(ExecuteTest, EmitTargetLowRegistryManifestReportsDescriptorSets) {
   loom_check_result_deinitialize(&result);
 }
 
-TEST_F(ExecuteTest, EmitSourceLowRejectsFunctionSelector) {
+TEST_F(ExecuteTest, EmitSourceLowRequiresTargetForFunctionSelector) {
   loom_check_result_t result;
   IREE_ASSERT_OK(
       ExecuteFirst("// RUN: emit source-low @f output=module\n"
@@ -1397,9 +1397,27 @@ TEST_F(ExecuteTest, EmitSourceLowRejectsFunctionSelector) {
                    &result));
   EXPECT_EQ(result.raw_outcome, LOOM_CHECK_FAIL);
   EXPECT_EQ(result.final_outcome, LOOM_CHECK_FAIL);
-  EXPECT_NE(DetailString(result).find("does not accept a function symbol"),
+  EXPECT_NE(DetailString(result).find(
+                "requires both @function and target=family:selector"),
             std::string::npos);
   loom_check_result_deinitialize(&result);
+}
+
+TEST_F(ExecuteTest, EmitSourceLowRejectsIncompleteOrConflictingTargets) {
+  ExpectFirstFailsWithDetail(
+      "// RUN: emit source-low target=vm:core\n",
+      "requires both @function and target=family:selector");
+  ExpectFirstFailsWithDetail("// RUN: emit source-low @ target=vm:core\n",
+                             "requires a nonempty function symbol");
+  ExpectFirstFailsWithDetail(
+      "// RUN: emit source-low @f target=vm:core target=vm:core\n",
+      "duplicate source-low option 'target'");
+  ExpectFirstFailsWithDetail(
+      "// RUN: emit source-low @f target=vm:core output=pipeline\n",
+      "requires module, low, or none output");
+  ExpectFirstFailsWithDetail(
+      "// RUN: emit source-low @f target=vm:core output=prepared-pipeline\n",
+      "requires module, low, or none output");
 }
 
 TEST_F(ExecuteTest, EmitSourceLowCanSuppressSuccessfulOutput) {

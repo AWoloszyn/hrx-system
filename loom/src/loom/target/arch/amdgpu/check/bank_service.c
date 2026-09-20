@@ -8,6 +8,7 @@
 
 #include "loom/target/reporting/report.h"
 #include "loom/tools/loom-check/diagnostics.h"
+#include "loom/tools/loom-check/source_low.h"
 
 static bool loom_amdgpu_bank_service_check_emit_provider_matches(
     const loom_check_emit_provider_t* provider,

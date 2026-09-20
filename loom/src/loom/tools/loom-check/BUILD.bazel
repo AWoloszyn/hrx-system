@@ -184,6 +184,7 @@ loom_cc_library(
         "low_report.c",
         "requirements.c",
         "roundtrip.c",
+        "source_low.c",
         "verify.c",
     ],
     hdrs = [
@@ -194,6 +195,7 @@ loom_cc_library(
         "low_emit.h",
         "low_report.h",
         "requirements.h",
+        "source_low.h",
     ],
     deps = [
         ":report",
@@ -244,6 +246,7 @@ loom_cc_library(
         "//loom/src/loom/target:math_policy",
         "//loom/src/loom/target:pipeline",
         "//loom/src/loom/target:predicate",
+        "//loom/src/loom/target:selection",
         "//loom/src/loom/target:types",
         "//loom/src/loom/target/reporting:format",
         "//loom/src/loom/target/reporting:low",

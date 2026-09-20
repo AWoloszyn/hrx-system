@@ -15,6 +15,16 @@
 // Diagnostic collection
 //===----------------------------------------------------------------------===//
 
+bool loom_check_diagnostic_collector_has_error(
+    const loom_check_diagnostic_collector_t* collector) {
+  for (iree_host_size_t i = 0; i < collector->count; ++i) {
+    if (collector->diagnostics[i].severity == LOOM_DIAGNOSTIC_ERROR) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static iree_status_t loom_check_diagnostic_collector_grow(
     loom_check_diagnostic_collector_t* collector) {
   iree_host_size_t new_capacity =

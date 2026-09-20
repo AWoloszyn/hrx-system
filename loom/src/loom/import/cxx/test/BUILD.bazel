@@ -45,6 +45,7 @@ loom_check_test_suite(
         "pointers.cxx-test",
         "scalar.cxx-test",
         "scalar_invalid.cxx-test",
+        "schedule_lowering.cxx-test",
         "schedules.cxx-test",
         "schedules_invalid.cxx-test",
         "standards.cxx-test",
@@ -111,19 +112,10 @@ _HOST_COMPATIBILITY = loom_config_compatible_with([
     for group, source in _HOST_GROUPS.items()
 ]
 
-iree_execution_test_suite(
-    name = "functions_test",
-    data = [
-        "schedule_policy.cpp",
-        "vector_values.cpp",
-    ],
-    manifests = ["functions.test.json"],
-    tags = ["hostonly"],
+loom_check_test_suite(
+    name = "vm_compiler_test",
+    srcs = ["vm_lowering.cxx-test"],
     target_compatible_with = _HOST_COMPATIBILITY,
-    tools = {
-        "loom-compile": "//loom/src/loom/tools/loom-compile",
-        "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
-    },
 )
 
 iree_execution_test_suite(

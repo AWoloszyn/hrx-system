@@ -35,6 +35,7 @@ loom_check_test_suite(
     "pointers.cxx-test"
     "scalar.cxx-test"
     "scalar_invalid.cxx-test"
+    "schedule_lowering.cxx-test"
     "schedules.cxx-test"
     "schedules_invalid.cxx-test"
     "standards.cxx-test"
@@ -392,19 +393,11 @@ loom_test(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-iree_execution_test_suite(
+loom_check_test_suite(
   NAME
-    functions_test
-  MANIFESTS
-    "functions.test.json"
-  TOOLS
-    "loom-compile=loom::tools::loom-compile"
-    "loom-import-cxx=loom::tools::loom-import-cxx"
-  DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_policy.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
-  LABELS
-    "hostonly"
+    vm_compiler_test
+  SRCS
+    "vm_lowering.cxx-test"
 )
 endif()
 
