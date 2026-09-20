@@ -40,13 +40,12 @@ vm.module core(0.0) {
   }
 
   section functions alignment(8) {
-    func @function0 : @callable1 flags([]) frame(local_bytes = 0, value_registers = 17, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    func @function0 : @callable1 flags([]) frame(local_bytes = 0, value_registers = 16, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
     ^bb0:
       control.block
-      %v16 = value.abi.argument.load 0
+      %v1 = value.abi.argument.load 0
     ^bb1:
       control.block
-      %v1 = value.copy %v16
       control.return
     }
     func @function1 : @callable0 flags([has_call]) frame(local_bytes = 176, value_registers = 16, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
@@ -124,36 +123,67 @@ vm.module core(0.0) {
   }
 
   section functions alignment(8) {
-    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 0, ref_registers = 17, function_registers = 0, local_refs = 1, local_functions = 0) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 0, ref_registers = 16, function_registers = 0, local_refs = 1, local_functions = 0) {
     ^bb0:
       control.block
-      %r16 = ref.abi.argument.load.move 0
+      %r0 = ref.abi.argument.load.move 0
     ^bb1:
       control.block
-      ref.stack.store.retain %r16, #r0
-      ref.abi.result.store.move %r16, 0
-      %r16 = ref.stack.load.move #r0
-      ref.stack.store.retain %r16, #r0
-      ref.abi.result.store.move %r16, 1
-      %r16 = ref.stack.load.move #r0
-      %r0 = ref.retain %r16
-      %r1 = ref.retain %r16
-      %r2 = ref.retain %r16
-      %r3 = ref.retain %r16
-      %r4 = ref.retain %r16
-      %r5 = ref.retain %r16
-      %r6 = ref.retain %r16
-      %r7 = ref.retain %r16
-      %r8 = ref.retain %r16
-      %r9 = ref.retain %r16
-      %r10 = ref.retain %r16
-      %r11 = ref.retain %r16
-      %r12 = ref.retain %r16
-      %r13 = ref.retain %r16
-      %r14 = ref.retain %r16
-      %r15 = ref.retain %r16
+      ref.stack.store.retain %r0, #r0
+      ref.abi.result.store.move %r0, 0
+      %r0 = ref.stack.load.move #r0
+      ref.stack.store.retain %r0, #r0
+      ref.abi.result.store.move %r0, 1
+      %r0 = ref.stack.load.move #r0
+      %r1 = ref.retain %r0
+      %r2 = ref.retain %r0
+      %r3 = ref.retain %r0
+      %r4 = ref.retain %r0
+      %r5 = ref.retain %r0
+      %r6 = ref.retain %r0
+      %r7 = ref.retain %r0
+      %r8 = ref.retain %r0
+      %r9 = ref.retain %r0
+      %r10 = ref.retain %r0
+      %r11 = ref.retain %r0
+      %r12 = ref.retain %r0
+      %r13 = ref.retain %r0
+      %r14 = ref.retain %r0
+      %r15 = ref.retain %r0
       control.return
     }
   }
 
 }
+
+// ====
+
+// RUN: with-checks emit vm-dis
+
+vm.target<core> @vm
+
+// Unused overflow inputs need no load; the live slot retains its ABI ordinal.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @sparse_value_arguments(%input0: reg<vm.value : i64>, %input1: reg<vm.value : i64>, %input2: reg<vm.value : i64>, %input3: reg<vm.value : i64>, %input4: reg<vm.value : i64>, %input5: reg<vm.value : i64>, %input6: reg<vm.value : i64>, %input7: reg<vm.value : i64>, %input8: reg<vm.value : i64>, %input9: reg<vm.value : i64>, %input10: reg<vm.value : i64>, %input11: reg<vm.value : i64>, %input12: reg<vm.value : i64>, %input13: reg<vm.value : i64>, %input14: reg<vm.value : i64>, %input15: reg<vm.value : i64>, %input16: reg<vm.value : i64>, %input17: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  return %input0, %input17
+}
+
+// ----
+CHECK: %v1 = value.abi.argument.load 1
+CHECK-NOT: *value.abi.argument.load 0
+CHECK-NOT: *value.copy*
+
+// ====
+
+// RUN: with-checks emit vm-dis
+
+vm.target<core> @vm
+
+// Unused overflow inputs need no load; the live slot retains its ABI ordinal.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @sparse_ref_arguments(%input0: reg<vm.ref : buffer>, %input1: reg<vm.ref : buffer>, %input2: reg<vm.ref : buffer>, %input3: reg<vm.ref : buffer>, %input4: reg<vm.ref : buffer>, %input5: reg<vm.ref : buffer>, %input6: reg<vm.ref : buffer>, %input7: reg<vm.ref : buffer>, %input8: reg<vm.ref : buffer>, %input9: reg<vm.ref : buffer>, %input10: reg<vm.ref : buffer>, %input11: reg<vm.ref : buffer>, %input12: reg<vm.ref : buffer>, %input13: reg<vm.ref : buffer>, %input14: reg<vm.ref : buffer>, %input15: reg<vm.ref : buffer>, %input16: reg<vm.ref : buffer>, %input17: reg<vm.ref : buffer>) -> (reg<vm.ref : buffer>, reg<vm.ref : buffer>) asm {
+  return %input0, %input17
+}
+
+// ----
+CHECK: %r1 = ref.abi.argument.load.move 1
+CHECK-NOT: *ref.abi.argument.load.move 0
+CHECK-NOT: *ref.copy*

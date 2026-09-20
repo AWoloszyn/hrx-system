@@ -1,6 +1,3 @@
-// RUN: with-checks emit wasm-dis
-// REQUIRES: wasm-objdump
-
 wasm.target<simd128> @target
 
 // Ordered hashes expose a wrong IV, an extra iteration, and lost final state.
@@ -14,20 +11,6 @@ low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @signe
   return %result
 }
 
-// ----
-CHECK: <signed_hash>:
-CHECK: i32.lt_s
-CHECK: i32.lt_u
-CHECK: i32.sub
-CHECK: f32.select
-CHECK: br        1
-CHECK: br        2
-CHECK: i32.mul
-
-// ====
-
-wasm.target<simd128> @target
-
 // The same opaque register class covers the entire unsigned 32-bit domain.
 low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @unsigned_hash(%lower: reg<wasm.i32>, %upper: reg<wasm.i32>, %step: reg<wasm.i32>, %seed: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
   %multiplier = i32.const 33
@@ -38,19 +21,6 @@ low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @unsig
   }
   return %result
 }
-
-// ----
-CHECK: <unsigned_hash>:
-CHECK: i32.lt_u
-CHECK: i32.sub
-CHECK: f32.select
-CHECK: br        1
-CHECK: br        2
-CHECK-NOT: i32.lt_s
-
-// ====
-
-wasm.target<simd128> @target
 
 // Directly yielding the counter must return the last body IV, including when
 // the mathematical terminal increment cannot be represented.
@@ -94,13 +64,17 @@ low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @neste
   return %result
 }
 
-// ----
-CHECK: <last_iv>:
-CHECK: <swap>:
-CHECK: <nested>:
-CHECK: i32.lt_s
-CHECK: i32.lt_u
-CHECK: br        1
-CHECK: br        2
-CHECK: if
-CHECK: else
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @while_swap(%condition: reg<wasm.i32>, %a: reg<wasm.i32>, %b: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>) asm {
+  %c0 = i32.const 0
+  %ignored_condition, %result_a, %result_b = low.scf.while(%before_condition = %condition : reg<wasm.i32>, %before_a = %a : reg<wasm.i32>, %before_b = %b : reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>) {
+    low.scf.condition %before_condition, %before_condition, %before_a, %before_b : reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>
+  } do(%body_condition: reg<wasm.i32>, %body_a: reg<wasm.i32>, %body_b: reg<wasm.i32>) {
+    low.scf.yield %c0, %body_b, %body_a : reg<wasm.i32>, reg<wasm.i32>, reg<wasm.i32>
+  }
+  return %result_a, %result_b
+}
+
+// Signature ordinals survive omission of unused input storage.
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @sparse_parameters(%unused: reg<wasm.i64>, %used: reg<wasm.i32>, %trailing: reg<wasm.f64>) -> (reg<wasm.i32>) asm {
+  return %used
+}

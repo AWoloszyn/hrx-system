@@ -316,6 +316,16 @@ iree_status_t loom_module_recompute_type_uses(loom_module_t* module);
 bool loom_module_value_has_type_uses(const loom_module_t* module,
                                      loom_value_id_t value_id);
 
+// Returns true if |value_id| has an operand use or is referenced by an active
+// type or operation attribute. All three use kinds retain the value.
+static inline bool loom_module_value_has_uses(const loom_module_t* module,
+                                              loom_value_id_t value_id) {
+  const loom_value_t* value = loom_module_value(module, value_id);
+  return !loom_value_has_no_uses(value) ||
+         loom_value_has_attribute_uses(value) ||
+         loom_module_value_has_type_uses(module, value_id);
+}
+
 // Returns true if any currently-active value type embeds an SSA reference.
 static inline bool loom_module_has_active_type_uses(
     const loom_module_t* module) {

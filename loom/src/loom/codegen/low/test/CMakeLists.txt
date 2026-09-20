@@ -15,6 +15,7 @@ loom_check_test_suite(
   SRCS
     "allocation.loom-test"
     "allocation_aliases.loom-test"
+    "allocation_arguments.loom-test"
     "allocation_concat.loom-test"
     "allocation_fixed.loom-test"
     "allocation_fragmentation.loom-test"

@@ -356,13 +356,9 @@ loom_low_placement_flags_from_storage_relation(
 }
 
 static void loom_low_placement_assert_storage_relation_units(
-    const loom_low_placement_build_state_t* state,
     const loom_low_storage_relation_t* relation,
-    loom_value_ordinal_t result_ordinal, loom_value_ordinal_t source_ordinal) {
-  const loom_liveness_interval_t* result_interval =
-      loom_low_placement_interval_for_ordinal(state, result_ordinal);
-  const loom_liveness_interval_t* source_interval =
-      loom_low_placement_interval_for_ordinal(state, source_ordinal);
+    const loom_liveness_interval_t* result_interval,
+    const loom_liveness_interval_t* source_interval) {
   IREE_ASSERT(
       relation->destination_unit_offset <= result_interval->unit_count &&
           relation->unit_count <=
@@ -398,11 +394,25 @@ static iree_status_t loom_low_placement_collect_op_relations(
     const loom_value_ordinal_t result_ordinal =
         loom_low_placement_value_ordinal(state,
                                          storage_relation.destination_value_id);
+    // Payload-bearing branches retain a group even if every destination is
+    // unused, so consumers can advance their edge-copy cursor once per branch.
+    const loom_low_placement_cause_t cause =
+        loom_low_placement_collect_storage_relation_cause(
+            state, &move_group_flags, storage_relation.cause,
+            storage_relation.unit_count);
+    const loom_liveness_interval_t* result_interval =
+        loom_liveness_interval_for_value_ordinal(state->liveness,
+                                                 result_ordinal);
+    if (result_interval == NULL) {
+      continue;
+    }
     const loom_value_ordinal_t source_ordinal =
         loom_low_placement_value_ordinal(state,
                                          storage_relation.source_value_id);
+    const loom_liveness_interval_t* source_interval =
+        loom_low_placement_interval_for_ordinal(state, source_ordinal);
     loom_low_placement_assert_storage_relation_units(
-        state, &storage_relation, result_ordinal, source_ordinal);
+        &storage_relation, result_interval, source_interval);
     loom_low_placement_relation_t placement_relation = {
         .op = storage_relation.op,
         .result_ordinal = result_ordinal,
@@ -412,9 +422,7 @@ static iree_status_t loom_low_placement_collect_op_relations(
         .unit_count = storage_relation.unit_count,
         .kind = loom_low_placement_kind_from_storage_relation(
             storage_relation.kind),
-        .cause = loom_low_placement_collect_storage_relation_cause(
-            state, &move_group_flags, storage_relation.cause,
-            storage_relation.unit_count),
+        .cause = cause,
         .flags = loom_low_placement_flags_from_storage_relation(
             storage_relation.flags),
         .priority = 1,
@@ -425,8 +433,6 @@ static iree_status_t loom_low_placement_collect_op_relations(
       // A structured edge can forward a capture that remains observable after
       // this handoff, including the next iteration of an enclosing loop.
       // Only a consumed source permits ignoring its storage interference.
-      const loom_liveness_interval_t* source_interval =
-          loom_low_placement_interval_for_ordinal(state, source_ordinal);
       if (source_interval->end_point <= operation_point->end_point) {
         placement_relation.flags |=
             LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE;
