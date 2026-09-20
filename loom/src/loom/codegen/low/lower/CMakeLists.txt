@@ -177,6 +177,7 @@ loom_cc_test(
     "rule_value_test.cc"
   DEPS
     ::lower
+    iree::base::internal
     iree::base::internal::arena
     iree::testing::gtest
     iree::testing::gtest_main
@@ -202,6 +203,7 @@ loom_cc_test(
     loom::ir
     loom::ops::index
     loom::ops::scalar
+    loom::util::fact_table
 )
 
 loom_cc_test(

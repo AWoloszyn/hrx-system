@@ -911,6 +911,7 @@ def _validate_c_table_shape(
         _require_u16(row.register_class_id, f"{row_subject} register class id")
         _require_i64(row.minimum_i64, f"{row_subject} minimum i64")
         _require_i64(row.maximum_i64, f"{row_subject} maximum i64")
+        _require_i64(row.addend, f"{row_subject} power-of-two addend")
 
     for index, row in enumerate(table.attr_copies):
         row_subject = f"{subject} attr-copy {index}"

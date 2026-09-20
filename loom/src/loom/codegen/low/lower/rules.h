@@ -222,8 +222,10 @@ typedef enum loom_low_lower_attr_copy_kind_e {
   // Emits one less than an exact positive integer source value fact as an i64
   // packet attribute.
   LOOM_LOW_LOWER_ATTR_COPY_VALUE_EXACT_I64_MINUS_ONE = 7,
-  // Emits the unsigned 32-bit magic multiplier for an exact divisor source
-  // value fact as an i64 packet attribute.
+  // Emits the unsigned magic multiplier for an exact u32 divisor source value
+  // fact as an i64 packet attribute. literal_i64 selects multiplier width minus
+  // 32: zero retains the corrected high32 recipe; 32 projects ceil(2^64 / d),
+  // supporting both high64 quotient and low64/high64 direct remainder.
   LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_MULTIPLIER = 8,
   // Emits the unsigned 32-bit magic post-shift plus literal_i64 for an exact
   // divisor source value fact. A full uncorrected 64-bit product adds 32;
@@ -310,7 +312,7 @@ typedef struct loom_low_lower_attr_copy_t {
   uint8_t dynamic_term_index;
   // Literal value emitted by I64_LITERAL rows, byte offset used by
   // I64_ARRAY_LANE_BYTE rows, or divisor used by SOURCE_MEMORY quotient and
-  // remainder rows, or product-width adjustment used by divisor magic shifts.
+  // remainder rows, or the width adjustment for divisor magic projections.
   int64_t literal_i64;
 } loom_low_lower_attr_copy_t;
 static_assert(sizeof(loom_low_lower_attr_copy_t) == 32,
@@ -644,7 +646,8 @@ typedef enum loom_low_lower_guard_kind_e {
   LOOM_LOW_LOWER_GUARD_VALUE_UNSIGNED_BIT_COUNT = 14,
   // Source value facts must be an exact non-floating integer.
   LOOM_LOW_LOWER_GUARD_VALUE_EXACT_I64 = 15,
-  // Source value facts must be an exact positive power-of-two integer.
+  // Source value facts plus payload.addend must be an exact positive
+  // power-of-two integer, without signed overflow.
   LOOM_LOW_LOWER_GUARD_VALUE_EXACT_POWER_OF_TWO_I64 = 16,
   // Source value facts must be an exact unsigned 32-bit divisor whose magic
   // division recipe uses the add adjustment indicated by u64.
@@ -729,6 +732,8 @@ typedef struct loom_low_lower_guard_t {
     // limit, register unit count, exact f64 bit pattern, flag mask, storage
     // element format, or memory-space mask.
     uint64_t u64;
+    // Signed bias applied before testing an exact power of two.
+    int64_t addend;
     // Inclusive signed range payload.
     struct {
       // Inclusive lower bound.

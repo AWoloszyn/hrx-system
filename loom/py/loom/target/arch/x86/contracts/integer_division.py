@@ -4,19 +4,27 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Unsigned constant remainders with a single-LEA quotient product."""
+"""Unsigned constant division over word-sized numerators.
+
+Rules describe arithmetic and instruction-form classes, independently of the
+divisor: exact reciprocals, one-LEA quotient products, and high-bit comparisons.
+One and powers of two are reduced by shared source canonicalization.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 
 from loom.dialect.index import defs as index
 from loom.dialect.scalar import arithmetic as scalar_arithmetic
 from loom.dsl import Op
 from loom.target.contracts import (
     DescriptorEmitForm,
+    DescriptorResultType,
     DescriptorRule,
     EmitDescriptorOp,
+    EmitRegisterCopy,
     Guard,
     GuardDiagnostic,
     Scalar,
@@ -31,135 +39,256 @@ _I64 = Scalar("i64")
 _INDEX = Scalar("index")
 _DIVISOR_DIAGNOSTIC = GuardDiagnostic(
     subject_role="divisor",
-    subject_name="constant-remainder",
-    constraint_key="x86.scalar.remainder_divisor",
+    subject_name="unsigned-constant",
+    constraint_key="x86.scalar.constant_divisor",
 )
 _NUMERATOR_DIAGNOSTIC = GuardDiagnostic(
     subject_role="numerator",
     subject_name="u32",
-    constraint_key="x86.scalar.remainder_u32",
+    constraint_key="x86.scalar.division_u32",
 )
 
 
-def _remainder_rule(
+def _division_guards(
+    type_pattern: TypePattern, minimum: int, maximum: int
+) -> tuple[Guard, ...]:
+    return (
+        *(Guard.value_type(field, type_pattern) for field in ("lhs", "rhs", "result")),
+        *(
+            (
+                Guard.value_unsigned_bit_count(
+                    "lhs", 32, diagnostic=_NUMERATOR_DIAGNOSTIC
+                ),
+            )
+            if type_pattern == _INDEX
+            else ()
+        ),
+        Guard.value_exact_i64("rhs", diagnostic=_DIVISOR_DIAGNOSTIC),
+        Guard.value_i64_range("rhs", minimum, maximum, diagnostic=_DIVISOR_DIAGNOSTIC),
+    )
+
+
+def _reciprocal_rule(
     source_op: Op,
     type_pattern: TypePattern,
-    divisor: int,
+    operation: Literal["quotient", "remainder", "lea_remainder"],
     descriptor_lookup: Callable[[str], Descriptor],
 ) -> DescriptorRule:
+    """Emits a quotient, direct remainder, or one-LEA reconstructed remainder."""
     register_class = "gpr32" if type_pattern == _I32 else "gpr64"
-    subtract = descriptor_lookup(f"x86.scalar.sub.{register_class}")
     numerator = ValueRef.operand("lhs")
     emits = []
+    if operation == "lea_remainder":
+        # Both the reciprocal product and final subtraction consume n. Keep
+        # their dependency on one copy so a fixed input can be released before
+        # a scheduler prepares the destructive, potentially aliasing result.
+        numerator = ValueRef.temporary("preserved")
+        emits.append(EmitRegisterCopy(ValueRef.operand("lhs"), numerator, type_pattern))
+    preserved = numerator
     if type_pattern == _I32:
         numerator = ValueRef.temporary("numerator")
         emits.append(
             EmitDescriptorOp(
                 descriptor=descriptor_lookup("x86.scalar.movzx.gpr64.gpr32"),
-                operands={"src": ValueRef.operand("lhs")},
+                operands={"src": preserved},
                 results={"dst": numerator},
                 result_types={"dst": _I64},
             )
         )
-    multiplier = ValueProject.u32_divisor_magic_multiplier("rhs")
-    if divisor == 9:
-        # Nine's reciprocal fits the sign-extended immediate multiply form.
+    emits.append(
+        EmitDescriptorOp(
+            descriptor=descriptor_lookup("x86.scalar.movimm.gpr64"),
+            results={"dst": ValueRef.temporary("magic")},
+            result_types={"dst": _I64},
+            immediates={
+                "imm64": ValueProject.u32_divisor_magic_multiplier(
+                    "rhs", bit_width=32 if operation == "lea_remainder" else 64
+                )
+            },
+            form=DescriptorEmitForm.CONST,
+        )
+    )
+    multiplicand = numerator
+    multiplier = ValueRef.temporary("magic")
+    if operation != "quotient":
+        multiplicand = ValueRef.temporary("low_product")
         emits.append(
             EmitDescriptorOp(
-                descriptor=descriptor_lookup("x86.scalar.imul.imm.gpr64"),
-                operands={"lhs": numerator},
-                results={"dst": ValueRef.temporary("wide_product")},
+                descriptor=descriptor_lookup("x86.scalar.imul.gpr64"),
+                operands={"lhs": numerator, "rhs": multiplier},
+                results={"dst": multiplicand},
                 result_types={"dst": _I64},
-                immediates={"imm32": multiplier},
             )
         )
-    else:
+    guards = _division_guards(type_pattern, 2, 2**31 - 1)
+    if operation == "lea_remainder":
+        # Address scales are powers of two in [1, 8]; base + index * scale
+        # forms q*d in one instruction. No divisor identities are encoded.
+        guards = (
+            *_division_guards(type_pattern, 2, 9),
+            Guard.value_exact_power_of_two_i64("rhs", addend=-1),
+        )
         emits.extend(
             (
                 EmitDescriptorOp(
-                    descriptor=descriptor_lookup("x86.scalar.movimm.gpr64"),
-                    results={"dst": ValueRef.temporary("magic")},
+                    descriptor=descriptor_lookup("x86.scalar.shr.imm.gpr64"),
+                    operands={"lhs": multiplicand},
+                    results={"dst": ValueRef.temporary("quotient")},
                     result_types={"dst": _I64},
-                    immediates={"imm64": multiplier},
-                    form=DescriptorEmitForm.CONST,
+                    immediates={
+                        "shift": ValueProject.u32_divisor_magic_shift(
+                            "rhs", product_bit_width=64
+                        )
+                    },
                 ),
                 EmitDescriptorOp(
-                    descriptor=descriptor_lookup("x86.scalar.imul.gpr64"),
-                    operands={"lhs": numerator, "rhs": ValueRef.temporary("magic")},
-                    results={"dst": ValueRef.temporary("wide_product")},
-                    result_types={"dst": _I64},
+                    descriptor=descriptor_lookup(
+                        f"x86.scalar.lea.add_scale.{register_class}"
+                    ),
+                    operands={
+                        "base": ValueRef.temporary("quotient"),
+                        "index": ValueRef.temporary("quotient"),
+                    },
+                    results={"dst": ValueRef.temporary("quotient_product")},
+                    result_types={"dst": type_pattern},
+                    immediates={
+                        "disp32": 0,
+                        "scale": ValueProject.exact_i64_minus_one("rhs"),
+                    },
                 ),
             )
         )
-    emits.extend(
-        (
+        result = ValueRef.temporary("quotient_product")
+    else:
+        if operation == "remainder":
+            multiplier = ValueRef.temporary("divisor")
+            emits.append(
+                EmitDescriptorOp(
+                    descriptor=descriptor_lookup("x86.scalar.movimm.gpr64"),
+                    results={"dst": multiplier},
+                    result_types={"dst": _I64},
+                    immediates={"imm64": ValueProject.exact_i64("rhs")},
+                    form=DescriptorEmitForm.CONST,
+                )
+            )
+        emits.append(
             EmitDescriptorOp(
-                descriptor=descriptor_lookup("x86.scalar.shr.imm.gpr64"),
-                operands={"lhs": ValueRef.temporary("wide_product")},
-                results={"dst": ValueRef.temporary("quotient")},
-                result_types={"dst": _I64},
-                immediates={
-                    "shift": ValueProject.u32_divisor_magic_shift(
-                        "rhs", product_bit_width=64
-                    )
-                },
-            ),
-            EmitDescriptorOp(
-                descriptor=descriptor_lookup(
-                    f"x86.scalar.lea.add_scale.{register_class}"
-                ),
-                operands={
-                    "base": ValueRef.temporary("quotient"),
-                    "index": ValueRef.temporary("quotient"),
-                },
-                results={"dst": ValueRef.temporary("quotient_product")},
-                result_types={"dst": type_pattern},
-                immediates={"disp32": 0, "scale": divisor - 1},
-            ),
-            EmitDescriptorOp(
-                descriptor=subtract,
-                operands={
-                    "lhs": ValueRef.operand("lhs"),
-                    "rhs": ValueRef.temporary("quotient_product"),
-                },
-                results={"dst": ValueRef.result("result")},
-            ),
+                descriptor=descriptor_lookup("x86.scalar.mul.high.gpr64"),
+                operands={"lhs": multiplicand, "rhs": multiplier},
+                results={"dst": ValueRef.temporary("high")},
+                result_types={"dst": DescriptorResultType()},
+                copy_operands=("lhs",),
+            )
         )
-    )
+        result = ValueRef.temporary("high")
+        if type_pattern == _I32:
+            result = ValueRef.temporary("wide_result")
+            emits.append(EmitRegisterCopy(ValueRef.temporary("high"), result, _I64))
+    if operation == "lea_remainder":
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor_lookup(f"x86.scalar.sub.{register_class}"),
+                operands={"lhs": preserved, "rhs": result},
+                results={"dst": ValueRef.result("result")},
+            )
+        )
+    elif type_pattern == _I32:
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor_lookup("x86.scalar.mov.trunc.gpr32.gpr64"),
+                operands={"src": result},
+                results={"dst": ValueRef.result("result")},
+                result_types={"dst": type_pattern},
+            )
+        )
+    else:
+        emits.append(EmitRegisterCopy(result, ValueRef.result("result"), type_pattern))
     return DescriptorRule(
         source_op=source_op,
-        descriptor=subtract,
-        guards=(
-            *(
-                Guard.value_type(field, type_pattern)
-                for field in ("lhs", "rhs", "result")
-            ),
-            *(
-                (
-                    Guard.value_unsigned_bit_count(
-                        "lhs", 32, diagnostic=_NUMERATOR_DIAGNOSTIC
-                    ),
-                )
-                if type_pattern == _INDEX
-                else ()
-            ),
-            Guard.value_exact_i64("rhs", diagnostic=_DIVISOR_DIAGNOSTIC),
-            Guard.value_i64_range(
-                "rhs", divisor, divisor, diagnostic=_DIVISOR_DIAGNOSTIC
-            ),
+        descriptor=descriptor_lookup(
+            "x86.scalar.imul.gpr64"
+            if operation == "lea_remainder"
+            else "x86.scalar.mul.high.gpr64"
+        ),
+        guards=guards,
+        emit=tuple(emits),
+    )
+
+
+def _high_bit_rule(
+    source_op: Op,
+    type_pattern: TypePattern,
+    operation: Literal["quotient", "remainder"],
+    descriptor_lookup: Callable[[str], Descriptor],
+) -> DescriptorRule:
+    descriptor = descriptor_lookup(
+        "x86.scalar.cmp.uge.imm.gpr32"
+        if operation == "quotient"
+        else "x86.scalar.sub.if_uge.imm.gpr32"
+    )
+    numerator = ValueRef.operand("lhs")
+    result = ValueRef.result("result")
+    emits = []
+    if type_pattern == _INDEX:
+        numerator = ValueRef.temporary("numerator")
+        result = ValueRef.temporary("word_result")
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor_lookup("x86.scalar.mov.trunc.gpr32.gpr64"),
+                operands={"src": ValueRef.operand("lhs")},
+                results={"dst": numerator},
+                result_types={"dst": _I32},
+            )
+        )
+    emits.append(
+        EmitDescriptorOp(
+            descriptor=descriptor,
+            operands={"lhs": numerator},
+            results={"dst": result},
+            result_types={"dst": _I32},
+            immediates={"imm32": ValueProject.exact_i64_i32_word("rhs", word_index=0)},
+            copy_operands=("lhs",) if operation == "remainder" else (),
+        )
+    )
+    if type_pattern == _INDEX:
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor_lookup("x86.scalar.movzx.gpr64.gpr32"),
+                operands={"src": result},
+                results={"dst": ValueRef.result("result")},
+                result_types={"dst": type_pattern},
+            )
+        )
+    return DescriptorRule(
+        source_op=source_op,
+        descriptor=descriptor,
+        guards=_division_guards(
+            type_pattern,
+            -(2**31) if type_pattern == _I32 else 2**31,
+            -1 if type_pattern == _I32 else 2**32 - 1,
         ),
         emit=tuple(emits),
     )
 
 
-def unsigned_remainder_rules(
+def unsigned_constant_division_rules(
     descriptor_lookup: Callable[[str], Descriptor],
 ) -> tuple[DescriptorRule, ...]:
     return tuple(
-        _remainder_rule(source_op, type_pattern, divisor, descriptor_lookup)
-        for source_op, type_pattern in (
-            (scalar_arithmetic.scalar_remui, _I32),
-            (index.index_rem, _INDEX),
+        rule
+        for quotient_op, remainder_op, type_pattern in (
+            (scalar_arithmetic.scalar_divui, scalar_arithmetic.scalar_remui, _I32),
+            (index.index_div, index.index_rem, _INDEX),
         )
-        for divisor in (3, 5, 9)
+        for rule in (
+            _reciprocal_rule(
+                remainder_op, type_pattern, "lea_remainder", descriptor_lookup
+            ),
+            _reciprocal_rule(quotient_op, type_pattern, "quotient", descriptor_lookup),
+            _reciprocal_rule(
+                remainder_op, type_pattern, "remainder", descriptor_lookup
+            ),
+            _high_bit_rule(quotient_op, type_pattern, "quotient", descriptor_lookup),
+            _high_bit_rule(remainder_op, type_pattern, "remainder", descriptor_lookup),
+        )
     )

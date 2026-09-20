@@ -76,6 +76,10 @@ loom_low_lower_u32_divisor_magic_info(uint32_t divisor) {
   return info;
 }
 
+uint64_t loom_low_lower_u32_divisor_reciprocal(uint32_t divisor) {
+  return UINT64_MAX / divisor + 1;
+}
+
 const loom_op_t* loom_low_lower_rule_source_op(
     const loom_low_lower_rule_set_t* rule_set, const loom_op_t* source_op,
     const loom_op_t* const* source_nodes, uint8_t source_node_count,

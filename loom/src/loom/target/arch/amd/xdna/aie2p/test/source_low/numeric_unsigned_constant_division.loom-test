@@ -310,13 +310,12 @@ func.def target(@target) @pair_by_high_power_of_two(%input: i32) -> (i32, i32) {
 
 // ----
 low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @pair_by_high_power_of_two(%input: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>) asm {
-  %divisor = mov.i32 -2147483648
-  %10 = ltu %input, %divisor
-  %11 = mov.short 1
-  %quotient = xor %10, %11
-  %14 = sub %input, %divisor
-  %15 = copy %10 : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %remainder = sel.nez %input, %14, %15
+  %13 = mov.short 31
+  %14 = mov.short 0
+  %15 = sub %14, %13
+  %quotient = lshl %input, %15
+  %17 = mov.i32 2147483647
+  %remainder = and %input, %17
   return %quotient, %remainder
 }
 
@@ -610,4 +609,20 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @index_pa
   %51 = mul %50, %divisor
   %remainder = sub %bounded, %51
   return %quotient, %remainder
+}
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @index_boundary_pairs(%input: index) -> (index, index, index, index) {
+  %bounded = index.assume %input [range(%input, 0, 4294967295)] : index
+  %power = index.constant 2147483648 : index
+  // ERROR@+1: TARGET/005 {op_name="index.constant", subject_name="value", constraint_key="i64_attr_range", minimum="-1024", maximum="1023"}
+  %largest = index.constant 4294967295 : index
+  %power_quotient = index.div %bounded, %power : index
+  %power_remainder = index.rem %bounded, %power : index
+  %large_quotient = index.div %bounded, %largest : index
+  %large_remainder = index.rem %bounded, %largest : index
+  func.return %power_quotient, %power_remainder, %large_quotient, %large_remainder : index, index, index, index
 }

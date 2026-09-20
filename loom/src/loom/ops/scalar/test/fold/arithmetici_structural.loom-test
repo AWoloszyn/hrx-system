@@ -280,6 +280,41 @@ func.def @remui_power_of_two_to_mask(%x: i32) -> (i32) {
 
 // ====
 
+func.def @sign_bit_power_of_two(%byte: i8, %word: i32, %wide: i64) -> (i8, i32, i64, i8, i32, i64, i32) {
+  %byte_divisor = scalar.constant -128 : i8
+  %word_divisor = scalar.constant -2147483648 : i32
+  %wide_divisor = scalar.constant -9223372036854775808 : i64
+  %byte_quotient = scalar.divui %byte, %byte_divisor : i8
+  %word_quotient = scalar.divui %word, %word_divisor : i32
+  %wide_quotient = scalar.divui %wide, %wide_divisor : i64
+  %byte_remainder = scalar.remui %byte, %byte_divisor : i8
+  %word_remainder = scalar.remui %word, %word_divisor : i32
+  %wide_remainder = scalar.remui %wide, %wide_divisor : i64
+  %product = scalar.muli %word, %word_divisor : i32
+  func.return %byte_quotient, %word_quotient, %wide_quotient, %byte_remainder, %word_remainder, %wide_remainder, %product : i8, i32, i64, i8, i32, i64, i32
+}
+
+// ----
+func.def @sign_bit_power_of_two(%byte: i8, %word: i32, %wide: i64) -> (i8, i32, i64, i8, i32, i64, i32) {
+  %32 = scalar.constant 7 : i8
+  %byte_quotient = scalar.shrui %byte, %32 : i8
+  %30 = scalar.constant 31 : i32
+  %word_quotient = scalar.shrui %word, %30 : i32
+  %28 = scalar.constant 63 : i64
+  %wide_quotient = scalar.shrui %wide, %28 : i64
+  %26 = scalar.constant 127 : i8
+  %byte_remainder = scalar.andi %byte, %26 : i8
+  %24 = scalar.constant 2147483647 : i32
+  %word_remainder = scalar.andi %word, %24 : i32
+  %22 = scalar.constant 9223372036854775807 : i64
+  %wide_remainder = scalar.andi %wide, %22 : i64
+  %20 = scalar.constant 31 : i32
+  %product = scalar.shli %word, %20 : i32
+  func.return %byte_quotient, %word_quotient, %wide_quotient, %byte_remainder, %word_remainder, %wide_remainder, %product : i8, i32, i64, i8, i32, i64, i32
+}
+
+// ====
+
 func.def @ceil_floor_div_identities(%x: i32, %d: i32) -> (i32, i32, i32, i32) {
   %c1 = scalar.constant 1 : i32
   %c0 = scalar.constant 0 : i32

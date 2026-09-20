@@ -300,11 +300,10 @@ low.func.def target<x86.scalar.core>(@target) abi(object_function) @guarded_load
   %row_i32 = mov.load.gpr32 %control_view {disp32 = 0}
   %row = movsxd.gpr64.gpr32 %row_i32
   %c0 = mov.imm32 0
-  %limit_i32 = mov.imm32 64
-  %nonnegative = cmp.sge.gpr32 %row_i32, %c0
-  %below = cmp.slt.gpr32 %row_i32, %limit_i32
-  %21 = copy %nonnegative : reg<x86.gpr32> -> reg<x86.gpr32>
-  %guard = and.gpr32 %21, %below
+  %nonnegative = cmp.sge.imm.gpr32 %row_i32, 0
+  %below = cmp.slt.imm.gpr32 %row_i32, 64
+  %20 = copy %nonnegative : reg<x86.gpr32> -> reg<x86.gpr32>
+  %guard = and.gpr32 %20, %below
   low.cond_br %guard, ^_bb1, ^_bb2 : reg<x86.gpr32>
 ^_bb1:
   mov.store.indexed.gpr32 %c0, %output_view, %row {disp32 = 0, scale = 4}

@@ -201,6 +201,8 @@ class LowerGuard:
     register_class_id: int = 0
     minimum_i64: int = 0
     maximum_i64: int = 0
+    # Signed bias applied before the exact-power-of-two predicate.
+    addend: int = 0
 
 
 @dataclass(frozen=True, slots=True)

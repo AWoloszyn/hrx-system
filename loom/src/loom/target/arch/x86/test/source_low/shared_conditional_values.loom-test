@@ -34,19 +34,18 @@ func.def target(@target) @shared_conditional_values(%input: buffer, %output: buf
 
 // ----
 low.func.def target<x86.avx2.core>(@target) abi(object_function) @shared_conditional_values(%in: reg<x86.gpr64>, %out: reg<x86.gpr64>) asm {
-  %c0 = mov.imm32 0
   %completed = mov.imm32 1
   %outer_value = mov.load.gpr32 %in {disp32 = 0}
-  %outer = cmp.ne.gpr32 %outer_value, %c0
+  %outer = cmp.ne.imm.gpr32 %outer_value, 0
   low.cond_br %outer, ^evaluate, ^fallback : reg<x86.gpr32>
 ^evaluate:
   %loaded = mov.load.gpr32 %in {disp32 = 4}
   mov.store.gpr32 %loaded, %out {disp32 = 0}
-  %inner = cmp.ne.gpr32 %loaded, %c0
+  %inner = cmp.ne.imm.gpr32 %loaded, 0
   low.cond_br %inner, ^selected, ^fallback : reg<x86.gpr32>
 ^selected:
-  %23 = copy %loaded : reg<x86.gpr32> -> reg<x86.gpr32>
-  %result = add.gpr32 %23, %loaded
+  %22 = copy %loaded : reg<x86.gpr32> -> reg<x86.gpr32>
+  %result = add.gpr32 %22, %loaded
   mov.store.gpr32 %result, %out {disp32 = 4}
   low.br ^exit
 ^fallback:

@@ -209,11 +209,13 @@ def _exact_integer_diagnostic(field: str) -> DiagnosticRef:
     return _named_constraint_diagnostic("value_fact", field, "exact_i64")
 
 
-def _exact_power_of_two_integer_diagnostic(field: str) -> DiagnosticRef:
+def _exact_power_of_two_integer_diagnostic(field: str, addend: int) -> DiagnosticRef:
     return _named_constraint_diagnostic(
         "value_fact",
         field,
-        "exact_power_of_two_i64",
+        "exact_power_of_two_i64"
+        if addend == 0
+        else f"exact_power_of_two_i64.addend({addend})",
     )
 
 

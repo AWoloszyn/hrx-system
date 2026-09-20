@@ -476,11 +476,18 @@ static iree_status_t loom_x86_append_asm_form_values(
   const loom_low_descriptor_set_t* descriptor_set =
       context->schedule->target.descriptor_set;
   for (uint16_t i = 0; i < count; ++i) {
+    const uint16_t operand_index =
+        descriptor_set->asm_operand_indices[start + i];
+    const loom_low_operand_t* operand =
+        &descriptor_set->operands[context->packet->descriptor->operand_start +
+                                  operand_index];
+    if (iree_any_bit_set(operand->flags, LOOM_LOW_OPERAND_FLAG_IMPLICIT)) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_x86_append_asm_form_separator(context, in_list));
     IREE_RETURN_IF_ERROR(loom_x86_append_assignment(
         context, loom_low_packet_descriptor_operand_assignment(
-                     context->allocation, context->packet,
-                     descriptor_set->asm_operand_indices[start + i])));
+                     context->allocation, context->packet, operand_index)));
   }
   return iree_ok_status();
 }
@@ -637,42 +644,61 @@ static iree_status_t loom_x86_append_tied_binary_packet(
 static iree_status_t loom_x86_append_cmp_setcc_packet(
     const loom_native_assembly_packet_context_t* context) {
   const loom_op_t* op = context->packet->node->op;
-  if (op->result_count != 1 || op->operand_count != 2) {
-    const iree_string_view_t key = loom_x86_descriptor_key(context);
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "x86 compare descriptor '%.*s' has an unsupported "
-                            "operand shape",
-                            (int)key.size, key.data);
-  }
   iree_string_view_t mnemonic = loom_x86_descriptor_mnemonic(context);
-  if (!iree_string_view_consume_prefix(&mnemonic, IREE_SV("cmp.")) ||
-      !iree_string_view_starts_with(mnemonic, IREE_SV("set"))) {
-    const iree_string_view_t key = loom_x86_descriptor_key(context);
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "x86 compare descriptor '%.*s' has an unsupported "
-                            "mnemonic",
-                            (int)key.size, key.data);
-  }
+  iree_string_view_consume_prefix(&mnemonic, IREE_SV("cmp."));
 
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, "cmp "));
   IREE_RETURN_IF_ERROR(loom_x86_append_operand(context, 0));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, ", "));
-  IREE_RETURN_IF_ERROR(loom_x86_append_operand(context, 1));
+  if (op->operand_count == 2) {
+    IREE_RETURN_IF_ERROR(loom_x86_append_operand(context, 1));
+  } else {
+    int64_t immediate = 0;
+    IREE_RETURN_IF_ERROR(loom_x86_read_packet_immediate(
+        context, context->packet->descriptor, 0, &immediate));
+    IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+        context->builder, "%" PRId64, immediate));
+  }
+  // MOV clears the full result without changing flags. After CMP has consumed
+  // both inputs, result/input aliasing is safe and SETcc has no dependency on
+  // a previous partial register value. No trailing MOVZX is needed.
+  IREE_RETURN_IF_ERROR(
+      iree_string_builder_append_cstring(context->builder, "\n  mov "));
+  IREE_RETURN_IF_ERROR(loom_x86_append_result(context, 0));
+  IREE_RETURN_IF_ERROR(
+      iree_string_builder_append_cstring(context->builder, ", 0"));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, "\n  "));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_string(context->builder, mnemonic));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, " "));
-  IREE_RETURN_IF_ERROR(loom_x86_append_gpr8_result(context, 0));
+  return loom_x86_append_gpr8_result(context, 0);
+}
+
+static iree_status_t loom_x86_append_conditional_subtract_packet(
+    const loom_native_assembly_packet_context_t* context) {
+  int64_t immediate = 0;
+  IREE_RETURN_IF_ERROR(loom_x86_read_packet_immediate(
+      context, context->packet->descriptor, 0, &immediate));
+  // The descriptor's early-clobber result preserves lhs through the CMOV.
   IREE_RETURN_IF_ERROR(
-      iree_string_builder_append_cstring(context->builder, "\n  movzx "));
+      iree_string_builder_append_cstring(context->builder, "mov "));
   IREE_RETURN_IF_ERROR(loom_x86_append_result(context, 0));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, ", "));
-  return loom_x86_append_gpr8_result(context, 0);
+  IREE_RETURN_IF_ERROR(loom_x86_append_operand(context, 0));
+  IREE_RETURN_IF_ERROR(
+      iree_string_builder_append_cstring(context->builder, "\n  sub "));
+  IREE_RETURN_IF_ERROR(loom_x86_append_result(context, 0));
+  IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+      context->builder, ", %" PRId64 "\n  cmovb ", immediate));
+  IREE_RETURN_IF_ERROR(loom_x86_append_result(context, 0));
+  IREE_RETURN_IF_ERROR(
+      iree_string_builder_append_cstring(context->builder, ", "));
+  return loom_x86_append_operand(context, 0);
 }
 
 static iree_status_t loom_x86_append_gpr32_move_packet(
@@ -1045,8 +1071,13 @@ static iree_status_t loom_x86_append_transfer_packet(
     return iree_ok_status();
   }
 
-  if (source_assignment->descriptor_reg_class_id !=
-      result_assignment->descriptor_reg_class_id) {
+  loom_x86_register_class_t source_kind = 0;
+  loom_x86_register_class_t result_kind = 0;
+  IREE_RETURN_IF_ERROR(
+      loom_x86_register_class_kind(context, source_assignment, &source_kind));
+  IREE_RETURN_IF_ERROR(
+      loom_x86_register_class_kind(context, result_assignment, &result_kind));
+  if (source_kind != result_kind) {
     iree_string_view_t source_register_class = iree_string_view_empty();
     IREE_RETURN_IF_ERROR(loom_low_allocation_assignment_register_class_name(
         context->allocation, source_assignment, &source_register_class));
@@ -1059,6 +1090,11 @@ static iree_status_t loom_x86_append_transfer_packet(
         "unsupported",
         (int)source_register_class.size, source_register_class.data,
         (int)result_register_class.size, result_register_class.data);
+  }
+  if (source_assignment->location_kind == result_assignment->location_kind &&
+      source_assignment->location_base == result_assignment->location_base &&
+      source_assignment->location_count == result_assignment->location_count) {
+    return iree_ok_status();
   }
 
   IREE_RETURN_IF_ERROR(loom_x86_append_copy_mnemonic(
@@ -1170,6 +1206,9 @@ static iree_status_t loom_x86_append_descriptor_packet(
   const iree_string_view_t mnemonic = loom_x86_descriptor_mnemonic(context);
   if (iree_string_view_starts_with(mnemonic, IREE_SV("cmp.set"))) {
     return loom_x86_append_cmp_setcc_packet(context);
+  }
+  if (iree_string_view_equal(mnemonic, IREE_SV("sub.cmovb"))) {
+    return loom_x86_append_conditional_subtract_packet(context);
   }
   if (iree_string_view_equal(mnemonic, IREE_SV("mov.trunc")) ||
       iree_string_view_equal(loom_x86_descriptor_key(context),

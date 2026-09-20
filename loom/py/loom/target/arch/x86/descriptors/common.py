@@ -311,7 +311,7 @@ _IMM64_IMMEDIATE = Immediate(
     "imm64",
     ImmediateKind.SIGNED,
     bit_width=64,
-    signed_min=-(2**63) + 1,
+    signed_min=-(2**63),
     unsigned_max=(2**63) - 1,
 )
 

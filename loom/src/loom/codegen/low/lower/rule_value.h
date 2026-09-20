@@ -31,6 +31,12 @@ typedef struct loom_low_lower_u32_divisor_magic_info_t {
   bool is_add;
 } loom_low_lower_u32_divisor_magic_info_t;
 
+// Returns ceil(2^64 / divisor), for a divisor in [2, UINT32_MAX]. For a u32
+// numerator n, high64(n * reciprocal) is n / divisor and
+// high64(low64(n * reciprocal) * divisor) is n % divisor. The full reciprocal
+// precision is necessary for the remainder identity.
+uint64_t loom_low_lower_u32_divisor_reciprocal(uint32_t divisor);
+
 // Returns the target-owned materializer selected by a nonzero value-ref
 // materializer index. Generated table indices are trusted.
 const loom_low_lower_value_materializer_t*

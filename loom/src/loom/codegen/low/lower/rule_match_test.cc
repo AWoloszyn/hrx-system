@@ -14,6 +14,7 @@
 #include "loom/ir/module.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/scalar/ops.h"
+#include "loom/util/fact_table.h"
 
 namespace loom {
 namespace {
@@ -236,6 +237,75 @@ TEST_F(LowLowerRuleMatchTest, SelectsFirstRuleWhoseGuardsMatch) {
   EXPECT_EQ(selection.rule, &rules[1]);
   EXPECT_EQ(selection.rule_index, 1u);
   EXPECT_TRUE(selection.has_source_op_span);
+}
+
+TEST_F(LowLowerRuleMatchTest, MatchesBiasedPowersWithoutSignedOverflow) {
+  loom_low_lower_guard_t guard = {};
+  guard.kind = LOOM_LOW_LOWER_GUARD_VALUE_EXACT_POWER_OF_TWO_I64;
+  guard.diagnostic_index = LOOM_LOW_LOWER_DIAGNOSTIC_NONE;
+  const loom_low_lower_guard_ref_t guard_ref = 0;
+  loom_low_lower_value_ref_t value_ref = {};
+  value_ref.kind = LOOM_LOW_LOWER_VALUE_REF_RESULT;
+  loom_low_lower_rule_t rule = {};
+  rule.source_op_kind = LOOM_OP_INDEX_CONSTANT;
+  rule.guard_count = 1;
+  const loom_low_lower_rule_span_t span = {
+      /*.source_op_kind=*/LOOM_OP_INDEX_CONSTANT,
+      /*.rule_start=*/0,
+      /*.rule_count=*/1,
+  };
+  loom_low_lower_rule_set_t rule_set = {};
+  rule_set.spans = &span;
+  rule_set.span_count = 1;
+  rule_set.rules = &rule;
+  rule_set.rule_count = 1;
+  rule_set.guards = &guard;
+  rule_set.guard_count = 1;
+  rule_set.guard_refs = &guard_ref;
+  rule_set.guard_ref_count = 1;
+  rule_set.value_refs = &value_ref;
+  rule_set.value_ref_count = 1;
+  struct Case {
+    // Exact source value.
+    int64_t value;
+    // Bias in the guard row.
+    int64_t addend;
+    // Whether the biased value is a positive power of two.
+    bool matches;
+  };
+  const Case cases[] = {
+      {8, 0, true},
+      {0, 0, false},
+      {-8, 0, false},
+      {3, -1, true},
+      {5, -1, true},
+      {7, -1, false},
+      {9, -1, true},
+      {0, 1, true},
+      {INT64_MAX, 1, false},
+      {INT64_MIN, -1, false},
+      {INT64_MAX, INT64_MIN, false},
+      {INT64_MIN, INT64_MAX, false},
+      {INT64_MAX, 1 - INT64_MAX, true},
+  };
+  for (const Case& test_case : cases) {
+    const loom_op_t* op = BuildConstant(test_case.value);
+    loom_value_fact_table_t facts = {};
+    IREE_ASSERT_OK(loom_value_fact_table_initialize(&facts, &module_->arena,
+                                                    module_->values.count));
+    IREE_ASSERT_OK(loom_value_fact_table_define(
+        &facts, loom_index_constant_result(op),
+        loom_value_facts_exact_i64(test_case.value)));
+    guard.payload.addend = test_case.addend;
+    loom_low_lower_rule_match_context_t match_context = {};
+    match_context.module = module_;
+    match_context.fact_table = &facts;
+    loom_low_lower_rule_selection_t selection = {};
+    IREE_ASSERT_OK(loom_low_lower_rule_set_select_with_match_context(
+        &match_context, &rule_set, op, &selection));
+    EXPECT_EQ(selection.rule != nullptr, test_case.matches)
+        << "value=" << test_case.value << " addend=" << test_case.addend;
+  }
 }
 
 TEST_F(LowLowerRuleMatchTest, ContractQueriesMaySelectContractOnlyRules) {

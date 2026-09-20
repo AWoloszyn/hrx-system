@@ -206,7 +206,7 @@ low.func.def target<x86.scalar.core>(@target) abi(object_function) @compare(%lhs
   low.br ^_bb1(%42: reg<x86.gpr64>, %43: reg<x86.gpr32>)
 ^_bb1(%40: reg<x86.gpr64>, %41: reg<x86.gpr32>):
   %46 = cmp.ult.gpr64 %40, %byte_length
-  %47 = cmp.eq.gpr32 %41, %43
+  %47 = cmp.eq.imm.gpr32 %41, 0
   %48 = copy %46 : reg<x86.gpr32> -> reg<x86.gpr32>
   %49 = and.gpr32 %48, %47
   low.cond_br %49, ^_bb2, ^_bb3 : reg<x86.gpr32>
