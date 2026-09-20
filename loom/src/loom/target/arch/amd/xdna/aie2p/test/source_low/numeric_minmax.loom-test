@@ -1121,16 +1121,14 @@ func.def target(@target) @scf_select_q6_nibble_i8(%code: i32, %use_high: i32) ->
 
 // ----
 low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scf_select_q6_nibble_i8(%code: reg<aie2p.er>, %use_high: reg<aie2p.er>) -> (reg<aie2p.er>) asm {
-  %nibble_shift = mov.short 4
   %mask = mov.short 15
-  %18 = mov.short 0
-  %19 = sub %18, %nibble_shift
-  %high_shifted = lshl %code, %19
+  %17 = mov.short -4
+  %high_shifted = lshl %code, %17
   %low = and %code, %mask
   %high = and %high_shifted, %mask
   %cond = nez %use_high
-  %24 = copy %cond : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %selected = sel.nez %high, %low, %24
+  %22 = copy %cond : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %selected = sel.nez %high, %low, %22
   return %selected
 }
 
@@ -1151,13 +1149,11 @@ func.def target(@target) @scf_select_scale_piece_i16(%packed: i32, %use_high: i3
 
 // ----
 low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @scf_select_scale_piece_i16(%low: reg<aie2p.er>, %use_high: reg<aie2p.er>) -> (reg<aie2p.er>) asm {
-  %halfword_shift = mov.short 16
-  %14 = mov.short 0
-  %15 = sub %14, %halfword_shift
-  %high = lshl %low, %15
+  %13 = mov.short -16
+  %high = lshl %low, %13
   %cond = nez %use_high
-  %18 = copy %cond : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %selected = sel.nez %high, %low, %18
+  %16 = copy %cond : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %selected = sel.nez %high, %low, %16
   return %selected
 }
 

@@ -522,9 +522,11 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
         "i32": [
             "amd.xdna.aie2p.lshl.i32",
             "amd.xdna.aie2p.ashl.i32",
+            "amd.xdna.aie2p.ashl.i32",
+            "amd.xdna.aie2p.lshl.i32",
             "amd.xdna.aie2p.lshl.i32",
         ],
-        "i64": ["amd.xdna.aie2p.lshl.i32"],
+        "i64": ["amd.xdna.aie2p.lshl.i32"] * 3,
     }
     assert {
         element: [len(rule.emit) for rule in type_rules]
@@ -532,8 +534,8 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
     } == {
         "i8": [2, 5, 5],
         "i16": [2, 5, 5],
-        "i32": [1, 3, 3],
-        "i64": [17],
+        "i32": [1, 2, 3, 2, 3],
+        "i64": [9, 7, 19],
     }
     signed_i16_shift = shift_rules_by_type["i16"][1]
     assert [emit.descriptor.key for emit in signed_i16_shift.emit] == [

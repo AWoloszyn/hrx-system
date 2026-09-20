@@ -17,6 +17,7 @@ from loom.target.contracts import (
     EmitDescriptorOp,
     EmitRegisterConcat,
     EmitRegisterSlice,
+    GuardKind,
     ValueRef,
 )
 
@@ -44,10 +45,9 @@ def _join_i64(value: tuple[int, int]) -> int:
 
 def _logical_shift(value: int, amount: int) -> int:
     amount = _s32(amount)
-    if amount <= -32 or amount >= 32:
-        return 0
+    assert -32 <= amount < 32
     if amount < 0:
-        return value >> -amount
+        return value >> (-amount & 31)
     return _u32(value << amount)
 
 
@@ -186,12 +186,28 @@ def test_i64_binary_recipes_are_exact() -> None:
             assert _evaluate_rule(rule, lhs, rhs) == reference(lhs, rhs) & _U64_MASK
 
 
-def test_i64_left_shift_recipe_is_exact() -> None:
-    rule = _rule(scalar_bitwise.scalar_shli)
+def test_i64_left_shift_recipes_are_exact() -> None:
+    rules = [
+        rule
+        for rule in AIE2P_I64_RULES
+        if isinstance(rule, DescriptorRule)
+        and rule.source_op is scalar_bitwise.scalar_shli
+    ]
     values = [lhs for lhs, _ in _i64_samples()[:1024]]
-    for value in values:
-        for amount in range(64):
-            assert _evaluate_rule(rule, value, amount) == (value << amount) & _U64_MASK
+    for rule in rules:
+        count_range = next(
+            (guard for guard in rule.guards if guard.kind == GuardKind.VALUE_I64_RANGE),
+            None,
+        )
+        amounts = range(
+            count_range.minimum if count_range else 0,
+            count_range.maximum + 1 if count_range else 64,
+        )
+        for value in values:
+            for amount in amounts:
+                assert (
+                    _evaluate_rule(rule, value, amount) == (value << amount) & _U64_MASK
+                )
 
 
 def test_i64_comparison_recipes_are_exact() -> None:

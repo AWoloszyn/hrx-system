@@ -1347,21 +1347,47 @@ def _scalar_bitcast_alias_rules() -> tuple[ValueAliasRule, ...]:
     )
 
 
-def _right_shift_rule(
+def _right_shift_rules(
     source_op: Op,
     type_pattern: TypePattern,
     descriptor_key: str,
-) -> DescriptorRule:
-    zero = _descriptor("amd.xdna.aie2p.constant.i32.short")
+) -> tuple[DescriptorRule, ...]:
+    constant = _descriptor("amd.xdna.aie2p.constant.i32.short")
     subtract = _descriptor("amd.xdna.aie2p.sub.i32")
     shift = _descriptor(descriptor_key)
-    return DescriptorRule(
+    constant_count = DescriptorRule(
+        source_op=source_op,
+        descriptor=shift,
+        priority=1,
+        guards=(
+            *_typed_guards(("lhs", "rhs", "result"), type_pattern),
+            Guard.value_exact_i64("rhs"),
+            Guard.value_i64_range("rhs", 0, 31),
+        ),
+        emit=(
+            _const_emit(
+                constant,
+                ValueRef.temporary("negative_shift"),
+                ValueProject.exact_i64_negate("rhs"),
+                result_type=type_pattern,
+            ),
+            _op_emit(
+                shift,
+                operands={
+                    "s0": ValueRef.operand("lhs"),
+                    "s1": ValueRef.temporary("negative_shift"),
+                },
+                results={"d0": ValueRef.result("result")},
+            ),
+        ),
+    )
+    dynamic_count = DescriptorRule(
         source_op=source_op,
         descriptor=shift,
         guards=_typed_guards(("lhs", "rhs", "result"), type_pattern),
         emit=(
             _const_emit(
-                zero,
+                constant,
                 ValueRef.temporary("zero"),
                 0,
                 result_type=type_pattern,
@@ -1385,6 +1411,7 @@ def _right_shift_rule(
             ),
         ),
     )
+    return constant_count, dynamic_count
 
 
 def _rotate_rule(

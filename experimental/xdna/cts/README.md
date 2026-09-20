@@ -27,3 +27,10 @@ benchmark-lock --label=xdna-copy -- \
   --//libamdf/config:enabled=true \
   //experimental/xdna/cts:vector_copy_npu2_test
 ```
+
+`integer_shifts_npu2_test` checks scalar word and split-word shifts using streamed
+packets. An independent integer oracle covers all legal dynamic counts, bounded
+count ranges, constant word boundaries, signed right shifts and retained high
+words. The 17,408 results include edge bit patterns and seeded random inputs;
+binding tails and unchanged inputs are checked as well. This test uses the same
+native execution path and resource lease without requiring the C++ importer.

@@ -188,12 +188,12 @@ def aie2p_core_cases() -> Sequence[ContractCase]:
                 (index.index_shli, "amd.xdna.aie2p.lshl.i32"),
             )
         ),
-        core_rules._right_shift_rule(
+        *core_rules._right_shift_rules(
             index.index_shrsi,
             core_rules._INDEX,
             "amd.xdna.aie2p.ashl.i32",
         ),
-        core_rules._right_shift_rule(
+        *core_rules._right_shift_rules(
             index.index_shrui,
             core_rules._INDEX,
             "amd.xdna.aie2p.lshl.i32",
@@ -854,12 +854,12 @@ def aie2p_core_cases() -> Sequence[ContractCase]:
             core_rules._I32,
             "amd.xdna.aie2p.lshl.i32",
         ),
-        core_rules._right_shift_rule(
+        *core_rules._right_shift_rules(
             scalar_bitwise.scalar_shrsi,
             core_rules._I32,
             "amd.xdna.aie2p.ashl.i32",
         ),
-        core_rules._right_shift_rule(
+        *core_rules._right_shift_rules(
             scalar_bitwise.scalar_shrui,
             core_rules._I32,
             "amd.xdna.aie2p.lshl.i32",
