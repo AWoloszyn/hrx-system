@@ -111,7 +111,7 @@ loading the emitted bytes, and reuses a runtime process and invocation storage.
 This exercises artifact ownership, dynamic execution, and returned buffer
 aliases rather than only comparing disassembly.
 
-The [tool integration suite](../../../tooling/target/vm/vm.test.json) compiles
+The [tool integration suite](../../../tooling/target/vm/test/vm.test.json) compiles
 source with `loom-compile` and reads the resulting file with `vm-dis` in a
 separate process. Runtime instruction and malformed-image tests remain under
 `runtime/src/iree/vm/`; they do not require the compiler.

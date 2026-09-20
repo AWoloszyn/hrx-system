@@ -7,7 +7,7 @@
         "tool": "iree-test-loom",
         "args": [
           "{srcdir}/boolean_comparison.loom",
-          "--library={srcdir}/../../../test/corpus/source_low/numeric_boolean_comparison.loom-test"
+          "--library={srcdir}/../../../../test/corpus/source_low/numeric_boolean_comparison.loom-test"
         ]
       },
       "stdout": {

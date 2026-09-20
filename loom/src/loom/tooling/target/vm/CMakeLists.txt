@@ -34,32 +34,4 @@ loom_cc_library(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_VM)
-iree_execution_test_suite(
-  NAME
-    tools_test
-  MANIFESTS
-    "vm.test.json"
-  TOOLS
-    "iree-benchmark-loom=loom::tools::iree-benchmark-loom"
-    "iree-test-loom=loom::tools::iree-test-loom"
-    "loom-compile=loom::tools::loom-compile"
-    "vm-dis=iree::tools::vm::vm-dis"
-  DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_boolean_comparison.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/boolean_comparison.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/duplicate_exports.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/empty_export.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/invalid_operand.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/invalid_storage.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/module.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_cases.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_library_cases.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_math.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_math_case.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_mismatch.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_unavailable.loom"
-)
-endif()
-
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
