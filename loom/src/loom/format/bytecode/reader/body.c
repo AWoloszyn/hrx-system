@@ -90,7 +90,7 @@ static iree_status_t loom_bytecode_body_policy_materialize_type(
         value_scope->output_module->types.count, offset);
   }
   *out_type_id = (loom_type_id_t)type_id;
-  *out_type = value_scope->output_module->types.entries[type_id];
+  *out_type = loom_type_table_get(&value_scope->output_module->types, type_id);
   return iree_ok_status();
 }
 

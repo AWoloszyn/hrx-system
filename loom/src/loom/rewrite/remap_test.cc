@@ -188,7 +188,7 @@ TEST_F(RemapTest, RemapsTypesNestedInParameterizedTypeSlots) {
       loom_test_array_type_element_type(target_array_type);
   ASSERT_LT(target_vector_type_id, target_->types.count);
   loom_type_t target_vector_type =
-      target_->types.entries[target_vector_type_id];
+      loom_type_table_get(&target_->types, target_vector_type_id);
   ASSERT_TRUE(loom_type_dim_is_dynamic_at(target_vector_type, 0));
   EXPECT_EQ(loom_type_dim_value_id_at(target_vector_type, 0), target_dim);
 }
@@ -517,10 +517,12 @@ TEST_F(RemapTest, RemapsOverflowDimsAndEncodingBeforeInterning) {
             (const void*)source_dims);
 
   ASSERT_EQ(target_->types.count, 3u);
-  EXPECT_TRUE(loom_type_equal(target_->types.entries[0], index_type));
-  EXPECT_TRUE(loom_type_equal(target_->types.entries[1],
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&target_->types, 0), index_type));
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&target_->types, 1),
                               loom_type_scalar(LOOM_SCALAR_TYPE_F32)));
-  EXPECT_TRUE(loom_type_equal(target_->types.entries[2], target_type));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&target_->types, 2), target_type));
 }
 
 TEST_F(RemapTest, RejectsDeepStaticEncodingNesting) {
@@ -566,7 +568,8 @@ TEST_F(RemapTest, RemapsTypeAttributesAcrossModules) {
       loom_module_intern_type(source_, source_type, &interned_source_type));
   loom_type_id_t source_type_id = LOOM_TYPE_ID_INVALID;
   for (iree_host_size_t i = 0; i < source_->types.count; ++i) {
-    if (loom_type_equal(source_->types.entries[i], interned_source_type)) {
+    if (loom_type_equal(loom_type_table_get(&source_->types, i),
+                        interned_source_type)) {
       source_type_id = (loom_type_id_t)i;
       break;
     }
@@ -580,8 +583,8 @@ TEST_F(RemapTest, RemapsTypeAttributesAcrossModules) {
 
   ASSERT_EQ(target_attr.kind, LOOM_ATTR_TYPE);
   ASSERT_LT(target_attr.type_id, target_->types.count);
-  EXPECT_TRUE(loom_type_equal(target_->types.entries[target_attr.type_id],
-                              source_type));
+  EXPECT_TRUE(loom_type_equal(
+      loom_type_table_get(&target_->types, target_attr.type_id), source_type));
 }
 
 TEST_F(RemapTest, RemapsLocationsAcrossModules) {
@@ -847,7 +850,7 @@ TEST_F(RemapTest, RemapsParameterizedAttributeArraysAcrossModules) {
       loom_test_options_attr_element_type(target_options);
   ASSERT_LT(target_vector_type_id, target_->types.count);
   loom_type_t target_vector_type =
-      target_->types.entries[target_vector_type_id];
+      loom_type_table_get(&target_->types, target_vector_type_id);
   ASSERT_TRUE(loom_type_dim_is_dynamic_at(target_vector_type, 0));
   EXPECT_EQ(loom_type_dim_value_id_at(target_vector_type, 0), target_dim);
   loom_symbol_ref_t target_ref = loom_test_options_attr_target(target_options);

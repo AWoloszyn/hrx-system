@@ -255,7 +255,8 @@ TEST_F(ModuleTypesTest, TopologicalShapedTypesRetainScalarDependencies) {
     IREE_ASSERT_OK(loom_module_intern_topological_type_id(
         module_, type, nullptr, 0, &type_id));
     EXPECT_EQ(module_->types.count, previous_count + 2);
-    EXPECT_TRUE(loom_type_equal(module_->types.entries[type_id], type));
+    EXPECT_TRUE(
+        loom_type_equal(loom_type_table_get(&module_->types, type_id), type));
 
     loom_type_id_t element_id = LOOM_TYPE_ID_INVALID;
     IREE_ASSERT_OK(loom_module_intern_type_id(
@@ -307,7 +308,9 @@ TEST_F(ModuleTypesTest, InvalidShapedElementsRemainDistinctForVerification) {
                                           loom_dim_pack_static(4), 0);
     loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
     IREE_ASSERT_OK(loom_module_intern_type_id(module_, type, &type_id));
-    EXPECT_EQ(loom_type_element_type(module_->types.entries[type_id]), element);
+    EXPECT_EQ(
+        loom_type_element_type(loom_type_table_get(&module_->types, type_id)),
+        element);
     const auto count = module_->types.count;
     loom_type_id_t scalar_id = LOOM_TYPE_ID_INVALID;
     IREE_ASSERT_OK(loom_module_intern_type_id(
@@ -384,9 +387,9 @@ TEST_F(ModuleTypesTest, FullFunctionTypeHashMatchesAllInterners) {
   IREE_ASSERT_OK(loom_module_intern_topological_type_id(
       module_, packed.get(), dependencies.data(), dependencies.size(),
       &topological_id));
-  const auto topological = module_->types.entries[topological_id];
+  const auto topological = loom_type_table_get(&module_->types, topological_id);
   EXPECT_EQ(loom_type_func_data(topological), loom_type_func_data(direct));
-  EXPECT_EQ(module_->types.hashes[topological_id],
+  EXPECT_EQ(loom_type_table_hash(&module_->types, topological_id),
             loom_type_hash(packed.get()));
   EXPECT_EQ(module_->types.count, type_count);
   EXPECT_EQ(module_->arena.total_allocation_size, arena_size);

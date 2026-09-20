@@ -120,14 +120,15 @@ TEST_F(BytecodeSelectedBodyTest, ProjectsHighValueReferencesToCompactIds) {
   EXPECT_TRUE(iree_string_view_equal(module_->strings.entries[1],
                                      IREE_SV("selected_value")));
   ASSERT_EQ(module_->types.count, 1u);
-  EXPECT_EQ(loom_type_kind(module_->types.entries[0]), LOOM_TYPE_SCALAR);
-  EXPECT_EQ(loom_type_element_type(module_->types.entries[0]),
+  EXPECT_EQ(loom_type_kind(loom_type_table_get(&module_->types, 0)),
+            LOOM_TYPE_SCALAR);
+  EXPECT_EQ(loom_type_element_type(loom_type_table_get(&module_->types, 0)),
             LOOM_SCALAR_TYPE_F32);
   ASSERT_EQ(module_->values.count, 1u);
   EXPECT_EQ(value_id, 0u);
   EXPECT_EQ(loom_module_value(module_, value_id)->name_id, 1u);
   EXPECT_TRUE(loom_type_equal(loom_module_value(module_, value_id)->type,
-                              module_->types.entries[0]));
+                              loom_type_table_get(&module_->types, 0)));
   EXPECT_EQ(tables.projection.buckets.count, 1u);
   EXPECT_EQ(error_count_, 0u);
 

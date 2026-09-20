@@ -655,7 +655,7 @@ TEST_F(ValueRefsTest, PredicateNestedInsideTypeKeepsAttributeOwnership) {
   const auto dictionary = loom_test_attrs_dict(owner);
   EXPECT_EQ(dictionary.entries[0].value.type_id, expected_type_id);
   const auto updated_type =
-      module_->types.entries[dictionary.entries[0].value.type_id];
+      loom_type_table_get(&module_->types, dictionary.entries[0].value.type_id);
   const auto updated_metadata = loom_test_array_type_metadata(updated_type);
   EXPECT_EQ(updated_metadata.entries[0].value.predicate_list[0].args[0],
             replacement);
@@ -699,7 +699,9 @@ TEST_F(ValueRefsTest, OneOwnerRetargetsTypeAndPredicateListsTogether) {
   const auto updated = loom_test_attrs_dict(owner);
   EXPECT_EQ(updated.entries[0].value.predicate_list[0].args[0], replacement);
   EXPECT_EQ(loom_type_dim_value_id_at(
-                module_->types.entries[updated.entries[1].value.type_id], 0),
+                loom_type_table_get(&module_->types,
+                                    updated.entries[1].value.type_id),
+                0),
             replacement);
   IREE_ASSERT_OK(loom_op_erase(module_, owner));
   EXPECT_FALSE(HasUses(replacement));

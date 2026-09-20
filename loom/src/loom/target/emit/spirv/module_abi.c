@@ -118,7 +118,7 @@ static loom_type_t loom_spirv_module_abi_type_attr(
   if (type_id >= context->module->types.count) {
     return loom_type_none();
   }
-  return context->module->types.entries[type_id];
+  return loom_type_table_get(&context->module->types, type_id);
 }
 
 static loom_spirv_value_type_t loom_spirv_module_abi_low_register_value_type(

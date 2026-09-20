@@ -57,7 +57,7 @@ loom_type_id_t loom_type_identity_find(const loom_module_t* module,
     return LOOM_TYPE_ID_INVALID;
   }
   const loom_type_id_t id = ordinal - 1;
-  const loom_type_t canonical = module->types.entries[id];
+  const loom_type_t canonical = loom_type_table_get(&module->types, id);
   return canonical.header == type.header &&
                  canonical.encoding_id == type.encoding_id &&
                  canonical.encoding_flags == type.encoding_flags &&

@@ -177,7 +177,7 @@ typedef uint32_t loom_string_id_t;
 // Index into the module's symbol table (module->symbols.entries[]).
 typedef uint16_t loom_symbol_id_t;
 
-// Index into the module's interned type table (module->types.entries[]).
+// Index into the module's canonical type table.
 // Types are deduplicated: structurally identical types share the same ID.
 typedef uint32_t loom_type_id_t;
 #define LOOM_TYPE_ID_INVALID ((loom_type_id_t)UINT32_MAX)

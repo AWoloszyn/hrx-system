@@ -77,7 +77,8 @@ static iree_status_t loom_scf_body_append_attribute(
   switch ((loom_attr_kind_t)attribute->kind) {
     case LOOM_ATTR_TYPE:
       return loom_type_walk_value_refs(
-          builder->module, builder->module->types.entries[attribute->type_id],
+          builder->module,
+          loom_type_table_get(&builder->module->types, attribute->type_id),
           loom_scf_body_append_reference, builder);
     case LOOM_ATTR_PREDICATE_LIST:
       for (uint16_t i = 0; i < attribute->count; ++i) {

@@ -1704,7 +1704,8 @@ static void loom_verify_static_encoding_attr_refs(loom_verify_state_t* state,
     case LOOM_ATTR_TYPE:
       if (attr.type_id < state->module->types.count) {
         loom_verify_static_encoding_type_ref(
-            state, op, state->module->types.entries[attr.type_id]);
+            state, op,
+            loom_type_table_get(&state->module->types, attr.type_id));
       }
       return;
     case LOOM_ATTR_DICT:
@@ -2081,7 +2082,7 @@ void loom_verify_module_type_symbol_references(loom_verify_state_t* state) {
       .may_reference_values = false,
   };
   for (iree_host_size_t i = 0; i < state->module->types.count; ++i) {
-    loom_type_t type = state->module->types.entries[i];
+    loom_type_t type = loom_type_table_get(&state->module->types, i);
     if (loom_verify_type_well_formed_malformation(type) !=
         LOOM_VERIFY_TYPE_MALFORMATION_NONE) {
       state->type_summary.all_well_formed = false;

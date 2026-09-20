@@ -79,8 +79,8 @@ TEST_F(TypeImportTest, DeepTemporaryGraphRetainsCanonicalChildren) {
   loom_type_id_t root;
   IREE_ASSERT_OK(loom_module_intern_type_id(module_, type, &root));
   EXPECT_EQ(module_->types.count, temporary.size() + 1);
-  ASSERT_NO_FATAL_FAILURE(
-      ExpectSharedChain(module_->types.entries[root], temporary.size()));
+  ASSERT_NO_FATAL_FAILURE(ExpectSharedChain(
+      loom_type_table_get(&module_->types, root), temporary.size()));
   EXPECT_LT(module_->arena.used_allocation_size - used_before,
             256 * temporary.size());
   const auto used_after = module_->arena.used_allocation_size;
@@ -109,6 +109,51 @@ TEST_F(TypeImportTest, CanonicalIdentitySurvivesRecentCacheAndTableGrowth) {
   ASSERT_NO_FATAL_FAILURE(ExpectSharedChain(type, roots.size()));
 }
 
+TEST_F(TypeImportTest, StableRowsAndFactsAcrossChunkAndDirectoryGrowth) {
+  EXPECT_EQ(module_->types.count, 0u);
+  EXPECT_EQ(loom_type_table_capacity(&module_->types), 0u);
+  const auto used_before = module_->arena.used_allocation_size;
+  loom_type_id_t scalar_id;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_F32), &scalar_id));
+  ASSERT_EQ(scalar_id, 0u);
+  EXPECT_EQ(module_->arena.used_allocation_size - used_before,
+            sizeof(loom_type_segment_t));
+
+  // Borrow rows from every inline segment, then grow both the directory and
+  // another segment inside its already-published primary page.
+  constexpr uint32_t kSegmentCount =
+      LOOM_SEGMENTED_STORAGE_INLINE_SEGMENT_COUNT + 2;
+  std::array<const loom_type_t*, kSegmentCount> rows = {};
+  rows[0] = loom_type_table_entry(&module_->types, scalar_id);
+  for (uint32_t id = 1; id < kSegmentCount * LOOM_TYPE_SEGMENT_CAPACITY; ++id) {
+    const auto type = loom_type_shaped_2d(
+        LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32, loom_dim_pack_static(id),
+        loom_dim_pack_static(4), /*encoding_id=*/0);
+    loom_type_id_t actual;
+    IREE_ASSERT_OK(loom_module_intern_type_id(module_, type, &actual));
+    ASSERT_EQ(actual, id);
+    EXPECT_EQ(loom_type_table_hash(&module_->types, id), loom_type_hash(type));
+    EXPECT_EQ(loom_type_table_dependencies(&module_->types, id), 0u);
+    if (id % LOOM_TYPE_SEGMENT_CAPACITY == 0) {
+      rows[id / LOOM_TYPE_SEGMENT_CAPACITY] =
+          loom_type_table_entry(&module_->types, id);
+    }
+  }
+  EXPECT_EQ(module_->types.segments.segment_count, kSegmentCount);
+  ASSERT_NE(module_->types.segments.primary_page, nullptr);
+  const auto used_after = module_->arena.used_allocation_size;
+  for (uint32_t segment = 0; segment < kSegmentCount; ++segment) {
+    const auto id = segment * LOOM_TYPE_SEGMENT_CAPACITY;
+    EXPECT_EQ(loom_type_table_entry(&module_->types, id), rows[segment]);
+    loom_type_id_t duplicate;
+    IREE_ASSERT_OK(
+        loom_module_intern_type_id(module_, *rows[segment], &duplicate));
+    EXPECT_EQ(duplicate, id);
+  }
+  EXPECT_EQ(module_->arena.used_allocation_size, used_after);
+}
+
 TEST_F(TypeImportTest, FunctionResultAndDialectChildrenAreCanonical) {
   Pair argument;
   Pair result;
@@ -127,8 +172,9 @@ TEST_F(TypeImportTest, FunctionResultAndDialectChildrenAreCanonical) {
       loom_module_intern_type_id(module_, argument_type, &argument_id));
   IREE_ASSERT_OK(loom_module_intern_type_id(module_, result_type, &result_id));
   EXPECT_EQ(data->types[0].dims[0],
-            module_->types.entries[argument_id].dims[0]);
-  EXPECT_EQ(data->types[1].dims[0], module_->types.entries[result_id].dims[0]);
+            loom_type_table_get(&module_->types, argument_id).dims[0]);
+  EXPECT_EQ(data->types[1].dims[0],
+            loom_type_table_get(&module_->types, result_id).dims[0]);
   loom_string_id_t name;
   IREE_ASSERT_OK(
       loom_module_intern_string(module_, IREE_SV("test.pair"), &name));
@@ -142,7 +188,8 @@ TEST_F(TypeImportTest, FunctionResultAndDialectChildrenAreCanonical) {
             data->types[1].dims[0]);
   loom_type_id_t function_id;
   IREE_ASSERT_OK(loom_module_intern_type_id(module_, function, &function_id));
-  EXPECT_EQ(module_->types.hashes[function_id], loom_type_hash(function));
+  EXPECT_EQ(loom_type_table_hash(&module_->types, function_id),
+            loom_type_hash(function));
 }
 
 TEST_F(TypeImportTest, WideSignatureSharesImportsAcrossArgumentAndResultSpans) {
@@ -253,15 +300,16 @@ TEST_F(TypeImportTest, SharedPayloadWithChangedOuterTypeGetsDistinctIdentity) {
   type.dims[0] = reinterpret_cast<uintptr_t>(dimensions);
   loom_type_id_t tile;
   IREE_ASSERT_OK(loom_module_intern_type_id(module_, type, &tile));
-  type = module_->types.entries[tile];
+  type = loom_type_table_get(&module_->types, tile);
   type.header = loom_type_make_header(LOOM_TYPE_TENSOR, LOOM_SCALAR_TYPE_F32, 3,
                                       LOOM_TYPE_FLAG_ALL_STATIC);
   loom_type_id_t tensor;
   IREE_ASSERT_OK(loom_module_intern_type_id(module_, type, &tensor));
   EXPECT_NE(tile, tensor);
-  EXPECT_NE(module_->types.entries[tile].dims[0],
-            module_->types.entries[tensor].dims[0]);
-  EXPECT_EQ(module_->types.hashes[tensor], loom_type_hash(type));
+  EXPECT_NE(loom_type_table_get(&module_->types, tile).dims[0],
+            loom_type_table_get(&module_->types, tensor).dims[0]);
+  EXPECT_EQ(loom_type_table_hash(&module_->types, tensor),
+            loom_type_hash(type));
 }
 
 TEST_F(TypeImportTest, ImportedForeignPayloadSurvivesSourceDestruction) {
@@ -289,12 +337,82 @@ TEST_F(TypeImportTest, ImportedForeignPayloadSurvivesSourceDestruction) {
   EXPECT_TRUE(loom_type_equal(imported_child->types[0], scalar));
   loom_type_id_t id;
   IREE_ASSERT_OK(loom_module_intern_type_id(module_, imported, &id));
-  EXPECT_EQ(module_->types.entries[id].dims[0], imported.dims[0]);
+  EXPECT_EQ(loom_type_table_get(&module_->types, id).dims[0], imported.dims[0]);
 }
 
+class PooledTypeRowsTest : public ::testing::TestWithParam<iree_host_size_t> {
+ protected:
+  static iree_status_t Allocate(void* self, iree_allocator_command_t command,
+                                const void* parameters, void** pointer) {
+    auto* test = static_cast<PooledTypeRowsTest*>(self);
+    if (command != IREE_ALLOCATOR_COMMAND_FREE) {
+      const auto* allocation =
+          static_cast<const iree_allocator_alloc_params_t*>(parameters);
+      EXPECT_EQ(allocation->byte_length, test->GetParam());
+      ++test->allocation_count_;
+    }
+    const auto allocator = iree_allocator_system();
+    return allocator.ctl(allocator.self, command, parameters, pointer);
+  }
+
+  void SetUp() override {
+    loom_context_initialize(iree_allocator_system(), &context_);
+    IREE_ASSERT_OK(loom_context_finalize(&context_));
+    iree_arena_block_pool_initialize(GetParam(), {this, Allocate}, &pool_);
+  }
+
+  void TearDown() override {
+    loom_module_free(module_);
+    iree_arena_block_pool_deinitialize(&pool_);
+    loom_context_deinitialize(&context_);
+  }
+
+  // Backing requests observed independently of optional pool statistics.
+  iree_host_size_t allocation_count_ = 0;
+  // Pool retained across successive module lifetimes.
+  iree_arena_block_pool_t pool_ = {};
+  // Minimal context used by the real type interner.
+  loom_context_t context_ = {};
+  // Current canonical type owner, or null between invocations.
+  loom_module_t* module_ = nullptr;
+};
+
+TEST_P(PooledTypeRowsTest, WarmConstructionUsesOnlyRecycledFixedBlocks) {
+  iree_host_size_t warm_allocation_count = 0;
+  for (uint32_t iteration = 0; iteration < 3; ++iteration) {
+    IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("pooled_types"),
+                                        &pool_, nullptr,
+                                        iree_allocator_system(), &module_));
+    // This exceeds flat row-array pool capacity while keeping interner
+    // generations small enough to fit both configured pool sizes.
+    for (uint32_t dimension = 1; dimension <= 2048; ++dimension) {
+      const auto type = loom_type_shaped_2d(
+          LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+          loom_dim_pack_static(dimension), loom_dim_pack_static(4),
+          /*encoding_id=*/0);
+      loom_type_id_t type_id;
+      IREE_ASSERT_OK(loom_module_intern_type_id(module_, type, &type_id));
+      EXPECT_EQ(type_id, dimension);
+    }
+    EXPECT_EQ(module_->types.count, 2049u);
+    EXPECT_EQ(
+        module_->types.segments.segment_count,
+        (2049 + LOOM_TYPE_SEGMENT_CAPACITY - 1) / LOOM_TYPE_SEGMENT_CAPACITY);
+    if (iteration == 0) {
+      ASSERT_GT(allocation_count_, 0u);
+      warm_allocation_count = allocation_count_;
+    } else {
+      EXPECT_EQ(allocation_count_, warm_allocation_count);
+    }
+    loom_module_free(module_);
+    module_ = nullptr;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(PoolSize, PooledTypeRowsTest,
+                         ::testing::Values(32768, 131072));
+
 struct TypeGrowthBoundary {
-  // Public capacity hint used when allocating the module.
-  iree_host_size_t type_count_hint;
   // Number of unique types inserted before fault injection.
   iree_host_size_t type_count;
   // Expected row capacity at the boundary, before the next insertion.
@@ -339,7 +457,6 @@ class TypeInternerFailureTest
     // previous attempt's rollback or successful retry.
     iree_arena_block_pool_trim(&pool_);
     loom_module_size_hints_t hints = {};
-    hints.type_count = GetParam().type_count_hint;
     IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("type_growth"),
                                         &pool_, &hints, iree_allocator_system(),
                                         &module_));
@@ -354,7 +471,8 @@ class TypeInternerFailureTest
       IREE_ASSERT_OK(MakeType(alignment, &type, &type_id));
       ASSERT_EQ(type_id, alignment);
     }
-    ASSERT_EQ(module_->types.capacity, GetParam().row_capacity);
+    ASSERT_EQ(loom_type_table_capacity(&module_->types),
+              GetParam().row_capacity);
     ASSERT_EQ(module_->type_intern.capacity, GetParam().hash_capacity);
     allocation_count_ = 0;
   }
@@ -366,6 +484,21 @@ class TypeInternerFailureTest
     return loom_module_make_parameterized_type(
         module_, &loom_test_array_type_parameterized_descriptor, parameters,
         IREE_ARRAYSIZE(parameters), out_type, out_type_id);
+  }
+
+  void ExpectTypeStorageUnchanged(const loom_type_table_t& types) {
+    EXPECT_EQ(module_->types.count, types.count);
+    EXPECT_EQ(module_->types.segments.segment_count,
+              types.segments.segment_count);
+    EXPECT_EQ(module_->types.segments.primary_page,
+              types.segments.primary_page);
+    EXPECT_EQ(module_->types.segments.page_directory,
+              types.segments.page_directory);
+    for (uint32_t i = 0; i < types.segments.segment_count; ++i) {
+      EXPECT_EQ(
+          loom_segmented_storage_const_segment(&module_->types.segments, i),
+          loom_segmented_storage_const_segment(&types.segments, i));
+    }
   }
 
   // Backing allocation ordinal to fail, or SIZE_MAX when failure is disabled.
@@ -410,11 +543,7 @@ TEST_P(TypeInternerFailureTest,
     IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, status);
     EXPECT_EQ(allocation_count_, failure_index + 1);
 
-    EXPECT_EQ(module_->types.entries, types.entries);
-    EXPECT_EQ(module_->types.hashes, types.hashes);
-    EXPECT_EQ(module_->types.dependencies, types.dependencies);
-    EXPECT_EQ(module_->types.capacity, types.capacity);
-    EXPECT_EQ(module_->types.count, types.count);
+    ExpectTypeStorageUnchanged(types);
     EXPECT_EQ(module_->type_intern.hashes, interner.hashes);
     EXPECT_EQ(module_->type_intern.indices, interner.indices);
     EXPECT_EQ(module_->type_intern.capacity, interner.capacity);
@@ -429,11 +558,13 @@ TEST_P(TypeInternerFailureTest,
       EXPECT_EQ(type_id, alignment);
       EXPECT_EQ(loom_test_array_type_alignment(type), alignment);
       EXPECT_EQ(loom_type_parameterized_parameters(type),
-                loom_type_parameterized_parameters(types.entries[type_id]));
-      EXPECT_EQ(module_->types.hashes[type_id], loom_type_hash(type));
+                loom_type_parameterized_parameters(
+                    loom_type_table_get(&types, type_id)));
+      EXPECT_EQ(loom_type_table_hash(&module_->types, type_id),
+                loom_type_hash(type));
       loom_type_id_t canonical_id;
-      IREE_ASSERT_OK(loom_module_intern_type_id(module_, types.entries[type_id],
-                                                &canonical_id));
+      IREE_ASSERT_OK(loom_module_intern_type_id(
+          module_, loom_type_table_get(&types, type_id), &canonical_id));
       EXPECT_EQ(canonical_id, type_id);
     }
     IREE_ASSERT_OK(MakeType(GetParam().type_count, &type, &type_id));
@@ -467,8 +598,7 @@ TEST_P(TypeInternerFailureTest, InvalidParameterRollsBackAndRetries) {
             IREE_ARRAYSIZE(parameters), &type, &type_id));
     EXPECT_EQ(module_->arena.used_allocation_size, used_bytes);
     EXPECT_EQ(module_->arena.total_allocation_size, owned_bytes);
-    EXPECT_EQ(module_->types.entries, types.entries);
-    EXPECT_EQ(module_->types.count, types.count);
+    ExpectTypeStorageUnchanged(types);
     EXPECT_EQ(module_->type_intern.hashes, interner.hashes);
     EXPECT_EQ(module_->type_intern.count, interner.count);
     IREE_ASSERT_OK(MakeType(GetParam().type_count, &type, &type_id));
@@ -512,7 +642,7 @@ TEST_P(TypeInternerFailureTest,
     for (loom_type_id_t id = 0; id < published_count; ++id) {
       loom_type_id_t actual;
       IREE_ASSERT_OK(loom_module_intern_type_id(
-          module_, module_->types.entries[id], &actual));
+          module_, loom_type_table_get(&module_->types, id), &actual));
       EXPECT_EQ(actual, id);
     }
     EXPECT_EQ(module_->types.count, published_count);
@@ -534,7 +664,8 @@ TEST_P(TypeInternerFailureTest, GenericInternOwnsCanonicalParameterPayload) {
   loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
   IREE_ASSERT_OK(loom_module_intern_type_id(module_, temporary_type, &type_id));
   ASSERT_EQ(type_id, GetParam().type_count);
-  const loom_type_t canonical_type = module_->types.entries[type_id];
+  const loom_type_t canonical_type =
+      loom_type_table_get(&module_->types, type_id);
   EXPECT_NE(loom_type_parameterized_parameters(canonical_type), parameters);
   parameters[1] = loom_attr_i64(0);
   EXPECT_EQ(loom_test_array_type_alignment(canonical_type),
@@ -550,13 +681,14 @@ TEST_P(TypeInternerFailureTest, GenericInternOwnsCanonicalParameterPayload) {
   EXPECT_EQ(module_->arena.used_allocation_size, used_bytes);
 }
 
-// Exercise row-only, hash-only, and simultaneous row/hash growth through public
-// size hints and distinct type construction, without altering table metadata.
+// Exercise row-only, hash-only, and simultaneous row/hash growth through
+// distinct type construction, without altering table metadata. The last case
+// joins interner growth with append into an already-shared directory page.
 INSTANTIATE_TEST_SUITE_P(TypeGrowth, TypeInternerFailureTest,
-                         ::testing::Values(TypeGrowthBoundary{0, 8, 8, 16},
-                                           TypeGrowthBoundary{0, 12, 16, 16},
-                                           TypeGrowthBoundary{64, 96, 96,
-                                                              128}));
+                         ::testing::Values(TypeGrowthBoundary{32, 32, 64},
+                                           TypeGrowthBoundary{12, 32, 16},
+                                           TypeGrowthBoundary{96, 96, 128},
+                                           TypeGrowthBoundary{768, 768, 1024}));
 
 }  // namespace
 }  // namespace loom

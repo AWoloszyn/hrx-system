@@ -229,7 +229,7 @@ static loom_type_t loom_low_type_attr(const loom_module_t* module,
   if (type_id == LOOM_TYPE_ID_INVALID || type_id >= module->types.count) {
     return loom_type_none();
   }
-  return module->types.entries[type_id];
+  return loom_type_table_get(&module->types, type_id);
 }
 
 static iree_status_t loom_low_emit_symbol_kind_mismatch(

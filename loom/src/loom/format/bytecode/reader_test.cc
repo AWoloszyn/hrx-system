@@ -4133,8 +4133,9 @@ TEST_F(ReaderTest, ParameterizedAttrsPreserveNamedSlotsAndPresence) {
   const loom_type_id_t element_type_id =
       loom_test_options_attr_element_type(full);
   ASSERT_LT(element_type_id, read_module->types.count);
-  EXPECT_TRUE(loom_type_equal(read_module->types.entries[element_type_id],
-                              loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&read_module->types, element_type_id),
+                      loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
   ASSERT_TRUE(loom_test_options_attr_has_tile(full));
   loom_attribute_t tile = loom_test_options_attr_tile(full);
   ASSERT_TRUE(loom_test_tile_attr_isa(tile));
@@ -4612,8 +4613,8 @@ TEST_F(ReaderTest, ReadsStructuralRegisterValueType) {
 
   const loom_type_t* register_type = nullptr;
   for (iree_host_size_t i = 0; i < read_module->types.count; ++i) {
-    if (loom_type_is_register(read_module->types.entries[i])) {
-      register_type = &read_module->types.entries[i];
+    if (loom_type_is_register(loom_type_table_get(&read_module->types, i))) {
+      register_type = loom_type_table_entry(&read_module->types, i);
       break;
     }
   }
@@ -4714,8 +4715,9 @@ TEST_F(ReaderTest, ReadsDescriptorBackedParameterizedTypes) {
   loom_type_id_t element_type_id =
       loom_test_matrix_type_element_type(matrix_type);
   ASSERT_LT(element_type_id, read_module->types.count);
-  EXPECT_TRUE(loom_type_equal(read_module->types.entries[element_type_id],
-                              loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&read_module->types, element_type_id),
+                      loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
 
   loom_type_t packed_type =
       loom_module_value_type(read_module, arguments.values[2]);

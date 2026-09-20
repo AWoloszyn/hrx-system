@@ -48,7 +48,7 @@
 //   value_id   -> index into the module value table
 //   symbol_id  -> index into module->symbols.entries[]
 //   string_id  -> index into module->strings.entries[]
-//   type_id    -> index into module->types.entries[] (for interned types)
+//   type_id    -> index into the module's canonical type table
 //   use/def    -> loom_op_t* / loom_block_t* stable arena pointers
 //
 // Benefits: stable table references for serialization, compact scalar IDs
@@ -94,6 +94,7 @@
 #include "loom/ir/attribute.h"
 #include "loom/ir/encoding.h"
 #include "loom/ir/location.h"
+#include "loom/ir/type_table.h"
 #include "loom/ir/types.h"
 #include "loom/util/bstring.h"
 #include "loom/util/segmented_storage.h"
@@ -2183,9 +2184,6 @@ typedef struct loom_string_table_t {
   iree_string_view_t* entries;
 } loom_string_table_t;
 
-// Canonical set of SSA dependencies in a type. Zero is the empty set.
-typedef uint32_t loom_type_dependency_id_t;
-
 // Per-value identities in the shared type-dependency ownership index.
 typedef struct loom_value_type_use_heads_t {
   // Canonical singleton for this provider, or zero until first activation.
@@ -2350,20 +2348,6 @@ typedef struct loom_symbol_table_t {
   iree_host_size_t capacity;
   loom_symbol_t* entries;
 } loom_symbol_table_t;
-
-// Type table. Interned types for pointer-equality comparison.
-typedef struct loom_type_table_t {
-  // Number of published canonical types and parallel facts.
-  iree_host_size_t count;
-  // Allocated rows in each parallel array.
-  iree_host_size_t capacity;
-  // Immutable module-owned type payloads.
-  loom_type_t* entries;
-  // Structural hashes parallel to entries.
-  uint32_t* hashes;
-  // Canonical SSA dependency sets parallel to entries, including forward IDs.
-  loom_type_dependency_id_t* dependencies;
-} loom_type_table_t;
 
 typedef struct loom_type_dependency_index_t loom_type_dependency_index_t;
 

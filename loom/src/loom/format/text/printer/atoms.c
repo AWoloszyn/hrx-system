@@ -1166,8 +1166,9 @@ static iree_status_t loom_print_attr_impl(
     }
     case LOOM_ATTR_TYPE:
       if (module && attr->type_id < module->types.count) {
-        return loom_text_print_type_impl(module->types.entries[attr->type_id],
-                                         module, stream, type_context);
+        return loom_text_print_type_impl(
+            loom_type_table_get(&module->types, attr->type_id), module, stream,
+            type_context);
       }
       return loom_output_stream_write_format(stream, "type<%" PRIu32 ">",
                                              attr->type_id);

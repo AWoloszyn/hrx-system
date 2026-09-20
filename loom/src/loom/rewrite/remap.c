@@ -710,7 +710,7 @@ static iree_status_t loom_ir_remap_type_id(loom_ir_remap_t* remap,
   }
   loom_type_t target_type = {0};
   IREE_RETURN_IF_ERROR(loom_ir_remap_type(
-      remap, remap->source_module->types.entries[source_type_id],
+      remap, loom_type_table_get(&remap->source_module->types, source_type_id),
       &target_type));
   return loom_module_intern_type_id(remap->target_module, target_type,
                                     out_target_type_id);

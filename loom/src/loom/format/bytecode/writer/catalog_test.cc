@@ -242,14 +242,16 @@ TEST_F(CatalogTest, SharedTypeNumberingRetainsCompletedResults) {
       loom_bytecode_numbering_initialize(&numbering, module_, &arena_));
   uint32_t writer_id = 0;
   IREE_ASSERT_OK(loom_bytecode_numbering_intern_type(
-      &numbering, module_->types.entries[types.back()], &writer_id));
+      &numbering, loom_type_table_get(&module_->types, types.back()),
+      &writer_id));
   ASSERT_EQ(numbering.types.count, types.size());
   EXPECT_EQ(writer_id, types.size() - 1);
   const auto completed_storage = arena_.used_allocation_size;
   for (size_t i = 0; i < types.size(); ++i) {
     EXPECT_EQ(numbering.types.module_indices_by_writer_id[i], types[i]);
     IREE_ASSERT_OK(loom_bytecode_numbering_intern_type(
-        &numbering, module_->types.entries[types[i]], &writer_id));
+        &numbering, loom_type_table_get(&module_->types, types[i]),
+        &writer_id));
     EXPECT_EQ(writer_id, i);
   }
   EXPECT_EQ(numbering.types.count, types.size());

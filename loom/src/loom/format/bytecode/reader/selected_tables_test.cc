@@ -210,11 +210,13 @@ TEST_F(BytecodeSelectedTablesTest, MaterializesOnlyReachedMixedTableFacts) {
       &materializer, /*source_type_id=*/1, &target_type_id));
   EXPECT_EQ(target_type_id, 1u);
   ASSERT_EQ(module_->types.count, 2u);
-  EXPECT_TRUE(loom_type_equal(module_->types.entries[0],
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&module_->types, 0),
                               loom_type_scalar(LOOM_SCALAR_TYPE_F32)));
-  EXPECT_EQ(loom_type_kind(module_->types.entries[target_type_id]),
-            LOOM_TYPE_TENSOR);
-  EXPECT_EQ(module_->types.entries[target_type_id].encoding_id, 2u);
+  EXPECT_EQ(
+      loom_type_kind(loom_type_table_get(&module_->types, target_type_id)),
+      LOOM_TYPE_TENSOR);
+  EXPECT_EQ(loom_type_table_get(&module_->types, target_type_id).encoding_id,
+            2u);
   ASSERT_EQ(module_->encodings.count, 2u);
   ASSERT_EQ(module_->encodings.entries[0].attribute_count, 1u);
   EXPECT_EQ(module_->encodings.entries[0].attributes[0].value.i64, 7);
@@ -426,7 +428,7 @@ TEST_F(BytecodeSelectedTablesTest, ProjectsMixedStructuralPayloads) {
 
   ASSERT_EQ(module_->types.count, 5u);
   const loom_func_type_data_t* function =
-      loom_type_func_data(module_->types.entries[target_type_id]);
+      loom_type_func_data(loom_type_table_get(&module_->types, target_type_id));
   ASSERT_NE(function, nullptr);
   ASSERT_EQ(function->arg_count, 1u);
   ASSERT_EQ(function->result_count, 1u);
@@ -435,8 +437,8 @@ TEST_F(BytecodeSelectedTablesTest, ProjectsMixedStructuralPayloads) {
   EXPECT_EQ(loom_type_dialect_name_id(dialect_type), name_id);
   ASSERT_EQ(loom_type_dialect_param_count(dialect_type), 2u);
   const loom_type_t* children = loom_type_dialect_params(dialect_type);
-  EXPECT_TRUE(
-      loom_type_equal(children[1], module_->types.entries[element_type_id]));
+  EXPECT_TRUE(loom_type_equal(
+      children[1], loom_type_table_get(&module_->types, element_type_id)));
   EXPECT_TRUE(loom_type_equal(children[0], function->types[1]));
   const loom_register_type_data_t* data = loom_type_register_data(children[0]);
   ASSERT_NE(data, nullptr);
@@ -502,7 +504,7 @@ TEST_F(BytecodeSelectedTablesTest, MaterializesWideTypeReferencesInOneRetry) {
       &materializer, /*source_type_id=*/1, &target_type_id));
   EXPECT_EQ(target_type_id, 1u);
   ASSERT_EQ(module_->types.count, 2u);
-  EXPECT_EQ(loom_type_func_arg_count(module_->types.entries[1]),
+  EXPECT_EQ(loom_type_func_arg_count(loom_type_table_get(&module_->types, 1)),
             kArgumentCount);
   EXPECT_EQ(materializer.projection.buckets.count, 2u);
   EXPECT_GE(materializer.worklist.capacity, kArgumentCount);

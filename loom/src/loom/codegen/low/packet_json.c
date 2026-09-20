@@ -296,7 +296,8 @@ static iree_status_t loom_low_packet_json_write_type_attr(
     loom_output_stream_t* stream) {
   if (type_id < module->types.count) {
     return loom_low_packet_json_write_type(
-        module, type_print_options, module->types.entries[type_id], stream);
+        module, type_print_options,
+        loom_type_table_get(&module->types, type_id), stream);
   }
   char buffer[32];
   int length =

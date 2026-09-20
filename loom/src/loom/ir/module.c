@@ -299,51 +299,19 @@ static iree_status_t loom_string_table_ensure_capacity(
   return iree_ok_status();
 }
 
-static iree_status_t loom_type_table_ensure_capacity(
-    iree_arena_allocator_t* arena, loom_type_table_t* table) {
-  if (table->count < table->capacity) {
-    return iree_ok_status();
-  }
-  iree_host_size_t new_capacity = 64;
-  if (table->capacity > 0 &&
-      !iree_host_size_checked_mul(table->capacity, 2, &new_capacity)) {
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "type table capacity overflow");
-  }
-  loom_type_t* new_entries = NULL;
-  uint32_t* new_hashes = NULL;
-  loom_type_dependency_id_t* new_dependencies = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, new_capacity, sizeof(loom_type_t), (void**)&new_entries));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, new_capacity, sizeof(uint32_t), (void**)&new_hashes));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, new_capacity,
-                                                 sizeof(*new_dependencies),
-                                                 (void**)&new_dependencies));
-  memset(new_entries, 0, new_capacity * sizeof(loom_type_t));
-  memset(new_hashes, 0, new_capacity * sizeof(uint32_t));
-  memset(new_dependencies, 0, new_capacity * sizeof(*new_dependencies));
-  if (table->count > 0) {
-    memcpy(new_entries, table->entries, table->count * sizeof(loom_type_t));
-    memcpy(new_hashes, table->hashes, table->count * sizeof(uint32_t));
-    memcpy(new_dependencies, table->dependencies,
-           table->count * sizeof(*new_dependencies));
-  }
-  table->entries = new_entries;
-  table->hashes = new_hashes;
-  table->dependencies = new_dependencies;
-  table->capacity = new_capacity;
-  return iree_ok_status();
-}
-
-// Publishes row, hash and dependency storage together so a caller can rewind
-// arena allocations after failure without leaving a table pointing into them.
+// Reserves a private interner generation before appending any shared row
+// storage. Append is the last fallible step: failure leaves both owners
+// unchanged, so a speculative payload constructor can rewind its arena.
 static iree_status_t loom_module_reserve_type_insert(loom_module_t* module) {
-  loom_type_table_t types = module->types;
-  IREE_RETURN_IF_ERROR(loom_type_table_ensure_capacity(&module->arena, &types));
+  loom_intern_table_t interner = module->type_intern;
   IREE_RETURN_IF_ERROR(
-      loom_intern_table_reserve_insert(&module->arena, &module->type_intern));
-  module->types = types;
+      loom_intern_table_reserve_insert(&module->arena, &interner));
+  if (module->types.count == loom_type_table_capacity(&module->types)) {
+    void* segment = NULL;
+    IREE_RETURN_IF_ERROR(loom_segmented_storage_append(
+        &module->types.segments, &module->arena, &segment));
+  }
+  module->type_intern = interner;
   return iree_ok_status();
 }
 
@@ -681,20 +649,10 @@ static iree_status_t loom_module_initialize_tables(
   memset(module->strings.entries, 0,
          string_capacity * sizeof(iree_string_view_t));
 
-  // Types.
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(arena, type_capacity, sizeof(loom_type_t),
-                                (void**)&module->types.entries));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, type_capacity, sizeof(uint32_t), (void**)&module->types.hashes));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, type_capacity, sizeof(loom_type_dependency_id_t),
-      (void**)&module->types.dependencies));
-  module->types.capacity = type_capacity;
-  memset(module->types.entries, 0, type_capacity * sizeof(loom_type_t));
-  memset(module->types.hashes, 0, type_capacity * sizeof(uint32_t));
-  memset(module->types.dependencies, 0,
-         type_capacity * sizeof(loom_type_dependency_id_t));
+  // Canonical rows are lazy; type hints size only the interner's buckets.
+  loom_segmented_storage_initialize(sizeof(loom_type_segment_t),
+                                    iree_alignof(loom_type_segment_t),
+                                    &module->types.segments);
 
   // Encodings. Modules without an encoding count hint retain lazy allocation.
   if (encoding_capacity > 0) {
@@ -1251,7 +1209,7 @@ static iree_status_t loom_module_mark_symbol_references_in_named_attrs(
 static iree_status_t loom_module_mark_symbol_references_in_types(
     const loom_module_t* module, uint8_t* referenced_symbols) {
   for (iree_host_size_t i = 0; i < module->types.count; ++i) {
-    loom_type_t type = module->types.entries[i];
+    loom_type_t type = loom_type_table_get(&module->types, i);
     if (!loom_type_is_parameterized(type)) {
       continue;
     }
@@ -2012,8 +1970,8 @@ static iree_status_t loom_module_canonicalize_value_type(
   }
   loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_module_intern_type_id(module, type, &type_id));
-  *out_type = module->types.entries[type_id];
-  *out_dependencies = module->types.dependencies[type_id];
+  *out_type = loom_type_table_get(&module->types, type_id);
+  *out_dependencies = loom_type_table_dependencies(&module->types, type_id);
   return iree_ok_status();
 }
 
@@ -3625,7 +3583,8 @@ static loom_type_id_t loom_module_find_recent_exact_type(
       continue;
     }
     const loom_type_id_t type_id = ordinal - 1;
-    if (loom_type_has_same_storage(module->types.entries[type_id], type)) {
+    if (loom_type_has_same_storage(loom_type_table_get(&module->types, type_id),
+                                   type)) {
       return type_id;
     }
   }
@@ -3635,9 +3594,10 @@ static loom_type_id_t loom_module_find_recent_exact_type(
 static void loom_module_note_recent_register_type(loom_module_t* module,
                                                   loom_type_id_t type_id) {
   IREE_ASSERT(type_id < module->types.count);
-  IREE_ASSERT(loom_type_is_register(module->types.entries[type_id]));
   IREE_ASSERT(
-      loom_type_register_has_value_type(module->types.entries[type_id]));
+      loom_type_is_register(loom_type_table_get(&module->types, type_id)));
+  IREE_ASSERT(loom_type_register_has_value_type(
+      loom_type_table_get(&module->types, type_id)));
   const uint32_t ordinal = type_id + 1;
   if (module->recent_register_type_ordinals[0] == ordinal) {
     return;
@@ -3657,7 +3617,7 @@ static loom_type_id_t loom_module_find_recent_register_type_structural(
     }
     const loom_type_id_t type_id = ordinal - 1;
     const loom_register_type_data_t* existing =
-        loom_type_register_data(module->types.entries[type_id]);
+        loom_type_register_data(loom_type_table_get(&module->types, type_id));
     const loom_register_type_data_t* candidate = loom_type_register_data(type);
     if (existing->carrier_payload0 == candidate->carrier_payload0 &&
         existing->carrier_payload1 == candidate->carrier_payload1 &&
@@ -3673,7 +3633,8 @@ static loom_type_id_t loom_module_find_recent_register_type_structural(
 static bool loom_type_equal_fn(const void* context, uint32_t index) {
   const loom_type_equal_context_t* ctx =
       (const loom_type_equal_context_t*)context;
-  return loom_type_equal(ctx->module->types.entries[index], ctx->type);
+  return loom_type_equal(loom_type_table_get(&ctx->module->types, index),
+                         ctx->type);
 }
 
 // Compares only the immediate structure of a topologically assembled type.
@@ -3683,7 +3644,7 @@ static bool loom_topological_type_equal_fn(const void* context,
                                            uint32_t index) {
   const loom_topological_type_context_t* ctx =
       (const loom_topological_type_context_t*)context;
-  const loom_type_t existing = ctx->module->types.entries[index];
+  const loom_type_t existing = loom_type_table_get(&ctx->module->types, index);
   const loom_type_t candidate = ctx->type;
   if (existing.header != candidate.header ||
       existing.encoding_id != candidate.encoding_id ||
@@ -3705,7 +3666,8 @@ static bool loom_topological_type_equal_fn(const void* context,
       for (iree_host_size_t i = 0; i < ctx->dependency_count; ++i) {
         if (!loom_type_has_same_storage(
                 existing_data->types[i],
-                ctx->module->types.entries[ctx->dependency_ids[i]])) {
+                loom_type_table_get(&ctx->module->types,
+                                    ctx->dependency_ids[i]))) {
           return false;
         }
       }
@@ -3724,7 +3686,8 @@ static bool loom_topological_type_equal_fn(const void* context,
       for (iree_host_size_t i = 0; i < ctx->dependency_count; ++i) {
         if (!loom_type_has_same_storage(
                 existing_parameters[i],
-                ctx->module->types.entries[ctx->dependency_ids[i]])) {
+                loom_type_table_get(&ctx->module->types,
+                                    ctx->dependency_ids[i]))) {
           return false;
         }
       }
@@ -3745,7 +3708,8 @@ static bool loom_topological_type_equal_fn(const void* context,
       }
       if (loom_type_has_same_storage(
               existing_data->value_type,
-              ctx->module->types.entries[ctx->dependency_ids[0]])) {
+              loom_type_table_get(&ctx->module->types,
+                                  ctx->dependency_ids[0]))) {
         return true;
       }
       return false;
@@ -3775,7 +3739,8 @@ static uint32_t loom_topological_type_hash(
                                           (uint32_t)context->dependency_count);
       for (iree_host_size_t i = 0; i < context->dependency_count; ++i) {
         hash = loom_structural_hash_mix_u32(
-            hash, context->module->types.hashes[context->dependency_ids[i]]);
+            hash, loom_type_table_hash(&context->module->types,
+                                       context->dependency_ids[i]));
       }
       return loom_structural_hash_finalize(hash);
     }
@@ -3786,7 +3751,8 @@ static uint32_t loom_topological_type_hash(
                                           (uint16_t)context->dependency_count);
       for (iree_host_size_t i = 0; i < context->dependency_count; ++i) {
         hash = loom_structural_hash_mix_u32(
-            hash, context->module->types.hashes[context->dependency_ids[i]]);
+            hash, loom_type_table_hash(&context->module->types,
+                                       context->dependency_ids[i]));
       }
       return loom_structural_hash_finalize(hash);
     case LOOM_TYPE_REGISTER: {
@@ -3797,7 +3763,8 @@ static uint32_t loom_topological_type_hash(
       hash = loom_structural_hash_mix_u64(hash, data->carrier_payload0);
       hash = loom_structural_hash_mix_u64(hash, data->carrier_payload1);
       hash = loom_structural_hash_mix_u32(
-          hash, context->module->types.hashes[context->dependency_ids[0]]);
+          hash, loom_type_table_hash(&context->module->types,
+                                     context->dependency_ids[0]));
       return loom_structural_hash_finalize(hash);
     }
     default:
@@ -3923,7 +3890,8 @@ static iree_status_t loom_module_clone_topological_type_from_context(
       target_data->result_count = source_data->result_count;
       target_data->reserved = 0;
       for (iree_host_size_t i = 0; i < ctx->dependency_count; ++i) {
-        target_data->types[i] = module->types.entries[ctx->dependency_ids[i]];
+        target_data->types[i] =
+            loom_type_table_get(&module->types, ctx->dependency_ids[i]);
       }
       *out_type = loom_type_function(target_data);
       return iree_ok_status();
@@ -3936,7 +3904,8 @@ static iree_status_t loom_module_clone_topological_type_from_context(
             (void**)&target_parameters));
       }
       for (iree_host_size_t i = 0; i < ctx->dependency_count; ++i) {
-        target_parameters[i] = module->types.entries[ctx->dependency_ids[i]];
+        target_parameters[i] =
+            loom_type_table_get(&module->types, ctx->dependency_ids[i]);
       }
       *out_type =
           loom_type_dialect(loom_type_dialect_name_id(type),
@@ -3955,7 +3924,8 @@ static iree_status_t loom_module_clone_topological_type_from_context(
       *target_data = (loom_register_type_data_t){
           .carrier_payload0 = source_data->carrier_payload0,
           .carrier_payload1 = source_data->carrier_payload1,
-          .value_type = module->types.entries[ctx->dependency_ids[0]],
+          .value_type =
+              loom_type_table_get(&module->types, ctx->dependency_ids[0]),
       };
       *out_type = loom_type_register_payload_with_value_type(target_data);
       return iree_ok_status();
@@ -3981,7 +3951,7 @@ static iree_status_t loom_module_intern_type_impl(
       &module->type_intern, hash, equal_fn, equal_context);
   const uint32_t existing_index = probe.index;
   if (existing_index != UINT32_MAX) {
-    *out_interned_type = module->types.entries[existing_index];
+    *out_interned_type = loom_type_table_get(&module->types, existing_index);
     if (out_type_id) {
       *out_type_id = (loom_type_id_t)existing_index;
     }
@@ -4016,7 +3986,8 @@ static iree_status_t loom_module_intern_type_impl(
   iree_host_size_t slot = probe.slot;
   const bool grow_intern_table =
       !loom_intern_table_has_insert_capacity(&module->type_intern);
-  if (module->types.count == module->types.capacity || grow_intern_table) {
+  if (module->types.count == loom_type_table_capacity(&module->types) ||
+      grow_intern_table) {
     IREE_RETURN_IF_ERROR(loom_module_reserve_type_insert(module));
     if (grow_intern_table) {
       slot = loom_intern_table_find_empty_slot(&module->type_intern, hash);
@@ -4024,9 +3995,13 @@ static iree_status_t loom_module_intern_type_impl(
   }
 
   uint32_t new_index = (uint32_t)module->types.count;
-  module->types.entries[new_index] = type;
-  module->types.hashes[new_index] = hash;
-  module->types.dependencies[new_index] = dependencies;
+  loom_type_segment_t* segment =
+      (loom_type_segment_t*)loom_segmented_storage_segment(
+          &module->types.segments, new_index >> LOOM_TYPE_SEGMENT_SHIFT);
+  const uint32_t row = new_index & LOOM_TYPE_SEGMENT_MASK;
+  segment->entries[row] = type;
+  segment->hashes[row] = hash;
+  segment->dependencies[row] = dependencies;
   module->types.count++;
   loom_type_identity_commit(module, &identity_insertion);
   module->type_intern.hashes[slot] = hash;
@@ -4136,7 +4111,8 @@ iree_status_t loom_module_intern_topological_type_id(
       IREE_ASSERT(structural_dependency_ids[i] < module->types.count);
       IREE_RETURN_IF_ERROR(loom_type_dependencies_union(
           &module->type_uses, dependencies,
-          module->types.dependencies[structural_dependency_ids[i]],
+          loom_type_table_dependencies(&module->types,
+                                       structural_dependency_ids[i]),
           &dependencies));
     }
   }
@@ -4181,7 +4157,7 @@ static iree_status_t loom_module_intern_type_with_dependencies(
     recent_type_id = loom_type_identity_find(module, type);
   }
   if (recent_type_id != LOOM_TYPE_ID_INVALID) {
-    *out_interned_type = module->types.entries[recent_type_id];
+    *out_interned_type = loom_type_table_get(&module->types, recent_type_id);
     if (out_type_id) {
       *out_type_id = recent_type_id;
     }
@@ -4197,7 +4173,7 @@ static iree_status_t loom_module_intern_type_with_dependencies(
       }
       loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
       IREE_RETURN_IF_ERROR(loom_type_import(module, type, &type_id));
-      *out_interned_type = module->types.entries[type_id];
+      *out_interned_type = loom_type_table_get(&module->types, type_id);
       if (out_type_id) {
         *out_type_id = type_id;
       }
@@ -4330,7 +4306,7 @@ iree_status_t loom_module_intern_function_type(loom_module_t* module,
   loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_type_import_function(
       module, arg_types, arg_count, result_types, result_count, &type_id));
-  *out_interned_type = module->types.entries[type_id];
+  *out_interned_type = loom_type_table_get(&module->types, type_id);
   return iree_ok_status();
 }
 
@@ -4351,7 +4327,7 @@ iree_status_t loom_module_intern_register_type(loom_module_t* module,
     IREE_RETURN_IF_ERROR(loom_module_intern_type_with_dependencies(
         module, type, out_interned_type, &type_id));
   } else {
-    *out_interned_type = module->types.entries[type_id];
+    *out_interned_type = loom_type_table_get(&module->types, type_id);
   }
   loom_module_note_recent_register_type(module, type_id);
   loom_module_note_recent_exact_type(module, type_id);

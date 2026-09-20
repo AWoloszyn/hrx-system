@@ -351,7 +351,8 @@ static iree_status_t loom_pipeline_plan_flow_tile_type(
   const loom_type_id_t tile_type_id =
       loom_pipeline_flow_type_element_type(flow_type);
   IREE_ASSERT_LT(tile_type_id, builder->module->types.count);
-  const loom_type_t tile_type = builder->module->types.entries[tile_type_id];
+  const loom_type_t tile_type =
+      loom_type_table_get(&builder->module->types, tile_type_id);
   IREE_ASSERT(loom_type_is_tile(tile_type));
   return loom_pipeline_plan_refine_record_type(builder, tile_type, "flow",
                                                out_type);

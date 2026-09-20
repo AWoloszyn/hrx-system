@@ -246,7 +246,8 @@ TEST_F(LowLowerFunctionBoundaryTest,
   const loom_type_id_t source_type_id =
       loom_low_resource_source_type(resource_op);
   ASSERT_LT(source_type_id, module_->types.count);
-  EXPECT_TRUE(loom_type_is_buffer(module_->types.entries[source_type_id]));
+  EXPECT_TRUE(loom_type_is_buffer(
+      loom_type_table_get(&module_->types, source_type_id)));
   const loom_value_id_t resource_result = loom_low_resource_result(resource_op);
   ExpectRegister(resource_result, TEST_LOW_CORE_REG_CLASS_ID_TEST_PTR);
   EXPECT_TRUE(

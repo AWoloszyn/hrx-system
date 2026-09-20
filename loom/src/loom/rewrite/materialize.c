@@ -1059,7 +1059,9 @@ static iree_status_t loom_ir_move_attr_is_available(
         return iree_ok_status();
       }
       return loom_ir_move_remapped_type_is_available(
-          query, query->remap->source_module->types.entries[attr->type_id],
+          query,
+          loom_type_table_get(&query->remap->source_module->types,
+                              attr->type_id),
           out_available);
     case LOOM_ATTR_PREDICATE_LIST:
       return loom_ir_move_predicate_list_is_available(query, *attr,

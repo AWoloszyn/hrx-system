@@ -884,7 +884,7 @@ static iree_status_t loom_bytecode_catalog_complete(
             if (frame.owner == SIZE_MAX) {
               node = loom_bytecode_type_index_lookup_node(
                   &numbering->types.index,
-                  numbering->module->types.entries[attr.type_id]);
+                  loom_type_table_get(&numbering->module->types, attr.type_id));
             } else {
               loom_bytecode_catalog_frame_t* owner =
                   &numbering->traversal.frames[frame.owner];

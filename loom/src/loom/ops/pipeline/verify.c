@@ -97,7 +97,8 @@ static bool loom_pipeline_type_is_flow_tile(const loom_module_t* module,
   }
   const loom_type_id_t element_type_id =
       loom_pipeline_flow_type_element_type(type);
-  const loom_type_t element_type = module->types.entries[element_type_id];
+  const loom_type_t element_type =
+      loom_type_table_get(&module->types, element_type_id);
   if (!loom_type_is_tile(element_type)) {
     return false;
   }

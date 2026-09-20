@@ -80,8 +80,8 @@ class ModuleTypeUsesTest : public ::testing::Test {
         storage[sizeof(loom_func_type_data_t) + 2 * sizeof(loom_type_t)] = {};
     auto* data = reinterpret_cast<loom_func_type_data_t*>(storage);
     data->arg_count = 2;
-    data->types[0] = module_->types.entries[first];
-    data->types[1] = module_->types.entries[second];
+    data->types[0] = loom_type_table_get(&module_->types, first);
+    data->types[1] = loom_type_table_get(&module_->types, second);
     const loom_type_id_t children[] = {first, second};
     loom_type_id_t id = LOOM_TYPE_ID_INVALID;
     IREE_CHECK_OK(loom_module_intern_topological_type_id(
@@ -157,7 +157,7 @@ TEST_F(ModuleTypeUsesTest, StaticTypesDoNotAllocateDependencyState) {
   EXPECT_EQ(module_->type_uses.arena.used_allocation_size, 0u);
   EXPECT_EQ(module_->type_uses.arena.total_allocation_size, 0u);
   for (iree_host_size_t i = 0; i < module_->types.count; ++i) {
-    EXPECT_EQ(module_->types.dependencies[i], 0u);
+    EXPECT_EQ(loom_type_table_dependencies(&module_->types, i), 0u);
   }
   IREE_ASSERT_OK(loom_module_recompute_type_uses(module_));
   EXPECT_FALSE(loom_module_has_active_type_uses(module_));
@@ -191,14 +191,16 @@ TEST_F(ModuleTypeUsesTest, RebuildAndReinsertReuseFragmentedCapacity) {
 
 TEST_F(ModuleTypeUsesTest, RepeatedSharedChildrenHaveOneDependency) {
   auto type_id = Intern(loom_type_pool(loom_dim_pack_dynamic(width_)));
-  const auto singleton = module_->types.dependencies[type_id];
+  const auto singleton = loom_type_table_dependencies(&module_->types, type_id);
   const auto used_bytes = module_->type_uses.arena.used_allocation_size;
   for (int depth = 0; depth < 48; ++depth) {
     type_id = Pair(type_id, type_id);
-    EXPECT_EQ(module_->types.dependencies[type_id], singleton);
+    EXPECT_EQ(loom_type_table_dependencies(&module_->types, type_id),
+              singleton);
   }
   EXPECT_EQ(module_->type_uses.arena.used_allocation_size, used_bytes);
-  const auto carrier = AddArgument(module_->types.entries[type_id]);
+  const auto carrier =
+      AddArgument(loom_type_table_get(&module_->types, type_id));
   EXPECT_EQ(Dependencies(carrier), std::vector<loom_value_id_t>{width_});
   CheckEdges(1);
   loom_module_drop_value_type_uses(module_, carrier);
@@ -215,9 +217,10 @@ TEST_F(ModuleTypeUsesTest, SharedStaticChildrenRetainEmptyMembership) {
   auto type_id = Intern(loom_type_pool(loom_dim_pack_static(4)));
   for (int depth = 0; depth < 48; ++depth) {
     type_id = Pair(type_id, type_id);
-    EXPECT_EQ(module_->types.dependencies[type_id], 0u);
+    EXPECT_EQ(loom_type_table_dependencies(&module_->types, type_id), 0u);
   }
-  const auto carrier = AddArgument(module_->types.entries[type_id]);
+  const auto carrier =
+      AddArgument(loom_type_table_get(&module_->types, type_id));
   EXPECT_TRUE(Dependencies(carrier).empty());
   loom_module_drop_value_type_uses(module_, carrier);
   IREE_ASSERT_OK(loom_module_refresh_value_type_uses(module_, carrier));
@@ -232,15 +235,15 @@ TEST_F(ModuleTypeUsesTest, MembershipIsCanonicalButOccurrenceWalkingIsOrdered) {
   const auto height = AddArgument(loom_type_scalar(LOOM_SCALAR_TYPE_INDEX));
   const auto forward = Intern(Matrix(width_, height));
   const auto reverse = Intern(Matrix(height, width_));
-  EXPECT_EQ(module_->types.dependencies[forward],
-            module_->types.dependencies[reverse]);
+  EXPECT_EQ(loom_type_table_dependencies(&module_->types, forward),
+            loom_type_table_dependencies(&module_->types, reverse));
   auto pair = Pair(reverse, reverse);
-  const auto carrier = AddArgument(module_->types.entries[pair]);
+  const auto carrier = AddArgument(loom_type_table_get(&module_->types, pair));
   EXPECT_EQ(Dependencies(carrier),
             (std::vector<loom_value_id_t>{width_, height}));
   std::vector<loom_value_id_t> occurrences;
   IREE_ASSERT_OK(loom_type_walk_value_refs(
-      module_, module_->types.entries[pair],
+      module_, loom_type_table_get(&module_->types, pair),
       [](loom_value_id_t provider, void* user_data) {
         static_cast<std::vector<loom_value_id_t>*>(user_data)->push_back(
             provider);
@@ -261,7 +264,7 @@ TEST_F(ModuleTypeUsesTest, OverlapDoesNotMultiplyIncomingCarriers) {
   std::vector<loom_value_id_t> carriers;
   for (int i = 0; i < 128; ++i) {
     root = Pair(root, common);
-    carriers.push_back(AddArgument(module_->types.entries[root]));
+    carriers.push_back(AddArgument(loom_type_table_get(&module_->types, root)));
     EXPECT_EQ(Dependencies(carriers.back()),
               (std::vector<loom_value_id_t>{width_, height, depth}));
   }
@@ -284,7 +287,7 @@ TEST_F(ModuleTypeUsesTest, ForwardProvidersAndHighIdsRemainDeclared) {
   auto left = Intern(Matrix(width_, 4));
   auto right = Intern(Matrix(8, UINT32_MAX - 1));
   auto root = Pair(left, right);
-  const auto carrier = AddArgument(module_->types.entries[root]);
+  const auto carrier = AddArgument(loom_type_table_get(&module_->types, root));
   EXPECT_EQ(Dependencies(carrier), std::vector<loom_value_id_t>{width_});
   for (int i = 0; i < 3; ++i) {
     AddArgument(loom_type_scalar(LOOM_SCALAR_TYPE_INDEX));
@@ -353,7 +356,7 @@ TEST_F(ModuleTypeUsesTest, RandomizedAssignmentDropAndRefreshMatchSets) {
         const auto right = Intern(Matrix(providers[2], providers[3]));
         const auto pair = Pair(left, right);
         IREE_ASSERT_OK(loom_module_set_value_type(
-            module_, carrier, module_->types.entries[pair]));
+            module_, carrier, loom_type_table_get(&module_->types, pair)));
         declared[index] = std::set<loom_value_id_t>(std::begin(providers),
                                                     std::end(providers));
         active[index] = declared[index];
@@ -405,8 +408,9 @@ TEST_F(ModuleTypeUsesTest, SharedTypeDagsMatchIndependentMembership) {
       types.push_back(root);
       members.push_back(expected);
       const auto owner = random() % kCarrierCount;
-      IREE_ASSERT_OK(loom_module_set_value_type(module_, carriers[owner],
-                                                module_->types.entries[root]));
+      IREE_ASSERT_OK(loom_module_set_value_type(
+          module_, carriers[owner],
+          loom_type_table_get(&module_->types, root)));
       active[owner] = expected;
       EXPECT_EQ(Dependencies(carriers[owner]),
                 std::vector<loom_value_id_t>(expected.begin(), expected.end()));
@@ -482,8 +486,8 @@ TEST_F(ModuleTypeUsesTest, FailedBulkPrefixGrowthPreservesAllOwnership) {
   const auto left = Intern(Matrix(width_, 4));
   const auto right = Intern(Matrix(8, 12));
   const auto root = Pair(left, right);
-  const auto first = AddArgument(module_->types.entries[root]);
-  const auto second = AddArgument(module_->types.entries[root]);
+  const auto first = AddArgument(loom_type_table_get(&module_->types, root));
+  const auto second = AddArgument(loom_type_table_get(&module_->types, root));
   // Seven canonical set nodes plus these forward singletons fill the first
   // 128-record page. The new [0, 9) prefix requires another canonical node.
   for (uint32_t i = 0; i < 121; ++i) {
@@ -543,8 +547,12 @@ TEST_F(ModuleTypeUsesTest,
       ASSERT_GT(requests, 0u);
     } else {
       IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, status);
-      EXPECT_EQ(module_->types.entries, types.entries);
-      EXPECT_EQ(module_->types.dependencies, types.dependencies);
+      EXPECT_EQ(module_->types.segments.segment_count,
+                types.segments.segment_count);
+      EXPECT_EQ(loom_type_table_entry(&module_->types, first),
+                loom_type_table_entry(&types, first));
+      EXPECT_EQ(loom_type_table_dependencies(&module_->types, first),
+                loom_type_table_dependencies(&types, first));
       EXPECT_EQ(module_->types.count, types.count);
       EXPECT_EQ(module_->arena.used_allocation_size, payload_bytes);
       EXPECT_FALSE(loom_module_has_active_type_uses(module_));
@@ -557,11 +565,13 @@ TEST_F(ModuleTypeUsesTest,
               (std::vector<loom_value_id_t>{width_, height, depth}));
     EXPECT_EQ(Users(width_), std::vector<loom_value_id_t>{carrier});
     const auto retained_bytes = module_->type_uses.arena.used_allocation_size;
-    const auto retained_root = module_->types.dependencies[result_id];
+    const auto retained_root =
+        loom_type_table_dependencies(&module_->types, result_id);
     IREE_ASSERT_OK(loom_module_make_parameterized_type(
         module_, &loom_test_array_type_parameterized_descriptor, parameters,
         IREE_ARRAYSIZE(parameters), &result, &result_id));
-    EXPECT_EQ(module_->types.dependencies[result_id], retained_root);
+    EXPECT_EQ(loom_type_table_dependencies(&module_->types, result_id),
+              retained_root);
     EXPECT_EQ(module_->type_uses.arena.used_allocation_size, retained_bytes);
   }
 }

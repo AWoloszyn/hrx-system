@@ -261,9 +261,10 @@ static iree_status_t loom_replacement_request_type(
   loom_value_replacement_t* replacement = walk->replacement;
   loom_module_t* module = replacement->module;
   *destination = source;
-  if (!loom_type_dependencies_contains(&module->type_uses,
-                                       module->types.dependencies[source],
-                                       replacement->old_id)) {
+  if (!loom_type_dependencies_contains(
+          &module->type_uses,
+          loom_type_table_dependencies(&module->types, source),
+          replacement->old_id)) {
     return iree_ok_status();
   }
   const loom_type_id_t found = loom_replacement_find(replacement->memo, source);
@@ -278,7 +279,7 @@ static iree_status_t loom_replacement_request_type(
   IREE_RETURN_IF_ERROR(loom_replacement_push(walk, &frame));
   frame->flags = LOOM_REPLACEMENT_FRAME_FLAG_TYPE;
   frame->type.id = source;
-  frame->type.value = module->types.entries[source];
+  frame->type.value = loom_type_table_get(&module->types, source);
   frame->destination = destination;
   switch (loom_type_kind(frame->type.value)) {
     case LOOM_TYPE_FUNCTION: {
@@ -533,7 +534,7 @@ iree_status_t loom_value_replacement_type(loom_value_replacement_t* replacement,
   IREE_RETURN_IF_ERROR(loom_replacement_request_type(&walk, source, &result));
   IREE_RETURN_IF_ERROR(loom_replacement_run(&walk));
   if (result != source) {
-    *out_type = replacement->module->types.entries[result];
+    *out_type = loom_type_table_get(&replacement->module->types, result);
     *out_changed = true;
   }
   return iree_ok_status();

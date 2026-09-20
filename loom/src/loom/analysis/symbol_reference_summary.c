@@ -571,7 +571,8 @@ static iree_status_t loom_symbol_reference_summary_enter(
               (unsigned)attr.type_id, summary->module->types.count);
         }
         frame.children_kind = LOOM_SYMBOL_REFERENCE_SUMMARY_TYPES;
-        frame.values = &summary->module->types.entries[attr.type_id];
+        frame.values =
+            loom_type_table_entry(&summary->module->types, attr.type_id);
         frame.count = 1;
         frame.transform = LOOM_SYMBOL_REFERENCE_SUMMARY_TYPE;
         break;

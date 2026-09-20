@@ -274,7 +274,8 @@ iree_status_t LOOM_BYTECODE_BODY_VALUE_SCOPE_MATERIALIZE_DEFINITION(
     // This exact type-table entry has no region-local bindings and the reserved
     // value is fresh, so installing it cannot invalidate type-use state.
     loom_module_value(value_scope->output_module, value_id)->type =
-        value_scope->output_module->types.entries[canonical_type_id];
+        loom_type_table_get(&value_scope->output_module->types,
+                            canonical_type_id);
   } else {
     IREE_RETURN_IF_ERROR(
         loom_module_set_value_type(value_scope->output_module, value_id, type));

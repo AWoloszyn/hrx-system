@@ -35,13 +35,9 @@ extern "C" {
 #define LOOM_SEGMENTED_STORAGE_PAGE_MASK \
   (LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE - 1u)
 
-// Maximum number of segments represented by the directory.
-#define LOOM_SEGMENTED_STORAGE_MAX_SEGMENT_COUNT (1u << 24)
-
-// Number of page groups covering the complete segment index domain.
-#define LOOM_SEGMENTED_STORAGE_DIRECTORY_GROUP_COUNT \
-  (LOOM_SEGMENTED_STORAGE_MAX_SEGMENT_COUNT >>       \
-   (2 * LOOM_SEGMENTED_STORAGE_PAGE_SHIFT))
+// Maximum segment count covered by three fixed-width directory indexes.
+#define LOOM_SEGMENTED_STORAGE_MAX_SEGMENT_COUNT \
+  (1u << (3 * LOOM_SEGMENTED_STORAGE_PAGE_SHIFT))
 
 static_assert((1u << LOOM_SEGMENTED_STORAGE_PAGE_SHIFT) ==
                   LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE,
@@ -64,7 +60,7 @@ typedef struct loom_segmented_storage_page_group_t {
 typedef struct loom_segmented_storage_directory_t {
   // Groups covering the initialized segment prefix.
   loom_segmented_storage_page_group_t*
-      groups[LOOM_SEGMENTED_STORAGE_DIRECTORY_GROUP_COUNT];
+      groups[LOOM_SEGMENTED_STORAGE_SEGMENTS_PER_PAGE];
 } loom_segmented_storage_directory_t;
 
 // Arena-backed stable segment directory.

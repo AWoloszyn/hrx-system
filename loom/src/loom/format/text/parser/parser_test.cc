@@ -1935,8 +1935,9 @@ TEST_F(ParserTest, DescriptorBackedTypesRoundTripAndPreserveParameters) {
   loom_type_id_t element_type_id =
       loom_test_matrix_type_element_type(matrix_type);
   ASSERT_LT(element_type_id, module->types.count);
-  EXPECT_TRUE(loom_type_equal(module->types.entries[element_type_id],
-                              loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&module->types, element_type_id),
+                      loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
 
   loom_type_t packed_type = loom_module_value_type(
       module, loom_test_constant_result(loom_block_op(block, 3)));

@@ -408,7 +408,7 @@ TEST_F(CSETest, RewriterReplaceAttrDictRecordsTypeValueRefs) {
   ASSERT_EQ(dict.count, 1u);
   ASSERT_EQ(dict.entries[0].value.kind, LOOM_ATTR_TYPE);
   loom_type_t replaced_type =
-      module_->types.entries[dict.entries[0].value.type_id];
+      loom_type_table_get(&module_->types, dict.entries[0].value.type_id);
   ASSERT_TRUE(loom_type_dim_is_dynamic_at(replaced_type, 0));
   EXPECT_EQ(loom_type_dim_value_id_at(replaced_type, 0), new_dim);
   EXPECT_TRUE(

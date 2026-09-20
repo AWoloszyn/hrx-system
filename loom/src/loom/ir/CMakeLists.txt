@@ -64,6 +64,7 @@ loom_cc_library(
     "type_descriptor.h"
     "type_identity.h"
     "type_import.h"
+    "type_table.h"
     "types.h"
     "value_refs.h"
     "value_replacement.h"

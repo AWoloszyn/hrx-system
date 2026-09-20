@@ -211,7 +211,7 @@ TEST_F(ValueReplacementTest, MixedAttributeTypeGraphUsesAnExplicitStack) {
           loom_test_options_attr_element_type(variants.values[0]);
       EXPECT_EQ(element,
                 loom_test_options_attr_element_type(variants.values[1]));
-      type = module_->types.entries[element];
+      type = loom_type_table_get(&module_->types, element);
     }
   }
   EXPECT_EQ(loom_type_dim_value_id_at(type, 0), new_id_);
@@ -246,7 +246,7 @@ TEST_F(ValueReplacementTest, ReusesOneMemoAcrossTypesAndAttributes) {
                                              &result, &changed));
   ASSERT_TRUE(changed);
   ExpectSame(loom_type_func_data(result)->types[0],
-             module_->types.entries[result_id]);
+             loom_type_table_get(&module_->types, result_id));
 }
 
 TEST_F(ValueReplacementTest, UnaffectedNonemptyGraphAllocatesNoScratch) {
@@ -326,9 +326,9 @@ TEST_F(ValueReplacementTest, PublishedAttributesSurviveScratchBlockReuse) {
   ASSERT_EQ(result.entries[1].value.kind, LOOM_ATTR_PARAMETERIZED);
   const auto element =
       loom_test_options_attr_element_type(result.entries[1].value);
-  const auto array = module_->types.entries[element];
-  const auto pair =
-      module_->types.entries[loom_test_array_type_element_type(array)];
+  const auto array = loom_type_table_get(&module_->types, element);
+  const auto pair = loom_type_table_get(
+      &module_->types, loom_test_array_type_element_type(array));
   const auto* children = loom_type_func_data(pair)->types;
   EXPECT_EQ(loom_type_dim_value_id_at(children[0], 0), new_id_);
   ExpectSame(children[0], children[1]);
@@ -485,18 +485,20 @@ TEST_F(ValueReplacementTest,
     for (const auto carrier : carriers) {
       auto type = loom_module_value_type(module_, carrier);
       while (loom_test_array_type_isa(type)) {
-        type = module_->types.entries[loom_test_array_type_element_type(type)];
+        type = loom_type_table_get(&module_->types,
+                                   loom_test_array_type_element_type(type));
       }
       const auto provider = loom_type_dim_value_id_at(type, 0);
       EXPECT_TRUE(provider == old_id_ || provider == new_id_);
       ExpectDependencies(carrier, {provider});
     }
     for (size_t i = 0; i < owners.size(); ++i) {
-      auto type =
-          module_->types.entries
-              [loom_test_attrs_dict(owners[i]).entries[0].value.type_id];
+      auto type = loom_type_table_get(
+          &module_->types,
+          loom_test_attrs_dict(owners[i]).entries[0].value.type_id);
       while (loom_test_array_type_isa(type)) {
-        type = module_->types.entries[loom_test_array_type_element_type(type)];
+        type = loom_type_table_get(&module_->types,
+                                   loom_test_array_type_element_type(type));
       }
       const auto provider = loom_type_dim_value_id_at(type, 0);
       EXPECT_EQ(

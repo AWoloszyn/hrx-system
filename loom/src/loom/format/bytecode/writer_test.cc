@@ -1018,7 +1018,8 @@ TEST_F(WriterTest, TypeCatalogBytesDoNotDependOnNestedPayloadSharing) {
           storage[sizeof(loom_func_type_data_t) + 2 * sizeof(loom_type_t)] = {};
       auto* data = reinterpret_cast<loom_func_type_data_t*>(storage);
       data->arg_count = 2;
-      data->types[0] = data->types[1] = module->types.entries[child];
+      data->types[0] = data->types[1] =
+          loom_type_table_get(&module->types, child);
       const loom_type_id_t dependencies[] = {child, child};
       IREE_ASSERT_OK(loom_module_intern_topological_type_id(
           module, loom_type_function(data), dependencies, 2, &child));
@@ -1035,14 +1036,14 @@ TEST_F(WriterTest, TypeCatalogBytesDoNotDependOnNestedPayloadSharing) {
           storage[sizeof(loom_func_type_data_t) + 2 * sizeof(loom_type_t)] = {};
       auto* data = reinterpret_cast<loom_func_type_data_t*>(storage);
       data->arg_count = data->result_count = 1;
-      data->types[0] = module->types.entries[child];
-      data->types[1] = module->types.entries[result];
+      data->types[0] = loom_type_table_get(&module->types, child);
+      data->types[1] = loom_type_table_get(&module->types, result);
       const loom_type_id_t dependencies[] = {child, result};
       IREE_ASSERT_OK(loom_module_intern_topological_type_id(
           module, loom_type_function(data), dependencies, 2, &parent));
     } else {
-      loom_type_t argument_type = module->types.entries[child];
-      loom_type_t result_type = module->types.entries[result];
+      loom_type_t argument_type = loom_type_table_get(&module->types, child);
+      loom_type_t result_type = loom_type_table_get(&module->types, result);
       loom_type_t parent_type;
       IREE_ASSERT_OK(loom_module_intern_function_type(
           module, &argument_type, 1, &result_type, 1, &parent_type));

@@ -90,8 +90,8 @@ class SymbolReferenceSummaryTest : public ::testing::Test {
         storage[sizeof(loom_func_type_data_t) + 2 * sizeof(loom_type_t)] = {};
     auto* data = reinterpret_cast<loom_func_type_data_t*>(storage);
     data->arg_count = 2;
-    data->types[0] = module_->types.entries[first];
-    data->types[1] = module_->types.entries[second];
+    data->types[0] = loom_type_table_get(&module_->types, first);
+    data->types[1] = loom_type_table_get(&module_->types, second);
     const loom_type_id_t dependencies[] = {first, second};
     loom_type_id_t result = LOOM_TYPE_ID_INVALID;
     IREE_CHECK_OK(loom_module_intern_topological_type_id(
@@ -170,12 +170,12 @@ TEST_F(SymbolReferenceSummaryTest, TypedRegistersRetainValueReferences) {
   loom_register_type_data_t data = {};
   data.carrier_payload0 = 123;
   data.carrier_payload1 = 4;
-  data.value_type = module_->types.entries[value_type];
+  data.value_type = loom_type_table_get(&module_->types, value_type);
   loom_type_id_t register_type = LOOM_TYPE_ID_INVALID;
   IREE_ASSERT_OK(loom_module_intern_type_id(
       module_, loom_type_register_payload_with_value_type(&data),
       &register_type));
-  const auto type = module_->types.entries[register_type];
+  const auto type = loom_type_table_get(&module_->types, register_type);
   EXPECT_TRUE(loom_symbol_reference_type_may_contain_ref(type));
   IREE_ASSERT_OK(loom_symbol_reference_summary_query_type(
       &summary_, type, LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE));
@@ -228,7 +228,7 @@ TEST_F(SymbolReferenceSummaryTest, SharedEmptyGraphDoesNotExpandPerPath) {
   }
   for (auto root : roots) {
     IREE_ASSERT_OK(loom_symbol_reference_summary_query_type(
-        &summary_, module_->types.entries[root],
+        &summary_, loom_type_table_get(&module_->types, root),
         LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE));
     EXPECT_TRUE(Targets(LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE).empty());
   }
@@ -292,7 +292,7 @@ TEST_F(SymbolReferenceSummaryTest,
     type = Function(type, type);
   }
   IREE_ASSERT_OK(loom_symbol_reference_summary_query_type(
-      &summary_, module_->types.entries[type],
+      &summary_, loom_type_table_get(&module_->types, type),
       LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE));
   const auto targets = Targets(LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE);
   ASSERT_EQ(targets.size(), 2048u);
@@ -342,7 +342,7 @@ TEST_F(SymbolReferenceSummaryTest, UnaryPrefixesReuseTheCollapsedLeaf) {
   const loom_symbol_ref_t* retained_target = nullptr;
   for (auto root : roots) {
     IREE_ASSERT_OK(loom_symbol_reference_summary_query_type(
-        &summary_, module_->types.entries[root],
+        &summary_, loom_type_table_get(&module_->types, root),
         LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE));
     loom_symbol_reference_summary_span_t span;
     ASSERT_TRUE(loom_symbol_reference_summary_next(&summary_, &span));
@@ -369,7 +369,7 @@ TEST_F(SymbolReferenceSummaryTest, IndexGrowthPreservesIndependentTargets) {
   for (iree_host_size_t i = 0; i < types.size() * 2; ++i) {
     const auto index = i < types.size() ? i : types.size() * 2 - i - 1;
     IREE_ASSERT_OK(loom_symbol_reference_summary_query_type(
-        &summary_, module_->types.entries[types[index]],
+        &summary_, loom_type_table_get(&module_->types, types[index]),
         LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE));
     EXPECT_EQ(Targets(LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE),
               std::vector<loom_symbol_id_t>{targets[index].symbol_id});
@@ -386,7 +386,7 @@ TEST_F(SymbolReferenceSummaryTest,
     type = Function(type, leaf);
   }
   IREE_ASSERT_OK(loom_symbol_reference_summary_query_type(
-      &summary_, module_->types.entries[type],
+      &summary_, loom_type_table_get(&module_->types, type),
       LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE));
   const auto targets = Targets(LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE);
   ASSERT_EQ(targets.size(), kReferenceCount);

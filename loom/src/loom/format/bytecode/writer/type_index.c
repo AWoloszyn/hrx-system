@@ -135,7 +135,8 @@ static iree_status_t loom_bytecode_type_graph_add_attribute(
     case LOOM_ATTR_TYPE:
       if (attr->type_id < graph->index->module->types.count) {
         return loom_bytecode_type_graph_add_dependency(
-            graph, graph->index->module->types.entries[attr->type_id]);
+            graph,
+            loom_type_table_get(&graph->index->module->types, attr->type_id));
       }
       return iree_ok_status();
     case LOOM_ATTR_DICT:
@@ -237,8 +238,8 @@ static uint32_t loom_bytecode_attr_wire_hash(
       if (attr->type_id >= module->types.count) {
         return loom_attribute_hash(attr);
       }
-      return loom_bytecode_type_class(index,
-                                      module->types.entries[attr->type_id]);
+      return loom_bytecode_type_class(
+          index, loom_type_table_get(&module->types, attr->type_id));
     case LOOM_ATTR_DICT: {
       if (aggregate_depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return loom_attribute_hash(attr);
@@ -305,9 +306,10 @@ static bool loom_bytecode_attr_wire_equal(
           b->type_id >= module->types.count) {
         return a->type_id == b->type_id;
       }
-      return loom_bytecode_type_class(index,
-                                      module->types.entries[a->type_id]) ==
-             loom_bytecode_type_class(index, module->types.entries[b->type_id]);
+      return loom_bytecode_type_class(
+                 index, loom_type_table_get(&module->types, a->type_id)) ==
+             loom_bytecode_type_class(
+                 index, loom_type_table_get(&module->types, b->type_id));
     case LOOM_ATTR_DICT:
       if (a->count != b->count) {
         return false;
@@ -667,7 +669,7 @@ iree_status_t loom_bytecode_type_index_initialize(
   for (iree_host_size_t i = 0; i < module->types.count; ++i) {
     uint32_t node = UINT32_MAX;
     IREE_RETURN_IF_ERROR(loom_bytecode_type_storage_insert(
-        &graph, module->types.entries[i], &node));
+        &graph, loom_type_table_get(&module->types, i), &node));
     if (out_index->nodes[node].module_index == LOOM_TYPE_ID_INVALID) {
       out_index->nodes[node].module_index = (loom_type_id_t)i;
     }
