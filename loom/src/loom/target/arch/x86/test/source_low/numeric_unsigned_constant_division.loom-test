@@ -112,9 +112,18 @@ x86.target<avx2> @target
 func.def target(@target) @pair_by_high_power_of_two(%input: i32) -> (i32, i32) {
   %divisor = scalar.constant -2147483648 : i32
   %quotient = scalar.divui %input, %divisor : i32
-  // ERROR@+1: TARGET/003 {op_name="scalar.remui", constraint_key="x86.scalar.remainder_divisor"}
   %remainder = scalar.remui %input, %divisor : i32
   func.return %quotient, %remainder : i32, i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @pair_by_high_power_of_two(%input: reg<x86.gpr32>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
+  %13 = copy %input : reg<x86.gpr32> -> reg<x86.gpr32>
+  %quotient = shr.imm.gpr32 %13 {shift = 31}
+  %15 = mov.imm32 2147483647
+  %16 = copy %input : reg<x86.gpr32> -> reg<x86.gpr32>
+  %remainder = and.gpr32 %16, %15
+  return %quotient, %remainder
 }
 
 // ====

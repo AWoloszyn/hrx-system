@@ -880,52 +880,52 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   s_barrier
   %sum1 = ds_read_b32 %92
   %no_fusion = s_mov_b32 0
-  %bias_flag = s_mov_b32 1
-  %has_bias_bits = s_and_b32 %fusion_flags, %bias_flag
-  %122 = s_cmp_lg_i32 %has_bias_bits, %no_fusion
-  %has_bias = s_cselect_b32 %bias_flag, %no_fusion, %122
-  %127 = s_cmp_lg_i32 %has_bias, %no_fusion
-  low.cond_br %127, ^_bb1, ^_bb2 : reg<amdgpu.scc>
+  %has_bias_bits = s_and_b32_rhs_inline %fusion_flags, 1
+  %121 = s_cmp_lg_i32 %has_bias_bits, %no_fusion
+  %123 = s_mov_b32 1
+  %has_bias = s_cselect_b32 %123, %no_fusion, %121
+  %126 = s_cmp_lg_i32 %has_bias, %no_fusion
+  low.cond_br %126, ^_bb1, ^_bb2 : reg<amdgpu.scc>
 ^_bb1:
-  %128 = v_mov_b32 0
-  %bias0_scalar = global_load_b32_saddr %128, %bias_view
+  %127 = v_mov_b32 0
+  %bias0_scalar = global_load_b32_saddr %127, %bias_view
   %with_bias0 = v_add_f32 %sum0, %bias0_scalar
   low.br ^_bb3(%with_bias0: reg<amdgpu.vgpr>)
 ^_bb2:
   low.br ^_bb3(%sum0: reg<amdgpu.vgpr>)
 ^_bb3(%result0: reg<amdgpu.vgpr>):
-  %132 = s_cmp_lg_i32 %has_bias, %no_fusion
-  low.cond_br %132, ^_bb4, ^_bb5 : reg<amdgpu.scc>
+  %131 = s_cmp_lg_i32 %has_bias, %no_fusion
+  low.cond_br %131, ^_bb4, ^_bb5 : reg<amdgpu.scc>
 ^_bb4:
-  %133 = v_mov_b32 0
-  %bias1_scalar = global_load_b32_saddr %133, %bias_view {offset = 4}
+  %132 = v_mov_b32 0
+  %bias1_scalar = global_load_b32_saddr %132, %bias_view {offset = 4}
   %with_bias1 = v_add_f32 %sum1, %bias1_scalar
   low.br ^_bb6(%with_bias1: reg<amdgpu.vgpr>)
 ^_bb5:
   low.br ^_bb6(%sum1: reg<amdgpu.vgpr>)
 ^_bb6(%result1: reg<amdgpu.vgpr>):
   %is_lane0 = v_cmp_eq_i32_src1_inline %tid {rhs = 0}
-  %137, %138 = s_and_saveexec_b64 %is_lane0
-  low.cond_br %138, ^_bb7, ^_bb11 : reg<amdgpu.scc>
+  %136, %137 = s_and_saveexec_b64 %is_lane0
+  low.cond_br %137, ^_bb7, ^_bb11 : reg<amdgpu.scc>
 ^_bb7:
-  %139 = v_mov_b32 0
-  global_store_b32_saddr %139, %result0, %output_view
+  %138 = v_mov_b32 0
+  global_store_b32_saddr %138, %result0, %output_view
   low.br ^_bb11
 ^_bb11:
-  s_mov_b64_exec %137
+  s_mov_b64_exec %136
   %row1_in_bounds = s_cmp_lt_u32 %second_row, %row_count
   low.cond_br %row1_in_bounds, ^_bb8, ^_bb10 : reg<amdgpu.scc>
 ^_bb8:
-  %141, %142 = s_and_saveexec_b64 %is_lane0
-  low.cond_br %142, ^_bb9, ^_bb12 : reg<amdgpu.scc>
+  %140, %141 = s_and_saveexec_b64 %is_lane0
+  low.cond_br %141, ^_bb9, ^_bb12 : reg<amdgpu.scc>
 ^_bb9:
-  %143 = v_mov_b32 0
-  global_store_b32_saddr %143, %result1, %output_view {offset = 4}
+  %142 = v_mov_b32 0
+  global_store_b32_saddr %142, %result1, %output_view {offset = 4}
   low.br ^_bb12
 ^_bb10:
   return
 ^_bb12:
-  s_mov_b64_exec %141
+  s_mov_b64_exec %140
   low.br ^_bb10
 }
 

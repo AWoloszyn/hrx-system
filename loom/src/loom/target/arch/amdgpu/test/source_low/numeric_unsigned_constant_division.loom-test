@@ -125,8 +125,7 @@ func.def target(@target) @pair_by_power_of_two(%input: i32) -> (i32, i32) {
 low.func.def target<amdgpu.rdna3_5.core>(@target) abi(hal_kernel) @pair_by_power_of_two(%input: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
   %13 = s_mov_b32 4
   %quotient = s_lshr_b32 %input, %13
-  %15 = s_mov_b32 15
-  %remainder = s_and_b32 %input, %15
+  %remainder = s_and_b32_rhs_inline %input, 15
   return %quotient, %remainder
 }
 
@@ -136,10 +135,17 @@ amdgpu.target<gfx1151> @target
 
 func.def target(@target) @pair_by_high_power_of_two(%input: i32) -> (i32, i32) {
   %divisor = scalar.constant -2147483648 : i32
-  // ERROR@+1: TARGET/001 {op_name="scalar.divui"}
   %quotient = scalar.divui %input, %divisor : i32
   %remainder = scalar.remui %input, %divisor : i32
   func.return %quotient, %remainder : i32, i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core>(@target) abi(hal_kernel) @pair_by_high_power_of_two(%input: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %13 = s_mov_b32 31
+  %quotient = s_lshr_b32 %input, %13
+  %remainder = s_and_b32_lit %input, 2147483647
+  return %quotient, %remainder
 }
 
 // ====

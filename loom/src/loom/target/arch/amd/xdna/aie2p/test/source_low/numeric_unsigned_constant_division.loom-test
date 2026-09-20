@@ -310,13 +310,12 @@ func.def target(@target) @pair_by_high_power_of_two(%input: i32) -> (i32, i32) {
 
 // ----
 low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @pair_by_high_power_of_two(%input: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>) asm {
-  %divisor = mov.i32 -2147483648
-  %10 = ltu %input, %divisor
-  %11 = mov.short 1
-  %quotient = xor %10, %11
-  %14 = sub %input, %divisor
-  %15 = copy %10 : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %remainder = sel.nez %input, %14, %15
+  %13 = mov.short 31
+  %14 = mov.short 0
+  %15 = sub %14, %13
+  %quotient = lshl %input, %15
+  %17 = mov.i32 2147483647
+  %remainder = and %input, %17
   return %quotient, %remainder
 }
 

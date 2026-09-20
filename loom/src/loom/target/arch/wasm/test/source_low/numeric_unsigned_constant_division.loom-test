@@ -122,10 +122,18 @@ wasm.target<simd128> @target
 
 func.def target(@target) @pair_by_high_power_of_two(%input: i32) -> (i32, i32) {
   %divisor = scalar.constant -2147483648 : i32
-  // ERROR@+1: TARGET/001 {op_name="scalar.divui"}
   %quotient = scalar.divui %input, %divisor : i32
   %remainder = scalar.remui %input, %divisor : i32
   func.return %quotient, %remainder : i32, i32
+}
+
+// ----
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @pair_by_high_power_of_two(%input: reg<wasm.i32>) -> (reg<wasm.i32>, reg<wasm.i32>) asm {
+  %13 = i32.const 31
+  %quotient = i32.shr_u %input, %13
+  %15 = i32.const 2147483647
+  %remainder = i32.and %input, %15
+  return %quotient, %remainder
 }
 
 // ====

@@ -259,16 +259,15 @@ func.def target(@target) @scf_select_q6_nibble_i8(%code: i32, %use_high: i32) ->
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scf_select_q6_nibble_i8(%code: reg<amdgpu.sgpr>, %use_high: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
   %nibble_shift = s_mov_b32 4
-  %mask = s_mov_b32 15
   %high_shifted = s_lshr_b32 %code, %nibble_shift
-  %low_i32 = s_and_b32 %code, %mask
-  %high_i32 = s_and_b32 %high_shifted, %mask
-  %21 = v_mov_b32_copy %low_i32
-  %low = v_bfe_i32_offset_width_inline %21 {offset = 0, width = 8}
-  %23 = v_mov_b32_copy %high_i32
-  %high = v_bfe_i32_offset_width_inline %23 {offset = 0, width = 8}
-  %25 = v_mov_b32_copy %use_high
-  %cond = v_cmp_ne_i32_src1_inline %25 {rhs = 0}
+  %low_i32 = s_and_b32_rhs_inline %code, 15
+  %high_i32 = s_and_b32_rhs_inline %high_shifted, 15
+  %20 = v_mov_b32_copy %low_i32
+  %low = v_bfe_i32_offset_width_inline %20 {offset = 0, width = 8}
+  %22 = v_mov_b32_copy %high_i32
+  %high = v_bfe_i32_offset_width_inline %22 {offset = 0, width = 8}
+  %24 = v_mov_b32_copy %use_high
+  %cond = v_cmp_ne_i32_src1_inline %24 {rhs = 0}
   %selected = v_cndmask_b32 %low, %high, %cond
   return %selected
 }

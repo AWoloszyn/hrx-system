@@ -155,9 +155,10 @@ func.def target(@target) @pair_by_high_power_of_two(%input: i32) -> (i32, i32) {
 
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @pair_by_high_power_of_two(%input: reg<vm.value : i32>) -> (reg<vm.value : i32>, reg<vm.value : i32>) asm {
-  %divisor = constant.i32 2147483648
-  %quotient = integer.div.u32 %input, %divisor
-  %remainder = integer.rem.u32 %input, %divisor
+  %13 = constant.i32 31
+  %quotient = integer.shift.right.u32 %input, %13
+  %15 = constant.i32 2147483647
+  %remainder = integer.and.i32 %input, %15
   return %quotient, %remainder
 }
 
