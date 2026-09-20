@@ -1628,15 +1628,16 @@ static iree_status_t loom_low_target_legalize_verify_final(
       .fn = loom_low_target_legalize_query_contract,
       .user_data = state,
   };
+  loom_target_contract_query_environment_t environment = {0};
+  IREE_RETURN_IF_ERROR(loom_low_lower_source_query_scope_environment_initialize(
+      state->query_scope, &environment));
   loom_target_low_legality_result_t result = {0};
   const loom_target_low_legality_options_t legality_options = {
-      .target_facts = state->selection->target_facts,
-      .descriptor_registry = state->lower_options.descriptor_registry,
+      .environment = &environment,
       .error_catalog = state->selection->policy->error_catalog,
       .provider_list = state->legality_provider_list,
       .contract_query = contract_query,
       .type_supported = state->selection->policy->source_type_supported,
-      .view_regions = state->legalization_context.view_regions,
       .structural_legality_flags =
           LOOM_TARGET_LOW_STRUCTURAL_LEGALITY_ALLOW_SOURCE_SCF |
           LOOM_TARGET_LOW_STRUCTURAL_LEGALITY_ALLOW_SOURCE_CFG,

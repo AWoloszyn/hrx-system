@@ -127,16 +127,12 @@ static iree_status_t loom_low_lower_source_query_contract(
     query_environment.value_domain =
         loom_low_lower_context_value_domain(context);
   }
-  if (query_environment.arena == NULL) {
-    query_environment.arena = &context->function_arena;
-  }
-  if (query_environment.target_state_allocator.fn == NULL) {
-    query_environment.target_state_allocator =
-        (loom_target_contract_query_state_allocator_t){
-            .fn = loom_low_lower_source_query_allocate_target_state,
-            .user_data = context,
-        };
-  }
+  query_environment.arena = &context->function_arena;
+  query_environment.target_state_allocator =
+      (loom_target_contract_query_state_allocator_t){
+          .fn = loom_low_lower_source_query_allocate_target_state,
+          .user_data = context,
+      };
   if (query_environment.view_regions == NULL) {
     const loom_view_region_table_t* view_regions = NULL;
     status = loom_low_lower_context_view_regions(context, &view_regions);
@@ -272,6 +268,13 @@ loom_target_contract_query_callback_t
 loom_low_lower_source_query_scope_callback(
     loom_low_lower_source_query_scope_t* scope) {
   return loom_low_lower_source_query_callback(&scope->context);
+}
+
+iree_status_t loom_low_lower_source_query_scope_environment_initialize(
+    loom_low_lower_source_query_scope_t* scope,
+    loom_target_contract_query_environment_t* out_environment) {
+  return loom_low_lower_source_query_environment_initialize(
+      &scope->context, scope->context.descriptor_set, out_environment);
 }
 
 loom_local_value_domain_t* loom_low_lower_source_query_scope_value_domain(

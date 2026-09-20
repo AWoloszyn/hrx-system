@@ -1335,21 +1335,25 @@ iree_status_t loom_low_lower_function(loom_module_t* module,
     return iree_ok_status();
   }
 
-  const loom_view_region_table_t* legality_view_regions = NULL;
+  loom_target_contract_query_environment_t legality_environment = {0};
   if (iree_status_is_ok(status)) {
-    status =
-        loom_low_lower_context_view_regions(&context, &legality_view_regions);
+    status = loom_target_low_descriptor_set_select_for_source_lowering(
+        options->descriptor_registry,
+        loom_target_facts_bundle(options->target_facts),
+        &context.descriptor_set);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_low_lower_source_query_environment_initialize(
+        &context, context.descriptor_set, &legality_environment);
   }
   loom_target_low_legality_result_t legality_result = {};
   if (iree_status_is_ok(status)) {
     loom_target_low_legality_options_t legality_options = {
-        .target_facts = options->target_facts,
-        .descriptor_registry = options->descriptor_registry,
+        .environment = &legality_environment,
         .error_catalog = options->policy->error_catalog,
         .provider_list = options->legality_provider_list,
         .contract_query = loom_low_lower_source_query_callback(&context),
         .type_supported = context.policy->source_type_supported,
-        .view_regions = legality_view_regions,
         .structural_legality_flags =
             loom_low_lower_source_plan_uses_structured_control_flow(&context)
                 ? LOOM_TARGET_LOW_STRUCTURAL_LEGALITY_ALLOW_SOURCE_SCF

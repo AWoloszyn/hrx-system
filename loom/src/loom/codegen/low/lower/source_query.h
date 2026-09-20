@@ -29,8 +29,9 @@ typedef struct loom_low_lower_source_query_scope_t
 // Populates a target contract query environment from |context|.
 //
 // The returned environment borrows the active source function, value domain,
-// view-region analysis, and target state allocator from |context|. Callers may
-// replace individual fields before issuing a query.
+// view-region analysis, and target state allocator from |context|. Queries made
+// through the source callback always retain state in the context's arena and
+// state allocator, including when callers supply a different query environment.
 iree_status_t loom_low_lower_source_query_environment_initialize(
     loom_low_lower_context_t* context,
     const loom_low_descriptor_set_t* descriptor_set,
@@ -60,6 +61,12 @@ void loom_low_lower_source_query_scope_deinitialize(
 loom_target_contract_query_callback_t
 loom_low_lower_source_query_scope_callback(
     loom_low_lower_source_query_scope_t* scope);
+
+// Populates an environment borrowing the scope's source analyses and retained
+// target state. The environment remains valid until |scope| is deinitialized.
+iree_status_t loom_low_lower_source_query_scope_environment_initialize(
+    loom_low_lower_source_query_scope_t* scope,
+    loom_target_contract_query_environment_t* out_environment);
 
 // Returns the function-local value domain owned by |scope|, or NULL when the
 // source function has no body.
