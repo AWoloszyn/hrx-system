@@ -351,6 +351,96 @@ TEST_F(CxxTest, LaunchRangesUseNormalCompilationConfigValidation) {
   }
 }
 
+TEST_F(CxxTest, ConfigProvidersSpecializeFreshBytecodeAfterImportRelease) {
+  auto source = Source("reusable.cpp", R"(
+    [[loom::config("tuning.factor")]] extern const unsigned factor;
+    unsigned entry() { return factor * 3; }
+  )");
+  LOOMC_ASSERT_OK(Import(source.get()));
+  ExpectSuccess(result_.get());
+
+  loomc_compiler_t* compiler = nullptr;
+  LOOMC_ASSERT_OK(loomc_compiler_create(context_.get(), nullptr,
+                                        loomc_allocator_system(), &compiler));
+  CompilerPtr compiler_owner(compiler);
+  loomc_pass_program_t* passes = nullptr;
+  loomc_result_t* result = nullptr;
+  LOOMC_ASSERT_OK(loomc_pass_program_create_from_pipeline_text(
+      context_.get(), loomc_make_cstring_view("canonicalize,cse,dce"), nullptr,
+      loomc_allocator_system(), &passes, &result));
+  PassPtr pass_owner(passes);
+  ResultPtr pass_result(result);
+  ExpectSuccess(result);
+  LOOMC_ASSERT_OK(loomc_compile_module(compiler, workspace_.get(), passes,
+                                       module_.get(), nullptr,
+                                       loomc_allocator_system(), &result));
+  ResultPtr cleanup_result(result);
+  ExpectSuccess(result);
+  const std::string unresolved = Print(module_.get());
+  EXPECT_NE(unresolved.find("config.get @tuning.factor"), std::string::npos);
+
+  loomc_source_t* bytecode = nullptr;
+  LOOMC_ASSERT_OK(loomc_module_serialize_bytecode_to_source(
+      module_.get(), nullptr, loomc_allocator_system(), &bytecode));
+  SourcePtr bytecode_owner(bytecode);
+  const std::string original_bytecode = Contents(bytecode);
+  source.reset();
+  result_.reset();
+  cleanup_result.reset();
+  module_.reset();
+  workspace_.reset();
+
+  for (unsigned factor : {5u, 9u}) {
+    SCOPED_TRACE(factor);
+    loomc_workspace_t* workspace = nullptr;
+    LOOMC_ASSERT_OK(
+        loomc_workspace_create(nullptr, loomc_allocator_system(), &workspace));
+    WorkspacePtr workspace_owner(workspace);
+    loomc_module_t* module = nullptr;
+    LOOMC_ASSERT_OK(loomc_module_deserialize_bytecode_from_source(
+        context_.get(), workspace, bytecode, nullptr, loomc_allocator_system(),
+        &module, &result));
+    ModulePtr module_owner(module);
+    ResultPtr deserialize_result(result);
+    ExpectSuccess(result);
+    EXPECT_EQ(Print(module), unresolved);
+
+    const std::string provider_text =
+        "[[loom::config(\"tuning.factor\")]] const unsigned factor = " +
+        std::to_string(factor) + ";";
+    auto provider_source = Source("provider.cpp", provider_text.c_str());
+    loomc_module_t* provider = nullptr;
+    LOOMC_ASSERT_OK(loomc_module_import_cxx(
+        context_.get(), workspace, provider_source.get(), nullptr,
+        loomc_allocator_system(), &provider, &result));
+    ModulePtr provider_owner(provider);
+    ResultPtr provider_result(result);
+    ExpectSuccess(result);
+    provider_source.reset();
+    provider_result.reset();
+    const std::string provider_before = Print(provider);
+    EXPECT_NE(provider_before.find("config.def @tuning.factor = " +
+                                   std::to_string(factor)),
+              std::string::npos);
+
+    loomc_compile_options_t options = {};
+    options.config_module = provider;
+    options.config_flags = LOOMC_CONFIG_POLICY_FLAG_REQUIRE_RESOLVED;
+    LOOMC_ASSERT_OK(loomc_compile_module(compiler, workspace, passes, module,
+                                         &options, loomc_allocator_system(),
+                                         &result));
+    ResultPtr compile_result(result);
+    ExpectSuccess(result);
+    const std::string specialized = Print(module);
+    EXPECT_EQ(specialized.find("config.get"), std::string::npos);
+    EXPECT_NE(specialized.find("scalar.constant " + std::to_string(factor * 3) +
+                               " : i32"),
+              std::string::npos);
+    EXPECT_EQ(Print(provider), provider_before);
+    EXPECT_EQ(Contents(bytecode), original_bytecode);
+  }
+}
+
 TEST_F(CxxTest, ProviderFailureIsInfrastructureStatus) {
   auto source = Source("unit.cpp", "#include \"header.h\"\n");
   loomc_cxx_import_options_t options = {};

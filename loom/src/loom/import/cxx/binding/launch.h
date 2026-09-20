@@ -20,6 +20,8 @@
 
 namespace loom::cxx_import {
 
+class Configs;
+
 // Owns source launch admission and its retained per-function contracts. Exact
 // annotations become constants; bounded annotations become required config
 // symbols with predicates enforced by ordinary Loom config specialization.
@@ -39,7 +41,8 @@ class LaunchContracts {
   // Emits the launch terminator into the builder's current kernel config
   // region.
   void build(cxx::FunctionSymbol* function, std::string_view symbol,
-             loom_builder_t* builder, loom_location_id_t location);
+             Configs& configs, loom_builder_t* builder,
+             loom_location_id_t location);
 
  private:
   enum class Form { Exact, Range };
@@ -74,7 +77,7 @@ class LaunchContracts {
              const std::optional<Dimensions>& next);
   std::array<loom_value_id_t, 3> build_dimensions(
       const std::optional<Dimensions>& dimensions, std::string_view prefix,
-      std::string_view name, loom_builder_t* builder,
+      std::string_view name, Configs& configs, loom_builder_t* builder,
       loom_location_id_t location);
 
   // Invocation-owned frontend for constant evaluation and canonical symbols.

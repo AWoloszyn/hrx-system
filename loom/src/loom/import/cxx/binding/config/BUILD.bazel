@@ -14,37 +14,33 @@ package(
 )
 
 loom_cc_library(
-    name = "functions",
-    srcs = ["functions.cc"],
-    hdrs = ["functions.h"],
+    name = "config",
+    srcs = ["config.cc"],
+    hdrs = ["config.h"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = [
-        "//loom/src/loom/import/cxx/binding:intrinsics",
-        "//loom/src/loom/import/cxx/binding:launch",
-        "//loom/src/loom/import/cxx/binding/config",
-        "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/import/cxx/source:attributes",
         "//loom/src/loom/import/cxx/source:error",
         "//loom/src/loom/import/cxx/source:locations",
+        "//loom/src/loom/import/cxx/value:scalar",
         "//loom/src/loom/import/cxx/value:types",
         "//loom/src/loom/ir",
-        "//loom/src/loom/ops/check",
-        "//loom/src/loom/ops/func",
-        "//loom/src/loom/ops/kernel",
+        "//loom/src/loom/ops/config",
+        "//loom/src/loom/ops/scalar",
         "//third_party:cxx_parser",
     ],
 )
 
 loom_cc_test(
-    name = "functions_test",
-    srcs = ["functions_test.cc"],
+    name = "config_test",
+    srcs = ["config_test.cc"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = [
-        ":functions",
+        ":config",
+        "//loom/src/loom/import/cxx/source:error",
         "//loom/src/loom/import/cxx/value:builder_test",
-        "//loom/src/loom/ops/check",
-        "//loom/src/loom/ops/func",
-        "//loom/src/loom/ops/kernel",
+        "//loom/src/loom/ops/config",
+        "//loom/src/loom/ops/scalar",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
         "//third_party:cxx_parser",
@@ -54,8 +50,8 @@ loom_cc_test(
 iree_cmake_extra_content(
     """
 foreach(_target IN ITEMS
-    loom_import_cxx_symbol_functions.objects
-    loom_import_cxx_symbol_functions_test
+    loom_import_cxx_binding_config_config.objects
+    loom_import_cxx_binding_config_config_test
 )
   if(TARGET ${_target})
     target_compile_features(${_target} PRIVATE cxx_std_23)

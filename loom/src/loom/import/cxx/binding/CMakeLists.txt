@@ -86,6 +86,7 @@ loom_cc_library(
     "launch.cc"
   DEPS
     iree::third_party::cxx_parser
+    loom::import::cxx::binding::config
     loom::import::cxx::source
     loom::import::cxx::source::attributes
     loom::import::cxx::source::error

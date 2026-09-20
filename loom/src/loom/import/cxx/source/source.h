@@ -38,6 +38,8 @@ class Diagnostics final : public cxx::DiagnosticsClient {
   // independent of declarations injected by builtins or included headers.
   [[noreturn]] void reject(cxx::TranslationUnit& unit, cxx::AST* ast,
                            std::string_view message);
+  // Semantic redeclarations retain their name token even without an AST owner.
+  [[noreturn]] void reject(const cxx::Token& token, std::string_view message);
   bool has_error() const { return has_error_; }
   // Propagates sink failure and source rejection at a parser-safe boundary.
   // cxx forwards diagnostics from noexcept destructors, so report never throws.

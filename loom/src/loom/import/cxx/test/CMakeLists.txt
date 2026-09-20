@@ -18,6 +18,8 @@ loom_check_test_suite(
     "assumptions_invalid.cxx-test"
     "check.cxx-test"
     "conditionals.cxx-test"
+    "config.cxx-test"
+    "config_invalid.cxx-test"
     "const.cxx-test"
     "control_invalid.cxx-test"
     "data_models.cxx-test"
@@ -53,6 +55,56 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/packed_enums.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/packed_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_layout.h"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_module(
+  NAME
+    config_values
+  SRCS
+    "config_values.cpp"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    config_five_test
+  SRCS
+    "::config_values"
+  RUNNER_ARGS
+    "--case=five"
+    "--config=tuning.factor=5"
+    "--config=tuning.count=7"
+    "--config=tuning.enabled=true"
+  LABELS
+    "loom-execution-profile=five"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    config_nine_test
+  SRCS
+    "::config_values"
+  RUNNER_ARGS
+    "--case=nine"
+    "--config=tuning.factor=9"
+    "--config=tuning.count=13"
+    "--config=tuning.enabled=false"
+  LABELS
+    "loom-execution-profile=nine"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
 )
 endif()
 

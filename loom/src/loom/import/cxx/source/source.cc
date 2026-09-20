@@ -90,6 +90,10 @@ void Diagnostics::reject(cxx::TranslationUnit& unit, cxx::AST* ast,
   } else {
     token = unit.tokenAt(ast->firstSourceLocation());
   }
+  reject(token, message);
+}
+
+void Diagnostics::reject(const cxx::Token& token, std::string_view message) {
   emit(token, LOOM_DIAGNOSTIC_ERROR, LOOM_ERR_LOWERING_059, message);
   finish();
   throw SourceRejected();
@@ -175,7 +179,7 @@ class Sources {
     }
     if (provider_.fn) {
       bool found = false;
-      iree_string_view_t contents = {};
+      iree_string_view_t contents = iree_string_view_empty();
       check(provider_.fn(provider_.user_data, view(path), &found, &contents));
       if (found) {
         entry->second = string(contents);

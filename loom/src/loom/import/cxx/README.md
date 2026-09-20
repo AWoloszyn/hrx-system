@@ -102,6 +102,76 @@ cover ownership, source providers, and failure propagation. The
 [execution corpus](test/README.md) uses ordinary `loom_test` targets with
 independent numerical oracles.
 
+## Named configuration values
+
+An attributed `extern const` scalar declares a Loom specialization input:
+
+```cpp
+[[loom::config("tuning.factor")]] extern const unsigned factor;
+
+unsigned scale(unsigned value) { return value * factor; }
+```
+
+The declaration imports as `config.decl @tuning.factor : i32`, and each read
+becomes `config.get @tuning.factor : i32`. Unresolved reads survive ordinary
+cleanup and bytecode serialization. Import once, then specialize fresh copies
+of that module with different settings through the existing Loom config API
+or command-line inputs. `iree-test-loom` and `iree-benchmark-loom` both apply
+`--config=tuning.factor=5` when compiling called functions as well as kernels.
+
+Config values work in ordinary arithmetic, branches, loop bounds and scheduling
+attributes:
+
+```cpp
+[[loom::config("tuning.unroll")]] extern const unsigned unroll;
+[[loom::config("tuning.depth")]] extern const unsigned depth;
+
+unsigned sum(const unsigned* input, unsigned count) {
+  unsigned total = 0;
+  [[loom::unroll(unroll), loom::pipeline(depth)]]
+  for (unsigned index = 0; index < count; ++index) {
+    total += input[index];
+  }
+  return total;
+}
+```
+
+An attributed constant definition supplies an exact value:
+
+```cpp
+[[loom::config("tuning.factor")]] const unsigned factor = 5;
+```
+
+This imports as `config.def @tuning.factor = 5 : i32`. A provider translation
+unit can contain only definitions, with no functions. Embedders import it with
+`loomc_module_import_cxx` and pass the resulting module as
+`loomc_compile_options_t::config_module`; that provider is borrowed and remains
+immutable. `loom-link --mode=merge` also combines declarations and definitions.
+Supplying a provider as an ordinary rooted-link library does not bind configs.
+
+A source definition fixes that setting throughout its translation unit,
+including earlier reads and other source names using the same key. It can also
+participate in C++ constant evaluation. The initializer is an exact definition,
+not an overridable default: derived constants may already be folded during
+parsing. Reusable kernels include declaration-only headers and receive their
+config definitions at Loom compilation. Each specialization starts from the
+unresolved module again.
+
+Bindings require a leading `[[loom::config("key")]]` attribute on every
+declaration and definition, including redeclarations. Keys are explicit,
+nonempty strings. Different source names with the same key share one binding;
+their source types and any exact definitions must agree. Boolean, integer,
+floating-point and enum scalars retain their source representations. Mutable,
+volatile, thread-local, local, member, pointer and aggregate bindings produce
+source diagnostics. Configs are values without addressable storage.
+
+An unresolved setting is not a C++ constant expression. Template arguments,
+`constexpr` initializers, `static_assert` and fixed type extents still require
+source-known values; use source definitions and reimport when changing C++
+types or template instantiations. Ordinary `if` remains available for Loom
+specialization; `if constexpr` requires a separate source-selection projection
+and is currently rejected by the importer.
+
 ## Executable checks and benchmarks
 
 Include `<loomcxx/check.h>` to author a correctness case beside its implementation:
@@ -297,11 +367,16 @@ alignment can raise the final stride without changing internal member offsets.
 Standard `alignas` retains its own validation rules. Explicit alignment on shared
 arrays reaches the workgroup allocation's `align` operand.
 
+Compound `__builtin_offsetof` designators follow nested members and constant
+array indices. For example, `__builtin_offsetof(Block<unsigned>, words[2])` is
+`10`. Indices may become constant through template instantiation; the complete
+offset retains the source `size_t` width.
+
 Bitfield layouts retain actual bit positions, including fields crossing their
 declared storage units and zero-width alignment boundaries. Layout queries do
 not admit record values or bitfield memory operations into High IR. Packed base
-classes, virtual members, Microsoft bitfield ABI layouts, compound `offsetof`
-designators, aligned typedefs, and GNU `aligned` without an explicit argument
+classes, virtual members, Microsoft bitfield ABI layouts, aligned typedefs,
+and GNU `aligned` without an explicit argument
 produce source diagnostics.
 
 Explicit fixed vectors retain their lanes and element widths in High IR:
@@ -596,7 +671,7 @@ header APIs, and direct API tests that do not link the aggregate importer.
 | `source/` | One configured frontend invocation, provider and diagnostic handling, immutable facade lookup, and source locations copied into the output module. |
 | `value/` | Source type/layout projection, scalar/vector SSA and buffer/origin representations, arithmetic, and memory access construction from already evaluated operands. |
 | `control/` | An immutable analysis of ordered source writes, function/iteration exits and fallthrough, and nonwrapping counted-loop eligibility. This package has no IR dependency. |
-| `binding/` | Admission and construction for generated operation bindings, kernel launch contracts, and explicit loop schedules. |
+| `binding/` | Admission and construction for generated operation bindings, named scalar configs, kernel launch contracts, and explicit loop schedules. |
 | `symbol/` | Root selection, reachable function identities, deterministic naming, and native function definitions with explicit body contracts. |
 
 `import.cc` owns the native API's validation, exception boundary, module
