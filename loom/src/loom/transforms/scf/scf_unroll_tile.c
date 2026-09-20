@@ -78,8 +78,9 @@ static bool loom_scf_unroll_effects_conflict(
   if ((prior_flags | candidate_flags) == 0) {
     return false;
   }
-  if (iree_any_bit_set(prior_flags | candidate_flags,
-                       LOOM_SCF_BODY_EFFECT_ORDERED)) {
+  if (iree_any_bit_set(
+          prior_flags | candidate_flags,
+          LOOM_SCF_BODY_EFFECT_ORDERED | LOOM_SCF_BODY_EFFECT_CONVERGENT)) {
     return true;
   }
   if (!iree_any_bit_set(prior_flags | candidate_flags,
@@ -248,8 +249,9 @@ static iree_status_t loom_scf_unroll_effects_conflict_with_movement(
   if (!*out_conflict) {
     return iree_ok_status();
   }
-  if (iree_any_bit_set(prior_flags | candidate_flags,
-                       LOOM_SCF_BODY_EFFECT_ORDERED)) {
+  if (iree_any_bit_set(
+          prior_flags | candidate_flags,
+          LOOM_SCF_BODY_EFFECT_ORDERED | LOOM_SCF_BODY_EFFECT_CONVERGENT)) {
     return iree_ok_status();
   }
   if (!described_movements[prior_effect_index] ||
@@ -266,8 +268,9 @@ static bool loom_scf_unroll_effects_conflict_is_refinable(
     loom_scf_body_effect_flags_t prior_flags,
     loom_scf_body_effect_flags_t candidate_flags) {
   return loom_scf_unroll_effects_conflict(prior_flags, candidate_flags) &&
-         !iree_any_bit_set(prior_flags | candidate_flags,
-                           LOOM_SCF_BODY_EFFECT_ORDERED);
+         !iree_any_bit_set(
+             prior_flags | candidate_flags,
+             LOOM_SCF_BODY_EFFECT_ORDERED | LOOM_SCF_BODY_EFFECT_CONVERGENT);
 }
 
 static iree_status_t loom_scf_unroll_build_effect_dependency_plan(

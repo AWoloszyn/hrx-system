@@ -1,0 +1,208 @@
+// RUN: with-checks pass-report pipeline-scf-for
+
+// Loads advance; collective executions retain consumer order and participation.
+func.def @collective_consumer(%input: view<8xi32>, %initial: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 3 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xi32> -> i32
+    %collective = test.convergent %value : i32
+    %next = scalar.addi %sum, %collective : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *"loops-pipelined":1,*
+CHECK: *"values_per_record":1,"read_count":1}*
+CHECK: *"position":0,"op":"view.load","stage":"producer","iteration_lookahead":2}*
+CHECK: *"position":1,"op":"test.convergent","stage":"consumer","iteration_lookahead":0}*
+CHECK: *"position":2,"op":"scalar.addi","stage":"consumer","iteration_lookahead":0}*
+
+// ====
+
+// Exact bounds can come from arithmetic. Nested consumer control is retained
+// intact, including its carried capture and runtime inner trip count.
+func.def @nested_collective_consumer(%input: view<8xi32>, %initial: i32, %condition: i1, %repeat: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %half = index.constant 4 : index
+  %end = index.add %half, %half : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xi32> -> i32
+    %next = scf.if %condition -> (i32) {
+      %repeated = scf.for %j = [%begin to %repeat step %step](%partial = %sum : i32) -> (i32) {
+        %collective = test.convergent %value : i32
+        %added = scalar.addi %partial, %collective : i32
+        scf.yield %added : i32
+      }
+      scf.yield %repeated : i32
+    } else {
+      scf.yield %sum : i32
+    }
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *"loops-pipelined":1,*
+CHECK: *"values_per_record":1,"read_count":1}*
+CHECK: *"position":0,"op":"view.load","stage":"producer","iteration_lookahead":1}*
+CHECK: *"position":1,"op":"scf.if","stage":"consumer","iteration_lookahead":0}*
+
+// ====
+// RUN: pass pipeline-scf-for
+
+// Different trip counts could send original participants to distinct
+// main/drain consumer sites, even though the collective itself stays ordered.
+func.def @dynamic_upper_bound(%input: view<8xi32>, %initial: i32, %end: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xi32> -> i32
+    // ERROR@+1: STRUCTURE/014 {expected_constraint="compile-time exact loop bounds to preserve convergent consumer participation"}
+    %collective = test.convergent %value : i32
+    %next = scalar.addi %sum, %collective : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @dynamic_lower_bound(%input: view<8xi32>, %initial: i32, %begin: index) -> (i32) {
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xi32> -> i32
+    // ERROR@+1: STRUCTURE/014 {expected_constraint="compile-time exact loop bounds to preserve convergent consumer participation"}
+    %collective = test.convergent %value : i32
+    %next = scalar.addi %sum, %collective : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+// A collective cannot advance through a transitive load-address prerequisite.
+func.def @collective_address(%input: view<8xi32>, %initial: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    // ERROR@+1: STRUCTURE/014 {expected_constraint="read-ahead prerequisites without convergent operations"}
+    %collective = test.convergent %i : index
+    %position = index.add %collective, %step : index
+    %value = view.load %input[%position] : view<8xi32> -> i32
+    %next = scalar.addi %sum, %value : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+// A guard is a read prerequisite even when the addresses are independent.
+func.def @collective_guard(%input: view<8xi32>, %initial: i32, %condition: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %identity = scalar.constant 0 : i32
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    // ERROR@+1: STRUCTURE/014 {expected_constraint="read-ahead prerequisites without convergent operations"}
+    %collective = test.convergent %condition : i1
+    %value = scf.if %collective -> (i32) {
+      %loaded = view.load %input[%i] : view<8xi32> -> i32
+      scf.yield %loaded : i32
+    } else {
+      scf.yield %identity : i32
+    }
+    %next = scalar.addi %sum, %value : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+// Regions remain atomic scheduling units; this one cannot become a producer.
+func.def @mixed_load_and_collective(%input: view<8xi32>, %initial: i32, %condition: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    // ERROR@+1: STRUCTURE/014 {expected_constraint="convergent operations separated from read-ahead loads"}
+    %next = scf.if %condition -> (i32) {
+      %loaded = view.load %input[%i] : view<8xi32> -> i32
+      %collective = test.convergent %loaded : i32
+      scf.yield %collective : i32
+    } else {
+      scf.yield %sum : i32
+    }
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+// An independent observable effect must not disappear from the aggregate
+// merely because the same memory-pure region also contains convergence.
+func.def @mixed_ordered_and_collective(%input: view<8xi32>, %initial: i32, %condition: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xi32> -> i32
+    // ERROR@+1: STRUCTURE/014 {expected_constraint="ordinary loads and memory-pure consumers without writes, ordered effects or async groups"}
+    %next = scf.if %condition -> (i32) {
+      %observed = test.effectful_constant 7 : i32
+      %collective = test.convergent %value : i32
+      %added = scalar.addi %observed, %collective : i32
+      scf.yield %added : i32
+    } else {
+      scf.yield %sum : i32
+    }
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+// RUN: with-checks pass-report pipeline-scf-for
+
+// Depth one preserves the original dynamic loop; it creates no phase split.
+func.def @serial_collective(%input: view<8xi32>, %initial: i32, %end: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xi32> -> i32
+    %collective = test.convergent %value : i32
+    %next = scalar.addi %sum, %collective : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+CHECK: *"loops-pipelined":0,"policies-cleared":1}*
+CHECK: *"outcome":"serial",*"depth":1,*
+CHECK-NOT: *"category":"scf-pipeline-stage"*

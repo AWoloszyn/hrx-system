@@ -487,9 +487,8 @@ scope when the enclosing operation is cloned as a unit.
 The [checked dependent-lookup example](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/tooling/target/amdgpu/test/amdgpu_unroll_fences.loom)
 composes two helpers and exercises empty, short, full, and remainder tiles.
 A loop requesting `pipeline(%depth)` with depth greater than one rejects
-authored fences: the read-ahead transform supports ordinary loads and pure
-operations, and cannot carry an explicit source-range constraint through its
-producer/consumer partition.
+authored fences: the read-ahead transform cannot carry an explicit source-range
+constraint through its producer/consumer partition.
 
 ## Pipeline reads ahead of ordered computation
 
@@ -545,7 +544,7 @@ before the outer one, then unrolling processes the reconstructed program.
 The [guarded-row example](../workflows/tune-loop-schedules.md#keep-guards-and-inner-loops-in-the-source)
 checks these combinations through native execution.
 
-The read-ahead contract supports ordinary loads and pure operations with a
+The read-ahead contract supports ordinary loads and memory-pure consumers with a
 positive exact step. Read prerequisites may depend on the induction variable
 and values outside the loop. For a nested unit containing reads, this includes
 all captured values, guards, bounds, and initial inner state: the whole unit
@@ -557,6 +556,24 @@ a different scheduling/ownership contract and are diagnosed when
 requested at depth greater than one. The depth is bounded by 65,535 and by the
 representable carried-state tuple; unsupported requests fail at the source
 policy instead of silently running serially.
+
+Subgroup and workgroup reductions can remain in the ordered consumer when the
+requested loop's lower and upper bounds are compile-time exact. This keeps
+every original participant at the same collective site during startup, steady
+iteration, and drain. A fixed tile with runtime tail guards fits this contract:
+place guarded loads in one `scf.if` and the guarded reduction in a separate
+consumer `scf.if`. Each nested region is one scheduling unit, so a region mixing
+loads and collectives cannot advance. A collective result also cannot determine
+a read-ahead address or guard. Runtime bounds on the requested collective loop
+receive a diagnostic; depth one preserves the original loop.
+
+The [checked collective recurrence](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/test/corpus/conformance/collective_loop_state.loom)
+applies one template with serial and pipelined policies. It combines 16-lane
+cluster reductions, workgroup reductions, ragged reads, and a nested runtime
+consumer loop, checking each schedule against independent integer results.
+The [cooperative paged-attention workflow](../workflows/tune-loop-schedules.md#pipeline-cooperative-paged-attention)
+applies this shape to shared K/V page lookups, subgroup score reductions, online
+softmax state and ragged sequence tails, with matched checked benchmarks.
 
 The caller can also calculate these values with `index` arithmetic from
 specialized template arguments or target properties. A global configuration

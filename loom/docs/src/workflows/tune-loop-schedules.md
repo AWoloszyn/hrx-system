@@ -41,6 +41,13 @@ previous accumulator. Stores, explicit async groups, `scf.while`, and ordered
 effects receive diagnostics at depth greater than one. These
 policies are explicit; an unannotated loop receives no read-ahead transform.
 
+Cooperative reductions can also consume read-ahead values. A requested loop
+containing subgroup or workgroup collectives needs compile-time exact bounds;
+runtime tail guards can remain inside that fixed tile. Separate guarded reads
+from the collective consumer so each can retain its own stage. The
+[collective participation contract](../guide/functions-and-control.md#pipeline-reads-ahead-of-ordered-computation)
+explains this shape and its diagnostics.
+
 ## Give each motif its own schedule
 
 This motif sums four adjacent values per row for each work-item. Its template
@@ -500,6 +507,66 @@ case has one dispatch and an independent analytic expectation. Compare final
 register use, code size, copy waits and JIT cost alongside device time. A partial
 wait can preserve overlap within a body while backedge copies still drain it;
 neither that wait count nor a deeper queue predicts which policy wins.
+
+## Pipeline cooperative paged attention
+
+The [cooperative paged-attention example](../generated/examples/guide/functions-and-control/cooperative-paged-attention.loom)
+uses one subgroup per 128-channel query. Each lane holds a target-sized channel
+fragment. A runtime page loop reads one ID for both K and V, skips absent pages,
+and processes a fixed tile of sixteen rows. Repeated physical pages and shared
+page tables retain their logical row order.
+
+Inside that tile, `pipeline(%depth) unroll(%factor)` advances guarded K/V loads
+ahead of the subgroup QK reduction and the online softmax/PV recurrence. A
+separate guarded consumer updates the maximum, denominator and output
+accumulator. The fixed row count preserves collective participation; the
+runtime tail predicate prevents accesses to rows beyond the sequence length.
+The outer page count remains dynamic. Both policies instantiate one template:
+the serial caller passes depth one, the pipelined caller depth three, and both
+pass unroll two.
+
+Save the example, check it, and compare the same workload and input-reuse policy:
+
+```shell
+iree-test-loom cooperative-paged-attention.loom --device=amdgpu --sanitizer=access
+
+iree-benchmark-loom cooperative-paged-attention.loom \
+  --compare=@cooperative_paged_attention_serial_n128_i256,@cooperative_paged_attention_pipelined_n128_i256 \
+  --device=amdgpu --measure=dispatch_complete --batch-size=8 \
+  --iterations=16 --warmup-iterations=3 --input-ring-count=1 \
+  --interleave=ABABA --repetitions=2 --output=cooperative-comparison.json
+
+loom-compile cooperative-paged-attention.loom \
+  --root=@cooperative_paged_attention_pipelined --target=amdgpu:gfx1151 \
+  --format=amdgpu-hsaco --output=cooperative.hsaco --compile-report=details \
+  --compile-report-output=cooperative.report.json
+loom-compile-report show cooperative.report.json
+loom-compile-report suggest cooperative.report.json
+```
+
+The benchmark names cover 128 or 1024 tokens (`n128`, `n1024`) and one, sixteen
+or 256 queries (`i1`, `i16`, `i256`). Each timing case launches one kernel.
+Independent analytic checks cover the scalar state and all output channels;
+varied-input comparisons exercise distinct queries and ragged lengths over
+shared pages. Minimal backing allocations expose accidental reads from absent
+pages or inactive tail rows.
+
+This resource comparison is generated from the two callers for `gfx1151`:
+
+--8<-- "generated/examples/guide/functions-and-control/cooperative-resources.md"
+
+The corresponding report suggests a controlled depth comparison:
+
+```text
+--8<-- "generated/examples/guide/functions-and-control/cooperative-pipeline-suggest.txt"
+```
+
+Deeper read-ahead keeps more K/V fragments live. It can overlap future loads
+with current score and PV work even when a full wait precedes queue copies at
+the backedge. Inspect the load-to-consumer window as well as wait counts:
+neither the depth nor a full wait alone establishes whether useful overlap
+survived. The checked policies are a comparison point; device measurements and
+resource costs determine the choice for another query shape or target.
 
 ## Carry the experiment into a kernel
 
