@@ -1,4 +1,14 @@
 // RUN: verify
+// A user-defined literal performs a call even when it looks like a constant.
+unsigned operator""_factor(unsigned long long);
+void entry() {
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions require pure values without calls, mutation, or overloaded operations"
+  [[loom::unroll(3_factor)]]
+  for (unsigned index = 0; index < 16u; ++index) {}
+}
+
+// ====
+// RUN: verify
 // Invalid loop schedules are not silently discarded.
 unsigned opaque();
 int entry(unsigned count) {
@@ -274,4 +284,36 @@ unsigned entry(unsigned count) {
   // ERROR@+1: LOWERING/059 "loop scheduling requires a nonwrapping unsigned counted for loop"
   [[loom::unroll]] for (unsigned i = 0; i < ~0u; i += (1u << 2)) {}
   return count;
+}
+
+// ====
+// RUN: verify
+// Scheduling annotations cannot introduce observable volatile reads.
+extern volatile unsigned* factor;
+void entry() {
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions cannot read volatile values"
+  [[loom::unroll(*factor)]]
+  for (unsigned index = 0; index < 16u; ++index) {}
+}
+
+// ====
+// RUN: verify
+// Converting an annotation operand cannot invoke an overloaded conversion.
+struct Factor { operator unsigned(); };
+extern Factor factor;
+void entry() {
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions require pure values without calls, mutation, or overloaded operations"
+  [[loom::unroll(static_cast<unsigned>(factor))]]
+  for (unsigned index = 0; index < 16u; ++index) {}
+}
+
+// ====
+// RUN: verify
+// Overloaded arithmetic cannot become part of a scheduling annotation.
+struct Factor { unsigned operator+(unsigned); };
+extern Factor factor;
+void entry() {
+  // ERROR@+1: LOWERING/059 "loop scheduling expressions require pure values without calls, mutation, or overloaded operations"
+  [[loom::unroll(factor + 1u)]]
+  for (unsigned index = 0; index < 16u; ++index) {}
 }

@@ -56,7 +56,8 @@ void Functions::select(std::span<const iree_string_view_t> roots) {
                             "root has no concrete definition: " + spelling);
       }
       if (found->second.size() != 1) {
-        diagnostics_.reject(unit_, root, "ambiguous root: " + spelling);
+        diagnostics_.reject(unit_, found->second.front()->declaration(),
+                            "ambiguous root: " + spelling);
       }
       auto* selected = found->second.front();
       exported_.insert(selected);

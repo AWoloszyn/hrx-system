@@ -1,4 +1,52 @@
 // RUN: roundtrip
+// Signed scheduling constants become index operands with explicit ordering.
+void entry() {
+  [[loom::unroll(3), loom::pipeline(2), loom::schedule("recurrence")]]
+  for (unsigned index = 0; index < 16u; ++index) {}
+}
+// ----
+func.def public @entry() {
+  %index = scalar.constant 0 : i32
+  %1 = index.cast %index : i32 to offset
+  %2 = scalar.constant 16 : i32
+  %3 = index.cast %2 : i32 to offset
+  %4 = index.constant 1 : offset
+  %5 = scalar.constant 2 : i32
+  %6 = scalar.constant 3 : i32
+  %7 = index.cast %5 : i32 to index
+  %8 = index.cast %6 : i32 to index
+  scf.for %index = [%1 to %3 step %4] pipeline(%7) unroll(%8) schedule(recurrence) {
+    %10 = index.cast %index : offset to i32
+  }
+  func.return
+}
+
+// ====
+// RUN: roundtrip
+// Unsigned operands widen to i64 before entering the signed index domain.
+void entry(unsigned factor, unsigned char depth) {
+  [[loom::unroll(factor), loom::pipeline(depth)]]
+  for (unsigned index = 0; index < 16u; ++index) {}
+}
+// ----
+func.def public @entry(%factor: i32, %depth: i8) {
+  %index = scalar.constant 0 : i32
+  %3 = index.cast %index : i32 to offset
+  %4 = scalar.constant 16 : i32
+  %5 = index.cast %4 : i32 to offset
+  %6 = index.constant 1 : offset
+  %7 = scalar.extui %depth : i8 to i64
+  %8 = index.cast %7 : i64 to index
+  %9 = scalar.extui %factor : i32 to i64
+  %10 = index.cast %9 : i64 to index
+  scf.for %index = [%3 to %5 step %6] pipeline(%8) unroll(%10) {
+    %12 = index.cast %index : offset to i32
+  }
+  func.return
+}
+
+// ====
+// RUN: roundtrip
 // Constant loop headers preserve schedules and source conversions.
 #define PIXELS 320u
 template <unsigned Width, unsigned Step>

@@ -45,7 +45,6 @@ loom_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     iree::third_party::cxx_parser
-    loom::import::cxx::source::error
     loom::import::cxx::value::builder_test
     loom::ops::check
     loom::ops::func

@@ -1,0 +1,64 @@
+// RUN: roundtrip
+// Lookup uses the table's element type and the index vector's lane count.
+typedef unsigned Table __attribute__((vector_size(64)));
+typedef unsigned Result __attribute__((vector_size(16)));
+typedef unsigned short Indices __attribute__((vector_size(8)));
+[[loom::op("vector.table.lookup")]] Result lookup(Table, Indices);
+Result entry(Table table, Indices indices) { return lookup(table, indices); }
+// ----
+func.def public @entry(%table: vector<16xi32>, %indices: vector<4xi16>) -> (vector<4xi32>) {
+  %3 = vector.table.lookup %table[%indices] : vector<16xi32>, vector<4xi16> -> vector<4xi32>
+  func.return %3 : vector<4xi32>
+}
+
+// ====
+// RUN: roundtrip
+// Dot products retain all source signedness combinations and widened results.
+typedef signed char SignedBytes __attribute__((vector_size(16)));
+typedef unsigned char UnsignedBytes __attribute__((vector_size(16)));
+typedef int Accumulator __attribute__((vector_size(16)));
+[[loom::op("vector.dot4i", "s8s8")]]
+Accumulator dot_signed(SignedBytes, SignedBytes, Accumulator);
+[[loom::op("vector.dot4i", "u8s8")]]
+Accumulator dot_unsigned_signed(UnsignedBytes, SignedBytes, Accumulator);
+[[loom::op("vector.dot4i", "s8u8")]]
+Accumulator dot_signed_unsigned(SignedBytes, UnsignedBytes, Accumulator);
+[[loom::op("vector.dot4i", "u8u8")]]
+Accumulator dot_unsigned(UnsignedBytes, UnsignedBytes, Accumulator);
+
+Accumulator signed_product(SignedBytes lhs, SignedBytes rhs,
+                           Accumulator accumulator) {
+  return dot_signed(lhs, rhs, accumulator);
+}
+Accumulator unsigned_signed_product(UnsignedBytes lhs, SignedBytes rhs,
+                                    Accumulator accumulator) {
+  return dot_unsigned_signed(lhs, rhs, accumulator);
+}
+Accumulator signed_unsigned_product(SignedBytes lhs, UnsignedBytes rhs,
+                                    Accumulator accumulator) {
+  return dot_signed_unsigned(lhs, rhs, accumulator);
+}
+Accumulator unsigned_product(UnsignedBytes lhs, UnsignedBytes rhs,
+                             Accumulator accumulator) {
+  return dot_unsigned(lhs, rhs, accumulator);
+}
+// ----
+func.def public @signed_product(%lhs: vector<16xi8>, %rhs: vector<16xi8>, %accumulator: vector<4xi32>) -> (vector<4xi32>) {
+  %4 = vector.dot4i<s8s8> %lhs, %rhs, %accumulator : vector<16xi8>, vector<16xi8>, vector<4xi32>
+  func.return %4 : vector<4xi32>
+}
+
+func.def public @unsigned_signed_product(%lhs: vector<16xi8>, %rhs: vector<16xi8>, %accumulator: vector<4xi32>) -> (vector<4xi32>) {
+  %9 = vector.dot4i<u8s8> %lhs, %rhs, %accumulator : vector<16xi8>, vector<16xi8>, vector<4xi32>
+  func.return %9 : vector<4xi32>
+}
+
+func.def public @signed_unsigned_product(%lhs: vector<16xi8>, %rhs: vector<16xi8>, %accumulator: vector<4xi32>) -> (vector<4xi32>) {
+  %14 = vector.dot4i<s8u8> %lhs, %rhs, %accumulator : vector<16xi8>, vector<16xi8>, vector<4xi32>
+  func.return %14 : vector<4xi32>
+}
+
+func.def public @unsigned_product(%lhs: vector<16xi8>, %rhs: vector<16xi8>, %accumulator: vector<4xi32>) -> (vector<4xi32>) {
+  %19 = vector.dot4i<u8u8> %lhs, %rhs, %accumulator : vector<16xi8>, vector<16xi8>, vector<4xi32>
+  func.return %19 : vector<4xi32>
+}

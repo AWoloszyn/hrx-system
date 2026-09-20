@@ -15,6 +15,7 @@ loom_check_test_suite(
     compiler_test
   SRCS
     "assumptions.cxx-test"
+    "assumptions_invalid.cxx-test"
     "check.cxx-test"
     "conditionals.cxx-test"
     "const.cxx-test"
@@ -38,6 +39,8 @@ loom_check_test_suite(
     "schedule_lowering.cxx-test"
     "schedules.cxx-test"
     "schedules_invalid.cxx-test"
+    "shaped_intrinsics.cxx-test"
+    "shaped_intrinsics_invalid.cxx-test"
     "standards.cxx-test"
     "vectors.cxx-test"
     "vectors_invalid.cxx-test"

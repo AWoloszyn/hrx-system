@@ -1,3 +1,37 @@
+// RUN: roundtrip
+// Pure constant bounds retain C++ casts, wrapping, and unevaluated operands.
+[[loom::assume]] void assume(bool);
+unsigned bounded(unsigned value) {
+  assume(value < 16u);
+  assume(value < (1u << 4));
+  assume(value < (0xffffffffu + 17u));
+  assume(value < (unsigned char)272u);
+  assume(value < unsigned(16));
+  assume(value < sizeof(++value) * 4u);
+  assume(value < alignof(unsigned) * 4u);
+  assume(value < ((~0u & 15u) + 1u));
+  assume(value < (true ? 16 : 8));
+  return value;
+}
+// ----
+func.def public @bounded(%value$0: i32) -> (i32) {
+  %value$2 = scalar.assume %value$0 [range(%value$0, 0, 15)] : i32
+  %value$3 = scalar.assume %value$2 [range(%value$2, 0, 15)] : i32
+  %value$4 = scalar.assume %value$3 [range(%value$3, 0, 15)] : i32
+  %value$5 = scalar.assume %value$4 [range(%value$4, 0, 15)] : i32
+  %value$6 = scalar.assume %value$5 [range(%value$5, 0, 15)] : i32
+  %7 = scalar.extui %value$6 : i32 to i64
+  %8 = scalar.assume %7 [range(%7, 0, 15)] : i64
+  %value$9 = scalar.trunci %8 : i64 to i32
+  %10 = scalar.extui %value$9 : i32 to i64
+  %11 = scalar.assume %10 [range(%10, 0, 15)] : i64
+  %value$12 = scalar.trunci %11 : i64 to i32
+  %value$13 = scalar.assume %value$12 [range(%value$12, 0, 15)] : i32
+  %value$14 = scalar.assume %value$13 [range(%value$13, 0, 15)] : i32
+  func.return %value$14 : i32
+}
+
+// ====
 // RUN: verify
 // Unsupported conjuncts reject the complete assumption.
 [[loom::assume]] void assume(bool);

@@ -12,7 +12,6 @@
 #include <cxx/symbols.h>
 #include <cxx/types.h>
 
-#include "loom/import/cxx/source/error.h"
 #include "loom/import/cxx/value/builder_test.h"
 #include "loom/ops/func/ops.h"
 #include "loom/ops/kernel/ops.h"
@@ -95,57 +94,6 @@ TEST_F(FunctionsTest,
   EXPECT_EQ(definition.return_type->kind(), cxx::TypeKind::kVoid);
   EXPECT_EQ(loom_region_entry_arg_count(definition.region), 1u);
   EXPECT_EQ(definition.source->symbol, functions.pending()[0]);
-}
-
-TEST_F(FunctionsTest,
-       OrdinaryPointerParametersExpandWithoutChangingKernelBindings) {
-  Source source(IREE_SV(R"(
-    int* ordinary(int* pointer, long long displacement) {
-      return pointer + displacement;
-    }
-    [[loom::kernel]] void entry(int* pointer, long long displacement) {}
-  )"),
-                IREE_SV("pointers.cpp"), options());
-  Types types(source.unit(), source.diagnostics());
-  Locations locations(source.unit(), source.diagnostics(), module_);
-  Intrinsics intrinsics(source.unit(), source.diagnostics(), types);
-  LaunchContracts launches(source.unit(), source.diagnostics());
-  Functions functions(source.unit(), source.diagnostics(), module_, intrinsics,
-                      launches);
-  functions.select({});
-  ASSERT_EQ(functions.pending().size(), 2u);
-  auto ordinary =
-      functions.define(functions.pending()[0], types, locations, &builder_);
-  ASSERT_EQ(loom_region_entry_arg_count(ordinary.region), 3u);
-  EXPECT_TRUE(loom_type_equal(
-      loom_module_value_type(module_,
-                             loom_region_entry_arg_id(ordinary.region, 0)),
-      loom_type_buffer()));
-  EXPECT_TRUE(loom_type_equal(
-      loom_module_value_type(module_,
-                             loom_region_entry_arg_id(ordinary.region, 1)),
-      loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET)));
-  EXPECT_TRUE(loom_type_equal(
-      loom_module_value_type(module_,
-                             loom_region_entry_arg_id(ordinary.region, 2)),
-      loom_type_scalar(LOOM_SCALAR_TYPE_I64)));
-  auto kernel =
-      functions.define(functions.pending()[1], types, locations, &builder_);
-  EXPECT_EQ(loom_region_entry_arg_count(kernel.region), 2u);
-}
-
-TEST_F(FunctionsTest, RejectsAmbiguousAndMissingRoots) {
-  for (auto root : {IREE_SV("entry"), IREE_SV("absent")}) {
-    Source source(IREE_SV("int entry(int x) { return x; } float entry(float x) "
-                          "{ return x; }"),
-                  IREE_SV("overloads.cpp"), options());
-    Types types(source.unit(), source.diagnostics());
-    Intrinsics intrinsics(source.unit(), source.diagnostics(), types);
-    LaunchContracts launches(source.unit(), source.diagnostics());
-    Functions functions(source.unit(), source.diagnostics(), module_,
-                        intrinsics, launches);
-    EXPECT_THROW(functions.select({&root, 1}), SourceRejected);
-  }
 }
 
 }  // namespace

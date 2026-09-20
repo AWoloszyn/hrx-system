@@ -84,8 +84,13 @@ void Diagnostics::finish() {
 
 void Diagnostics::reject(cxx::TranslationUnit& unit, cxx::AST* ast,
                          std::string_view message) {
-  emit(unit.tokenAt(ast->firstSourceLocation()), LOOM_DIAGNOSTIC_ERROR,
-       LOOM_ERR_LOWERING_059, message);
+  cxx::Token token{};
+  if (cxx::ast_cast<cxx::TranslationUnitAST>(ast)) {
+    token.setFileId(preprocessor_->mainSourceFileId());
+  } else {
+    token = unit.tokenAt(ast->firstSourceLocation());
+  }
+  emit(token, LOOM_DIAGNOSTIC_ERROR, LOOM_ERR_LOWERING_059, message);
   finish();
   throw SourceRejected();
 }

@@ -34,6 +34,8 @@ class Diagnostics final : public cxx::DiagnosticsClient {
   ~Diagnostics() override { iree_status_free(status_); }
   void bind(cxx::Preprocessor* preprocessor) { preprocessor_ = preprocessor; }
   void report(const cxx::Diagnostic& diagnostic) override;
+  // Translation-unit errors refer to the start of the primary source file,
+  // independent of declarations injected by builtins or included headers.
   [[noreturn]] void reject(cxx::TranslationUnit& unit, cxx::AST* ast,
                            std::string_view message);
   bool has_error() const { return has_error_; }

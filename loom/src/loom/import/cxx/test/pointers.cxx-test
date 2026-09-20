@@ -263,3 +263,47 @@ func.def public @old_retreat(%p: buffer, %p_byte_offset$37: offset) -> (buffer, 
   %p_byte_offset$47 = index.cast %46 : i64 to offset
   func.return %p, %p_byte_offset$37 : buffer, offset
 }
+
+// ====
+// RUN: roundtrip
+// Ordinary pointer parameters expand into a buffer and offset; kernel bindings
+// expose one buffer and retain the zero origin inside the body.
+int* ordinary(int* pointer, long long displacement) {
+  return pointer + displacement;
+}
+[[loom::kernel]] void entry(int* pointer, long long displacement) {}
+// ----
+func.def public @ordinary(%pointer: buffer, %pointer_byte_offset: offset, %displacement: i64) -> (buffer, offset) {
+  %5 = scalar.constant 4 : i64
+  %6 = scalar.muli %displacement, %5 : i64
+  %7 = index.cast %pointer_byte_offset : offset to i64
+  %8 = scalar.addi %7, %6 : i64
+  %9 = scalar.assume %8 [range(%8, 0, 9223372036854775807)] : i64
+  %10 = index.cast %9 : i64 to offset
+  func.return %pointer, %10 : buffer, offset
+}
+
+kernel.def @entry() {
+  %workgroup_count_x = config.get @entry.workgroup_count.x : index
+  %workgroup_count_y = config.get @entry.workgroup_count.y : index
+  %workgroup_count_z = config.get @entry.workgroup_count.z : index
+  %workgroup_size_x = config.get @entry.workgroup_size.x : index
+  %workgroup_size_y = config.get @entry.workgroup_size.y : index
+  %workgroup_size_z = config.get @entry.workgroup_size.z : index
+  kernel.launch.config workgroups(%workgroup_count_x, %workgroup_count_y, %workgroup_count_z) workgroup_size(%workgroup_size_x, %workgroup_size_y, %workgroup_size_z) : index
+} launch(%pointer: buffer, %displacement: i64) {
+  %pointer_byte_offset = index.constant 0 : offset
+  kernel.return
+}
+
+config.decl @entry.workgroup_count.x : index
+
+config.decl @entry.workgroup_count.y : index
+
+config.decl @entry.workgroup_count.z : index
+
+config.decl @entry.workgroup_size.x : index
+
+config.decl @entry.workgroup_size.y : index
+
+config.decl @entry.workgroup_size.z : index
