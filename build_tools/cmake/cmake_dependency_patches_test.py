@@ -38,14 +38,17 @@ class CMakeDependencyPatchesTest(unittest.TestCase):
             source.mkdir()
             patches = root / "patch files"
             patches.mkdir()
-            for name in ("first", "second"):
-                (source / f"{name}.txt").write_text(
-                    "context    line\nbefore\n", encoding="utf-8"
-                )
+            (source / "value.txt").write_text(
+                "context    line\nbefore\n", encoding="utf-8"
+            )
+            for name, before, after in (
+                ("first", "before", "middle"),
+                ("second", "middle", "after"),
+            ):
                 (patches / f"{name}.patch").write_text(
-                    PATCH.replace("value.txt", f"{name}.txt").replace(
-                        "@@ -1 +1 @@", "@@ -1,2 +1,2 @@\n context line"
-                    ),
+                    PATCH.replace("-before", f"-{before}")
+                    .replace("+after", f"+{after}")
+                    .replace("@@ -1 +1 @@", "@@ -1,2 +1,2 @@\n context line"),
                     encoding="utf-8",
                 )
             archive = root / "source.tar.gz"
@@ -91,11 +94,10 @@ iree_populate_locked_fetch_content(sample sample_source)
                     f"CMAKE_GENERATOR:INTERNAL={os.environ['IREE_TEST_CMAKE_GENERATOR']}\n",
                     cache,
                 )
-                for name in ("first", "second"):
-                    value = build / "_deps/sample-src" / f"{name}.txt"
-                    self.assertEqual(
-                        value.read_text(encoding="utf-8"), "context    line\nafter\n"
-                    )
+                value = build / "_deps/sample-src/value.txt"
+                self.assertEqual(
+                    value.read_text(encoding="utf-8"), "context    line\nafter\n"
+                )
 
     def run_patch(self, source: Path, patch: Path) -> subprocess.CompletedProcess:
         git = shutil.which("git")
@@ -105,7 +107,7 @@ iree_populate_locked_fetch_content(sample sample_source)
                 CMAKE_COMMAND,
                 f"-DIREE_PATCH_GIT_EXECUTABLE={git}",
                 f"-DIREE_PATCH_SOURCE_DIR={source}",
-                f"-DIREE_PATCH_FILES={patch}",
+                f"-DIREE_PATCH_FILE={patch}",
                 "-DIREE_PATCH_ARGS=-p1",
                 "-P",
                 str(PATCH_DRIVER),
@@ -143,6 +145,37 @@ iree_populate_locked_fetch_content(sample sample_source)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("neither applies", result.stdout)
             self.assertEqual(value.read_text(encoding="utf-8"), "different\n")
+
+    def test_patch_stack_can_modify_a_file_created_by_an_earlier_patch(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            patch = root / "stack.patch"
+            patch.write_text(
+                "diff --git a/value.txt b/value.txt\n"
+                "new file mode 100644\n"
+                "--- /dev/null\n+++ b/value.txt\n"
+                "@@ -0,0 +1 @@\n+before\n" + PATCH,
+                encoding="utf-8",
+            )
+            for _ in range(2):
+                result = self.run_patch(root, patch)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(
+                    (root / "value.txt").read_text(encoding="utf-8"), "after\n"
+                )
+
+    def test_failed_later_patch_does_not_publish_earlier_patches(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            value = root / "value.txt"
+            value.write_text("before\n", encoding="utf-8")
+            patch = root / "stack.patch"
+            patch.write_text(
+                PATCH + PATCH.replace("-before", "-different"), encoding="utf-8"
+            )
+            result = self.run_patch(root, patch)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(value.read_text(encoding="utf-8"), "before\n")
 
 
 if __name__ == "__main__":
