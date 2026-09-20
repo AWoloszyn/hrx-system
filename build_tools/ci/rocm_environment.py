@@ -78,9 +78,35 @@ def diagnose_process(process_id: int) -> None:
         print(f"Kernel log unavailable: {error}", flush=True)
 
 
+def require_gnu_timeout() -> str:
+    """Finds the supervisor whose process-group and kill-grace semantics we use."""
+    observed = []
+    for name in ("timeout", "gnutimeout"):
+        path = shutil.which(name)
+        if path is None:
+            continue
+        result = subprocess.run(
+            [path, "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.startswith(
+            "timeout (GNU coreutils)"
+        ):
+            return path
+        observed.append(f"{path} (exit {result.returncode}): {result.stdout.strip()}")
+    detail = "; ".join(observed) or "neither command was found on PATH"
+    raise RuntimeError(
+        "GNU coreutils timeout is required as timeout or gnutimeout; " + detail
+    )
+
+
 def run_probe(
     command: list[str],
     *,
+    timeout_tool: str,
     timeout_seconds: float = 30,
     kill_after_seconds: float = 5,
     diagnostic_delay_seconds: float = 25,
@@ -89,7 +115,7 @@ def run_probe(
     # its TERM/KILL deadlines, even when reading kernel state stalls as well.
     process = subprocess.Popen(
         [
-            "timeout",
+            timeout_tool,
             f"--kill-after={kill_after_seconds}s",
             f"{timeout_seconds}s",
             *command,
@@ -107,7 +133,7 @@ def run_probe(
             )
             result = subprocess.run(
                 [
-                    "timeout",
+                    timeout_tool,
                     "--kill-after=1s",
                     "3s",
                     sys.executable,
@@ -157,16 +183,21 @@ def main() -> int:
         diagnose_process(args.diagnose)
         return 0
 
-    for tool in ("rocminfo", "timeout"):
-        if not shutil.which(tool):
-            print(f"::error::Required ROCm preflight tool {tool} was not found.")
-            return 1
+    if not shutil.which("rocminfo"):
+        print("::error::Required ROCm preflight tool rocminfo was not found.")
+        return 1
+    try:
+        timeout_tool = require_gnu_timeout()
+    except (OSError, RuntimeError) as error:
+        print(f"::error::{error}")
+        return 1
     runner_name = os.environ.get("RUNNER_NAME", "unknown")
     print(f"rocminfo path: {shutil.which('rocminfo')}", flush=True)
+    print(f"GNU timeout path: {timeout_tool}", flush=True)
     print(f"Checking ROCm hardware on runner {runner_name} (timeout: 30s).", flush=True)
     signal.signal(signal.SIGTERM, handle_termination)
     try:
-        status = run_probe(["rocminfo"])
+        status = run_probe(["rocminfo"], timeout_tool=timeout_tool)
     except KeyboardInterrupt:
         return 130
     if status == 124:

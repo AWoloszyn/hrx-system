@@ -29,6 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from build_tools.ci import ci_core_common as common
+from build_tools.ci import windows_diagnostics
 from build_tools.ci.ci_core_common import (
     CORE_CTEST_EXCLUDE_REGEXES,
     checked_dest,
@@ -108,8 +109,27 @@ def run(
     stderr_to_stdout: bool = False,
     pretty_command: bool = False,
 ) -> None:
+    command = [os.fspath(arg) for arg in args]
+    environment = os.environ if env is None else env
+    artifact_dir = windows_diagnostics.environment_value(
+        environment, windows_diagnostics.ARTIFACT_DIR_ENV
+    )
+    if artifact_dir:
+        build_dir = Path(command[2]) if command[1:2] == ["--build"] else None
+        log(f"++ Exec [{cwd or Path.cwd()}]$ {subprocess.list2cmdline(command)}")
+        returncode = windows_diagnostics.run(
+            command,
+            cwd=cwd or Path.cwd(),
+            env=env,
+            artifact_dir=Path(artifact_dir),
+            label="core-" + Path(command[0]).stem,
+            build_dir=build_dir,
+        )
+        if returncode:
+            raise subprocess.CalledProcessError(returncode, command)
+        return
     common.run(
-        args,
+        command,
         cwd=cwd,
         env=env,
         stderr_to_stdout=stderr_to_stdout,

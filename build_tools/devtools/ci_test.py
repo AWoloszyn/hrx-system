@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import re
 import shlex
@@ -46,6 +47,57 @@ from build_tools.devtools import ci, ci_config
 
 
 class CiTest(unittest.TestCase):
+    def test_keep_going_captures_failure_before_next_phase_changes_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sdk = root / "sdk"
+            sdk.mkdir()
+            includer = sdk / "wchar.h"
+            includer.write_text("#include <missing.h>\n")
+            missing = sdk / "missing.h"
+            message = (
+                f"{includer}(17): fatal error C1083: Cannot open include file: "
+                "'missing.h': No such file or directory"
+            )
+            steps = [
+                ci.CiStep(
+                    "First build",
+                    (sys.executable, "-c", f"print({message!r}); raise SystemExit(7)"),
+                ),
+                ci.CiStep(
+                    "Later build",
+                    (
+                        sys.executable,
+                        "-c",
+                        f"from pathlib import Path; Path({str(missing)!r}).write_text('now present')",
+                    ),
+                ),
+            ]
+            with (
+                mock.patch.object(ci, "REPO_ROOT", root),
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "IREE_CI_FAILURE_ARTIFACT_DIR": str(root / "artifacts"),
+                        "INCLUDE": str(sdk),
+                    },
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                result = ci.run_steps(
+                    steps, dry_run=False, keep_going=True, verbose=False
+                )
+            self.assertEqual(result, 7)
+            self.assertTrue(missing.exists())
+            manifests = list((root / "artifacts").glob("*/manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            manifest = json.loads(manifests[0].read_text())
+            record = next(
+                file for file in manifest["files"] if file["path"] == str(missing)
+            )
+            self.assertIn("error", record)
+            self.assertNotIn("sha256", record)
+
     def uses_cmake_build_dir(self, step: ci.CiStep, command_name: str) -> bool:
         expected_args = (
             "--cmake-build-dir",
