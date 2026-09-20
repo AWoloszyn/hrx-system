@@ -17,5 +17,6 @@ exports_files([
     "macro_operator_locations.patch",
     "packed_bitfields.patch",
     "packed_records.patch",
+    "aligned_records.patch",
     "template_lookahead.patch",
 ])

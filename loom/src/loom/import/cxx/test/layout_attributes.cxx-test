@@ -13,44 +13,24 @@
 #include "record_layout.h"
 
 // ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
-struct __attribute__((aligned(16))) Packet { unsigned value; };
+// RUN: verify
+// INPUT: cxx data-model=lp64
+#include "aligned_layout.h"
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=llp64
+#include "aligned_layout.h"
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=ilp32
+#include "aligned_layout.h"
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
-struct [[gnu::aligned(16)]] Packet { unsigned value; };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
-struct Packet { unsigned value __attribute__((aligned(16))); };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
-struct Packet { unsigned value __attribute__((__aligned__(16))); };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
-struct Packet { [[using gnu: aligned(16)]] unsigned value; };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
+// ERROR@+1: PARSE/036 "'aligned' attribute requires a record, non-static data member, or variable"
 typedef unsigned Value __attribute__((aligned(16)));
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
-template<unsigned Alignment> struct Packet { unsigned value __attribute__((aligned(Alignment))); };
-
-// ====
-// INPUT: cxx
-// ERROR@+1: PARSE/036 "layout attribute 'aligned' is not supported in this position"
-struct Packet { unsigned value __attribute__((unused, aligned(16))); };
 
 // ====
 // INPUT: cxx triple=x86_64-w64-windows-gnu data-model=llp64
@@ -151,3 +131,125 @@ unsigned offset() { return __builtin_offsetof(Packet, values[2]); }
 struct Packet { unsigned value; };
 // ERROR@+1: PARSE/036 "'packed' attribute must precede record completion"
 struct __attribute__((packed)) Packet;
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'aligned' attribute requires an explicit alignment argument"
+struct [[gnu::aligned]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'aligned' attribute requires one argument"
+struct [[gnu::aligned()]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'aligned' attribute requires one argument"
+struct [[gnu::aligned(8, 16)]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "requested alignment is not a positive power of 2"
+struct [[gnu::aligned(3)]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "requested alignment is not a positive power of 2"
+struct [[gnu::aligned(0)]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "requested alignment is not a positive power of 2"
+struct [[gnu::aligned(-8)]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'aligned' attribute requires an integer constant"
+struct [[gnu::aligned(8.0)]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "requested alignment exceeds the supported layout range"
+struct [[gnu::aligned(1ull << 32)]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "record layout exceeds the supported size range"
+struct [[gnu::aligned(1 << 30)]] Packet { unsigned char values[(1 << 30) + 1]; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "record layout exceeds the supported size range"
+struct Packet { unsigned char tag; unsigned value [[gnu::aligned(1 << 30)]]; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "requested alignment is less than minimum alignment"
+struct [[gnu::packed]] Packet { alignas(2) unsigned value [[gnu::aligned(8)]]; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "'aligned' attribute requires a record, non-static data member, or variable"
+struct Packet { [[gnu::aligned(8)]] static unsigned value; };
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned value; };
+// ERROR@+1: PARSE/036 "'aligned' attribute must precede record completion"
+struct __attribute__((aligned(16))) Packet;
+
+// ====
+// RUN: roundtrip
+// INPUT: cxx
+[[loom::kernel, loom::workgroup_size(1, 1, 1), loom::workgroup_count(1, 1, 1)]]
+void aligned_array(unsigned* output) {
+  [[loom::workgroup]] unsigned __attribute__((aligned(32))) values[4];
+  values[0] = 7;
+  output[0] = values[0];
+}
+
+// ----
+kernel.def @aligned_array() {
+  %1 = index.constant 1 : index
+  %2 = index.constant 1 : index
+  %3 = index.constant 1 : index
+  %4 = index.constant 1 : index
+  %5 = index.constant 1 : index
+  %6 = index.constant 1 : index
+  kernel.launch.config workgroups(%1, %2, %3) workgroup_size(%4, %5, %6) : index
+} launch(%output: buffer) {
+  %output_byte_offset = index.constant 0 : offset
+  %8 = index.constant 16 : offset
+  %values = buffer.alloca<workgroup> align(32) %8 : buffer
+  %values_byte_offset = index.constant 0 : offset
+  %values_view = buffer.view %values[%values_byte_offset] : buffer -> view<4xi32>
+  %12 = scalar.constant 7 : i32
+  %13 = scalar.constant 0 : i32
+  %14 = index.cast %13 : i32 to index
+  view.store %12, %values_view[%14] : i32, view<4xi32>
+  %15 = scalar.constant 0 : i32
+  %16 = index.cast %15 : i32 to index
+  %17 = view.load %values_view[%16] : view<4xi32> -> i32
+  %18 = scalar.constant 0 : i32
+  %19 = scalar.extsi %18 : i32 to i64
+  %20 = scalar.constant 4 : i64
+  %21 = scalar.muli %19, %20 : i64
+  %22 = index.cast %output_byte_offset : offset to i64
+  %23 = scalar.addi %22, %21 : i64
+  %24 = scalar.assume %23 [range(%23, 0, 9223372036854775807)] : i64
+  %25 = index.cast %24 : i64 to offset
+  %26 = buffer.view %output[%25] : buffer -> view<1xi32>
+  view.store %17, %26[0] : i32, view<1xi32>
+  kernel.return
+}
+
+// ====
+// INPUT: cxx
+unsigned requested;
+// ERROR@+1: PARSE/036 "'aligned' attribute requires an integer constant"
+struct [[gnu::aligned(requested)]] Packet { unsigned value; };
+
+// ====
+// INPUT: cxx
+// ERROR@+1: PARSE/036 "requested alignment is not a positive power of 2"
+struct [[gnu::aligned(8), gnu::aligned(3)]] Packet { unsigned value; };

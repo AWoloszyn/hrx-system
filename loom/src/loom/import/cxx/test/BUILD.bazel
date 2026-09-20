@@ -50,6 +50,7 @@ loom_check_test_suite(
         "vectors_invalid.cxx-test",
     ],
     data = [
+        "aligned_layout.h",
         "enum_semantics.h",
         "locations.h",
         "packed_layout.h",

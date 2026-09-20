@@ -47,7 +47,7 @@ TEST_P(LayoutTest, PackedRequestsAndResolvedLayoutSurviveSemanticArchives) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);
   options.data_model = GetParam();
-  Source source(IREE_SV("struct [[gnu::packed]] Packet {\n"
+  Source source(IREE_SV("struct [[gnu::packed, gnu::aligned(64)]] Packet {\n"
                         "  unsigned char tag;\n"
                         "  alignas(16) unsigned value;\n"
                         "  unsigned tail [[gnu::packed]];\n"
@@ -73,8 +73,9 @@ TEST_P(LayoutTest, PackedRequestsAndResolvedLayoutSurviveSemanticArchives) {
   ASSERT_NE(record, nullptr);
   EXPECT_TRUE(record->isPacked());
   EXPECT_EQ(record->packAlignment(), 0);
-  EXPECT_EQ(record->sizeInBytes(), 32);
-  EXPECT_EQ(record->alignment(), 16);
+  EXPECT_EQ(record->minimumAlignment(), 64);
+  EXPECT_EQ(record->sizeInBytes(), 64);
+  EXPECT_EQ(record->alignment(), 64);
   auto fields = record->find("value");
   ASSERT_FALSE(fields.begin() == fields.end());
   auto* value = cxx::symbol_cast<cxx::FieldSymbol>(*fields.begin());
