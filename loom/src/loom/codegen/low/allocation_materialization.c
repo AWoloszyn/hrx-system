@@ -17,6 +17,7 @@
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/type_registry.h"
+#include "loom/rewrite/rewriter.h"
 
 typedef struct loom_low_materialized_spill_slot_t {
   // SSA value ID produced by the generated low.storage.reserve op.
@@ -61,7 +62,7 @@ typedef struct loom_low_allocation_storage_prefix_t {
   loom_region_t* body;
   // Function entry block receiving generated storage reservations.
   loom_block_t* entry_block;
-  // Last existing storage reservation or ABI preamble op in the entry block.
+  // Last storage reservation or ABI import in the normalized entry prefix.
   loom_op_t* storage_insertion_anchor;
   // Last contiguous ABI, storage, or spill op before executable entry work.
   loom_op_t* entry_traffic_insertion_anchor;
@@ -254,48 +255,79 @@ static bool loom_low_allocation_entry_preamble_op(const loom_op_t* op) {
   return loom_low_live_in_isa(op) || loom_low_resource_isa(op);
 }
 
-static bool loom_low_allocation_entry_storage_prefix_op(const loom_op_t* op) {
-  return loom_low_allocation_entry_preamble_op(op) ||
-         loom_low_storage_reserve_isa(op) || loom_low_spill_isa(op);
+static bool loom_low_allocation_entry_traffic_op(const loom_op_t* op) {
+  return loom_low_allocation_entry_preamble_op(op) || loom_low_spill_isa(op);
 }
 
-static void loom_low_allocation_analyze_storage_prefix(
-    const loom_op_t* function_op,
+static iree_status_t loom_low_allocation_prepare_storage_prefix(
+    loom_module_t* module, const loom_op_t* function_op,
+    iree_arena_allocator_t* arena,
     loom_low_allocation_storage_prefix_t* out_prefix) {
   loom_region_t* body = loom_low_function_body((loom_op_t*)function_op);
   loom_block_t* entry_block = loom_region_entry_block(body);
+  loom_op_t* insertion_op = entry_block->first_op;
   loom_op_t* preamble_anchor = NULL;
   loom_op_t* last_storage_reserve = NULL;
   loom_op_t* entry_traffic_insertion_anchor = NULL;
   iree_host_size_t storage_reserve_count = 0;
   bool entry_prefix_open = true;
-  loom_op_t* op = NULL;
-  loom_block_for_each_op(entry_block, op) {
-    if (entry_prefix_open) {
-      if (loom_low_allocation_entry_storage_prefix_op(op)) {
-        entry_traffic_insertion_anchor = op;
-      } else {
-        entry_prefix_open = false;
-      }
-    }
+  loom_rewriter_t rewriter = {0};
+  iree_status_t status = iree_ok_status();
+  loom_op_t* op = entry_block->first_op;
+  while (op != NULL && iree_status_is_ok(status)) {
+    loom_op_t* next_op = op->next_op;
     if (loom_low_storage_reserve_isa(op)) {
+      // Repair may insert entry copies before earlier reservations. Restore
+      // their prefix in the same walk that retains insertion anchors. Moving
+      // declarations in order preserves every existing storage byte offset.
+      if (op == insertion_op) {
+        insertion_op = next_op;
+      } else {
+        if (rewriter.module == NULL) {
+          status = loom_rewriter_initialize(&rewriter, module, arena);
+        }
+        if (iree_status_is_ok(status)) {
+          status = loom_rewriter_move_before(&rewriter, op, insertion_op);
+        }
+      }
       ++storage_reserve_count;
       last_storage_reserve = op;
-    } else if (loom_low_allocation_entry_preamble_op(op)) {
-      preamble_anchor = op;
+    } else {
+      if (op == insertion_op && loom_low_allocation_entry_preamble_op(op)) {
+        preamble_anchor = op;
+        insertion_op = next_op;
+      }
+      if (entry_prefix_open) {
+        if (loom_low_allocation_entry_traffic_op(op)) {
+          entry_traffic_insertion_anchor = op;
+        } else {
+          entry_prefix_open = false;
+        }
+      }
     }
+    op = next_op;
   }
-  loom_op_t* storage_insertion_anchor =
-      last_storage_reserve ? last_storage_reserve : preamble_anchor;
-  *out_prefix = (loom_low_allocation_storage_prefix_t){
-      .body = body,
-      .entry_block = entry_block,
-      .storage_insertion_anchor = storage_insertion_anchor,
-      .entry_traffic_insertion_anchor = entry_traffic_insertion_anchor,
-      .storage_reserve_count = storage_reserve_count,
-      .generated_storage_extends_entry_prefix =
-          storage_insertion_anchor == entry_traffic_insertion_anchor,
-  };
+  loom_rewriter_deinitialize(&rewriter);
+  if (iree_status_is_ok(status)) {
+    loom_op_t* storage_insertion_anchor =
+        last_storage_reserve ? last_storage_reserve : preamble_anchor;
+    const bool extends_entry_prefix =
+        entry_traffic_insertion_anchor == NULL ||
+        (storage_insertion_anchor != NULL &&
+         storage_insertion_anchor->block_ordinal >=
+             entry_traffic_insertion_anchor->block_ordinal);
+    *out_prefix = (loom_low_allocation_storage_prefix_t){
+        .body = body,
+        .entry_block = entry_block,
+        .storage_insertion_anchor = storage_insertion_anchor,
+        .entry_traffic_insertion_anchor = extends_entry_prefix
+                                              ? storage_insertion_anchor
+                                              : entry_traffic_insertion_anchor,
+        .storage_reserve_count = storage_reserve_count,
+        .generated_storage_extends_entry_prefix = extends_entry_prefix,
+    };
+  }
+  return status;
 }
 
 static void loom_low_allocation_set_storage_insertion_point(
@@ -852,9 +884,6 @@ iree_status_t loom_low_allocation_materialize_spills(
       options && options->record_materialized_spills;
   const iree_diagnostic_emitter_t emitter =
       options ? options->emitter : (iree_diagnostic_emitter_t){0};
-  loom_low_allocation_storage_prefix_t storage_prefix;
-  loom_low_allocation_analyze_storage_prefix(table->function_op,
-                                             &storage_prefix);
   iree_host_size_t spill_plan_count = table->spill_plan_count;
   if (options && options->max_spill_plan_count > 0 &&
       options->max_spill_plan_count < spill_plan_count) {
@@ -877,6 +906,10 @@ iree_status_t loom_low_allocation_materialize_spills(
     }
     return iree_ok_status();
   }
+
+  loom_low_allocation_storage_prefix_t storage_prefix;
+  IREE_RETURN_IF_ERROR(loom_low_allocation_prepare_storage_prefix(
+      module, table->function_op, arena, &storage_prefix));
 
   loom_low_materialized_spill_slot_t* slots = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
