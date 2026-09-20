@@ -66,7 +66,7 @@ void iree_net_shm_storage_release(iree_net_shm_storage_t* storage) {
   iree_status_free(storage->failure.status);
   iree_slim_mutex_deinitialize(&storage->failure.mutex);
   for (uint32_t i = 0; i < 2; ++i) {
-    iree_async_event_native_deinitialize(&storage->wakes[i]);
+    iree_async_notification_native_deinitialize(&storage->wakes[i]);
   }
   iree_shm_close(&storage->mapping);
   iree_allocator_free(host_allocator, storage);
@@ -81,14 +81,16 @@ iree_status_t iree_net_shm_storage_create(
       iree_net_shm_storage_create_state(layout, 0, host_allocator, &storage));
   iree_status_t status =
       iree_shm_create(NULL, layout->total_size, &storage->mapping);
-  for (uint32_t i = 0; i < 2 && iree_status_is_ok(status); ++i) {
-    status = iree_async_event_native_initialize(&storage->wakes[i]);
-  }
   if (iree_status_is_ok(status)) {
     status = iree_net_shm_region_initialize(
         layout,
         iree_make_byte_span(storage->mapping.base, storage->mapping.size),
         storage->directions);
+  }
+  for (uint32_t i = 0; i < 2 && iree_status_is_ok(status); ++i) {
+    status = iree_async_notification_native_initialize(
+        iree_net_shm_region_notification_state(storage->mapping.base, i),
+        &storage->wakes[i]);
   }
   if (iree_status_is_ok(status)) {
     *out_storage = storage;
@@ -111,12 +113,9 @@ void iree_net_shm_storage_export(
   out_handles[0] = iree_async_primitive_none();
 #endif
   for (uint32_t side = 0; side < 2; ++side) {
-#if IREE_NET_SHM_STORAGE_HANDLE_COUNT == 3
-    out_handles[1 + side] = storage->wakes[side].wait_primitive;
-#else
-    out_handles[1 + side * 2] = storage->wakes[side].wait_primitive;
-    out_handles[2 + side * 2] = storage->wakes[side].signal_primitive;
-#endif
+    iree_async_notification_native_export(
+        &storage->wakes[side],
+        &out_handles[1 + side * IREE_ASYNC_NOTIFICATION_NATIVE_HANDLE_COUNT]);
   }
 }
 
@@ -145,22 +144,16 @@ iree_status_t iree_net_shm_storage_import(
                                   &storage->mapping);
   }
   if (iree_status_is_ok(status)) {
-    for (uint32_t side = 0; side < 2; ++side) {
-#if IREE_NET_SHM_STORAGE_HANDLE_COUNT == 3
-      storage->wakes[side].wait_primitive = handles[1 + side];
-      storage->wakes[side].signal_primitive = handles[1 + side];
-      handles[1 + side] = iree_async_primitive_none();
-#else
-      storage->wakes[side].wait_primitive = handles[1 + side * 2];
-      storage->wakes[side].signal_primitive = handles[2 + side * 2];
-      handles[1 + side * 2] = iree_async_primitive_none();
-      handles[2 + side * 2] = iree_async_primitive_none();
-#endif
-    }
     status = iree_net_shm_region_open(
         layout,
         iree_make_byte_span(storage->mapping.base, storage->mapping.size),
         storage->directions);
+  }
+  for (uint32_t side = 0; side < 2 && iree_status_is_ok(status); ++side) {
+    status = iree_async_notification_native_import(
+        iree_net_shm_region_notification_state(storage->mapping.base, side),
+        &handles[1 + side * IREE_ASYNC_NOTIFICATION_NATIVE_HANDLE_COUNT],
+        &storage->wakes[side]);
   }
   for (uint32_t i = 0; i < IREE_NET_SHM_STORAGE_HANDLE_COUNT; ++i) {
     iree_async_primitive_close(&handles[i]);
@@ -205,9 +198,8 @@ iree_status_t iree_net_shm_storage_clone_failure(
 
 void iree_net_shm_storage_signal(iree_net_shm_storage_t* storage,
                                  uint32_t side) {
-  iree_atomic_fetch_add(iree_net_shm_region_epoch(storage->mapping.base, side),
-                        1, iree_memory_order_release);
-  iree_async_event_native_set(&storage->wakes[side]);
+  iree_async_notification_native_signal(&storage->wakes[side],
+                                        IREE_ALL_WAITERS);
 }
 
 static void iree_net_shm_storage_return_slot(

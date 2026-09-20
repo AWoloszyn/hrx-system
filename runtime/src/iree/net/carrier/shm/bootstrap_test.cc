@@ -16,7 +16,7 @@
 namespace {
 
 constexpr std::array<uint8_t, 20> kOffer = {
-    'I', 'R', 'S', 'H', 1, 0, 1, 0, 4, 0, 0, 0, 16, 0, 0, 0, 0, 0, 1, 0,
+    'I', 'R', 'S', 'H', 2, 0, 1, 0, 4, 0, 0, 0, 16, 0, 0, 0, 0, 0, 1, 0,
 };
 
 TEST(ShmBootstrapTest, CanonicalOfferDerivesMappingGeometry) {

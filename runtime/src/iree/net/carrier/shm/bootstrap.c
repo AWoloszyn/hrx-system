@@ -13,7 +13,7 @@
 // "IRSH" in little-endian byte order. Version covers the region and queue ABI
 // as well as these records; there is no cross-version fallback.
 #define IREE_NET_SHM_BOOTSTRAP_MAGIC 0x48535249u
-#define IREE_NET_SHM_BOOTSTRAP_VERSION 1u
+#define IREE_NET_SHM_BOOTSTRAP_VERSION 2u
 
 static void iree_net_shm_bootstrap_encode_header(
     iree_net_shm_bootstrap_type_t type, uint8_t* out_record) {

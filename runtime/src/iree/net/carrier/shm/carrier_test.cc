@@ -133,6 +133,9 @@ struct AdmissionAllocator {
 class ShmCarrierTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
+    if (!iree_async_notification_native_is_supported()) {
+      GTEST_SKIP();
+    }
 #if !defined(IREE_PLATFORM_WINDOWS) && !defined(IREE_PLATFORM_WASM)
     if (GetParam()) {
       IREE_ASSERT_OK(iree_async_proactor_create_posix(
@@ -176,15 +179,8 @@ class ShmCarrierTest : public ::testing::TestWithParam<bool> {
         &layout, handles, iree_allocator_system(), &storage_[1]));
     iree_net_shm_carrier_options_t options = {sends, prefix_capacity};
     for (uint32_t side = 0; side < 2; ++side) {
-      iree_async_notification_shared_options_t notification_options = {};
-      notification_options.epoch_address =
-          iree_net_shm_region_epoch(storage_[side]->mapping.base, side);
-      notification_options.wake_primitive =
-          storage_[side]->wakes[side].wait_primitive;
-      notification_options.signal_primitive =
-          storage_[side]->wakes[side].signal_primitive;
       IREE_ASSERT_OK(iree_async_notification_create_shared(
-          proactor_, &notification_options, &notifications_[side]));
+          proactor_, &storage_[side]->wakes[side], &notifications_[side]));
       for (uint32_t endpoint = 0; endpoint < 2; ++endpoint) {
         auto& carrier = carriers_[side][endpoint];
         IREE_ASSERT_OK(iree_net_shm_carrier_create(
@@ -307,14 +303,8 @@ TEST_P(ShmCarrierTest, FailureBeforeActivationIsStickyWithoutCallbacks) {
   IREE_ASSERT_OK(iree_net_shm_region_calculate_layout({1, 2, 64}, &layout));
   IREE_ASSERT_OK(iree_net_shm_storage_create(&layout, iree_allocator_system(),
                                              &storage_[0]));
-  iree_async_notification_shared_options_t notification_options = {};
-  notification_options.epoch_address =
-      iree_net_shm_region_epoch(storage_[0]->mapping.base, 0);
-  notification_options.wake_primitive = storage_[0]->wakes[0].wait_primitive;
-  notification_options.signal_primitive =
-      storage_[0]->wakes[0].signal_primitive;
   IREE_ASSERT_OK(iree_async_notification_create_shared(
-      proactor_, &notification_options, &notifications_[0]));
+      proactor_, &storage_[0]->wakes[0], &notifications_[0]));
   iree_net_shm_carrier_options_t options =
       iree_net_shm_carrier_options_default();
   iree_net_carrier_t* carrier = nullptr;
@@ -480,9 +470,9 @@ TEST_P(ShmCarrierTest, CoalescesUnretainedSlotsIntoOneReceiptWake) {
   EXPECT_EQ(result.code, IREE_STATUS_OK);
   EXPECT_EQ(received_[1][0].bytes, payload);
   EXPECT_EQ(
-      iree_atomic_load(iree_net_shm_region_epoch(storage_[0]->mapping.base, 0),
-                       iree_memory_order_acquire),
-      1);
+      iree_notification_state_query_epoch(
+          iree_net_shm_region_notification_state(storage_[0]->mapping.base, 0)),
+      1u);
 }
 
 TEST_P(ShmCarrierTest, SteadyStateNeedsNoCarrierAllocation) {

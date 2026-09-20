@@ -197,46 +197,6 @@ TEST_P(RelayTest, MultipleNotificationRelays) {
   iree_async_notification_release(source_notification);
 }
 
-// Notification-to-notification relay using futex mode (when available).
-// This exercises the futex re-arm logic in the relay CQE handler.
-TEST_P(RelayTest, NotificationToNotificationFutexMode) {
-  iree_async_notification_t* source_notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create(
-      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &source_notification));
-
-  iree_async_notification_t* sink_notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create(
-      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink_notification));
-
-  if (source_notification->mode != IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-    iree_async_notification_release(source_notification);
-    iree_async_notification_release(sink_notification);
-    GTEST_SKIP() << "backend does not use futex notifications";
-  }
-
-  iree_async_relay_t* relay = nullptr;
-  IREE_ASSERT_OK(iree_async_proactor_register_relay(
-      proactor_, iree_async_relay_source_from_notification(source_notification),
-      iree_async_relay_sink_signal_notification(sink_notification, 1),
-      IREE_ASYNC_RELAY_FLAG_PERSISTENT, iree_async_relay_error_callback_none(),
-      &relay));
-  ASSERT_NE(relay, nullptr);
-
-  for (int i = 0; i < 3; ++i) {
-    uint32_t epoch_before =
-        iree_async_notification_query_epoch(sink_notification);
-
-    iree_async_notification_signal(source_notification, 1);
-    PollUntilNotificationEpochAdvances(sink_notification, epoch_before,
-                                       "futex relay sink epoch advance");
-  }
-
-  WaitForRelayUnregistration(relay);
-
-  iree_async_notification_release(source_notification);
-  iree_async_notification_release(sink_notification);
-}
-
 // Proactor destruction completes an unregistration that has not been polled.
 TEST_P(RelayTest, DestroyCompletesPendingUnregistration) {
   iree_async_notification_t* source_notification = nullptr;

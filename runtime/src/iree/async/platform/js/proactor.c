@@ -588,8 +588,7 @@ static iree_status_t iree_async_proactor_js_create_notification(
 }
 
 static iree_status_t iree_async_proactor_js_create_notification_shared(
-    iree_async_proactor_t* proactor,
-    const iree_async_notification_shared_options_t* options,
+    iree_async_proactor_t* proactor, iree_async_notification_native_t* native,
     iree_async_notification_t** out_notification) {
   return iree_make_status(IREE_STATUS_UNAVAILABLE,
                           "JS proactor does not support shared notifications");

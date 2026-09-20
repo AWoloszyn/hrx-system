@@ -6,8 +6,11 @@ for local services, collectives, and remote HAL, but has no dependency on HAL
 or any device driver. Applications that need only mappings or native resource
 exchange can use the lower layers independently.
 
-The transport supports Linux, Windows, and macOS. A Unix socket or local named
-pipe establishes the connection and transfers an anonymous shared mapping and
+The transport supports Linux, Windows, and macOS 14.4 or newer. Apple builds
+require an SDK providing the public shared-address wait APIs. The runtime can
+still target older macOS versions: factory construction reports `UNAVAILABLE`
+there, without preventing other transports from loading or operating. A Unix
+socket or local named pipe establishes the connection and transfers an anonymous shared mapping and
 wake resources. Messages then move through shared payload slots; the native
 stream remains open to detect peer departure. Progress runs on the caller's
 proactor, without a transport worker, background registry, or polling timer.
@@ -132,7 +135,13 @@ send budget means admitted operations must complete before more can enter.
 Completion releases the record before invoking the caller, permitting the next
 send directly from that callback. No sleep or periodic retry is needed.
 
-Each connection has one wake resource and one shared epoch per polling side.
+Each connection has one native notification bundle per receiving side. Its
+eight-byte shared state couples the epoch with blocking-wait enrollment.
+Linux uses an eventfd for async readiness and a shared futex for blocking waits;
+macOS uses a pipe and public shared-address waits. Windows uses separate
+auto-reset events for async and blocking observers, with local caller handoff
+instead of a notification worker. Publication skips the extra synchronous wake
+when no blocking callers are enrolled.
 Its endpoint waits subscribe to the same local notification. Publication and
 immediate slot returns share a batch wake; detached lease returns signal their
 peer directly. Epoch checks make coalescing safe: a native wake is advisory,
@@ -176,7 +185,8 @@ The useful boundaries are distinct, and a consumer can start at the one it needs
 | --- | --- |
 | Create, map, duplicate, or close host shared memory | `runtime/src/iree/base/internal/shm.h` |
 | Transfer native resources over a local byte stream | `runtime/src/iree/async/util/local_stream.h` |
-| Own native wake resources independently of an executor | `runtime/src/iree/async/event.h` |
+| Own native events independently of an executor | `runtime/src/iree/async/event.h` |
+| Publish and synchronously await shared epochs without an executor | `runtime/src/iree/async/notification_native.h` |
 | Wait for shared epochs on an application's proactor | `runtime/src/iree/async/notification.h` |
 | Connect local processes and exchange leased messages | `runtime/src/iree/net/carrier/shm/factory.h` |
 | Carry control messages, bulk transfers, or queue protocols | `runtime/src/iree/net/session.h` and `runtime/src/iree/net/channel/` |

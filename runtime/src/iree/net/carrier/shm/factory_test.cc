@@ -29,6 +29,19 @@
 
 namespace {
 
+TEST(ShmFactoryAvailabilityTest, ConstructionMatchesNativeSupport) {
+  iree_net_transport_factory_t* factory = nullptr;
+  iree_status_t status =
+      iree_net_shm_factory_create(nullptr, iree_allocator_system(), &factory);
+  if (iree_async_notification_native_is_supported()) {
+    IREE_EXPECT_OK(status);
+  } else {
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_UNAVAILABLE, status);
+    EXPECT_EQ(factory, nullptr);
+  }
+  iree_net_transport_factory_release(factory);
+}
+
 struct ConnectResult {
   // Caller-owned cancellation binding through terminal completion.
   iree_net_transport_connect_operation_t operation;
@@ -62,6 +75,9 @@ struct ConnectResult {
 class ShmFactoryTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
+    if (!iree_async_notification_native_is_supported()) {
+      GTEST_SKIP();
+    }
 #if !defined(IREE_PLATFORM_WINDOWS)
     if (GetParam()) {
       IREE_ASSERT_OK(iree_async_proactor_create_posix(

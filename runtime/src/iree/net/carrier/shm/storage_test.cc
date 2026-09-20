@@ -21,6 +21,12 @@ namespace {
 
 class ShmStorageTest : public ::testing::Test {
  protected:
+  void SetUp() override {
+    if (!iree_async_notification_native_is_supported()) {
+      GTEST_SKIP();
+    }
+  }
+
   void TearDown() override {
     iree_net_shm_storage_release(client_);
     iree_net_shm_storage_release(server_);
@@ -154,13 +160,9 @@ TEST_F(ShmStorageTest, LeaseReturnWakesRealNotificationBeforeDetachedReturn) {
   IREE_ASSERT_OK(
       iree_async_proactor_create_platform(iree_async_proactor_options_default(),
                                           iree_allocator_system(), &proactor));
-  iree_async_notification_shared_options_t options = {};
-  options.epoch_address = iree_net_shm_region_epoch(server_->mapping.base, 0);
-  options.wake_primitive = server_->wakes[0].wait_primitive;
-  options.signal_primitive = server_->wakes[0].signal_primitive;
   iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(
-      iree_async_notification_create_shared(proactor, &options, &notification));
+  IREE_ASSERT_OK(iree_async_notification_create_shared(
+      proactor, &server_->wakes[0], &notification));
   iree_async_buffer_lease_t leases[2] = {};
   auto& outgoing = server_->directions[0];
   for (uint32_t i = 0; i < 2; ++i) {

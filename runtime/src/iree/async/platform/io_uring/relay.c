@@ -207,9 +207,10 @@ iree_status_t iree_async_io_uring_register_relay(
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "relay source belongs to a different proactor");
       }
-      if (source.notification->platform.io_uring.primitive.type !=
+      if (source.notification->platform.io_uring.event.wait_primitive.type !=
               IREE_ASYNC_PRIMITIVE_TYPE_FD ||
-          source.notification->platform.io_uring.primitive.value.fd < 0) {
+          source.notification->platform.io_uring.event.wait_primitive.value.fd <
+              0) {
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "relay source notification has no wake fd");

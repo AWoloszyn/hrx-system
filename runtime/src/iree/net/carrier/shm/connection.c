@@ -389,14 +389,8 @@ iree_status_t iree_net_shm_connection_create(
   connection->storage = storage;
   iree_net_shm_storage_retain(storage);
 
-  iree_async_notification_shared_options_t notification_options = {
-      .epoch_address =
-          iree_net_shm_region_epoch(storage->mapping.base, storage->side),
-      .wake_primitive = storage->wakes[storage->side].wait_primitive,
-      .signal_primitive = storage->wakes[storage->side].signal_primitive,
-  };
   iree_status_t status = iree_async_notification_create_shared(
-      proactor, &notification_options, &connection->notification);
+      proactor, &storage->wakes[storage->side], &connection->notification);
   for (uint32_t i = 0; i < endpoint_count && iree_status_is_ok(status); ++i) {
     iree_net_shm_connection_endpoint_t* slot = &connection->endpoints[i];
     slot->connection = connection;

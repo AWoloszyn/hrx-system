@@ -6,6 +6,7 @@
 
 #include "iree/net/carrier/shm/factory.h"
 
+#include "iree/async/notification_native.h"
 #include "iree/net/carrier/shm/connect.h"
 #include "iree/net/carrier/shm/listener.h"
 
@@ -69,6 +70,10 @@ iree_status_t iree_net_shm_factory_create(
     iree_allocator_t host_allocator,
     iree_net_transport_factory_t** out_factory) {
   *out_factory = NULL;
+  if (!iree_async_notification_native_is_supported()) {
+    return iree_make_status(IREE_STATUS_UNAVAILABLE,
+                            "SHM requires native shared notification support");
+  }
   iree_net_shm_factory_options_t default_options =
       iree_net_shm_factory_options_default();
   if (!options) {

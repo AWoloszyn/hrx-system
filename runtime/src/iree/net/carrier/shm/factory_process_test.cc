@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include "iree/async/notification_native.h"
 #include "iree/async/proactor_platform.h"
 #include "iree/base/alignment.h"
 #include "iree/net/carrier/shm/factory.h"
@@ -336,6 +337,9 @@ const iree_coordinated_test_config_t kConfig = {kRoles, IREE_ARRAYSIZE(kRoles)};
 IREE_COORDINATED_TEST_REGISTER(kConfig);
 
 TEST(ShmFactoryProcessTest, RetainedMessagesSurviveExporterProcessLoss) {
+  if (!iree_async_notification_native_is_supported()) {
+    GTEST_SKIP();
+  }
   EXPECT_EQ(iree_coordinated_test_run(iree_coordinated_test_argc(),
                                       iree_coordinated_test_argv(), &kConfig),
             0);

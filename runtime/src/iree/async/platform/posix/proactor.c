@@ -631,8 +631,7 @@ static iree_status_t iree_async_proactor_posix_register_notification_wait(
 
   // Check if epoch already advanced (signal arrived between submit and
   // pending_queue drain). Complete immediately without registration.
-  uint32_t current_epoch =
-      iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
+  uint32_t current_epoch = iree_async_notification_query_epoch(notification);
   if (wait->wait_token != current_epoch) {
     // Notification reference is released by release_operation_resources
     // when the completion is drained.
@@ -646,7 +645,7 @@ static iree_status_t iree_async_proactor_posix_register_notification_wait(
   bool was_active = (notification->platform.posix.pending_waits != NULL ||
                      notification->platform.posix.relay_list != NULL);
   if (!was_active) {
-    int fd = notification->platform.posix.primitive.value.fd;
+    int fd = notification->platform.posix.event.wait_primitive.value.fd;
     iree_status_t status =
         iree_async_posix_event_set_add(proactor->event_set, fd, POLLIN);
     if (iree_status_is_ok(status)) {
@@ -997,12 +996,11 @@ static void iree_async_proactor_posix_commit_handle_poll(
 static void iree_async_proactor_posix_commit_notification_wait(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_wait_operation_t* wait) {
-  // Uses epoch_ptr (not the local epoch field) because shared notifications
-  // have their epoch in SHM.
+  // Queries shared state (not the local epoch field) because shared
+  // notifications have their epoch in SHM.
   if (!iree_all_bits_set(wait->wait_flags,
                          IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN)) {
-    wait->wait_token = iree_atomic_load(wait->notification->epoch_ptr,
-                                        iree_memory_order_acquire);
+    wait->wait_token = iree_async_notification_query_epoch(wait->notification);
   }
   iree_async_proactor_posix_push_pending(proactor, &wait->base);
 }
@@ -2911,8 +2909,7 @@ iree_async_proactor_posix_detach_notification_waits(
     iree_async_notification_t* notification) {
   iree_async_operation_t* ready_head = NULL;
   iree_async_operation_t** ready_tail = &ready_head;
-  uint32_t current_epoch =
-      iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
+  uint32_t current_epoch = iree_async_notification_query_epoch(notification);
 
   // Walk the pending wait list, detaching waiters with advanced epoch or
   // cancellation flag set.
@@ -2946,7 +2943,7 @@ iree_async_proactor_posix_detach_notification_waits(
   // deactivate the notification's fd from event_set and fd_map.
   if (!notification->platform.posix.pending_waits &&
       !notification->platform.posix.relay_list) {
-    int fd = notification->platform.posix.primitive.value.fd;
+    int fd = notification->platform.posix.event.wait_primitive.value.fd;
     iree_async_posix_fd_map_remove(&proactor->fd_map, fd);
     iree_status_ignore(
         iree_async_posix_event_set_remove(proactor->event_set, fd));
@@ -3642,69 +3639,28 @@ static iree_status_t iree_async_proactor_posix_create_notification(
   iree_atomic_ref_count_init(&notification->ref_count);
   notification->proactor = &proactor->base;
   iree_atomic_store(&notification->epoch, 0, iree_memory_order_release);
-  notification->epoch_ptr = &notification->epoch;
-  notification->flags = IREE_ASYNC_NOTIFICATION_FLAG_NONE;
-  notification->mode = IREE_ASYNC_NOTIFICATION_MODE_EVENT;
   notification->platform.posix.pending_waits = NULL;
   notification->platform.posix.relay_list = NULL;
+  iree_status_t status =
+      iree_async_event_native_initialize(&notification->platform.posix.event);
+  if (iree_status_is_ok(status)) {
 #if !defined(IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX)
-  // The condvar is process-local and is only used by local notifications.
-  if (!iree_any_bit_set(notification->flags,
-                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
     iree_notification_initialize(
         &notification->platform.posix.sync_notification);
-  }
 #endif  // !IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX
-
-#if defined(IREE_PLATFORM_LINUX)
-  // Linux: eventfd provides a single fd for both monitoring and signaling.
-  // EFD_NONBLOCK is required so reads during drain don't block.
-  // EFD_CLOEXEC prevents leakage to child processes.
-  int efd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-  if (efd < 0) {
+    *out_notification = notification;
+  } else {
     iree_allocator_free(allocator, notification);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(iree_status_code_from_errno(errno),
-                            "eventfd creation failed (%d)", errno);
   }
-  notification->platform.posix.primitive = iree_async_primitive_from_fd(efd);
-  notification->platform.posix.signal_primitive =
-      notification->platform.posix.primitive;
-#else
-  // macOS/BSD: pipe with non-blocking and close-on-exec on both ends.
-  // Read end for monitoring (POLLIN), write end for signaling.
-  int pipe_fds[2] = {-1, -1};
-  if (pipe(pipe_fds) < 0) {
-    iree_allocator_free(allocator, notification);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(iree_status_code_from_errno(errno),
-                            "pipe() failed for notification creation");
-  }
-  for (int i = 0; i < 2; ++i) {
-    int current_flags = fcntl(pipe_fds[i], F_GETFL);
-    if (current_flags >= 0) {
-      fcntl(pipe_fds[i], F_SETFL, current_flags | O_NONBLOCK);
-    }
-    fcntl(pipe_fds[i], F_SETFD, FD_CLOEXEC);
-  }
-  notification->platform.posix.primitive =
-      iree_async_primitive_from_fd(pipe_fds[0]);
-  notification->platform.posix.signal_primitive =
-      iree_async_primitive_from_fd(pipe_fds[1]);
-#endif  // IREE_PLATFORM_LINUX
-
-  *out_notification = notification;
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 static iree_status_t iree_async_proactor_posix_create_notification_shared(
     iree_async_proactor_t* base_proactor,
-    const iree_async_notification_shared_options_t* options,
+    iree_async_notification_native_t* native,
     iree_async_notification_t** out_notification) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  IREE_ASSERT_ARGUMENT(options);
-  IREE_ASSERT_ARGUMENT(options->epoch_address);
   IREE_ASSERT_ARGUMENT(out_notification);
   *out_notification = NULL;
 
@@ -3720,20 +3676,11 @@ static iree_status_t iree_async_proactor_posix_create_notification_shared(
 
   iree_atomic_ref_count_init(&notification->ref_count);
   notification->proactor = &proactor->base;
-  notification->epoch_ptr = options->epoch_address;
-  notification->flags = IREE_ASYNC_NOTIFICATION_FLAG_SHARED;
-  notification->mode = IREE_ASYNC_NOTIFICATION_MODE_EVENT;
+  notification->shared_native = native;
   notification->platform.posix.pending_waits = NULL;
   notification->platform.posix.relay_list = NULL;
 
-  // Use caller-provided primitives instead of creating our own eventfd/pipe.
-  // Caller owns these fds — destroy will not close them (SHARED flag).
-  notification->platform.posix.primitive = options->wake_primitive;
-  notification->platform.posix.signal_primitive = options->signal_primitive;
-
-  // No condvar initialization — condvar is process-local and useless for
-  // cross-process notifications. Shared sync waiters use either futex
-  // (Linux) or poll() on the wake fd (macOS).
+  notification->platform.posix.event = native->async_event;
 
   *out_notification = notification;
   IREE_TRACE_ZONE_END(z0);
@@ -3752,23 +3699,13 @@ static void iree_async_proactor_posix_destroy_notification(
       iree_async_proactor_posix_cast(base_proactor);
   iree_allocator_t allocator = proactor->base.allocator;
 
-  if (!iree_any_bit_set(notification->flags,
-                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
+  if (!notification->shared_native) {
 #if !defined(IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX)
     iree_notification_deinitialize(
         &notification->platform.posix.sync_notification);
 #endif  // !IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX
 
-    // Close fds. On Linux (eventfd): primitive == signal_primitive, close once.
-    // On macOS (pipe): close both ends independently.
-    if (notification->platform.posix.primitive.value.fd >= 0) {
-      close(notification->platform.posix.primitive.value.fd);
-    }
-    if (notification->platform.posix.signal_primitive.value.fd >= 0 &&
-        notification->platform.posix.signal_primitive.value.fd !=
-            notification->platform.posix.primitive.value.fd) {
-      close(notification->platform.posix.signal_primitive.value.fd);
-    }
+    iree_async_event_native_deinitialize(&notification->platform.posix.event);
   }
 
   iree_allocator_free(allocator, notification);
@@ -3783,41 +3720,12 @@ static void iree_async_proactor_posix_notification_signal(
     iree_async_proactor_t* base_proactor,
     iree_async_notification_t* notification, int32_t wake_count) {
   (void)base_proactor;
-  // Write eventfd/pipe to wake the poll thread (async waits and relays).
-  // EAGAIN means already signaled (redundant, benign). EBADF/EPIPE indicates
-  // the notification's fd was closed while still in use — a lifecycle bug.
-  int signal_fd = notification->platform.posix.signal_primitive.value.fd;
-#if defined(IREE_PLATFORM_LINUX)
-  uint64_t value = 1;
-#else
-  uint8_t value = 1;
-#endif  // IREE_PLATFORM_LINUX
-  ssize_t result;
-  do {
-    result = write(signal_fd, &value, sizeof(value));
-  } while (result < 0 && errno == EINTR);
-  IREE_ASSERT(result >= 0 || errno == EAGAIN);
+  iree_async_event_native_set(&notification->platform.posix.event);
 #if defined(IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX)
-  // Wake sync waiters directly via futex on the epoch atomic.
-  if (iree_any_bit_set(notification->flags,
-                       IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
-    iree_futex_wake_shared(notification->epoch_ptr, wake_count);
-  } else {
-    iree_futex_wake(notification->epoch_ptr, wake_count);
-  }
+  iree_futex_wake(&notification->epoch, wake_count);
 #else
-  // The condvar is process-local. Shared synchronous waits use a native
-  // shared futex on Linux, including when private synchronization uses
-  // pthreads.
-  if (!iree_any_bit_set(notification->flags,
-                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
-    iree_notification_post(&notification->platform.posix.sync_notification,
-                           wake_count);
-#if defined(IREE_PLATFORM_LINUX) && defined(IREE_PLATFORM_HAS_FUTEX)
-  } else {
-    iree_futex_wake_shared(notification->epoch_ptr, wake_count);
-#endif  // IREE_PLATFORM_LINUX && IREE_PLATFORM_HAS_FUTEX
-  }
+  iree_notification_post(&notification->platform.posix.sync_notification,
+                         wake_count);
 #endif  // IREE_ASYNC_POSIX_NOTIFICATION_USE_FUTEX
 }
 
@@ -3835,26 +3743,20 @@ static bool iree_async_proactor_posix_notification_wait(
     iree_timeout_t timeout) {
   (void)base_proactor;
   iree_time_t deadline_ns = iree_timeout_as_deadline_ns(timeout);
-  bool is_shared = iree_any_bit_set(notification->flags,
-                                    IREE_ASYNC_NOTIFICATION_FLAG_SHARED);
   while (iree_time_now() < deadline_ns) {
-    uint32_t current_epoch =
-        iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
+    uint32_t current_epoch = iree_async_notification_query_epoch(notification);
     if (current_epoch != wait_token) {
       return true;
     }
     iree_status_code_t wait_result =
-        is_shared
-            ? iree_futex_wait_shared(notification->epoch_ptr, wait_token,
-                                     deadline_ns)
-            : iree_futex_wait(notification->epoch_ptr, wait_token, deadline_ns);
+        iree_futex_wait(&notification->epoch, wait_token, deadline_ns);
     if (wait_result == IREE_STATUS_DEADLINE_EXCEEDED) {
       break;
     }
-    // IREE_STATUS_OK or IREE_STATUS_UNAVAILABLE (spurious) — re-check epoch.
+    IREE_ASSERT(wait_result == IREE_STATUS_OK,
+                "local notification wait contract violated");
   }
-  uint32_t final_epoch =
-      iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
+  uint32_t final_epoch = iree_async_notification_query_epoch(notification);
   return final_epoch != wait_token;
 }
 
@@ -3869,7 +3771,9 @@ static bool iree_async_proactor_posix_notification_wait(
 
 // Predicate for iree_notification_await: true when epoch has advanced.
 typedef struct iree_async_notification_epoch_predicate_t {
+  // Borrowed local epoch, retained through the condition wait.
   iree_atomic_int32_t* epoch;
+  // Epoch captured before checking the caller's protected condition.
   uint32_t wait_epoch;
 } iree_async_notification_epoch_predicate_t;
 
@@ -3880,80 +3784,17 @@ static bool iree_async_notification_epoch_advanced(void* arg) {
          predicate->wait_epoch;
 }
 
-// Shared sync waits cannot use the process-local condvar. Linux uses native
-// shared futexes even when private synchronization uses pthreads.
-static bool iree_async_proactor_posix_notification_wait_shared(
-    iree_async_notification_t* notification, uint32_t wait_token,
-    iree_timeout_t timeout) {
-  iree_time_t deadline_ns = iree_timeout_as_deadline_ns(timeout);
-  while (iree_time_now() < deadline_ns) {
-    uint32_t current_epoch =
-        iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-    if (current_epoch != wait_token) {
-      return true;
-    }
-#if defined(IREE_PLATFORM_LINUX) && defined(IREE_PLATFORM_HAS_FUTEX)
-    if (iree_futex_wait_shared(notification->epoch_ptr, wait_token,
-                               deadline_ns) == IREE_STATUS_DEADLINE_EXCEEDED) {
-      break;
-    }
-#else
-    int fd = notification->platform.posix.primitive.value.fd;
-    iree_duration_t remaining_ns = deadline_ns - iree_time_now();
-    if (remaining_ns <= 0) {
-      break;
-    }
-    int timeout_ms = (int)(remaining_ns / 1000000);
-    if (timeout_ms <= 0) {
-      timeout_ms = 1;
-    }
-    struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-    int poll_result = poll(&pfd, 1, timeout_ms);
-    if (poll_result < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      return false;
-    }
-    if (pfd.revents & POLLIN) {
-      // Drain one signal byte. EAGAIN means already drained (benign).
-      uint8_t drain_byte = 0;
-      ssize_t read_result = read(fd, &drain_byte, sizeof(drain_byte));
-      (void)read_result;
-    }
-    if (pfd.revents & (POLLHUP | POLLERR)) {
-      // Remote may have signaled (incremented epoch + wrote byte) and then
-      // immediately closed the pipe or crashed. Check the epoch one final time
-      // before reporting failure — the signal was already delivered.
-      uint32_t current_epoch =
-          iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-      return current_epoch != wait_token;
-    }
-#endif  // IREE_PLATFORM_LINUX && IREE_PLATFORM_HAS_FUTEX
-  }
-  uint32_t final_epoch =
-      iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-  return final_epoch != wait_token;
-}
-
 static bool iree_async_proactor_posix_notification_wait(
     iree_async_proactor_t* base_proactor,
     iree_async_notification_t* notification, uint32_t wait_token,
     iree_timeout_t timeout) {
   (void)base_proactor;
-  // Shared notifications need a cross-process wake mechanism.
-  if (iree_any_bit_set(notification->flags,
-                       IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
-    return iree_async_proactor_posix_notification_wait_shared(
-        notification, wait_token, timeout);
-  }
   // Fast path: epoch already advanced.
-  if (iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire) !=
-      wait_token) {
+  if (iree_async_notification_query_epoch(notification) != wait_token) {
     return true;
   }
   iree_async_notification_epoch_predicate_t predicate = {
-      .epoch = notification->epoch_ptr,
+      .epoch = &notification->epoch,
       .wait_epoch = wait_token,
   };
   return iree_notification_await(

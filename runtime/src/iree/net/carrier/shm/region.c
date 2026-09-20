@@ -104,8 +104,8 @@ iree_status_t iree_net_shm_region_initialize(
     iree_net_shm_direction_t* out_directions) {
   IREE_RETURN_IF_ERROR(iree_net_shm_region_validate_storage(layout, storage));
   for (uint32_t side = 0; side < 2; ++side) {
-    iree_atomic_store(iree_net_shm_region_epoch(storage.data, side), 0,
-                      iree_memory_order_relaxed);
+    iree_notification_state_initialize(
+        iree_net_shm_region_notification_state(storage.data, side));
   }
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;

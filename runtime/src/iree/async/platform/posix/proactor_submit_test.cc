@@ -468,22 +468,20 @@ TEST_F(PosixProactorSubmitTest,
 }
 
 TEST_F(PosixProactorSubmitTest, SharedRelayCapturesRegistrationEpoch) {
-  int pipe_fds[2];
-  ASSERT_EQ(pipe(pipe_fds), 0);
-  ScopedFd read_fd(pipe_fds[0]);
-  ScopedFd write_fd(pipe_fds[1]);
-  ASSERT_EQ(fcntl(read_fd.get(), F_SETFL, O_NONBLOCK), 0);
-  ASSERT_EQ(fcntl(write_fd.get(), F_SETFL, O_NONBLOCK), 0);
-
-  iree_atomic_int32_t epoch = IREE_ATOMIC_VAR_INIT(7);
-  iree_async_notification_shared_options_t options = {};
-  options.epoch_address = &epoch;
-  options.wake_primitive = iree_async_primitive_from_fd(read_fd.get());
-  options.signal_primitive = iree_async_primitive_from_fd(write_fd.get());
+  if (!iree_async_notification_native_is_supported()) {
+    GTEST_SKIP();
+  }
+  iree_notification_state_t state = {};
+  iree_notification_state_initialize(&state);
+  iree_async_notification_native_t native = {};
+  IREE_ASSERT_OK(iree_async_notification_native_initialize(&state, &native));
+  for (int i = 0; i < 7; ++i) {
+    iree_async_notification_native_signal(&native, 1);
+  }
   iree_async_notification_t* source = nullptr;
   iree_async_notification_t* sink = nullptr;
   IREE_ASSERT_OK(
-      iree_async_notification_create_shared(proactor_, &options, &source));
+      iree_async_notification_create_shared(proactor_, &native, &source));
   IREE_ASSERT_OK(iree_async_notification_create(
       proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
 
@@ -507,6 +505,7 @@ TEST_F(PosixProactorSubmitTest, SharedRelayCapturesRegistrationEpoch) {
       proactor_, relay, iree_async_relay_unregistered_callback_none());
   iree_async_notification_release(sink);
   iree_async_notification_release(source);
+  iree_async_notification_native_deinitialize(&native);
 }
 
 TEST_F(PosixProactorSubmitTest, ValidationFailurePrecedesEagerSend) {

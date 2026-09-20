@@ -21,6 +21,7 @@ iree_cc_library(
     iree::base::internal
     iree::base::internal::atomic_freelist
     iree::base::internal::mpsc_queue
+    iree::base::threading
   PUBLIC
 )
 

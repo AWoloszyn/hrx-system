@@ -23,6 +23,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/atomic_freelist.h"
 #include "iree/base/internal/mpsc_queue.h"
+#include "iree/base/threading/notification.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -116,13 +117,14 @@ iree_status_t iree_net_shm_region_open(
     const iree_net_shm_region_layout_t* layout, iree_byte_span_t storage,
     iree_net_shm_direction_t* out_directions);
 
-// Returns a borrowed connection-level notification epoch. |side| is 0 for the
+// Returns borrowed connection-level notification state. |side| is 0 for the
 // server's polling owner and 1 for the client's. The region must have been
-// successfully initialized/opened; epochs and directions share its lifetime.
-static inline iree_atomic_int32_t* iree_net_shm_region_epoch(void* storage,
-                                                             uint32_t side) {
-  return (iree_atomic_int32_t*)((uint8_t*)storage +
-                                side * IREE_NET_SHM_REGION_ALIGNMENT);
+// successfully initialized/opened; notifications and directions share its
+// lifetime.
+static inline iree_notification_state_t* iree_net_shm_region_notification_state(
+    void* storage, uint32_t side) {
+  return (iree_notification_state_t*)((uint8_t*)storage +
+                                      side * IREE_NET_SHM_REGION_ALIGNMENT);
 }
 
 #ifdef __cplusplus

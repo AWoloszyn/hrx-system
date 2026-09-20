@@ -114,6 +114,9 @@ struct CompletionState {
 class ShmConnectionTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
+    if (!iree_async_notification_native_is_supported()) {
+      GTEST_SKIP();
+    }
 #if !defined(IREE_PLATFORM_WINDOWS)
     if (GetParam()) {
       IREE_ASSERT_OK(iree_async_proactor_create_posix(

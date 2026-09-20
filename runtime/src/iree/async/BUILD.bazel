@@ -46,6 +46,7 @@ iree_runtime_cc_library(
         "frontier.c",
         "frontier_tracker.c",
         "notification.c",
+        "notification_native.c",
         "operation.c",
         "operations/message.c",
         "primitive.c",
@@ -65,6 +66,7 @@ iree_runtime_cc_library(
         "frontier.h",
         "frontier_tracker.h",
         "notification.h",
+        "notification_native.h",
         "operation.h",
         "operations/file.h",
         "operations/futex.h",
@@ -172,6 +174,28 @@ iree_runtime_cc_test(
         "//runtime/src/iree/base",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "notification_native_test",
+    srcs = ["notification_native_test.cc"],
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "@platforms//os:macos": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":async",
+        ":platform",
+        "//runtime/src/iree/async/util:local_stream",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:shm",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/testing:coordinated_test",
+        "//runtime/src/iree/testing:coordinated_test_main",
+        "//runtime/src/iree/testing:gtest",
     ],
 )
 

@@ -99,7 +99,8 @@ class NotificationWakeTest : public ::testing::Test {
 };
 
 TEST_F(NotificationWakeTest, InterruptedSignalPublishesOnce) {
-  interrupted_fd = notification_->platform.posix.signal_primitive.value.fd;
+  interrupted_fd =
+      notification_->platform.posix.event.signal_primitive.value.fd;
   uint32_t epoch = iree_async_notification_query_epoch(notification_);
   iree_async_notification_signal(notification_, IREE_ALL_WAITERS);
   EXPECT_EQ(intercepted_write_count, 2);
@@ -110,7 +111,7 @@ TEST_F(NotificationWakeTest, InterruptedSignalPublishesOnce) {
 }
 
 TEST_F(NotificationWakeTest, InterruptedSignalPreservesCoalescing) {
-  int fd = notification_->platform.posix.signal_primitive.value.fd;
+  int fd = notification_->platform.posix.event.signal_primitive.value.fd;
   uint64_t saturated_count = UINT64_MAX - 1;
   ASSERT_EQ(write(fd, &saturated_count, sizeof(saturated_count)),
             sizeof(saturated_count));

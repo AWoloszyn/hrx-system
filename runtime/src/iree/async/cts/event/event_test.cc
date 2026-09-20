@@ -311,49 +311,6 @@ TEST_P(NativeEventTest, SaturationIsAlreadySignaled) {
 #endif  // IREE_PLATFORM_WINDOWS
 }
 
-TEST_P(NativeEventTest, SignalAfterNotificationAndProactorTeardown) {
-  IREE_ASSERT_OK(iree_async_event_native_initialize(&native_));
-  iree_atomic_int32_t epoch = IREE_ATOMIC_VAR_INIT(0);
-  iree_async_notification_shared_options_t options = {};
-  options.epoch_address = &epoch;
-  options.wake_primitive = native_.wait_primitive;
-  options.signal_primitive = native_.signal_primitive;
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
-
-  CompletionTracker tracker;
-  iree_async_notification_wait_operation_t wait = {};
-  iree_async_operation_initialize(
-      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
-      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
-  wait.notification = notification;
-  wait.wait_flags = IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN;
-  wait.wait_token = iree_async_notification_begin_observe(notification);
-  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
-  iree_async_notification_end_observe(notification);
-  iree_async_proactor_wake(proactor_);
-  PollOneProgressEvent();
-  EXPECT_EQ(tracker.call_count, 0);
-
-  iree_atomic_fetch_add(&epoch, 1, iree_memory_order_release);
-  iree_async_event_native_set(&native_);
-  PollUntilCondition([&] { return tracker.call_count == 1; });
-  IREE_EXPECT_OK(tracker.ConsumeStatus());
-  iree_async_notification_release(notification);
-  iree_async_proactor_release(proactor_);
-  proactor_ = nullptr;
-
-  // A late lease-return thread owns only the native event and shared epoch.
-  // Neither signaling nor eventual destruction can reach a former proactor.
-  std::thread signaler([&] {
-    iree_atomic_fetch_add(&epoch, 1, iree_memory_order_release);
-    iree_async_event_native_set(&native_);
-  });
-  signaler.join();
-  ExpectReady();
-}
-
 CTS_REGISTER_TEST_SUITE(NativeEventTest);
 
 #endif  // native handles available

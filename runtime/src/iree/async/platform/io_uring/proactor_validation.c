@@ -506,7 +506,7 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
                 ~IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN);
       }
       const iree_async_primitive_t primitive =
-          wait->notification->platform.io_uring.primitive;
+          wait->notification->platform.io_uring.event.wait_primitive;
       if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
           primitive.value.fd < 0) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -534,7 +534,7 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
             "NOTIFICATION_SIGNAL wake count must be non-negative");
       }
       const iree_async_primitive_t primitive =
-          signal->notification->platform.io_uring.signal_primitive;
+          signal->notification->platform.io_uring.event.signal_primitive;
       if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
           primitive.value.fd < 0) {
         return iree_make_status(

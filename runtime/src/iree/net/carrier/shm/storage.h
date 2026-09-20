@@ -10,7 +10,7 @@
 #define IREE_NET_CARRIER_SHM_STORAGE_H_
 
 #include "iree/async/buffer_pool.h"
-#include "iree/async/event.h"
+#include "iree/async/notification_native.h"
 #include "iree/base/internal/shm.h"
 #include "iree/base/threading/mutex.h"
 #include "iree/net/carrier/shm/region.h"
@@ -19,13 +19,9 @@
 extern "C" {
 #endif  // __cplusplus
 
-// One mapping and two native events. Pipe-backed events transfer both ends so
-// detached writers retain a read-end guard after the peer has departed.
-#if defined(IREE_PLATFORM_WINDOWS) || defined(IREE_ASYNC_HAVE_EVENTFD)
-#define IREE_NET_SHM_STORAGE_HANDLE_COUNT 3u
-#else
-#define IREE_NET_SHM_STORAGE_HANDLE_COUNT 5u
-#endif
+// One mapping and one shared native notification bundle per receiving side.
+#define IREE_NET_SHM_STORAGE_HANDLE_COUNT \
+  (1u + 2u * IREE_ASYNC_NOTIFICATION_NATIVE_HANDLE_COUNT)
 
 typedef struct iree_net_shm_storage_t iree_net_shm_storage_t;
 
@@ -56,8 +52,8 @@ struct iree_net_shm_storage_t {
   iree_allocator_t host_allocator;
   // Owned mapping; shared state survives native handle/peer closure.
   iree_shm_mapping_t mapping;
-  // Owned native events, indexed by the polling side they wake.
-  iree_async_event_native_t wakes[2];
+  // Owned native notifications, indexed by the receiving side they wake.
+  iree_async_notification_native_t wakes[2];
   // Checked immutable geometry used by both mapped views.
   iree_net_shm_region_layout_t layout;
   // Local side: server 0, client 1; also the outgoing direction index.

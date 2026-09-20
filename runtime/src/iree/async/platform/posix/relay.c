@@ -136,7 +136,7 @@ static bool iree_async_posix_notification_has_consumers(
 static iree_status_t iree_async_posix_notification_activate(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_t* notification) {
-  int fd = notification->platform.posix.primitive.value.fd;
+  int fd = notification->platform.posix.event.wait_primitive.value.fd;
   iree_status_t status =
       iree_async_posix_event_set_add(proactor->event_set, fd, POLLIN);
   if (!iree_status_is_ok(status)) {
@@ -158,7 +158,7 @@ static iree_status_t iree_async_posix_notification_activate(
 static void iree_async_posix_notification_deactivate(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_t* notification) {
-  int fd = notification->platform.posix.primitive.value.fd;
+  int fd = notification->platform.posix.event.wait_primitive.value.fd;
   iree_async_posix_fd_map_remove(&proactor->fd_map, fd);
   iree_status_ignore(
       iree_async_posix_event_set_remove(proactor->event_set, fd));
@@ -324,8 +324,7 @@ iree_status_t iree_async_proactor_posix_register_relay(
     notification->platform.posix.relay_list = relay;
 
     // Capture the current epoch for change detection.
-    relay->wait_epoch = (uint32_t)iree_atomic_load(notification->epoch_ptr,
-                                                   iree_memory_order_acquire);
+    relay->wait_epoch = iree_async_notification_query_epoch(notification);
 
     // Activate the notification's fd if this is the first consumer.
     if (!was_active) {
@@ -452,8 +451,7 @@ void iree_async_proactor_posix_dispatch_relay(
 void iree_async_proactor_posix_dispatch_notification_relays(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_t* notification) {
-  uint32_t current_epoch = (uint32_t)iree_atomic_load(
-      notification->epoch_ptr, iree_memory_order_acquire);
+  uint32_t current_epoch = iree_async_notification_query_epoch(notification);
 
   iree_async_relay_t** previous = &notification->platform.posix.relay_list;
   iree_async_relay_t* relay = notification->platform.posix.relay_list;

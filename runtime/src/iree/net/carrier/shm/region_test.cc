@@ -129,12 +129,12 @@ TEST_F(ShmRegionTest, InitializesOnlyMetadataAndSharesEpochs) {
     }
   }
   for (uint32_t side = 0; side < 2; ++side) {
-    auto* epoch = iree_net_shm_region_epoch(creator_.base, side);
-    EXPECT_EQ(iree_atomic_load(epoch, iree_memory_order_acquire), 0);
-    iree_atomic_store(epoch, 41 + side, iree_memory_order_release);
-    EXPECT_EQ(iree_atomic_load(iree_net_shm_region_epoch(importer_.base, side),
-                               iree_memory_order_acquire),
-              41 + side);
+    auto* state = iree_net_shm_region_notification_state(creator_.base, side);
+    EXPECT_EQ(iree_notification_state_query_epoch(state), 0u);
+    iree_notification_state_post(state);
+    EXPECT_EQ(iree_notification_state_query_epoch(
+                  iree_net_shm_region_notification_state(importer_.base, side)),
+              1u);
   }
 }
 

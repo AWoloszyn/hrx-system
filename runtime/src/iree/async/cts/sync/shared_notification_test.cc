@@ -4,22 +4,9 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// CTS tests for shared (cross-process) notification operations.
-//
-// Shared notifications use a caller-provided epoch counter in (simulated)
-// shared memory and caller-provided wake/signal primitives. These tests
-// simulate cross-process semantics by heap-allocating an epoch and creating
-// shared notifications with caller-created eventfd/pipe fds (POSIX) or
-// Events (Windows).
-//
-// The key behavioral differences from local notifications:
-//   - epoch_ptr points to caller-provided memory, not the inline epoch field
-//   - Destroy does not close the wake/signal primitives (caller owns them)
-//   - On Linux: futex calls omit FUTEX_PRIVATE_FLAG (physical page hashing)
-//   - On macOS: sync waiters use poll() instead of condvar (process-local)
-//   - On Windows: cross-process async wake uses the supplied Event HANDLE
+// Managed shared-notification integration with one receiving domain. Publishers
+// use the native resource owner without creating another polling consumer.
 
-#include <atomic>
 #include <future>
 #include <thread>
 #include <vector>
@@ -30,287 +17,140 @@
 #include "iree/async/operations/scheduling.h"
 #include "iree/async/relay.h"
 
-#if defined(IREE_PLATFORM_WINDOWS)
-// Windows: Event objects for wake/signal primitives.
-#else
-// POSIX: eventfd (Linux) or pipe (macOS) for wake/signal primitives.
-#include <fcntl.h>
+#if !defined(IREE_PLATFORM_WINDOWS)
 #include <poll.h>
-#include <unistd.h>
-#if defined(IREE_PLATFORM_LINUX)
-#include <sys/eventfd.h>
-#endif  // IREE_PLATFORM_LINUX
-#endif  // IREE_PLATFORM_WINDOWS
+#endif
 
 namespace iree::async::cts {
 
 class SharedNotificationTest : public CtsTestBase<> {
  protected:
-  // Represents the shared state between two "processes" (simulated).
-  // In real cross-process usage, the epoch would be in mmap'd shared memory
-  // and the primitives would be inherited or passed via IPC.
-  struct SharedState {
-    iree_atomic_int32_t epoch;
-
-    // POSIX: eventfd (Linux) or pipe pair (macOS).
-    // Windows: Event HANDLEs.
-#if defined(IREE_PLATFORM_WINDOWS)
-    HANDLE wake_event;
-    HANDLE signal_event;
-#elif defined(IREE_PLATFORM_LINUX)
-    int eventfd;
-#else
-    int pipe_fds[2];  // [0]=read (wake), [1]=write (signal)
-#endif
-  };
-
-  // Creates the shared state: initializes epoch and creates platform
-  // wake/signal primitives.
-  iree_status_t CreateSharedState(SharedState* state) {
-    iree_atomic_store(&state->epoch, 0, iree_memory_order_release);
-
-#if defined(IREE_PLATFORM_WINDOWS)
-    state->wake_event = CreateEventW(NULL, /*bManualReset=*/FALSE,
-                                     /*bInitialState=*/FALSE, NULL);
-    if (!state->wake_event) {
-      return iree_make_status(IREE_STATUS_INTERNAL,
-                              "CreateEvent failed for wake_event");
+  void SetUp() override {
+    CtsTestBase<>::SetUp();
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
     }
-    state->signal_event = CreateEventW(NULL, /*bManualReset=*/FALSE,
-                                       /*bInitialState=*/FALSE, NULL);
-    if (!state->signal_event) {
-      CloseHandle(state->wake_event);
-      return iree_make_status(IREE_STATUS_INTERNAL,
-                              "CreateEvent failed for signal_event");
+    if (!iree_async_notification_native_is_supported()) {
+      GTEST_SKIP() << "Native shared notification waits are unavailable";
     }
-#elif defined(IREE_PLATFORM_LINUX)
-    state->eventfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-    if (state->eventfd < 0) {
-      return iree_make_status(iree_status_code_from_errno(errno),
-                              "eventfd creation failed");
-    }
-#else
-    if (pipe(state->pipe_fds) < 0) {
-      return iree_make_status(iree_status_code_from_errno(errno),
-                              "pipe creation failed");
-    }
-    for (int i = 0; i < 2; ++i) {
-      int current_flags = fcntl(state->pipe_fds[i], F_GETFL);
-      if (current_flags >= 0) {
-        fcntl(state->pipe_fds[i], F_SETFL, current_flags | O_NONBLOCK);
-      }
-      fcntl(state->pipe_fds[i], F_SETFD, FD_CLOEXEC);
-    }
-#endif
-    return iree_ok_status();
+    iree_notification_state_initialize(&state_);
+    IREE_ASSERT_OK(
+        iree_async_notification_native_initialize(&state_, &native_));
+    IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &native_,
+                                                         &notification_));
   }
 
-  // Destroys the shared state: closes platform primitives.
-  void DestroySharedState(SharedState* state) {
+  void TearDown() override {
+    iree_async_notification_release(notification_);
+    CtsTestBase<>::TearDown();
+    iree_async_notification_native_deinitialize(&native_);
+  }
+
+  void ExpectNativeReady() {
 #if defined(IREE_PLATFORM_WINDOWS)
-    if (state->signal_event) {
-      CloseHandle(state->signal_event);
-    }
-    if (state->wake_event) {
-      CloseHandle(state->wake_event);
-    }
-#elif defined(IREE_PLATFORM_LINUX)
-    if (state->eventfd >= 0) {
-      close(state->eventfd);
-    }
+    EXPECT_EQ(
+        WaitForSingleObject(
+            (HANDLE)native_.async_event.wait_primitive.value.win32_handle, 0),
+        WAIT_OBJECT_0);
 #else
-    if (state->pipe_fds[0] >= 0) {
-      close(state->pipe_fds[0]);
-    }
-    if (state->pipe_fds[1] >= 0) {
-      close(state->pipe_fds[1]);
-    }
+    struct pollfd descriptor = {native_.async_event.wait_primitive.value.fd,
+                                POLLIN, 0};
+    EXPECT_EQ(poll(&descriptor, 1, 0), 1);
+    EXPECT_NE(descriptor.revents & POLLIN, 0);
 #endif
   }
 
-  // Fills shared notification options from the shared state.
-  iree_async_notification_shared_options_t MakeSharedOptions(
-      SharedState* state) {
-    iree_async_notification_shared_options_t options;
-    memset(&options, 0, sizeof(options));
-    options.epoch_address = &state->epoch;
-
-#if defined(IREE_PLATFORM_WINDOWS)
-    options.wake_primitive.type = IREE_ASYNC_PRIMITIVE_TYPE_WIN32_HANDLE;
-    options.wake_primitive.value.win32_handle = (uintptr_t)state->wake_event;
-    options.signal_primitive.type = IREE_ASYNC_PRIMITIVE_TYPE_WIN32_HANDLE;
-    options.signal_primitive.value.win32_handle =
-        (uintptr_t)state->signal_event;
-#elif defined(IREE_PLATFORM_LINUX)
-    // Linux eventfd: same fd for both wake (POLLIN) and signal (write).
-    options.wake_primitive = iree_async_primitive_from_fd(state->eventfd);
-    options.signal_primitive = iree_async_primitive_from_fd(state->eventfd);
-#else
-    // macOS pipe: read end for wake, write end for signal.
-    options.wake_primitive = iree_async_primitive_from_fd(state->pipe_fds[0]);
-    options.signal_primitive = iree_async_primitive_from_fd(state->pipe_fds[1]);
-#endif
-    return options;
+  void WaitForEnrollment(uint32_t count) {
+    while ((uint32_t)iree_atomic_load(&state_.value,
+                                      iree_memory_order_acquire) != count) {
+      std::this_thread::yield();
+    }
   }
 
   void VerifyPeerRelay(iree_async_relay_flags_t flags, int signal_count) {
-    SharedState state;
-    IREE_ASSERT_OK(CreateSharedState(&state));
-    iree_atomic_store(&state.epoch, 7, iree_memory_order_release);
-    auto receiver_options = MakeSharedOptions(&state);
-    auto sender_options = MakeSharedOptions(&state);
-#if defined(IREE_PLATFORM_WINDOWS)
-    sender_options.wake_primitive = receiver_options.signal_primitive;
-    sender_options.signal_primitive = receiver_options.wake_primitive;
-#endif  // IREE_PLATFORM_WINDOWS
-
-    IREE_ASSERT_OK_AND_ASSIGN(
-        iree_async_proactor_t * sender_proactor,
-        GetParam().factory(iree_async_proactor_options_default()));
-    iree_async_notification_t* receiver = nullptr;
-    iree_async_notification_t* sender = nullptr;
+    for (int i = 0; i < 7; ++i) {
+      iree_async_notification_native_signal(&native_, 1);
+    }
     iree_async_notification_t* sink = nullptr;
-    IREE_ASSERT_OK(iree_async_notification_create_shared(
-        proactor_, &receiver_options, &receiver));
-    IREE_ASSERT_OK(iree_async_notification_create_shared(
-        sender_proactor, &sender_options, &sender));
     IREE_ASSERT_OK(iree_async_notification_create(
         proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
-
     iree_async_relay_t* relay = nullptr;
     IREE_ASSERT_OK(iree_async_proactor_register_relay(
-        proactor_, iree_async_relay_source_from_notification(receiver),
+        proactor_, iree_async_relay_source_from_notification(notification_),
         iree_async_relay_sink_signal_notification(sink, 1), flags,
         iree_async_relay_error_callback_none(), &relay));
     for (int i = 0; i < signal_count; ++i) {
       SCOPED_TRACE(i);
       const uint32_t sink_epoch = iree_async_notification_query_epoch(sink);
-      iree_async_notification_signal(sender, 1);
+      iree_async_notification_native_signal(&native_, 1);
       PollUntilCondition(
           [&] {
             return iree_async_notification_query_epoch(sink) != sink_epoch;
           },
           "shared notification relay");
       EXPECT_EQ(iree_async_notification_query_epoch(sink), sink_epoch + 1);
-      EXPECT_EQ(iree_async_notification_query_epoch(receiver), 8u + i);
+      EXPECT_EQ(iree_async_notification_query_epoch(notification_), 8u + i);
     }
     if (iree_any_bit_set(flags, IREE_ASYNC_RELAY_FLAG_PERSISTENT)) {
       WaitForRelayUnregistration(relay);
     }
-
     iree_async_notification_release(sink);
-    iree_async_notification_release(sender);
-    iree_async_notification_release(receiver);
-    iree_async_proactor_release(sender_proactor);
-    DestroySharedState(&state);
   }
+
+  // Caller-owned state; process tests exercise the separately mapped form.
+  iree_notification_state_t state_ = {};
+  // Native ownership independent of the receiving proactor.
+  iree_async_notification_native_t native_ = {};
+  // Sole managed receiver borrowing native_.
+  iree_async_notification_t* notification_ = nullptr;
 };
 
-// Signal via shared notification, verify epoch_ptr advances.
 TEST_P(SharedNotificationTest, SharedEpochSignalAndQuery) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
-
-  // Initial epoch should be 0.
-  EXPECT_EQ(iree_async_notification_query_epoch(notification), 0u);
-
-  // Signal and verify epoch advances.
-  iree_async_notification_signal(notification, 1);
-  EXPECT_EQ(iree_async_notification_query_epoch(notification), 1u);
-
-  iree_async_notification_signal(notification, 1);
-  EXPECT_EQ(iree_async_notification_query_epoch(notification), 2u);
-
-  // Verify the shared epoch in "shared memory" matches.
-  EXPECT_EQ((uint32_t)iree_atomic_load(&state.epoch, iree_memory_order_acquire),
-            2u);
-
-  iree_async_notification_release(notification);
-  DestroySharedState(&state);
+  EXPECT_EQ(iree_async_notification_query_epoch(notification_), 0u);
+  iree_async_notification_signal(notification_, 1);
+  EXPECT_EQ(iree_async_notification_query_epoch(notification_), 1u);
+  iree_async_notification_native_signal(&native_, 1);
+  EXPECT_EQ(iree_async_notification_query_epoch(notification_), 2u);
+  EXPECT_EQ(iree_notification_state_query_epoch(&state_), 2u);
 }
 
-// Synchronous wait on shared notification, signal from another thread.
-//
-// The waiter publishes readiness after capturing an observation token, making
-// one cross-thread signal sufficient regardless of scheduling order.
+// The publisher waits for real blocking enrollment, not a pre-wait promise.
 TEST_P(SharedNotificationTest, SharedEpochSyncWait) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
-
-  std::atomic<bool> wait_result{false};
-  std::promise<void> waiter_ready_promise;
-  auto waiter_ready = waiter_ready_promise.get_future();
-
-  std::thread waiter([&]() {
-    uint32_t wait_token = iree_async_notification_begin_observe(notification);
-    waiter_ready_promise.set_value();
-    bool result = iree_async_notification_wait_for_token(
-        notification, wait_token, iree_infinite_timeout());
-    iree_async_notification_end_observe(notification);
-    wait_result.store(result, std::memory_order_release);
+  std::thread waiter([&] {
+    uint32_t token = iree_async_notification_begin_observe(notification_);
+    EXPECT_TRUE(iree_async_notification_wait_for_token(
+        notification_, token, iree_infinite_timeout()));
+    iree_async_notification_end_observe(notification_);
   });
-
-  waiter_ready.wait();
-  iree_async_notification_signal(notification, 1);
-
+  WaitForEnrollment(1);
+  iree_async_notification_native_signal(&native_, 1);
   waiter.join();
-  EXPECT_TRUE(wait_result.load(std::memory_order_acquire));
-
-  iree_async_notification_release(notification);
-  DestroySharedState(&state);
+  EXPECT_EQ(
+      (uint32_t)iree_atomic_load(&state_.value, iree_memory_order_acquire), 0u);
 }
 
-#if defined(IREE_PLATFORM_LINUX)
-
-// A stale async wake must survive a synchronous timeout: the synchronous
-// waiter has no ownership of the proactor's readiness channel.
+// Synchronous timeout has no ownership of the async readiness channel.
 TEST_P(SharedNotificationTest, SyncTimeoutPreservesAsyncReadiness) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
-  iree_async_notification_signal(notification, 1);
-  uint32_t token = iree_async_notification_begin_observe(notification);
-  EXPECT_FALSE(iree_async_notification_wait_for_token(notification, token,
-                                                      iree_make_timeout_ms(1)));
-  iree_async_notification_end_observe(notification);
-  struct pollfd descriptor = {state.eventfd, POLLIN, 0};
-  EXPECT_EQ(poll(&descriptor, 1, 0), 1);
-  EXPECT_NE(descriptor.revents & POLLIN, 0);
-  iree_async_notification_release(notification);
-  DestroySharedState(&state);
+  iree_async_notification_release(notification_);
+  notification_ = nullptr;
+  iree_async_notification_native_signal(&native_, 1);
+  uint32_t token = iree_notification_state_query_epoch(&state_);
+  EXPECT_FALSE(iree_async_notification_native_wait_for_token(
+      &native_, token, iree_make_timeout_ms(1)));
+  ExpectNativeReady();
+  EXPECT_EQ(
+      (uint32_t)iree_atomic_load(&state_.value, iree_memory_order_acquire), 0u);
 }
 
 TEST_P(SharedNotificationTest, SyncAndAsyncObserversShareOnePublication) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
-
   constexpr int kWaiterCount = 4;
-  std::promise<void> ready[kWaiterCount];
   std::vector<std::thread> waiters;
   for (int i = 0; i < kWaiterCount; ++i) {
-    waiters.emplace_back([&, i] {
-      uint32_t token = iree_async_notification_begin_observe(notification);
-      ready[i].set_value();
+    waiters.emplace_back([&] {
+      uint32_t token = iree_async_notification_begin_observe(notification_);
       EXPECT_TRUE(iree_async_notification_wait_for_token(
-          notification, token, iree_infinite_timeout()));
-      iree_async_notification_end_observe(notification);
+          notification_, token, iree_infinite_timeout()));
+      iree_async_notification_end_observe(notification_);
     });
   }
 
@@ -319,261 +159,96 @@ TEST_P(SharedNotificationTest, SyncAndAsyncObserversShareOnePublication) {
   iree_async_operation_initialize(
       &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
       IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
-  wait.notification = notification;
+  wait.notification = notification_;
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
   iree_async_proactor_wake(proactor_);
   PollOneProgressEvent();
   EXPECT_EQ(tracker.call_count, 0);
-  for (auto& waiter_ready : ready) {
-    waiter_ready.get_future().wait();
-  }
+  WaitForEnrollment(kWaiterCount);
 
-  iree_async_notification_signal(notification, INT32_MAX);
+  iree_async_notification_native_signal(&native_, IREE_ALL_WAITERS);
   PollUntilCondition([&] { return tracker.call_count == 1; },
                      "shared async notification with sync observers");
   for (auto& waiter : waiters) {
     waiter.join();
   }
   IREE_EXPECT_OK(tracker.ConsumeStatus());
-  iree_async_notification_release(notification);
-  DestroySharedState(&state);
+  EXPECT_EQ(
+      (uint32_t)iree_atomic_load(&state_.value, iree_memory_order_acquire), 0u);
 }
 
-#endif  // IREE_PLATFORM_LINUX
-
-// Async NOTIFICATION_WAIT completes when shared epoch advances.
 TEST_P(SharedNotificationTest, SharedEpochAsyncWait) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
-
   CompletionTracker tracker;
-  iree_async_notification_wait_operation_t wait_op;
-  memset(&wait_op, 0, sizeof(wait_op));
-  wait_op.base.type = IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT;
-  wait_op.base.completion_fn = CompletionTracker::Callback;
-  wait_op.base.user_data = &tracker;
-  wait_op.notification = notification;
-
-  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
-
-  // Complete backend registration before the cross-thread signal.
+  iree_async_notification_wait_operation_t wait = {};
+  iree_async_operation_initialize(
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
+  wait.notification = notification_;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
   iree_async_proactor_wake(proactor_);
   PollOneProgressEvent();
   EXPECT_EQ(tracker.call_count, 0);
 
   std::thread signaler(
-      [notification]() { iree_async_notification_signal(notification, 1); });
-
-  PollUntil(/*min_completions=*/1);
-
+      [&] { iree_async_notification_native_signal(&native_, 1); });
+  PollUntilCondition([&] { return tracker.call_count == 1; });
   signaler.join();
-
-  EXPECT_EQ(tracker.call_count, 1);
   IREE_EXPECT_OK(tracker.ConsumeStatus());
-
-  iree_async_notification_release(notification);
-  DestroySharedState(&state);
 }
 
-// Destroy shared notification, verify caller's fds are still valid.
 TEST_P(SharedNotificationTest, DestroyDoesNotClosePrimitives) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
-
-  // Destroy the notification.
-  iree_async_notification_release(notification);
-
-  // Verify caller's primitives are still valid by writing/reading them.
-#if defined(IREE_PLATFORM_WINDOWS)
-  // Signal the wake event and verify it was signaled.
-  EXPECT_TRUE(SetEvent(state.wake_event));
-  DWORD wait_result = WaitForSingleObject(state.wake_event, 0);
-  // Event was set, so wait should succeed (auto-reset already consumed it
-  // in SetEvent, but the wait at 0ms may or may not see it depending on
-  // timing). The key check is that SetEvent didn't fail with
-  // ERROR_INVALID_HANDLE.
-  (void)wait_result;
-#elif defined(IREE_PLATFORM_LINUX)
-  // Write to eventfd and read back.
-  uint64_t write_value = 1;
-  ssize_t write_result =
-      write(state.eventfd, &write_value, sizeof(write_value));
-  EXPECT_EQ(write_result, (ssize_t)sizeof(write_value))
-      << "eventfd should still be writable after notification destroy";
-  uint64_t read_value = 0;
-  ssize_t read_result = read(state.eventfd, &read_value, sizeof(read_value));
-  EXPECT_EQ(read_result, (ssize_t)sizeof(read_value))
-      << "eventfd should still be readable after notification destroy";
-  EXPECT_EQ(read_value, 1u);
-#else
-  // macOS pipe: write to signal end, read from wake end.
-  uint8_t write_byte = 42;
-  ssize_t write_result =
-      write(state.pipe_fds[1], &write_byte, sizeof(write_byte));
-  EXPECT_EQ(write_result, (ssize_t)sizeof(write_byte))
-      << "pipe should still be writable after notification destroy";
-  uint8_t read_byte = 0;
-  ssize_t read_result = read(state.pipe_fds[0], &read_byte, sizeof(read_byte));
-  EXPECT_EQ(read_result, (ssize_t)sizeof(read_byte))
-      << "pipe should still be readable after notification destroy";
-  EXPECT_EQ(read_byte, 42u);
-#endif
-
-  DestroySharedState(&state);
+  iree_async_notification_release(notification_);
+  notification_ = nullptr;
+  iree_async_notification_native_signal(&native_, 1);
+  ExpectNativeReady();
 }
 
-// Repeated wait/signal cycles work correctly through shared epoch.
-//
-// Each cycle publishes readiness after capturing its token, allowing one
-// signal to complete exactly one wait without retry loops.
+// Each cycle captures its token before publishing readiness to the signaler.
 TEST_P(SharedNotificationTest, MultipleCycles) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
-
-  std::atomic<int> cycles_completed{0};
-  constexpr int kCycles = 5;
-  std::promise<void> cycle_ready_promises[kCycles];
-  std::future<void> cycle_ready_futures[kCycles];
-  for (int i = 0; i < kCycles; ++i) {
-    cycle_ready_futures[i] = cycle_ready_promises[i].get_future();
-  }
-
-  std::thread worker([&]() {
+  constexpr int kCycles = 64;
+  std::promise<void> ready[kCycles];
+  std::thread worker([&] {
     for (int i = 0; i < kCycles; ++i) {
-      uint32_t wait_token = iree_async_notification_begin_observe(notification);
-      cycle_ready_promises[i].set_value();
-      bool result = iree_async_notification_wait_for_token(
-          notification, wait_token, iree_infinite_timeout());
-      iree_async_notification_end_observe(notification);
-      if (result) {
-        cycles_completed.fetch_add(1, std::memory_order_acq_rel);
-      }
+      uint32_t token = iree_async_notification_begin_observe(notification_);
+      ready[i].set_value();
+      EXPECT_TRUE(iree_async_notification_wait_for_token(
+          notification_, token, iree_infinite_timeout()));
+      iree_async_notification_end_observe(notification_);
     }
   });
-
   for (int i = 0; i < kCycles; ++i) {
-    cycle_ready_futures[i].wait();
-    iree_async_notification_signal(notification, 1);
+    ready[i].get_future().wait();
+    iree_async_notification_native_signal(&native_, 1);
   }
-
   worker.join();
-  EXPECT_EQ(cycles_completed.load(std::memory_order_acquire), kCycles);
-
-  iree_async_notification_release(notification);
-  DestroySharedState(&state);
+  EXPECT_EQ(iree_async_notification_query_epoch(notification_), kCycles);
 }
 
-// Two shared notifications pointing at the same epoch: signaling one should
-// advance the epoch observable by the other. This exercises the cross-process
-// semantic (two proactors sharing one epoch) within a single process.
-TEST_P(SharedNotificationTest, TwoNotificationsOneEpoch) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-
-  // Create two shared notifications pointing at the same epoch.
-  // In real cross-process usage, each process creates one notification.
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification_a = nullptr;
-  iree_async_notification_t* notification_b = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification_a));
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification_b));
-
-  // Signal through notification_a.
-  iree_async_notification_signal(notification_a, 1);
-
-  // Both notifications should see the epoch advance.
-  EXPECT_EQ(iree_async_notification_query_epoch(notification_a), 1u);
-  EXPECT_EQ(iree_async_notification_query_epoch(notification_b), 1u);
-
-  // Signal through notification_b.
-  iree_async_notification_signal(notification_b, 1);
-
-  EXPECT_EQ(iree_async_notification_query_epoch(notification_a), 2u);
-  EXPECT_EQ(iree_async_notification_query_epoch(notification_b), 2u);
-
-  // Shared memory epoch matches.
-  EXPECT_EQ((uint32_t)iree_atomic_load(&state.epoch, iree_memory_order_acquire),
-            2u);
-
-  iree_async_notification_release(notification_a);
-  iree_async_notification_release(notification_b);
-  DestroySharedState(&state);
-}
-
-// Advisory signals must reach observers on a separate notification handle.
-// Each handle has its own observer count, as in independent processes.
-TEST_P(SharedNotificationTest, AdvisorySignalWakesOtherHandle) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-  auto waiter_options = MakeSharedOptions(&state);
-  auto signaler_options = MakeSharedOptions(&state);
-#if defined(IREE_PLATFORM_WINDOWS)
-  signaler_options.wake_primitive = waiter_options.signal_primitive;
-  signaler_options.signal_primitive = waiter_options.wake_primitive;
-#endif  // IREE_PLATFORM_WINDOWS
-
-  IREE_ASSERT_OK_AND_ASSIGN(
-      iree_async_proactor_t * signaler_proactor,
-      GetParam().factory(iree_async_proactor_options_default()));
-  iree_async_notification_t* waiter = nullptr;
-  iree_async_notification_t* signaler = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(
-      proactor_, &waiter_options, &waiter));
-  IREE_ASSERT_OK(iree_async_notification_create_shared(
-      signaler_proactor, &signaler_options, &signaler));
-
+// Shared advisory signaling cannot rely on the managed local observer count.
+TEST_P(SharedNotificationTest, AdvisorySignalWakesSharedObserver) {
   CompletionTracker tracker;
-  iree_async_notification_wait_operation_t wait_operation = {};
+  iree_async_notification_wait_operation_t wait = {};
   iree_async_operation_initialize(
-      &wait_operation.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
       IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
-  wait_operation.notification = waiter;
-  wait_operation.wait_flags = IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN;
-  wait_operation.wait_token = iree_async_notification_begin_observe(waiter);
-  IREE_ASSERT_OK(
-      iree_async_proactor_submit_one(proactor_, &wait_operation.base));
-  iree_async_notification_end_observe(waiter);
+  wait.notification = notification_;
+  wait.wait_flags = IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN;
+  wait.wait_token = iree_async_notification_begin_observe(notification_);
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
+  iree_async_notification_end_observe(notification_);
   iree_async_proactor_wake(proactor_);
   PollOneProgressEvent();
   EXPECT_EQ(tracker.call_count, 0);
+  EXPECT_EQ(iree_atomic_load(&notification_->observer_count,
+                             iree_memory_order_acquire),
+            0);
 
-  const bool signaled = iree_async_notification_signal_if_observed(signaler, 1);
-  EXPECT_TRUE(signaled);
-  // A failed signal assertion still has to drain the submitted wait before
-  // releasing its notification and caller-owned primitives.
-  if (!signaled) {
-    IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait_operation.base));
-  }
+  EXPECT_TRUE(iree_async_notification_signal_if_observed(notification_, 1));
   PollUntilCondition([&] { return tracker.call_count == 1; });
-  if (signaled) {
-    IREE_EXPECT_OK(tracker.ConsumeStatus());
-  }
-  EXPECT_EQ(iree_async_notification_query_epoch(waiter), 1u);
-
-  iree_async_notification_release(signaler);
-  iree_async_notification_release(waiter);
-  iree_async_proactor_release(signaler_proactor);
-  DestroySharedState(&state);
+  IREE_EXPECT_OK(tracker.ConsumeStatus());
+  EXPECT_EQ(iree_async_notification_query_epoch(notification_), 1u);
 }
 
-// Relay sources use the shared epoch and the peer's native wake primitive.
 TEST_P(SharedNotificationTest, OneShotPeerRelay) {
   VerifyPeerRelay(IREE_ASYNC_RELAY_FLAG_NONE, 1);
 }
@@ -582,92 +257,55 @@ TEST_P(SharedNotificationTest, PersistentPeerRelay) {
   VerifyPeerRelay(IREE_ASYNC_RELAY_FLAG_PERSISTENT, 4);
 }
 
-// Cancellation of a registered shared wait needs no signal from either peer.
 TEST_P(SharedNotificationTest, CancelRegisteredWaitWithoutSignal) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
   CompletionTracker tracker;
-  iree_async_notification_wait_operation_t wait_operation = {};
+  iree_async_notification_wait_operation_t wait = {};
   iree_async_operation_initialize(
-      &wait_operation.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
       IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
-  wait_operation.notification = notification;
-  IREE_ASSERT_OK(
-      iree_async_proactor_submit_one(proactor_, &wait_operation.base));
+  wait.notification = notification_;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
   iree_async_proactor_wake(proactor_);
   PollOneProgressEvent();
-
-  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait_operation.base));
+  IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait.base));
   PollUntilCondition([&] { return tracker.call_count == 1; });
   IREE_EXPECT_STATUS_IS(IREE_STATUS_CANCELLED, tracker.ConsumeStatus());
-  EXPECT_EQ(iree_async_notification_query_epoch(notification), 0u);
-  iree_async_notification_release(notification);
-  DestroySharedState(&state);
+  EXPECT_EQ(iree_async_notification_query_epoch(notification_), 0u);
 }
 
-// Sync wait on one shared notification, signal from the other (same epoch).
-TEST_P(SharedNotificationTest, CrossNotificationSyncWait) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
-
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification_waiter = nullptr;
-  iree_async_notification_t* notification_signaler = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification_waiter));
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification_signaler));
-
-  std::atomic<bool> wait_result{false};
-  std::promise<void> waiter_ready_promise;
-  auto waiter_ready = waiter_ready_promise.get_future();
-
-  // Wait on notification_waiter.
-  std::thread waiter([&]() {
-    uint32_t wait_token =
-        iree_async_notification_begin_observe(notification_waiter);
-    waiter_ready_promise.set_value();
-    bool result = iree_async_notification_wait_for_token(
-        notification_waiter, wait_token, iree_infinite_timeout());
-    iree_async_notification_end_observe(notification_waiter);
-    wait_result.store(result, std::memory_order_release);
-  });
-
-  waiter_ready.wait();
-  iree_async_notification_signal(notification_signaler, 1);
-
-  waiter.join();
-  EXPECT_TRUE(wait_result.load(std::memory_order_acquire));
-
-  iree_async_notification_release(notification_waiter);
-  iree_async_notification_release(notification_signaler);
-  DestroySharedState(&state);
-}
-
-// Synchronous wait timeout on shared notification.
 TEST_P(SharedNotificationTest, SharedSyncWaitTimeout) {
-  SharedState state;
-  IREE_ASSERT_OK(CreateSharedState(&state));
+  const iree_time_t deadline = iree_time_now() + iree_make_duration_ms(10);
+  EXPECT_FALSE(iree_async_notification_wait(notification_,
+                                            iree_make_deadline(deadline)));
+  EXPECT_GE(iree_time_now(), deadline);
+  EXPECT_EQ(
+      (uint32_t)iree_atomic_load(&state_.value, iree_memory_order_acquire), 0u);
+}
 
-  auto options = MakeSharedOptions(&state);
-  iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
+TEST_P(SharedNotificationTest, SignalAfterNotificationAndProactorTeardown) {
+  CompletionTracker tracker;
+  iree_async_notification_wait_operation_t wait = {};
+  iree_async_operation_initialize(
+      &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionTracker::Callback, &tracker);
+  wait.notification = notification_;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait.base));
+  iree_async_proactor_wake(proactor_);
+  PollOneProgressEvent();
+  iree_async_notification_native_signal(&native_, 1);
+  PollUntilCondition([&] { return tracker.call_count == 1; });
+  IREE_EXPECT_OK(tracker.ConsumeStatus());
+  iree_async_notification_release(notification_);
+  notification_ = nullptr;
+  iree_async_proactor_release(proactor_);
+  proactor_ = nullptr;
 
-  iree_time_t start = iree_time_now();
-  bool result =
-      iree_async_notification_wait(notification, iree_make_timeout_ms(50));
-  iree_time_t elapsed = iree_time_now() - start;
-
-  EXPECT_FALSE(result);
-  EXPECT_GE(elapsed, iree_make_duration_ms(10));
-
-  iree_async_notification_release(notification);
-  DestroySharedState(&state);
+  // A late lease-return thread owns only the native bundle and shared state.
+  std::thread signaler(
+      [&] { iree_async_notification_native_signal(&native_, 1); });
+  signaler.join();
+  ExpectNativeReady();
+  EXPECT_EQ(iree_notification_state_query_epoch(&state_), 2u);
 }
 
 CTS_REGISTER_TEST_SUITE_WITH_TAGS(SharedNotificationTest,

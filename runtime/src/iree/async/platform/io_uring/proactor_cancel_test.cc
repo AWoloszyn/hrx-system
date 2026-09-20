@@ -599,25 +599,24 @@ TEST_P(IoUringCancelTest, DeferredNotificationPreservesCancellation) {
 }
 
 TEST_P(IoUringCancelTest, LastNotificationConsumerReleasesBorrowedState) {
-  auto epoch = std::make_unique<iree_atomic_int32_t>();
-  iree_atomic_store(epoch.get(), 0, iree_memory_order_release);
-  iree_async_notification_shared_options_t options = {};
-  options.epoch_address = epoch.get();
-  options.wake_primitive = iree_async_primitive_from_fd(event_fd_);
-  options.signal_primitive = options.wake_primitive;
+  auto shared_state = std::make_unique<iree_notification_state_t>();
+  iree_notification_state_initialize(shared_state.get());
+  iree_async_notification_native_t native = {};
+  IREE_ASSERT_OK(
+      iree_async_notification_native_initialize(shared_state.get(), &native));
   iree_async_notification_t* notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create_shared(proactor_, &options,
-                                                       &notification));
+  IREE_ASSERT_OK(
+      iree_async_notification_create_shared(proactor_, &native, &notification));
   struct State {
     // Caller reference released by the final callback.
     iree_async_notification_t* notification;
-    // Borrowed epoch storage retired at the same boundary.
-    std::unique_ptr<iree_atomic_int32_t>* epoch;
-    // Borrowed wake descriptor, invalidated before a subsequent poll turn.
-    int* event_fd;
+    // Borrowed shared state retired at the same boundary.
+    std::unique_ptr<iree_notification_state_t>* shared_state;
+    // Native resources retired after the final consumer completes.
+    iree_async_notification_native_t* native;
     // Terminal completion join.
     Completion completion;
-  } state{notification, &epoch, &event_fd_};
+  } state{notification, &shared_state, &native};
   iree_async_notification_wait_operation_t wait = {};
   iree_async_operation_initialize(
       &wait.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT,
@@ -628,9 +627,8 @@ TEST_P(IoUringCancelTest, LastNotificationConsumerReleasesBorrowedState) {
         Completion::Record(&state->completion, operation, status, flags);
         iree_async_notification_release(state->notification);
         state->notification = nullptr;
-        state->epoch->reset();
-        EXPECT_EQ(close(*state->event_fd), 0);
-        *state->event_fd = -1;
+        iree_async_notification_native_deinitialize(state->native);
+        state->shared_state->reset();
       },
       &state);
   wait.notification = notification;
@@ -644,7 +642,7 @@ TEST_P(IoUringCancelTest, LastNotificationConsumerReleasesBorrowedState) {
   PollUntil([&] { return state.completion.count == 1; });
   EXPECT_EQ(state.completion.code, IREE_STATUS_CANCELLED);
   EXPECT_EQ(state.notification, nullptr);
-  EXPECT_EQ(epoch, nullptr);
+  EXPECT_EQ(shared_state, nullptr);
   // A real subsequent owner turn processes any outstanding native receipts.
   // Neither the freed epoch nor the closed descriptor can be touched again.
   Dispatch([] {});
