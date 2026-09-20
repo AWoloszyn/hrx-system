@@ -47,6 +47,9 @@ typedef struct iree_net_shm_handshake_t {
   iree_async_proactor_t* proactor;
   // Borrowed immutable server geometry or client per-dimension resource limits.
   const iree_net_shm_region_layout_t* limits;
+  // Validated client offer geometry, retained while ACKs reuse the record
+  // buffer.
+  iree_net_shm_region_layout_t offered_layout;
   // Borrowed immutable process-local carrier admission configuration.
   const iree_net_shm_carrier_options_t* carrier_options;
   // Owned native stream, transferred to a successful connection after READY.
@@ -54,9 +57,10 @@ typedef struct iree_net_shm_handshake_t {
   // Owned mapping and exported wakes; source handles remain live through
   // ACCEPT.
   iree_net_shm_storage_t* storage;
-  // Owned inactive connection, allocated before acknowledging readiness.
+  // Owned inactive connection; client construction begins only after READY.
   iree_net_connection_t* connection;
-  // Borrowed server exports or owned client imports; import consumes/clears
+  // Borrowed server exports or tentative client imports. Clients leave these
+  // unused until READY; storage import or cancellation consumes and clears
   // them.
   iree_async_primitive_t handles[IREE_NET_SHM_STORAGE_HANDLE_COUNT];
   // Reusable exact-record buffer, borrowed by one transfer at a time.

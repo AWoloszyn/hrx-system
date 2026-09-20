@@ -270,6 +270,39 @@ iree_cc_test(
     ${_connection_test_platform_deps}
 )
 
+set(_handshake_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+  list(APPEND _handshake_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _handshake_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  list(APPEND _handshake_test_platform_deps iree::async::platform::posix)
+endif()
+iree_cc_test(
+  NAME
+    handshake_test
+  SRCS
+    "handshake_test.cc"
+  DEPS
+    ::bootstrap
+    ::connection
+    ::handshake
+    ::region
+    ::shm
+    ::storage
+    iree::async
+    iree::async::platform
+    iree::async::util::local_stream
+    iree::base
+    iree::net::connection
+    iree::net::message_endpoint
+    iree::net::transport_factory
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::testing::temp_file
+    ${_handshake_test_platform_deps}
+)
+
 set(_factory_test_platform_deps "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND _factory_test_platform_deps iree::async::platform::posix)

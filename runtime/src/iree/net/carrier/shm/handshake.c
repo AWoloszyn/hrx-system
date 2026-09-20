@@ -41,31 +41,37 @@ static void iree_net_shm_handshake_fail(iree_net_shm_handshake_t* handshake,
       }));
 }
 
-// Applies local resource policy at the public bootstrap boundary, before
-// importing the mapping or allocating any endpoint views/stacks.
-static iree_status_t iree_net_shm_handshake_import(
+// Checks offer policy without using the tentative imported native resources.
+static iree_status_t iree_net_shm_handshake_validate_offer(
     iree_net_shm_handshake_t* handshake) {
-  iree_net_shm_region_layout_t layout;
+  iree_net_shm_region_layout_t* layout = &handshake->offered_layout;
   IREE_RETURN_IF_ERROR(iree_net_shm_bootstrap_decode_offer(
       iree_make_const_byte_span(handshake->record,
                                 IREE_NET_SHM_BOOTSTRAP_OFFER_SIZE),
-      &layout));
+      layout));
   const iree_net_shm_region_options_t* limits = &handshake->limits->options;
-  if (layout.options.endpoint_count > limits->endpoint_count ||
-      layout.options.slot_count > limits->slot_count ||
-      layout.options.slot_capacity > limits->slot_capacity) {
+  if (layout->options.endpoint_count > limits->endpoint_count ||
+      layout->options.slot_count > limits->slot_count ||
+      layout->options.slot_capacity > limits->slot_capacity) {
     return iree_make_status(
         IREE_STATUS_RESOURCE_EXHAUSTED,
         "SHM offer (%u endpoints, %u slots, %u bytes/slot) exceeds local "
         "limits "
         "(%u endpoints, %u slots, %u bytes/slot)",
-        layout.options.endpoint_count, layout.options.slot_count,
-        layout.options.slot_capacity, limits->endpoint_count,
+        layout->options.endpoint_count, layout->options.slot_count,
+        layout->options.slot_capacity, limits->endpoint_count,
         limits->slot_count, limits->slot_capacity);
   }
-  IREE_RETURN_IF_ERROR(iree_net_shm_storage_import(&layout, handshake->handles,
-                                                   handshake->host_allocator,
-                                                   &handshake->storage));
+  return iree_ok_status();
+}
+
+// READY confirms that the exporter held the offered resources through ACCEPT.
+// Only now may mapping and notification setup use the imported handles.
+static iree_status_t iree_net_shm_handshake_import(
+    iree_net_shm_handshake_t* handshake) {
+  IREE_RETURN_IF_ERROR(iree_net_shm_storage_import(
+      &handshake->offered_layout, handshake->handles, handshake->host_allocator,
+      &handshake->storage));
   return iree_net_shm_connection_create(
       handshake->proactor, handshake->storage, handshake->carrier_options,
       handshake->host_allocator, &handshake->connection);
@@ -154,7 +160,7 @@ static void iree_net_shm_handshake_advance(void* user_data,
           IREE_NET_SHM_STORAGE_HANDLE_COUNT, handshake->handles, callback);
       break;
     case IREE_NET_SHM_HANDSHAKE_PHASE_CLIENT_SEND_ACCEPT:
-      status = iree_net_shm_handshake_import(handshake);
+      status = iree_net_shm_handshake_validate_offer(handshake);
       if (iree_status_is_ok(status)) {
         iree_net_shm_bootstrap_encode_ack(IREE_NET_SHM_BOOTSTRAP_TYPE_ACCEPT,
                                           handshake->record);
@@ -179,6 +185,9 @@ static void iree_net_shm_handshake_advance(void* user_data,
           iree_make_const_byte_span(handshake->record,
                                     IREE_NET_SHM_BOOTSTRAP_HEADER_SIZE),
           IREE_NET_SHM_BOOTSTRAP_TYPE_READY);
+      if (iree_status_is_ok(status)) {
+        status = iree_net_shm_handshake_import(handshake);
+      }
       if (iree_status_is_ok(status)) {
         iree_net_shm_handshake_publish(handshake);
         return;

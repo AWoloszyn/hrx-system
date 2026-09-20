@@ -7,10 +7,11 @@
 // SHM bootstrap records carried by async/util/local_stream.
 //
 // The server creates the mapping and both directional native wakes and sends
-// OFFER with their handles. The client imports them and sends ACCEPT. The
-// server replies READY only after its connection can use the mapping. Source
-// handles remain valid through ACCEPT; client imports remain tentative until
-// READY. The stream stays open afterward to observe peer departure.
+// OFFER with their handles. The client retains tentative imports, checks the
+// scalar offer, and sends ACCEPT. READY confirms that the server held the
+// offered resources through ACCEPT. Only then may the client map resources,
+// register native wakes, and construct its connection. Client setup failure
+// closes the stream; after publication it stays open to observe peer departure.
 //
 // All fields are little-endian. The 8-byte header is magic (u32), version
 // (u16), and type (u16). OFFER appends endpoint count, slot count, and slot

@@ -35,7 +35,8 @@ typedef struct iree_net_shm_connection_channel_t {
 void iree_net_shm_connection_channel_deinitialize(
     iree_net_shm_connection_channel_t* channel);
 
-// Allocates all endpoint stacks and their shared notification before READY.
+// Allocates all endpoint stacks and their shared notification before
+// publication. Imported resources must already have been confirmed by READY.
 // Retains |proactor| and |storage|. Accepts no async work; an unpublished
 // connection can be released directly. Published connections require the normal
 // connection deactivation contract before release.

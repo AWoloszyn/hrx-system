@@ -141,10 +141,13 @@ while the shared state determines whether progress exists.
 ## Failure And Teardown
 
 Bootstrap is an exact-version, little-endian `OFFER`, `ACCEPT`, `READY` exchange.
-The server holds exported resources through `ACCEPT`, which confirms independent
-client ownership. The client constructs its connection before acknowledging,
-then waits for `READY` before publication. Setup cancellation joins native
-operations and resource ownership before its public completion callback.
+The server holds exported resources through `ACCEPT`, which acknowledges receipt
+of tentative client imports. `READY` confirms that the server held those resources
+through that acknowledgment. Until then, client imports remain owned but unused:
+mapping, native wake registration, and connection construction follow `READY`.
+Client construction failure closes the stream so the server observes peer loss.
+Setup cancellation joins native operations and resource ownership before its
+public completion callback.
 
 After publication, native stream EOF terminates the connection and its admitted
 sends. Shared mappings alone cannot indicate peer exit. Connection deactivation
