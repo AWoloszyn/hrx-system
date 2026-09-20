@@ -22,6 +22,7 @@
 #include "loom/target/arch/amd/xdna/aie2p/emit/leaf_compile.h"
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/tools/loom-check/low_emit.h"
+#include "loom/tools/loom-check/source_low.h"
 
 static bool loom_aie2p_array_plan_check_matches(
     const loom_check_emit_provider_t* provider,

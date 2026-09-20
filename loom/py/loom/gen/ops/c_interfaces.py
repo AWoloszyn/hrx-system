@@ -641,8 +641,13 @@ def emit_interface_vtable(op: Op, spec: InterfaceSpec, lines: list[str]) -> None
         value_str = _resolve_interface_field(op, iface, field_spec, spec.name)
         lines.append(f"    .{field_spec.c_field} = {value_str},")
     if isinstance(iface, FuncLikeInterface):
-        implements_kernel_entry = op.symbol_def is not None and "kernel_entry" in op.symbol_def.interfaces
-        func_like_flags = "LOOM_FUNC_LIKE_FLAG_KERNEL_ENTRY" if implements_kernel_entry else "0"
+        symbol_interfaces = op.symbol_def.interfaces if op.symbol_def is not None else []
+        flags = []
+        if "kernel_entry" in symbol_interfaces:
+            flags.append("LOOM_FUNC_LIKE_FLAG_KERNEL_ENTRY")
+        if "kernel" in symbol_interfaces:
+            flags.append("LOOM_FUNC_LIKE_FLAG_KERNEL")
+        func_like_flags = " | ".join(flags) or "0"
         lines.append(f"    .flags = {func_like_flags},")
         layout = compute_layout(op)
         segment_count = len(op.operands) if iface.args is not None and layout.segmented_operands else 0

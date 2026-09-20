@@ -20,6 +20,7 @@
 #include "loom/target/emit/llvmir/verify.h"
 #include "loom/target/tool/llvm.h"
 #include "loom/tools/loom-check/diagnostics.h"
+#include "loom/tools/loom-check/source_low.h"
 #include "loom/util/stream.h"
 
 typedef enum loom_llvmir_loom_check_emit_format_e {

@@ -20,6 +20,8 @@ extern "C" {
 typedef struct loom_target_environment_t loom_target_environment_t;
 
 typedef struct iree_run_loom_configuration_t {
+  // Borrowed optional source importers selected by the final application.
+  loom_input_provider_list_t input_providers;
   // Null-terminated executable name used in help and diagnostics.
   const char* tool_name;
   // Target-owned dialect registration selected by linked providers.

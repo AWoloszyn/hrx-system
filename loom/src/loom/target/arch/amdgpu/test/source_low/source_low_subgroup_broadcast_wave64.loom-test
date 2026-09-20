@@ -21,7 +21,7 @@ kernel.def target(@target) @subgroup_broadcast_i32_named_lane_wave64() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_broadcast_i32_named_lane_wave64() asm {
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_broadcast_i32_named_lane_wave64() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
@@ -55,7 +55,7 @@ kernel.def target(@target) @subgroup_broadcast_f32x4_named_lane_wave64() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3_5.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_broadcast_f32x4_named_lane_wave64() asm {
+low.kernel.def target<amdgpu.rdna3_5.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_broadcast_f32x4_named_lane_wave64() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
@@ -103,7 +103,7 @@ kernel.def target(@target) @subgroup_broadcast_i32_uniform_dynamic_lane_wave64(%
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna3_5.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_broadcast_i32_uniform_dynamic_lane_wave64(%source_lane_i32: reg<amdgpu.sgpr>) asm {
+low.kernel.def target<amdgpu.rdna3_5.core>(@target) abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "source_lane"}, direct_arg_offsets = [0], direct_arg_parameter_indices = [0], direct_arg_sizes = [4], parameter_count = 3, resource_count = 2, resource_offsets = [8, 16], resource_parameter_indices = [1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_broadcast_i32_uniform_dynamic_lane_wave64(%source_lane_i32: reg<amdgpu.sgpr>) asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>

@@ -20,6 +20,7 @@
 #include "loom/tooling/config/config.h"
 #include "loom/tooling/context/context.h"
 #include "loom/tooling/execution/hal/testbench_actual.h"
+#include "loom/tooling/input/flags.h"
 #include "loom/tooling/io/file.h"
 #include "loom/tooling/testbench/device_event.h"
 #include "loom/tooling/testbench/executor.h"
@@ -39,7 +40,7 @@ IREE_FLAG(int32_t, sample, -1,
           "or cases. Negative executes all planned samples.");
 IREE_FLAG_LIST(
     string, library,
-    "Loom bytecode library linked into the authored input module. Repeat as "
+    "Source or bytecode library linked into the authored input. Repeat as "
     "--library=path.loombc. Libraries are linked whole in argument order.");
 IREE_FLAG_NAMED(int32_t, max_samples_per_case, "max-samples-per-case",
                 LOOM_TESTBENCH_DEFAULT_MAX_SAMPLES_PER_CASE,
@@ -236,12 +237,9 @@ static bool iree_test_loom_case_has_device_event_expectation(
 }
 
 static bool iree_test_loom_selected_cases_have_device_event_expectation(
-    const loom_testbench_module_plan_t* module_plan,
-    iree_string_view_t selected_case_name) {
-  for (iree_host_size_t i = 0; i < module_plan->case_count; ++i) {
-    const loom_testbench_case_plan_t* case_plan = &module_plan->cases[i];
-    if (iree_test_loom_case_matches_selection(case_plan, selected_case_name) &&
-        iree_test_loom_case_has_device_event_expectation(case_plan)) {
+    loom_testbench_case_plan_list_t cases) {
+  for (iree_host_size_t i = 0; i < cases.count; ++i) {
+    if (iree_test_loom_case_has_device_event_expectation(cases.values[i])) {
       return true;
     }
   }
@@ -699,6 +697,7 @@ int iree_test_loom_main(int argc, char** argv,
     loom_run_session_options_t session_options = {0};
     loom_run_session_options_initialize(&session_options);
     session_options.host_allocator = allocator;
+    session_options.input_providers = configuration->input_providers;
     session_options.register_context = (loom_run_register_context_callback_t){
         .fn = iree_test_loom_register_context,
         .user_data = (void*)configuration,
@@ -740,17 +739,20 @@ int iree_test_loom_main(int argc, char** argv,
   if (iree_status_is_ok(status)) {
     loom_run_module_parse_options_t parse_options = {0};
     loom_run_module_parse_options_initialize(&parse_options);
+    parse_options.input = loom_input_options_from_flags();
     parse_options.filename = filename;
     parse_options.source = source;
     status = loom_run_module_parse(&session, &parse_options, &run_module);
   }
   if (iree_status_is_ok(status)) {
     const iree_flag_string_list_t libraries = FLAG_library_list();
+    const loom_input_options_t input_options = loom_input_options_from_flags();
     status = iree_test_loom_link_libraries(&session, &run_module,
                                            (iree_string_view_list_t){
                                                .count = libraries.count,
                                                .values = libraries.values,
-                                           });
+                                           },
+                                           &input_options);
   }
   if (iree_status_is_ok(status)) {
     status = iree_test_loom_verify_run_module(&run_module);
@@ -771,10 +773,28 @@ int iree_test_loom_main(int argc, char** argv,
         iree_test_loom_normalize_case_name(iree_make_cstring_view(FLAG_case));
     loom_testbench_case_execution_options_t execution_options = {0};
     loom_testbench_case_execution_options_initialize(&execution_options);
-    if (iree_status_is_ok(status) && configuration->function_call_provider.fn) {
-      execution_options.invocation.function_call =
-          configuration->function_call_provider.fn(
-              configuration->function_call_provider.user_data, &module_plan);
+    const loom_testbench_case_plan_t** selected_cases = NULL;
+    loom_testbench_case_plan_list_t selected = {0};
+    if (iree_status_is_ok(status)) {
+      status = iree_arena_allocate_array(&plan_arena, module_plan.case_count,
+                                         sizeof(*selected_cases),
+                                         (void**)&selected_cases);
+    }
+    if (iree_status_is_ok(status)) {
+      for (iree_host_size_t i = 0; i < module_plan.case_count; ++i) {
+        const loom_testbench_case_plan_t* case_plan = &module_plan.cases[i];
+        if (iree_test_loom_case_matches_selection(case_plan,
+                                                  selected_case_name)) {
+          selected_cases[selected.count++] = case_plan;
+        }
+      }
+      selected.values = selected_cases;
+      if (configuration->function_call_provider.fn) {
+        execution_options.invocation.function_call =
+            configuration->function_call_provider.fn(
+                configuration->function_call_provider.user_data, selected,
+                loom_run_module_source_resolver(&run_module));
+      }
     }
     execution_options.materializer.host_allocator = allocator;
     execution_options.materializer.open_read_file =
@@ -783,8 +803,7 @@ int iree_test_loom_main(int argc, char** argv,
             .user_data = &file_provider,
         };
     if (iree_status_is_ok(status) &&
-        iree_test_loom_selected_cases_have_device_event_expectation(
-            &module_plan, selected_case_name)) {
+        iree_test_loom_selected_cases_have_device_event_expectation(selected)) {
       status = loom_testbench_device_event_capture_initialize(
           IREE_TEST_LOOM_DEVICE_EVENT_CAPACITY, allocator,
           &device_event_capture);
@@ -797,21 +816,17 @@ int iree_test_loom_main(int argc, char** argv,
       }
     }
 
-    iree_host_size_t selected_case_count = 0;
+    const iree_host_size_t selected_case_count = selected.count;
     iree_host_size_t sample_count = 0;
     iree_host_size_t failed_sample_count = 0;
     iree_host_size_t skipped_case_count = 0;
     iree_host_size_t planning_issue_count = 0;
-    for (iree_host_size_t case_index = 0;
-         iree_status_is_ok(status) && case_index < module_plan.case_count;
-         ++case_index) {
+    for (iree_host_size_t selection_index = 0;
+         iree_status_is_ok(status) && selection_index < selected.count;
+         ++selection_index) {
       const loom_testbench_case_plan_t* case_plan =
-          &module_plan.cases[case_index];
-      if (!iree_test_loom_case_matches_selection(case_plan,
-                                                 selected_case_name)) {
-        continue;
-      }
-      ++selected_case_count;
+          selected.values[selection_index];
+      const iree_host_size_t case_index = case_plan - module_plan.cases;
       if (case_plan->issue_count != 0) {
         status = iree_test_loom_append_case_planning_issues(
             &module_plan, case_plan, &planning_issues, &planning_issue_count);

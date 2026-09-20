@@ -20,7 +20,7 @@ kernel.def target(@target) @workgroup_reduce_addf_f32_multi_wave_gfx1250() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @workgroup_reduce_addf_f32_multi_wave_gfx1250() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @workgroup_reduce_addf_f32_multi_wave_gfx1250() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
@@ -82,7 +82,7 @@ kernel.def target(@target) @workgroup_scan_inclusive_addi_i32_multi_wave_gfx1250
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @workgroup_scan_inclusive_addi_i32_multi_wave_gfx1250() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @workgroup_scan_inclusive_addi_i32_multi_wave_gfx1250() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
@@ -173,7 +173,7 @@ kernel.def target(@target) @subgroup_vote_any_wave64_gfx12() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx12.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_vote_any_wave64_gfx12() asm {
+low.kernel.def target<amdgpu.gfx12.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_vote_any_wave64_gfx12() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
   %14 = v_lshlrev_b32_src0_inline %tid, 2
@@ -214,7 +214,7 @@ kernel.def target(@target) @subgroup_vote_all_wave64_gfx12() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx12.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_vote_all_wave64_gfx12() asm {
+low.kernel.def target<amdgpu.gfx12.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_vote_all_wave64_gfx12() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
   %14 = v_lshlrev_b32_src0_inline %tid, 2
@@ -251,7 +251,7 @@ kernel.def target(@target) @subgroup_broadcast_first_i32_wave64_gfx12() {
 }
 
 // ----
-low.kernel.def target<amdgpu.gfx12.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_broadcast_first_i32_wave64_gfx12() asm {
+low.kernel.def target<amdgpu.gfx12.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_broadcast_first_i32_wave64_gfx12() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>

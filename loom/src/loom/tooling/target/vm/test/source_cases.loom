@@ -1,0 +1,60 @@
+// Public helpers remain open in source and become dependencies of the selected
+// executable roots. A helper also called directly remains a root in that module.
+func.def public export("increment_export") @increment(%value: i32) -> (i32) {
+  %increment = scalar.constant 1 : i32
+  %result = scalar.addi %value, %increment : i32
+  func.return %result : i32
+}
+
+func.def public @forward(%value: i32) -> (i32) {
+  %result = func.call @increment(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def public export("entry_export") @entry(%value: i32) -> (i32) {
+  %result = func.call @forward(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def @private_entry(%value: i32) -> (i32) {
+  %first = func.call @forward(%value) : (i32) -> (i32)
+  %result = func.call @forward(%first) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// This body cannot execute in the VM. Its authored target and public visibility
+// must not make it an execution root when no case invokes it.
+vm.target<core> @unused_target
+
+func.decl @unavailable() -> (i32)
+
+func.def public target(@unused_target) @unused() -> (i32) {
+  %result = func.call @unavailable() : () -> (i32)
+  func.return %result : i32
+}
+
+check.case public @public_entry {
+  %input = check.literal value(4) : i32
+  %actual = func.call @entry(%input) : (i32) -> (i32)
+  %expected = check.literal value(5) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case public @private_entry_case {
+  %input = check.literal value(8) : i32
+  %actual = func.call @private_entry(%input) : (i32) -> (i32)
+  %expected = check.literal value(10) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case public @helper_is_also_a_root {
+  %input = check.literal value(20) : i32
+  %actual = func.call @increment(%input) : (i32) -> (i32)
+  %expected = check.literal value(21) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.benchmark<@public_entry> @public_entry_benchmark

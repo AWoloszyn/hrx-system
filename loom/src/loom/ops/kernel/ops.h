@@ -1124,9 +1124,6 @@ iree_status_t loom_kernel_decl_build(
     iree_host_size_t predicates_count,
     loom_location_id_t location,
     loom_op_t** out_op);
-iree_status_t loom_kernel_decl_verify(
-    const loom_module_t* module, const loom_op_t* op,
-    iree_diagnostic_emitter_t emitter);
 
 // LOOM_OP_KERNEL_ENTRY_DECL: Bodyless declaration of an executable kernel entry. The declaration owns the device ABI but has no workload-to-workgroup configuration contract, execution geometry, or implementation body.
 // kernel.entry.decl @fill(%count: index, %output: buffer)

@@ -251,7 +251,7 @@ func.def public target(@device) @bound() -> (i32) {
 // ====
 // RUN: pass specialize-target-callgraph,canonicalize
 
-// An explicit export also keeps the callable open without a public modifier.
+// An artifact alias does not prevent specializing a private callable.
 test.target<low_core> @device {subgroup_size = 64}
 
 func.def noinline export("visible_width") @width() -> (index) {
@@ -268,7 +268,7 @@ func.def public target(@device) @bound() -> (index) {
 test.target<low_core> @device {subgroup_size = 64}
 
 func.def noinline export("visible_width") @width() -> (index) {
-  %width = target.subgroup.size : index
+  %width = index.constant 64 : index
   func.return %width : index
 }
 

@@ -834,7 +834,8 @@ static iree_status_t loom_link_kernel_config_project_ir_module(
     const loom_link_plan_module_selection_t* selection,
     const loom_link_plan_materialization_environment_t* environment,
     iree_string_view_t module_name, iree_arena_allocator_t* scratch_arena,
-    loom_symbol_ref_t* configuration_functions, loom_module_t** out_module) {
+    loom_symbol_ref_t* configuration_functions, loom_module_t** out_module,
+    const loom_source_id_t** out_target_sources) {
   *out_module = NULL;
   const loom_module_t* source_module =
       selection->source_module->materialized_module;
@@ -924,6 +925,7 @@ static iree_status_t loom_link_kernel_config_project_ir_module(
     return status;
   }
   *out_module = target_module;
+  *out_target_sources = module_remap.target_sources;
   return iree_ok_status();
 }
 
@@ -1003,7 +1005,7 @@ iree_status_t loom_link_plan_project_kernel_config_module(
     loom_module_t* module = NULL;
     IREE_RETURN_IF_ERROR(loom_link_kernel_config_project_ir_module(
         selection, environment, module_name, arena, configuration_functions,
-        &module));
+        &module, &out_projection->target_sources));
     out_projection->module = module;
     out_projection->configuration_functions.values = configuration_functions;
     out_projection->configuration_functions.count = selection->symbols.count;

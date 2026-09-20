@@ -139,6 +139,8 @@ typedef struct loom_testbench_expectation_failure_t {
 } loom_testbench_expectation_failure_t;
 
 typedef struct loom_testbench_expectation_report_t {
+  // Borrowed module owning recorded failure operations; live until reset.
+  const loom_module_t* module;
   // Host allocator that owns |failures| and |detail_builder|.
   iree_allocator_t host_allocator;
   // Failure storage with capacity for one entry per expectation.

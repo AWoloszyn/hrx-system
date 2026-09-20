@@ -14,4 +14,4 @@
           %4 = OpLabel
                OpReturn
                OpFunctionEnd
-               OpModuleProcessed "iree.vulkan.bda.v1"
+               OpModuleProcessed "iree.vulkan.bda.v1[main]"

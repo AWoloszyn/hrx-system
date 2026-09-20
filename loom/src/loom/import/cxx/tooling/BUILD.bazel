@@ -1,4 +1,6 @@
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test")
+load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:defs.bzl", "loom_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -45,4 +47,37 @@ loom_cc_library(
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/base/internal:path",
     ],
+)
+
+iree_execution_test_suite(
+    name = "execution_test",
+    data = [
+        "check_cases.cc",
+        "check_cases.h",
+        "check_library.cc",
+        "source_input.cc",
+        "source_input.h",
+        "source_input.loom",
+    ],
+    manifests = ["execution.test.json"],
+    target_compatible_with = loom_config_compatible_with([
+        "//loom/config/import:cxx",
+        "//loom/config/target/arch:vm",
+    ]),
+    tools = {
+        "iree-benchmark-loom": "//loom/src/loom/tools/iree-benchmark-loom",
+        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+        "loom-link": "//loom/src/loom/tools/loom-link",
+    },
+)
+
+loom_test(
+    name = "source_test",
+    srcs = ["check_cases.cc"],
+    data = ["check_cases.h"],
+    inputopts = ["cxx:D=CHECK_EXPECTED=0u"],
+    target_compatible_with = loom_config_compatible_with([
+        "//loom/config/import:cxx",
+        "//loom/config/target/arch:vm",
+    ]),
 )

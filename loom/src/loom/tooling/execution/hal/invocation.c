@@ -308,15 +308,6 @@ static iree_const_byte_span_t loom_run_hal_dispatch_constants(
       options->constant_count * sizeof(options->constants[0]));
 }
 
-static iree_string_view_t loom_run_hal_normalize_function_name(
-    iree_string_view_t function_name) {
-  function_name = iree_string_view_trim(function_name);
-  if (iree_string_view_starts_with_char(function_name, '@')) {
-    function_name = iree_string_view_remove_prefix(function_name, 1);
-  }
-  return function_name;
-}
-
 static iree_status_t loom_run_hal_select_single_function_name(
     iree_hal_executable_t* executable, iree_string_view_t* out_function_name) {
   *out_function_name = iree_string_view_empty();
@@ -346,8 +337,7 @@ static iree_status_t loom_run_hal_lookup_dispatch_function(
     iree_hal_executable_t* executable,
     const loom_run_hal_invocation_options_t* options,
     iree_hal_executable_function_t* out_function) {
-  iree_string_view_t function_name =
-      loom_run_hal_normalize_function_name(options->function_name);
+  iree_string_view_t function_name = options->function_name;
   if (iree_string_view_is_empty(function_name)) {
     IREE_RETURN_IF_ERROR(
         loom_run_hal_select_single_function_name(executable, &function_name));

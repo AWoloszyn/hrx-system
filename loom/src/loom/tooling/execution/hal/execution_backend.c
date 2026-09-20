@@ -127,14 +127,10 @@ static iree_status_t loom_run_hal_execution_backend_select_device_target(
 
 static iree_status_t loom_run_hal_execution_backend_run_pipeline(
     const loom_run_one_shot_request_t* request,
+    loom_run_module_t* compile_module,
     const loom_compile_options_t* compile_options,
     const loom_target_entry_t* entry, const loom_device_target_t* device_target,
     loom_compile_pipeline_result_t* out_result) {
-  if (request->session == NULL || request->target_environment == NULL) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "HAL compilation requires a session and target environment");
-  }
   const loom_target_specialization_request_t specialization_request = {
       .function_name = entry->func_name,
       .target_profile = device_target->artifact_target.target_profile,
@@ -153,11 +149,11 @@ static iree_status_t loom_run_hal_execution_backend_run_pipeline(
   pipeline_options.low_descriptor_registry =
       loom_run_session_low_descriptor_registry(request->session);
   pipeline_options.source_resolver =
-      loom_run_module_source_resolver(request->run_module);
+      loom_run_module_source_resolver(compile_module);
   pipeline_options.report = compile_options->report;
   pipeline_options.diagnostic_sink = compile_options->diagnostic_sink;
   return loom_compile_run_pipeline(
-      request->run_module->module, &pipeline_options,
+      compile_module->module, &pipeline_options,
       loom_run_session_block_pool(request->session), out_result);
 }
 
@@ -215,6 +211,11 @@ iree_status_t loom_run_hal_execution_backend_probe(
 iree_status_t loom_run_hal_execution_backend_run_one_shot(
     const loom_run_execution_backend_t* backend,
     const loom_run_one_shot_request_t* request) {
+  if (request->session == NULL || request->target_environment == NULL) {
+    return iree_make_status(
+        IREE_STATUS_FAILED_PRECONDITION,
+        "HAL compilation requires a session and target environment");
+  }
   const loom_device_provider_t* device_provider =
       loom_run_hal_execution_backend_device_provider(backend);
   loom_compile_options_t compile_options = *request->compile_options;
@@ -228,6 +229,7 @@ iree_status_t loom_run_hal_execution_backend_run_one_shot(
   loom_device_target_t device_target = {0};
   bool owns_device_target = false;
   loom_compile_pipeline_result_t pipeline_result = {0};
+  loom_run_module_t compile_module = {0};
   loom_run_hal_candidate_t candidate = {0};
   loom_run_hal_invocation_result_t invocation_result = {0};
   loom_run_hal_invocation_result_initialize(request->host_allocator,
@@ -246,6 +248,16 @@ iree_status_t loom_run_hal_execution_backend_run_one_shot(
     request->result->exit_code = 1;
   }
 
+  iree_string_view_t export_name = iree_string_view_empty();
+  if (iree_status_is_ok(status) && entry_selected) {
+    const loom_string_id_t export_symbol =
+        loom_func_like_export_symbol(entry.func);
+    export_name =
+        export_symbol != LOOM_STRING_ID_INVALID
+            ? request->run_module->module->strings.entries[export_symbol]
+            : entry.func_name;
+  }
+
   loom_run_hal_runtime_options_t runtime_options;
   loom_run_hal_runtime_options_initialize(device_provider->driver_name,
                                           &runtime_options);
@@ -262,8 +274,17 @@ iree_status_t loom_run_hal_execution_backend_run_one_shot(
         &owns_device_target, &device_target);
   }
   if (iree_status_is_ok(status) && entry_selected) {
+    status = loom_run_module_clone(
+        request->session, request->run_module,
+        (iree_string_view_list_t){.count = 1, .values = &entry.func_name},
+        &compile_module);
+  }
+  if (iree_status_is_ok(status) && entry_selected) {
+    compile_options.source_resolver =
+        loom_run_module_source_resolver(&compile_module);
     status = loom_run_hal_execution_backend_run_pipeline(
-        request, &compile_options, &entry, &device_target, &pipeline_result);
+        request, &compile_module, &compile_options, &entry, &device_target,
+        &pipeline_result);
   }
   if (iree_status_is_ok(status) && entry_selected &&
       pipeline_result.pass.error_count != 0) {
@@ -273,7 +294,7 @@ iree_status_t loom_run_hal_execution_backend_run_one_shot(
       pipeline_result.pass.error_count == 0) {
     compile_options.function_versions = &pipeline_result.function_versions.list;
     status = loom_run_hal_candidate_emit_target(
-        device_provider, &device_target, request->run_module, &compile_options,
+        device_provider, &device_target, &compile_module, &compile_options,
         request->host_allocator, &candidate);
   }
   if (iree_status_is_ok(status) && entry_selected &&
@@ -294,8 +315,7 @@ iree_status_t loom_run_hal_execution_backend_run_one_shot(
     loom_run_hal_invocation_request_initialize(&invocation_request);
     invocation_request.runtime = &runtime;
     invocation_request.artifact = &device_artifact;
-    invocation_request.options.function_name =
-        request->options->hal_function_name;
+    invocation_request.options.function_name = export_name;
     invocation_request.options.workgroup_count[0] =
         request->options->hal_workgroup_count[0];
     invocation_request.options.workgroup_count[1] =
@@ -350,6 +370,7 @@ iree_status_t loom_run_hal_execution_backend_run_one_shot(
                                          request->host_allocator);
   }
   loom_compile_pipeline_result_deinitialize(&pipeline_result);
+  loom_run_module_deinitialize(&compile_module);
   loom_run_hal_runtime_deinitialize(&runtime);
   iree_arena_deinitialize(&arena);
   iree_arena_block_pool_deinitialize(&block_pool);

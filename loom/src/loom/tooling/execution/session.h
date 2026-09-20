@@ -14,6 +14,8 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/target/low_descriptor_registry.h"
+#include "loom/tooling/input/input.h"
+#include "loom/tooling/io/source.h"
 #include "loom/verify/verify.h"
 
 #ifdef __cplusplus
@@ -43,6 +45,8 @@ typedef struct loom_run_initialize_low_descriptor_registry_callback_t {
 } loom_run_initialize_low_descriptor_registry_callback_t;
 
 typedef struct loom_run_session_options_t {
+  // Borrowed optional input providers linked by the final application.
+  loom_input_provider_list_t input_providers;
   // Host allocator used for session-owned runtime state.
   iree_allocator_t host_allocator;
   // Total bytes retained per transient parser/compiler arena block.
@@ -55,6 +59,8 @@ typedef struct loom_run_session_options_t {
 } loom_run_session_options_t;
 
 typedef struct loom_run_session_t {
+  // Borrowed optional input providers, live through all module admissions.
+  loom_input_provider_list_t input_providers;
   // Host allocator used for session-owned runtime state.
   iree_allocator_t host_allocator;
   // Transient block pool reused across modules and candidates.
@@ -92,10 +98,13 @@ const loom_target_low_descriptor_registry_t*
 loom_run_session_low_descriptor_registry(const loom_run_session_t* session);
 
 typedef struct loom_run_module_parse_options_t {
-  // User-facing source filename for diagnostics.
+  // Source format, provider options, and diagnostic filename remapping.
+  loom_input_options_t input;
+  // Physical input path used for include lookup and default diagnostics.
   iree_string_view_t filename;
   // Input bytes. Text is parsed directly; bytecode is detected by file magic.
-  // The caller must keep the bytes alive while the module lives.
+  // Borrowed for the parse call; captured text snapshots are owned by the
+  // result.
   iree_string_view_t source;
   // Diagnostic sink used by the text parser or bytecode reader.
   loom_diagnostic_sink_t diagnostic_sink;
@@ -106,26 +115,29 @@ typedef struct loom_run_module_parse_options_t {
 typedef struct loom_run_module_t {
   // Parsed module owned by this object.
   loom_module_t* module;
-  // Source filename used for diagnostics and source resolution.
+  // Input path borrowed from the caller, which must outlive this object.
+  // Diagnostic source filenames are owned separately in sources.
   iree_string_view_t filename;
-  // Input bytes borrowed from the caller.
-  iree_string_view_t source;
-  // Source table entry for text inputs.
-  loom_source_entry_t source_entry;
-  // Single-entry source resolver for text-input diagnostics.
-  loom_source_table_resolver_t source_table_resolver;
-  // True when source_entry and source_table_resolver are backed by text.
-  bool has_source_entry;
+  // Owned source snapshots for text inputs and linked dependencies.
+  loom_tooling_source_storage_t sources;
 } loom_run_module_t;
 
 // Initializes parse options with stderr diagnostics and a small error cap.
 void loom_run_module_parse_options_initialize(
     loom_run_module_parse_options_t* out_options);
 
-// Parses text or reads bytecode into a module owned by |out_module|.
+// Imports source or reads bytecode into a module owned by |out_module|.
 iree_status_t loom_run_module_parse(
     loom_run_session_t* session, const loom_run_module_parse_options_t* options,
     loom_run_module_t* out_module);
+
+// Clones selected roots and their dependencies, preserving diagnostic sources.
+// An empty |root_symbols| clones the entire module. The result owns its IR and
+// source snapshots; its borrowed filename and session must outlive the result.
+iree_status_t loom_run_module_clone(loom_run_session_t* session,
+                                    const loom_run_module_t* source,
+                                    iree_string_view_list_t root_symbols,
+                                    loom_run_module_t* out_module);
 
 // Releases the parsed module owned by |run_module|.
 void loom_run_module_deinitialize(loom_run_module_t* run_module);

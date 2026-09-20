@@ -29,19 +29,17 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/func/ops.h"
-#include "loom/ops/kernel/ops.h"
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
-#include "loom/sanitizer/options.h"
 #include "loom/target/entry_selection.h"
 #include "loom/target/low_packet_diagnostics.h"
-#include "loom/tooling/compile/pipeline.h"
 #include "loom/tools/loom-check/comparison.h"
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/tools/loom-check/execute.h"
 #include "loom/tools/loom-check/input.h"
 #include "loom/tools/loom-check/low_emit.h"
 #include "loom/tools/loom-check/low_report.h"
+#include "loom/tools/loom-check/source_low.h"
 #include "loom/tools/loom-check/target_low_registry_manifest.h"
 #include "loom/util/stream.h"
 #include "loom/verify/verify.h"
@@ -56,13 +54,6 @@ typedef enum loom_check_emit_format_e {
   LOOM_CHECK_EMIT_SOURCE_LOW_TEXT = 6,
   LOOM_CHECK_EMIT_LOW_COMPILE_REPORT = 7,
 } loom_check_emit_format_t;
-
-typedef enum loom_check_emit_source_low_output_e {
-  LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_MODULE = 0,
-  LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_LOW = 1,
-  LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_PIPELINE = 2,
-  LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_PREPARED_PIPELINE = 3,
-} loom_check_emit_source_low_output_t;
 
 enum {
   LOOM_CHECK_EMIT_MAX_SCHEDULE_PRESSURE_CLIFFS = 16,
@@ -146,24 +137,8 @@ typedef struct loom_check_emit_request_t {
   bool suppress_actual_output;
   // True once an output option has been parsed.
   bool has_output_option;
-  // Source-low text output form.
-  loom_check_emit_source_low_output_t source_low_output;
-  // True once a source-low output option has been parsed.
-  bool has_source_low_output_option;
-  // Source-low legality diagnostics requested by the RUN line.
-  loom_target_low_legality_diagnostic_flags_t source_low_diagnostic_flags;
-  // True once a source-low diagnostics option has been parsed.
-  bool has_source_low_diagnostics_option;
-  // Source-low control-flow shape requested by the RUN line.
-  loom_target_control_flow_lowering_t source_low_control_flow_lowering;
-  // True once a source-low control-flow option has been parsed.
-  bool has_source_low_control_flow_option;
-  // Sanitizer checks requested for source-low target pipeline emission.
-  loom_sanitizer_options_t source_low_sanitizer_options;
-  // True once a source-low sanitizer option has been parsed.
-  bool has_source_low_sanitizer_option;
-  // True once a source-low sanitizer-reporting option has been parsed.
-  bool has_source_low_sanitizer_reporting_option;
+  // Source lowering request and optional function target specialization.
+  loom_check_source_low_request_t source_low;
 } loom_check_emit_request_t;
 
 static iree_status_t loom_check_emit_parse_json_output_option(
@@ -240,132 +215,6 @@ static iree_status_t loom_check_emit_parse_low_allocation_options(
     if (!iree_string_view_is_empty(token)) {
       IREE_RETURN_IF_ERROR(loom_check_emit_parse_low_allocation_option(
           target_name, token, request));
-    }
-    text = iree_string_view_trim(remaining);
-  }
-  return iree_ok_status();
-}
-
-static iree_status_t loom_check_emit_parse_source_low_option(
-    iree_string_view_t token, loom_check_emit_request_t* request) {
-  iree_string_view_t name = iree_string_view_empty();
-  iree_string_view_t value = iree_string_view_empty();
-  iree_string_view_split(token, '=', &name, &value);
-  name = iree_string_view_trim(name);
-  value = iree_string_view_trim(value);
-  if (iree_string_view_equal(name, IREE_SV("diagnostics"))) {
-    if (request->has_source_low_diagnostics_option) {
-      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "duplicate source-low option 'diagnostics'");
-    }
-    if (iree_string_view_equal(value, IREE_SV("none"))) {
-      request->source_low_diagnostic_flags = 0;
-    } else if (iree_string_view_equal(value, IREE_SV("memory"))) {
-      request->source_low_diagnostic_flags =
-          LOOM_TARGET_LOW_LEGALITY_DIAGNOSTIC_MEMORY_ACCESS;
-    } else if (iree_string_view_equal(value, IREE_SV("operand-forms"))) {
-      request->source_low_diagnostic_flags =
-          LOOM_TARGET_LOW_LEGALITY_DIAGNOSTIC_OPERAND_FORM;
-    } else if (iree_string_view_equal(value, IREE_SV("all"))) {
-      request->source_low_diagnostic_flags =
-          LOOM_TARGET_LOW_LEGALITY_DIAGNOSTIC_ALL;
-    } else {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "source-low option 'diagnostics' expected 'none', 'memory', "
-          "'operand-forms', or 'all', got '%.*s'",
-          (int)value.size, value.data);
-    }
-    request->has_source_low_diagnostics_option = true;
-    return iree_ok_status();
-  }
-  if (iree_string_view_equal(name, IREE_SV("control-flow"))) {
-    if (request->has_source_low_control_flow_option) {
-      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "duplicate source-low option 'control-flow'");
-    }
-    if (iree_string_view_equal(value, IREE_SV("cfg"))) {
-      request->source_low_control_flow_lowering =
-          LOOM_TARGET_CONTROL_FLOW_LOWERING_CFG;
-    } else if (iree_string_view_equal(value, IREE_SV("structured-low"))) {
-      request->source_low_control_flow_lowering =
-          LOOM_TARGET_CONTROL_FLOW_LOWERING_STRUCTURED_LOW;
-    } else {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "source-low option 'control-flow' expected 'cfg' or "
-          "'structured-low', got '%.*s'",
-          (int)value.size, value.data);
-    }
-    request->has_source_low_control_flow_option = true;
-    return iree_ok_status();
-  }
-  if (iree_string_view_equal(name, IREE_SV("sanitizer"))) {
-    if (request->has_source_low_sanitizer_option) {
-      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "duplicate source-low option 'sanitizer'");
-    }
-    IREE_RETURN_IF_ERROR(loom_sanitizer_checks_parse(
-        value, IREE_SV("source-low option 'sanitizer'"),
-        &request->source_low_sanitizer_options.checks));
-    request->has_source_low_sanitizer_option = true;
-    return iree_ok_status();
-  }
-  if (iree_string_view_equal(name, IREE_SV("sanitizer-reporting"))) {
-    if (request->has_source_low_sanitizer_reporting_option) {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "duplicate source-low option 'sanitizer-reporting'");
-    }
-    IREE_RETURN_IF_ERROR(loom_sanitizer_reporting_mode_parse(
-        value, IREE_SV("source-low option 'sanitizer-reporting'"),
-        &request->source_low_sanitizer_options.reporting_mode));
-    request->has_source_low_sanitizer_reporting_option = true;
-    return iree_ok_status();
-  }
-  if (!iree_string_view_equal(name, IREE_SV("output"))) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "unknown source-low option '%.*s'", (int)name.size,
-                            name.data);
-  }
-  if (request->has_source_low_output_option) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "duplicate source-low option 'output'");
-  }
-  if (iree_string_view_equal(value, IREE_SV("module"))) {
-    request->source_low_output = LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_MODULE;
-  } else if (iree_string_view_equal(value, IREE_SV("low"))) {
-    request->source_low_output = LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_LOW;
-  } else if (iree_string_view_equal(value, IREE_SV("pipeline"))) {
-    request->source_low_output = LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_PIPELINE;
-  } else if (iree_string_view_equal(value, IREE_SV("prepared-pipeline"))) {
-    request->source_low_output =
-        LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_PREPARED_PIPELINE;
-  } else if (iree_string_view_equal(value, IREE_SV("none"))) {
-    request->source_low_output = LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_MODULE;
-    request->suppress_actual_output = true;
-  } else {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "source-low option 'output' expected 'module', 'low', 'pipeline', or "
-        "'prepared-pipeline', or 'none', got '%.*s'",
-        (int)value.size, value.data);
-  }
-  request->has_source_low_output_option = true;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_check_emit_parse_source_low_options(
-    iree_string_view_t text, loom_check_emit_request_t* request) {
-  text = iree_string_view_trim(text);
-  while (!iree_string_view_is_empty(text)) {
-    iree_string_view_t token = iree_string_view_empty();
-    iree_string_view_t remaining = iree_string_view_empty();
-    iree_string_view_split(text, ' ', &token, &remaining);
-    token = iree_string_view_trim(token);
-    if (!iree_string_view_is_empty(token)) {
-      IREE_RETURN_IF_ERROR(
-          loom_check_emit_parse_source_low_option(token, request));
     }
     text = iree_string_view_trim(remaining);
   }
@@ -630,13 +479,6 @@ static iree_status_t loom_check_emit_parse_request(
       .has_low_packet_diagnostics_option = false,
       .suppress_actual_output = false,
       .has_output_option = false,
-      .source_low_output = LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_MODULE,
-      .has_source_low_output_option = false,
-      .source_low_control_flow_lowering = LOOM_TARGET_CONTROL_FLOW_LOWERING_CFG,
-      .has_source_low_control_flow_option = false,
-      .source_low_sanitizer_options = {0},
-      .has_source_low_sanitizer_option = false,
-      .has_source_low_sanitizer_reporting_option = false,
   };
   iree_string_view_t target_name = iree_string_view_empty();
   iree_string_view_t target_options = iree_string_view_empty();
@@ -758,19 +600,11 @@ static iree_status_t loom_check_emit_parse_request(
     return iree_ok_status();
   } else if (iree_string_view_equal(target_name, IREE_SV("source-low")) ||
              iree_string_view_equal(target_name, IREE_SV("source-to-low"))) {
-    iree_string_view_t first_token = iree_string_view_empty();
-    iree_string_view_t unused_remaining = iree_string_view_empty();
-    iree_string_view_split(target_options, ' ', &first_token,
-                           &unused_remaining);
-    first_token = iree_string_view_trim(first_token);
-    if (iree_string_view_starts_with(first_token, IREE_SV("@"))) {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "source-low does not accept a function symbol; it runs the shared "
-          "source-to-low pass pipeline for the module");
-    }
     IREE_RETURN_IF_ERROR(
-        loom_check_emit_parse_source_low_options(target_options, out_request));
+        loom_check_source_low_parse(target_options, &out_request->source_low));
+    out_request->suppress_actual_output =
+        out_request->source_low.output ==
+        LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_NONE;
     out_request->format = LOOM_CHECK_EMIT_SOURCE_LOW_TEXT;
     return iree_ok_status();
   } else {
@@ -850,16 +684,6 @@ static iree_status_t loom_check_emit_symbol_kind_mismatch(
       .param_count = IREE_ARRAYSIZE(params),
   };
   return iree_diagnostic_emit(emitter, &emission);
-}
-
-static bool loom_check_diagnostic_collector_has_error(
-    const loom_check_diagnostic_collector_t* collector) {
-  for (iree_host_size_t i = 0; i < collector->count; ++i) {
-    if (collector->diagnostics[i].severity == LOOM_DIAGNOSTIC_ERROR) {
-      return true;
-    }
-  }
-  return false;
 }
 
 static iree_status_t loom_check_emit_find_func_like(
@@ -1387,324 +1211,6 @@ static iree_status_t loom_check_emit_write_low_packet_json(
                                      &result->actual_output);
 }
 
-static void loom_check_emit_initialize_source_low_print_options(
-    const loom_low_descriptor_registry_t* descriptor_registry,
-    loom_text_low_asm_environment_t* low_asm_environment,
-    loom_text_print_options_t* print_options) {
-  loom_low_descriptor_text_asm_environment_initialize(descriptor_registry,
-                                                      low_asm_environment);
-  *print_options = (loom_text_print_options_t){
-      .flags = LOOM_TEXT_PRINT_DEFAULT | LOOM_TEXT_PRINT_REQUIRE_LOW_ASM,
-      .low_asm_environment = *low_asm_environment,
-  };
-}
-
-static iree_status_t loom_check_emit_write_source_low_artifacts(
-    const loom_module_t* module,
-    const loom_low_descriptor_registry_t* descriptor_registry,
-    iree_string_builder_t* output) {
-  loom_text_low_asm_environment_t low_asm_environment = {0};
-  loom_text_print_options_t print_options = {0};
-  loom_check_emit_initialize_source_low_print_options(
-      descriptor_registry, &low_asm_environment, &print_options);
-  bool has_artifact = false;
-  const loom_block_t* block = loom_region_const_entry_block(module->body);
-  const loom_op_t* op = NULL;
-  loom_block_for_each_op(block, op) {
-    if (loom_op_dialect_id(op->kind) != LOOM_DIALECT_LOW) {
-      continue;
-    }
-    if (has_artifact) {
-      IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(output, "\n"));
-    }
-    IREE_RETURN_IF_ERROR(loom_text_print_operation_to_builder_with_options(
-        module, op, output, &print_options));
-    has_artifact = true;
-  }
-  if (!has_artifact) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "source-low produced no low artifacts");
-  }
-  return iree_ok_status();
-}
-
-static bool loom_check_emit_is_low_function_op(const loom_op_t* op) {
-  return loom_low_func_def_isa(op) || loom_low_kernel_def_isa(op);
-}
-
-static bool loom_check_emit_has_low_function(const loom_module_t* module) {
-  const loom_block_t* block = loom_region_const_entry_block(module->body);
-  const loom_op_t* op = NULL;
-  loom_block_for_each_op(block, op) {
-    if (loom_check_emit_is_low_function_op(op)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static iree_string_view_t loom_check_emit_diagnostic_source_low_pipeline(
-    const loom_check_emit_request_t* request) {
-  const bool structured_control_flow =
-      request->source_low_control_flow_lowering ==
-      LOOM_TARGET_CONTROL_FLOW_LOWERING_STRUCTURED_LOW;
-  if (request->source_low_diagnostic_flags == 0) {
-    return structured_control_flow
-               ? IREE_SV(
-                     "source-to-low{control-flow=structured-low,"
-                     "diagnostics=none}")
-               : IREE_SV("source-to-low{diagnostics=none}");
-  }
-  if (request->source_low_diagnostic_flags ==
-      LOOM_TARGET_LOW_LEGALITY_DIAGNOSTIC_MEMORY_ACCESS) {
-    return structured_control_flow
-               ? IREE_SV(
-                     "source-to-low{control-flow=structured-low,"
-                     "diagnostics=memory}")
-               : IREE_SV("source-to-low{diagnostics=memory}");
-  }
-  if (request->source_low_diagnostic_flags ==
-      LOOM_TARGET_LOW_LEGALITY_DIAGNOSTIC_OPERAND_FORM) {
-    return structured_control_flow
-               ? IREE_SV(
-                     "source-to-low{control-flow=structured-low,"
-                     "diagnostics=operand-forms}")
-               : IREE_SV("source-to-low{diagnostics=operand-forms}");
-  }
-  return structured_control_flow
-             ? IREE_SV(
-                   "source-to-low{control-flow=structured-low,"
-                   "diagnostics=all}")
-             : IREE_SV("source-to-low{diagnostics=all}");
-}
-
-void loom_check_prepare_source_low_options_initialize(
-    loom_check_prepare_source_low_options_t* out_options) {
-  IREE_ASSERT_ARGUMENT(out_options);
-  *out_options = (loom_check_prepare_source_low_options_t){
-      .pipeline = IREE_SVL("default"),
-      .default_pipeline = LOOM_COMPILE_DEFAULT_PIPELINE_SOURCE_LOW,
-      .control_flow_lowering = LOOM_TARGET_CONTROL_FLOW_LOWERING_CFG,
-  };
-}
-
-iree_status_t loom_check_prepare_source_low_module(
-    loom_module_t* module,
-    const loom_check_prepare_source_low_options_t* options,
-    const loom_target_low_descriptor_registry_t* low_registry,
-    const loom_check_environment_t* environment,
-    loom_source_resolver_t source_resolver,
-    loom_check_diagnostic_collector_t* diagnostic_collector,
-    iree_arena_block_pool_t* block_pool) {
-  IREE_ASSERT_ARGUMENT(module);
-  IREE_ASSERT_ARGUMENT(options);
-  IREE_ASSERT_ARGUMENT(low_registry);
-  IREE_ASSERT_ARGUMENT(environment);
-  IREE_ASSERT_ARGUMENT(diagnostic_collector);
-  IREE_ASSERT_ARGUMENT(block_pool);
-
-  const loom_target_entry_options_t entry_options = {
-      .diagnostic_sink = {.fn = loom_check_diagnostic_collector_sink,
-                          .user_data = diagnostic_collector},
-      .source_resolver = source_resolver,
-      .max_errors = 20,
-  };
-  if (environment->target_environment == NULL) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "source-low emit requires a target environment");
-  }
-
-  loom_compile_pipeline_options_t compile_options = {0};
-  loom_compile_pipeline_options_initialize(&compile_options);
-  compile_options.pipeline = options->pipeline;
-  compile_options.default_pipeline = options->default_pipeline;
-  compile_options.target_pipeline_options.control_flow_lowering =
-      options->control_flow_lowering;
-  compile_options.target_pipeline_options
-      .source_to_low_legality_diagnostic_flags =
-      options->source_low_diagnostic_flags;
-  compile_options.target_pipeline_options.sanitizer = options->sanitizer;
-  compile_options.target_environment = environment->target_environment;
-  compile_options.low_descriptor_registry = low_registry;
-  compile_options.diagnostic_sink =
-      (loom_diagnostic_sink_t){.fn = loom_check_diagnostic_collector_sink,
-                               .user_data = diagnostic_collector};
-  compile_options.source_resolver = source_resolver;
-  compile_options.max_errors = 20;
-  compile_options.report = options->report;
-
-  loom_compile_pipeline_result_t pipeline_result = {0};
-  iree_status_t status = loom_compile_run_pipeline(
-      module, &compile_options, block_pool, &pipeline_result);
-  if (iree_status_is_ok(status) && pipeline_result.pass.error_count == 0 &&
-      !loom_check_diagnostic_collector_has_error(diagnostic_collector)) {
-    loom_verify_result_t verify_result = {0};
-    status = loom_target_entry_verify_module(module, &entry_options, 20,
-                                             &verify_result);
-    if (iree_status_is_ok(status) && verify_result.error_count == 0) {
-      loom_target_entry_diagnostic_emitter_t verifier_emitter = {0};
-      loom_target_entry_diagnostic_emitter_initialize(
-          module, &entry_options, LOOM_EMITTER_VERIFIER, &verifier_emitter);
-      loom_low_verify_result_t low_verify_result = {0};
-      loom_low_verify_scratch_t low_verify_scratch =
-          loom_low_verify_scratch_for_module(module);
-      status = loom_target_entry_verify_low_module(
-          module, low_registry, &entry_options, &verifier_emitter, 20,
-          environment->low_verify_provider_list, &low_verify_scratch,
-          &low_verify_result);
-    }
-  }
-  loom_compile_pipeline_result_deinitialize(&pipeline_result);
-  return status;
-}
-
-static iree_status_t loom_check_emit_write_source_low_pipeline_text(
-    loom_module_t* source_module, const loom_check_emit_request_t* request,
-    const loom_target_environment_t* target_environment,
-    iree_arena_block_pool_t* block_pool, loom_check_result_t* result) {
-  if (request->has_source_low_diagnostics_option) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "source-low pipeline outputs cannot be combined with diagnostics");
-  }
-  loom_module_t* pipeline_module = NULL;
-  iree_status_t status = loom_module_allocate(
-      source_module->context, IREE_SV("__loom_check_source_low_pipeline"),
-      block_pool, NULL, source_module->allocator, &pipeline_module);
-  loom_op_t* pipeline_op = NULL;
-  const loom_target_pipeline_options_t target_pipeline_options = {
-      .control_flow_lowering = request->source_low_control_flow_lowering,
-      .sanitizer = request->source_low_sanitizer_options,
-  };
-  if (iree_status_is_ok(status)) {
-    if (request->source_low_output ==
-        LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_PREPARED_PIPELINE) {
-      status = loom_target_pipeline_build_to_prepared_low(
-          pipeline_module, IREE_SV("__loom_check_prepared_low"),
-          &target_pipeline_options, target_environment,
-          loom_pass_environment_empty(), &pipeline_op);
-    } else {
-      status = loom_target_pipeline_build_to_source_low(
-          pipeline_module, IREE_SV("__loom_check_source_low"),
-          &target_pipeline_options, target_environment,
-          loom_pass_environment_empty(), &pipeline_op);
-    }
-  }
-  if (iree_status_is_ok(status) && pipeline_op == NULL) {
-    status = iree_make_status(IREE_STATUS_INTERNAL,
-                              "source-low pipeline builder produced no op");
-  }
-  if (iree_status_is_ok(status)) {
-    status = loom_text_print_module_to_builder(
-        pipeline_module, &result->actual_output, LOOM_TEXT_PRINT_DEFAULT);
-  }
-  if (pipeline_module != NULL) {
-    loom_module_free(pipeline_module);
-  }
-  if (iree_status_is_ok(status)) {
-    result->has_actual_output = true;
-  }
-  return status;
-}
-
-static iree_status_t loom_check_emit_write_source_low_text(
-    loom_module_t* module, const loom_check_emit_request_t* request,
-    const loom_target_low_descriptor_registry_t* low_registry,
-    const loom_check_environment_t* environment,
-    loom_source_resolver_t source_resolver,
-    loom_check_diagnostic_collector_t* diagnostic_collector,
-    iree_arena_block_pool_t* block_pool, loom_check_result_t* result) {
-  if (environment->target_environment == NULL) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "source-low emit requires a target environment");
-  }
-  if (request->source_low_output ==
-          LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_PIPELINE ||
-      request->source_low_output ==
-          LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_PREPARED_PIPELINE) {
-    return loom_check_emit_write_source_low_pipeline_text(
-        module, request, environment->target_environment, block_pool, result);
-  }
-
-  const bool sanitizer_enabled =
-      loom_sanitizer_options_is_enabled(&request->source_low_sanitizer_options);
-  if (sanitizer_enabled && request->has_source_low_diagnostics_option) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "source-low option 'sanitizer' cannot be combined with "
-        "'diagnostics' for module or low output");
-  }
-
-  loom_check_prepare_source_low_options_t prepare_options = {0};
-  loom_check_prepare_source_low_options_initialize(&prepare_options);
-  if (request->has_source_low_diagnostics_option &&
-      request->source_low_output != LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_LOW) {
-    prepare_options.pipeline =
-        loom_check_emit_diagnostic_source_low_pipeline(request);
-    prepare_options.default_pipeline = LOOM_COMPILE_DEFAULT_PIPELINE_SOURCE_LOW;
-  } else {
-    prepare_options.pipeline = IREE_SV("default");
-    prepare_options.default_pipeline =
-        request->source_low_output == LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_LOW
-            ? (request->has_source_low_diagnostics_option
-                   ? LOOM_COMPILE_DEFAULT_PIPELINE_SOURCE_LOW_DIAGNOSTIC_ARTIFACTS
-                   : LOOM_COMPILE_DEFAULT_PIPELINE_SOURCE_LOW_ARTIFACTS)
-            : LOOM_COMPILE_DEFAULT_PIPELINE_SOURCE_LOW;
-  }
-  prepare_options.control_flow_lowering =
-      request->source_low_control_flow_lowering;
-  prepare_options.source_low_diagnostic_flags =
-      request->source_low_diagnostic_flags;
-  prepare_options.sanitizer = request->source_low_sanitizer_options;
-  IREE_RETURN_IF_ERROR(loom_check_prepare_source_low_module(
-      module, &prepare_options, low_registry, environment, source_resolver,
-      diagnostic_collector, block_pool));
-  if (loom_check_diagnostic_collector_has_error(diagnostic_collector)) {
-    return iree_ok_status();
-  }
-
-  const loom_target_entry_options_t entry_options = {
-      .diagnostic_sink = {.fn = loom_check_diagnostic_collector_sink,
-                          .user_data = diagnostic_collector},
-      .source_resolver = source_resolver,
-      .max_errors = 20,
-  };
-  loom_target_entry_diagnostic_emitter_t pass_emitter = {0};
-  loom_target_entry_diagnostic_emitter_initialize(
-      module, &entry_options, LOOM_EMITTER_PASS, &pass_emitter);
-  if (!loom_check_emit_has_low_function(module)) {
-    const loom_diagnostic_param_t params[] = {
-        loom_param_string(IREE_SV("source-to-low")),
-    };
-    const loom_diagnostic_emission_t emission = {
-        .error = LOOM_ERR_TARGET_011,
-        .params = params,
-        .param_count = IREE_ARRAYSIZE(params),
-    };
-    return iree_diagnostic_emit(loom_target_entry_emitter(&pass_emitter),
-                                &emission);
-  }
-
-  if (request->source_low_output == LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_LOW) {
-    iree_status_t status = loom_check_emit_write_source_low_artifacts(
-        module, &low_registry->registry, &result->actual_output);
-    if (iree_status_is_ok(status)) {
-      result->has_actual_output = true;
-    }
-    return status;
-  }
-  loom_text_low_asm_environment_t low_asm_environment = {0};
-  loom_text_print_options_t print_options = {0};
-  loom_check_emit_initialize_source_low_print_options(
-      &low_registry->registry, &low_asm_environment, &print_options);
-  iree_status_t status = loom_text_print_module_to_builder_with_options(
-      module, &result->actual_output, &print_options);
-  if (iree_status_is_ok(status)) {
-    result->has_actual_output = true;
-  }
-  return status;
-}
-
 static iree_status_t loom_check_emit_verify_provider_module(
     loom_module_t* module,
     const loom_target_low_descriptor_registry_t* low_registry,
@@ -1927,9 +1433,9 @@ iree_status_t loom_check_execute_emit(
   if (request.format == LOOM_CHECK_EMIT_SOURCE_LOW_TEXT) {
     iree_host_size_t actual_output_size = result->actual_output.size;
     if (iree_status_is_ok(status)) {
-      status = loom_check_emit_write_source_low_text(
-          module, &request, &low_registry, environment, source_resolver,
-          &diagnostic_collector, block_pool, result);
+      status = loom_check_source_low_emit(
+          module, &request.source_low, &low_registry, environment,
+          source_resolver, &diagnostic_collector, block_pool, result);
     }
     if (iree_status_is_ok(status)) {
       if (request.suppress_actual_output) {

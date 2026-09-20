@@ -757,11 +757,12 @@ class BytecodeWriter:
             return True
         if symbol.op is None:
             return False
-        func_like = func_like_interface_for_op(self._op_decls_by_name, symbol.op.name)
-        return (
-            func_like is not None
-            and func_like.export_symbol is not None
-            and func_like.export_symbol in symbol.op.attributes
+        symbol_def = symbol_def_for_op(self._op_decls_by_name, symbol.op.name)
+        return bool(
+            {"kernel", "kernel_entry"}.intersection(symbol_def.interfaces)
+        ) or bool(
+            symbol_def.visibility
+            and symbol.op.attributes.get(symbol_def.visibility) == "public"
         )
 
     def _number_global_op(self, op: Operation) -> None:

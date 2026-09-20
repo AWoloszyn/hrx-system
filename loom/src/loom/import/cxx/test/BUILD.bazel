@@ -5,9 +5,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
-load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file", "loom_generated_file_family")
+load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_test")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
+load("//loom/requirements:defs.bzl", "EMIT_AMDGPU", "EXECUTE_IREE_HAL", "TARGET_ARCH_AMDGPU")
+load("//runtime/requirements:defs.bzl", "AMDGPU_RESOURCE", "HAL_AMDGPU")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -24,6 +26,8 @@ loom_check_test_suite(
     name = "compiler_test",
     srcs = [
         "assumptions.cxx-test",
+        "assumptions_invalid.cxx-test",
+        "check.cxx-test",
         "conditionals.cxx-test",
         "const.cxx-test",
         "control_invalid.cxx-test",
@@ -43,8 +47,11 @@ loom_check_test_suite(
         "pointers.cxx-test",
         "scalar.cxx-test",
         "scalar_invalid.cxx-test",
+        "schedule_lowering.cxx-test",
         "schedules.cxx-test",
         "schedules_invalid.cxx-test",
+        "shaped_intrinsics.cxx-test",
+        "shaped_intrinsics_invalid.cxx-test",
         "standards.cxx-test",
         "vectors.cxx-test",
         "vectors_invalid.cxx-test",
@@ -60,80 +67,168 @@ loom_check_test_suite(
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
 
-iree_execution_test_suite(
-    name = "functions_test",
-    data = [
-        "assumptions.cpp",
-        "comparison_functions.cpp",
-        "constant_loops.cpp",
-        "enum_values.cpp",
-        "increment_values.cpp",
-        "integer_functions.cpp",
-        "schedule_policy.cpp",
-        "schedule_values.cpp",
-        "shaped_intrinsics.cpp",
-        "structured_continue.cpp",
-        "vector_initializers.cpp",
-        "vector_values.cpp",
-        "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
-        "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
-        "//loom/src/loom/import/cxx:include/loomcxx/math.h",
-        "//loom/src/loom/import/cxx:include/loomcxx/scalar.h",
-    ],
-    manifests = ["functions.test.json"],
-    tags = ["hostonly"],
-    target_compatible_with = loom_config_compatible_with([
-        "//loom/config/import:cxx",
-        "//loom/config/target/arch:vm",
-    ]),
-    tools = {
-        "generate-cases": "//loom/py/loom/gen/test:cxx_kernel_cases",
-        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
-        "loom-compile": "//loom/src/loom/tools/loom-compile",
-        "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
-    },
+# Each source retains independent mathematical references and imports its
+# implementation through the same source path as handwritten check cases.
+_HOST_SOURCES = [
+    "assumptions.cpp",
+    "comparison_functions.cpp",
+    "constant_loops.cpp",
+    "enum_values.cpp",
+    "increment_values.cpp",
+    "integer_functions.cpp",
+    "schedule_values.cpp",
+    "shaped_intrinsics.cpp",
+    "structured_continue.cpp",
+    "vector_initializers.cpp",
+    "vector_values.cpp",
+]
+
+_HOST_COMPATIBILITY = loom_config_compatible_with([
+    "//loom/config/import:cxx",
+    "//loom/config/target/arch:vm",
+])
+
+[
+    loom_generated_file(
+        name = source.removesuffix(".cpp") + "_cases_gen",
+        testonly = True,
+        args = [
+            "host",
+            "--source=$(location " + source + ")",
+        ],
+        generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
+        inputs = [source],
+        output = source.removesuffix(".cpp") + "_cases.cc",
+        output_flag = "--output",
+        target_compatible_with = _HOST_COMPATIBILITY,
+    )
+    for source in _HOST_SOURCES
+]
+
+[
+    loom_test(
+        name = source.removesuffix(".cpp") + "_test",
+        srcs = [":" + source.removesuffix(".cpp") + "_cases.cc"],
+        data = [source],
+        target_compatible_with = _HOST_COMPATIBILITY,
+    )
+    for source in _HOST_SOURCES
+]
+
+loom_check_test_suite(
+    name = "vm_compiler_test",
+    srcs = ["vm_lowering.cxx-test"],
+    target_compatible_with = _HOST_COMPATIBILITY,
 )
 
-iree_execution_test_suite(
-    name = "kernels_test",
-    data = [
-        "aiter_swiglu_f16.cpp",
-        "assumptions.cpp",
-        "constant_loops.cpp",
-        "control_flow.cpp",
-        "early_returns.cpp",
-        "enum_values.cpp",
-        "flash_attention.cpp",
-        "increment_values.cpp",
-        "integer_increment.cpp",
-        "llama_rms_norm.cpp",
-        "pointer_walk.cpp",
-        "scheduled_sum.cpp",
-        "shaped_intrinsics.cpp",
-        "short_circuit.cpp",
-        "structured_continue.cpp",
-        "vector_depth.cpp",
-        "vector_initializers.cpp",
-        "vector_values.cpp",
-        "//loom/src/loom/import/cxx:include/hip/hip_fp16.h",
-        "//loom/src/loom/import/cxx:include/hip/hip_runtime.h",
-        "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
-        "//loom/src/loom/import/cxx:include/loomcxx/math.h",
-        "//loom/src/loom/import/cxx:include/loomcxx/scalar.h",
+# Source checks retain runtime fixture directories alongside the linked module.
+_KERNEL_COMPATIBILITY = loom_config_compatible_with([
+    "//loom/config/import:cxx",
+    "//loom/config/execute:amdgpu_hal",
+])
+
+_CXX_AMDGPU_PROFILE = loom_execution_profile(
+    name = "amdgpu",
+    build_requirements = [
+        TARGET_ARCH_AMDGPU,
+        EMIT_AMDGPU,
+        EXECUTE_IREE_HAL,
+        HAL_AMDGPU,
     ],
-    manifests = ["kernels.test.json"],
+    executor = "hardware",
+    resource_group = "loom-amdgpu-tests",
+    run_requirements = [AMDGPU_RESOURCE],
+    runner_args = ["--device=amdgpu"],
     sanitizer_suppressions = rocm_suppressions,
-    tags = [
-        "iree-run-requirement=runtime.resource.amd_gpu",
-        "runtime-resource=amd-gpu",
-    ],
-    target_compatible_with = loom_config_compatible_with([
-        "//loom/config/import:cxx",
-        "//loom/config/execute:amdgpu_hal",
-    ]),
-    tools = {
-        "generate-cases": "//loom/py/loom/gen/test:cxx_kernel_cases",
-        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
-        "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
-    },
+    target_class = "gpu",
+    target_family = "amdgpu",
+)
+
+# A source file and its independent reference cases form one test module.
+# Kernel names, launch configuration, and schedule variants belong to those files.
+_KERNEL_SOURCES = [
+    "aiter_swiglu_f16",
+    "assumptions",
+    "constant_loops",
+    "control_flow",
+    "early_returns",
+    "enum_values",
+    "flash_attention",
+    "increment_values",
+    "integer_increment",
+    "llama_rms_norm",
+    "pointer_walk",
+    "scheduled_sum",
+    "shaped_intrinsics",
+    "short_circuit",
+    "structured_continue",
+    "vector_depth",
+    "vector_initializers",
+    "vector_values",
+]
+
+[
+    loom_generated_file_family(
+        name = source + "_checks_gen",
+        testonly = True,
+        args = [
+            "kernel",
+            "--group=" + source,
+        ],
+        generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
+        output_directories = [source + "_arrays"],
+        output_flags = [
+            "--output",
+            "--arrays",
+        ],
+        outputs = [
+            source + "_checks.loom",
+            source + "_arrays",
+        ],
+        target_compatible_with = _KERNEL_COMPATIBILITY,
+    )
+    for source in _KERNEL_SOURCES
+]
+
+[
+    loom_test(
+        name = source + suffix + "_test",
+        srcs = [
+            source + ".cpp",
+            ":" + source + "_checks.loom",
+        ],
+        args = args,
+        data = [":" + source + "_checks_gen"],
+        execution_profile = _CXX_AMDGPU_PROFILE,
+        inputopts = ["cxx:approximate-functions=true"] if source in [
+            "aiter_swiglu_f16",
+            "flash_attention",
+            "llama_rms_norm",
+        ] else [],
+        target_compatible_with = _KERNEL_COMPATIBILITY,
+    )
+    for source in _KERNEL_SOURCES
+    for suffix, args in [
+        ("_source", []),
+        (
+            "_access",
+            [
+                "--sanitizer=access",
+                "--sanitizer-reporting=report-only",
+            ],
+        ),
+    ]
+]
+
+test_suite(
+    name = "kernels_test",
+    tests = [":" + source + suffix + "_test" for source in _KERNEL_SOURCES for suffix in [
+        "_source",
+        "_access",
+    ]],
+)
+
+test_suite(
+    name = "functions_test",
+    tests = [":" + source.removesuffix(".cpp") + "_test" for source in _HOST_SOURCES],
 )

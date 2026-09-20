@@ -87,21 +87,6 @@ static iree_status_t loom_kernel_verify_positive_u32_attr(
       emitter, op, attr_name, value, IREE_SV("positive u32"));
 }
 
-static iree_status_t loom_kernel_verify_export_contract(
-    iree_diagnostic_emitter_t emitter, const loom_op_t* op,
-    uint8_t export_symbol_attr_index, uint8_t export_linkage_attr_index) {
-  const bool has_export_symbol =
-      loom_kernel_optional_attr_is_present(op, export_symbol_attr_index);
-  const bool has_export_linkage =
-      loom_kernel_optional_attr_is_present(op, export_linkage_attr_index);
-  if (!has_export_symbol && has_export_linkage) {
-    return loom_kernel_verify_contract_attr_present(
-        emitter, op, export_symbol_attr_index, IREE_SV("export"),
-        IREE_SV("present when linkage is present"));
-  }
-  return iree_ok_status();
-}
-
 static iree_status_t loom_kernel_verify_launch_config_purity(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter) {
@@ -1264,21 +1249,9 @@ static iree_status_t loom_kernel_verify_barrier_controls(
 iree_status_t loom_kernel_def_verify(const loom_module_t* module,
                                      const loom_op_t* op,
                                      iree_diagnostic_emitter_t emitter) {
-  IREE_RETURN_IF_ERROR(loom_kernel_verify_export_contract(
-      emitter, op, loom_kernel_def_export_symbol_ATTR_INDEX,
-      loom_kernel_def_export_linkage_ATTR_INDEX));
   IREE_RETURN_IF_ERROR(
       loom_kernel_verify_launch_config_purity(module, op, emitter));
   return loom_kernel_verify_barrier_controls(module, op, emitter);
-}
-
-iree_status_t loom_kernel_decl_verify(const loom_module_t* module,
-                                      const loom_op_t* op,
-                                      iree_diagnostic_emitter_t emitter) {
-  (void)module;
-  return loom_kernel_verify_export_contract(
-      emitter, op, loom_kernel_decl_export_symbol_ATTR_INDEX,
-      loom_kernel_decl_export_linkage_ATTR_INDEX);
 }
 
 static bool loom_kernel_is_indirect_workgroup_count_type(loom_type_t type) {

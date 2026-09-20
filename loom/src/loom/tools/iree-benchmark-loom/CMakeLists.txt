@@ -106,6 +106,8 @@ loom_cc_library(
     loom::tooling::execution::hal::testbench_actual
     loom::tooling::execution::one_shot
     loom::tooling::execution::session
+    loom::tooling::input
+    loom::tooling::input::flags
     loom::tooling::io::file
     loom::tooling::testbench
     loom::tooling::testbench::executor
@@ -260,6 +262,7 @@ loom_cc_binary(
     loom::tooling::execution::execution_provider
     loom::tooling::execution::hal::artifact
     loom::tooling::execution::hal::device_provider
+    loom::tooling::input::configured
     ${_iree_benchmark_loom_platform_deps}
 )
 

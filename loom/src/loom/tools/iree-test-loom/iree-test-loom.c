@@ -10,6 +10,7 @@
 #include <stdio.h>
 
 #include "loom/tooling/execution/execution_provider.h"
+#include "loom/tooling/input/configured.h"
 #include "loom/tools/iree-test-loom/main.h"
 
 #ifndef IREE_TEST_LOOM_HAVE_AMDGPU
@@ -171,6 +172,7 @@ int main(int argc, char** argv) {
   }
 
   iree_test_loom_configuration_t configuration = {
+      .input_providers = loom_configured_input_providers(),
       .tool_name = "iree-test-loom",
       .register_context =
           loom_run_execution_environment_register_context_callback(

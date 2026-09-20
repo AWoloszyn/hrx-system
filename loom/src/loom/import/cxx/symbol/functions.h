@@ -20,7 +20,7 @@
 
 namespace loom::cxx_import {
 
-enum class FunctionKind { Ordinary, Kernel };
+enum class FunctionKind { Ordinary, Kernel, CheckCase };
 
 // Admitted definition ready for recursive body construction. The source owns
 // AST/types and the module owns native IR; both outlive this borrowed contract.
@@ -29,13 +29,13 @@ struct FunctionBody {
   cxx::FunctionDefinitionAST* source;
   // Source statements to translate, without a second function-body lookup.
   cxx::CompoundStatementAST* body;
-  // Native function or kernel definition that owns the body region.
+  // Native function, kernel, or check definition owning the body region.
   loom_op_t* operation;
   // Entry region with projected parameter types, ready for source bindings.
   loom_region_t* region;
   // Resolved source return type, including void.
   const cxx::Type* return_type;
-  // Determines return terminators and workgroup-storage admission.
+  // Selects body projection, return terminators, and storage admission.
   FunctionKind kind;
 };
 
@@ -58,8 +58,16 @@ class Functions {
   // definitions. Called once before translating the pending worklist.
   void select(std::span<const iree_string_view_t> roots);
   // Retains one identity and queues a newly reached source function exactly
-  // once.
+  // once. The caller has admitted a concrete definition through selection or
+  // definition().
   loom_symbol_ref_t declare(cxx::FunctionSymbol* function);
+  // Returns the concrete definition retained for a semantic declaration, or
+  // the frontend-owned definition of a reached concrete template instance.
+  cxx::FunctionSymbol* definition(cxx::FunctionSymbol* function) const;
+  // Source case identity retained during declaration admission.
+  bool is_check_case(cxx::FunctionSymbol* function) const;
+  // Emits benchmark records referencing selected cases after body projection.
+  void build_benchmarks(Locations& locations, loom_builder_t* builder);
   // Discovery order grows as declare reaches helpers. Spans are invalidated by
   // growth; consumers obtain the next indexed entry after each body finishes.
   std::span<cxx::FunctionSymbol* const> pending() const { return pending_; }
@@ -69,7 +77,16 @@ class Functions {
                       Locations& locations, loom_builder_t* builder);
 
  private:
+  enum class DeclarationScope { Namespace, Nested };
+
+  void check_declaration(cxx::FunctionSymbol* function,
+                         cxx::List<cxx::AttributeSpecifierAST*>* attributes,
+                         cxx::AST* owner, DeclarationScope scope);
+  loom_symbol_ref_t create_symbol(cxx::FunctionSymbol* function);
   void collect(cxx::List<cxx::DeclarationAST*>* declarations,
+               DeclarationScope scope,
+               std::vector<cxx::FunctionSymbol*>& definitions);
+  void collect(cxx::DeclarationAST* declaration, DeclarationScope scope,
                std::vector<cxx::FunctionSymbol*>& definitions);
   const std::string& qualified_name(cxx::FunctionSymbol* symbol);
 
@@ -83,6 +100,20 @@ class Functions {
   Intrinsics& intrinsics_;
   // Retains merged launch contracts for definitions and concrete instances.
   LaunchContracts& launches_;
+  struct Benchmark {
+    // Semantic declaration supplying the benchmark's name.
+    cxx::FunctionSymbol* function;
+    // Semantic case declaration named by the source attribute.
+    cxx::FunctionSymbol* case_function;
+    // Attribute owning diagnostics and the emitted benchmark location.
+    cxx::AST* source;
+  };
+  // Concrete definitions indexed by canonical semantic declaration identity.
+  std::unordered_map<cxx::FunctionSymbol*, cxx::FunctionSymbol*> definitions_;
+  // Case annotations retained with their original declaration for diagnostics.
+  std::unordered_map<cxx::FunctionSymbol*, cxx::AST*> check_cases_;
+  // Benchmark declarations in source order, resolved during admission.
+  std::vector<Benchmark> benchmarks_;
   // Selected externally visible definitions; other reached helpers stay
   // private.
   std::unordered_set<cxx::FunctionSymbol*> exported_;

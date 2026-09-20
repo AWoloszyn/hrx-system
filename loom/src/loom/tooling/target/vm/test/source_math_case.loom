@@ -1,0 +1,9 @@
+func.decl @exact_sine(%value: f32) -> (f32)
+
+check.case @exact_sine_case {
+  %input = check.literal value(0.0) : f32
+  %actual = func.call @exact_sine(%input) : (f32) -> (f32)
+  %expected = check.literal value(0.0) : f32
+  check.expect.equal actual(%actual) expected(%expected) : f32
+  check.return
+}

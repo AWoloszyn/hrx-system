@@ -60,14 +60,13 @@ typedef struct loom_spirv_module_bda_root_t {
   uint32_t binding_base_id;
 } loom_spirv_module_bda_root_t;
 
-typedef struct loom_spirv_module_raw_bda_layout_t {
+typedef struct loom_spirv_module_shared_bda_root_t {
   // Module-scope PushConstant root variable ID shared by raw-BDA functions.
   uint32_t root_variable_id;
-  // Number of HAL binding-table entries required by every raw-BDA function.
-  uint16_t binding_count;
-  // Number of 32-bit HAL inline constants consumed by every raw-BDA function.
+  // Maximum inline constant storage, in 32-bit words, across all entries.
+  // Each entry retains its exact logical counts in its own ABI plan.
   uint16_t constant_word_count;
-} loom_spirv_module_raw_bda_layout_t;
+} loom_spirv_module_shared_bda_root_t;
 
 typedef struct loom_spirv_module_abi_plan_t {
   // ABI materialization algorithm selected for this function.
@@ -101,13 +100,13 @@ typedef struct loom_spirv_module_abi_context_t {
   loom_spirv_module_builder_t* builder;
   // SPIR-V type and constant emission cache.
   loom_spirv_type_context_t* type_context;
-  // Module-level raw-BDA layout shared by emitted HAL kernel entries.
-  loom_spirv_module_raw_bda_layout_t* raw_bda_layout;
+  // Physical push-constant storage shared by emitted HAL kernel entries.
+  loom_spirv_module_shared_bda_root_t* shared_bda_root;
   // Function-local Loom value to SPIR-V value-ref table.
   loom_spirv_module_value_table_t* value_table;
 } loom_spirv_module_abi_context_t;
 
-// Builds descriptor declarations or raw-BDA root declarations for |plan|.
+// Builds descriptor declarations or reserves shared raw-BDA storage for |plan|.
 iree_status_t loom_spirv_module_abi_build_plan(
     loom_spirv_module_abi_context_t* context, const loom_block_t* entry_block,
     loom_spirv_module_abi_plan_t* plan);
@@ -127,10 +126,16 @@ iree_status_t loom_spirv_module_abi_store_return_values(
     loom_spirv_module_abi_context_t* context,
     const loom_spirv_module_abi_plan_t* plan, const loom_op_t* op);
 
-// Emits module metadata consumed by the raw-BDA HAL artifact loader.
-iree_status_t loom_spirv_module_abi_emit_metadata(
+// Emits dispatch metadata keyed by the same name as OpEntryPoint.
+iree_status_t loom_spirv_module_abi_emit_entry_metadata(
     loom_spirv_module_abi_context_t* context,
-    const loom_spirv_module_raw_bda_layout_t* raw_bda_layout);
+    const loom_spirv_module_abi_plan_t* plan, iree_string_view_t entry_name);
+
+// Declares the shared physical root after every entry has reserved its storage.
+// The declaration covers the maximum inline constant capacity; it does not
+// change the logical argument counts recorded in individual entry metadata.
+iree_status_t loom_spirv_module_abi_emit_shared_bda_root(
+    loom_spirv_module_abi_context_t* context);
 
 #ifdef __cplusplus
 }  // extern "C"

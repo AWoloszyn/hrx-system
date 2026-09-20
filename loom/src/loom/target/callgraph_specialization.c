@@ -330,13 +330,11 @@ static iree_status_t loom_target_callgraph_prepare_symbol(
   }
 
   info->module_internal = loom_func_like_is_module_internal(info->function);
-  // Kernel entries require an artifact ABI without necessarily exposing their
-  // source symbols. Only authored linkage opens the set of possible callers.
+  // Kernel launches specialize the entry's artifact ABI in the caller's target
+  // context. Public callable definitions and imports keep an open caller set;
+  // artifact aliases do not change that set.
   info->externally_visible =
-      info->function_facts->visibility != 0 || info->function_facts->imports ||
-      loom_func_like_export_symbol(info->function) != LOOM_STRING_ID_INVALID ||
-      loom_func_like_export_attrs(info->function).count != 0 ||
-      info->function_facts->has_export_linkage;
+      info->function_facts->visibility != 0 || info->function_facts->imports;
   info->insertion_anchor = info->function.op;
   info->initialized = true;
   return iree_ok_status();

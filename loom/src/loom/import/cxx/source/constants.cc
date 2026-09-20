@@ -15,26 +15,20 @@
 namespace loom::cxx_import {
 namespace {
 
-class IntegerConstant final : private cxx::ASTVisitor {
- public:
-  explicit IntegerConstant(cxx::TranslationUnit& unit) : unit_(unit) {}
+enum class ConstantDomain { Integer, Scalar };
 
-  std::optional<std::intmax_t> evaluate(cxx::ExpressionAST* expression) {
+class PureConstant final : private cxx::ASTVisitor {
+ public:
+  PureConstant(cxx::TranslationUnit& unit, ConstantDomain domain)
+      : unit_(unit), domain_(domain) {}
+
+  std::optional<cxx::ConstValue> evaluate(cxx::ExpressionAST* expression) {
     accept(expression);
     if (!pure_) {
       return std::nullopt;
     }
     cxx::ASTInterpreter interpreter(&unit_);
-    auto evaluated = interpreter.evaluate(expression);
-    auto value = evaluated ? interpreter.toInt(*evaluated) : std::nullopt;
-    if (value && *value < 0) {
-      auto representation =
-          unit_.typeTraits().integral_representation(expression->type);
-      if (!representation->isSigned) {
-        return std::nullopt;
-      }
-    }
-    return value;
+    return interpreter.evaluate(expression);
   }
 
  private:
@@ -44,7 +38,9 @@ class IntegerConstant final : private cxx::ASTVisitor {
       return false;
     }
     auto traits = unit_.typeTraits();
-    if (!traits.is_integral_or_enum(expression->type) ||
+    if ((!traits.is_integral_or_enum(expression->type) &&
+         !(domain_ == ConstantDomain::Scalar &&
+           traits.is_floating_point(expression->type))) ||
         traits.is_volatile(expression->type)) {
       pure_ = false;
       return false;
@@ -52,6 +48,10 @@ class IntegerConstant final : private cxx::ASTVisitor {
     switch (ast->kind()) {
       case cxx::ASTKind::IntLiteralExpression:
         pure_ = !cxx::ast_cast<cxx::IntLiteralExpressionAST>(ast)
+                     ->literalOperatorCall;
+        return false;
+      case cxx::ASTKind::FloatLiteralExpression:
+        pure_ = !cxx::ast_cast<cxx::FloatLiteralExpressionAST>(ast)
                      ->literalOperatorCall;
         return false;
       case cxx::ASTKind::CharLiteralExpression:
@@ -118,15 +118,30 @@ class IntegerConstant final : private cxx::ASTVisitor {
 
   // Resolved source types and retained frontend constants for this invocation.
   cxx::TranslationUnit& unit_;
+  // Source grammar requested by the owning bound or literal admission.
+  ConstantDomain domain_;
   // Admission result; unsupported syntax prevents any interpretation.
   bool pure_ = true;
 };
 
 }  // namespace
 
+std::optional<cxx::ConstValue> scalar_constant(cxx::TranslationUnit& unit,
+                                               cxx::ExpressionAST* expression) {
+  return PureConstant(unit, ConstantDomain::Scalar).evaluate(expression);
+}
+
 std::optional<std::intmax_t> integer_constant(cxx::TranslationUnit& unit,
                                               cxx::ExpressionAST* expression) {
-  return IntegerConstant(unit).evaluate(expression);
+  auto evaluated =
+      PureConstant(unit, ConstantDomain::Integer).evaluate(expression);
+  cxx::ASTInterpreter interpreter(&unit);
+  auto value = evaluated ? interpreter.toInt(*evaluated) : std::nullopt;
+  if (value && *value < 0 &&
+      !unit.typeTraits().integral_representation(expression->type)->isSigned) {
+    return std::nullopt;
+  }
+  return value;
 }
 
 }  // namespace loom::cxx_import

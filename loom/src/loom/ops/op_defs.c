@@ -833,13 +833,24 @@ bool loom_func_like_is_kernel_entry(loom_func_like_t func) {
          iree_any_bit_set(func.vtable->flags, LOOM_FUNC_LIKE_FLAG_KERNEL_ENTRY);
 }
 
+bool loom_func_like_is_kernel(loom_func_like_t func) {
+  return func.vtable && iree_any_bit_set(func.vtable->flags,
+                                         LOOM_FUNC_LIKE_FLAG_KERNEL |
+                                             LOOM_FUNC_LIKE_FLAG_KERNEL_ENTRY);
+}
+
+bool loom_func_like_is_exported(loom_func_like_t func) {
+  return (loom_func_like_is_kernel(func) ||
+          loom_func_like_visibility(func) != 0) &&
+         loom_func_like_import_module(func) == LOOM_STRING_ID_INVALID &&
+         loom_func_like_import_symbol(func) == LOOM_STRING_ID_INVALID;
+}
+
 bool loom_func_like_is_module_internal(loom_func_like_t func) {
-  if (!loom_func_like_isa(func) || loom_func_like_is_kernel_entry(func) ||
+  if (!loom_func_like_isa(func) || loom_func_like_is_kernel(func) ||
       loom_func_like_visibility(func) != 0 ||
       loom_func_like_import_module(func) != LOOM_STRING_ID_INVALID ||
-      loom_func_like_import_symbol(func) != LOOM_STRING_ID_INVALID ||
-      loom_func_like_export_symbol(func) != LOOM_STRING_ID_INVALID ||
-      loom_func_like_export_attrs(func).count > 0) {
+      loom_func_like_import_symbol(func) != LOOM_STRING_ID_INVALID) {
     return false;
   }
   return true;

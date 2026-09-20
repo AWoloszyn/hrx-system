@@ -6,4 +6,4 @@
                OpMemoryModel PhysicalStorageBuffer64 GLSL450
                OpEntryPoint GLCompute %1 "main"
                OpExecutionMode %1 LocalSize 1 1 1
-               OpModuleProcessed "iree.vulkan.bda.v1"
+               OpModuleProcessed "iree.vulkan.bda.v1[main]"

@@ -77,34 +77,30 @@ kernel.def target(@target) @ordinary_vector_structure_i32() {
                OpName %result1 "result1"
                OpName %result2 "result2"
                OpName %result3 "result3"
-               OpModuleProcessed "iree.vulkan.bda.v1"
-               OpModuleProcessed "iree.vulkan.bda.v1.root=0,32"
-               OpModuleProcessed "iree.vulkan.bda.v1.constant_offset=32"
-               OpModuleProcessed "iree.vulkan.bda.v1.constant_length=0"
-               OpModuleProcessed "iree.vulkan.bda.v1.bindings=2"
-               OpDecorate %_struct_4 Block
-               OpMemberDecorate %_struct_4 0 Offset 0
-               OpMemberDecorate %_struct_4 1 Offset 8
-               OpMemberDecorate %_struct_4 2 Offset 16
-               OpMemberDecorate %_struct_4 3 Offset 20
-               OpMemberDecorate %_struct_4 4 Offset 24
-               OpMemberDecorate %_struct_4 5 Offset 28
+               OpModuleProcessed "iree.vulkan.bda.v1[ordinary_vector_structure_i32].root=0,32"
+               OpModuleProcessed "iree.vulkan.bda.v1[ordinary_vector_structure_i32].constant_offset=32"
+               OpModuleProcessed "iree.vulkan.bda.v1[ordinary_vector_structure_i32].constant_length=0"
+               OpModuleProcessed "iree.vulkan.bda.v1[ordinary_vector_structure_i32].bindings=2"
                OpDecorate %_runtimearr_ulong ArrayStride 8
-               OpDecorate %_struct_13 Block
-               OpMemberDecorate %_struct_13 0 Offset 0
+               OpDecorate %_struct_11 Block
+               OpMemberDecorate %_struct_11 0 Offset 0
                OpDecorate %_ptr_PhysicalStorageBuffer_int ArrayStride 4
+               OpDecorate %_struct_77 Block
+               OpMemberDecorate %_struct_77 0 Offset 0
+               OpMemberDecorate %_struct_77 1 Offset 8
+               OpMemberDecorate %_struct_77 2 Offset 16
+               OpMemberDecorate %_struct_77 3 Offset 20
+               OpMemberDecorate %_struct_77 4 Offset 24
+               OpMemberDecorate %_struct_77 5 Offset 28
+       %void = OpTypeVoid
+          %4 = OpTypeFunction %void
       %ulong = OpTypeInt 64 0
        %uint = OpTypeInt 32 0
-  %_struct_4 = OpTypeStruct %ulong %ulong %uint %uint %uint %uint
-%_ptr_PushConstant__struct_4 = OpTypePointer PushConstant %_struct_4
-          %6 = OpVariable %_ptr_PushConstant__struct_4 PushConstant
-       %void = OpTypeVoid
-          %8 = OpTypeFunction %void
 %_ptr_PushConstant_ulong = OpTypePointer PushConstant %ulong
 %_ptr_PushConstant_uint = OpTypePointer PushConstant %uint
 %_runtimearr_ulong = OpTypeRuntimeArray %ulong
- %_struct_13 = OpTypeStruct %_runtimearr_ulong
-%_ptr_PhysicalStorageBuffer__struct_13 = OpTypePointer PhysicalStorageBuffer %_struct_13
+ %_struct_11 = OpTypeStruct %_runtimearr_ulong
+%_ptr_PhysicalStorageBuffer__struct_11 = OpTypePointer PhysicalStorageBuffer %_struct_11
         %int = OpTypeInt 32 1
       %int_0 = OpConstant %int 0
       %int_2 = OpConstant %int 2
@@ -119,67 +115,70 @@ kernel.def target(@target) @ordinary_vector_structure_i32() {
 %singleton_constant_value = OpConstant %int 10
       %v4int = OpTypeVector %int 4
      %v4bool = OpTypeVector %bool 4
-%ordinary_vector_structure_i32 = OpFunction %void None %8
-          %9 = OpLabel
-         %18 = OpAccessChain %_ptr_PushConstant_ulong %6 %int_0
-         %19 = OpLoad %ulong %18 Aligned 8
-         %20 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer__struct_13 %19
-         %21 = OpAccessChain %_ptr_PushConstant_uint %6 %int_2
-         %22 = OpLoad %uint %21 Aligned 4
-         %24 = OpAccessChain %_ptr_PhysicalStorageBuffer_ulong %20 %int_0 %22
-%input_aligned = OpLoad %ulong %24 Aligned 8
-         %27 = OpIAdd %uint %22 %uint_1
-         %28 = OpAccessChain %_ptr_PhysicalStorageBuffer_ulong %20 %int_0 %27
-%output_aligned = OpLoad %ulong %28 Aligned 8
-         %31 = OpIAdd %ulong %input_aligned %ulong_0
-         %33 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %31
-          %a = OpLoad %int %33 Aligned 4
-         %36 = OpIAdd %ulong %input_aligned %ulong_4
-         %37 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %36
-          %b = OpLoad %int %37 Aligned 4
-         %40 = OpIAdd %ulong %input_aligned %ulong_8
-         %41 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %40
-          %c = OpLoad %int %41 Aligned 4
-         %44 = OpIAdd %ulong %input_aligned %ulong_12
-         %45 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %44
-          %d = OpLoad %int %45 Aligned 4
+ %_struct_77 = OpTypeStruct %ulong %ulong %uint %uint %uint %uint
+%_ptr_PushConstant__struct_77 = OpTypePointer PushConstant %_struct_77
+          %2 = OpVariable %_ptr_PushConstant__struct_77 PushConstant
+%ordinary_vector_structure_i32 = OpFunction %void None %4
+          %5 = OpLabel
+         %16 = OpAccessChain %_ptr_PushConstant_ulong %2 %int_0
+         %17 = OpLoad %ulong %16 Aligned 8
+         %18 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer__struct_11 %17
+         %19 = OpAccessChain %_ptr_PushConstant_uint %2 %int_2
+         %20 = OpLoad %uint %19 Aligned 4
+         %22 = OpAccessChain %_ptr_PhysicalStorageBuffer_ulong %18 %int_0 %20
+%input_aligned = OpLoad %ulong %22 Aligned 8
+         %25 = OpIAdd %uint %20 %uint_1
+         %26 = OpAccessChain %_ptr_PhysicalStorageBuffer_ulong %18 %int_0 %25
+%output_aligned = OpLoad %ulong %26 Aligned 8
+         %29 = OpIAdd %ulong %input_aligned %ulong_0
+         %31 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %29
+          %a = OpLoad %int %31 Aligned 4
+         %34 = OpIAdd %ulong %input_aligned %ulong_4
+         %35 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %34
+          %b = OpLoad %int %35 Aligned 4
+         %38 = OpIAdd %ulong %input_aligned %ulong_8
+         %39 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %38
+          %c = OpLoad %int %39 Aligned 4
+         %42 = OpIAdd %ulong %input_aligned %ulong_12
+         %43 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %42
+          %d = OpLoad %int %43 Aligned 4
   %condition = OpSGreaterThan %bool %a %b
        %from = OpCompositeConstruct %v4int %a %b %c %d
    %constant = OpCompositeConstruct %v4int %singleton_constant_value %singleton_constant_value %singleton_constant_value %singleton_constant_value
       %splat = OpCompositeConstruct %v4int %a %a %a %a
-         %55 = OpCompositeConstruct %v4bool %condition %condition %condition %condition
-  %candidate = OpSelect %v4int %55 %from %constant
-               OpSelectionMerge %58 None
-               OpBranchConditional %condition %57 %59
+         %53 = OpCompositeConstruct %v4bool %condition %condition %condition %condition
+  %candidate = OpSelect %v4int %53 %from %constant
+               OpSelectionMerge %56 None
+               OpBranchConditional %condition %55 %57
+         %55 = OpLabel
+         %58 = OpIAdd %ulong %output_aligned %ulong_0
+         %59 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %58
+               OpStore %59 %a Aligned 4
+               OpBranch %56
          %57 = OpLabel
          %60 = OpIAdd %ulong %output_aligned %ulong_0
          %61 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %60
-               OpStore %61 %a Aligned 4
-               OpBranch %58
-         %59 = OpLabel
-         %62 = OpIAdd %ulong %output_aligned %ulong_0
-         %63 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %62
-               OpStore %63 %b Aligned 4
-               OpBranch %58
-         %58 = OpLabel
-   %selected = OpPhi %v4int %candidate %57 %splat %59
+               OpStore %61 %b Aligned 4
+               OpBranch %56
+         %56 = OpLabel
+   %selected = OpPhi %v4int %candidate %55 %splat %57
    %inserted = OpCompositeInsert %v4int %singleton_constant_value %selected 2
-      %final = OpSelect %v4int %55 %selected %inserted
+      %final = OpSelect %v4int %53 %selected %inserted
     %result0 = OpCompositeExtract %int %final 0
     %result1 = OpCompositeExtract %int %final 1
     %result2 = OpCompositeExtract %int %final 2
     %result3 = OpCompositeExtract %int %final 3
-         %71 = OpIAdd %ulong %output_aligned %ulong_0
+         %69 = OpIAdd %ulong %output_aligned %ulong_0
+         %70 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %69
+               OpStore %70 %result0 Aligned 4
+         %71 = OpIAdd %ulong %output_aligned %ulong_4
          %72 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %71
-               OpStore %72 %result0 Aligned 4
-         %73 = OpIAdd %ulong %output_aligned %ulong_4
+               OpStore %72 %result1 Aligned 4
+         %73 = OpIAdd %ulong %output_aligned %ulong_8
          %74 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %73
-               OpStore %74 %result1 Aligned 4
-         %75 = OpIAdd %ulong %output_aligned %ulong_8
+               OpStore %74 %result2 Aligned 4
+         %75 = OpIAdd %ulong %output_aligned %ulong_12
          %76 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %75
-               OpStore %76 %result2 Aligned 4
-         %77 = OpIAdd %ulong %output_aligned %ulong_12
-         %78 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %77
-               OpStore %78 %result3 Aligned 4
+               OpStore %76 %result3 Aligned 4
                OpReturn
                OpFunctionEnd

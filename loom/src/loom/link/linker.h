@@ -25,6 +25,25 @@
 extern "C" {
 #endif
 
+// Stateful incremental linker. Owns the output module until finish transfers it
+// to the caller.
+typedef struct loom_linker_t loom_linker_t;
+
+// Receives the source correspondence produced by an input add, before its
+// scratch storage is released. The array is indexed by source-module source
+// ID and has source_module->sources.count entries. Callers can retain external
+// source snapshots using this mapping; neither the array nor the source module
+// is retained by the linker. Allocation or conflicting source snapshots may
+// fail the add through this callback.
+typedef struct loom_linker_source_callback_t {
+  // Optional callback invoked after successfully cloning each input module.
+  iree_status_t (*fn)(void* user_data, const loom_module_t* source_module,
+                      const loom_module_t* target_module,
+                      const loom_source_id_t* target_sources);
+  // Caller-owned state that remains valid until the linker is freed.
+  void* user_data;
+} loom_linker_source_callback_t;
+
 // Options controlling one link operation.
 typedef struct loom_link_options_t {
   // Name assigned to the linked output module.
@@ -32,11 +51,9 @@ typedef struct loom_link_options_t {
   // Root symbol names to materialize. Function-like roots are retained in the
   // linked output. An empty list links every materialized source symbol.
   iree_string_view_list_t root_symbols;
+  // Optional consumer of the source correspondence produced by each input.
+  loom_linker_source_callback_t source_callback;
 } loom_link_options_t;
-
-// Stateful incremental linker. Owns the output module until finish transfers it
-// to the caller.
-typedef struct loom_linker_t loom_linker_t;
 
 // Options controlling linker construction.
 typedef struct loom_linker_options_t {
@@ -45,6 +62,8 @@ typedef struct loom_linker_options_t {
   // Maximum number of target symbols carrying sparse-plan state.
   // Zero keeps merge/dense links allocation-free for this state.
   iree_host_size_t planned_symbol_capacity;
+  // Optional consumer of the source correspondence produced by each add.
+  loom_linker_source_callback_t source_callback;
 } loom_linker_options_t;
 
 // Options controlling one input module add.

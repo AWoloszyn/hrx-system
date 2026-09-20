@@ -23,7 +23,7 @@ kernel.def target(@target) @tensor_load_to_lds_d4() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @tensor_load_to_lds_d4() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @tensor_load_to_lds_d4() asm {
   %15 = storage {byte_alignment = 256, byte_length = 16384} : low.storage<workgroup>
   %16 = v_mov_b32 0
   %32 = v_readfirstlane_b32 %16
@@ -80,7 +80,7 @@ kernel.def target(@target) @tensor_load_to_lds_d2() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @tensor_load_to_lds_d2() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @tensor_load_to_lds_d2() asm {
   %15 = storage {byte_alignment = 256, byte_length = 16384} : low.storage<workgroup>
   %16 = v_mov_b32 0
   %32 = v_readfirstlane_b32 %16
@@ -132,7 +132,7 @@ kernel.def target(@target) @tensor_load_two_stage_wait_depth() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @tensor_load_two_stage_wait_depth() asm {
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @tensor_load_two_stage_wait_depth() asm {
   %19 = storage {byte_alignment = 256, byte_length = 16384} : low.storage<workgroup>
   %20 = storage {byte_alignment = 256, byte_length = 16384} : low.storage<workgroup>
   %21 = v_mov_b32 0

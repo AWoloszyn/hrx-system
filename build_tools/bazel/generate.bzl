@@ -64,7 +64,8 @@ def _resolve_output_arguments(ctx, outputs):
     return resolved_outputs
 
 def _iree_generated_files_impl(ctx):
-    outputs = ctx.outputs.outs
+    directories = [ctx.actions.declare_directory(name) for name in ctx.attr.output_directories]
+    outputs = ctx.outputs.outs + directories
     outputs_by_argument = _resolve_output_arguments(ctx, outputs)
 
     location_targets = ctx.attr.srcs + ctx.attr.data
@@ -114,6 +115,9 @@ iree_generated_files = rule(
         "output_args": attr.string_dict(
             mandatory = True,
             doc = "Map of package-relative output path to generator argument. A unique basename may be used as shorthand. Use '{path}' to embed the output path in a single argument; otherwise the path is passed as the following argument.",
+        ),
+        "output_directories": attr.string_list(
+            doc = "Generated directory trees whose members are owned by the generator.",
         ),
         "outs": attr.output_list(
             mandatory = True,

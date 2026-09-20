@@ -36,6 +36,7 @@ loom_cc_library(
     "low_emit.h"
     "low_report.h"
     "requirements.h"
+    "source_low.h"
   SRCS
     "comparison.c"
     "diagnostics.c"
@@ -46,6 +47,7 @@ loom_cc_library(
     "low_report.c"
     "requirements.c"
     "roundtrip.c"
+    "source_low.c"
     "verify.c"
   DEPS
     ::report
@@ -102,6 +104,7 @@ loom_cc_library(
     loom::target::predicate
     loom::target::reporting::format
     loom::target::reporting::low
+    loom::target::selection
     loom::target::types
     loom::testing::test_diagnostic
     loom::testing::test_file
@@ -403,9 +406,6 @@ loom_cc_test(
 )
 
 set(_loom_check_platform_copts "")
-if(LOOM_IMPORT_CXX)
-  list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_INPUT_CXX=1")
-endif()
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_EMIT_AMDGPU=1")
 endif()
@@ -434,9 +434,6 @@ if(LOOM_TARGET_ARCH_X86)
   list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_TARGET_X86=1")
 endif()
 set(_loom_check_platform_deps "")
-if(LOOM_IMPORT_CXX)
-  list(APPEND _loom_check_platform_deps loom::import::cxx::tooling::input)
-endif()
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_platform_deps loom::target::arch::amdgpu::check::provider)
 endif()
@@ -475,13 +472,11 @@ loom_cc_binary(
     ::provider
     iree::base
     loom::target::arch::cmd::check::check_provider
+    loom::tooling::input::configured
     ${_loom_check_platform_deps}
 )
 
 set(_loom_check_test_platform_copts "")
-if(LOOM_IMPORT_CXX)
-  list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_INPUT_CXX=1")
-endif()
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_EMIT_AMDGPU=1")
 endif()
@@ -510,9 +505,6 @@ if(LOOM_TARGET_ARCH_X86)
   list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_TARGET_X86=1")
 endif()
 set(_loom_check_test_platform_deps "")
-if(LOOM_IMPORT_CXX)
-  list(APPEND _loom_check_test_platform_deps loom::import::cxx::tooling::input)
-endif()
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_test_platform_deps loom::target::arch::amdgpu::check::provider)
 endif()
@@ -553,6 +545,7 @@ loom_cc_binary(
     ::test_provider
     iree::base
     loom::target::arch::cmd::check::check_provider
+    loom::tooling::input::configured
     ${_loom_check_test_platform_deps}
   TESTONLY
 )

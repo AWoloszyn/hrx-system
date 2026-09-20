@@ -17,18 +17,25 @@ Program lowering and source rejection cases belong in these files. Native C++
 tests exercise API contracts such as callback failures, source lifetimes,
 binding identity, and retained analysis facts.
 
-## Standalone execution programs
+## Source execution tests
 
 These programs exercise the full source path: C++ import, ordinary Loom
 bytecode linking, config specialization, AMDGPU compilation, and GPU execution.
 The existing `iree-test-loom` runner compares outputs against independent
 double-precision references and checks both output guards bitwise. Ordinary
 integer functions also execute through the VM with exact scalar references.
+Both use normal `loom_test` targets. Host references generate C++ translation
+units containing `LOOM_CHECK_CASE` bodies and include the implementation under
+test. Each GPU source file and its generated Loom reference module form one
+test module. The [source authoring guide](../README.md#executable-checks-and-benchmarks)
+shows handwritten cases and benchmarks.
 
 ```sh
 iree-bazel-test --config=asan --config=loom-importer-cxx \
-  --//runtime/config/hal:drivers=amdgpu,task \
+  --//loom/config/target:enable=amdgpu \
+  --//runtime/config/hal:drivers=amdgpu \
   --//loom/config/emit:enable=amdgpu \
+  --//loom/config/execute:enable=iree_hal \
   //loom/src/loom/import/cxx/test:kernels_test
 
 iree-bazel-test --config=asan --config=loom-importer-cxx \
@@ -36,15 +43,30 @@ iree-bazel-test --config=asan --config=loom-importer-cxx \
   //loom/src/loom/import/cxx/test:functions_test
 ```
 
-The manifest imports each kernel through an external facade include root, so
-the same test works with `--//loom/config/import/cxx:embed_includes=false`.
-Launch count bounds become normal config declarations; the runner supplies
-three workgroups through `--config` for the numerical kernels. The source
-semantics kernels specify one workgroup. Scalar lane kernels use 64 threads;
-explicit register-vector kernels use one thread.
+Build declarations list source files; host reference selection and test names
+follow each filename. GPU sources pair with their reference module and fixture
+directory. All kernels in a source file share that module; the cases select the
+entries they exercise. Import uses the normal facade headers without per-kernel
+root flags or header-path overrides. Generated directories are declared action
+outputs and retained as test data, with NPY paths relative to the check source.
+Schedule variants are named C++ entry points, and the reference code exercises
+each entry against the same numerical oracle. Numerical reference modules bind
+three workgroups with ordinary `config.def` values. The source semantics kernels
+specify one workgroup. Scalar lane kernels use 64 threads; explicit
+register-vector kernels use one thread.
 The numerical tests explicitly permit approximate mathematical functions.
 They test correctness and source compatibility, not kernel performance or
 compatibility with complete upstream libraries.
+
+`functions_test` aggregates 11 source modules with 2,817 scalar cases.
+`kernels_test` aggregates 18 source modules with 215 cases, each run normally and with device
+access sanitization, for 430 case executions. Every case checks for zero access
+reports. Individual targets such as `integer_functions_test`,
+`structured_continue_source_test`, and `structured_continue_access_test` can be
+run directly. Compiler rejection witnesses live in `.cxx-test`, including
+scheduled-loop lowering and unsupported VM aggregate transport. The corpus has
+no JSON execution manifests; JSON fixtures under `tooling/` exercise CLI options,
+report fields, and process exit behavior.
 
 | Source | Numerical coverage | Provenance |
 | --- | --- | --- |
@@ -52,11 +74,11 @@ compatibility with complete upstream libraries.
 | `llama_rms_norm.cpp` | Two 32-lane reductions, shared reduction storage, and columns of length 1, 33, and 129. | [llama.cpp norm.cu](https://github.com/ggml-org/llama.cpp/blob/972d2313bc0bf0a45f634f77d95c9fb03aeab12c/ggml/src/ggml-cuda/norm.cu), MIT. |
 | `aiter_swiglu_f16.cpp` | FP16 storage with f32 arithmetic, clamp extremes, reciprocal/exponential calls, and columns of length 1, 31, 65, and 129. | [aiter activation_kernels.cu](https://github.com/ROCm/aiter/blob/df95f04b703bfd7c520f072fcf2560092ec9d5ac/csrc/kernels/activation_kernels.cu), MIT. |
 | `control_flow.cpp` | Pre-test, post-test, and nested loops; final scalar values and effectful helper calls in conditions. Seven trip counts including zero are checked bitwise. | Original source-language semantics witness. |
-| `scheduled_sum.cpp` | Template-selected unroll factors 1/3 and pipeline depths 1/2 with linear ordering. Exact integer sums for 0, 1, 2, 5, 17, and 33 columns cover startup, tails, and drain under all four schedules. | Original scheduling-contract witness. |
+| `scheduled_sum.cpp` | Unroll factors 1/3 and pipeline depths 1/2 with linear ordering. Exact integer sums for 0, 1, 2, 5, 17, and 33 columns cover startup, tails, and drain under all four schedules. | Original scheduling-contract witness. |
 | `short_circuit.cpp` | Bounds-guarded reads, exact conditional call-order traces through seven-comparison chains, discarded boolean expressions and scalar truth conversions across 64 lanes. Lengths 0, 1, 17, 33 and 64 run normally and with device access sanitization and zero expected access reports. | Original source-language semantics witness. |
 | `early_returns.cpp` | Per-lane kernel exits, guarded helper returns inside a counted loop, nested return trees, void calls in returns, and local state across continuing paths. Lengths 0, 1, 17, 33 and 64 run normally and with device access sanitization; exited lanes retain their sentinel values. | Original source-language semantics witness. |
 | `integer_functions.cpp` | Exact VM results for fixed-point multiply/rescale, byte increment/decrement, signed short decrement, 64-bit wrap and independently promoted shift counts. The 162 cases include negative rescaling, sign boundaries and counts 0/31/32/63. | Original source-language semantics witness using ordinary exported functions. |
-| `enum_values.cpp` | Named constants, signed and unsigned casts, comparisons, boolean enums, inferred 64-bit storage and template-dependent definitions execute in 369 exact VM cases. Twelve AMDGPU cases exercise 8/16/32/64-bit enum parameters and pointer storage through ordinary helper calls, including high bits and wraparound, with unchanged inputs and output guards checked normally and with device access sanitization. | Original source-language representation witness. |
+| `enum_values.cpp` | Named constants, signed and unsigned casts, comparisons, boolean enums, inferred 64-bit storage, packed enum promotion, and template-dependent definitions execute in 881 exact VM cases. Twelve AMDGPU cases exercise 8/16/32/64-bit enum parameters and pointer storage through ordinary helper calls, including high bits and wraparound, with unchanged inputs and output guards checked normally and with device access sanitization. | Original source-language representation witness. |
 | `comparison_functions.cpp` | Seven unparenthesized comparisons execute on the VM for all 128 truth combinations, zero inputs, and each argument at the unsigned maximum. | Original source-language parser and execution witness. |
 | `assumptions.cpp` | Conjunctive and repeated bounds, capacity/stride constant expressions, templates, casts, unsigned wrap, unevaluated `sizeof`, scoped refinements and wide values. VM checks include every byte value; AMDGPU checks all outputs and guards, normally and with device access sanitization. | Original source-contract witness. |
 | `vector_initializers.cpp` | Typed vector temporaries in returns, arguments, templates and nested expressions. VM lane checks and complete AMDGPU buffers cover empty/single/partial forms, narrow conversions, signed zero, zero-filled lanes and left-to-right initializer effects. | Original source-language initialization witness. |

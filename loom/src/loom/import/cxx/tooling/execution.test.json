@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "imports a C++ library with relative headers and provider-scoped options",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_input.loom",
+          "--library={srcdir}/source_input.cc",
+          "--input-options=cxx:D=CHECK_BIAS=1"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":1",
+          "\"failed_sample_count\":0",
+          "\"planning_issue_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "executes source cases and header assertions directly",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":2",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "executes C++ cases after linking another C++ source library",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--library={srcdir}/check_library.cc"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":3",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "runs the C++ benchmark reference through the existing correctness gate",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--iterations=1",
+          "--warmup-iterations=0",
+          "--output-format=jsonl"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "wraps_byte_benchmark"
+        ]
+      }
+    },
+    {
+      "name": "reports an authored assertion in check_cases.cc",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_EXPECTED=1u",
+          "--source-prefix-map={srcdir}=source"
+        ]
+      },
+      "exit": 1,
+      "stdout": {
+        "contains": [
+          "\"failed_sample_count\":1",
+          "\"source_location\":{\"filename\":\"source/check_cases.cc\",\"start_line\":21,\"start_column\":3"
+        ]
+      }
+    },
+    {
+      "name": "reports an authored assertion in check_cases.h",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_HEADER_EXPECTED=6u",
+          "--source-prefix-map={srcdir}=source"
+        ]
+      },
+      "exit": 1,
+      "stdout": {
+        "contains": [
+          "\"failed_sample_count\":1",
+          "\"source_location\":{\"filename\":\"source/check_cases.h\",\"start_line\":20,\"start_column\":3"
+        ]
+      }
+    },
+    {
+      "name": "VM diagnostics resolve imported helper text in its original header",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_MATH=1",
+          "--source-prefix-map={srcdir}=source"
+        ]
+      },
+      "exit": 1,
+      "stderr": {
+        "contains": [
+          "source/check_cases.h:",
+          "vm-math",
+          "return exact_sine_intrinsic(value);",
+          "VM compilation failed"
+        ]
+      }
+    },
+    {
+      "name": "links imported cases and retains header locations in bytecode",
+      "steps": [
+        {
+          "name": "link",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/check_cases.cc",
+              "{srcdir}/check_library.cc",
+              "--mode=link",
+              "--include-input-tests",
+              "--input-options=cxx:D=CHECK_HEADER_EXPECTED=6u",
+              "--source-prefix-map={srcdir}=source",
+              "--to=bc",
+              "--output={tmp}/checks.loombc"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/checks.loombc"
+            ]
+          },
+          "exit": 1,
+          "stdout": {
+            "contains": [
+              "\"case_count\":3",
+              "\"failed_sample_count\":1",
+              "\"filename\":\"source/check_cases.h\",\"start_line\":20,\"start_column\":3"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "selected C++ case excludes unsupported unselected invocations",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_MATH=1",
+          "--case=wraps_byte"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":1",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "selected C++ benchmark excludes unsupported unselected invocations",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_MATH=1",
+          "--iterations=1",
+          "--warmup-iterations=0",
+          "--output-format=jsonl",
+          "--benchmark=wraps_byte_benchmark"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "wraps_byte_benchmark"
+        ]
+      }
+    }
+  ]
+}

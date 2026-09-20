@@ -42,6 +42,11 @@ class Scalars {
   // Materializes a frontend-evaluated constant in its source storage width.
   loom_value_id_t constant(const cxx::ConstValue& value,
                            const cxx::Type* source_type, cxx::AST* owner);
+  // Encodes a frontend constant in its source storage width without emitting
+  // an operation. Ordinary functions and check literals share this contract.
+  loom_attribute_t constant_attribute(const cxx::ConstValue& value,
+                                      const cxx::Type* source_type,
+                                      cxx::AST* owner);
   // Builds a known integer constant, including offset/index carriers.
   loom_value_id_t integer(int64_t value, loom_scalar_type_t scalar,
                           loom_location_id_t source = LOOM_LOCATION_UNKNOWN);

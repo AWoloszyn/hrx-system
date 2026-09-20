@@ -10,6 +10,7 @@ load(
     "iree_select",
     "loom_cc_binary",
     "loom_cc_library",
+    "loom_cc_test",
 )
 
 package(
@@ -72,17 +73,43 @@ _IREE_TEST_LOOM_TARGET_DEPS = (
 )
 
 loom_cc_library(
+    name = "library_linker",
+    srcs = ["library_linker.c"],
+    hdrs = ["library_linker.h"],
+    deps = [
+        "//loom/src/loom/link:linker",
+        "//loom/src/loom/tooling/execution:session",
+        "//loom/src/loom/tooling/io:file",
+        "//loom/src/loom/tooling/io:source",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_test(
+    name = "library_linker_test",
+    srcs = ["library_linker_test.cc"],
+    tags = ["requires-filesystem"],
+    deps = [
+        ":library_linker",
+        "//loom/src/loom/tooling/execution:session",
+        "//loom/src/loom/tooling/io:file",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//runtime/src/iree/testing:temp_file",
+    ],
+)
+
+loom_cc_library(
     name = "main",
     srcs = [
-        "library_linker.c",
         "main.c",
     ],
     hdrs = [
-        "library_linker.h",
         "main.h",
     ],
     deps = [
-        "//loom/src/loom/link:linker",
+        ":library_linker",
         "//loom/src/loom/sanitizer:options",
         "//loom/src/loom/target:provider",
         "//loom/src/loom/tooling/cli:help",
@@ -91,6 +118,7 @@ loom_cc_library(
         "//loom/src/loom/tooling/execution:session",
         "//loom/src/loom/tooling/execution/hal:device_provider",
         "//loom/src/loom/tooling/execution/hal:testbench_actual",
+        "//loom/src/loom/tooling/input:flags",
         "//loom/src/loom/tooling/io:file",
         "//loom/src/loom/tooling/testbench:device_event",
         "//loom/src/loom/tooling/testbench:executor",
@@ -115,6 +143,7 @@ loom_cc_binary(
     deps = [
         ":main",
         "//loom/src/loom/tooling/execution:execution_provider",
+        "//loom/src/loom/tooling/input:configured",
         "//runtime/src/iree/base",
     ] + _IREE_TEST_LOOM_TARGET_DEPS,
 )

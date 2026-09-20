@@ -7,7 +7,7 @@
 """Loom-specific Bazel build macros.
 
 The rules in this file are intentionally scoped to Loom instead of the shared
-IREE build layer. They describe compact generated C tables derived from
+IREE build layer. They describe generated source and data files derived from
 checked-in Loom Python descriptions and, for some targets, fetched vendor
 machine-readable data.
 """
@@ -84,9 +84,11 @@ def _loom_generated_files(
         generator,
         outputs,
         output_flags,
+        output_directories = [],
         args = [],
         inputs = [],
         tags = [],
+        testonly = False,
         target_compatible_with = None,
         visibility = None,
         comment = None):
@@ -94,8 +96,11 @@ def _loom_generated_files(
         fail("generated file actions require at least one output")
     if len(output_flags) != len(outputs):
         fail("generated file output flags and outputs must be paired")
+    for directory in output_directories:
+        if directory not in outputs:
+            fail("generated output directory must be a declared output: %s" % directory)
 
-    rule_kwargs = {}
+    rule_kwargs = {"testonly": testonly}
     if visibility != None:
         rule_kwargs["visibility"] = visibility
     if comment != None:
@@ -108,14 +113,15 @@ def _loom_generated_files(
     iree_generated_files(
         name = name,
         srcs = inputs,
-        outs = outputs,
+        outs = [output for output in outputs if output not in output_directories],
+        output_directories = output_directories,
         args = _loom_bazel_generator_args(args),
         output_args = _loom_output_args(output_flags, outputs),
         tool = generator,
         **rule_kwargs
     )
 
-def loom_generated_textual_header(
+def loom_generated_file(
         name,
         generator,
         output,
@@ -123,19 +129,21 @@ def loom_generated_textual_header(
         args = [],
         inputs = [],
         tags = [],
+        testonly = False,
         target_compatible_with = None,
         visibility = None,
         comment = None):
-    """Generates one textual header consumed by a Loom C/C++ target.
+    """Generates one source or data file consumed by a Loom target.
 
     Args:
       name: Generator action target name.
-      generator: Executable label that writes the textual header.
-      output: Generated textual header filename.
+      generator: Executable label that writes the output file.
+      output: Generated filename.
       output_flag: Generator flag paired with the output path.
       args: Generator arguments before the output flag.
       inputs: Source data labels consumed by the generator.
       tags: Additional Bazel tags for the generator action.
+      testonly: Whether the output is used only by tests.
       target_compatible_with: Optional target compatibility constraints.
       visibility: Passed through to the generator action.
       comment: Optional progress message for the generator action.
@@ -149,6 +157,7 @@ def loom_generated_textual_header(
         args = args,
         inputs = inputs,
         tags = tags,
+        testonly = testonly,
         target_compatible_with = target_compatible_with,
         visibility = visibility,
         comment = comment,
@@ -159,9 +168,11 @@ def loom_generated_file_family(
         generator,
         outputs,
         output_flags,
+        output_directories = [],
         args = [],
         inputs = [],
         tags = [],
+        testonly = False,
         target_compatible_with = None,
         visibility = None,
         comment = None):
@@ -176,9 +187,11 @@ def loom_generated_file_family(
       generator: Executable label that writes every output.
       outputs: Generated filenames.
       output_flags: Generator flags paired positionally with outputs.
+      output_directories: Outputs that are directory trees instead of files.
       args: Generator arguments before the output flags.
       inputs: Source data labels consumed by the generator.
       tags: Additional Bazel tags for the generator action.
+      testonly: Whether the output is used only by tests.
       target_compatible_with: Optional target compatibility constraints.
       visibility: Passed through to the generator action.
       comment: Optional progress message for the generator action.
@@ -190,9 +203,11 @@ def loom_generated_file_family(
         generator = generator,
         outputs = outputs,
         output_flags = output_flags,
+        output_directories = output_directories,
         args = args,
         inputs = inputs,
         tags = tags,
+        testonly = testonly,
         target_compatible_with = target_compatible_with,
         visibility = visibility,
         comment = comment,

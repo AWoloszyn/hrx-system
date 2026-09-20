@@ -10,9 +10,9 @@
 #include "iree/vm/bytecode/module.h"
 #include "iree/vm/execution.h"
 #include "iree/vm/sync.h"
+#include "loom/link/linker.h"
 #include "loom/ops/func/ops.h"
 #include "loom/ops/op_defs.h"
-#include "loom/rewrite/module_projection.h"
 #include "loom/target/arch/vm/module.h"
 #include "loom/target/arch/vm/provider.h"
 #include "loom/tooling/compile/pipeline.h"
@@ -42,31 +42,27 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
   iree_arena_block_pool_initialize(32 * 1024, testbench->host_allocator, &pool);
   iree_arena_allocator_t arena;
   iree_arena_initialize(&pool, &arena);
-  loom_ir_module_projection_t projection = {0};
-  loom_module_t* module = NULL;
-  const loom_ir_module_clone_options_t clone_options = {0};
-  iree_status_t status =
-      loom_ir_module_clone(source, &clone_options, &pool, &arena,
-                           testbench->host_allocator, &projection, &module);
   const loom_target_profile_t* profile = NULL;
-  if (iree_status_is_ok(status)) {
-    status = loom_vm_target_provider.select_profile(IREE_SV("core"), &profile);
-  }
-  loom_target_specialization_request_t* requests = NULL;
-  iree_host_size_t request_count = 0;
+  iree_status_t status =
+      loom_vm_target_provider.select_profile(IREE_SV("core"), &profile);
+  iree_string_view_t* roots = NULL;
+  iree_host_size_t root_count = 0;
   iree_host_size_t max_arguments = 0;
   iree_host_size_t max_results = 0;
   if (iree_status_is_ok(status)) {
-    status = iree_arena_allocate_array(&arena, module->symbols.count,
-                                       sizeof(*requests), (void**)&requests);
+    status = iree_arena_allocate_array(&arena, source->symbols.count,
+                                       sizeof(*roots), (void**)&roots);
   }
   if (iree_status_is_ok(status)) {
-    memset(requests, 0, module->symbols.count * sizeof(*requests));
-    // Test-library linking internalizes implementation dependencies. Publish
-    // only the function-call roots already identified by the shared planner;
-    // the compiler still owns their complete transitive closure.
-    for (iree_host_size_t i = 0; i < testbench->plan->case_count; ++i) {
-      const loom_testbench_case_plan_t* case_plan = &testbench->plan->cases[i];
+    memset(roots, 0, source->symbols.count * sizeof(*roots));
+    // The case planner owns invocation discovery. Its direct callees are the
+    // executable roots; authored public helpers are implementation dependencies
+    // within this independently compiled execution module.
+    for (iree_host_size_t i = 0; i < testbench->cases.count; ++i) {
+      const loom_testbench_case_plan_t* case_plan = testbench->cases.values[i];
+      if (case_plan->issue_count) {
+        continue;
+      }
       for (iree_host_size_t j = 0; j < case_plan->invocation_count; ++j) {
         const loom_testbench_invocation_plan_t* call =
             &case_plan->invocations[j];
@@ -75,26 +71,51 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
         }
         max_arguments = iree_max(max_arguments, call->input_count);
         max_results = iree_max(max_results, call->result_count);
-        const loom_func_like_t function = loom_func_like_cast(
-            module,
-            module->symbols.entries[call->callee_ref.symbol_id].defining_op);
-        loom_op_attrs(function.op)[function.vtable->visibility_attr_index] =
-            loom_attr_enum(LOOM_FUNC_VISIBILITY_PUBLIC);
-        const loom_symbol_t* symbol =
-            &module->symbols.entries[call->callee_ref.symbol_id];
-        requests[call->callee_ref.symbol_id] =
-            (loom_target_specialization_request_t){
-                .function_name = module->strings.entries[symbol->name_id],
-                .target_profile = profile,
-            };
+        roots[call->callee_ref.symbol_id] =
+            source->strings.entries
+                [source->symbols.entries[call->callee_ref.symbol_id].name_id];
       }
     }
-    // Repeated calls and cases share one specialization request. Compact the
-    // symbol-indexed roots; the compiler specializes their transitive callees.
-    for (loom_symbol_id_t i = 0; i < module->symbols.count; ++i) {
-      if (requests[i].target_profile) {
-        requests[request_count++] = requests[i];
+    for (iree_host_size_t i = 0; i < source->symbols.count; ++i) {
+      if (!iree_string_view_is_empty(roots[i])) {
+        roots[root_count++] = roots[i];
       }
+    }
+  }
+  loom_module_t* module = NULL;
+  if (iree_status_is_ok(status)) {
+    status = loom_link_materialized_modules(
+        &source, 1,
+        &(loom_link_options_t){
+            .module_name = IREE_SV("test"),
+            .root_symbols = {.count = root_count, .values = roots},
+        },
+        &pool, testbench->host_allocator, &module);
+  }
+  loom_target_specialization_request_t* requests = NULL;
+  iree_host_size_t request_count = 0;
+  if (iree_status_is_ok(status)) {
+    status = iree_arena_allocate_array(&arena, root_count, sizeof(*requests),
+                                       (void**)&requests);
+  }
+  if (iree_status_is_ok(status)) {
+    // Root retention is produced by the linker. Dependencies have had their
+    // public/export/retain surface closed by that same selection boundary.
+    // Publish retained invocation roots for VM lookup, including private roots.
+    for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
+      loom_symbol_t* symbol = &module->symbols.entries[i];
+      if (!iree_any_bit_set(symbol->flags, LOOM_SYMBOL_FLAG_RETAIN)) {
+        continue;
+      }
+      const loom_func_like_t function =
+          loom_func_like_cast(module, symbol->defining_op);
+      loom_op_attrs(function.op)[function.vtable->visibility_attr_index] =
+          loom_attr_enum(LOOM_FUNC_VISIBILITY_PUBLIC);
+      symbol->flags |= LOOM_SYMBOL_FLAG_PUBLIC;
+      requests[request_count++] = (loom_target_specialization_request_t){
+          .function_name = module->strings.entries[symbol->name_id],
+          .target_profile = profile,
+      };
     }
   }
   loom_target_low_descriptor_registry_t registry = {0};
@@ -107,6 +128,7 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
     loom_compile_pipeline_options_t options;
     loom_compile_pipeline_options_initialize(&options);
     options.target_environment = testbench->target_environment;
+    options.source_resolver = testbench->source_resolver;
     options.target_specializations =
         (loom_target_specialization_request_list_t){requests, request_count};
     options.low_descriptor_registry = &registry;
@@ -490,9 +512,11 @@ static iree_status_t loom_vm_testbench_invoke(
 }
 
 loom_testbench_invocation_provider_t loom_vm_testbench_invocation_provider(
-    void* user_data, const loom_testbench_module_plan_t* plan) {
+    void* user_data, loom_testbench_case_plan_list_t cases,
+    loom_source_resolver_t source_resolver) {
   loom_vm_testbench_t* testbench = user_data;
-  testbench->plan = plan;
+  testbench->cases = cases;
+  testbench->source_resolver = source_resolver;
   return (loom_testbench_invocation_provider_t){
       .invoke = loom_vm_testbench_invoke,
       .user_data = testbench,

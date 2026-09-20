@@ -150,7 +150,8 @@ static iree_string_view_t loom_wasm_module_function_export_name(
     const loom_module_t* module, const loom_symbol_t* symbol,
     const loom_op_t* function_op) {
   loom_func_like_t function = loom_func_like_const_cast(module, function_op);
-  if (!loom_func_like_isa(function)) {
+  if (!loom_func_like_is_exported(function) &&
+      (symbol->flags & LOOM_SYMBOL_FLAG_PUBLIC) == 0) {
     return iree_string_view_empty();
   }
   iree_string_view_t export_name = loom_wasm_module_string_or_empty(
@@ -158,11 +159,7 @@ static iree_string_view_t loom_wasm_module_function_export_name(
   if (!iree_string_view_is_empty(export_name)) {
     return export_name;
   }
-  if (loom_func_like_visibility(function) != 0 ||
-      (symbol->flags & LOOM_SYMBOL_FLAG_PUBLIC) != 0) {
-    return loom_wasm_module_symbol_name(module, symbol);
-  }
-  return iree_string_view_empty();
+  return loom_wasm_module_symbol_name(module, symbol);
 }
 
 static iree_status_t loom_wasm_module_read_value_type(

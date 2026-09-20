@@ -120,20 +120,6 @@ loom_cc_library(
 endif()
 
 if(LOOM_IMPORT_CXX)
-loom_cc_library(
-  NAME
-    declaration_test
-  HDRS
-    "declaration_test.h"
-  DEPS
-    iree::third_party::cxx_parser
-    loom::import::cxx::value::builder_test
-  TESTONLY
-  PUBLIC
-)
-endif()
-
-if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
     assumptions_test
@@ -145,7 +131,6 @@ loom_cc_test(
     iree::testing::gtest_main
     iree::third_party::cxx_parser
     loom::import::cxx::source
-    loom::import::cxx::source::error
   LABELS
     "iree-build-requirement=loom.import.cxx"
 )
@@ -158,79 +143,12 @@ loom_cc_test(
   SRCS
     "shaped_test.cc"
   DEPS
-    ::declaration_test
     ::shaped
     iree::testing::gtest
     iree::testing::gtest_main
     iree::third_party::cxx_parser
-    loom::import::cxx::source::error
+    loom::import::cxx::source
     loom::import::cxx::value::types
-    loom::ops::vector
-  LABELS
-    "iree-build-requirement=loom.import.cxx"
-)
-endif()
-
-if(LOOM_IMPORT_CXX)
-loom_cc_test(
-  NAME
-    intrinsics_test
-  SRCS
-    "intrinsics_test.cc"
-  DEPS
-    ::declaration_test
-    ::intrinsics
-    iree::testing::gtest
-    iree::testing::gtest_main
-    iree::third_party::cxx_parser
-    loom::import::cxx::source
-    loom::import::cxx::source::error
-    loom::import::cxx::value::builder_test
-    loom::import::cxx::value::types
-    loom::ops::scalar
-  LABELS
-    "iree-build-requirement=loom.import.cxx"
-)
-endif()
-
-if(LOOM_IMPORT_CXX)
-loom_cc_test(
-  NAME
-    launch_test
-  SRCS
-    "launch_test.cc"
-  DEPS
-    ::declaration_test
-    ::launch
-    iree::testing::gtest
-    iree::testing::gtest_main
-    iree::third_party::cxx_parser
-    loom::import::cxx::source
-    loom::import::cxx::source::error
-    loom::import::cxx::value::builder_test
-    loom::ops::index
-    loom::ops::kernel
-  LABELS
-    "iree-build-requirement=loom.import.cxx"
-)
-endif()
-
-if(LOOM_IMPORT_CXX)
-loom_cc_test(
-  NAME
-    loop_schedule_test
-  SRCS
-    "loop_schedule_test.cc"
-  DEPS
-    ::loop_schedule
-    iree::testing::gtest
-    iree::testing::gtest_main
-    iree::third_party::cxx_parser
-    loom::import::cxx::source
-    loom::import::cxx::source::error
-    loom::import::cxx::value::builder_test
-    loom::ops::index
-    loom::ops::scalar
   LABELS
     "iree-build-requirement=loom.import.cxx"
 )
@@ -242,10 +160,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_binding_shaped.objects
     loom_import_cxx_binding_launch.objects
     loom_import_cxx_binding_loop_schedule.objects
-    loom_import_cxx_binding_intrinsics_test
     loom_import_cxx_binding_shaped_test
-    loom_import_cxx_binding_launch_test
-    loom_import_cxx_binding_loop_schedule_test
     loom_import_cxx_binding_assumptions_test
 )
   if(TARGET ${_target})

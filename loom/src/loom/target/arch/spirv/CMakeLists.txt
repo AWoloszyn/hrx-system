@@ -53,7 +53,7 @@ loom_cc_library(
 endif()
 
 if(LOOM_TARGET_ARCH_SPIRV)
-loom_generated_textual_header(
+loom_generated_file(
   NAME
     features_gen
   GENERATOR
@@ -125,7 +125,7 @@ loom_cc_library(
 endif()
 
 if(LOOM_TARGET_ARCH_SPIRV)
-loom_generated_textual_header(
+loom_generated_file(
   NAME
     packet_rows_tables_gen
   GENERATOR
@@ -176,7 +176,7 @@ loom_cc_library(
 endif()
 
 if(LOOM_TARGET_ARCH_SPIRV)
-loom_generated_textual_header(
+loom_generated_file(
   NAME
     cooperative_properties_tables_gen
   GENERATOR

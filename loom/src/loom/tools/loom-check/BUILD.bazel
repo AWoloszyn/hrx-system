@@ -135,18 +135,7 @@ _TARGET_X86_CHECK_DEPS = iree_select({
     "//conditions:default": [],
 })
 
-_INPUT_COPTS = iree_select({
-    "//loom/config/import:cxx": ["-DLOOM_CHECK_HAVE_INPUT_CXX=1"],
-    "//conditions:default": [],
-})
-
-_INPUT_DEPS = iree_select({
-    "//loom/config/import:cxx": ["//loom/src/loom/import/cxx/tooling:input"],
-    "//conditions:default": [],
-})
-
 _LOOM_CHECK_PROVIDER_COPTS = (
-    _INPUT_COPTS +
     _EMIT_AMDGPU_CHECK_COPTS +
     _TARGET_LLVMIR_CHECK_COPTS +
     _EMIT_LLVMIR_CHECK_COPTS +
@@ -159,7 +148,6 @@ _LOOM_CHECK_PROVIDER_COPTS = (
 )
 
 _LOOM_CHECK_PROVIDER_DEPS = (
-    _INPUT_DEPS +
     _EMIT_AMDGPU_CHECK_DEPS +
     _TARGET_LLVMIR_CHECK_DEPS +
     _EMIT_LLVMIR_CHECK_DEPS +
@@ -196,6 +184,7 @@ loom_cc_library(
         "low_report.c",
         "requirements.c",
         "roundtrip.c",
+        "source_low.c",
         "verify.c",
     ],
     hdrs = [
@@ -206,6 +195,7 @@ loom_cc_library(
         "low_emit.h",
         "low_report.h",
         "requirements.h",
+        "source_low.h",
     ],
     deps = [
         ":report",
@@ -256,6 +246,7 @@ loom_cc_library(
         "//loom/src/loom/target:math_policy",
         "//loom/src/loom/target:pipeline",
         "//loom/src/loom/target:predicate",
+        "//loom/src/loom/target:selection",
         "//loom/src/loom/target:types",
         "//loom/src/loom/target/reporting:format",
         "//loom/src/loom/target/reporting:low",
@@ -532,6 +523,7 @@ loom_cc_binary(
     deps = [
         ":provider",
         "//loom/src/loom/target/arch/cmd/check:check_provider",
+        "//loom/src/loom/tooling/input:configured",
         "//runtime/src/iree/base",
     ] + _LOOM_CHECK_PROVIDER_DEPS,
 )
@@ -545,6 +537,7 @@ loom_cc_binary(
         ":provider",
         ":test_provider",
         "//loom/src/loom/target/arch/cmd/check:check_provider",
+        "//loom/src/loom/tooling/input:configured",
         "//runtime/src/iree/base",
     ] + _LOOM_CHECK_PROVIDER_DEPS,
 )

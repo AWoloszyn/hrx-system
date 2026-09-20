@@ -1,0 +1,9 @@
+func.decl @entry(%value: i32) -> (i32)
+
+check.case public @linked_public_entry {
+  %input = check.literal value(6) : i32
+  %actual = func.call @entry(%input) : (i32) -> (i32)
+  %expected = check.literal value(7) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}

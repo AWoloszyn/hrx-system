@@ -7,7 +7,7 @@
         "tool": "iree-test-loom",
         "args": [
           "{srcdir}/boolean_comparison.loom",
-          "--library={srcdir}/../../../test/corpus/source_low/numeric_boolean_comparison.loom-test"
+          "--library={srcdir}/../../../../test/corpus/source_low/numeric_boolean_comparison.loom-test"
         ]
       },
       "stdout": {
@@ -16,6 +16,140 @@
           "\"failed_sample_count\":0",
           "\"skipped_case_count\":0",
           "\"planning_issue_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "VM compilation resolves a linked helper source snapshot",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_math_case.loom",
+          "--library={srcdir}/source_math.loom"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "source_math.loom:2:3",
+          "vm-math",
+          "scalar.sinf %value : f32",
+          "VM compilation failed"
+        ]
+      }
+    },
+    {
+      "name": "benchmark correctness failure reports the authored assertion range",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/source_mismatch.loom",
+          "--iterations=1",
+          "--warmup-iterations=0",
+          "--output-format=jsonl"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stdout": {
+        "contains": [
+          "\"failure_count\":1",
+          "\"source_location\":{\"filename\":",
+          "source_mismatch.loom",
+          "\"start_line\":11,\"start_column\":3"
+        ]
+      }
+    },
+    {
+      "name": "iree-test-loom reports the authored assertion range after linking",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_cases.loom",
+          "--library={srcdir}/source_mismatch.loom",
+          "--case=mismatch"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stdout": {
+        "contains": [
+          "\"failure_count\":1",
+          "\"source_location\":{\"filename\":",
+          "source_mismatch.loom",
+          "\"start_line\":11,\"start_column\":3"
+        ]
+      }
+    },
+    {
+      "name": "rejects an unavailable callee when a case actually invokes it",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_unavailable.loom",
+          "--library={srcdir}/source_cases.loom"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": [
+          "VM runtime imports require module import rows"
+        ]
+      }
+    },
+    {
+      "name": "executes a selected source closure with public and private invocation roots",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_cases.loom"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":3",
+          "\"sample_count\":3",
+          "\"failed_sample_count\":0",
+          "\"planning_issue_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "uses the same invocation closure after execution library linking",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/source_library_cases.loom",
+          "--library={srcdir}/source_cases.loom"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":4",
+          "\"sample_count\":4",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "benchmarks a source case after its VM correctness gate",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/source_cases.loom",
+          "--iterations=1",
+          "--warmup-iterations=0"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "public_entry_benchmark"
         ]
       }
     },

@@ -2,6 +2,114 @@
   "version": 1,
   "cases": [
     {
+      "name": "kernel entries retain implicit and renamed exports across source and bytecode libraries",
+      "steps": [
+        {
+          "name": "select-source-exports",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/testdata/kernel_exports.loom",
+              "--mode=link",
+              "--include-input-exports"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "kernel.def retain @entry()",
+              "kernel.def retain export(\"artifact_entry\") @renamed_entry()",
+              "func.def public retain @public_entry()",
+              "func.def public retain export(\"public_alias\") @renamed_public_entry()"
+            ],
+            "not_contains": [
+              "@unused_helper",
+              "export(\"entry\")"
+            ]
+          }
+        },
+        {
+          "name": "encode-library",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/testdata/kernel_exports.loom",
+              "--mode=merge",
+              "--to=bc",
+              "--output={tmp}/kernels.loombc"
+            ]
+          }
+        },
+        {
+          "name": "select-bytecode-exports",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "--root-library={tmp}/kernels.loombc",
+              "--mode=link"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "kernel.def retain @entry()",
+              "kernel.def retain export(\"artifact_entry\") @renamed_entry()",
+              "func.def public retain @public_entry()",
+              "func.def public retain export(\"public_alias\") @renamed_public_entry()"
+            ],
+            "not_contains": [
+              "@unused_helper",
+              "export(\"entry\")"
+            ]
+          }
+        },
+        {
+          "name": "resolve-bytecode-library",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/testdata/kernel_export_cases.loom",
+              "--library={tmp}/kernels.loombc",
+              "--mode=link",
+              "--include-input-tests"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "kernel.def @entry()",
+              "kernel.def export(\"artifact_entry\") @renamed_entry()"
+            ],
+            "not_contains": [
+              "@unused_helper",
+              "export(\"entry\")"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "preserves linked source IDs for primary and related diagnostics",
+      "run": {
+        "tool": "loom-link",
+        "args": [
+          "{srcdir}/testdata/source_main.loom",
+          "{srcdir}/testdata/source_library.loom-test"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stderr": {
+        "contains": {
+          "unordered": [
+            "source_library.loom-test:7:3: error [TYPE/001]",
+            "7 |   %result = func.call @callee(%input) : (i64) -> (i32)",
+            "source_main.loom:1:1",
+            "1 | func.def public @callee(%input: i32) -> (i32) {",
+            "linked module verification failed"
+          ]
+        }
+      }
+    },
+    {
       "name": "separates library availability from final template applicability",
       "steps": [
         {
@@ -154,7 +262,7 @@
           "name": "write-library",
           "write": {
             "path": "{tmp}/library.loom",
-            "text": "func.def @unused(%x: i32) -> (i32) {\n  func.return %x : i32\n}\n\nfunc.def export(\"identity\") @identity(%x: i32) -> (i32) {\n  func.return %x : i32\n}\n"
+            "text": "func.def @unused(%x: i32) -> (i32) {\n  func.return %x : i32\n}\n\nfunc.def public @identity(%x: i32) -> (i32) {\n  func.return %x : i32\n}\n"
           }
         },
         {

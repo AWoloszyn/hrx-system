@@ -31,6 +31,7 @@ loom_cc_library(
     loom::tooling::execution::execution_backend
     loom::tooling::execution::one_shot
     loom::tooling::execution::session
+    loom::tooling::input::flags
     loom::tooling::io::file
   PUBLIC
 )
@@ -60,6 +61,7 @@ loom_cc_binary(
     ::main
     iree::base
     loom::tooling::execution::execution_provider
+    loom::tooling::input::configured
     ${_iree_run_loom_platform_deps}
 )
 

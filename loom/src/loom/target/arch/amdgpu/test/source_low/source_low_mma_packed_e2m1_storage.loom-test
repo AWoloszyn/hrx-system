@@ -66,7 +66,7 @@ kernel.def target(@target) @f16_lhs_packed_e2m1_rhs_grouped_scale_wmma() {
 }
 
 // ----
-low.kernel.def target<amdgpu.rdna4.core>(@target) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @f16_lhs_packed_e2m1_rhs_grouped_scale_wmma() asm {
+low.kernel.def target<amdgpu.rdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 5, resource_count = 5, resource_offsets = [0, 8, 16, 24, 32], resource_parameter_indices = [0, 1, 2, 3, 4], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @f16_lhs_packed_e2m1_rhs_grouped_scale_wmma() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
   %payload_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 128} : reg<amdgpu.sgpr x2>

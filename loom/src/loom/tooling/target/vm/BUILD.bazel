@@ -4,8 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -18,9 +17,9 @@ loom_cc_library(
     srcs = ["testbench.c"],
     hdrs = ["testbench.h"],
     deps = [
+        "//loom/src/loom/link:linker",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/func",
-        "//loom/src/loom/rewrite:module_projection",
         "//loom/src/loom/target:provider",
         "//loom/src/loom/target/arch/vm:module",
         "//loom/src/loom/target/arch/vm:provider",
@@ -31,24 +30,4 @@ loom_cc_library(
         "//runtime/src/iree/vm",
         "//runtime/src/iree/vm/bytecode:module",
     ],
-)
-
-iree_execution_test_suite(
-    name = "tools_test",
-    data = [
-        "boolean_comparison.loom",
-        "duplicate_exports.loom",
-        "empty_export.loom",
-        "invalid_operand.loom",
-        "invalid_storage.loom",
-        "module.loom",
-        "//loom/src/loom/test/corpus/source_low:numeric_boolean_comparison.loom-test",
-    ],
-    manifests = ["vm.test.json"],
-    target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
-    tools = {
-        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
-        "loom-compile": "//loom/src/loom/tools/loom-compile",
-        "vm-dis": "//tools:vm-dis",
-    },
 )

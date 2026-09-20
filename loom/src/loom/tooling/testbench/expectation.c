@@ -11,6 +11,7 @@
 
 #include "iree/base/internal/math.h"
 #include "iree/tooling/buffer_view_matchers.h"
+#include "loom/tooling/testbench/source_report.h"
 #include "loom/util/json.h"
 
 const char* loom_testbench_expectation_kind_name(
@@ -127,6 +128,7 @@ iree_status_t loom_testbench_expectation_report_initialize(
 
 void loom_testbench_expectation_report_reset(
     loom_testbench_expectation_report_t* report) {
+  report->module = NULL;
   report->expectation_count = 0;
   report->passed_count = 0;
   report->failure_count = 0;
@@ -1651,6 +1653,7 @@ iree_status_t loom_testbench_evaluate_case_expectations(
   }
 
   loom_testbench_expectation_report_reset(report);
+  report->module = table->module;
   report->expectation_count = schedule->expectation_count;
   iree_string_builder_t detail_builder;
   iree_string_builder_initialize(report->host_allocator, &detail_builder);
@@ -1710,6 +1713,8 @@ static iree_status_t loom_testbench_write_expectation_failure_json(
   IREE_RETURN_IF_ERROR(loom_json_object_write_string_field(
       &object, IREE_SV("detail"),
       loom_testbench_expectation_failure_detail(report, failure)));
+  IREE_RETURN_IF_ERROR(loom_testbench_write_source_location_json(
+      report->module, failure->expectation->op->location, &object));
   return loom_json_object_end(&object);
 }
 

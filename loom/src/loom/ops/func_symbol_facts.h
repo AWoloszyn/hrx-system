@@ -112,10 +112,11 @@ typedef struct loom_func_symbol_facts_t {
   // Borrowed target ABI attribute overrides from the func op.
   loom_named_attr_slice_t abi_attrs;
 
-  // True when the func declares an artifact/package export.
+  // True for non-import kernel entries and public functions, independently of
+  // whether an artifact name override is present.
   bool exports;
 
-  // Borrowed export symbol name, or empty to preserve the func symbol name.
+  // Borrowed artifact name override, or empty to preserve the func symbol name.
   iree_string_view_t export_symbol;
 
   // True when export_linkage was explicitly provided.

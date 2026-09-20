@@ -170,10 +170,10 @@ loom_value_id_t Scalars::integer(int64_t value, loom_scalar_type_t scalar,
   return loom_op_results(op)[0];
 }
 
-loom_value_id_t Scalars::constant(const cxx::ConstValue& value,
-                                  const cxx::Type* source_type, cxx::AST* ast) {
+loom_attribute_t Scalars::constant_attribute(const cxx::ConstValue& value,
+                                             const cxx::Type* source_type,
+                                             cxx::AST* ast) {
   cxx::ASTInterpreter interpreter(&unit_);
-  auto source = locations_.get(ast);
   auto target = types_.get(source_type, ast);
   if (loom_type_kind(target) != LOOM_TYPE_SCALAR) {
     diagnostics_.reject(unit_, ast, "constants require a numeric scalar type");
@@ -200,8 +200,15 @@ loom_value_id_t Scalars::constant(const cxx::ConstValue& value,
                      : *number;
     attribute = loom_attr_i64(stored);
   }
+  return attribute;
+}
+
+loom_value_id_t Scalars::constant(const cxx::ConstValue& value,
+                                  const cxx::Type* source_type, cxx::AST* ast) {
   loom_op_t* op;
-  check(loom_scalar_constant_build(&builder_, attribute, target, source, &op));
+  check(loom_scalar_constant_build(
+      &builder_, constant_attribute(value, source_type, ast),
+      types_.get(source_type, ast), locations_.get(ast), &op));
   return loom_op_results(op)[0];
 }
 

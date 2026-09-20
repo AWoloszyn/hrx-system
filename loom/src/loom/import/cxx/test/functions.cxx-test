@@ -22,3 +22,24 @@ func.def @helper(%p: buffer, %p_byte_offset: offset) {
   view.store %4, %13[0] : f32, view<1xf32>
   func.return
 }
+
+// ====
+// INPUT: cxx root=entry
+// RUN: verify
+// Explicit source roots must identify one concrete definition.
+// ERROR@+1: LOWERING/059 "ambiguous root: entry"
+int entry(int value) { return value; }
+float entry(float value) { return value; }
+
+// ====
+// INPUT: cxx root=absent
+// RUN: verify
+// ERROR: LOWERING/059 "root has no concrete definition: absent"
+int entry(int value) { return value; }
+float entry(float value) { return value; }
+
+// ====
+// INPUT: cxx root=absent
+// RUN: verify
+// ERROR: LOWERING/059 "root has no concrete definition: absent"
+// A translation unit with no user declarations still has its own location.

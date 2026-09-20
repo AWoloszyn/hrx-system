@@ -337,16 +337,6 @@ static iree_status_t loom_low_verify_optional_positive_u32_triple(
 
 static iree_status_t loom_low_verify_kernel_contract(
     const loom_op_t* op, iree_diagnostic_emitter_t emitter) {
-  const bool has_export_symbol = loom_low_optional_attr_is_present(
-      op, loom_low_kernel_def_export_symbol_ATTR_INDEX);
-  const bool has_export_linkage = loom_low_optional_attr_is_present(
-      op, loom_low_kernel_def_export_linkage_ATTR_INDEX);
-  if (!has_export_symbol && has_export_linkage) {
-    return loom_low_verify_function_attr_present(
-        op, loom_low_kernel_def_export_symbol_ATTR_INDEX, IREE_SV("export"),
-        IREE_SV("present when linkage is present"), emitter);
-  }
-
   IREE_RETURN_IF_ERROR(loom_low_verify_optional_positive_u32_triple(
       op, loom_low_kernel_def_workgroup_size_x_ATTR_INDEX,
       IREE_SV("workgroup_size_x"),

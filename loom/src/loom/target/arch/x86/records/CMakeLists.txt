@@ -10,7 +10,7 @@
 iree_add_all_subdirs()
 
 if(LOOM_TARGET_ARCH_X86)
-loom_generated_textual_header(
+loom_generated_file(
   NAME
     target_profiles_gen
   GENERATOR

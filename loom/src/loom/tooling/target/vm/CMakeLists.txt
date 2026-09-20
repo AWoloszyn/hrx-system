@@ -22,36 +22,15 @@ loom_cc_library(
     iree::hal
     iree::vm
     iree::vm::bytecode::module
+    loom::link::linker
     loom::ops::func
     loom::ops::op_defs
-    loom::rewrite::module_projection
     loom::target::arch::vm::module
     loom::target::arch::vm::provider
     loom::target::provider
     loom::tooling::compile::pipeline
     loom::tooling::testbench::invocation
   PUBLIC
-)
-endif()
-
-if(LOOM_TARGET_ARCH_VM)
-iree_execution_test_suite(
-  NAME
-    tools_test
-  MANIFESTS
-    "vm.test.json"
-  TOOLS
-    "iree-test-loom=loom::tools::iree-test-loom"
-    "loom-compile=loom::tools::loom-compile"
-    "vm-dis=iree::tools::vm::vm-dis"
-  DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_boolean_comparison.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/boolean_comparison.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/duplicate_exports.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/empty_export.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/invalid_operand.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/invalid_storage.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/module.loom"
 )
 endif()
 

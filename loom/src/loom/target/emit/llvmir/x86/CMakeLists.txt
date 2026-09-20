@@ -25,7 +25,7 @@ loom_cc_library(
 endif()
 
 if(LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR AND LOOM_TARGET_ARCH_X86)
-loom_generated_textual_header(
+loom_generated_file(
   NAME
     target_profiles_gen
   GENERATOR

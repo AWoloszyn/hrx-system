@@ -2,9 +2,8 @@
 
 test.target<low_core> @test_target
 
-// ERROR@+1: STRUCTURE/014 {attr_name="export", actual_value="0", expected_constraint="present when linkage is present"}
-low.kernel.def target<test.low.core>(@test_target) linkage(dso_local) @kernel_linkage_requires_export() {
-  low.return
+low.kernel.def target<test.low.core>(@test_target) linkage(dso_local) @kernel_linkage_uses_default_name() asm {
+  return
 }
 
 // ====

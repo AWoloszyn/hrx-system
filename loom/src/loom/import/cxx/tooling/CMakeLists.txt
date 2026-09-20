@@ -60,4 +60,37 @@ loom_cc_library(
 )
 endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+iree_execution_test_suite(
+  NAME
+    execution_test
+  MANIFESTS
+    "execution.test.json"
+  TOOLS
+    "iree-benchmark-loom=loom::tools::iree-benchmark-loom"
+    "iree-test-loom=loom::tools::iree-test-loom"
+    "loom-link=loom::tools::loom-link"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.cc"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_library.cc"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.cc"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.loom"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    source_test
+  SRCS
+    "check_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"
+  INPUTOPTS
+    "cxx:D=CHECK_EXPECTED=0u"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

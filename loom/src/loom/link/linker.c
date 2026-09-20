@@ -78,6 +78,8 @@ struct loom_linker_t {
   iree_arena_allocator_t scratch_arena;
   // Linked output module being constructed.
   loom_module_t* target_module;
+  // Consumer of source correspondence produced by each input add.
+  loom_linker_source_callback_t source_callback;
   // Hash map from target-module string IDs to target symbol IDs.
   loom_symbol_map_t target_symbol_lookup;
   // Monotonic ordinal used when assigning deterministic private conflict names.
@@ -664,6 +666,17 @@ static iree_status_t loom_linker_get_source_remap(loom_linker_source_t* source,
   }
   *out_remap = &source->remap;
   return iree_ok_status();
+}
+
+static iree_status_t loom_linker_capture_sources(loom_linker_source_t* source) {
+  loom_linker_source_callback_t callback = source->linker->source_callback;
+  if (!callback.fn) {
+    return iree_ok_status();
+  }
+  loom_ir_remap_t* remap = NULL;
+  IREE_RETURN_IF_ERROR(loom_linker_get_source_remap(source, &remap));
+  return callback.fn(callback.user_data, source->module,
+                     source->linker->target_module, remap->target_sources);
 }
 
 static bool loom_link_op_symbol_ref(const loom_module_t* module,
@@ -1765,6 +1778,9 @@ iree_status_t loom_linker_allocate(loom_context_t* context,
   linker->context = context;
   linker->block_pool = block_pool;
   linker->allocator = allocator;
+  if (options) {
+    linker->source_callback = options->source_callback;
+  }
   iree_arena_initialize(block_pool, &linker->scratch_arena);
 
   iree_string_view_t module_name =
@@ -1882,6 +1898,9 @@ iree_status_t loom_linker_add_module(loom_linker_t* linker,
   }
   if (iree_status_is_ok(status)) {
     status = loom_linker_clone_module_body(&source);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_linker_capture_sources(&source);
   }
   iree_arena_deinitialize(&source_arena);
   return status;
@@ -2058,6 +2077,9 @@ static iree_status_t loom_linker_add_exact_selection(
     status = loom_linker_clone_exact_symbol_ops(&source);
   }
 
+  if (iree_status_is_ok(status)) {
+    status = loom_linker_capture_sources(&source);
+  }
   iree_arena_deinitialize(&source_arena);
   return status;
 }
@@ -2246,6 +2268,8 @@ iree_status_t loom_link_materialized_modules(
       &(loom_linker_options_t){
           .module_name =
               options ? options->module_name : iree_string_view_empty(),
+          .source_callback = options ? options->source_callback
+                                     : (loom_linker_source_callback_t){0},
       },
       block_pool, allocator, &linker);
 

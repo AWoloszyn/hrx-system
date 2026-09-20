@@ -1,0 +1,4 @@
+func.def public @exact_sine(%value: f32) -> (f32) {
+  %result = scalar.sinf %value : f32
+  func.return %result : f32
+}

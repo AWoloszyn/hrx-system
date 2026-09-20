@@ -139,7 +139,7 @@ kernel.def target(@target) @f16_mfma_gfx950_32x32_fragment_memory() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @f16_mfma_gfx950_32x32_fragment_memory() asm {
+low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @f16_mfma_gfx950_32x32_fragment_memory() asm {
   %18 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
   %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
@@ -238,7 +238,7 @@ kernel.def target(@target) @bf16_mfma_gfx950_32x32_fragment_memory() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @bf16_mfma_gfx950_32x32_fragment_memory() asm {
+low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @bf16_mfma_gfx950_32x32_fragment_memory() asm {
   %18 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
   %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
@@ -337,7 +337,7 @@ kernel.def target(@target) @fp8_mfma_gfx950_fragment_memory() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @fp8_mfma_gfx950_fragment_memory() asm {
+low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @fp8_mfma_gfx950_fragment_memory() asm {
   %18 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
   %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
@@ -400,7 +400,7 @@ kernel.def target(@target) @bf8_fp8_mfma_gfx950_fragment_memory() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @bf8_fp8_mfma_gfx950_fragment_memory() asm {
+low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @bf8_fp8_mfma_gfx950_fragment_memory() asm {
   %18 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
   %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
@@ -463,7 +463,7 @@ kernel.def target(@target) @fp8_bf8_mfma_gfx950_fragment_memory() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @fp8_bf8_mfma_gfx950_fragment_memory() asm {
+low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @fp8_bf8_mfma_gfx950_fragment_memory() asm {
   %18 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
   %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
@@ -526,7 +526,7 @@ kernel.def target(@target) @bf8_bf8_mfma_gfx950_fragment_memory() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @bf8_bf8_mfma_gfx950_fragment_memory() asm {
+low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @bf8_bf8_mfma_gfx950_fragment_memory() asm {
   %18 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
   %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
@@ -784,7 +784,7 @@ kernel.def target(@target) @scaled_mfma_fp4_loaded_payloads_gfx950() {
 }
 
 // ----
-low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @scaled_mfma_fp4_loaded_payloads_gfx950() asm {
+low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 5, resource_count = 5, resource_offsets = [0, 8, 16, 24, 32], resource_parameter_indices = [0, 1, 2, 3, 4], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @scaled_mfma_fp4_loaded_payloads_gfx950() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
   %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
   %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>

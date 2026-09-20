@@ -23,6 +23,7 @@
 #include "loom/tooling/execution/execution_backend.h"
 #include "loom/tooling/execution/one_shot.h"
 #include "loom/tooling/execution/session.h"
+#include "loom/tooling/input/flags.h"
 #include "loom/tooling/io/file.h"
 
 IREE_FLAG(string, pipeline, "default",
@@ -39,8 +40,8 @@ IREE_FLAG(string, sanitizer, "none",
           "Sanitizer checks to insert in the default target pipeline: none, "
           "all, or a '|'-separated set of access, value, operation, and race.");
 IREE_FLAG(string, function, "",
-          "HAL executable function to invoke. Empty selects the single "
-          "function.");
+          "Source kernel symbol to compile and invoke, with optional leading "
+          "'@'. Empty selects the single kernel.");
 IREE_FLAG_NAMED(int32_t, output_max_element_count, "output-max-element-count",
                 1024, "Maximum number of HAL output elements to format.");
 IREE_FLAG_NAMED(
@@ -485,6 +486,7 @@ int iree_run_loom_main(int argc, char** argv,
     loom_run_session_options_t session_options = {0};
     loom_run_session_options_initialize(&session_options);
     session_options.host_allocator = allocator;
+    session_options.input_providers = configuration->input_providers;
     session_options.register_context = (loom_run_register_context_callback_t){
         .fn = iree_run_loom_register_context,
         .user_data = (void*)configuration,
@@ -534,6 +536,7 @@ int iree_run_loom_main(int argc, char** argv,
   if (iree_status_is_ok(status)) {
     loom_run_module_parse_options_t parse_options = {0};
     loom_run_module_parse_options_initialize(&parse_options);
+    parse_options.input = loom_input_options_from_flags();
     parse_options.filename = filename;
     parse_options.source = source;
     status = loom_run_module_parse(&session, &parse_options, &run_module);

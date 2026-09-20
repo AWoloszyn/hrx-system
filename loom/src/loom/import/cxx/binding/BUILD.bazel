@@ -99,16 +99,6 @@ loom_cc_library(
     ],
 )
 
-loom_cc_library(
-    name = "declaration_test",
-    testonly = True,
-    hdrs = ["declaration_test.h"],
-    deps = [
-        "//loom/src/loom/import/cxx/value:builder_test",
-        "//third_party:cxx_parser",
-    ],
-)
-
 loom_cc_test(
     name = "assumptions_test",
     srcs = ["assumptions_test.cc"],
@@ -116,7 +106,6 @@ loom_cc_test(
     deps = [
         ":assumptions",
         "//loom/src/loom/import/cxx/source",
-        "//loom/src/loom/import/cxx/source:error",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
         "//third_party:cxx_parser",
@@ -128,64 +117,9 @@ loom_cc_test(
     srcs = ["shaped_test.cc"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = [
-        ":declaration_test",
         ":shaped",
-        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/import/cxx/value:types",
-        "//loom/src/loom/ops/vector",
-        "//runtime/src/iree/testing:gtest",
-        "//runtime/src/iree/testing:gtest_main",
-        "//third_party:cxx_parser",
-    ],
-)
-
-loom_cc_test(
-    name = "intrinsics_test",
-    srcs = ["intrinsics_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
-    deps = [
-        ":declaration_test",
-        ":intrinsics",
-        "//loom/src/loom/import/cxx/source",
-        "//loom/src/loom/import/cxx/source:error",
-        "//loom/src/loom/import/cxx/value:builder_test",
-        "//loom/src/loom/import/cxx/value:types",
-        "//loom/src/loom/ops/scalar",
-        "//runtime/src/iree/testing:gtest",
-        "//runtime/src/iree/testing:gtest_main",
-        "//third_party:cxx_parser",
-    ],
-)
-
-loom_cc_test(
-    name = "launch_test",
-    srcs = ["launch_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
-    deps = [
-        ":declaration_test",
-        ":launch",
-        "//loom/src/loom/import/cxx/source",
-        "//loom/src/loom/import/cxx/source:error",
-        "//loom/src/loom/import/cxx/value:builder_test",
-        "//loom/src/loom/ops/index",
-        "//loom/src/loom/ops/kernel",
-        "//runtime/src/iree/testing:gtest",
-        "//runtime/src/iree/testing:gtest_main",
-        "//third_party:cxx_parser",
-    ],
-)
-
-loom_cc_test(
-    name = "loop_schedule_test",
-    srcs = ["loop_schedule_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
-    deps = [
-        ":loop_schedule",
-        "//loom/src/loom/import/cxx/source",
-        "//loom/src/loom/import/cxx/source:error",
-        "//loom/src/loom/import/cxx/value:builder_test",
-        "//loom/src/loom/ops/index",
-        "//loom/src/loom/ops/scalar",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
         "//third_party:cxx_parser",
@@ -200,10 +134,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_binding_shaped.objects
     loom_import_cxx_binding_launch.objects
     loom_import_cxx_binding_loop_schedule.objects
-    loom_import_cxx_binding_intrinsics_test
     loom_import_cxx_binding_shaped_test
-    loom_import_cxx_binding_launch_test
-    loom_import_cxx_binding_loop_schedule_test
     loom_import_cxx_binding_assumptions_test
 )
   if(TARGET ${_target})

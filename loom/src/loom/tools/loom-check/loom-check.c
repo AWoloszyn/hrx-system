@@ -8,14 +8,9 @@
 // Test builds may additionally enable the synthetic test provider.
 
 #include "loom/target/arch/cmd/check/provider.h"
+#include "loom/tooling/input/configured.h"
 #include "loom/tools/loom-check/provider.h"
 
-#ifndef LOOM_CHECK_HAVE_INPUT_CXX
-#define LOOM_CHECK_HAVE_INPUT_CXX 0
-#endif  // LOOM_CHECK_HAVE_INPUT_CXX
-#if LOOM_CHECK_HAVE_INPUT_CXX
-#include "loom/import/cxx/tooling/input.h"
-#endif  // LOOM_CHECK_HAVE_INPUT_CXX
 #ifndef LOOM_CHECK_HAVE_TEST_PROVIDER
 #define LOOM_CHECK_HAVE_TEST_PROVIDER 0
 #endif  // LOOM_CHECK_HAVE_TEST_PROVIDER
@@ -119,14 +114,8 @@ static const loom_check_provider_set_t kLoomCheckProviderSet = {
 int main(int argc, char** argv) {
   IREE_TRACE_APP_ENTER();
   IREE_TRACE_ZONE_BEGIN(z0);
-  loom_input_provider_list_t input_providers = {0};
-#if LOOM_CHECK_HAVE_INPUT_CXX
-  const loom_input_provider_t* const inputs[] = {&loom_cxx_input_provider};
-  input_providers = (loom_input_provider_list_t){
-      .values = inputs, .count = IREE_ARRAYSIZE(inputs)};
-#endif  // LOOM_CHECK_HAVE_INPUT_CXX
   const int exit_code = loom_check_provider_main(
-      argc, argv, &kLoomCheckProviderSet, input_providers);
+      argc, argv, &kLoomCheckProviderSet, loom_configured_input_providers());
   IREE_TRACE_ZONE_END(z0);
   IREE_TRACE_APP_EXIT(exit_code);
   return exit_code;

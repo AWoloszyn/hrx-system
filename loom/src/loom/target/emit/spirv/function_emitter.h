@@ -44,8 +44,8 @@ typedef struct loom_spirv_function_emission_context_t {
   loom_spirv_module_builder_t* builder;
   // Module-wide SPIR-V type and constant cache.
   loom_spirv_type_context_t* type_context;
-  // Module-wide raw-BDA ABI layout shared by HAL kernel entries.
-  loom_spirv_module_raw_bda_layout_t* raw_bda_layout;
+  // Physical push-constant storage shared by HAL kernel entries.
+  loom_spirv_module_shared_bda_root_t* shared_bda_root;
   // Module-wide Input variable IDs indexed by supported builtin kind.
   uint32_t* builtin_variable_ids;
 } loom_spirv_function_emission_context_t;

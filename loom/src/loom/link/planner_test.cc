@@ -621,8 +621,7 @@ TEST_F(LinkPlannerTest, InterleavedKernelFacetUpgradesPreservePerSymbolChains) {
         loom_link_module_index_module_at(index, 0);
     ASSERT_NE(indexed_module, nullptr);
     const loom_link_module_index_symbol_t* target =
-        loom_link_module_index_lookup_private(index, indexed_module,
-                                              IREE_SV("target"));
+        loom_link_module_index_lookup_global(index, IREE_SV("target"));
     const loom_link_module_index_symbol_t* configuration_dependency =
         loom_link_module_index_lookup_global(
             index, IREE_SV("configuration_dependency"));
@@ -746,8 +745,7 @@ TEST_F(LinkPlannerTest, KernelReferencesSelectOnlyTheirRequiredFacets) {
     ASSERT_NE(harness_module, nullptr);
     ASSERT_NE(library_module, nullptr);
     const loom_link_module_index_symbol_t* local =
-        loom_link_module_index_lookup_private(index, harness_module,
-                                              IREE_SV("local"));
+        loom_link_module_index_lookup_global(index, IREE_SV("local"));
     const loom_link_module_index_symbol_t* local_configuration_dependency =
         loom_link_module_index_lookup_global(
             index, IREE_SV("local_configuration_dependency"));

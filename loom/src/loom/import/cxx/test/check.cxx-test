@@ -1,0 +1,314 @@
+// RUN: roundtrip
+#include <loomcxx/check.h>
+unsigned byte_increment(unsigned input) {
+  unsigned char value = (unsigned char)input;
+  ++value;
+  return value;
+}
+LOOM_CHECK_CASE(wraps_byte) {
+  const auto actual = byte_increment(255u);
+  loom::check::expect_equal(actual, 0u);
+}
+LOOM_CHECK_BENCHMARK(wraps_byte_benchmark, wraps_byte);
+
+// ----
+func.def public @byte_increment(%input: i32) -> (i32) {
+  %value$2 = scalar.trunci %input : i32 to i8
+  %3 = scalar.extui %value$2 : i8 to i32
+  %4 = scalar.constant 1 : i32
+  %5 = scalar.addi %3, %4 : i32
+  %value$6 = scalar.trunci %5 : i32 to i8
+  %7 = scalar.extui %value$6 : i8 to i32
+  func.return %7 : i32
+}
+
+check.case public @wraps_byte {
+  %8 = check.literal value(255) : i32
+  %actual = func.call @byte_increment(%8) : (i32) -> (i32)
+  %10 = check.literal value(0) : i32
+  check.expect.equal actual(%actual) expected(%10) : i32
+  check.return
+}
+
+check.benchmark<@wraps_byte> @wraps_byte_benchmark
+
+// ====
+// RUN: roundtrip
+#include <loomcxx/check.h>
+namespace sample {
+static short identity(short value) { return value; }
+static LOOM_CHECK_CASE(narrow) {
+  constexpr short expected = -7;
+  const auto actual = identity(expected);
+  loom::check::expect_equal(actual, expected);
+  loom::check::expect_equal(0xffffffffffffffffULL, ~0ULL);
+  loom::check::expect_equal(-0.5f, -1.0f / 2.0f);
+  loom::check::expect_equal(true, sizeof(short) == 2);
+  return;
+}
+LOOM_CHECK_BENCHMARK(measure_narrow, narrow);
+}
+
+// ----
+check.case public @sample__narrow {
+  %expected = check.literal value(-7) : i16
+  %1 = check.literal value(-7) : i16
+  %actual = func.call @sample__identity(%1) : (i16) -> (i16)
+  %3 = check.literal value(-7) : i16
+  check.expect.equal actual(%actual) expected(%3) : i16
+  %4 = check.literal value(-1) : i64
+  %5 = check.literal value(-1) : i64
+  check.expect.equal actual(%4) expected(%5) : i64
+  %6 = check.literal value(-0.5) : f32
+  %7 = check.literal value(-0.5) : f32
+  check.expect.equal actual(%6) expected(%7) : f32
+  %8 = check.literal value(1) : i1
+  %9 = check.literal value(1) : i1
+  check.expect.equal actual(%8) expected(%9) : i1
+  check.return
+}
+
+func.def @sample__identity(%value: i16) -> (i16) {
+  func.return %value : i16
+}
+
+check.benchmark<@sample__narrow> @sample__measure_narrow
+
+// ====
+// RUN: roundtrip
+// INPUT: cxx root=selected
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(selected) { loom::check::expect_equal(4, 2 + 2); }
+LOOM_CHECK_CASE(unselected) { loom::check::expect_equal(5, 6); }
+LOOM_CHECK_BENCHMARK(selected_benchmark, selected);
+LOOM_CHECK_BENCHMARK(unselected_benchmark, unselected);
+
+// ----
+check.case public @selected {
+  %0 = check.literal value(4) : i32
+  %1 = check.literal value(4) : i32
+  check.expect.equal actual(%0) expected(%1) : i32
+  check.return
+}
+
+check.benchmark<@selected> @selected_benchmark
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+// ERROR@+1: LOWERING/059 "check declarations require one check annotation on void()"
+[[loom::check_case]] int wrong_result() { return 1; }
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+// ERROR@+1: LOWERING/059 "check declarations require one check annotation on void()"
+[[loom::check_case]] void parameterized(int value) {}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+// ERROR@+1: LOWERING/059 "check cases require a definition"
+LOOM_CHECK_CASE(undefined_case);
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(mutable_local) {
+  // ERROR@+1: LOWERING/059 "check locals require initialized automatic const scalars"
+  int value = 3;
+}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(branch) {
+  // ERROR@+1: LOWERING/059 "check cases support immutable scalars, direct calls, and terminal expectations"
+  if (true) loom::check::expect_equal(1, 1);
+}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+int identity(int value) { return value; }
+LOOM_CHECK_CASE(arithmetic) {
+  const auto actual = identity(3);
+  // ERROR@+1: LOWERING/059 "check values require scalar constants, immutable bindings, or direct calls"
+  loom::check::expect_equal(actual + 1, 4);
+}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+int identity(int value) { return value; }
+LOOM_CHECK_CASE(conversion) {
+  // ERROR@+1: LOWERING/059 "runtime conversions are not supported in check cases"
+  const long long actual = identity(3);
+}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+int identity(int value) { return value; }
+LOOM_CHECK_CASE(invocation_after_observation) {
+  loom::check::expect_equal(identity(3), 3);
+  // ERROR@+1: LOWERING/059 "check expectations must be terminal"
+  loom::check::expect_equal(identity(4), 4);
+}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+void ordinary() {
+  // ERROR@+1: LOWERING/059 "check declarations cannot be called from ordinary functions"
+  loom::check::expect_equal(3, 3);
+}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(first) {}
+LOOM_CHECK_CASE(second) {
+  // ERROR@+1: LOWERING/059 "check invocations require a defined ordinary function"
+  first();
+}
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check.expect.equal requires void(T, T) with one scalar type"
+[[loom::op("check.expect.equal")]] int broken(int, int);
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check.expect.equal requires void(T, T) with one scalar type"
+[[loom::op("check.expect.equal")]] void broken(int, unsigned);
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+void ordinary() {}
+// ERROR@+1: LOWERING/059 "check benchmark must reference a check case"
+LOOM_CHECK_BENCHMARK(wrong_target, ordinary);
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(target) {}
+// ERROR@+1: LOWERING/059 "check benchmarks are declarations referencing a case, without a body"
+LOOM_CHECK_BENCHMARK(body, target) {}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(target) {}
+LOOM_CHECK_BENCHMARK(duplicate, target);
+// ERROR@+1: LOWERING/059 "check benchmark is already declared"
+LOOM_CHECK_BENCHMARK(duplicate, target);
+
+// ====
+// RUN: roundtrip
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(forward);
+int forward_helper(int value);
+void forward() {
+  const auto actual = forward_helper(2);
+  loom::check::expect_equal(actual, 3);
+}
+int forward_helper(int value) { return value + 1; }
+LOOM_CHECK_BENCHMARK(forward_benchmark, forward);
+
+// ----
+check.case public @forward {
+  %0 = check.literal value(2) : i32
+  %actual = func.call @forward_helper(%0) : (i32) -> (i32)
+  %2 = check.literal value(3) : i32
+  check.expect.equal actual(%actual) expected(%2) : i32
+  check.return
+}
+
+func.def public @forward_helper(%value: i32) -> (i32) {
+  %5 = scalar.constant 1 : i32
+  %6 = scalar.addi %value, %5 : i32
+  func.return %6 : i32
+}
+
+check.benchmark<@forward> @forward_benchmark
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+struct Suite {
+  // ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+  LOOM_CHECK_CASE(member) {}
+};
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(target) {}
+struct Suite {
+  // ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+  LOOM_CHECK_BENCHMARK(member, target);
+};
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+template <typename T>
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+LOOM_CHECK_CASE(pattern) {}
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+[[loom::check_case]] constexpr int constant = 3;
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+struct [[loom::check_case]] WrongScope {};
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+// Unused class members stay outside ordinary root selection.
+struct Unused {
+  int value;
+  static int storage;
+  int member() { return value; }
+};
+template <typename T>
+T twice(T value) { return value + value; }
+LOOM_CHECK_CASE(concrete_helper) {
+  const auto actual = twice(3);
+  loom::check::expect_equal(actual, 6);
+}
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+namespace [[loom::check_case]] WrongScope {}
+
+// ====
+// RUN: verify
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+enum [[loom::check_case]] WrongScope { value };
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+// ERROR@+1: LOWERING/059 "check declarations require non-template namespace-scope functions"
+struct Suite { static void member(); };
+LOOM_CHECK_CASE(Suite::member) {}
+
+// ====
+// RUN: verify
+#include <loomcxx/check.h>
+namespace suite {
+int twice(int value) { return value + value; }
+LOOM_CHECK_CASE(concrete) {
+  const auto actual = twice(3);
+  loom::check::expect_equal(actual, 6);
+}
+LOOM_CHECK_BENCHMARK(timing, concrete);
+}

@@ -143,7 +143,7 @@ func.def public device @semantic() {
   EXPECT_EQ(facts->result_count, 0);
   EXPECT_FALSE(loom_symbol_ref_is_valid(facts->target_symbol));
   EXPECT_FALSE(facts->has_abi);
-  EXPECT_FALSE(facts->exports);
+  EXPECT_TRUE(facts->exports);
 }
 
 TEST_F(FuncSymbolFactsTest, TemplateFactsCarryFamilyIdentity) {

@@ -223,4 +223,101 @@ loom_cc_test(
 )
 endif()
 
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+iree_native_test(
+  NAME
+    "aliased_entry_test"
+  ARGS
+    "{{${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/spirv/test/multiple_entries.loom}}"
+    "--device=vulkan"
+    "--vulkan_validation_layers=false"
+    "--function=@combine"
+    "--kernel-input-buffer=1xi32=6"
+    "--kernel-input-buffer=1xi32=10"
+    "--kernel-input-buffer=1xi32=0"
+    "--kernel-input-value=i32=4"
+    "--kernel-input-value=i32=5"
+    "--expected-kernel-buffer=1xi32=6"
+    "--expected-kernel-buffer=1xi32=10"
+    "--expected-kernel-buffer=1xi32=25"
+  SRC
+    loom::tools::iree-run-loom
+  DATA
+    "${PROJECT_SOURCE_DIR}/build_tools/sanitizer/lsan_suppressions_vulkan.txt"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/spirv/test/multiple_entries.loom"
+  ENV
+    "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/build_tools/sanitizer/lsan_suppressions_vulkan.txt:allow_addr2line=1"
+  LABELS
+    "iree-run-requirement=runtime.resource.vulkan_device"
+    "runtime-resource=vulkan-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
+loom_generated_file(
+  NAME
+    multiple_entries_binary
+  GENERATOR
+    loom::tools::loom-compile::loom-compile
+  OUTPUT
+    "multiple_entries.spv"
+  OUTPUT_FLAG
+    "--output="
+  ARGS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/spirv/test/multiple_entries.loom"
+    "--product=kernel"
+    "--target=spirv:vulkan1.3+bda"
+  INPUTS
+    "test/multiple_entries.loom"
+  TESTONLY
+)
+endif()
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
+iree_c_embed_data(
+  NAME
+    multiple_entries_spv
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/multiple_entries.spv"
+  C_FILE_OUTPUT
+    "multiple_entries_spv.c"
+  H_FILE_OUTPUT
+    "multiple_entries_spv.h"
+  IDENTIFIER
+    "loom_spirv_multiple_entries"
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(IREE_HAL_DRIVER_VULKAN AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
+loom_cc_test(
+  NAME
+    artifact_execution_test
+  SRCS
+    "${PROJECT_SOURCE_DIR}/runtime/src/iree/hal/cts/util/test_main.cc"
+    "artifact_execution_test.cc"
+  DEPS
+    ::multiple_entries_spv
+    iree::base::tooling::flags
+    iree::hal
+    iree::hal::cts::util::registry
+    iree::hal::cts::util::test_base
+    iree::hal::drivers::vulkan::cts::backends
+    iree::testing::gtest
+  ARGS
+    "--vulkan_validation_layers=false"
+  LABELS
+    "iree-run-requirement=runtime.resource.vulkan_device"
+    "runtime-resource=vulkan-device"
+    "iree-build-requirement=loom.target.arch.spirv"
+    "iree-build-requirement=loom.emit.spirv"
+  RESOURCE_GROUP
+    loom-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

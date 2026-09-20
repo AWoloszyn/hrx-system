@@ -123,6 +123,9 @@ typedef struct loom_ir_remap_t {
   loom_module_t* target_module;
   // Scratch arena for remap tables and temporary recursive type arrays.
   iree_arena_allocator_t* arena;
+  // Target source IDs indexed by source ID. Cross-module initialization
+  // projects the complete source table; same-module remaps leave this NULL.
+  loom_source_id_t* target_sources;
   // Source-module value table count captured at remap initialization.
   iree_host_size_t source_value_snapshot_count;
   // Target value IDs indexed directly by source value ID, or NULL when using

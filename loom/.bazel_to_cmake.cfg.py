@@ -244,6 +244,87 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         )
         self._emit_platform_guard_end(target_compatible_with)
 
+    def loom_library(
+        self,
+        name,
+        srcs=None,
+        deps=None,
+        data=None,
+        input_format="",
+        inputopts=None,
+        tags=None,
+        target_compatible_with=None,
+        **kwargs,
+    ):
+        if self._should_skip_target(tags=tags, **kwargs):
+            return
+        if deps:
+            raise NotImplementedError(
+                "CMake loom_library dependencies require a relocatable library "
+                "projection preserving the transitive dependency closure"
+            )
+        blocks = [
+            self._convert_string_arg_block("NAME", name, quote=False),
+            self._convert_data_srcs_block(srcs),
+            self._convert_data_list_block(data),
+            self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
+            self._convert_string_list_block(
+                "INPUTOPTS", self._convert_location_args(inputopts), sort=False
+            ),
+            "  MODE merge\n  OUTPUT_FORMAT bc\n  STRICT_DEPS\n",
+        ]
+        target_compatible_with = self._apply_loom_target_compatible_with(
+            target_compatible_with
+        )
+        self._emit_platform_guard_begin(target_compatible_with)
+        self._converter.body += "loom_module(\n" + "".join(blocks) + ")\n\n"
+        self._emit_platform_guard_end(target_compatible_with)
+
+    def loom_test(
+        self,
+        name,
+        srcs,
+        deps=None,
+        data=None,
+        input_format="",
+        inputopts=None,
+        args=None,
+        execution_profile=None,
+        tags=None,
+        target_compatible_with=None,
+        **kwargs,
+    ):
+        if execution_profile is not None:
+            # Device-profile rules have explicit CMake declarations owning their
+            # platform requirements, resource groups, and sanitizer policy.
+            return
+        if self._should_skip_target(tags=tags, **kwargs):
+            return
+        if deps:
+            raise NotImplementedError(
+                "CMake loom_test dependencies require a relocatable library "
+                "projection preserving the transitive dependency closure"
+            )
+        target_compatible_with = self._apply_loom_target_compatible_with(
+            target_compatible_with
+        )
+        blocks = [
+            self._convert_string_arg_block("NAME", name, quote=False),
+            self._convert_data_srcs_block(srcs),
+            self._convert_data_list_block(data),
+            self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
+            self._convert_string_list_block(
+                "INPUTOPTS",
+                self._convert_location_args(inputopts),
+                sort=False,
+            ),
+            self._convert_string_list_block("ARGS", args, sort=False),
+            self._convert_string_list_block("LABELS", tags, sort=False),
+        ]
+        self._emit_platform_guard_begin(target_compatible_with)
+        self._converter.body += "loom_test(\n" + "".join(blocks) + ")\n\n"
+        self._emit_platform_guard_end(target_compatible_with)
+
     def _convert_loom_module_inputs(self, block_name, inputs):
         if inputs is None:
             return ""
@@ -574,7 +655,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             )
         return convert(values)
 
-    def loom_generated_textual_header(
+    def loom_generated_file(
         self,
         name,
         generator,
@@ -595,6 +676,13 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             target_compatible_with
         )
 
+        self._target_file_paths[self._current_target_label(name)] = (
+            f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"
+        )
+        self._target_file_paths[self._current_target_label(output)] = (
+            f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"
+        )
+        testonly_block = self._convert_option_block("TESTONLY", testonly)
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         generator_block = self._convert_single_target_block("GENERATOR", generator)
         output_block = self._convert_string_arg_block("OUTPUT", output)
@@ -619,7 +707,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         if platform_inputs_block:
             self._converter.body += platform_inputs_block
         self._converter.body += (
-            f"loom_generated_textual_header(\n"
+            f"loom_generated_file(\n"
             f"{name_block}"
             f"{generator_block}"
             f"{output_block}"
@@ -627,6 +715,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f"{args_block}"
             f"{inputs_block}"
             f"{comment_block}"
+            f"{testonly_block}"
             f")\n\n"
         )
         self._emit_platform_guard_end(target_compatible_with)
@@ -637,6 +726,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         generator,
         outputs,
         output_flags,
+        output_directories=None,
         args=None,
         inputs=None,
         comment=None,
@@ -652,6 +742,16 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             target_compatible_with
         )
 
+        for directory in output_directories or []:
+            if directory not in outputs:
+                raise ValueError(
+                    f"generated output directory is not declared: {directory}"
+                )
+        for output in outputs:
+            self._target_file_paths[self._current_target_label(output)] = (
+                f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"
+            )
+        testonly_block = self._convert_option_block("TESTONLY", testonly)
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         generator_block = self._convert_single_target_block("GENERATOR", generator)
         outputs_block = self._convert_string_list_block("OUTPUTS", outputs, sort=False)
@@ -686,6 +786,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f"{args_block}"
             f"{inputs_block}"
             f"{comment_block}"
+            f"{testonly_block}"
             f")\n\n"
         )
         self._emit_platform_guard_end(target_compatible_with)

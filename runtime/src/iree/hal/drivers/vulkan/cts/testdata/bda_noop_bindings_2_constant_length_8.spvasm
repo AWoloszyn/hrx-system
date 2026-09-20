@@ -14,6 +14,6 @@
           %4 = OpLabel
                OpReturn
                OpFunctionEnd
-               OpModuleProcessed "iree.vulkan.bda.v1"
-               OpModuleProcessed "iree.vulkan.bda.v1.bindings=2"
-               OpModuleProcessed "iree.vulkan.bda.v1.constant_length=8"
+               OpModuleProcessed "iree.vulkan.bda.v1[main]"
+               OpModuleProcessed "iree.vulkan.bda.v1[main].bindings=2"
+               OpModuleProcessed "iree.vulkan.bda.v1[main].constant_length=8"

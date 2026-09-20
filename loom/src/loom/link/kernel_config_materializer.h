@@ -21,6 +21,9 @@ extern "C" {
 typedef struct loom_link_kernel_config_module_projection_t {
   // Standalone compact module owned by the caller.
   loom_module_t* module;
+  // Arena-owned original-to-projected source IDs for materialized input.
+  // Bytecode-only inputs have no external source snapshots and leave this NULL.
+  const loom_source_id_t* target_sources;
   // Configuration functions aligned with |selection.symbols|. Complete source
   // symbols contain null refs; partial kernel selections name their private
   // pure workload-to-count function. Storage belongs to the caller's arena.

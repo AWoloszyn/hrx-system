@@ -28,8 +28,10 @@ extern "C" {
 typedef struct loom_vm_testbench_t {
   // Borrowed compiler capabilities, live through deinitialization.
   const loom_target_environment_t* target_environment;
-  // Borrowed case plan identifying exactly which functions cross the host ABI.
-  const loom_testbench_module_plan_t* plan;
+  // Borrowed selected cases identifying the functions crossing the host ABI.
+  loom_testbench_case_plan_list_t cases;
+  // Borrowed admitted source snapshots, live through the final invocation.
+  loom_source_resolver_t source_resolver;
   // Allocator for bytecode and runtime objects.
   iree_allocator_t host_allocator;
   // Owned process, or NULL until the first function call is prepared.
@@ -52,11 +54,14 @@ void loom_vm_testbench_initialize(
 // Releases runtime objects. Safe for a zero-initialized or failed provider.
 void loom_vm_testbench_deinitialize(loom_vm_testbench_t* testbench);
 
-// Binds the existing case plan and returns a borrowed function-call callback.
-// |user_data| points to an initialized loom_vm_testbench_t. The plan remains
-// live through the final call; deinitialization does not access it.
+// Binds the runner-selected cases and returns a borrowed function-call
+// callback. |user_data| points to an initialized loom_vm_testbench_t. The case
+// list remains live with the source resolver through the final call;
+// deinitialization does not access either. The resolver supports copies
+// preserving source IDs.
 loom_testbench_invocation_provider_t loom_vm_testbench_invocation_provider(
-    void* user_data, const loom_testbench_module_plan_t* plan);
+    void* user_data, loom_testbench_case_plan_list_t cases,
+    loom_source_resolver_t source_resolver);
 
 #ifdef __cplusplus
 }  // extern "C"

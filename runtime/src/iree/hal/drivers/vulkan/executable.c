@@ -286,15 +286,39 @@ static iree_status_t iree_hal_vulkan_create_bda_executable(
         spirv_words, spirv_word_count, entry_point_count, entry_points);
   }
 
-  iree_hal_vulkan_spirv_bda_dispatch_metadata_t bda_metadata = {0};
+  iree_hal_vulkan_spirv_bda_dispatch_metadata_t* bda_metadata = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_allocator_malloc_array(host_allocator, entry_point_count,
+                                         sizeof(bda_metadata[0]),
+                                         (void**)&bda_metadata);
+  }
   if (iree_status_is_ok(status)) {
     status = iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
-        spirv_words, spirv_word_count, host_allocator, &bda_metadata);
+        spirv_words, spirv_word_count, entry_point_count, entry_points,
+        bda_metadata, host_allocator);
   }
-  if (iree_status_is_ok(status) && !bda_metadata.is_present) {
-    status = iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "Vulkan SPIR-V executable must declare iree.vulkan.bda.v1 metadata");
+  uint32_t push_constant_range_end = 0;
+  for (iree_host_size_t i = 0;
+       iree_status_is_ok(status) && i < entry_point_count; ++i) {
+    const iree_hal_vulkan_spirv_bda_dispatch_metadata_t* metadata =
+        &bda_metadata[i];
+    if (!metadata->is_present) {
+      status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "Vulkan SPIR-V entry point '%.*s' must declare "
+                                "iree.vulkan.bda.v1 metadata",
+                                (int)entry_points[i].name.size,
+                                entry_points[i].name.data);
+    }
+    // The physical layout covers every entry; logical dispatch arguments stay
+    // exact in each pipeline's own metadata.
+    push_constant_range_end = iree_max(push_constant_range_end,
+                                       metadata->root_push_constant_offset +
+                                           metadata->root_push_constant_length);
+    if (metadata->constant_byte_length != 0) {
+      push_constant_range_end = iree_max(
+          push_constant_range_end, metadata->constant_push_constant_offset +
+                                       metadata->constant_byte_length);
+    }
   }
 
   iree_hal_vulkan_spirv_bda_verification_flags_t verification_flags =
@@ -330,19 +354,10 @@ static iree_status_t iree_hal_vulkan_create_bda_executable(
   }
 
   if (iree_status_is_ok(status)) {
-    const uint64_t root_end = (uint64_t)bda_metadata.root_push_constant_offset +
-                              bda_metadata.root_push_constant_length;
-    const uint64_t constant_end =
-        (uint64_t)bda_metadata.constant_push_constant_offset +
-        bda_metadata.constant_byte_length;
-    uint64_t range_end = root_end;
-    if (bda_metadata.constant_byte_length != 0 && constant_end > range_end) {
-      range_end = constant_end;
-    }
     VkPushConstantRange root_range = {
         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-        .offset = bda_metadata.root_push_constant_offset,
-        .size = (uint32_t)(range_end - bda_metadata.root_push_constant_offset),
+        .offset = 0,
+        .size = push_constant_range_end,
     };
     VkPipelineLayoutCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -380,7 +395,7 @@ static iree_status_t iree_hal_vulkan_create_bda_executable(
     pipeline->handle = VK_NULL_HANDLE;
     pipeline->layout = executable->pipeline_layout;
     status = iree_hal_vulkan_initialize_pipeline_bda_metadata(
-        &bda_metadata, host_allocator, pipeline);
+        &bda_metadata[i], host_allocator, pipeline);
     if (!iree_status_is_ok(status)) {
       break;
     }
@@ -421,8 +436,13 @@ static iree_status_t iree_hal_vulkan_create_bda_executable(
     iree_vkDestroyShaderModule(IREE_VULKAN_DEVICE(syms), logical_device,
                                shader_module, /*pAllocator=*/NULL);
   }
-  iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(&bda_metadata,
-                                                           host_allocator);
+  if (bda_metadata) {
+    for (iree_host_size_t i = 0; i < entry_point_count; ++i) {
+      iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(&bda_metadata[i],
+                                                               host_allocator);
+    }
+    iree_allocator_free(host_allocator, bda_metadata);
+  }
   iree_allocator_free(host_allocator, entry_points);
   iree_allocator_free(host_allocator, aligned_spirv_words);
 

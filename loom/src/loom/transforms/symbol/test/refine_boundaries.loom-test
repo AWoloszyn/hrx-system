@@ -220,31 +220,30 @@ func.def public @calls_public() -> (index) {
 
 // ====
 
-// An artifact export is externally callable even when the source symbol has
-// private module visibility. Local callers therefore cannot narrow or prune
-// its ABI.
+// An alias does not change a private function's visibility, so local callers
+// can still narrow and prune its ABI.
 test.target<low_core> @export_target
 
-func.def target(@export_target) abi(object_function) export("exported_abi") @exported_abi(%kept: index, %externally_used: index) {
+func.def target(@export_target) abi(object_function) export("artifact_abi") @private_abi(%kept: index, %unused: index) {
   test.use %kept : index
   func.return
 }
 
-func.def public @call_exported_abi(%kept: index, %apparently_dead: index) {
-  func.call @exported_abi(%kept, %apparently_dead) : (index, index)
+func.def public @call_private_abi(%kept: index, %apparently_dead: index) {
+  func.call @private_abi(%kept, %apparently_dead) : (index, index)
   func.return
 }
 
 // ----
 test.target<low_core> @export_target
 
-func.def target(@export_target) abi(object_function) export("exported_abi") @exported_abi(%kept: index, %externally_used: index) {
+func.def target(@export_target) abi(object_function) export("artifact_abi") @private_abi(%kept: index) {
   test.use %kept : index
   func.return
 }
 
-func.def public @call_exported_abi(%kept: index, %apparently_dead: index) {
-  func.call @exported_abi(%kept, %apparently_dead) : (index, index)
+func.def public @call_private_abi(%kept: index, %apparently_dead: index) {
+  func.call @private_abi(%kept) : (index)
   func.return
 }
 

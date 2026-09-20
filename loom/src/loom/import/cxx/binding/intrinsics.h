@@ -22,8 +22,8 @@
 
 namespace loom::cxx_import {
 
-// Resolves annotated source declarations against scalar or shaped operation
-// contracts at declaration admission. Calls consume the retained binding
+// Resolves annotated source declarations against scalar, shaped, and check
+// operation contracts at admission. Calls consume the retained binding
 // directly; typed builders consume the resulting trusted signature.
 class Intrinsics {
  public:
@@ -36,6 +36,13 @@ class Intrinsics {
                    cxx::List<cxx::AttributeSpecifierAST*>* attributes,
                    cxx::AST* owner);
 
+  // Returns the admitted operand type for a void equality expectation, or no
+  // value for another declaration. Check-body translation owns its emission.
+  std::optional<loom_type_t> expectation_type(
+      cxx::FunctionSymbol* function) const;
+
+  // Emits a value-producing scalar or shaped operation. Void check bindings
+  // are handled by check-body translation and have no value result here.
   std::optional<loom_value_id_t> call(
       cxx::FunctionSymbol* function, std::span<const loom_value_id_t> arguments,
       uint8_t math_flags, loom_builder_t* builder, loom_location_id_t location);
@@ -54,7 +61,14 @@ class Intrinsics {
              loom_type_equal(type, other.type);
     }
   };
-  using Binding = std::variant<ScalarBinding, ShapedIntrinsic>;
+  struct EqualityBinding {
+    // Shared scalar operand type, established by declaration admission.
+    loom_type_t type;
+    bool equivalent(const EqualityBinding& other) const {
+      return loom_type_equal(type, other.type);
+    }
+  };
+  using Binding = std::variant<ScalarBinding, ShapedIntrinsic, EqualityBinding>;
 
   Binding resolve(cxx::FunctionSymbol* function,
                   const cxx::Attribute& attribute, cxx::AST* owner);

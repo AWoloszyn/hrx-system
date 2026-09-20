@@ -9909,14 +9909,6 @@ iree_status_t iree_hal_vulkan_queue_submit_dispatch(
         IREE_STATUS_INVALID_ARGUMENT,
         "Vulkan queue_dispatch constants must be 4-byte aligned");
   }
-  if (iree_status_is_ok(status) &&
-      constants.data_length > pipeline->constant_byte_length) {
-    status =
-        iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                         "Vulkan queue_dispatch provides %" PRIhsz
-                         " constant bytes but pipeline accepts at most %u",
-                         constants.data_length, pipeline->constant_byte_length);
-  }
   if (iree_status_is_ok(status)) {
     status = iree_hal_vulkan_queue_validate_dispatch_bda(pipeline, constants,
                                                          bindings);

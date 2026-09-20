@@ -8,7 +8,7 @@
 
 #include "loom/ir/context.h"
 #include "loom/ir/ir.h"
-#include "loom/ir/location.h"
+#include "loom/tooling/testbench/source_report.h"
 #include "loom/util/json.h"
 
 iree_string_view_t loom_testbench_issue_kind_name(
@@ -96,56 +96,6 @@ loom_testbench_issue_benchmark_plan(
   return NULL;
 }
 
-static const loom_location_entry_t* loom_testbench_issue_file_location(
-    const loom_module_t* module, loom_location_id_t location_id) {
-  while (location_id != LOOM_LOCATION_UNKNOWN &&
-         (iree_host_size_t)location_id < module->locations.count) {
-    const loom_location_entry_t* entry =
-        &module->locations.entries[location_id];
-    switch (entry->kind) {
-      case LOOM_LOCATION_FILE:
-        return entry;
-      case LOOM_LOCATION_TAGGED:
-        location_id = entry->tagged.child;
-        continue;
-      default:
-        return NULL;
-    }
-  }
-  return NULL;
-}
-
-static iree_status_t loom_testbench_issue_write_source_location_json(
-    const loom_testbench_module_plan_t* module_plan,
-    const loom_testbench_issue_t* issue, loom_json_object_writer_t* object) {
-  if (issue->op == NULL) {
-    return iree_ok_status();
-  }
-  const loom_module_t* module = module_plan->module;
-  const loom_location_entry_t* location =
-      loom_testbench_issue_file_location(module, issue->op->location);
-  if (location == NULL || location->file.source_id >= module->sources.count) {
-    return iree_ok_status();
-  }
-  IREE_RETURN_IF_ERROR(
-      loom_json_object_begin_field(object, IREE_SV("source_location")));
-  loom_json_object_writer_t location_object;
-  IREE_RETURN_IF_ERROR(
-      loom_json_object_begin(object->stream, &location_object));
-  IREE_RETURN_IF_ERROR(loom_json_object_write_string_field(
-      &location_object, IREE_SV("filename"),
-      module->sources.entries[location->file.source_id]));
-  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
-      &location_object, IREE_SV("start_line"), location->file.start_line));
-  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
-      &location_object, IREE_SV("start_column"), location->file.start_col));
-  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
-      &location_object, IREE_SV("end_line"), location->file.end_line));
-  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
-      &location_object, IREE_SV("end_column"), location->file.end_col));
-  return loom_json_object_end(&location_object);
-}
-
 iree_status_t loom_testbench_issue_write_json(
     const loom_testbench_module_plan_t* module_plan,
     const loom_testbench_issue_t* issue, loom_output_stream_t* stream) {
@@ -178,9 +128,9 @@ iree_status_t loom_testbench_issue_write_json(
   if (issue->op != NULL) {
     IREE_RETURN_IF_ERROR(loom_json_object_write_string_field(
         &object, IREE_SV("op"), loom_op_name(module_plan->module, issue->op)));
+    IREE_RETURN_IF_ERROR(loom_testbench_write_source_location_json(
+        module_plan->module, issue->op->location, &object));
   }
-  IREE_RETURN_IF_ERROR(loom_testbench_issue_write_source_location_json(
-      module_plan, issue, &object));
   const iree_string_view_t fix_hint =
       loom_testbench_issue_fix_hint(module_plan, issue);
   if (!iree_string_view_is_empty(fix_hint)) {

@@ -15,6 +15,7 @@
 #include "loom/format/bytecode/reader.h"
 #include "loom/format/text/parser.h"
 #include "loom/ir/module.h"
+#include "loom/link/linker.h"
 
 enum {
   LOOM_RUN_DEFAULT_BLOCK_POOL_BLOCK_SIZE = 128 * 1024,
@@ -34,6 +35,7 @@ iree_status_t loom_run_session_initialize(
     loom_run_session_t* out_session) {
   *out_session = (loom_run_session_t){
       .host_allocator = options->host_allocator,
+      .input_providers = options->input_providers,
   };
 
   const iree_host_size_t block_pool_block_size =
@@ -112,41 +114,42 @@ static bool loom_run_module_input_is_bytecode(iree_string_view_t source) {
              0;
 }
 
-static iree_status_t loom_run_module_parse_text(
+static iree_status_t loom_run_module_import_source(
     loom_run_session_t* session, const loom_run_module_parse_options_t* options,
     loom_run_module_t* out_module) {
-  loom_text_parse_options_t parse_options = {
-      .diagnostic_sink = options->diagnostic_sink,
-      .max_errors = options->max_errors,
+  const loom_input_provider_t* provider = NULL;
+  IREE_RETURN_IF_ERROR(loom_input_provider_select(
+      session->input_providers, options->input.format, options->filename,
+      &provider));
+  loom_input_request_t request = {
+      .source = options->source,
+      .path = options->filename,
+      .format = provider->name,
+      .parse_options = {.diagnostic_sink = options->diagnostic_sink,
+                        .max_errors = options->max_errors},
+      .source_path_options = options->input.source_path_options,
   };
+  IREE_RETURN_IF_ERROR(loom_input_options_for_provider(
+      options->input.provider_options, provider->name, &request.options));
   loom_low_descriptor_text_asm_environment_initialize(
       &session->low_descriptor_registry.registry,
-      &parse_options.low_asm_environment);
-
-  iree_status_t status = loom_text_parse(
-      options->source, options->filename, &session->context,
-      &session->block_pool, &parse_options, &out_module->module);
-  if (iree_status_is_ok(status) && out_module->module == NULL) {
+      &request.parse_options.low_asm_environment);
+  loom_input_module_t input = {0};
+  iree_status_t status = loom_input_module_load(
+      provider, &request, &session->context, &session->block_pool,
+      session->host_allocator, &input);
+  if (iree_status_is_ok(status) && input.module == NULL) {
     status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "input module has parse errors");
+                              "input module has source errors");
   }
   if (iree_status_is_ok(status)) {
-    loom_source_id_t source_id = LOOM_SOURCE_ID_INVALID;
-    status = loom_module_register_source(out_module->module, options->filename,
-                                         &source_id);
-    if (iree_status_is_ok(status)) {
-      out_module->source_entry = (loom_source_entry_t){
-          .source_id = source_id,
-          .source = options->source,
-          .filename = options->filename,
-      };
-      out_module->source_table_resolver = (loom_source_table_resolver_t){
-          .entries = &out_module->source_entry,
-          .count = 1,
-      };
-      out_module->has_source_entry = true;
-    }
+    out_module->module = input.module;
+    input.module = NULL;
+    loom_tooling_source_storage_deinitialize(&out_module->sources);
+    out_module->sources = input.sources;
+    input.sources = (loom_tooling_source_storage_t){0};
   }
+  loom_input_module_deinitialize(&input);
   return status;
 }
 
@@ -179,13 +182,61 @@ iree_status_t loom_run_module_parse(
     loom_run_module_t* out_module) {
   *out_module = (loom_run_module_t){
       .filename = options->filename,
-      .source = options->source,
   };
+
+  loom_tooling_source_storage_initialize(&session->block_pool,
+                                         &out_module->sources);
 
   iree_status_t status =
       loom_run_module_input_is_bytecode(options->source)
           ? loom_run_module_read_bytecode(session, options, out_module)
-          : loom_run_module_parse_text(session, options, out_module);
+          : loom_run_module_import_source(session, options, out_module);
+  if (!iree_status_is_ok(status)) {
+    loom_run_module_deinitialize(out_module);
+  }
+  return status;
+}
+
+typedef struct loom_run_module_clone_sources_t {
+  // Original snapshots borrowed for the duration of linking.
+  const loom_source_table_resolver_t* source;
+  // Destination storage owned by the cloned module.
+  loom_tooling_source_storage_t* target;
+} loom_run_module_clone_sources_t;
+
+static iree_status_t loom_run_module_clone_sources(
+    void* user_data, const loom_module_t* source_module,
+    const loom_module_t* target_module,
+    const loom_source_id_t* target_sources) {
+  const loom_run_module_clone_sources_t* sources = user_data;
+  return loom_tooling_source_storage_project(sources->target, sources->source,
+                                             target_sources);
+}
+
+iree_status_t loom_run_module_clone(loom_run_session_t* session,
+                                    const loom_run_module_t* source,
+                                    iree_string_view_list_t root_symbols,
+                                    loom_run_module_t* out_module) {
+  *out_module = (loom_run_module_t){.filename = source->filename};
+  loom_tooling_source_storage_initialize(&session->block_pool,
+                                         &out_module->sources);
+  const loom_module_t* const source_modules[] = {source->module};
+  loom_run_module_clone_sources_t sources = {
+      .source = &source->sources.table,
+      .target = &out_module->sources,
+  };
+  const loom_link_options_t options = {
+      .module_name =
+          source->module->name_id < source->module->strings.count
+              ? source->module->strings.entries[source->module->name_id]
+              : iree_string_view_empty(),
+      .root_symbols = root_symbols,
+      .source_callback = {.fn = loom_run_module_clone_sources,
+                          .user_data = &sources},
+  };
+  iree_status_t status = loom_link_materialized_modules(
+      source_modules, IREE_ARRAYSIZE(source_modules), &options,
+      &session->block_pool, session->host_allocator, &out_module->module);
   if (!iree_status_is_ok(status)) {
     loom_run_module_deinitialize(out_module);
   }
@@ -197,16 +248,14 @@ void loom_run_module_deinitialize(loom_run_module_t* run_module) {
     return;
   }
   loom_module_free(run_module->module);
+  loom_tooling_source_storage_deinitialize(&run_module->sources);
   *run_module = (loom_run_module_t){0};
 }
 
 loom_source_resolver_t loom_run_module_source_resolver(
     const loom_run_module_t* run_module) {
-  if (run_module == NULL || !run_module->has_source_entry) {
+  if (run_module == NULL) {
     return (loom_source_resolver_t){0};
   }
-  return (loom_source_resolver_t){
-      .fn = loom_source_table_resolve,
-      .user_data = (void*)&run_module->source_table_resolver,
-  };
+  return loom_tooling_source_storage_resolver(&run_module->sources);
 }

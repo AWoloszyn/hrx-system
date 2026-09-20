@@ -43,8 +43,9 @@ typedef struct loom_run_one_shot_binding_specs_t {
 // adapters without depending on concrete HAL invocation headers.
 // Benchmark/tune hot loops should use typed invocation plans instead.
 typedef struct loom_run_one_shot_options_t {
-  // HAL executable function symbol to dispatch. Empty selects the only named
-  // function in the prepared executable.
+  // Source kernel symbol to compile and dispatch, with optional leading '@'.
+  // Empty selects the only kernel. The selected kernel supplies its export
+  // alias.
   iree_string_view_t hal_function_name;
   // HAL dispatch workgroup count in x/y/z order.
   uint32_t hal_workgroup_count[3];

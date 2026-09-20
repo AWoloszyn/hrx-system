@@ -86,7 +86,8 @@ typedef struct iree_hal_vulkan_spirv_bda_binding_requirement_t {
   uint64_t minimum_length;
 } iree_hal_vulkan_spirv_bda_binding_requirement_t;
 
-// SPIR-V BDA dispatch metadata reflected from OpModuleProcessed strings.
+// Per-entry SPIR-V BDA dispatch metadata reflected from OpModuleProcessed
+// strings.
 typedef struct iree_hal_vulkan_spirv_bda_dispatch_metadata_t {
   // Whether any recognized iree.vulkan.bda.v1 metadata string was found.
   bool is_present;
@@ -157,24 +158,36 @@ iree_status_t iree_hal_vulkan_spirv_verify_bda_entry_point(
     iree_hal_vulkan_spirv_bda_verification_flags_t verification_flags,
     uint32_t out_workgroup_size[3]);
 
-// Parses BDA dispatch metadata from OpModuleProcessed strings.
+// Parses BDA dispatch metadata from OpModuleProcessed strings for all compute
+// entries. |entry_points| is the verified result of parse_compute_entry_points;
+// |out_metadata| has |entry_point_count| elements in that same entry order.
 //
-// Recognized strings use the following decimal ASCII forms:
+// Recognized strings use these decimal ASCII forms, where <name> is the exact
+// exported OpEntryPoint name (not a SPIR-V ID that optimizers may renumber):
 //
-//   iree.vulkan.bda.v1
-//   iree.vulkan.bda.v1.root=<byte_offset>,<byte_length>
-//   iree.vulkan.bda.v1.constant_offset=<byte_offset>
-//   iree.vulkan.bda.v1.constant_length=<byte_length>
-//   iree.vulkan.bda.v1.bindings=<count>
-//   iree.vulkan.bda.v1.binding.<ordinal>=<alignment>,<minimum_length>
+//   iree.vulkan.bda.v1[<name>]
+//   iree.vulkan.bda.v1[<name>].root=<byte_offset>,<byte_length>
+//   iree.vulkan.bda.v1[<name>].constant_offset=<byte_offset>
+//   iree.vulkan.bda.v1[<name>].constant_length=<byte_length>
+//   iree.vulkan.bda.v1[<name>].bindings=<count>
+//   iree.vulkan.bda.v1[<name>].binding.<ordinal>=<alignment>,<minimum_length>
 //
-// Unknown OpModuleProcessed strings are ignored. Recognized malformed strings
-// fail load. |out_metadata| must be released with
-// iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize.
+// The last ']' terminates the name; names may themselves contain brackets.
+// Record order is independent of entry order. Defaults are root=0,32,
+// constant_offset=32, constant_length=0 and an unspecified binding count.
+// Missing metadata leaves that entry's is_present false. Unknown versions and
+// other tools' strings are ignored. Recognized malformed records, unknown entry
+// names, and duplicate fields fail load. Unscoped v1 records are invalid.
+//
+// The caller owns the output array. On success, release each element with
+// iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize. On failure all
+// elements are reset and no allocations remain owned by the array.
 iree_status_t iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
     const uint32_t* spirv_words, iree_host_size_t spirv_word_count,
-    iree_allocator_t host_allocator,
-    iree_hal_vulkan_spirv_bda_dispatch_metadata_t* out_metadata);
+    iree_host_size_t entry_point_count,
+    const iree_hal_vulkan_spirv_compute_entry_point_t* entry_points,
+    iree_hal_vulkan_spirv_bda_dispatch_metadata_t* out_metadata,
+    iree_allocator_t host_allocator);
 
 // Releases storage owned by |metadata|.
 void iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(

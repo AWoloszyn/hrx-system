@@ -156,14 +156,15 @@ static iree_status_t loom_vm_module_collect(
     };
     entry->arguments = loom_func_like_arg_ids(function, &entry->argument_count);
     const loom_string_id_t export_name = loom_func_like_export_symbol(function);
-    if (export_name != LOOM_STRING_ID_INVALID) {
-      entry->export_name = module->strings.entries[export_name];
+    if (loom_func_like_is_exported(function)) {
+      entry->export_name =
+          module->strings
+              .entries[export_name != LOOM_STRING_ID_INVALID ? export_name
+                                                             : symbol->name_id];
       if (iree_string_view_is_empty(entry->export_name)) {
         status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                   "VM export names must not be empty");
       }
-    } else if (loom_func_like_visibility(function)) {
-      entry->export_name = module->strings.entries[symbol->name_id];
     }
     descriptor_count += entry->argument_count + entry->results.count;
     ++count;

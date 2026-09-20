@@ -1,6 +1,6 @@
 template.decl @test.scale_i32(%value: i32) -> (i32)
 
-kernel.def export("scale") @scale() {
+kernel.def @scale() {
   %unit = index.constant 1 : index
   %workgroup_size = index.constant 4 : index
   kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%workgroup_size, %unit, %unit) : index

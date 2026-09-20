@@ -1,0 +1,76 @@
+// RUN: pass unroll-scf-for
+// The importer preserves the schedule expression; the shared pass validates it.
+unsigned scheduled(unsigned count, unsigned factor) {
+  unsigned total = 0;
+  // ERROR@+1: STRUCTURE/014 "compile-time exact i64 value"
+  [[loom::unroll(factor)]]
+  for (unsigned index = 0; index < count; ++index) {
+    total += index;
+  }
+  return total;
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+// The importer preserves the schedule expression; the shared pass validates it.
+unsigned scheduled(unsigned count, unsigned factor) {
+  unsigned total = 0;
+  // ERROR@+1: STRUCTURE/014 "a compile-time exact depth"
+  [[loom::pipeline(factor)]]
+  for (unsigned index = 0; index < count; ++index) {
+    total += index;
+  }
+  return total;
+}
+
+// ====
+// RUN: pass unroll-scf-for
+// The importer preserves the schedule expression; the shared pass validates it.
+unsigned scheduled(unsigned count, unsigned factor) {
+  unsigned total = 0;
+  // ERROR@+1: STRUCTURE/014 "nonnegative unroll factor"
+  [[loom::unroll(-1)]]
+  for (unsigned index = 0; index < count; ++index) {
+    total += index;
+  }
+  return total;
+}
+
+// ====
+// RUN: pass unroll-scf-for
+// The importer preserves the schedule expression; the shared pass validates it.
+unsigned scheduled(unsigned count, unsigned factor) {
+  unsigned total = 0;
+  // ERROR@+1: STRUCTURE/014 "nonnegative unroll factor"
+  [[loom::unroll(0xffffffffffffffffULL)]]
+  for (unsigned index = 0; index < count; ++index) {
+    total += index;
+  }
+  return total;
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+// The importer preserves the schedule expression; the shared pass validates it.
+unsigned scheduled(unsigned count, unsigned factor) {
+  unsigned total = 0;
+  // ERROR@+1: STRUCTURE/014 "a depth in [1, 65535]"
+  [[loom::pipeline(0)]]
+  for (unsigned index = 0; index < count; ++index) {
+    total += index;
+  }
+  return total;
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+// The importer preserves the schedule expression; the shared pass validates it.
+unsigned scheduled(unsigned count, unsigned factor) {
+  unsigned total = 0;
+  // ERROR@+1: STRUCTURE/014 "a depth in [1, 65535]"
+  [[loom::pipeline(0x100000001ULL)]]
+  for (unsigned index = 0; index < count; ++index) {
+    total += index;
+  }
+  return total;
+}

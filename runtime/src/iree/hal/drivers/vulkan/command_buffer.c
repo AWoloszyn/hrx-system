@@ -3269,13 +3269,6 @@ static iree_status_t iree_hal_vulkan_command_buffer_dispatch(
           IREE_STATUS_INVALID_ARGUMENT,
           "Vulkan command buffer dispatch constants must be 4-byte aligned");
     }
-    if (constants.data_length > pipeline->constant_byte_length) {
-      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                              "Vulkan command buffer dispatch provides %" PRIhsz
-                              " constant bytes but pipeline accepts at most %u",
-                              constants.data_length,
-                              pipeline->constant_byte_length);
-    }
     IREE_RETURN_IF_ERROR(iree_hal_vulkan_command_buffer_validate_dispatch_bda(
         pipeline, constants, bindings));
     if (iree_hal_dispatch_uses_indirect_parameters(flags)) {

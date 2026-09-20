@@ -34,6 +34,8 @@ loom_cc_library(
   HDRS
     "import.h"
   SRCS
+    "check.cc"
+    "check.h"
     "import.cc"
     "translation.cc"
     "translation.h"
@@ -51,6 +53,7 @@ loom_cc_library(
     loom::import::cxx::source
     loom::import::cxx::source::attributes
     loom::import::cxx::source::catalog
+    loom::import::cxx::source::constants
     loom::import::cxx::source::error
     loom::import::cxx::source::locations
     loom::import::cxx::source::options
@@ -61,6 +64,7 @@ loom_cc_library(
     loom::import::cxx::value::types
     loom::import::cxx::value::vector
     loom::ir
+    loom::ops::check
     loom::ops::func
     loom::ops::index
     loom::ops::kernel

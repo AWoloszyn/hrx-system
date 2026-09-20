@@ -1300,7 +1300,9 @@ uint8_t loom_func_like_abi(loom_func_like_t func);
 // Returns the target ABI payload attrs, or an empty slice if absent.
 loom_named_attr_slice_t loom_func_like_abi_attrs(loom_func_like_t func);
 
-// Returns the export symbol string ID, or LOOM_STRING_ID_INVALID if absent.
+// Returns the artifact export name override, or LOOM_STRING_ID_INVALID to use
+// the source symbol name. An override does not change visibility or entry
+// roles.
 loom_string_id_t loom_func_like_export_symbol(loom_func_like_t func);
 
 // Returns the export payload attrs, or an empty slice if absent.
@@ -1311,9 +1313,16 @@ loom_named_attr_slice_t loom_func_like_export_attrs(loom_func_like_t func);
 // symbol attribute.
 bool loom_func_like_is_kernel_entry(loom_func_like_t func);
 
+// Returns true for dispatchable kernels and entries, including declarations.
+bool loom_func_like_is_kernel(loom_func_like_t func);
+
+// Returns true for kernels and public functions that are not imports.
+// Export name and payload attributes do not make a private function public.
+bool loom_func_like_is_exported(loom_func_like_t func);
+
 // Returns true when all possible callers and references to |func| are owned by
-// the current module. Imports, public functions, explicit exports, and kernel
-// entries are externally reachable.
+// the current module. Imports, public functions, and kernels are
+// externally reachable.
 bool loom_func_like_is_module_internal(loom_func_like_t func);
 
 // Returns true and assigns the export linkage enum value when present.

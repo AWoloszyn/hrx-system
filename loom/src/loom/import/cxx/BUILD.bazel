@@ -17,6 +17,7 @@ package(
 exports_files([
     "include/hip/hip_fp16.h",
     "include/hip/hip_runtime.h",
+    "include/loomcxx/check.h",
     "include/loomcxx/kernel.h",
     "include/loomcxx/math.h",
     "include/loomcxx/scalar.h",
@@ -49,6 +50,8 @@ iree_assert_dependency_boundary(
 loom_cc_library(
     name = "cxx",
     srcs = [
+        "check.cc",
+        "check.h",
         "import.cc",
         "translation.cc",
         "translation.h",
@@ -66,6 +69,7 @@ loom_cc_library(
         "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/import/cxx/source:attributes",
         "//loom/src/loom/import/cxx/source:catalog",
+        "//loom/src/loom/import/cxx/source:constants",
         "//loom/src/loom/import/cxx/source:error",
         "//loom/src/loom/import/cxx/source:locations",
         "//loom/src/loom/import/cxx/source:options",
@@ -77,6 +81,7 @@ loom_cc_library(
         "//loom/src/loom/import/cxx/value:vector",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/check",
         "//loom/src/loom/ops/func",
         "//loom/src/loom/ops/index",
         "//loom/src/loom/ops/kernel",

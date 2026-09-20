@@ -11,6 +11,7 @@
 #include "loom/target/arch/vm/provider.h"
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/tools/loom-check/execute.h"
+#include "loom/tools/loom-check/source_low.h"
 
 static bool loom_vm_check_match(const loom_check_emit_provider_t* provider,
                                 iree_string_view_t target_name) {

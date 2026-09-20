@@ -703,7 +703,8 @@ check.case @dynamic_case {
   provider.launch_config_module = run_module.module;
   provider.launch_config_target_facts = &target_facts;
   provider.workload_arguments = workload_arguments;
-  provider.invocation_options.function_name = IREE_SV("dynamic");
+  provider.entry_symbol = IREE_SV("dynamic");
+  provider.invocation_options.function_name = IREE_SV("@device_dynamic");
 
   loom_testbench_value_materializer_options_t materializer_options = {};
   loom_testbench_value_materializer_options_initialize(&materializer_options);

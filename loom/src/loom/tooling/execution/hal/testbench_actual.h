@@ -182,6 +182,8 @@ typedef struct loom_run_hal_testbench_actual_provider_t {
   // Number of entries in |function_parameters|. Zero means the backend did
   // not publish logical parameter reflection.
   iree_host_size_t function_parameter_count;
+  // Source kernel symbol borrowed from the run module for launch evaluation.
+  iree_string_view_t entry_symbol;
   // Dispatch options derived from the compiled source entry.
   loom_run_hal_invocation_options_t invocation_options;
   // Most recently resolved source launch configuration. This is refreshed

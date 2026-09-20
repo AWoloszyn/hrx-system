@@ -28,6 +28,7 @@
 #include "loom/tooling/config/config.h"
 #include "loom/tooling/execution/execution_backend.h"
 #include "loom/tooling/execution/hal/artifact.h"
+#include "loom/tooling/io/source.h"
 #include "loom/util/fact_table.h"
 
 typedef struct loom_run_hal_testbench_actual_sequence_span_t
@@ -377,48 +378,10 @@ static iree_status_t loom_run_hal_testbench_materialize_config_set(
 
 static iree_status_t loom_run_hal_testbench_clone_compile_module(
     loom_run_hal_testbench_actual_provider_t* provider) {
-  const loom_module_t* source_module = provider->run_module->module;
-  const loom_module_t* const source_modules[] = {source_module};
-  iree_string_view_t module_name = iree_string_view_empty();
-  if (source_module->name_id < source_module->strings.count) {
-    module_name = source_module->strings.entries[source_module->name_id];
-  }
-  IREE_RETURN_IF_ERROR(loom_link_materialized_modules(
-      source_modules, IREE_ARRAYSIZE(source_modules),
-      &(loom_link_options_t){
-          .module_name = module_name,
-      },
-      loom_run_session_block_pool(provider->session),
-      provider->context->host_allocator, &provider->compile_module.module));
   provider->compile_module_initialized = true;
-  return iree_ok_status();
-}
-
-static void loom_run_hal_testbench_bind_compile_source(
-    loom_run_hal_testbench_actual_provider_t* provider) {
-  loom_run_module_t* compile_module = &provider->compile_module;
-  const loom_run_module_t* run_module = provider->run_module;
-  compile_module->filename = run_module->filename;
-  compile_module->source = run_module->source;
-  if (!run_module->has_source_entry) {
-    return;
-  }
-
-  const iree_string_view_t source_filename = run_module->source_entry.filename;
-  for (iree_host_size_t i = 0; i < compile_module->module->sources.count; ++i) {
-    if (!iree_string_view_equal(compile_module->module->sources.entries[i],
-                                source_filename)) {
-      continue;
-    }
-    compile_module->source_entry = run_module->source_entry;
-    compile_module->source_entry.source_id = (loom_source_id_t)i;
-    compile_module->source_table_resolver = (loom_source_table_resolver_t){
-        .entries = &compile_module->source_entry,
-        .count = 1,
-    };
-    compile_module->has_source_entry = true;
-    return;
-  }
+  return loom_run_module_clone(provider->session, provider->run_module,
+                               (iree_string_view_list_t){0},
+                               &provider->compile_module);
 }
 
 static iree_status_t loom_run_hal_testbench_link_selected_root(
@@ -567,11 +530,8 @@ static iree_status_t loom_run_hal_testbench_resolve_target_requirement(
 static iree_status_t loom_run_hal_testbench_reflect_function_parameters(
     loom_run_hal_testbench_actual_provider_t* provider) {
   iree_hal_executable_t* executable = provider->prepared_candidate.executable;
-  iree_string_view_t function_name =
-      iree_string_view_trim(provider->invocation_options.function_name);
-  if (iree_string_view_starts_with_char(function_name, '@')) {
-    function_name = iree_string_view_remove_prefix(function_name, 1);
-  }
+  const iree_string_view_t function_name =
+      provider->invocation_options.function_name;
 
   iree_hal_executable_function_t function =
       iree_hal_executable_function_invalid();
@@ -629,7 +589,6 @@ iree_status_t loom_run_hal_testbench_actual_provider_compile(
   IREE_RETURN_IF_ERROR(loom_run_hal_testbench_materialize_config_set(provider));
   IREE_RETURN_IF_ERROR(
       loom_run_hal_testbench_select_compile_root(provider, entry_symbol));
-  loom_run_hal_testbench_bind_compile_source(provider);
 
   if (provider->kernel_launch->workload_count != 0) {
     IREE_RETURN_IF_ERROR(
@@ -642,7 +601,13 @@ iree_status_t loom_run_hal_testbench_actual_provider_compile(
   loom_func_like_t entry_func = {0};
   IREE_RETURN_IF_ERROR(loom_run_hal_testbench_resolve_func(
       provider->compile_module.module, entry_symbol, &entry_func));
-  provider->invocation_options.function_name = entry_symbol;
+  provider->entry_symbol = entry_symbol;
+  const loom_string_id_t export_symbol =
+      loom_func_like_export_symbol(entry_func);
+  provider->invocation_options.function_name =
+      export_symbol != LOOM_STRING_ID_INVALID
+          ? provider->compile_module.module->strings.entries[export_symbol]
+          : entry_symbol;
 
   if (provider->target_environment == NULL) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
@@ -996,7 +961,7 @@ static iree_status_t loom_run_hal_testbench_evaluate_launch_config(
   IREE_ASSERT(provider->launch_config_target_facts != NULL);
 
   const loom_kernel_launch_config_options_t options = {
-      .function_symbol = provider->invocation_options.function_name,
+      .function_symbol = provider->entry_symbol,
       .workload_arguments = provider->workload_arguments,
       .workload_argument_count = workload_count,
       .required_fields = LOOM_KERNEL_LAUNCH_CONFIG_FIELD_FLAG_WORKGROUP_COUNT,

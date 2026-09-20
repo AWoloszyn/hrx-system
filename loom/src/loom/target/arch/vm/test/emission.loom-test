@@ -287,3 +287,71 @@ vm.target<core> @target
 low.func.def public schedule(phased) target<vm.core>(@target) abi(vm_function) @required_function_order() asm {
   return
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def public target(@vm) @default_name() -> (i32) {
+  %value = func.call @helper() : () -> (i32)
+  func.return %value : i32
+}
+
+func.def public target(@vm) export("artifact_alias") @renamed() -> (i32) {
+  %value = func.call @helper() : () -> (i32)
+  func.return %value : i32
+}
+
+func.def target(@vm) export("private_alias") @helper() -> (i32) {
+  %value = scalar.constant 42 : i32
+  func.return %value : i32
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "artifact_alias"
+    string @string1 = "default_name"
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 () -> (i32)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function2
+    export @export1 name(@string1) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([has_call]) frame(local_bytes = 8, value_registers = 1, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      stack.store.i64 #v0, %v0.x1
+      control.call @function1 {direct_ref_move_mask = 0x0000}
+      stack.store.i64 #v0, %v0.x1
+      %v0.x1 = stack.load.i64 #v0
+      control.return
+    }
+    func @function1 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 1, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %v0 = constant.s16 42
+      control.return
+    }
+    func @function2 : @callable0 flags([has_call]) frame(local_bytes = 8, value_registers = 1, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      stack.store.i64 #v0, %v0.x1
+      control.call @function1 {direct_ref_move_mask = 0x0000}
+      stack.store.i64 #v0, %v0.x1
+      %v0.x1 = stack.load.i64 #v0
+      control.return
+    }
+  }
+
+}

@@ -125,6 +125,7 @@ loom_cc_library(
     loom::tooling::config
     loom::tooling::execution::execution_backend
     loom::tooling::execution::session
+    loom::tooling::io::source
     loom::tooling::testbench
     loom::tooling::testbench::invocation
     loom::tooling::testbench::requirements

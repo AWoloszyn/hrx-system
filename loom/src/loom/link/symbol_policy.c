@@ -40,12 +40,14 @@ bool loom_link_symbol_has_global_identity(const loom_module_t* module,
   if (!loom_func_like_isa(func)) {
     return false;
   }
-  return loom_func_like_import_module(func) != LOOM_STRING_ID_INVALID ||
-         loom_func_like_import_symbol(func) != LOOM_STRING_ID_INVALID ||
-         loom_func_like_export_symbol(func) != LOOM_STRING_ID_INVALID;
+  return !loom_func_like_is_module_internal(func);
 }
 
 void loom_link_symbol_internalize(loom_module_t* module, loom_op_t* op) {
+  const loom_func_like_t function = loom_func_like_cast(module, op);
+  if (loom_func_like_is_kernel(function)) {
+    return;
+  }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
   const loom_symbol_definition_descriptor_t* definition = vtable->symbol_def;
   const uint8_t visibility_attr_index =
@@ -61,7 +63,6 @@ void loom_link_symbol_internalize(loom_module_t* module, loom_op_t* op) {
   if (retain_attr_index != LOOM_ATTR_INDEX_NONE) {
     loom_op_attrs(op)[retain_attr_index] = loom_attr_absent();
   }
-  const loom_func_like_t function = loom_func_like_cast(module, op);
   if (loom_func_like_isa(function)) {
     const uint8_t export_attr_indices[] = {
         function.vtable->export_symbol_attr_index,

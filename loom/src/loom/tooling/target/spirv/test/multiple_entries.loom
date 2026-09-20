@@ -1,0 +1,70 @@
+// One module contains three distinct dispatch signatures, a private helper,
+// and checks. The artifact test loads all entries together.
+spirv.target<vulkan1_3> @target {abi = hal_kernel}
+
+func.def device inline @twice(%value: i32) -> (i32) {
+  %result = scalar.addi %value, %value : i32
+  func.return %result : i32
+}
+
+kernel.def target(@target) @fill() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %view = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  %input_value = scalar.constant 3 : i32
+  %doubled_value = func.call @twice(%input_value) : (i32) -> (i32)
+  view.store %doubled_value, %view[0] : i32, view<1xi32>
+  kernel.return
+}
+
+kernel.def target(@target) @add() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %bias: i32) {
+  %base = index.constant 0 : offset
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %input_view = buffer.view %input_aligned[%base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<1xi32>
+  %value = view.load %input_view[0] : view<1xi32> -> i32
+  %result = scalar.addi %value, %bias : i32
+  view.store %result, %output_view[0] : i32, view<1xi32>
+  kernel.return
+}
+
+kernel.def target(@target) export("@combined.alias[0]") @combine() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%lhs: buffer, %rhs: buffer, %output: buffer, %bias: i32, %extra: i32) {
+  %base = index.constant 0 : offset
+  %lhs_aligned = buffer.assume.alignment %lhs {minimum_alignment = 4} : buffer
+  %rhs_aligned = buffer.assume.alignment %rhs {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %lhs_view = buffer.view %lhs_aligned[%base] : buffer -> view<1xi32>
+  %rhs_view = buffer.view %rhs_aligned[%base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<1xi32>
+  %lhs_value = view.load %lhs_view[0] : view<1xi32> -> i32
+  %rhs_value = view.load %rhs_view[0] : view<1xi32> -> i32
+  %sum = scalar.addi %lhs_value, %rhs_value : i32
+  %biased = scalar.addi %sum, %bias : i32
+  %result = scalar.addi %biased, %extra : i32
+  view.store %result, %output_view[0] : i32, view<1xi32>
+  kernel.return
+}
+
+check.case @different_signatures {
+  %first = check.generate.fill value(0) : tensor<1xi32>
+  %second = check.generate.fill value(0) : tensor<1xi32>
+  %third = check.generate.fill value(0) : tensor<1xi32>
+  %bias = check.literal value(4) : i32
+  %extra = check.literal value(5) : i32
+  kernel.launch @fill(%first) : (tensor<1xi32>)
+  kernel.launch @add(%first, %second, %bias) : (tensor<1xi32>, tensor<1xi32>, i32)
+  kernel.launch @combine(%first, %second, %third, %bias, %extra) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, i32, i32)
+  %expected = check.generate.fill value(25) : tensor<1xi32>
+  check.expect.equal actual(%third) expected(%expected) : tensor<1xi32>
+  check.return
+}

@@ -15,6 +15,8 @@ loom_check_test_suite(
     compiler_test
   SRCS
     "assumptions.cxx-test"
+    "assumptions_invalid.cxx-test"
+    "check.cxx-test"
     "conditionals.cxx-test"
     "const.cxx-test"
     "control_invalid.cxx-test"
@@ -34,8 +36,11 @@ loom_check_test_suite(
     "pointers.cxx-test"
     "scalar.cxx-test"
     "scalar_invalid.cxx-test"
+    "schedule_lowering.cxx-test"
     "schedules.cxx-test"
     "schedules_invalid.cxx-test"
+    "shaped_intrinsics.cxx-test"
+    "shaped_intrinsics_invalid.cxx-test"
     "standards.cxx-test"
     "vectors.cxx-test"
     "vectors_invalid.cxx-test"
@@ -50,79 +55,713 @@ loom_check_test_suite(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-iree_execution_test_suite(
+loom_generated_file(
   NAME
-    functions_test
-  MANIFESTS
-    "functions.test.json"
-  TOOLS
-    "generate-cases=loom::py::loom::gen::test::cxx_kernel_cases"
-    "iree-test-loom=loom::tools::iree-test-loom"
-    "loom-compile=loom::tools::loom-compile"
-    "loom-import-cxx=loom::tools::loom-import-cxx"
+    assumptions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "assumptions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
+  INPUTS
+    "assumptions.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    comparison_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "comparison_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
+  INPUTS
+    "comparison_functions.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    constant_loops_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "constant_loops_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
+  INPUTS
+    "constant_loops.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    enum_values_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "enum_values_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
+  INPUTS
+    "enum_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    increment_values_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "increment_values_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
+  INPUTS
+    "increment_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    integer_functions_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "integer_functions_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
+  INPUTS
+    "integer_functions.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    schedule_values_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "schedule_values_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
+  INPUTS
+    "schedule_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    shaped_intrinsics_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "shaped_intrinsics_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
+  INPUTS
+    "shaped_intrinsics.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    structured_continue_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "structured_continue_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
+  INPUTS
+    "structured_continue.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    vector_initializers_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "vector_initializers_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
+  INPUTS
+    "vector_initializers.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    vector_values_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "vector_values_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
+  INPUTS
+    "vector_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    assumptions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/assumptions_cases.cc"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    comparison_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/comparison_functions_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    constant_loops_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    enum_values_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/enum_values_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    increment_values_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/increment_values_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    integer_functions_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/integer_functions_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_policy.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    schedule_values_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/schedule_values_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    shaped_intrinsics_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    structured_continue_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    vector_initializers_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    vector_values_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/vector_values_cases.cc"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
-  LABELS
-    "hostonly"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_check_test_suite(
+  NAME
+    vm_compiler_test
+  SRCS
+    "vm_lowering.cxx-test"
 )
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-iree_execution_test_suite(
+loom_generated_file_family(
   NAME
-    kernels_test
-  MANIFESTS
-    "kernels.test.json"
-  TOOLS
-    "generate-cases=loom::py::loom::gen::test::cxx_kernel_cases"
-    "iree-test-loom=loom::tools::iree-test-loom"
-    "loom-import-cxx=loom::tools::loom-import-cxx"
-  DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_fp16.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/hip/hip_runtime.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/aiter_swiglu_f16.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/control_flow.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/early_returns.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/flash_attention.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_increment.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/llama_rms_norm.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/pointer_walk.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/scheduled_sum.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/short_circuit.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_depth.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-  LABELS
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
+    aiter_swiglu_f16_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "aiter_swiglu_f16_checks.loom"
+    "aiter_swiglu_f16_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=aiter_swiglu_f16"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    assumptions_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "assumptions_checks.loom"
+    "assumptions_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=assumptions"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    constant_loops_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "constant_loops_checks.loom"
+    "constant_loops_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=constant_loops"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    control_flow_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "control_flow_checks.loom"
+    "control_flow_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=control_flow"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    early_returns_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "early_returns_checks.loom"
+    "early_returns_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=early_returns"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    enum_values_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "enum_values_checks.loom"
+    "enum_values_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=enum_values"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    flash_attention_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "flash_attention_checks.loom"
+    "flash_attention_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=flash_attention"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    increment_values_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "increment_values_checks.loom"
+    "increment_values_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=increment_values"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    integer_increment_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "integer_increment_checks.loom"
+    "integer_increment_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=integer_increment"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    llama_rms_norm_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "llama_rms_norm_checks.loom"
+    "llama_rms_norm_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=llama_rms_norm"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    pointer_walk_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "pointer_walk_checks.loom"
+    "pointer_walk_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=pointer_walk"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    scheduled_sum_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "scheduled_sum_checks.loom"
+    "scheduled_sum_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=scheduled_sum"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    shaped_intrinsics_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "shaped_intrinsics_checks.loom"
+    "shaped_intrinsics_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=shaped_intrinsics"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    short_circuit_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "short_circuit_checks.loom"
+    "short_circuit_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=short_circuit"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    structured_continue_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "structured_continue_checks.loom"
+    "structured_continue_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=structured_continue"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    vector_depth_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "vector_depth_checks.loom"
+    "vector_depth_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=vector_depth"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    vector_initializers_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "vector_initializers_checks.loom"
+    "vector_initializers_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=vector_initializers"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    vector_values_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "vector_values_checks.loom"
+    "vector_values_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=vector_values"
+  TESTONLY
 )
 endif()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+foreach(_SOURCE IN ITEMS
+    aiter_swiglu_f16 assumptions constant_loops control_flow early_returns
+    enum_values flash_attention increment_values integer_increment llama_rms_norm
+    pointer_walk scheduled_sum shaped_intrinsics short_circuit structured_continue
+    vector_depth vector_initializers vector_values)
+  set(_INPUTOPTS)
+  if(_SOURCE MATCHES "^(aiter_swiglu_f16|flash_attention|llama_rms_norm)$")
+    list(APPEND _INPUTOPTS "cxx:approximate-functions=true")
+  endif()
+  foreach(_MODE IN ITEMS source access)
+    set(_ARGS --device=amdgpu)
+    if(_MODE STREQUAL "access")
+      list(APPEND _ARGS --sanitizer=access --sanitizer-reporting=report-only)
+    endif()
+    loom_test(
+      NAME "${_SOURCE}_${_MODE}_test"
+      SRCS "${_SOURCE}.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${_SOURCE}_checks.loom"
+      DATA "${CMAKE_CURRENT_BINARY_DIR}/${_SOURCE}_arrays"
+      INPUTOPTS ${_INPUTOPTS}
+      ARGS ${_ARGS}
+      LABELS "iree-run-requirement=runtime.resource.amd_gpu"
+      RESOURCE_GROUP "loom-amdgpu-tests"
+      SANITIZER_SUPPRESSIONS lsan rocm
+    )
+  endforeach()
+endforeach()
+endif()
