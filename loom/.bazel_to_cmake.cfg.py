@@ -84,6 +84,12 @@ _GENERATED_LOCATION_PATTERN = re.compile(r"\$\(location ([^)]+)\)")
 
 
 class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
+    def _declarative_load_bindings(self):
+        return {
+            **super()._declarative_load_bindings(),
+            "loom_execution_profile": self.loom_execution_profile,
+        }
+
     def _custom_initialize(self):
         self._loom_module_targets = set()
         self._loom_generated_file_families = {}
@@ -367,18 +373,12 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         target_compatible_with=None,
         **kwargs,
     ):
-        opaque_profile = execution_profile is not None and not isinstance(
-            execution_profile, dict
-        )
-        if opaque_profile and not compile_targets:
-            # Loaded profiles retain their explicit CMake execution declarations.
-            return
         if self._should_skip_target(tags=tags, **kwargs):
             return
         target_compatible_with = self._apply_loom_target_compatible_with(
             target_compatible_with
         )
-        profile = {} if opaque_profile else execution_profile or {}
+        profile = execution_profile or {}
         policy = bazel_to_cmake_requirements.CollectedPackagePolicy(
             build_requirements=profile.get("build_requirements", []),
             run_requirements=profile.get("run_requirements", []),
@@ -398,10 +398,8 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         execution_blocks = []
         if compile_targets:
             # Device requirements belong only to the execution children.
-            execution_requires = (
-                "FALSE"
-                if opaque_profile
-                else self._target_compatible_condition(policy.cmake_conditions())
+            execution_requires = self._target_compatible_condition(
+                policy.cmake_conditions()
             )
             execution_blocks = [
                 self._convert_string_list_block(

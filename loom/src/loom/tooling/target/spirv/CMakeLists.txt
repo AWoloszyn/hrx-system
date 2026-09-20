@@ -229,10 +229,74 @@ loom_test(
     vulkan_explicit_target_tests
   SRCS
     "test/spirv_vulkan_hal_actual.loom"
+  RUNNER_ARGS
+    "--device=vulkan"
+    "--vulkan_validation_layers=false"
+    "--target=spirv:vulkan1.3+bda"
+  EXECUTION_LABELS
+    "iree-build-requirement=loom.target.arch.spirv"
+    "iree-build-requirement=loom.emit.spirv"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.vulkan"
+    "iree-run-requirement=runtime.resource.vulkan_device"
+    "runtime-resource=vulkan-device"
+    "loom-execution-profile=spirv_vulkan_explicit_target_hardware"
+    "loom-target-family=spirv"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
   EXECUTION_REQUIRES
-    FALSE
+    LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN
+  RESOURCE_GROUP
+    "loom-vulkan-tests"
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
   COMPILE_TARGETS
     loom::target::spirv::vulkan1.3+bda
+)
+endif()
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+loom_test(
+  NAME
+    vulkan_tests
+  SRCS
+    "test/multiple_entries.loom"
+    "test/spirv_vulkan_atomic_hal_actual.loom"
+    "test/spirv_vulkan_coop_hal_actual.loom"
+    "test/spirv_vulkan_coop_u8_hal_actual.loom"
+    "test/spirv_vulkan_hal_actual.loom"
+    "test/spirv_vulkan_integer_hal_actual.loom"
+    "test/spirv_vulkan_quantized_hal_actual.loom"
+    "test/spirv_vulkan_vector_float.loom"
+    "test/spirv_vulkan_workgroup_offsets.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/condition_loops.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/global_atomic_add_f32.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/loop_rotating_values.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/loop_rotating_views.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/loop_termination.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/execution/hal/testdata/buffer_bulk_hal_actual.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/execution/hal/testdata/dynamic_workgroup_hal_actual.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/execution/hal/testdata/launch_schedule_hal_actual.loom"
+  RUNNER_ARGS
+    "--device=vulkan"
+    "--vulkan_validation_layers=false"
+  LABELS
+    "iree-build-requirement=loom.target.arch.spirv"
+    "iree-build-requirement=loom.emit.spirv"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.vulkan"
+    "iree-run-requirement=runtime.resource.vulkan_device"
+    "runtime-resource=vulkan-device"
+    "loom-execution-profile=spirv_vulkan_hardware"
+    "loom-target-family=spirv"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "loom-vulkan-tests"
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 

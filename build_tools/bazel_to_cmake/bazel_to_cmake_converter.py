@@ -19,6 +19,7 @@ import os
 import re
 
 import bazel_to_cmake_config
+import bazel_to_cmake_loads
 import bazel_to_cmake_requirements
 import bazel_to_cmake_targets
 
@@ -174,37 +175,6 @@ class _SelectsModule:
         pass
 
 
-class _OpaqueLoadedSymbol:
-    """A loaded .bzl symbol that the converter cannot evaluate.
-
-    Opaque values may flow through rules that have no CMake representation and
-    therefore ignore their arguments. Any attempt to call or interpret one
-    indicates that the converter needs an explicit handler for the symbol.
-    """
-
-    def __init__(self, bzl_label, symbol_name):
-        self._bzl_label = bzl_label
-        self._symbol_name = symbol_name
-
-    def _unsupported(self):
-        raise NotImplementedError(
-            f"loaded symbol {self._symbol_name!r} from {self._bzl_label!r} "
-            "has no Bazel-to-CMake representation"
-        )
-
-    def __bool__(self):
-        self._unsupported()
-
-    def __call__(self, *args, **kwargs):
-        self._unsupported()
-
-    def __str__(self):
-        self._unsupported()
-
-    def __repr__(self):
-        return f"_OpaqueLoadedSymbol({self._bzl_label!r}, {self._symbol_name!r})"
-
-
 class BuildFileFunctions(object):
     """Object passed to `exec` that has handlers for BUILD file functions."""
 
@@ -228,9 +198,20 @@ class BuildFileFunctions(object):
         self._target_file_paths = {}
         self.selects = _SelectsModule()
         self._custom_initialize()
+        self._loaded_modules = bazel_to_cmake_loads.ModuleLoader(
+            self._repo_root,
+            bindings=self._declarative_load_bindings(),
+            repo_map=self._targets._repo_map,
+        )
 
     def _custom_initialize(self):
         pass
+
+    def _declarative_load_bindings(self):
+        return {
+            "build_requirement": bazel_to_cmake_requirements.build_requirement,
+            "run_requirement": bazel_to_cmake_requirements.run_requirement,
+        }
 
     # ------------------------------------------------------------------------- #
     # Conversion utilities, written to reduce boilerplate and allow for reuse   #
@@ -1161,15 +1142,7 @@ class BuildFileFunctions(object):
         pass
 
     def load(self, *args, **kwargs):
-        """Binds converter handlers, constants, or opaque loaded symbols.
-
-        Bazel load() imports names from .bzl files into the BUILD file's
-        namespace. The converter can evaluate simple .bzl files that contain
-        only Python-compatible constant assignments (lists, dicts, strings)
-        and bind the requested names. Symbols from files that cannot be
-        evaluated remain opaque: ignored Bazel-only rules may accept them, but
-        any attempt to interpret or call them fails loudly.
-        """
+        """Binds BUILD handlers or imports declarative values by exported name."""
         if not args or not hasattr(self, "_exec_namespace"):
             return
         bzl_label = args[0]
@@ -1180,43 +1153,12 @@ class BuildFileFunctions(object):
         if not requested_symbols:
             return
 
-        # Resolve the .bzl file path from its label when it belongs to this
-        # repository. External and missing files use opaque symbols below.
-        abs_path = None
-        if bzl_label.startswith(":"):
-            abs_path = os.path.join(self._build_dir, bzl_label[1:])
-        elif bzl_label.startswith("//"):
-            # "//path/to/pkg:file.bzl" -> "path/to/pkg/file.bzl"
-            rel = bzl_label[2:].replace(":", "/")
-            abs_path = os.path.join(self._repo_root, rel)
-
-        namespace = bazel_to_cmake_requirements.load_requirement_definitions(
-            self._repo_root, bzl_label
-        )
-        if namespace is None and abs_path and os.path.isfile(abs_path):
-            namespace = {}
-            try:
-                with open(abs_path) as f:
-                    exec(f.read(), namespace)
-            except Exception:
-                # Treat evaluation as all-or-nothing. Values assigned before a
-                # Starlark-only expression failed may depend on incomplete file
-                # state and are no more trustworthy than unresolved symbols.
-                namespace = {}
-
-        namespace = namespace or {}
-
         for local_name, exported_name in requested_symbols:
-            if local_name in self._exec_namespace:
-                continue
-            if exported_name in namespace:
-                self._exec_namespace[local_name] = namespace[exported_name]
-            elif exported_name in self._exec_namespace:
-                # Preserve converter handlers imported under an alias.
-                self._exec_namespace[local_name] = self._exec_namespace[exported_name]
+            if exported_name in self._load_handlers:
+                self._exec_namespace[local_name] = self._load_handlers[exported_name]
             else:
-                self._exec_namespace[local_name] = _OpaqueLoadedSymbol(
-                    bzl_label, exported_name
+                self._exec_namespace[local_name] = self._loaded_modules.symbol(
+                    bzl_label, exported_name, self._build_dir
                 )
 
     def package(self, **kwargs):
@@ -1248,16 +1190,6 @@ class BuildFileFunctions(object):
 
     def test_suite(self, **kwargs):
         pass
-
-    def loom_test(self, **kwargs):
-        # Loom execution tests are Bazel-owned. CMake uses explicit test
-        # declarations for the configurations it supports.
-        pass
-
-    def loom_execution_profile(self, **kwargs):
-        # Execution profiles are metadata for the Bazel-owned loom_test rule.
-        # Accept inline declarations as well as profiles loaded from .bzl files.
-        return kwargs
 
     def config_setting(self, **kwargs):
         pass
@@ -2992,6 +2924,7 @@ def convert_build_file(
     )
 
     exec_namespace = GetDict(build_file_functions)
+    build_file_functions._load_handlers = dict(exec_namespace)
     build_file_functions._exec_namespace = exec_namespace
     exec(build_file_code, exec_namespace)
     return converter.convert()
