@@ -1,0 +1,26 @@
+// RUN: roundtrip
+// INPUT: cxx std=c23
+// Standard selection uses frontend macros.
+#if __STDC_VERSION__ != 202311L
+#error wrong standard
+#endif
+int entry(void) { return 1; }
+// ----
+func.def public @entry() -> (i32) {
+  %1 = scalar.constant 1 : i32
+  func.return %1 : i32
+}
+
+// ====
+// RUN: roundtrip
+// INPUT: cxx std=c++17
+// Standard selection uses frontend macros.
+#if __cplusplus != 201703L
+#error wrong standard
+#endif
+int entry() { return 1; }
+// ----
+func.def public @entry() -> (i32) {
+  %1 = scalar.constant 1 : i32
+  func.return %1 : i32
+}

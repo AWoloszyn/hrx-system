@@ -1,4 +1,23 @@
-# Standalone C++ programs
+# C++ importer tests
+
+Compiler behavior is authored in `.cxx-test` files and checked through the same
+`loom-check` modes, diagnostics, expectations, and updates as `.loom-test` files.
+Each `//====` case supplies C++ source; `//----` introduces its expected Loom
+output. `// ERROR` annotations check source diagnostics. `// INPUT:` selects
+import options such as the language standard, data model, or exported roots.
+The [loom-check guide](../../../tools/loom-check/README.md) describes the format
+and `--update` workflow.
+
+```sh
+iree-bazel-test --config=asan --config=loom-importer-cxx \
+  //loom/src/loom/import/cxx/test:compiler_test
+```
+
+Program lowering and source rejection cases belong in these files. Native C++
+tests exercise API contracts such as callback failures, source lifetimes,
+binding identity, and retained analysis facts.
+
+## Standalone execution programs
 
 These programs exercise the full source path: C++ import, ordinary Loom
 bytecode linking, config specialization, AMDGPU compilation, and GPU execution.

@@ -180,3 +180,86 @@ int* identity(int* p) { return +p; }
 func.def public @identity(%p: buffer, %p_byte_offset: offset) -> (buffer, offset) {
   func.return %p, %p_byte_offset : buffer, offset
 }
+
+// ====
+// RUN: verify
+// Unsupported pointer operations produce source diagnostics.
+// ERROR@+1: LOWERING/059 "pointer arithmetic requires a pointer and an integral displacement"
+long diff(int* a, int* b) { return a - b; }
+
+// ====
+// RUN: verify
+// Unsupported pointer operations produce source diagnostics.
+// ERROR@+1: LOWERING/059 "pointer arithmetic requires a pointer and an integral displacement"
+bool equal(int* a, int* b) { return a == b; }
+
+// ====
+// RUN: verify
+// Unsupported pointer operations produce source diagnostics.
+// ERROR@+1: LOWERING/059 "conversion must preserve pointer representation"
+bool truth(int* a) { return a; }
+
+// ====
+// RUN: verify
+// Unsupported pointer operations produce source diagnostics.
+int* local() {
+  int x = 1;
+  // ERROR@+1: LOWERING/059 "address-of requires an existing storage-backed element"
+  return &x;
+}
+
+// ====
+// RUN: roundtrip
+// Pointer increment results preserve the source ABI.
+int* next(int* p) { return ++p; }
+int* previous(int* p) { return p++; }
+int* retreat(int* p) { return --p; }
+int* old_retreat(int* p) { return p--; }
+// ----
+func.def public @next(%p: buffer, %p_byte_offset$1: offset) -> (buffer, offset) {
+  %4 = scalar.constant 1 : i32
+  %5 = scalar.extsi %4 : i32 to i64
+  %6 = scalar.constant 4 : i64
+  %7 = scalar.muli %5, %6 : i64
+  %8 = index.cast %p_byte_offset$1 : offset to i64
+  %9 = scalar.addi %8, %7 : i64
+  %10 = scalar.assume %9 [range(%9, 0, 9223372036854775807)] : i64
+  %p_byte_offset$11 = index.cast %10 : i64 to offset
+  func.return %p, %p_byte_offset$11 : buffer, offset
+}
+
+func.def public @previous(%p: buffer, %p_byte_offset$13: offset) -> (buffer, offset) {
+  %16 = scalar.constant 1 : i32
+  %17 = scalar.extsi %16 : i32 to i64
+  %18 = scalar.constant 4 : i64
+  %19 = scalar.muli %17, %18 : i64
+  %20 = index.cast %p_byte_offset$13 : offset to i64
+  %21 = scalar.addi %20, %19 : i64
+  %22 = scalar.assume %21 [range(%21, 0, 9223372036854775807)] : i64
+  %p_byte_offset$23 = index.cast %22 : i64 to offset
+  func.return %p, %p_byte_offset$13 : buffer, offset
+}
+
+func.def public @retreat(%p: buffer, %p_byte_offset$25: offset) -> (buffer, offset) {
+  %28 = scalar.constant 1 : i32
+  %29 = scalar.extsi %28 : i32 to i64
+  %30 = scalar.constant 4 : i64
+  %31 = scalar.muli %29, %30 : i64
+  %32 = index.cast %p_byte_offset$25 : offset to i64
+  %33 = scalar.subi %32, %31 : i64
+  %34 = scalar.assume %33 [range(%33, 0, 9223372036854775807)] : i64
+  %p_byte_offset$35 = index.cast %34 : i64 to offset
+  func.return %p, %p_byte_offset$35 : buffer, offset
+}
+
+func.def public @old_retreat(%p: buffer, %p_byte_offset$37: offset) -> (buffer, offset) {
+  %40 = scalar.constant 1 : i32
+  %41 = scalar.extsi %40 : i32 to i64
+  %42 = scalar.constant 4 : i64
+  %43 = scalar.muli %41, %42 : i64
+  %44 = index.cast %p_byte_offset$37 : offset to i64
+  %45 = scalar.subi %44, %43 : i64
+  %46 = scalar.assume %45 [range(%45, 0, 9223372036854775807)] : i64
+  %p_byte_offset$47 = index.cast %46 : i64 to offset
+  func.return %p, %p_byte_offset$37 : buffer, offset
+}

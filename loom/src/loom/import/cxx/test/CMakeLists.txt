@@ -14,13 +14,24 @@ loom_check_test_suite(
   NAME
     compiler_test
   SRCS
+    "assumptions.cxx-test"
     "conditionals.cxx-test"
+    "const.cxx-test"
+    "control_invalid.cxx-test"
+    "data_models.cxx-test"
     "functions.cxx-test"
+    "intrinsics_invalid.cxx-test"
     "launch.cxx-test"
+    "launch_invalid.cxx-test"
     "loops.cxx-test"
     "pointers.cxx-test"
     "scalar.cxx-test"
+    "scalar_invalid.cxx-test"
+    "schedules.cxx-test"
+    "schedules_invalid.cxx-test"
+    "standards.cxx-test"
     "vectors.cxx-test"
+    "vectors_invalid.cxx-test"
 )
 endif()
 

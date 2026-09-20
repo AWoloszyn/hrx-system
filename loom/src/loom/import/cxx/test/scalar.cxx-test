@@ -99,3 +99,29 @@ func.def public @narrow(%x: f16) -> (f16) {
   %9 = scalar.sqrtf %x : f16
   func.return %9 : f16
 }
+
+// ====
+// RUN: roundtrip
+// Global constants retain their source widths.
+constexpr int factor = 3;
+int entry(int x) { return x * factor; }
+constexpr unsigned mask = 0xffffffffu;
+unsigned bits() { return mask; }
+constexpr unsigned char byte = 255;
+unsigned char small() { return byte; }
+// ----
+func.def public @entry(%x: i32) -> (i32) {
+  %factor = scalar.constant 3 : i32
+  %3 = scalar.muli %x, %factor : i32
+  func.return %3 : i32
+}
+
+func.def public @bits() -> (i32) {
+  %mask = scalar.constant -1 : i32
+  func.return %mask : i32
+}
+
+func.def public @small() -> (i8) {
+  %byte = scalar.constant -1 : i8
+  func.return %byte : i8
+}
