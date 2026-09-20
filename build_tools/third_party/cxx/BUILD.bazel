@@ -8,6 +8,7 @@
 
 exports_files([
     "braced_vector_initialization.patch",
+    "builtin_macro_locations.patch",
     "cxx.BUILD.bazel",
     "constant_arithmetic.patch",
     "include_continuation.patch",

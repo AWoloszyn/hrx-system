@@ -76,10 +76,17 @@ quotes. The C++ provider accepts:
 | `approximate-functions=true` | Permit approximate mathematical functions. |
 | `builtin-includes=false` | Use explicit include paths without embedded headers. |
 
-Source locations use case-relative lines. Header locations retain their own
-filenames and coordinates; an ERROR in the main test cannot match a header
-diagnostic at a coincident line. Source snapshots remain available after import
-for pass diagnostics, including headers. `--source-prefix-map` changes displayed
+Source locations use physical, case-relative lines. `#line` controls the presumed
+values of `__LINE__` and `__FILE__`; locations and diagnostics still refer to the
+admitted source bytes. Builtin macro replacements retain the range of the macro
+use, independently of the replacement spelling: the value `100` from `__LINE__`
+points at the eight characters of `__LINE__`. Nested expansions retain the
+frontend's macro-body use site or argument-token range.
+
+Header locations retain their own filenames and coordinates; an ERROR in the
+main test cannot match a header diagnostic at a coincident line. Source snapshots
+remain available after import for pass diagnostics, including headers.
+`--source-prefix-map` changes displayed
 names without changing relative include lookup; mappings that merge distinct
 admitted source identities are rejected. Full-line test separators and
 directives are reserved by the shared envelope, including inside multiline

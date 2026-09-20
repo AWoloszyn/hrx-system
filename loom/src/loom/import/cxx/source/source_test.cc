@@ -15,6 +15,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -111,6 +112,51 @@ TEST(SourceTest, IncludeDirectoryRetainsFilesystemRoot) {
   const auto& paths = source.unit().preprocessor()->userIncludePaths();
   ASSERT_EQ(paths.size(), 1u);
   EXPECT_EQ(paths.front(), root.generic_string());
+}
+
+TEST(SourceTest, BuiltinStringSpellingRetainsThePhysicalExpansionRange) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  for (const char* macro : {"__FILE__", "__DATE__", "__TIME__"}) {
+    SCOPED_TRACE(macro);
+    const std::string contents =
+        "\n#line 700 \"presumed.cc\"\nconstexpr auto value = " +
+        std::string(macro) + ";\n";
+    Source source(view(contents), IREE_SV("physical.cpp"), options);
+    auto* preprocessor = source.unit().preprocessor();
+    unsigned literal_count = 0;
+    for (const auto& token : source.unit().tokens()) {
+      if (token.fileId() != preprocessor->mainSourceFileId() ||
+          token.kind() != cxx::TokenKind::T_STRING_LITERAL) {
+        continue;
+      }
+      ++literal_count;
+      EXPECT_EQ(token.offset(), contents.find(macro));
+      EXPECT_EQ(token.length(), std::string_view(macro).size());
+      auto first = preprocessor->tokenStartPosition(token);
+      auto last = preprocessor->tokenEndPosition(token);
+      EXPECT_EQ(first.fileName, "physical.cpp");
+      EXPECT_EQ(first.line, 3u);
+      EXPECT_EQ(first.column, 24u);
+      EXPECT_EQ(last.fileName, first.fileName);
+      EXPECT_EQ(last.line, first.line);
+      EXPECT_EQ(last.column, first.column + token.length());
+      auto presumed = preprocessor->presumedTokenStartPosition(token);
+      EXPECT_EQ(presumed.fileName, "presumed.cc");
+      EXPECT_EQ(presumed.line, 700u);
+      const auto spelling = token.spell();
+      if (std::string_view(macro) == "__FILE__") {
+        EXPECT_EQ(spelling, "\"presumed.cc\"");
+      } else {
+        // Date and time vary, but their spelling remains a quoted literal.
+        EXPECT_EQ(spelling.size(),
+                  std::string_view(macro) == "__DATE__" ? 13u : 10u);
+        EXPECT_EQ(spelling.front(), '"');
+        EXPECT_EQ(spelling.back(), '"');
+      }
+    }
+    EXPECT_EQ(literal_count, 1u);
+  }
 }
 
 TEST(SourceTest, DiagnosticSinkFailureCrossesTheParserSafeBoundary) {

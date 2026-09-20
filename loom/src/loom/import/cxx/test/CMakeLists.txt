@@ -24,6 +24,7 @@ loom_check_test_suite(
     "intrinsics_invalid.cxx-test"
     "launch.cxx-test"
     "launch_invalid.cxx-test"
+    "locations.cxx-test"
     "loops.cxx-test"
     "pointers.cxx-test"
     "scalar.cxx-test"
@@ -33,6 +34,8 @@ loom_check_test_suite(
     "standards.cxx-test"
     "vectors.cxx-test"
     "vectors_invalid.cxx-test"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/locations.h"
 )
 endif()
 
