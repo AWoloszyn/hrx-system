@@ -25,7 +25,7 @@
 
 #include "iree/base/api.h"
 #include "loom/import/cxx/binding/assumptions.h"
-#include "loom/import/cxx/binding/config/config.h"
+#include "loom/import/cxx/binding/config.h"
 #include "loom/import/cxx/binding/intrinsics.h"
 #include "loom/import/cxx/binding/launch.h"
 #include "loom/import/cxx/binding/loop_schedule.h"

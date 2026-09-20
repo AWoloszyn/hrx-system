@@ -9,7 +9,7 @@
 #include <cxx/ast_interpreter.h>
 #include <cxx/symbols.h>
 
-#include "loom/import/cxx/binding/config/config.h"
+#include "loom/import/cxx/binding/config.h"
 #include "loom/import/cxx/source/attributes.h"
 #include "loom/import/cxx/source/error.h"
 #include "loom/ir/module.h"

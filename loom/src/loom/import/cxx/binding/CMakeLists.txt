@@ -42,6 +42,28 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    config
+  HDRS
+    "config.h"
+  SRCS
+    "config.cc"
+  DEPS
+    iree::third_party::cxx_parser
+    loom::import::cxx::source::attributes
+    loom::import::cxx::source::error
+    loom::import::cxx::source::locations
+    loom::import::cxx::value::scalar
+    loom::import::cxx::value::types
+    loom::ir
+    loom::ops::config
+    loom::ops::scalar
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     shaped
   HDRS
     "shaped.h"
@@ -85,8 +107,8 @@ loom_cc_library(
   SRCS
     "launch.cc"
   DEPS
+    ::config
     iree::third_party::cxx_parser
-    loom::import::cxx::binding::config
     loom::import::cxx::source
     loom::import::cxx::source::attributes
     loom::import::cxx::source::error
@@ -140,6 +162,26 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
+    config_test
+  SRCS
+    "config_test.cc"
+  DEPS
+    ::config
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+    loom::import::cxx::source::error
+    loom::import::cxx::value::builder_test
+    loom::ops::config
+    loom::ops::scalar
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
     shaped_test
   SRCS
     "shaped_test.cc"
@@ -157,12 +199,14 @@ endif()
 
 foreach(_target IN ITEMS
     loom_import_cxx_binding_assumptions.objects
+    loom_import_cxx_binding_config.objects
     loom_import_cxx_binding_intrinsics.objects
     loom_import_cxx_binding_shaped.objects
     loom_import_cxx_binding_launch.objects
     loom_import_cxx_binding_loop_schedule.objects
     loom_import_cxx_binding_shaped_test
     loom_import_cxx_binding_assumptions_test
+    loom_import_cxx_binding_config_test
 )
   if(TARGET ${_target})
     target_compile_features(${_target} PRIVATE cxx_std_23)

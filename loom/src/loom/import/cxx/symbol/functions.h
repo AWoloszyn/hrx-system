@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "loom/import/cxx/binding/config/config.h"
+#include "loom/import/cxx/binding/config.h"
 #include "loom/import/cxx/binding/intrinsics.h"
 #include "loom/import/cxx/binding/launch.h"
 #include "loom/import/cxx/source/locations.h"

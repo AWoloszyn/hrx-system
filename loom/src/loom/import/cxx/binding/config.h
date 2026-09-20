@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef LOOM_IMPORT_CXX_BINDING_CONFIG_CONFIG_H_
-#define LOOM_IMPORT_CXX_BINDING_CONFIG_CONFIG_H_
+#ifndef LOOM_IMPORT_CXX_BINDING_CONFIG_H_
+#define LOOM_IMPORT_CXX_BINDING_CONFIG_H_
 
 #include <optional>
 #include <string_view>
@@ -99,4 +99,4 @@ class Configs {
 
 }  // namespace loom::cxx_import
 
-#endif  // LOOM_IMPORT_CXX_BINDING_CONFIG_CONFIG_H_
+#endif  // LOOM_IMPORT_CXX_BINDING_CONFIG_H_
