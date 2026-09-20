@@ -7,7 +7,7 @@
 
 # ruff: noqa: F403, F405
 
-"""Wait, barrier, cache-control, and prefetch descriptor overlays."""
+"""Hardware state, wait, barrier, cache-control, and prefetch descriptors."""
 
 from __future__ import annotations
 
@@ -19,6 +19,34 @@ _SENDMSG_RTN_MESSAGE_IMMEDIATE = Immediate(
     bit_width=8,
     unsigned_max=(2**8) - 1,
 )
+
+
+def _s_mov_b64_shared_base_overlay(
+    *, encoding_condition: str = "default"
+) -> AmdgpuDescriptorOverlay:
+    # Aperture sources require a 64-bit read: a 32-bit move returns zero.
+    # The upper word combines with an LDS segment offset to form a flat pointer.
+    # The runtime configures the aperture; it is stable within a kernel.
+    return AmdgpuDescriptorOverlay(
+        descriptor_key="amdgpu.s_mov_b64_shared_base",
+        instruction_name="S_MOV_B64",
+        mnemonic="s_mov_b64_shared_base",
+        encoding_name="ENC_SOP1",
+        encoding_condition=encoding_condition,
+        semantic_tag="address.workgroup.aperture.base",
+        schedule_class=_SCHEDULE_SALU,
+        operands=(AmdgpuOperandOverlay("SDST", _sgpr_result(units=2)),),
+        fixed_encoding_fields=(("SSRC0", _predefined("SRC_SHARED_BASE", "OPR_SSRC")),),
+        asm_forms=_asm(
+            results=("dst",),
+            native_assembly_mnemonic="s_mov_b64",
+            native_assembly_values=(
+                _native_result("dst"),
+                _native_literal("src_shared_base"),
+            ),
+        ),
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    )
 
 
 def _s_waitcnt_overlay(
@@ -676,6 +704,7 @@ __all__ = (
     "_s_barrier_wait_all_overlay",
     "_s_delay_alu_descriptor",
     "_s_dcache_discard_overlay",
+    "_s_mov_b64_shared_base_overlay",
     "_s_prefetch_overlay",
     "_s_sendmsg_overlay",
     "_s_sendmsg_rtn_b32_overlay",
