@@ -1,0 +1,37 @@
+// RUN: roundtrip
+
+wasm.target<simd128> @target
+
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @offset_forms(%address: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %scalar = i32.load %address
+  i32.store %address, %scalar {offset = 16}
+  %vector = v128.load %address {offset = 4294967295}
+  v128.store %address, %vector {offset = 32}
+  %byte = i32.load8_u %address {offset = 128}
+  i32.store8 %address, %byte {offset = 255}
+  return %scalar
+}
+
+// ====
+
+// RUN: verify
+
+wasm.target<simd128> @target
+
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @negative_offset(%address: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  // ERROR@+1: STRUCTURE/014 {attr_name="offset", actual_value="-1", expected_constraint="0..4294967295"}
+  %value = i32.load %address {offset = -1}
+  return %value
+}
+
+// ====
+
+// RUN: verify
+
+wasm.target<simd128> @target
+
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @oversized_offset(%address: reg<wasm.i32>, %value: reg<wasm.i64>) asm {
+  // ERROR@+1: STRUCTURE/014 {attr_name="offset", actual_value="4294967296", expected_constraint="0..4294967295"}
+  i64.store %address, %value {offset = 4294967296}
+  return
+}

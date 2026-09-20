@@ -179,6 +179,53 @@ loom-compile kernel.loom --format=llvmir-text --output=kernel.ll
 loom-compile kernel.loom --format=llvmir-bitcode --output=kernel.bc
 ```
 
+## Emit a WebAssembly module
+
+An installation with Wasm enabled can compile ordinary functions into a binary
+module. Save this as `sum.loom`:
+
+```loom
+wasm.target<simd128> @target
+
+func.def public target(@target) @sum_to(%end: index) -> (index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %terminal, %sum = scf.while(%before = %begin : index, %total = %begin : index) -> (index, index) {
+    %more = index.cmp ult, %before, %end : index
+    scf.condition %more, %before, %total : i1, index, index
+  } do(%position: index, %partial: index) {
+    %next_sum = index.add %partial, %position : index
+    %next = index.add %position, %step : index
+    scf.yield %next, %next_sum : index, index
+  }
+  func.return %sum : index
+}
+```
+
+Compile it with the default pipeline, which preserves Wasm's structured control
+flow:
+
+```shell
+loom-compile sum.loom --format=wasm-binary --output=sum.wasm
+```
+
+Public functions become exports. For example, a JavaScript host can instantiate
+the artifact and call the sum for a nonnegative end value:
+
+```javascript
+const bytes = await (await fetch('sum.wasm')).arrayBuffer();
+const {instance} = await WebAssembly.instantiate(bytes);
+console.log(instance.exports.sum_to(4)); // 6
+```
+
+Wasm uses 32-bit `index` and `offset` carriers. Address casts connect these types
+with `i32`; converting an offset to an index requires a value no greater than
+`2147483647`. Scalar `i32`, `i64`, `f32`, and `f64` memory accesses support static
+and dynamic view origins and bounded indices. Relative byte offsets must fit
+within 32 bits. Modules using memory define one private 64 KiB linear memory;
+buffer parameters are byte addresses into it, and exported functions provide
+the host's access to that memory.
+
 ## Emit a target-native sidecar
 
 A loadable kernel format may have both a loader-ready representation and a

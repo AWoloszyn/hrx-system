@@ -23,12 +23,13 @@ from loom.dialect.scf import ALL_SCF_OPS
 from loom.dialect.scf import defs as scf
 from loom.dialect.vector import ALL_VECTOR_OPS
 from loom.dialect.vector import defs as vector
+from loom.dialect.view import ALL_VIEW_OPS
+from loom.dialect.view import defs as view
 from loom.dsl import Op
 from loom.error.wasm import (
     ERR_WASM_001,
     ERR_WASM_002,
     ERR_WASM_003,
-    ERR_WASM_004,
     ERR_WASM_005,
     ERR_WASM_006,
 )
@@ -42,9 +43,10 @@ from loom.target.contracts import (
     Guard,
     GuardDiagnostic,
     Scalar,
+    SourceMemoryByteOffsetMaterializer,
     SourceMemoryConstraint,
-    SourceMemoryDynamicIndexSource,
     SourceMemoryOperation,
+    SourceMemoryProject,
     SourceMemoryRootKind,
     TypePattern,
     ValueAliasRule,
@@ -97,12 +99,6 @@ _I32_CONSTANT_RANGE_DIAGNOSTIC = GuardDiagnostic(
         string_param("field_name", "value"),
         i64_param("minimum", _I32_BIT_PATTERN_MIN),
         i64_param("maximum", _I32_BIT_PATTERN_MAX),
-    ),
-)
-_ZERO_BUFFER_VIEW_OFFSET_DIAGNOSTIC = GuardDiagnostic(
-    ref=target_diagnostic(
-        ERR_WASM_004,
-        string_param("field_name", "byte_offset"),
     ),
 )
 _SOURCE_MEMORY_DIAGNOSTIC = GuardDiagnostic(
@@ -303,6 +299,8 @@ def _conversion_alias_rule(
     source_op: Op,
     source_type: TypePattern,
     result_type: TypePattern,
+    *,
+    guards: tuple[Guard, ...] = (),
 ) -> ValueAliasRule:
     return ValueAliasRule(
         source_op=source_op,
@@ -311,6 +309,7 @@ def _conversion_alias_rule(
         guards=(
             _value_type("input", source_type),
             _value_type("result", result_type),
+            *guards,
         ),
     )
 
@@ -587,14 +586,6 @@ def _buffer_view_rule() -> ValueAliasRule:
         source_op=buffer.buffer_view,
         source=ValueRef.operand("buffer"),
         result=ValueRef.result("result"),
-        guards=(
-            Guard.value_i64_range(
-                "byte_offset",
-                0,
-                0,
-                diagnostic=_ZERO_BUFFER_VIEW_OFFSET_DIAGNOSTIC,
-            ),
-        ),
     )
 
 
@@ -662,128 +653,78 @@ def _buffer_store_i8_rule() -> DescriptorRule:
     )
 
 
-def _source_memory_constraint(
+def _memory_rule(
+    source_op: Op,
     operation: SourceMemoryOperation,
+    value_type: TypePattern,
+    descriptor_key: str,
     *,
+    element_byte_count: int,
+    lane_count: int,
     dynamic: bool,
-) -> SourceMemoryConstraint:
-    return SourceMemoryConstraint(
+) -> DescriptorRule:
+    descriptor = _descriptor(descriptor_key)
+    source_memory = SourceMemoryConstraint(
         operation=operation,
         root_kind=SourceMemoryRootKind.BLOCK_ARGUMENT,
         memory_spaces=("unknown", "generic", "global"),
-        element_byte_count=4,
-        vector_lane_count=4,
-        vector_lane_byte_stride=4,
-        static_byte_offset=0,
-        dynamic_term_count=1 if dynamic else 0,
-        dynamic_view_base_term_count=0,
-        dynamic_index_source=(
-            SourceMemoryDynamicIndexSource.VALUE
-            if dynamic
-            else SourceMemoryDynamicIndexSource.NONE
-        ),
-        dynamic_byte_stride=4 if dynamic else 0,
-        preserve_source_index=dynamic,
-        dynamic_offset_unsigned_bit_count=32 if dynamic else 0,
-        dynamic_offset_diagnostic=(_WASM32_ADDRESS_DIAGNOSTIC if dynamic else None),
+        element_byte_count=element_byte_count,
+        vector_lane_count=lane_count,
+        vector_lane_byte_stride=element_byte_count,
+        static_byte_offset_minimum=0,
+        static_byte_offset_maximum=(1 << 32) - 1,
+        dynamic_term_count=None if dynamic else 0,
+        dynamic_term_count_minimum=1 if dynamic else 0,
+        dynamic_view_base_term_count=None,
+        allow_dynamic_stride_values=dynamic,
+        dynamic_offset_unsigned_bit_count=32,
+        dynamic_offset_diagnostic=_WASM32_ADDRESS_DIAGNOSTIC,
         diagnostic=_SOURCE_MEMORY_DIAGNOSTIC,
     )
-
-
-def _dynamic_address_emits() -> tuple[EmitDescriptorOp, ...]:
-    stride = ValueRef.temporary("stride")
-    offset = ValueRef.temporary("offset")
-    address = ValueRef.temporary("address")
-    return (
-        EmitDescriptorOp(
-            descriptor=_descriptor("wasm.i32.const"),
-            results={"dst": stride},
-            result_types={"dst": _I32},
-            immediates={"i32_value": 4},
-            form=DescriptorEmitForm.CONST,
-        ),
-        EmitDescriptorOp(
-            descriptor=_descriptor("wasm.i32.mul"),
-            operands={
-                "lhs": ValueRef.operand("indices"),
-                "rhs": stride,
-            },
-            results={"dst": offset},
-            result_types={"dst": _I32},
-        ),
-        EmitDescriptorOp(
-            descriptor=_descriptor("wasm.i32.add"),
-            operands={
-                "lhs": ValueRef.operand("view"),
-                "rhs": offset,
-            },
-            results={"dst": address},
-            result_types={"dst": _I32},
-        ),
-    )
-
-
-def _memory_address_ref(dynamic: bool) -> ValueRef:
+    address = ValueRef.operand("view")
+    emits = []
     if dynamic:
-        return ValueRef.temporary("address")
-    return ValueRef.operand("view")
-
-
-def _vector_load_rule(
-    result_type: TypePattern,
-    *,
-    dynamic: bool,
-) -> DescriptorRule:
-    descriptor = _descriptor("wasm.v128.load")
-    memory_emit = EmitDescriptorOp(
-        descriptor=descriptor,
-        operands={"address": _memory_address_ref(dynamic)},
-        results={"dst": ValueRef.result("result")},
-        source_memory=_source_memory_constraint(
-            SourceMemoryOperation.LOAD,
-            dynamic=dynamic,
-        ),
-        form=DescriptorEmitForm.OP,
+        address = ValueRef.temporary("address")
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=_descriptor("wasm.i32.add"),
+                operands={
+                    "lhs": ValueRef.operand("view"),
+                    "rhs": ValueRef.source_memory_dynamic_byte_offset(),
+                },
+                results={"dst": address},
+                result_types={"dst": _I32},
+                source_memory=source_memory,
+                source_memory_byte_offset_materializer=SourceMemoryByteOffsetMaterializer(
+                    const_i64=_descriptor("wasm.i32.const"),
+                    add_i64=_descriptor("wasm.i32.add"),
+                    mul_i64=_descriptor("wasm.i32.mul"),
+                    shl_i64=None,
+                    const_i64_immediate="i32_value",
+                ),
+            )
+        )
+    is_load = operation is SourceMemoryOperation.LOAD
+    emits.append(
+        EmitDescriptorOp(
+            descriptor=descriptor,
+            operands={"address": address}
+            if is_load
+            else {
+                "address": address,
+                "value": ValueRef.operand("value"),
+            },
+            results={"dst": ValueRef.result("result")} if is_load else {},
+            immediates={"offset": SourceMemoryProject.static_byte_offset()},
+            source_memory=source_memory,
+            form=DescriptorEmitForm.OP,
+        )
     )
-    emits = (*_dynamic_address_emits(), memory_emit) if dynamic else (memory_emit,)
     return DescriptorRule(
-        source_op=vector.vector_load,
+        source_op=source_op,
         descriptor=descriptor,
-        guards=(
-            Guard.operand_segment_count("indices", 1 if dynamic else 0),
-            _value_type("result", result_type),
-        ),
-        emit=emits,
-    )
-
-
-def _vector_store_rule(
-    value_type: TypePattern,
-    *,
-    dynamic: bool,
-) -> DescriptorRule:
-    descriptor = _descriptor("wasm.v128.store")
-    memory_emit = EmitDescriptorOp(
-        descriptor=descriptor,
-        operands={
-            "address": _memory_address_ref(dynamic),
-            "value": ValueRef.operand("value"),
-        },
-        source_memory=_source_memory_constraint(
-            SourceMemoryOperation.STORE,
-            dynamic=dynamic,
-        ),
-        form=DescriptorEmitForm.OP,
-    )
-    emits = (*_dynamic_address_emits(), memory_emit) if dynamic else (memory_emit,)
-    return DescriptorRule(
-        source_op=vector.vector_store,
-        descriptor=descriptor,
-        guards=(
-            Guard.operand_segment_count("indices", 1 if dynamic else 0),
-            _value_type("value", value_type),
-        ),
-        emit=emits,
+        guards=(_value_type("result" if is_load else "value", value_type),),
+        emit=tuple(emits),
     )
 
 
@@ -793,6 +734,7 @@ WASM_CORE_SIMD128_CONTRACT_DIALECT_OPS = {
     "scalar": ALL_SCALAR_OPS,
     "scf": ALL_SCF_OPS,
     "vector": ALL_VECTOR_OPS,
+    "view": ALL_VIEW_OPS,
 }
 
 WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
@@ -917,8 +859,42 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         _binary_rule(vector.vector_muli, _V4I32, "wasm.i32x4.mul"),
         _const_i32_rule(index.index_constant, _INDEX),
         _const_i32_rule(index.index_constant, _OFFSET),
-        _scalar_compare_rule(index.index_cmp, "ult", _INDEX, "wasm.i32.lt_u"),
-        _scalar_compare_rule(index.index_cmp, "ult", _OFFSET, "wasm.i32.lt_u"),
+        *(
+            _scalar_compare_rule(
+                index.index_cmp, predicate, value_type, f"wasm.i32.{operation}"
+            )
+            for value_type in (_INDEX, _OFFSET)
+            for predicate, operation in (
+                ("eq", "eq"),
+                ("ne", "ne"),
+                ("slt", "lt_s"),
+                ("sle", "le_s"),
+                ("sgt", "gt_s"),
+                ("sge", "ge_s"),
+                ("ult", "lt_u"),
+                ("ule", "le_u"),
+                ("ugt", "gt_u"),
+                ("uge", "ge_u"),
+            )
+        ),
+        *(
+            _conversion_alias_rule(index.index_cast, source_type, result_type)
+            for source_type, result_type in (
+                (_INDEX, _I32),
+                (_I32, _INDEX),
+                (_OFFSET, _I32),
+                (_I32, _OFFSET),
+            )
+        ),
+        *(
+            _conversion_alias_rule(
+                index.index_cast,
+                source_type,
+                result_type,
+                guards=(Guard.value_i64_range("input", 0, (1 << 31) - 1),),
+            )
+            for source_type, result_type in ((_INDEX, _OFFSET), (_OFFSET, _INDEX))
+        ),
         _binary_rule(index.index_add, _INDEX, "wasm.i32.add"),
         _binary_rule(index.index_add, _OFFSET, "wasm.i32.add"),
         _binary_rule(index.index_sub, _INDEX, "wasm.i32.sub"),
@@ -944,14 +920,34 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         _shuffle_rule(_V4I32),
         _shuffle_rule(_V4F32),
         _shuffle_rule(_V4I1),
-        _vector_load_rule(_V4I32, dynamic=False),
-        _vector_load_rule(_V4F32, dynamic=False),
-        _vector_load_rule(_V4I32, dynamic=True),
-        _vector_load_rule(_V4F32, dynamic=True),
-        _vector_store_rule(_V4I32, dynamic=False),
-        _vector_store_rule(_V4F32, dynamic=False),
-        _vector_store_rule(_V4I32, dynamic=True),
-        _vector_store_rule(_V4F32, dynamic=True),
+        *(
+            _memory_rule(
+                load_op if operation is SourceMemoryOperation.LOAD else store_op,
+                operation,
+                value_type,
+                f"wasm.{type_name}.{operation.value}",
+                element_byte_count=element_byte_count,
+                lane_count=lane_count,
+                dynamic=dynamic,
+            )
+            for (
+                value_type,
+                type_name,
+                element_byte_count,
+                lane_count,
+                load_op,
+                store_op,
+            ) in (
+                (_I32, "i32", 4, 1, view.view_load, view.view_store),
+                (_I64, "i64", 8, 1, view.view_load, view.view_store),
+                (_F32, "f32", 4, 1, view.view_load, view.view_store),
+                (_F64, "f64", 8, 1, view.view_load, view.view_store),
+                (_V4I32, "v128", 4, 4, vector.vector_load, vector.vector_store),
+                (_V4F32, "v128", 4, 4, vector.vector_load, vector.vector_store),
+            )
+            for operation in (SourceMemoryOperation.LOAD, SourceMemoryOperation.STORE)
+            for dynamic in (True, False)
+        ),
         *reduction_descriptor_rules(
             vector.vector_reduce,
             (

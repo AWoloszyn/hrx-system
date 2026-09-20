@@ -193,11 +193,28 @@ _SHUFFLE_BYTE_IMMEDIATES = tuple(
     for i in range(16)
 )
 
+_MEMORY_OFFSET_IMMEDIATE = Immediate(
+    "offset",
+    ImmediateKind.UNSIGNED,
+    flags=(ImmediateFlag.DEFAULT_VALUE,),
+    bit_width=32,
+    unsigned_max=(2**32) - 1,
+    default_value=0,
+)
+
 _OP_BR = 0x0C
 _OP_BR_IF = 0x0D
 _OP_RETURN = 0x0F
 _OP_SELECT = 0x1B
+_OP_I32_LOAD = 0x28
+_OP_I64_LOAD = 0x29
+_OP_F32_LOAD = 0x2A
+_OP_F64_LOAD = 0x2B
 _OP_I32_LOAD8_U = 0x2D
+_OP_I32_STORE = 0x36
+_OP_I64_STORE = 0x37
+_OP_F32_STORE = 0x38
+_OP_F64_STORE = 0x39
 _OP_I32_STORE8 = 0x3A
 _OP_I32_CONST = 0x41
 _OP_I64_CONST = 0x42
@@ -361,6 +378,63 @@ def _scalar_binary_descriptor(
         if type_name == "i32"
         else _SCHEDULE_SCALAR_I64,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    )
+
+
+def _scalar_memory_descriptors(
+    type_name: str,
+    register_class: str,
+    width_bits: int,
+    load_opcode: int,
+    store_opcode: int,
+) -> tuple[Descriptor, ...]:
+    return (
+        Descriptor(
+            key=f"wasm.{type_name}.load",
+            mnemonic=f"{type_name}.load",
+            semantic_tag=f"memory.load.{type_name}",
+            encoding_id=load_opcode,
+            operands=(
+                Operand("dst", OperandRole.RESULT, (RegClassAlt(register_class),)),
+                _i32_resource("address"),
+            ),
+            immediates=(_MEMORY_OFFSET_IMMEDIATE,),
+            asm_forms=_asm(
+                results=("dst",), operands=("address",), immediates=("offset",)
+            ),
+            effects=(
+                Effect(
+                    EffectKind.READ,
+                    memory_space=MemorySpace.WASM_MEMORY,
+                    flags=(EffectFlag.DEPENDENCY,),
+                    width_bits=width_bits,
+                ),
+            ),
+            schedule_class=_SCHEDULE_MEMORY_LOAD,
+            flags=(DescriptorFlag.SIDE_EFFECTING,),
+        ),
+        Descriptor(
+            key=f"wasm.{type_name}.store",
+            mnemonic=f"{type_name}.store",
+            semantic_tag=f"memory.store.{type_name}",
+            encoding_id=store_opcode,
+            operands=(
+                _i32_resource("address"),
+                Operand("value", OperandRole.OPERAND, (RegClassAlt(register_class),)),
+            ),
+            immediates=(_MEMORY_OFFSET_IMMEDIATE,),
+            asm_forms=_asm(operands=("address", "value"), immediates=("offset",)),
+            effects=(
+                Effect(
+                    EffectKind.WRITE,
+                    memory_space=MemorySpace.WASM_MEMORY,
+                    flags=(EffectFlag.DEPENDENCY,),
+                    width_bits=width_bits,
+                ),
+            ),
+            schedule_class=_SCHEDULE_MEMORY_STORE,
+            flags=(DescriptorFlag.SIDE_EFFECTING,),
+        ),
     )
 
 
@@ -1034,13 +1108,28 @@ WASM_CORE_SIMD128_DESCRIPTOR_SET = DescriptorSet(
             schedule_class=_SCHEDULE_SIMD_I32X4,
             flags=(DescriptorFlag.DEAD_REMOVABLE,),
         ),
+        *(
+            descriptor
+            for type_name, register_class, width_bits, load_opcode, store_opcode in (
+                ("i32", _REG_I32, 32, _OP_I32_LOAD, _OP_I32_STORE),
+                ("i64", _REG_I64, 64, _OP_I64_LOAD, _OP_I64_STORE),
+                ("f32", _REG_F32, 32, _OP_F32_LOAD, _OP_F32_STORE),
+                ("f64", _REG_F64, 64, _OP_F64_LOAD, _OP_F64_STORE),
+            )
+            for descriptor in _scalar_memory_descriptors(
+                type_name, register_class, width_bits, load_opcode, store_opcode
+            )
+        ),
         Descriptor(
             key="wasm.i32.load8_u",
             mnemonic="i32.load8_u",
             semantic_tag="memory.load.u8.i32",
             encoding_id=_OP_I32_LOAD8_U,
             operands=(_i32_result(), _i32_resource("address")),
-            asm_forms=_asm(results=("dst",), operands=("address",)),
+            immediates=(_MEMORY_OFFSET_IMMEDIATE,),
+            asm_forms=_asm(
+                results=("dst",), operands=("address",), immediates=("offset",)
+            ),
             effects=(_BYTE_LOAD_EFFECT,),
             schedule_class=_SCHEDULE_MEMORY_LOAD,
             flags=(DescriptorFlag.SIDE_EFFECTING,),
@@ -1051,7 +1140,8 @@ WASM_CORE_SIMD128_DESCRIPTOR_SET = DescriptorSet(
             semantic_tag="memory.store.i8",
             encoding_id=_OP_I32_STORE8,
             operands=(_i32_resource("address"), _i32_operand("value")),
-            asm_forms=_asm(operands=("address", "value")),
+            immediates=(_MEMORY_OFFSET_IMMEDIATE,),
+            asm_forms=_asm(operands=("address", "value"), immediates=("offset",)),
             effects=(_BYTE_STORE_EFFECT,),
             schedule_class=_SCHEDULE_MEMORY_STORE,
             flags=(DescriptorFlag.SIDE_EFFECTING,),
@@ -1062,7 +1152,10 @@ WASM_CORE_SIMD128_DESCRIPTOR_SET = DescriptorSet(
             semantic_tag="memory.load.v128",
             encoding_id=_OP_V128_LOAD,
             operands=(_v128_result(), _i32_resource("address")),
-            asm_forms=_asm(results=("dst",), operands=("address",)),
+            immediates=(_MEMORY_OFFSET_IMMEDIATE,),
+            asm_forms=_asm(
+                results=("dst",), operands=("address",), immediates=("offset",)
+            ),
             effects=(_LOAD_EFFECT,),
             schedule_class=_SCHEDULE_MEMORY_LOAD,
             flags=(DescriptorFlag.SIDE_EFFECTING,),
@@ -1073,7 +1166,8 @@ WASM_CORE_SIMD128_DESCRIPTOR_SET = DescriptorSet(
             semantic_tag="memory.store.v128",
             encoding_id=_OP_V128_STORE,
             operands=(_i32_resource("address"), _v128_operand("value")),
-            asm_forms=_asm(operands=("address", "value")),
+            immediates=(_MEMORY_OFFSET_IMMEDIATE,),
+            asm_forms=_asm(operands=("address", "value"), immediates=("offset",)),
             effects=(_STORE_EFFECT,),
             schedule_class=_SCHEDULE_MEMORY_STORE,
             flags=(DescriptorFlag.SIDE_EFFECTING,),

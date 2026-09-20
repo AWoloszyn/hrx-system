@@ -45,9 +45,11 @@ iree_py_test(
     args = [
         "$(location //loom/src/loom/tools/loom-compile:loom-compile)",
         "$(location test/sum.loom)",
-        "$(location test/sum.mjs)",
+        "$(location test/scalar_memory.loom)",
     ],
     data = [
+        "test/scalar_memory.loom",
+        "test/scalar_memory.mjs",
         "test/sum.loom",
         "test/sum.mjs",
         "//loom/src/loom/tools/loom-compile",
@@ -167,6 +169,7 @@ loom_check_test_suite(
     srcs = [
         "test/assembly.loom-test",
         "test/loop_termination.loom-test",
+        "test/memory_offsets.loom-test",
         "test/numeric.loom-test",
         "test/schedule_scopes.loom-test",
     ],

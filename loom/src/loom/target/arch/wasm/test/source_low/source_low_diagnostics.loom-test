@@ -95,3 +95,53 @@ func.def target(@target) @index_remainder_wide_dividend(%value: index) -> (index
   %remainder = index.rem %wide_value, %divisor : index
   func.return %remainder : index
 }
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @offset_outside_signed_index(%input: offset) -> (index) {
+  %wide = index.assume %input [range(%input, 2147483648, 4294967295)] : offset
+  // ERROR@+1: TARGET/005 {op_name="index.cast", subject_name="input", minimum="0", maximum="2147483647"}
+  %position = index.cast %wide : offset to index
+  func.return %position : index
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @offset_cast_result_cannot_prove_input(%input: offset) -> (index) {
+  // ERROR@+1: TARGET/005 {op_name="index.cast", subject_name="input", minimum="0", maximum="2147483647"}
+  %position = index.cast %input : offset to index
+  %assumed = index.assume %position [range(%position, 0, 7)] : index
+  func.return %assumed : index
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @static_base_plus_index_overflows_wasm32(%input: buffer, %position_input: index) -> (i32) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %position = index.assume %position_input [range(%position_input, 0, 7)] : index
+  %base = index.constant 4294967268 : offset
+  %view = buffer.view %aligned[%base] : buffer -> view<8xi32>
+  // ERROR@+1: WASM/006 {bit_count="32"}
+  %value = view.load %view[%position] : view<8xi32> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @dynamic_base_plus_index_overflows_wasm32(%input: buffer, %base_input: offset, %position_input: index) -> (i32) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %base = index.assume %base_input [range(%base_input, 4294967264, 4294967268), mul(%base_input, 4)] : offset
+  %position = index.assume %position_input [range(%position_input, 0, 7)] : index
+  %view = buffer.view %aligned[%base] : buffer -> view<8xi32>
+  // ERROR@+1: WASM/006 {bit_count="32"}
+  %value = view.load %view[%position] : view<8xi32> -> i32
+  func.return %value : i32
+}

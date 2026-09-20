@@ -31,7 +31,15 @@ enum {
   LOOM_WASM_OPCODE_SELECT = 0x1B,
   LOOM_WASM_OPCODE_LOCAL_GET = 0x20,
   LOOM_WASM_OPCODE_LOCAL_SET = 0x21,
+  LOOM_WASM_OPCODE_I32_LOAD = 0x28,
+  LOOM_WASM_OPCODE_I64_LOAD = 0x29,
+  LOOM_WASM_OPCODE_F32_LOAD = 0x2A,
+  LOOM_WASM_OPCODE_F64_LOAD = 0x2B,
   LOOM_WASM_OPCODE_I32_LOAD8_U = 0x2D,
+  LOOM_WASM_OPCODE_I32_STORE = 0x36,
+  LOOM_WASM_OPCODE_I64_STORE = 0x37,
+  LOOM_WASM_OPCODE_F32_STORE = 0x38,
+  LOOM_WASM_OPCODE_F64_STORE = 0x39,
   LOOM_WASM_OPCODE_I32_STORE8 = 0x3A,
   LOOM_WASM_OPCODE_I32_CONST = 0x41,
   LOOM_WASM_OPCODE_I64_CONST = 0x42,
@@ -270,6 +278,8 @@ typedef struct loom_wasm_attr_name_ids_t {
   loom_string_id_t hi64;
   // Module string ID for SIMD lane-immediate payloads.
   loom_string_id_t lane;
+  // Module string ID for the optional linear-memory instruction offset.
+  loom_string_id_t offset;
   // Module string IDs for i8x16.shuffle byte-lane immediate payloads.
   loom_string_id_t shuffle_lanes[16];
 } loom_wasm_attr_name_ids_t;
@@ -313,6 +323,7 @@ static void loom_wasm_attr_name_ids_initialize(
       .lo64 = loom_module_lookup_string(module, kWasmAttrLo64Name),
       .hi64 = loom_module_lookup_string(module, kWasmAttrHi64Name),
       .lane = loom_module_lookup_string(module, kWasmAttrLaneName),
+      .offset = loom_module_lookup_string(module, IREE_SV("offset")),
   };
   for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(kWasmShuffleLaneAttrNames);
        ++i) {
@@ -930,6 +941,13 @@ static iree_status_t loom_wasm_emit_i8x16_shuffle(
   return loom_wasm_emit_local_set(state, results.values[0]);
 }
 
+static uint32_t loom_wasm_memory_offset(const loom_wasm_emit_state_t* state,
+                                        const loom_op_t* op) {
+  const loom_named_attr_t* attr = loom_wasm_find_named_attr_by_id(
+      loom_low_op_attrs(op), state->attr_names.offset);
+  return attr ? (uint32_t)attr->value.i64 : 0;
+}
+
 static iree_status_t loom_wasm_emit_memory_load(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor, uint8_t alignment_exponent) {
@@ -942,8 +960,8 @@ static iree_status_t loom_wasm_emit_memory_load(
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_emit_memarg(state, alignment_exponent, /*offset=*/0));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_memarg(
+      state, alignment_exponent, loom_wasm_memory_offset(state, op)));
   return loom_wasm_emit_local_set(state, results.values[0]);
 }
 
@@ -959,7 +977,8 @@ static iree_status_t loom_wasm_emit_memory_store(
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[1]));
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  return loom_wasm_emit_memarg(state, alignment_exponent, /*offset=*/0);
+  return loom_wasm_emit_memarg(state, alignment_exponent,
+                               loom_wasm_memory_offset(state, op));
 }
 
 static iree_status_t loom_wasm_emit_descriptor_packet(
@@ -1066,9 +1085,25 @@ static iree_status_t loom_wasm_emit_descriptor_packet(
     case LOOM_WASM_OPCODE_I32_LOAD8_U:
       return loom_wasm_emit_memory_load(state, op, descriptor,
                                         /*alignment_exponent=*/0);
+    case LOOM_WASM_OPCODE_I32_LOAD:
+    case LOOM_WASM_OPCODE_F32_LOAD:
+      return loom_wasm_emit_memory_load(state, op, descriptor,
+                                        /*alignment_exponent=*/2);
+    case LOOM_WASM_OPCODE_I64_LOAD:
+    case LOOM_WASM_OPCODE_F64_LOAD:
+      return loom_wasm_emit_memory_load(state, op, descriptor,
+                                        /*alignment_exponent=*/3);
     case LOOM_WASM_OPCODE_I32_STORE8:
       return loom_wasm_emit_memory_store(state, op, descriptor,
                                          /*alignment_exponent=*/0);
+    case LOOM_WASM_OPCODE_I32_STORE:
+    case LOOM_WASM_OPCODE_F32_STORE:
+      return loom_wasm_emit_memory_store(state, op, descriptor,
+                                         /*alignment_exponent=*/2);
+    case LOOM_WASM_OPCODE_I64_STORE:
+    case LOOM_WASM_OPCODE_F64_STORE:
+      return loom_wasm_emit_memory_store(state, op, descriptor,
+                                         /*alignment_exponent=*/3);
     case LOOM_WASM_ENCODING_V128_LOAD:
       return loom_wasm_emit_memory_load(state, op, descriptor,
                                         /*alignment_exponent=*/4);

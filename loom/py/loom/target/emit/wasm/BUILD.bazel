@@ -22,6 +22,7 @@ iree_py_library(
         "//loom/py/loom/dialect/index",
         "//loom/py/loom/dialect/scalar",
         "//loom/py/loom/dialect/vector",
+        "//loom/py/loom/dialect/view",
         "//loom/py/loom/target/arch/wasm:descriptors",
         "//loom/py/loom/target/contracts",
         "//loom/py/loom/target/emit:package",

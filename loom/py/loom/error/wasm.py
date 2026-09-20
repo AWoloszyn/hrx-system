@@ -71,34 +71,17 @@ ERR_WASM_003 = ErrorDef(
     ),
 )
 
-# ERR_WASM_004: Wasm buffer view byte offset is unsupported.
-ERR_WASM_004 = ErrorDef(
-    domain=ErrorDomain.WASM,
-    code=4,
-    severity=Severity.ERROR,
-    summary="Wasm buffer view byte offset is unsupported.",
-    message=(
-        "Wasm target '{target_key}' export '{export_name}' config "
-        "'{config_key}' rejected '{op_name}' field '{field_name}' in "
-        "'@{function_name}': byte offset must be exactly zero"
-    ),
-    params=(
-        *_TARGET_CONTEXT_PARAMS,
-        ErrorParam("field_name", ParamKind.STRING),
-    ),
-)
-
-# ERR_WASM_005: Wasm SIMD source memory access is unsupported.
+# ERR_WASM_005: Wasm source memory access is unsupported.
 ERR_WASM_005 = ErrorDef(
     domain=ErrorDomain.WASM,
     code=5,
     severity=Severity.ERROR,
-    summary="Wasm SIMD source memory access is unsupported.",
+    summary="Wasm source memory access is unsupported.",
     message=(
         "Wasm target '{target_key}' export '{export_name}' config "
         "'{config_key}' rejected '{op_name}' source memory access in "
-        "'@{function_name}': expected a contiguous four-lane zero-offset "
-        "linear-memory access rooted at an ABI argument"
+        "'@{function_name}': expected a scalar or contiguous SIMD "
+        "linear-memory access rooted at an ABI argument with a 32-bit byte offset"
     ),
     params=_TARGET_CONTEXT_PARAMS,
 )
@@ -125,7 +108,6 @@ ALL_WASM_ERRORS = (
     ERR_WASM_001,
     ERR_WASM_002,
     ERR_WASM_003,
-    ERR_WASM_004,
     ERR_WASM_005,
     ERR_WASM_006,
 )
