@@ -57,6 +57,10 @@ build --incompatible_default_to_explicit_init_py
 build:windows-clang-cl --//build_tools/windows:compiler=clang-cl
 build:windows-msvc --//build_tools/windows:compiler=msvc
 
+# Retain failed action arguments, environment, and parameter-file paths for
+# Windows diagnostics before subsequent CI phases can replace the inputs.
+build:windows --verbose_failures
+
 # Destinations are independent of compiler selection. Native builds infer their
 # destination; cross builds preserve the native host for code generators.
 build:windows-x86_64 --platforms=//build_tools/windows:windows_x86_64

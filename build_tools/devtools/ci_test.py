@@ -47,6 +47,31 @@ from build_tools.devtools import ci, ci_config
 
 
 class CiTest(unittest.TestCase):
+    def test_keep_going_reaches_bazel_before_target_and_program_separators(self):
+        steps = [
+            ci.bazel_build_step("Build", ("//example:one", "-//example:excluded")),
+            ci.bazel_test_step("Test", ("//example:one",)),
+            ci.bazel_run_step("Run", "//example:tool", ("--nokeep_going",)),
+            ci.CiStep("Configure", ("python", "dev.py", "bazel", "configure")),
+            ci.CiStep("Other tool", ("python", "tool.py", "--", "--nokeep_going")),
+        ]
+        for keep_going in (False, True):
+            with self.subTest(keep_going=keep_going):
+                args = ci.parse_arguments(
+                    ["iree-bazel-cpu"] + (["--keep-going"] if keep_going else [])
+                )
+                with mock.patch.object(
+                    ci, "_steps_from_args", return_value=list(steps)
+                ):
+                    planned = ci.steps_from_args(args)
+                self.assertEqual(planned[3:], steps[3:])
+                for original, phase in zip(steps[:3], planned[:3]):
+                    if keep_going:
+                        self.assertEqual(phase.argv[4], "--keep_going")
+                        self.assertEqual(phase.argv[5:], original.argv[4:])
+                    else:
+                        self.assertEqual(phase, original)
+
     def test_keep_going_captures_failure_before_next_phase_changes_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
