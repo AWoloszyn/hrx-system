@@ -1207,6 +1207,21 @@ def steps_from_args(args: argparse.Namespace) -> list[CiStep]:
     if profile_dir is not None and args.command not in BAZEL_COMMANDS:
         raise ValueError("--bazel-profile-dir is only supported for Bazel CI commands")
     steps = _steps_from_args(args)
+    if args.keep_going:
+        # Continue independent actions inside each phase as well as subsequent
+        # phases. This lets actions finish normal output-stream cleanup before
+        # the next phase reuses Bazel's action log directory.
+        for index, step in enumerate(steps):
+            if step.argv[1:4] in (
+                ("dev.py", "bazel", "build"),
+                ("dev.py", "bazel", "test"),
+                ("dev.py", "bazel", "run"),
+            ):
+                steps[index] = CiStep(
+                    step.name,
+                    step.argv[:4] + ("--keep_going",) + step.argv[4:],
+                    step.env,
+                )
     if profile_dir is not None:
         steps = add_bazel_profiles(steps, profile_dir)
     return steps
@@ -1347,7 +1362,10 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--keep-going",
         action="store_true",
-        help="Run every phase and report failures at the end.",
+        help=(
+            "Run every phase, let Bazel finish independent actions after failures, "
+            "and report failures at the end."
+        ),
     )
     parser.add_argument(
         "--verbose",
