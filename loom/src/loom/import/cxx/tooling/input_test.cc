@@ -6,6 +6,7 @@
 
 #include "loom/import/cxx/tooling/input.h"
 
+#include <filesystem>
 #include <string>
 
 #include "iree/io/file_contents.h"
@@ -111,6 +112,10 @@ class InputTest : public ::testing::Test {
 TEST_F(InputTest, HeaderSnapshotsSurviveFrontendAndFilesystemChanges) {
   iree::testing::TempFilePath header("loom_input_header", ".h");
   iree::testing::TempFilePath main("loom_input_source", ".cxx-test");
+  // Header lookup uses generic filesystem names; the main source retains the
+  // caller's filename spelling.
+  const std::string header_filename =
+      std::filesystem::path(header.path()).generic_string();
   const std::string header_source =
       "static int helper(int value) { return value * 2; }\n";
   IREE_ASSERT_OK(Write(header.path(), header_source));
@@ -145,7 +150,7 @@ TEST_F(InputTest, HeaderSnapshotsSurviveFrontendAndFilesystemChanges) {
     if (text == header_source) {
       saw_header = true;
       EXPECT_EQ(String(range.filename),
-                "/logical" + header.path().substr(directory.size()));
+                "/logical" + header_filename.substr(directory.size()));
       EXPECT_EQ(range.start_line, 1u);
       EXPECT_LT(range.start, range.end);
       EXPECT_LE(range.end, text.size());
@@ -244,6 +249,8 @@ TEST_F(InputTest, NativeSourceObserverCoversBuiltinsAndPropagatesFailure) {
 
 TEST_F(InputTest, HeaderErrorsCannotSatisfyMainFileAnnotations) {
   iree::testing::TempFilePath header("loom_input_error", ".h");
+  const std::string header_filename =
+      std::filesystem::path(header.path()).generic_string();
   IREE_ASSERT_OK(Write(header.path(),
                        "long distance(int* a, int* b) { return a - b; }\n"));
   const std::string source =
@@ -257,7 +264,7 @@ TEST_F(InputTest, HeaderErrorsCannotSatisfyMainFileAnnotations) {
       harness.ExecuteFirst(View(source), IREE_SV("main.cxx-test"), &result));
   EXPECT_EQ(result.raw_outcome, LOOM_CHECK_FAIL);
   EXPECT_NE(harness.DiagnosticJsonString(result).find(
-                "\"filename\":" + JsonString(header.path_view())),
+                "\"filename\":" + JsonString(View(header_filename))),
             std::string::npos);
   const std::string edits =
       String(loom_json_value_list_body(&result.annotation_edits));
